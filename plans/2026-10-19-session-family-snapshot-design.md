@@ -177,6 +177,99 @@ export interface SnapshotDiagnostic {
   threadId: string | null;
 }
 
+export type TimelineItemKind =
+  | "user-message"
+  | "developer-message"
+  | "agent-message"
+  | "agent-communication"
+  | "reasoning"
+  | "tool-call"
+  | "tool-output"
+  | "command"
+  | "file-change"
+  | "mcp-call"
+  | "collab-call"
+  | "subagent-activity"
+  | "web-search"
+  | "image-view"
+  | "context-compaction"
+  | "turn"
+  | "token-usage"
+  | "error"
+  | "other";
+
+export type TimelineItemDetails =
+  | {
+      type: "message";
+      role: "user" | "developer" | "assistant";
+      author: string | null;
+      recipient: string | null;
+      messageType: string | null;
+    }
+  | { type: "reasoning" }
+  | {
+      type: "command";
+      command: string[];
+      cwd: string | null;
+      parsed: unknown;
+      output: string;
+      exitCode: number | null;
+      processId: string | null;
+    }
+  | {
+      type: "file-change";
+      changes: Array<{
+        path: string;
+        changeType: string;
+        diff: string | null;
+      }>;
+      status: string;
+      stdout: string | null;
+      stderr: string | null;
+    }
+  | {
+      type: "mcp";
+      server: string;
+      tool: string;
+      arguments: unknown;
+      result: unknown;
+      durationMs: number | null;
+      status: string;
+    }
+  | {
+      type: "collab";
+      tool: string;
+      senderThreadId: string;
+      receiverThreadIds: string[];
+      receiverAgentPaths: string[];
+      agentsStates: unknown;
+      status: string;
+    }
+  | {
+      type: "subagent";
+      agentThreadId: string;
+      agentPath: string;
+      activity: string;
+      model: string | null;
+      effort: string | null;
+    }
+  | { type: "web-search"; query: string; action: unknown }
+  | { type: "image"; path: string }
+  | { type: "context-compaction"; summary: string | null }
+  | {
+      type: "turn";
+      event: "started" | "completed" | "aborted";
+      error: string | null;
+    }
+  | {
+      type: "token-usage";
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      cachedInputTokens: number | null;
+    }
+  | { type: "other"; summary: string };
+
 export interface TimelineItem {
   id: string;
   agentThreadId: string;
@@ -184,21 +277,12 @@ export interface TimelineItem {
   turnId: string | null;
   ordinal: number;
   timestamp: string | null;
-  kind:
-    | "user-message"
-    | "developer-message"
-    | "agent-message"
-    | "reasoning"
-    | "tool-call"
-    | "tool-output"
-    | "error"
-    | "turn"
-    | "token-usage"
-    | "other";
+  kind: TimelineItemKind;
   title: string;
   text: string | null;
   callId: string | null;
-  status: "ok" | "error" | "unknown";
+  status: "ok" | "error" | "aborted" | "unknown";
+  details: TimelineItemDetails;
   evidence: EvidenceRef;
 }
 ```
@@ -256,7 +340,40 @@ export interface ResolvedFinding {
 }
 ```
 
-`TimelineItem` 在 #10 只提供稳定 envelope 与原始记录到 item 的最小映射；长文本折叠、卡片布局、虚拟滚动由 #15 实现。
+`TimelineItem` 在 #10 提供稳定 envelope、item 级 `details` 与原始记录映射；长文本折叠、卡片布局、虚拟滚动由 #15 实现。
+
+### 4.1 原始记录到时间线的映射
+
+原始层是 `RolloutRecord[]`：每一行 JSONL 都保留 `line`、`ordinal`、`type` 和完整 `payload`。下面的“舍弃”只表示不复制进索引或 `TimelineItem`，原始值仍可从 `payload` 取回。
+
+| 原始记录 | 时间线处理 | 保留 | 不进入 item |
+|---|---|---|---|
+| `session_meta` | 不生成 item，进入 `AgentNode` | threadId、sessionId、父边、depth、agentPath、nickname、role、cwd、startedAt | base_instructions、originator、cli_version、model_provider、runtime_workspace_roots、git、history_mode、context_window、forked_from_id、subagent_history_start_ordinal |
+| `event_msg item_completed CommandExecution` | `command` | command、cwd、parsed_cmd、aggregated_output、status、process_id | 原始权限与执行器附加字段 |
+| `event_msg item_completed FileChange` | `file-change` | 文件路径、变更类型、unified_diff | 变更的其他附加字段 |
+| `event_msg item_completed McpToolCall` | `mcp-call` | server、tool、arguments、status | 服务端未落入字段的额外响应 |
+| `event_msg item_completed CollabAgentToolCall` | `collab-call` | tool、sender、receivers、status、agents_states |  |
+| `event_msg item_completed SubAgentActivity` | `subagent-activity` | agent_thread_id、agent_path、kind、model、reasoning_effort |  |
+| `event_msg item_completed WebSearch` | `web-search` | query、action |  |
+| `event_msg item_completed ImageView` | `image-view` | path | 图片二进制（JSONL 中本来就没有） |
+| `event_msg item_completed ContextCompaction` | `context-compaction` | 摘要 | replacement_history 等大块历史 |
+| `response_item message` user/developer/assistant | `user-message` / `developer-message` / `agent-message` | role、文本、turnId、itemId | 除 turnId 外的 internal passthrough |
+| `response_item reasoning` | `reasoning` | summary 与 reasoning_text | encrypted_content |
+| `response_item function_call` / `custom_tool_call` | `tool-call` | name、arguments/input、callId |  |
+| `response_item function_call_output` / `custom_tool_call_output` | `tool-output` | output、callId、退出状态 |  |
+| `response_item agent_message` | `agent-communication` | author、recipient、messageType、文本 |  |
+| `response_item web_search_call` | `web-search` | query、action |  |
+| `token_usage_record` | `token-usage` | input/output/total/cached tokens、turnId | 完整 usage 明细 |
+| `event_msg token_count` | 跳过，避免与 token_usage_record 重复 |  | rate_limits、credits 等仍在 payload |
+| `event_msg item_completed UserMessage` / `AgentMessage` / `Reasoning` | 跳过，按 id 与 response_item 去重 |  |  |
+| `event_msg task_started` / `task_complete` / `turn_aborted` | `turn` | event、error、turnId | turn_attribution、model_context_window、collaboration_mode_kind |
+| `event_msg thread_settings_applied` | `other` | 一条“settings applied”摘要 | model、approval_policy、sandbox、permission_profile 全量设置 |
+| `turn_context` | 不生成 item，挂到 turn 元数据 | turnId、cwd、model、effort | approval/sandbox/权限策略的完整结构 |
+| `world_state` | 跳过 |  | 完整环境状态仍在 payload |
+| `compacted` | `context-compaction` | message 摘要 | replacement_history |
+| `inter_agent_communication_metadata` | 跳过 |  | trigger_turn 仍在 payload |
+
+去重规则：`event_msg item_completed` 的 `UserMessage`、`AgentMessage`、`Reasoning` 与 `response_item` 中的同名 item 按 `id` 去重，优先保留 `response_item` 的正文；`CommandExecution` 与对应的 `function_call` / `function_call_output` 按 `call_id` 去重，优先保留 `CommandExecution` 的结构化字段。无法配对的 `function_call`（例如 `apply_patch`、`view_image`）仍生成独立 item，保证工具调用不丢。
 
 ## 5. 快照加载库
 
