@@ -1,0 +1,10 @@
+{
+  "//": "type-equiv 围栏与源码声明的 1:1 登记表。新增 ```ts type-equiv 围栏必须登记，反之亦然。",
+  "entries": [
+    {
+      "doc": "docs/architecture.md",
+      "symbol": "HealthResponse",
+      "source": "packages/contracts/src/index.ts"
+    }
+  ]
+}

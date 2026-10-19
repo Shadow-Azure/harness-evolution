@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m1-02-session-timeline.md
+m1-02-session-timeline.md: 1b1567431a050861dfa6b1f7abdea80863aef850
+m1-02-session-timeline.en.md: c74cf30718bfb56f1192c812c03c1bcbd1c40212

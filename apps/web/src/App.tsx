@@ -24,6 +24,10 @@ const plannedModules = [
   }
 ];
 
+/**
+ * 应用根组件：展示服务连接状态与已规划的垂直切片。
+ * @returns 轨迹诊断台的页面骨架。
+ */
 export function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
