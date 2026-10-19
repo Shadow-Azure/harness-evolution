@@ -5,3 +5,8 @@ runs/
 *.log
 __pycache__/
 node_modules/
+data/
+coverage/
+dist/
+.vite/
+.pnpm-store/
