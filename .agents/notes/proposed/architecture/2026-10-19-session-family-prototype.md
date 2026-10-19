@@ -22,6 +22,15 @@ Codex 的 subagent 会写入独立 rollout，但主会话才是用户发起分�
 - 每条归因必须指定目标类型与目标 ID（skill 或 agent），自进化按该目标聚合问题进行模拟训练/改进。
 - M1 的“训练”是 harness 层改进模拟，不做模型权重训练。
 
+## M1 快照契约落地
+
+- 索引层只读取每个 rollout 的首条 `session_meta`；正文按 thread 懒加载，原始 JSONL 不进入仓库。
+- `threadId`（`payload.id`）是 agent 主键，`rolloutId`（相对路径）区分 segment，`sessionId` 只作展示字段。
+- 同一 thread 的续段挂在同一 `AgentNode` 下；主段记录数与续段记录数分开报告。
+- guardian review thread 不进入 Session Family；文件仍保留在原始目录，需要时可单独读取。
+- 时间线以 `TimelineItem` 为稳定 envelope，保留 command、file-change、mcp、collab、subagent 与 token 等 item；`event_msg.item_completed` 与 `response_item` 按 id/call_id 去重。
+- 浏览器读取路径不在 #10 范围；#14/#15 决定快照如何进入前端。
+
 ## Alternatives considered
 
 - 把每个 subagent 当作独立 session：实现简单，但无法回答主任务为何失败；否。

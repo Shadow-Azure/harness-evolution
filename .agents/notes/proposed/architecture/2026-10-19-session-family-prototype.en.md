@@ -22,6 +22,15 @@ Codex subagents write separate rollouts, but users analyze from the root convers
 - Every attribution names a target type and target id (skill or agent); evolution aggregates findings for that target and simulates training/improvement.
 - "Training" in M1 means harness-level improvement simulation, not model-weight training.
 
+## M1 snapshot contract implementation
+
+- The index reads only the first `session_meta` line of each rollout; bodies are loaded per thread on demand and raw JSONL never enters the repository.
+- `threadId` (`payload.id`) is the agent key, `rolloutId` (relative path) distinguishes segments, and `sessionId` is display-only.
+- Continuation segments share one `AgentNode` with the primary segment; primary and continuation record counts are reported separately.
+- Guardian review threads stay outside the Session Family; their files remain in the original directory and can be read independently.
+- `TimelineItem` is the stable envelope for commands, file changes, MCP calls, collaboration calls, subagent activity, and token usage; duplicate `event_msg.item_completed` and `response_item` entries are removed by id/call_id.
+- Browser wiring is out of scope for #10; #14/#15 decide how the snapshot reaches the frontend.
+
 ## Alternatives considered
 
 - Treat each subagent as an independent session: easy to implement, but cannot explain why the root task failed; rejected.
