@@ -332,6 +332,7 @@ export interface LoadedRollout {
   timeline: readonly TimelineItem[];
   status: "running" | "completed" | "failed" | "aborted" | "unknown";
   stats: AgentStats;
+  skills: SkillUse[];
 }
 
 export interface FamilyIndex {
@@ -430,7 +431,7 @@ export async function resolveFinding(input: {
 }): Promise<ResolvedFinding>;
 ```
 
-`buildFamilyIndex` 只读元数据，返回 `recordCount: null`、`continuationRecordCount: null` 的索引，并按 root 挂上传入的示例问题；`skills` 初始为空，由 `loadRollout` / `extractSkillUses` 填充。`measureFamily` 显式读取全部 segment，返回填好 `FamilyStats` 与各 `AgentStats` 的新 family；它不参与首屏索引。`loadRollout` 默认只读主段，`includeContinuation: true` 时按时间顺序追加续段。
+`buildFamilyIndex` 只读元数据，返回 `recordCount: null`、`continuationRecordCount: null` 的索引，并按 root 挂上传入的示例问题；`SessionFamily.skills` 初始为空。`loadRollout` 在 `LoadedRollout.skills` 返回该 agent 的 skill 使用，调用方可聚合回 family。`measureFamily` 显式读取全部 segment，返回填好 `FamilyStats` 与各 `AgentStats` 的新 family；它不参与首屏索引。`loadRollout` 默认只读主段，`includeContinuation: true` 时按时间顺序追加续段。
 
 ### 5.3 性能边界
 

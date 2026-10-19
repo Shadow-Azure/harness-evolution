@@ -660,6 +660,7 @@ import type {
   EvidenceRef,
   Finding,
   SessionFamily,
+  SkillUse,
   SnapshotDiagnostic,
   TimelineItem,
 } from "@harness/contracts";
@@ -748,6 +749,8 @@ export interface LoadedRollout {
   status: AgentStatus;
   /** Measured stats for the agent. */
   stats: AgentStats;
+  /** Skill uses derived from this agent's records. */
+  skills: SkillUse[];
 }
 
 /** A finding whose evidence anchors were resolved against a source. */
@@ -2523,7 +2526,7 @@ git commit -m "feat: 归一化 rollout 时间线并去除重复事件 (#10)"
 
 **Interfaces:**
 - Consumes: `SessionFamily`, `AgentStats`; `buildFamilyIndex`, `toTimelineItems`, `countAgentStats`.
-- Produces: `inferAgentStatus(records): AgentStatus`, `loadRollout(input): Promise<LoadedRollout>`, `countAgentStats(agent, records): AgentStats`, `measureFamily(input: { family; source }): Promise<SessionFamily>`.
+- Produces: `inferAgentStatus(records): AgentStatus`, `loadRollout(input): Promise<LoadedRollout>`, `countAgentStats(agent, records): AgentStats`, `measureFamily(input: { family; source }): Promise<SessionFamily>`; `LoadedRollout.skills` carries the per-agent `SkillUse[]`.
 
 - [ ] **Step 1: Write the failing load and measure tests**
 
@@ -2568,6 +2571,7 @@ describe("loadRollout", () => {
     expect(loaded.timeline.map((item) => item.kind)).toEqual(["user-message", "turn"]);
     expect(loaded.status).toBe("completed");
     expect(loaded.stats.recordCount).toBe(3);
+    expect(loaded.skills).toEqual([]);
   });
 
   it("loads continuation segments only when requested", async () => {
@@ -2757,6 +2761,7 @@ import type { AgentStatus, SessionFamily } from "@harness/contracts";
 import type { LoadedRollout, RolloutRecord, SnapshotSource } from "./types";
 import { asRecord, asString } from "./payload";
 import { countAgentStats } from "./measure";
+import { extractSkillUses } from "./skills";
 import { toTimelineItems } from "./timeline";
 
 /**
@@ -2815,6 +2820,7 @@ export async function loadRollout(input: {
     timeline: toTimelineItems({ agent, records }),
     status: inferAgentStatus(records),
     stats: countAgentStats(agent, records),
+    skills: extractSkillUses({ agent, records }),
   };
 }
 ```
