@@ -6,12 +6,18 @@
 kind: issue
 milestone: m1
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - packages/contracts/**
   - apps/web/src/prototype/**
+  - apps/web/package.json
+  - apps/web/tsconfig.json
   - scripts/**
   - tests/**
+  - plans/**
+  - .agents/flow/**
+  - .agents/notes/**
+  - pnpm-lock.yaml
 adr:
   - ../../notes/proposed/architecture/2026-10-19-session-family-prototype.md
 github:

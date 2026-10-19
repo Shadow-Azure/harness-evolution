@@ -14,3 +14,29 @@ export interface HealthResponse {
   service: "harness-evolution";
   phase: ServicePhase;
 }
+
+export type {
+  AgentKind,
+  AgentNode,
+  AgentStats,
+  AgentStatus,
+  AttributionTarget,
+  EvidenceRef,
+  FamilyStats,
+  Finding,
+  FindingAttribution,
+  FindingCategory,
+  FindingSeverity,
+  RolloutId,
+  RolloutSegment,
+  SessionFamily,
+  SessionFamilySnapshot,
+  SkillUse,
+  SkillUseOccurrence,
+  SnapshotDiagnostic,
+  SnapshotDiagnosticCode,
+  ThreadId,
+  TimelineItem,
+  TimelineItemDetails,
+  TimelineItemKind,
+} from "./session-family.js";
