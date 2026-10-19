@@ -208,6 +208,13 @@ export type TimelineItemDetails =
     }
   | { type: "reasoning" }
   | {
+      type: "tool";
+      name: string;
+      arguments: string | null;
+      output: string | null;
+      exitCode: number | null;
+    }
+  | {
       type: "command";
       command: string[];
       cwd: string | null;
@@ -365,7 +372,7 @@ export interface ResolvedFinding {
 | `response_item web_search_call` | `web-search` | query、action |  |
 | `token_usage_record` | `token-usage` | input/output/total/cached tokens、turnId | 完整 usage 明细 |
 | `event_msg token_count` | 跳过，避免与 token_usage_record 重复 |  | rate_limits、credits 等仍在 payload |
-| `event_msg item_completed UserMessage` / `AgentMessage` / `Reasoning` | 跳过，按 id 与 response_item 去重 |  |  |
+| `event_msg item_completed UserMessage` / `AgentMessage` / `Reasoning` | 按 id 与 response_item 去重；未重复时分别映射为 user-message / agent-message / reasoning | 文本与 turnId | 重复副本 |
 | `event_msg task_started` / `task_complete` / `turn_aborted` | `turn` | event、error、turnId | turn_attribution、model_context_window、collaboration_mode_kind |
 | `event_msg thread_settings_applied` | `other` | 一条“settings applied”摘要 | model、approval_policy、sandbox、permission_profile 全量设置 |
 | `turn_context` | 不生成 item，挂到 turn 元数据 | turnId、cwd、model、effort | approval/sandbox/权限策略的完整结构 |
@@ -373,7 +380,7 @@ export interface ResolvedFinding {
 | `compacted` | `context-compaction` | message 摘要 | replacement_history |
 | `inter_agent_communication_metadata` | 跳过 |  | trigger_turn 仍在 payload |
 
-去重规则：`event_msg item_completed` 的 `UserMessage`、`AgentMessage`、`Reasoning` 与 `response_item` 中的同名 item 按 `id` 去重，优先保留 `response_item` 的正文；`CommandExecution` 与对应的 `function_call` / `function_call_output` 按 `call_id` 去重，优先保留 `CommandExecution` 的结构化字段。无法配对的 `function_call`（例如 `apply_patch`、`view_image`）仍生成独立 item，保证工具调用不丢。
+去重规则：`event_msg item_completed` 的 `UserMessage`、`AgentMessage`、`Reasoning` 与 `response_item` 中的同名 item 按 `id` 去重，优先保留 `response_item` 的正文；没有对应 `response_item` 时仍映射为消息或推理 item。`CommandExecution` 与对应的 `function_call` / `function_call_output` 按 `call_id` 去重，优先保留 `CommandExecution` 的结构化字段。无法配对的 `function_call`（例如 `apply_patch`、`view_image`）仍生成独立 item，保证工具调用不丢。
 
 ## 5. 快照加载库
 
