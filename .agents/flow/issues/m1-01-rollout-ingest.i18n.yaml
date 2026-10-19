@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m1-01-rollout-ingest.md
-m1-01-rollout-ingest.md: 373b1d547a0f8940c1f42a386fba30d7023c0ee9
-m1-01-rollout-ingest.en.md: 4756148f91c26ef55ea15215644c14fcd109a894
+m1-01-rollout-ingest.md: 0118d156e5755e3d9d9cfa77a9bbb73c4032866d
+m1-01-rollout-ingest.en.md: e8846a8ac2f27519a35f533246c84da753235d64

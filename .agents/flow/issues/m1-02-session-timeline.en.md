@@ -15,8 +15,8 @@ scope:
   - .agents/notes/**
 adr: []
 github:
-  number: null
-  url: null
+  number: 3
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/3
 ```
 
 ## Background

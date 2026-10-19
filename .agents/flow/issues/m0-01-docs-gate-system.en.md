@@ -7,7 +7,6 @@ kind: issue
 milestone: m0
 priority: P0
 status: done
-bootstrap: true
 scope:
   - AGENTS.md
   - README.*
@@ -24,8 +23,8 @@ scope:
 adr:
   - ../../notes/implemented/process/2026-10-19-docs-gate-system.md
 github:
-  number: null
-  url: null
+  number: 1
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/1
 ```
 
 ## Background

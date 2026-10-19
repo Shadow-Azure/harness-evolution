@@ -8,8 +8,8 @@ id: m1
 title: 轨迹可查看
 status: planned
 github:
-  number: null
-  url: null
+  number: 2
+  url: https://github.com/Shadow-Azure/harness-evolution/milestone/2
 ```
 
 ## Goals
