@@ -6,7 +6,7 @@ English | [中文](m1-planning-baseline.md)
 kind: issue
 milestone: m1
 priority: P0
-status: in-progress
+status: done
 scope:
   - .agents/flow/**
   - .agents/notes/proposed/**
