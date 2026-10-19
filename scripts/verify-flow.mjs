@@ -9,6 +9,8 @@
 // 则视为开工激活；diff 触及的文件须落在所挂 issue 的 scope 并集内。无豁免通道。
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import {
   collectRefs,
   loadFlowTree,
@@ -66,6 +68,9 @@ function baseHasRoadmap(base) {
 
 /** 离线模式：流程树状态机。run-gates 叶子的入口。 */
 export default async function verifyFlow() {
+  const roadmapFile = path.join(".agents", "flow", "roadmap.md");
+  if (!existsSync(roadmapFile))
+    return { ok: true, errors: [], summary: "流程树未初始化（缺 .agents/flow/roadmap.md），状态机校验跳过" };
   const { tree, errors } = await loadFlowTree();
   if (errors.length > 0) return { ok: false, errors };
   const structural = validateTree(tree, { repo: deriveRepo() });

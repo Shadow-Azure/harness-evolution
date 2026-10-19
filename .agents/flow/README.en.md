@@ -4,11 +4,13 @@ English | [中文](README.md)
 
 > Contract home: the format, state machine and gates for the four working-file layers — roadmap → milestone → issue → ADR. Mechanical enforcement belongs to `verify-flow` / `verify-flow --diff` / `verify-flow-online`; this page states the rules only.
 
+This repository installs the flow mechanism only; no roadmap / milestone / issue instances exist yet. The maintainer creates `.agents/flow/roadmap.md` after discussion. Until then `verify-flow` skips the state-machine check and `flow:new-issue` asks for the roadmap first.
+
 ## Layers
 
 | Layer | File | Responsibility |
 |---|---|---|
-| roadmap | [roadmap.md](roadmap.en.md) | Vision + the ordered milestone sequence (single source of truth) |
+| roadmap | `.agents/flow/roadmap.md` | Vision + the ordered milestone sequence (single source of truth) |
 | milestone | milestones/&lt;id&gt;-*.md | A phase's delivery goal and acceptance |
 | issue | issues/&lt;milestone-id&gt;-*.md | Smallest work unit: background, goals, acceptance, scope |
 | ADR | [../notes/](../notes/README.en.md) | Decision records reuse Agent Notes; issues reference them via the adr field |

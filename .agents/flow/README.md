@@ -4,11 +4,13 @@
 
 > 契约 home：roadmap → milestone → issue → ADR 四层工作文件的格式、状态机与门禁。机械执行归 `verify-flow` / `verify-flow --diff` / `verify-flow-online`，本页只说规则。
 
+当前仓库只安装流程机制，尚未初始化 roadmap / milestone / issue 实例；由维护者讨论后创建 `.agents/flow/roadmap.md`。未初始化时 `verify-flow` 跳过状态机校验，`flow:new-issue` 会提示先建 roadmap。
+
 ## 层级
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| roadmap | [roadmap.md](roadmap.md) | 愿景 + milestone 有序序列（唯一事实源） |
+| roadmap | `.agents/flow/roadmap.md` | 愿景 + milestone 有序序列（唯一事实源） |
 | milestone | milestones/&lt;id&gt;-*.md | 阶段交付目标与验收 |
 | issue | issues/&lt;milestone-id&gt;-*.md | 最小工作单元：背景、目标、验收、scope |
 | ADR | [../notes/](../notes/README.md) | 决策记录复用 Agent Notes，issue 以 adr 字段关联 |

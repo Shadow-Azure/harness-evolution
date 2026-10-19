@@ -5,6 +5,7 @@
   "docs/AGENTS.md": 800,
   "docs/README.md": 420,
   "docs/architecture.md": 900,
+  "docs/roadmap.md": 360,
   "docs/charter.md": 680,
   "docs/development.md": 580,
   "docs/metrics.md": 350,
@@ -14,10 +15,5 @@
   "docs/i18n/terminology.md": 300,
   "docs/i18n/translation-prompt.md": 320,
   ".agents/notes/README.md": 1000,
-  ".agents/flow/README.md": 950,
-  ".agents/flow/roadmap.md": 250,
-  ".agents/flow/milestones/m0-docs-gates.md": 160,
-  ".agents/flow/milestones/m1-trace-viewer.md": 180,
-  ".agents/flow/milestones/m2-diagnosis.md": 190,
-  ".agents/flow/milestones/m3-evolution-loop.md": 190
+  ".agents/flow/README.md": 980
 }

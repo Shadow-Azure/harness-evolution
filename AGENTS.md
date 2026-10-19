@@ -11,7 +11,7 @@ Harness Evolution 是面向 coding agent 的轨迹查看与问题诊断服务。
 
 ## 开发流程
 
-- 代码改动必须先挂 `.agents/flow/` 的 issue；提交与 PR 标题含 `(#N)`，无豁免通道。
+- 流程树初始化后，代码改动必须先挂 `.agents/flow/` 的 issue；提交与 PR 标题含 `(#N)`，无豁免通道。
 - 新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；`pnpm flow:sync` 是流程树写 GitHub 的唯一入口。
 - 优先级推进、状态机与 scope 约束见 [.agents/flow/README.md](.agents/flow/README.md)。
 - PR 检视按 [docs/review.md](docs/review.md) 执行，检视文档落 `plans/`，不进入 Agent Notes。

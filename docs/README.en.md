@@ -10,6 +10,7 @@ The sole index for `docs/`. Every resident document must be registered in the ta
 |---|---|
 | [AGENTS.md](AGENTS.md) | Documentation layering, writing rules and gate entry points |
 | [architecture.en.md](architecture.en.md) | Service boundaries, data flow, data-layer strategy and current API |
+| [roadmap.en.md](roadmap.en.md) | Product phase roadmap and per-phase acceptance |
 | [development.en.md](development.en.md) | Local environment, daily loop, commits and flow operations |
 | [review.en.md](review.en.md) | Structured PR review, evidence requirements and triage |
 | [charter.en.md](charter.en.md) | Experiment protocol, evolution criteria and safety boundaries |

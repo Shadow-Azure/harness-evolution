@@ -12,7 +12,7 @@ English | [中文](development.md)
 
 ## Development flow
 
-Every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priority rules in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes the flow tree to GitHub and backfills numbers. `pnpm verify:flow` checks the state machine locally, while CI adds diff checks and the GitHub consistency lane on PRs.
+Once the flow tree is initialized, every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priority rules in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes the flow tree to GitHub and backfills numbers. `pnpm verify:flow` checks the state machine locally, while CI adds diff checks and the GitHub consistency lane on PRs.
 
 ## Daily loop
 
