@@ -6,7 +6,7 @@
 kind: issue
 milestone: m1
 priority: P0
-status: in-progress
+status: done
 scope:
   - packages/contracts/**
   - apps/web/src/prototype/**
