@@ -1,0 +1,36 @@
+id: YYYY-MM-DD-short-slug
+title: ""
+status: planned # planned | running | evaluated | adopted | rejected | rolled_back
+owner: ""
+
+hypothesis: ""
+
+change:
+  scope: "" # prompt | tools | context | control-loop | evaluator
+  summary: ""
+
+baseline:
+  ref: ""
+  metrics: {}
+
+treatment:
+  ref: ""
+  metrics: {}
+
+tasks:
+  suite: ""
+  holdout: ""
+
+budget:
+  max_runs: 0
+  max_cost_usd: 0
+
+decision_rule:
+  primary_metric: task_success_rate
+  min_delta: 0
+  guardrails: []
+
+rollback:
+  method: ""
+
+notes: ""
