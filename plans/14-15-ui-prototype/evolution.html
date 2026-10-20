@@ -128,6 +128,16 @@
   .step.active .lbl { color: var(--blue); font-weight: 600; }
   .conn { width: 34px; height: 1.5px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
   .conn.done { background: var(--green); }
+  .step.clickable { cursor: pointer; padding: 4px 8px; margin: -4px -8px; border-radius: 8px; }
+  .step.clickable:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+  .step.selected .ico { background: var(--blue); border-color: var(--blue); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 22%, transparent); }
+  .step.selected .lbl { color: var(--blue); font-weight: 700; }
+  .step-hint { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
+  /* 归因卡片 */
+  .attr-card { border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; margin-bottom: 10px; }
+  .attr-card .r1 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 6px; font-size: 13px; }
+  .attr-card .r1 .cid { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .attr-card .meta { font-size: 11.5px; color: var(--text-dim); font-family: var(--mono); }
   /* 聚类条目 */
   .cluster { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; background: var(--bg-card); }
   .cluster-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; flex-wrap: wrap; }
@@ -364,19 +374,19 @@ const RUNS = [
       byType: { '非问题': 10, '是问题-错误': 14, '是问题-prompt缺失某些提示词': 8, '是问题-模型问题': 6 }, used: 28 },
     progress: 6,
     clusters: [
-      { id: 'C1', title: '检索结果反序列化失败', type: '是问题-错误', conf: 0.92, sev: 9.1,
+      { id: 'C1', title: '检索结果反序列化失败', type: '是问题-错误', conf: 0.92, sev: 9.1, impact: 9,
         phenomenon: '检索工具返回的分块 JSON 未做 schema 校验，直接属性访问导致反序列化异常与 undefined 引用',
         patch: PATCH.deser, eval: { cur: 84.6, cand: 87.2 }, accepted: true, commit: 'a3f9c21' },
-      { id: 'C2', title: '输出缺少来源引用校验', type: '是问题-prompt缺失某些提示词', conf: 0.85, sev: 7.8,
+      { id: 'C2', title: '输出缺少来源引用校验', type: '是问题-prompt缺失某些提示词', conf: 0.85, sev: 7.8, impact: 8,
         phenomenon: 'prompt 未约束引用来源标注，报告中出现无法溯源的结论，用户无法核验',
         patch: PATCH.citation, eval: { cur: 87.2, cand: 88.6 }, accepted: true, commit: '7b2e084' },
-      { id: 'C3', title: '长文档分块导致上下文丢失', type: '是问题-模型问题', conf: 0.71, sev: 6.4,
+      { id: 'C3', title: '长文档分块导致上下文丢失', type: '是问题-模型问题', conf: 0.71, sev: 6.4, impact: 6,
         phenomenon: '固定长度分块切断跨段落实体，合并总结时事实冲突、指代丢失',
         patch: PATCH.chunk, eval: { cur: 88.6, cand: 88.1 }, accepted: false, commit: null },
-      { id: 'C4', title: '报告导出 Markdown 结构损坏', type: '是问题-错误', conf: 0.66, sev: 4.2,
+      { id: 'C4', title: '报告导出 Markdown 结构损坏', type: '是问题-错误', conf: 0.66, sev: 4.2, impact: 4,
         phenomenon: '标题层级跳跃、代码围栏未闭合，导出文档渲染错乱',
         patch: PATCH.export, eval: { cur: 88.6, cand: 89.3 }, accepted: true, commit: '51f8d9a' },
-      { id: 'C5', title: '研究计划过度拆分', type: '是问题-模型问题', conf: 0.58, sev: 3.5,
+      { id: 'C5', title: '研究计划过度拆分', type: '是问题-模型问题', conf: 0.58, sev: 3.5, impact: 3,
         phenomenon: '简单问题被拆成 10+ 个子任务，调度开销远超执行收益',
         patch: PATCH.plan, eval: { cur: 89.3, cand: 88.2 }, accepted: false, commit: null },
     ],
@@ -403,13 +413,13 @@ const RUNS = [
       byType: { '非问题': 6, '是问题-错误': 9, '是问题-prompt缺失某些提示词': 7, '是问题-模型问题': 5 }, used: 21 },
     progress: 8,
     clusters: [
-      { id: 'C1', title: '检索索引读取失败', type: '是问题-错误', conf: 0.94, sev: 8.8,
+      { id: 'C1', title: '检索索引读取失败', type: '是问题-错误', conf: 0.94, sev: 8.8, impact: 9,
         phenomenon: '索引版本漂移导致读取 panic，未做版本校验与重建回退',
         patch: PATCH.index, eval: { cur: 82.3, cand: 85.2 }, accepted: true, commit: '4d1a7f0' },
-      { id: 'C2', title: '输出缺少来源校验', type: '是问题-prompt缺失某些提示词', conf: 0.81, sev: 7.2,
+      { id: 'C2', title: '输出缺少来源校验', type: '是问题-prompt缺失某些提示词', conf: 0.81, sev: 7.2, impact: 7,
         phenomenon: '结论无引用标注，无法溯源',
         patch: PATCH.citation, eval: { cur: 85.2, cand: 85.9 }, accepted: true, commit: '9c03bd2' },
-      { id: 'C3', title: '重复加载同一文档', type: '是问题-模型问题', conf: 0.63, sev: 5.1,
+      { id: 'C3', title: '重复加载同一文档', type: '是问题-模型问题', conf: 0.63, sev: 5.1, impact: 5,
         phenomenon: '同一路径文档在一次研究中被重复加载与总结 3 次以上',
         patch: PATCH.reload, eval: { cur: 85.9, cand: 84.7 }, accepted: false, commit: null },
     ],
@@ -436,13 +446,13 @@ const RUNS = [
       byType: { '非问题': 5, '是问题-错误': 4, '是问题-prompt缺失某些提示词': 3, '是问题-模型问题': 4 }, used: 11 },
     progress: 8,
     clusters: [
-      { id: 'C1', title: '会话快照读取越界', type: '是问题-错误', conf: 0.77, sev: 6.9,
+      { id: 'C1', title: '会话快照读取越界', type: '是问题-错误', conf: 0.77, sev: 6.9, impact: 7,
         phenomenon: '读取会话快照时未做边界检查，越界后抛异常中断分析',
         patch: PATCH.bounds, eval: { cur: 80.1, cand: 81.2 }, accepted: true, commit: 'e62b1c8' },
-      { id: 'C2', title: '分析范围越界', type: '是问题-模型问题', conf: 0.62, sev: 5.4,
+      { id: 'C2', title: '分析范围越界', type: '是问题-模型问题', conf: 0.62, sev: 5.4, impact: 5,
         phenomenon: '分析蔓延到任务未声明的目录，产生大量无关读取',
         patch: PATCH.bounds, eval: { cur: 81.2, cand: 80.6 }, accepted: false, commit: null },
-      { id: 'C3', title: '缺少只读操作约束', type: '是问题-prompt缺失某些提示词', conf: 0.55, sev: 3.9,
+      { id: 'C3', title: '缺少只读操作约束', type: '是问题-prompt缺失某些提示词', conf: 0.55, sev: 3.9, impact: 4,
         phenomenon: 'prompt 未声明只读，个别轨迹出现试探性写入',
         patch: PATCH.readonly, eval: { cur: 81.2, cand: 79.8 }, accepted: false, commit: null },
     ],
@@ -552,14 +562,16 @@ function renderList(){
 }
 
 /* ════════════════════════ 详情页 ════════════════════════ */
-function stepperHTML(run){
+function stepperHTML(run, sel){
   const M = run.clusters.length;
   const roundNo = Math.min(Math.max(run.progress - 4 + 1, 1), M);
   const steps = ['筛选输入', `问题聚类（M=${M}）`, 'LLM 归因置信度', '严重程度排序', `迭代优化（第 ${roundNo}/${M} 轮）`, '测试集终评'];
   return `<div class="stepper">` + steps.map((s, i) => {
-    const st = unitDone(run, i) ? 'done' : (unitActive(run, i) ? 'active' : '');
-    const ico = st === 'done' ? '✓' : (st === 'active' ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
-    return `${i ? `<div class="conn ${unitDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="step ${st}"><span class="ico">${ico}</span><span class="lbl">${esc(s)}</span></div>`;
+    const done = unitDone(run, i), active = unitActive(run, i);
+    const st = done ? 'done' : active ? 'active' : '';
+    const clickable = done || active;
+    const ico = st === 'done' ? '✓' : (active ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
+    return `${i ? `<div class="conn ${unitDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="step ${st}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="sel-step" data-step="${i}" title="点击查看该步骤的产出"` : ''}><span class="ico">${ico}</span><span class="lbl">${esc(s)}</span></div>`;
   }).join('') + `</div>`;
 }
 // stepper 的 6 个阶段映射到 progress 单元：0,1,2,3 一一对应；阶段4=全部 M 轮；阶段5=终评
@@ -660,14 +672,14 @@ function clusterHTML(run, c, i){
   </div>`;
 }
 
-function finalPanel(run){
+function stepFinalHTML(run){
   if (!isDone(run)) {
-    return `<div class="card panel"><div class="sec-title">最终结果</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best skill 与初始 skill。</div></div>`;
+    return `<div class="card panel"><div class="sec-title">第 6 步 · 测试集终评</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best skill 与初始 skill。</div></div>`;
   }
   const f = run.final;
   const acceptedClusters = run.clusters.filter(c => c.accepted);
   return `<div class="card panel">
-    <div class="sec-title">最终结果 <span class="sub">M 轮迭代完成后的测试集终评</span></div>
+    <div class="sec-title">第 6 步 · 测试集终评 <span class="sub">M 轮迭代完成后的最终结果</span></div>
     <div class="verdict ${f.verdict ? 'ok' : 'no'}">
       <span class="big">${f.verdict ? '✓ 自进化有效' : '✗ 未产生收益'}</span>
       <span class="desc">best skill <b class="mono">${esc(f.bestVersion)}</b> 测试集得分 <b class="mono">${f.bestScore.toFixed(1)}</b> vs 初始 ${run.target.version} <b class="mono">${f.initScore.toFixed(1)}</b>（${fmtDelta(f.bestScore - f.initScore)}）</span>
@@ -680,9 +692,96 @@ function finalPanel(run){
   </div>`;
 }
 
+/* ── 各步骤的内容区 ── */
+const STEP_TITLES = ['筛选输入', '问题聚类', 'LLM 归因置信度', '严重程度排序', '迭代优化', '测试集终评'];
+function stepFilterHTML(run){
+  const s = run.stats;
+  const rows = [];
+  run.clusters.forEach(c => c.reportIds.forEach(rid => rows.push({ rid, ph: c.phenomenon, model: run.models[hashStr(rid) % run.models.length], type: c.type, cluster: c.id })));
+  return `<div class="card panel">
+    <div class="sec-title">第 1 步 · 筛选输入 <span class="sub">筛选条件命中的问题报告即本次进化的输入</span></div>
+    <div class="f-inline" style="margin-bottom:10px">
+      <span class="chip kind">${run.target.kind}:${esc(run.target.name)}@${run.target.version}</span>
+      <span class="chip mono">${run.window[0]} ~ ${run.window[1]}</span>
+      ${run.models.map(m => `<span class="chip model">${esc(m)}</span>`).join('')}
+    </div>
+    <p style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px">命中 session <b class="mono">${s.sessions}</b> 个 · 问题报告 <b class="mono">${s.reports}</b> 份；剔除非问题 <b class="mono">${s.byType['非问题']}</b> 份与未分析 <b class="mono">${s.unanalyzed}</b> 份后，<b class="mono" style="color:var(--blue)">${s.used}</b> 份「是问题」报告进入聚类：</p>
+    <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>模型</th><th>归因类型</th><th>归属簇</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td class="id">${r.rid}</td><td>${esc(r.ph)}</td><td class="mono" style="color:var(--cyan)">${esc(r.model)}</td><td>${typeChip(r.type)}</td><td class="mono">${r.cluster}</td></tr>`).join('')}</tbody></table>
+  </div>`;
+}
+function stepClusterHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 2 步 · 问题聚类 <span class="sub">M=${run.clusters.length} 类 · 不同类型的问题不聚为一簇 · 展开可查看来源问题报告列表</span></div>
+    ${run.clusters.map(c => {
+      const key = run.id + ':cl' + c.id; const open = expanded.has(key);
+      return `<div class="cluster ${open ? 'open' : ''}">
+        <div class="cluster-head" data-action="toggle-cluster" data-key="${key}">
+          <span class="cid">${c.id}</span><span class="ctitle">${esc(c.title)}</span>${typeChip(c.type)}
+          <span class="meta">报告 ×${c.reportIds.length}</span>
+          <span class="tail"><span class="caret">▶</span></span>
+        </div>
+        ${open ? `<div class="cluster-body">
+          <div class="cb-sec"><div class="cb-label">来源问题报告（${c.reportIds.length} 份）</div>
+            <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>来源 session</th><th>模型</th><th>归因类型</th></tr></thead>
+            <tbody>${c.reportIds.map(rid => {
+              const h = hashStr(rid);
+              return `<tr><td class="id">${rid}</td><td>${esc(c.phenomenon)}</td><td class="mono">S-${2026 + h % 80}</td><td class="mono" style="color:var(--cyan)">${esc(run.models[h % run.models.length])}</td><td>${typeChip(c.type)}</td></tr>`;
+            }).join('')}</tbody></table></div>
+        </div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function stepAttrHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 3 步 · LLM 归因置信度 <span class="sub">拉取 ${esc(run.target.name)}@${run.target.version}，逐类判定问题在对象中是否真实存在</span></div>
+    ${run.clusters.map(c => `<div class="attr-card">
+      <div class="r1">
+        <span class="cid">${c.id}</span><b>${esc(c.title)}</b>${typeChip(c.type)}
+        <span class="badge accepted">✓ 真实存在</span>
+        <span class="sev"><span class="bar"><span class="fill" style="width:${(c.conf * 100).toFixed(0)}%;background:var(--blue)"></span></span><span class="meta">置信度 ${confPct(c.conf)}</span></span>
+      </div>
+      <div class="attr-line">归因依据：拉取 <b>${esc(run.target.name)}@${run.target.version}</b>（<span class="mono">${esc(c.patch.file)}</span>），LLM 在对应逻辑中复现并确认该问题存在于当前版本；典型现象：${esc(c.phenomenon)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function stepSortHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 4 步 · 严重程度排序 <span class="sub">严重程度 = 置信度 × 影响面 × 报告频次加权（0–10），降序决定第 5 步的迭代顺序</span></div>
+    <table class="metrics"><thead><tr><th>迭代顺序</th><th>聚类问题</th><th>类型</th><th>置信度</th><th>影响面</th><th>报告频次</th><th>严重程度</th></tr></thead>
+    <tbody>${run.clusters.map((c, i) => `<tr>
+      <td class="num"><span class="rank">#${i + 1}</span></td>
+      <td><b>${c.id}</b> · ${esc(c.title)}</td>
+      <td>${typeChip(c.type)}</td>
+      <td class="num">${confPct(c.conf)}</td>
+      <td class="num">${c.impact}/10</td>
+      <td class="num">${c.reportIds.length} 份</td>
+      <td>${sevHTML(c.sev)}</td>
+    </tr>`).join('')}</tbody></table>
+  </div>`;
+}
+function stepIterHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 5 步 · 迭代优化 <span class="sub">按严重程度降序逐轮执行 · 每轮生成 patch → 评测 → 接纳 / 拒绝</span></div>
+    ${run.clusters.map((c, i) => clusterHTML(run, c, i)).join('')}
+  </div>`;
+}
+function stepContentHTML(run, sel){
+  return [stepFilterHTML, stepClusterHTML, stepAttrHTML, stepSortHTML, stepIterHTML, stepFinalHTML][sel](run);
+}
+function defaultStep(run){
+  for (let i = 0; i < 6; i++) if (unitActive(run, i)) return i;
+  return 5;
+}
+
+let selStep = null;
+let lastDetailId = null;
 function renderDetail(id){
   const run = RUNS.find(r => r.id === id);
   if (!run) { location.hash = '#/runs'; return; }
+  if (lastDetailId !== id) { selStep = null; lastDetailId = id; window.scrollTo(0, 0); }
+  if (selStep === null) selStep = defaultStep(run);
   if (![...expanded].some(k => k.startsWith(id + ':'))) {
     const ai = run.clusters.findIndex((c, i) => roundActive(run, i));
     expanded.add(id + ':' + run.clusters[ai >= 0 ? ai : 0].id);
@@ -696,14 +795,13 @@ function renderDetail(id){
       ${!isDone(run) ? `<button class="btn primary" data-action="advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
     </div>
     ${infoPanel(run)}
-    <div class="card panel"><div class="sec-title">流程进度</div>${stepperHTML(run)}</div>
     <div class="card panel">
-      <div class="sec-title">聚类问题与迭代 <span class="sub">按严重程度降序逐轮执行 · 每轮生成 patch → 评测 → 接纳 / 拒绝</span></div>
-      ${run.clusters.map((c, i) => clusterHTML(run, c, i)).join('')}
+      <div class="sec-title">流程进度 <span class="sub">当前查看：第 ${selStep + 1} 步 · ${esc(STEP_TITLES[selStep])}</span></div>
+      ${stepperHTML(run, selStep)}
+      <div class="step-hint">已完成 / 进行中的节点可点击，下方内容会切换为该步骤的产出；未到达的节点不可点击。</div>
     </div>
-    ${finalPanel(run)}
+    ${stepContentHTML(run, selStep)}
   </div>`;
-  window.scrollTo(0, 0);
 }
 
 /* ════════════════════════ 仅聚类结果页 ════════════════════════ */
@@ -734,8 +832,11 @@ function renderClusterOnly(){
         </div>
         <div class="cluster-body">
           <div class="cb-sec"><div class="cb-label">来源问题报告（${c.reportIds.length} 份）</div>
-            <div class="report-chips">${c.reportIds.map(r => `<span class="report-chip">${r}</span>`).join('')}</div></div>
-          <div class="cb-sec"><div class="cb-label">问题现象</div><div class="attr-line">${esc(c.phenomenon)}</div></div>
+            <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>来源 session</th><th>模型</th><th>归因类型</th></tr></thead>
+            <tbody>${c.reportIds.map(rid => {
+              const h = hashStr(rid); const ms = d.sel.models.length ? d.sel.models : MODELS;
+              return `<tr><td class="id">${rid}</td><td>${esc(c.phenomenon)}</td><td class="mono">S-${2026 + h % 80}</td><td class="mono" style="color:var(--cyan)">${esc(ms[h % ms.length])}</td><td>${typeChip(c.type)}</td></tr>`;
+            }).join('')}</tbody></table></div>
         </div>
       </div>`).join('')}
     </div>
@@ -870,11 +971,12 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const a = el.dataset.action;
-  if (a === 'open-run') { expanded.clear(); location.hash = '#/run/' + el.dataset.id; }
+  if (a === 'open-run') { expanded.clear(); lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
   else if (a === 'toggle-cluster') { const k = el.dataset.key; expanded.has(k) ? expanded.delete(k) : expanded.add(k); route(); }
+  else if (a === 'sel-step') { selStep = +el.dataset.step; route(); }
   else if (a === 'advance') {
     const run = RUNS.find(r => r.id === el.dataset.id);
-    if (run && !isDone(run)) { run.progress++; expanded.clear(); renderDetail(run.id); }
+    if (run && !isDone(run)) { run.progress++; expanded.clear(); selStep = null; renderDetail(run.id); }
   }
   else if (a === 'launch') openWizard();
   else if (a === 'close-wizard') { $modal.innerHTML = ''; }
