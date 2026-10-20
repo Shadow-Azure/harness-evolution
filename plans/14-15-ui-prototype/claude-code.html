@@ -94,6 +94,10 @@
   .status-badge.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
   .status-badge.partial { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
   .cta { margin-left: auto; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; color: #fff; background: var(--blue); border: none; border-radius: 8px; padding: 7px 16px; }
+  .cta-group { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .cta-group .cta { margin-left: 0; }
+  .cta.secondary { color: var(--blue); background: var(--bg-card); border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent); }
+  .cta.secondary:hover { background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); }
   .statstrip { display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 3px rgba(30,40,60,.06); padding: 7px 0; margin-bottom: 14px; }
   .ss { flex: 1 1 0; min-width: 70px; text-align: center; padding: 1px 10px; border-left: 1px solid var(--border); }
   .ss:first-child { border-left: none; }
@@ -211,6 +215,71 @@
   .ovbox .sub { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
   .ovbox pre { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); white-space: pre-wrap; line-height: 1.6; }
   .ovbox .close { float: right; }
+  /* ═══ 错误详情 / 归因 ═══ */
+  #page-errors { height: calc(100vh - 40px); }
+  #errorApp { height: 100%; }
+  .err-shell { display: grid; grid-template-columns: 340px 1fr; height: 100%; min-height: 0; }
+  .err-sidebar { border-right: 1px solid var(--border); background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; }
+  .err-side-head { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+  .err-side-title { display: flex; align-items: baseline; justify-content: space-between; }
+  .err-side-title h1 { font-size: 14px; font-weight: 650; }
+  .err-side-title .count { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
+  .err-session { margin-top: 4px; font-size: 11.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .err-back { margin-top: 8px; font: inherit; font-size: 11.5px; color: var(--blue); background: transparent; border: none; padding: 0; cursor: pointer; }
+  .err-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .err-all { display: flex; align-items: center; justify-content: space-between; font: inherit; font-size: 12px; color: var(--text-dim); background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; cursor: pointer; }
+  .err-all.active { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, var(--bg-card)); color: var(--text); }
+  .err-all b { font-family: var(--mono); }
+  .err-card { text-align: left; font: inherit; color: var(--text); background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+  .err-card:hover { border-color: #c4cbd6; }
+  .err-card.active { border-color: var(--blue); border-left-color: var(--blue); background: color-mix(in srgb, var(--blue) 7%, var(--bg-card)); }
+  .err-card-top { display: flex; gap: 7px; align-items: baseline; }
+  .err-no { font-family: var(--mono); font-size: 10.5px; color: #c03434; font-weight: 700; flex-shrink: 0; }
+  .err-card-title { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .err-card-bottom { display: flex; align-items: center; gap: 6px; margin-top: 5px; min-width: 0; flex-wrap: wrap; }
+  .err-chip { display: inline-block; flex-shrink: 0; font-size: 10px; line-height: 1.6; border-radius: 999px; padding: 0 7px; border: 1px solid; white-space: nowrap; }
+  .err-chip.unanalyzed { color: var(--text-faint); background: var(--bg-inset); border-color: var(--border); }
+  .err-chip.analyzed { color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, #fff); border-color: color-mix(in srgb, var(--blue) 40%, transparent); }
+  .err-chip.nonissue { color: var(--green); background: color-mix(in srgb, var(--green) 9%, #fff); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+  .err-chip.issue-model { color: var(--purple); background: color-mix(in srgb, var(--purple) 9%, #fff); border-color: color-mix(in srgb, var(--purple) 40%, transparent); }
+  .err-chip.issue-prompt { color: var(--orange); background: color-mix(in srgb, var(--orange) 9%, #fff); border-color: color-mix(in srgb, var(--orange) 40%, transparent); }
+  .err-chip.issue-error { color: var(--red); background: color-mix(in srgb, var(--red) 8%, #fff); border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+  .err-card-target { width: 100%; font-size: 10px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .err-main { min-width: 0; overflow-y: auto; padding: 16px 20px 24px; }
+  .err-head { display: flex; align-items: flex-start; gap: 14px; }
+  .err-head h2 { font-size: 17px; font-weight: 650; }
+  .err-head .meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .err-head-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
+  .err-head-actions .tbtn { cursor: pointer; }
+  .err-flow-panel { margin-top: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .err-flow-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 650; color: var(--text-dim); }
+  .err-flow-head .note { margin-left: auto; font-size: 10.5px; color: var(--text-faint); font-weight: 400; }
+  .err-flow-canvas { height: 620px; }
+  .err-detail { margin-top: 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.06); overflow: hidden; }
+  .err-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 14px; gap: 4px; }
+  .err-tab { font: inherit; font-size: 12.5px; color: var(--text-dim); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 12px 9px; cursor: pointer; }
+  .err-tab.active { color: var(--text); border-bottom-color: var(--blue); font-weight: 600; }
+  .err-panel { padding: 14px 18px 18px; min-height: 260px; }
+  .err-empty { color: var(--text-faint); font-size: 12px; padding: 28px 4px; text-align: center; }
+  .ed-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .ed-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #c03434; background: #fff5f5; border: 1px solid #e05555; border-radius: 999px; padding: 1px 8px; }
+  .ed-title { font-size: 15px; font-weight: 650; }
+  .ed-detail { margin-top: 9px; font-size: 12.5px; line-height: 1.7; color: var(--text-dim); }
+  .ed-meta { margin-top: 8px; font-size: 11px; color: var(--text-faint); }
+  .attr-conclusion { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; border: 1px solid; margin-bottom: 12px; }
+  .attr-conclusion .lab { font-size: 10.5px; font-weight: 700; text-transform: uppercase; opacity: .7; letter-spacing: .3px; }
+  .attr-conclusion b { font-size: 14px; }
+  .attr-conclusion.issue { color: #c03434; background: #fff5f5; border-color: #f0c0c0; }
+  .attr-conclusion.nonissue { color: var(--green); background: color-mix(in srgb, var(--green) 8%, #fff); border-color: color-mix(in srgb, var(--green) 35%, transparent); }
+  .attr-conclusion.pending { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, #fff); border-color: color-mix(in srgb, var(--blue) 35%, transparent); }
+  .attr-conclusion.unanalyzed { color: var(--text-faint); background: var(--bg-inset); border-color: var(--border); }
+  .attr-block { margin-top: 12px; }
+  .attr-label { font-size: 10.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+  .attr-value { font-size: 12.5px; line-height: 1.7; color: var(--text); }
+  .attr-object { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+  .attr-reasoning { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.75; color: var(--text-dim); }
+  .attr-reasoning li { margin: 3px 0; }
+  .attr-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .hidden { display: none !important; }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.12.0/dist/style.css">
@@ -221,6 +290,7 @@
   <span class="tag">Claude Code · 真实数据</span>
   <button id="tab-explorer" class="active" onclick="switchTab('explorer')"><span class="issue-no">#14</span>Session 浏览器</button>
   <button id="tab-timeline" onclick="switchTab('timeline')"><span class="issue-no">#15</span>时间线</button>
+  <button id="tab-errors" onclick="openErrorDetail()">错误详情</button>
 </nav>
 
 <!-- ═══ 页面 A：Session 浏览器 ═══ -->
@@ -280,6 +350,11 @@
   </div>
 </div>
 
+<!-- ═══ 页面 C：错误详情与归因 ═══ -->
+<div id="page-errors" hidden>
+  <div id="errorApp"></div>
+</div>
+
 <div class="overlay" id="overlay">
   <div class="ovbox">
     <button class="tbtn close" onclick="overlay.classList.remove('show')">关闭 ✕</button>
@@ -295,13 +370,25 @@ const TL = {"rounds":[{"prompt":"我想学习和了解一下Deepseek Harness，�
 const TREE = {"050b81ba-9621-4992-84fe-106ae46eb36b":{"main":{"lines":172,"events":[{"line":11,"kind":"skill","name":"deep-research"},{"line":27,"kind":"skill","name":"superpowers:dispatching-parallel-agents"},{"line":33,"kind":"agent","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364"},{"line":34,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727"},{"line":35,"kind":"agent","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de"},{"line":36,"kind":"agent","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f"},{"line":37,"kind":"agent","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa"},{"line":68,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6"}]},"subs":[{"id":"a2895fbff994319b9","type":"general-purpose","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f","lines":218,"events":[],"children":[]},{"id":"a1e781fa406447bd1","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727","lines":67,"events":[],"children":[]},{"id":"a1b56297d1a40a4a3","type":"general-purpose","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de","lines":102,"events":[],"children":[]},{"id":"ac2160daf0faacf0e","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6","lines":115,"events":[],"children":[]},{"id":"aea6f9b15b1c40b11","type":"general-purpose","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa","lines":100,"events":[],"children":[]},{"id":"a52da9da97e2dfb47","type":"general-purpose","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364","lines":155,"events":[],"children":[]}]},"cb819c5b-286f-4eab-a681-4ba5414b844d":{"main":{"lines":765,"events":[{"line":24,"kind":"skill","name":"deep-research"},{"line":30,"kind":"workflow","name":"deep-research","toolUseId":"call_ca6fc28804434e5090e6a5e2"},{"line":86,"kind":"workflow","name":"workflow","toolUseId":"call_fafc9d21a30c430981d5baec"},{"line":96,"kind":"workflow","name":"workflow","toolUseId":"call_40746578c3e749b59f248000"}]},"subs":[{"id":"wf_1fb8ca61-c70","type":"workflow","desc":"56 个 workflow 子 agent","lines":0,"events":[],"children":[{"id":"ac36d6e975490864d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"a5a83bdb710566b2d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a6932a5807e8fe835","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a11c18476a850547b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"acd03e893a30ba3d3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"aa3767120db81c557","type":"workflow-subagent","desc":"","toolUseId":null,"lines":25,"events":[],"children":[]},{"id":"a07fd64b88a9fe721","type":"workflow-subagent","desc":"","toolUseId":null,"lines":20,"events":[],"children":[]},{"id":"a75602e08fcc4e0cd","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a16a4a2f8f83ebaf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":30,"events":[],"children":[]},{"id":"a096d8db77b01a2c5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"ae8dfe8fb668716fa","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"aa44961ca580ca971","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5de0c4193f235a20","type":"workflow-subagent","desc":"","toolUseId":null,"lines":15,"events":[],"children":[]},{"id":"a867160aa06bdb8c3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a24df81ee6d95db89","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a2a7fe251d67d3f00","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a6ccc55785f59078e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a205180ccb6595676","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a9dfeef3d5a082ea8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a88f36ebc60749319","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]},{"id":"a6b4c4c5610ee7220","type":"workflow-subagent","desc":"","toolUseId":null,"lines":8,"events":[],"children":[]},{"id":"a7ec3cc0abccf8f18","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a147c8d32bc363abc","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a8dfda2ac8a92b03f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a069628a22668b5bf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ab4ac00a69d52afdf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"af96fa5b003c9ba6a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a58d359839c447fc9","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a51f79677edf27d40","type":"workflow-subagent","desc":"","toolUseId":null,"lines":27,"events":[],"children":[]},{"id":"addf2ae8cc3cdc8a0","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5f5d43792060d25b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":26,"events":[],"children":[]},{"id":"a4ab3257583e408f5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac1b3cdaa9f4a0622","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a07750dfd9e1dbc31","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"ad5324b3bbbe5c9fb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ac9094285f2ae7124","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5b0a0b71a7d15b4a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"aaf97c90e144c2962","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a04db93ae03781487","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a4165f215195b2771","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac58eff7336630fd8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a42023f24122896d7","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5f24ff936197abf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":34,"events":[],"children":[]},{"id":"a1daa453c10c94610","type":"workflow-subagent","desc":"","toolUseId":null,"lines":6,"events":[],"children":[]},{"id":"a751831cbb4561874","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a6d5156449ac4d54b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":36,"events":[],"children":[]},{"id":"ac4b110729444739e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a1ed323809b4de3ab","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"a2648bb186362666c","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a9b38066ce599d0e3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":42,"events":[],"children":[]},{"id":"a609a6b4a290624e1","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"adf051df0e301c41d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a5063dc82b8cb21eb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a1e4c45c611d7b873","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a18da33bd1200e0f3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a163628a06fde4a4f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]}],"toolUseId":null,"line":30}]},"2f5e7ae8-c04a-46d2-a17a-0b431ef17d44":{"main":{"lines":245,"events":[{"line":70,"kind":"agent","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58"},{"line":71,"kind":"agent","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e"},{"line":72,"kind":"agent","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc"},{"line":73,"kind":"agent","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2"}]},"subs":[{"id":"a4e4e3c14f6f54077","type":"Explore","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc","lines":123,"events":[],"children":[]},{"id":"a7c4a9def54b2fa40","type":"Explore","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58","lines":148,"events":[],"children":[]},{"id":"aefdc8337a8afc051","type":"Explore","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2","lines":118,"events":[],"children":[]},{"id":"a131d7b1bd65cf691","type":"Explore","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e","lines":193,"events":[],"children":[]}]},"3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5":{"main":{"lines":390,"events":[{"line":15,"kind":"agent","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958"},{"line":16,"kind":"agent","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6"}]},"subs":[{"id":"ac5d429d5b911f846","type":"Explore","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958","lines":58,"events":[],"children":[]},{"id":"a67115fa5b0005ae5","type":"Explore","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6","lines":38,"events":[],"children":[]}]}};
 
 window.TREE = TREE;
+window.SESSIONS = SESSIONS;
 
 function switchTab(p) {
   document.getElementById("page-explorer").hidden = p !== "explorer";
   document.getElementById("page-timeline").hidden = p !== "timeline";
+  document.getElementById("page-errors").hidden = p !== "errors";
   document.getElementById("tab-explorer").classList.toggle("active", p === "explorer");
   document.getElementById("tab-timeline").classList.toggle("active", p === "timeline");
+  document.getElementById("tab-errors").classList.toggle("active", p === "errors");
   window.scrollTo(0, 0);
+}
+
+function openErrorDetail() {
+  const s = SESSIONS.find(x => x.id === selectedId) || SESSIONS[0];
+  if (!s) return;
+  selectedId = s.id;
+  switchTab("errors");
+  if (window.__mountErrorDetail) window.__mountErrorDetail(s.id, s.findings);
+  else window.__pendingError = { sid: s.id, budget: s.findings };
 }
 
 const failRate = s => (s.errors / s.steps) * 100;
@@ -394,7 +481,10 @@ function renderMain() {
           <span class="status-badge ${s.status}">${s.status === "ok" ? "完成" : "有失败"}</span>
         </div>
       </div>
-      <button class="cta" onclick="switchTab('timeline')">打开时间线 →</button>
+      <div class="cta-group">
+        <button class="cta" onclick="switchTab('timeline')">打开时间线 →</button>
+        <button class="cta secondary" onclick="openErrorDetail()">打开错误详情</button>
+      </div>
     </div>
     <div class="statstrip">
       <div class="ss"><b>${s.rounds}</b><span>轮次</span></div>
@@ -1290,6 +1380,370 @@ function App({ sid, findingsBudget }) {
     <//>`;
 }
 
+/* ═══ 错误详情 / 归因 ═══ */
+const STATUS_LABEL = {
+  unanalyzed: "未分析",
+  analyzed: "已分析",
+  nonissue: "非问题",
+  "issue-model": "是问题-模型问题",
+  "issue-prompt": "是问题-prompt缺失某些提示词",
+  "issue-error": "是问题-错误",
+};
+const CATEGORY_BY_STATUS = {
+  "issue-model": "模型问题",
+  "issue-prompt": "prompt缺失某些提示词",
+  "issue-error": "错误",
+};
+
+function agentTypeFor(sid, target) {
+  const m = /^(subagent|workflow) · (.+)$/.exec(target || "");
+  if (!m) return null;
+  const queue = [...(TREE[sid]?.subs || [])];
+  while (queue.length) {
+    const a = queue.shift();
+    if (a.desc === m[2]) return a.type || (m[1] === "workflow" ? "workflow" : "agent");
+    if (a.children) queue.push(...a.children);
+  }
+  return m[1] === "workflow" ? "workflow" : "agent";
+}
+
+function agentObjectFor(sid, target) {
+  const m = /^(subagent|workflow) · (.+)$/.exec(target || "");
+  if (!m) return null;
+  const type = agentTypeFor(sid, target);
+  return "agent: " + type + " · " + m[2];
+}
+
+function targetLabel(sid, finding) {
+  return agentObjectFor(sid, finding.target) || finding.target;
+}
+
+const ERROR_META = {
+  "重复加载": {
+    status: { "050b81ba-9621-4992-84fe-106ae46eb36b": "unanalyzed", "cb819c5b-286f-4eab-a681-4ba5414b844d": "analyzed" },
+    analyzed: {
+      description: "同一检索模板在 3 个步骤中重复加载，缓存命中 0/3，额外产生 2 次工具调用；证据已收集，分类结论待确认。",
+      reasoning: [
+        "比对 3 次加载的模板 hash，确认是同一模板",
+        "检查缓存键，3 次均未命中",
+        "统计额外 2 次工具调用",
+      ],
+    },
+  },
+  "输出缺少来源校验": {
+    status: { "050b81ba-9621-4992-84fe-106ae46eb36b": "nonissue" },
+    nonissue: {
+      reason: "5 条无来源结论都能在同一轮的汇总层回溯到已标注来源的索引快照，属于展示层补齐问题，未造成错误传播。",
+      reasoning: [
+        "抽取 5 条无来源结论",
+        "在汇总层找到对应的来源快照",
+        "判定：可回溯，非问题",
+      ],
+    },
+  },
+  "检索索引读取失败": {
+    status: { "050b81ba-9621-4992-84fe-106ae46eb36b": "issue-error" },
+    issue: {
+      description: "读取 data/index.json 时未处理 ENOENT，错误被上层 catch 静默吞掉，导致 5 条结论引用空索引。",
+      reasoning: [
+        "定位 apps/server/src/search/index.ts:142 的 readIndex 调用",
+        "readIndex 没有 try/catch，ENOENT 直接冒泡",
+        "上层 catch 只记录日志后继续执行",
+        "5 条结论引用空索引，且没有来源",
+      ],
+    },
+  },
+  "执行时间过长": {
+    status: { default: "issue-model" },
+    issue: {
+      description: "模型在规划阶段连续扩大检索范围，未复用已抓取结果；预期执行不超过 30min，实际执行 2h 12m，超出 4.4 倍。",
+      reasoning: [
+        "预期 ≤ 30min，实际 2h 12m",
+        "轨迹中 6 次扩大检索范围",
+        "3 次重复抓取已访问页面，未复用结果",
+        "在工具返回后仍未收敛，归因为模型规划问题",
+      ],
+    },
+  },
+  "检索结果反序列化失败": {
+    status: { "cb819c5b-286f-4eab-a681-4ba5414b844d": "issue-error" },
+    issue: {
+      object: "skill: deep-research",
+      description: "反序列化检索结果时假定 items 字段一定存在，实际返回体缺少该字段，导致该次检索返回 0 条结果。",
+      reasoning: [
+        "定位 apps/server/src/search/fetch.ts:88",
+        "response.items 为 undefined，未做默认值处理",
+        "该次检索结果为空，后续结论缺失",
+      ],
+    },
+  },
+  "会话快照读取越界": {
+    status: { "2f5e7ae8-c04a-46d2-a17a-0b431ef17d44": "issue-prompt" },
+    issue: {
+      agentDesc: "分析 agent loop 与 LLM 层",
+      description: "prompt 未要求读取快照前校验 turns 字段，subagent 直接读取导致越界，该步结果被丢弃。",
+      reasoning: [
+        "检查 subagent prompt，未包含字段校验要求",
+        "load.ts:142 直接访问 snapshot.turns",
+        "同批次其他有校验的 subagent 未报错",
+        "归因为 prompt 缺失",
+      ],
+    },
+  },
+  "插件清单解析失败": {
+    status: { "3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5": "issue-error" },
+    issue: {
+      description: "插件清单不是合法 JSON，解析时抛出 SyntaxError，后续插件事件缺失。",
+      reasoning: [
+        "定位 apps/server/src/plugins/load.ts:57",
+        "JSON.parse 收到 HTML 响应，未校验 content-type",
+        "插件清单未加载，后续分析缺少插件事件",
+      ],
+    },
+  },
+  "执行范围越界": {
+    status: { "3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5": "nonissue" },
+    nonissue: {
+      reason: "越界修改发生在临时 worktree，未进入交付物；任务边界约定只限制最终输出，不限制临时草稿。",
+      reasoning: [
+        "检查修改路径，均在 /tmp/worktree 下",
+        "最终 diff 未包含越界文件",
+        "判定：未进入交付物，非问题",
+      ],
+    },
+  },
+  "子任务重复抓取": {
+    status: { "3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5": "unanalyzed" },
+  },
+};
+
+function analysisFor(sid, f) {
+  const meta = ERROR_META[f.title] || {};
+  const status = meta.status?.[sid] || meta.status?.default || "unanalyzed";
+  if (status === "unanalyzed") return { status, label: STATUS_LABEL[status] };
+  if (status === "analyzed") {
+    return { status, label: STATUS_LABEL[status], description: meta.analyzed?.description, reasoning: meta.analyzed?.reasoning || [] };
+  }
+  if (status === "nonissue") {
+    return { status, label: STATUS_LABEL[status], reason: meta.nonissue?.reason, reasoning: meta.nonissue?.reasoning || [] };
+  }
+  const issue = meta.issue || {};
+  const category = CATEGORY_BY_STATUS[status] || issue.category || "错误";
+  let object = issue.object || "未知";
+  if (!issue.object && issue.agentDesc) {
+    object = agentObjectFor(sid, "subagent · " + issue.agentDesc) || ("agent: agent · " + issue.agentDesc);
+  } else if (!issue.object && category === "模型问题" && f.target) {
+    object = agentObjectFor(sid, f.target) || "未知";
+  }
+  return {
+    status, label: STATUS_LABEL[status], category, object,
+    description: issue.description, reasoning: issue.reasoning || [],
+  };
+}
+
+function Reasoning({ steps }) {
+  if (!steps || !steps.length) return null;
+  return html`
+    <div className="attr-block">
+      <div className="attr-label">分析推导过程</div>
+      <ol className="attr-reasoning">
+        ${steps.map((s, i) => html`<li key=${i}>${s}</li>`)}
+      </ol>
+    </div>`;
+}
+
+function FindingDescription({ finding, session }) {
+  return html`
+    <div>
+      <div className="ed-head">
+        <span className="ed-no">#${finding.no}</span>
+        <span className="ed-title">${finding.title}</span>
+        <span className=${"err-chip " + finding.analysis.status}>${STATUS_LABEL[finding.analysis.status]}</span>
+      </div>
+      <div className="ed-detail">${finding.detail}</div>
+      ${(finding.facts && finding.facts.length) ? html`
+        <div className="fi-facts">
+          ${finding.facts.map(x => html`
+            <span className="fi-fact" key=${x.k}>
+              <span className="fi-fact-k">${x.k}</span>
+              <span className=${"fi-fact-v" + (x.mono ? " mono" : "")}>${x.v}</span>
+            </span>`)}
+        </div>` : null}
+      <div className="ed-meta">关联：${targetLabel(session?.id, finding)}${session?.title ? " · 会话：" + session.title : ""}</div>
+    </div>`;
+}
+
+function AttributionReport({ finding }) {
+  const a = finding.analysis;
+  if (a.status === "unanalyzed") {
+    return html`
+      <div>
+        <div className="attr-conclusion unanalyzed">
+          <span className="lab">结论</span><b>尚未分析</b>
+          <span className="err-chip unanalyzed">未分析</span>
+        </div>
+        <div className="err-empty">该错误还没有归因分析，尚不能判断是否为问题。</div>
+      </div>`;
+  }
+  const cls = a.status === "nonissue" ? "nonissue" : a.status === "analyzed" ? "pending" : "issue";
+  const conclusion = a.status === "nonissue" ? "非问题" : a.status === "analyzed" ? "已分析，待确认结论" : "问题";
+  return html`
+    <div>
+      <div className=${"attr-conclusion " + cls}>
+        <span className="lab">结论</span><b>${conclusion}</b>
+        <span className=${"err-chip " + a.status}>${STATUS_LABEL[a.status]}</span>
+      </div>
+      ${a.status === "nonissue" ? html`
+        <div className="attr-block">
+          <div className="attr-label">非问题的分析原因</div>
+          <div className="attr-value">${a.reason}</div>
+        </div>
+        <${Reasoning} steps=${a.reasoning} />
+      ` : a.status === "analyzed" ? html`
+        <div className="attr-block">
+          <div className="attr-label">分析状态</div>
+          <div className="attr-value">证据已收集，结论待确认。</div>
+        </div>
+        <div className="attr-block">
+          <div className="attr-label">分析出的问题描述</div>
+          <div className="attr-value">${a.description}</div>
+        </div>
+        <${Reasoning} steps=${a.reasoning} />
+      ` : html`
+        <div className="attr-block">
+          <div className="attr-row">
+            <span className="attr-label">问题分类</span>
+            <span className=${"err-chip " + a.status}>${a.category}</span>
+          </div>
+          <div className="attr-row" style=${{ marginTop: "7px" }}>
+            <span className="attr-label">定位到的问题对象</span>
+            <span className="attr-object">${a.object}</span>
+          </div>
+        </div>
+        <div className="attr-block">
+          <div className="attr-label">分析出的问题描述</div>
+          <div className="attr-value">${a.description}</div>
+        </div>
+        <${Reasoning} steps=${a.reasoning} />
+      `}
+    </div>`;
+}
+
+function ErrorFlow({ nodes, edges, findings, selectedNo }) {
+  const selected = selectedNo != null;
+  const keep = selected ? findings.find(f => f.no === selectedNo)?.nodeId : null;
+  const findingIds = useMemo(() => new Set(findings.map(f => f.nodeId)), [findings]);
+  const displayNodes = useMemo(() => nodes
+    .filter(n => n.type !== "finding" || !selected || n.id === keep)
+    .map(n => n.type === "finding" ? { ...n, data: { ...n.data, active: n.id === keep } } : n),
+    [nodes, selected, keep]);
+  const displayEdges = useMemo(() => edges.filter(e => {
+    if (!selected) return true;
+    const touched = findingIds.has(e.source) || findingIds.has(e.target);
+    return !touched || e.source === keep || e.target === keep;
+  }), [edges, selected, keep, findingIds]);
+  const [rfNodes, setNodes, onNodesChange] = useNodesState(displayNodes);
+  const [rfEdges, setEdges, onEdgesChange] = useEdgesState(displayEdges);
+  useEffect(() => { setNodes(displayNodes); setEdges(displayEdges); }, [displayNodes, displayEdges, setNodes, setEdges]);
+  return html`
+    <${ReactFlow}
+      nodes=${rfNodes} edges=${rfEdges}
+      onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
+      nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
+      fitView fitViewOptions=${{ padding: 0.12 }}
+      minZoom=${0.2} maxZoom=${2.5}
+      nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
+      proOptions=${{ hideAttribution: true }}
+      style=${{ width: "100%", height: "100%" }}
+    >
+      <${FitTree} fitKey=${"error:" + (selectedNo ?? "all")} />
+      <${Background} gap=${22} color="#e6e9ef" />
+      <${Controls} showInteractive=${false} position="bottom-right" />
+    <//>`;
+}
+
+function ErrorApp({ sid, budget }) {
+  const { nodes, edges, findings } = useMemo(() => buildGraph(sid, {}, budget), [sid, budget]);
+  const enriched = useMemo(() => findings.map(f => ({ ...f, analysis: analysisFor(sid, f) })), [findings, sid]);
+  const session = (window.SESSIONS || []).find(s => s.id === sid) || {};
+  const [selectedNo, setSelectedNo] = useState(null);
+  const [tab, setTab] = useState("desc");
+  const selected = enriched.find(f => f.no === selectedNo) || null;
+  const analyzedCount = enriched.filter(f => f.analysis.status !== "unanalyzed").length;
+  const pick = (f) => {
+    if (selectedNo === f.no) return;
+    setSelectedNo(f.no);
+    setTab("desc");
+  };
+
+  return html`
+    <div className="err-shell">
+      <aside className="err-sidebar">
+        <div className="err-side-head">
+          <div className="err-side-title"><h1>错误</h1><span className="count">${enriched.length} 个</span></div>
+          <div className="err-session" title=${session.title || sid}>${session.title || sid}</div>
+          <button className="err-back" onClick=${() => window.switchTab("explorer")}>← 返回 Session</button>
+        </div>
+        <div className="err-list">
+          <button type="button" className=${"err-all" + (selectedNo == null ? " active" : "")} onClick=${() => { setSelectedNo(null); setTab("desc"); }}>
+            <span>全部错误</span><b>${enriched.length}</b>
+          </button>
+          ${enriched.map(f => html`
+            <button type="button" key=${f.nodeId} className=${"err-card" + (selectedNo === f.no ? " active" : "")} onClick=${(e) => { e.stopPropagation(); pick(f); }}>
+              <div className="err-card-top">
+                <span className="err-no">#${f.no}</span>
+                <span className="err-card-title">${f.title}</span>
+              </div>
+              <div className="err-card-bottom">
+                <span className=${"err-chip " + f.analysis.status}>${STATUS_LABEL[f.analysis.status]}</span>
+                <span className="err-card-target">${targetLabel(sid, f)}</span>
+              </div>
+            </button>
+          `)}
+        </div>
+      </aside>
+      <main className="err-main">
+        <div className="err-head">
+          <div>
+            <h2>错误详情</h2>
+            <div className="meta">
+              <span>${session.clock || ""} 开始</span>
+              ${session.repo ? html`<span className="repo-chip">${session.repo}</span>` : null}
+              <span>${enriched.length} 个错误</span>
+              <span>${analyzedCount} 个已分析</span>
+            </div>
+          </div>
+          <div className="err-head-actions">
+            <button className="tbtn" onClick=${() => window.switchTab("timeline")}>打开时间线</button>
+            <button className="tbtn" onClick=${() => window.switchTab("explorer")}>返回 Session</button>
+          </div>
+        </div>
+        <div className="err-flow-panel">
+          <div className="err-flow-head">
+            <span>执行流</span>
+            <span className="note">${selected ? `仅显示 #${selected.no} · ${selected.title}` : `全部错误 · ${enriched.length} 个`}</span>
+          </div>
+          <div className="err-flow-canvas">
+            <${ErrorFlow} nodes=${nodes} edges=${edges} findings=${enriched} selectedNo=${selectedNo} />
+          </div>
+        </div>
+        <div className="err-detail">
+          <div className="err-tabs">
+            <button className=${"err-tab" + (tab === "desc" ? " active" : "")} onClick=${() => setTab("desc")}>问题描述</button>
+            <button className=${"err-tab" + (tab === "attr" ? " active" : "")} onClick=${() => setTab("attr")}>归因分析</button>
+          </div>
+          <div className="err-panel">
+            ${selected
+              ? (tab === "desc"
+                ? html`<${FindingDescription} finding=${selected} session=${session} />`
+                : html`<${AttributionReport} finding=${selected} />`)
+              : html`<div className="err-empty">从左侧选择一个错误，查看问题描述与归因分析。</div>`}
+          </div>
+        </div>
+      </main>
+    </div>`;
+}
+
 let treeRoot = null;
 
 function unmountTree() {
@@ -1314,6 +1768,32 @@ if (window.__pendingTree) {
   const p = window.__pendingTree;
   window.__pendingTree = null;
   mountTree(p.sid, p.findings);
+}
+
+let errorRoot = null;
+
+function unmountErrorDetail() {
+  if (!errorRoot) return;
+  try { errorRoot.unmount(); } catch (e) { /* host 可能已被移除 */ }
+  errorRoot = null;
+}
+
+function mountErrorDetail(sid, budget) {
+  const host = document.getElementById("errorApp");
+  if (!host) return;
+  unmountErrorDetail();
+  host.innerHTML = "";
+  errorRoot = createRoot(host);
+  errorRoot.render(html`<${ErrorApp} key=${sid} sid=${sid} budget=${budget} />`);
+}
+
+window.__mountErrorDetail = mountErrorDetail;
+window.__unmountErrorDetail = unmountErrorDetail;
+
+if (window.__pendingError) {
+  const p = window.__pendingError;
+  window.__pendingError = null;
+  mountErrorDetail(p.sid, p.budget);
 }
 
 </script>

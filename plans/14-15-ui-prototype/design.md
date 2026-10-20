@@ -150,7 +150,7 @@
 
 ```text
 主会话 100 行 ──L20──> 子任务 A 60 行 ──L30──> 子任务 C 20 行（左侧 1 条问题）
-      └────────L80──> 子任务 B 40 行（L12 触发 deep-research）
+      └────────L80──> 子任务 B 40 行（L15 触发 review-changes）
 ```
 
 - **C 发现问题**：问题由数据里的 `findings` 显式声明，渲染时锚在 C 的横条上，而不是按「最后一个 agent」猜测归属。
@@ -161,7 +161,7 @@
 1. **「最后一个 agent」不能作为问题归属**：布局是深度优先（A→C 循环在 B 之前），`[main, A, C, B]` 的最后一个 agent 是 B，不是 C；当初用「取 agentNodes 最后一个」打桩时，C 的问题被错挂到了 B。问题归属必须由证据里的 agent path / target 决定。
 2. **父子回查依赖 `toolUseId`**：C 的合成数据一开始漏了 `toolUseId`，`childEventIndex` 找不到父条上的 L30 触发点，连线回落到 45% 处、标签也丢了 L30。子转录必须保留父调用的 `toolUseId`，否则树会「连得上但连错位置」。
 3. **问题卡会横穿兄弟分支**：C 的右侧正好是 main→B 的竖直通道，问题卡无脑放右边时，红色连接线穿过灰色分支。现在记录每条父→子连线的竖直段，放卡前检测是否与问题堆相交；C 的卡因此换到左侧。Agent 节点也需要补一个 `in-left` target handle。
-4. **子 agent 的 skill 不在主会话事件流里**：B 的 `deep-research` 只存在于 B 的转录。若家族摘要的 Skill 数只统计主会话事件，这个触发会整条丢失；聚合口径必须递归到每个成员。
+4. **子 agent 的 skill 不在主会话事件流里**：B 的 `review-changes` 只存在于 B 的转录。若家族摘要的 Skill 数只统计主会话事件，这个触发会整条丢失；聚合口径必须递归到每个成员。
 5. **长标签会盖住右侧问题卡**：0 行的 workflow 节点只有 120px 条宽，但「workflow · 56 个 workflow 子 agent」这类标签会溢出到条外，正好压住右侧问题堆。问题卡的锚点因此改为 `max(条宽, 标签宽 + 60px)`，连接线的竖直通道也移到标签尾部右侧；标签本身保持完整、不再截断。
 6. **连续触发把多条边叠成灰带**：主会话的 L70~L73 四个 subagent 触发点只差几像素，每条边各自竖直下落时会在同一条主会话横条下面叠成一条灰色长条。现在 24px 内的兄弟共用一个竖直 trunk，边从同一触发点下落，只保留一根细线；`fitView` 也改为等节点测量完成后再执行，避免首屏缩放跑偏。
 7. **节点 class 与页面布局撞名**：主会话节点最初生成 `class="rf-agent main"`，命中了页面右栏的 `.main { overflow-y: auto; }`，节点内部因此出现一条可拖动的横向滚动条。改为 `class="rf-agent root"` 后滚动条消失；节点自身的 class 必须与页面布局 class 隔离。
@@ -187,3 +187,26 @@
 | Perfetto / Jaeger 式瀑布（行 + 缩进） | 只要"深度缩进 + 时间轴"，不需要连线 | 表达父子触发点不如树直观 |
 
 参考：[Perfetto UI](https://perfetto.dev/docs/visualization/perfetto-ui)（track + slice 的执行流表达）、[AntV G6 自定义节点](http://www.chinadongda.com/j/?weixin_44827945/article/details/125861041)、[Jaeger trace 视图](https://raw.githubusercontent.com/wso2/docs-api-platform/main/en/docs/api-gateway/next/observability/tracing/viewing-traces-in-jaeger.md)、[React Flow](https://github.com/push-forward/react-flow)。
+
+## 9. 错误详情与归因（新原型）
+
+入口：Session 浏览器标题栏的「打开错误详情」按钮，位于「打开时间线」右侧；新增第三个页面「错误详情」，复用同一套 React Flow 执行流与问题打桩数据。
+
+布局：左栏改为错误卡，不再放 session 列表，每卡显示 `#N`、标题、分析状态和关联目标，顶部有「全部错误」；右上是执行流，未选错误时显示该 session 的完整执行流，选中某个错误时只保留该错误的问题卡，其他错误卡及对应连线隐藏，agent/skill 横条保留；右下是 tab 卡片，当前为「问题描述」「归因分析」两页，未选错误时为空态。
+
+状态枚举（左栏错误卡与归因结论共用）：
+
+| 状态 | 含义 |
+|---|---|
+| 未分析 | 尚未产生归因报告 |
+| 已分析 | 已收集证据，结论待确认 |
+| 非问题 | 判定不是问题 |
+| 是问题-模型问题 | 归因到模型规划 / 决策 |
+| 是问题-prompt缺失某些提示词 | 归因到 prompt 缺失约束 |
+| 是问题-错误 | 归因到代码 / 运行时错误 |
+
+归因报告结构：先给结论（问题 / 非问题；未分析为空态；已分析但未归类时显示待确认）。非问题给非问题原因与分析推导过程；问题给分类（模型问题 / prompt缺失某些提示词 / 错误，后续可扩充）、定位到的问题对象（未知 / `skill:xxx` / `agent:<type> · <agent 名>`）、分析出的问题描述、分析推导过程。agent 类型取 `TREE` 里该子 agent 的 `type`，例如 `general-purpose`、`Explore`、`workflow`；左栏错误卡的关联目标同样带类型。「问题描述」tab 展示标题、状态、详情、关键事实（文件 / 行号 / 错误、预期 / 实际等）和关联目标。
+
+原型打桩映射：自进化——重复加载=未分析，输出缺少来源校验=非问题，检索索引读取失败=是问题-错误，执行时间过长=是问题-模型问题（`agent: general-purpose · 检索EverMind与Hermes`）；视频——重复加载=已分析，检索结果反序列化失败=是问题-错误（`skill: deep-research`），执行时间过长=是问题-模型问题（`agent: workflow · 56 个 workflow 子 agent`）；DSH——会话快照读取越界=是问题-prompt缺失某些提示词（`agent: Explore · 分析 agent loop 与 LLM 层`），执行时间过长=是问题-模型问题（`agent: Explore · 分析自进化与协调面`）；Obsidian——插件清单解析失败=是问题-错误，执行范围越界=非问题，子任务重复抓取=未分析。状态与归因内容均为打桩，真实分析器接入后替换 `analysisFor` 的数据即可。
+
+交互：点击左栏错误卡后，执行流只保留该问题卡，tab 回到「问题描述」；再次点击已选中的错误卡保持选中，不取消，也不切换当前 tab；取消选择统一用「全部错误」。点「全部错误」恢复完整执行流和空态详情。归因 tab 按「结论 → 非问题原因 / 问题分类 → 定位对象 → 问题描述 → 推导过程」的顺序展开。
