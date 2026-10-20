@@ -26,7 +26,7 @@
   .canvas { flex: 1; position: relative; min-height: 0; }
   /* 节点 */
   .rf-agent { padding: 2px 0; }
-  .rf-label { font-size: 11px; color: var(--dim); white-space: nowrap; margin-bottom: 4px; }
+  .rf-label { font-size: 11px; color: var(--dim); white-space: nowrap; margin-bottom: 4px; background: #fff; }
   .rf-bar { position: relative; height: 18px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 16%, #fff); }
   .rf-agent.sub .rf-bar { border-color: color-mix(in srgb, var(--purple) 40%, transparent); background: color-mix(in srgb, var(--purple) 10%, #fff); }
   .rf-agent.wf .rf-bar { border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 12%, #fff); }
@@ -97,6 +97,7 @@ function skillPillW(name) {
   return Math.round(measureW(name, font) + 40); // 内边距 20 + 圆点 6 + 间距 5 + 边框/余量
 }
 
+const LABEL_FONT = '11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
 const SESSIONS = [{"id":"050b81ba-9621-4992-84fe-106ae46eb36b","short":"自进化方法检索"},{"id":"cb819c5b-286f-4eab-a681-4ba5414b844d","short":"视频分析调研"},{"id":"2f5e7ae8-c04a-46d2-a17a-0b431ef17d44","short":"DeepSeek Harness"},{"id":"3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5","short":"Obsidian 插件"},{"id":"demo-nested","short":"嵌套示例"}];
 
 const NODE_W = (lines, maxLines) => Math.max(120, Math.min(560, Math.round((lines || 0) / maxLines * 540)));
@@ -254,7 +255,7 @@ function buildGraph(sid, expanded) {
     const totalH = n * BOX_H + (n - 1) * GAP;
     const startY = centerY - totalH / 2;
     texts.forEach((text, i) => {
-      const w = Math.max(150, Math.min(270, 26 + textW(text)));
+      const w = Math.max(150, Math.min(340, 26 + textW(text)));
       const y = startY + i * (BOX_H + GAP);
       const x = side === "left" ? anchorX - w - 46 : anchorX + 46;
       const fid = `find-${targetId}-${i}`;
@@ -274,8 +275,8 @@ function buildGraph(sid, expanded) {
   // 每个 skill：2 条问题，堆在药丸左侧
   skillNodes.forEach((s) => {
     const texts = [
-      `#${fn++} 存在问题：重复加载，未命中缓存`,
-      `#${fn++} 存在问题：输出未校验来源`,
+      `#${fn++} skill出现问题：重复加载，未命中缓存`,
+      `#${fn++} skill出现问题：输出未校验来源`,
     ];
     addFindings(s.sid, s.x, s.y + 9, "left", texts);
   });
@@ -292,9 +293,9 @@ function buildGraph(sid, expanded) {
       const skillTexts = ["此前步骤的检索结果缺少来源校验", "此前步骤的检索范围不足"];
       const agentTexts = ["此前步骤遗漏了 MCP 调用失败的重试", "此前步骤未汇总其他子 agent 的结论"];
       const text = m.kind === "skill"
-        ? `#${fn++} 存在问题：${skillTexts[i % 2]}`
-        : `#${fn++} 存在问题：${agentTexts[i % 2]}`;
-      const w = Math.max(170, Math.min(300, 26 + textW(text)));
+        ? `#${fn++} skill发现前置步骤存在问题：${skillTexts[i % 2]}`
+        : `#${fn++} subagent发现前置步骤存在问题：${agentTexts[i % 2]}`;
+      const w = Math.max(170, Math.min(440, 26 + textW(text)));
       const x = parentX + parentW + 18;
       const y = barTop - 36 - (trig.length - i) * 28;
       const fid = `rep-${parentId}-${i}`;
@@ -312,18 +313,21 @@ function buildGraph(sid, expanded) {
   addReported("main", 60, 40, rootW, d.main.events.length ? marksOf(d.main.events, d.main.lines) : []);
   nodes
     .filter(n => n.type === "agent" && n.id !== "main")
-    .forEach(n => addReported(n.id, n.position.x, n.position.y, n.data.w, n.data.marks || []));
+    .forEach(n => addReported(n.id, n.position.x, n.position.y,
+      Math.max(n.data.w, measureW(n.data.label || "", LABEL_FONT) + 6), n.data.marks || []));
 
   // 最后一个 subagent：3 条问题，堆在条右侧
   const agentNodes = nodes.filter(n => n.type === "agent");
   const lastAgent = agentNodes[agentNodes.length - 1];
   if (lastAgent) {
     const texts = [
-      `#${fn++} 存在问题：越界执行，未按任务边界收敛`,
-      `#${fn++} 存在问题：子任务重复抓取同一页面`,
-      `#${fn++} 存在问题：未回报中间结果`,
+      `#${fn++} subagent出现问题：越界执行，未按任务边界收敛`,
+      `#${fn++} subagent出现问题：子任务重复抓取同一页面`,
+      `#${fn++} subagent出现问题：未回报中间结果`,
     ];
-    addFindings(lastAgent.id, lastAgent.position.x + lastAgent.data.w, lastAgent.position.y + 16, "right", texts);
+    addFindings(lastAgent.id, lastAgent.position.x +
+      Math.max(lastAgent.data.w, measureW(lastAgent.data.label || "", LABEL_FONT) + 6),
+      lastAgent.position.y + 16, "right", texts);
   }  return { nodes, edges };
 }
 
