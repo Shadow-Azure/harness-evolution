@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>#14/#15 UI 原型入口</title>
+<style>
+  :root { --bg:#f4f5f7; --panel:#fafbfc; --card:#ffffff; --border:#e2e5ea; --text:#212832; --dim:#5a6372; --faint:#9aa2ae; --blue:#2f6fe0; --orange:#d97b1c; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,"PingFang SC",sans-serif; background:var(--bg); color:var(--text); display:flex; min-height:100vh; align-items:center; justify-content:center; }
+  .wrap { max-width:760px; padding:40px 24px; }
+  h1 { font-size:20px; margin-bottom:6px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:28px; }
+  .cards { display:grid; gap:14px; }
+  a.card {
+    display:block; text-decoration:none; color:var(--text);
+    background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+    transition:border-color .12s;
+  }
+  a.card:hover { border-color:var(--blue); }
+  a.card h2 { font-size:15px; margin-bottom:6px; }
+  a.card p { color:var(--dim); font-size:12.5px; line-height:1.6; }
+  a.card .issue { font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--blue); }
+  .note { margin-top:24px; font-size:12px; color:var(--faint); border-top:1px solid var(--border); padding-top:16px; }
+  .note code { color:var(--orange); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Session 浏览器 × Turn 时间线 — UI 原型</h1>
+  <p class="sub">GitHub #14 / #15 · 讨论用打桩原型 · 所有数据均为虚构样例</p>
+  <div class="cards">
+    <a class="card" href="claude-code.html"><span class="issue">新版</span><h2>Claude Code 轨迹原型 →</h2><p>基于 llm-wiki 4 条真实会话：轮次/步骤模型、轮次长度分布条、子 agent 家族成员、真实时间线。</p></a>
+    <a class="card" href="session-explorer.html">
+      <span class="issue">#14</span>
+      <h2>Session 浏览器与家族摘要 →</h2>
+      <p>左侧 4 张 root session 家族卡（聚合统计 + 问题密度条）、搜索/状态/排序筛选、选中后的家族摘要落地页、URL hash 状态恢复。右上角可切换「未选中 / 空列表 / 加载失败」三态。</p>
+    </a>
+    <a class="card" href="timeline.html">
+      <span class="issue">#15</span>
+      <h2>Turn 时间线核心渲染 →</h2>
+      <p>按 turn 分组 + 吸顶 turn 头（时刻/耗时/事件数/token）；六类事件卡片色彩编码；工具调用与输出用 call_id 徽章配对（点击互相定位）；推理与长输出默认折叠；「仅用户消息与最终回复」快速定位；每卡支持复制 / 原始 JSON。</p>
+    </a>
+  </div>
+  <p class="note">设计取舍与调研依据见同目录 <code>design.md</code>。建议先看 Session 浏览器，从卡片点「打开 Turn 时间线」进入第二个页面。</p>
+</div>
+</body>
+</html>
