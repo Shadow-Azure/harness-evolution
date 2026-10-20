@@ -30,7 +30,7 @@
   <h1>Session 浏览器 × Turn 时间线 — UI 原型</h1>
   <p class="sub">GitHub #14 / #15 · 讨论用打桩原型 · 所有数据均为虚构样例</p>
   <div class="cards">
-    <a class="card" href="claude-code.html"><span class="issue">新版</span><h2>Claude Code 轨迹原型 →</h2><p>基于 llm-wiki 4 条真实会话：轮次/步骤模型、轮次长度分布条、子 agent 家族成员、真实时间线。</p></a>
+    <a class="card" href="claude-code.html"><span class="issue">新版</span><h2>Claude Code 轨迹原型 →</h2><p>基于 llm-wiki 4 条真实会话：轮次/步骤模型、React Flow 子 agent 家族树（执行流与触发时序）、真实时间线；家族树的问题卡为打桩，数量对齐会话问题数，列表卡含标题、详情、文件/行号或预期/实际时间。</p></a>
     <a class="card" href="session-explorer.html">
       <span class="issue">#14</span>
       <h2>Session 浏览器与家族摘要 →</h2>
@@ -40,6 +40,11 @@
       <span class="issue">#15</span>
       <h2>Turn 时间线核心渲染 →</h2>
       <p>按 turn 分组 + 吸顶 turn 头（时刻/耗时/事件数/token）；六类事件卡片色彩编码；工具调用与输出用 call_id 徽章配对（点击互相定位）；推理与长输出默认折叠；「仅用户消息与最终回复」快速定位；每卡支持复制 / 原始 JSON。</p>
+    </a>
+    <a class="card" href="reactflow-tree.html">
+      <span class="issue">实验</span>
+      <h2>家族树 · React Flow →</h2>
+      <p>递归主 / 子 agent 树：条长 ∝ 日志行数，skill 与 subagent 触发点按行号定位；含「嵌套示例」——子任务 C 发现问题、子任务 B 触发 skill，并演示问题卡如何避让兄弟分支。</p>
     </a>
   </div>
   <p class="note">设计取舍与调研依据见同目录 <code>design.md</code>。建议先看 Session 浏览器，从卡片点「打开 Turn 时间线」进入第二个页面。</p>

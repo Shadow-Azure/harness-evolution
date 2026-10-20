@@ -102,28 +102,59 @@
   .ss.bad b { color: var(--red); }
   .ss.warn b { color: var(--orange); }
 
-  /* ═══ 家族树（固定区域 + 缩放平移） ═══ */
+  /* ═══ 家族树（React Flow · 执行流与触发时序） ═══ */
   .tree-panel { position: relative; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.06); overflow: hidden; }
-  .tree-toolbar { position: absolute; top: 10px; right: 12px; z-index: 5; display: flex; gap: 4px; }
-  .tree-toolbar button { font: inherit; font-size: 11px; color: var(--text-dim); cursor: pointer; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; width: 26px; height: 24px; }
-  .tree-toolbar button:hover { color: var(--text); }
-  .tree-toolbar .fit { width: auto; padding: 0 9px; }
-  .tree-legend { position: absolute; left: 12px; bottom: 10px; z-index: 5; display: flex; gap: 14px; font-size: 10.5px; color: var(--text-faint); background: color-mix(in srgb, var(--bg-card) 85%, transparent); padding: 3px 8px; border-radius: 6px; }
-  .tree-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
-  .tree-legend .diamond { display: inline-block; width: 7px; height: 7px; transform: rotate(45deg); border-radius: 1px; background: var(--cyan); margin-right: 4px; vertical-align: -1px; }
-  .tree-legend .tri { display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 8px solid var(--purple); margin-right: 4px; vertical-align: -2px; }
-  #famTree { display: block; width: 100%; height: 470px; cursor: grab; user-select: none; }
-  #famTree.dragging { cursor: grabbing; }
-  .tn-label { font-size: 11px; fill: var(--text); }
-  .tn-skill { font-size: 9.5px; fill: var(--cyan); }
-  .tn-line { stroke: #c4cbd6; stroke-width: 1.4; fill: none; }
-  .tn-bar { fill: color-mix(in srgb, var(--blue) 16%, #fff); stroke: color-mix(in srgb, var(--blue) 45%, transparent); stroke-width: 1; }
-  .tn-bar.sub { fill: color-mix(in srgb, var(--purple) 10%, #fff); stroke: color-mix(in srgb, var(--purple) 40%, transparent); }
-  .tn-bar.wf { fill: color-mix(in srgb, var(--orange) 12%, #fff); stroke: color-mix(in srgb, var(--orange) 40%, transparent); }
-  .tn-group text { font-size: 10px; }
-  .tn-mark-skill { fill: var(--cyan); }
-  .tn-mark-agent { fill: var(--purple); }
-  .tn-hint { position: absolute; right: 12px; bottom: 10px; font-size: 10.5px; color: var(--text-faint); z-index: 5; }
+  .rf-canvas { width: 100%; height: 720px; background: #fafbfc; }
+  .rf-loading, .rf-error { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 12px; }
+  .rf-error { color: var(--red); padding: 20px; text-align: center; line-height: 1.7; }
+  .rf-agent { padding: 2px 0; }
+  .rf-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; margin-bottom: 4px; }
+  .rf-bar { position: relative; height: 18px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 16%, #fff); }
+  .rf-agent.sub .rf-bar { border-color: color-mix(in srgb, var(--purple) 40%, transparent); background: color-mix(in srgb, var(--purple) 10%, #fff); }
+  .rf-agent.wf .rf-bar { border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 12%, #fff); }
+  .rf-agent.group { border: 1px dashed var(--text-faint); border-radius: 8px; padding: 8px 10px; text-align: center; font-size: 11px; color: var(--text-dim); cursor: pointer; background: var(--bg-card); }
+  .rf-mark { position: absolute; top: 50%; width: 8px; height: 8px; transform: translate(-50%, -50%) rotate(45deg); border-radius: 1px; }
+  .rf-mark.skill { background: var(--cyan); }
+  .rf-mark.agent, .rf-mark.workflow { background: var(--purple); }
+  .rf-lines { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+  .rf-skill-wrap { display: flex; justify-content: flex-end; }
+  .rf-skill { display: inline-flex; align-items: center; gap: 5px; width: 100%; box-sizing: border-box; font-size: 10.5px; color: var(--cyan); background: #fff; border: 1px dashed color-mix(in srgb, var(--cyan) 55%, transparent); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .rf-skill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rf-skill-dot { width: 6px; height: 6px; border-radius: 1px; background: var(--cyan); transform: rotate(45deg); }
+  .rf-finding { border: 1px solid #e05555; color: #c03434; background: #fff5f5; border-radius: 6px; padding: 3px 8px; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(224,85,85,.12); }
+  .rf-finding.active { outline: 2px solid #d63c3c; outline-offset: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, #d63c3c 18%, transparent); }
+  .finding-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+  .finding-cards { display: flex; flex-direction: column; gap: 8px; }
+  .finding-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; cursor: pointer; transition: border-color .12s, background .12s, box-shadow .12s; }
+  .finding-item:hover { border-color: #e05555; background: #fff8f8; }
+  .finding-item.active { border-color: #d63c3c; background: #fff5f5; box-shadow: 0 0 0 2px color-mix(in srgb, #d63c3c 18%, transparent); }
+  .fi-no { flex-shrink: 0; font-family: var(--mono); font-size: 11px; font-weight: 700; color: #c03434; background: #fff5f5; border: 1px solid #e05555; border-radius: 999px; padding: 1px 8px; line-height: 1.6; }
+  .fi-body { flex: 1; min-width: 0; }
+  .fi-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .fi-title { font-size: 13.5px; font-weight: 650; color: var(--text); line-height: 1.45; }
+  .fi-sev { font-size: 10px; line-height: 1.6; border-radius: 999px; padding: 0 7px; border: 1px solid; }
+  .fi-sev.error { color: #c03434; background: #fff0f0; border-color: #e05555; }
+  .fi-detail { display: block; margin-top: 3px; font-size: 12px; line-height: 1.6; color: var(--text-dim); word-break: break-word; }
+  .fi-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .fi-fact { display: inline-flex; align-items: flex-start; gap: 5px; max-width: 100%; font-size: 10.5px; line-height: 1.5; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+  .fi-fact-k { color: var(--text-faint); flex-shrink: 0; }
+  .fi-fact-v { color: var(--text-dim); min-width: 0; word-break: break-word; }
+  .fi-fact-v.mono { font-family: var(--mono); font-size: 10px; word-break: break-all; }
+  .fi-meta { display: block; margin-top: 6px; font-size: 10.5px; color: var(--text-faint); }
+  .fi-go { flex-shrink: 0; font-size: 10.5px; color: var(--blue); white-space: nowrap; }
+  .finding-empty { color: var(--text-faint); font-size: 12px; padding: 6px 2px; }
+  .tree-legend { position: absolute; left: 12px; bottom: 10px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; max-width: calc(100% - 150px); font-size: 10.5px; color: var(--text-faint); background: color-mix(in srgb, var(--bg-card) 88%, transparent); padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); }
+  .tree-legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .tree-legend .sw.session { background: color-mix(in srgb, var(--blue) 30%, #fff); }
+  .tree-legend .sw.sub { background: color-mix(in srgb, var(--purple) 22%, #fff); }
+  .tree-legend .sw.wf { background: color-mix(in srgb, var(--orange) 30%, #fff); }
+  .tree-legend .sw.finding { background: #fff5f5; border: 1px solid #e05555; }
+  .tree-legend .diamond { display: inline-block; width: 7px; height: 7px; transform: rotate(45deg); border-radius: 1px; margin-right: 4px; vertical-align: -1px; }
+  .tree-legend .diamond.skill { background: var(--cyan); }
+  .tree-legend .diamond.agent { background: var(--purple); }
+  .tree-legend .hint { color: var(--text-faint); }
+  .rf-canvas .react-flow__controls { box-shadow: 0 1px 3px rgba(30,40,60,.12); }
+  .rf-canvas .react-flow__attribution { font-size: 9px; }
 
   .section-title { font-size: 12.5px; font-weight: 650; color: var(--text-dim); margin: 0 0 8px 2px; text-transform: uppercase; letter-spacing: .4px; }
 
@@ -182,6 +213,7 @@
   .ovbox .close { float: right; }
   .hidden { display: none !important; }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.12.0/dist/style.css">
 </head>
 <body>
 
@@ -262,6 +294,8 @@ const SESSIONS = [{"id":"cb819c5b-286f-4eab-a681-4ba5414b844d","short":"AI agent
 const TL = {"rounds":[{"prompt":"我想学习和了解一下Deepseek Harness，你先分析一下`/Users/zn-ice/2026/deepseek-harness`中的代码，然后生成相关知识文档到当前代码仓。然后你告诉我，我想学习Deepseek Harness的话，要从哪里开始了解。 <linked_content path=\"raw/self-opt/INDEX.md\" />","ts":"2026-08-30T08:00:33.573Z","steps":[{"id":"msg_202608","ts":"2026-08-30T08:01:06.098Z","blocks":[{"k":"thinking","t":"Let me break down this task: 1. The user wants me to analyze code in `/Users/zn-ice/2026/deepseek-harness` 2. Generate knowledge documents into the current vault (the LLM wiki) 3. Tell them where to s…"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:07.147Z","blocks":[{"k":"text","t":"我先查看链接的 INDEX.md 和代码目录结构，确定已有知识图景和代码规模。"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:07.152Z","blocks":[{"k":"tool","name":"Read","id":"call_da83b6b80","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/raw/self-opt/INDEX.md\"}","result":"1 --- 2 title: raw/self-opt 索引 — \"用户数据驱动 Agent 自进化\"方法检索库 3 created: 2026-08-27 4 note: > 5 应用户要求（2026-08-26），对一段关于\"用户数据驱动自进化（model/harness/tool/skill 四层）\" 6 的中文分析中提到的全部方法做 live 检索核实，逐方法落盘。每个 briefing 含：机制详解、 7 关键数字（附 URL）、\"与原 passage 声明的核对\"表（✅ 证实 / ⚠️ 部分证实或有出入 / ❌ 未能证实）。 8 检索执行日 2026-08-26/27。共 17 个…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:08.199Z","blocks":[{"k":"tool","name":"Bash","id":"call_900ed5a58","input":"{\"command\": \"find /Users/zn-ice/2026/deepseek-harness -type f -not -path \\\"*/node_modules/*\\\" -not -path \\\"*/.git/*\\\" -not -path \\\"*/__pycache__/*\\\" -not -path \\\"*/.venv/*\\\" | head -100\", \"description\": \"List files in de…","result":"/Users/zn-ice/2026/deepseek-harness/README.zh.md /Users/zn-ice/2026/deepseek-harness/.jscpd.json /Users/zn-ice/2026/deepseek-harness/BRAND_GUIDELINES.md /Users/zn-ice/2026/deepseek-harness/pnpm-lock.yaml /Users/zn-ice/2026/deepseek-harness/knip.json /Users/zn-ice/2026/deepseek-harness/vitest.e2e.con…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:16.394Z","blocks":[{"k":"thinking","t":"The codebase is fairly large with docs. Let me get a full picture: package.json, README.md, and the overall structure (packages/, src/). Let me look at the directory tree more broadly."}]},{"id":"msg_202608","ts":"2026-08-30T08:01:16.959Z","blocks":[{"k":"text","t":"代码库不小，还自带 `docs/` 文档。我先看 README、package.json 和整体目录结构。"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:19.015Z","blocks":[{"k":"tool","name":"Bash","id":"call_ec3bacfbb","input":"{\"command\": \"ls /Users/zn-ice/2026/deepseek-harness/ && echo \\\"---packages---\\\" && ls /Users/zn-ice/2026/deepseek-harness/packages 2>/dev/null && echo \\\"---apps---\\\" && ls /Users/zn-ice/2026/deepseek-harness/apps 2>/dev/…"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:19.195Z","blocks":[{"k":"tool","name":"Read","id":"call_edb124e85","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/README.md\"}","result":"1 # DeepSeek Harness 2 3 English | [中文](README.zh.md) 4 5 DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com). 6 7 It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose desi…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:48.374Z","blocks":[{"k":"thinking","t":"This is DeepSeek's open-source agent harness — a big monorepo with ~50 packages, 4728 TS files. This is a substantial codebase. The user wants: 1. Analyze the code 2. Generate knowledge documents into…"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:49.523Z","blocks":[{"k":"text","t":"这是一个大型 monorepo（约 50 个 packages、4700+ TS 文件），而且自带完整的 `docs/`。我按 wiki 的 research 流程来做：先查库 → 分析代码 → 落盘 → 同步 index/log → 给学习路径。"}]},{"id":"msg_202608","ts":"2026-08-30T08:01:50.562Z","blocks":[{"k":"tool","name":"TaskCreate","id":"call_e0a0243f4","input":"{\"activeForm\": \"读取 wiki 已有知识图景\", \"description\": \"读 wiki/index.md、raw/self-opt/skill/dsh-skill-evolve.md，确认已有 dsh 相关知识与 self-opt harness 层脉络\", \"subject\": \"查库：读 wiki/index 与已有 dsh 相关页面\"}","result":"Task #1 created successfully: 查库：读 wiki/index 与已有 dsh 相关页面","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:51.526Z","blocks":[{"k":"tool","name":"TaskCreate","id":"call_6b2f68394","input":"{\"activeForm\": \"阅读仓库自带文档\", \"description\": \"读 architecture.md、cordis-primer.md、agent-lifecycle.md、glossary.md 等核心 docs，建立整体认知\", \"subject\": \"分析仓库自带文档与结构\"}","result":"Task #2 created successfully: 分析仓库自带文档与结构","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:53.094Z","blocks":[{"k":"tool","name":"TaskCreate","id":"call_68dd23997","input":"{\"activeForm\": \"深入分析源码子系统\", \"description\": \"并行 Explore agent：agent 循环与 session、工具执行管线、cordis 插件机制、skill/subagent/compaction 等自进化相关子系统\", \"subject\": \"源码深入：关键子系统并行分析\"}","result":"Task #3 created successfully: 源码深入：关键子系统并行分析","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:54.667Z","blocks":[{"k":"tool","name":"TaskCreate","id":"call_2fa692337","input":"{\"activeForm\": \"写入知识文档\", \"description\": \"raw/ 落分析笔记；wiki/ 写 entity 页 deepseek-harness + concepts 页（cordis、everything-is-a-plugin 等）+ 更新相关已有概念页\", \"subject\": \"落盘：raw 笔记 + wiki 页面\"}","result":"Task #4 created successfully: 落盘：raw 笔记 + wiki 页面","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:01:55.827Z","blocks":[{"k":"tool","name":"TaskCreate","id":"call_bcc39bac3","input":"{\"activeForm\": \"同步索引与日志\", \"description\": \"按铁律 2 完成 index 条目更新与 log 追加（research 条目）\", \"subject\": \"同步 index/log 并给出学习路径\"}","result":"Task #5 created successfully: 同步 index/log 并给出学习路径","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:02.900Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_8668c8ccd","input":"{\"status\": \"in_progress\", \"taskId\": \"1\"}","result":"Updated task #1 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:03.238Z","blocks":[{"k":"tool","name":"Read","id":"call_6f843a118","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/index.md\"}","result":"1 --- 2 type: index 3 created: 2026-08-23 4 updated: 2026-08-25 5 sources: [] 6 --- 7 8 # 索引 9 10 > 查询第一入口：回答问题前先读本目录定位相关页面，再深入阅读。每次 ingest 后由 LLM 更新。 11 12 ## 来源摘要（sources/） 13 14 - [[wiki/sources/karpathy-llm-wiki|Karpathy《LLM Wiki》（2026-04-04）]] — LLM 增量编译维护个人 wiki 的模式原文（gist），本库的方法论源头 15 - [[wik…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:03.656Z","blocks":[{"k":"tool","name":"Read","id":"call_7448bd654","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/raw/self-opt/skill/dsh-skill-evolve.md\"}","result":"1 --- 2 title: \"dsh-skill-evolve — DeepSeek Harness 社区插件：从成功会话提炼 skill\" 3 layer: skill 4 source_urls: 5 - https://github.com/dmsobtl/dsh-skill-evolve 6 - https://github.com/search?q=dsh-skill-evolve&type=repositories 7 accessed: 2026-08-26 8 local_pdf: null 9 --- 10 11 # dsh-skill-evolve 12 13 > 一句话…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:37.231Z","blocks":[{"k":"thinking","t":"重大发现：**wiki 里已经有一个 dsh 知识板块了**！ - `wiki/sources/dsh-official-docs` — 2026-08-23 官方文档快照 32 页 - `wiki/concepts/dsh-plugin-development` — 插件开发 - `wiki/concepts/dsh-plugin-distribution` — 分发 - `wiki/conce…"}]},{"id":"msg_202608","ts":"2026-08-30T08:02:41.890Z","blocks":[{"k":"text","t":"重要发现：**wiki 里已有一个 dsh 知识板块**（2026-08-23 的官方文档剪藏 → 6 个 dsh concepts + 1 个 entity 页），覆盖的是“插件怎么写/怎么分发”。这次你给的是**本地源码**，属于从“官方文档视角”升级到“源码实现视角”。我先读已有页面避免重复，再读仓库自带的 `docs/`。"}]},{"id":"msg_202608","ts":"2026-08-30T08:02:42.360Z","blocks":[{"k":"tool","name":"Read","id":"call_5adcf996f","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md\"}","result":"1 --- 2 type: entity 3 created: 2026-08-23 4 updated: 2026-08-25 5 sources: 6 - \"raw/2026-08-23-dsh-docs-repo-readme.md\" 7 - \"raw/2026-08-23-dsh-docs-architecture.md\" 8 - \"raw/2026-08-23-dsh-docs-cordis-primer.md\" 9 - \"raw/2026-08-23-dsh-docs-glossary.md\" 10 - \"raw/2026-08-23-dsh-docs-first-plugin.m…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:42.716Z","blocks":[{"k":"tool","name":"Read","id":"call_7ef3d9dd2","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/docs/architecture.md\"}","result":"1 # DeepSeek Harness Architecture 2 3 English | [中文](architecture.zh.md) 4 5 Read this before changing anything under `packages/`. It assumes you know Cordis; if you do not, start with the [primer](cordis-primer.md) or the [tutorial](cordis-tutorial/index.md). 6 7 We recommend using an agent to expl…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:02:44.863Z","blocks":[{"k":"tool","name":"Bash","id":"call_c15fca7f0","input":"{\"command\": \"cd /Users/zn-ice/2026/deepseek-harness && git log --oneline -5 2>/dev/null; git describe --tags 2>/dev/null; echo \\\"---version---\\\"; grep '\\\"version\\\"' package.json | head -2; echo \\\"---docs size---\\\"; wc -l…","result":"cd5ef81481 Merge pull request #3248 from deepseek-harness/release/dsh-0.1.2-alpha.1 6c705be1ce release(dsh): 0.1.2-alpha.1 8437bfb9e4 Merge pull request #3074 from deepseek-harness/worktree/ptc-rename-base 188d77ed4b docs: sync remaining code mode-value prose to ptc in notes and spill README b7c71d8…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:03:08.514Z","blocks":[{"k":"thinking","t":"好，情况已经清晰： 1. **wiki 已有**：dsh 官方文档快照（32 页）→ entity 页 + 6 个 concepts（插件开发/分发/网络/前端/能力边界/cordis-vendoring）+ 三方对比。这些覆盖**插件生态视角**（怎么写插件、怎么分发、能力边界）。 2. **本地源码**：v0.1.2-alpha.1（比 2026-08-23 剪藏可能新），自带大量内部 doc…"}]},{"id":"msg_202608","ts":"2026-08-30T08:03:09.841Z","blocks":[{"k":"text","t":"源码 v0.1.2-alpha.1，`architecture.md` 质量很高，直接给出了 turn flow 核心。现在确认 raw/ 已剪藏范围 vs 仓库 docs/ 的缺口，并读几份核心小文档。"}]},{"id":"msg_202608","ts":"2026-08-30T08:03:11.552Z","blocks":[{"k":"tool","name":"Bash","id":"call_f5a1cc5e6","input":"{\"command\": \"ls /Users/zn-ice/2026/llm-wiki/raw/ | grep -i dsh; echo \\\"---subsystems---\\\"; ls /Users/zn-ice/2026/deepseek-harness/docs/subsystems/ 2>/dev/null; echo \\\"---cookbook---\\\"; ls /Users/zn-ice/2026/deepseek-harn…","result":"2026-08-23-dsh-docs-adding-a-package.md 2026-08-23-dsh-docs-architecture.md 2026-08-23-dsh-docs-build-a-tool.md 2026-08-23-dsh-docs-capability-roles.md 2026-08-23-dsh-docs-cli-reference.md 2026-08-23-dsh-docs-conversation-node.md 2026-08-23-dsh-docs-cordis-primer.md 2026-08-23-dsh-docs-extension-coo…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:03:11.859Z","blocks":[{"k":"tool","name":"Read","id":"call_40a125b99","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/docs/agent-lifecycle.md\"}","result":"1 <!-- Generated by scripts/gen-doc-graphs.ts - do not edit by hand. 2 Run `pnpm run gen-doc-graphs` to regenerate. --> 3 4 # Agent Turn And Step Lifecycle 5 6 This sequence is the visual companion to [architecture.md](architecture.md#turn-flow). It keeps durable replay facts on `session/event` and …","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:03:12.141Z","blocks":[{"k":"tool","name":"Read","id":"call_77b2a21d3","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/docs/tool-execution-pipeline.md\"}","result":"1 <!-- Generated by scripts/gen-doc-graphs.ts - do not edit by hand. 2 Run `pnpm run gen-doc-graphs` to regenerate. --> 3 4 # Tool Execution Pipeline 5 6 This graph shows where policy, hooks, sandboxing, filesystem guards, result rewriting, final-outcome observation, and UI rendering run without cha…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:03:12.477Z","blocks":[{"k":"tool","name":"Read","id":"call_92702b54a","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/docs/glossary.md\"}","result":"1 # Glossary 2 3 English | [中文](glossary.zh.md) 4 5 Domain vocabulary for DeepSeek Harness uses one canonical term per concept. Terms link to their entries with standard Markdown anchors; implementation detail stays in package READMEs and Agent Notes. 6 7 ## capability-seam 8 9 - **seam** — a *swapp…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:04:21.816Z","blocks":[{"k":"thinking","t":"好，信息量很大。现状总结： **已有 wiki 剪藏（32 页，2026-08-23）**：主要是 user/guide + 插件开发教程（tutorial 01-07、first-plugin、plugin-*、capability-roles、tool-reference、subsystem-attachment/client-modules/credentials/extensions/we…"}]},{"id":"msg_202608","ts":"2026-08-30T08:04:24.414Z","blocks":[{"k":"text","t":"查库完成。已有剪藏覆盖的是“插件怎么写”生态视角（tutorial/plugin-*/cookbook），而源码仓的**运行时架构文档**（agent-lifecycle、subsystems/ 45 份、tool-execution-pipeline、capability-seams 等）基本未落库——这正是本次增量。 现在并行派 4 个 Explore agent 深入四个域，同时我自己读事件总表和 core 子系统文档。"}]},{"id":"msg_202608","ts":"2026-08-30T08:04:24.538Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_03a856929","input":"{\"status\": \"completed\", \"taskId\": \"1\"}","result":"Updated task #1 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:04:24.734Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_f9105fe40","input":"{\"status\": \"completed\", \"taskId\": \"2\"}","result":"Updated task #2 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:04:25.059Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_0ddafed07","input":"{\"status\": \"in_progress\", \"taskId\": \"3\"}","result":"Updated task #3 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:04:47.913Z","blocks":[{"k":"tool","name":"Agent","id":"call_f83509dc9","input":"{\"description\": \"分析 agent loop 与 LLM 层\", \"prompt\": \"你在分析 DeepSeek Harness（dsh）源码仓 /Users/zn-ice/2026/deepseek-harness（TypeScript pnpm monorepo，版本 0.1.2-alpha.1）。只读，不修改。搜索广度：very thorough。\\n\\n你的领域：**agent 循环与 LLM/上下文层**。\\…"}]},{"id":"msg_202608","ts":"2026-08-30T08:04:56.531Z","blocks":[{"k":"tool","name":"Agent","id":"call_baa0925a3","input":"{\"description\": \"分析 session 域实现\", \"prompt\": \"你在分析 DeepSeek Harness（dsh）源码仓 /Users/zn-ice/2026/deepseek-harness（TypeScript pnpm monorepo，版本 0.1.2-alpha.1）。只读，不修改。搜索广度：very thorough。\\n\\n你的领域：**session 域（会话日志作为单一事实源）**。\\n\\n…"}]},{"id":"msg_202608","ts":"2026-08-30T08:05:08.204Z","blocks":[{"k":"tool","name":"Agent","id":"call_df693038d","input":"{\"description\": \"分析工具管线与安全域\", \"prompt\": \"你在分析 DeepSeek Harness（dsh）源码仓 /Users/zn-ice/2026/deepseek-harness（TypeScript pnpm monorepo，版本 0.1.2-alpha.1）。只读，不修改。搜索广度：very thorough。\\n\\n你的领域：**工具执行管线与安全/沙箱域**。\\n\\n必读文档：\\n- docs…"}]},{"id":"msg_202608","ts":"2026-08-30T08:05:19.866Z","blocks":[{"k":"tool","name":"Agent","id":"call_2b3ef841c","input":"{\"description\": \"分析自进化与协调面\", \"prompt\": \"你在分析 DeepSeek Harness（dsh）源码仓 /Users/zn-ice/2026/deepseek-harness（TypeScript pnpm monorepo，版本 0.1.2-alpha.1）。只读，不修改。搜索广度：very thorough。\\n\\n你的领域：**skill / subagent / 长任务协调面**（用户研究\\\"…"}]},{"id":"msg_202608","ts":"2026-08-30T08:05:20.188Z","blocks":[{"k":"tool","name":"Read","id":"call_266f230c8","input":"{\"file_path\": \"/Users/zn-ice/2026/deepseek-harness/docs/event-producer-consumer.md\"}","result":"1 <!-- Generated by scripts/gen-doc-graphs.ts - do not edit by hand. 2 Run `pnpm run gen-doc-graphs` to regenerate. --> 3 4 # Event Producer And Consumer Matrix 5 6 This matrix shows which packages dispatch each harness-owned event and which packages listen to it. Events are many-to-many, so the den…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:16:26.703Z","blocks":[{"k":"thinking","t":"4 个 Explore agent 全部返回了高质量报告，我自己也读了 event-producer-consumer.md。信息非常充分。 现在整理落盘计划。任务 3 完成。 **落盘内容规划**： 1. **raw/ 剪藏**：把本次分析的源码 docs 关键文件剪藏进 raw/（作为\"唯一事实来源\"）。哪些？ - `raw/2026-08-30-dsh-src-analysis.md` — …"}]},{"id":"msg_202608","ts":"2026-08-30T08:16:27.701Z","blocks":[{"k":"text","t":"四份深度报告全部返回，信息非常充分。现在进入落盘阶段：先读需要更新的页面（sources 来源页的“后续线索”、overview），并确认剪藏格式与待剪文档大小。"}]},{"id":"msg_202608","ts":"2026-08-30T08:16:27.820Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_ba7218575","input":"{\"status\": \"completed\", \"taskId\": \"3\"}","result":"Updated task #3 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:16:27.998Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_b9e76fea5","input":"{\"status\": \"in_progress\", \"taskId\": \"4\"}","result":"Updated task #4 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:16:28.316Z","blocks":[{"k":"tool","name":"Read","id":"call_ce59875eb","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md\"}","result":"1 --- 2 type: source 3 created: 2026-08-23 4 updated: 2026-08-23 5 sources: 6 - \"raw/2026-08-23-dsh-docs-repo-readme.md\" 7 - \"raw/2026-08-23-dsh-docs-architecture.md\" 8 - \"raw/2026-08-23-dsh-docs-cordis-primer.md\" 9 - \"raw/2026-08-23-dsh-docs-glossary.md\" 10 - \"raw/2026-08-23-dsh-docs-first-plugin.m…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:16:28.673Z","blocks":[{"k":"tool","name":"Read","id":"call_bf56adc1a","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/overview.md\"}","result":"1 --- 2 type: overview 3 created: 2026-08-23 4 updated: 2026-08-23 5 sources: 6 - \"raw/2026-04-04-karpathy-llm-wiki.md\" 7 - \"raw/2026-08-23-obsidian-docs-build-a-plugin.md\" 8 - \"raw/2026-08-23-obsidian-docs-submit-your-plugin.md\" 9 - \"raw/2026-08-23-obsidian-docs-developer-policies.md\" 10 - \"raw/202…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:16:31.324Z","blocks":[{"k":"tool","name":"Bash","id":"call_66962df7c","input":"{\"command\": \"head -20 /Users/zn-ice/2026/llm-wiki/raw/2026-08-23-dsh-docs-architecture.md; echo \\\"===sizes===\\\"; wc -l /Users/zn-ice/2026/deepseek-harness/docs/agent-lifecycle.md /Users/zn-ice/2026/deepseek-harness/docs/…","result":"--- source: https://github.com/deepseek-ai/deepseek-harness/blob/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/docs/architecture.zh.md repo_path: deepseek-ai/deepseek-harness@b150a551b8d465e31e418e1b2eaf5e79bbb7d28e / docs/architecture.zh.md accessed: 2026-08-23 note: 官方文档中文版剪藏（research；本地 clone @ b150a5…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:17:03.606Z","blocks":[{"k":"thinking","t":"好，剪藏格式确认。现在执行剪藏 + 写分析笔记。计划： **raw/ 新增（11 个文件）**： 1. `raw/2026-08-30-dsh-src-analysis.md` — 本次源码分析主笔记（四域综合，我的分析正文，这是\"AI 分析\"型 raw？不对——raw 是原始来源。分析笔记放 raw 还是 wiki？CLAUDE.md：raw/ 是原始来源（不可变），wiki 是我生成维护的。我…"}]},{"id":"msg_202608","ts":"2026-08-30T08:17:04.887Z","blocks":[{"k":"text","t":"落盘开始。先剪藏 9 份源码仓核心架构文档进 `raw/`（含来源页“后续线索”里登记待剪的 capability-seams.md），附 clip frontmatter、正文一字不动。"}]},{"id":"msg_202608","ts":"2026-08-30T08:17:06.209Z","blocks":[{"k":"tool","name":"Bash","id":"call_f2f8b6fdd","input":"{\"command\": \"cd /Users/zn-ice/2026/deepseek-harness && git rev-parse HEAD && ls docs/architecture.zh.md docs/capability-seams.zh.md docs/subsystems/core.zh.md 2>&1 | head -3\", \"description\": \"Get full commit hash and con…","result":"cd5ef8148158c3a752a658978873241fdf8e2bbc docs/architecture.zh.md docs/capability-seams.zh.md docs/subsystems/core.zh.md Shell cwd was reset to /Users/zn-ice/2026/llm-wiki","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:17:18.521Z","blocks":[{"k":"tool","name":"Bash","id":"call_e636c5d70","input":"{\"command\": \"REPO=/Users/zn-ice/2026/deepseek-harness\\nRAW=/Users/zn-ice/2026/llm-wiki/raw\\nHASH=cd5ef8148158c3a752a658978873241fdf8e2bbc\\ndeclare -A MAP=(\\n [\\\"2026-08-30-dsh-src-agent-lifecycle\\\"]=\\\"docs/agent-lifecycl…","result":"Exit code 1 (eval):15: bad substitution","err":true}]},{"id":"msg_202608","ts":"2026-08-30T08:17:24.612Z","blocks":[{"k":"thinking","t":"zsh 的关联数组语法问题。这个环境的 bash 可能实际是 zsh。改用简单成对列表方式。"}]},{"id":"msg_202608","ts":"2026-08-30T08:17:30.251Z","blocks":[{"k":"tool","name":"Bash","id":"call_b11d1cc10","input":"{\"command\": \"REPO=/Users/zn-ice/2026/deepseek-harness\\nRAW=/Users/zn-ice/2026/llm-wiki/raw\\nHASH=cd5ef8148158c3a752a658978873241fdf8e2bbc\\nPAIRS=\\\"2026-08-30-dsh-src-agent-lifecycle:docs/agent-lifecycle.zh.md\\n2026-08-30…","result":"wrote /Users/zn-ice/2026/llm-wiki/raw/2026-08-30-dsh-src-agent-lifecycle.md ( 91 lines) wrote /Users/zn-ice/2026/llm-wiki/raw/2026-08-30-dsh-src-tool-execution-pipeline.md ( 71 lines) wrote /Users/zn-ice/2026/llm-wiki/raw/2026-08-30-dsh-src-event-producer-consumer.md ( 94 lines) wrote /Users/zn-ice/…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:17:37.338Z","blocks":[{"k":"thinking","t":"9 份剪藏完成。现在写 wiki 页面。 1. `wiki/sources/dsh-source-runtime.md` — 来源页 2. `wiki/concepts/dsh-agent-loop.md` 3. `wiki/concepts/dsh-session-log.md` 4. `wiki/concepts/dsh-tool-pipeline.md` 5. `wiki/concepts/…"}]},{"id":"msg_202608","ts":"2026-08-30T08:17:37.767Z","blocks":[{"k":"text","t":"剪藏完成。现在写 wiki 页面——先写来源摘要页，再写 4 个概念页。"}]},{"id":"msg_202608","ts":"2026-08-30T08:18:23.049Z","blocks":[{"k":"tool","name":"Write","id":"call_a43de351b","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-source-runtime.md\", \"content\": \"---\\ntype: source\\ncreated: 2026-08-30\\nupdated: 2026-08-30\\nsources:\\n - \\\"raw/2026-08-30-dsh-src-agent-lifecycle.md\\\"\\n - \\\"ra…","result":"File created successfully at: /Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-source-runtime.md (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:19:14.339Z","blocks":[{"k":"tool","name":"Write","id":"call_26967af43","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-agent-loop.md\", \"content\": \"---\\ntype: concept\\ncreated: 2026-08-30\\nupdated: 2026-08-30\\nsources:\\n - \\\"raw/2026-08-30-dsh-src-agent-lifecycle.md\\\"\\n - \\\"raw/…","result":"File created successfully at: /Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-agent-loop.md (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:20:03.324Z","blocks":[{"k":"tool","name":"Write","id":"call_dc0edce99","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-session-log.md\", \"content\": \"---\\ntype: concept\\ncreated: 2026-08-30\\nupdated: 2026-08-30\\nsources:\\n - \\\"raw/2026-08-30-dsh-src-subsystem-session.md\\\"\\n - \\\"r…","result":"File created successfully at: /Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-session-log.md (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:20:43.368Z","blocks":[{"k":"tool","name":"Write","id":"call_db8a83c5c","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-tool-pipeline.md\", \"content\": \"---\\ntype: concept\\ncreated: 2026-08-30\\nupdated: 2026-08-30\\nsources:\\n - \\\"raw/2026-08-30-dsh-src-subsystem-tools.md\\\"\\n - \\\"r…","result":"File created successfully at: /Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-tool-pipeline.md (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:21:35.696Z","blocks":[{"k":"tool","name":"Write","id":"call_e197a600f","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-coordination-subsystems.md\", \"content\": \"---\\ntype: concept\\ncreated: 2026-08-30\\nupdated: 2026-08-30\\nsources:\\n - \\\"raw/2026-08-30-dsh-src-subsystem-skills.m…","result":"File created successfully at: /Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-coordination-subsystems.md (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:21:44.043Z","blocks":[{"k":"thinking","t":"4 个概念页 + 来源页写完。现在更新： 1. wiki/entities/deepseek-harness.md — 追加运行时架构小节 2. wiki/sources/dsh-official-docs.md — 后续线索更新（capability-seams 已剪） 3. wiki/overview.md — 主题更新 4. wiki/index.md — 新条目 5. wiki/log.m…"}]},{"id":"msg_202608","ts":"2026-08-30T08:21:45.186Z","blocks":[{"k":"text","t":"4 个概念页与来源页已写。现在更新既有页面：entity 页追加运行时架构维度、官方文档来源页的“后续线索”销账、overview 主题、index、log。"}]},{"id":"msg_202608","ts":"2026-08-30T08:21:46.231Z","blocks":[{"k":"tool","name":"Edit","id":"call_c4b3e1c7b","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md\", \"old_string\": \"type: entity\\ncreated: 2026-08-23\\nupdated: 2026-08-25\\nsources:\", \"new_string\": \"type: entity\\ncreated:…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:21:48.547Z","blocks":[{"k":"tool","name":"Edit","id":"call_1dd21bf4b","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md\", \"old_string\": \" - \\\"raw/2026-08-23-dsh-docs-subsystem-extensions.md\\\"\\n - \\\"raw/2026-08-23-dsh-docs-subsystem-client-mo…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:21:56.600Z","blocks":[{"k":"tool","name":"Edit","id":"call_e2e5abf18","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md\", \"old_string\": \"## 插件机制要点\", \"new_string\": \"## 运行时架构要点（2026-08-30 源码实读，v0.1.2-alpha.1 @ cd5ef814）\\n\\n- 本地 clone `/Users/z…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/entities/deepseek-harness.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:06.064Z","blocks":[{"k":"tool","name":"Edit","id":"call_7be8b9f9c","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md\", \"old_string\": \"type: source\\ncreated: 2026-08-23\\nupdated: 2026-08-23\\nsources:\", \"new_string\": \"type: source\\ncreated:…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:09.490Z","blocks":[{"k":"tool","name":"Edit","id":"call_37cd4889e","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md\", \"old_string\": \"- `capability-seams.md`（40KB 能力 seam 总目录）与 `config-catalog.md`、`module-graph.md`、`tool-catalog.md` 三份大目录…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:15.066Z","blocks":[{"k":"tool","name":"Edit","id":"call_fb6d1f56c","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md\", \"old_string\": \"- **新增待剪藏（2026-08-25 query 实读引用）**：`vendor/README.md`（9 包 manifest + 18 处修改日志）、`THIRD_PARTY_NOTICES.md`、…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/sources/dsh-official-docs.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:22.393Z","blocks":[{"k":"thinking","t":"继续：overview 更新 + index 更新 + log 追加。"}]},{"id":"msg_202608","ts":"2026-08-30T08:22:23.768Z","blocks":[{"k":"tool","name":"Edit","id":"call_eb4a0fd73","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/overview.md\", \"old_string\": \"type: overview\\ncreated: 2026-08-23\\nupdated: 2026-08-23\\nsources:\", \"new_string\": \"type: overview\\ncreated: 2026-08-23\\n…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/overview.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:31.553Z","blocks":[{"k":"tool","name":"Edit","id":"call_2b54873ed","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/overview.md\", \"old_string\": \"- **视频播放插件构想双平台化**：[[wiki/concepts/video-player-plugin-feasibility|Obsidian 版]]（demo 已验证）与 [[wiki/concepts/dsh-video-plug…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/overview.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:37.078Z","blocks":[{"k":"text","t":"现在我来同步 index 和 log。"}]},{"id":"msg_202608","ts":"2026-08-30T08:22:38.175Z","blocks":[{"k":"tool","name":"Edit","id":"call_79493348c","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/index.md\", \"old_string\": \"type: index\\ncreated: 2026-08-23\\nupdated: 2026-08-25\\nsources: []\", \"new_string\": \"type: index\\ncreated: 2026-08-23\\nupdate…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/index.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:41.503Z","blocks":[{"k":"tool","name":"Edit","id":"call_f70b6a29a","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/index.md\", \"old_string\": \"- [[wiki/sources/dsh-official-docs|DeepSeek Harness 官方文档（2026-08-23 快照，32 页）]] — 插件开发四部曲/Cordis 教程/实操手册/五子系统/CLI 参考合集；\\\"ever…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/index.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:47.644Z","blocks":[{"k":"tool","name":"Edit","id":"call_217a439e2","input":"{\"replace_all\": false, \"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/index.md\", \"old_string\": \"- [[wiki/concepts/dsh-video-plugin-feasibility|dsh 视频播放插件可行性]] — Web UI 完全可行（conversation node 渲染 video + webServer 自建路由）；工具…","result":"The file /Users/zn-ice/2026/llm-wiki/wiki/index.md has been updated successfully. (file state is current in your context — no need to Read it back)","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:22:53.605Z","blocks":[{"k":"tool","name":"Bash","id":"call_7bedcc5d7","input":"{\"command\": \"tail -20 /Users/zn-ice/2026/llm-wiki/wiki/log.md\", \"description\": \"Check log.md tail before appending\"}","result":"## [2026-08-23] query-filed | Obsidian 插件 UI 接入指南（前端新手向） - 起因：用户 query（插件在前端界面上怎么接入，前端不熟，要简单解释），答复末尾已提议并入 development 页，用户以 /llm-wiki-backfill 确认 - 更新：concepts/obsidian-plugin-development 新增\"UI 接入（前端新手向）\"一节——心智模型（界面即网页、插槽即注册函数）、六插槽表（ribbon/command/notice/settingTab/statusBar/registerView）、最少前端知识 4 概…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:23:14.526Z","blocks":[{"k":"tool","name":"Bash","id":"call_977e1f852","input":"{\"command\": \"cat >> /Users/zn-ice/2026/llm-wiki/wiki/log.md << 'EOF'\\n\\n## [2026-08-30] research | dsh 源码仓运行时架构（agent loop / session log / tool pipeline / 协调子系统）\\n\\n- 起因：用户要求分析本地代码仓 `/Users/zn-ice/2026/deepseek-harness`（…","result":"done 15","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:23:27.675Z","blocks":[{"k":"thinking","t":"log 追加完成（15 条）。任务 4 完成，任务 5 基本完成（index/log 已同步）。 最后验证一下：所有新文件存在、wikilink 指向正确。快速 ls 验证。 然后给用户最终答复：学习路径建议。 学习路径要基于本次分析 + wiki 已有内容设计。用户是\"想学习 DeepSeek Harness\"。已有 wiki：插件生态 6 页。本次新增：运行时 4 页。给出分层学习路径： 1.…"}]},{"id":"msg_202608","ts":"2026-08-30T08:23:27.876Z","blocks":[{"k":"text","t":"同步完成。最后验证一遍所有新文件与链接完整性。"}]},{"id":"msg_202608","ts":"2026-08-30T08:23:28.085Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_a62e2e8fc","input":"{\"status\": \"completed\", \"taskId\": \"4\"}","result":"Updated task #4 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:23:32.232Z","blocks":[{"k":"tool","name":"Bash","id":"call_c5734f917","input":"{\"command\": \"ls -la wiki/sources/dsh-source-runtime.md wiki/concepts/dsh-agent-loop.md wiki/concepts/dsh-session-log.md wiki/concepts/dsh-tool-pipeline.md wiki/concepts/dsh-coordination-subsystems.md raw/2026-08-30-dsh-s…","result":"raw/2026-08-30-dsh-src-agent-lifecycle.md (5287 bytes) raw/2026-08-30-dsh-src-capability-seams.md (47946 bytes) raw/2026-08-30-dsh-src-event-producer-consumer.md (23962 bytes) raw/2026-08-30-dsh-src-subsystem-compaction.md (17252 bytes) raw/2026-08-30-dsh-src-subsystem-core.md (59483 bytes) raw/2026…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:23:40.354Z","blocks":[{"k":"tool","name":"TaskUpdate","id":"call_4d11eedb9","input":"{\"status\": \"completed\", \"taskId\": \"5\"}","result":"Updated task #5 status","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:24:03.063Z","blocks":[{"k":"thinking","t":"全部完成。现在给最终答复： 1. 汇报本次做了什么（分析结论 + 落库清单） 2. 学习路径建议（核心交付物） 学习路径设计（基于本次对代码库的真实理解）： **先说分析核心结论**（简短）：dsh = Cordis 插件框架 + 运行时四支柱。 **学习路径**： 阶段 0：跑起来（半天） - `npx @deepseek-ai/dsh web`，用 Web UI 聊几句 - `dsh --pr…"}]},{"id":"msg_202608","ts":"2026-08-30T08:24:27.509Z","blocks":[{"k":"text","t":"全部完成，链接校验无断链。以下是本次工作的汇报和学习路径建议。 --- ## 一、分析结论（一句话版） **DeepSeek Harness（`dsh`）= vendored Cordis 插件框架 + 四大运行时支柱**。你 wiki 里已有的 6 页 dsh 概念（来自 32 页官方文档剪藏）覆盖的是“插件怎么写”的**生态面**；这次源码分析补上了“运行时怎么转”的**架构面**，核心发现： 1. **循环写日志**：`turn/step` 状态机（`ReactLoopAgent`）把每个动作都 append 进会话日志，\"model-visible means logged\" 是运行时断言的不变量——模型看到的一切必可从日志…"}]}],"tools":56,"errors":1,"agents":["分析 agent loop 与 LLM 层","分析 session 域实现","分析工具管线与安全域","分析自进化与协调面"],"tokens":6939639},{"prompt":"dsh最核心的代码是不是cordis？然后在cordis的基础上一步步进行其它拓展呢？","ts":"2026-08-30T08:34:19.437Z","steps":[{"id":"msg_202608","ts":"2026-08-30T08:35:17.187Z","blocks":[{"k":"thinking","t":"用户问：dsh 最核心的代码是不是 Cordis？然后在 Cordis 基础上一步步进行其它拓展？ 这是一个 query（查询）问题。按 CLAUDE.md 的 query 工作流： 1. 先读 wiki/index 定位相关页面（我已经很熟悉了，本次会话刚更新过） 2. 读相关页面；证据不足时读 raw/ 原文核对 3. 综合回答并附 wikilink；区分\"wiki 已有结论\"与\"本次新推理\"…"}]},{"id":"msg_202608","ts":"2026-08-30T08:35:43.617Z","blocks":[{"k":"text","t":"问得很准，但答案需要一层精化：**Cordis 是 dsh 的“机制核心”，但不是“复杂度核心”**。你的直觉“在 Cordis 基础上一步步拓展”方向正确，更准确的说法是**分层组合**——这是本库已有结论（[[wiki/concepts/dsh-plugin-capability-boundaries|dsh 插件化能力边界]]的“脊柱两层”节）+ 本次源码实读的实例补充。 ## 分层图：dsh 站在什么上面 ```text L4 应用 dsh web / headless / sdk / acp / python SDK L3 组合 profile → bundle → cordis.patch.yml（产品 = 配置行） L…"}]}],"tools":0,"errors":0,"agents":[],"tokens":265108},{"prompt":"seam和bundle是指什么？","ts":"2026-08-30T08:39:32.478Z","steps":[{"id":"msg_202608","ts":"2026-08-30T08:40:09.425Z","blocks":[{"k":"thinking","t":"用户问：seam 和 bundle 是指什么？ 这是一个 query。相关内容在 wiki 已有： - [[wiki/concepts/dsh-plugin-capability-boundaries]] — 30 core / 28 seam / 1 bundle，seam 三角色 - [[wiki/concepts/dsh-plugin-distribution]] — bundle 是分发单…"}]},{"id":"msg_202608","ts":"2026-08-30T08:40:10.392Z","blocks":[{"k":"text","t":"先读库里两个相关页面，确认已有表述的准确性。"}]},{"id":"msg_202608","ts":"2026-08-30T08:40:10.875Z","blocks":[{"k":"tool","name":"Read","id":"call_a7fc66053","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-plugin-capability-boundaries.md\"}","result":"1 --- 2 type: concept 3 created: 2026-08-25 4 updated: 2026-08-25 5 sources: 6 - \"raw/2026-08-23-dsh-docs-capability-roles.md\" 7 - \"raw/2026-08-23-dsh-docs-subsystem-web-server.md\" 8 --- 9 10 # dsh 插件化能力边界 11 12 **定义**：[[wiki/entities/deepseek-harness|dsh]] \"everything is a plugin\" 的精确边界——**形态上**一切能…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:40:11.306Z","blocks":[{"k":"tool","name":"Read","id":"call_03a238416","input":"{\"file_path\": \"/Users/zn-ice/2026/llm-wiki/wiki/concepts/dsh-plugin-distribution.md\"}","result":"1 --- 2 type: concept 3 created: 2026-08-23 4 updated: 2026-08-23 5 sources: 6 - \"raw/2026-08-23-dsh-docs-plugin-publish.md\" 7 - \"raw/2026-08-23-dsh-docs-cli-reference.md\" 8 - \"raw/2026-08-23-dsh-docs-repo-readme.md\" 9 - \"raw/2026-08-23-dsh-docs-adding-a-package.md\" 10 - \"raw/2026-08-23-dsh-docs-fir…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:40:51.717Z","blocks":[{"k":"thinking","t":"两页内容确认了。现在回答\"seam 和 bundle 是指什么\"。 要点： 1. **seam（能力缝/接缝）**——架构概念： - 定义（glossary 原文 + capability-boundaries 页）：一个**可整体替换的能力**，由三个角色组成：Service Definition（接口包，拥有 ctx.<key>，是抽象类不是 TS interface）+ Service Pr…"}]},{"id":"msg_202608","ts":"2026-08-30T08:40:52.712Z","blocks":[{"k":"text","t":"两个概念分属不同语境，而且\"bundle\"在 dsh 里还是个**同名异义**的坑。我先到 capability-seams 剪藏原文里核对普查语境下\"bundle 角色\"的准确定义。"}]},{"id":"msg_202608","ts":"2026-08-30T08:40:53.642Z","blocks":[{"k":"tool","name":"Bash","id":"call_447eb64d1","input":"{\"command\": \"grep -n -i -B2 -A6 \\\"bundle\\\" /Users/zn-ice/2026/llm-wiki/raw/2026-08-30-dsh-src-capability-seams.md | head -60\", \"description\": \"Check bundle role definition in capability-seams clipping\"}","result":"513-| `ctx.skills` | `seam` | [`skill`](../packages/skill/skill) | [`skill-badge`](../packages/skill/skill-badge), [`skill-filesystem`](../packages/skill/skill-filesystem) | [`tool-skill`](../packages/skill/tool-skill) | - | 合并提供方的 skill（技能）目录；tool-skill 渲染会话前缀目录，并加载完整的 skill 正文。 | 514-| `ctx.agents…","err":false}]},{"id":"msg_202608","ts":"2026-08-30T08:41:11.573Z","blocks":[{"k":"thinking","t":"确认了。capability-seams 总表的结构：每行 = ctx 键 | 角色（core/seam/bundle）| 定义包 | 提供方 | 消费方 | 说明。 - `ctx.agentLoop` 角色标 `bundle`——\"唯一的具体循环插件；扩展包依赖 dsh-agent 的事件和服务，而不依赖此包\" - seam 行有并列实现（提供方列有多项） - core 行提供方列为空 表头我还…"}]},{"id":"msg_202608","ts":"2026-08-30T08:41:32.261Z","blocks":[{"k":"text","t":"核对完毕，两个词都讲清楚了，还发现一个学习者必踩的坑：**bundle 在 dsh 里是两个不同的概念撞了名**。 ## seam（能力缝）——架构概念：“可以从缝里换掉实现的能力” **一句话**：seam = 一个**可整体替换的能力**，由固定三角色组成，三者合起来才叫一个 seam（glossary 原文：\"The seam is the complete capability, never one role\"）。 | 角色 | 是什么 | shell 能力的例子 | |---|---|---| | **Service Definition** | 接口包，拥有 `ctx.<key>`，规定词汇类型 | `dsh-shell…"}]}],"tools":3,"errors":0,"agents":[],"tokens":1236353},{"prompt":"意思是不是core不能插件定制，但seam可以插件定制？","ts":"2026-08-30T08:44:48.356Z","steps":[{"id":"msg_202608","ts":"2026-08-30T08:45:18.569Z","blocks":[{"k":"thinking","t":"用户问：是不是 core 不能插件定制，但 seam 可以插件定制？ 这是一个需要精确辨析的问题。基于已有 wiki 内容（capability-boundaries 页），答案是：**不完全对**。需要拆开\"定制\"这个词的几种含义： 1. **扩展/定制（往里加东西）**：core 和 seam 都可以。core 是注册表/公告栏，本来就是给你往里注册的——`ctx.tools` 注册新工具、`…"}]},{"id":"msg_202608","ts":"2026-08-30T08:45:32.877Z","blocks":[{"k":"text","t":"方向对了，但\"定制\"这个词里混着两件事——**扩展**（往里加东西）和**替换**（把实现换掉）。拆开之后答案就精确了： | | 扩展（往里加东西） | 替换（换掉实现本身） | |---|---|---| | **core**（30 个） | ✅ 这正是 core 存在的意义 | ⚠️ 机制上能 patch，但**没有第二实现**可换 | | **seam**（28 个） | ✅ | ✅ 换配置行即换实现，消费者无感 | ## core 不能\"插件定制\"？恰恰相反 core 大多是**注册表 / 公告栏 / 大门**，它们张开怀抱等插件来定制内容： - `ctx.tools`（注册表）——每个工具插件都来这注册 - `ctx.sy…"}]}],"tools":0,"errors":0,"agents":[],"tokens":286716},{"prompt":"是不是可以这么理解core其实是框架底座，是插件机制的一部分？然后seam是内置的提供给用户用的能力 ，这部分能力可以通过配置比较快的被插件替换掉。","ts":"2026-08-30T08:49:38.613Z","steps":[{"id":"msg_202608","ts":"2026-08-30T08:50:11.632Z","blocks":[{"k":"thinking","t":"用户提出了自己的理解模型： 1. core 是框架底座，是插件机制的一部分 2. seam 是内置的、提供给用户用的能力，可以通过配置比较快地被插件替换掉 这个理解对不对？需要精细辨析。这是个概念校准的时刻——用户在建立自己的心智模型，我要做的是确认对的部分、修正偏差的部分。 用户的理解 1：“core 是框架底座，是插件机制的一部分” 部分对，但有个重要偏差。 wiki 已有结论（capabil…"}]},{"id":"msg_202608","ts":"2026-08-30T08:50:29.200Z","blocks":[{"k":"text","t":"第二句基本准确（有个小修），第一句对了一半——“底座”对，但“插件机制的一部分”要修正。这正是这个体系里最容易混的一处： ## 修正 1：插件机制不在 core 里，在 Cordis 里 三层各归各位： ```text 插件机制本身 Cordis（vendor 9 包）：加载器、fiber、DI、事件总线——\"插座系统\" 领域底座 core dsh 自写的 30 个服务（sessions/tools/systemPrompt...） 可换能力 seam 28 个接口 + 并列实现 ``` core **不是插件机制的一部分**，而是**用插件机制造出来的第一层领域设施**。它们自己在形态上也是插件（也是配置行），但装的是 agent…"}]}],"tools":0,"errors":0,"agents":[],"tokens":290304},{"prompt":"git提交和推送远端","ts":"2026-09-05T09:15:03.590Z","steps":[{"id":"msg_202609","ts":"2026-09-05T09:15:21.482Z","blocks":[{"k":"thinking","t":"用户要求 git 提交并推送远端。这是 llm-wiki vault 仓库。我需要： 1. 检查 git status 看有哪些变更 2. 提交（commit message 按规范，结尾加 Co-Authored-By） 3. 推送 注意 Bash 工具说明：\"Commit or push only when the user asks. If on the default branch, br…"}]},{"id":"msg_202609","ts":"2026-09-05T09:15:22.098Z","blocks":[{"k":"tool","name":"Bash","id":"call_98be50a7a","input":"{\"command\": \"git status --short && echo \\\"---branch---\\\" && git branch --show-current && echo \\\"---log---\\\" && git log --oneline -5\", \"description\": \"Show working tree status, branch, recent commits\"}","result":"M wiki/entities/deepseek-harness.md M wiki/index.md M wiki/log.md M wiki/overview.md M wiki/sources/dsh-official-docs.md ?? raw/2026-08-30-dsh-src-agent-lifecycle.md ?? raw/2026-08-30-dsh-src-capability-seams.md ?? raw/2026-08-30-dsh-src-event-producer-consumer.md ?? raw/2026-08-30-dsh-src-subsystem…","err":false}]},{"id":"msg_202609","ts":"2026-09-05T09:15:35.214Z","blocks":[{"k":"thinking","t":"变更就是本次 research 的全部产物，历史惯例是直接提交到 main（个人 vault），commit message 风格：中文短句、类型前缀（raw: / query-filed: / Backfill:）。 本次是 research 产物，message 风格参照：\"research: dsh 源码仓运行时架构（9 剪藏 + 来源页 + 4 概念页 + index/log 同步）\"之类…"}]},{"id":"msg_202609","ts":"2026-09-05T09:15:35.631Z","blocks":[{"k":"text","t":"工作区改动全部是本次 research 的产物，仓库惯例是 main 直接提交。执行提交并推送。"}]},{"id":"msg_202609","ts":"2026-09-05T09:15:39.857Z","blocks":[{"k":"tool","name":"Bash","id":"call_fa2492623","input":"{\"command\": \"git add raw/2026-08-30-dsh-src-*.md wiki/concepts/dsh-agent-loop.md wiki/concepts/dsh-coordination-subsystems.md wiki/concepts/dsh-session-log.md wiki/concepts/dsh-tool-pipeline.md wiki/sources/dsh-source-ru…","result":"Exit code 128 [main 895a4f6] research: dsh 源码仓运行时架构（v0.1.2-alpha.1 实读） 19 files changed, 4699 insertions(+), 5 deletions(-) create mode 100644 raw/2026-08-30-dsh-src-agent-lifecycle.md create mode 100644 raw/2026-08-30-dsh-src-capability-seams.md create mode 100644 raw/2026-08-30-dsh-src-event-produ…","err":true}]},{"id":"msg_202609","ts":"2026-09-05T09:15:52.039Z","blocks":[{"k":"thinking","t":"提交成功（895a4f6，19 文件），但 push 失败：SSH 连接被关闭（\"Connection closed by UNKNOWN port 65535\"）——像是网络/SSH 代理问题。先看 remote 是什么，重试一次；如果是 SSH 端口问题，可以试 ssh -T git@github.com 诊断，或者看是否有 https 备选。 重试 push 一次。"}]},{"id":"msg_202609","ts":"2026-09-05T09:15:52.418Z","blocks":[{"k":"text","t":"提交成功（`895a4f6`，19 个文件），但推送时 SSH 连接被远端关闭。诊断一下。"}]},{"id":"msg_202609","ts":"2026-09-05T09:15:53.349Z","blocks":[{"k":"tool","name":"Bash","id":"call_48c2e7c2b","input":"{\"command\": \"git remote -v && echo \\\"---retry push---\\\" && git push 2>&1; echo \\\"---ssh test---\\\"; ssh -T git@github.com -o ConnectTimeout=8 2>&1 | head -3\", \"description\": \"Check remote, retry push, test SSH connectivit…","result":"origin git@github.com:Shadow-Azure/llm-wiki.git (fetch) origin git@github.com:Shadow-Azure/llm-wiki.git (push) ---retry push--- Connection closed by UNKNOWN port 65535 fatal: Could not read from remote repository. Please make sure you have the correct access rights and the repository exists. ---ssh …","err":false}]},{"id":"msg_202609","ts":"2026-09-05T09:16:11.305Z","blocks":[{"k":"thinking","t":"SSH 到 github.com 被关闭（连 ssh -T 都失败），\"UNKNOWN port 65535\" 通常是代理/VPN 拦截或 SSH 配置了 ProxyCommand 而代理没开。看看 ~/.ssh/config 是否有 github 的配置（ProxyCommand 等）。 可能的处理： 1. 检查 ~/.ssh/config 里 github.com 的配置 2. 尝试 ssh …"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:12.022Z","blocks":[{"k":"text","t":"SSH 到 GitHub 完全不通（连握手测试都失败）。查一下 SSH 配置里是否有代理设置，并测试 443 端口备选通道。"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:13.241Z","blocks":[{"k":"tool","name":"Bash","id":"call_f93ed9be8","input":"{\"command\": \"grep -A6 -i \\\"github\\\" ~/.ssh/config 2>/dev/null; echo \\\"---443 test---\\\"; ssh -T git@ssh.github.com -p 443 -o ConnectTimeout=8 2>&1 | head -3\", \"description\": \"Check SSH config for GitHub proxy settings, te…","result":"# GitHub via local HTTP proxy with fallback to direct connection Host github.com ProxyCommand sh -c \"nc -w 5 -X connect -x 127.0.0.1:7897 %h %p 2>/dev/null || nc -w 10 %h %p\" ServerAliveInterval 30 ServerAliveCountMax 4 ConnectTimeout 15 ---443 test--- Hi Shadow-Azure! You've successfully authentica…","err":false}]},{"id":"msg_202609","ts":"2026-09-05T09:16:27.578Z","blocks":[{"k":"thinking","t":"原因清楚了： - `~/.ssh/config` 里 github.com 配置了走本地 HTTP 代理 `127.0.0.1:7897`（fallback 直连） - 现在代理没开，且直连 22 端口也被墙（\"Connection closed\"） - 而 **ssh.github.com:443 直连是通的**（认证成功：Hi Shadow-Azure!） 所以最快方案：这次推送走 443 通…"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:29.118Z","blocks":[{"k":"text","t":"原因找到了：你的 `~/.ssh/config` 让 github.com 走本地代理 `127.0.0.1:7897`（代理当前没开，直连 22 端口也不通），而 **SSH over 443（ssh.github.com）是通的**且认证正常。本次直接走 443 通道推送，不动你的 SSH 配置。"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:29.916Z","blocks":[{"k":"tool","name":"Bash","id":"call_17936cb10","input":"{\"command\": \"git push ssh://git@ssh.github.com:443/Shadow-Azure/llm-wiki.git main && git status -sb | head -2\", \"description\": \"Push to GitHub via SSH over port 443\"}","result":"To ssh://ssh.github.com:443/Shadow-Azure/llm-wiki.git 5b10c4e..895a4f6 main -> main ## main...origin/main [ahead 1]","err":false}]},{"id":"msg_202609","ts":"2026-09-05T09:16:43.434Z","blocks":[{"k":"thinking","t":"推送实际成功了（5b10c4e..895a4f6 main -> main），但 `git status -sb` 显示 \"[ahead 1]\"——这是因为推送走的是显式 URL，不是 origin remote，所以 origin/main 的本地引用没更新。需要 `git fetch origin` 或用 git update-ref 更新。fetch origin 会失败（SSH 22 不通…"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:44.577Z","blocks":[{"k":"text","t":"推送成功了（`5b10c4e..895a4f6`）。因为这次走的是显式 URL 而非 origin 别名，本地的 `origin/main` 跟踪引用还停在旧位置，手动对齐一下："}]},{"id":"msg_202609","ts":"2026-09-05T09:16:45.056Z","blocks":[{"k":"tool","name":"Bash","id":"call_0aac1ddd0","input":"{\"command\": \"git update-ref refs/remotes/origin/main 895a4f6 && git status -sb | head -1\", \"description\": \"Sync local origin/main tracking ref\"}","result":"## main...origin/main","err":false}]},{"id":"msg_202609","ts":"2026-09-05T09:16:51.381Z","blocks":[{"k":"thinking","t":"完成。汇报： 1. 提交 895a4f6（19 文件，+4699 行）已推送远端成功 2. 推送走了 ssh.github.com:443 因为 22 端口/代理不通 3. 给一个一劳永逸的建议：ssh config 里把 fallback 改成 443 简短汇报即可。"}]},{"id":"msg_202609","ts":"2026-09-05T09:16:56.337Z","blocks":[{"k":"text","t":"完成。提交 `895a4f6` 已推送到 `origin/main`（19 个文件，+4699 行），工作区干净、本地与远端已对齐。 一个环境提示：这次 `git push`（走 `github.com:22`）失败是因为你 `~/.ssh/config` 里配置的本地代理 `127.0.0.1:7897` 没在运行、直连 22 端口也不通，最终是经 **SSH over 443**（`ssh.github.com:443`）推上去的。如果想一劳永逸，可以在 `~/.ssh/config` 的 github.com 段把 fallback 顺手补上 443 通道，比如把 ProxyCommand 那行改成： ```sshconfig…"}]}],"tools":6,"errors":1,"agents":[],"tokens":2802543}]};
 const TREE = {"050b81ba-9621-4992-84fe-106ae46eb36b":{"main":{"lines":172,"events":[{"line":11,"kind":"skill","name":"deep-research"},{"line":27,"kind":"skill","name":"superpowers:dispatching-parallel-agents"},{"line":33,"kind":"agent","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364"},{"line":34,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727"},{"line":35,"kind":"agent","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de"},{"line":36,"kind":"agent","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f"},{"line":37,"kind":"agent","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa"},{"line":68,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6"}]},"subs":[{"id":"a2895fbff994319b9","type":"general-purpose","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f","lines":218,"events":[],"children":[]},{"id":"a1e781fa406447bd1","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727","lines":67,"events":[],"children":[]},{"id":"a1b56297d1a40a4a3","type":"general-purpose","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de","lines":102,"events":[],"children":[]},{"id":"ac2160daf0faacf0e","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6","lines":115,"events":[],"children":[]},{"id":"aea6f9b15b1c40b11","type":"general-purpose","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa","lines":100,"events":[],"children":[]},{"id":"a52da9da97e2dfb47","type":"general-purpose","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364","lines":155,"events":[],"children":[]}]},"cb819c5b-286f-4eab-a681-4ba5414b844d":{"main":{"lines":765,"events":[{"line":24,"kind":"skill","name":"deep-research"},{"line":30,"kind":"workflow","name":"deep-research","toolUseId":"call_ca6fc28804434e5090e6a5e2"},{"line":86,"kind":"workflow","name":"workflow","toolUseId":"call_fafc9d21a30c430981d5baec"},{"line":96,"kind":"workflow","name":"workflow","toolUseId":"call_40746578c3e749b59f248000"}]},"subs":[{"id":"wf_1fb8ca61-c70","type":"workflow","desc":"56 个 workflow 子 agent","lines":0,"events":[],"children":[{"id":"ac36d6e975490864d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"a5a83bdb710566b2d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a6932a5807e8fe835","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a11c18476a850547b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"acd03e893a30ba3d3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"aa3767120db81c557","type":"workflow-subagent","desc":"","toolUseId":null,"lines":25,"events":[],"children":[]},{"id":"a07fd64b88a9fe721","type":"workflow-subagent","desc":"","toolUseId":null,"lines":20,"events":[],"children":[]},{"id":"a75602e08fcc4e0cd","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a16a4a2f8f83ebaf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":30,"events":[],"children":[]},{"id":"a096d8db77b01a2c5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"ae8dfe8fb668716fa","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"aa44961ca580ca971","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5de0c4193f235a20","type":"workflow-subagent","desc":"","toolUseId":null,"lines":15,"events":[],"children":[]},{"id":"a867160aa06bdb8c3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a24df81ee6d95db89","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a2a7fe251d67d3f00","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a6ccc55785f59078e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a205180ccb6595676","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a9dfeef3d5a082ea8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a88f36ebc60749319","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]},{"id":"a6b4c4c5610ee7220","type":"workflow-subagent","desc":"","toolUseId":null,"lines":8,"events":[],"children":[]},{"id":"a7ec3cc0abccf8f18","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a147c8d32bc363abc","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a8dfda2ac8a92b03f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a069628a22668b5bf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ab4ac00a69d52afdf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"af96fa5b003c9ba6a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a58d359839c447fc9","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a51f79677edf27d40","type":"workflow-subagent","desc":"","toolUseId":null,"lines":27,"events":[],"children":[]},{"id":"addf2ae8cc3cdc8a0","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5f5d43792060d25b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":26,"events":[],"children":[]},{"id":"a4ab3257583e408f5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac1b3cdaa9f4a0622","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a07750dfd9e1dbc31","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"ad5324b3bbbe5c9fb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ac9094285f2ae7124","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5b0a0b71a7d15b4a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"aaf97c90e144c2962","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a04db93ae03781487","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a4165f215195b2771","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac58eff7336630fd8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a42023f24122896d7","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5f24ff936197abf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":34,"events":[],"children":[]},{"id":"a1daa453c10c94610","type":"workflow-subagent","desc":"","toolUseId":null,"lines":6,"events":[],"children":[]},{"id":"a751831cbb4561874","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a6d5156449ac4d54b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":36,"events":[],"children":[]},{"id":"ac4b110729444739e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a1ed323809b4de3ab","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"a2648bb186362666c","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a9b38066ce599d0e3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":42,"events":[],"children":[]},{"id":"a609a6b4a290624e1","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"adf051df0e301c41d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a5063dc82b8cb21eb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a1e4c45c611d7b873","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a18da33bd1200e0f3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a163628a06fde4a4f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]}],"toolUseId":null,"line":30}]},"2f5e7ae8-c04a-46d2-a17a-0b431ef17d44":{"main":{"lines":245,"events":[{"line":70,"kind":"agent","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58"},{"line":71,"kind":"agent","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e"},{"line":72,"kind":"agent","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc"},{"line":73,"kind":"agent","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2"}]},"subs":[{"id":"a4e4e3c14f6f54077","type":"Explore","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc","lines":123,"events":[],"children":[]},{"id":"a7c4a9def54b2fa40","type":"Explore","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58","lines":148,"events":[],"children":[]},{"id":"aefdc8337a8afc051","type":"Explore","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2","lines":118,"events":[],"children":[]},{"id":"a131d7b1bd65cf691","type":"Explore","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e","lines":193,"events":[],"children":[]}]},"3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5":{"main":{"lines":390,"events":[{"line":15,"kind":"agent","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958"},{"line":16,"kind":"agent","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6"}]},"subs":[{"id":"ac5d429d5b911f846","type":"Explore","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958","lines":58,"events":[],"children":[]},{"id":"a67115fa5b0005ae5","type":"Explore","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6","lines":38,"events":[],"children":[]}]}};
 
+window.TREE = TREE;
+
 function switchTab(p) {
   document.getElementById("page-explorer").hidden = p !== "explorer";
   document.getElementById("page-timeline").hidden = p !== "timeline";
@@ -337,156 +371,14 @@ function renderList() {
 function fmtTok(t) { return t >= 1e6 ? (t/1e6).toFixed(1) + "M" : Math.round(t/1e3) + "k"; }
 function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
-/* ═════════════ 家族树渲染（递归 + 折叠） ═════════════ */
-const treeView = { k: 1, tx: 0, ty: 0 };
-let treeBounds = { w: 900, h: 470 };
-const expandedGroups = new Set();
-const ROW_H = 96, GROUP_H = 70, BAR_H = 16;
-
-function layoutTree(d) {
-  const flat = [];
-  (function walk(list) { list.forEach(n => { flat.push(n); walk(n.children || []); }); })(d.subs);
-  const maxLines = Math.max(d.main.lines, ...flat.map(n => n.lines || 0), 1);
-  const scale = 540 / maxLines;
-  const wOf = l => Math.max(90, Math.round((l || 0) * scale));
-  const nodes = [], links = [];
-  const root = { id: "main", kind: "main", label: "主会话", lines: d.main.lines,
-                 events: d.main.events, x: 60, y: 56, w: wOf(d.main.lines), h: BAR_H,
-                 children: d.subs };
-  nodes.push(root);
-  let cursorY = root.y + 110;
-
-  function placeChildren(parent, children) {
-    if (!children.length) return;
-    if (children.length > 8 && !expandedGroups.has(parent.id)) {
-      const g = { id: parent.id + ":group", kind: "group", parent,
-                  x: parent.x + 24, y: cursorY, w: 220, h: 16,
-                  label: `${children.length} 个子 agent · 点击展开` };
-      nodes.push(g);
-      links.push({ from: parent, to: g, pct: 0.45 });
-      cursorY += GROUP_H + 22;
-      return;
-    }
-    children.forEach((c, i) => {
-      const line = c.line != null ? c.line : 0;
-      const pct = Math.min(0.98, line / Math.max(parent.lines, 1));
-      const node = { id: c.id, kind: c.type === "workflow" ? "workflow" : "sub", parent,
-                     label: `${c.type} · ${c.desc}`, lines: c.lines || 0,
-                     events: c.events || [], children: c.children || [],
-                     x: parent.x + pct * parent.w + i * 8, y: cursorY,
-                     w: wOf(c.lines || 0), h: BAR_H };
-      nodes.push(node);
-      links.push({ from: parent, to: node, pct });
-      cursorY += ROW_H;
-      placeChildren(node, node.children);
-    });
-  }
-  placeChildren(root, root.children);
-  return { nodes, links, w: Math.max(...nodes.map(n => n.x + n.w)) + 50, h: cursorY + 30 };
-}
-
-function drawTree(sid) {
-  const d = TREE[sid];
-  const host = document.getElementById("famTree");
-  if (!host || !d) return;
-  const { nodes, links, w, h } = layoutTree(d);
-  let s = "";
-  links.forEach(l => {
-    const mx = l.from.x + l.pct * l.from.w;
-    const my = l.from.y + l.from.h;
-    const cy = l.to.y + l.to.h / 2;
-    s += `<path class="tn-line" d="M ${mx} ${my} V ${cy} H ${l.to.x}" />`;
-  });
-  nodes.forEach(n => {
-    if (n.kind === "group") {
-      s += `<g class="tn-group" data-group="${esc(n.parent.id)}" style="cursor:pointer">
-        <rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="8" fill="none" stroke="#9aa2ae" stroke-dasharray="4 3"/>
-        <text x="${n.x + n.w / 2}" y="${n.y + 12}" text-anchor="middle" class="tn-skill" style="fill:var(--text-dim)">${esc(n.label)}</text>
-        <title>点击展开 ${n.label}</title></g>`;
-      return;
-    }
-    const label = n.kind === "main" ? `主会话 · ${n.lines} 行` : `${esc(n.label)} · ${n.lines} 行`;
-    s += `<text class="tn-label" x="${n.x}" y="${n.y - 10}">${label}</text>`;
-    s += `<rect class="tn-bar ${n.kind === "sub" ? "sub" : n.kind === "workflow" ? "wf" : ""}" x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="${n.h/2}"><title>${esc(n.label)} · ${n.lines} 行</title></rect>`;
-    let skillRow = 0;
-    (n.events || []).forEach(e => {
-      const mx = n.x + (e.line / Math.max(n.lines, 1)) * n.w;
-      if (e.kind === "skill") {
-        const ly = n.y + n.h + 16 + (skillRow % 2) * 13;
-        s += `<rect class="tn-mark-skill" x="${mx - 4}" y="${n.y + n.h/2 - 4}" width="8" height="8" transform="rotate(45 ${mx} ${n.y + n.h/2})" rx="1"><title>L${e.line} · Skill: ${esc(e.name)}</title></rect>`;
-        s += `<line x1="${mx}" y1="${n.y + n.h}" x2="${mx}" y2="${ly - 9}" stroke="#c9cfd9" stroke-width="0.8"/>`;
-        s += `<text class="tn-skill" x="${mx + 3}" y="${ly}">${esc(e.name)}</text>`;
-        skillRow++;
-      } else {
-        s += `<polygon class="tn-mark-agent" points="${mx - 5},${n.y + n.h} ${mx + 5},${n.y + n.h} ${mx},${n.y + n.h + 8}"><title>L${e.line} · ${e.kind === "workflow" ? "Workflow" : "派生 subagent"}: ${esc(e.desc || e.name || "")}</title></polygon>`;
-      }
-    });
-  });
-  host.innerHTML = `<g id="treeLayer">${s}</g>`;
-  host.setAttribute("viewBox", "0 0 960 470");
-  treeBounds = { w, h };
-  treeView.k = 1; treeView.tx = 0; treeView.ty = 0;
-  applyTreeTransform();
-  const hint = document.querySelector(".tn-hint");
-  if (hint) hint.textContent = `共 ${nodes.length} 个节点 · 拖拽平移 · 滚轮缩放 · 适应 = 看全貌`;
-}
-
-function applyTreeTransform() {
-  const g = document.getElementById("treeLayer");
-  if (!g) return;
-  g.setAttribute("transform", `translate(${treeView.tx} ${treeView.ty}) scale(${treeView.k})`);
-}
-
-function bindTreeInteractions() {
-  const svg = document.getElementById("famTree");
-  let dragging = false, sx = 0, sy = 0;
-  svg.addEventListener("pointerdown", e => {
-    dragging = true; sx = e.clientX - treeView.tx; sy = e.clientY - treeView.ty;
-    svg.classList.add("dragging");
-    svg.setPointerCapture(e.pointerId);
-  });
-  svg.addEventListener("pointermove", e => {
-    if (!dragging) return;
-    treeView.tx = e.clientX - sx; treeView.ty = e.clientY - sy;
-    applyTreeTransform();
-  });
-  svg.addEventListener("pointerup", () => { dragging = false; svg.classList.remove("dragging"); });
-  svg.addEventListener("wheel", e => {
-    e.preventDefault();
-    const rect = svg.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const k2 = Math.min(5, Math.max(0.3, treeView.k * Math.exp(-e.deltaY * 0.0015)));
-    treeView.tx = mx - (mx - treeView.tx) * (k2 / treeView.k);
-    treeView.ty = my - (my - treeView.ty) * (k2 / treeView.k);
-    treeView.k = k2;
-    applyTreeTransform();
-  }, { passive: false });
-  document.getElementById("zoomIn").onclick = () => { treeView.k = Math.min(5, treeView.k * 1.25); applyTreeTransform(); };
-  document.getElementById("zoomOut").onclick = () => { treeView.k = Math.max(0.3, treeView.k / 1.25); applyTreeTransform(); };
-  svg.addEventListener("click", e => {
-    const g = e.target.closest ? e.target.closest("[data-group]") : null;
-    if (!g) return;
-    const id = g.getAttribute("data-group");
-    expandedGroups.has(id) ? expandedGroups.delete(id) : expandedGroups.add(id);
-    drawTree(selectedId);
-  });
-  document.getElementById("zoomFit").onclick = () => {
-    const { w, h } = treeBounds;
-    const k = Math.max(0.3, Math.min(1, 920 / w, 440 / h));
-    treeView.k = k;
-    treeView.tx = (960 - w * k) / 2;
-    treeView.ty = 15;
-    applyTreeTransform();
-  };
-}
-
 function renderMain() {
+  window.__unmountFamilyTree?.();
   const s = SESSIONS.find(x => x.id === selectedId);
   if (!s) {
     mainEl.innerHTML = `<div class="placeholder">
       <div class="icon">⇢</div>
       <b style="color:var(--text-dim)">未选择 Session</b>
-      <div class="hint">从左侧选择一个会话查看家族树。整棵树画在一张可缩放画布上：每个节点是一个 agent，横条是它的执行流，标记按日志行号定位。</div>
+      <div class="hint">从左侧选择一个会话查看家族树。画布上每个节点是一个 agent，横条长度 ∝ 日志行数，触发标记按行号定位。</div>
     </div>`;
     return;
   }
@@ -515,25 +407,23 @@ function renderMain() {
       <div class="ss warn"><b>${failRate(s).toFixed(1)}</b><span>失败/百步</span></div>
       <div class="ss warn"><b>${findRate(s).toFixed(1)}</b><span>问题/百步</span></div>
     </div>
-    <div class="section-title" style="margin-bottom:6px">家族树 · 执行流与触发时序（横条 = 该 agent 的日志，比例 = 行号位置）</div>
+    <div class="section-title" style="margin-bottom:6px">家族树 · 执行流与触发时序（横条 = 日志行数，标记 = 触发位置）</div>
     <div class="tree-panel">
-      <div class="tree-toolbar">
-        <button id="zoomIn" title="放大">＋</button>
-        <button id="zoomOut" title="缩小">－</button>
-        <button id="zoomFit" class="fit" title="显示整棵树">适应</button>
-      </div>
       <div class="tree-legend">
-        <span><i style="background: color-mix(in srgb, var(--blue) 30%, #fff)"></i>主会话执行流</span>
-        <span><i style="background: color-mix(in srgb, var(--purple) 22%, #fff)"></i>子 agent 执行流</span>
-        <span><span class="diamond"></span>Skill 触发</span>
-        <span><span class="tri"></span>Subagent 触发</span>
-        <span><i style="background: color-mix(in srgb, var(--orange) 30%, #fff)"></i>Workflow 组</span>
+        <span><i class="sw session"></i>主会话</span>
+        <span><i class="sw sub"></i>子 agent</span>
+        <span><i class="sw wf"></i>Workflow</span>
+        <span><span class="diamond skill"></span>Skill 触发</span>
+        <span><span class="diamond agent"></span>Subagent 触发</span>
+        <span><i class="sw finding"></i>问题（打桩）</span>
+        <span class="hint">滚轮缩放 · 拖拽平移 · 右下角适应</span>
       </div>
-      <div class="tn-hint">拖拽平移 · 滚轮缩放 · 适应 = 看全貌</div>
-      <svg id="famTree"></svg>
-    </div>`;
-  drawTree(s.id);
-  bindTreeInteractions();
+      <div id="famTree" class="rf-canvas"><div class="rf-loading">家族树加载中…</div></div>
+    </div>
+    <div class="section-title" style="margin:16px 0 8px 2px">问题列表（${s.findings}）</div>
+    <div id="findingList" class="finding-list"></div>`;
+  if (window.__mountFamilyTree) window.__mountFamilyTree(s.id, s.findings);
+  else window.__pendingTree = { sid: s.id, findings: s.findings };
 }
 
 function select(id) {
@@ -688,6 +578,744 @@ function renderTimeline() {
   });
 }
 renderTimeline();
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.2.0",
+    "react/": "https://esm.sh/react@19.2.0/",
+    "react/jsx-runtime": "https://esm.sh/react@19.2.0/jsx-runtime",
+    "react/jsx-dev-runtime": "https://esm.sh/react@19.2.0/jsx-dev-runtime",
+    "react-dom": "https://esm.sh/react-dom@19.2.0?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@19.2.0/client?external=react",
+    "@xyflow/react": "https://esm.sh/@xyflow/react@12.12.0?external=react,react-dom",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+
+<script>
+setTimeout(() => {
+  if (window.__mountFamilyTree) return;
+  const host = document.getElementById("famTree");
+  if (host && !host.querySelector(".react-flow")) {
+    host.innerHTML = '<div class="rf-error">家族树资源加载失败：需要能访问 esm.sh 与 unpkg.com（React / React Flow 走 CDN）。</div>';
+  }
+}, 8000);
+</script>
+
+<script type="module">
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
+import {
+  ReactFlow, Background, Controls, Handle, Position,
+  useNodesState, useEdgesState, MarkerType, useReactFlow, useNodesInitialized,
+} from "@xyflow/react";
+import htm from "htm";
+const html = htm.bind(React.createElement);
+
+const TREE = window.TREE || {};
+
+/* 精确测量文字宽度（与药丸 / 标签同字体），避免药丸留白与问题卡压住标签 */
+const _mc = document.createElement("canvas").getContext("2d");
+function measureW(text, font) {
+  _mc.font = font;
+  return _mc.measureText(text).width;
+}
+function skillPillW(name) {
+  const font = '10.5px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  return Math.round(measureW(name, font) + 40); // 内边距 20 + 圆点 6 + 间距 5 + 边框/余量
+}
+function agentLabelW(label) {
+  const font = '11px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+  return Math.round(measureW(label, font));
+}
+
+const NODE_W = (lines, maxLines) => Math.max(120, Math.min(560, Math.round((lines || 0) / maxLines * 540)));
+
+/* 把递归树转成 React Flow 的 nodes/edges；位置=触发点，宽度∝日志行数 */
+function buildGraph(sid, expanded, findingsBudget) {
+  const d = TREE[sid];
+  if (!d) return { nodes: [], edges: [], findings: [] };
+  const flat = [];
+  (function walk(list) { list.forEach(n => { flat.push(n); walk(n.children || []); }); })(d.subs);
+  const maxLines = Math.max(d.main.lines, ...flat.map(n => n.lines || 0), 1);
+  const wOf = l => NODE_W(l, maxLines);
+  const nodes = [], edges = [];
+  const rootW = wOf(d.main.lines);
+  const mainMarks = marksOf(d.main.events, d.main.lines);
+  nodes.push({
+    id: "main", type: "agent",
+    position: { x: 60, y: 40 },
+    data: { label: "主会话", kind: "root", w: rootW, visualW: rootW, lines: d.main.lines, desc: "主会话", marks: mainMarks },
+  });
+  const skillNodes = [];
+  const explicitAgentFindings = [];
+  const branchVSegs = [];
+  let budget = Math.max(0, findingsBudget || 0);
+  let cursorY = 40 + 130;
+  let row = 1;
+  let lastX = 60;
+  const INDENT = 46, MIN_STEP = 38;
+
+  function marksOf(events, lines) {
+    return (events || []).map((e, i) => ({
+      id: i, kind: e.kind, line: e.line, name: e.name, desc: e.desc,
+      pct: Math.min(0.98, (e.line || 0) / Math.max(lines, 1)),
+      title: `L${e.line} · ${e.kind === "skill" ? e.name : (e.desc || e.name || "")}`,
+    }));
+  }
+
+  function childEventIndex(parentEvents, child) {
+    if (!parentEvents) return -1;
+    if (child.toolUseId) {
+      const i = parentEvents.findIndex(e => e.toolUseId === child.toolUseId);
+      if (i >= 0) return i;
+    }
+    return parentEvents.findIndex(e => e.kind === "workflow");
+  }
+
+  function addSkillNodes(nodeId, nodeX, nodeY, nodeW, events, lines) {
+    let k = 0;  // 同一节点上的多个 skill 竖向堆叠，避免互相压住
+    (events || []).forEach((e, i) => {
+      if (e.kind !== "skill") return;
+      const name = e.name || "skill";
+      const pw = skillPillW(name);
+      const px = nodeX - pw - 14;
+      const skillId = `${nodeId}-skill-${i}`;
+      nodes.push({
+        id: skillId, type: "skill",
+        position: { x: px, y: nodeY + 50 + k * 66 },
+        data: { name, line: e.line, w: pw, findings: e.findings || [] },
+      });
+      skillNodes.push({ sid: skillId, agent: nodeId, name, x: px, y: nodeY + 50 + k * 66, w: pw, findings: e.findings || [] });
+      k += 1;
+      edges.push({
+        id: `e-${nodeId}-skill-${i}`,
+        source: nodeId, sourceHandle: "h" + i,
+        target: skillId, targetHandle: "in",
+        type: "skilledge",
+        style: { stroke: "#158a8a", strokeWidth: 1.2, strokeDasharray: "4 3" },
+      });
+    });
+  }
+
+  function rowX(trigger) {
+    const x = Math.max(lastX + MIN_STEP, 40 + row * INDENT, trigger + 14);
+    lastX = x;
+    return x;
+  }
+
+  function place(parentNode, parentData, children) {
+    if (!children || !children.length) return;
+    const lineOf = (c) => {
+      if (c.line != null) return c.line;
+      if (c.toolUseId && parentData.events) {
+        const e = parentData.events.find(x => x.toolUseId === c.toolUseId);
+        if (e) return e.line;
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
+    const sorted = children
+      .map((c, i) => ({ c, i, k: lineOf(c) }))
+      .sort((x, y) => (x.k - y.k) || (x.i - y.i))
+      .map(x => x.c);
+    const tooMany = sorted.length > 8 && !expanded[parentNode];
+    if (tooMany) {
+      const gid = parentNode + "-group";
+      const gi = Math.max(childEventIndex(parentData.events, sorted[0]), 0);
+      const x = rowX(parentData.x + ((parentData.events?.[gi]?.line ?? 0) / Math.max(parentData.lines, 1)) * parentData.w);
+      nodes.push({
+        id: gid, type: "collapse",
+        position: { x, y: cursorY },
+        data: { label: `${sorted.length} 个子 agent · 点击展开`, parent: parentNode },
+      });
+      edges.push({
+        id: `e-${parentNode}-${gid}`,
+        source: parentNode, sourceHandle: "h" + gi,
+        target: gid, targetHandle: "in",
+        type: "orth", style: { stroke: "#c4cbd6", strokeWidth: 1.4 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#c4cbd6", width: 12, height: 12 },
+      });
+      cursorY += 96; row += 1;
+      return;
+    }
+
+    // 触发点相近的兄弟共用一个竖直通道：否则 L70~L73 这种连续触发会叠成一条灰带
+    const childInfo = sorted.map(c => {
+      const evIdx = childEventIndex(parentData.events, c);
+      const pct = evIdx >= 0 ? Math.min(0.98, (parentData.events[evIdx].line || 0) / Math.max(parentData.lines, 1)) : 0.45;
+      return { c, evIdx, triggerX: parentData.x + pct * parentData.w };
+    });
+    const clusters = [];
+    childInfo.forEach(info => {
+      const last = clusters[clusters.length - 1];
+      if (last && info.triggerX - last.maxTx <= 24) {
+        last.maxTx = info.triggerX;
+        last.items.push(info);
+      } else {
+        clusters.push({ minTx: info.triggerX, maxTx: info.triggerX, items: [info] });
+      }
+    });
+    const trunkOf = new Map();
+    clusters.forEach(cl => cl.items.forEach(it => trunkOf.set(it.c.id, { evIdx: cl.items[0].evIdx })));
+
+    childInfo.forEach(({ c, evIdx, triggerX }, idx) => {
+      c.__idx = idx;
+      const nodeY = cursorY;
+      const x = rowX(triggerX);
+      const trunk = trunkOf.get(c.id);
+      const sourceEvIdx = Math.max(trunk.evIdx, 0);
+      const sourceMark = parentData.events?.[sourceEvIdx];
+      const trunkX = sourceMark
+        ? parentData.x + Math.min(0.98, (sourceMark.line || 0) / Math.max(parentData.lines, 1)) * parentData.w
+        : triggerX;
+      const w = wOf(c.lines);
+      const label = `${c.type}${c.desc ? " · " + c.desc : ""}${evIdx >= 0 ? " · L" + parentData.events[evIdx].line : ""}`;
+      const visualW = Math.max(w, agentLabelW(label) + 60);
+      const nodeMarks = (c.type === "workflow" && (!c.events || !c.events.length))
+        ? [{ id: 0, kind: "workflow", pct: 0.5, title: "workflow run" }]
+        : marksOf(c.events, c.lines || 0);
+      nodes.push({
+        id: c.id, type: "agent",
+        position: { x, y: nodeY },
+        data: {
+          label, kind: c.type === "workflow" ? "wf" : "sub",
+          w, visualW, lines: c.lines || 0,
+          desc: c.desc || c.type,
+          marks: nodeMarks, events: c.events,
+        },
+      });
+      edges.push({
+        id: `e-${parentNode}-${c.id}`,
+        source: parentNode, sourceHandle: "h" + sourceEvIdx,
+        target: c.id, targetHandle: "in",
+        type: "orth", data: { idx, trunkX }, style: { stroke: "#c4cbd6", strokeWidth: 1.4 },
+      });
+      const childCenterY = nodeY + 28;
+      const parentCenterY = (parentData.y ?? 40) + 28;
+      branchVSegs.push({
+        source: parentNode, target: c.id, x: trunkX,
+        y1: Math.min(parentCenterY, childCenterY),
+        y2: Math.max(parentCenterY, childCenterY),
+      });
+      if (c.findings?.length) {
+        explicitAgentFindings.push({ id: c.id, x, y: nodeY, w, visualW, texts: c.findings });
+      }
+      addSkillNodes(c.id, x, nodeY, w, c.events, c.lines || 0);
+      cursorY += 108; row += 1;
+      place(c.id, { x, y: nodeY, w, events: c.events, lines: c.lines || 0 }, c.children || []);
+    });
+  }
+
+  addSkillNodes("main", 60, 40, rootW, d.main.events, d.main.lines);
+  const mainData = { x: 60, y: 40, w: rootW, events: d.main.events, lines: d.main.lines };
+  if (d.main.findings?.length) {
+    explicitAgentFindings.push({ id: "main", x: 60, y: 40, w: rootW, visualW: rootW, texts: d.main.findings });
+  }
+  place("main", mainData, d.subs);
+
+  const RED = "#d63c3c";
+  const textW = (s) => [...s].reduce((a, ch) => a + (/[\u2e80-\uffff]/.test(ch) ? 10.8 : 6.3), 0);
+  const BOX_H = 22, GAP = 6;
+  let fn = 1;
+  const findingsOut = [];
+  function makeFinding(def) {
+    return { no: fn++, ...def };
+  }
+
+  const CODE_CASES = {
+    "050b81ba-9621-4992-84fe-106ae46eb36b": {
+      title: "检索索引读取失败",
+      subject: "检索索引",
+      file: "apps/server/src/search/index.ts",
+      line: 142,
+      err: "ENOENT: no such file or directory, open 'data/index.json'",
+      impact: "该轮 5 条结论没有来源",
+    },
+    "cb819c5b-286f-4eab-a681-4ba5414b844d": {
+      title: "检索结果反序列化失败",
+      subject: "检索结果",
+      file: "apps/server/src/search/fetch.ts",
+      line: 88,
+      err: "TypeError: Cannot read properties of undefined (reading 'items')",
+      impact: "该次检索返回 0 条结果",
+    },
+    "2f5e7ae8-c04a-46d2-a17a-0b431ef17d44": {
+      title: "会话快照读取越界",
+      subject: "会话快照",
+      file: "apps/server/src/sessions/load.ts",
+      line: 142,
+      err: "TypeError: Cannot read properties of undefined (reading 'turns')",
+      impact: "该步结果被丢弃",
+    },
+    "3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5": {
+      title: "插件清单解析失败",
+      subject: "插件清单",
+      file: "apps/server/src/plugins/load.ts",
+      line: 57,
+      err: "SyntaxError: Unexpected token '<'",
+      impact: "插件清单未加载，后续分析缺少插件事件",
+    },
+  };
+
+  function skillDef(idx, skill) {
+    if (idx % 2) {
+      return {
+        title: "输出缺少来源校验",
+        label: "skill出现问题：输出缺少来源校验",
+        detail: "skill 输出的 12 条结论中有 5 条没有附带来源，后续汇总无法回溯。",
+        facts: [
+          { k: "结论", v: "12 条" },
+          { k: "无来源", v: "5 条" },
+          { k: "来源覆盖率", v: "58%" },
+        ],
+        target: `skill · ${skill.name}`,
+        severity: "error",
+        kind: "quality",
+      };
+    }
+    return {
+      title: "重复加载",
+      label: "skill出现问题：重复加载",
+      detail: "同一份检索模板在 3 个步骤中重复加载，未命中缓存，额外产生 2 次工具调用。",
+      facts: [
+        { k: "调用次数", v: "3" },
+        { k: "缓存命中", v: "0 / 3" },
+        { k: "额外耗时", v: "≈ 12s" },
+      ],
+      target: `skill · ${skill.name}`,
+      severity: "error",
+      kind: "quality",
+    };
+  }
+
+  function reportedDef(m, finder, sid) {
+    const cc = CODE_CASES[sid] || CODE_CASES["050b81ba-9621-4992-84fe-106ae46eb36b"];
+    const typeLabel = m.kind === "skill" ? "skill" : "subagent";
+    return {
+      title: cc.title,
+      label: `${finder} ${typeLabel}发现前置步骤存在问题：${cc.title}`,
+      detail: `${finder} 在读取前置步骤的${cc.subject}时抛出异常；${cc.impact}。`,
+      facts: [
+        { k: "文件", v: cc.file, mono: true },
+        { k: "行号", v: String(cc.line), mono: true },
+        { k: "错误", v: cc.err, mono: true },
+      ],
+      target: `前置步骤 · ${finder}`,
+      severity: "error",
+      kind: "code",
+    };
+  }
+
+  function lastDefs(sid, lastAgent) {
+    const isWf = lastAgent.data.kind === "wf";
+    const desc = lastAgent.data.desc || "subagent";
+    const target = `${isWf ? "workflow" : "subagent"} · ${desc}`;
+    const duration = {
+      title: "执行时间过长",
+      label: "subagent出现问题：执行时间过长",
+      detail: isWf
+        ? "预计该 workflow 执行时间不超过 30min，实际执行 2h 12m；主要耗时在重复检索与工具等待。"
+        : `预计 ${desc} subagent 执行时间不超过 30min，实际执行 2h 12m；主要耗时在重复检索与工具等待。`,
+      facts: [
+        { k: "预期", v: "≤ 30 min" },
+        { k: "实际", v: "2 h 12 m" },
+        { k: "超出", v: "4.4×" },
+      ],
+      target,
+      severity: "error",
+      kind: "duration",
+    };
+    const scope = {
+      title: "执行范围越界",
+      label: "subagent出现问题：执行范围越界",
+      detail: "处理了任务边界外的 3 个文件，修改范围超出 prompt 约定，且未在结果中说明。",
+      facts: [
+        { k: "越界文件", v: "3" },
+        { k: "变更行", v: "+182 / −46" },
+        { k: "约定范围", v: "仅分析 session 域" },
+      ],
+      target,
+      severity: "error",
+      kind: "scope",
+    };
+    const repeat = {
+      title: "子任务重复抓取",
+      label: "subagent出现问题：子任务重复抓取",
+      detail: "对同一个 URL 连续抓取 4 次，未复用前一次结果，产生 3 次额外请求。",
+      facts: [
+        { k: "URL", v: "https://example.com/docs/session", mono: true },
+        { k: "抓取次数", v: "4" },
+        { k: "额外请求", v: "3" },
+      ],
+      target,
+      severity: "error",
+      kind: "quality",
+    };
+    if (sid.startsWith("3f8e")) return [scope, repeat];
+    return [duration, scope, repeat];
+  }
+
+  function addFindings(targetId, anchorX, centerY, side, items, trunkX) {
+    const n = items.length;
+    const totalH = n * BOX_H + (n - 1) * GAP;
+    const startY = centerY - totalH / 2;
+    items.forEach((item, i) => {
+      const text = `#${item.no} ${item.label}`;
+      const w = Math.max(150, Math.min(400, 26 + textW(text)));
+      const y = startY + i * (BOX_H + GAP);
+      const x = side === "left" ? anchorX - w - 46 : anchorX + 46;
+      const fid = `find-${targetId}-${i}`;
+      findingsOut.push({ ...item, nodeId: fid, side });
+      nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w, no: item.no } });
+      edges.push({
+        id: "ef-" + fid,
+        source: side === "left" ? fid : targetId,
+        sourceHandle: side === "left" ? "out" : "findout",
+        target: side === "left" ? targetId : fid,
+        targetHandle: side === "left" ? "in-left" : "in",
+        type: "findedge",
+        data: side === "right" && trunkX != null ? { trunk: trunkX } : null,
+        style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+      });
+    });
+  }
+
+  function pickFindingSide(targetId, x, w, centerY, count, visualW = w) {
+    const totalH = count * BOX_H + (count - 1) * GAP;
+    const top = centerY - totalH / 2, bottom = centerY + totalH / 2;
+    const blocked = (x1, x2) => branchVSegs.some(s =>
+      s.target !== targetId && s.source !== targetId && s.x > x1 && s.x < x2 && s.y2 > top && s.y1 < bottom);
+    const rightBlocked = blocked(x + w + 8, x + visualW + 46 + 300);
+    const leftBlocked = blocked(x - 46 - 300, x - 8);
+    return rightBlocked && !leftBlocked ? "left" : "right";
+  }
+
+  // 数据显式声明的问题优先；真实会话的问题卡数量对齐 SESSIONS.findings
+  explicitAgentFindings.forEach((f) => {
+    const items = f.texts.map(t => makeFinding({
+      title: t, label: t, detail: t, facts: [],
+      target: f.id === "main" ? "main" : "subagent",
+      severity: "error", kind: "quality",
+    }));
+    const side = pickFindingSide(f.id, f.x, f.w, f.y + 28, items.length, f.visualW);
+    const trunkX = side === "right" ? f.x + f.visualW + 16 : undefined;
+    addFindings(f.id, side === "left" ? f.x : f.x + f.visualW, f.y + 28, side, items, trunkX);
+    budget = Math.max(0, budget - items.length);
+  });
+
+  skillNodes.forEach((s, idx) => {
+    if (s.findings.length) {
+      const items = s.findings.map(t => makeFinding({
+        title: t, label: t, detail: t, facts: [],
+        target: `skill · ${s.name}`, severity: "error", kind: "quality",
+      }));
+      addFindings(s.sid, s.x, s.y + 10, "left", items);
+      budget = Math.max(0, budget - items.length);
+      return;
+    }
+    if (budget <= 0) return;
+    addFindings(s.sid, s.x, s.y + 10, "left", [makeFinding(skillDef(idx, s))]);
+    budget--;
+  });
+
+  // 主会话的「上报型」问题：先触发的问题挂在触发点上方
+  if (budget > 0) {
+    const m = mainMarks
+      .filter(x => x.kind === "skill" || x.kind === "agent" || x.kind === "workflow")
+      .sort((a, b) => (a.line || 0) - (b.line || 0))[0];
+    if (m) {
+      const finder = m.kind === "skill" ? (m.name || "skill") : (m.desc || "subagent");
+      const item = makeFinding(reportedDef(m, finder, sid));
+      const text = `#${item.no} ${item.label}`;
+      const w = Math.max(170, Math.min(560, 26 + textW(text)));
+      const x = 60 + rootW + 18;
+      const y = 56 - 14 - 28;
+      const fid = "rep-main-0";
+      findingsOut.push({ ...item, nodeId: fid, side: "reported" });
+      nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w, no: item.no } });
+      edges.push({
+        id: "er-" + fid,
+        source: "main", sourceHandle: "rep" + m.id,
+        target: fid, targetHandle: "in",
+        type: "reported",
+        style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+      });
+      budget--;
+    }
+  }
+
+  // 剩余问题挂到最后一个 agent 的右侧
+  const agentNodes = nodes.filter(n => n.type === "agent");
+  const lastAgent = agentNodes[agentNodes.length - 1];
+  if (lastAgent && budget > 0) {
+    const defs = lastDefs(sid, lastAgent).slice(0, Math.min(3, budget));
+    const items = defs.map(d => makeFinding(d));
+    const centerY = lastAgent.position.y + 28;
+    const visualW = lastAgent.data.visualW || lastAgent.data.w;
+    const side = pickFindingSide(lastAgent.id, lastAgent.position.x, lastAgent.data.w, centerY, items.length, visualW);
+    const trunkX = side === "right" ? lastAgent.position.x + visualW + 16 : undefined;
+    addFindings(lastAgent.id,
+      side === "left" ? lastAgent.position.x : lastAgent.position.x + visualW,
+      centerY, side, items, trunkX);
+    budget -= items.length;
+  }
+
+  return { nodes, edges, findings: findingsOut };
+}
+
+/* ── 自定义节点 ── */
+function AgentNode({ data }) {
+  const marks = data.marks || [];
+  return html`
+    <div className=${"rf-agent " + (data.kind || "")} style=${{ width: data.w + "px" }}>
+      <div className="rf-label" title=${data.label}>${data.label}</div>
+      <div className="rf-bar">
+        ${marks.map((m, i) => html`
+          <span key=${"mk" + i} className=${"rf-mark " + m.kind}
+                style=${{ left: (m.pct * 100) + "%" }} title=${m.title}></span>
+        `)}
+        ${marks.map((m, i) => html`
+          <${Handle} key=${"h" + i} id=${"h" + i} type="source" position=${Position.Bottom}
+            style=${{ left: (m.pct * 100) + "%", top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        `)}
+        ${marks.map((m, i) => html`
+          <${Handle} key=${"rep" + i} id=${"rep" + i} type="source" position=${Position.Top}
+            style=${{ left: (m.pct * 100) + "%", top: 0, width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        `)}
+        <${Handle} type="target" position=${Position.Left} id="in"
+          style=${{ top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        <${Handle} type="target" position=${Position.Left} id="in-left"
+          style=${{ top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        <${Handle} type="source" position=${Position.Right} id="findout"
+          style=${{ top: "50%", right: 0, width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+      </div>
+      <div className="rf-lines">${data.lines} 行</div>
+    </div>`;
+}
+
+function GroupNode({ data }) {
+  return html`
+    <div className="rf-agent group" style=${{ width: "220px" }}>
+      <div>${data.label}</div>
+      <${Handle} type="target" position=${Position.Left} id="in"
+        style=${{ top: "50%", width: 10, height: 10, opacity: 0 }} />
+    </div>`;
+}
+
+function SkillEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const r = Math.min(8, Math.max(0, sourceX - targetX) / 2, Math.max(0, targetY - sourceY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${targetY - r} Q ${sourceX} ${targetY} ${sourceX - r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+function FindingEdge({ id, sourceX, sourceY, targetX, targetY, data, style }) {
+  const trunk = data?.trunk ?? sourceX + 24;
+  const dy = targetY - sourceY;
+  const s = dy === 0 ? 1 : Math.sign(dy);
+  const r = Math.min(7, Math.abs(dy) / 2);
+  const d = dy === 0
+    ? `M ${sourceX} ${sourceY} H ${targetX}`
+    : `M ${sourceX} ${sourceY} H ${trunk - r} Q ${trunk} ${sourceY} ${trunk} ${sourceY + s * r} ` +
+      `V ${targetY - s * r} Q ${trunk} ${targetY} ${trunk + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+function ReportEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const r = Math.min(7, Math.abs(targetY - sourceY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${targetY + r} Q ${sourceX} ${targetY} ${sourceX + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+function OrthEdge({ id, sourceX, sourceY, targetX, targetY, data, style, markerEnd }) {
+  const idx = data?.idx ?? 0;
+  const jogY = sourceY + 12;
+  const trunk = data?.trunkX;
+  const channel = trunk != null
+    ? Math.min(trunk, Math.max(0, targetX - 8))
+    : Math.min(sourceX + idx * 8, Math.max(sourceX, targetX - 8));
+  const r = Math.min(8, Math.max(0, targetX - channel) / 2, Math.max(0, targetY - jogY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${jogY} H ${channel} V ${targetY - r} Q ${channel} ${targetY} ${channel + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style, markerEnd });
+}
+const edgeTypes = { orth: OrthEdge, skilledge: SkillEdge, findedge: FindingEdge, reported: ReportEdge };
+
+function SkillNode({ data }) {
+  return html`
+    <div className="rf-skill-wrap" style=${{ width: (data.w || 200) + "px" }}>
+      <div className="rf-skill" title=${"L" + data.line + " · " + data.name}>
+        <span className="rf-skill-dot"></span><span className="rf-skill-name">${data.name}</span>
+      </div>
+      <${Handle} type="target" position=${Position.Right} id="in"
+        style=${{ top: "50%", right: 0, width: 8, height: 8, opacity: 0 }} />
+      <${Handle} type="target" position=${Position.Left} id="in-left"
+        style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
+    </div>`;
+}
+
+function FindingNode({ data }) {
+  return html`
+    <div className=${"rf-finding" + (data.active ? " active" : "")} style=${{ width: (data.w || 200) + "px" }} title=${data.text}>
+      ${data.text}
+      <${Handle} type="target" position=${Position.Left} id="in"
+        style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
+      <${Handle} type="source" position=${Position.Right} id="out"
+        style=${{ top: "50%", right: 0, width: 8, height: 8, opacity: 0 }} />
+    </div>`;
+}
+
+const nodeTypes = { agent: AgentNode, collapse: GroupNode, skill: SkillNode, finding: FindingNode };
+
+function FindingList({ findings, activeId, onLocate }) {
+  const sorted = [...findings].sort((a, b) => a.no - b.no);
+  if (!sorted.length) return html`<div className="finding-empty">本会话没有打桩问题。</div>`;
+  return html`
+    <div className="finding-cards">
+      ${sorted.map(f => html`
+        <button key=${f.nodeId} type="button"
+          className=${"finding-item" + (f.nodeId === activeId ? " active" : "")}
+          onClick=${() => onLocate(f)}>
+          <span className="fi-no">#${f.no}</span>
+          <span className="fi-body">
+            <span className="fi-head">
+              <span className="fi-title">${f.title}</span>
+              <span className="fi-sev error">错误</span>
+            </span>
+            <span className="fi-detail">${f.detail}</span>
+            ${(f.facts && f.facts.length) ? html`
+              <span className="fi-facts">
+                ${f.facts.map(x => html`
+                  <span className="fi-fact" key=${x.k}>
+                    <span className="fi-fact-k">${x.k}</span>
+                    <span className=${"fi-fact-v" + (x.mono ? " mono" : "")}>${x.v}</span>
+                  </span>
+                `)}
+              </span>` : null}
+            <span className="fi-meta">关联：${f.target}</span>
+          </span>
+          <span className="fi-go">定位 ↗</span>
+        </button>
+      `)}
+    </div>`;
+}
+
+function FitTree({ fitKey }) {
+  const rf = useReactFlow();
+  const initialized = useNodesInitialized();
+  const done = React.useRef("");
+  useEffect(() => {
+    if (!initialized || done.current === fitKey) return;
+    done.current = fitKey;
+    const t = setTimeout(() => rf.fitView({ padding: 0.12, duration: 180 }), 50);
+    return () => clearTimeout(t);
+  }, [initialized, fitKey, rf]);
+  return null;
+}
+
+function FocusNode({ focusId, token }) {
+  const rf = useReactFlow();
+  useEffect(() => {
+    if (!focusId) return;
+    const node = rf.getNode(focusId);
+    if (!node) return;
+    const w = node.measured?.width || node.width || 200;
+    const h = node.measured?.height || node.height || 22;
+    rf.setCenter(node.position.x + w / 2, node.position.y + h / 2, {
+      zoom: Math.max(rf.getZoom(), 0.85),
+      duration: 260,
+    });
+  }, [focusId, token, rf]);
+  return null;
+}
+
+function App({ sid, findingsBudget }) {
+  const [expanded, setExpanded] = useState({});
+  const [activeFinding, setActiveFinding] = useState(null);
+  const [focusToken, setFocusToken] = useState(0);
+
+  const toggle = useCallback((parent) => {
+    setExpanded(prev => ({ ...prev, [parent]: !prev[parent] }));
+  }, []);
+
+  const { nodes, edges, findings } = useMemo(
+    () => buildGraph(sid, expanded, findingsBudget),
+    [sid, expanded, findingsBudget],
+  );
+
+  const displayNodes = useMemo(() => nodes.map(n =>
+    n.type === "finding" ? { ...n, data: { ...n.data, active: n.id === activeFinding } } : n
+  ), [nodes, activeFinding]);
+
+  const [rfNodes, setNodes, onNodesChange] = useNodesState(displayNodes);
+  const [rfEdges, setEdges, onEdgesChange] = useEdgesState(edges);
+
+  useEffect(() => { setNodes(displayNodes); setEdges(edges); }, [displayNodes, edges, setNodes, setEdges]);
+
+  const onNodeClick = useCallback((evt, node) => {
+    if (node.type === "collapse") toggle(node.data.parent);
+  }, [toggle]);
+
+  const locateFinding = useCallback((f) => {
+    setActiveFinding(f.nodeId);
+    setFocusToken(t => t + 1);
+    document.querySelector(".tree-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  const listHost = document.getElementById("findingList");
+
+  return html`
+    <${React.Fragment}>
+      <${ReactFlow}
+        nodes=${rfNodes} edges=${rfEdges}
+        onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
+        nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
+        onNodeClick=${onNodeClick}
+        fitView fitViewOptions=${{ padding: 0.12 }}
+        minZoom=${0.2} maxZoom=${2.5}
+        nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
+        proOptions=${{ hideAttribution: true }}
+        style=${{ width: "100%", height: "100%" }}
+      >
+        <${FitTree} fitKey=${sid + ":" + Object.keys(expanded).sort().join(",")} />
+        <${FocusNode} focusId=${activeFinding} token=${focusToken} />
+        <${Background} gap=${22} color="#e6e9ef" />
+        <${Controls} showInteractive=${false} position="bottom-right" />
+      <//>
+      ${listHost ? createPortal(html`
+        <${FindingList} findings=${findings} activeId=${activeFinding} onLocate=${locateFinding} />
+      `, listHost) : null}
+    <//>`;
+}
+
+let treeRoot = null;
+
+function unmountTree() {
+  if (!treeRoot) return;
+  try { treeRoot.unmount(); } catch (e) { /* host 可能已被移除 */ }
+  treeRoot = null;
+}
+
+function mountTree(sid, findingsBudget) {
+  const host = document.getElementById("famTree");
+  if (!host) return;
+  unmountTree();
+  host.innerHTML = "";
+  treeRoot = createRoot(host);
+  treeRoot.render(html`<${App} key=${sid} sid=${sid} findingsBudget=${findingsBudget} />`);
+}
+
+window.__mountFamilyTree = mountTree;
+window.__unmountFamilyTree = unmountTree;
+
+if (window.__pendingTree) {
+  const p = window.__pendingTree;
+  window.__pendingTree = null;
+  mountTree(p.sid, p.findings);
+}
+
 </script>
 </body>
 </html>
