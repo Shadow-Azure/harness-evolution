@@ -18,6 +18,7 @@
 - 导览设计参考了 [WebAnatomy 的 SaaS 导航实例集](https://www.webanatomy.ai/best-landing-pages/ux-best-practice/navbar-use-case-tabs)（"按任务命名入口、一句话说明"）与 [Vanilla Framework 的控件对比准则](https://vanillaframework.io/docs/patterns/segmented-control/design-guidelines)；第一版的分段控件因"容器套卡片"视觉过重被弃用，改为开发者工具主流的文本下划线页签，视觉最轻、与两个应用的浅色面板风一致；窄屏（<1100px）自动隐藏副标题与右侧说明。
 - 2026-10-21 后续调整：v2 内部的「Session 浏览器 / 时间线 / 错误详情」子页签栏已隐藏（CSS `display:none`，注释标明恢复方法），全站只保留单层导览；子页面间导航改由页面内按钮完成（打开时间线 / 打开错误详情 / 返回 Session），隐藏后已实测导航链路完整、时间线吸顶位置正确。
 - 2026-10-21 后续调整：① 修复合并时 v2 与 evolution 全局函数 `renderList` 重名导致的「左侧 session 卡选中态不移动」bug（分别改名 `renderSessionList` / `renderRunList`）；② 家族树中「skill 出现问题」卡片移到所属 agent 框正下方并与对应 skill 触发药丸纵向对齐（同排重叠自动向下堆叠），「skill 发现前置步骤存在问题」上报卡移到主会话框正上方、与触发药丸纵向对齐；③ 错误详情页「执行流」面板高度从 620px 调整为 413px（原高度的 2/3）。
+- 2026-10-22 向导改版：启动向导改为**分步向导**布局（① 设置筛选条件 →「下一步：查询匹配报告 →」→ ② 确认查询结果并启动），结果区采用方案 A 增强样式（统计数字 + 归因类型分布条 + 紧凑表格 + 分页条），第 ② 步顶部为条件摘要条 +「← 修改条件」可返回；打开向导不再自动查询；修复了打桩公式有符号右移导致的负数命中数 bug（`>>` → `>>>`）。设计过程稿：[wizard-result-options.html](wizard-result-options.html)（结果区三方案）、[wizard-layout-options.html](wizard-layout-options.html)（整体布局三方案）。
 
 - 导览按钮带高亮态，默认落在「Session 错误查看」；`?page=evo` 可直接落在自进化。
 - 原 evolution 自身的顶栏已移除（其「Session 浏览器 →」入口由大导览接管）。

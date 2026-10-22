@@ -322,6 +322,17 @@
   .evo-app .pager-info { font-size: 11.5px; color: var(--text-dim); }
   .evo-app .pager-info b { font-family: var(--mono); }
   .evo-app .pager .btn { padding: 3px 12px; font-size: 11.5px; }
+  /* 向导分步布局：条件摘要条 + 方案 A 结果框（统计 / 类型分布条 / 图例） */
+  .evo-app .btn.sm { padding: 3px 10px; font-size: 11.5px; }
+  .evo-app .wz-condstrip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border: 1px solid var(--border); background: var(--bg-panel); border-radius: 8px; padding: 7px 12px; margin-bottom: 12px; font-size: 12px; }
+  .evo-app .wz-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .evo-app .wz-stats .st b { font-family: var(--mono); font-weight: 650; font-size: 14px; margin-right: 3px; }
+  .evo-app .wz-stats .st span { color: var(--text-faint); font-size: 11px; }
+  .evo-app .wz-stats .st.accent b { color: var(--blue); }
+  .evo-app .wz-typebar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
+  .evo-app .wz-typebar span { display: block; height: 100%; }
+  .evo-app .wz-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+  .evo-app .wz-legend .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: -1px; }
 </style>
 <style>:root {
     --bg: #f4f5f7;
@@ -372,6 +383,8 @@
 .evo-app .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 .evo-app .btn.primary:hover { filter: brightness(1.06); color: #fff; }
 .evo-app .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .evo-app .btn.accent { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 9%, var(--bg-card)); font-weight: 600; }
+  .evo-app .btn.accent:hover { background: color-mix(in srgb, var(--blue) 15%, var(--bg-card)); border-color: var(--blue); color: var(--blue); }
 .evo-app .chip {
     display: inline-block; font-size: 11px; color: var(--text-dim);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px;
@@ -2886,7 +2899,7 @@ function openWizard(){
 function wzMatch(){
   const h = hashStr([wz.kind, wz.name, wz.version, wz.from, wz.to, [...wz.models].sort().join(',')].join('|'));
   const sessions = 40 + h % 120;
-  const reports = 12 + (h >> 3) % 40;
+  const reports = 12 + (h >>> 3) % 40;
   const analyzed = Math.round(reports * (0.7 + (h % 20) / 100));
   const notProblem = Math.round(analyzed * 0.25);
   const used = analyzed - notProblem;
@@ -2922,8 +2935,23 @@ function wzReportListHTML(){
     ? `<tr><td class="id">${reportIdLink(r.rep)}</td><td class="id">${issueIdLink(r.rep)}</td><td>${esc(r.rep.phenomenon)}</td><td class="mono" style="color:var(--cyan)">${esc(r.rep.model)}</td><td>${typeChip(r.rep.type)}</td></tr>`
     : `<tr title="打桩示例（未关联 session）"><td class="id" style="color:var(--text-faint)">${r.id}</td><td style="color:var(--text-faint)">—</td><td>${esc(r.ph)}</td><td class="mono" style="color:var(--cyan)">${esc(r.model)}</td><td>${r.type === '未分析' ? '<span style="color:var(--text-faint)">未分析</span>' : typeChip(r.type)}</td></tr>`
   ).join('');
+  /* 方案 A：统计数字 + 归因类型分布条 + 图例 + 表格 + 分页 */
+  const byType = {};
+  all.forEach(r => { const t = r.real ? r.rep.type : r.type; byType[t] = (byType[t] || 0) + 1; });
+  const tcolor = t => TYPE_COLOR[t] || '#c4cbd6';
+  const entries = Object.entries(byType);
+  const bar = entries.map(([t, n]) => `<span style="width:${(n / all.length * 100).toFixed(1)}%;background:${tcolor(t)}"></span>`).join('');
+  const legend = entries.map(([t, n]) => `<span><span class="dot" style="background:${tcolor(t)}"></span>${t} <b style="font-family:var(--mono)">${n}</b></span>`).join('');
   return `<div class="match-summary">
-    命中 session <b>${m.sessions}</b> 个 · 问题报告 <b>${all.length}</b> 份（已分析 <b>${m.analyzed}</b> / 未分析 <b>${m.unanalyzed}</b>）· 其中「是问题」<b>${m.used}</b> 份将作为进化输入
+    <div class="wz-stats">
+      <span class="st"><b>${m.sessions}</b><span>命中 session</span></span>
+      <span class="st"><b>${all.length}</b><span>问题报告</span></span>
+      <span class="st"><b>${m.analyzed}</b><span>已分析</span></span>
+      <span class="st"><b>${m.unanalyzed}</b><span>未分析</span></span>
+      <span class="st accent"><b>${m.used}</b><span>「是问题」进入聚类</span></span>
+    </div>
+    <div class="wz-typebar">${bar}</div>
+    <div class="wz-legend">${legend}</div>
     <table class="rep"><thead><tr><th>报告 ID</th><th>来源问题 ID</th><th>问题现象</th><th>模型</th><th>归因</th></tr></thead>
     <tbody>${body}</tbody></table>
     <div class="pager">
@@ -2940,11 +2968,20 @@ function renderWizard(){
   if (!names.includes(wz.name)) wz.name = names[0];
   if (!vers.includes(wz.version)) wz.version = vers[0];
   const m = wz.queried ? wzMatch() : null;
+  const isStep2 = wz.step === 2 && !!m;
   $modal.innerHTML = `<div class="evov" data-action="close-wizard-bg">
     <div class="modal">
       <div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="close-wizard">✕</button></div>
       <div class="modal-body">
-        <div class="wz-steps"><span class="${wz.step === 1 ? 'on' : ''}">① 筛选问题报告</span> → <span class="${wz.step === 2 ? 'on' : ''}">② 确认输入并启动</span></div>
+        <div class="wz-steps"><span class="${isStep2 ? '' : 'on'}">① 设置筛选条件</span> → <span class="${isStep2 ? 'on' : ''}">② 确认查询结果并启动</span></div>
+        ${isStep2 ? `
+        <div class="wz-condstrip">
+          <span class="chip kind">${wz.kind}:${esc(wz.name)}@${esc(wz.version)}</span>
+          <span class="chip mono">${wz.from} ~ ${wz.to}</span>
+          ${[...wz.models].map(x => `<span class="chip model">${esc(x)}</span>`).join('')}
+          <button class="btn sm" data-action="wz-back" style="margin-left:auto">← 修改条件</button>
+        </div>
+        ${wzReportListHTML()}` : `
         <div class="f-row"><div class="f-label">进化对象 <span class="req">*</span></div>
           <div class="f-inline">
             <div class="seg">
@@ -2962,12 +2999,14 @@ function renderWizard(){
         <div class="f-row"><div class="f-label">模型（多选，只纳入这些模型跑出的报告）</div>
           <div class="pick">${MODELS.map(x => `<span class="opt ${wz.models.has(x) ? 'on' : ''}" data-action="wz-model" data-v="${x}">${x}</span>`).join('')}</div>
         </div>
-        <div class="f-row"><button class="btn" data-action="wz-query">查询匹配报告</button></div>
-        ${m ? wzReportListHTML() : ''}
+        <div style="font-size:11.5px;color:var(--text-faint)">确认条件后点「下一步」执行查询并核对命中的问题报告。</div>`}
       </div>
       <div class="modal-foot">
-        <button class="btn" data-action="wz-cluster" ${m ? '' : 'disabled'}>仅聚类分析</button>
-        <button class="btn primary" data-action="wz-start" ${m ? '' : 'disabled'}>启动自进化 →</button>
+        ${isStep2 ? `
+        <button class="btn" data-action="wz-back">← 上一步</button>
+        <button class="btn accent" data-action="wz-cluster">启动问题聚类分析</button>
+        <button class="btn primary" data-action="wz-start">启动自进化 →</button>` : `
+        <button class="btn primary" data-action="wz-query">下一步：查询匹配报告 →</button>`}
       </div>
     </div>
   </div>`;
@@ -3026,6 +3065,7 @@ document.addEventListener('click', e => {
   else if (a === 'wz-kind') { wz.kind = el.dataset.v; wz.name = OBJECTS[wz.kind][0]; wz.version = VERSIONS[wz.name][0]; wz.queried = false; renderWizard(); }
   else if (a === 'wz-model') { const v = el.dataset.v; wz.models.has(v) ? wz.models.delete(v) : wz.models.add(v); wz.queried = false; renderWizard(); }
   else if (a === 'wz-query') { syncWzInputs(); wz.queried = true; wz.step = 2; wz.page = 1; renderWizard(); }
+  else if (a === 'wz-back') { wz.step = 1; renderWizard(); }
   else if (a === 'wz-prev') { wz.page = Math.max(1, (wz.page || 1) - 1); renderWizard(); }
   else if (a === 'wz-next') { wz.page = (wz.page || 1) + 1; renderWizard(); }
   else if (a === 'wz-cluster') { syncWzInputs(); buildClusterOnly(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/cluster'; }
