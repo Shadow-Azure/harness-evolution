@@ -10,3 +10,5 @@ coverage/
 dist/
 .vite/
 .pnpm-store/
+claude-code-sessions/
+claude-code-sessions.zip
