@@ -11,9 +11,9 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 - **输入**（两类轨迹来源，见 §4.1）：
   1. **同库源表**：其他任务把"有问题的 session 轨迹"写入我们 MySQL 里的一组源表，我们读取并归一化。
   2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需拉取。
-- **处理**：获取与归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化闭环（占位执行）。
-- **输出**：浏览器里的两大视图（Session 错误查看 / 自进化），面向组织内全部登录用户，**单组织共享**——登录即可见全部数据，不做行级隔离。
-- **不做什么**：不修改用户的 skill / agent 文件（V1 的 commit 也是演示数据）、不访问生产凭据、不做多租户、不做公网注册。
+- **处理**：获取与归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+- **输出**：浏览器里的两大视图（Session 错误查看 / 自进化），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**单组织共享**。
+- **不做什么**：**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做多租户、不做公网注册。
 
 ## 2. 组成与分层
 
@@ -247,9 +247,10 @@ flowchart LR
 | 占位点 | 位置 | 后续替换 |
 |---|---|---|
 | 聚类算法 | `service/evolution/simple_cluster`（按 attribute_type 分半） | 换真正的聚类实现，表不变 |
-| patch / eval / commit | `evolution_rounds` 写入占位值 | 换真实执行器（本地或 CI） |
-| 终评指标 | `evolution_finals` 占位 | 换真实评测 |
+| patch 内容 | `service/evolution/patch.py` | 内容占位，但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
+| eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测 |
 | 上游轨迹接口 | 未配置时 `HttpApiSource` 不可用 | 上游就绪后启用 |
+| git 推送 | `HE_GIT_PUSH=true`（V1 完成后 push） | 校验分支后 `git push -u origin <branch>`；失败可重试；后续开 PR |
 
 ## 6. 部署形态与扩展路径
 
@@ -266,6 +267,7 @@ pnpm --filter web build                                   # 前端构建产物�
 | 数据库 | MySQL 8 主库；SQLite 仅测试/本地开发 | 读写分离/分库暂无需求 |
 | 任务 | `job_runs` 表 + 进程内串行 worker | 多实例时 worker 独立部署（同一 `job_runs` 表，`SELECT … FOR UPDATE SKIP LOCKED` 抢占） |
 | SSE | 内存事件总线（单实例） | 多实例时换 Redis pub/sub（EventBus 已是接口） |
+| 进化产物 | 远端 `evo/{YYYYMMDD}-{run_id}` 分支（run 完成后 push） | 校验分支后 push；后续开 PR / 打 tag |
 | 静态资源 | FastAPI `StaticFiles` | 换 nginx / CDN 无需改前端 |
 | CORS | 配置的正式域名 | 同源托管后可关闭 |
 
@@ -280,8 +282,9 @@ pnpm --filter web build                                   # 前端构建产物�
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
 | 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
-| 可观测 | 结构化日志 + sync_runs / job_runs 表留痕；不打印轨迹原文 | 轨迹可能含敏感内容 |
+| 可观测 | 结构化日志 + sync_runs / job_runs / evolution_run_events 留痕；不打印轨迹原文 | 轨迹可能含敏感内容；异常需在 UI 可查 |
 | 数据库可替换 | `Database` 接口 + SQLite/MySQL 适配器 | 测试用 SQLite 快跑；生产 MySQL |
+| 自进化隔离 | 每次 run 独立 workspace + 新分支；只改配置仓库副本，绝不写用户 `~/.claude` | 不污染用户环境、可回滚、可复现；candidate commit 在评测后 amend 或 reset |
 
 ## 8. 风险与对策
 
@@ -291,6 +294,11 @@ pnpm --filter web build                                   # 前端构建产物�
 | 源表结构与我们预期不一致 | 同步解析失败 | 源表契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
 | Vue Flow 与 React Flow 的 API 差异 | 家族树移植返工 | 布局几何纯 TS 原样移植，先做 `demo-nested` 最小树验证（[08 §3](08-frontend-implementation.md)） |
 | 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
+| git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
+| 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_path`/`ref`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
+| 工作区残留 | 磁盘增长 | 默认保留最近 20 个 run，`clean-workspaces` 命令清理；不自动删进行中的 run |
+| push 失败 | 分支只在本地 | run 仍标完成，`push_status=failed` + 脱敏错误；支持重试 push；同名远端分支拒绝覆盖 |
+| 执行异常未留痕 | 无法定位/复盘 | 阶段/候选/评测/推送/异常统一写 `evolution_run_events`；job 边界捕获；启动扫描残留任务记 `interrupted` |
 | JWT 泄漏 | 组织数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
 | SSE 长连接在代理下断流 | 进度不更新 | 事件带 id + Last-Event-ID 补发；REST 轮询兜底 |
 | 单实例宕机 | 全员不可用 | 单组织内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |

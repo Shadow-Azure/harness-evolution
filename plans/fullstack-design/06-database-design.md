@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 轨迹侧 | `source_records`、`sessions`、`members`、`rounds`、`steps`、`blocks`、`member_events`、`sync_runs`、`sync_state` | 本服务（acquisition 归一化） | 读写 |
 | 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 外部归因/上报系统 | **只读** |
-| 自进化侧 | `evolution_runs`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
+| 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
 
 - **原始层与归一化层分离**：`source_records` 存来源元数据 + **payload 原文**（SaaS 下没有"源文件"可回读，原文必须落库），其余轨迹表是归一化视图；解析规则升级时按 `parser_version` 从 payload 重放。
@@ -84,6 +84,8 @@ erDiagram
     BAD_CASE_ANALYSIS ||--o| PROBE_REPORT : "probe_id（1:1）"
     SESSION ||--o{ PROBE_REPORT : "根因结论"
 
+    EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
+    EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
     EVOLUTION_RUN ||--o{ PROBE_CLUSTER : "本次 run 的聚类"
     PROBE_CLUSTER ||--o{ PROBE_CLUSTER_PROBE : "M:N"
     PROBE_REPORT ||--o{ PROBE_CLUSTER_PROBE : "被聚类"
@@ -288,27 +290,58 @@ erDiagram
 
 ## 5. 自进化侧表（本服务读写）
 
-### 5.1 `evolution_runs`
+### 5.1 `evolution_targets` —— 可自进化的对象配置
+
+> 只有在这张表里配置且 `enabled=true` 的 skill/agent 才能进入自进化流程；向导的"对象/版本"下拉与配置页都读这张表。
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | `VARCHAR(36)` | PK | ULID |
+| `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
+| `object_name` | `VARCHAR(128)` | NOT NULL | 对象名（如 `deep-research`） |
+| `repo_path` | `VARCHAR(1024)` | NOT NULL | 本地已 clone 的 skill 仓库绝对路径 |
+| `sub_dir` | `VARCHAR(512)` | NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`） |
+| `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线（tag 或 branch） |
+| `enabled` | BOOLEAN | NOT NULL DEFAULT true | 关闭后不进入向导候选 |
+| `created_by` | `VARCHAR(36)` | NULL | FK → `users.id` |
+| `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
+
+约束：`UNIQUE(object_type, object_name)`；索引：`INDEX(enabled)`。
+
+### 5.2 `evolution_runs`
 
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | `VARCHAR(36)` PK | `evo-…` |
 | `title` | `VARCHAR(255)` | — |
 | `mode` | `VARCHAR(16)` | `full`（完整自进化）/ `cluster_only`（仅聚类预览） |
+| `target_config_id` | `VARCHAR(36)` | FK → `evolution_targets.id` |
 | `target_type` | `VARCHAR(16)` | `skill` / `agent`（来自 probe） |
 | `target_name` | `VARCHAR(128)` | `probe_object` |
-| `target_version` | `VARCHAR(64)` | `object_version` |
+| `target_version` | `VARCHAR(64)` | 本次使用的 tag/版本 |
+| `repo_path` | `VARCHAR(1024)` | 运行时快照的仓库路径 |
+| `base_ref` | `VARCHAR(128)` | clone 的 tag/branch |
+| `base_commit` | `CHAR(40)` | 解析后的基线 commit |
+| `branch_name` | `VARCHAR(128)` | `evo/{YYYYMMDD}-{run_id}`（含日期与 runId） |
+| `workspace_path` | `VARCHAR(1024)` | 本次 run 的独立工作区 |
+| `remote_name` | `VARCHAR(64)` | 默认 `origin` |
+| `push_status` | `VARCHAR(16)` | `pending` / `succeeded` / `failed` / `skipped`（仅测试环境关闭 push） |
+| `pushed_at` | `DATETIME` | push 成功时间 |
+| `push_error` | `TEXT` | push 失败原因（脱敏 stderr 摘要） |
 | `window_from` / `window_to` | DATE | session 启动时间窗 |
 | `models` | JSON | 模型多选 |
-| `status` | `VARCHAR(16)` | `running` / `completed` |
+| `status` | `VARCHAR(16)` | `running` / `completed` / `failed` / `interrupted` |
+| `error_stage` | `VARCHAR(32)` NULL | 失败阶段：`prepare` / `clone` / `cluster` / `eval` / `commit` / `push` |
+| `error_message` | `TEXT` NULL | 失败摘要（脱敏，供列表/详情头部展示） |
+| `error_at` | `DATETIME` NULL | 失败发生时间 |
 | `progress_unit` | `INTEGER` | 状态机游标（[07 §5](07-backend-implementation.md)） |
 | `stats` | JSON | 命中 session / probe / 簇数等 |
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `finished_at` | DATETIME | — |
 
-索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(target_type, target_name, target_version)`。
+索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`。
 
-### 5.2 `probe_clusters` —— 本次 run 的聚类结果
+### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -321,7 +354,7 @@ erDiagram
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(run_id)`。
 
-### 5.3 `probe_cluster_probes` —— 簇 ↔ probe 多对多
+### 5.4 `probe_cluster_probes` —— 簇 ↔ probe 多对多
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -331,7 +364,7 @@ erDiagram
 
 约束：`UNIQUE(probe_cluster_id, probe_id)`；索引：`INDEX(probe_id)`。
 
-### 5.4 `evolution_rounds` —— 每簇的迭代轮
+### 5.5 `evolution_rounds` —— 每簇的迭代轮
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -339,17 +372,57 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK | — |
 | `probe_cluster_id` | `VARCHAR(64)` FK | 该轮针对的簇 |
 | `seq` | `INTEGER` | 第几轮 |
-| `status` | `VARCHAR(16)` | `pending` / `evaluating` / `accepted` / `rejected` |
-| `patch` | JSON | `{file, lines[]}` |
-| `eval_current` / `eval_candidate` | DOUBLE | 评测分 |
+| `status` | `VARCHAR(16)` | `pending` / `evaluating` / `accepted` / `rejected` / `failed` |
+| `started_at` / `finished_at` | DATETIME NULL | 本轮开始/结束 |
+| `duration_ms` | `INTEGER` NULL | 耗时（毫秒） |
+| `error_message` | `TEXT` NULL | 本轮失败原因（脱敏）；`status=failed` 时非空 |
+| `patch` | JSON | `{file, lines[]}`（占位内容，真实落盘） |
+| `eval_current` / `eval_candidate` | DOUBLE | 评测分（V1 占位） |
 | `accepted` | BOOLEAN | — |
-| `commit_hash` / `commit_message` | `VARCHAR(40)` / `VARCHAR(255)` | 接纳时写入 |
+| `commit_hash` / `commit_message` | `VARCHAR(40)` / `TEXT` | candidate commit 的 hash 与完整 message；接纳后 hash 更新为 amend 后的值；拒绝时清空（commit 已被 reset 丢弃） |
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`。
 
-### 5.5 `evolution_finals`
+### 5.6 `evolution_finals`
 
 `run_id` PK、`best_version`、`verdict`、`best_score`、`init_score`、`metrics` JSON。
+
+### 5.7 `evolution_run_events` —— 执行过程与异常（追加）
+
+> 自进化的**过程数据源**：每次状态变化、candidate、评测、推送、异常都落一行；Web UI 通过 API 读它，不依赖 SSE 历史。
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | BIGINT PK AUTOINCREMENT | — | 代理主键 |
+| `run_id` | `VARCHAR(36)` | FK → `evolution_runs.id` | — |
+| `seq` | `INTEGER` | NOT NULL | run 内单调递增，从 1 开始 |
+| `event_type` | `VARCHAR(48)` | NOT NULL | 见下表 |
+| `level` | `VARCHAR(8)` | NOT NULL | `info` / `warn` / `error` |
+| `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `eval` / `commit` / `push` / `final` |
+| `step_index` | `INTEGER` NULL | — | 对应六步的 step（0–5） |
+| `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `probe_clusters` |
+| `round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
+| `job_id` | `VARCHAR(36)` NULL | — | 关联 `job_runs` |
+| `message` | `VARCHAR(512)` | NOT NULL | 人可读摘要 |
+| `payload` | JSON NULL | — | 执行信息（commit、eval、push、文件、耗时等） |
+| `error_type` | `VARCHAR(128)` NULL | — | 异常类名/错误码 |
+| `error_message` | `TEXT` NULL | — | 脱敏错误消息 |
+| `error_detail` | `TEXT` NULL | — | 脱敏后的堆栈/命令输出，截断 8KB |
+| `created_at` | `DATETIME` | NOT NULL | 事件时间 |
+
+约束：`UNIQUE(run_id, seq)`；索引：`INDEX(run_id, created_at)`、`INDEX(event_type)`、`INDEX(level)`、`INDEX(cluster_id)`。
+
+**event_type 取值**：
+
+| 类别 | 事件 |
+|---|---|
+| 生命周期 | `run_created`、`workspace_prepared`、`clusters_created`、`step_advanced`、`final_completed`、`run_failed`、`run_interrupted` |
+| 迭代 | `candidate_committed`、`eval_completed`、`cluster_accepted`、`cluster_rejected` |
+| 推送 | `push_started`、`push_succeeded`、`push_failed` |
+
+- `payload` 示例：candidate `{commit, patchHash, files[], durationMs}`；eval `{current, candidate, delta, verdict}`；push `{remote, branch, commit}`；error `{stage, command, exitCode}`。
+- **异常必须落库**：任何未捕获异常在 job 边界记录 `run_failed`，并更新 `evolution_runs.status=failed` / `error_*`；进程重启导致的残留任务记录 `run_interrupted`。
+- 保留策略：随 run 保留；`app/cli.py clean-runs --keep N` 级联删除事件。
 
 ## 6. 索引与容量估算
 
@@ -362,6 +435,9 @@ erDiagram
 | `rounds` / `steps` / `blocks` | 10⁵–10⁶ | 内部统计与证据 |
 | `bad_cases` | 10³–10⁴ | 外部写入 |
 | `probe_reports` | 10³–10⁴ | 与 bad_case 1:1 |
+| `evolution_targets` | 10¹–10² | 每个可进化 skill/agent 一行 |
+| `evolution_runs` | 10² | — |
+| `evolution_run_events` | 每 run 数十–数百条 | 执行过程与异常；随 run 清理 |
 | `probe_clusters` | 每次 run 数条–数十条 | 按 run 归属，可随 run 清理 |
 | `job_runs` | 10³ | 任务审计 |
 
@@ -407,7 +483,9 @@ payload 原文使 `source_records` 成为最大表，按"只写不查"设计（�
 | F7 时间线（已裁撤） | `rounds`、`steps`、`blocks` 仅内部使用 | 不读接口 |
 | F8 错误详情与归因 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 只读 |
 | F9 获取与同步 | 轨迹侧全部表 + `source_records`、`sync_runs`、`sync_state` | 写/读 |
-| F10–F13 自进化 | `probe_reports`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
+| F10–F13 自进化 | `evolution_targets`、`probe_reports`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
+| F19 进化对象配置 | `evolution_targets` | 写/读 |
+| F20 执行日志与异常 | `evolution_run_events`、`evolution_runs.error_*`、`evolution_rounds.error_*` | 写/读 |
 | F14 进度推送 | `job_runs` | 写/读 |
 | F15 对象/模型清单 | `probe_reports`（DISTINCT）、`sessions.model` | 读 |
 | F16 模拟推进 | `evolution_runs` | 写（V1 占位推进） |

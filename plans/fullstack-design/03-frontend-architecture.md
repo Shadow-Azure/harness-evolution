@@ -57,6 +57,7 @@ flowchart TB
         S1["pages/sessions"]
         S3["pages/errors"]
         S4["pages/evolution"]
+        S5["pages/evolution/targets"]
     end
     subgraph Comp["组件层"]
         FT["components/family-tree<br/>（Vue Flow 图）"]
@@ -129,6 +130,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | `/sessions/:sid` | 家族摘要（默认落地页） | — |
 | `/sessions/:sid/errors` | 错误详情与归因 | `?case={badCaseId}&tab=desc\|attr` |
 | `/evolution` | 运行列表 | — |
+| `/evolution/targets` | 进化对象配置（repo/tag/子目录/启用） | — |
 | `/evolution/cluster/:previewId` | 仅聚类结果 | — |
 | `/evolution/runs/:rid` | 运行详情 | `?step=0..5` |
 
@@ -295,7 +297,7 @@ apps/web/src/
     selection.ts          当前 session（跨列表/详情）
     preferences.ts        折叠/缩放偏好（localStorage）
   pages/
-    login/  sessions/  errors/  evolution/
+    login/  sessions/  errors/  evolution/  evolution/targets/
   components/
     family-tree/  bad-cases/  evolution/  ui/
   utils/

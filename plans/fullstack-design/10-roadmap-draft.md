@@ -31,7 +31,7 @@ flowchart LR
 | m2 | 平台骨架与契约 | planned | Vue 3 前端骨架 + FastAPI 后端骨架 + OpenAPI 契约 + 登录鉴权 + 外部表接入跑通 | `pnpm dev` 起前后端；登录后 `/api/health` 正常；未登录 401；`contract:check` 通过 |
 | m3 | 轨迹获取与同步 | planned | 同库源表同步 + 上游契约 + 归一化入库（MySQL）+ 会话两页（列表/摘要）+ 家族树结构 | 同一来源重复同步不重复；列表/摘要/家族树与原型对齐（不含时间线）；切 MySQL 后同一套 API 与测试通过 |
 | m4 | 问题与归因（外部只读） | planned | bad_case 列表/详情、归因 tab、家族树问题卡 | 5 种展示状态正确；badCaseId 深链可用；外部表字段缺失可降级 |
-| m5 | 自进化闭环（打桩） | planned | 运行列表、启动向导、六步详情、仅聚类 | 模拟推进走完六步；进度经 SSE 更新；终评展示 |
+| m5 | 自进化闭环（占位聚类/评测） | planned | 对象配置、运行列表、启动向导、六步详情、workspace/candidate commit、执行日志 | 每个 candidate 有 commit；接纳 amend、拒绝 reset；失败/中断可在日志看到；进度经 SSE 更新 |
 | m6 | 接真实现 | planned | 接真实执行器与上游来源：真实 TrajectorySource、聚类升级、patch/评测执行 | 至少一条真实问题走完"同步 → 聚类 → patch → 评测接纳或拒绝"；前端零改动 |
 
 ### 2.1 为什么这样拆
@@ -87,16 +87,19 @@ flowchart LR
 | m4-05 | 问题列表面板与定位联动 | P1 | `apps/web/src/components/bad-cases/**` | m4-02、m4-04 | 列表↔画布联动；badCaseId 新窗口打开 |
 | m4-06 | 错误详情页（左栏/执行流过滤/双 Tab/深链恢复） | P0 | `apps/web/src/pages/errors/**` | m4-02、m4-04 | 六状态、全部错误恢复、tab 顺序、刷新恢复 |
 
-### 3.4 m5 自进化闭环（打桩，6 个）
+### 3.4 m5 自进化闭环（9 个）
 
 | # | 标题 | 优先级 | scope | 依赖 | 验收 |
 |---|---|---|---|---|---|
 | m5-01 | evolution 服务与状态机 + 占位聚类（按 attribute_type 分半） | P0 | `apps/api/app/service/evolution/**` | m2-04 | unit 推进边界正确；簇落库；同输入同输出 |
 | m5-02 | 运行列表 API + 前端列表 | P0 | `apps/api/app/service/evolution/**`、`apps/web/src/pages/evolution/**` | m5-01 | running/history 分组；进度条与阶段文案后端给 |
 | m5-03 | probe 查询 / 聚类预览 API + 启动向导 | P0 | 同上 | m5-01、m2-03 | 两步向导；命中统计；仅聚类出口（cluster_only run） |
-| m5-04 | 运行详情六步 API（筛选/聚类/归因/排序/迭代/终评） | P0 | `apps/api/app/modules/evolution/**` | m5-01 | 六步 payload 与 [05 §3.6](05-api-design.md) 一致 |
-| m5-05 | 运行详情前端（stepper/各步内容/迭代卡/diff/eval/commit） | P0 | `apps/web/src/pages/evolution/**`、`components/evolution/**` | m5-04 | 与原型详情一致；未到达不可点 |
-| m5-06 | 仅聚类页、模拟推进、SSE 进度联动 | P1 | 同上 + `apps/api/app/events/**` | m5-03、m5-05 | 推进后自动跟随；断线重连进度不倒退 |
+| m5-04 | 运行详情六步 API（筛选/聚类/归因/排序/迭代/终评） | P0 | `apps/api/app/service/evolution/**` | m5-01 | 六步 payload 与 [05 §3.6](05-api-design.md) 一致 |
+| m5-05 | 运行详情前端（stepper/各步内容/迭代卡/diff/eval/commit/分支信息） | P0 | `apps/web/src/pages/evolution/**`、`components/evolution/**` | m5-04 | 与原型详情一致；未到达不可点；展示分支/commit |
+| m5-06 | 仅聚类页、模拟推进、SSE 进度联动 | P1 | 同上 + `apps/api/app/service/events.py` | m5-03、m5-05 | 推进后自动跟随；断线重连进度不倒退 |
+| m5-07 | 进化对象配置：CRUD API + 配置页 + 向导齿轮入口 | P0 | `apps/api/app/service/evolution/targets.py`、`apps/api/app/api/**`、`apps/web/src/pages/evolution/targets/**` | m5-01、m2-03 | 仅启用对象进向导；repo/ref 校验；删除被引用配置 409 |
+| m5-08 | Workspace 与 git：clone tag、建 `evo/{YYYYMMDD}-{run_id}` 分支、candidate commit、amend/reset、完成后校验并 push | P0 | `apps/api/app/service/evolution/**`、`apps/api/app/service/jobs.py` | m5-01 | candidate 带追溯 commit；接纳 amend 追加评测；拒绝 reset；完成后 push 到远端 |
+| m5-09 | 执行事件与异常：`evolution_run_events` 落库、events API、失败/中断/推送异常、前端日志面板 | P0 | `apps/api/app/service/evolution/events.py`、`apps/api/app/api/**`、`apps/web/src/components/evolution/RunLogPanel.vue` | m5-01、m5-08 | 运行过程与异常刷新后可查；failed/interrupted 有摘要与脱敏详情 |
 
 ### 3.5 m6 接真实现（4 个，可拆到后续）
 
@@ -129,6 +132,8 @@ flowchart LR
 | F16 模拟推进 | | | | ● | |
 | F17 三态与错误处理 | ● | | | | |
 | F18 登录与鉴权 | ● | | | | |
+| F19 进化对象配置 | | | | ● | |
+| F20 执行日志与异常 | | | | ● | |
 
 ## 5. 需要你拍板的路线图问题
 

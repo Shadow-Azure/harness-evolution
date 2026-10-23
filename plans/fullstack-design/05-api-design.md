@@ -186,6 +186,7 @@ erDiagram
   "models": ["glm-5.3", "glm-5.3-flash"],
   "createdAt": "2026-10-19T18:42:00+08:00",
   "status": "running",
+  "error": null,
   "stats": { "sessions": 4, "probes": 12, "usedProbes": 7, "clusters": 5,
     "byAttributeType": { "model": 3, "prompt": 1, "error": 3 } },
   "progress": { "unit": 6, "total": 10, "percent": 60,
@@ -197,12 +198,19 @@ erDiagram
 已完成的 run 附带 `final`：
 
 ```json
-"final": { "bestVersion": "v2.0.0-best", "verdict": true, "bestScore": 88.9, "initScore": 84.3 }
+"final": { "bestVersion": "v2.0.0-best", "branchName": "evo/20261023-evo-20261023-01", "pushStatus": "succeeded", "verdict": true, "bestScore": 88.9, "initScore": 84.3 }
 ```
 
-`RunDetail` 在 RunCard 基础上多 `steps`（六步状态，由后端算，前端不推算）：
+`RunDetail` 在 RunCard 基础上多 `steps` 与 `workspace`（六步状态由后端算，前端不推算）：
 
 ```json
+"workspace": {
+  "repoPath": "/srv/skill-repo", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
+  "branchName": "evo/20261023-evo-20261023-01", "workspacePath": "data/workspaces/evo-20261023-01",
+  "remote": "origin", "pushStatus": "pending", "pushedAt": null, "pushError": null
+},
+"error": { "stage": "eval", "message": "评测执行失败：sandbox timeout", "at": "2026-10-23T09:41:02+08:00" },
+"lastEventSeq": 42,
 "steps": [
   { "index": 0, "title": "筛选输入", "status": "done" },
   { "index": 1, "title": "问题聚类", "status": "done" },
@@ -212,6 +220,9 @@ erDiagram
   { "index": 5, "title": "测试集终评", "status": "pending" }
 ]
 ```
+
+- `status` ∈ `running|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
+- `lastEventSeq`：当前最大事件序号，前端可用它增量拉 `GET /runs/{rid}/events?afterSeq=`。
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
 
@@ -232,7 +243,7 @@ erDiagram
 | 4 迭代优化 | `rounds[]`：clusterId/title/type/probeCount/probes[]/status/patch/eval/accepted/commit |
 | 5 测试集终评 | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
 
-迭代轮结构与原设计一致：`rounds[]` 含 `patch {file, lines[]}`、`eval {current, candidate}`、`status ∈ pending|evaluating|accepted|rejected`、`commit {hash, message}`；「来源问题」从报告改为 `probes[]`（归属该簇的 probe 列表）。
+迭代轮结构与原设计一致：`rounds[]` 含 `patch {file, lines[]}`、`eval {current, candidate}`、`status ∈ pending|evaluating|accepted|rejected`、`commit {hash, message}`。candidate commit 在评测前产生；接纳后 `commit.hash/message` 是 amend 后的值，拒绝后 `commit` 为 null（对应提交已被 reset 丢弃）。「来源问题」从报告改为 `probes[]`（归属该簇的 probe 列表）。
 
 ## 4. 端点清单
 
@@ -271,6 +282,9 @@ flowchart LR
         E5["POST /api/evolution/runs/{rid}/advance"]
         E6["POST /api/evolution/probes/query"]
         E7["POST /api/evolution/cluster-previews"]
+        E8["GET/POST/PUT/DELETE /api/evolution/targets"]
+        E9["GET /api/evolution/targets/{id}/versions"]
+        E10["POST /api/evolution/runs/{rid}/push"]
     end
     subgraph Catalogs["清单域"]
         C1["GET /api/catalogs/targets"]
@@ -398,26 +412,40 @@ flowchart LR
 ### 4.10 自进化运行
 
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组）
-- `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `201 RunDetail`；无匹配 probe → `409 NO_PROBES_MATCHED`
-- `GET /api/evolution/runs/{rid}` → `RunDetail`
+- `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `201 RunDetail`；无匹配 probe → `409 NO_PROBES_MATCHED`；目标未配置/仓库不可用 → `409 TARGET_NOT_CONFIGURED` / `422 REPO_INVALID`
+- `GET /api/evolution/runs/{rid}` → `RunDetail`（含 `workspace`：`repoPath/baseRef/baseCommit/branchName`）
 - `GET /api/evolution/runs/{rid}/steps/{index}` → `EvolutionStep`（§3.6；`index` 越界或未到达 → `404 STEP_NOT_READY`）
-- `POST /api/evolution/runs/{rid}/advance` → `200 RunDetail`；run 已结束 → `409 RUN_ALREADY_FINISHED`（V1 用于演示推进，patch/评测为占位）
+- `POST /api/evolution/runs/{rid}/advance` → `200 RunDetail`；run 已结束 → `409 RUN_ALREADY_FINISHED`（V1 用于演示推进；patch 内容/评分为占位，candidate commit 与 amend/reset 真实）
+- `POST /api/evolution/runs/{rid}/push` → `200 RunDetail`：完成后校验分支并 push；未完成 → `409 RUN_NOT_FINISHED`；已推送幂等返回；失败 → `500 GIT_ERROR`（`details.stage="push"`，消息脱敏）
 
-运行创建时同步完成第 0–1 步（筛选 + 占位聚类），因此 `mode=full` 的 run 创建后第 1 步即可点开查看簇。
+运行创建时同步完成第 0–1 步（筛选 + 占位聚类），并**准备工作区**：从配置的 `repo_path` 以 `base_ref`（tag）clone 到 `data/workspaces/{runId}`，创建分支 `evo/{YYYYMMDD}-{runId}`，记录 `base_commit`；因此 `mode=full` 的 run 创建后第 1 步即可查看簇。
 
-### 4.11 仅聚类预览
+### 4.11 进化对象配置（仅配置后可自进化）
+
+| 端点 | 说明 |
+|---|---|
+| `GET /api/evolution/targets` | 列出配置：`{ "items": [ { id, objectType, objectName, repoPath, subDir, defaultRef, enabled } ] }` |
+| `POST /api/evolution/targets` | 新增（admin）；body 同上；`409 TARGET_EXISTS` |
+| `PUT /api/evolution/targets/{id}` | 修改（admin）；`404 TARGET_NOT_FOUND` |
+| `DELETE /api/evolution/targets/{id}` | 删除（admin）；有进行中 run 时 `409 TARGET_IN_USE` |
+| `GET /api/evolution/targets/{id}/versions` | V1 从本地仓库 `git tag --list` 返回 `{ "versions": ["v2.0.0", ...] }`；仓库不可用 → `422 REPO_INVALID` |
+
+- 只有 `enabled=true` 的配置出现在向导的"对象/版本"下拉里；
+- 配置页入口在向导 Step1 选择器右侧的齿轮图标（[08 §9.2](08-frontend-implementation.md)）。
+
+### 4.12 仅聚类预览
 
 `POST /api/evolution/cluster-previews`（body 同 4.9 + `"mode": "cluster_only"`）→ `201 { "runId": "evo-...", "clusters": [ProbeCluster] }`
 
 - 预览落一条 `mode=cluster_only` 的 `evolution_runs`，簇按 run 归属（与正式 run 同表）；后续页用 `GET /runs/{rid}/steps/1` 取簇。
 - 不做 patch/评测，`GET /runs/{rid}` 的 steps 只到第 1 步。
 
-### 4.12 清单
+### 4.13 清单
 
-- `GET /api/catalogs/targets` → 从 `probe_reports` 聚合：`{ "skill": [{ "name": "deep-research", "versions": ["v2.0.0","v1.9.0"] }], "agent": [...] }`
+- `GET /api/catalogs/targets` → 已启用且配置的对象：`{ "skill": [{ "id": "…", "name": "deep-research", "versions": ["v2.0.0","v1.9.0"] }], "agent": [...] }`（versions 取自本地仓库 tag；与 `/evolution/targets` 一致，前端可只用后者）
 - `GET /api/catalogs/models` → `{ "models": ["glm-5.3", "glm-5.3-flash", ...] }`（来自 `sessions.model` 去重）
 
-### 4.13 SSE
+### 4.14 SSE
 
 `GET /api/events?ticket=…&topics=run:evo-20261019-01,sync`（ticket 见 §4.1，一次性）
 
@@ -436,10 +464,45 @@ data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"runn
 | `sync.completed` | jobId / imported / skipped / errors[] |
 | `run.progress` | runId / unit / total / percent / status / stageLabel / doneRounds / accepted |
 | `run.completed` | runId / verdict / bestScore / initScore |
+| `run.failed` | runId / stage / message / eventSeq |
+| `run.interrupted` | runId / stage / message / eventSeq |
 
 - `Last-Event-ID` 支持补发最近 100 条。
 - 事件 id 为字符串自增整数；前端重连后从断点续传。
-- SSE 只做通知，数据仍以 REST 为准（前端收到事件后失效 queryKey）。
+- SSE 只做通知，数据仍以 REST 为准（前端收到事件后失效 queryKey；历史过程读 `GET /runs/{rid}/events`，见 4.15）。
+
+### 4.15 运行执行日志（过程与异常）
+
+`GET /api/evolution/runs/{rid}/events?afterSeq=0&limit=100&level=error` →
+
+```json
+{
+  "items": [
+    { "seq": 18, "eventType": "candidate_committed", "level": "info", "stage": "candidate",
+      "stepIndex": 4, "clusterId": "C1", "roundId": "r-01", "jobId": "job-…",
+      "message": "candidate 已提交", "createdAt": "2026-10-23T09:40:12+08:00",
+      "payload": { "commit": "ab12…", "patchHash": "sha256:…", "files": ["SKILL.md"], "durationMs": 812 },
+      "error": null },
+    { "seq": 19, "eventType": "eval_completed", "level": "info", "stage": "eval", "stepIndex": 4,
+      "clusterId": "C1", "roundId": "r-01", "jobId": "job-…",
+      "message": "评测完成：84.6 → 87.2", "createdAt": "2026-10-23T09:40:20+08:00",
+      "payload": { "current": 84.6, "candidate": 87.2, "delta": 2.6, "verdict": "accepted" },
+      "error": null },
+    { "seq": 20, "eventType": "run_failed", "level": "error", "stage": "push", "stepIndex": 5,
+      "clusterId": null, "roundId": null, "jobId": "job-…",
+      "message": "push 失败：remote rejected", "createdAt": "2026-10-23T09:41:02+08:00",
+      "payload": { "remote": "origin", "branch": "evo/20261023-evo-20261023-01" },
+      "error": { "type": "GitError", "message": "remote rejected: protected branch", "detail": "…" } }
+  ],
+  "nextSeq": 20,
+  "hasMore": false
+}
+```
+
+- `afterSeq` 默认 0；`limit` 默认 100、最大 500；`level=error` 只看异常。
+- 事件按 `(run_id, seq)` 稳定排序；`nextSeq` 供前端增量拉取。
+- **刷新/重进页面以本接口为准**，SSE 只负责实时通知；异常（`run_failed/run_interrupted/push_failed`）也在这里可查。
+- `error.detail` 已脱敏并截断（不含 token/环境变量/完整 payload）。
 
 ## 5. 深链契约
 
@@ -500,9 +563,16 @@ flowchart LR
 | `PROBE_CLUSTER_NOT_FOUND` | 404 | probeClusterId 不存在 |
 | `STEP_NOT_READY` | 404 | 请求的 step 尚未到达 |
 | `RUN_NOT_FOUND` | 404 | runId 不存在 |
+| `RUN_NOT_FINISHED` | 409 | 未完成时调用 push |
 | `RUN_ALREADY_FINISHED` | 409 | 已完成的 run 调 advance |
 | `RUN_BUSY` | 409 | 同一 run 有进行中任务 |
 | `NO_PROBES_MATCHED` | 409 | 启动自进化时筛选结果为空 |
+| `TARGET_NOT_FOUND` | 404 | 进化对象配置不存在 |
+| `TARGET_EXISTS` | 409 | 同一 `(objectType, objectName)` 已配置 |
+| `TARGET_NOT_CONFIGURED` | 409 | 启动 run 时目标未配置或已停用 |
+| `TARGET_IN_USE` | 409 | 删除配置时仍有进行中的 run |
+| `REPO_INVALID` | 422 | 仓库路径不存在/不是 git 仓库/ref 不存在 |
+| `GIT_ERROR` | 500 | git 操作失败（clone/branch/commit；消息含 stderr 摘要） |
 | `SYNC_IN_PROGRESS` | 409 | 已有同步任务在跑 |
 | `UPSTREAM_NOT_AVAILABLE` | 409 | 上游查询接口未配置或未实现时的 pull 请求 |
 | `USERNAME_CONFLICT` | 409 | 创建用户时用户名已存在 |

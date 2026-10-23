@@ -254,17 +254,43 @@ stateDiagram-v2
 
 六步 `status` 映射与前端不推算的约定不变（[05 §3.5](05-api-design.md)）。
 
-### 5.2 创建 run：筛选 + 占位聚类一次完成
+### 5.2 对象配置（`service/evolution/targets.py`）
+
+- CRUD 维护 `evolution_targets`；写操作仅 admin（middleware 路径规则 `/api/evolution/targets*`）。
+- 保存前校验：`repo_path` 存在且是 git 仓库（`git -C <path> rev-parse --git-dir`）、`sub_dir` 非空、`default_ref` 可解析（`git rev-parse <ref>`）；失败 → `422 REPO_INVALID`。
+- 版本列表：`git -C <path> tag --list`（V1 只读本地 tag）；返回给向导的版本下拉。
+- 唯一约束 `(object_type, object_name)` → 重复新增 `409 TARGET_EXISTS`；删除时若有进行中 run → `409 TARGET_IN_USE`。
+
+### 5.3 创建 run：配置校验 → 工作区 → 筛选 + 占位聚类
 
 ```python
 async def create_run(q: ProbeQuery, mode: str = "full") -> RunDetail:
+    cfg = await targets.get_enabled(q.target_type, q.target_name) \
+        or raise Conflict("TARGET_NOT_CONFIGURED")
     probes = await crud.probes.list_matching(q)        # probe_reports JOIN sessions，按 target/window/models
     if not probes:
         raise Conflict("NO_PROBES_MATCHED")
+
+    run_id = ulid()
+    ws = None
+    if mode == "full":                                 # 仅聚类预览不需要工作区
+        ws = Workspace.prepare(
+            repo_path=cfg.repo_path, sub_dir=cfg.sub_dir,
+            ref=q.version or cfg.default_ref, run_id=run_id,
+        )                                              # clone 到 data/workspaces/{run_id}，建分支 evo/{YYYYMMDD}-{run_id}
+
     async with db.transaction():
-        run = await crud.runs.insert(target=..., mode=mode, status="running",
-                                     progress_unit=1, stats=summarize(probes))
-        clusters = simple_cluster(probes)              # 见 5.3
+        run = await crud.runs.insert(
+            id=run_id, mode=mode, status="running", progress_unit=1,
+            target_config_id=cfg.id, target_type=q.target_type,
+            target_name=q.target_name, target_version=q.version or cfg.default_ref,
+            repo_path=cfg.repo_path, base_ref=ws.ref if ws else None,
+            base_commit=ws.base_commit if ws else None,
+            branch_name=ws.branch if ws else None,
+            workspace_path=ws.path if ws else None,
+            stats=summarize(probes),
+        )
+        clusters = simple_cluster(probes)              # 见 5.4
         for seq, c in enumerate(clusters, start=1):
             cid = ulid()
             await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type)
@@ -275,10 +301,12 @@ async def create_run(q: ProbeQuery, mode: str = "full") -> RunDetail:
     return to_run_detail(run)
 ```
 
-- `POST /evolution/runs` 与 `POST /evolution/cluster-previews` 共用这段；后者 `mode=cluster_only`，不建迭代轮。
-- 聚类结果**落库**（`probe_clusters` + `probe_cluster_probes`），按 run 归属；同一 run 内不可变。
+- `Workspace.prepare`：`git clone --no-hardlinks <repo_path> <workspace> --branch <ref>`（本地克隆，不走网络）→ `git checkout -b evo/{YYYYMMDD}-{run_id}` → 记录 `base_commit`。
+- 仓库不可用/ref 不存在 → `422 REPO_INVALID`；clone/branch 失败 → `500 GIT_ERROR`（含 stderr 摘要，不泄露凭据）。
+- 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
+- `POST /evolution/runs` 与 `POST /evolution/cluster-previews` 共用这段；后者 `mode=cluster_only`，跳过工作区与迭代轮。
 
-### 5.3 V1 占位聚类算法（可替换）
+### 5.4 V1 占位聚类算法（可替换）
 
 ```python
 def simple_cluster(probes: list[Probe]) -> list[Cluster]:
@@ -304,7 +332,7 @@ def simple_cluster(probes: list[Probe]) -> list[Cluster]:
 - 这是**占位算法**：只为让六步流程跑通，不追求语义质量；后续替换成真正的聚类服务时，只改 `simple_cluster` 与簇描述生成，表结构不变。
 - 确定性：排序键用 `probe_id`，同输入同输出，便于测试与复现。
 
-### 5.4 推进（V1 串行本地）
+### 5.5 推进与提交（V1 串行本地）
 
 ```python
 async def advance(run_id: str) -> RunDetail:
@@ -316,17 +344,146 @@ async def advance(run_id: str) -> RunDetail:
             await rank_clusters(run)                   # 按簇内 probe 数降序写 seq
         elif run.progress_unit == 3:
             pass                                       # 归因确认：probe 数据已就绪
-        elif run.progress_unit >= 4 and run.progress_unit < 4 + run.cluster_count:
-            await iterate_one_round(run)               # patch/eval 占位，见 5.5
+        elif 4 <= run.progress_unit < 4 + run.cluster_count:
+            await iterate_one_round(run)               # candidate commit → 评测 → amend/reset
         run.progress_unit += 1
+    if run.progress_unit == 4 + run.cluster_count + 1:
+        await finalize(run)                            # 写终评 + 完成后 push
     bus.publish("run.progress", ...)
+    return to_run_detail(run)
+
+
+async def iterate_one_round(run):
+    cluster, round = await next_pending_round(run)
+    ws = Workspace(run.workspace_path)
+    patch = placeholder_patch(run, cluster)            # 追加一个"占位变更"小节
+    ws.apply(patch)                                    # 真实写文件
+
+    # 1) 立即提交 candidate（带追溯信息）
+    candidate = ws.commit(build_candidate_message(run, cluster, round))
+    await crud.rounds.mark_candidate(round.id, candidate.hash, candidate.message)
+
+    # 2) 占位评测
+    current, candidate_score = placeholder_eval(run, cluster, round)
+    accepted = candidate_score >= current
+
+    # 3) 接纳 → amend 追加评测对比；拒绝 → reset 丢弃 candidate commit
+    if accepted:
+        final = ws.amend(build_accepted_message(candidate.message, current, candidate_score))
+        await crud.rounds.accept(round.id, candidate_score, final.hash, final.message)
+    else:
+        ws.reset_hard("HEAD~1")                        # 只删本轮的 candidate commit
+        await crud.rounds.reject(round.id, candidate_score)
+```
+
+**commit message 约定**（candidate 阶段就带全追溯信息，便于 code review 与机器解析）：
+
+```text
+evolve(deep-research@v2.0.0): error 类问题 · 第 1 组
+
+Harness-Run-Id: evo-20261023-01
+Harness-Cluster-Id: C1
+Harness-Job-Id: job-01J...
+Harness-Step: 4
+Harness-Round: 2
+Harness-Probes: pr-050b-01, pr-050b-07
+Harness-Bad-Cases: bc-050b-03, bc-050b-11
+Harness-Base-Commit: 9f3c2a1f...
+Harness-Target: skill:deep-research@v2.0.0
+Harness-Patch-Hash: sha256:...
+Harness-Created-At: 2026-10-23T09:40:12+08:00
+Harness-Commit-Duration-Ms: 812
+
+（patch 内容占位，见 patch.py）
+```
+
+接纳后 amend 追加：
+
+```text
+Evaluation:
+- current: 84.6
+- candidate: 87.2
+- delta: +2.6
+- verdict: accepted
+
+Harness-Eval-Current: 84.6
+Harness-Eval-Candidate: 87.2
+Harness-Eval-Delta: +2.6
+Harness-Verdict: accepted
+```
+
+- 这些 `Harness-*` trailer 是**后续提 MR 的追溯字段**：MR 生成器按 trailer 自动填标题/描述、关联 run/cluster/probe/bad_case 与评测结果，不需要再从 UI 反查。
+- **拒绝的簇不留 commit**：`reset --hard HEAD~1` 只回滚本轮 candidate，不影响之前已接纳的轮次。
+- **每个 candidate 一次 commit**：patch 落盘后立即提交，message 携带完整追溯信息；接纳则 `amend` 追加评测对比，拒绝则 `reset --hard HEAD~1` 丢弃该 candidate commit（不留空提交）。
+- 分支名：`evo/{YYYYMMDD}-{run_id}`，例：`evo/20261023-evo-20261023-01`。
+- **push 校验（V1 完成后执行）**：当前分支必须匹配 `^evo/\d{8}-.+$`、不是 `main/master`、HEAD 的父提交链包含 `base_commit`、工作区干净、最近提交都带 `Harness-Run-Id` 且等于当前 run；任一失败 → 不 push，`push_status=failed` 并记录原因。
+- **push 命令**：`git push -u <remote> <branch>`（默认 `origin`）；远端已有同名分支 → 拒绝（不 force）；凭据走 SSH agent / env，不入库。
+- git 操作全部 `subprocess.run([...], capture_output=True, timeout=...)`，参数列表调用、不拼 shell；git author 从 `HE_GIT_AUTHOR_*` 读。
+- 崩溃恢复：candidate commit 已落库；重启后按 `evolution_rounds.status` 判断——`evaluating` 的轮次重新评测并 amend/reset，避免重复提交。
+
+### 5.6 执行事件记录（`service/evolution/events.py`）
+
+```python
+class RunEventRecorder:
+    async def record(self, run_id: str, event_type: str, *, stage: str,
+                     message: str, level: str = "info",
+                     step_index: int | None = None, cluster_id: str | None = None,
+                     round_id: str | None = None, job_id: str | None = None,
+                     payload: dict | None = None, error: Exception | None = None) -> RunEvent:
+        seq = await crud.run_events.next_seq(run_id)     # MAX(seq)+1，UNIQUE(run_id, seq)
+        row = await crud.run_events.insert(
+            run_id=run_id, seq=seq, event_type=event_type, level=level, stage=stage,
+            step_index=step_index, cluster_id=cluster_id, round_id=round_id, job_id=job_id,
+            message=message, payload=payload,
+            error_type=type(error).__name__ if error else None,
+            error_message=sanitize(getattr(error, "message", str(error)))[:2000] if error else None,
+            error_detail=sanitize_traceback(error)[:8192] if error else None,
+        )
+        bus.publish(f"run:{run_id}", "run.event", {"runId": run_id, "seq": seq,
+                                                   "eventType": event_type, "level": level})
+        return row
+```
+
+- 调用点：`run_created`、`workspace_prepared`、`clusters_created`、每轮 `candidate_committed`/`eval_completed`/`cluster_accepted|rejected`、`step_advanced`、`final_completed`、`push_started|succeeded|failed`。
+- **异常必须落库**：job 边界捕获未处理异常 → `record(..., event_type="run_failed", level="error", error=e)` → 更新 `evolution_runs.status=failed/error_*`；进程启动把残留 `running` 标 `interrupted` 并记 `run_interrupted`。
+- 事务：状态变更与事件尽量同事务；git 操作不可回滚，事件记录在操作前后各一条（started/finished 或 failed），保证可追溯。
+- 脱敏：`sanitize` 去掉 `HE_*` 密钥、URL 凭据、token；`error_detail` 截断 8KB，HTTP 接口不返回完整命令环境。
+- 事件是**过程事实来源**：SSE 只做通知，前端刷新后走 `GET /runs/{rid}/events` 读库。
+
+### 5.7 终评与推送（V1 必须 push）
+
+```python
+async def finalize(run):
+    await crud.finals.insert(run.id, build_placeholder_final(run))
+    await crud.runs.complete(run.id, finished_at=now())
+    await push_run(run.id)                  # 失败不回滚 run，只标记 push_status=failed
+
+
+async def push_run(run_id: str) -> RunDetail:
+    run = await crud.runs.get(run_id) or raise NotFound("RUN_NOT_FOUND")
+    if run.status != "completed":
+        raise Conflict("RUN_NOT_FINISHED")
+    if run.push_status == "succeeded":
+        return to_run_detail(run)           # 幂等
+    if not settings.git_push:               # 仅测试/本地可关闭
+        await crud.runs.mark_push_skipped(run.id)
+        return to_run_detail(run)
+    ws = Workspace(run.workspace_path)
+    try:
+        ws.validate_for_push(run)           # 分支命名/保护分支/基线/干净/ trailer
+        ws.push(remote=run.remote_name or settings.git_remote, branch=run.branch_name)
+        await crud.runs.mark_pushed(run.id, now())
+    except GitError as e:
+        await crud.runs.mark_push_failed(run.id, sanitize(str(e)))
     return to_run_detail(run)
 ```
 
-- V1 一次推进一个 unit（对应原型"模拟推进一轮"），由 `service/jobs.py` 的串行执行器调用；同一 run 同时只允许一个推进任务。
-- 真实 patch 生成/评测接入后，`iterate_one_round` 换成调用执行器（本地或 CI），状态机与表不变。
+- 终评完成后自动 `push_run`；`push` 失败不影响 run 的 `completed` 状态，但 `pushStatus=failed`，前端展示原因与「重试 push」。
+- 重试端点 `POST /api/evolution/runs/{rid}/push` 调同一个 `push_run`；`push_status=succeeded` 时幂等返回。
+- 推送目标为配置仓库的 `origin`（`HE_GIT_REMOTE`）；远端已有同名分支时拒绝，不 `--force`。
+- UI 在终评区展示 `branchName`、`pushStatus`、`pushedAt`；失败时展示脱敏错误摘要。
 
-### 5.5 六步产出
+### 5.8 六步产出
 
 | step | 服务端组装 | 数据来源 |
 |---|---|---|
@@ -337,8 +494,8 @@ async def advance(run_id: str) -> RunDetail:
 | 4 | 逐轮 patch/eval/accept/commit | `evolution_rounds` + 簇 |
 | 5 | 终评 verdict + metrics + changes | `evolution_finals` |
 
-- 第 4 步的 `patch` / `eval` 在 V1 是**占位值**（固定 diff、固定分数），用于演示"接纳/拒绝"；真实执行接入后替换数据来源。
-- 第 5 步 `final` 同样是占位结果；`metrics` 从 fixtures/外部写入或计算占位。
+- 第 4 步：**patch 落盘、candidate commit、amend/reset 都是真实的**；patch 内容与评测分数是占位；终评结果占位。
+- 真实 patch 生成/评测接入后，只替换 `placeholder_patch` 与 `placeholder_eval`，状态机、表与 git 流程不变。
 
 ## 6. 任务执行与 SSE（`service/jobs.py` + `service/events.py`）
 
@@ -349,7 +506,7 @@ V1 的同步/聚类/推进都是"秒级到分钟级、同一时刻只跑一个"�
 - `service/jobs.py` 提供 `JobRunner`：`submit(kind, payload, ref_id)` 落 `job_runs` 行（`queued`），由进程内 worker 串行执行；
 - **串行**用一把全局 `asyncio.Lock` 保证；同 `(kind, ref_id)` 重复提交 → `409`；
 - 状态与进度写 `job_runs`（`queued/running/completed/failed/interrupted` + `progress`）；
-- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；可重试的 kind（sync）重新入队；
+- 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 事件；可重试的 kind（sync）重新入队；
 - 未来并行/CI：新增 executor 实现（调 CI 平台接口），`job_runs.executor='ci'`、`external_job_id` 记录远端任务 id，业务 service 不变。
 
 ```python
@@ -374,11 +531,18 @@ class JobRunner:
                 await HANDLERS[job.kind](job, self._crud, self._bus)
                 await self._crud.job_runs.complete(job.id)
             except Exception as e:
-                await self._crud.job_runs.fail(job.id, str(e))
+                await self._crud.job_runs.fail(job.id, sanitize(str(e)))
+                if job.kind.startswith("evolution") and job.ref_id:
+                    await RunEventRecorder(self._crud, self._bus).record(
+                        job.ref_id, "run_failed", stage=job.kind, level="error",
+                        message="任务执行失败", job_id=job.id, error=e)
+                    await self._crud.runs.fail(job.ref_id, stage=job.kind,
+                                               message=sanitize(str(e))[:2000])
                 self._bus.publish("job.failed", {"jobId": job.id, "kind": job.kind})
 ```
 
-- `HANDLERS`：`sync`（acquisition 同步）、`pull`（按需拉取）、`evolution_prepare`（筛选 + 聚类）、`evolution_advance`（推进一轮）。
+- `HANDLERS`：`sync`（acquisition 同步）、`pull`（按需拉取）、`evolution_prepare`（校验配置 + 准备 workspace + 筛选聚类）、`evolution_advance`（推进一轮，含落盘/commit）。
+- 工作区清理：`data/workspaces/{run_id}` 默认保留最近 20 个 run；`app/cli.py clean-workspaces --keep 20` 手动清理；删除前检查无进行中 run。
 - 任务体只做编排：更新领域表（`sync_runs` / `evolution_runs`）并发事件；业务规则在 `service/*` 里。
 
 ### 6.2 事件总线
@@ -518,6 +682,7 @@ flowchart LR
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |
 | evolution | 状态机边界（unit 0/2/4/4+M）、占位聚类算法确定性、簇落库、step 不可读 404、advance 冲突、终评字段 |
+| evolution git | 临时 git 仓库：clone tag、建分支、candidate commit、接纳 amend、拒绝 reset、push 到临时 bare 仓库、push 前分支校验 |
 | jobs | 串行锁、同 kind+ref 去重、重启 interrupted 恢复、job_runs 状态流转 |
 | events | 订阅、补发、心跳、断线 |
 | 数据库 | SQLite 全量通过；`-m mysql` 跑同一套 Repository/同步用例，结果一致 |

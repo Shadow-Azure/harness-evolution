@@ -11,6 +11,7 @@
 | `/sessions`、`/sessions/:sid` | `pages/sessions/Index.vue` | `GET /sessions`、`GET /sessions/{sid}`、`/tree`、`/bad-cases` | Session 浏览器 + 家族摘要 |
 | `/sessions/:sid/errors` | `pages/errors/Index.vue` | `GET /sessions/{sid}/bad-cases`、`GET /bad-cases/{badCaseId}`、`/analysis`、`GET /probes/{probeId}` | 错误详情与归因 |
 | `/evolution` | `pages/evolution/Index.vue` | `GET /evolution/runs`、`GET /catalogs/*` | 自进化列表 + 启动向导 |
+| `/evolution/targets` | `pages/evolution/targets/Index.vue` | `GET/POST/PUT/DELETE /evolution/targets`、`GET .../versions` | **进化对象配置页（新增）** |
 | `/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET /evolution/runs/{rid}`、`/steps/{n}` | 运行详情（6 步） |
 | `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/cluster-previews/{id}` | 仅聚类结果 |
 
@@ -24,6 +25,7 @@ flowchart LR
     R --> V["evolution/Index"]
     R --> D["evolution/RunDetail"]
     R --> C["evolution/ClusterPreview"]
+    R --> TG["evolution/targets/Index"]
     S --> FT["family-tree/FamilyTree"]
     S --> FL["bad-cases/BadCaseList"]
     V --> LW["evolution/LaunchWizard"]
@@ -95,10 +97,13 @@ export const keys = {
   runs: () => ["evolution", "runs"] as const,
   run: (rid: string) => ["evolution", rid] as const,
   runStep: (rid: string, n: number) => ["evolution", rid, "step", n] as const,
+  runEvents: (rid: string, afterSeq = 0) => ["evolution", rid, "events", afterSeq] as const,
   preview: (id: string) => ["evolution", "preview", id] as const,
   catalogs: () => ["catalogs"] as const,
   sources: () => ["acquisition", "sources"] as const,
   syncStatus: () => ["acquisition", "status"] as const,
+  targets: () => ["evolution", "targets"] as const,
+  targetVersions: (id: string) => ["evolution", "targets", id, "versions"] as const,
 }
 ```
 
@@ -134,6 +139,7 @@ useSessionProbes(sid: Ref<string>)
 useRuns()
 useRun(rid: Ref<string>)
 useRunStep(rid: Ref<string>, step: Ref<number>)      // enabled: step 可达
+useRunEvents(rid: Ref<string>, afterSeq: Ref<number>) // GET /evolution/runs/{rid}/events
 useProbeQuery()                                      // mutation → POST /evolution/probes/query
 useCreatePreview()  usePreview(id)
 useStartRun()  useAdvance(rid)
@@ -143,6 +149,11 @@ useSources()          // GET /acquisition/sources
 useSyncStatus()       // GET /acquisition/status
 useTriggerSync()      // mutation：POST /acquisition/sync → 返回 jobId，SSE 跟进度
 usePullSessions()     // mutation：POST /acquisition/pull（按 sessionRefs / window）
+
+// useTargets.ts
+useTargets()          // GET /evolution/targets（仅 enabled 出现在向导）
+useTargetVersions(id) // GET /evolution/targets/{id}/versions（git tag）
+useCreateTarget() useUpdateTarget() useDeleteTarget()   // admin 写操作
 
 // useCatalogs.ts
 useTargets()  useModels()                            // staleTime: Infinity
@@ -367,6 +378,7 @@ Index.vue
 
 - 分组与排序由后端给（`running` / `history`），前端不重排。
 - 进度条：`progress.percent` 直接用；阶段文案 `progress.stageLabel` 直接用（后端算）。
+- `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。
 
 ## 9. 启动向导（`evolution/LaunchWizard.vue`）
@@ -385,7 +397,9 @@ stateDiagram-v2
 ### 9.2 Step1 表单
 
 - 对象类型分段控件（skill/agent）→ 切换后名称与版本级联重置（原型行为）。
-- 名称/版本：`useTargets()` 提供（来自 `probe_reports` 的 DISTINCT 聚合）；版本取名称对应的 versions。
+- 名称：`useTargets()` 提供**已配置且启用**的对象；未配置的对象不出现。
+- 版本：`useTargetVersions(targetId)` 从本地仓库 tag 列表拉取；默认选中 `defaultRef` 对应项。
+- **配置入口**：名称选择器右侧一个齿轮图标，点击跳 `/evolution/targets`（配置页）；返回后刷新候选。
 - 时间段：两个 `el-date-picker`，校验 `from <= to`。
 - 模型多选：`useModels()` 提供的 chips，可全不选（= 全部模型）。
 - 「下一步」：调 `useProbeQuery().mutate(condition)`（`POST /evolution/probes/query`），成功进 Step2；无匹配时后端 409 `NO_PROBES_MATCHED`。
@@ -405,6 +419,26 @@ stateDiagram-v2
 - 命中数字来自真实 `probe_reports` 查询，不再哈希模拟。
 - 若库里没有 probe 数据（开发环境），用 `fixtures` seed 后即可演示；前端不做任何桩分支。
 
+### 9.5 进化对象配置页（`/evolution/targets`）
+
+```text
+Index.vue
+├── 页头：标题 + "新增配置"
+├── TargetTable.vue：objectType / objectName / repoPath / subDir / defaultRef / enabled / 操作
+└── TargetFormDialog.vue（新增/编辑）
+    ├── objectType（skill/agent）
+    ├── objectName
+    ├── repoPath（绝对路径）
+    ├── subDir（相对仓库根）
+    ├── defaultRef（tag/分支）
+    └── enabled 开关
+```
+
+- 写操作仅 admin 可见；成员只读。
+- 保存前前端做必填校验；仓库/ref 合法性由后端返回 `422 REPO_INVALID`，表单展示错误。
+- 删除前提示"有进行中 run 时不可删除"（后端 409 `TARGET_IN_USE`）。
+- 保存成功失效 `["evolution","targets"]` 前缀，向导候选刷新。
+
 ## 10. 运行详情页（`pages/evolution/RunDetail.vue`）
 
 ### 10.1 结构
@@ -418,6 +452,7 @@ RunDetail.vue
 │   └── StepContent.vue（按 step 动态组件）
 │       ├── StepFilter.vue / StepClusters.vue / StepProbeConfirm.vue
 │       ├── StepRanking.vue / StepIterations.vue / StepFinal.vue
+├── RunLogPanel.vue（执行日志/异常，tab 或右栏）
 └── （step 4 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
 
@@ -426,6 +461,12 @@ RunDetail.vue
 | 交互 | 实现 |
 |---|---|
 | 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点） |
+| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit`（路径可折叠）；点击可复制分支名 |
+| 推送状态 | 终评区展示 `pushStatus`（pending/succeeded/failed/skipped）与 `pushedAt`；失败展示脱敏错误 + 「重试 push」按钮（调 `POST /runs/{rid}/push`） |
+| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, afterSeq)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
+| 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
+| 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `lastEventSeq`；`run.failed/interrupted` → 失效 run + events |
+| 中断恢复 | 页面刷新后先拉 `run` 与 `events`，不依赖 SSE 历史；`interrupted` 显示"任务被中断，可查看最后事件" |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step=n` + 拉 `useRunStep` |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 「模拟推进一轮」 | `useAdvance().mutate(rid)` → 成功后失效 `["evolution", rid]`，SSE 也会触发同样的失效（去抖去重） |
@@ -436,8 +477,27 @@ RunDetail.vue
 
 - 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 评测中 / 已接纳 Δ / 未接纳 Δ）。
 - 展开内容顺序：簇内 probe 列表 → patch diff → 评测对比 → commit / 拒绝说明。
+- 评测中：展示 **candidate commit**（hash + 追溯 message），表示 patch 已提交、等待评测。
+- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict）。
+- 未接纳：显示"candidate commit 已 reset 丢弃，分支不变"；不展示 commit hash。
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
 - `EvalCompare`：两条横向条（current 灰 / candidate 绿或红），宽度按 `max(cur,cand)*1.06` 归一（原型算法）。
+
+### 10.4 执行日志与异常（`RunLogPanel.vue`）
+
+```text
+RunLogPanel.vue
+├── 工具条：级别过滤（全部/error/warn）、自动滚动开关、刷新
+├── EventList.vue：时间 / stage / eventType / message / 耗时
+│   └── ErrorDetail.vue（点击展开 error.type/message/detail）
+└── 底部：加载更多（afterSeq 分页）
+```
+
+- 数据源：`GET /runs/{rid}/events?afterSeq=&limit=`；刷新/重进以接口为准。
+- 事件颜色：`info` 灰、`warn` 橙、`error` 红；`candidate_committed` / `eval_completed` / `cluster_accepted` 用不同图标。
+- `error.detail` 默认折叠，避免长堆栈撑爆布局；复制按钮只复制脱敏后的内容。
+- 事件与步骤联动：点击带 `stepIndex` 的事件切到对应 step；点击 `clusterId` 滚动到簇卡。
+- 运行中新增事件自动滚到底；用户手动上滚时暂停自动滚动。
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
@@ -525,5 +585,6 @@ flowchart LR
 
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
 - 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；SSE 票据每次重连都重新申请。
-- 「模拟推进」按钮在 V1 可见（编排真实、patch/评测为占位）；真实执行器接入后隐藏按钮。
-- 真实执行接入时前端**零改动**：接口形状不变，只是数据来源从占位值换成真实执行结果。
+- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；接纳后 message 追加评测对比（amend），拒绝则 reset 丢弃该 commit。V1 在 run 完成后校验分支并 push 到远端；patch 内容与评分是占位，但 commit/amend/reset/push 都是真的。UI 需明示"占位 patch / 占位评测"。
+- 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 的齿轮图标。
+- 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。

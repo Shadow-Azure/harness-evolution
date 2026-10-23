@@ -28,7 +28,7 @@ flowchart LR
 | [07 后端接口的实现设计](07-backend-implementation.md) | 每个功能域的路由/服务/数据访问/任务怎么落地 | 写后端时 |
 | [08 前端的实现设计](08-frontend-implementation.md) | 每个页面的组件树、数据流、交互与打桩接入点 | 写前端时 |
 | [09 Review 指南与待讨论问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q5 开放问题、评审重点 | **review 时先看这篇** |
-| [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 设计确认后怎么排期：6 个 milestone、约 34 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
+| [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 设计确认后怎么排期：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
 
 ## 系统一句话说明
 
@@ -71,13 +71,16 @@ flowchart TB
 | D3 | 契约事实源 | **FastAPI OpenAPI 为唯一事实源**，`openapi-typescript` 生成 TS 类型存入 `packages/contracts` | 保留仓库"contracts 是共享协议唯一来源"的约定，但内容改为生成物 + CI 防漂移校验 |
 | D4 | 演示数据与外部数据（2026-10-22 修订） | **问题/归因数据来自外部只读表；演示数据用 `fixtures/` + `seed` 灌入真实表**，运行时没有 Stub Provider 分支 | API 契约全真；UI 永远读真实表；上游/外部表就绪后无需切换前端或契约。详见 [01 §5](01-architecture.md) |
 | D5 | 部署形态（2026-10-22 修订） | **SaaS 服务**：多用户、远程访问、MySQL 主库；不再是本地单机工具 | 引入鉴权、用户体系与远程部署；原先"预留服务化"的接缝全部兑现 |
-| D6 | 自进化边界（2026-10-22 修订） | **编排与占位聚类真实实现；patch/评测/终评先占位** | 六步流程与状态机按真实目标设计；聚类先用"按 attribute_type 分半"的占位算法，结果落库；真实执行器后续替换（本地或 CI） |
+| D6 | 自进化边界（2026-10-23 修订） | **V1 真实修改 skill/agent 文件、commit 并 push 到远端 run 分支**；聚类与 patch 内容、评测分数为占位 | candidate 先 commit，接纳 amend 追加评测对比、拒绝 reset；分支 `evo/{YYYYMMDD}-{run_id}`；推送前校验分支 |
 | D7 | 进度推送 | **SSE（Server-Sent Events）** | FastAPI 原生友好，单向推送足够；EventSource 不能带头，用一次性票据鉴权 |
 | D8 | 范围裁剪（2026-10-22） | **时间线页面（原型 B 页）不做** | 轮次/步骤/块仍入库，仅用于统计与后续诊断；移除时间线路由、接口、组件与对应里程碑 issue。见 [02 §2.1](02-features.md) |
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
 | D12 | 轨迹来源（2026-10-22） | **两类来源，契约先行**：① 上游查询接口（当前不存在，由我们定义契约，见 [05 §10](05-api-design.md)）；② 同库源表（其他任务写入问题 session，我们读取归一化） | 不做本机文件扫描；源表读取用 `service/acquisition` + `db/crud`，上游调用用 `third_party_api`，不建 Provider 层 |
+| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoPath/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | V1 从本地已 clone 仓库按 tag 取基线；后续接远端版本下载 |
+| D14 | 自进化 git 流程（2026-10-23） | **每个 candidate patch 一次 commit（带追溯），接纳后 amend 追加评测对比，拒绝 reset 丢弃；V1 完成后校验并 push** | `evolution_runs` 记录 baseCommit/branch/pushStatus；push 前校验分支命名、基线、trailer；失败可重试 push |
+| D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
 
 ## Review 前必看：6 个待确认项
 
@@ -96,9 +99,10 @@ flowchart TB
 
 - **轨迹**：源表/上游接口 → `service/acquisition` → 本服务业务表（读写）。
 - **问题与归因**：外部系统写 `bad_cases` / `bad_case_analysis` / `probe_reports`，本服务**只读**。
-- **自进化**：本服务写 `evolution_runs` / `probe_clusters` / `evolution_rounds` / `evolution_finals`。
+- **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库的副本、commit 到 `evo/{YYYYMMDD}-{run_id}` 分支，并在 run 完成后校验并 push 到远端**（candidate 先 commit，接纳 amend、拒绝 reset）。
+- **执行过程**：阶段、候选、评测、推送、异常全部落 `evolution_run_events`；前端通过 `GET /runs/{rid}/events` 读取，SSE 只做实时通知。
 - **演示数据**：`fixtures/` + `python -m app.cli seed`，仅开发/演示灌入真实表；运行时无 stub 分支。
-- **V1 占位**：聚类用"按 attribute_type 分半"的占位算法；patch/评测/终评为占位值，后续换真实执行器。
+- **V1 占位**：聚类用"按 attribute_type 分半"的占位算法；patch 内容追加占位小节但**真实落盘/commit**；评测/终评为占位分数。
 
 机制细节见 [01 §5](01-architecture.md) 与 [06](06-database-design.md)。
 

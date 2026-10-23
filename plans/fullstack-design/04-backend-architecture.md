@@ -95,7 +95,7 @@ apps/api/
       acquisition/           # 来源适配、归一化、家族组装
       bad_cases/             # 问题列表/详情（只读）
       probes/                # 归因结论（只读）
-      evolution/             # run、占位聚类、六步产出
+      evolution/             # run、占位聚类、六步产出、执行事件（events.py）
       catalogs/              # 目标/模型清单
       jobs.py                # 串行任务执行器（job_runs）
       events.py              # 进程内 SSE 事件总线
@@ -237,11 +237,12 @@ class TrajectorySource(Protocol):
 
 ### 5.4 V1 占位实现（在 service 内，不是 Provider）
 
-| 占位点 | 位置 | 后续替换 |
+| 占位点 | 位置 | 说明 / 后续替换 |
 |---|---|---|
 | 聚类 | `service/evolution/simple_cluster`（按 attribute_type 分半） | 换真实聚类，表不变 |
-| patch/eval/commit | `evolution_rounds` 占位值 | 换真实执行器（本地或 CI） |
-| 终评 | `evolution_finals` 占位 | 换真实评测 |
+| patch 内容 | `service/evolution/patch.py` | 内容占位（追加小节），但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
+| eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测执行器（本地或 CI） |
+| git 推送 | `HE_GIT_PUSH=true`（V1 完成后 push） | 校验分支后 push；失败可重试；后续 PR |
 
 ## 6. 错误模型与横切
 
@@ -332,12 +333,13 @@ flowchart LR
 | `HE_ACCESS_TOKEN_TTL_MIN` | `30` | access token 有效期 |
 | `HE_REFRESH_TOKEN_TTL_DAYS` | `14` | refresh cookie 有效期 |
 | `HE_ADMIN_USERNAME` / `HE_ADMIN_PASSWORD` | 空 | 首次启动且 users 为空时播种初始管理员 |
-| `HE_SRC_TABLE_SESSIONS` / `HE_SRC_TABLE_TRANSCRIPTS` | `he_src_sessions` / `he_src_transcripts` | 同库源表名（SourceTableSource 读取，只读） |
-| `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` | 空 | 上游轨迹查询接口（HttpApiSource，上游实现后启用） |
-| `HE_SYNC_INTERVAL_SECONDS` | `300` | 源表定时扫描间隔（0 = 仅手动触发） |
 | `HE_SRC_TABLE_AGENTS` / `HE_SRC_TABLE_TRANSCRIPTS` | `he_src_agents` / `he_src_transcripts` | 同库源表名（只读） |
 | `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` | 空 | 上游轨迹查询接口（上游实现后启用） |
 | `HE_SYNC_INTERVAL_SECONDS` | `300` | 源表定时扫描间隔（0 = 仅手动） |
+| `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
+| `HE_GIT_PUSH` | `true` | V1 完成后 push 到配置仓库的 `origin`；测试环境可设 false |
+| `HE_GIT_REMOTE` | `origin` | 推送远端名 |
+| `HE_GIT_AUTHOR_NAME` / `HE_GIT_AUTHOR_EMAIL` | `harness-evolution` / `noreply@local` | commit author |
 | `HE_SSE_HEARTBEAT_SECONDS` | `15` | SSE 心跳 |
 | `HE_LOG_LEVEL` | `info` | 日志级别 |
 | `HE_CORS_ORIGINS` | `http://localhost:5173` | 允许的前端域名 |
@@ -351,6 +353,7 @@ flowchart LR
 | 鉴权 | 单元 + 路由测试 | 登录/刷新/登出、错误密码 401、过期 token、SSE 票据一次性 |
 | 同步 | 集成测试 | `SourceTableSource` 水位线增量、幂等、源表结构变更隔离 |
 | 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（0..4+M+1）；越界推进报 409 |
+| git workspace | 临时 git 仓库 + bare remote | clone tag、建分支、candidate commit、amend/reset、push、push 前分支校验 |
 | Repository | 集成测试（参数化 SQLite / MySQL） | 幂等写入、聚合查询、事务边界；MySQL 用 `-m mysql` 标记 |
 | 路由 | `httpx.AsyncClient(ASGITransport)` | 状态码、错误模型、分页、深链字段、未登录 401 |
 | SSE | 测试客户端 | 票据 → 订阅 → 推进 → 收到事件 → 断开重连补发 |

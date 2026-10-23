@@ -65,7 +65,9 @@
 | run 卡：已完成 best vs 初始 + Δ + 接纳 patch 数 + 有效/无收益徽章 | F10 | 同上（`final`） |
 | 列表空态："当前没有正在执行的自进化" | F10 | [08 §8](08-frontend-implementation.md) |
 | 向导：两步指示器 | F11 | [08 §9.1](08-frontend-implementation.md) |
-| 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.12](05-api-design.md)（catalogs）· [08 §9.2](08-frontend-implementation.md) |
+| 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.11](05-api-design.md)（targets）· [08 §9.2](08-frontend-implementation.md) |
+| 向导 step1：选择器右侧齿轮 → 进化对象配置页 | F19 | [05 §4.11](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) · [08 §9.5](08-frontend-implementation.md) |
+| 配置页：列表/新增/编辑/删除，repo/subDir/ref/enabled | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) |
 | 向导 step1 → step2：查询命中 | F11 | [05 §4.9](05-api-design.md) |
 | 向导 step2：条件摘要 + 修改条件 | F11 | [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：3 项统计 + 属性分布条 + 图例 | F11 | [05 §4.9](05-api-design.md)（`summary/byAttributeType`） |
@@ -74,14 +76,18 @@
 | 向导 step2：两个出口「仅聚类」「启动自进化」 | F11 | [05 §4.9–4.10](05-api-design.md) · [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：未关联 session 的行不渲染链接 | F11 | [08 §9.3](08-frontend-implementation.md) |
 | 详情：返回列表、标题、状态徽章、模拟推进 | F13 | [05 §4.10](05-api-design.md)（`advance`） |
-| 详情：目标与输入 panel（8 项 kv + 类型分布条 + 图例） | F13 | [05 §3.5](05-api-design.md)（`stats/byType`） |
+| 详情：目标与输入 panel（8 项 kv + 类型分布条 + 图例） | F13 | [05 §3.5](05-api-design.md)（`stats/byAttributeType`） |
+| 详情：工作区信息（分支/base commit/路径） | F13 | [05 §3.5](05-api-design.md)（`workspace`）· [08 §10.2](08-frontend-implementation.md) |
 | 详情：6 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
 | 第 1 步：probe 筛选表（含归属簇） | F13 | [05 §3.6](05-api-design.md)（step 0） |
 | 第 2 步：聚类卡 + 簇内 probe 列表 | F13 | [05 §3.6](05-api-design.md)（step 1） |
 | 第 3 步：归因确认（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
 | 第 4 步：严重程度排序表（顺序/类型/probe 数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3） |
-| 第 5 步：迭代卡（状态徽章、patch diff、评测对比、commit/拒绝说明） | F13 | [05 §3.6](05-api-design.md)（step 4） |
+| 第 5 步：迭代卡（candidate commit → 评测 → 接纳 amend / 拒绝 reset） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.5](07-backend-implementation.md) |
 | 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |
+| 第 6 步：分支名、push 状态、失败重试 push | F13 | [05 §4.10](05-api-design.md)（`workspace/push`）· [08 §10.2](08-frontend-implementation.md) |
+| 执行日志：阶段/candidate/评测/推送事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |
+| 失败/中断：状态徽章、错误摘要、刷新后仍可查 | F20 | [06 §5.7](06-database-design.md) · [08 §10.2](08-frontend-implementation.md) |
 | 仅聚类页：banner、输入概况、聚类列表、一键转完整自进化 | F12 | [05 §4.11](05-api-design.md) · [08 §11](08-frontend-implementation.md) |
 | 进度实时更新（SSE） | F14 | [04 §7.3](04-backend-architecture.md) · [05 §4.13](05-api-design.md) · [08 §2.5](08-frontend-implementation.md) |
 
@@ -136,6 +142,10 @@
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；源表同步先跑通；上游响应头声明版本，不兼容拒绝启动 |
 | R10 | 源表结构与预期不一致 | 同步整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
 | R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
+| R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend、拒绝 reset；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
+| R13 | push 失败（凭据/远端冲突/网络） | 分支只在本地，协作方看不到 | run 仍完成，`pushStatus=failed` + 错误摘要；提供重试 push；远端已有同名分支时拒绝覆盖 |
+| R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
+| R15 | 异常详情泄露密钥/环境 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据）并截断 8KB；接口只返回脱敏内容 |
 
 ## 4. 确认后的下一步
 
@@ -162,4 +172,6 @@ flowchart LR
 - [ ] 部署与身份：SaaS 单实例 + 自建账号 JWT + 单组织共享认可
 - [ ] 轨迹来源：契约先行（05 §10）+ 同库源表的方式认可
 - [ ] 范围：时间线页面裁撤（F7 不做）、归因阶段不聚类（自进化阶段才聚类）确认
+- [ ] 自进化：对象配置（repo/tag/子目录）、candidate 先 commit、接纳 amend、拒绝 reset、完成后校验并 push 认可
+- [ ] 执行日志：过程/异常落库、事件 API、前端日志与失败/中断展示认可
 - [ ] 开放问题：Q1–Q5 有结论
