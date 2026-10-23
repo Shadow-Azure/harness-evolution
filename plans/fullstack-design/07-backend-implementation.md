@@ -268,9 +268,10 @@ async def get_probe(probe_id: str) -> ProbeReport:
 
 ### 4.3 Agent 执行流图问题卡
 
-- 取该 session 全部 `bad_cases`；用 `bad_case_agent_session_id` 匹配 `agents.agent_session_id` 得到 `targetAgentId`；
-- 按 `object_name` 在该 agent 的 `agent_events` 里找同名触发点，得到 `anchorEventIndex`；找不到 → `-1`；
-- `bad_case_type=self` / `discovery` 原样返回，由前端决定挂载方向（[08 §5](08-frontend-implementation.md)）。
+- 取该 session 全部 `bad_cases`；用 `bad_case_agent_session_id` 匹配 `agents.agent_session_id` 找到上报者 agent（仅内部使用，不返回）；
+- 按 `bad_case_type` / `object_type` / `object_name` 选择锚定 agent：`self` 选对象宿主，`discovery` 选发现者；
+- 按 `object_name` 在锚定 agent 的 `agent_events` 里找匹配触发点，得到 `eventIndex`；找不到 → `-1`；
+- 返回 `anchor: { agentId, eventIndex }`，不返回上报者 session。
 
 ## 5. 自进化（`service/evolution`）
 
@@ -656,12 +657,15 @@ Harness-Verdict: accepted
 
 | step | 服务端组装 | 数据来源 |
 |---|---|---|
-| 0 | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
-| 1 | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
-| 2 | 归因确认项（对象/类型/描述/推导） | `probe_reports` |
-| 3 | 按簇内 probe 数降序 | `probe_clusters` + 关联计数 |
-| 4 | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 |
-| 5 | 终评 verdict + metrics + changes | `evolution_finals` |
+| 0 `input` | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
+| 1 `clusters` | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
+| 2 `attribution` | 归因确认项（对象/类型/描述/推导/confidence/verdict） | `probe_reports` + 占位置信度 |
+| 3 `severity` | rank/confidence/impact/probeCount/reportCount/severity | `probe_clusters` + 关联计数 + 占位权重 |
+| 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 |
+| 5 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
+
+- 六个端点：`GET /runs/{rid}/steps/{input|clusters|attribution|severity|iteration|final}`；共享 `build_step_payload(run, key)`，只按 key 组装对应 DTO。
+- `StepPayload` 用 `key` 判别；`index` 只用于排序/展示，不参与路由分发。
 
 - 第 4 步：patch 落盘、candidate commit、candidate push、amend/fast-forward/拒绝删 ref 都是真实的；patch 内容与评测分数是占位；终评结果占位。
 - 真实 patch/评测接入后，只替换 `placeholder_patch` 与 `EvalGateway`，状态机、表与 git 流程不变。

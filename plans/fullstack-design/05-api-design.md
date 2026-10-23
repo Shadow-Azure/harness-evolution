@@ -140,9 +140,8 @@ erDiagram
     {
       "badCaseId": "bc-050b-03", "badCaseType": "discovery",
       "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
-      "badCaseAgentSessionId": "5e7a…", "targetAgentId": "ag-01H...a",
-      "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
-      "anchorEventIndex": 0
+      "anchor": { "agentId": "ag-01H...a", "eventIndex": 0 },
+      "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败"
     }
   ]
 }
@@ -160,8 +159,8 @@ erDiagram
   - 尾部：`messagesCount - last.messageOffset`
 - `line` 仍保留，用于显示 `L30`、定位/调试；`×N` 不再用行号差。
 - 示例只展示 workflow 的 1 个 `workflow-subagent`，实际原型有 56 个；扁平列表省略其余。
-- **问题卡归属**：`badCaseAgentSessionId` 是问题上报者所在 agent 的 session id，服务端用 `agents.agent_session_id` 解析成 `targetAgentId`；`badCaseType` 决定锚定规则（`self` 挂对象自身触发点，`discovery` 挂发现者触发点上方）。
-- `anchorEventIndex`：问题挂在哪个触发点（`-1` = 未匹配到同名触发点，前端挂到 agent 节点）。
+- **问题卡锚点**：API 只暴露 `anchor.agentId + anchor.eventIndex`，不暴露上报者 session。服务端用 DB 的 `bad_case_agent_session_id`、`badCaseType` 和 `object_*` 计算锚定 agent，再在该 agent 的 `agent_events` 中找匹配触发点；`eventIndex=-1` 表示未匹配到触发点，前端挂到 agent 节点本身。
+- `anchor.eventIndex` 是目标 agent `events[]` 的 0-based 下标，不是 line，也不是 messageOffset。
 - **命名映射**：API 的 `sessionId` = 根会话；`agentId` = 全局 agent 节点 id，对应 DB `agents.id`；`agentSessionId` = 实际 agent 的 session id，对应 DB `agents.agent_session_id`；`root_session_id` 只在内部表出现。
 
 ### 3.3 内部轨迹模型（不对外暴露）
@@ -184,8 +183,7 @@ erDiagram
   "sessionId": "050b81ba-...", "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
   "badCaseType": "discovery",
   "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
-  "badCaseAgentSessionId": "5e7a9c…",
-  "targetAgentId": "ag-01H...main", "anchorEventIndex": 0,
+  "anchor": { "agentId": "ag-01H...main", "eventIndex": 0 },
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
   "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03" }
@@ -193,7 +191,7 @@ erDiagram
 ```
 
 - `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看 `probe`。
-- `badCaseAgentSessionId` 是上报者所在 agent 的 session id，服务端解析成 `targetAgentId`（`badCaseType` 决定锚定方式）。
+- `anchor` 是后端算出的挂载点：`anchor.agentId` 是 agent 节点，`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
 - `analysis.status` 与原型展示的映射：
 
@@ -268,12 +266,12 @@ erDiagram
 "error": { "stage": "eval", "message": "评测执行失败：sandbox timeout", "at": "2026-10-23T09:41:02+08:00" },
 "lastEventSeq": 42,
 "steps": [
-  { "index": 0, "title": "筛选输入", "status": "done" },
-  { "index": 1, "title": "问题聚类", "status": "done" },
-  { "index": 2, "title": "归因确认", "status": "done" },
-  { "index": 3, "title": "严重程度排序", "status": "done" },
-  { "index": 4, "title": "迭代优化", "status": "active", "detail": "第 3/5 轮" },
-  { "index": 5, "title": "测试集终评", "status": "pending" }
+  { "index": 0, "key": "input", "title": "筛选输入", "status": "done" },
+  { "index": 1, "key": "clusters", "title": "问题聚类", "status": "done" },
+  { "index": 2, "key": "attribution", "title": "归因确认", "status": "done" },
+  { "index": 3, "key": "severity", "title": "严重程度排序", "status": "done" },
+  { "index": 4, "key": "iteration", "title": "迭代优化", "status": "active", "detail": "第 3/5 轮" },
+  { "index": 5, "key": "final", "title": "测试集终评", "status": "pending" }
 ]
 ```
 
@@ -282,22 +280,29 @@ erDiagram
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
 
-### 3.6 六步产出（判别式响应）
+### 3.6 六步产出（六个独立端点）
 
-`GET /evolution/runs/{rid}/steps/{index}` 返回统一外壳 + 按 step 的 `payload`：
+每个 step 一个端点，响应均为 `EvolutionStep` 外壳 + 该步的 `payload`：
+
+| step | key | 端点 | payload 关键字段 |
+|---|---|---|---|
+| 0 筛选输入 | `input` | `GET /evolution/runs/{rid}/steps/input` | `condition`、`hits`（sessions/probes/usedProbes/byAttributeType）、`rows[]`（probe 行，含 `clusterId`） |
+| 1 问题聚类 | `clusters` | `GET /evolution/runs/{rid}/steps/clusters` | `clusters[]`：`probeClusterId/description/type/probeCount/probes[]`（V1 占位算法生成） |
+| 2 归因确认 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence/verdict |
+| 3 严重程度排序 | `severity` | `GET /evolution/runs/{rid}/steps/severity` | `rows[]`：rank/clusterId/type/probeCount/reportCount/confidence/impact/severity（V1 简单排序） |
+| 4 迭代优化 | `iteration` | `GET /evolution/runs/{rid}/steps/iteration` | `rounds[]`：clusterId/title/type/probeCount/probes[]/status/candidateRef/candidateCommit/push/eval/accepted/finalCommit |
+| 5 测试集终评 | `final` | `GET /evolution/runs/{rid}/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
+
+统一外壳：
 
 ```json
-{ "index": 0, "title": "筛选输入", "payload": { "...": "见下" } }
+{ "key": "clusters", "index": 1, "title": "问题聚类", "status": "done", "payload": { "clusters": [] } }
 ```
 
-| step | payload 关键字段 |
-|---|---|
-| 0 筛选输入 | `condition`、`hits`（sessions/probes/usedProbes/byAttributeType）、`rows[]`（probe 行，含 `clusterId`） |
-| 1 问题聚类 | `clusters[]`：`probeClusterId/description/type/probeCount/probes[]`（V1 占位算法生成） |
-| 2 归因确认 | `items[]`：probeId/probeObject/objectVersion/attributeType/description/analysis |
-| 3 严重程度排序 | `rows[]`：rank/clusterId/type/probeCount/severity（V1 简单排序） |
-| 4 迭代优化 | `rounds[]`：clusterId/title/type/probeCount/probes[]/status/candidateRef/candidateCommit/push/eval/accepted/finalCommit |
-| 5 测试集终评 | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
+- `index` 是步骤顺序（0–5），`key` 是稳定语义标识；两个都保留，前端路由/缓存优先用 `key`。
+- `attribution.confidence` / `verdict` 与 `severity.confidence/impact` 在 V1 是占位值；真实归因/评测接入后由后端替换，前端字段不变。
+- 端点未到达时返回 `404 STEP_NOT_READY`；`input` 在 `preparing` 时返回准备态，不返回 404。
+- 六个端点共享同一 run 的权限和 readiness；服务端只复用同一个 `build_step_payload`，不复制业务逻辑。
 
 迭代轮结构：`rounds[]` 含 `patch {file, lines[]}`、`candidate {ref, commit, message}`、`push {status, attempts, error}`、`eval {status, current, candidate, nextPollAt}`、`status ∈ pending|pushing|evaluating|applying|accepted|rejected|failed`、`commit {hash, message}`（接纳后的 amend 结果）。candidate 先 push 临时 ref 再评测；接纳后 run 分支 fast-forward，拒绝后删除 candidate、`commit=null`。「来源问题」仍是 `probes[]`。
 
@@ -336,7 +341,12 @@ erDiagram
 │ GET  /api/evolution/runs                                 │
 │ POST /api/evolution/runs                                 │
 │ GET  /api/evolution/runs/{rid}                           │
-│ GET  /api/evolution/runs/{rid}/steps/{n}                 │
+│ GET  /api/evolution/runs/{rid}/steps/input               │
+│ GET  /api/evolution/runs/{rid}/steps/clusters            │
+│ GET  /api/evolution/runs/{rid}/steps/attribution         │
+│ GET  /api/evolution/runs/{rid}/steps/severity            │
+│ GET  /api/evolution/runs/{rid}/steps/iteration           │
+│ GET  /api/evolution/runs/{rid}/steps/final               │
 │ POST /api/evolution/runs/{rid}/retry                     │
 │ POST /api/evolution/probes/query                         │
 │ POST /api/evolution/cluster-previews                     │
@@ -494,7 +504,7 @@ erDiagram
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
   - `workspace`：`repoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
-- `GET /api/evolution/runs/{rid}/steps/{index}` → `EvolutionStep`（§3.6；`index` 越界或未到达 → `404 STEP_NOT_READY`；`preparing` 时第 0 步可返回 preparing 态）
+- `GET /api/evolution/runs/{rid}/steps/{key}` 拆成六个独立端点（`input` / `clusters` / `attribution` / `severity` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `input` 可返回准备态）
 - `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
   - 所有登录用户可调用；只允许 `status=blocked`
   - 按 `blockedStage` 重试：`push` 重推当前 candidate；`eval` 重新提交评测
@@ -551,7 +561,7 @@ POST /runs（同步校验）
 `POST /api/evolution/cluster-previews`（body 同 4.9 + `"mode": "cluster_only"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
 
 - 预览落一条 `mode=cluster_only` 的 `evolution_runs`，先 `preparing`，由 `evolution_prepare` 完成筛选与聚类；
-- 完成后 `GET /runs/{rid}/steps/1` 取簇；不建 workspace、不做 patch/评测；
+- 完成后 `GET /runs/{rid}/steps/clusters` 取簇；不建 workspace、不做 patch/评测；
 - 前端跳转 `/evolution/cluster/:runId` 后先显示准备中，再轮询/SSE 到簇生成。
 
 ### 4.13 清单
@@ -642,7 +652,7 @@ ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / 
 | 会话概览 | `/sessions/{sid}` | — |
 | 问题描述 | `/sessions/{sid}/errors?case={badCaseId}&tab=desc` | `BadCase.badCaseId/sessionId` |
 | 归因分析 | `/sessions/{sid}/errors?case={badCaseId}&tab=attr` | `BadCase.analysis.probeId` |
-| 自进化某步 | `/evolution/runs/{rid}?step=4` | `RunDetail.steps[].status` |
+| 自进化某步 | `/evolution/runs/{rid}?step=iteration` | `RunDetail.steps[].status` |
 
 **解析规则**：
 
@@ -717,7 +727,7 @@ FastAPI /api/openapi.json
 |---|---|---|
 | `SESSIONS[].short/title/repo/clock/ts/dur/model/userTurns/messages/tools/errors/agents/findings/skills/tok/status` | `SessionListItem` 同名语义 | `findings` → `stats.badCases`；`clock/ts` → `startedAt`；`tok` → `stats.tokens` |
 | `TREE[sid].main/subs` | `SessionTree.agents[]` | 改为扁平列表；`id/agentType/desc/toolUseId/lines/events` 一一对应，新增 `agentSessionId/parentAgentId/messagesCount`，事件新增 `messageOffset` |
-| `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel` |
+| `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel`；挂载位置改为 `anchor {agentId,eventIndex}` |
 | `ERROR_META[title].status` | `BadCase.analysis.status` | `unanalyzed / analyzed_nonissue / analyzed_issue`（5 种展示值） |
 | `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` | `probe_description/analysis/attribute_type` 对应"问题描述/推导过程/分类" |
 | `REPORTS[]` | `ProbeReport` | 原"问题报告"= 归因报告；`reportId` → `probeId`，`issueId` → `badCaseId` |

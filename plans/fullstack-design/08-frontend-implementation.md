@@ -12,8 +12,8 @@
 | `/sessions/:sid/errors` | `pages/errors/Index.vue` | `GET /sessions/{sid}/bad-cases`、`GET /bad-cases/{badCaseId}`、`/analysis`、`GET /probes/{probeId}` | 错误详情与归因 |
 | `/evolution` | `pages/evolution/Index.vue` | `GET /evolution/runs`、`GET /catalogs/*` | 自进化列表 + 启动向导 |
 | `/evolution/targets` | `pages/evolution/targets/Index.vue` | `GET/POST/PUT/DELETE /evolution/targets`、`GET .../versions` | **进化对象配置页（新增）** |
-| `/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET /evolution/runs/{rid}`、`/steps/{n}` | 运行详情（6 步） |
-| `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/runs/{rid}`、`/steps/1` | 仅聚类结果 |
+| `/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET /evolution/runs/{rid}`、`/steps/{key}` | 运行详情（6 步） |
+| `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/runs/{rid}`、`/steps/clusters` | 仅聚类结果 |
 
 > 时间线页面（原型 B 页）已裁撤，不设路由、不建页面，详见 §6。
 
@@ -103,6 +103,8 @@ export const queryClient = new QueryClient({
 ### 2.4 `api/queryKeys.ts`
 
 ```ts
+export type StepKey = "input" | "clusters" | "attribution" | "severity" | "iteration" | "final"
+
 export const keys = {
   sessions: (f?: SessionFilters) => ["sessions", f ?? {}] as const,
   session: (sid: string) => ["session", sid] as const,
@@ -114,7 +116,7 @@ export const keys = {
   sessionProbes: (sid: string) => ["session", sid, "probes"] as const,
   runs: () => ["evolution", "runs"] as const,
   run: (rid: string) => ["evolution", rid] as const,
-  runStep: (rid: string, n: number) => ["evolution", rid, "step", n] as const,
+  runStep: (rid: string, key: StepKey) => ["evolution", rid, "step", key] as const,
   runEvents: (rid: string, afterSeq = 0) => ["evolution", rid, "events", afterSeq] as const,
   preview: (id: string) => ["evolution", "preview", id] as const,
   catalogs: () => ["catalogs"] as const,
@@ -155,7 +157,7 @@ useSessionProbes(sid: Ref<string>)
 // useEvolution.ts
 useRuns()
 useRun(rid: Ref<string>)
-useRunStep(rid: Ref<string>, step: Ref<number>)      // enabled: step 可达
+useRunStep(rid: Ref<string>, key: Ref<StepKey>)      // enabled: 该 step 可达
 useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive: Ref<boolean>)  // GET /evolution/runs/{rid}/events
 useProbeQuery()                                      // mutation → POST /evolution/probes/query
 useCreatePreview()  usePreview(id)
@@ -249,11 +251,11 @@ agent-tree/
 
 简化（因为后端给了显式归属）：
 
-- 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `targetAgentId`（由 `badCaseAgentSessionId` 解析）+ `anchorEventIndex`；`badCaseType` 决定挂载方向。
+- 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `anchor {agentId, eventIndex}`；`badCaseType` 决定挂载方向。
 - 两类锚定规则（对应真实的 `self` / `discovery`）：
-  1. **`self`（对象自身问题）**：卡挂在 `targetAgentId` 对应对象自身的触发点上——skill 用下方对齐（`TriggerEdge`），agent 用节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
+  1. **`self`（对象自身问题）**：卡挂在 `anchor.agentId` 对应对象自身的触发点上——skill 用下方对齐（`TriggerEdge`），agent 用节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
   2. **`discovery`（发现前置步骤问题）**：卡挂在发现者（`object`）的触发点正上方（`DiscoveryEdge`），表达"它发现了前置步骤的问题"。
-  3. 无锚点（`anchorEventIndex = -1`）：挂在目标 agent 节点右侧，避免卡片漂浮。
+  3. 无锚点（`anchor.eventIndex = -1`）：挂在 `anchor.agentId` 节点右侧，避免卡片漂浮。
 
 ```ts
 // layout.ts 关键签名
@@ -503,7 +505,7 @@ RunDetail.vue
 ├── infoPanel（目标与输入：kv-grid + 类型分布条 + 评测/推送状态）
 ├── StepperPanel.vue
 │   ├── Stepper.vue（6 步，来自 run.steps）
-│   └── StepContent.vue（按 step 动态组件）
+│   └── StepContent.vue（按 step.key 动态组件）
 │       ├── StepFilter.vue / StepClusters.vue / StepProbeConfirm.vue
 │       ├── StepRanking.vue / StepIterations.vue / StepFinal.vue
 ├── RunLogPanel.vue（执行日志/异常，tab 或右栏）
@@ -518,12 +520,12 @@ RunDetail.vue
 | 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl`（路径可折叠）；点击可复制分支名 |
 | 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
 | 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
-| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{current}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
+| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
 | 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, loadedSeq, isActive)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
 | 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
-| 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step=n` + 拉 `useRunStep` |
+| 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
 | 评测状态 | `evalStatus`：pending/evaluating/completed/failed；`evaluating` 显示“评测中，下一次轮询 …”；失败时进入 blocked |
@@ -559,11 +561,11 @@ RunLogPanel.vue
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
-- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}`，完成后拉 `steps/1`。
+- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}`，完成后拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：session / probe / 聚类数。
 - 聚类列表：每簇展示类型、probe 数、簇内 probe 列表（可展开）。
-- 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/1`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
+- 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
 
 ## 12. 样式与视觉实现
 

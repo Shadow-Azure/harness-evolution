@@ -66,8 +66,8 @@
 |---|---|---|---|---|---|---|
 | F10 | 运行列表：进行中（脉冲+进度条+阶段文案）/ 历史两组；卡片含根因对象 chip、时间窗、模型 chips、probe/簇统计、best vs 初始、已接纳数 | [自进化页](../14-15-ui-prototype/harness-evolution.html) | 真实（编排）+ 占位 patch/评测 | `GET /api/evolution/runs` | `evolution_runs`、`probe_clusters` | `pages/evolution/RunList.vue` |
 | F11 | 启动向导：两步 Modal（根因对象/版本/时间段/模型 → 命中统计（session/报告/已分析/未分析）+ 属性分布 + 分页 probe 表（含模型列）），对象/版本/模型全部由后端接口加载，出口「仅聚类」「启动自进化」均返回 `202` 后跳转显示 preparing | 同上 | 真实（probe 查询）+ 占位聚类 | `GET /api/catalogs/targets`、`GET /api/evolution/targets/{id}/versions`、`GET /api/catalogs/models`、`POST /api/evolution/probes/query`、`POST /api/evolution/cluster-previews`、`POST /api/evolution/runs` | `evolution_targets`、`agents`、`session_families`、`probe_reports`、`evolution_runs` | `pages/evolution/LaunchWizard.vue` |
-| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（session/报告/已分析/未分析、时间窗、模型）、聚类列表（簇内 probe）、一键转完整自进化 | 同上 | 真实（占位聚类算法） | `POST /api/evolution/cluster-previews`、`GET /api/evolution/runs/{rid}/steps/1` | `probe_clusters`、`probe_cluster_probes` | `pages/evolution/ClusterPreview.vue` |
-| F13 | 运行详情：`preparing/running/blocked` 状态、目标与输入 panel（已分析/未分析、最终用于进化的问题数、属性分布条、分支/base commit、eval/push 状态）、6 步 stepper、第 5 步自动逐轮 candidate → push → 评测 → 接纳/拒绝 → 下一轮、第 6 步终评；blocked 时按阶段重试 | 同上 | 编排/聚类/patch/commit/push 真实；评测走外部 gateway（V1 可 fake）；终评占位 | `GET /api/evolution/runs/{rid}`、`GET .../steps/{0..5}`、`POST .../retry` | `evolution_targets/runs/evolution_rounds/finals`、`probe_clusters/probe_cluster_probes` | `pages/evolution/RunDetail.vue` + `pages/evolution/components/*` |
+| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（session/报告/已分析/未分析、时间窗、模型）、聚类列表（簇内 probe）、一键转完整自进化 | 同上 | 真实（占位聚类算法） | `POST /api/evolution/cluster-previews`、`GET /api/evolution/runs/{rid}/steps/clusters` | `probe_clusters`、`probe_cluster_probes` | `pages/evolution/ClusterPreview.vue` |
+| F13 | 运行详情：`preparing/running/blocked` 状态、目标与输入 panel（已分析/未分析、最终用于进化的问题数、属性分布条、分支/base commit、eval/push 状态）、6 步 stepper、第 5 步自动逐轮 candidate → push → 评测 → 接纳/拒绝 → 下一轮、第 6 步终评；blocked 时按阶段重试 | 同上 | 编排/聚类/patch/commit/push 真实；评测走外部 gateway（V1 可 fake）；终评占位 | `GET /api/evolution/runs/{rid}`、`GET .../steps/{input|clusters|attribution|severity|iteration|final}`、`POST .../retry` | `evolution_targets/runs/evolution_rounds/finals`、`probe_clusters/probe_cluster_probes` | `pages/evolution/RunDetail.vue` + `pages/evolution/components/*` |
 | F19 | 进化对象配置页：列表/新增/编辑/删除；字段 objectType/objectName/repoUrl/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 | 新增（2026-10-23） | 真实 | `GET/POST/PUT/DELETE /api/evolution/targets`、`GET .../{id}/versions` | `evolution_targets` | `pages/evolution/targets/*` |
 | F20 | 执行日志与异常：准备/候选/push/eval/接纳/拒绝/下一轮/阻塞/重试事件，失败与中断记录、错误详情、增量拉取 | 新增（2026-10-23） | 真实 | `GET /api/evolution/runs/{rid}/events`、SSE `run.event/run.blocked/run.failed/run.interrupted` | `evolution_run_events`、`evolution_runs.error_*` | `pages/evolution/components/RunLogPanel.vue` |
 
@@ -119,7 +119,7 @@
 
 - **F3**：四个 session 一屏放得下；搜索/筛选/排序都是纯前端状态 + 查询参数；空列表显示空态而不是空白。
 - **F4**：9 项统计数字与后端聚合一致；密度分母 = `messages_count`（design.md §7 确定的口径），满格 3/百消息。
-- **F5**：问题卡归属由后端 `targetAgentId`（由 `badCaseAgentSessionId` 解析）决定，不按"最后一个 agent"猜测；`self` 与 `discovery` 的挂载方向正确；子 agent 超过 8 个折叠。
+- **F5**：问题卡归属由后端 `anchor.agentId + anchor.eventIndex` 决定，不按"最后一个 agent"猜测；`self` 与 `discovery` 的挂载方向正确；子 agent 超过 8 个折叠。
 - **F6**：bad_case 按 `createdAt` 升序；`badCaseId` 截短显示、tooltip 全量；点击新窗口打开对应 session 的对应问题；定位会滚动并高亮问题卡。
 - **F7（裁撤）**：不做时间线页面。用户轮次/消息/内容块仍入库，用于列表/会话概览的统计（用户轮次、消息、工具失败、token）与后续诊断；不提供任何时间线读接口，Agent 执行流图上"打开时间线"入口一并移除。
 - **F8**：5 种展示状态（未分析/非问题/模型/prompt/错误）；"全部错误"恢复完整执行流；选中单个错误时只保留该问题卡；归因 tab 顺序固定（结论 → 原因/分类与根因对象 → 描述 → 推导 → 来源 bad_case）。

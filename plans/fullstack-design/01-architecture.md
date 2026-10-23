@@ -220,7 +220,7 @@ apps/web/
 打开 /evolution/runs/:rid
   → 并行 REST：
        GET /runs/:rid
-       GET /runs/:rid/steps/{current}
+       GET /runs/:rid/steps/{currentKey}
        GET /runs/:rid/events?afterSeq=0（分页拉完，记录最后 seq）
   → 渲染初版
   → status in {preparing, running} ?

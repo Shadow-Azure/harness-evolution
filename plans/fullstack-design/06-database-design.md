@@ -342,7 +342,7 @@ erDiagram
 索引：`INDEX(session_id)`、`INDEX(bad_case_agent_session_id)`、`INDEX(object_type, object_name, object_version)`。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因在 `probe_reports`。
-> `session_id` 是外部契约字段，语义为**根会话 id**，对应内部 `session_families.id`；`bad_case_agent_session_id` 才是实际 agent 的 session id。
+> `session_id` 是外部契约字段，语义为**根会话 id**，对应内部 `session_families.id`；`bad_case_agent_session_id` 才是实际 agent 的 session id，仅用于服务端计算问题卡 `anchor`，不在 API 中直接暴露。
 
 ### 4.2 `bad_case_analysis` —— 归因状态（关联表）
 
