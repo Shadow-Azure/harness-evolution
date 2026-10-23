@@ -42,31 +42,26 @@
 
 ## 3. 分层与目录
 
-```mermaid
-flowchart TB
-    subgraph L1["HTTP 层（modules/*/router.py）"]
-        R1["参数校验 · 响应模型 · 状态码"]
-        R2["SSE 端点（modules/events）"]
-    end
-    subgraph L2["服务层（modules/*/service.py）"]
-        S1["业务规则 · 聚合 · 状态机 · ID 生成"]
-    end
-    subgraph L3["外部数据接入（db 只读 + third_party_api）"]
-        P1["bad_cases / analysis / probe 只读表<br/>上游轨迹 API（third_party_api）"]
-    end
-    subgraph L4["存储层（storage/）"]
-        D1["Database 接口 + SQLite / MySQL 适配器"]
-        D2["Repository（方言无关）"]
-        D3["Alembic 迁移（双方言）"]
-    end
-    subgraph INFRA["基础设施（middleware/ service/jobs · events）"]
-        I1["错误模型 · 请求上下文 · 日志"]
-        I2["任务运行器 · SSE 事件总线"]
-    end
-    L1 --> L2 --> L3
-    L2 --> L4
-    L3 -.真实实现的读取路径.-> L4
-    L1 --> INFRA
+```text
+┌─ HTTP 层（api/*.py） ─────────────────────────────────────────┐
+│ 参数校验 · 响应模型 · 状态码                                  │
+│ SSE 端点（events）                                            │
+└───────────────────────────┬───────────────────────────────────┘
+                            ▼
+┌─ 服务层（service/*） ─────────────────────────────────────────┐
+│ 业务规则 · 聚合 · 状态机 · ID 生成                            │
+└───────────────┬───────────────────────────────┬───────────────┘
+                ▼                               ▼
+┌─ 外部数据接入 ──────────────────┐  ┌─ 存储层（db/） ─────────────┐
+│ bad_cases/analysis/probe 只读   │  │ Database 接口 + SQLite/MySQL│
+│ 上游轨迹 API（third_party_api） │  │ CRUD（方言无关）            │
+└───────────────┬─────────────────┘  │ Alembic 迁移（双方言）      │
+                └───────────────────►└─────────────────────────────┘
+
+┌─ 基础设施（middleware/ service/jobs · events） ───────────────┐
+│ 错误模型 · 请求上下文 · 日志                                  │
+│ 任务运行器 · SSE 事件总线                                     │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ```text
@@ -92,7 +87,7 @@ apps/api/
     service/
       identity/              # 登录、token、用户、SSE 票据
       sessions/              # 列表/摘要/家族树
-      acquisition/           # 来源适配、归一化、家族组装
+      acquisition/           # 读 payload、归一化、家族组装、定时调度（scheduler.py）
       bad_cases/             # 问题列表/详情（只读）
       probes/                # 归因结论（只读）
       evolution/             # run、占位聚类、六步产出、执行事件（events.py）
@@ -122,15 +117,18 @@ alembic/                     # 迁移（项目根，与 app 平级）
 - 切换时**只改配置**：业务代码、CRUD、API 契约、前端、迁移版本都不变。
 - 抽象只做两层：`Database`（连接、方言、事务、健康检查）与 `CRUD`（查询）。**不**为 SQLite/MySQL 各写一套 CRUD——那会把同一份业务逻辑复制两遍，必然漂移。
 
-```mermaid
-flowchart LR
-    CFG["HE_DB_DIALECT=sqlite|mysql"] --> F["db/factory.py"]
-    F --> S["SqliteDatabase<br/>aiosqlite + WAL"]
-    F --> M["MySqlDatabase<br/>asyncmy + 连接池"]
-    S --> P["Database Protocol"]
-    M --> P
-    R["db/crud/*<br/>（同一套实现）"] --> P
-    SVC["modules/*/service.py"] --> R
+```text
+HE_DB_DIALECT=sqlite|mysql
+           │
+           ▼
+     db/factory.py
+       ├──► SqliteDatabase（aiosqlite + WAL） ──┐
+       └──► MySqlDatabase（asyncmy + 连接池） ──┤
+                                                ▼
+                                     Database Protocol
+                                                ▲
+                      db/crud/*（同一套实现） ───┤
+                      service/* ──► crud ───────┘
 ```
 
 ### 4.2 `Database` 接口
@@ -174,17 +172,15 @@ def create_database(settings: Settings) -> Database:
 
 ### 4.4 切换步骤（调试 → 上线）
 
-```mermaid
-flowchart LR
-    A["本地 SQLite（测试）<br/>HE_DB_DIALECT=sqlite"] --> B["MySQL 8（生产主库）<br/>utf8mb4"]
-    B --> C["HE_DB_DIALECT=mysql<br/>HE_DB_URL=mysql+asyncmy://…"]
-    C --> D["启动：alembic upgrade head"]
-    D --> E["POST /api/acquisition/sync 重建真实数据<br/>（源表/上游仍是真相，无需 ETL）"]
-    E --> F["pytest -m mysql 跑同一套 Repository 测试"]
-    F --> G["回退同样只改配置"]
+```text
+本地 SQLite（测试）──► MySQL 8（生产主库）──► HE_DB_DIALECT=mysql + URL
+        ──► 启动 alembic upgrade head
+        ──► POST /api/acquisition/sync 重跑归一化（payload 表仍是真相）
+        ──► pytest -m mysql 跑同一套 CRUD 测试
+        ──► 回退同样只改配置
 ```
 
-- **不需要写数据迁移脚本**：换库后重跑同步即可（源表/上游仍是事实源，且 `source_records.payload` 已落库）；问题侧数据由外部系统重新灌入；演示数据用 `fixtures` seed 重建。
+- **不需要写数据迁移脚本**：换库后重跑归一化即可（`trajectory_payloads` 仍是事实源）；问题侧数据由外部系统重新灌入；演示数据用 `fixtures` seed 重建。
 - **切换是启动期配置**（改 env 后重启生效），不做运行时热切换——避免同一进程同时连两个库造成数据分裂。
 - Alembic 用**一棵版本树、双方言渲染**；SQLite 的 `ALTER TABLE` 限制用 `render_as_batch=True` 处理。
 - CI 两条：默认 SQLite 快跑；MySQL 任务（service container）跑 `-m mysql` 标记的集成测试，防止"只在小库上绿"。
@@ -207,26 +203,29 @@ flowchart LR
 
 | 接缝 | 位置 | 说明 |
 |---|---|---|
-| 轨迹来源 | `service/acquisition/sources.py` + `third_party_api/trajectory/` | 同库源表用 `db/crud` 只读；上游接口用 `third_party_api` 的 HTTP 客户端 |
+| 原始轨迹 | `service/acquisition/payloads.py` + `third_party_api/trajectory/` | 读 `trajectory_payloads`（外部脚本写）；pull 时写入同一张表 |
 | 问题/归因 | `db/models/` 只读映射 + `db/crud/` | `bad_cases` / `bad_case_analysis` / `probe_reports` 由外部系统写入，本服务只读 |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
 
 早期"六类 Provider + stub 实现"的设计已取消：问题/归因数据本来就在外部表里，真实实现是"读表"，不需要再包一层可替换接口；强行抽象只会增加映射代码和漂移风险。
 
-### 5.2 轨迹来源适配
+### 5.2 原始 payload 与归一化
 
 ```python
-class TrajectorySource(Protocol):
-    async def list_changes(self, watermark: datetime | None) -> list[SourceChange]: ...
-    async def fetch(self, session_ref: str) -> TrajectoryBundle: ...   # 含每个 agent 的 member_session_id + JSONL 行
+class PayloadSource(Protocol):
+    async def list_pending(self, parser_version: int) -> list[PendingPayload]: ...
+    async def get(self, session_id: str) -> TrajectoryPayload: ...   # root/session/kind/JSONL
+    async def upsert_many(self, payloads: list[TrajectoryPayload]) -> None: ...  # 仅 pull 使用
 ```
 
-| 实现 | 读取来源 | 启用条件 |
+| 实现 | 读取/写入 | 启用条件 |
 |---|---|---|
-| `SourceTableSource` | 同 MySQL 的 `he_src_agents` / `he_src_transcripts`（表名可配） | V1 默认；按 `updated_at` 水位线增量 |
-| `HttpApiSource` | 上游轨迹查询接口（契约见 [05 §10](05-api-design.md)） | 上游就绪后配置启用；`third_party_api/trajectory/http_client.py` |
+| `MySqlPayloadSource` | 读 `trajectory_payloads`（`session_id`、`root_session_id`、`payload`、`content_hash`、`line_count`） | V1 默认；**不扫描 `he_src_*`** |
+| `HttpApiSource` | 调上游接口，把返回 payload upsert 到 `trajectory_payloads` | 上游就绪后配置启用；`third_party_api/trajectory/http_client.py` |
 
-两类都输出同一个 `TrajectoryBundle`，**归一化器不感知来源差异**；测试用 `FakeSource`（测试内构造，不是产品代码里的 stub 分支）。
+- **payload 只存一份**：`trajectory_payloads`；`source_records` 只是处理索引，不存 payload。
+- 待处理判定：`source_records` 无记录，或 `processed_hash != payload.content_hash`，或 `parser_version < 当前版本`。
+- 没有水位线；`source_records.processed_*` 就是游标。
 
 ### 5.3 fixtures：演示数据的唯一形态
 
@@ -274,6 +273,9 @@ class TrajectorySource(Protocol):
 ### 7.2 `job_runs` 表 + 进程内串行 worker
 
 ```text
+scheduler_loop()                                                # lifespan 启动；每 HE_SYNC_INTERVAL_SECONDS
+  └─ pending 为 0 → 跳过
+  └─ pending > 0 → trigger_sync(source="scheduler")（内部抢 sync_lock；抢不到跳过）
 JobRunner.submit(kind, payload, ref_id, created_by) -> job_id   # 落 job_runs 行（status=queued），立刻返回
 worker_loop()                                                   # lifespan 启动的串行执行器（V1 一把 asyncio.Lock）
   └─ 同一时刻只执行一个任务：claim → running → 更新 progress → completed/failed
@@ -281,32 +283,37 @@ worker_loop()                                                   # lifespan 启�
 ```
 
 - **SQLite 与 MySQL 的差异**：V1 单实例串行，不依赖 `SKIP LOCKED`；未来多实例 worker 时用 MySQL `SELECT … FOR UPDATE SKIP LOCKED` 抢占，SQLite 只用于测试。
-- **任务状态以 `job_runs` 表为准**：前端任何时候 `GET /api/jobs/{jobId}` 拿到的都是真值；SSE 只是通知。
-- 同一资源只允许一个进行中任务（如同一 run 的推进、同一来源的同步），冲突抛 `RUN_BUSY` / `SYNC_IN_PROGRESS`。
-- SSE 只是通知：worker 推进时写 `job_runs.progress` 并 publish 事件；前端收到事件后失效 queryKey 重取，事件本身不携带业务数据。
+- **任务状态以 `job_runs` 表为准**：前端任何时候 `GET /api/jobs/{jobId}` 拿到的都是真值。
+- **sync 单飞**：`sync_lock` 单行表 + TTL；scheduler 与手动触发共用。已有 sync 时手动请求返回现有 `jobId`（`reused=true`），不重复入队。
+- 同一 run 只允许一个进行中推进任务，冲突抛 `RUN_BUSY`。
+- SSE 只是通知：run worker 推进时写 `job_runs.progress` 并 publish 事件；前端收到后失效 queryKey 重取。
+- **sync 不经过 EventBus/SSE**：scheduler/manual 只写 `job_runs`，前端轮询 `GET /acquisition/status` / `GET /jobs/{id}`。
 
 ### 7.3 SSE 事件总线
 
-```mermaid
-flowchart LR
-    T1["sync_task"] --> BUS["EventBus<br/>内存 pub/sub（每 topic 一个 Queue 集合）"]
-    T2["evolution_advance_task"] --> BUS
-    BUS --> S1["SSE 连接 A<br/>topic=run:evo-xxx"]
-    BUS --> S2["SSE 连接 B<br/>topic=sync"]
+```text
+evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queue 集合）
+                                  │
+                                  └──► SSE 连接 A（topic=run:evo-xxx）
 ```
 
-事件类型（前端 `useEvents` 按 type 分发）：
+- 没有 `sync` topic；同步状态从 `job_runs` / `/acquisition/status` 读。
+
+事件类型（前端 `useRunEvents` 按 type 分发）：
 
 | event | data | 触发 |
 |---|---|---|
 | `ping` | `{}` | 每 15s 心跳（防代理断流） |
-| `sync.progress` | `{job_id, source_type, records_total, records_done, imported, skipped}` | 来源同步中 |
-| `sync.completed` | `{job_id, imported, skipped, errors}` | 同步结束 |
+| `run.event` | `{run_id, seq, event_type, level, stage}` | 执行事件追加 |
 | `run.progress` | `{run_id, unit, total, status, stage_label}` | 自进化推进 |
 | `run.completed` | `{run_id, verdict}` | 终评完成 |
+| `run.failed` / `run.interrupted` | `{run_id, stage, message, event_seq}` | 失败/中断 |
+| `reset` | `{run_id, reason}` | 事件游标失效，要求前端重拉快照 |
 
-- SSE 端点：`GET /api/events?ticket=…&topics=run:evo-xxx,sync`；事件带 `id`（单调递增），支持 `Last-Event-ID` 补发最近 100 条（内存环形缓冲）。
-- 事件只是"通知"，不作为数据源——前端收到后失效 queryKey 重取，避免"SSE 数据与 REST 数据不一致"。
+- SSE 端点：`GET /api/events?ticket=…`；topics 与 cursor 由 `POST /api/events/ticket` 绑定，URL 不再接受 topics。
+- run 事件从 `evolution_run_events` 回放（首连 `lastEventId`，重连 `Last-Event-ID`）。
+- **轨迹归一化（sync）没有 SSE**：进度走 `GET /acquisition/status` / `GET /jobs/{jobId}` 轮询。
+- 只有运行中的 run 页面才订阅；完成即关闭，已完成任务不建 SSE。
 
 ## 8. 扩展路径（单实例 SaaS → 多实例）
 
@@ -333,9 +340,9 @@ flowchart LR
 | `HE_ACCESS_TOKEN_TTL_MIN` | `30` | access token 有效期 |
 | `HE_REFRESH_TOKEN_TTL_DAYS` | `14` | refresh cookie 有效期 |
 | `HE_ADMIN_USERNAME` / `HE_ADMIN_PASSWORD` | 空 | 首次启动且 users 为空时播种初始管理员 |
-| `HE_SRC_TABLE_AGENTS` / `HE_SRC_TABLE_TRANSCRIPTS` | `he_src_agents` / `he_src_transcripts` | 同库源表名（只读） |
-| `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` | 空 | 上游轨迹查询接口（上游实现后启用） |
-| `HE_SYNC_INTERVAL_SECONDS` | `300` | 源表定时扫描间隔（0 = 仅手动） |
+| `HE_PAYLOAD_TABLE` | `trajectory_payloads` | 外部脚本写入的原始 JSONL 表（只读） |
+| `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` | 空 | 上游轨迹查询接口（pull 用，上游实现后启用） |
+| `HE_SYNC_INTERVAL_SECONDS` | `60` | 后台处理待归一化 payload 的间隔（0 = 关闭定时，仅 admin 手动） |
 | `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
 | `HE_GIT_PUSH` | `true` | V1 完成后 push 到配置仓库的 `origin`；测试环境可设 false |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |
@@ -351,7 +358,7 @@ flowchart LR
 |---|---|---|
 | 只读查询 | 单元/集成测试 | bad_case / probe 联表查询、状态合并、缺失字段降级 |
 | 鉴权 | 单元 + 路由测试 | 登录/刷新/登出、错误密码 401、过期 token、SSE 票据一次性 |
-| 同步 | 集成测试 | `SourceTableSource` 水位线增量、幂等、源表结构变更隔离 |
+| 同步 | 集成测试 | `trajectory_payloads` 待处理判定、幂等、payload 结构变更隔离 |
 | 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（0..4+M+1）；越界推进报 409 |
 | git workspace | 临时 git 仓库 + bare remote | clone tag、建分支、candidate commit、amend/reset、push、push 前分支校验 |
 | Repository | 集成测试（参数化 SQLite / MySQL） | 幂等写入、聚合查询、事务边界；MySQL 用 `-m mysql` 标记 |

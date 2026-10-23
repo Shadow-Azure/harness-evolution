@@ -15,8 +15,8 @@
 | 真实 ID（`badCaseId` / `probeId` / `runId`）与点击深链（新窗口、指定 tab） | F2 | [05 §5](05-api-design.md) · [08 §7](08-frontend-implementation.md) |
 | 健康检查、空态/加载/失败三态 | F17 | [05 §4.1](05-api-design.md) · [08 §13](08-frontend-implementation.md) |
 | 登录页（用户名/密码、错误提示、登录跳转） | F18 | [05 §4.1](05-api-design.md)（auth 端点）· [08 §4](08-frontend-implementation.md) |
-| 顶栏用户区：演示数据角标、同步入口、当前用户与退出 | F18 / F9 | [08 §4.2](08-frontend-implementation.md) |
-| 同步进度（SSE `sync.progress`）与状态展示 | F9 / F14 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
+| 顶栏用户区：演示数据角标、轨迹处理状态、当前用户与退出 | F18 / F9 | [08 §4.2](08-frontend-implementation.md) |
+| 轨迹处理状态（`GET /acquisition/status`）与后台定时 | F9 / F14 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
 
 ### 1.2 Session 错误查看
 
@@ -32,7 +32,7 @@
 | 右栏头：状态点 + 标题 + meta（开始时间/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) |
 | 右栏 CTA：打开错误详情（原「打开时间线」随 F7 裁撤移除） | F4 | [08 §1](08-frontend-implementation.md) · [08 §6](08-frontend-implementation.md) |
 | 9 项统计条（轮次/步骤/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
-| 家族树：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N 压缩/问题） | F5 | [03 §8.2](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
+| 家族树：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N 压缩/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
 | 家族树：主会话与子 agent 节点、节点链、Skill/Subagent/Workflow 触发药丸 | F5 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
 | 家族树：×N 压缩日志节点 | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
 | 家族树：问题卡（`#badCaseId 截短 + reason`）`self` / `discovery` 两类锚定规则 | F5 | [08 §3.2](08-frontend-implementation.md)（锚定规则） |
@@ -88,9 +88,8 @@
 | 第 6 步：分支名、push 状态、失败重试 push | F13 | [05 §4.10](05-api-design.md)（`workspace/push`）· [08 §10.2](08-frontend-implementation.md) |
 | 执行日志：阶段/candidate/评测/推送事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |
 | 失败/中断：状态徽章、错误摘要、刷新后仍可查 | F20 | [06 §5.7](06-database-design.md) · [08 §10.2](08-frontend-implementation.md) |
-| 仅聚类页：banner、输入概况、聚类列表、一键转完整自进化 | F12 | [05 §4.11](05-api-design.md) · [08 §11](08-frontend-implementation.md) |
-| 进度实时更新（SSE） | F14 | [04 §7.3](04-backend-architecture.md) · [05 §4.13](05-api-design.md) · [08 §2.5](08-frontend-implementation.md) |
-
+| 仅聚类页：banner、输入概况、聚类列表、一键转完整自进化 | F12 | [05 §4.12](05-api-design.md) · [08 §11](08-frontend-implementation.md) |
+| 进度实时更新（SSE） | F14 | [04 §7.3](04-backend-architecture.md) · [05 §4.14](05-api-design.md) · [08 §2.6](08-frontend-implementation.md) |
 ## 2. 待讨论问题（按影响排序）
 
 > 每项给出选项与我的推荐；你拍板后我改文档，不需要现在全部回答。
@@ -112,7 +111,7 @@
 ### Q3. 「查看原始 JSON」overlay 是否纳入
 
 - 原型：overlay 组件挂在时间线卡片上（"查看原始载荷"），时间线裁撤后该入口不复存在。
-- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，再加 `GET /api/blocks/{blockId}/raw`（按 `source_records.payload + 行号` 回读，见 [06 §3.5](06-database-design.md)）。
+- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，再加 `GET /api/blocks/{blockId}/raw`（按 `trajectory_payloads.payload + 行号` 回读，见 [06 §3.0](06-database-design.md)）。
 - 选项 B：现在纳入，作为独立 issue——但没有消费入口（时间线没了），收益存疑。
 
 ### Q4. 用户管理界面范围
@@ -121,41 +120,47 @@
 - 选项 A（推荐）：首版只做 API（`GET/POST /users`）+ 顶栏显示当前用户与退出；管理操作先用 API/脚本完成，不进 UI。
 - 选项 B：做一个简单用户管理页（列表 + 创建 + 停用）——多一个页面与表单，但管理员不用碰命令行。
 
-### Q5. 源表同步的触发方式
+### Q5. 轨迹归一化的触发方式
 
-- 现状：`POST /api/acquisition/sync` 手动触发 + 可选定时间隔（`HE_SYNC_INTERVAL_SECONDS`，默认 300s）。
-- 选项 A（推荐）：手动 + 定时并存（默认 5 分钟），顶栏同步入口可立即触发；`0` 表示仅手动。
-- 选项 B：仅手动触发——最简单，但"其他任务推了新 session 后页面不刷新"要靠人点。
+- 现状：后台 scheduler 默认每 60s 处理 pending；`POST /api/acquisition/sync` 仅 admin/运维立即处理，幂等返回已有 jobId。
+- 选项 A（推荐）：定时 + 单飞锁；无 pending 跳过；手动仅 admin。
+- 选项 B：完全关闭定时，只保留手动——数据会出现延迟，不推荐。
 
 ## 3. 评审重点（高风险设计，建议逐条确认）
 
 | # | 风险点 | 为什么重要 | 设计中的对策 |
 |---|---|---|---|
-| R1 | React Flow → Vue Flow 迁移 | 家族树是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 原样移植；先做 `demo-nested` 最小树验收（[03 §8.2](03-frontend-architecture.md)） |
+| R1 | React Flow → Vue Flow 迁移 | 家族树是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 原样移植；先做 `demo-nested` 最小树验收（[03 §8.3](03-frontend-architecture.md)） |
 | R2 | 外部问题/归因表契约 | 字段漂移会让整个错误页与自进化失效 | 只读表 + 查询层防御（缺字段降级、日志告警）；fixtures 与真实表同构；上游表变更需评审（[06 §4](06-database-design.md)） |
-| R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做失效通知，不携带业务数据；断线补发 100 条（[04 §7.3](04-backend-architecture.md)） |
+| R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
 | R4 | 六步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
 | R6 | 深链 ID 校验 | 前缀猜 session 会串会话 | 解析后用 `sessionId` 校验，不匹配报 409（[05 §5](05-api-design.md)） |
-| R7 | 同步幂等与重放 | 重复同步会脏数据 | 来源指纹 + 事务内先删后写；`parser_version` 从 payload 重放（[07 §2.2](07-backend-implementation.md)） |
+| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, session_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
 | R8 | SQLite / MySQL 行为差异 | 本地绿、切库红 | 双库 CI（`-m mysql`）+ SQL 纪律（不用方言语法、索引列 VARCHAR、JSON 不查 SQL），见 [06 §1.1](06-database-design.md) |
-| R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；源表同步先跑通；上游响应头声明版本，不兼容拒绝启动 |
-| R10 | 源表结构与预期不一致 | 同步整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
+| R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
+| R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
 | R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend、拒绝 reset；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 分支只在本地，协作方看不到 | run 仍完成，`pushStatus=failed` + 错误摘要；提供重试 push；远端已有同名分支时拒绝覆盖 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
 | R15 | 异常详情泄露密钥/环境 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据）并截断 8KB；接口只返回脱敏内容 |
+| R16 | 定时与手动同时触发同步 | 重复处理/并发写同一 session | `sync_lock` 单飞 + TTL；手动幂等返回已有 `jobId`；`job_runs` 仅一个活跃 sync |
 
 ## 4. 确认后的下一步
 
-```mermaid
-flowchart LR
-    A["你 review 本文档集"] --> B["逐条回答 §2 的 Q1–Q5"]
-    B --> C["我按结论修订设计文档（含 README 决策表）"]
-    C --> D["重排 roadmap / milestone / issue"]
-    D --> E["更新 .agents/flow/ 并跑 verify:flow"]
-    E --> F["按 issue 顺序开始实现"]
+```text
+你 review 本文档集
+  ▼
+逐条回答 §2 的 Q1–Q5
+  ▼
+我按结论修订设计文档（含 README 决策表）
+  ▼
+重排 roadmap / milestone / issue
+  ▼
+更新 .agents/flow/ 并跑 verify:flow
+  ▼
+按 issue 顺序开始实现
 ```
 
 - milestone 讨论会基于 [02 §4 阶段切分建议](02-features.md) 与现有 roadmap 的 M2/M3/M4 进行重组（例如把"骨架与契约"单独成阶段）；具体草案见 [10 路线图重排草案](10-roadmap-draft.md)。
@@ -170,8 +175,10 @@ flowchart LR
 - [ ] 契约：OpenAPI 生成 + CI 校验方案认可
 - [ ] 数据库：MySQL 主库 + SQLite 测试的 `Database` 双实现与切换方式认可
 - [ ] 部署与身份：SaaS 单实例 + 自建账号 JWT + 单组织共享认可
-- [ ] 轨迹来源：契约先行（05 §10）+ 同库源表的方式认可
+- [ ] 轨迹来源：契约先行（05 §10）+ 第三方写 `trajectory_payloads`、本服务只归一化的方式认可
 - [ ] 范围：时间线页面裁撤（F7 不做）、归因阶段不聚类（自进化阶段才聚类）确认
 - [ ] 自进化：对象配置（repo/tag/子目录）、candidate 先 commit、接纳 amend、拒绝 reset、完成后校验并 push 认可
 - [ ] 执行日志：过程/异常落库、事件 API、前端日志与失败/中断展示认可
+- [ ] SSE：页面级订阅、ticket 绑定 topics/cursor、已完成任务不建连、断线从 DB 回放
+- [ ] 前端结构：API 按域拆、页面专属组件 co-locate、IconRenderer、node/jsdom 测试配置认可
 - [ ] 开放问题：Q1–Q5 有结论

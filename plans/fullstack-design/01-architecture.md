@@ -2,44 +2,55 @@
 
 > 本文回答：系统由哪几部分组成、数据怎么流动、外部数据怎么接入、部署形态是什么。
 > 前置：[README · 文档地图与已确认决策](README.md)；下游：[02 功能点拆分](02-features.md)。
-> 2026-10-22 重大修订：产品定位从"本地单机工具"改为 **SaaS 服务**，数据源从"本机文件扫描"改为"查询接口 + 同库源表"。
+> 2026-10-22 重大修订：产品定位从"本地单机工具"改为 **SaaS 服务**，数据源从"本机文件扫描"改为"原始轨迹表 + 查询接口"。
+> 2026-10-23 边界修订：第三方脚本只写原始 payload 表；本服务不负责采集/扫描源表，只做读取与归一化。
 
 ## 1. 系统边界
 
 Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在本机上的工具：
 
 - **输入**（两类轨迹来源，见 §4.1）：
-  1. **同库源表**：其他任务把"有问题的 session 轨迹"写入我们 MySQL 里的一组源表，我们读取并归一化。
-  2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需拉取。
-- **处理**：获取与归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+  1. **原始轨迹表 `trajectory_payloads`**：第三方脚本把"有问题的 session 轨迹"（每 agent 一份 JSONL）写入 MySQL，本服务读取并归一化；采集不归本服务。
+  2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表。
+- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
 - **输出**：浏览器里的两大视图（Session 错误查看 / 自进化），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**单组织共享**。
-- **不做什么**：**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做多租户、不做公网注册。
+- **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做多租户、不做公网注册。
 
 ## 2. 组成与分层
 
-```mermaid
-flowchart TB
-    subgraph Sources["轨迹来源"]
-        API["轨迹/元数据查询接口<br/>（上游待实现，契约见 05 §10）"]
-        ST["同库源表<br/>（其他任务写入的问题 session）"]
-    end
-    subgraph Host["服务端"]
-        subgraph BE["apps/api · FastAPI 模块化单体"]
-            direction TB
-            HTTP["HTTP 层<br/>路由 · 鉴权 · 校验 · 错误模型 · SSE"]
-            SVC["服务层<br/>sessions / acquisition / bad_cases / probes / evolution / identity"]
-            PRV["数据接入层<br/>只读外部表 / 出站客户端 / fixtures"]
-            REPO["Repository 层<br/>Database 接口 + SQLite / MySQL 适配"]
-        end
-        DB[("MySQL 8（主库）<br/>业务表 + 源表 + users")]
-    end
-    subgraph Client["浏览器"]
-        SPA["apps/web<br/>Vue 3 SPA（登录态）"]
-    end
-    API --> SVC
-    ST --> SVC
-    SVC --> PRV --> REPO --> DB
-    SPA -- "REST（Bearer JWT）+ SSE（票据）" --> HTTP
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ 浏览器                                                       │
+│   apps/web · Vue 3 SPA（登录态）                             │
+└───────────────────────────┬──────────────────────────────────┘
+                            │ REST（Bearer JWT）+ SSE（一次性票据）
+┌───────────────────────────▼──────────────────────────────────┐
+│ apps/api · FastAPI 模块化单体                                │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ HTTP 层：路由 · 鉴权 · 校验 · 错误模型 · SSE           │  │
+│  └───────────────────────────┬────────────────────────────┘  │
+│                              ▼                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ 服务层：sessions / acquisition / bad_cases / probes    │  │
+│  │         / evolution / identity                         │  │
+│  └───────────────────────────┬────────────────────────────┘  │
+│                              ▼                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ 数据接入层：只读外部表 / 出站客户端 / fixtures         │  │
+│  └───────────────────────────┬────────────────────────────┘  │
+│                              ▼                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ Repository：Database 接口 + SQLite / MySQL 适配        │  │
+│  └───────────────────────────┬────────────────────────────┘  │
+└──────────────────────────────┼───────────────────────────────┘
+                               ▼
+                 ┌──────────────────────────────┐
+                 │ MySQL 8（主库）              │
+                 │ 业务表 + payload 表 + users  │
+                 └──────────────────────────────┘
+
+轨迹输入：上游查询接口 / trajectory_payloads ──► 服务层（acquisition）
 ```
 
 四层职责一句话各一句：
@@ -92,110 +103,188 @@ alembic/                  # 迁移（项目根）
 前端（详见 [03](03-frontend-architecture.md)）：
 
 ```text
-apps/web/src/
-  api/                    # http 封装（Bearer 注入、401 刷新）、queryClient、queryKeys、生成契约
-  composables/            # 每个域一个 useXxx（vue-query hooks）+ useAuth
-  stores/                 # Pinia：登录态（access token + 当前用户）、当前 session
-  pages/
-    login/                # 登录页
-    sessions/             # Session 浏览器（列表 + 家族摘要 + 家族树）
-    errors/               # 错误详情与归因
-    evolution/            # 运行列表 / 详情 / 仅聚类 / 启动向导
-  components/             # family-tree / bad-cases / evolution / ui
-  router/                 # 路由、深链、登录守卫
+apps/web/
+  vitest.config.ts        # node / jsdom 两个测试 project
+  src/
+    api/                  # http/queryClient/queryKeys + 按域模块（auth/sessions/badCases/probes/evolution/acquisition/catalogs）
+    composables/         # 每个域一个 useXxx + useAuth/useRunEvents/useTargets
+    stores/              # Pinia：登录态（access token + 当前用户）、视图偏好；不存当前 session
+    pages/
+      login/             # 登录页
+      sessions/          # Session 浏览器（列表 + 家族摘要 + 家族树）
+      errors/            # 错误详情与归因
+      evolution/         # 运行列表 / 详情 / 仅聚类 / 对象配置
+      evolution/components/  # Stepper/ClusterCard/DiffView/RunLogPanel/LaunchWizard 等页面专属件
+    components/          # family-tree / bad-cases / ui（含 IconRenderer）/ layout（跨页面共享）
+    test/                # setup.ts + MSW server（测试用，不进 dev）
+    router/              # 路由、深链、登录守卫
 ```
 
 ## 4. 数据流（四条主链路）
 
-### 4.1 获取与同步链路（真实数据）
+### 4.1 原始轨迹接入与归一化链路
 
-```mermaid
-flowchart LR
-    subgraph Src["来源"]
-        ST["同库源表<br/>he_src_sessions / he_src_transcripts"]
-        API["轨迹查询接口<br/>（契约由我们定义，上游待实现）"]
-    end
-    subgraph Acq["acquisition 模块"]
-        SRC["轨迹来源适配<br/>SourceTableSource / HttpApiSource"]
-        NORM["归一化器<br/>（原 JSONL 解析逻辑不变，输入从文件变行数组）"]
-        WM["水位线 sync_state"]
-    end
-    DB[("业务表<br/>sessions / members / rounds / steps / blocks / member_events")]
-    PAYLOAD[("原始层<br/>source_records（含 payload 原文）")]
-    ST --> SRC
-    API --> SRC
-    SRC --> NORM --> DB
-    SRC --> PAYLOAD
-    WM --> SRC
+```text
+第三方脚本 ──写──► ┌───────────────────────┐
+                   │ trajectory_payloads   │
+上游接口 ──pull──► │ 每 agent 一行 JSONL   │
+                   │ + hash + 行数         │
+                   └───────────┬───────────┘
+                               │ 读（按 session_id）
+                               ▼
+                   ┌───────────────────────┐
+                   │ source_records        │
+                   │ 处理索引：root/session│
+                   │ processed_hash        │
+                   │ parser_version        │
+                   └───────────┬───────────┘
+                               ▼
+                   ┌───────────────────────┐
+                   │ 归一化器              │
+                   │ JSONL → 轮次/步骤/块  │
+                   └───────────┬───────────┘
+                               ▼
+                   ┌───────────────────────┐
+                   │ 业务表                │
+                   │ sessions / members /  │
+                   │ rounds / steps /      │
+                   │ blocks / member_events│
+                   └───────────────────────┘
 ```
 
-两类来源共用一个同步管道：
+两类来源共用一个归一化管线：
 
 | 来源 | 触发方式 | 读取内容 | 幂等键 |
 |---|---|---|---|
-| 同库源表（其他任务写入的问题 session） | 手动触发 / 定时轮询（配置间隔） | 源表按 `updated_at` 水位线增量扫描 | `(source_type, source_ref)` + content hash |
-| 轨迹查询接口（上游待实现） | 用户手动拉取（按 session id / 时间窗） | 按 [05 §10](05-api-design.md) 契约返回的轨迹包 | 同上 |
+| 第三方脚本写入的 `trajectory_payloads` | 后台定时（默认 60s）/ admin 手动 | 按 `session_id` 取 JSONL 原文 | `session_id` + `content_hash` + `parser_version` |
+| 轨迹查询接口（上游待实现） | 用户手动 pull | 按 [05 §10](05-api-design.md) 契约返回的 payload | 同上 |
 
-归一化规则不变（[06 §7.1](06-database-design.md)：轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、家族树触发点预计算）——**输入从 `Path` 变成 `list[str]`（JSONL 行数组），解析器本身一行不改**。
+- **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `session_id` 回查。
+- 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
+- 归一化规则不变（[06 §7.1](06-database-design.md)）：轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、家族树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
 
-原始层与归一化层分离依旧成立：`source_records` 存来源元数据 + 指纹 + **payload 原文**（SaaS 下没有"源文件"可以回读，原文必须落库，解析规则升级时据此重放）。
+### 4.2 查询链路（按模块拆分，页面并行加载）
 
-### 4.2 查询链路（轨迹真实 + 问题/归因外部只读）
+页面不调用“一个整页接口”，而是按区块并行发起多个资源接口；每个接口只组装自己那块数据：
 
 ```text
-浏览器 ──GET /api/sessions/{sid}/bad-cases──► 鉴权中间件（JWT → principal）
-                                              │
-                                              ▼
-                                        bad_cases 服务
-                                              │
-                          ┌───────────────────┴────────────────────┐
-                          ▼                                        ▼
-                  bad_cases / analysis / probe（外部表，只读）    sessions（轨迹表，真实）
-                  按 session_id 联表                             校验 session 存在、取聚合数
-                          └───────────────────┬────────────────────┘
-                                              ▼
-                               组装响应（badCaseId / probeId 真实 ID）
+浏览器 /sessions/:sid
+   │
+   ├──► GET /sessions/{sid} ──────────► sessions 服务 ──► sessions 表
+   │                                      └──► summary 响应 ──┐
+   │                                                          │
+   ├──► GET /sessions/{sid}/tree ─────► sessions 服务 ──► members / member_events
+   │                                      │                  + bad_cases
+   │                                      └──► tree 响应 ─────┤
+   │                                                          │
+   └──► GET /sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
+                                          │                  + sessions（存在性校验）
+                                          └──► bad-cases 响应 ┘
+                                                               │
+                                                               ▼
+                                          前端按区块独立渲染（各自 skeleton，互不阻塞）
 ```
 
-前端拿到的永远是一个完整响应；问题侧数据由外部系统写入，本服务只读。单组织共享下无行级过滤，`principal` 只记录进审计字段（`created_by`）。
+- **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），摘要先到就先渲染，树/问题列表后到。
+- 每个接口只做自己的服务组装：摘要读 `sessions`；树读 `members/member_events` 并按 `bad_case_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
+- 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
+- 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
-### 4.3 任务与进度链路（SaaS 版）
+前端拿到的每个响应只覆盖一个模块；问题侧数据由外部系统写入，本服务只读。单组织共享下无行级过滤，`principal` 只记录进审计字段（`created_by`）。
 
-```mermaid
-sequenceDiagram
-    participant UI as 浏览器
-    participant API as FastAPI
-    participant JOB as service/jobs.py（job_runs + 串行 worker）
-    participant BUS as service/events.py
+### 4.3 任务、自进化与 SSE 链路
 
-    UI->>API: POST /api/acquisition/sync（Bearer）
-    API->>JOB: 落 job_runs 行（status=queued），立即返回 jobId
-    Note over JOB: 进程内 worker 串行执行（V1 一把锁）
-    UI->>API: POST /api/events/ticket → 一次性票据
-    UI->>API: GET /api/events?ticket=…（SSE）
-    JOB->>BUS: sync.progress 事件
-    BUS-->>UI: 按 topic 推送（仅订阅者）
-    UI->>UI: vue-query 失效对应 queryKey，局部刷新
+原则：**REST 负责首屏与事实，SSE 只在“正在执行”时做增量通知；已完成任务不建 SSE。**
+
+#### 4.3.1 自进化页面：打开列表、启动、查看历史
+
+```text
+打开 /evolution
+  → GET /evolution/runs
+  → 渲染「正在执行」「历史记录」
+     ├─ 点击「启动自进化」
+     │    → 向导 /probes/query → 命中确认
+     │    → POST /evolution/runs → 201 RunDetail(runId)
+     │    → 路由 /evolution/runs/:rid
+     └─ 点击历史 run
+          → 路由 /evolution/runs/:rid
 ```
 
-SaaS 与单机的差别：**任务状态以 `job_runs` 表为准**（进程重启不丢、多用户共享可见），进程内 worker 只是执行器；SSE topic 按资源隔离（`run:{rid}`、`sync`），不向未订阅连接广播。
+#### 4.3.2 运行详情：先 REST 初版，再按状态决定是否 SSE
+
+```text
+打开 /evolution/runs/:rid
+  → 并行 REST：
+       GET /runs/:rid
+       GET /runs/:rid/steps/{current}
+       GET /runs/:rid/events?afterSeq=0（分页拉完，记录最后 seq）
+  → 渲染初版
+  → status == running ?
+       ├─ 是：
+       │    POST /events/ticket {topics:["run:{rid}"], lastEventId: 已加载最后 seq}
+       │    → GET /events?ticket=…
+       │    → run.event / run.progress → append + 失效 queryKey
+       │    → run.completed/failed/interrupted → close + 最后 REST 刷新
+       └─ 否：
+            不取 ticket、不建 SSE；翻 step / 日志继续走 REST
+```
+
+> `lastEventId` 必须用**已加载的最后一条事件 seq**，不能用 `run.lastEventSeq` 的最大值；否则 events 分页未拉完时会丢中间事件。
+
+#### 4.3.3 轨迹归一化：后台定时处理 + 单飞锁
+
+这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `sessions / members / rounds / steps / blocks / member_events`。
+
+```text
+lifespan 启动 scheduler（默认每 60s）
+  → 有 pending payload？
+       ├─ 否：跳过
+       └─ 是：抢 sync_lock
+             ├─ 失败：已有同步任务，跳过
+             └─ 成功：job_runs 入队 → 串行 worker 处理 → 释放锁
+
+admin / 运维手动触发：
+POST /acquisition/sync
+  → 抢 sync_lock
+       ├─ 失败：202 { jobId: 正在执行的任务, reused: true }
+       └─ 成功：202 { jobId: 新任务, reused: false }
+```
+
+- **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `sessions` 里不存在，自然查不到。
+- **自进化查询仍是 `probe_reports INNER JOIN sessions`**：session 未归一化 → probe 不可见；不做 preflight，也不返回 `DATA_NOT_READY`。
+- **单飞锁**：`sync_lock` 单行表（`name='sync'`）+ `job_id/acquired_at/expires_at`；`INSERT` 主键冲突即已有任务。
+- V1 单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
+- `job_runs` 同 `kind=sync` 只允许一个 `queued/running`，作为第二道保险。
+- 锁 TTL 30 分钟；进程崩溃后下一次 tick 可回收。
+- 手动触发只作为 admin/运维的“立即处理”，普通用户在顶栏只看到 pending 状态，不提供按钮。
+- **同步没有 SSE topic**：进度通过 `GET /acquisition/status` / `GET /jobs/{jobId}` 查询，前端定时轮询即可；不占 SSE 连接。
+- **没有全局 SSE**：App.vue 不建立常驻连接；只有运行中的 run 页面才订阅 `run:{rid}`。
 
 ### 4.4 鉴权链路
 
-```mermaid
-sequenceDiagram
-    participant SPA as Vue SPA
-    participant API as FastAPI
-    participant DB as users 表
-
-    SPA->>API: POST /api/auth/login {username, password}
-    API->>DB: 校验密码哈希（argon2）
-    API-->>SPA: {accessToken(30min), user} + refreshToken(httpOnly cookie, 14d)
-    SPA->>API: GET /api/...（Authorization: Bearer）
-    API->>API: JWT 中间件 → RequestContext.principal
-    Note over SPA: accessToken 过期 → POST /api/auth/refresh（cookie）
-    SPA->>API: POST /api/events/ticket（Bearer）→ {ticket, 60s 一次性}
-    SPA->>API: GET /api/events?ticket=…
+```text
+┌─────────┐      ┌─────────┐      ┌──────────┐
+│ Vue SPA │      │ FastAPI │      │ users 表 │
+└───┬─────┘      └────┬────┘      └────┬─────┘
+    │ POST /api/auth/login {username, password}
+    ├──────────────────►│
+    │                   │ 校验密码哈希（argon2）
+    │                   ├────────────────►│
+    │                   │◄────────────────┤
+    │◄── accessToken(30min) + user ───────┤
+    │    refreshToken（httpOnly cookie, 14d）
+    │ GET /api/…（Authorization: Bearer）
+    ├──────────────────►│
+    │                   │ JWT 中间件 → RequestContext.principal
+    │                   │
+    │ [accessToken 过期] → POST /api/auth/refresh（cookie）
+    ├──────────────────►│
+    │◄──────────── 新 accessToken ────────┤
+    │ POST /api/events/ticket（Bearer）
+    │   { topics:["run:{rid}"], lastEventId } → {ticket, 60s}
+    ├──────────────────►│
+    │ GET /api/events?ticket=…（SSE）
+    ├──────────────────►│
 ```
 
 - EventSource 不能自定义请求头，SSE 用**一次性短票据**（查询参数），不用长期 token。
@@ -205,25 +294,27 @@ sequenceDiagram
 
 ### 5.1 三类数据，三种处理方式
 
-```mermaid
-flowchart LR
-    subgraph Trace["轨迹（本服务写）"]
-        ST["同库源表 / 上游 API"] --> ACQ["service/acquisition"] --> TDB[("sessions/members/...")]
-    end
-    subgraph Problem["问题与归因（外部写，本服务只读）"]
-        EXT["外部上报/归因系统"] --> PDB[("bad_cases / bad_case_analysis / probe_reports")]
-        PDB --> READ["service/bad_cases · probes（只读）"]
-    end
-    subgraph Evo["自进化（本服务写）"]
-        READ --> EVO["service/evolution"] --> EDB[("evolution_runs / probe_clusters / rounds")]
-    end
-    FIX["fixtures/ + seed（仅开发）"] -.-> TDB
-    FIX -.-> PDB
+```text
+┌─ 轨迹（本服务写业务表） ──────────────────────────────────────────┐
+│ trajectory_payloads / 上游 API ──► acquisition ──► sessions/members/… │
+└───────────────────────────────────────────────────────────────────┘
+
+┌─ 问题与归因（外部写，本服务只读） ────────────────────────────────┐
+│ 外部上报/归因系统 ──► bad_cases / analysis / probe ──► bad_cases/probes 服务 │
+└───────────────────────────────────────────────┬───────────────────┘
+                                                │ 只读
+                                                ▼
+┌─ 自进化（本服务写） ──────────────────────────────────────────────┐
+│ evolution ──► evolution_runs / probe_clusters / rounds            │
+└───────────────────────────────────────────────────────────────────┘
+
+fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 ```
 
 | 数据 | 写入方 | 本服务 | 接入方式 |
 |---|---|---|---|
-| 轨迹（session/agent/transcript） | 源表由其他任务写；本服务同步归一化 | 读写 | `service/acquisition` + `third_party_api/trajectory` |
+| 原始轨迹（每 agent JSONL） | 第三方脚本；pull 时本服务写入 | **只读**（pull 除外） | `trajectory_payloads` |
+| 轨迹业务表（sessions/members/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
 | 问题与归因（bad_cases / analysis / probe） | 外部系统 | **只读** | `db/models` 只读表 + `db/crud` |
 | 自进化（runs / clusters / rounds / finals） | 本服务 | 读写 | `service/evolution` |
 | 用户、任务审计 | 本服务 | 读写 | `service/identity`、`service/jobs.py` |
@@ -241,7 +332,6 @@ flowchart LR
 - `fixtures/` 内含原型 4 个会话、若干 bad_case / probe / 簇示例；`python -m app.cli seed` 写入真实表；
 - 生产环境不执行 seed；UI 读到的永远是真实表；
 - 与早期 D4 的差别：**不再有"Stub Provider 返回不入库数据"的运行时分支**，桩数据也从正式表结构走，避免字段对不上。
-
 ### 5.4 V1 的占位实现（不是 Provider）
 
 | 占位点 | 位置 | 后续替换 |
@@ -277,8 +367,8 @@ pnpm --filter web build                                   # 前端构建产物�
 |---|---|---|
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
-| 同步幂等 | `(source_type, source_ref)` + content hash + 水位线，重复同步零副作用 | 上游重推/重拉不得产生重复数据 |
-| 大轨迹 | 家族树触发点同步时预计算；聚合统计入库时冗余；payload 原文单独表 | 375 步 / 57 个子 agent 的会话存在，不能查询时重算 |
+| 同步幂等 | `(root_session_id, session_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
+| 大轨迹 | 家族树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 步 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
 | 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
@@ -290,8 +380,8 @@ pnpm --filter web build                                   # 前端构建产物�
 
 | 风险 | 影响 | 对策 |
 |---|---|---|
-| 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 源表同步先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
-| 源表结构与我们预期不一致 | 同步解析失败 | 源表契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
+| 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 脚本 payload 先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
+| payload 表结构与预期不一致 | 归一化失败 | payload 契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
 | Vue Flow 与 React Flow 的 API 差异 | 家族树移植返工 | 布局几何纯 TS 原样移植，先做 `demo-nested` 最小树验证（[08 §3](08-frontend-implementation.md)） |
 | 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
 | git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
@@ -300,5 +390,5 @@ pnpm --filter web build                                   # 前端构建产物�
 | push 失败 | 分支只在本地 | run 仍标完成，`push_status=failed` + 脱敏错误；支持重试 push；同名远端分支拒绝覆盖 |
 | 执行异常未留痕 | 无法定位/复盘 | 阶段/候选/评测/推送/异常统一写 `evolution_run_events`；job 边界捕获；启动扫描残留任务记 `interrupted` |
 | JWT 泄漏 | 组织数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
-| SSE 长连接在代理下断流 | 进度不更新 | 事件带 id + Last-Event-ID 补发；REST 轮询兜底 |
+| SSE 长连接在代理下断流 | 进度不更新 | 事件带 seq + Last-Event-ID；run 事件从 DB 回放，sync 用 job_runs + REST 兜底 |
 | 单实例宕机 | 全员不可用 | 单组织内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |

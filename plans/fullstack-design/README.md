@@ -5,16 +5,19 @@
 
 ## 这套文档怎么读
 
-```mermaid
-flowchart LR
-    A["01 总体架构<br/>系统在怎么分层"] --> B["02 功能点拆分<br/>到底要做哪些功能"]
-    B --> C["03 前端架构<br/>用什么搭、怎么组织"]
-    B --> D["04 后端架构<br/>用什么搭、怎么组织"]
-    C & D --> E["05 接口设计<br/>前后端怎么对话"]
-    D --> F["06 数据库设计<br/>数据怎么存"]
-    E & F --> G["07 后端实现设计<br/>每个功能后端怎么写"]
-    E & F --> H["08 前端实现设计<br/>每个页面前端怎么写"]
-    G & H --> I["09 Review 指南<br/>覆盖矩阵与待讨论问题"]
+```text
+01 总体架构（系统在怎么分层）
+  ▼
+02 功能点拆分（到底要做哪些功能）
+  ├──► 03 前端架构（用什么搭、怎么组织）──┐
+  ├──► 04 后端架构（用什么搭、怎么组织）──┼──► 05 接口设计（前后端怎么对话）
+  │                                        └──► 06 数据库设计（数据怎么存）
+  │                                                    │
+  │                    ┌───────────────────────────────┴──────────────┐
+  │                    ▼                                              ▼
+  │            07 后端实现设计                                  08 前端实现设计
+  │                    └───────────────────────────────┬──────────────┘
+  └────────────────────────────────────────────────────┴──► 09 Review 指南
 ```
 
 | 文档 | 回答的问题 | 适合谁先看 |
@@ -32,34 +35,27 @@ flowchart LR
 
 ## 系统一句话说明
 
-Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：从"轨迹查询接口"与"同库源表"获取 Claude Code 会话轨迹（主会话 + 子 agent 家族），归一化存入 MySQL，供组织内登录用户在家族树上查看执行流、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，范围与替代说明见 [02 §2.1](02-features.md)。
+Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 家族）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在家族树上查看执行流、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，范围与替代说明见 [02 §2.1](02-features.md)。
 
-```mermaid
-flowchart TB
-    subgraph Src["轨迹来源"]
-        API["轨迹/元数据查询接口<br/>（契约由我们定义，上游待实现）"]
-        ST["同库源表<br/>（其他任务写入的问题 session）"]
-    end
-    subgraph BE["apps/api · Python + FastAPI 模块化单体"]
-        ACQ["acquisition<br/>来源连接·归一化·幂等"]
-        SES["sessions<br/>列表·摘要·家族树"]
-        FND["bad_cases / probes<br/>问题与归因（外部只读）"]
-        EVO["evolution<br/>自进化运行（占位执行）"]
-        IDT["identity<br/>登录·JWT·票据"]
-        EVT["events<br/>SSE 事件总线"]
-    end
-    DB[("MySQL 8（主库）<br/>业务表 + 源表 + users")]
-    subgraph FE["apps/web · Vue 3 + Vite SPA（登录态）"]
-        P1["Session 错误查看<br/>浏览器 / 错误详情"]
-        P2["自进化<br/>运行列表 / 详情 / 向导"]
-    end
-    API --> ACQ
-    ST --> ACQ
-    ACQ --> DB
-    DB --> SES & FND & EVO
-    SES & FND & EVO -- "REST（OpenAPI 契约）" --> FE
-    IDT -- "JWT + SSE 票据" --> FE
-    EVT -- "SSE 进度推送" --> FE
+```text
+轨迹输入：上游查询接口 / trajectory_payloads（脚本写入）
+                    │
+                    ▼
+┌─ apps/api · Python + FastAPI 模块化单体 ──────────────────────┐
+│ acquisition ──► sessions / bad_cases / probes / evolution     │
+│ identity（登录 · JWT · 票据）   events（SSE 事件总线）        │
+└───────────────────────────┬───────────────────────────────────┘
+                            ▼
+                ┌──────────────────────────────┐
+                │ MySQL 8（主库）              │
+                │ 业务表 + payload 表 + users  │
+                └──────────────┬───────────────┘
+                               │ REST（OpenAPI 契约）+ SSE
+                               ▼
+┌─ apps/web · Vue 3 + Vite SPA（登录态） ───────────────────────┐
+│ Session 错误查看：浏览器 / 错误详情                           │
+│ 自进化：运行列表 / 详情 / 向导 / 对象配置                     │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ## 已确认的顶层决策（2026-10-22 与维护者讨论拍板）
@@ -72,12 +68,12 @@ flowchart TB
 | D4 | 演示数据与外部数据（2026-10-22 修订） | **问题/归因数据来自外部只读表；演示数据用 `fixtures/` + `seed` 灌入真实表**，运行时没有 Stub Provider 分支 | API 契约全真；UI 永远读真实表；上游/外部表就绪后无需切换前端或契约。详见 [01 §5](01-architecture.md) |
 | D5 | 部署形态（2026-10-22 修订） | **SaaS 服务**：多用户、远程访问、MySQL 主库；不再是本地单机工具 | 引入鉴权、用户体系与远程部署；原先"预留服务化"的接缝全部兑现 |
 | D6 | 自进化边界（2026-10-23 修订） | **V1 真实修改 skill/agent 文件、commit 并 push 到远端 run 分支**；聚类与 patch 内容、评测分数为占位 | candidate 先 commit，接纳 amend 追加评测对比、拒绝 reset；分支 `evo/{YYYYMMDD}-{run_id}`；推送前校验分支 |
-| D7 | 进度推送 | **SSE（Server-Sent Events）** | FastAPI 原生友好，单向推送足够；EventSource 不能带头，用一次性票据鉴权 |
+| D7 | 进度推送 | **页面级 SSE**：仅运行中的 run 订阅；ticket 绑定 topics 与 cursor，完成即关闭；轨迹归一化走 REST 轮询 | EventSource 不能带头，用一次性票据；已完成任务不建 SSE |
 | D8 | 范围裁剪（2026-10-22） | **时间线页面（原型 B 页）不做** | 轮次/步骤/块仍入库，仅用于统计与后续诊断；移除时间线路由、接口、组件与对应里程碑 issue。见 [02 §2.1](02-features.md) |
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
-| D12 | 轨迹来源（2026-10-22） | **两类来源，契约先行**：① 上游查询接口（当前不存在，由我们定义契约，见 [05 §10](05-api-design.md)）；② 同库源表（其他任务写入问题 session，我们读取归一化） | 不做本机文件扫描；源表读取用 `service/acquisition` + `db/crud`，上游调用用 `third_party_api`，不建 Provider 层 |
+| D12 | 轨迹来源（2026-10-23 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时读取+归一化，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；幂等靠 `(root_session_id, session_id)` + hash + `parser_version` |
 | D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoPath/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | V1 从本地已 clone 仓库按 tag 取基线；后续接远端版本下载 |
 | D14 | 自进化 git 流程（2026-10-23） | **每个 candidate patch 一次 commit（带追溯），接纳后 amend 追加评测对比，拒绝 reset 丢弃；V1 完成后校验并 push** | `evolution_runs` 记录 baseCommit/branch/pushStatus；push 前校验分支命名、基线、trailer；失败可重试 push |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
@@ -92,12 +88,12 @@ flowchart TB
 | 2 | 「模拟推进」按钮 | 真实实现接入后隐藏按钮，接口保留 |
 | 3 | 「查看原始 JSON」overlay | 首版不做，后续按诊断证据需求再加 |
 | 4 | 用户管理界面范围 | 首版只做 API + 顶栏用户区，不做管理页 |
-| 5 | 源表同步触发方式 | 手动 + 默认 5 分钟定时（`HE_SYNC_INTERVAL_SECONDS`） |
+| 5 | 轨迹归一化触发方式 | 后台定时（默认 60s）+ 单飞锁；手动仅 admin 立即处理 |
 | 6 | 上游轨迹查询契约（[05 §10](05-api-design.md)） | 按"轨迹包 + 窗口列举"设计；如果你知道上游实际 API 形态，告诉我再调整 |
 
 ## 数据边界与演示数据（全局最重要的设计约束）
 
-- **轨迹**：源表/上游接口 → `service/acquisition` → 本服务业务表（读写）。
+- **轨迹**：第三方脚本/上游 pull → `trajectory_payloads`（每 agent 一行原始 JSONL）→ `service/acquisition` 归一化 → 业务表。
 - **问题与归因**：外部系统写 `bad_cases` / `bad_case_analysis` / `probe_reports`，本服务**只读**。
 - **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库的副本、commit 到 `evo/{YYYYMMDD}-{run_id}` 分支，并在 run 完成后校验并 push 到远端**（candidate 先 commit，接纳 amend、拒绝 reset）。
 - **执行过程**：阶段、候选、评测、推送、异常全部落 `evolution_run_events`；前端通过 `GET /runs/{rid}/events` 读取，SSE 只做实时通知。
@@ -108,7 +104,7 @@ flowchart TB
 
 ## 与仓库现状的关系
 
-- 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹获取与同步）+ M4（问题与归因，外部表只读）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；当前 M1（纯前端原型）已由 [plans/14-15-ui-prototype](../14-15-ui-prototype/) 完成。
+- 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹接入与归一化）+ M4（问题与归因，外部表只读）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；当前 M1（纯前端原型）已由 [plans/14-15-ui-prototype](../14-15-ui-prototype/) 完成。
 - `apps/web` 现有 React 壳（3 个文件）由 Vue 3 应用替换；`apps/server` 由 `apps/api` 替换；`packages/contracts` 保留但改为存放 OpenAPI 生成物。
 - 本次 SaaS 化修订后，`docs/architecture.md` 中"当前只做 Codex / 本机 rollout 扫描 / Fastify"等表述将不再成立，需按本设计同步（确认后执行）。
 - 文档确认后的后续动作：重排 roadmap / milestone / issue（`.agents/flow/`），把 `docs/architecture.md` 的技术栈表述同步为新架构，再逐 issue 实现。

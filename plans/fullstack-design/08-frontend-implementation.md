@@ -13,30 +13,48 @@
 | `/evolution` | `pages/evolution/Index.vue` | `GET /evolution/runs`、`GET /catalogs/*` | 自进化列表 + 启动向导 |
 | `/evolution/targets` | `pages/evolution/targets/Index.vue` | `GET/POST/PUT/DELETE /evolution/targets`、`GET .../versions` | **进化对象配置页（新增）** |
 | `/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET /evolution/runs/{rid}`、`/steps/{n}` | 运行详情（6 步） |
-| `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/cluster-previews/{id}` | 仅聚类结果 |
+| `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/runs/{rid}`、`/steps/1` | 仅聚类结果 |
 
 > 时间线页面（原型 B 页）已裁撤，不设路由、不建页面，详见 §6。
 
-```mermaid
-flowchart LR
-    R["router"] --> L["login/Index"]
-    R --> S["sessions/Index"]
-    R --> E["errors/Index"]
-    R --> V["evolution/Index"]
-    R --> D["evolution/RunDetail"]
-    R --> C["evolution/ClusterPreview"]
-    R --> TG["evolution/targets/Index"]
-    S --> FT["family-tree/FamilyTree"]
-    S --> FL["bad-cases/BadCaseList"]
-    V --> LW["evolution/LaunchWizard"]
-    D --> ST["evolution/Stepper"]
-    D --> CC["evolution/ClusterCard"]
-    D --> FV["evolution/FinalVerdict"]
+```text
+router
+├── /login ───────────────────────► login/Index
+├── /sessions ────────────────────► sessions/Index
+│                                     ├──► family-tree/FamilyTree
+│                                     └──► bad-cases/BadCaseList
+├── /sessions/:sid/errors ────────► errors/Index
+├── /evolution ───────────────────► evolution/Index
+│                                     └──► pages/evolution/components/LaunchWizard
+├── /evolution/runs/:rid ─────────► evolution/RunDetail
+│                                     ├──► pages/evolution/components/Stepper
+│                                     ├──► pages/evolution/components/ClusterCard
+│                                     ├──► pages/evolution/components/FinalVerdict
+│                                     └──► pages/evolution/components/RunLogPanel
+├── /evolution/cluster/:previewId ─► evolution/ClusterPreview
+└── /evolution/targets ───────────► evolution/targets/Index
 ```
 
 ## 2. 数据层实现
 
-### 2.1 `api/http.ts`
+### 2.1 API 模块拆分
+
+请求函数按域放，**不建 `api/index.ts` barrel**；模型来自 `packages/contracts`，筛选类型放对应域文件。
+
+| 文件 | 内容 |
+|---|---|
+| `api/http.ts` | 传输层（Bearer/401 刷新/`ApiError`/取消） |
+| `api/queryClient.ts` | 全局缓存策略 |
+| `api/queryKeys.ts` | queryKey 工厂（集中） |
+| `api/auth.ts` | login / refresh / logout / me |
+| `api/sessions.ts` | 列表 / 摘要 / 家族树 / 问题 |
+| `api/badCases.ts` | 问题详情 / 归因状态 |
+| `api/probes.ts` | 归因结论 |
+| `api/evolution.ts` | runs / 六步 / 事件 / 配置 / 启动推进 / push |
+| `api/acquisition.ts` | 同步 / 拉取 / 状态 |
+| `api/catalogs.ts` | 对象 / 模型清单 |
+
+### 2.2 `api/http.ts`
 
 ```ts
 export class ApiError extends Error {
@@ -67,7 +85,7 @@ async function request<T>(path: string, init?: RequestInit, _retried = false): P
 - 401 处理只在 http 层这一处：先 refresh 一次再重放；`AUTH_EXPIRED` 且 refresh 也失败 → 清登录态 + 跳 `/login?redirect=…`。
 - **避免循环依赖**：`http.ts` 不直接 import auth store；refresh 通过注入的回调（`setRefreshHandler`）或独立的 `authApi.ts` 完成，由 store 在初始化时注册。
 
-### 2.2 `api/queryClient.ts`
+### 2.3 `api/queryClient.ts`
 
 ```ts
 export const queryClient = new QueryClient({
@@ -82,7 +100,7 @@ export const queryClient = new QueryClient({
 })
 ```
 
-### 2.3 `api/queryKeys.ts`
+### 2.4 `api/queryKeys.ts`
 
 ```ts
 export const keys = {
@@ -100,7 +118,6 @@ export const keys = {
   runEvents: (rid: string, afterSeq = 0) => ["evolution", rid, "events", afterSeq] as const,
   preview: (id: string) => ["evolution", "preview", id] as const,
   catalogs: () => ["catalogs"] as const,
-  sources: () => ["acquisition", "sources"] as const,
   syncStatus: () => ["acquisition", "status"] as const,
   targets: () => ["evolution", "targets"] as const,
   targetVersions: (id: string) => ["evolution", "targets", id, "versions"] as const,
@@ -115,7 +132,7 @@ export const keys = {
 | `POST /advance` / SSE `run.progress` | `["evolution", rid]` 前缀（详情 + 全部 step） |
 | `POST /api/acquisition/sync` 完成（SSE） | `["sessions"]`、所有 `["session", …]` 前缀 |
 
-### 2.4 composables 签名
+### 2.5 composables 签名
 
 ```ts
 // useAuth.ts
@@ -139,16 +156,15 @@ useSessionProbes(sid: Ref<string>)
 useRuns()
 useRun(rid: Ref<string>)
 useRunStep(rid: Ref<string>, step: Ref<number>)      // enabled: step 可达
-useRunEvents(rid: Ref<string>, afterSeq: Ref<number>) // GET /evolution/runs/{rid}/events
+useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>)  // GET /evolution/runs/{rid}/events
 useProbeQuery()                                      // mutation → POST /evolution/probes/query
 useCreatePreview()  usePreview(id)
 useStartRun()  useAdvance(rid)
 
 // useAcquisition.ts
-useSources()          // GET /acquisition/sources
 useSyncStatus()       // GET /acquisition/status
-useTriggerSync()      // mutation：POST /acquisition/sync → 返回 jobId，SSE 跟进度
-usePullSessions()     // mutation：POST /acquisition/pull（按 sessionRefs / window）
+useTriggerSync()      // mutation：POST /acquisition/sync → 处理待归一化 payload，SSE 跟进度
+usePullSessions()     // mutation：POST /acquisition/pull（按 sessionIds / window）
 
 // useTargets.ts
 useTargets()          // GET /evolution/targets（仅 enabled 出现在向导）
@@ -156,33 +172,45 @@ useTargetVersions(id) // GET /evolution/targets/{id}/versions（git tag）
 useCreateTarget() useUpdateTarget() useDeleteTarget()   // admin 写操作
 
 // useCatalogs.ts
-useTargets()  useModels()                            // staleTime: Infinity
+useModels()                                   // staleTime: Infinity
 ```
 
 - 所有 composable 返回 `{ data, isLoading, isError, error, refetch }`，页面不直接碰 `http.ts`。
 - `filters` 必须是 `computed`/`ref`（参考报告踩过的坑：传普通对象会把筛选冻结成首帧快照）。
 
-### 2.5 SSE（`composables/useEvents.ts`）
+### 2.6 SSE（`composables/useRunEvents.ts`）
 
 ```ts
-export function useEvents(handlers: Record<string, (data: any) => void>) {
+export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>) {
   let es: EventSource | null = null
+  let closed = false
   const connect = async () => {
-    const { ticket } = await request<{ ticket: string }>("/api/events/ticket", { method: "POST" })
-    es = new EventSource(`/api/events?ticket=${ticket}&topics=${topics}`)   // 断线重连时浏览器自动带 Last-Event-ID 头
-    for (const [type, fn] of Object.entries(handlers)) es.addEventListener(type, e => fn(JSON.parse(e.data)))
-    es.onerror = () => { es?.close(); setTimeout(connect, 3000) }   // 断线 3 秒重连（重新取票）
+    if (closed) return
+    const { ticket } = await request<{ ticket: string }>("/api/events/ticket", {
+      method: "POST",
+      body: { topics: [`run:${rid.value}`], lastEventId: loadedSeq.value },
+    })
+    es = new EventSource(`/api/events?ticket=${ticket}`)
+    es.addEventListener("run.event", e => { appendEvent(JSON.parse(e.data)); loadedSeq.value = ... })
+    es.addEventListener("run.progress", () => invalidateRun(rid.value))
+    for (const type of ["run.completed", "run.failed", "run.interrupted"]) {
+      es.addEventListener(type, () => { closed = true; es?.close(); invalidateRun(rid.value) })
+    }
+    es.addEventListener("reset", () => { es?.close(); void reloadRunSnapshot(rid.value) })
+    es.onerror = () => { es?.close(); if (!closed) setTimeout(connect, 3000) }  // 重连重新取票
   }
-  onMounted(() => { if (useAuthStore().isLoggedIn) void connect() })
-  onUnmounted(() => es?.close())
+  onMounted(() => { if (isRunning.value) void connect() })
+  onUnmounted(() => { closed = true; es?.close() })
 }
 ```
 
-- 只在 `App.vue` 建立一次连接；订阅的 topic 由当前页面通过 `provide/inject` 注册（run 详情页订阅自己的 `run:{rid}`）。
-- EventSource 不能自定义请求头，所以用**一次性票据**（[05 §4.1](05-api-design.md)）；每次重连重新取票，票据不过期复用。
-- 收到 `run.progress` / `sync.progress` 后**只失效 queryKey**，不直接改缓存数据（避免 SSE 与 REST 数据不一致）。
-- 事件处理做 500ms 去抖：连续推进时合并成一次重取。
-- 登出时主动 `es.close()`；重新登录后由 App.vue 重建。
+- **页面级，不是全局**：App.vue 不建立常驻 SSE；只有 `status=running` 的 run 详情才调用 `useRunEvents`。
+- **先 REST 后 SSE**：页面先并行拉 `run` / `step` / `events?afterSeq=0`（分页拉完）渲染初版，再把**已加载的最后一条事件 seq** 传给 ticket 的 `lastEventId`，补齐快照与流之间的空档。
+- **已完成 run**：不取 ticket、不建 SSE；翻 step / 日志继续走 REST。
+- **同步动作不订阅 SSE**：后台 scheduler / admin 手动只写 `job_runs`；前端轮询 `GET /acquisition/status` 或 `GET /jobs/{id}`。
+- 重连时浏览器自动带 `Last-Event-ID`；服务端从 DB 事件回放。收到 `reset` 说明游标已失效，前端重新拉 REST 快照。
+- 收到 `run.progress` 只失效 queryKey；`run.event` 可增量 append（DB 事件是事实源）。
+- 离开页面、run 终态、登出都主动 `es.close()`。
 
 ## 3. 家族树（`components/family-tree/`）
 
@@ -270,12 +298,13 @@ Index.vue（居中卡片，无顶栏）
 
 ### 4.2 顶栏用户区
 
-`TopNav.vue` 右侧新增：演示数据角标（`phase=demo` 时显示）、同步入口按钮（触发 `POST /acquisition/sync`，显示最近同步时间）、当前用户名 + 下拉（退出登录）。退出：调 `POST /auth/logout` → 清 `stores/auth` → 断 SSE → 跳 `/login`。
+`TopNav.vue` 右侧：演示数据角标（`phase=demo`）、轨迹处理状态（`pending` 数量，hover 展示 `GET /acquisition/status` 摘要）、当前用户名 + 下拉（退出登录）。普通用户不提供“同步”按钮；admin 下拉里可有「立即处理」（`POST /acquisition/sync`，幂等，返回已有 jobId 时只提示）。退出：调 `POST /auth/logout` → 清 `stores/auth` → 关页面级 SSE → 跳 `/login`。
 
-### 4.3 同步入口与状态
+### 4.3 轨迹处理状态
 
-- 顶栏同步按钮点击后显示 SSE 进度（小进度条或 Message 提示）；完成后失效 `["sessions"]` 前缀自动刷新列表。
-- `GET /acquisition/status` 在顶栏 hover 时展示最近一次同步结果（imported/skipped/errors 摘要）。
+- 顶栏只展示 `pending` 数量与最近一次处理结果（`GET /acquisition/status`），不建立 SSE。
+- 后台 scheduler 默认每 60s 处理；admin 的「立即处理」触发后，前端轮询 `GET /jobs/{jobId}` 或 `GET /acquisition/status`，完成后失效 `["sessions"]` 前缀。
+- 普通用户不需要手动触发；数据会在下一轮 scheduler 自动出现。
 
 ## 5. Session 浏览器页（`pages/sessions/Index.vue`）
 
@@ -302,7 +331,8 @@ Index.vue
 | 搜索 | 输入 300ms 防抖 → 更新 `filters.q` → queryKey 变化自动重取 |
 | 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial） |
 | 排序 | 4 个选项直传后端 `sort` |
-| 选中 session | 路由到 `/sessions/:sid`；Pinia `selection` 记录当前 sid（列表高亮与详情共享） |
+| 选中 session | 路由到 `/sessions/:sid`；列表高亮由当前路由参数派生，**不再用 Pinia 存当前 sid** |
+| 数据加载 | `useSessionSummary` / `useSessionTree` / `useSessionBadCases` 三个 query **并行**；摘要先到先渲染，树和问题列表各自 skeleton，互不阻塞 |
 | 三态 | 列表加载：骨架 4 张；空：`EmptyState`（"没有匹配当前筛选的 session"）；失败：`ErrorState` + 重试 |
 | 首屏无选中 | 自动选第一个 session（原型行为），URL 同步 |
 
@@ -381,7 +411,7 @@ Index.vue
 - `failed` / `interrupted` 的 run 显示红色/橙色状态徽章 + `error.message` 摘要（tooltip），点击进入详情并定位"执行日志"。
 - 空态："当前没有正在执行的自进化"。
 
-## 9. 启动向导（`evolution/LaunchWizard.vue`）
+## 9. 启动向导（`pages/evolution/components/LaunchWizard.vue`）
 
 ### 9.1 状态机
 
@@ -463,14 +493,15 @@ RunDetail.vue
 | 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点） |
 | 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit`（路径可折叠）；点击可复制分支名 |
 | 推送状态 | 终评区展示 `pushStatus`（pending/succeeded/failed/skipped）与 `pushedAt`；失败展示脱敏错误 + 「重试 push」按钮（调 `POST /runs/{rid}/push`） |
-| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, afterSeq)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
+| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{current}` + `/events?afterSeq=0`（分页拉完）渲染初版；`status=running` 才建立 SSE，`completed/failed/interrupted` 不建 |
+| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, loadedSeq)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
-| 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `lastEventSeq`；`run.failed/interrupted` → 失效 run + events |
+| 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.failed/interrupted` → 失效 run + events |
 | 中断恢复 | 页面刷新后先拉 `run` 与 `events`，不依赖 SSE 历史；`interrupted` 显示"任务被中断，可查看最后事件" |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step=n` + 拉 `useRunStep` |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 「模拟推进一轮」 | `useAdvance().mutate(rid)` → 成功后失效 `["evolution", rid]`，SSE 也会触发同样的失效（去抖去重） |
-| 进度实时更新 | `useEvents` 订阅 `run:{rid}`；`run.progress` 事件 → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` |
+| 进度实时更新 | 仅 `status=running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress` → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` 并关闭 |
 | 未到达的 step | 后端返回 404 `STEP_NOT_READY`；前端不请求（`enabled: step.clickable`） |
 
 ### 10.3 Step4 迭代卡
@@ -483,7 +514,7 @@ RunDetail.vue
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
 - `EvalCompare`：两条横向条（current 灰 / candidate 绿或红），宽度按 `max(cur,cand)*1.06` 归一（原型算法）。
 
-### 10.4 执行日志与异常（`RunLogPanel.vue`）
+### 10.4 执行日志与异常（`pages/evolution/components/RunLogPanel.vue`）
 
 ```text
 RunLogPanel.vue
@@ -536,6 +567,7 @@ export const TYPE_COLOR: Record<string, string> = {
 
 - EP 只用于：日期选择、下拉、分页、Modal 基础行为、Message 提示。
 - 其余全部自研（卡片、chip、badge、statstrip、density、stepper、cluster、diff、eval bar）——原型就是自研样式，直接复用其 CSS 结构可保证视觉一致。
+- 图标统一走 `components/ui/IconRenderer.vue`，业务组件不直接 import `lucide-vue-next`；新增图标只改 `IconName` union 与映射表。
 - EP 主题只覆盖主色/圆角/字号（`element-overrides.css`）。
 
 ## 13. 三态、错误与加载
@@ -552,27 +584,40 @@ export const TYPE_COLOR: Record<string, string> = {
 
 ## 14. 测试计划
 
-| 类型 | 范围 | 工具 |
+| 类型 | 范围 | 工具 / 落点 |
 |---|---|---|
-| 纯函数 | `layout.ts`（chainOf/buildGraph/锚定）、`badCaseId.ts`（截短/深链）、`queryKeys.ts` | Vitest |
-| 组件 | SessionCard 密度条、Stepper 状态、ClusterCard 展开、DiffView 着色 | Vue Test Utils |
+| 纯函数 | `layout.ts`（chainOf/buildGraph/锚定）、`badCaseId.ts`、`queryKeys.ts` | Vitest `node` project；就近 `*.spec.ts` |
+| API / composable | `api/<domain>.ts`、`useXxx` 的 query/mutation 缓存行为 | Vitest `node` + MSW `src/test/server.ts` |
+| 组件 | SessionCard 密度条、Stepper 状态、ClusterCard 展开、DiffView 着色、RunLogPanel | Vitest `jsdom` project + Vue Test Utils |
 | 契约 | 生成类型能被真实响应赋值（编译期）；`openapi` 生成物不含 `any` | `vue-tsc` + `pnpm contract:check` |
-| 交互 | 向导两步流转、深链进入 errors 页恢复选中、SSE 事件触发重取 | VTU + MSW（仅组件测试） |
+| 交互 | 向导两步流转、深链进入 errors 页恢复选中、SSE 事件触发重取 | VTU + MSW（仅测试，不进 dev） |
 | 视觉回归（后续） | 关键页面截图对比原型 | Playwright（暂不进 CI） |
+
+- 配置：`vitest.config.ts` 两个 project（`node` / `jsdom`），`src/test/setup.ts` 统一 `afterEach` 清理，`src/test/server.ts` 导出 MSW `server`。
+- 测试文件就近：单文件模块用 `*.spec.ts`，多文件模块可放 `__tests__/`；不建独立 `tests/` 大目录。
 
 ## 15. 实施顺序（前端内部依赖）
 
-```mermaid
-flowchart LR
-    A["脚手架 + tokens + ui 基元"] --> L["登录页 + auth store + 守卫"]
-    L --> B["http(Bearer/刷新)/queryKeys/composables 骨架"]
-    B --> C["Session 列表 + 摘要"]
-    C --> D["家族树 layout + 最小树"]
-    D --> E["家族树全量 + 问题卡"]
-    E --> G["错误详情 + 归因"]
-    G --> H["自进化列表 + 向导"]
-    H --> I["运行详情 6 步 + SSE"]
-    I --> J["仅聚类 + 收尾三态"]
+```text
+脚手架 + tokens + ui 基元（含 IconRenderer）
+  ▼
+登录页 + auth store + 守卫
+  ▼
+http/queryKeys + API 按域模块 + test setup
+  ▼
+Session 列表 + 摘要
+  ▼
+家族树 layout + 最小树
+  ▼
+家族树全量 + 问题卡
+  ▼
+错误详情 + 归因
+  ▼
+自进化列表 + 向导 + 对象配置
+  ▼
+运行详情 6 步 + SSE + 执行日志
+  ▼
+仅聚类 + push 状态/重试 + 收尾三态
 ```
 
 每个 PR 建议：一个页面或一个组件族 + 对应测试 + 与后端接口的联调截图（放 PR 描述）。原型截图可作为视觉对照：
@@ -584,7 +629,7 @@ flowchart LR
 ## 16. V1 占位实现的前端说明（重要）
 
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
-- 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；SSE 票据每次重连都重新申请。
+- 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有运行中的 run 页面才申请 SSE 票据，重连重新取票，完成/离开即关闭。
 - **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；接纳后 message 追加评测对比（amend），拒绝则 reset 丢弃该 commit。V1 在 run 完成后校验分支并 push 到远端；patch 内容与评分是占位，但 commit/amend/reset/push 都是真的。UI 需明示"占位 patch / 占位评测"。
 - 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 的齿轮图标。
 - 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。

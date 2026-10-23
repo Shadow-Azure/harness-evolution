@@ -22,139 +22,175 @@ def create_app(settings: Settings) -> FastAPI:
 1. `database.start()`：按 `HE_DB_DIALECT` 建 engine（SQLite 加 PRAGMA / MySQL 建连接池），做一次连通性检查；失败不阻塞进程启动，由 `/api/health` 暴露 `db.ok=false`。
 2. `alembic upgrade head`（幂等，空库建全表）。
 3. 把 `job_runs.status = running` 的残留任务标记为 `interrupted`——避免重启后前端永远转圈。
-4. 校验数据接入配置（源表名、上游地址；缺失只告警不阻塞）。
+4. 校验数据接入配置（`trajectory_payloads` 表名、上游地址；缺失只告警不阻塞）。
 5. `users` 为空且配置了 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` → 播种初始管理员（幂等）。
 
-## 2. 获取与同步（`modules/acquisition`）
+## 2. 原始轨迹接入与归一化（`service/acquisition`）
+
+**边界（2026-10-23）**：
+
+- 第三方脚本只负责把有问题的 session 轨迹写进 MySQL 的 `trajectory_payloads`（每个 agent 一行，JSONL 原文）。
+- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `session_id` 关联 payload。
+- 上游接口 pull 仍保留：拉到 payload 后先 upsert 到 `trajectory_payloads`，再走同一条归一化管线。
 
 ### 2.1 职责划分
 
 | 文件 | 职责 |
 |---|---|
-| `sources.py` | `TrajectorySource` 适配：`SourceTableSource`（读同库源表）/ `HttpApiSource`（调上游契约） |
-| `normalize.py` | `TrajectoryBundle`（JSONL 行数组 + 元数据）→ 中间结构（轮次、步骤、块、token、元记录、家族树触发点）——**解析逻辑与原文件版完全相同，输入从 `Path` 变 `list[str]`** |
-| `family.py` | 子转录与主会话的关联（`toolUseId` → 父触发点），组装成员树与 `member_events` |
-| `service.py` | 事务编排：来源扫描 → 逐条归一化 → 幂等写库；水位线推进；发 SSE 进度 |
-| `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status`、`GET /api/acquisition/sources` |
+| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload；按 `session_id` 取原文 |
+| `normalize.py` | JSONL 行数组 → 轮次/步骤/块/token/元记录/家族树触发点 |
+| `family.py` | 子转录与主会话关联（`toolUseId` → 父触发点），组装成员树与 `member_events` |
+| `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*`；发 SSE |
+| `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
+| `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
 
-### 2.2 发现与幂等
+### 2.2 待处理判定（无水位线）
 
-```python
-async def discover(source: TrajectorySource, source_type: str) -> list[SourceChange]:
-    if source_type == "source_table":
-        wm = await repo.get_watermark(source_type)              # sync_state.watermark
-        return await source.list_changes(wm)                    # 源表按 updated_at 增量
-    return await source.list_changes(None)                      # 首次全量
-
-async def should_process(rec: SourceChange) -> bool:
-    cur = await repo.get_source_record(rec.source_type, rec.source_ref, rec.kind)
-    return cur is None or cur.content_hash != rec.content_hash   # 新记录或内容变更
+```sql
+SELECT tp.*
+FROM trajectory_payloads tp
+LEFT JOIN source_records sr ON sr.session_id = tp.session_id
+WHERE sr.id IS NULL
+   OR sr.processed_hash IS NULL
+   OR sr.processed_hash <> tp.content_hash
+   OR sr.parser_version < :current_parser_version
+ORDER BY tp.updated_at
 ```
 
 判定：
 
 | 条件 | 动作 |
 |---|---|
-| `(source_type, source_ref, kind)` 不存在 | 归一化并写入 |
-| 存在且 `content_hash` 相同 | 跳过（累加 `skipped`） |
-| 存在但 hash 不同 | 删除该记录派生的行（`blocks→steps→rounds→member_events→members`），重新归一化 |
-| 来源侧删除 | 首版保留业务数据并记日志（不做级联删除，避免误删） |
-| 全部成功 | 推进 `sync_state.watermark` 到本批最大 `updated_at` |
+| `source_records` 无该 `session_id` | 插入处理索引，归一化并写业务表 |
+| `processed_hash = content_hash` 且 `parser_version` 相同 | 跳过（累加 `skipped`） |
+| hash 不同 | 删除该 session 派生的行（`blocks→steps→rounds→member_events→members`），重新归一化 |
+| 解析器版本升级 | 即使 hash 相同也重放 |
+| payload 侧删除 | 首版保留业务数据并记日志（不级联删除） |
 
-> 幂等验收：连续两次 `POST /acquisition/sync`，第二次 `imported=0, skipped=N`，`sessions` 行数不变；上游重推同一批问题 session，仅指纹变化的被重解析。
+- 不再维护 `sync_state.watermark`；`source_records` 的 `processed_hash/parser_version` 就是游标。
+- `semantics`：一个 agent 一行；`root_session_id` 相同即同一会话家族。
+
+### 2.2.1 定时触发与单飞锁
+
+```python
+async def scheduler_loop():
+    while not stopped:
+        if settings.sync_interval_seconds <= 0:          # 0 = 关闭定时
+            await sleep(60)
+            continue
+        await sleep(settings.sync_interval_seconds)      # 默认 60s
+        if await source_records.pending_count() == 0:
+            continue
+        await trigger_sync(source="scheduler")
+
+
+async def trigger_sync(source: str) -> TriggerResult:
+    async with local_sync_lock:                          # V1 进程内兜底
+        existing = await sync_lock.get("sync")
+        if existing and existing.expires_at > now():
+            return TriggerResult(job_id=existing.job_id, reused=True)
+        try:
+            async with db.transaction():
+                job = await jobs.insert_queued("sync", {"source": source})
+                await sync_lock.acquire("sync", job.id, ttl=30 * 60)
+        except SyncLockConflict:
+            existing = await sync_lock.get("sync")
+            return TriggerResult(job_id=existing.job_id if existing else None, reused=True)
+        await jobs.start(job.id)
+        return TriggerResult(job_id=job.id, reused=False)
+```
+
+- `POST /acquisition/sync` 调同一个 `trigger_sync("manual")`；已有任务时返回 `202 {jobId, reused:true}`，不重复入队。
+- 入队与抢锁在同一事务：先 `INSERT sync_lock`（主键冲突即退出），再写 `job_runs`；写 job 失败则删除锁。
+- `JobRunner` 串行执行；任务完成/失败在 `finally` 里释放 `sync_lock`。
+- 锁 TTL 30 分钟；进程崩溃后下一次 tick 回收。
+- 多实例：`sync_lock` 表承担跨进程互斥；V1 单实例再加 `asyncio.Lock`。
 
 ### 2.3 归一化（行数组 → 中间结构）
 
 ```python
 @dataclass
 class ParsedTranscript:
-    session_id: str
-    agent_id: str | None
+    session_id: str                 # 实际 agent id
+    root_session_id: str            # 主 agent id
     agent_type: str | None
     parent_tool_use_id: str | None
     lines: int
-    rounds: list[ParsedRound]     # 仅主会话有轮次
-    blocks_outside_rounds: list[ParsedBlock]  # 子转录里无人类提问，按"行号 + 块"组织
-    events: list[ParsedEvent]     # skill / agent / workflow 触发点（带行号）
-    meta: list[MetaRecord]        # 元记录（不进查询视图）
+    rounds: list[ParsedRound]       # 仅主会话有轮次
+    blocks_outside_rounds: list[ParsedBlock]
+    events: list[ParsedEvent]       # skill / agent / workflow 触发点
+    meta: list[MetaRecord]
 ```
 
-解析规则（对应 [06 §7.1](06-database-design.md)）：
+解析规则（[06 §7.1](06-database-design.md)）：
 
-1. **逐行 JSON**：坏行记录到 `errors`，跳过该行继续（单个坏行不应毁掉整个会话）。
-2. **轮次切分**：`type == "user"` 且消息内容不含 `tool_result`，且不是 skill 注入/中断/命令回显 → 新轮次。
-3. **块归属**：assistant 记录按 `message.id` 聚成 step；`thinking` / `text` / `tool_use` 分别成块；`tool_result` 按 `tool_use_id` 回填到对应工具块的 `result_text/is_error`。
-4. **子 agent**：`Agent` 工具调用 → 记录 `toolUseId` 与描述；若存在对应子转录，则 `members.kind = subagent/workflow`，`parent_member_id` 指向当前成员。
-5. **家族树事件**：扫描记录中的 skill 注入点（"Base directory for this skill…"）→ `kind=skill`；`Agent` 调用 → `kind=agent`；workflow 调用 → `kind=workflow`。`event_index` 按行号升序编号。
-6. **token**：assistant 记录 `usage` 求和，按 step 聚合到 round/step/session。
-7. **行数**：payload 行数即 `members.lines`（家族树条宽比例）。
+1. **逐行 JSON**：坏行记录到 `errors`，跳过该行继续。
+2. **轮次切分**：`type == "user"` 且不含 `tool_result`、不是 skill 注入/中断/命令回显 → 新轮次。
+3. **块归属**：assistant 按 `message.id` 聚成 step；`thinking/text/tool_use` 成块；`tool_result` 按 `tool_use_id` 回填。
+4. **子 agent**：`Agent` 调用记录 `toolUseId` 与描述；有对应 payload 则 `members.kind = subagent/workflow`，`parent_member_id` 指向父成员。
+5. **家族树事件**：skill 注入点、`Agent`、workflow 调用 → `member_events`，按行号编号。
+6. **token**：assistant `usage` 求和，聚合到 step/round/session。
+7. **行数**：payload 行数即 `members.lines`。
 
 ### 2.4 家族组装
 
-```mermaid
-flowchart TB
-    A["主会话 parsed"] --> B["members[main]"]
-    A --> C["rounds → steps → blocks"]
-    subgraph Sub["子转录（可嵌套）"]
-        D["按 parent_tool_use_id 找到父成员"]
-        E["建 member（kind=subagent/workflow）"]
-        F["把父成员里的 Agent 调用块指向该 member"]
-    end
-    C --> G["member_events（skill/agent/workflow）"]
-    D --> E --> F
-    E --> G
-    G --> H["写入事务"]
+```text
+主 agent payload ──┬──► members[main]
+                   └──► rounds → steps → blocks ──┐
+                                                    ├──► member_events ──► 写入事务
+子 agent payload ──► 按 parent_tool_use_id 找父成员  │
+                     └──► 建 member ──► 把父成员里的 Agent 调用块指向该 member ──┘
 ```
 
-**连错位置的两个防线**（原型踩过的坑）：
+**两个防线**：
 
-1. 子转录必须有 `parent_tool_use_id`，否则挂不到父触发点——解析时缺失就降级挂到根，并在 `sync_runs.errors` 里记一条警告。
-2. 父成员的 `member_events` 里必须有对应 `tool_use_id` 的 `agent` 事件；没有则补一条（行号取 Agent 调用所在行），保证连线锚点存在。
+1. 子 payload 缺 `parent_tool_use_id` → 降级挂到根，并在 `sync_runs.errors` 记警告。
+2. 父成员 `member_events` 缺对应 `tool_use_id` 的 `agent` 事件 → 补一条，保证连线锚点存在。
 
-### 2.5 写入事务与进度
+### 2.5 处理事务、pull 与进度
 
 ```python
-async def run_sync(job_id: str, source_type: str) -> SyncResult:
-    source = trajectory_sources[source_type]
-    changes = await discover(source, source_type)
-    async with db.transaction():
-        for i, c in enumerate(changes):
-            if not await should_process(c):
-                result.skipped += 1
-                continue
-            bundle = await source.fetch(c.session_ref)       # 含 payload 原文
-            parsed = normalize(bundle)                        # 纯 CPU，放线程池
-            upsert_record(c, bundle, parsed)                  # source_records + 派生表，幂等
-            bus.publish("sync.progress", {...})
-    write_sync_run(job_id, result)
-    advance_watermark(source_type, changes)
-    bus.publish("sync.completed", result)
+async def run_sync(job_id: str) -> SyncResult:
+    pending = await payloads.list_pending(CURRENT_PARSER_VERSION)  # §2.2 查询
+    for i, p in enumerate(pending):
+        async with db.transaction():
+            sr = await source_records.ensure(p)             # 无则插入处理索引
+            raw = await payloads.get(p.session_id)          # 从另一张表取 JSONL
+            parsed = normalize(raw)                         # 纯 CPU，线程池
+            upsert_derived(sr, parsed)                      # 业务表
+            await source_records.mark_processed(
+                sr.id, p.content_hash, CURRENT_PARSER_VERSION, job_id)
+        await jobs.update_progress(job_id, (i + 1) / max(len(pending), 1))
+
+async def pull(session_refs: list[str]) -> SyncResult:
+    bundles = await http_source.fetch_many(session_refs)
+    await payloads.upsert_many(bundles)                     # 写入 trajectory_payloads
+    return await run_sync(job_id)                           # 走同一管线
 ```
 
-- 单条记录失败不中断整批（记 `errors`），全部完成后 `status=completed`（有错误也 completed，错误列表展示）。
-- 进度按记录数发，每 5 条或 500ms 发一次（防 SSE 刷屏）。
-- `payload` 原文与归一化结果**同事务写入**：中途失败整记录回滚，不留"有归一化数据但原文丢了"的半截状态。
-- 写入 `sessions` 时同步计算 `search_text = lower(title + repo_name)`：列表搜索统一查这一列，避免依赖 SQLite/MySQL 的 `LIKE` 大小写差异。
-- 大 payload（数十 MB）不经过 SSE/日志，只在事务内流转。
+- **payload 只存一份**：`trajectory_payloads`；`source_records` 不再有 `payload/content_hash/source_ref`。
+- 单条失败不中断整批（记 `errors`），全部完成 `status=completed`（有错误也 completed）。
+- 进度每 5 条或 500ms 发一次。
+- 归一化与 `source_records` 更新同事务；payload 是外部只读表，不在事务里改（pull 的 upsert 除外）。
+- 大 payload 不经过 SSE/日志。
 
 ### 2.6 测试点
 
-- 同一来源同步两次 → 行数不变。
-- 源表追加一行后重同步 → 只更新对应 session，其他 session 不受影响。
-- 坏行 → 其余行仍入库，`errors` 有记录。
-- 子转录缺 `parent_tool_use_id` → 成员仍入库，警告可见。
-- 145h 跨 6 天的会话 → `duration_seconds` 为真实跨度，不报错。
-- 水位线：部分失败时 watermark 只推进到全部成功的最大 `updated_at`（失败的下一批重试）。
-- 源表结构变更（缺列/类型错）→ 该条隔离报错，整批继续。
+- 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。
+- `trajectory_payloads` 新增一行 → 只处理该 `session_id`，其他 session 不受影响。
+- payload 内容变化 → 该 session 派生的行被重写，`processed_hash` 更新。
+- `parser_version` 升级 → 全部重放，业务表结果一致。
+- 子 payload 缺 `parent_tool_use_id` → 成员仍入库，警告可见。
+- 145h 跨 6 天 → `duration_seconds` 真实跨度。
+- 坏行 → 其余行入库，`errors` 有记录。
+- pull 返回的 payload 先落 `trajectory_payloads` 再归一化，不重复存。
 
-### 2.7 跨库写入注意（SQLite / MySQL）
+### 2.7 跨库与外部表注意
 
-- 所有写操作走 `Database.transaction()`；**不依赖自动提交**。
-- 幂等更新用"事务内先删后写"，不用 `INSERT OR REPLACE` / `ON DUPLICATE KEY`——两种方言语法不同，先删后写最稳。
-- 批量写入用 SQLAlchemy `executemany`（`insert()` 传 list），避免逐行往返。
-- 时间戳由应用生成 UTC 后写入；不在 DDL 里用 `NOW()` 默认值。
-- 主键 id 用应用侧 ULID 字符串（VARCHAR），不依赖数据库自增（自增只用于 `member_events`/`blocks` 的代理主键）。
-- 写完一条记录后再发进度事件；事务失败整记录回滚，`sync_runs.errors` 记一条。
+- `trajectory_payloads` 由外部脚本/pull 写入；本服务除 pull 外**只读**，不在 DDL 里建外键指向它（跨服务边界）。
+- 所有写操作走 `Database.transaction()`；幂等更新用事务内先删后写。
+- 时间戳应用生成 UTC；不在 DDL 用 `NOW()` 默认值。
+- `source_records.id` 用 BIGINT 自增（外部 payload 表由 `session_id` 关联，不需要应用生成 id）。
 
 ## 3. 会话查询（`modules/sessions`）
 
@@ -173,7 +209,7 @@ async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
 ### 3.2 摘要与家族树
 
 - 摘要直接复用列表项（同构模型）。
-- 家族树：`repo.get_members(sid)` + `repo.get_member_events(member_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与成员的关联按 `bad_case_session_id` 匹配 `members.member_session_id`，找不到时降级为 `main` 并在日志告警。
+- 家族树：`repo.get_members(sid)` + `repo.get_member_events(member_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与成员的关联按 `bad_case_session_id` 匹配 `members.session_id`，找不到时降级为 `main` 并在日志告警。
 
 ### 3.3 时间线（已裁撤）
 
@@ -223,7 +259,7 @@ async def get_probe(probe_id: str) -> ProbeReport:
 
 ### 4.3 家族树问题卡
 
-- 取该 session 全部 `bad_cases`；用 `bad_case_session_id` 匹配 `members.member_session_id` 得到 `targetMemberId`；
+- 取该 session 全部 `bad_cases`；用 `bad_case_session_id` 匹配 `members.session_id` 得到 `targetMemberId`；
 - 按 `object_name` 在该成员的 `member_events` 里找同名触发点，得到 `anchorEventIndex`；找不到 → `-1`；
 - `bad_case_type=self` / `discovery` 原样返回，由前端决定挂载方向（[08 §5](08-frontend-implementation.md)）。
 
@@ -541,7 +577,7 @@ class JobRunner:
                 self._bus.publish("job.failed", {"jobId": job.id, "kind": job.kind})
 ```
 
-- `HANDLERS`：`sync`（acquisition 同步）、`pull`（按需拉取）、`evolution_prepare`（校验配置 + 准备 workspace + 筛选聚类）、`evolution_advance`（推进一轮，含落盘/commit）。
+- `HANDLERS`：`sync`（处理待归一化 payload）、`pull`（按需拉取并写 payload）、`evolution_prepare`（校验配置 + 准备 workspace + 筛选聚类）、`evolution_advance`（推进一轮，含落盘/commit）。
 - 工作区清理：`data/workspaces/{run_id}` 默认保留最近 20 个 run；`app/cli.py clean-workspaces --keep 20` 手动清理；删除前检查无进行中 run。
 - 任务体只做编排：更新领域表（`sync_runs` / `evolution_runs`）并发事件；业务规则在 `service/*` 里。
 
@@ -555,23 +591,33 @@ class EventBus:
 ```
 
 - 每个 SSE 连接一个 `asyncio.Queue`（容量 100，满则丢最旧并记日志——进度事件可丢，不可阻塞）。
-- 断线补发：事件写入 `deque(maxlen=100)`，带单调递增 id；`Last-Event-ID` 时从该 id 之后补发。
+- **run 事件回放以 `evolution_run_events` 为准**：首连用 ticket 的 `lastEventId`，重连用 `Last-Event-ID`，按 `seq > cursor` 查库补发，再转入实时。
+- **sync 不接 SSE**：scheduler/manual 只写 `job_runs`，前端轮询 `GET /acquisition/status` / `GET /jobs/{id}`。
 - SSE 端点用 `sse-starlette` 的 `EventSourceResponse`，`ping` 间隔读配置。
 
 ### 6.3 SSE 端点
 
 ```python
 @router.get("/events")
-async def events(topics: str, request: Request, last_event_id: str | None = Header(None)):
-    q = await bus.subscribe(topics.split(","))
+async def events(ticket: str, request: Request, last_event_id: str | None = Header(None)):
+    grant = ticket_store.consume(ticket)          # 一次性：topics + 初始 cursor
+    cursor = int(last_event_id or grant.last_event_id or 0)
+    q = await bus.subscribe(grant.topics)
+
     async def gen():
-        yield {"event": "ping", "data": "{}"}
+        # 先回放 DB 事件（仅 run topics），再转入实时
+        for ev in await replay_run_events(grant.topics, cursor):
+            yield {"id": str(ev.seq), "event": ev.event, "data": json.dumps(ev.data)}
         while True:
             if await request.is_disconnected(): break
             item = await wait_for(q.get(), timeout=heartbeat)
             yield {"id": str(item.id), "event": item.event, "data": json.dumps(item.data)}
     return EventSourceResponse(gen())
 ```
+
+- URL 只接受 `ticket`，**不再接受 `topics` 参数**；topics 由票据绑定。
+- ticket 被使用即作废；过期/已用返回 `401 TICKET_INVALID` / `TICKET_EXPIRED`。
+- 如果 `cursor` 已超出事件保留范围，先发 `event: reset`，前端重新拉 REST 快照。
 
 ## 7. 清单（`service/catalogs`）
 
@@ -618,7 +664,7 @@ async def auth_middleware(request, call_next):
     return await call_next(request)
 ```
 
-- **鉴权全部在 middleware**（2026-10-22 决定）：middleware 内按路径规则判定——公开 `/api/health`、`/api/auth/login|refresh`；`/api/events` 校验一次性票据；`/api/users*` 要求 `role=admin`；其余要求登录。资源级归属校验（badCase 属于该 session）仍在 service。
+- **鉴权全部在 middleware**（2026-10-22 决定）：middleware 内按路径规则判定——公开 `/api/health`、`/api/auth/login|refresh`；`/api/events` 校验一次性票据；`/api/users*` 与 `POST /api/acquisition/sync` 要求 `role=admin`；其余要求登录。资源级归属校验（badCase 属于该 session）仍在 service。
 - `RequestContext` = `Principal + request_id`；业务代码只读 context，不解析 header。
 
 ### 8.3 用户播种与管理
@@ -631,14 +677,24 @@ async def auth_middleware(request, call_next):
 
 ```python
 @router.post("/events/ticket")
-async def issue_ticket(principal: Principal = Depends(get_principal)):
-    ticket = ticket_store.issue(principal.user_id, ttl=60)   # 一次性、60 秒
-    return {"ticket": ticket, "expiresIn": 60}
+async def issue_ticket(body: TicketRequest, principal: Principal = Depends(get_principal)):
+    # body: { topics: ["run:evo-..."], lastEventId?: int }
+    validate_topics(body.topics, principal)                  # 只允许 run:{rid}；资源存在、单组织可见
+    ticket = ticket_store.issue(
+        user_id=principal.user_id,
+        topics=body.topics,
+        last_event_id=body.lastEventId,
+        ttl=60,
+    )                                                        # 一次性、60 秒
+    return {"ticket": ticket, "expiresIn": 60, "topics": body.topics}
 
-# GET /api/events?ticket=... → 校验后立即作废；payload 含 user_id，topic 订阅按资源过滤
+# GET /api/events?ticket=... → 取出并作废；只按票据内 topics 订阅；
+# 首连从 lastEventId 之后回放，重连用浏览器 Last-Event-ID。
 ```
 
-- 票据存内存（TTL dict）；多实例时换 Redis（同一接口）。
+- 票据存内存（TTL dict，含 topics/cursor）；多实例时换 Redis（同一接口）。
+- **不传 jobId**：订阅单位是资源 topic（`run:{rid}` / `sync`）；事件里带 jobId。
+- 已完成 run 不发票；前端也不应申请。
 - EventSource 重连由浏览器自动带 `Last-Event-ID`；票据过期后前端重新 `POST /events/ticket` 再连。
 
 ## 9. 横切实现
@@ -648,7 +704,7 @@ async def issue_ticket(principal: Principal = Depends(get_principal)):
 | 校验 | Pydantic 模型 `extra="forbid"`；路径参数用 `Annotated[str, Path(pattern=...)]` 约束 |
 | 错误处理 | `register_exception_handlers`：`AppError` 族 → 对应状态码；`RequestValidationError` → 422 统一格式；其余 → 500 + request_id |
 | 日志 | 每个请求一条 access log（method/path/status/duration/request_id）；服务层关键动作 info 级 |
-| 只读安全 | 同库源表只读（绝不回写）；上游接口按契约只读；禁止把来源数据写回源表 |
+| 只读安全 | `trajectory_payloads` 只读（pull 除外）；上游接口按契约只读；禁止把业务数据写回 payload 表 |
 | 数据目录 | `HE_DATA_DIR` 必须存在且可写；启动时创建 `data/` 并 `chmod` 仅当前用户（POSIX 上） |
 | 数据库 | 只依赖 `Database` 接口与 SQLAlchemy 表达式；SQLite/MySQL 切换只改 env；启动时 `health()` 失败给出明确错误 |
 | 性能 | 查询全部 async；统计在同步时聚合，查询只读聚合列；列表页 SQL 分页（未来） |
@@ -656,18 +712,24 @@ async def issue_ticket(principal: Principal = Depends(get_principal)):
 
 ## 10. 实施顺序（后端内部依赖）
 
-```mermaid
-flowchart LR
-    A["config/errors/Database 接口 + 迁移"] --> B["storage 模型 + repository"]
-    B --> A2["identity 登录/JWT/票据"]
-    A2 --> C["acquisition 来源/归一化/家族"]
-    C --> D["sessions 列表/摘要/家族树"]
-    D --> E["bad_cases/probes 只读服务"]
-    E --> F["evolution 服务 + 占位聚类"]
-    F --> G["job_runs + SSE"]
-    G --> H["catalogs + health + 收尾"]
-    D --> I["contracts 导出 + 快照"]
-    F --> I
+```text
+config/errors/Database 接口 + 迁移
+  ▼
+storage 模型 + repository
+  ▼
+identity 登录/JWT/票据
+  ▼
+acquisition 来源/归一化/家族
+  ▼
+sessions 列表/摘要/家族树 ──► contracts 导出 + 快照
+  ▼
+bad_cases/probes 只读服务
+  ▼
+evolution 服务 + 占位聚类 ──► contracts 导出 + 快照
+  ▼
+job_runs + SSE + sync scheduler
+  ▼
+catalogs + health + 收尾
 ```
 
 建议一个域一个 PR：每个 PR 带路由 + 服务 + 数据访问 + 测试 + OpenAPI 快照更新。
@@ -677,7 +739,8 @@ flowchart LR
 | 域 | 必测 |
 |---|---|
 | identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性 |
-| acquisition | 幂等、增量（水位线）、坏行、子转录按 member_session_id 挂接、145h 会话、进度事件、源表结构变更隔离 |
+| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `session_id` 取 payload、子转录挂接、145h 会话 |
+| sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
 | sessions | 4 种排序、状态筛选、搜索、聚合统计 |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |

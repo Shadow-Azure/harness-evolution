@@ -17,6 +17,16 @@
 | 错误 | `{ "error": { "code": "SESSION_NOT_FOUND", "message": "...", "details": {} } }`，见 §8 |
 | 幂等 | `POST /api/acquisition/sync` 可重复调用（进行中返回 409）；`POST /evolution/runs` 无幂等键（每次启动都是新 run） |
 | 版本 | 不做 URL 版本号；契约以 OpenAPI 快照为准，破坏性变更必须同步前端生成物（CI 拦截） |
+| API 粒度 | **按资源/模块拆分**；只有列表页、静态元数据做页面级聚合；详情页禁止“整页单接口”（见 §1.1） |
+
+### 1.1 API 粒度约定（2026-10-23）
+
+- **默认**：一个页面由多个资源接口并行取数，前端按区块独立渲染；每个接口只返回自己模块的数据。
+- **允许页面级聚合**：列表页（`GET /sessions`、`GET /evolution/runs`）、静态元数据（`GET /catalogs`、向导 targets/versions）。
+- **不做整页聚合**：`/sessions/{sid}` 的摘要、家族树、问题列表分别由 3 个接口提供；家族树/执行日志/大列表不得塞进一个“page”响应。
+- **依赖顺序**：详情/选中项可串行（先列表后详情），同一页的独立区块必须并行（例如摘要 + 树 + 问题列表）。
+- **体积预算**：单接口响应超过约 300KB 时必须拆分；家族树另行按步骤/成员分页或裁剪。
+- **BFF 例外**：未来移动端/弱网需要一次往返时，新增独立 BFF `/app/...` 聚合端点，不替换现有资源接口。
 
 ## 2. 资源模型总览
 
@@ -111,8 +121,9 @@ erDiagram
 设计要点：
 
 - **事件只给 line/kind/name/desc/toolUseId**，×N 压缩行数、药丸宽度、问题卡左右侧全部由前端布局计算（布局逻辑见 [08 §3](08-frontend-implementation.md)）——与服务端解耦，数据量也小。
-- **问题卡归属显式给出**：`badCaseSessionId` 是问题上报者所在 agent 的 session id，服务端用 `members.member_session_id` 解析成 `targetMemberId`；`badCaseType` 决定锚定规则（`self` 挂对象自身触发点，`discovery` 挂发现者触发点上方）。
+- **问题卡归属显式给出**：`badCaseSessionId` 是问题上报者所在 agent 的 session id，服务端用 `members.session_id` 解析成 `targetMemberId`；`badCaseType` 决定锚定规则（`self` 挂对象自身触发点，`discovery` 挂发现者触发点上方）。
 - `anchorEventIndex`：问题挂在哪个触发点（`-1` = 未匹配到同名触发点，前端挂到成员节点）。
+- **命名映射**：API 的 `sessionId` = 根会话；`memberSessionId` = 实际 agent id，对应 DB `members.session_id`；`root_session_id` 只在内部表出现。
 
 ### 3.3 内部轨迹模型（不对外暴露）
 
@@ -222,7 +233,7 @@ erDiagram
 ```
 
 - `status` ∈ `running|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
-- `lastEventSeq`：当前最大事件序号，前端可用它增量拉 `GET /runs/{rid}/events?afterSeq=`。
+- `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
 
@@ -247,52 +258,53 @@ erDiagram
 
 ## 4. 端点清单
 
-```mermaid
-flowchart LR
-    subgraph Base["基础与鉴权"]
-        H["GET /api/health"]
-        A1["POST /api/auth/login · refresh · logout"]
-        A2["GET /api/auth/me"]
-        A3["POST /api/events/ticket"]
-    end
-    subgraph Sessions["会话域"]
-        S1["GET /api/sessions"]
-        S2["GET /api/sessions/{sid}"]
-        S3["GET /api/sessions/{sid}/tree"]
-        S6["GET /api/sessions/{sid}/bad-cases"]
-        S8["GET /api/sessions/{sid}/probes"]
-    end
-    subgraph Problems["问题域（只读）"]
-        F1["GET /api/bad-cases/{badCaseId}"]
-        F2["GET /api/bad-cases/{badCaseId}/analysis"]
-        F3["GET /api/probes/{probeId}"]
-    end
-    subgraph Acq["获取与同步"]
-        I1["POST /api/acquisition/sync"]
-        I2["POST /api/acquisition/pull"]
-        I3["GET /api/acquisition/status"]
-        I4["GET /api/acquisition/sources"]
-        I5["GET /api/jobs/{jobId}"]
-    end
-    subgraph Evo["自进化域"]
-        E1["GET /api/evolution/runs"]
-        E2["POST /api/evolution/runs"]
-        E3["GET /api/evolution/runs/{rid}"]
-        E4["GET /api/evolution/runs/{rid}/steps/{n}"]
-        E5["POST /api/evolution/runs/{rid}/advance"]
-        E6["POST /api/evolution/probes/query"]
-        E7["POST /api/evolution/cluster-previews"]
-        E8["GET/POST/PUT/DELETE /api/evolution/targets"]
-        E9["GET /api/evolution/targets/{id}/versions"]
-        E10["POST /api/evolution/runs/{rid}/push"]
-    end
-    subgraph Catalogs["清单域"]
-        C1["GET /api/catalogs/targets"]
-        C2["GET /api/catalogs/models"]
-    end
-    subgraph Events["推送"]
-        V1["GET /api/events (SSE)"]
-    end
+```text
+┌─ 基础与鉴权 ──────────────────────────────────────────────┐
+│ GET  /api/health                                         │
+│ POST /api/auth/login · refresh · logout                  │
+│ GET  /api/auth/me                                        │
+│ POST /api/events/ticket                                  │
+└──────────────────────────────────────────────────────────┘
+
+┌─ 会话域 ──────────────────────────────────────────────────┐
+│ GET  /api/sessions                                       │
+│ GET  /api/sessions/{sid}                                 │
+│ GET  /api/sessions/{sid}/tree                            │
+│ GET  /api/sessions/{sid}/bad-cases                       │
+│ GET  /api/sessions/{sid}/probes                          │
+└──────────────────────────────────────────────────────────┘
+
+┌─ 问题域（只读） ──────────────────────────────────────────┐
+│ GET  /api/bad-cases/{badCaseId}                          │
+│ GET  /api/bad-cases/{badCaseId}/analysis                 │
+│ GET  /api/probes/{probeId}                               │
+└──────────────────────────────────────────────────────────┘
+
+┌─ 轨迹接入 ────────────────────────────────────────────────┐
+│ POST /api/acquisition/sync                               │
+│ POST /api/acquisition/pull                               │
+│ GET  /api/acquisition/status                             │
+│ GET  /api/jobs/{jobId}                                   │
+└──────────────────────────────────────────────────────────┘
+
+┌─ 自进化域 ────────────────────────────────────────────────┐
+│ GET  /api/evolution/runs                                 │
+│ POST /api/evolution/runs                                 │
+│ GET  /api/evolution/runs/{rid}                           │
+│ GET  /api/evolution/runs/{rid}/steps/{n}                 │
+│ POST /api/evolution/runs/{rid}/advance                   │
+│ POST /api/evolution/runs/{rid}/push                      │
+│ POST /api/evolution/probes/query                         │
+│ POST /api/evolution/cluster-previews                     │
+│ GET/POST/PUT/DELETE /api/evolution/targets               │
+│ GET  /api/evolution/targets/{id}/versions                │
+└──────────────────────────────────────────────────────────┘
+
+┌─ 清单与推送 ──────────────────────────────────────────────┐
+│ GET  /api/catalogs/targets                               │
+│ GET  /api/catalogs/models                                │
+│ GET  /api/events（SSE）                                  │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 4.1 基础端点：健康检查与鉴权
@@ -317,7 +329,18 @@ flowchart LR
 | `GET /api/auth/me` | 当前用户信息 `{id, username, displayName, role}` |
 | `GET /api/users`、`POST /api/users` | 管理员创建/列出用户（单组织共享，仅 `role=admin`）；成员管理界面首版从简，可先只用 API |
 
-**SSE 票据**：`POST /api/events/ticket`（需登录）→ `{ "ticket": "t-…", "expiresIn": 60 }`。票据一次性、60 秒有效；`GET /api/events?ticket=…` 校验后立即作废。用票据而不用 JWT 查询参数，是为了不把长期 token 写进 URL（会进代理日志）。
+**SSE 票据**：`POST /api/events/ticket`（需登录）
+
+```json
+{ "topics": ["run:evo-20261019-01"], "lastEventId": 42 }
+```
+
+→ `{ "ticket": "t-…", "expiresIn": 60, "topics": ["run:evo-20261019-01"] }`
+
+- 票据一次性、60 秒有效，**绑定 topics**；`GET /api/events?ticket=…` 只按票据内 topics 订阅，URL 不再接受 `topics` 参数。
+- topics 仅接受 `run:{rid}`；轨迹归一化（sync）不提供 SSE，不能申请 `sync` topic。
+- `lastEventId` 可选：首连从该游标之后回放；不传则从当前时刻开始。
+- 已完成任务不需要取票；只有 `status=running` 的 run 页面才申请。轨迹归一化（sync）不提供 SSE。
 
 ### 4.2 会话列表
 
@@ -359,26 +382,27 @@ flowchart LR
 
 > 归因由外部系统完成并写入 `bad_case_analysis` / `probe_reports`，本服务**不提供"触发分析"端点**；没有归因记录就是 `unanalyzed`。
 
-### 4.8 获取与同步（acquisition）
+### 4.8 原始轨迹接入（acquisition）
 
-- `POST /api/acquisition/sync` → `202 { "jobId": "job-..." }`：按配置扫描启用的来源（同库源表按水位线增量；上游接口暂不自动扫）。已有同步任务在跑 → `409 SYNC_IN_PROGRESS`。
-- `POST /api/acquisition/pull` → `202 { "jobId": ... }`：按需拉取。body：
-
-```json
-{ "sessionRefs": ["cb819c5b-..."], "window": null }
-```
-
-  `sessionRefs` 与 `window`（`{from,to}`）二选一；上游未实现时返回 `409 UPSTREAM_NOT_AVAILABLE`。
-- `GET /api/acquisition/status` → 最近一次同步状态：
+- `POST /api/acquisition/sync`（**仅 admin**）→ `202 { "jobId": "...", "reused": false }`：立即处理 `trajectory_payloads` 中待归一化的记录（新建/内容变化/解析器版本升级）。已有同步任务在跑 → `202 { "jobId": 正在执行的 jobId, "reused": true }`，**不重复入队**。
+- 后台 scheduler 默认每 60s 自动调用同一逻辑；无 pending 时跳过。
+- `POST /api/acquisition/pull` → `202 { "jobId": ... }`：按需拉取上游接口，先把返回的 payload upsert 到 `trajectory_payloads`，再走同一归一化管线。body：
 
 ```json
-{ "jobId": "job-1", "status": "running", "sourceType": "source_table",
-  "watermark": "2026-10-22T08:00:00Z",
-  "recordsTotal": 12, "recordsDone": 5, "imported": 4, "skipped": 1,
-  "errors": [ { "sourceRef": "src-10086", "message": "第 42 行非法 JSON" } ] }
+{ "sessionIds": ["cb819c5b-..."], "window": null }
 ```
 
-- `GET /api/acquisition/sources` → 来源清单与健康度：`{ "items": [ { "type": "source_table", "enabled": true, "lastSyncAt": "...", "lastWatermark": "...", "pendingEstimate": 3 }, { "type": "http_api", "enabled": false, "note": "上游未实现，契约见文档 §10" } ] }`
+  `sessionIds` 与 `window`（`{from,to}`）二选一；上游未实现时返回 `409 UPSTREAM_NOT_AVAILABLE`。
+- `GET /api/acquisition/status` → 当前状态：
+
+```json
+{ "activeJobId": "job-1", "status": "running", "payloadTable": "trajectory_payloads",
+  "pending": 3, "processed": 8, "imported": 4, "skipped": 1,
+  "lastRunAt": "2026-10-23T09:00:00Z", "nextRunAt": "2026-10-23T09:01:00Z",
+  "errors": [ { "sessionId": "2b7e9d4f-...", "message": "第 42 行非法 JSON" } ] }
+```
+
+- 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads.session_id` 表达，待处理状态由 `source_records.processed_*` 表达。
 - `GET /api/jobs/{jobId}` → 通用任务状态（`status: queued|running|completed|failed|interrupted`，`progress: 0..1`，`createdBy`）。
 
 ### 4.9 probe 命中查询（向导第 2 步）
@@ -447,7 +471,7 @@ flowchart LR
 
 ### 4.14 SSE
 
-`GET /api/events?ticket=…&topics=run:evo-20261019-01,sync`（ticket 见 §4.1，一次性）
+`GET /api/events?ticket=…`（topics 与 cursor 由 ticket 携带，见 §4.1）
 
 ```text
 id: 42
@@ -460,16 +484,19 @@ data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"runn
 | event | data 字段 |
 |---|---|
 | `ping` | `{}`（每 15s） |
-| `sync.progress` | jobId / sourceType / recordsTotal / recordsDone / imported / skipped |
-| `sync.completed` | jobId / imported / skipped / errors[] |
+| `run.event` | runId / seq / eventType / level / stage |
 | `run.progress` | runId / unit / total / percent / status / stageLabel / doneRounds / accepted |
 | `run.completed` | runId / verdict / bestScore / initScore |
 | `run.failed` | runId / stage / message / eventSeq |
 | `run.interrupted` | runId / stage / message / eventSeq |
+| `reset` | runId / reason（事件游标已失效，要求前端重新拉 REST 快照） |
 
-- `Last-Event-ID` 支持补发最近 100 条。
-- 事件 id 为字符串自增整数；前端重连后从断点续传。
-- SSE 只做通知，数据仍以 REST 为准（前端收到事件后失效 queryKey；历史过程读 `GET /runs/{rid}/events`，见 4.15）。
+- **首连**：ticket 的 `lastEventId` 指定起点；服务端从 `evolution_run_events` 按 `seq > cursor` 回放，再转入实时。
+- **重连**：浏览器自动带 `Last-Event-ID`；服务端同样从该 seq 之后回放。事件已超出保留范围时发 `event: reset`，前端重新拉 `GET /runs/{rid}` + `/events`。
+- 事件 id 用 `evolution_run_events.seq`（DB 单调递增），不再只靠内存环形缓冲。
+- SSE 只做通知：`run.event` 可增量追加日志；`run.progress` 只失效 queryKey，数据仍以 REST 为准。
+- **订阅按页面生命周期**：run 完成、失败、中断或离开页面即关闭；已完成的 run 不建立 SSE。
+- 轨迹归一化（sync）不提供 SSE：进度通过 `GET /acquisition/status` / `GET /jobs/{jobId}` 轮询。
 
 ### 4.15 运行执行日志（过程与异常）
 
@@ -523,14 +550,15 @@ ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / 
 
 ## 6. OpenAPI 与 TS 契约生成
 
-```mermaid
-flowchart LR
-    PY["api_req / api_resp（Pydantic）"] --> OA["FastAPI /api/openapi.json"]
-    OA --> GEN["openapi-typescript"]
-    GEN --> TS["packages/contracts/src/generated/api.d.ts"]
-    TS --> FE["apps/web 只 import type"]
-    OA --> SNAP["packages/contracts/openapi.json（快照）"]
-    SNAP --> CI["contract:check：重新生成 = 无 diff"]
+```text
+api_req / api_resp（Pydantic）
+        │
+        ▼
+FastAPI /api/openapi.json
+        ├──► openapi-typescript ──► packages/contracts/src/generated/api.d.ts
+        │                                   └──► apps/web（只 import type）
+        └──► packages/contracts/openapi.json（快照）
+                    └──► contract:check：重新生成 = 无 diff
 ```
 
 - 生成命令：`pnpm contract:generate`（内部 `uv run python scripts/export_openapi.py` → `openapi-typescript`）。
@@ -555,6 +583,8 @@ flowchart LR
 | `AUTH_REQUIRED` | 401 | 未携带或携带非法 access token |
 | `AUTH_INVALID` | 401 | 用户名或密码错误 |
 | `AUTH_EXPIRED` | 401 | access/refresh token 过期（前端先尝试 refresh，再跳登录） |
+| `TICKET_INVALID` | 401 | SSE 票据不存在、已被使用或 topics 非法 |
+| `TICKET_EXPIRED` | 401 | SSE 票据超过 60 秒 |
 | `FORBIDDEN` | 403 | 已登录但无权限（如非 admin 调用户管理、账号被停用） |
 | `SESSION_NOT_FOUND` | 404 | sid 不存在 |
 | `BAD_CASE_NOT_FOUND` | 404 | badCaseId 不存在 |
@@ -573,7 +603,6 @@ flowchart LR
 | `TARGET_IN_USE` | 409 | 删除配置时仍有进行中的 run |
 | `REPO_INVALID` | 422 | 仓库路径不存在/不是 git 仓库/ref 不存在 |
 | `GIT_ERROR` | 500 | git 操作失败（clone/branch/commit；消息含 stderr 摘要） |
-| `SYNC_IN_PROGRESS` | 409 | 已有同步任务在跑 |
 | `UPSTREAM_NOT_AVAILABLE` | 409 | 上游查询接口未配置或未实现时的 pull 请求 |
 | `USERNAME_CONFLICT` | 409 | 创建用户时用户名已存在 |
 | `JOB_NOT_FOUND` | 404 | jobId 不存在 |
@@ -595,7 +624,7 @@ flowchart LR
 
 ## 10. 上游轨迹查询契约（由我们定义，待上游实现）
 
-> 本节是 **Harness Evolution 作为客户端** 对上游提出的需求契约（D12：上游接口当前不存在）。上游实现后，`HttpApiSource` 按本节调用；在此之前用同库源表 + fixtures 演示。上游可按此契约直接实现，也可以提供自己的契约由我们适配——如果上游已有不同设计，以讨论结果修订本节。
+> 本节是 **Harness Evolution 作为客户端** 对上游提出的需求契约（D12：上游接口当前不存在）。上游实现后，`HttpApiSource` 按本节调用；在此之前用第三方脚本写入的 `trajectory_payloads` + fixtures 演示。上游可按此契约直接实现，也可以提供自己的契约由我们适配——如果上游已有不同设计，以讨论结果修订本节。
 
 ### 10.1 会话轨迹包（核心）
 
@@ -636,7 +665,7 @@ flowchart LR
   "nextCursor": "eyJvZmZzZXQiOjEwfQ" }
 ```
 
-- `problemOnly=true` 只返回被标记为"有问题"的 session（与源表同步的数据范围对齐）。
+- `problemOnly=true` 只返回被标记为"有问题"的 session（与第三方脚本写入 payload 的范围对齐）。
 - 游标分页；空 `nextCursor` 表示结束。
 
 ### 10.3 元数据补充（可选）
