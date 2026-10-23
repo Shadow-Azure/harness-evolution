@@ -74,8 +74,8 @@ M6 接真实现（执行器 + 真实来源）
 | m3-01 | Database 接口 + SQLite / MySQL 两实现（连接、事务、health） | P0 | `apps/api/app/storage/**` | m2-01 | 默认 MySQL 可跑；SQLite 用于测试；`/api/health` 报告 dialect |
 | m3-02 | Alembic 双方言迁移（真实表 + 预留表 + users/source_records/sync_*） | P0 | `apps/api/alembic/**` | m3-01 | 两种库空库 upgrade 建全表；重放脚本可跑 |
 | m3-03 | 读 `trajectory_payloads` + 归一化幂等（hash/parser_version）与 fixtures 种子 | P0 | `apps/api/app/service/acquisition/**`、`fixtures/**` | m3-02 | 同一 payload 重复处理幂等；单条结构异常隔离；fixtures 可灌入真实表 |
-| m3-04 | 归一化器（JSONL 行数组 → 轮次/步骤/块/token/元记录/每个 agent 的 model） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的轮次/步骤/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
-| m3-05 | Agent 会话树组装（子转录、toolUseId、member_events 预计算、sessions.models 聚合） | P0 | `apps/api/app/modules/acquisition/family.py` | m3-04 | 子 agent 挂接位置正确；缺 toolUseId 有告警 |
+| m3-04 | 归一化器（JSONL 行数组 → 用户轮次/消息/内容块/token/元记录/每个 agent 的 model） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的用户轮次/消息/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
+| m3-05 | Agent 会话树组装（子转录、toolUseId、agent_events 预计算、session_families.models 聚合） | P0 | `apps/api/app/modules/acquisition/agent_tree.py` | m3-04 | 子 agent 挂接位置正确；缺 toolUseId 有告警 |
 | m3-06 | 会话 API（列表/会话概览/Agent 会话树；统计读聚合列） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
 | m3-07 | 前端 Session 列表 + 会话概览 | P0 | `apps/web/src/pages/sessions/**` | m2-03、m3-06 | 与原型列表/会话概览视觉一致；搜索/筛选/排序可用 |
 | m3-08 | 后台定时调度与单飞锁（sync_lock）+ 顶栏状态 | P1 | `apps/api/app/service/acquisition/**`、`apps/api/app/service/jobs.py`、`apps/web/src/**` | m2-05、m3-03 | 定时处理 pending；手动幂等复用 jobId；无并发重复任务 |
@@ -87,7 +87,7 @@ M6 接真实现（执行器 + 真实来源）
 |---|---|---|---|---|---|
 | m4-01 | bad_case / probe 只读服务与 fixtures（外部表契约） | P0 | `apps/api/app/service/bad_cases/**`、`apps/api/app/service/probes/**`、`fixtures/**` | m2-04 | 列表/详情/状态合并正确；fixtures 覆盖 5 种展示状态 |
 | m4-02 | bad_case / probe API（badCaseId 校验、probe 反查） | P0 | `apps/api/app/api/**`、`apps/api/app/service/**` | m4-01 | 深链字段齐全；跨会话 409；未分析占位 |
-| m4-03 | Agent 执行流图布局移植与最小树验证 | P0 | `apps/web/src/components/family-tree/**` | m2-03 | `demo-nested` 四件事全对（归属/嵌套/折叠/连线不穿） |
+| m4-03 | Agent 执行流图布局移植与最小树验证 | P0 | `apps/web/src/components/agent-tree/**` | m2-03 | `demo-nested` 四件事全对（归属/嵌套/折叠/连线不穿） |
 | m4-04 | Agent 执行流图全量（节点链/问题卡锚定/折叠/fitView/定位） | P0 | 同上 | m4-03 | 4 个会话与原型一致；点击定位高亮 |
 | m4-05 | 问题列表面板与定位联动 | P1 | `apps/web/src/components/bad-cases/**` | m4-02、m4-04 | 列表↔画布联动；badCaseId 新窗口打开 |
 | m4-06 | 错误详情页（左栏/执行流过滤/双 Tab/深链恢复） | P0 | `apps/web/src/pages/errors/**` | m4-02、m4-04 | 六状态、全部错误恢复、tab 顺序、刷新恢复 |

@@ -35,7 +35,7 @@
 | vue-query 管服务端状态 + queryKey 分层工厂 + 写路径显式失效 | ✅ 借鉴 | 正是本项目需要的（session 列表 / 会话详情 / run 详情都是服务端状态） |
 | queryKey 按域分层（`['sessions', …]` / `['session', sid, 'bad-cases']` / `['evolution', rid, step]`） | ✅ 借鉴 | 前缀失效能力：一次推进失效整棵 run 树 |
 | API 按域拆文件（`api/<domain>.ts`） | ✅ 借鉴（2026-10-23） | 请求与请求类型就近；`queryKeys.ts` 仍集中（跨域失效为主，见 §2 备注） |
-| 页面专属组件放 `pages/<feature>/` | ✅ 借鉴（2026-10-23） | 页面可独立删除/重构；跨页面复用的 `family-tree`、`bad-cases` 才留 `components/` |
+| 页面专属组件放 `pages/<feature>/` | ✅ 借鉴（2026-10-23） | 页面可独立删除/重构；跨页面复用的 `agent-tree`、`bad-cases` 才留 `components/` |
 | `IconRenderer` 图标门面 | ✅ 借鉴（2026-10-23） | 业务组件不直接 import lucide，图标名/尺寸/颜色集中管理 |
 | 全量自动导入 + 自研组件自动注册 | ❌ 不借鉴 | 自研组件显式 import，评审时能看出依赖来源；Element Plus 仍自动导入 |
 | 全局 `types/` 目录 | ❌ 不借鉴 | API 类型以 `packages/contracts` 为准；筛选类型放 `api/<domain>.ts`，视图模型放组件旁 `types.ts` |
@@ -63,7 +63,7 @@
 └───────────────────────────┬───────────────────────────────────┘
                             ▼
 ┌─ 共享组件层 ──────────────────────────────────────────────────┐
-│ components/family-tree（Vue Flow Agent 执行流图）               │
+│ components/agent-tree（Vue Flow Agent 执行流图）                │
 │ components/bad-cases        components/ui + layout            │
 │                              （含 IconRenderer）              │
 └───────────────────────────┬───────────────────────────────────┘
@@ -183,7 +183,7 @@ App.vue
 ├── TopNav.vue
 └── router-view
     └── pages/*
-        ├── family-tree/                 （Vue Flow Agent 执行流图）
+        ├── agent-tree/                 （Vue Flow Agent 执行流图）
         ├── bad-cases/                   （问题卡）
         └── pages/evolution/components/  （向导/六步/簇卡/日志）
                 └── 共用 ui/
@@ -196,7 +196,7 @@ App.vue
 |---|---|---|---|
 | 全局壳 | `App.vue`、`TopNav.vue` | 全站 | 导览、品牌；**不持有全局 SSE** |
 | 页面编排 | `pages/*/Index.vue` | 单页面 | 只做布局与组合，数据来自 composable |
-| 跨页面领域组件 | `family-tree/*`、`bad-cases/*` | 多页面 | Agent 执行流图、问题卡；props/emits 交互 |
+| 跨页面领域组件 | `agent-tree/*`、`bad-cases/*` | 多页面 | Agent 执行流图、问题卡；props/emits 交互 |
 | 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、六步面板、簇卡、日志；随页面删除 |
 | UI 基元 | `ui/BaseCard.vue`、`Chip.vue`、`Badge.vue`、`StatStrip.vue`、`DensityBar.vue`、`EmptyState.vue`、`ErrorState.vue`、`LoadingSkeleton.vue`、`Pagination.vue`、`Modal.vue`、`Tabs.vue`、`IconRenderer.vue` | 任意 | 无业务语义；颜色/间距全部走设计令牌；`IconRenderer` 是唯一 lucide 出口 |
 
@@ -204,11 +204,11 @@ App.vue
 
 | 组件 | 对应原型 | 备注 |
 |---|---|---|
-| `family-tree/FamilyTree.vue` | React 岛 `<App sid findingsBudget>` | Vue Flow 画布容器，负责挂载、fitView、筛选 |
-| `family-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 触发桩（下/上引线） |
-| `family-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（badCaseId 截短 + reason 短标签） |
-| `family-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
-| `family-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
+| `agent-tree/AgentTree.vue` | React 岛 `<App sid findingsBudget>` | Vue Flow 画布容器，负责挂载、fitView、筛选 |
+| `agent-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 触发桩（下/上引线） |
+| `agent-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（badCaseId 截短 + reason 短标签） |
+| `agent-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
+| `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
 | `bad-cases/BadCaseCard.vue` | `.finding-item` | 列表卡（reason/状态/事实/上报对象） |
 | `bad-cases/ProbeReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程 |
 | `pages/evolution/components/Stepper.vue` | `stepperHTML` | 6 步进度，可点击已到达节点 |
@@ -231,10 +231,10 @@ App.vue
 
 | 部分 | 原型位置 | 迁移方式 |
 |---|---|---|
-| 布局几何（链式计算、节点定位、trunk 聚合、问题卡左右侧判定） | `chainOf` / `buildGraph` / `place` / `pickFindingSide` 等，约 600 行 | **纯 TS，无 React 依赖**，原样移到 `family-tree/layout.ts`，补类型与单测 |
+| 布局几何（链式计算、节点定位、trunk 聚合、问题卡左右侧判定） | `chainOf` / `buildGraph` / `place` / `pickFindingSide` 等，约 600 行 | 结构参考原型移到 `agent-tree/layout.ts`，补类型与单测；`chainOf` 的 `×N` 改为 `messagesCount/messageOffset` 口径 |
 | 4 条自定义边的 path 生成 | `FindingEdge` / `TriggerEdge` / `ReportEdge` / `OrthEdge` | 纯 SVG path 字符串函数；Vue 版命名 `BadCaseEdge` / `TriggerEdge` / `DiscoveryEdge` / `OrthEdge` |
 | 自定义节点渲染 | `AgentNode` / `GroupNode` / `FindingNode`（htm 模板） | 改写为 SFC；Vue Flow 的 `<Handle>` API 与 React Flow 语义一致（`type/position/id`） |
-| 画布与交互 | `<ReactFlow fitView nodesDraggable=false …>` | `FamilyTree.vue` 用 `<VueFlow>`；`fitView` 在节点测量完成后执行（沿用原型 `FitTree` 的等待逻辑） |
+| 画布与交互 | `<ReactFlow fitView nodesDraggable=false …>` | `AgentTree.vue` 用 `<VueFlow>`；`fitView` 在节点测量完成后执行（沿用原型 `FitTree` 的等待逻辑） |
 | 画布内 portal 到页面的问题列表 | `createPortal(..., findingList)` | Vue 用 `<Teleport to="#bad-case-list">` |
 
 ```text
@@ -243,7 +243,7 @@ App.vue
 │ chainOf / gapPillW / trigPillW│      │ AgentNode.vue            │
 │ buildGraph 布局与问题卡锚定  │ ───► │ BadCaseNode.vue          │
 │ 4 条边的 path 函数           │      │ CollapseNode.vue         │
-│ 测量文字宽度的 canvas 逻辑    │      │ FamilyTree.vue（画布）   │
+│ 测量文字宽度的 canvas 逻辑    │      │ AgentTree.vue（画布）    │
 └──────────────────────────────┘      │ Teleport 问题列表        │
                                       └──────────────────────────┘
 ```
@@ -314,7 +314,7 @@ apps/web/src/
     login/  sessions/  errors/  evolution/  evolution/targets/
     evolution/components/ Stepper / Step* / ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard
   components/
-    family-tree/  bad-cases/  ui/（含 IconRenderer.vue）  layout/
+    agent-tree/  bad-cases/  ui/（含 IconRenderer.vue）  layout/
   test/
     setup.ts              全局 setup / 清理
     server.ts             MSW node server（测试用，不进 dev）

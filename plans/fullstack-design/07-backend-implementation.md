@@ -30,16 +30,16 @@ def create_app(settings: Settings) -> FastAPI:
 **边界（2026-10-23）**：
 
 - 第三方脚本只负责把有问题的 session 轨迹写进 MySQL 的 `trajectory_payloads`（每个 agent 一行，JSONL 原文）。
-- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `session_id` 关联 payload。
+- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `agent_session_id` 关联 payload。
 - 上游接口 pull 仍保留：拉到 payload 后先 upsert 到 `trajectory_payloads`，再走同一条归一化管线。
 
 ### 2.1 职责划分
 
 | 文件 | 职责 |
 |---|---|
-| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload；按 `session_id` 取原文 |
-| `normalize.py` | JSONL 行数组 → 轮次/步骤/块/token/元记录/Agent 会话树触发点 |
-| `family.py` | 子转录与主会话关联（`toolUseId` → 父触发点），组装成员树与 `member_events` |
+| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload；按 `agent_session_id` 逻辑键取原文（payload 列仍为 `session_id`） |
+| `normalize.py` | JSONL 行数组 → 用户轮次/消息/内容块/token/元记录/Agent 会话树触发点 |
+| `agent_tree.py` | 子转录与主会话关联（`toolUseId` → 父触发点），组装 agent 树与 `agent_events` |
 | `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
 | `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
@@ -49,7 +49,7 @@ def create_app(settings: Settings) -> FastAPI:
 ```sql
 SELECT tp.*
 FROM trajectory_payloads tp
-LEFT JOIN source_records sr ON sr.session_id = tp.session_id
+LEFT JOIN source_records sr ON sr.agent_session_id = tp.session_id
 WHERE sr.id IS NULL
    OR sr.processed_hash IS NULL
    OR sr.processed_hash <> tp.content_hash
@@ -61,9 +61,9 @@ ORDER BY tp.updated_at
 
 | 条件 | 动作 |
 |---|---|
-| `source_records` 无该 `session_id` | 插入处理索引，归一化并写业务表 |
+| `source_records` 无该 `agent_session_id` | 插入处理索引，归一化并写业务表 |
 | `processed_hash = content_hash` 且 `parser_version` 相同 | 跳过（累加 `skipped`） |
-| hash 不同 | 删除该 session 派生的行（`blocks→steps→rounds→member_events→members`），重新归一化 |
+| hash 不同 | 删除该 session 派生的行（`content_blocks→messages→user_turns→agent_events→agents`），重新归一化 |
 | 解析器版本升级 | 即使 hash 相同也重放 |
 | payload 侧删除 | 首版保留业务数据并记日志（不级联删除） |
 
@@ -111,14 +111,15 @@ async def trigger_sync(source: str) -> TriggerResult:
 ```python
 @dataclass
 class ParsedTranscript:
-    session_id: str                 # 实际 agent id
+    agent_session_id: str           # 实际 agent session id（来自 payload.session_id）
     root_session_id: str            # 主 agent id
     agent_type: str | None
     model: str | None               # 该 agent 使用的模型
     parent_tool_use_id: str | None
     lines: int
-    rounds: list[ParsedRound]       # 仅主会话有轮次
-    blocks_outside_rounds: list[ParsedBlock]
+    messages_count: int              # 该 agent 的 assistant message 数
+    user_turns: list[ParsedUserTurn]     # 仅主会话有用户轮次
+    content_blocks_outside_user_turns: list[ParsedBlock]
     events: list[ParsedEvent]       # skill / agent / workflow 触发点
     meta: list[MetaRecord]
 ```
@@ -126,30 +127,33 @@ class ParsedTranscript:
 解析规则（[06 §7.1](06-database-design.md)）：
 
 1. **逐行 JSON**：坏行记录到 `errors`，跳过该行继续。
-2. **轮次切分**：`type == "user"` 且不含 `tool_result`、不是 skill 注入/中断/命令回显 → 新轮次。
-3. **块归属**：assistant 按 `message.id` 聚成 step；`thinking/text/tool_use` 成块；`tool_result` 按 `tool_use_id` 回填。
-4. **子 agent**：`Agent` 调用记录 `toolUseId` 与描述；有对应 payload 则 `members.kind = subagent/workflow`，`parent_member_id` 指向父成员。
-5. **Agent 会话树事件**：skill 注入点、`Agent`、workflow 调用 → `member_events`，按行号编号。
-6. **token**：assistant `usage` 求和，聚合到 step/round/session。
-7. **行数**：payload 行数即 `members.lines`。
-8. **模型**：从 assistant 消息的 `model` 字段取该 agent 的模型，写 `members.model`；主 agent 同时写 `sessions.model`；整棵树去重写 `sessions.models`。主/子 agent 可使用不同模型。
+2. **用户轮次切分**：`type == "user"` 且不含 `tool_result`、不是 skill 注入/中断/命令回显 → 新用户轮次。
+3. **消息与内容块归属**：assistant 按 `message.id` 聚成 message；`thinking/text/tool_use` 成 content_block；`tool_result` 按 `tool_use_id` 回填。
+4. **子 agent / workflow**：`Agent` 调用记录 `toolUseId` 与描述；有对应 payload 则 `agents.kind = subagent`（workflow 时 `agent_type = workflow`），`parent_agent_id` 指向父 agent。`Workflow` 调用创建 `kind=workflow` 的合成节点（`agent_session_id=wf_...`、`lines=0`、`messages_count=0`），其 `workflow-subagent` 子节点 `parent_agent_id` 指向该 workflow 节点。
+5. **Agent 会话树事件**：skill 注入点、`Agent`、workflow 调用 → `agent_events`，按行号编号；每个事件同时记录 `message_offset` = 该行之前已经出现的 assistant message 数。
+6. **token**：assistant `usage` 求和，聚合到 message/user_turn/session_family。
+7. **行数**：payload 行数即 `agents.lines`。
+8. **消息数**：assistant `message.id` 去重计数即 `agents.messages_count`；workflow 节点为 0。
+9. **模型**：从 assistant 消息的 `model` 字段取该 agent 的模型，写 `agents.model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。主/子 agent 可使用不同模型。
 
-成员写入时一并落 `model`；`sessions` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有成员的 distinct 模型）。
+agent 写入时一并落 `model`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型）。
 
 ### 2.4 Agent 会话树组装
 
 ```text
-主 agent payload ──┬──► members[main]
-                   └──► rounds → steps → blocks ──┐
-                                                    ├──► member_events ──► 写入事务
-子 agent payload ──► 按 parent_tool_use_id 找父成员  │
-                     └──► 建 member ──► 把父成员里的 Agent 调用块指向该 member ──┘
+主 agent payload ──┬──► agents[main]
+                   └──► user_turns → messages → content_blocks ──┐
+                                                    ├──► agent_events ──► 写入事务
+子 agent payload ──► 按 parent_tool_use_id 找父 agent  │
+                     └──► 建 agent ──► 把父 agent 里的 Agent 调用块指向该 agent ──┘
 ```
+
+- `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_session_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
 
 **两个防线**：
 
 1. 子 payload 缺 `parent_tool_use_id` → 降级挂到根，并在 `sync_runs.errors` 记警告。
-2. 父成员 `member_events` 缺对应 `tool_use_id` 的 `agent` 事件 → 补一条，保证连线锚点存在。
+2. 父 agent `agent_events` 缺对应 `tool_use_id` 的 `agent` 事件 → 补一条，保证连线锚点存在。
 
 ### 2.5 处理事务、pull 与进度
 
@@ -184,9 +188,9 @@ async def pull(session_refs: list[str]) -> SyncResult:
 - `trajectory_payloads` 新增一行 → 只处理该 `session_id`，其他 session 不受影响。
 - payload 内容变化 → 该 session 派生的行被重写，`processed_hash` 更新。
 - `parser_version` 升级 → 全部重放，业务表结果一致。
-- 子 payload 缺 `parent_tool_use_id` → 成员仍入库，警告可见。
+- 子 payload 缺 `parent_tool_use_id` → agent 仍入库，警告可见。
 - 145h 跨 6 天 → `duration_seconds` 真实跨度。
-- 主/子 agent 使用不同模型 → `members.model` 分别落库，`sessions.models` 去重包含两者。
+- 主/子 agent 使用不同模型 → `agents.model` 分别落库，`session_families.models` 去重包含两者。
 - 坏行 → 其余行入库，`errors` 有记录。
 - pull 返回的 payload 先落 `trajectory_payloads` 再归一化，不重复存。
 
@@ -194,7 +198,7 @@ async def pull(session_refs: list[str]) -> SyncResult:
 
 - `trajectory_payloads` 由外部脚本/pull 写入；本服务除 pull 外**只读**，不在 DDL 里建外键指向它（跨服务边界）。
 - 所有写操作走 `Database.transaction()`；幂等更新用事务内先删后写。
-- 时间戳应用生成 UTC；不在 DDL 用 `NOW()` 默认值。
+- 时间戳应用生成 Asia/Shanghai（UTC+8）；不在 DDL 用 `NOW()` 默认值；API 序列化带 `+08:00`。
 - `source_records.id` 用 BIGINT 自增（外部 payload 表由 `session_id` 关联，不需要应用生成 id）。
 
 ## 3. 会话查询（`modules/sessions`）
@@ -208,26 +212,26 @@ async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
 ```
 
 - `q`：`search_text LIKE '%q%'`（同步时把 `lower(title + repo)` 写进 `search_text`；SQLite/MySQL 行为一致，后续可换全文索引）。
-- `sort`：`latest → started_at DESC`、`rounds → rounds_count DESC`、`steps → steps_count DESC`、`agents → agents_count DESC`。
+- `sort`：`latest → started_at DESC`、`userTurns → user_turns_count DESC`、`messages → messages_count DESC`、`agents → agents_count DESC`。
 - `bad_cases_count`：从 `bad_cases` 按 `session_id` 聚合（只读表），查询时 LEFT JOIN 或由定时任务刷新；不再有 Provider。
 
 ### 3.2 会话概览与 Agent 会话树
 
 - 会话概览直接复用列表项（同构模型）。
-- Agent 会话树组装：`repo.get_members(sid)` + `repo.get_member_events(member_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与成员的关联按 `bad_case_session_id` 匹配 `members.session_id`，找不到时降级为 `main` 并在日志告警。
+- Agent 会话树组装：`repo.get_agents(sid)` + `repo.get_agent_events(agent_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与 agent 的关联按 `bad_case_agent_session_id` 匹配 `agents.agent_session_id`，找不到时降级为 `main` 并在日志告警。
 
 ### 3.3 时间线（已裁撤）
 
-时间线页面不做，`sessions` 模块**不提供轨迹读接口**。轮次/步骤/块在同步时就聚合进 `sessions` 的列（`rounds_count / steps_count / tools_count / errors_count / tokens_total`），列表与会话概览只读这些列，不读 `steps` 明细。
+时间线页面不做，`sessions` 模块**不提供轨迹读接口**。用户轮次/消息/内容块在同步时就聚合进 `session_families` 的列（`user_turns_count / messages_count / tools_count / errors_count / tokens_total`），列表与会话概览只读这些列，不读 `messages` 明细。
 
 ```python
-async def aggregate_session_stats(session_id: str) -> SessionStats:
-    row = await repo.count_rounds_steps_tools_errors(session_id)   # 一条 GROUP BY
-    tokens = await repo.sum_tokens(session_id)
+async def aggregate_session_stats(root_session_id: str) -> SessionStats:
+    row = await repo.count_user_turns_messages_tools_errors(root_session_id)   # 一条 GROUP BY
+    tokens = await repo.sum_tokens(root_session_id)
     return SessionStats(**row, tokens=tokens)
 ```
 
-保留 `rounds/steps/blocks` 表的理由：统计口径需要可重算；后续诊断器需要工具输入/输出/错误原文作为证据；解析规则升级时可重放。未来若恢复时间线，按 [05 §3.3](05-api-design.md) 的说明补两个端点即可，表结构不动。
+保留 `user_turns/messages/content_blocks` 表的理由：统计口径需要可重算；后续诊断器需要工具输入/输出/错误原文作为证据；解析规则升级时可重放。未来若恢复时间线，按 [05 §3.3](05-api-design.md) 的说明补两个端点即可，表结构不动。
 
 ## 4. 问题与归因（`service/bad_cases` + `service/probes`，只读）
 
@@ -235,7 +239,7 @@ async def aggregate_session_stats(session_id: str) -> SessionStats:
 
 ```python
 async def list_bad_cases(sid: str) -> list[BadCase]:
-    session = await crud.sessions.get(sid) or raise NotFound("SESSION_NOT_FOUND")
+    session = await crud.session_families.get(sid) or raise NotFound("SESSION_NOT_FOUND")
     cases = await crud.bad_cases.list_by_session(sid)          # 问题侧表，只读
     analyses = await crud.bad_case_analysis.get_by_case_ids([c.id for c in cases])
     return [merge(c, analyses.get(c.id)) for c in cases]       # 合并状态与 probeId
@@ -264,8 +268,8 @@ async def get_probe(probe_id: str) -> ProbeReport:
 
 ### 4.3 Agent 执行流图问题卡
 
-- 取该 session 全部 `bad_cases`；用 `bad_case_session_id` 匹配 `members.session_id` 得到 `targetMemberId`；
-- 按 `object_name` 在该成员的 `member_events` 里找同名触发点，得到 `anchorEventIndex`；找不到 → `-1`；
+- 取该 session 全部 `bad_cases`；用 `bad_case_agent_session_id` 匹配 `agents.agent_session_id` 得到 `targetAgentId`；
+- 按 `object_name` 在该 agent 的 `agent_events` 里找同名触发点，得到 `anchorEventIndex`；找不到 → `-1`；
 - `bad_case_type=self` / `discovery` 原样返回，由前端决定挂载方向（[08 §5](08-frontend-implementation.md)）。
 
 ## 5. 自进化（`service/evolution`）
@@ -338,7 +342,7 @@ async def prepare_run(job) -> None:
     run = await crud.runs.get(job.payload["run_id"]) or raise NotFound("RUN_NOT_FOUND")
     cfg = await targets.get(run.target_config_id) or raise NotFound("TARGET_NOT_FOUND")
     q = ProbeQuery(**job.payload["query"])
-    probes = await crud.probes.list_matching(q)          # probe_reports JOIN sessions
+    probes = await crud.probes.list_matching(q)          # probe_reports JOIN session_families
     if not probes:
         raise Conflict("NO_PROBES_MATCHED")
 
@@ -358,7 +362,7 @@ async def prepare_run(job) -> None:
             await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type)
             await crud.probe_cluster_probes.bulk_insert(cid, [p.probe_id for p in c.probes])
         if run.mode == "full":
-            await crud.rounds.bulk_insert_pending(run.id, clusters)
+            await crud.evolution_rounds.bulk_insert_pending(run.id, clusters)
         await crud.runs.mark_prepared(
             run.id, status="running", progress_unit=2,
             repo_path=cache.path if cache else None, base_ref=ws.ref if ws else None,
@@ -374,7 +378,7 @@ async def prepare_run(job) -> None:
 ```
 
 - `POST /runs` 返回 `202 {runId, jobId, status:"preparing"}`；前端立即跳详情，不等 clone。
-- `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 rounds、不自动 advance。
+- `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
 - 仓库不可用/ref 不存在 → prepare job 失败；run 置 `failed`，`error_stage=clone`，用户在详情页看到原因。
 - 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
@@ -419,7 +423,7 @@ async def advance_one_round(job):
     run = await runs.get(job.payload['run_id'])
     if run.status != 'running':
         return
-    round = await rounds.next_pending(run.id)
+    round = await evolution_rounds.next_pending(run.id)
     if round is None:
         await jobs.submit('evolution_finalize', {'run_id': run.id}, ref_id=run.id)
         return
@@ -431,7 +435,7 @@ async def advance_one_round(job):
     patch = placeholder_patch(run, round.cluster_id)
     ws.apply(patch)
     candidate = ws.commit(build_candidate_message(run, round))
-    await rounds.mark_candidate(round.id, candidate_ref, candidate.hash, candidate.message)
+    await evolution_rounds.mark_candidate(round.id, candidate_ref, candidate.hash, candidate.message)
 
     try:
         await push_with_retry(ws, candidate.hash, candidate_ref)  # 3 次 / 5s
@@ -441,18 +445,18 @@ async def advance_one_round(job):
         raise RunBlocked('push blocked')
 
     submission = await eval_gateway.submit(EvalRequest(
-        run_id=run.id, round_id=round.id, repo_url=run.repo_url,
+        run_id=run.id, evolution_round_id=round.id, repo_url=run.repo_url,
         ref=candidate_ref, commit=candidate.hash,
         target_type=run.target_type, target_name=run.target_name,
         target_version=run.target_version,
         cluster_id=round.cluster_id,
         idempotency_key=f'{run.id}:{round.seq}:{candidate.hash}',
     ))
-    await rounds.mark_evaluating(
+    await evolution_rounds.mark_evaluating(
         round.id, eval_external_id=submission.eval_id,
         eval_status='evaluating', eval_next_poll_at=now() + timedelta(minutes=5),
     )
-    await events.record(run.id, 'eval_submitted', stage='eval', round_id=round.id,
+    await events.record(run.id, 'eval_submitted', stage='eval', evolution_round_id=round.id,
                         message=f'已提交评测 {submission.eval_id}', payload={'ref': candidate_ref})
 ```
 
@@ -494,15 +498,15 @@ async def block_run(run, stage: str, error: Exception, retryable: bool,
 ```python
 async def eval_poller_loop():
     while not stopped:
-        due = await rounds.list_eval_due(now())          # eval_status=evaluating AND next_poll_at<=now
+        due = await evolution_rounds.list_eval_due(now())          # eval_status=evaluating AND next_poll_at<=now
         for round in due:
             status = await eval_gateway.get_status(round.eval_external_id)
             if status.status in ('queued', 'running'):
-                await rounds.set_eval_next_poll(round.id, now() + timedelta(minutes=5))
+                await evolution_rounds.set_eval_next_poll(round.id, now() + timedelta(minutes=5))
             elif status.status == 'completed':
                 result = await eval_gateway.get_result(round.eval_external_id)
-                await rounds.save_eval_result(round.id, result)
-                await jobs.submit('evolution_apply', {'round_id': round.id}, ref_id=round.run_id)
+                await evolution_rounds.save_eval_result(round.id, result)
+                await jobs.submit('evolution_apply', {'evolution_round_id': round.id}, ref_id=round.run_id)
             elif status.status in ('failed', 'timeout'):
                 await block_run_by_id(round.run_id, stage='eval', error=status.message)
         await asyncio.sleep(30)
@@ -533,10 +537,10 @@ class EvalGateway(Protocol):
 
 ```python
 async def apply_eval(job):
-    round = await rounds.get(job.payload['round_id'])
+    round = await evolution_rounds.get(job.payload['evolution_round_id'])
     run = await runs.get(round.run_id)
     ws = Workspace(run.workspace_path)
-    result = await rounds.get_eval_result(round.id)
+    result = await evolution_rounds.get_eval_result(round.id)
 
     if result.accepted:
         # 1) 先在 candidate 上 amend，追加评测信息
@@ -548,12 +552,12 @@ async def apply_eval(job):
         await ws.push_branch(run.branch_name)
         await ws.delete_remote_ref(round.candidate_ref)
         await ws.delete_local_branch(round.candidate_ref)
-        await rounds.accept(round.id, result.candidate_score, final.hash, final.message)
+        await evolution_rounds.accept(round.id, result.candidate_score, final.hash, final.message)
     else:
         await ws.delete_remote_ref(round.candidate_ref)
         await ws.switch(run.branch_name)             # 回到已接纳基线，不 reset 掉之前轮次
         await ws.delete_local_branch(round.candidate_ref)
-        await rounds.reject(round.id, result.candidate_score)
+        await evolution_rounds.reject(round.id, result.candidate_score)
 
     await jobs.submit('evolution_advance', {'run_id': run.id}, ref_id=run.id)
 ```
@@ -652,7 +656,7 @@ Harness-Verdict: accepted
 
 | step | 服务端组装 | 数据来源 |
 |---|---|---|
-| 0 | 查询条件 + `hits` + probe 行 | `probe_reports` + `sessions` |
+| 0 | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
 | 1 | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
 | 2 | 归因确认项（对象/类型/描述/推导） | `probe_reports` |
 | 3 | 按簇内 probe 数降序 | `probe_clusters` + 关联计数 |
@@ -757,7 +761,7 @@ async def events(ticket: str, request: Request, last_event_id: str | None = Head
 ## 7. 清单（`service/catalogs`）
 
 - `GET /catalogs/targets`：读 `evolution_targets`（`enabled=true`），按 `object_type` 分组；每个对象带 `repoUrl/subDir/defaultRef/versions`，`versions` 来自仓库缓存 tag；只读查询。
-- `GET /catalogs/models`：`SELECT model, COUNT(DISTINCT root_session_id) AS session_count, COUNT(*) AS agent_count FROM members WHERE model IS NOT NULL GROUP BY model ORDER BY agent_count DESC`；只读查询。
+- `GET /catalogs/models`：`SELECT model, COUNT(DISTINCT root_session_id) AS session_count, COUNT(*) AS agent_count FROM agents WHERE model IS NOT NULL GROUP BY model ORDER BY agent_count DESC`；只读查询。
 - 前端 `staleTime: 5min`；配置变更或同步完成后失效 `["catalogs"]`，不再 `Infinity` 缓存。
 
 ## 8. 身份与鉴权（`modules/identity`）
@@ -876,7 +880,7 @@ catalogs + health + 收尾
 | identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性 |
 | acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `session_id` 取 payload、子转录挂接、145h 会话 |
 | sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
-| sessions | 4 种排序、状态筛选、搜索、聚合统计 |
+| session_families | 4 种排序、状态筛选、搜索、聚合统计 |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |
 | evolution | 状态机边界（preparing/running/blocked/completed）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked |

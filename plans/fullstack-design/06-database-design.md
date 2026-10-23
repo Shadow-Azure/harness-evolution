@@ -11,7 +11,7 @@
 
 | 类别 | 表 | 写入方 | 我们的权限 |
 |---|---|---|---|
-| 轨迹侧 | `trajectory_payloads`（外部写）、`source_records`、`sessions`、`members`、`rounds`、`steps`、`blocks`、`member_events`、`sync_runs`、`sync_lock` | 本服务（source_records/归一化） | 读写（payload 表只读） |
+| 轨迹侧 | `trajectory_payloads`（外部写）、`source_records`、`session_families`、`agents`、`user_turns`、`messages`、`content_blocks`、`agent_events`、`sync_runs`、`sync_lock` | 本服务（source_records/归一化） | 读写（payload 表只读） |
 | 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 外部归因/上报系统 | **只读** |
 | 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
@@ -30,7 +30,7 @@
 | 长文本 | 标题、描述、提问、工具输出、原始 payload | `TEXT` / `MEDIUMTEXT` / `LONGTEXT` | `TEXT`（64KB）/ `MEDIUMTEXT`（16MB）/ `LONGTEXT`（4GB，payload 用） |
 | JSON | 结构化字段（meta_data / facts / stats） | `JSON`（底层 TEXT） | `JSON` |
 | 布尔 | `is_error` / `accepted` / `verdict` | `BOOLEAN`（INTEGER） | `TINYINT(1)` |
-| 时间 | 时间戳 | `DATETIME`（UTC 文本） | `DATETIME(6)` |
+| 时间 | 时间戳 | `DATETIME`（Asia/Shanghai 本地时间） | `DATETIME(6)` |
 | 计数 | 统计数字 | `INTEGER` | `INT` / `BIGINT` |
 | 浮点 | 置信度 / 严重度 / 得分 | `REAL` | `DOUBLE` |
 | 自增 | 关联表/事件代理主键 | `INTEGER PRIMARY KEY AUTOINCREMENT` | `BIGINT AUTO_INCREMENT` |
@@ -40,8 +40,8 @@
 - **所有主键、外键、唯一键、索引列一律 `VARCHAR(n)`（n ≤ 255）或整数**，不用 `TEXT`——MySQL 不允许无前缀的 TEXT 主键/FK，InnoDB 索引键上限 3072 字节。
 - **正文字段用 `MEDIUMTEXT`、payload 用 `LONGTEXT`**：MySQL 的 `TEXT` 只有 64KB，工具输出上限 256KB（见 §3.7）。
 - JSON 列不设 server default，默认值在应用层给；表中写出的 `DEFAULT []` 是应用层默认值。
-- 时间由应用写入 UTC；不用 `NOW()`/`CURRENT_TIMESTAMP` 作为列默认值。
-- 大小写不敏感搜索统一走 `sessions.search_text`（写入时 lower 拼接）。
+- 时间由应用写入 Asia/Shanghai（UTC+8）；不用 `NOW()`/`CURRENT_TIMESTAMP` 作为列默认值。
+- 大小写不敏感搜索统一走 `session_families.search_text`（写入时 lower 拼接）。
 
 ### 1.2 切换与数据迁移
 
@@ -60,6 +60,15 @@
 
 §3–§5 的表格沿用逻辑类型；落地按 §1.1 映射。迁移脚本是最终事实源。
 
+### 1.4 术语约定（避免与 Claude Code 的 turn 混淆）
+
+- `session_family`：根会话家族；API 的 `sessionId` 指向它，`root_session_id` 也指向它。
+- `agent`：主 agent、子 agent 或 workflow 执行节点；`agent.id` 是全局唯一节点 id（ULID），`agent_session_id` 是该节点的会话 id（workflow 为合成 id），两者不是同一个值。
+- `user_turn`：一次用户提问到下一次用户提问；**不是** Claude Code agent loop 里“模型+工具”的 tool-use turn。
+- `message`：一次 assistant 模型响应（Claude 的 `message.id`）；**不是** content block。
+- `content_block`：消息内的 `text` / `thinking` / `tool_use` / `tool_result` 块。
+- `evolution_round`：自进化的一次迭代轮，与轨迹的 `user_turn` 无关。
+
 ## 2. ER 图
 
 ```mermaid
@@ -67,20 +76,20 @@ erDiagram
     USER ||--o{ EVOLUTION_RUN : "created_by"
     USER ||--o{ JOB_RUN : "created_by"
     SYNC_RUN ||--o{ SOURCE_RECORD : "sync batch"
-    SOURCE_RECORD ||--o| SESSION : "main trace"
-    SOURCE_RECORD ||--o{ MEMBER : "subagent trace"
-    SESSION ||--o{ MEMBER : "family members"
-    MEMBER ||--o{ MEMBER : "parent / child"
-    MEMBER ||--o{ MEMBER_EVENT : "trigger points"
-    SESSION ||--o{ ROUND : "rounds"
-    SESSION ||--o{ STEP : "steps"
-    ROUND ||--o{ STEP : "steps"
-    STEP ||--o{ BLOCK : "blocks"
+    SOURCE_RECORD ||--o| SESSION_FAMILY : "main trace"
+    SOURCE_RECORD ||--o{ AGENT : "subagent trace"
+    SESSION_FAMILY ||--o{ AGENT : "agents"
+    AGENT ||--o{ AGENT : "parent / child"
+    AGENT ||--o{ AGENT_EVENT : "trigger points"
+    SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
+    USER_TURN ||--o{ MESSAGE : "messages"
+    AGENT ||--o{ MESSAGE : "produces"
+    MESSAGE ||--o{ CONTENT_BLOCK : "content_blocks"
 
-    SESSION ||--o{ BAD_CASE : "上报的问题"
+    SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
     BAD_CASE ||--o| BAD_CASE_ANALYSIS : "归因状态"
     BAD_CASE_ANALYSIS ||--o| PROBE_REPORT : "probe_id（1:1）"
-    SESSION ||--o{ PROBE_REPORT : "根因结论"
+    SESSION_FAMILY ||--o{ PROBE_REPORT : "根因结论"
 
     EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
@@ -96,7 +105,7 @@ erDiagram
 
 ### 3.0 `trajectory_payloads` —— 原始 JSONL（外部写入，本服务只读）
 
-> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，只通过 `session_id` 读取。
+> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，只通过 `session_id` 读取。该 `session_id` 是外部契约字段，语义为**实际 agent 的 session id**，对应内部 `agents.agent_session_id`；根会话 id 另由 `root_session_id` 给出。
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -120,7 +129,7 @@ erDiagram
 |---|---|---|---|
 | `id` | `BIGINT` | PK AUTOINCREMENT | 代理主键 |
 | `root_session_id` | `VARCHAR(36)` | NOT NULL | 主 agent 的 session id |
-| `session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 实际 agent id；对应 `trajectory_payloads.session_id` |
+| `agent_session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 实际 agent 的 session id；对应 `trajectory_payloads.session_id` |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
 | `line_count` | `INTEGER` | NOT NULL | 行数（Agent 执行流图比例尺） |
@@ -130,13 +139,13 @@ erDiagram
 | `parser_version` | `INTEGER` | NULL | 已使用的解析器版本 |
 | `last_sync_run_id` | `VARCHAR(36)` | NULL FK → `sync_runs.id` | 最近一次归一化批次 |
 
-索引：`UNIQUE(session_id)`、`INDEX(root_session_id)`、`INDEX(processed_at)`、`INDEX(parser_version)`。
+索引：`UNIQUE(agent_session_id)`、`INDEX(root_session_id)`、`INDEX(processed_at)`、`INDEX(parser_version)`。
 
 **待处理判定**：`processed_hash IS NULL`，或 `processed_hash != trajectory_payloads.content_hash`，或 `parser_version < 当前解析器版本`。
 
 **幂等规则**：hash 未变且解析器版本未升级 → 跳过；hash 变化 → 事务内删除该记录派生的行并重放；payload 侧删除 → 保留业务数据并记日志（首版不级联删除）。
 
-### 3.2 `sessions` —— 根会话（列表与会话概览的读模型）
+### 3.2 `session_families` —— 根会话（列表与会话概览的读模型）
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -148,11 +157,11 @@ erDiagram
 | `project_path` | `TEXT` | NOT NULL | 项目路径 |
 | `model` | `VARCHAR(64)` | NULL | 主 agent 模型 |
 | `models` | `JSON` | NOT NULL | 整棵 Agent 会话树去重后的模型列表（含子 agent） |
-| `started_at` / `ended_at` | `DATETIME` | NOT NULL | 首末事件时间（UTC） |
+| `started_at` / `ended_at` | `DATETIME` | NOT NULL | 首末事件时间（Asia/Shanghai） |
 | `duration_seconds` | `INTEGER` | NOT NULL | 真实跨度 |
 | `status` | `VARCHAR(16)` | NOT NULL | `ok` / `partial` / `fail`（规则见 §7.2） |
 | `skill_names` | `JSON` | NOT NULL | 递归聚合的 skill 名 |
-| `rounds_count` / `steps_count` / `tools_count` / `errors_count` / `agents_count` | `INTEGER` | NOT NULL | 冗余聚合 |
+| `user_turns_count` / `messages_count` / `tools_count` / `errors_count` / `agents_count` | `INTEGER` | NOT NULL | 冗余聚合 |
 | `bad_cases_count` | `INTEGER` | NOT NULL | 该会话问题数（同步时由问题侧表回填或查询时聚合） |
 | `tokens_total` | `BIGINT` | NOT NULL | 整棵 Agent 会话树 token |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
@@ -163,44 +172,92 @@ erDiagram
 
 > `bad_cases_count` 来自问题侧（外部写入），同步轨迹时不能算；实现上在查询时 `LEFT JOIN` 聚合，或由定时任务刷新（见 [07 §3](07-backend-implementation.md)）。
 
-### 3.3 `members` —— Agent 节点（agent / subagent）
+### 3.3 `agents` —— Agent 节点（main / subagent / workflow）
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `id` | `VARCHAR(64)` | PK | 主会话固定 `main`；子 agent 用稳定 id |
-| `root_session_id` | `VARCHAR(36)` | FK → `sessions.id` ON DELETE CASCADE | 根会话 |
-| `session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 该 agent 自己的 session id（问题侧 `bad_case_session_id` 关联此列） |
-| `parent_member_id` | `VARCHAR(64)` | FK → `members.id` NULL | 根为 NULL |
-| `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
-| `agent_type` | `VARCHAR(64)` | NULL | `general-purpose` / `Explore` / `workflow` |
+| `id` | `VARCHAR(64)` | PK | 全局唯一节点 id（ULID）；`kind` 区分 main/subagent/workflow |
+| `root_session_id` | `VARCHAR(36)` | FK → `session_families.id` ON DELETE CASCADE | 根会话 |
+| `agent_session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 该节点的 session id；workflow 用合成 id（如 `wf_...`），没有独立 transcript |
+| `parent_agent_id` | `VARCHAR(64)` | FK → `agents.id` NULL | 根为 NULL；workflow-subagent 指向 workflow |
+| `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` / `workflow` |
+| `agent_type` | `VARCHAR(64)` | NULL | `general-purpose` / `Explore` / `workflow` / `workflow-subagent` |
 | `model` | `VARCHAR(64)` | NULL | 该 agent 使用的模型；主/子 agent 可不同 |
 | `description` | `TEXT` | NULL | 触发它的 Agent 调用描述 |
-| `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里对应 Agent 调用的 id |
-| `transcript_record_id` | `BIGINT` | FK → `source_records.id` | 子转录处理记录 |
-| `lines` | `INTEGER` | NOT NULL | 转录行数（Agent 执行流图条宽） |
+| `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里触发该节点的调用 id；workflow 填父 workflow 调用，workflow-subagent 可为 NULL |
+| `transcript_record_id` | `BIGINT` | FK → `source_records.id` NULL | 子转录处理记录；workflow 无独立转录时为 NULL |
+| `lines` | `INTEGER` | NOT NULL | 转录行数（Agent 执行流图条宽）；workflow 为 0 |
+| `messages_count` | `INTEGER` | NOT NULL | 该节点自己的 assistant message 数；用于 `×N` 间隔计算 |
 | `depth` | `INTEGER` | NOT NULL | 根=0 |
 | `sort_key` | `DOUBLE` | NOT NULL | 树内排序 |
 
-索引：`INDEX(root_session_id)`、`INDEX(parent_member_id)`、`UNIQUE(session_id)`、`INDEX(model)`。
+索引：`INDEX(root_session_id)`、`INDEX(parent_agent_id)`、`UNIQUE(agent_session_id)`、`INDEX(model)`。
 
-### 3.4 `member_events` —— Agent 会话树触发点
+### 3.4 `agent_events` —— Agent 会话树触发点
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | BIGINT | PK AUTOINCREMENT | — |
-| `member_id` | `VARCHAR(64)` | FK → `members.id` ON DELETE CASCADE | — |
-| `event_index` | `INTEGER` | NOT NULL | 成员内顺序 |
+| `agent_id` | `VARCHAR(64)` | FK → `agents.id` ON DELETE CASCADE | — |
+| `event_index` | `INTEGER` | NOT NULL | agent 内顺序 |
 | `line_no` | `INTEGER` | NOT NULL | 转录行号 |
+| `message_offset` | `INTEGER` | NOT NULL | 该触发点之前已经出现的 assistant message 数 |
 | `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` |
-| `name` | `VARCHAR(255)` | NULL | skill 名 |
+| `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 |
 | `description` | `TEXT` | NULL | 子 agent / workflow 描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 触发调用 id |
 
-索引：`UNIQUE(member_id, event_index)`、`INDEX(member_id, line_no)`。
+索引：`UNIQUE(agent_id, event_index)`、`INDEX(agent_id, line_no)`、`INDEX(agent_id, message_offset)`。
 
-### 3.5 `rounds` / `3.6 steps` / `3.7 blocks`
+### 3.5 `user_turns` —— 用户提问轮（一次用户提问到下一次提问）
 
-结构与原设计一致（内部表，供统计与诊断证据；时间线裁撤后不对外暴露）：`rounds(session_id, seq, prompt_text, started_at, duration_seconds, tokens, step_count, tool_count, agent_count, meta JSON)`；`steps(round_id, member_id, seq, message_id, started_at, model, tokens)`；`blocks(step_id, seq, kind, name, call_id, input_text MEDIUMTEXT, result_text MEDIUMTEXT, is_error, subagent_member_id)`。
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | `VARCHAR(36)` | PK | ULID |
+| `root_session_id` | `VARCHAR(36)` | FK → `session_families.id` ON DELETE CASCADE | 所属根会话 |
+| `seq` | `INTEGER` | NOT NULL | 用户轮次顺序，从 1 开始 |
+| `prompt_text` | `TEXT` | NOT NULL | 该轮首个真实用户提问 |
+| `started_at` | `DATETIME` | NOT NULL | 该轮开始时间 |
+| `duration_seconds` | `INTEGER` | NOT NULL | 该轮跨度 |
+| `tokens` | `BIGINT` | NOT NULL | 该轮 token 总量 |
+| `message_count` | `INTEGER` | NOT NULL | 该轮内 assistant 消息数 |
+| `tool_count` | `INTEGER` | NOT NULL | 工具调用数 |
+| `agent_count` | `INTEGER` | NOT NULL | 参与的 agent 数（含子 agent） |
+| `meta` | `JSON` | NULL | 解析器附加信息 |
+
+索引：`UNIQUE(root_session_id, seq)`、`INDEX(root_session_id, started_at)`。
+
+### 3.6 `messages` —— assistant 消息（一次模型响应）
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | `VARCHAR(36)` | PK | 本服务内部消息 id |
+| `user_turn_id` | `VARCHAR(36)` | FK → `user_turns.id` ON DELETE CASCADE | 所属用户轮次 |
+| `agent_id` | `VARCHAR(64)` | FK → `agents.id` ON DELETE CASCADE | 产生该消息的 agent |
+| `seq` | `INTEGER` | NOT NULL | 该 agent 在轮次内的消息顺序 |
+| `provider_message_id` | `VARCHAR(128)` | NULL | Claude/Anthropic 的 `message.id` |
+| `started_at` | `DATETIME` | NOT NULL | 消息开始时间 |
+| `model` | `VARCHAR(64)` | NULL | 本次响应使用的模型 |
+| `tokens` | `BIGINT` | NOT NULL | 该消息 token 数 |
+
+索引：`UNIQUE(user_turn_id, agent_id, seq)`、`INDEX(agent_id, started_at)`、`INDEX(provider_message_id)`。
+
+### 3.7 `content_blocks` —— 消息内容块
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | `BIGINT` | PK AUTOINCREMENT | — |
+| `message_id` | `VARCHAR(36)` | FK → `messages.id` ON DELETE CASCADE | 所属消息 |
+| `seq` | `INTEGER` | NOT NULL | 块内顺序 |
+| `kind` | `VARCHAR(16)` | NOT NULL | `text` / `thinking` / `tool_use` / `tool_result` |
+| `name` | `VARCHAR(128)` | NULL | 工具名 |
+| `call_id` | `VARCHAR(128)` | NULL | tool_use / tool_result 配对 id |
+| `input_text` | `MEDIUMTEXT` | NULL | 工具输入或块文本 |
+| `result_text` | `MEDIUMTEXT` | NULL | 工具结果 |
+| `is_error` | `BOOLEAN` | NOT NULL DEFAULT false | 工具/块错误标记 |
+| `subagent_agent_id` | `VARCHAR(64)` | FK → `agents.id` NULL | 若该块触发子 agent，记录目标 agent |
+
+索引：`UNIQUE(message_id, seq)`、`INDEX(call_id)`、`INDEX(subagent_agent_id)`。
 
 ### 3.8 `sync_runs` —— 归一化批次
 
@@ -276,15 +333,16 @@ erDiagram
 | `object_name` | `VARCHAR(128)` | NOT NULL | 上报/发现问题的 skill 或 agent 名 |
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
-| `bad_case_session_id` | `VARCHAR(36)` | NOT NULL | 该对象所在 agent 的 session id（树锚点） |
+| `bad_case_agent_session_id` | `VARCHAR(36)` | NOT NULL | 该对象所在 agent 的 session id（树锚点） |
 | `reason` | `TEXT` | NOT NULL | 原型文案（直接展示） |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-索引：`INDEX(session_id)`、`INDEX(bad_case_session_id)`、`INDEX(object_type, object_name, object_version)`。
+索引：`INDEX(session_id)`、`INDEX(bad_case_agent_session_id)`、`INDEX(object_type, object_name, object_version)`。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因在 `probe_reports`。
+> `session_id` 是外部契约字段，语义为**根会话 id**，对应内部 `session_families.id`；`bad_case_agent_session_id` 才是实际 agent 的 session id。
 
 ### 4.2 `bad_case_analysis` —— 归因状态（关联表）
 
@@ -320,7 +378,7 @@ erDiagram
 
 索引：`INDEX(session_id)`、`INDEX(probe_type, probe_object, object_version)`、`INDEX(attribute_type)`。
 
-`from_bad_cases` / `from_bad_cases_count` **不落列**：查 probe 时由 `bad_case_analysis.probe_id` 反查（V1 恒 1 条；后续聚类不影响该关系）。
+`from_bad_cases` / `from_bad_cases_count` **不落列**：查 probe 时由 `bad_case_analysis.probe_id` 反查（V1 恒 1 条；后续聚类不影响该关系）。`session_id` 同样是外部契约的根会话 id，对应 `session_families.id`。
 
 ## 5. 自进化侧表（本服务读写）
 
@@ -453,7 +511,7 @@ erDiagram
 | `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `push` / `eval` / `apply` / `final` |
 | `step_index` | `INTEGER` NULL | — | 对应六步的 step（0–5） |
 | `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `probe_clusters` |
-| `round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
+| `evolution_round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
 | `job_id` | `VARCHAR(36)` NULL | — | 关联 `job_runs` |
 | `message` | `VARCHAR(512)` | NOT NULL | 人可读摘要 |
 | `payload` | JSON NULL | — | 执行信息（commit、eval、push、文件、耗时等） |
@@ -482,10 +540,10 @@ erDiagram
 |---|---|---|
 | `trajectory_payloads` | 10³–10⁴ | 每个 agent 一行；payload 占主要体积（外部写） |
 | `source_records` | 10³–10⁴ | 每个 agent 一行；处理索引，不存 payload |
-| `sessions` | 10³ | — |
-| `members` | 10⁴ | 单会话最多几十个子 agent |
-| `member_events` | 10⁴ | — |
-| `rounds` / `steps` / `blocks` | 10⁵–10⁶ | 内部统计与证据 |
+| `session_families` | 10³ | — |
+| `agents` | 10⁴ | 单会话最多几十个子 agent |
+| `agent_events` | 10⁴ | — |
+| `user_turns` / `messages` / `content_blocks` | 10⁵–10⁶ | 内部统计与证据 |
 | `bad_cases` | 10³–10⁴ | 外部写入 |
 | `probe_reports` | 10³–10⁴ | 与 bad_case 1:1 |
 | `evolution_targets` | 10¹–10² | 每个可进化 skill/agent 一行 |
@@ -499,14 +557,14 @@ erDiagram
 
 ## 7. 数据口径
 
-### 7.1 轮次/Agent 会话树派生（Claude Code JSONL）
+### 7.1 用户轮次/消息与 Agent 会话树派生（Claude Code JSONL）
 
 | 事实 | 规则 |
 |---|---|
-| 没有 turn 字段 | 轮次边界 = `type=user` 且不含 `tool_result`、不是 skill 注入、不是中断、不是命令回显 |
-| 工具结果内联在 user 记录 | 按 `tool_use_id` 回填到对应工具块，不切轮次 |
+| 没有 user turn 字段 | 用户轮次边界 = `type=user` 且不含 `tool_result`、不是 skill 注入、不是中断、不是命令回显 |
+| 工具结果内联在 user 记录 | 按 `tool_use_id` 回填到对应工具块，不切用户轮次 |
 | 元记录 | 不进查询视图；attachment 的 SessionStart hook 只作诊断线索 |
-| assistant 记录带 `message.id` 与 usage | 步骤 = `message.id`；token 聚合到轮与步 |
+| assistant 记录带 `message.id` 与 usage | 消息 = `message.id`；token 聚合到用户轮次与消息 |
 | 子 agent 有独立 session id | `trajectory_payloads` 按 `session_id` 给出；缺父子关系时按 `parent_tool_use_id` 回退 |
 | 会话跨多天 | 存储绝对时刻，不假设连续时长 |
 
@@ -518,11 +576,11 @@ erDiagram
 
 ### 7.3 密度口径
 
-`failPer100Steps = errors_count / steps_count * 100`，`badCasesPer100Steps = bad_cases_count / steps_count * 100`，1 位小数；两条线共用 3/百步满格。
+`failPer100Messages = errors_count / messages_count * 100`，`badCasesPer100Messages = bad_cases_count / messages_count * 100`，1 位小数；两条线共用 3/百消息满格。
 
 ### 7.4 问题侧口径
 
-- `bad_case.bad_case_session_id` 必须能在 `members.session_id` 找到；找不到时 UI 降级挂到根节点并告警（不阻塞展示）。
+- `bad_case.bad_case_agent_session_id` 必须能在 `agents.agent_session_id` 找到；找不到时 UI 降级挂到根节点并告警（不阻塞展示）。
 - `analysis_status` 与 `probe_id` 的一致性由上游保证，本服务查询时做防御性校验（不一致时按 `unanalyzed` 展示并记日志）。
 - `probe.attribute_type` 决定展示子状态（模型/prompt/错误）；`probe_object@object_version` 是自进化 target 的唯一来源。
 
@@ -530,16 +588,16 @@ erDiagram
 
 | 功能点 | 用到的主要表 | 读写 |
 |---|---|---|
-| F3 Session 列表 | `sessions` + `bad_cases`（计数） | 读 |
-| F4 会话概览 | `sessions` | 读 |
-| F5 Agent 执行流图 | `members`、`member_events`、`bad_cases`、`bad_case_analysis` | 读 |
+| F3 Session 列表 | `session_families` + `bad_cases`（计数） | 读 |
+| F4 会话概览 | `session_families` | 读 |
+| F5 Agent 执行流图 | `agents`、`agent_events`、`bad_cases`、`bad_case_analysis` | 读 |
 | F6 会话内问题列表 | `bad_cases`、`bad_case_analysis` | 只读 |
-| F7 时间线（已裁撤） | `rounds`、`steps`、`blocks` 仅内部使用 | 不读接口 |
+| F7 时间线（已裁撤） | `user_turns`、`messages`、`content_blocks` 仅内部使用 | 不读接口 |
 | F8 错误详情与归因 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 只读 |
 | F9 轨迹接入与归一化 | `trajectory_payloads`（只读）、`source_records`、`sync_runs`、`sync_lock` + 轨迹业务表 | 读写（payload 只读） |
 | F10–F13 自进化 | `evolution_targets`、`probe_reports`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
 | F19 进化对象配置 | `evolution_targets` | 写/读 |
 | F20 执行日志与异常 | `evolution_run_events`、`evolution_runs.error_*`、`evolution_rounds.error_*` | 写/读 |
 | F14 进度推送 | `job_runs`、`evolution_rounds.eval_next_poll_at` | 写/读 |
-| F15 对象/模型清单 | `evolution_targets`（对象/版本）、`members.model`（模型去重） | 读 |
+| F15 对象/模型清单 | `evolution_targets`（对象/版本）、`agents.model`（模型去重） | 读 |
 | F18 登录与鉴权 | `users` | 读/写 |

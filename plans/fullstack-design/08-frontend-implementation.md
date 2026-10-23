@@ -21,7 +21,7 @@
 router
 ├── /login ───────────────────────► login/Index
 ├── /sessions ────────────────────► sessions/Index
-│                                     ├──► family-tree/FamilyTree
+│                                     ├──► agent-tree/AgentTree
 │                                     └──► bad-cases/BadCaseList
 ├── /sessions/:sid/errors ────────► errors/Index
 ├── /evolution ───────────────────► evolution/Index
@@ -173,7 +173,7 @@ useTargetVersions(id) // GET /evolution/targets/{id}/versions（仓库 tag）
 useCreateTarget() useUpdateTarget() useDeleteTarget()   // admin 写操作
 
 // useCatalogs.ts
-useModels()           // GET /catalogs/models（来自 members.model 聚合；staleTime: 5min）
+useModels()           // GET /catalogs/models（来自 agents.model 聚合；staleTime: 5min）
 ```
 
 - 所有 composable 返回 `{ data, isLoading, isError, error, refetch }`，页面不直接碰 `http.ts`。
@@ -215,41 +215,50 @@ export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive:
 - 收到 `run.progress` 只失效 queryKey；`run.event` 可增量 append（DB 事件是事实源）。
 - 离开页面、run 终态、登出都主动 `es.close()`。
 
-## 3. Agent 执行流图（`components/family-tree/`）
+## 3. Agent 执行流图（`components/agent-tree/`）
 
 ### 3.1 文件结构
 
 ```text
-family-tree/
-  FamilyTree.vue          # 画布容器：VueFlow、fitView、focus、Teleport 问题列表
+agent-tree/
+  AgentTree.vue           # 画布容器：VueFlow、fitView、focus、Teleport 问题列表
   layout.ts               # 纯函数：chainOf / buildGraph / 布局常量（移植自原型）
   layout.spec.ts          # 布局单测（demo-nested 用例）
   nodes/AgentNode.vue  nodes/BadCaseNode.vue  nodes/CollapseNode.vue
   edges/OrthEdge.vue  edges/BadCaseEdge.vue  edges/DiscoveryEdge.vue  edges/TriggerEdge.vue
-  types.ts                # TreeNode / TreeEdge / BadCaseAnchor
+  types.ts                # TreeNode / TreeEvent / TreeEdge / BadCaseAnchor
 ```
+
+- `TreeEvent`：`line`、`kind`、`name?`、`desc?`、`toolUseId?`、`messageOffset`。
+- `TreeNode`：`agentId`、`agentSessionId`、`parentAgentId`、`kind`、`agentType`、`messagesCount`、`events`。
 
 ### 3.2 布局核心（对原型逻辑的保留与简化）
 
-保留（原样移植，仅补类型）：
+保留（布局结构原样移植；`×N` 口径改为 message 间隔）：
 
-- `chainOf(events, lines)`：按行号排序事件 → 触发点药丸 + `×N` 间隙药丸 → 返回 `{ items, offsets, width }`；宽度用 canvas `measureText` 精测（字体与 CSS 一致）。
+- `chainOf(events, messagesCount)`：按 `messageOffset` 排序事件 → 触发点药丸 + `×N` 间隔药丸 → 返回 `{ items, offsets, width }`；宽度用 canvas `measureText` 精测（字体与 CSS 一致）。
+- `×N` 的 N 是 **assistant message 间隔**，不是 JSONL 行号差：
+  - 首个触发点之前：`first.messageOffset`
+  - 两个触发点之间：`next.messageOffset - current.messageOffset`
+  - 尾部：`messagesCount - last.messageOffset`
+  - 无事件时：整段作为一个尾部间隔，N=`messagesCount`
+  - `line` 仍用于显示 `L30`、排序 tie-break 和调试，不参与 N 的计算。
 - 布局常量：`LINK_W=10 / PILL_PAD=18 / CDOT=10 / BOX_PAD=10 / BOX_EDGE=1 / AGENT_BOX_H=80 / ROW_STEP=124 / INDENT=46 / MIN_STEP=38`。
 - 兄弟分支的竖直通道聚合（24px 内的触发点共用一个 trunk）、问题卡左右侧判定（检测是否与兄弟分支竖直段相交）。
 - 折叠规则：子节点 > 8 且未展开 → 生成 `collapse` 节点。
 
 简化（因为后端给了显式归属）：
 
-- 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `targetMemberId`（由 `badCaseSessionId` 解析）+ `anchorEventIndex`；`badCaseType` 决定挂载方向。
+- 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `targetAgentId`（由 `badCaseAgentSessionId` 解析）+ `anchorEventIndex`；`badCaseType` 决定挂载方向。
 - 两类锚定规则（对应真实的 `self` / `discovery`）：
-  1. **`self`（对象自身问题）**：卡挂在 `targetMemberId` 对应对象自身的触发点上——skill 用下方对齐（`TriggerEdge`），agent 用节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
+  1. **`self`（对象自身问题）**：卡挂在 `targetAgentId` 对应对象自身的触发点上——skill 用下方对齐（`TriggerEdge`），agent 用节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
   2. **`discovery`（发现前置步骤问题）**：卡挂在发现者（`object`）的触发点正上方（`DiscoveryEdge`），表达"它发现了前置步骤的问题"。
-  3. 无锚点（`anchorEventIndex = -1`）：挂在目标成员节点右侧，避免卡片漂浮。
+  3. 无锚点（`anchorEventIndex = -1`）：挂在目标 agent 节点右侧，避免卡片漂浮。
 
 ```ts
 // layout.ts 关键签名
 export function buildGraph(tree: SessionTree, expanded: Set<string>): { nodes: TreeVNode[]; edges: TreeVEdge[] }
-export function chainOf(events: TreeEvent[], lines: number): Chain
+export function chainOf(events: TreeEvent[], messagesCount: number): Chain
 export function badCaseAnchors(cases: BadCase[], tree: SessionTree): BadCaseAnchor[]
 ```
 
@@ -320,10 +329,10 @@ Index.vue
 │   ├── StatusChips.vue
 │   ├── SortSelect.vue
 │   └── SessionCard.vue × N
-└── FamilySummary.vue（右栏）
+└── SessionOverview.vue（右栏）
     ├── SummaryHeader.vue（标题/状态/meta/CTA）
     ├── StatStrip.vue（9 项）
-    ├── FamilyTree.vue（画布）
+    ├── AgentTree.vue（画布）
     └── BadCaseList.vue（Teleport 目标）
 ```
 
@@ -341,11 +350,11 @@ Index.vue
 
 ### 5.3 密度条
 
-后端给 `failPer100Steps / badCasesPer100Steps`，前端只做视觉：`width = min(100, rate / 3 * 100)%`，满格 3/百步。颜色用 `--red` / `--orange`。
+后端给 `failPer100Messages / badCasesPer100Messages`，前端只做视觉：`width = min(100, rate / 3 * 100)%`，满格 3/百消息。颜色用 `--red` / `--orange`。
 
 ## 6. 时间线页（已裁撤，不做）
 
-2026-10-22 评审决定：**时间线页面（原型 B 页）不做**。本方案不再实现 `pages/timeline/*`、轮次吸顶、事件过滤 chips、步骤卡、展开/折叠与跳转轮次；相应路由、composable（`useTimeline`）与 queryKey 均已移除。
+2026-10-22 评审决定：**时间线页面（原型 B 页）不做**。本方案不再实现 `pages/timeline/*`、用户轮次吸顶、事件过滤 chips、消息卡、展开/折叠与跳转用户轮次；相应路由、composable（`useTimeline`）与 queryKey 均已移除。
 
 裁撤带来的前端调整：
 
@@ -354,10 +363,10 @@ Index.vue
 | 会话概览 CTA | 只保留「打开错误详情」，移除「打开时间线」 |
 | 错误详情页头 | 移除「打开时间线」按钮，只保留「返回 Session」 |
 | 面包屑 | 不再有"Session 浏览器 › 标题"的时间线面包屑；Session 页用顶栏 + 返回链接 |
-| 数据层 | 不请求轮次/步骤/块；列表与会话概览只用 `sessions` 的聚合字段（轮次、步骤、工具失败、token） |
+| 数据层 | 不请求用户轮次/消息/内容块；列表与会话概览只用 `session_families` 的聚合字段（用户轮次、消息、工具失败、token） |
 | 代码高亮/长输出折叠 | 随页面一并移除，首版不引 highlight.js |
 
-保留下来的能力：会话统计（轮次数、步骤数、工具失败数、token）仍由同步时聚合，展示在列表卡与会话概览统计条上；这些数字不依赖时间线页面。
+保留下来的能力：会话统计（用户轮次数、消息数、工具失败数、token）仍由同步时聚合，展示在列表卡与会话概览统计条上；这些数字不依赖时间线页面。
 
 ## 7. 错误详情页（`pages/errors/Index.vue`）
 
@@ -368,7 +377,7 @@ Index.vue（grid: 340px 1fr）
 ├── ErrorSidebar.vue（错误列表：全部错误 + bad_case 卡）
 └── ErrorMain.vue
     ├── ErrorHeader.vue（meta + 动作）
-    ├── ErrorFlow.vue（Vue Flow，复用 FamilyTree 的布局与节点，仅过滤 bad_case 节点）
+    ├── ErrorFlow.vue（Vue Flow，复用 AgentTree 的布局与节点，仅过滤 bad_case 节点）
     └── ErrorTabs.vue
         ├── BadCaseDescription.vue（问题描述 tab：reason + metaData）
         └── ProbeReport.vue（归因 tab：probe 结论与推导）
@@ -433,7 +442,7 @@ stateDiagram-v2
 
 ```text
 GET /api/catalogs/targets   → 可进化对象（skill/agent）+ repoUrl/subDir/defaultRef/versions
-GET /api/catalogs/models    → 模型列表（来自 members.model 聚合，含 session/agent 计数）
+GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 session/agent 计数）
 选择对象后：GET /api/evolution/targets/{id}/versions → 版本下拉
 ```
 

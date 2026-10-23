@@ -161,7 +161,7 @@ class Database(Protocol):
 | 实现 | 连接串 | 关键配置 |
 |---|---|---|
 | `SqliteDatabase` | `sqlite+aiosqlite:///{HE_DATA_DIR}/harness.db` | 连接时 `PRAGMA journal_mode=WAL`、`foreign_keys=ON`、`busy_timeout=5000`、`synchronous=NORMAL`；适合单进程调试 |
-| `MySqlDatabase` | `mysql+asyncmy://{user}:{pass}@{host}:{port}/{db}?charset=utf8mb4` | `pool_size` / `max_overflow` / `pool_recycle=1800` / `pool_pre_ping=True`；UTC 时区；库与表统一 `utf8mb4_0900_ai_ci` |
+| `MySqlDatabase` | `mysql+asyncmy://{user}:{pass}@{host}:{port}/{db}?charset=utf8mb4` | `pool_size` / `max_overflow` / `pool_recycle=1800` / `pool_pre_ping=True`；连接初始化 `time_zone='+08:00'`；库与表统一 `utf8mb4_0900_ai_ci` |
 
 `storage/factory.py` 是唯一选择点：
 
@@ -197,7 +197,7 @@ def create_database(settings: Settings) -> Database:
 | 索引列不用 `TEXT` | MySQL 索引键长上限（3072 字节） | 索引/唯一键列用 `VARCHAR(n)`（n ≤ 255）；正文用 `MEDIUMTEXT` 且不建索引 |
 | 不依赖 `LIKE` 的大小写行为 | SQLite ASCII 不敏感、MySQL 取决于 collation | 写入时维护 `search_text`（lower），查询统一 `LIKE` 该列 |
 | JSON 不在 SQL 里查 | SQLite JSON1 与 MySQL JSON 函数不同 | JSON 列只做整存整取（`sa.JSON`），过滤在 Python 侧做（数据量小） |
-| 时间统一 UTC | 两种库时区语义不同 | `DateTime(timezone=True)` + 应用层 UTC；禁止 `NOW()` 默认值 |
+| 时间统一 Asia/Shanghai | 两种库时区语义不同 | `DateTime(timezone=True)` + 应用层写 `Asia/Shanghai`；API 输出 `+08:00`；禁止 `NOW()` 默认值 |
 | 自增主键 | SQLite `INTEGER PRIMARY KEY` vs MySQL `BIGINT AUTO_INCREMENT` | SQLAlchemy `Integer primary_key=True autoincrement=True`，迁移里由方言渲染 |
 | 事务边界 | SQLite 整库写锁，MySQL 行锁 | 写操作统一走 `Database.transaction()`；不依赖"自动提交" |
 

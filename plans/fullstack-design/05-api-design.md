@@ -11,8 +11,8 @@
 | Base path | `/api`；OpenAPI 文档 `/api/docs`（dev 开放，prod 关闭） |
 | 鉴权 | 除 `/api/health`、`/api/auth/login`、`/api/auth/refresh` 外一律 `Authorization: Bearer <accessToken>`；401 用 `AUTH_*` 错误码；SSE 用一次性票据（见 §4.1） |
 | 命名 | JSON 一律 **camelCase**（Pydantic `alias_generator=to_camel`）；数据库列 snake_case；两者转换只在 Pydantic 层发生 |
-| 时间 | ISO 8601 带时区，UTC，如 `2026-08-30T08:00:33.573Z`；时长用整数秒 |
-| ID | `sessionId` 为根会话 UUID；`badCaseId` / `probeId` / `probeClusterId` 由外部或本服务生成（字符串，URL 直接用）；`memberSessionId` 是每个 agent 自己的会话 id |
+| 时间 | ISO 8601 带时区，统一 **Asia/Shanghai（UTC+8）**，如 `2026-08-30T16:00:33.573+08:00`；不使用 `Z` 结尾；时长用整数秒 |
+| ID | `sessionId` 为根会话 UUID；`badCaseId` / `probeId` / `probeClusterId` 由外部或本服务生成（字符串，URL 直接用）；`agentSessionId` 是每个 agent 自己的会话 id |
 | 列表 | `{ "items": [...], "total": 0, "page": 1, "pageSize": 20 }`；无分页的小列表直接 `{ "items": [...] }` |
 | 错误 | `{ "error": { "code": "SESSION_NOT_FOUND", "message": "...", "details": {} } }`，见 §8 |
 | 幂等 | `POST /api/acquisition/sync` 可重复调用（进行中返回 409）；`POST /evolution/runs` 无幂等键（每次启动都是新 run） |
@@ -25,7 +25,7 @@
 - **允许页面级聚合**：列表页（`GET /sessions`、`GET /evolution/runs`）、静态元数据（`GET /catalogs`、向导 targets/versions）。
 - **不做整页聚合**：`/sessions/{sid}` 的会话概览、Agent 会话树、问题列表分别由 3 个接口提供；Agent 会话树/执行日志/大列表不得塞进一个“page”响应。
 - **依赖顺序**：详情/选中项可串行（先列表后详情），同一页的独立区块必须并行（例如会话概览 + Agent 会话树 + 问题列表）。
-- **体积预算**：单接口响应超过约 300KB 时必须拆分；Agent 会话树另行按步骤/成员分页或裁剪。
+- **体积预算**：单接口响应超过约 300KB 时必须拆分；Agent 会话树另行按消息/agent 分页或裁剪。
 - **BFF 例外**：未来移动端/弱网需要一次往返时，新增独立 BFF `/app/...` 聚合端点，不替换现有资源接口。
 
 ## 2. 资源模型总览
@@ -35,21 +35,23 @@ erDiagram
     USER ||--o{ EVOLUTION_RUN : "created_by"
     USER ||--o{ JOB_RUN : "created_by"
     SYNC_RUN ||--o{ SOURCE_RECORD : "sync batch"
-    SOURCE_RECORD ||--o| SESSION : "main trace"
-    SOURCE_RECORD ||--o{ MEMBER : "subagent trace"
-    SESSION ||--o{ MEMBER : "family members"
-    MEMBER ||--o{ MEMBER : "parent / child"
-    MEMBER ||--o{ MEMBER_EVENT : "trigger points"
-    SESSION ||--o{ ROUND : "rounds"
-    SESSION ||--o{ STEP : "steps"
-    ROUND ||--o{ STEP : "steps"
-    STEP ||--o{ BLOCK : "blocks"
+    SOURCE_RECORD ||--o| SESSION_FAMILY : "main trace"
+    SOURCE_RECORD ||--o{ AGENT : "subagent trace"
+    SESSION_FAMILY ||--o{ AGENT : "agents"
+    AGENT ||--o{ AGENT : "parent / child"
+    AGENT ||--o{ AGENT_EVENT : "trigger points"
+    SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
+    USER_TURN ||--o{ MESSAGE : "messages"
+    AGENT ||--o{ MESSAGE : "produces"
+    MESSAGE ||--o{ CONTENT_BLOCK : "content_blocks"
 
-    SESSION ||--o{ BAD_CASE : "上报的问题"
+    SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
     BAD_CASE ||--o| BAD_CASE_ANALYSIS : "归因状态"
     BAD_CASE_ANALYSIS ||--o| PROBE_REPORT : "probe_id（1:1）"
-    SESSION ||--o{ PROBE_REPORT : "根因结论"
+    SESSION_FAMILY ||--o{ PROBE_REPORT : "根因结论"
 
+    EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
+    EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
     EVOLUTION_RUN ||--o{ PROBE_CLUSTER : "本次 run 的聚类"
     PROBE_CLUSTER ||--o{ PROBE_CLUSTER_PROBE : "M:N"
     PROBE_REPORT ||--o{ PROBE_CLUSTER_PROBE : "被聚类"
@@ -58,7 +60,7 @@ erDiagram
     EVOLUTION_RUN ||--o| EVOLUTION_FINAL : "终评"
 ```
 
-> 轨迹侧表由本服务同步写入；`BAD_CASE / BAD_CASE_ANALYSIS / PROBE_REPORT` 由外部归因/上报系统写入，本服务只读；`EVOLUTION_*` 与 `PROBE_CLUSTER*` 由本服务写。`ROUND/STEP/BLOCK` 是内部表，不对外暴露（见 §3.3）。
+> 轨迹侧表由本服务同步写入；`BAD_CASE / BAD_CASE_ANALYSIS / PROBE_REPORT` 由外部归因/上报系统写入，本服务只读；`EVOLUTION_*` 与 `PROBE_CLUSTER*` 由本服务写。`USER_TURN/MESSAGE/CONTENT_BLOCK` 是内部表，不对外暴露（见 §3.3）。
 
 ## 3. 领域模型（OpenAPI Schema 的源头）
 
@@ -71,14 +73,14 @@ erDiagram
   "title": "AI agent + 视频播放结合的开源产品调研",
   "repo": "llm-wiki",
   "model": "glm-5.3",
-  "startedAt": "2026-09-05T09:17:53Z",
+  "startedAt": "2026-09-05T17:17:53+08:00",
   "durationSeconds": 63420,
   "status": "partial",
   "skills": ["deep-research"],
   "stats": {
-    "rounds": 12, "steps": 375, "tools": 197, "errors": 4,
+    "userTurns": 12, "messages": 375, "tools": 197, "errors": 4,
     "agents": 57, "badCases": 3, "tokens": 58368517,
-    "failPer100Steps": 1.07, "badCasesPer100Steps": 0.8
+    "failPer100Messages": 1.07, "badCasesPer100Messages": 0.8
   }
 }
 ```
@@ -91,26 +93,54 @@ erDiagram
 ```json
 {
   "sessionId": "cb819c5b-...",
-  "main": {
-    "memberId": "m-main", "label": "主会话", "lines": 765,
-    "events": [
-      { "line": 24, "kind": "skill", "name": "deep-research" },
-      { "line": 30, "kind": "workflow", "name": "deep-research", "toolUseId": "call_ca6f..." }
-    ]
-  },
-  "subs": [
+  "agents": [
     {
-      "memberId": "a2895fbf", "parentMemberId": "m-main", "type": "general-purpose",
-      "desc": "检索工具层四项+综述", "toolUseId": "call_721e...", "lines": 218,
-      "events": [ { "line": 12, "kind": "skill", "name": "deep-research" } ],
-      "children": []
+      "agentId": "ag-01H...main", "agentSessionId": "cb819c5b-...",
+      "parentAgentId": null, "kind": "main", "agentType": null,
+      "label": "主会话", "lines": 765, "messagesCount": 375,
+      "events": [
+        { "line": 24, "kind": "skill", "name": "deep-research", "messageOffset": 0 },
+        { "line": 30, "kind": "workflow", "name": "deep-research",
+          "toolUseId": "call_ca6f...", "messageOffset": 6 },
+        { "line": 42, "kind": "agent", "name": "general-purpose",
+          "desc": "检索工具层四项+综述", "toolUseId": "call_721e...", "messageOffset": 18 }
+      ]
+    },
+    {
+      "agentId": "ag-01H...wf", "agentSessionId": "wf_1fb8ca61-c70",
+      "parentAgentId": "ag-01H...main", "kind": "workflow", "agentType": "workflow",
+      "desc": "56 个 workflow 子 agent", "toolUseId": "call_ca6f...",
+      "lines": 0, "messagesCount": 0, "events": []
+    },
+    {
+      "agentId": "ag-01H...a", "agentSessionId": "5e7a9c…",
+      "parentAgentId": "ag-01H...main", "kind": "subagent", "agentType": "general-purpose",
+      "desc": "检索工具层四项+综述", "toolUseId": "call_721e...",
+      "lines": 218, "messagesCount": 120,
+      "events": [
+        { "line": 12, "kind": "skill", "name": "deep-research", "messageOffset": 0 },
+        { "line": 28, "kind": "agent", "name": "Explore",
+          "desc": "只读检索子任务", "toolUseId": "call_b", "messageOffset": 4 }
+      ]
+    },
+    {
+      "agentId": "ag-01H...b", "agentSessionId": "6f8b…",
+      "parentAgentId": "ag-01H...a", "kind": "subagent", "agentType": "Explore",
+      "desc": "只读检索子任务", "toolUseId": "call_b",
+      "lines": 96, "messagesCount": 48, "events": []
+    },
+    {
+      "agentId": "ag-01H...wf1", "agentSessionId": "wf-sub-1…",
+      "parentAgentId": "ag-01H...wf", "kind": "subagent", "agentType": "workflow-subagent",
+      "desc": "", "toolUseId": null,
+      "lines": 18, "messagesCount": 10, "events": []
     }
   ],
   "badCases": [
     {
       "badCaseId": "bc-050b-03", "badCaseType": "discovery",
       "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
-      "badCaseSessionId": "5e7a…", "targetMemberId": "m-main",
+      "badCaseAgentSessionId": "5e7a…", "targetAgentId": "ag-01H...a",
       "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
       "anchorEventIndex": 0
     }
@@ -120,20 +150,29 @@ erDiagram
 
 设计要点：
 
-- **事件只给 line/kind/name/desc/toolUseId**，×N 压缩行数、药丸宽度、问题卡左右侧全部由前端布局计算（布局逻辑见 [08 §3](08-frontend-implementation.md)）——与服务端解耦，数据量也小。
-- **问题卡归属显式给出**：`badCaseSessionId` 是问题上报者所在 agent 的 session id，服务端用 `members.session_id` 解析成 `targetMemberId`；`badCaseType` 决定锚定规则（`self` 挂对象自身触发点，`discovery` 挂发现者触发点上方）。
-- `anchorEventIndex`：问题挂在哪个触发点（`-1` = 未匹配到同名触发点，前端挂到成员节点）。
-- **命名映射**：API 的 `sessionId` = 根会话；`memberSessionId` = 实际 agent id，对应 DB `members.session_id`；`root_session_id` 只在内部表出现。
+- **`agents` 是扁平列表**，不再有 `main/subs/children` 嵌套；前端用 `parentAgentId` 建树。`main` 也作为一行，`parentAgentId=null`。
+- **结构关系**：`parentAgentId` 指向父节点；`toolUseId` 指向父节点中触发该节点的调用，用于画布边锚点。workflow 的 `toolUseId` 填父级 workflow 调用；workflow-subagent 允许为 `null`。
+- **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / workflow / workflow-subagent`。workflow 节点使用合成 `agentSessionId`（如 `wf_...`），没有独立 transcript，`lines=0`。
+- `events[].name` 是触发调用名，不是类型；workflow 名可以与 skill 同名（原型 line 30 的 `deep-research` 就是 workflow 名，line 24 的 `deep-research` 是 skill 名）。
+- **`×N` 间隔**：`messagesCount` 是该节点自己的 assistant message 总数；`events[].messageOffset` 是该触发点之前已经出现的 assistant message 数。前端计算：
+  - 首个触发点之前：`first.messageOffset`
+  - 两个触发点之间：`next.messageOffset - current.messageOffset`
+  - 尾部：`messagesCount - last.messageOffset`
+- `line` 仍保留，用于显示 `L30`、定位/调试；`×N` 不再用行号差。
+- 示例只展示 workflow 的 1 个 `workflow-subagent`，实际原型有 56 个；扁平列表省略其余。
+- **问题卡归属**：`badCaseAgentSessionId` 是问题上报者所在 agent 的 session id，服务端用 `agents.agent_session_id` 解析成 `targetAgentId`；`badCaseType` 决定锚定规则（`self` 挂对象自身触发点，`discovery` 挂发现者触发点上方）。
+- `anchorEventIndex`：问题挂在哪个触发点（`-1` = 未匹配到同名触发点，前端挂到 agent 节点）。
+- **命名映射**：API 的 `sessionId` = 根会话；`agentId` = 全局 agent 节点 id，对应 DB `agents.id`；`agentSessionId` = 实际 agent 的 session id，对应 DB `agents.agent_session_id`；`root_session_id` 只在内部表出现。
 
 ### 3.3 内部轨迹模型（不对外暴露）
 
-时间线页面在 2026-10-22 评审中裁撤，因此**不提供轮次/步骤/块的读接口**。`rounds/steps/blocks` 三张表仍然保留（见 [06 §3.5–3.7](06-database-design.md)），用途是：
+时间线页面在 2026-10-22 评审中裁撤，因此**不提供用户轮次/消息/内容块的读接口**。`user_turns/messages/content_blocks` 三张表仍然保留（见 [06 §3.5–3.7](06-database-design.md)），术语定义见 [06 §1.4](06-database-design.md)。用途是：
 
-- 同步时计算 `sessions` 的聚合列（轮次数、步骤数、工具调用数、错误数、token 总数）；
+- 同步时计算 `session_families` 的聚合列（用户轮次数、消息数、工具调用数、错误数、token 总数）；
 - 为后续诊断器保留证据（工具输入/输出/错误原文）；
 - 解析规则升级时可重放。
 
-也就是说：**数据照常入库，契约里没有 `Timeline/Round/Step/Block` 这些响应模型**。如果未来恢复时间线，按原设计补 `GET /api/sessions/{sid}/timeline` 与 `.../rounds/{index}/steps` 两个端点即可，表结构无需迁移。
+也就是说：**数据照常入库，契约里没有 `Timeline/UserTurn/Message/ContentBlock` 这些响应模型**。如果未来恢复时间线，按原设计补 `GET /api/sessions/{sid}/timeline` 与 `.../user_turns/{index}/messages` 两个端点即可，表结构无需迁移。
 
 ### 3.4 问题（bad_case）、归因状态与 probe
 
@@ -145,8 +184,8 @@ erDiagram
   "sessionId": "050b81ba-...", "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
   "badCaseType": "discovery",
   "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
-  "badCaseSessionId": "5e7a9c…",
-  "targetMemberId": "m-main", "anchorEventIndex": 0,
+  "badCaseAgentSessionId": "5e7a9c…",
+  "targetAgentId": "ag-01H...main", "anchorEventIndex": 0,
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
   "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03" }
@@ -154,7 +193,7 @@ erDiagram
 ```
 
 - `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看 `probe`。
-- `badCaseSessionId` 是上报者所在 agent 的 session id，服务端解析成 `targetMemberId`（`badCaseType` 决定锚定方式）。
+- `badCaseAgentSessionId` 是上报者所在 agent 的 session id，服务端解析成 `targetAgentId`（`badCaseType` 决定锚定方式）。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
 - `analysis.status` 与原型展示的映射：
 
@@ -174,7 +213,7 @@ erDiagram
   "sessionId": "050b81ba-...",
   "probeType": "agent", "probeObject": "Explore", "objectVersion": "v1.0.1",
   "attributeType": "prompt",
-  "probeDescription": "prompt 未要求读取快照前校验 turns 字段，subagent 直接读取导致越界。",
+  "probeDescription": "prompt 未要求读取快照前校验用户轮次字段，subagent 直接读取导致越界。",
   "probeAnalysis": "从 bad_case 的 reason 与 meta_data 定位到 Explore 的读取步骤；同批次有校验的 subagent 未报错，说明是 prompt 约定缺失。",
   "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1
 }
@@ -238,7 +277,7 @@ erDiagram
 ]
 ```
 
-- `status` ∈ `running|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
+- `status` ∈ `preparing|running|blocked|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
 - `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
@@ -355,7 +394,7 @@ erDiagram
 |---|---|---|
 | `q` | string | 标题/仓库模糊匹配（大小写不敏感） |
 | `status` | `all\|ok\|partial\|fail` | 默认 all |
-| `sort` | `latest\|rounds\|steps\|agents` | 默认 latest |
+| `sort` | `latest\|userTurns\|messages\|agents` | 默认 latest |
 | `limit` | int | 默认 100，最大 500 |
 
 响应 `{ "items": [SessionListItem] }`。**排序与计数全部后端做**，前端只渲染。
@@ -370,9 +409,9 @@ erDiagram
 
 ### 4.5 时间线端点（已裁撤）
 
-时间线页面不做，因此不提供 `GET /api/sessions/{sid}/timeline` 及其步骤展开端点。轮次/步骤/块照常入库，仅用于统计聚合与后续诊断（见 §3.3）。
+时间线页面不做，因此不提供 `GET /api/sessions/{sid}/timeline` 及其消息展开端点。用户轮次/消息/内容块照常入库，仅用于统计聚合与后续诊断（见 §3.3）。
 
-轮次内需要计数时（列表/会话概览），使用 `sessions` 上的聚合列，不读 `steps` 明细。
+用户轮次内需要计数时（列表/会话概览），使用 `session_families` 上的聚合列，不读 `messages` 明细。
 
 ### 4.6 会话问题列表
 
@@ -403,7 +442,7 @@ erDiagram
 ```json
 { "activeJobId": "job-1", "status": "running", "payloadTable": "trajectory_payloads",
   "pending": 3, "processed": 8, "imported": 4, "skipped": 1,
-  "lastRunAt": "2026-10-23T09:00:00Z", "nextRunAt": "2026-10-23T09:01:00Z",
+  "lastRunAt": "2026-10-23T17:00:00+08:00", "nextRunAt": "2026-10-23T17:01:00+08:00",
   "errors": [ { "sessionId": "2b7e9d4f-...", "message": "第 42 行非法 JSON" } ] }
 ```
 
@@ -439,10 +478,10 @@ erDiagram
 
 - `badCases` 是命中的问题报告数；`analyzed` / `unanalyzed` 是 `bad_cases.analysis_status` 的计数。
 - **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；前端展示未分析数量，提示等待外部归因。
-- `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_session_id` → `members.model` 解析，缺失时回退主 agent 模型。
+- `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_agent_session_id` → `agents.model` 解析，缺失时回退主 agent 模型。
 
 - `from/to` 按 **session 启动时间**过滤。
-- `models[]` 匹配 **该 Agent 会话树内任一 agent 的模型**（`members.model`），不是只看主 agent；没有模型时按“全部模型”处理。
+- `models[]` 匹配 **该 Agent 会话树内任一 agent 的模型**（`agents.model`），不是只看主 agent；没有模型时按“全部模型”处理。
 - 命中的 probe 必然属于该 target（`probeObject @ objectVersion`），所以 `usedProbes = probes`。
 
 ### 4.10 自进化运行（异步任务）
@@ -450,7 +489,7 @@ erDiagram
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）
 - `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
   - 同步前置校验：target 已配置/启用、条件合法、probe 数 > 0；失败直接 `409 TARGET_NOT_CONFIGURED` / `409 NO_PROBES_MATCHED`
-  - 校验通过后只创建 `status=preparing` 的 run 并入队 `evolution_prepare`；workspace clone、repo/ref 校验、聚类、rounds 全部在后台完成；repo/ref 失败使 run `failed(error_stage=clone)`
+  - 校验通过后只创建 `status=preparing` 的 run 并入队 `evolution_prepare`；workspace clone、repo/ref 校验、聚类、迭代轮（`evolution_rounds`）全部在后台完成；repo/ref 失败使 run `failed(error_stage=clone)`
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
@@ -471,7 +510,7 @@ POST /runs（同步校验）
        → 查 probe
        → simple_cluster
        → workspace clone / 建 run 分支
-       → clusters / rounds
+       → clusters / evolution_rounds
        → run(running)
   → evolution_advance(round 1)
        → patch → candidate commit
@@ -490,7 +529,7 @@ POST /runs（同步校验）
 - 没有 `POST /advance`：逐轮推进由后台任务自动完成，生产 UI 不提供“推进一轮”按钮。
 - 没有 `POST /push`：push 是每轮评测前置条件，失败进入 `blocked`，由 `POST /retry` 或自动退避恢复。
 - `POST /runs` 的 202 不是“已开始运行”，只是“已受理准备”；前端跳转详情后先显示 `preparing`。
-- 仅聚类预览（`mode=cluster_only`）也走 `evolution_prepare`，但不建 workspace、不生成 rounds、不提交评测。
+- 仅聚类预览（`mode=cluster_only`）也走 `evolution_prepare`，但不建 workspace、不生成 `evolution_rounds`、不提交评测。
 
 ### 4.11 进化对象配置（仅配置后可自进化）
 
@@ -518,7 +557,7 @@ POST /runs（同步校验）
 ### 4.13 清单
 
 - `GET /api/catalogs/targets` → 已启用且配置的对象：`{ "skill": [{ "id": "…", "name": "deep-research", "repoUrl": "https://…", "subDir": "skills/deep-research", "defaultRef": "main", "versions": ["v2.0.0","v1.9.0"] }], "agent": [...] }`（versions 取自配置仓库的 tag；与 `/evolution/targets` 一致，前端可只用后者）
-- `GET /api/catalogs/models` → 从归一化后的 `members.model` 聚合，主/子 agent 都计入：
+- `GET /api/catalogs/models` → 从归一化后的 `agents.model` 聚合，主/子 agent 都计入：
 
 ```json
 { "items": [
@@ -527,7 +566,7 @@ POST /runs（同步校验）
 ] }
 ```
 
-- 模型列表不实时解析 JSONL；由定时归一化写入 `members.model` / `sessions.models` 后查询，页面刷新即可见。
+- 模型列表不实时解析 JSONL；由定时归一化写入 `agents.model` / `session_families.models` 后查询，页面刷新即可见。
 - 启动向导打开时并行加载 `catalogs/targets` 与 `catalogs/models`；选择对象后再按 id 拉 `targets/{id}/versions`。
 
 ### 4.14 SSE
@@ -676,8 +715,8 @@ FastAPI /api/openapi.json
 
 | 原型字段 | 接口字段 | 说明 |
 |---|---|---|
-| `SESSIONS[].short/title/repo/clock/ts/dur/model/rounds/steps/tools/errors/agents/findings/skills/tok/status` | `SessionListItem` 同名语义 | `findings` → `stats.badCases`；`clock/ts` → `startedAt`；`tok` → `stats.tokens` |
-| `TREE[sid].main/subs` | `SessionTree.main/subs` | 子节点 `id/type/desc/toolUseId/lines/events/children` 一一对应；成员新增 `memberSessionId` |
+| `SESSIONS[].short/title/repo/clock/ts/dur/model/userTurns/messages/tools/errors/agents/findings/skills/tok/status` | `SessionListItem` 同名语义 | `findings` → `stats.badCases`；`clock/ts` → `startedAt`；`tok` → `stats.tokens` |
+| `TREE[sid].main/subs` | `SessionTree.agents[]` | 改为扁平列表；`id/agentType/desc/toolUseId/lines/events` 一一对应，新增 `agentSessionId/parentAgentId/messagesCount`，事件新增 `messageOffset` |
 | `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel` |
 | `ERROR_META[title].status` | `BadCase.analysis.status` | `unanalyzed / analyzed_nonissue / analyzed_issue`（5 种展示值） |
 | `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` | `probe_description/analysis/attribute_type` 对应"问题描述/推导过程/分类" |
@@ -699,31 +738,31 @@ FastAPI /api/openapi.json
   "metadata": {
     "project": "llm-wiki",
     "model": "glm-5.3",
-    "startedAt": "2026-09-05T09:17:53Z",
-    "endedAt": "2026-09-06T02:55:13Z",
+    "startedAt": "2026-09-05T17:17:53+08:00",
+    "endedAt": "2026-09-06T10:55:13+08:00",
     "problemFlag": true,
     "problemTags": ["tool-error"]
   },
   "transcripts": [
-    { "kind": "main", "memberSessionId": "cb819c5b-286f-4eab-a681-4ba5414b844d",
+    { "kind": "main", "agentSessionId": "cb819c5b-286f-4eab-a681-4ba5414b844d",
       "lines": ["{\"type\":\"user\",...}", "{\"type\":\"assistant\",...}"] },
-    { "kind": "subagent", "memberSessionId": "2b7e9d4f-...", "agentType": "general-purpose",
-      "parentToolUseId": "call_721e...", "parentMemberSessionId": "cb819c5b-...",
+    { "kind": "subagent", "agentSessionId": "2b7e9d4f-...", "agentType": "general-purpose",
+      "parentToolUseId": "call_721e...", "parentAgentSessionId": "cb819c5b-...",
       "lines": ["..."] }
   ]
 }
 ```
 
-- 每个 agent/subagent 都带自己的 `memberSessionId`（问题侧 `bad_case_session_id` 与它对齐），`parentToolUseId` / `parentMemberSessionId` 表达父子关系。
+- 每个 agent/subagent 都带自己的 `agentSessionId`（问题侧 `bad_case_agent_session_id` 与它对齐），`parentToolUseId` / `parentAgentSessionId` 表达父子关系。
 - `lines` 是**原始 JSONL 行数组**（不解析、不裁剪）；我们的归一化器复用既有解析逻辑。
-- 响应可能很大（单会话数十 MB）：支持 `Accept-Encoding: gzip`；上游可分 transcript 返回（`GET /trajectories/{sid}/transcripts/{memberSessionId}` 作为可选补充）。
+- 响应可能很大（单会话数十 MB）：支持 `Accept-Encoding: gzip`；上游可分 transcript 返回（`GET /trajectories/{sid}/transcripts/{agentSessionId}` 作为可选补充）。
 
 ### 10.2 窗口列举
 
 `GET {UPSTREAM_BASE}/trajectories?from=2026-08-20&to=2026-09-10&problemOnly=true&cursor=`
 
 ```json
-{ "items": [ { "sessionId": "cb819c5b-...", "startedAt": "2026-09-05T09:17:53Z",
+{ "items": [ { "sessionId": "cb819c5b-...", "startedAt": "2026-09-05T17:17:53+08:00",
     "model": "glm-5.3", "problemFlag": true } ],
   "nextCursor": "eyJvZmZzZXQiOjEwfQ" }
 ```

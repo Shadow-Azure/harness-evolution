@@ -25,23 +25,23 @@
 | 左栏：标题 + 会话数量 | F3 | [02 §2.1](02-features.md) · [08 §5](08-frontend-implementation.md) |
 | 搜索框（标题/仓库，输入即筛） | F3 | [05 §4.2](05-api-design.md)（`q`） |
 | 状态 chips：全部 / 完成 / 有失败 | F3 | [05 §4.2](05-api-design.md)（`status`） |
-| 排序下拉：最新 / 轮次 / 步骤 / 子 agent | F3 | [05 §4.2](05-api-design.md)（`sort`） |
+| 排序下拉：最新 / 用户轮次 / 消息 / 子 agent | F3 | [05 §4.2](05-api-design.md)（`sort`） |
 | 会话卡：状态点、标题、时间、repo chip、时长、工具数、子 agent 数 | F3 | [05 §3.1](05-api-design.md)（`SessionListItem`） |
-| 会话卡：5 项统计（轮次/步骤/工具失败/Skill/问题） | F3 | [05 §3.1](05-api-design.md)（`stats`） |
-| 会话卡：失败密度条 + 问题密度条（每百步，3 满格） | F3 | [06 §7.3](06-database-design.md)（口径）· [08 §5.3](08-frontend-implementation.md)（绘制） |
+| 会话卡：5 项统计（用户轮次/消息/工具失败/Skill/问题） | F3 | [05 §3.1](05-api-design.md)（`stats`） |
+| 会话卡：失败密度条 + 问题密度条（每百消息，3 满格） | F3 | [06 §7.3](06-database-design.md)（口径）· [08 §5.3](08-frontend-implementation.md)（绘制） |
 | 右栏头：状态点 + 标题 + meta（开始时间/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) |
 | 右栏 CTA：打开错误详情（原「打开时间线」随 F7 裁撤移除） | F4 | [08 §1](08-frontend-implementation.md) · [08 §6](08-frontend-implementation.md) |
-| 9 项统计条（轮次/步骤/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
-| Agent 执行流图：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N 压缩/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
+| 9 项统计条（用户轮次/消息/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
+| Agent 执行流图：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N message 间隔/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
 | Agent 执行流图：主会话与子 agent 节点、节点链、Skill/Subagent/Workflow 触发药丸 | F5 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
-| Agent 执行流图：×N 压缩日志节点 | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
+| Agent 执行流图：×N message 间隔节点（`messagesCount` + `messageOffset`） | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
 | Agent 执行流图：问题卡（`#badCaseId 截短 + reason`）`self` / `discovery` 两类锚定规则 | F5 | [08 §3.2](08-frontend-implementation.md)（锚定规则） |
 | Agent 执行流图：>8 子 agent 折叠为"N 个子 agent · 点击展开" | F5 | [08 §3.2](08-frontend-implementation.md)（折叠规则） |
 | Agent 执行流图：滚轮缩放 / 拖拽平移 / 右下角 Controls / 自适应 | F5 | [08 §3.3](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 截短、reason、状态、上报对象、metaData 事实 chips | F6 | [05 §3.4](05-api-design.md) · [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：点击「定位 ↗」→ 画布滚动 + 高亮 + 聚焦 | F6 | [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 点击新窗口打开问题描述 tab | F2/F6 | [05 §5](05-api-design.md) |
-| 时间线页（面包屑/过滤 chips/轮次头/提问卡/步骤卡/展开折叠/跳转） | ~~F7~~ | **已裁撤（2026-10-22）**：不实现，理由与替代见 [02 §2.1](02-features.md) · [08 §6](08-frontend-implementation.md) |
+| 时间线页（面包屑/过滤 chips/用户轮次头/提问卡/消息卡/展开折叠/跳转） | ~~F7~~ | **已裁撤（2026-10-22）**：不实现，理由与替代见 [02 §2.1](02-features.md) · [08 §6](08-frontend-implementation.md) |
 | 错误详情左栏：错误数量、session 标题/id、返回 Session | F8 | [08 §7](08-frontend-implementation.md) |
 | 错误详情左栏："全部错误" + bad_case 卡（ID/状态 chip/reason/上报对象） | F8 | [05 §3.4](05-api-design.md) · [08 §7.2](08-frontend-implementation.md) |
 | 错误详情右栏头：meta、返回 Session（原「打开时间线」移除） | F8 | [08 §7.1](08-frontend-implementation.md) |
@@ -110,7 +110,7 @@
 ### Q3. 「查看原始 JSON」overlay 是否纳入
 
 - 原型：overlay 组件挂在时间线卡片上（"查看原始载荷"），时间线裁撤后该入口不复存在。
-- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，再加 `GET /api/blocks/{blockId}/raw`（按 `trajectory_payloads.payload + 行号` 回读，见 [06 §3.0](06-database-design.md)）。
+- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，再加 `GET /api/content-blocks/{blockId}/raw`（按 `trajectory_payloads.payload + 行号` 回读，见 [06 §3.0](06-database-design.md)）。
 - 选项 B：现在纳入，作为独立 issue——但没有消费入口（时间线没了），收益存疑。
 
 ### Q4. 用户管理界面范围
@@ -129,13 +129,13 @@
 
 | # | 风险点 | 为什么重要 | 设计中的对策 |
 |---|---|---|---|
-| R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 原样移植；先做 `demo-nested` 最小树验收（[03 §8.3](03-frontend-architecture.md)） |
+| R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 迁移；先做 `demo-nested` 最小树验收；`×N` 改为 message 口径（[03 §8.3](03-frontend-architecture.md)） |
 | R2 | 外部问题/归因表契约 | 字段漂移会让整个错误页与自进化失效 | 只读表 + 查询层防御（缺字段降级、日志告警）；fixtures 与真实表同构；上游表变更需评审（[06 §4](06-database-design.md)） |
 | R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
 | R4 | 六步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
 | R6 | 深链 ID 校验 | 前缀猜 session 会串会话 | 解析后用 `sessionId` 校验，不匹配报 409（[05 §5](05-api-design.md)） |
-| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, session_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
+| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, agent_session_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
 | R8 | SQLite / MySQL 行为差异 | 本地绿、切库红 | 双库 CI（`-m mysql`）+ SQL 纪律（不用方言语法、索引列 VARCHAR、JSON 不查 SQL），见 [06 §1.1](06-database-design.md) |
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
 | R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |

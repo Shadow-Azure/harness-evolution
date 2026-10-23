@@ -115,7 +115,7 @@ apps/web/
       errors/            # 错误详情与归因
       evolution/         # 运行列表 / 详情 / 仅聚类 / 对象配置
       evolution/components/  # Stepper/ClusterCard/DiffView/RunLogPanel/LaunchWizard 等页面专属件
-    components/          # family-tree / bad-cases / ui（含 IconRenderer）/ layout（跨页面共享）
+    components/          # agent-tree / bad-cases / ui（含 IconRenderer）/ layout（跨页面共享）
     test/                # setup.ts + MSW server（测试用，不进 dev）
     router/              # 路由、深链、登录守卫
 ```
@@ -139,17 +139,21 @@ apps/web/
                    │ parser_version        │
                    └───────────┬───────────┘
                                ▼
-                   ┌───────────────────────┐
-                   │ 归一化器              │
-                   │ JSONL → 轮次/步骤/块  │
-                   └───────────┬───────────┘
+                   ┌──────────────────────────────┐
+                   │ normalize                    │
+                   │ JSONL -> user_turns          │
+                   │ messages / content_blocks    │
+                   └──────────────┬───────────────┘
                                ▼
-                   ┌───────────────────────┐
-                   │ 业务表                │
-                   │ sessions / members /  │
-                   │ rounds / steps /      │
-                   │ blocks / member_events│
-                   └───────────────────────┘
+                   ┌─────────────────────────┐
+                   │ tables                  │
+                   │ session_families        │
+                   │ agents                  │
+                   │ user_turns              │
+                   │ messages                │
+                   │ content_blocks          │
+                   │ agent_events            │
+                   └─────────────────────────┘
 ```
 
 两类来源共用一个归一化管线：
@@ -161,7 +165,7 @@ apps/web/
 
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `session_id` 回查。
 - 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
-- 归一化规则不变（[06 §7.1](06-database-design.md)）：轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
+- 归一化规则不变（[06 §7.1](06-database-design.md)）：用户轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
 
 ### 4.2 查询链路（按模块拆分，页面并行加载）
 
@@ -170,15 +174,15 @@ apps/web/
 ```text
 浏览器 /sessions/:sid
    │
-   ├──► GET /sessions/{sid} ──────────► sessions 服务 ──► sessions 表
+   ├──► GET /sessions/{sid} ──────────► sessions 服务 ──► session_families 表
    │                                      └──► summary 响应 ──┐
    │                                                          │
-   ├──► GET /sessions/{sid}/tree ─────► sessions 服务 ──► members / member_events
+   ├──► GET /sessions/{sid}/tree ─────► sessions 服务 ──► agents / agent_events
    │                                      │                  + bad_cases
    │                                      └──► tree 响应 ─────┤
    │                                                          │
    └──► GET /sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
-                                          │                  + sessions（存在性校验）
+                                          │                  + session_families（存在性校验）
                                           └──► bad-cases 响应 ┘
                                                                │
                                                                ▼
@@ -186,7 +190,7 @@ apps/web/
 ```
 
 - **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），会话概览先到就先渲染，Agent 会话树/问题列表后到。
-- 每个接口只做自己的服务组装：会话概览读 `sessions`；Agent 会话树读 `members/member_events` 并按 `bad_case_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
+- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
 - 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
 - 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
@@ -239,7 +243,7 @@ POST /runs（同步校验 target/probe）
   → evolution_prepare job
        → 查 probe → simple_cluster
        → workspace clone / 建 run 分支
-       → clusters / rounds
+       → clusters / evolution_rounds
        → run(running)
   → evolution_advance job（每轮）
        → patch → candidate commit
@@ -251,7 +255,7 @@ POST /runs（同步校验 target/probe）
        → failed/timeout → run(blocked, stage=eval)
   → evolution_apply job
        → 接纳：amend → push candidate → ff run 分支 → push run 分支 → 删 candidate
-       → 拒绝：删 candidate → reset
+       → 拒绝：删 candidate → 切回 run 分支
        → 下一轮 / finalize
 ```
 
@@ -262,7 +266,7 @@ POST /runs（同步校验 target/probe）
 
 #### 4.3.4 轨迹归一化：后台定时处理 + 单飞锁
 
-这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `sessions / members / rounds / steps / blocks / member_events`。
+这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `session_families / agents / user_turns / messages / content_blocks / agent_events`。
 
 ```text
 lifespan 启动 scheduler（默认每 60s）
@@ -279,8 +283,8 @@ POST /acquisition/sync
        └─ 成功：202 { jobId: 新任务, reused: false }
 ```
 
-- **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `sessions` 里不存在，自然查不到。
-- **自进化查询仍是 `probe_reports INNER JOIN sessions`**：session 未归一化 → probe 不可见；不做 preflight，也不返回 `DATA_NOT_READY`。
+- **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `session_families` 里不存在，自然查不到。
+- **自进化查询仍是 `probe_reports INNER JOIN session_families`**：session 未归一化 → probe 不可见；不做 preflight，也不返回 `DATA_NOT_READY`。
 - **单飞锁**：`sync_lock` 单行表（`name='sync'`）+ `job_id/acquired_at/expires_at`；`INSERT` 主键冲突即已有任务。
 - V1 单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
 - `job_runs` 同 `kind=sync` 只允许一个 `queued/running`，作为第二道保险。
@@ -325,7 +329,7 @@ POST /acquisition/sync
 
 ```text
 ┌─ 轨迹（本服务写业务表） ──────────────────────────────────────────┐
-│ trajectory_payloads / 上游 API ──► acquisition ──► sessions/members/… │
+│ trajectory_payloads / 上游 API ──► acquisition ──► session_families/agents/… │
 └───────────────────────────────────────────────────────────────────┘
 
 ┌─ 问题与归因（外部写，本服务只读） ────────────────────────────────┐
@@ -334,7 +338,7 @@ POST /acquisition/sync
                                                 │ 只读
                                                 ▼
 ┌─ 自进化（本服务写） ──────────────────────────────────────────────┐
-│ evolution ──► evolution_runs / probe_clusters / rounds            │
+│ evolution ──► evolution_runs / probe_clusters / evolution_rounds        │
 └───────────────────────────────────────────────────────────────────┘
 
 fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
@@ -343,9 +347,9 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 | 数据 | 写入方 | 本服务 | 接入方式 |
 |---|---|---|---|
 | 原始轨迹（每 agent JSONL） | 第三方脚本；pull 时本服务写入 | **只读**（pull 除外） | `trajectory_payloads` |
-| 轨迹业务表（sessions/members/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
+| 轨迹业务表（session_families/agents/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
 | 问题与归因（bad_cases / analysis / probe） | 外部系统 | **只读** | `db/models` 只读表 + `db/crud` |
-| 自进化（runs / clusters / rounds / finals） | 本服务 | 读写 | `service/evolution` |
+| 自进化（runs / clusters / evolution_rounds / finals） | 本服务 | 读写 | `service/evolution` |
 | 用户、任务审计 | 本服务 | 读写 | `service/identity`、`service/jobs.py` |
 
 ### 5.2 没有统一 Provider 层（2026-10-22 修订）
@@ -399,8 +403,8 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 |---|---|---|
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
-| 同步幂等 | `(root_session_id, session_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
-| 大轨迹 | Agent 会话树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 步 / 57 个子 agent 的会话存在，不能查询时重算 |
+| 同步幂等 | `(root_session_id, agent_session_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
+| 大轨迹 | Agent 会话树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
 | 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
@@ -414,7 +418,7 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 |---|---|---|
 | 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 脚本 payload 先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
 | payload 表结构与预期不一致 | 归一化失败 | payload 契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
-| Vue Flow 与 React Flow 的 API 差异 | Agent 执行流图移植返工 | 布局几何纯 TS 原样移植，先做 `demo-nested` 最小树验证（[08 §3](08-frontend-implementation.md)） |
+| Vue Flow 与 React Flow 的 API 差异 | Agent 执行流图移植返工 | 布局几何纯 TS 迁移，先做 `demo-nested` 最小树验证；`×N` 改为 message 口径（[08 §3](08-frontend-implementation.md)） |
 | 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
 | git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
 | 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_url`/`ref`/`sub_dir`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
