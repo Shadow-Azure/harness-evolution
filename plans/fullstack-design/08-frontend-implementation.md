@@ -1,6 +1,6 @@
 # 08 · 前端的实现设计
 
-> 本文回答：每个页面用什么组件、数据怎么取、交互怎么实现、家族树怎么落地、V1 占位实现前端要注意什么。
+> 本文回答：每个页面用什么组件、数据怎么取、交互怎么实现、Agent 执行流图怎么落地、V1 占位实现前端要注意什么。
 > 前置：[03 前端架构](03-frontend-architecture.md) · [05 接口设计](05-api-design.md)；验收基准：[原型 HTML](../14-15-ui-prototype/harness-evolution.html) 与截图。
 
 ## 1. 页面与路由实现映射
@@ -8,7 +8,7 @@
 | 路由 | 页面组件 | 主要数据 | 对应原型 |
 |---|---|---|---|
 | `/login` | `pages/login/Index.vue` | `POST /auth/login` | 登录页（唯一公开页） |
-| `/sessions`、`/sessions/:sid` | `pages/sessions/Index.vue` | `GET /sessions`、`GET /sessions/{sid}`、`/tree`、`/bad-cases` | Session 浏览器 + 家族摘要 |
+| `/sessions`、`/sessions/:sid` | `pages/sessions/Index.vue` | `GET /sessions`、`GET /sessions/{sid}`、`/tree`、`/bad-cases` | Session 浏览器 + 会话概览 |
 | `/sessions/:sid/errors` | `pages/errors/Index.vue` | `GET /sessions/{sid}/bad-cases`、`GET /bad-cases/{badCaseId}`、`/analysis`、`GET /probes/{probeId}` | 错误详情与归因 |
 | `/evolution` | `pages/evolution/Index.vue` | `GET /evolution/runs`、`GET /catalogs/*` | 自进化列表 + 启动向导 |
 | `/evolution/targets` | `pages/evolution/targets/Index.vue` | `GET/POST/PUT/DELETE /evolution/targets`、`GET .../versions` | **进化对象配置页（新增）** |
@@ -47,7 +47,7 @@ router
 | `api/queryClient.ts` | 全局缓存策略 |
 | `api/queryKeys.ts` | queryKey 工厂（集中） |
 | `api/auth.ts` | login / refresh / logout / me |
-| `api/sessions.ts` | 列表 / 摘要 / 家族树 / 问题 |
+| `api/sessions.ts` | 列表 / 会话概览 / Agent 会话树 / 问题 |
 | `api/badCases.ts` | 问题详情 / 归因状态 |
 | `api/probes.ts` | 归因结论 |
 | `api/evolution.ts` | runs / 六步 / 事件 / 配置 / 启动推进 / push |
@@ -129,7 +129,7 @@ export const keys = {
 | 动作 | 失效 |
 |---|---|
 | `POST /evolution/runs` | `["evolution","runs"]` |
-| `POST /advance` / SSE `run.progress` | `["evolution", rid]` 前缀（详情 + 全部 step） |
+| `POST /runs/{rid}/retry` / SSE `run.progress` | `["evolution", rid]` 前缀（详情 + 全部 step） |
 | `POST /api/acquisition/sync` 完成（SSE） | `["sessions"]`、所有 `["session", …]` 前缀 |
 
 ### 2.5 composables 签名
@@ -156,23 +156,24 @@ useSessionProbes(sid: Ref<string>)
 useRuns()
 useRun(rid: Ref<string>)
 useRunStep(rid: Ref<string>, step: Ref<number>)      // enabled: step 可达
-useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>)  // GET /evolution/runs/{rid}/events
+useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive: Ref<boolean>)  // GET /evolution/runs/{rid}/events
 useProbeQuery()                                      // mutation → POST /evolution/probes/query
 useCreatePreview()  usePreview(id)
-useStartRun()  useAdvance(rid)
+useStartRun()   useRetry(rid)
 
 // useAcquisition.ts
 useSyncStatus()       // GET /acquisition/status
-useTriggerSync()      // mutation：POST /acquisition/sync → 处理待归一化 payload，SSE 跟进度
+useTriggerSync()      // mutation：POST /acquisition/sync → 后台处理待归一化 payload；轮询 status，不订 SSE
 usePullSessions()     // mutation：POST /acquisition/pull（按 sessionIds / window）
 
 // useTargets.ts
-useTargets()          // GET /evolution/targets（仅 enabled 出现在向导）
-useTargetVersions(id) // GET /evolution/targets/{id}/versions（git tag）
+useTargets()          // GET /catalogs/targets（向导候选；仅 enabled）
+useTargetConfigs()    // GET /evolution/targets（配置页 CRUD）
+useTargetVersions(id) // GET /evolution/targets/{id}/versions（仓库 tag）
 useCreateTarget() useUpdateTarget() useDeleteTarget()   // admin 写操作
 
 // useCatalogs.ts
-useModels()                                   // staleTime: Infinity
+useModels()           // GET /catalogs/models（来自 members.model 聚合；staleTime: 5min）
 ```
 
 - 所有 composable 返回 `{ data, isLoading, isError, error, refetch }`，页面不直接碰 `http.ts`。
@@ -181,7 +182,7 @@ useModels()                                   // staleTime: Infinity
 ### 2.6 SSE（`composables/useRunEvents.ts`）
 
 ```ts
-export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>) {
+export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive: Ref<boolean>) {
   let es: EventSource | null = null
   let closed = false
   const connect = async () => {
@@ -193,18 +194,20 @@ export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>) {
     es = new EventSource(`/api/events?ticket=${ticket}`)
     es.addEventListener("run.event", e => { appendEvent(JSON.parse(e.data)); loadedSeq.value = ... })
     es.addEventListener("run.progress", () => invalidateRun(rid.value))
+    es.addEventListener("run.blocked", () => { es?.close(); invalidateRun(rid.value) })
     for (const type of ["run.completed", "run.failed", "run.interrupted"]) {
       es.addEventListener(type, () => { closed = true; es?.close(); invalidateRun(rid.value) })
     }
     es.addEventListener("reset", () => { es?.close(); void reloadRunSnapshot(rid.value) })
     es.onerror = () => { es?.close(); if (!closed) setTimeout(connect, 3000) }  // 重连重新取票
   }
-  onMounted(() => { if (isRunning.value) void connect() })
+  onMounted(() => { if (isActive.value) void connect() })
+  watch(isActive, active => { if (active) void connect(); else es?.close() })
   onUnmounted(() => { closed = true; es?.close() })
 }
 ```
 
-- **页面级，不是全局**：App.vue 不建立常驻 SSE；只有 `status=running` 的 run 详情才调用 `useRunEvents`。
+- **页面级，不是全局**：App.vue 不建立常驻 SSE；只有 `preparing/running` 的 run 详情才调用 `useRunEvents`；`isActive` 由 `run.status` computed 得出，`blocked` 时关闭并走轮询/重试。
 - **先 REST 后 SSE**：页面先并行拉 `run` / `step` / `events?afterSeq=0`（分页拉完）渲染初版，再把**已加载的最后一条事件 seq** 传给 ticket 的 `lastEventId`，补齐快照与流之间的空档。
 - **已完成 run**：不取 ticket、不建 SSE；翻 step / 日志继续走 REST。
 - **同步动作不订阅 SSE**：后台 scheduler / admin 手动只写 `job_runs`；前端轮询 `GET /acquisition/status` 或 `GET /jobs/{id}`。
@@ -212,7 +215,7 @@ export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>) {
 - 收到 `run.progress` 只失效 queryKey；`run.event` 可增量 append（DB 事件是事实源）。
 - 离开页面、run 终态、登出都主动 `es.close()`。
 
-## 3. 家族树（`components/family-tree/`）
+## 3. Agent 执行流图（`components/family-tree/`）
 
 ### 3.1 文件结构
 
@@ -332,7 +335,7 @@ Index.vue
 | 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial） |
 | 排序 | 4 个选项直传后端 `sort` |
 | 选中 session | 路由到 `/sessions/:sid`；列表高亮由当前路由参数派生，**不再用 Pinia 存当前 sid** |
-| 数据加载 | `useSessionSummary` / `useSessionTree` / `useSessionBadCases` 三个 query **并行**；摘要先到先渲染，树和问题列表各自 skeleton，互不阻塞 |
+| 数据加载 | `useSessionSummary` / `useSessionTree` / `useSessionBadCases` 三个 query **并行**；会话概览先到先渲染，树和问题列表各自 skeleton，互不阻塞 |
 | 三态 | 列表加载：骨架 4 张；空：`EmptyState`（"没有匹配当前筛选的 session"）；失败：`ErrorState` + 重试 |
 | 首屏无选中 | 自动选第一个 session（原型行为），URL 同步 |
 
@@ -348,13 +351,13 @@ Index.vue
 
 | 位置 | 调整 |
 |---|---|
-| Session 摘要 CTA | 只保留「打开错误详情」，移除「打开时间线」 |
+| 会话概览 CTA | 只保留「打开错误详情」，移除「打开时间线」 |
 | 错误详情页头 | 移除「打开时间线」按钮，只保留「返回 Session」 |
 | 面包屑 | 不再有"Session 浏览器 › 标题"的时间线面包屑；Session 页用顶栏 + 返回链接 |
-| 数据层 | 不请求轮次/步骤/块；列表与摘要只用 `sessions` 的聚合字段（轮次、步骤、工具失败、token） |
+| 数据层 | 不请求轮次/步骤/块；列表与会话概览只用 `sessions` 的聚合字段（轮次、步骤、工具失败、token） |
 | 代码高亮/长输出折叠 | 随页面一并移除，首版不引 highlight.js |
 
-保留下来的能力：会话统计（轮次数、步骤数、工具失败数、token）仍由同步时聚合，展示在列表卡与摘要统计条上；这些数字不依赖时间线页面。
+保留下来的能力：会话统计（轮次数、步骤数、工具失败数、token）仍由同步时聚合，展示在列表卡与会话概览统计条上；这些数字不依赖时间线页面。
 
 ## 7. 错误详情页（`pages/errors/Index.vue`）
 
@@ -426,23 +429,33 @@ stateDiagram-v2
 
 ### 9.2 Step1 表单
 
+向导打开时**并行**加载后端清单（不在前端写死）：
+
+```text
+GET /api/catalogs/targets   → 可进化对象（skill/agent）+ repoUrl/subDir/defaultRef/versions
+GET /api/catalogs/models    → 模型列表（来自 members.model 聚合，含 session/agent 计数）
+选择对象后：GET /api/evolution/targets/{id}/versions → 版本下拉
+```
+
 - 对象类型分段控件（skill/agent）→ 切换后名称与版本级联重置（原型行为）。
 - 名称：`useTargets()` 提供**已配置且启用**的对象；未配置的对象不出现。
-- 版本：`useTargetVersions(targetId)` 从本地仓库 tag 列表拉取；默认选中 `defaultRef` 对应项。
-- **配置入口**：名称选择器右侧一个齿轮图标，点击跳 `/evolution/targets`（配置页）；返回后刷新候选。
+- 版本：`useTargetVersions(targetId)` 从配置仓库的 tag 列表拉取；默认选中 `defaultRef` 对应项。
+- **配置入口**：名称选择器右侧一个齿轮图标，点击跳 `/evolution/targets`（配置页）；返回后失效 `["catalogs"]` 与 `["evolution","targets"]`，向导候选刷新。
 - 时间段：两个 `el-date-picker`，校验 `from <= to`。
-- 模型多选：`useModels()` 提供的 chips，可全不选（= 全部模型）。
+- 模型多选：`useModels()` 提供的 chips，可全不选（= 全部模型）；chip 可显示 `model` 与 `sessionCount`。
 - 「下一步」：调 `useProbeQuery().mutate(condition)`（`POST /evolution/probes/query`），成功进 Step2；无匹配时后端 409 `NO_PROBES_MATCHED`。
 
 ### 9.3 Step2 命中确认
 
 - 条件摘要条（chip 形式）+ 「修改条件」。
-- 统计：sessions / probes / usedProbes / 按 `attributeType` 的分布条 + 图例。
-- probe 表：5 列（probe ID / 归属会话 / 根因对象@版本 / 属性类型 / 来源 bad_case）；ID 显示截短 + tooltip，点击新窗口打开对应问题详情。
+- 统计：sessions / badCases / analyzed / unanalyzed / probes / usedProbes / 按 `attributeType` 的分布条 + 图例。
+- 未分析报告只计数、不进入 probe 表；显示“等待外部归因”提示，不提供触发分析按钮。
+- probe 表：6 列（probe ID / 归属会话 / 模型 / 根因对象@版本 / 属性类型 / 来源 bad_case）；ID 显示截短 + tooltip，点击新窗口打开对应问题详情。
 - 分页：每页 8 条。
 - 两个出口：
-  - 「启动问题聚类分析」→ `useCreatePreview()`（`POST /cluster-previews`，创建 `cluster_only` run）→ 路由 `/evolution/cluster/:runId`
-  - 「启动自进化 →」→ `useStartRun()` → 路由 `/evolution/runs/:rid`
+  - 「启动问题聚类分析」→ `useCreatePreview()`（`POST /cluster-previews`，返回 `202 runId`）→ 路由 `/evolution/cluster/:runId`，页面先显示“准备中”
+  - 「启动自进化 →」→ `useStartRun()`（`POST /runs`，返回 `202 runId`）→ 路由 `/evolution/runs/:rid`，页面先显示“准备中”
+- 202 只表示“已受理准备”；不要等接口返回簇或 RunDetail。
 
 ### 9.4 占位数据说明
 
@@ -454,18 +467,19 @@ stateDiagram-v2
 ```text
 Index.vue
 ├── 页头：标题 + "新增配置"
-├── TargetTable.vue：objectType / objectName / repoPath / subDir / defaultRef / enabled / 操作
+├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / enabled / 操作
 └── TargetFormDialog.vue（新增/编辑）
     ├── objectType（skill/agent）
     ├── objectName
-    ├── repoPath（绝对路径）
-    ├── subDir（相对仓库根）
-    ├── defaultRef（tag/分支）
+    ├── repoUrl（git 远端地址，https/ssh；不写 token）
+    ├── subDir（相对仓库根，如 skills/deep-research）
+    ├── defaultRef（基线分支或 tag，如 main / v2.0.0）
     └── enabled 开关
 ```
 
 - 写操作仅 admin 可见；成员只读。
-- 保存前前端做必填校验；仓库/ref 合法性由后端返回 `422 REPO_INVALID`，表单展示错误。
+- 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，表单展示错误。
+- 版本下拉来自该仓库的 tag；`defaultRef` 作为默认基线。
 - 删除前提示"有进行中 run 时不可删除"（后端 409 `TARGET_IN_USE`）。
 - 保存成功失效 `["evolution","targets"]` 前缀，向导候选刷新。
 
@@ -475,8 +489,9 @@ Index.vue
 
 ```text
 RunDetail.vue
-├── DetailHeader.vue（标题 + 状态 + 模拟推进按钮）
-├── infoPanel（目标与输入：kv-grid + 类型分布条）
+├── DetailHeader.vue（标题 + 状态；无“推进一轮”按钮）
+├── blockedBanner（push/eval 失败时显示阶段、错误、自动重试时间、[重试]）
+├── infoPanel（目标与输入：kv-grid + 类型分布条 + 评测/推送状态）
 ├── StepperPanel.vue
 │   ├── Stepper.vue（6 步，来自 run.steps）
 │   └── StepContent.vue（按 step 动态组件）
@@ -490,27 +505,30 @@ RunDetail.vue
 
 | 交互 | 实现 |
 |---|---|
-| 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点） |
-| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit`（路径可折叠）；点击可复制分支名 |
-| 推送状态 | 终评区展示 `pushStatus`（pending/succeeded/failed/skipped）与 `pushedAt`；失败展示脱敏错误 + 「重试 push」按钮（调 `POST /runs/{rid}/push`） |
-| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{current}` + `/events?afterSeq=0`（分页拉完）渲染初版；`status=running` 才建立 SSE，`completed/failed/interrupted` 不建 |
-| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, loadedSeq)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
+| 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点）；`preparing` 时显示 step 0 的准备态 |
+| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl`（路径可折叠）；点击可复制分支名 |
+| 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
+| 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
+| 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{current}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
+| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, loadedSeq, isActive)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
-| 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.failed/interrupted` → 失效 run + events |
-| 中断恢复 | 页面刷新后先拉 `run` 与 `events`，不依赖 SSE 历史；`interrupted` 显示"任务被中断，可查看最后事件" |
+| 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
+| 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step=n` + 拉 `useRunStep` |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
-| 「模拟推进一轮」 | `useAdvance().mutate(rid)` → 成功后失效 `["evolution", rid]`，SSE 也会触发同样的失效（去抖去重） |
-| 进度实时更新 | 仅 `status=running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress` → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` 并关闭 |
+| 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
+| 评测状态 | `evalStatus`：pending/evaluating/completed/failed；`evaluating` 显示“评测中，下一次轮询 …”；失败时进入 blocked |
+| 进度实时更新 | 仅 `preparing/running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress`/`run.blocked` → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` 并关闭 |
 | 未到达的 step | 后端返回 404 `STEP_NOT_READY`；前端不请求（`enabled: step.clickable`） |
 
 ### 10.3 Step4 迭代卡
 
-- 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 评测中 / 已接纳 Δ / 未接纳 Δ）。
-- 展开内容顺序：簇内 probe 列表 → patch diff → 评测对比 → commit / 拒绝说明。
-- 评测中：展示 **candidate commit**（hash + 追溯 message），表示 patch 已提交、等待评测。
-- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict）。
-- 未接纳：显示"candidate commit 已 reset 丢弃，分支不变"；不展示 commit hash。
+- 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 推送中 / 评测中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
+- 展开内容顺序：簇内 probe 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
+- 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
+- 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。
+- 未接纳：显示“candidate 已删除，run 分支不变”；不展示 commit hash。
+- blocked：显示是 push 还是 eval 阶段失败；push 阶段保留 candidate ref，可重试。
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
 - `EvalCompare`：两条横向条（current 灰 / candidate 绿或红），宽度按 `max(cur,cand)*1.06` 归一（原型算法）。
 
@@ -532,10 +550,11 @@ RunLogPanel.vue
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
+- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}`，完成后拉 `steps/1`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：session / probe / 聚类数。
 - 聚类列表：每簇展示类型、probe 数、簇内 probe 列表（可展开）。
-- 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/1`）；「启动自进化」用同一条件再创建 `mode=full` 的 run。
+- 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/1`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
 
 ## 12. 样式与视觉实现
 
@@ -576,7 +595,7 @@ export const TYPE_COLOR: Record<string, string> = {
 
 | 状态 | 表现 |
 |---|---|
-| 加载 | 骨架屏（列表 4 张卡；家族摘要 1 个 panel；详情 1 个 panel） |
+| 加载 | 骨架屏（列表 4 张卡；会话概览 1 个 panel；详情 1 个 panel） |
 | 空 | `EmptyState`：图标 + 一句人话 + 可选操作 |
 | 错误 | `ErrorState`：错误码/消息 + 「重试」；404 显示"不存在或已删除"；409（如 RUN_BUSY）显示 Message 提示不整页报错 |
 
@@ -605,11 +624,11 @@ export const TYPE_COLOR: Record<string, string> = {
   ▼
 http/queryKeys + API 按域模块 + test setup
   ▼
-Session 列表 + 摘要
+Session 列表 + 会话概览
   ▼
-家族树 layout + 最小树
+Agent 执行流图 layout + 最小树
   ▼
-家族树全量 + 问题卡
+Agent 执行流图全量 + 问题卡
   ▼
 错误详情 + 归因
   ▼
@@ -621,7 +640,7 @@ Session 列表 + 摘要
 ```
 
 每个 PR 建议：一个页面或一个组件族 + 对应测试 + 与后端接口的联调截图（放 PR 描述）。原型截图可作为视觉对照：
-- 家族树：[execution-flow](../14-15-ui-prototype/screenshot-claude-code-execution-flow.png)
+- Agent 执行流图：[execution-flow](../14-15-ui-prototype/screenshot-claude-code-execution-flow.png)
 - 错误详情：[errors](../14-15-ui-prototype/screenshot-claude-code-errors.png)
 - 归因：[attribution](../14-15-ui-prototype/screenshot-claude-code-attribution.png)
 - 问题卡：[problem](../14-15-ui-prototype/screenshot-claude-code-problem.png)
@@ -629,7 +648,7 @@ Session 列表 + 摘要
 ## 16. V1 占位实现的前端说明（重要）
 
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
-- 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有运行中的 run 页面才申请 SSE 票据，重连重新取票，完成/离开即关闭。
-- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；接纳后 message 追加评测对比（amend），拒绝则 reset 丢弃该 commit。V1 在 run 完成后校验分支并 push 到远端；patch 内容与评分是占位，但 commit/amend/reset/push 都是真的。UI 需明示"占位 patch / 占位评测"。
+- 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有 `preparing/running` 的 run 页面才申请 SSE 票据，重连重新取票，完成/阻塞/离开即关闭。
+- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate 并 reset。patch 内容与评分是占位，但 commit/amend/reset/push 都是真的。UI 需明示"占位 patch / 占位评测"。
 - 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 的齿轮图标。
 - 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。

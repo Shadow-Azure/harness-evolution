@@ -123,7 +123,7 @@ erDiagram
 | `session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 实际 agent id；对应 `trajectory_payloads.session_id` |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
-| `line_count` | `INTEGER` | NOT NULL | 行数（家族树比例尺） |
+| `line_count` | `INTEGER` | NOT NULL | 行数（Agent 执行流图比例尺） |
 | `received_at` | `DATETIME` | NOT NULL | 首次发现该 payload 的时间 |
 | `processed_at` | `DATETIME` | NULL | 最近一次归一化完成时间；NULL = 待处理 |
 | `processed_hash` | `CHAR(64)` | NULL | 已归一化时的 payload 哈希 |
@@ -136,7 +136,7 @@ erDiagram
 
 **幂等规则**：hash 未变且解析器版本未升级 → 跳过；hash 变化 → 事务内删除该记录派生的行并重放；payload 侧删除 → 保留业务数据并记日志（首版不级联删除）。
 
-### 3.2 `sessions` —— 根会话（列表与摘要的读模型）
+### 3.2 `sessions` —— 根会话（列表与会话概览的读模型）
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -146,14 +146,15 @@ erDiagram
 | `search_text` | `VARCHAR(512)` | NOT NULL | `lower(title + repo)`，搜索用 |
 | `repo_name` | `VARCHAR(255)` | NOT NULL | 仓库名 |
 | `project_path` | `TEXT` | NOT NULL | 项目路径 |
-| `model` | `VARCHAR(64)` | NULL | 主模型 |
+| `model` | `VARCHAR(64)` | NULL | 主 agent 模型 |
+| `models` | `JSON` | NOT NULL | 整棵 Agent 会话树去重后的模型列表（含子 agent） |
 | `started_at` / `ended_at` | `DATETIME` | NOT NULL | 首末事件时间（UTC） |
 | `duration_seconds` | `INTEGER` | NOT NULL | 真实跨度 |
 | `status` | `VARCHAR(16)` | NOT NULL | `ok` / `partial` / `fail`（规则见 §7.2） |
 | `skill_names` | `JSON` | NOT NULL | 递归聚合的 skill 名 |
 | `rounds_count` / `steps_count` / `tools_count` / `errors_count` / `agents_count` | `INTEGER` | NOT NULL | 冗余聚合 |
 | `bad_cases_count` | `INTEGER` | NOT NULL | 该会话问题数（同步时由问题侧表回填或查询时聚合） |
-| `tokens_total` | `BIGINT` | NOT NULL | 全家族 token |
+| `tokens_total` | `BIGINT` | NOT NULL | 整棵 Agent 会话树 token |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
 | `main_record_id` | `BIGINT` | FK → `source_records.id` | 主 agent 的处理记录 |
 | `imported_at` / `updated_at` | `DATETIME` | NOT NULL | — |
@@ -162,7 +163,7 @@ erDiagram
 
 > `bad_cases_count` 来自问题侧（外部写入），同步轨迹时不能算；实现上在查询时 `LEFT JOIN` 聚合，或由定时任务刷新（见 [07 §3](07-backend-implementation.md)）。
 
-### 3.3 `members` —— 家族成员（agent / subagent）
+### 3.3 `members` —— Agent 节点（agent / subagent）
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -172,16 +173,17 @@ erDiagram
 | `parent_member_id` | `VARCHAR(64)` | FK → `members.id` NULL | 根为 NULL |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `agent_type` | `VARCHAR(64)` | NULL | `general-purpose` / `Explore` / `workflow` |
+| `model` | `VARCHAR(64)` | NULL | 该 agent 使用的模型；主/子 agent 可不同 |
 | `description` | `TEXT` | NULL | 触发它的 Agent 调用描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里对应 Agent 调用的 id |
 | `transcript_record_id` | `BIGINT` | FK → `source_records.id` | 子转录处理记录 |
-| `lines` | `INTEGER` | NOT NULL | 转录行数（家族树条宽） |
+| `lines` | `INTEGER` | NOT NULL | 转录行数（Agent 执行流图条宽） |
 | `depth` | `INTEGER` | NOT NULL | 根=0 |
 | `sort_key` | `DOUBLE` | NOT NULL | 树内排序 |
 
-索引：`INDEX(root_session_id)`、`INDEX(parent_member_id)`、`UNIQUE(session_id)`。
+索引：`INDEX(root_session_id)`、`INDEX(parent_member_id)`、`UNIQUE(session_id)`、`INDEX(model)`。
 
-### 3.4 `member_events` —— 家族树触发点
+### 3.4 `member_events` —— Agent 会话树触发点
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
@@ -248,7 +250,7 @@ erDiagram
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | `VARCHAR(36)` PK | ULID |
-| `kind` | `VARCHAR(32)` | `sync` / `pull` / `evolution_prepare` / `evolution_advance` |
+| `kind` | `VARCHAR(32)` | `sync` / `pull` / `evolution_prepare` / `evolution_advance` / `evolution_apply` / `evolution_finalize` / `evolution_retry` |
 | `ref_id` | `VARCHAR(64)` NULL | 关联的 `sync_runs.id` / `evolution_runs.id` |
 | `status` | `VARCHAR(16)` | `queued` / `running` / `completed` / `failed` / `interrupted` |
 | `progress` | `DOUBLE` | 0..1 |
@@ -331,9 +333,9 @@ erDiagram
 | `id` | `VARCHAR(36)` | PK | ULID |
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_name` | `VARCHAR(128)` | NOT NULL | 对象名（如 `deep-research`） |
-| `repo_path` | `VARCHAR(1024)` | NOT NULL | 本地已 clone 的 skill 仓库绝对路径 |
+| `repo_url` | `VARCHAR(1024)` | NOT NULL | 远端 git 仓库地址（https/ssh；不含凭据） |
 | `sub_dir` | `VARCHAR(512)` | NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`） |
-| `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线（tag 或 branch） |
+| `default_ref` | `VARCHAR(128)` | NOT NULL | 默认基线分支或 tag（如 `main` / `v2.0.0`） |
 | `enabled` | BOOLEAN | NOT NULL DEFAULT true | 关闭后不进入向导候选 |
 | `created_by` | `VARCHAR(36)` | NULL | FK → `users.id` |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
@@ -351,19 +353,24 @@ erDiagram
 | `target_type` | `VARCHAR(16)` | `skill` / `agent`（来自 probe） |
 | `target_name` | `VARCHAR(128)` | `probe_object` |
 | `target_version` | `VARCHAR(64)` | 本次使用的 tag/版本 |
-| `repo_path` | `VARCHAR(1024)` | 运行时快照的仓库路径 |
+| `repo_url` | `VARCHAR(1024)` | 本次 run 使用的远端仓库地址 |
+| `repo_path` | `VARCHAR(1024)` | 运行时本地快照/缓存的仓库路径 |
 | `base_ref` | `VARCHAR(128)` | clone 的 tag/branch |
 | `base_commit` | `CHAR(40)` | 解析后的基线 commit |
 | `branch_name` | `VARCHAR(128)` | `evo/{YYYYMMDD}-{run_id}`（含日期与 runId） |
 | `workspace_path` | `VARCHAR(1024)` | 本次 run 的独立工作区 |
 | `remote_name` | `VARCHAR(64)` | 默认 `origin` |
-| `push_status` | `VARCHAR(16)` | `pending` / `succeeded` / `failed` / `skipped`（仅测试环境关闭 push） |
-| `pushed_at` | `DATETIME` | push 成功时间 |
-| `push_error` | `TEXT` | push 失败原因（脱敏 stderr 摘要） |
+| `push_status` | `VARCHAR(16)` | 最近一次 push 的聚合状态：`pending` / `pushing` / `succeeded` / `failed` / `skipped` |
+| `pushed_at` | `DATETIME` | 最近一次 push 成功时间 |
+| `push_error` | `TEXT` | 最近一次 push 失败原因（脱敏 stderr 摘要） |
 | `window_from` / `window_to` | DATE | session 启动时间窗 |
 | `models` | JSON | 模型多选 |
-| `status` | `VARCHAR(16)` | `running` / `completed` / `failed` / `interrupted` |
-| `error_stage` | `VARCHAR(32)` NULL | 失败阶段：`prepare` / `clone` / `cluster` / `eval` / `commit` / `push` |
+| `status` | `VARCHAR(16)` | `preparing` / `running` / `blocked` / `completed` / `failed` / `interrupted` |
+| `blocked_stage` | `VARCHAR(16)` NULL | `push` / `eval`；仅 `status=blocked` 时非空 |
+| `retry_attempts` | `INTEGER` | 自动退避重试已执行次数（0..3） |
+| `next_retry_at` | `DATETIME` NULL | 下一次自动退避时间；NULL = 不再自动重试 |
+| `eval_status` | `VARCHAR(16)` | 最近一轮评测聚合：`pending` / `evaluating` / `completed` / `failed` / `timeout` |
+| `error_stage` | `VARCHAR(32)` NULL | 失败阶段：`prepare` / `clone` / `cluster` / `eval` / `commit` / `push` / `apply` |
 | `error_message` | `TEXT` NULL | 失败摘要（脱敏，供列表/详情头部展示） |
 | `error_at` | `DATETIME` NULL | 失败发生时间 |
 | `progress_unit` | `INTEGER` | 状态机游标（[07 §5](07-backend-implementation.md)） |
@@ -371,7 +378,7 @@ erDiagram
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `finished_at` | DATETIME | — |
 
-索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`。
+索引：`INDEX(created_at DESC)`、`INDEX(status)`、`INDEX(push_status)`、`INDEX(status, next_retry_at)`、`INDEX(target_type, target_name, target_version)`、`INDEX(target_config_id)`。
 
 ### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
@@ -404,16 +411,29 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK | — |
 | `probe_cluster_id` | `VARCHAR(64)` FK | 该轮针对的簇 |
 | `seq` | `INTEGER` | 第几轮 |
-| `status` | `VARCHAR(16)` | `pending` / `evaluating` / `accepted` / `rejected` / `failed` |
+| `status` | `VARCHAR(16)` | `pending` / `pushing` / `evaluating` / `applying` / `accepted` / `rejected` / `failed` |
 | `started_at` / `finished_at` | DATETIME NULL | 本轮开始/结束 |
 | `duration_ms` | `INTEGER` NULL | 耗时（毫秒） |
 | `error_message` | `TEXT` NULL | 本轮失败原因（脱敏）；`status=failed` 时非空 |
 | `patch` | JSON | `{file, lines[]}`（占位内容，真实落盘） |
+| `candidate_ref` | `VARCHAR(255)` | 本轮评测用的远端临时分支，如 `evo/.../candidate/r1` |
+| `candidate_commit` | `CHAR(40)` NULL | candidate commit SHA（评测对象） |
+| `candidate_message` | `TEXT` NULL | candidate commit message |
+| `push_status` | `VARCHAR(16)` | `pending` / `pushing` / `succeeded` / `failed` |
+| `push_attempts` | `INTEGER` | 本轮 push 已尝试次数（含立即重试与退避） |
+| `pushed_at` / `push_error` | DATETIME NULL / TEXT NULL | 最近成功时间 / 脱敏失败原因 |
+| `eval_external_id` | `VARCHAR(128)` NULL | 评测平台返回的 evalId |
+| `eval_status` | `VARCHAR(16)` | `pending` / `evaluating` / `completed` / `failed` / `timeout` |
+| `eval_attempts` | `INTEGER` | 提交评测次数 |
+| `eval_next_poll_at` | DATETIME NULL | 下一次轮询评测状态的时间 |
+| `eval_started_at` / `eval_finished_at` | DATETIME NULL | 评测起止 |
 | `eval_current` / `eval_candidate` | DOUBLE | 评测分（V1 占位） |
+| `eval_result` | JSON NULL | 评测平台返回的规范化结果 + 原始 payload |
+| `eval_error` | `TEXT` NULL | 评测失败/超时摘要（脱敏） |
 | `accepted` | BOOLEAN | — |
-| `commit_hash` / `commit_message` | `VARCHAR(40)` / `TEXT` | candidate commit 的 hash 与完整 message；接纳后 hash 更新为 amend 后的值；拒绝时清空（commit 已被 reset 丢弃） |
+| `commit_hash` / `commit_message` | `VARCHAR(40)` / `TEXT` | 接纳后的最终 commit（amend 后）；拒绝时清空 |
 
-索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`。
+索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`、`INDEX(run_id, status)`、`INDEX(eval_status, eval_next_poll_at)`。
 
 ### 5.6 `evolution_finals`
 
@@ -430,7 +450,7 @@ erDiagram
 | `seq` | `INTEGER` | NOT NULL | run 内单调递增，从 1 开始 |
 | `event_type` | `VARCHAR(48)` | NOT NULL | 见下表 |
 | `level` | `VARCHAR(8)` | NOT NULL | `info` / `warn` / `error` |
-| `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `eval` / `commit` / `push` / `final` |
+| `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `push` / `eval` / `apply` / `final` |
 | `step_index` | `INTEGER` NULL | — | 对应六步的 step（0–5） |
 | `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `probe_clusters` |
 | `round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
@@ -448,9 +468,9 @@ erDiagram
 
 | 类别 | 事件 |
 |---|---|
-| 生命周期 | `run_created`、`workspace_prepared`、`clusters_created`、`step_advanced`、`final_completed`、`run_failed`、`run_interrupted` |
-| 迭代 | `candidate_committed`、`eval_completed`、`cluster_accepted`、`cluster_rejected` |
-| 推送 | `push_started`、`push_succeeded`、`push_failed` |
+| 生命周期 | `run_created`、`prepare_started`、`workspace_prepared`、`clusters_created`、`step_advanced`、`run_blocked`、`run_resumed`、`final_completed`、`run_failed`、`run_interrupted` |
+| 迭代 | `candidate_committed`、`candidate_pushed`、`eval_submitted`、`eval_polled`、`eval_completed`、`eval_failed`、`eval_timeout`、`cluster_accepted`、`cluster_rejected` |
+| 推送 | `push_started`、`push_retry_scheduled`、`push_succeeded`、`push_failed` |
 
 - `payload` 示例：candidate `{commit, patchHash, files[], durationMs}`；eval `{current, candidate, delta, verdict}`；push `{remote, branch, commit}`；error `{stage, command, exitCode}`。
 - **异常必须落库**：任何未捕获异常在 job 边界记录 `run_failed`，并更新 `evolution_runs.status=failed` / `error_*`；进程重启导致的残留任务记录 `run_interrupted`。
@@ -479,7 +499,7 @@ erDiagram
 
 ## 7. 数据口径
 
-### 7.1 轮次/家族派生（Claude Code JSONL）
+### 7.1 轮次/Agent 会话树派生（Claude Code JSONL）
 
 | 事实 | 规则 |
 |---|---|
@@ -511,8 +531,8 @@ erDiagram
 | 功能点 | 用到的主要表 | 读写 |
 |---|---|---|
 | F3 Session 列表 | `sessions` + `bad_cases`（计数） | 读 |
-| F4 家族摘要 | `sessions` | 读 |
-| F5 家族树 | `members`、`member_events`、`bad_cases`、`bad_case_analysis` | 读 |
+| F4 会话概览 | `sessions` | 读 |
+| F5 Agent 执行流图 | `members`、`member_events`、`bad_cases`、`bad_case_analysis` | 读 |
 | F6 会话内问题列表 | `bad_cases`、`bad_case_analysis` | 只读 |
 | F7 时间线（已裁撤） | `rounds`、`steps`、`blocks` 仅内部使用 | 不读接口 |
 | F8 错误详情与归因 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 只读 |
@@ -520,7 +540,6 @@ erDiagram
 | F10–F13 自进化 | `evolution_targets`、`probe_reports`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
 | F19 进化对象配置 | `evolution_targets` | 写/读 |
 | F20 执行日志与异常 | `evolution_run_events`、`evolution_runs.error_*`、`evolution_rounds.error_*` | 写/读 |
-| F14 进度推送 | `job_runs` | 写/读 |
-| F15 对象/模型清单 | `probe_reports`（DISTINCT）、`sessions.model` | 读 |
-| F16 模拟推进 | `evolution_runs` | 写（V1 占位推进） |
+| F14 进度推送 | `job_runs`、`evolution_rounds.eval_next_poll_at` | 写/读 |
+| F15 对象/模型清单 | `evolution_targets`（对象/版本）、`members.model`（模型去重） | 读 |
 | F18 登录与鉴权 | `users` | 读/写 |

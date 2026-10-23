@@ -32,12 +32,12 @@
 | 右栏头：状态点 + 标题 + meta（开始时间/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) |
 | 右栏 CTA：打开错误详情（原「打开时间线」随 F7 裁撤移除） | F4 | [08 §1](08-frontend-implementation.md) · [08 §6](08-frontend-implementation.md) |
 | 9 项统计条（轮次/步骤/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
-| 家族树：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N 压缩/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
-| 家族树：主会话与子 agent 节点、节点链、Skill/Subagent/Workflow 触发药丸 | F5 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
-| 家族树：×N 压缩日志节点 | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
-| 家族树：问题卡（`#badCaseId 截短 + reason`）`self` / `discovery` 两类锚定规则 | F5 | [08 §3.2](08-frontend-implementation.md)（锚定规则） |
-| 家族树：>8 子 agent 折叠为"N 个子 agent · 点击展开" | F5 | [08 §3.2](08-frontend-implementation.md)（折叠规则） |
-| 家族树：滚轮缩放 / 拖拽平移 / 右下角 Controls / 自适应 | F5 | [08 §3.3](08-frontend-implementation.md) |
+| Agent 执行流图：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N 压缩/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
+| Agent 执行流图：主会话与子 agent 节点、节点链、Skill/Subagent/Workflow 触发药丸 | F5 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
+| Agent 执行流图：×N 压缩日志节点 | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
+| Agent 执行流图：问题卡（`#badCaseId 截短 + reason`）`self` / `discovery` 两类锚定规则 | F5 | [08 §3.2](08-frontend-implementation.md)（锚定规则） |
+| Agent 执行流图：>8 子 agent 折叠为"N 个子 agent · 点击展开" | F5 | [08 §3.2](08-frontend-implementation.md)（折叠规则） |
+| Agent 执行流图：滚轮缩放 / 拖拽平移 / 右下角 Controls / 自适应 | F5 | [08 §3.3](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 截短、reason、状态、上报对象、metaData 事实 chips | F6 | [05 §3.4](05-api-design.md) · [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：点击「定位 ↗」→ 画布滚动 + 高亮 + 聚焦 | F6 | [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 点击新窗口打开问题描述 tab | F2/F6 | [05 §5](05-api-design.md) |
@@ -65,9 +65,9 @@
 | run 卡：已完成 best vs 初始 + Δ + 接纳 patch 数 + 有效/无收益徽章 | F10 | 同上（`final`） |
 | 列表空态："当前没有正在执行的自进化" | F10 | [08 §8](08-frontend-implementation.md) |
 | 向导：两步指示器 | F11 | [08 §9.1](08-frontend-implementation.md) |
-| 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.11](05-api-design.md)（targets）· [08 §9.2](08-frontend-implementation.md) |
+| 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.11](05-api-design.md) · [05 §4.13](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 向导 step1：选择器右侧齿轮 → 进化对象配置页 | F19 | [05 §4.11](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) · [08 §9.5](08-frontend-implementation.md) |
-| 配置页：列表/新增/编辑/删除，repo/subDir/ref/enabled | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) |
+| 配置页：列表/新增/编辑/删除，repoUrl/subDir/defaultRef/enabled | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) |
 | 向导 step1 → step2：查询命中 | F11 | [05 §4.9](05-api-design.md) |
 | 向导 step2：条件摘要 + 修改条件 | F11 | [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：3 项统计 + 属性分布条 + 图例 | F11 | [05 §4.9](05-api-design.md)（`summary/byAttributeType`） |
@@ -75,7 +75,7 @@
 | 向导 step2：分页（每页 8 条） | F11 | [05 §7](05-api-design.md) |
 | 向导 step2：两个出口「仅聚类」「启动自进化」 | F11 | [05 §4.9–4.10](05-api-design.md) · [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：未关联 session 的行不渲染链接 | F11 | [08 §9.3](08-frontend-implementation.md) |
-| 详情：返回列表、标题、状态徽章、模拟推进 | F13 | [05 §4.10](05-api-design.md)（`advance`） |
+| 详情：返回列表、标题、状态徽章、preparing/blocked | F13 | [05 §4.10](05-api-design.md)（`status/blockedStage`） |
 | 详情：目标与输入 panel（8 项 kv + 类型分布条 + 图例） | F13 | [05 §3.5](05-api-design.md)（`stats/byAttributeType`） |
 | 详情：工作区信息（分支/base commit/路径） | F13 | [05 §3.5](05-api-design.md)（`workspace`）· [08 §10.2](08-frontend-implementation.md) |
 | 详情：6 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
@@ -83,10 +83,10 @@
 | 第 2 步：聚类卡 + 簇内 probe 列表 | F13 | [05 §3.6](05-api-design.md)（step 1） |
 | 第 3 步：归因确认（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
 | 第 4 步：严重程度排序表（顺序/类型/probe 数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3） |
-| 第 5 步：迭代卡（candidate commit → 评测 → 接纳 amend / 拒绝 reset） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.5](07-backend-implementation.md) |
+| 第 5 步：迭代卡（candidate → push → eval → 接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.5](07-backend-implementation.md) |
 | 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |
-| 第 6 步：分支名、push 状态、失败重试 push | F13 | [05 §4.10](05-api-design.md)（`workspace/push`）· [08 §10.2](08-frontend-implementation.md) |
-| 执行日志：阶段/candidate/评测/推送事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |
+| 第 6 步：分支名、push 状态、blocked 阶段与重试 | F13 | [05 §4.10](05-api-design.md)（`workspace/pushStatus`）· [08 §10.2](08-frontend-implementation.md) |
+| 执行日志：准备/候选/push/eval/阻塞/重试事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |
 | 失败/中断：状态徽章、错误摘要、刷新后仍可查 | F20 | [06 §5.7](06-database-design.md) · [08 §10.2](08-frontend-implementation.md) |
 | 仅聚类页：banner、输入概况、聚类列表、一键转完整自进化 | F12 | [05 §4.12](05-api-design.md) · [08 §11](08-frontend-implementation.md) |
 | 进度实时更新（SSE） | F14 | [04 §7.3](04-backend-architecture.md) · [05 §4.14](05-api-design.md) · [08 §2.6](08-frontend-implementation.md) |
@@ -102,11 +102,10 @@
 - 选项 C：换 Naive UI（更轻、主题变量更现代），但参考报告生态不覆盖，团队认知成本高。
 - **附带问题**：是否现在设计暗色主题？原型只有亮色；建议首版只做亮色，令牌结构预留暗色。
 
-### Q2. 「模拟推进」按钮的归宿
+### Q2. 自动逐轮推进（已定）
 
-- 现状：V1 演示推进机制（[05 §4.10](05-api-design.md)、[08 §10.2](08-frontend-implementation.md)）。
-- 选项 A（推荐）：真实实现接入后删除按钮，`POST /advance` 保留为运维/调试接口。
-- 选项 B：保留按钮，语义改为"手动重跑当前轮"。
+- **已定（2026-10-23）**：生产 UI 删除按钮；`POST /advance` 端点删除；后台自动逐轮推进。
+- 由 `eval_poller` + `blocked_sweeper` + `/retry` 处理评测等待与失败恢复。
 
 ### Q3. 「查看原始 JSON」overlay 是否纳入
 
@@ -130,7 +129,7 @@
 
 | # | 风险点 | 为什么重要 | 设计中的对策 |
 |---|---|---|---|
-| R1 | React Flow → Vue Flow 迁移 | 家族树是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 原样移植；先做 `demo-nested` 最小树验收（[03 §8.3](03-frontend-architecture.md)） |
+| R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 原样移植；先做 `demo-nested` 最小树验收（[03 §8.3](03-frontend-architecture.md)） |
 | R2 | 外部问题/归因表契约 | 字段漂移会让整个错误页与自进化失效 | 只读表 + 查询层防御（缺字段降级、日志告警）；fixtures 与真实表同构；上游表变更需评审（[06 §4](06-database-design.md)） |
 | R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
 | R4 | 六步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
@@ -142,10 +141,11 @@
 | R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
 | R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend、拒绝 reset；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
-| R13 | push 失败（凭据/远端冲突/网络） | 分支只在本地，协作方看不到 | run 仍完成，`pushStatus=failed` + 错误摘要；提供重试 push；远端已有同名分支时拒绝覆盖 |
+| R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
 | R15 | 异常详情泄露密钥/环境 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据）并截断 8KB；接口只返回脱敏内容 |
 | R16 | 定时与手动同时触发同步 | 重复处理/并发写同一 session | `sync_lock` 单飞 + TTL；手动幂等返回已有 `jobId`；`job_runs` 仅一个活跃 sync |
+| R17 | 评测接口长时间不返回/超时 | 单 worker 被占、页面误以为卡死 | `eval_poller` 每 5min 轮询、`next_poll_at` 落库、超时置 `blocked(eval)`；`/retry` 重新提交 |
 
 ## 4. 确认后的下一步
 
@@ -177,8 +177,9 @@
 - [ ] 部署与身份：SaaS 单实例 + 自建账号 JWT + 单组织共享认可
 - [ ] 轨迹来源：契约先行（05 §10）+ 第三方写 `trajectory_payloads`、本服务只归一化的方式认可
 - [ ] 范围：时间线页面裁撤（F7 不做）、归因阶段不聚类（自进化阶段才聚类）确认
-- [ ] 自进化：对象配置（repo/tag/子目录）、candidate 先 commit、接纳 amend、拒绝 reset、完成后校验并 push 认可
+- [ ] 自进化：对象配置（repoUrl/defaultRef/子目录）、candidate 先 push 临时 ref 再评测、接纳 amend+fast-forward、拒绝删 candidate、push 失败 blocked + 1/5/15min 退避
 - [ ] 执行日志：过程/异常落库、事件 API、前端日志与失败/中断展示认可
-- [ ] SSE：页面级订阅、ticket 绑定 topics/cursor、已完成任务不建连、断线从 DB 回放
+- [ ] SSE：`preparing/running` 页面级订阅、ticket 绑定 topics/cursor、blocked/终态关闭、断线从 DB 回放
+- [ ] 自进化执行：准备异步、自动逐轮、评测前 push、candidate ref、blocked + 3 次立即 + 1/5/15min 退避、`/retry`
 - [ ] 前端结构：API 按域拆、页面专属组件 co-locate、IconRenderer、node/jsdom 测试配置认可
 - [ ] 开放问题：Q1–Q5 有结论

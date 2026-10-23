@@ -81,8 +81,8 @@ apps/api/app/
   middleware/             # request_id、JWT 鉴权（含路径规则）、CORS、登录限速
   service/
     identity/             # 登录、token、用户、SSE 票据
-    sessions/             # 会话列表、摘要、家族树
-    acquisition/          # 轨迹来源、归一化、家族组装、幂等写入
+    sessions/             # 会话列表、会话概览、Agent 会话树
+    acquisition/          # 轨迹来源、归一化、Agent 会话树组装、幂等写入
     bad_cases/            # 问题列表与详情（外部表只读）
     probes/               # 归因结论读取（外部表只读）
     evolution/            # run、占位聚类、六步产出、推进
@@ -111,7 +111,7 @@ apps/web/
     stores/              # Pinia：登录态（access token + 当前用户）、视图偏好；不存当前 session
     pages/
       login/             # 登录页
-      sessions/          # Session 浏览器（列表 + 家族摘要 + 家族树）
+      sessions/          # Session 浏览器（列表 + 会话概览 + Agent 执行流图）
       errors/            # 错误详情与归因
       evolution/         # 运行列表 / 详情 / 仅聚类 / 对象配置
       evolution/components/  # Stepper/ClusterCard/DiffView/RunLogPanel/LaunchWizard 等页面专属件
@@ -161,7 +161,7 @@ apps/web/
 
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `session_id` 回查。
 - 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
-- 归一化规则不变（[06 §7.1](06-database-design.md)）：轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、家族树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
+- 归一化规则不变（[06 §7.1](06-database-design.md)）：轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
 
 ### 4.2 查询链路（按模块拆分，页面并行加载）
 
@@ -185,8 +185,8 @@ apps/web/
                                           前端按区块独立渲染（各自 skeleton，互不阻塞）
 ```
 
-- **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），摘要先到就先渲染，树/问题列表后到。
-- 每个接口只做自己的服务组装：摘要读 `sessions`；树读 `members/member_events` 并按 `bad_case_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
+- **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），会话概览先到就先渲染，Agent 会话树/问题列表后到。
+- 每个接口只做自己的服务组装：会话概览读 `sessions`；Agent 会话树读 `members/member_events` 并按 `bad_case_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
 - 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
 - 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
@@ -204,7 +204,7 @@ apps/web/
   → 渲染「正在执行」「历史记录」
      ├─ 点击「启动自进化」
      │    → 向导 /probes/query → 命中确认
-     │    → POST /evolution/runs → 201 RunDetail(runId)
+     │    → POST /evolution/runs → 202 {runId, status:"preparing"}
      │    → 路由 /evolution/runs/:rid
      └─ 点击历史 run
           → 路由 /evolution/runs/:rid
@@ -219,19 +219,48 @@ apps/web/
        GET /runs/:rid/steps/{current}
        GET /runs/:rid/events?afterSeq=0（分页拉完，记录最后 seq）
   → 渲染初版
-  → status == running ?
+  → status in {preparing, running} ?
        ├─ 是：
        │    POST /events/ticket {topics:["run:{rid}"], lastEventId: 已加载最后 seq}
        │    → GET /events?ticket=…
        │    → run.event / run.progress → append + 失效 queryKey
-       │    → run.completed/failed/interrupted → close + 最后 REST 刷新
+       │    → run.blocked → 显示重试；run.completed/failed/interrupted → close + 最后 REST 刷新
        └─ 否：
-            不取 ticket、不建 SSE；翻 step / 日志继续走 REST
+            不取 ticket、不建 SSE；blocked 走轮询/重试，终态翻 step / 日志走 REST
 ```
 
 > `lastEventId` 必须用**已加载的最后一条事件 seq**，不能用 `run.lastEventSeq` 的最大值；否则 events 分页未拉完时会丢中间事件。
 
-#### 4.3.3 轨迹归一化：后台定时处理 + 单飞锁
+#### 4.3.3 自进化执行链：prepare → advance → eval → apply
+
+```text
+POST /runs（同步校验 target/probe）
+  → run(preparing)
+  → evolution_prepare job
+       → 查 probe → simple_cluster
+       → workspace clone / 建 run 分支
+       → clusters / rounds
+       → run(running)
+  → evolution_advance job（每轮）
+       → patch → candidate commit
+       → push candidate ref（3 次立即 / 5s）
+       → submit eval → evalId
+       → round(evaluating)
+  → eval_poller（每 5 分钟）
+       → completed → evolution_apply job
+       → failed/timeout → run(blocked, stage=eval)
+  → evolution_apply job
+       → 接纳：amend → push candidate → ff run 分支 → push run 分支 → 删 candidate
+       → 拒绝：删 candidate → reset
+       → 下一轮 / finalize
+```
+
+- push 是评测前置条件：candidate 先推临时 ref，再提交评测；push 3 次失败后 run `blocked`，不进入评测。
+- 自动退避：1min / 5min / 15min 各 1 次 push；仍失败保持 `blocked`，等 `/retry`。
+- 生产 UI 没有“推进一轮”；自动逐轮执行，SSE 只展示过程。
+- `POST /runs/{rid}/retry` 是 blocked 后的人工恢复入口（所有登录用户，202 jobId）。
+
+#### 4.3.4 轨迹归一化：后台定时处理 + 单飞锁
 
 这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `sessions / members / rounds / steps / blocks / member_events`。
 
@@ -258,7 +287,7 @@ POST /acquisition/sync
 - 锁 TTL 30 分钟；进程崩溃后下一次 tick 可回收。
 - 手动触发只作为 admin/运维的“立即处理”，普通用户在顶栏只看到 pending 状态，不提供按钮。
 - **同步没有 SSE topic**：进度通过 `GET /acquisition/status` / `GET /jobs/{jobId}` 查询，前端定时轮询即可；不占 SSE 连接。
-- **没有全局 SSE**：App.vue 不建立常驻连接；只有运行中的 run 页面才订阅 `run:{rid}`。
+- **没有全局 SSE**：App.vue 不建立常驻连接；只有 `preparing/running` 的 run 页面才订阅 `run:{rid}`。
 
 ### 4.4 鉴权链路
 
@@ -329,9 +358,11 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 
 ### 5.3 演示数据（fixtures）的边界
 
-- `fixtures/` 内含原型 4 个会话、若干 bad_case / probe / 簇示例；`python -m app.cli seed` 写入真实表；
+- `fixtures/` 内含原型 4 个会话、若干 bad_case / probe，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
+- `probe_clusters` / `probe_cluster_probes` 是派生数据，不由 seed 写入；seed 后从向导启动，聚类由 `simple_cluster` 生成；
 - 生产环境不执行 seed；UI 读到的永远是真实表；
 - 与早期 D4 的差别：**不再有"Stub Provider 返回不入库数据"的运行时分支**，桩数据也从正式表结构走，避免字段对不上。
+
 ### 5.4 V1 的占位实现（不是 Provider）
 
 | 占位点 | 位置 | 后续替换 |
@@ -340,15 +371,16 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 | patch 内容 | `service/evolution/patch.py` | 内容占位，但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测 |
 | 上游轨迹接口 | 未配置时 `HttpApiSource` 不可用 | 上游就绪后启用 |
-| git 推送 | `HE_GIT_PUSH=true`（V1 完成后 push） | 校验分支后 `git push -u origin <branch>`；失败可重试；后续开 PR |
+| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前 push） | candidate ref 先推、评测后再 fast-forward run 分支；失败进入 blocked，3 次立即 + 1/5/15min 退避；后续开 PR |
 
 ## 6. 部署形态与扩展路径
 
 **当前形态：单实例 SaaS**（一个 FastAPI 进程 + 一个 MySQL + 静态前端）：
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8787   # 生产主库 MySQL
-pnpm --filter web build                                   # 前端构建产物由 FastAPI StaticFiles 或 nginx 托管
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8787   # 生产主库 MySQL
+pnpm --filter web build                            # 前端构建产物由 FastAPI StaticFiles 或 nginx 托管
 ```
 
 | 维度 | 现在 | 扩展路径 |
@@ -357,7 +389,7 @@ pnpm --filter web build                                   # 前端构建产物�
 | 数据库 | MySQL 8 主库；SQLite 仅测试/本地开发 | 读写分离/分库暂无需求 |
 | 任务 | `job_runs` 表 + 进程内串行 worker | 多实例时 worker 独立部署（同一 `job_runs` 表，`SELECT … FOR UPDATE SKIP LOCKED` 抢占） |
 | SSE | 内存事件总线（单实例） | 多实例时换 Redis pub/sub（EventBus 已是接口） |
-| 进化产物 | 远端 `evo/{YYYYMMDD}-{run_id}` 分支（run 完成后 push） | 校验分支后 push；后续开 PR / 打 tag |
+| 进化产物 | 远端 `evo/{YYYYMMDD}-{run_id}` 分支 + 每轮临时 `.../candidate/r{n}` ref | 接纳后 fast-forward run 分支；拒绝删除 candidate；后续开 PR / 打 tag |
 | 静态资源 | FastAPI `StaticFiles` | 换 nginx / CDN 无需改前端 |
 | CORS | 配置的正式域名 | 同源托管后可关闭 |
 
@@ -368,7 +400,7 @@ pnpm --filter web build                                   # 前端构建产物�
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
 | 同步幂等 | `(root_session_id, session_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
-| 大轨迹 | 家族树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 步 / 57 个子 agent 的会话存在，不能查询时重算 |
+| 大轨迹 | Agent 会话树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 步 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
 | 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
@@ -382,12 +414,12 @@ pnpm --filter web build                                   # 前端构建产物�
 |---|---|---|
 | 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 脚本 payload 先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
 | payload 表结构与预期不一致 | 归一化失败 | payload 契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
-| Vue Flow 与 React Flow 的 API 差异 | 家族树移植返工 | 布局几何纯 TS 原样移植，先做 `demo-nested` 最小树验证（[08 §3](08-frontend-implementation.md)） |
+| Vue Flow 与 React Flow 的 API 差异 | Agent 执行流图移植返工 | 布局几何纯 TS 原样移植，先做 `demo-nested` 最小树验证（[08 §3](08-frontend-implementation.md)） |
 | 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
 | git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
-| 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_path`/`ref`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
+| 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_url`/`ref`/`sub_dir`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
 | 工作区残留 | 磁盘增长 | 默认保留最近 20 个 run，`clean-workspaces` 命令清理；不自动删进行中的 run |
-| push 失败 | 分支只在本地 | run 仍标完成，`push_status=failed` + 脱敏错误；支持重试 push；同名远端分支拒绝覆盖 |
+| push 失败 | 评测无法开始，流程阻塞 | run 标 `blocked` + `blocked_stage=push`；保留 candidate ref；3 次立即 + 1/5/15min 退避；仍失败等 `/retry`；run 分支不被回滚 |
 | 执行异常未留痕 | 无法定位/复盘 | 阶段/候选/评测/推送/异常统一写 `evolution_run_events`；job 边界捕获；启动扫描残留任务记 `interrupted` |
 | JWT 泄漏 | 组织数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
 | SSE 长连接在代理下断流 | 进度不更新 | 事件带 seq + Last-Event-ID；run 事件从 DB 回放，sync 用 job_runs + REST 兜底 |

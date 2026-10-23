@@ -23,9 +23,9 @@
 
 - **默认**：一个页面由多个资源接口并行取数，前端按区块独立渲染；每个接口只返回自己模块的数据。
 - **允许页面级聚合**：列表页（`GET /sessions`、`GET /evolution/runs`）、静态元数据（`GET /catalogs`、向导 targets/versions）。
-- **不做整页聚合**：`/sessions/{sid}` 的摘要、家族树、问题列表分别由 3 个接口提供；家族树/执行日志/大列表不得塞进一个“page”响应。
-- **依赖顺序**：详情/选中项可串行（先列表后详情），同一页的独立区块必须并行（例如摘要 + 树 + 问题列表）。
-- **体积预算**：单接口响应超过约 300KB 时必须拆分；家族树另行按步骤/成员分页或裁剪。
+- **不做整页聚合**：`/sessions/{sid}` 的会话概览、Agent 会话树、问题列表分别由 3 个接口提供；Agent 会话树/执行日志/大列表不得塞进一个“page”响应。
+- **依赖顺序**：详情/选中项可串行（先列表后详情），同一页的独立区块必须并行（例如会话概览 + Agent 会话树 + 问题列表）。
+- **体积预算**：单接口响应超过约 300KB 时必须拆分；Agent 会话树另行按步骤/成员分页或裁剪。
 - **BFF 例外**：未来移动端/弱网需要一次往返时，新增独立 BFF `/app/...` 聚合端点，不替换现有资源接口。
 
 ## 2. 资源模型总览
@@ -62,7 +62,7 @@ erDiagram
 
 ## 3. 领域模型（OpenAPI Schema 的源头）
 
-### 3.1 Session 列表项与摘要
+### 3.1 Session 列表项与会话概览
 
 ```json
 {
@@ -86,7 +86,7 @@ erDiagram
 - `status`：`ok`（完成）/ `partial`（有失败）/ `fail`（整体失败）。密度只由后端计算，前端不算（避免口径漂移）。
 - `short`：列表卡标题（截断展示）；`title`：完整标题。两者都由首个用户提问派生，`short` 允许为空（前端回退到 title）。
 
-### 3.2 家族树
+### 3.2 Agent 会话树
 
 ```json
 {
@@ -215,10 +215,16 @@ erDiagram
 `RunDetail` 在 RunCard 基础上多 `steps` 与 `workspace`（六步状态由后端算，前端不推算）：
 
 ```json
+"status": "blocked",
+"blockedStage": "eval",
+"retryAttempts": 0,
+"nextRetryAt": null,
+"evalStatus": "failed",
 "workspace": {
-  "repoPath": "/srv/skill-repo", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
+  "repoUrl": "https://git.example.com/agent-skills.git",
+  "repoPath": "data/repos/tgt-123", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
   "branchName": "evo/20261023-evo-20261023-01", "workspacePath": "data/workspaces/evo-20261023-01",
-  "remote": "origin", "pushStatus": "pending", "pushedAt": null, "pushError": null
+  "remote": "origin", "pushStatus": "succeeded", "pushedAt": "2026-10-23T09:40:00+08:00", "pushError": null
 },
 "error": { "stage": "eval", "message": "评测执行失败：sandbox timeout", "at": "2026-10-23T09:41:02+08:00" },
 "lastEventSeq": 42,
@@ -251,10 +257,10 @@ erDiagram
 | 1 问题聚类 | `clusters[]`：`probeClusterId/description/type/probeCount/probes[]`（V1 占位算法生成） |
 | 2 归因确认 | `items[]`：probeId/probeObject/objectVersion/attributeType/description/analysis |
 | 3 严重程度排序 | `rows[]`：rank/clusterId/type/probeCount/severity（V1 简单排序） |
-| 4 迭代优化 | `rounds[]`：clusterId/title/type/probeCount/probes[]/status/patch/eval/accepted/commit |
+| 4 迭代优化 | `rounds[]`：clusterId/title/type/probeCount/probes[]/status/candidateRef/candidateCommit/push/eval/accepted/finalCommit |
 | 5 测试集终评 | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
 
-迭代轮结构与原设计一致：`rounds[]` 含 `patch {file, lines[]}`、`eval {current, candidate}`、`status ∈ pending|evaluating|accepted|rejected`、`commit {hash, message}`。candidate commit 在评测前产生；接纳后 `commit.hash/message` 是 amend 后的值，拒绝后 `commit` 为 null（对应提交已被 reset 丢弃）。「来源问题」从报告改为 `probes[]`（归属该簇的 probe 列表）。
+迭代轮结构：`rounds[]` 含 `patch {file, lines[]}`、`candidate {ref, commit, message}`、`push {status, attempts, error}`、`eval {status, current, candidate, nextPollAt}`、`status ∈ pending|pushing|evaluating|applying|accepted|rejected|failed`、`commit {hash, message}`（接纳后的 amend 结果）。candidate 先 push 临时 ref 再评测；接纳后 run 分支 fast-forward，拒绝后删除 candidate、`commit=null`。「来源问题」仍是 `probes[]`。
 
 ## 4. 端点清单
 
@@ -292,8 +298,7 @@ erDiagram
 │ POST /api/evolution/runs                                 │
 │ GET  /api/evolution/runs/{rid}                           │
 │ GET  /api/evolution/runs/{rid}/steps/{n}                 │
-│ POST /api/evolution/runs/{rid}/advance                   │
-│ POST /api/evolution/runs/{rid}/push                      │
+│ POST /api/evolution/runs/{rid}/retry                     │
 │ POST /api/evolution/probes/query                         │
 │ POST /api/evolution/cluster-previews                     │
 │ GET/POST/PUT/DELETE /api/evolution/targets               │
@@ -340,7 +345,7 @@ erDiagram
 - 票据一次性、60 秒有效，**绑定 topics**；`GET /api/events?ticket=…` 只按票据内 topics 订阅，URL 不再接受 `topics` 参数。
 - topics 仅接受 `run:{rid}`；轨迹归一化（sync）不提供 SSE，不能申请 `sync` topic。
 - `lastEventId` 可选：首连从该游标之后回放；不传则从当前时刻开始。
-- 已完成任务不需要取票；只有 `status=running` 的 run 页面才申请。轨迹归一化（sync）不提供 SSE。
+- 已完成任务不需要取票；只有 `preparing/running` 的 run 页面才申请。轨迹归一化（sync）不提供 SSE。
 
 ### 4.2 会话列表
 
@@ -355,11 +360,11 @@ erDiagram
 
 响应 `{ "items": [SessionListItem] }`。**排序与计数全部后端做**，前端只渲染。
 
-### 4.3 会话摘要
+### 4.3 会话概览
 
 `GET /api/sessions/{sid}` → `SessionListItem`（与列表项同构，避免两套模型）。
 
-### 4.4 家族树
+### 4.4 Agent 会话树
 
 `GET /api/sessions/{sid}/tree` → `SessionTree`（§3.2）。
 
@@ -367,7 +372,7 @@ erDiagram
 
 时间线页面不做，因此不提供 `GET /api/sessions/{sid}/timeline` 及其步骤展开端点。轮次/步骤/块照常入库，仅用于统计聚合与后续诊断（见 §3.3）。
 
-轮次内需要计数时（列表/摘要），使用 `sessions` 上的聚合列，不读 `steps` 明细。
+轮次内需要计数时（列表/会话概览），使用 `sessions` 上的聚合列，不读 `steps` 明细。
 
 ### 4.6 会话问题列表
 
@@ -419,55 +424,111 @@ erDiagram
 
 ```json
 {
-  "summary": { "sessions": 4, "probes": 12, "usedProbes": 12,
-    "byAttributeType": { "model": 3, "prompt": 1, "error": 8 } },
+  "summary": { "sessions": 130, "badCases": 1, "analyzed": 1, "unanalyzed": 0,
+    "probes": 1, "usedProbes": 1,
+    "byAttributeType": { "model": 0, "prompt": 0, "error": 1 } },
   "items": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...",
     "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
+    "model": "kimi-k2",
     "probeType": "skill", "probeObject": "deep-research", "objectVersion": "v2.0.0",
     "attributeType": "error", "probeDescription": "检索索引读取失败…",
     "sourceBadCaseIds": ["bc-050b-03"] } ],
-  "total": 12, "page": 1, "pageSize": 8
+  "total": 1, "page": 1, "pageSize": 8
 }
 ```
 
+- `badCases` 是命中的问题报告数；`analyzed` / `unanalyzed` 是 `bad_cases.analysis_status` 的计数。
+- **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；前端展示未分析数量，提示等待外部归因。
+- `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_session_id` → `members.model` 解析，缺失时回退主 agent 模型。
+
 - `from/to` 按 **session 启动时间**过滤。
+- `models[]` 匹配 **该 Agent 会话树内任一 agent 的模型**（`members.model`），不是只看主 agent；没有模型时按“全部模型”处理。
 - 命中的 probe 必然属于该 target（`probeObject @ objectVersion`），所以 `usedProbes = probes`。
 
-### 4.10 自进化运行
+### 4.10 自进化运行（异步任务）
 
-- `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组）
-- `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `201 RunDetail`；无匹配 probe → `409 NO_PROBES_MATCHED`；目标未配置/仓库不可用 → `409 TARGET_NOT_CONFIGURED` / `422 REPO_INVALID`
-- `GET /api/evolution/runs/{rid}` → `RunDetail`（含 `workspace`：`repoPath/baseRef/baseCommit/branchName`）
-- `GET /api/evolution/runs/{rid}/steps/{index}` → `EvolutionStep`（§3.6；`index` 越界或未到达 → `404 STEP_NOT_READY`）
-- `POST /api/evolution/runs/{rid}/advance` → `200 RunDetail`；run 已结束 → `409 RUN_ALREADY_FINISHED`（V1 用于演示推进；patch 内容/评分为占位，candidate commit 与 amend/reset 真实）
-- `POST /api/evolution/runs/{rid}/push` → `200 RunDetail`：完成后校验分支并 push；未完成 → `409 RUN_NOT_FINISHED`；已推送幂等返回；失败 → `500 GIT_ERROR`（`details.stage="push"`，消息脱敏）
+- `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）
+- `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
+  - 同步前置校验：target 已配置/启用、条件合法、probe 数 > 0；失败直接 `409 TARGET_NOT_CONFIGURED` / `409 NO_PROBES_MATCHED`
+  - 校验通过后只创建 `status=preparing` 的 run 并入队 `evolution_prepare`；workspace clone、repo/ref 校验、聚类、rounds 全部在后台完成；repo/ref 失败使 run `failed(error_stage=clone)`
+- `GET /api/evolution/runs/{rid}` → `RunDetail`
+  - `status`：`preparing | running | blocked | completed | failed | interrupted`
+  - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
+  - `workspace`：`repoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
+- `GET /api/evolution/runs/{rid}/steps/{index}` → `EvolutionStep`（§3.6；`index` 越界或未到达 → `404 STEP_NOT_READY`；`preparing` 时第 0 步可返回 preparing 态）
+- `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
+  - 所有登录用户可调用；只允许 `status=blocked`
+  - 按 `blockedStage` 重试：`push` 重推当前 candidate；`eval` 重新提交评测
+  - 已有 retry job 排队/执行 → `202 { jobId: 已有, reused: true }`，不重复入队
+  - 非 blocked → `409 RUN_NOT_RETRYABLE`
 
-运行创建时同步完成第 0–1 步（筛选 + 占位聚类），并**准备工作区**：从配置的 `repo_path` 以 `base_ref`（tag）clone 到 `data/workspaces/{runId}`，创建分支 `evo/{YYYYMMDD}-{runId}`，记录 `base_commit`；因此 `mode=full` 的 run 创建后第 1 步即可查看簇。
+**执行链路**：
+
+```text
+POST /runs（同步校验）
+  → run(preparing)
+  → evolution_prepare
+       → 查 probe
+       → simple_cluster
+       → workspace clone / 建 run 分支
+       → clusters / rounds
+       → run(running)
+  → evolution_advance(round 1)
+       → patch → candidate commit
+       → push candidate（3 次立即 / 5s）
+       → submit eval → evalId
+       → round(evaluating)
+  → eval_poller（每 5 分钟轮询）
+       → completed → 入队 evolution_apply
+       → failed/timeout → run(blocked, stage=eval)
+  → evolution_apply
+       → 接纳：amend → push candidate → ff run 分支 → push run 分支 → 删 candidate
+       → 拒绝：删 candidate → 切回 run 分支（不 reset 已接纳轮次）
+       → 下一轮 / finalize
+```
+
+- 没有 `POST /advance`：逐轮推进由后台任务自动完成，生产 UI 不提供“推进一轮”按钮。
+- 没有 `POST /push`：push 是每轮评测前置条件，失败进入 `blocked`，由 `POST /retry` 或自动退避恢复。
+- `POST /runs` 的 202 不是“已开始运行”，只是“已受理准备”；前端跳转详情后先显示 `preparing`。
+- 仅聚类预览（`mode=cluster_only`）也走 `evolution_prepare`，但不建 workspace、不生成 rounds、不提交评测。
 
 ### 4.11 进化对象配置（仅配置后可自进化）
 
 | 端点 | 说明 |
 |---|---|
-| `GET /api/evolution/targets` | 列出配置：`{ "items": [ { id, objectType, objectName, repoPath, subDir, defaultRef, enabled } ] }` |
-| `POST /api/evolution/targets` | 新增（admin）；body 同上；`409 TARGET_EXISTS` |
+| `GET /api/evolution/targets` | 列出配置：`{ "items": [ { id, objectType, objectName, repoUrl, subDir, defaultRef, enabled } ] }` |
+| `POST /api/evolution/targets` | 新增（admin）；body 同上；`repoUrl` 为 git 远端地址，`defaultRef` 为基线分支或 tag，`subDir` 为对象目录相对仓库根；`409 TARGET_EXISTS` |
 | `PUT /api/evolution/targets/{id}` | 修改（admin）；`404 TARGET_NOT_FOUND` |
 | `DELETE /api/evolution/targets/{id}` | 删除（admin）；有进行中 run 时 `409 TARGET_IN_USE` |
-| `GET /api/evolution/targets/{id}/versions` | V1 从本地仓库 `git tag --list` 返回 `{ "versions": ["v2.0.0", ...] }`；仓库不可用 → `422 REPO_INVALID` |
+| `GET /api/evolution/targets/{id}/versions` | 从配置仓库读取 tag 列表：`{ "versions": ["v2.0.0", ...], "defaultRef": "main" }`；仓库不可用 → `422 REPO_INVALID` |
 
-- 只有 `enabled=true` 的配置出现在向导的"对象/版本"下拉里；
+- `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
+- `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存和创建 run 前都校验。
+- 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
 - 配置页入口在向导 Step1 选择器右侧的齿轮图标（[08 §9.2](08-frontend-implementation.md)）。
 
 ### 4.12 仅聚类预览
 
-`POST /api/evolution/cluster-previews`（body 同 4.9 + `"mode": "cluster_only"`）→ `201 { "runId": "evo-...", "clusters": [ProbeCluster] }`
+`POST /api/evolution/cluster-previews`（body 同 4.9 + `"mode": "cluster_only"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
 
-- 预览落一条 `mode=cluster_only` 的 `evolution_runs`，簇按 run 归属（与正式 run 同表）；后续页用 `GET /runs/{rid}/steps/1` 取簇。
-- 不做 patch/评测，`GET /runs/{rid}` 的 steps 只到第 1 步。
+- 预览落一条 `mode=cluster_only` 的 `evolution_runs`，先 `preparing`，由 `evolution_prepare` 完成筛选与聚类；
+- 完成后 `GET /runs/{rid}/steps/1` 取簇；不建 workspace、不做 patch/评测；
+- 前端跳转 `/evolution/cluster/:runId` 后先显示准备中，再轮询/SSE 到簇生成。
 
 ### 4.13 清单
 
-- `GET /api/catalogs/targets` → 已启用且配置的对象：`{ "skill": [{ "id": "…", "name": "deep-research", "versions": ["v2.0.0","v1.9.0"] }], "agent": [...] }`（versions 取自本地仓库 tag；与 `/evolution/targets` 一致，前端可只用后者）
-- `GET /api/catalogs/models` → `{ "models": ["glm-5.3", "glm-5.3-flash", ...] }`（来自 `sessions.model` 去重）
+- `GET /api/catalogs/targets` → 已启用且配置的对象：`{ "skill": [{ "id": "…", "name": "deep-research", "repoUrl": "https://…", "subDir": "skills/deep-research", "defaultRef": "main", "versions": ["v2.0.0","v1.9.0"] }], "agent": [...] }`（versions 取自配置仓库的 tag；与 `/evolution/targets` 一致，前端可只用后者）
+- `GET /api/catalogs/models` → 从归一化后的 `members.model` 聚合，主/子 agent 都计入：
+
+```json
+{ "items": [
+  { "model": "glm-5.3", "sessionCount": 12, "agentCount": 20 },
+  { "model": "glm-5.3-flash", "sessionCount": 7, "agentCount": 9 }
+] }
+```
+
+- 模型列表不实时解析 JSONL；由定时归一化写入 `members.model` / `sessions.models` 后查询，页面刷新即可见。
+- 启动向导打开时并行加载 `catalogs/targets` 与 `catalogs/models`；选择对象后再按 id 拉 `targets/{id}/versions`。
 
 ### 4.14 SSE
 
@@ -486,6 +547,8 @@ data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"runn
 | `ping` | `{}`（每 15s） |
 | `run.event` | runId / seq / eventType / level / stage |
 | `run.progress` | runId / unit / total / percent / status / stageLabel / doneRounds / accepted |
+| `run.blocked` | runId / stage(push|eval) / retryAttempts / nextRetryAt / message |
+| `run.resumed` | runId / stage / retryAttempts |
 | `run.completed` | runId / verdict / bestScore / initScore |
 | `run.failed` | runId / stage / message / eventSeq |
 | `run.interrupted` | runId / stage / message / eventSeq |
@@ -495,7 +558,7 @@ data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"runn
 - **重连**：浏览器自动带 `Last-Event-ID`；服务端同样从该 seq 之后回放。事件已超出保留范围时发 `event: reset`，前端重新拉 `GET /runs/{rid}` + `/events`。
 - 事件 id 用 `evolution_run_events.seq`（DB 单调递增），不再只靠内存环形缓冲。
 - SSE 只做通知：`run.event` 可增量追加日志；`run.progress` 只失效 queryKey，数据仍以 REST 为准。
-- **订阅按页面生命周期**：run 完成、失败、中断或离开页面即关闭；已完成的 run 不建立 SSE。
+- **订阅按页面生命周期**：`preparing/running` 订阅；`blocked` 走轮询/重试，完成后关闭；已完成/失败/中断不建立 SSE。
 - 轨迹归一化（sync）不提供 SSE：进度通过 `GET /acquisition/status` / `GET /jobs/{jobId}` 轮询。
 
 ### 4.15 运行执行日志（过程与异常）
@@ -537,7 +600,7 @@ ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / 
 
 | 目标 | URL（前端路由） | 需要的后端字段 |
 |---|---|---|
-| 会话摘要 | `/sessions/{sid}` | — |
+| 会话概览 | `/sessions/{sid}` | — |
 | 问题描述 | `/sessions/{sid}/errors?case={badCaseId}&tab=desc` | `BadCase.badCaseId/sessionId` |
 | 归因分析 | `/sessions/{sid}/errors?case={badCaseId}&tab=attr` | `BadCase.analysis.probeId` |
 | 自进化某步 | `/evolution/runs/{rid}?step=4` | `RunDetail.steps[].status` |
@@ -561,7 +624,7 @@ FastAPI /api/openapi.json
                     └──► contract:check：重新生成 = 无 diff
 ```
 
-- 生成命令：`pnpm contract:generate`（内部 `uv run python scripts/export_openapi.py` → `openapi-typescript`）。
+- 生成命令：`pnpm contract:generate`（内部 `python scripts/export_openapi.py` → `openapi-typescript`）。
 - 生成物**禁止手改**，文件头写 `@generated`。
 - `packages/contracts/src/index.ts` 只做两件事：re-export 生成类型 + 放少量跨端常量（如 `STATUS_LABELS` 的键名、事件名枚举）。**不再手写业务字段**。
 - CI：`pnpm contract:check` 在临时目录重新生成并 diff，有差异即失败（防"后端改了没重新生成"）。
@@ -594,8 +657,8 @@ FastAPI /api/openapi.json
 | `STEP_NOT_READY` | 404 | 请求的 step 尚未到达 |
 | `RUN_NOT_FOUND` | 404 | runId 不存在 |
 | `RUN_NOT_FINISHED` | 409 | 未完成时调用 push |
-| `RUN_ALREADY_FINISHED` | 409 | 已完成的 run 调 advance |
-| `RUN_BUSY` | 409 | 同一 run 有进行中任务 |
+| `RUN_NOT_RETRYABLE` | 409 | run 不是 blocked，不能 retry |
+| `RUN_BUSY` | 409 | 同一 run 有进行中的 prepare/advance/apply/retry 任务 |
 | `NO_PROBES_MATCHED` | 409 | 启动自进化时筛选结果为空 |
 | `TARGET_NOT_FOUND` | 404 | 进化对象配置不存在 |
 | `TARGET_EXISTS` | 409 | 同一 `(objectType, objectName)` 已配置 |

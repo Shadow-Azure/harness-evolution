@@ -34,15 +34,15 @@ M6 接真实现（执行器 + 真实来源）
 |---|---|---|---|---|
 | m1 | 前端体验原型（已完成，保持不动） | done | 4 个真实会话验证信息架构 | 原型 HTML 可演示（现状） |
 | m2 | 平台骨架与契约 | planned | Vue 3 前端骨架 + FastAPI 后端骨架 + OpenAPI 契约 + 登录鉴权 + 外部表接入跑通 | `pnpm dev` 起前后端；登录后 `/api/health` 正常；未登录 401；`contract:check` 通过 |
-| m3 | 轨迹接入与归一化 | planned | 读 `trajectory_payloads` + 上游 pull + 归一化入库（MySQL）+ 会话两页（列表/摘要）+ 家族树结构 | 同一 payload 重复处理不重复；结构异常按条隔离；切 MySQL 后同一套 API 与测试通过 |
-| m4 | 问题与归因（外部只读） | planned | bad_case 列表/详情、归因 tab、家族树问题卡 | 5 种展示状态正确；badCaseId 深链可用；外部表字段缺失可降级 |
+| m3 | 轨迹接入与归一化 | planned | 读 `trajectory_payloads` + 上游 pull + 归一化入库（MySQL）+ 会话两页（列表/会话概览）+ Agent 会话树结构 | 同一 payload 重复处理不重复；结构异常按条隔离；切 MySQL 后同一套 API 与测试通过 |
+| m4 | 问题与归因（外部只读） | planned | bad_case 列表/详情、归因 tab、Agent 执行流图问题卡 | 5 种展示状态正确；badCaseId 深链可用；外部表字段缺失可降级 |
 | m5 | 自进化闭环（占位聚类/评测） | planned | 对象配置、运行列表、启动向导、六步详情、workspace/candidate commit、执行日志 | 每个 candidate 有 commit；接纳 amend、拒绝 reset；失败/中断可在日志看到；进度经 SSE 更新 |
 | m6 | 接真实现 | planned | 接真实执行器与上游来源：真实 PayloadSource/HttpApiSource、聚类升级、patch/评测执行 | 至少一条真实问题走完"payload → 归一化 → 聚类 → patch → 评测接纳或拒绝"；前端零改动 |
 
 ### 2.1 为什么这样拆
 
 - **m2 单独成阶段**：前端要从 React 重建为 Vue 3，后端要从 Fastify 换成 FastAPI，还要加登录鉴权，契约生成链路也要重建——这些与"接入真实轨迹"没有依赖关系，混在一起会让 m2 变成巨型 milestone，验收说不清。
-- **m3 只做"看得见的真实数据"**：来源同步 + 会话两页（列表/摘要）+ 家族树结构，问题卡先用空数组渲染（家族树没有红色卡片），保证这一阶段可独立演示；时间线页面已裁撤，不在任何 milestone 内。数据库以 MySQL 为主库、SQLite 仅测试，双库 CI 从 m3 第一天就跑。
+- **m3 只做"看得见的真实数据"**：来源同步 + 会话两页（列表/会话概览）+ Agent 会话树结构，问题卡先用空数组渲染（Agent 执行流图上没有红色卡片），保证这一阶段可独立演示；时间线页面已裁撤，不在任何 milestone 内。数据库以 MySQL 为主库、SQLite 仅测试，双库 CI 从 m3 第一天就跑。
 - **m4/m5 只做打桩 UI**：把"UI 完成度"和"算法真实度"解耦；m4/m5 的验收是"与原型一致"，m6 才是"结论真实"。
 - **m6 是占位实现的兑现**：只换执行器与聚类算法，不动前端、不动契约。
 
@@ -58,7 +58,7 @@ M6 接真实现（执行器 + 真实来源）
 
 | # | 标题 | 优先级 | scope | 依赖 | 验收 |
 |---|---|---|---|---|---|
-| m2-01 | 后端切换：新建 `apps/api`（FastAPI 骨架、配置、错误模型、health） | P0 | `apps/api/**`、`pnpm-workspace.yaml` | — | `/api/health` 返回 `phase=demo`；错误模型统一；`uv run pytest` 通过 |
+| m2-01 | 后端切换：新建 `apps/api`（FastAPI 骨架、配置、错误模型、health） | P0 | `apps/api/**`、`pnpm-workspace.yaml` | — | `/api/health` 返回 `phase=demo`；错误模型统一；`python -m pytest` 通过 |
 | m2-02 | OpenAPI 契约生成链路与 CI 防漂移 | P0 | `packages/contracts/**`、`scripts/**` | m2-01 | `contract:generate` 产出类型；`contract:check` 在 CI 失败可复现 |
 | m2-03 | 前端重建为 Vue 3（router/pinia/query/Element Plus/tokens/基元） | P0 | `apps/web/**` | m2-02 | 两大视图空壳可切换；设计令牌与原型一致 |
 | m2-04 | PayloadSource 与 fixtures（`trajectory_payloads` 读取 + HttpApiSource 接口 + 演示种子数据） | P0 | `apps/api/app/service/acquisition/**`、`apps/api/app/third_party_api/**`、`fixtures/**` | m2-01 | payload 可读；fixtures seed 后 UI 可演示；无运行时桩分支 |
@@ -74,10 +74,10 @@ M6 接真实现（执行器 + 真实来源）
 | m3-01 | Database 接口 + SQLite / MySQL 两实现（连接、事务、health） | P0 | `apps/api/app/storage/**` | m2-01 | 默认 MySQL 可跑；SQLite 用于测试；`/api/health` 报告 dialect |
 | m3-02 | Alembic 双方言迁移（真实表 + 预留表 + users/source_records/sync_*） | P0 | `apps/api/alembic/**` | m3-01 | 两种库空库 upgrade 建全表；重放脚本可跑 |
 | m3-03 | 读 `trajectory_payloads` + 归一化幂等（hash/parser_version）与 fixtures 种子 | P0 | `apps/api/app/service/acquisition/**`、`fixtures/**` | m3-02 | 同一 payload 重复处理幂等；单条结构异常隔离；fixtures 可灌入真实表 |
-| m3-04 | 归一化器（JSONL 行数组 → 轮次/步骤/块/token/元记录） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的轮次/步骤/工具有数可对；坏行不毁整文件 |
-| m3-05 | 家族组装（子转录、toolUseId、member_events 预计算） | P0 | `apps/api/app/modules/acquisition/family.py` | m3-04 | 子 agent 挂接位置正确；缺 toolUseId 有告警 |
-| m3-06 | 会话 API（列表/摘要/家族树；统计读聚合列） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
-| m3-07 | 前端 Session 列表 + 家族摘要 | P0 | `apps/web/src/pages/sessions/**` | m2-03、m3-06 | 与原型列表/摘要视觉一致；搜索/筛选/排序可用 |
+| m3-04 | 归一化器（JSONL 行数组 → 轮次/步骤/块/token/元记录/每个 agent 的 model） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的轮次/步骤/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
+| m3-05 | Agent 会话树组装（子转录、toolUseId、member_events 预计算、sessions.models 聚合） | P0 | `apps/api/app/modules/acquisition/family.py` | m3-04 | 子 agent 挂接位置正确；缺 toolUseId 有告警 |
+| m3-06 | 会话 API（列表/会话概览/Agent 会话树；统计读聚合列） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
+| m3-07 | 前端 Session 列表 + 会话概览 | P0 | `apps/web/src/pages/sessions/**` | m2-03、m3-06 | 与原型列表/会话概览视觉一致；搜索/筛选/排序可用 |
 | m3-08 | 后台定时调度与单飞锁（sync_lock）+ 顶栏状态 | P1 | `apps/api/app/service/acquisition/**`、`apps/api/app/service/jobs.py`、`apps/web/src/**` | m2-05、m3-03 | 定时处理 pending；手动幂等复用 jobId；无并发重复任务 |
 | m3-09 | 上游轨迹查询契约定稿与 HttpApiSource | P1 | `apps/api/app/third_party_api/**`、`plans/**` | m3-03 | 契约（[05 §10](05-api-design.md)）评审通过；HttpApiSource 对 mock 上游联调通过（上游就绪前 payload 表先跑通） |
 
@@ -87,8 +87,8 @@ M6 接真实现（执行器 + 真实来源）
 |---|---|---|---|---|---|
 | m4-01 | bad_case / probe 只读服务与 fixtures（外部表契约） | P0 | `apps/api/app/service/bad_cases/**`、`apps/api/app/service/probes/**`、`fixtures/**` | m2-04 | 列表/详情/状态合并正确；fixtures 覆盖 5 种展示状态 |
 | m4-02 | bad_case / probe API（badCaseId 校验、probe 反查） | P0 | `apps/api/app/api/**`、`apps/api/app/service/**` | m4-01 | 深链字段齐全；跨会话 409；未分析占位 |
-| m4-03 | 家族树布局移植与最小树验证 | P0 | `apps/web/src/components/family-tree/**` | m2-03 | `demo-nested` 四件事全对（归属/嵌套/折叠/连线不穿） |
-| m4-04 | 家族树全量（节点链/问题卡锚定/折叠/fitView/定位） | P0 | 同上 | m4-03 | 4 个会话与原型一致；点击定位高亮 |
+| m4-03 | Agent 执行流图布局移植与最小树验证 | P0 | `apps/web/src/components/family-tree/**` | m2-03 | `demo-nested` 四件事全对（归属/嵌套/折叠/连线不穿） |
+| m4-04 | Agent 执行流图全量（节点链/问题卡锚定/折叠/fitView/定位） | P0 | 同上 | m4-03 | 4 个会话与原型一致；点击定位高亮 |
 | m4-05 | 问题列表面板与定位联动 | P1 | `apps/web/src/components/bad-cases/**` | m4-02、m4-04 | 列表↔画布联动；badCaseId 新窗口打开 |
 | m4-06 | 错误详情页（左栏/执行流过滤/双 Tab/深链恢复） | P0 | `apps/web/src/pages/errors/**` | m4-02、m4-04 | 六状态、全部错误恢复、tab 顺序、刷新恢复 |
 
@@ -98,13 +98,13 @@ M6 接真实现（执行器 + 真实来源）
 |---|---|---|---|---|---|
 | m5-01 | evolution 服务与状态机 + 占位聚类（按 attribute_type 分半） | P0 | `apps/api/app/service/evolution/**` | m2-04 | unit 推进边界正确；簇落库；同输入同输出 |
 | m5-02 | 运行列表 API + 前端列表 | P0 | `apps/api/app/service/evolution/**`、`apps/web/src/pages/evolution/**` | m5-01 | running/history 分组；进度条与阶段文案后端给 |
-| m5-03 | probe 查询 / 聚类预览 API + 启动向导 | P0 | 同上 | m5-01、m2-03 | 两步向导；命中统计；仅聚类出口（cluster_only run） |
-| m5-04 | 运行详情六步 API（筛选/聚类/归因/排序/迭代/终评） | P0 | `apps/api/app/service/evolution/**` | m5-01 | 六步 payload 与 [05 §3.6](05-api-design.md) 一致 |
-| m5-05 | 运行详情前端（stepper/各步内容/迭代卡/diff/eval/commit/分支信息） | P0 | `apps/web/src/pages/evolution/**` | m5-04 | 与原型详情一致；未到达不可点；展示分支/commit |
-| m5-06 | 仅聚类页、模拟推进、运行中 SSE 进度联动 | P1 | 同上 + `apps/api/app/service/events.py` | m5-03、m5-05 | 仅 running 订阅；完成/离开即关闭；断线从 DB 回放进度不倒退 |
-| m5-07 | 进化对象配置：CRUD API + 配置页 + 向导齿轮入口 | P0 | `apps/api/app/service/evolution/targets.py`、`apps/api/app/api/**`、`apps/web/src/pages/evolution/targets/**` | m5-01、m2-03 | 仅启用对象进向导；repo/ref 校验；删除被引用配置 409 |
-| m5-08 | Workspace 与 git：clone tag、建 `evo/{YYYYMMDD}-{run_id}` 分支、candidate commit、amend/reset、完成后校验并 push | P0 | `apps/api/app/service/evolution/**`、`apps/api/app/service/jobs.py` | m5-01 | candidate 带追溯 commit；接纳 amend 追加评测；拒绝 reset；完成后 push 到远端 |
-| m5-09 | 执行事件与异常：`evolution_run_events` 落库、events API、失败/中断/推送异常、前端日志面板 | P0 | `apps/api/app/service/evolution/events.py`、`apps/api/app/api/**`、`apps/web/src/pages/evolution/components/RunLogPanel.vue` | m5-01、m5-08 | 运行过程与异常刷新后可查；failed/interrupted 有摘要与脱敏详情 |
+| m5-03 | probe 查询 / 聚类预览 API + 启动向导（`202 + runId`） | P0 | 同上 | m5-01、m2-03 | 两步向导；命中统计；仅聚类出口（cluster_only run）先 preparing |
+| m5-04 | 运行详情六步 API（筛选/聚类/归因/排序/迭代/终评） | P0 | `apps/api/app/service/evolution/**` | m5-01 | 六步 payload 与 [05 §3.6](05-api-design.md) 一致；支持 preparing/blocked |
+| m5-05 | 运行详情前端（stepper/各步内容/迭代卡/diff/eval/commit/分支信息/阻塞重试） | P0 | `apps/web/src/pages/evolution/**` | m5-04 | 与原型详情一致；无“推进一轮”按钮；未到达不可点；展示 candidate ref/commit/eval |
+| m5-06 | 自动逐轮推进、`eval_poller`、`blocked_sweeper`、运行中 SSE 联动 | P1 | 同上 + `apps/api/app/service/evolution/eval_poller.py`、`blocked_sweeper.py` | m5-03、m5-05 | preparing/running 订阅；每 5min 轮询评测；push 失败 1/5/15min 退避；blocked 可 `/retry` |
+| m5-07 | 进化对象配置：CRUD API + 配置页 + 向导齿轮入口 | P0 | `apps/api/app/service/evolution/targets.py`、`apps/api/app/api/**`、`apps/web/src/pages/evolution/targets/**` | m5-01、m2-03 | 仅启用对象进向导；repoUrl/defaultRef/subDir 校验；删除被引用配置 409 |
+| m5-08 | Workspace 与 git：clone、run 分支、candidate ref、评测前 push、接纳 ff/拒绝删 ref | P0 | `apps/api/app/service/evolution/**`、`apps/api/app/service/jobs.py` | m5-01 | candidate 带追溯 commit；push 3 次立即 + 1/5/15min 退避；接纳 ff run 分支；拒绝不污染 run 分支 |
+| m5-09 | 执行事件与异常：`evolution_run_events` 落库、events API、blocked/retry/eval 事件、前端日志面板 | P0 | `apps/api/app/service/evolution/events.py`、`apps/api/app/api/**`、`apps/web/src/pages/evolution/components/RunLogPanel.vue` | m5-01、m5-08 | 准备/候选/push/eval/阻塞/重试刷新后可查；failed/interrupted 有摘要与脱敏详情 |
 
 ### 3.5 m6 接真实现（4 个，可拆到后续）
 
@@ -122,8 +122,8 @@ M6 接真实现（执行器 + 真实来源）
 | F1 顶部导览 | ● | | | | |
 | F2 ID 体系与深链 | · | | ● | | |
 | F3 Session 列表 | | ● | | | |
-| F4 家族摘要 | | ● | | | |
-| F5 家族树 | | ●（结构） | ●（问题卡） | | |
+| F4 会话概览 | | ● | | | |
+| F5 Agent 执行流图 | | ●（结构） | ●（问题卡） | | |
 | F6 会话内问题列表 | | | ● | | |
 | F7 时间线（已裁撤） | — | — | — | — | — |
 | F8 错误详情与归因 | | | ● | | ●（真实结论） |
@@ -134,7 +134,7 @@ M6 接真实现（执行器 + 真实来源）
 | F13 运行详情六步 | | | | ● | |
 | F14 SSE 进度 | ●（机制） | | | ●（运行） | |
 | F15 对象/模型清单 | ●（桩） | | | | ●（真实） |
-| F16 模拟推进 | | | | ● | |
+| F16 模拟推进 | —（已取消，改为自动逐轮） | | | | |
 | F17 三态与错误处理 | ● | | | | |
 | F18 登录与鉴权 | ● | | | | |
 | F19 进化对象配置 | | | | ● | |

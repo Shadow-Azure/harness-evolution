@@ -1,6 +1,6 @@
 # 03 · 前端架构与组件选型
 
-> 本文回答：前端用什么技术搭、怎么分层、组件如何组织、状态放哪、家族树怎么从 React Flow 迁到 Vue。
+> 本文回答：前端用什么技术搭、怎么分层、组件如何组织、状态放哪、Agent 执行流图怎么从 React Flow 迁到 Vue。
 > 参考基线：[无线 AI 极客汇前端架构分析报告](../../../wireless-ai-forum/docs/reports/frontend-architecture-report-2026-10-22.md)（Vue 3 项目，借鉴其**架构模式**而非照搬实现）。
 > 下游：[05 接口设计](05-api-design.md) · [08 前端实现设计](08-frontend-implementation.md)。
 
@@ -21,7 +21,7 @@
 | UI 控件 | Element Plus | ^2.11 | 表单控件、弹窗、日期、分页、消息 | 参考报告同选型；"控件用库、结构自研"的分工 |
 | 样式 | Tailwind CSS 3 + CSS 变量设计令牌 | ^3.4 | 布局与视觉 | 原型已是 CSS 变量体系，令牌直接移植 |
 | 图标 | lucide-vue-next | latest | 统一图标门面 | 参考报告同选型 |
-| 图/树 | **Vue Flow（@vue-flow/core）** | ^1.4x | 家族树执行流图 | xyflow 官方 Vue 移植，Handle/自定义节点/边语义与 React Flow 对齐；备选 AntV G6 太重、自研 SVG 要重写缩放与命中测试 |
+| 图/树 | **Vue Flow（@vue-flow/core）** | ^1.4x | Agent 执行流图 | xyflow 官方 Vue 移植，Handle/自定义节点/边语义与 React Flow 对齐；备选 AntV G6 太重、自研 SVG 要重写缩放与命中测试 |
 | 测试 | Vitest + Vue Test Utils + MSW（node） | ^3 / ^2 | 单元、组件、契约 | 参考报告同栈 |
 | 契约生成 | openapi-typescript | ^7 | `apps/api` OpenAPI → TS 类型 | 比 orval/hey-api 轻，只生成类型不绑定客户端实现，传输层自写更可控 |
 
@@ -53,7 +53,7 @@
 ┌─ 装配层 ─────────────────────────────────────────────────────┐
 │ main.ts ──► App.vue（顶栏 + router-view）                     │
 │ router/   stores/   api/queryClient.ts                       │
-│ composables/useRunEvents.ts（页面级 SSE，仅运行中）          │
+│ composables/useRunEvents.ts（页面级 SSE，preparing/running）    │
 └───────────────────────────┬───────────────────────────────────┘
                             ▼
 ┌─ 路由页面层 ──────────────────────────────────────────────────┐
@@ -63,7 +63,7 @@
 └───────────────────────────┬───────────────────────────────────┘
                             ▼
 ┌─ 共享组件层 ──────────────────────────────────────────────────┐
-│ components/family-tree（Vue Flow 图）                         │
+│ components/family-tree（Vue Flow Agent 执行流图）               │
 │ components/bad-cases        components/ui + layout            │
 │                              （含 IconRenderer）              │
 └───────────────────────────┬───────────────────────────────────┘
@@ -80,7 +80,7 @@
 |---|---|---|---|
 | 装配层 | `main.ts`、`App.vue`、`router/`、`stores/`、`api/queryClient.ts` | 建应用、装插件、注册路由；**不建立全局 SSE** | 所有下层 |
 | 路由页面层 | `pages/*` | 路由入口、页面编排、页面态（筛选/分页/展开） | 组件层、数据层 |
-| 组件层 | `components/*`、`pages/*/components/*` | 跨页面共享件（家族树、问题卡、UI 基元）；页面专属件随页面放 | 数据层类型、UI 基元 |
+| 组件层 | `components/*`、`pages/*/components/*` | 跨页面共享件（Agent 执行流图、问题卡、UI 基元）；页面专属件随页面放 | 数据层类型、UI 基元 |
 | 数据与契约层 | `api/`、`composables/` | 传输、缓存、queryKey、域 hooks、契约类型 | 外部依赖 |
 
 **单向依赖**：页面 → 组件 → 基元；页面 → hooks → api。组件不得直接 import `api/http`（必须经 composable），避免"组件偷偷取数"导致缓存语义失控。
@@ -112,7 +112,7 @@ main.ts
   ├─ tryRefresh()：refresh cookie 有效则恢复登录态，失败清空
   ├─ await router.isReady()（含登录守卫首次判定）
   └─ mount('#app') ──► App.vue（不建立全局 SSE）
-                          └─ 运行中的 run 页面按需建立 SSE
+                          └─ preparing/running 的 run 页面按需建立 SSE
 ```
 
 四条顺序约束（参考报告 §3.1 的教训）：
@@ -120,7 +120,7 @@ main.ts
 1. **插件全部注册先于 mount**：query/pinia 注入上下文必须对根组件可见。
 2. **refresh 先于 `router.isReady()`**：否则守卫会把已登录用户误判成未登录，首屏闪到登录页再跳回。
 3. **`router.isReady()` 先于 mount**：避免首屏先渲染空路由再跳转的闪动与重复请求。
-4. **SSE 由页面按需建立**：只有 `status=running` 的 run 详情才订阅；App.vue 不建立常驻连接；完成/离开即关闭；轨迹归一化走 REST 轮询。
+4. **SSE 由页面按需建立**：只有 `preparing/running` 的 run 详情才订阅；App.vue 不建立常驻连接；完成/阻塞/离开即关闭；轨迹归一化走 REST 轮询。
 
 ## 6. 路由与深链设计
 
@@ -129,11 +129,11 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | 路由 | 页面 | 承载状态 |
 |---|---|---|
 | `/login` | 登录页（唯一公开页） | `?redirect=/sessions/...` |
-| `/sessions` | Session 浏览器（列表 + 家族摘要） | `?q=&status=&sort=`；选中 session 用 `/sessions/:sid` |
-| `/sessions/:sid` | 家族摘要（默认落地页） | — |
+| `/sessions` | Session 浏览器（列表 + 会话概览） | `?q=&status=&sort=`；选中 session 用 `/sessions/:sid` |
+| `/sessions/:sid` | 会话概览（默认落地页） | — |
 | `/sessions/:sid/errors` | 错误详情与归因 | `?case={badCaseId}&tab=desc\|attr` |
 | `/evolution` | 运行列表 | — |
-| `/evolution/targets` | 进化对象配置（repo/tag/子目录/启用） | — |
+| `/evolution/targets` | 进化对象配置（repoUrl/defaultRef/子目录/启用） | — |
 | `/evolution/cluster/:previewId` | 仅聚类结果 | — |
 | `/evolution/runs/:rid` | 运行详情 | `?step=0..5` |
 
@@ -151,15 +151,15 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | 页面 UI 状态 | 组件 `ref` / `reactive` | 筛选词、排序、展开的轮次、选中的错误、展开的 cluster | 页面挂载期 |
 | 跨页客户端状态 | Pinia | **仅登录态（access token + 当前用户）**、视图偏好 | 应用会话（access token 只存内存） |
 | URL 状态 | vue-router | 选中 session（`/sessions/:sid`）、选中问题、tab、step、筛选条件 | 刷新可恢复 |
-| 持久化状态 | localStorage（手写小工具，不引插件） | 折叠偏好、家族树缩放偏好 | 长期 |
+| 持久化状态 | localStorage（手写小工具，不引插件） | 折叠偏好、Agent 执行流图缩放偏好 | 长期 |
 
 **queryKey 工厂**（[08 §2](08-frontend-implementation.md) 给出完整代码结构）：
 
 ```text
 ['sessions']                      → 列表
 ['sessions', filters]             → 列表（带筛选）
-['session', sid]                  → 摘要
-['session', sid, 'tree']          → 家族树
+['session', sid]                  → 会话概览
+['session', sid, 'tree']          → Agent 会话树
 ['session', sid, 'bad-cases']     → 问题列表
 ['bad-case', badCaseId]           → 问题详情
 ['bad-case', badCaseId, 'analysis'] → 归因状态
@@ -172,7 +172,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 ['catalogs']                      → 对象/模型清单（staleTime ∞）
 ```
 
-写路径的失效规则：`POST /runs` → 失效 `['evolution','runs']`；`POST /advance` → 失效 `['evolution', rid]` 整棵前缀（详情 + 所有 step）；SSE `run.progress` 事件同样只失效前缀，页面自己决定要不要立即重取。
+写路径的失效规则：`POST /runs` → 失效 `['evolution','runs']`；`POST /runs/{rid}/retry` → 失效 `['evolution', rid]` 整棵前缀（详情 + 所有 step）；SSE `run.progress`/`run.blocked` 事件同样只失效前缀，页面自己决定要不要立即重取。
 
 ## 8. 组件体系
 
@@ -183,7 +183,7 @@ App.vue
 ├── TopNav.vue
 └── router-view
     └── pages/*
-        ├── family-tree/                 （Vue Flow 家族树）
+        ├── family-tree/                 （Vue Flow Agent 执行流图）
         ├── bad-cases/                   （问题卡）
         └── pages/evolution/components/  （向导/六步/簇卡/日志）
                 └── 共用 ui/
@@ -196,7 +196,7 @@ App.vue
 |---|---|---|---|
 | 全局壳 | `App.vue`、`TopNav.vue` | 全站 | 导览、品牌；**不持有全局 SSE** |
 | 页面编排 | `pages/*/Index.vue` | 单页面 | 只做布局与组合，数据来自 composable |
-| 跨页面领域组件 | `family-tree/*`、`bad-cases/*` | 多页面 | 家族树、问题卡；props/emits 交互 |
+| 跨页面领域组件 | `family-tree/*`、`bad-cases/*` | 多页面 | Agent 执行流图、问题卡；props/emits 交互 |
 | 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、六步面板、簇卡、日志；随页面删除 |
 | UI 基元 | `ui/BaseCard.vue`、`Chip.vue`、`Badge.vue`、`StatStrip.vue`、`DensityBar.vue`、`EmptyState.vue`、`ErrorState.vue`、`LoadingSkeleton.vue`、`Pagination.vue`、`Modal.vue`、`Tabs.vue`、`IconRenderer.vue` | 任意 | 无业务语义；颜色/间距全部走设计令牌；`IconRenderer` 是唯一 lucide 出口 |
 
@@ -225,7 +225,7 @@ App.vue
 - `IconName` 用 union 类型收敛，图标映射集中在一个文件；新增图标只改这一处。
 - 统一 `size` / `stroke-width` / `currentColor`，避免每个组件各写一套。
 
-### 8.3 家族树：React Flow → Vue Flow 的迁移方案
+### 8.3 Agent 执行流图：React Flow → Vue Flow 的迁移方案
 
 这是 D1 决策下最大的单项工作量，拆开看并不大：
 
@@ -263,7 +263,7 @@ styles/element-overrides.css  Element Plus 变量映射到本项目令牌
 - **令牌是唯一颜色源**：`--blue/--green/--orange/--red/--purple/--cyan` 及 `--bg-*/--text-*/--border` 原样移植，组件里禁止写死色值。
 - **状态色映射表**（前端常量，唯一允许的"静态数据"）：归因状态 → 色（`unanalyzed` 灰 / `nonissue` 绿 / `issue-model` 紫 / `issue-prompt` 橙 / `issue-error` 红）；问题类型 → 色（非问题灰 / 错误红 / prompt 橙 / 模型紫）。与原型 `TYPE_COLOR` / `STATUS_LABEL` 一致。
 - **Element Plus 覆盖**：只覆盖 `--el-color-primary`、圆角、字体，不做全量皮肤；EP 样式运行时注入，覆盖文件需提高特异性（参考报告 §8 的坑）。
-- 响应式：顶栏在 <1100px 隐藏副标题（原型同规则）；家族树画布固定高度 720px，详情页 413px（原型值）。
+- 响应式：顶栏在 <1100px 隐藏副标题（原型同规则）；Agent 执行流图画布固定高度 720px，详情页 413px（原型值）。
 
 ## 10. 构建、性能与质量门禁
 
@@ -291,7 +291,7 @@ apps/web/src/
     queryClient.ts        QueryClient 默认策略（staleTime 30s / gc 5min / 4xx 不重试）
     queryKeys.ts          queryKey 工厂（集中，跨域失效）
     auth.ts               login/refresh/logout/me
-    sessions.ts           列表/摘要/家族树/问题
+    sessions.ts           列表/会话概览/Agent 会话树/问题
     badCases.ts           问题详情与归因
     probes.ts             归因结论
     evolution.ts          runs / 六步产出 / 事件 / 配置 / 启动推进
@@ -300,13 +300,13 @@ apps/web/src/
     generated/            openapi-typescript 生成物（禁止手改）
   composables/
     useAuth.ts            登录/登出/refresh/当前用户
-    useSessions.ts        列表/摘要/家族树/问题
+    useSessions.ts        列表/会话概览/Agent 会话树/问题
     useBadCases.ts        问题详情与归因
     useEvolution.ts       runs / 六步产出 / 事件 / 启动 / 推进
     useAcquisition.ts     同步 / 拉取 / 状态
     useTargets.ts         进化对象配置 CRUD
     useCatalogs.ts        对象/模型清单
-    useRunEvents.ts       run 页面的 SSE 票据 + 连接 + 事件追加（仅 running）
+    useRunEvents.ts       run 页面的 SSE 票据 + 连接 + 事件追加（preparing/running）
   stores/
     auth.ts               登录态（access token 内存 + 当前用户）
     preferences.ts        折叠/缩放偏好（localStorage）

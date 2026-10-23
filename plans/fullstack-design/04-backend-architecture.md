@@ -20,13 +20,17 @@
 | ORM | **SQLAlchemy 2.0（async）** | 真实数据存储 | 表达式层跨方言；见 §2.1 与 §4 |
 | 数据库驱动 | `asyncmy`（MySQL，主库）/ `aiosqlite`（测试） | 连接驱动 | 驱动差异被 `Database` 适配器吸收；备选 `aiomysql`（生态更老但稳） |
 | 迁移 | Alembic（单版本树，双方言） | 版本化建表/改表 | SQLite 用 batch 模式；`alembic upgrade head` 由启动脚本执行 |
-| 包管理 | **uv** | 依赖与虚拟环境 | `uv sync` / `uv run`；锁文件入库 |
+| 包管理 | **venv + pip** | 依赖与虚拟环境 | `python -m venv .venv` + `pip install -e ".[dev]"`；依赖声明在 `pyproject.toml`，虚拟环境不入库 |
 | SSE | sse-starlette | 事件流 | 小型成熟库，自带心跳与断线处理；也可手写 `StreamingResponse` |
 | HTTP 客户端（测试/未来 LLM） | httpx | API 测试 | `AsyncClient` + `ASGITransport` |
 | 测试 | pytest + pytest-asyncio | 单测/接口测试 | 覆盖同步幂等、状态机、只读查询；MySQL 用可选 integration 标记 |
 | 代码质量 | ruff（lint+format）、mypy（strict 模式渐进） | 门禁 | 与前端 lint/typecheck 对齐 |
 | 任务队列（未来） | arq / CI 平台 | 替换串行执行器 | V1 不需要；接口先行（§7.3） |
 | 契约生成（前端侧） | openapi-typescript | `apps/api` OpenAPI → TS | 见 [03 §10](03-frontend-architecture.md) |
+
+> **驱动 vs ORM**：`asyncmy` / `aiosqlite` 是数据库驱动（DBAPI 层，只负责连接数据库、发送 SQL、返回结果）；SQLAlchemy 是 ORM/SQL 工具层，通过 dialect 调用驱动。`mysql+asyncmy://` 中 `mysql` 是方言，`asyncmy` 是驱动；`sqlite+aiosqlite://` 同理。两者不是同一层，也不是二选一。
+>
+> **venv + pip**：用标准库 `venv` 创建 `.venv`，激活后 `pip install -e ".[dev]"` 安装项目与开发依赖；`pyproject.toml` 只做依赖与构建元数据。项目不引入额外包管理器或锁文件；CI 使用同一套 `python -m venv` + `pip install` 命令。
 
 ### 2.1 为什么是 SQLAlchemy 2.0 而不是 SQLModel
 
@@ -86,11 +90,11 @@ apps/api/
       request_id.py  auth.py  cors.py  rate_limit.py
     service/
       identity/              # 登录、token、用户、SSE 票据
-      sessions/              # 列表/摘要/家族树
-      acquisition/           # 读 payload、归一化、家族组装、定时调度（scheduler.py）
+      sessions/              # 列表/会话概览/Agent 会话树
+      acquisition/           # 读 payload、归一化、Agent 会话树组装、定时调度（scheduler.py）
       bad_cases/             # 问题列表/详情（只读）
       probes/                # 归因结论（只读）
-      evolution/             # run、占位聚类、六步产出、执行事件（events.py）
+      evolution/             # run、聚类、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
       jobs.py                # 串行任务执行器（job_runs）
       events.py              # 进程内 SSE 事件总线
@@ -229,7 +233,8 @@ class PayloadSource(Protocol):
 
 ### 5.3 fixtures：演示数据的唯一形态
 
-- `fixtures/` 放原型 4 个会话的轨迹、bad_cases、probes、簇示例；
+- `fixtures/` 放原型 4 个会话的轨迹、bad_cases、probes，以及可选的 `evolution_targets` 配置；
+- `probe_clusters` / `probe_cluster_probes` 是**派生数据，不写入 fixtures**；seed 后在向导启动 `POST /evolution/cluster-previews` 或 `POST /evolution/runs`，由 `simple_cluster` 生成；
 - `python -m app.cli seed` 幂等写入真实表（按主键 upsert 语义），仅开发/演示环境执行；
 - 生产不执行 seed；UI 永远读真实表；
 - 与"运行时 Stub Provider"的区别：没有 `phase=demo` 之外的运行时分支逻辑，问题侧字段与真实表完全一致（`demo` 只表示数据来自 seed）。
@@ -238,10 +243,10 @@ class PayloadSource(Protocol):
 
 | 占位点 | 位置 | 说明 / 后续替换 |
 |---|---|---|
-| 聚类 | `service/evolution/simple_cluster`（按 attribute_type 分半） | 换真实聚类，表不变 |
+| 聚类 | `service/evolution/simple_cluster`（按 attribute_type 分组后再前后分半） | 换真实聚类，表不变 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位（追加小节），但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
-| eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测执行器（本地或 CI） |
-| git 推送 | `HE_GIT_PUSH=true`（V1 完成后 push） | 校验分支后 push；失败可重试；后续 PR |
+| eval / 终评 | `service/evolution/eval_gateway.py` + `eval_poller.py` | V1 可 `FakeEvalGateway`；真实接口走 submit/status/result 适配层；终评占位 |
+| git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
 
 ## 6. 错误模型与横切
 
@@ -276,6 +281,16 @@ class PayloadSource(Protocol):
 scheduler_loop()                                                # lifespan 启动；每 HE_SYNC_INTERVAL_SECONDS
   └─ pending 为 0 → 跳过
   └─ pending > 0 → trigger_sync(source="scheduler")（内部抢 sync_lock；抢不到跳过）
+
+eval_poller_loop()                                              # lifespan 启动；每 30s 扫到期评测
+  └─ round.eval_status=evaluating 且 eval_next_poll_at<=now
+  └─ 每 HE_EVAL_POLL_SECONDS=300 调一次外部 status
+  └─ completed → 入队 evolution_apply；failed/timeout → run blocked
+
+blocked_sweeper_loop()                                         # lifespan 启动；每 30s 扫 blocked
+  └─ next_retry_at<=now 且 retry_attempts<3
+  └─ 入队 evolution_retry（自动退避每次只 push 1 次）
+
 JobRunner.submit(kind, payload, ref_id, created_by) -> job_id   # 落 job_runs 行（status=queued），立刻返回
 worker_loop()                                                   # lifespan 启动的串行执行器（V1 一把 asyncio.Lock）
   └─ 同一时刻只执行一个任务：claim → running → 更新 progress → completed/failed
@@ -285,9 +300,12 @@ worker_loop()                                                   # lifespan 启�
 - **SQLite 与 MySQL 的差异**：V1 单实例串行，不依赖 `SKIP LOCKED`；未来多实例 worker 时用 MySQL `SELECT … FOR UPDATE SKIP LOCKED` 抢占，SQLite 只用于测试。
 - **任务状态以 `job_runs` 表为准**：前端任何时候 `GET /api/jobs/{jobId}` 拿到的都是真值。
 - **sync 单飞**：`sync_lock` 单行表 + TTL；scheduler 与手动触发共用。已有 sync 时手动请求返回现有 `jobId`（`reused=true`），不重复入队。
-- 同一 run 只允许一个进行中推进任务，冲突抛 `RUN_BUSY`。
+- **自进化任务**：`evolution_prepare` → `evolution_advance` →（eval_poller）→ `evolution_apply` → 下一轮 / `evolution_finalize`；`blocked` 时由 `blocked_sweeper` 或 `POST /retry` 入队 `evolution_retry`。
+- 同一 run 只允许一个进行中的推进/重试任务，冲突抛 `RUN_BUSY`。
+- **push 是评测前置条件**：每轮 candidate 先 push 到临时 candidate ref；失败进入 `blocked`，不提交评测。
 - SSE 只是通知：run worker 推进时写 `job_runs.progress` 并 publish 事件；前端收到后失效 queryKey 重取。
 - **sync 不经过 EventBus/SSE**：scheduler/manual 只写 `job_runs`，前端轮询 `GET /acquisition/status` / `GET /jobs/{id}`。
+- `eval_poller` / `blocked_sweeper` 是轻量循环，不持有 JobRunner 全局锁；不要用 job 内 `asyncio.sleep(300)` 等评测。
 
 ### 7.3 SSE 事件总线
 
@@ -305,15 +323,16 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 |---|---|---|
 | `ping` | `{}` | 每 15s 心跳（防代理断流） |
 | `run.event` | `{run_id, seq, event_type, level, stage}` | 执行事件追加 |
-| `run.progress` | `{run_id, unit, total, status, stage_label}` | 自进化推进 |
+| `run.progress` | `{run_id, unit, total, status, stage_label}` | 自进化准备/推进/评测/重试 |
+| `run.blocked` / `run.resumed` | `{run_id, stage, retry_attempts, next_retry_at}` | push/eval 阻塞与恢复 |
 | `run.completed` | `{run_id, verdict}` | 终评完成 |
-| `run.failed` / `run.interrupted` | `{run_id, stage, message, event_seq}` | 失败/中断 |
+| `run.failed` / `run.interrupted` | `{run_id, stage, message, event_seq}` | 不可恢复失败/进程中断 |
 | `reset` | `{run_id, reason}` | 事件游标失效，要求前端重拉快照 |
 
 - SSE 端点：`GET /api/events?ticket=…`；topics 与 cursor 由 `POST /api/events/ticket` 绑定，URL 不再接受 topics。
 - run 事件从 `evolution_run_events` 回放（首连 `lastEventId`，重连 `Last-Event-ID`）。
 - **轨迹归一化（sync）没有 SSE**：进度走 `GET /acquisition/status` / `GET /jobs/{jobId}` 轮询。
-- 只有运行中的 run 页面才订阅；完成即关闭，已完成任务不建 SSE。
+- 只有 `preparing/running` 的 run 页面订阅；`blocked` 可继续轮询，终态关闭。
 
 ## 8. 扩展路径（单实例 SaaS → 多实例）
 
@@ -344,9 +363,13 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` | 空 | 上游轨迹查询接口（pull 用，上游实现后启用） |
 | `HE_SYNC_INTERVAL_SECONDS` | `60` | 后台处理待归一化 payload 的间隔（0 = 关闭定时，仅 admin 手动） |
 | `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
-| `HE_GIT_PUSH` | `true` | V1 完成后 push 到配置仓库的 `origin`；测试环境可设 false |
+| `HE_GIT_PUSH` | `true` | 每轮 candidate 评测前 push；测试环境可设 false（此时不触发真实评测） |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |
 | `HE_GIT_AUTHOR_NAME` / `HE_GIT_AUTHOR_EMAIL` | `harness-evolution` / `noreply@local` | commit author |
+| `HE_EVAL_MODE` | `fake` | `fake` / `http`；V1 可先 fake，但 push 链路真实 |
+| `HE_EVAL_BASE_URL` / `HE_EVAL_API_KEY` | 空 | 外部评测平台地址与密钥 |
+| `HE_EVAL_POLL_SECONDS` | `300` | 评测状态轮询间隔（5 分钟） |
+| `HE_EVAL_TIMEOUT_SECONDS` | `7200` | 单轮评测超时；超时后 run 进入 blocked |
 | `HE_SSE_HEARTBEAT_SECONDS` | `15` | SSE 心跳 |
 | `HE_LOG_LEVEL` | `info` | 日志级别 |
 | `HE_CORS_ORIGINS` | `http://localhost:5173` | 允许的前端域名 |

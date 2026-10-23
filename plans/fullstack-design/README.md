@@ -2,6 +2,8 @@
 
 > 目标：把 [14-15-ui-prototype 原型](../14-15-ui-prototype/harness-evolution.html) 里的全部功能与 UI 效果，落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
 > 状态：**讨论稿** —— 等待 review，确认后再排 milestone / roadmap / issue。
+>
+> 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。代码标识 `family-tree/`、`SessionTree`、`FamilySummary.vue` 暂保留，后续重构再改名。
 
 ## 这套文档怎么读
 
@@ -35,7 +37,7 @@
 
 ## 系统一句话说明
 
-Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 家族）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在家族树上查看执行流、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，范围与替代说明见 [02 §2.1](02-features.md)。
+Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 组成的 Agent 会话树）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在 Agent 执行流图上查看主/子 agent 的执行过程、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，范围与替代说明见 [02 §2.1](02-features.md)。
 
 ```text
 轨迹输入：上游查询接口 / trajectory_payloads（脚本写入）
@@ -62,20 +64,20 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 
 | # | 决策点 | 结论 | 影响 |
 |---|---|---|---|
-| D1 | 前端框架 | **Vue 3 + Vite** | 原型家族树从 React Flow 迁到 [Vue Flow](https://vueflow.dev/)（同为 xyflow 官方出品）；约 600 行几何布局代码是纯 TS，框架无关，基本原样移植，重写的只是节点/边的渲染组件 |
+| D1 | 前端框架 | **Vue 3 + Vite** | 原型 Agent 执行流图从 React Flow 迁到 [Vue Flow](https://vueflow.dev/)（同为 xyflow 官方出品）；约 600 行几何布局代码是纯 TS，框架无关，基本原样移植，重写的只是节点/边的渲染组件 |
 | D2 | 后端落地 | **新建 `apps/api`（Python + FastAPI）**，替换现有 `apps/server`（Fastify+TS 壳） | 现有 TS 后端只有健康检查，无沉没成本；仓库文档中"Fastify"表述需同步更新 |
 | D3 | 契约事实源 | **FastAPI OpenAPI 为唯一事实源**，`openapi-typescript` 生成 TS 类型存入 `packages/contracts` | 保留仓库"contracts 是共享协议唯一来源"的约定，但内容改为生成物 + CI 防漂移校验 |
 | D4 | 演示数据与外部数据（2026-10-22 修订） | **问题/归因数据来自外部只读表；演示数据用 `fixtures/` + `seed` 灌入真实表**，运行时没有 Stub Provider 分支 | API 契约全真；UI 永远读真实表；上游/外部表就绪后无需切换前端或契约。详见 [01 §5](01-architecture.md) |
 | D5 | 部署形态（2026-10-22 修订） | **SaaS 服务**：多用户、远程访问、MySQL 主库；不再是本地单机工具 | 引入鉴权、用户体系与远程部署；原先"预留服务化"的接缝全部兑现 |
-| D6 | 自进化边界（2026-10-23 修订） | **V1 真实修改 skill/agent 文件、commit 并 push 到远端 run 分支**；聚类与 patch 内容、评测分数为占位 | candidate 先 commit，接纳 amend 追加评测对比、拒绝 reset；分支 `evo/{YYYYMMDD}-{run_id}`；推送前校验分支 |
-| D7 | 进度推送 | **页面级 SSE**：仅运行中的 run 订阅；ticket 绑定 topics 与 cursor，完成即关闭；轨迹归一化走 REST 轮询 | EventSource 不能带头，用一次性票据；已完成任务不建 SSE |
+| D6 | 自进化边界（2026-10-23 修订） | **V1 真实修改 skill/agent 文件、candidate commit、push 临时 ref 供评测，接纳后 fast-forward run 分支**；聚类与 patch 内容、评测分数为占位 | candidate 先 push 到 `.../candidate/r{n}` 再评测；接纳 amend + ff，拒绝删 candidate；run 分支只含已接纳 commit；push 失败 blocked |
+| D7 | 进度推送 | **页面级 SSE**：仅 `preparing/running` 的 run 订阅；ticket 绑定 topics 与 cursor，完成/阻塞即关闭；轨迹归一化走 REST 轮询 | EventSource 不能带头，用一次性票据；已完成任务不建 SSE |
 | D8 | 范围裁剪（2026-10-22） | **时间线页面（原型 B 页）不做** | 轮次/步骤/块仍入库，仅用于统计与后续诊断；移除时间线路由、接口、组件与对应里程碑 issue。见 [02 §2.1](02-features.md) |
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
 | D12 | 轨迹来源（2026-10-23 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时读取+归一化，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；幂等靠 `(root_session_id, session_id)` + hash + `parser_version` |
-| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoPath/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | V1 从本地已 clone 仓库按 tag 取基线；后续接远端版本下载 |
-| D14 | 自进化 git 流程（2026-10-23） | **每个 candidate patch 一次 commit（带追溯），接纳后 amend 追加评测对比，拒绝 reset 丢弃；V1 完成后校验并 push** | `evolution_runs` 记录 baseCommit/branch/pushStatus；push 前校验分支命名、基线、trailer；失败可重试 push |
+| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；模型清单来自归一化后的 `members.model` |
+| D14 | 自进化 git 流程（2026-10-23） | **candidate commit → push 临时 candidate ref → 评测 → 接纳 amend + fast-forward run 分支 / 拒绝删 candidate；push 是评测前置条件** | run 分支只含已接纳 commit，评测用 `.../candidate/r{n}`；push 失败 run 进入 blocked，3 次立即 + 1/5/15min 退避，`/retry` 恢复 |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
 
 ## Review 前必看：6 个待确认项
@@ -85,7 +87,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | # | 待确认 | 当前建议 |
 |---|---|---|
 | 1 | UI 控件库与主题 | Element Plus 只做控件，结构自研；首版只做亮色 |
-| 2 | 「模拟推进」按钮 | 真实实现接入后隐藏按钮，接口保留 |
+| 2 | 「模拟推进」按钮 | **已定**：生产 UI 删除；后台自动逐轮推进 |
 | 3 | 「查看原始 JSON」overlay | 首版不做，后续按诊断证据需求再加 |
 | 4 | 用户管理界面范围 | 首版只做 API + 顶栏用户区，不做管理页 |
 | 5 | 轨迹归一化触发方式 | 后台定时（默认 60s）+ 单飞锁；手动仅 admin 立即处理 |
@@ -95,7 +97,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 
 - **轨迹**：第三方脚本/上游 pull → `trajectory_payloads`（每 agent 一行原始 JSONL）→ `service/acquisition` 归一化 → 业务表。
 - **问题与归因**：外部系统写 `bad_cases` / `bad_case_analysis` / `probe_reports`，本服务**只读**。
-- **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库的副本、commit 到 `evo/{YYYYMMDD}-{run_id}` 分支，并在 run 完成后校验并 push 到远端**（candidate 先 commit，接纳 amend、拒绝 reset）。
+- **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库副本、candidate commit、push 临时 candidate ref 供评测，接纳后 fast-forward run 分支**（candidate 先 push 再评测；拒绝删 candidate，run 分支不变）。
 - **执行过程**：阶段、候选、评测、推送、异常全部落 `evolution_run_events`；前端通过 `GET /runs/{rid}/events` 读取，SSE 只做实时通知。
 - **演示数据**：`fixtures/` + `python -m app.cli seed`，仅开发/演示灌入真实表；运行时无 stub 分支。
 - **V1 占位**：聚类用"按 attribute_type 分半"的占位算法；patch 内容追加占位小节但**真实落盘/commit**；评测/终评为占位分数。
