@@ -232,7 +232,7 @@ agent-tree/
 ```
 
 - `TreeEvent`：`line`、`kind`、`name?`、`desc?`、`toolUseId?`、`messageOffset`。
-- `TreeNode`：`agentId`、`agentSessionId`、`parentAgentId`、`kind`、`agentType`、`messagesCount`、`events`。
+- `TreeNode`：`agentId`、`parentAgentId`、`kind`、`agentType`、`taskKind`、`spawnDepth`、`messagesCount`、`events`。
 
 ### 3.2 布局核心（对原型逻辑的保留与简化）
 
@@ -343,7 +343,7 @@ Index.vue
 | 交互 | 实现 |
 |---|---|
 | 搜索 | 输入 300ms 防抖 → 更新 `filters.q` → queryKey 变化自动重取 |
-| 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial） |
+| 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial）；对应 `status=all/ok/problem`（[05 §4.2](05-api-design.md)） |
 | 排序 | 4 个选项直传后端 `sort` |
 | 选中 session | 路由到 `/sessions/:sid`；列表高亮由当前路由参数派生，**不再用 Pinia 存当前 sid** |
 | 数据加载 | `useSessionSummary` / `useSessionTree` / `useSessionBadCases` 三个 query **并行**；会话概览先到先渲染，树和问题列表各自 skeleton，互不阻塞 |
@@ -385,7 +385,7 @@ Index.vue（grid: 340px 1fr）
         └── ProbeReport.vue（归因 tab：probe 结论与推导）
 ```
 
-数据：页面初始化 `useSessionBadCases(sid)` 拿全部 bad_case（含 `analysis.status/probeId`）；选中后 `useBadCase(badCaseId)` + `useBadCaseAnalysis(badCaseId)`，归因 tab 再 `useProbe(probeId)` 取详情。
+数据：页面初始化 `useSessionBadCases(sid)` 拿全部 bad_case（含 `analysis.status/attributeType/probeId`，左栏 5 态 chip 不再逐条取 probe）；选中后 `useBadCase(badCaseId)` + `useBadCaseAnalysis(badCaseId)`，归因 tab 再 `useProbe(probeId)` 取详情。
 
 ### 7.2 选中与联动
 
@@ -394,7 +394,7 @@ Index.vue（grid: 340px 1fr）
 | 选中错误 | URL 写 `?case={badCaseId}&tab=desc`；本地选中由 URL 派生（刷新可恢复） |
 | 执行流过滤 | 选中时只保留该 `badCaseId` 对应的节点及其边；agent/skill 节点保留 |
 | 全部错误 | `case` 参数移除，恢复完整执行流 + 空态详情 |
-| Tab 切换 | URL `tab=desc|attr`；归因 tab 需要 `analysis.probeId` |
+| Tab 切换 | URL `tab=desc` / `tab=attr`；归因 tab 需要 `analysis.probeId` |
 | 再点已选中卡 | 保持选中，不取消 |
 | 未分析 | 归因 tab 显示"尚未分析"空态（外部归因未写入），不提供"触发分析"按钮 |
 
@@ -584,7 +584,7 @@ export const ANALYSIS_STATUS_META = {
   "issue-error":     { label: "是问题-错误", cls: "issue-error" },
 } as const
 
-// 展示值由 analysis.status + probe.attributeType 推导（见 §7.3）
+// 展示值由 analysis.status + analysis.attributeType 推导（见 §7.3）
 export const TYPE_COLOR: Record<string, string> = {
   nonissue: "var(--text-faint)",
   error: "var(--red)",

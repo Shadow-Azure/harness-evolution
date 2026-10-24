@@ -63,7 +63,7 @@
 ### 1.4 术语约定（避免与 Claude Code 的 turn 混淆）
 
 - `session_family`：根会话家族；API 的 `sessionId` 指向它，`root_session_id` 也指向它。
-- `agent`：主 agent、子 agent 或 workflow 执行节点；`agent.id` 是全局唯一节点 id（ULID），`agent_session_id` 是该节点的会话 id（workflow 为合成 id），两者不是同一个值。
+- `agent`：主 agent、子 agent 或 workflow 执行节点；`agent.id` 主 agent = root session id，子 agent = 真实 `agentId`。
 - `user_turn`：一次用户提问到下一次用户提问；**不是** Claude Code agent loop 里“模型+工具”的 tool-use turn。
 - `message`：一次 assistant 模型响应（Claude 的 `message.id`）；**不是** content block。
 - `content_block`：消息内的 `text` / `thinking` / `tool_use` / `tool_result` 块。
@@ -105,22 +105,24 @@ erDiagram
 
 ### 3.0 `trajectory_payloads` —— 原始 JSONL（外部写入，本服务只读）
 
-> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，只通过 `session_id` 读取。该 `session_id` 是外部契约字段，语义为**实际 agent 的 session id**，对应内部 `agents.agent_session_id`；根会话 id 另由 `root_session_id` 给出。
+> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，按 `(root_session_id, agent_id)` 读取。`root_session_id` 是 Claude Code 的根 `sessionId`；`agent_id` 主 agent 用根 session id，子 agent 用真实 `agentId`。
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `session_id` | `VARCHAR(36)` | PK | 实际 agent 的 session id（主 agent 或 subagent） |
-| `root_session_id` | `VARCHAR(36)` | NOT NULL | 主 agent 的 session id；同一会话的主/子 agent 相同 |
-| `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
+| `root_session_id` | `VARCHAR(36)` | PK 组成 | 主 agent 的 session id；同一会话的主/子 agent 相同 |
+| `agent_id` | `VARCHAR(64)` | PK 组成 | 主 agent = root session id；子 agent = provider `agentId` |
+| `agent_kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `payload` | `LONGTEXT` | NOT NULL | 该 agent 的原始 JSONL 全文 |
+| `agent_meta` | `JSON` | NULL | 子 agent 的 `*.meta.json`（`toolUseId/agentType/spawnDepth/taskKind/teamName/model`） |
 | `content_hash` | `CHAR(64)` | NOT NULL | payload 哈希 |
 | `line_count` | `INTEGER` | NOT NULL | 行数 |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
 | `updated_at` | `DATETIME` | NOT NULL | 脚本/接口最近写入时间 |
 
-索引：`INDEX(root_session_id)`、`INDEX(updated_at)`。
+主键：`PRIMARY KEY(root_session_id, agent_id)`；索引：`INDEX(updated_at)`。
 
-- 主 agent 行：`session_id == root_session_id`。
+- 主 agent 行：`agent_id == root_session_id`。
+- 子 agent 行：`agent_id` 是 JSONL 行和 meta 文件里的真实 `agentId`。
 - 本服务只读；pull 路径由本服务写入（见 [07 §2](07-backend-implementation.md)）。
 
 ### 3.1 `source_records` —— 处理索引（不存 payload）
@@ -129,7 +131,7 @@ erDiagram
 |---|---|---|---|
 | `id` | `BIGINT` | PK AUTOINCREMENT | 代理主键 |
 | `root_session_id` | `VARCHAR(36)` | NOT NULL | 主 agent 的 session id |
-| `agent_session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 实际 agent 的 session id；对应 `trajectory_payloads.session_id` |
+| `agent_id` | `VARCHAR(64)` | NOT NULL | 主 agent = root session id；子 agent = 真实 `agentId` |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
 | `line_count` | `INTEGER` | NOT NULL | 行数（Agent 执行流图比例尺） |
@@ -139,7 +141,7 @@ erDiagram
 | `parser_version` | `INTEGER` | NULL | 已使用的解析器版本 |
 | `last_sync_run_id` | `VARCHAR(36)` | NULL FK → `sync_runs.id` | 最近一次归一化批次 |
 
-索引：`UNIQUE(agent_session_id)`、`INDEX(root_session_id)`、`INDEX(processed_at)`、`INDEX(parser_version)`。
+索引：`UNIQUE(root_session_id, agent_id)`、`INDEX(processed_at)`、`INDEX(parser_version)`。
 
 **待处理判定**：`processed_hash IS NULL`，或 `processed_hash != trajectory_payloads.content_hash`，或 `parser_version < 当前解析器版本`。
 
@@ -154,7 +156,10 @@ erDiagram
 | `title` | `TEXT` | NOT NULL | 完整标题 |
 | `search_text` | `VARCHAR(512)` | NOT NULL | `lower(title + repo)`，搜索用 |
 | `repo_name` | `VARCHAR(255)` | NOT NULL | 仓库名 |
-| `project_path` | `TEXT` | NOT NULL | 项目路径 |
+| `project_path` | `TEXT` | NOT NULL | 项目路径（Claude Code `cwd`） |
+| `git_branch` | `VARCHAR(255)` | NULL | Claude Code `gitBranch` |
+| `cli_version` | `VARCHAR(32)` | NULL | Claude Code `version` |
+| `entrypoint` | `VARCHAR(16)` | NULL | `cli` / `sdk` 等 |
 | `model` | `VARCHAR(64)` | NULL | 主 agent 模型 |
 | `models` | `JSON` | NOT NULL | 整棵 Agent 会话树去重后的模型列表（含子 agent） |
 | `started_at` / `ended_at` | `DATETIME` | NOT NULL | 首末事件时间（Asia/Shanghai） |
@@ -176,22 +181,26 @@ erDiagram
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `id` | `VARCHAR(64)` | PK | 全局唯一节点 id（ULID）；`kind` 区分 main/subagent/workflow |
+| `id` | `VARCHAR(64)` | PK | 节点 id：主 agent = root session id；子 agent = 真实 `agentId`；workflow = 合成 `wf_...` |
 | `root_session_id` | `VARCHAR(36)` | FK → `session_families.id` ON DELETE CASCADE | 根会话 |
-| `agent_session_id` | `VARCHAR(36)` | **UNIQUE NOT NULL** | 该节点的 session id；workflow 用合成 id（如 `wf_...`），没有独立 transcript |
 | `parent_agent_id` | `VARCHAR(64)` | FK → `agents.id` NULL | 根为 NULL；workflow-subagent 指向 workflow |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` / `workflow` |
-| `agent_type` | `VARCHAR(64)` | NULL | `general-purpose` / `Explore` / `workflow` / `workflow-subagent` |
-| `model` | `VARCHAR(64)` | NULL | 该 agent 使用的模型；主/子 agent 可不同 |
+| `agent_type` | `VARCHAR(64)` | NULL | `general-purpose` / `Explore` / 自定义 teammate 名 / `workflow` / `workflow-subagent` |
+| `task_kind` | `VARCHAR(32)` | NULL | `in_process_teammate` / `forked_skill`；普通子 agent 为 NULL |
+| `team_name` | `VARCHAR(128)` | NULL | agent team 的 teamName |
+| `name` | `VARCHAR(255)` | NULL | meta.name / skillName，如 `code-review` |
+| `model` | `VARCHAR(64)` | NULL | 实际 assistant `message.model`；主/子 agent 可不同 |
+| `requested_model` | `VARCHAR(64)` | NULL | meta.model 请求别名，如 `sonnet` |
 | `description` | `TEXT` | NULL | 触发它的 Agent 调用描述 |
-| `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里触发该节点的调用 id；workflow 填父 workflow 调用，workflow-subagent 可为 NULL |
+| `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里触发该节点的调用 id；workflow 填父 workflow 调用；teammate/forked skill 可为 NULL |
+| `spawn_depth` | `INTEGER` | NOT NULL | meta.spawnDepth；根=0 |
 | `transcript_record_id` | `BIGINT` | FK → `source_records.id` NULL | 子转录处理记录；workflow 无独立转录时为 NULL |
 | `lines` | `INTEGER` | NOT NULL | 转录行数（Agent 执行流图条宽）；workflow 为 0 |
 | `messages_count` | `INTEGER` | NOT NULL | 该节点自己的 assistant message 数；用于 `×N` 间隔计算 |
-| `depth` | `INTEGER` | NOT NULL | 根=0 |
+| `meta` | `JSON` | NULL | 原始 `*.meta.json`，保留 provider 自定义字段 |
 | `sort_key` | `DOUBLE` | NOT NULL | 树内排序 |
 
-索引：`INDEX(root_session_id)`、`INDEX(parent_agent_id)`、`UNIQUE(agent_session_id)`、`INDEX(model)`。
+索引：`UNIQUE(root_session_id, id)`、`INDEX(parent_agent_id)`、`INDEX(task_kind)`、`INDEX(model)`。
 
 ### 3.4 `agent_events` —— Agent 会话树触发点
 
@@ -227,6 +236,9 @@ erDiagram
 
 索引：`UNIQUE(root_session_id, seq)`、`INDEX(root_session_id, started_at)`。
 
+- 只从主 agent 的 `type=user` 字符串切分；排除 `isMeta=true`、`<local-command-caveat>`、`<command-name>`、`<task-notification>`、`<system-reminder>`。
+- `last-prompt` / `queue-operation` 不作为轮次来源；`attachment.queued_command` 的 `origin.kind=human` 可作为候选。
+
 ### 3.6 `messages` —— assistant 消息（一次模型响应）
 
 | 列 | 类型 | 约束 | 说明 |
@@ -235,12 +247,12 @@ erDiagram
 | `user_turn_id` | `VARCHAR(36)` | FK → `user_turns.id` ON DELETE CASCADE | 所属用户轮次 |
 | `agent_id` | `VARCHAR(64)` | FK → `agents.id` ON DELETE CASCADE | 产生该消息的 agent |
 | `seq` | `INTEGER` | NOT NULL | 该 agent 在轮次内的消息顺序 |
-| `provider_message_id` | `VARCHAR(128)` | NULL | Claude/Anthropic 的 `message.id` |
+| `provider_message_id` | `VARCHAR(128)` | NULL | Claude/Anthropic 的 `message.id`；同一 agent 内唯一，usage 只取一次 |
 | `started_at` | `DATETIME` | NOT NULL | 消息开始时间 |
 | `model` | `VARCHAR(64)` | NULL | 本次响应使用的模型 |
-| `tokens` | `BIGINT` | NOT NULL | 该消息 token 数 |
+| `tokens` | `BIGINT` | NOT NULL | 该 message 的 token 数（按 provider_message_id 去重后的 usage） |
 
-索引：`UNIQUE(user_turn_id, agent_id, seq)`、`INDEX(agent_id, started_at)`、`INDEX(provider_message_id)`。
+索引：`UNIQUE(user_turn_id, agent_id, seq)`、`UNIQUE(agent_id, provider_message_id)`、`INDEX(agent_id, started_at)`、`INDEX(provider_message_id)`。
 
 ### 3.7 `content_blocks` —— 消息内容块
 
@@ -328,21 +340,21 @@ erDiagram
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `bad_case_id` | `VARCHAR(64)` | PK | 外部生成的稳定 id |
-| `session_id` | `VARCHAR(36)` | NOT NULL | 所属根会话 |
+| `bad_case_session_id` | `VARCHAR(36)` | NOT NULL | 所属根会话（Claude Code `sessionId`） |
 | `bad_case_type` | `VARCHAR(16)` | NOT NULL | `self` / `discovery` |
 | `object_name` | `VARCHAR(128)` | NOT NULL | 上报/发现问题的 skill 或 agent 名 |
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
-| `bad_case_agent_session_id` | `VARCHAR(36)` | NOT NULL | 该对象所在 agent 的 session id（树锚点） |
+| `bad_case_agent_id` | `VARCHAR(64)` | NULL | 触发问题的 agent：主 agent 为 NULL；子 agent 为真实 `agentId` |
 | `reason` | `TEXT` | NOT NULL | 原型文案（直接展示） |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-索引：`INDEX(session_id)`、`INDEX(bad_case_agent_session_id)`、`INDEX(object_type, object_name, object_version)`。
+索引：`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因在 `probe_reports`。
-> `session_id` 是外部契约字段，语义为**根会话 id**，对应内部 `session_families.id`；`bad_case_agent_session_id` 才是实际 agent 的 session id，仅用于服务端计算问题卡 `anchor`，不在 API 中直接暴露。
+> `bad_case_session_id` 是根会话 id；`bad_case_agent_id` 是触发问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`。服务端据此计算 `anchor`；API 将两列组装为 `badCaseAgent {sessionId, agentId}`。
 
 ### 4.2 `bad_case_analysis` —— 归因状态（关联表）
 
@@ -352,7 +364,7 @@ erDiagram
 | `bad_case_id` | `VARCHAR(64)` | **UNIQUE** FK → `bad_cases.bad_case_id` | 一条问题一行 |
 | `analysis_status` | `VARCHAR(32)` | NOT NULL | `unanalyzed` / `analyzed_nonissue` / `analyzed_issue` |
 | `probe_id` | `VARCHAR(64)` | NULL FK → `probe_reports.probe_id` | 仅 `analyzed_issue` 非空 |
-| `analysis_result` | `JSON` | NULL | 展示快照：非问题 `{reason}`；问题 `{summary}` |
+| `analysis_result` | `JSON` | NULL | 展示快照：非问题 `{reason, reasoning[]}`（`reasoning` 为有序推导步骤数组）；问题 `{summary}` |
 | `updated_at` | `DATETIME` | NOT NULL | — |
 
 索引：`UNIQUE(bad_case_id)`、`INDEX(probe_id)`、`INDEX(analysis_status)`。
@@ -373,7 +385,7 @@ erDiagram
 | `object_version` | `VARCHAR(64)` | NULL | 有问题的版本 |
 | `attribute_type` | `VARCHAR(16)` | NOT NULL | `model` / `prompt` / `error` |
 | `probe_description` | `TEXT` | NOT NULL | 归因出的问题描述 |
-| `probe_analysis` | `TEXT` | NOT NULL | 推导过程（UI 辅助校验） |
+| `probe_analysis` | `JSON` | NOT NULL | 推导过程：有序步骤数组 `string[]`（UI 逐条渲染） |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
 索引：`INDEX(session_id)`、`INDEX(probe_type, probe_object, object_version)`、`INDEX(attribute_type)`。
@@ -561,11 +573,12 @@ erDiagram
 
 | 事实 | 规则 |
 |---|---|
-| 没有 user turn 字段 | 用户轮次边界 = `type=user` 且不含 `tool_result`、不是 skill 注入、不是中断、不是命令回显 |
+| 没有 user turn 字段 | 用户轮次边界 = 主 agent `type=user` 字符串，且 `isMeta!=true`、不含 `tool_result`、不以 `<local-command-caveat>` / `<command-name>` / `<task-notification>` / `<system-reminder>` 开头 |
 | 工具结果内联在 user 记录 | 按 `tool_use_id` 回填到对应工具块，不切用户轮次 |
-| 元记录 | 不进查询视图；attachment 的 SessionStart hook 只作诊断线索 |
-| assistant 记录带 `message.id` 与 usage | 消息 = `message.id`；token 聚合到用户轮次与消息 |
-| 子 agent 有独立 session id | `trajectory_payloads` 按 `session_id` 给出；缺父子关系时按 `parent_tool_use_id` 回退 |
+| 元记录 | `last-prompt` / `queue-operation` 不进查询视图；`attachment.queued_command` 的 `origin.kind=human` 可作候选 |
+| assistant 记录带 `message.id` 与 usage | 消息 = 唯一 `message.id`；同一 id 的多行 usage 只取一次，不按 content block 行重复求和 |
+| 子 agent 共享 root session | 子 agent JSONL 的 `sessionId` 与主 session 相同；`agentId` 才是子 agent 身份；`trajectory_payloads` 用 `(root_session_id, agent_id)` 区分 |
+| 父 agent 关系 | 子 agent 的 `*.meta.json.toolUseId` 指向父 Agent 调用；teammate/forked skill 可为 NULL |
 | 会话跨多天 | 存储绝对时刻，不假设连续时长 |
 
 ### 7.2 状态规则
@@ -580,7 +593,7 @@ erDiagram
 
 ### 7.4 问题侧口径
 
-- `bad_case.bad_case_agent_session_id` 必须能在 `agents.agent_session_id` 找到；找不到时 UI 降级挂到根节点并告警（不阻塞展示）。
+- `bad_case.bad_case_agent_id` 非空时按 `agents.id` 查找；为空时按 `bad_case_session_id` 挂到主 agent；找不到时 UI 降级挂到根节点并告警（不阻塞展示）。
 - `analysis_status` 与 `probe_id` 的一致性由上游保证，本服务查询时做防御性校验（不一致时按 `unanalyzed` 展示并记日志）。
 - `probe.attribute_type` 决定展示子状态（模型/prompt/错误）；`probe_object@object_version` 是自进化 target 的唯一来源。
 

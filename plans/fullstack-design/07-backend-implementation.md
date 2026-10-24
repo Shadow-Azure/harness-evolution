@@ -30,16 +30,16 @@ def create_app(settings: Settings) -> FastAPI:
 **边界（2026-10-23）**：
 
 - 第三方脚本只负责把有问题的 session 轨迹写进 MySQL 的 `trajectory_payloads`（每个 agent 一行，JSONL 原文）。
-- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `agent_session_id` 关联 payload。
+- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `(root_session_id, agent_id)` 关联 payload。
 - 上游接口 pull 仍保留：拉到 payload 后先 upsert 到 `trajectory_payloads`，再走同一条归一化管线。
 
 ### 2.1 职责划分
 
 | 文件 | 职责 |
 |---|---|
-| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload；按 `agent_session_id` 逻辑键取原文（payload 列仍为 `session_id`） |
+| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload + `agent_meta`；按 `(root_session_id, agent_id)` 取原文 |
 | `normalize.py` | JSONL 行数组 → 用户轮次/消息/内容块/token/元记录/Agent 会话树触发点 |
-| `agent_tree.py` | 子转录与主会话关联（`toolUseId` → 父触发点），组装 agent 树与 `agent_events` |
+| `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树与 `agent_events` |
 | `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
 | `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
@@ -49,7 +49,9 @@ def create_app(settings: Settings) -> FastAPI:
 ```sql
 SELECT tp.*
 FROM trajectory_payloads tp
-LEFT JOIN source_records sr ON sr.agent_session_id = tp.session_id
+LEFT JOIN source_records sr
+  ON sr.root_session_id = tp.root_session_id
+ AND sr.agent_id = tp.agent_id
 WHERE sr.id IS NULL
    OR sr.processed_hash IS NULL
    OR sr.processed_hash <> tp.content_hash
@@ -61,14 +63,14 @@ ORDER BY tp.updated_at
 
 | 条件 | 动作 |
 |---|---|
-| `source_records` 无该 `agent_session_id` | 插入处理索引，归一化并写业务表 |
+| `source_records` 无该 `(root_session_id, agent_id)` | 插入处理索引，归一化并写业务表 |
 | `processed_hash = content_hash` 且 `parser_version` 相同 | 跳过（累加 `skipped`） |
-| hash 不同 | 删除该 session 派生的行（`content_blocks→messages→user_turns→agent_events→agents`），重新归一化 |
+| hash 不同 | 删除该 agent 派生的行（`content_blocks→messages→user_turns→agent_events→agents`），重新归一化 |
 | 解析器版本升级 | 即使 hash 相同也重放 |
 | payload 侧删除 | 首版保留业务数据并记日志（不级联删除） |
 
 - 不再维护 `sync_state.watermark`；`source_records` 的 `processed_hash/parser_version` 就是游标。
-- `semantics`：一个 agent 一行；`root_session_id` 相同即同一棵 Agent 会话树。
+- `semantics`：一个 agent 一行；`root_session_id` 相同即同一棵 Agent 会话树；子 agent 的 `sessionId` 也是 root，`agent_id` 才是区分键。
 
 ### 2.2.1 定时触发与单飞锁
 
@@ -111,32 +113,40 @@ async def trigger_sync(source: str) -> TriggerResult:
 ```python
 @dataclass
 class ParsedTranscript:
-    agent_session_id: str           # 实际 agent session id（来自 payload.session_id）
-    root_session_id: str            # 主 agent id
+    agent_id: str                    # main = root_session_id；子 agent = 真实 agentId
+    root_session_id: str
     agent_type: str | None
-    model: str | None               # 该 agent 使用的模型
-    parent_tool_use_id: str | None
+    task_kind: str | None            # in_process_teammate / forked_skill
+    team_name: str | None
+    name: str | None
+    model: str | None                # 实际 message.model
+    requested_model: str | None      # meta.model
+    parent_tool_use_id: str | None   # meta.toolUseId
+    spawn_depth: int
     lines: int
-    messages_count: int              # 该 agent 的 assistant message 数
+    messages_count: int              # 该 agent 的唯一 assistant message.id 数
     user_turns: list[ParsedUserTurn]     # 仅主会话有用户轮次
     content_blocks_outside_user_turns: list[ParsedBlock]
-    events: list[ParsedEvent]       # skill / agent / workflow 触发点
-    meta: list[MetaRecord]
+    events: list[ParsedEvent]        # skill / agent / workflow 触发点
+    agent_meta: dict                 # 原始 meta.json
 ```
 
 解析规则（[06 §7.1](06-database-design.md)）：
 
+0. **agent id**：主文件取 `sessionId`；子 agent 文件取行内 `agentId`（缺失时用文件名 `agent-<agentId>.jsonl`）。
 1. **逐行 JSON**：坏行记录到 `errors`，跳过该行继续。
-2. **用户轮次切分**：`type == "user"` 且不含 `tool_result`、不是 skill 注入/中断/命令回显 → 新用户轮次。
-3. **消息与内容块归属**：assistant 按 `message.id` 聚成 message；`thinking/text/tool_use` 成 content_block；`tool_result` 按 `tool_use_id` 回填。
-4. **子 agent / workflow**：`Agent` 调用记录 `toolUseId` 与描述；有对应 payload 则 `agents.kind = subagent`（workflow 时 `agent_type = workflow`），`parent_agent_id` 指向父 agent。`Workflow` 调用创建 `kind=workflow` 的合成节点（`agent_session_id=wf_...`、`lines=0`、`messages_count=0`），其 `workflow-subagent` 子节点 `parent_agent_id` 指向该 workflow 节点。
-5. **Agent 会话树事件**：skill 注入点、`Agent`、workflow 调用 → `agent_events`，按行号编号；每个事件同时记录 `message_offset` = 该行之前已经出现的 assistant message 数。
-6. **token**：assistant `usage` 求和，聚合到 message/user_turn/session_family。
-7. **行数**：payload 行数即 `agents.lines`。
-8. **消息数**：assistant `message.id` 去重计数即 `agents.messages_count`；workflow 节点为 0。
-9. **模型**：从 assistant 消息的 `model` 字段取该 agent 的模型，写 `agents.model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。主/子 agent 可使用不同模型。
+2. **用户轮次切分**：`type == "user"` 且 `isMeta != true`，content 不是 `tool_result`，且不以 `<local-command-caveat>` / `<command-name>` / `<task-notification>` / `<system-reminder>` 开头 → 新用户轮次。`last-prompt` / `queue-operation` **不作为轮次来源**；`attachment.queued_command` 的 `origin.kind=human` 可作为候选，`peer` 不算。
+3. **消息与内容块归属**：assistant 按 `message.id` 聚成 message；`thinking/text/tool_use` 成 content_block；`tool_result` 按 `tool_use_id` 回填。同一个 `message.id` 的 `usage` 只取一次，不能按 content block 行重复求和。
+4. **子 agent / workflow**：`Agent` 调用记录 `toolUseId`；子 agent 的 `meta.toolUseId` 指向父调用，`parent_agent_id` 指向父 agent。`task_kind=in_process_teammate` 的 teammate 没有 toolUseId，挂到 main 并记录 `team_name`；`task_kind=forked_skill` 用 meta/`.forked-skill.json` 的 `skillName` 关联父 Skill 触发点，`tool_use_id` 可为 NULL。`Workflow` 调用创建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`），其 `workflow-subagent` 子节点 `parent_agent_id` 指向 workflow 节点。
+5. **Agent 会话树事件**：`Skill` 工具调用、`Agent` 调用、`Workflow` 调用 → `agent_events`；记录 `line_no` 和 `message_offset` = 该行之前已经出现的 assistant message 数。
+6. **token**：按 `message.id` 去重后的 `usage` 聚合到 message/user_turn/session_family。
+7. **时间**：真实 JSONL 的 `timestamp` 是 UTC `Z`；入库前转换为 Asia/Shanghai（`+08:00`）。
+8. **行数**：payload 行数即 `agents.lines`。
+9. **消息数**：唯一 `message.id` 计数即 `agents.messages_count`；workflow 节点为 0。
+10. **模型**：从 assistant 消息的 `model` 字段取该 agent 的实际模型，写 `agents.model`；`meta.model` 写 `requested_model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。
+11. **会话元数据**：主 payload 的 `cwd` / `gitBranch` / `version` / `entrypoint` 写 `session_families.project_path/git_branch/cli_version/entrypoint`。
 
-agent 写入时一并落 `model`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型）。
+agent 写入时一并落 `model` / `requested_model` / `task_kind` / `team_name` / `spawn_depth` / `agent_meta`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型）。
 
 ### 2.4 Agent 会话树组装
 
@@ -148,7 +158,9 @@ agent 写入时一并落 `model`；`session_families` 聚合在 Agent 会话树�
                      └──► 建 agent ──► 把父 agent 里的 Agent 调用块指向该 agent ──┘
 ```
 
-- `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_session_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
+- `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
+- 普通子 agent 的父调用来自 `meta.toolUseId`；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
+- 子 agent 的 `sessionId` 与主 agent 相同，不能靠 sessionId 找父；必须用 meta / `agentId`。
 
 **两个防线**：
 
@@ -163,7 +175,7 @@ async def run_sync(job_id: str) -> SyncResult:
     for i, p in enumerate(pending):
         async with db.transaction():
             sr = await source_records.ensure(p)             # 无则插入处理索引
-            raw = await payloads.get(p.session_id)          # 从另一张表取 JSONL
+            raw = await payloads.get(p.root_session_id, p.agent_id)  # 从另一张表取 JSONL
             parsed = normalize(raw)                         # 纯 CPU，线程池
             upsert_derived(sr, parsed)                      # 业务表
             await source_records.mark_processed(
@@ -185,8 +197,8 @@ async def pull(session_refs: list[str]) -> SyncResult:
 ### 2.6 测试点
 
 - 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。
-- `trajectory_payloads` 新增一行 → 只处理该 `session_id`，其他 session 不受影响。
-- payload 内容变化 → 该 session 派生的行被重写，`processed_hash` 更新。
+- `trajectory_payloads` 新增一行 → 只处理该 `(root_session_id, agent_id)`，其他 agent/session 不受影响。
+- payload 内容变化 → 该 agent 派生的行被重写，`processed_hash` 更新。
 - `parser_version` 升级 → 全部重放，业务表结果一致。
 - 子 payload 缺 `parent_tool_use_id` → agent 仍入库，警告可见。
 - 145h 跨 6 天 → `duration_seconds` 真实跨度。
@@ -199,7 +211,7 @@ async def pull(session_refs: list[str]) -> SyncResult:
 - `trajectory_payloads` 由外部脚本/pull 写入；本服务除 pull 外**只读**，不在 DDL 里建外键指向它（跨服务边界）。
 - 所有写操作走 `Database.transaction()`；幂等更新用事务内先删后写。
 - 时间戳应用生成 Asia/Shanghai（UTC+8）；不在 DDL 用 `NOW()` 默认值；API 序列化带 `+08:00`。
-- `source_records.id` 用 BIGINT 自增（外部 payload 表由 `session_id` 关联，不需要应用生成 id）。
+- `source_records.id` 用 BIGINT 自增（外部 payload 表按 `(root_session_id, agent_id)` 关联，不需要应用生成 id）。
 
 ## 3. 会话查询（`modules/sessions`）
 
@@ -218,7 +230,7 @@ async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
 ### 3.2 会话概览与 Agent 会话树
 
 - 会话概览直接复用列表项（同构模型）。
-- Agent 会话树组装：`repo.get_agents(sid)` + `repo.get_agent_events(agent_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与 agent 的关联按 `bad_case_agent_session_id` 匹配 `agents.agent_session_id`，找不到时降级为 `main` 并在日志告警。
+- Agent 会话树组装：`repo.get_agents(sid)` + `repo.get_agent_events(agent_ids)` + `bad_cases.list_by_session(sid)`，组装成 `SessionTree`；问题与 agent 的关联按 `bad_case_agent_id` 匹配 `agents.id`，为空时挂 main，找不到时降级为 `main` 并在日志告警。
 
 ### 3.3 时间线（已裁撤）
 
@@ -242,7 +254,7 @@ async def list_bad_cases(sid: str) -> list[BadCase]:
     session = await crud.session_families.get(sid) or raise NotFound("SESSION_NOT_FOUND")
     cases = await crud.bad_cases.list_by_session(sid)          # 问题侧表，只读
     analyses = await crud.bad_case_analysis.get_by_case_ids([c.id for c in cases])
-    return [merge(c, analyses.get(c.id)) for c in cases]       # 合并状态与 probeId
+    return [merge(c, analyses.get(c.id)) for c in cases]       # 合并状态/probeId/attributeType（attributeType 由 probe_id join probe_reports）
 
 async def get_bad_case(case_id: str, sid: str | None) -> BadCase:
     case = await crud.bad_cases.get(case_id) or raise NotFound("BAD_CASE_NOT_FOUND")
@@ -268,7 +280,7 @@ async def get_probe(probe_id: str) -> ProbeReport:
 
 ### 4.3 Agent 执行流图问题卡
 
-- 取该 session 全部 `bad_cases`；用 `bad_case_agent_session_id` 匹配 `agents.agent_session_id` 找到上报者 agent（仅内部使用，不返回）；
+- 取该 session 全部 `bad_cases`；`bad_case_agent_id` 非空时按 `agents.id` 找到子 agent；为空时用 `bad_case_session_id` 找到 main agent；
 - 按 `bad_case_type` / `object_type` / `object_name` 选择锚定 agent：`self` 选对象宿主，`discovery` 选发现者；
 - 按 `object_name` 在锚定 agent 的 `agent_events` 里找匹配触发点，得到 `eventIndex`；找不到 → `-1`；
 - 返回 `anchor: { agentId, eventIndex }`，不返回上报者 session。
@@ -660,7 +672,7 @@ Harness-Verdict: accepted
 | 0 `input` | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
 | 1 `clusters` | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
 | 2 `attribution` | 归因确认项（对象/类型/描述/推导/confidence/verdict） | `probe_reports` + 占位置信度 |
-| 3 `severity` | rank/confidence/impact/probeCount/reportCount/severity | `probe_clusters` + 关联计数 + 占位权重 |
+| 3 `severity` | rank/clusterId/title/confidence/impact/probeCount/reportCount/severity | `probe_clusters` + 关联计数 + 占位权重 |
 | 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 |
 | 5 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
 
@@ -882,7 +894,7 @@ catalogs + health + 收尾
 | 域 | 必测 |
 |---|---|
 | identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性 |
-| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `session_id` 取 payload、子转录挂接、145h 会话 |
+| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `(root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话 |
 | sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
 | session_families | 4 种排序、状态筛选、搜索、聚合统计 |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |

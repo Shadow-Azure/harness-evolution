@@ -135,7 +135,7 @@
 | R4 | 六步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
 | R6 | 深链 ID 校验 | 前缀猜 session 会串会话 | 解析后用 `sessionId` 校验，不匹配报 409（[05 §5](05-api-design.md)） |
-| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, agent_session_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
+| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, agent_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
 | R8 | SQLite / MySQL 行为差异 | 本地绿、切库红 | 双库 CI（`-m mysql`）+ SQL 纪律（不用方言语法、索引列 VARCHAR、JSON 不查 SQL），见 [06 §1.1](06-database-design.md) |
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
 | R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |

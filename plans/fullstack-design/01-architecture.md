@@ -130,11 +130,11 @@ apps/web/
 上游接口 ──pull──► │ 每 agent 一行 JSONL   │
                    │ + hash + 行数         │
                    └───────────┬───────────┘
-                               │ 读（按 session_id）
+                               │ 读（按 root_session_id + agent_id）
                                ▼
                    ┌───────────────────────┐
                    │ source_records        │
-                   │ 处理索引：root/session│
+                   │ 处理索引：root + agent│
                    │ processed_hash        │
                    │ parser_version        │
                    └───────────┬───────────┘
@@ -160,10 +160,10 @@ apps/web/
 
 | 来源 | 触发方式 | 读取内容 | 幂等键 |
 |---|---|---|---|
-| 第三方脚本写入的 `trajectory_payloads` | 后台定时（默认 60s）/ admin 手动 | 按 `session_id` 取 JSONL 原文 | `session_id` + `content_hash` + `parser_version` |
+| 第三方脚本写入的 `trajectory_payloads` | 后台定时（默认 60s）/ admin 手动 | 按 `(root_session_id, agent_id)` 取 JSONL 原文 | `(root_session_id, agent_id)` + `content_hash` + `parser_version` |
 | 轨迹查询接口（上游待实现） | 用户手动 pull | 按 [05 §10](05-api-design.md) 契约返回的 payload | 同上 |
 
-- **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `session_id` 回查。
+- **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `(root_session_id, agent_id)` 回查。
 - 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
 - 归一化规则不变（[06 §7.1](06-database-design.md)）：用户轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
 
@@ -190,7 +190,7 @@ apps/web/
 ```
 
 - **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），会话概览先到就先渲染，Agent 会话树/问题列表后到。
-- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_session_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
+- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
 - 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
 - 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
@@ -403,7 +403,7 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 |---|---|---|
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
-| 同步幂等 | `(root_session_id, agent_session_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
+| 同步幂等 | `(root_session_id, agent_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
 | 大轨迹 | Agent 会话树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |

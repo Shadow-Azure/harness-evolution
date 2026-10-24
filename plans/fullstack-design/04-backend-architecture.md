@@ -218,13 +218,13 @@ def create_database(settings: Settings) -> Database:
 ```python
 class PayloadSource(Protocol):
     async def list_pending(self, parser_version: int) -> list[PendingPayload]: ...
-    async def get(self, session_id: str) -> TrajectoryPayload: ...   # root/session/kind/JSONL
+    async def get(self, root_session_id: str, agent_id: str) -> TrajectoryPayload: ...   # root/agent/kind/JSONL
     async def upsert_many(self, payloads: list[TrajectoryPayload]) -> None: ...  # 仅 pull 使用
 ```
 
 | 实现 | 读取/写入 | 启用条件 |
 |---|---|---|
-| `MySqlPayloadSource` | 读 `trajectory_payloads`（`session_id`、`root_session_id`、`payload`、`content_hash`、`line_count`） | V1 默认；**不扫描 `he_src_*`** |
+| `MySqlPayloadSource` | 读 `trajectory_payloads`（`root_session_id`、`agent_id`、`payload`、`agent_meta`、`content_hash`、`line_count`） | V1 默认；**不扫描 `he_src_*`** |
 | `HttpApiSource` | 调上游接口，把返回 payload upsert 到 `trajectory_payloads` | 上游就绪后配置启用；`third_party_api/trajectory/http_client.py` |
 
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 只是处理索引，不存 payload。
