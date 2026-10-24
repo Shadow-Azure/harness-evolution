@@ -407,7 +407,8 @@ async def prepare_run(job) -> None:
         clusters = simple_cluster(probes)               # 见 5.4
         for seq, c in enumerate(clusters, start=1):
             cid = ulid()
-            await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type)
+            await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type,
+                                             impact=TYPE_IMPACT[c.type])
             await crud.probe_cluster_probes.bulk_insert(cid, [p.probe_id for p in c.probes])
         if run.mode == "full":
             await crud.evolution_rounds.bulk_insert_pending(run.id, clusters)
@@ -429,10 +430,16 @@ async def prepare_run(job) -> None:
 - `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
 - prepare 只读 run 快照的 `repo_url` / `sub_dir` / `target_version`，不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
+- `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；第 2 步归因完成更新 `confidence`，第 3 步排序完成更新 `severity` / `rank`，`build_step_payload` 只读这些列。
+- 第 2/3 步必须是独立写库点：归因 job 写 `confidence`，排序 job 写 `severity` / `rank`，之后才创建/推进 `evolution_rounds`。不能沿用“聚类后直接建轮次”的路径，否则分数没有落库时机，迭代顺序也不是严重度顺序。
 - 仓库不可用/ref 不存在 → prepare job 失败；run 置 `failed`，`error_stage=clone`，用户在详情页看到原因。
 - 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
 
 ### 5.4 V1 占位聚类算法（可替换）
+
+```python
+TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}   # V1 固定映射，后续可替换
+```
 
 ```python
 def simple_cluster(probes: list[Probe]) -> list[Cluster]:
@@ -707,12 +714,20 @@ Harness-Verdict: accepted
 |---|---|---|
 | 0 `input` | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
 | 1 `clusters` | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
-| 2 `attribution` | 归因确认项（对象/类型/描述/推导/confidence/verdict） | `probe_reports` + 占位置信度 |
-| 3 `severity` | rank/clusterId/title/confidence/impact/probeCount/reportCount/severity | `probe_clusters` + 关联计数 + 占位权重 |
+| 2 `attribution` | 归因确认项（对象/类型/描述/推导/confidence） | `probe_reports` + `probe_clusters.confidence` |
+| 3 `severity` | rank/clusterId/title/confidence/impact/probeCount/reportCount/severity | `probe_clusters`（confidence/impact/severity/rank）+ 关联计数 |
 | 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 |
 | 5 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
 
 - 六个端点：`GET /runs/{rid}/steps/{input|clusters|attribution|severity|iteration|final}`；共享 `build_step_payload(run, key)`，只按 key 组装对应 DTO。
+- `confidence` 是簇级：第 2 步一个簇一个值；`impact` 是建簇时的 type 固定映射；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`。三个值都落 `probe_clusters`，`build_step_payload` 不重新计算。
+
+```python
+def report_weight(n: int) -> float:
+    return 1 + 0.1 * min(max(n - 1, 0), 5)       # reportCount=1 → 1.0；6+ → 1.5
+
+severity = round(min(10, confidence * impact * report_weight(report_count)), 1)
+```
 - `StepPayload` 用 `key` 判别；`index` 只用于排序/展示，不参与路由分发。
 
 - 第 4 步：patch 落盘、candidate commit、candidate push、amend/fast-forward/拒绝删 ref 都是真实的；patch 内容与评测分数是占位；终评结果占位。

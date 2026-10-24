@@ -312,9 +312,9 @@ erDiagram
 | step | key | 端点 | payload 关键字段 |
 |---|---|---|---|
 | 0 筛选输入 | `input` | `GET /evolution/runs/{rid}/steps/input` | `condition`、`hits`（sessions/probes/usedProbes/byAttributeType 含 nonIssue）、`rows[]`（`ProbeRow` + `clusterId`） |
-| 1 问题聚类 | `clusters` | `GET /evolution/runs/{rid}/steps/clusters` | `clusters[]`：`probeClusterId/title/description/type/probeCount/confidence/severity/probes[]`（`ProbeRow`；V1 占位算法生成） |
-| 2 归因确认 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence/verdict |
-| 3 严重程度排序 | `severity` | `GET /evolution/runs/{rid}/steps/severity` | `rows[]`：rank/clusterId/title/type/probeCount/reportCount/confidence/impact/severity（V1 简单排序） |
+| 1 问题聚类 | `clusters` | `GET /evolution/runs/{rid}/steps/clusters` | `clusters[]`：`probeClusterId/title/description/type/probeCount/confidence/severity/probes[]`（`ProbeRow`；confidence/severity 未算完时为 `null`） |
+| 2 归因确认 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence（confidence 取所属簇的值） |
+| 3 严重程度排序 | `severity` | `GET /evolution/runs/{rid}/steps/severity` | `rows[]`：rank/clusterId/title/type/probeCount/reportCount/confidence/impact/severity（按落库 severity 降序） |
 | 4 迭代优化 | `iteration` | `GET /evolution/runs/{rid}/steps/iteration` | `rounds[]`：clusterId/title/type/probeCount/confidence/severity/probes[]（`ProbeRow`）/status/candidate/push/eval/accepted/finalCommit |
 | 5 测试集终评 | `final` | `GET /evolution/runs/{rid}/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]`（结构化修改点） |
 
@@ -325,7 +325,9 @@ erDiagram
 ```
 
 - `index` 是步骤顺序（0–5），`key` 是稳定语义标识；两个都保留，前端路由/缓存优先用 `key`。
-- `attribution.confidence` / `verdict`、`severity.confidence/impact` 与 `clusters.confidence/severity` 在 V1 都是占位值（同一次 prepare 内生成，各步数据一致）；真实归因/评测接入后由后端替换，前端字段不变。
+- `confidence` 是**簇级**（第 2 步归因完成写入 `probe_clusters.confidence`）；`impact` 是建簇时按 `probe_cluster_type` 的固定映射（V1：`error=9` / `prompt=7` / `model=5`）；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`，`reportCount` 是簇内 probe 反查到的 distinct `bad_case_id` 数。第 3 步写入 `probe_clusters.severity/rank`；接口只读这些列，不再占位计算；未到达对应步骤时值为 `null`。
+- 示例：`confidence=0.82, impact=9, reportCount=1 → severity=7.4`；`reportCount=3 → 8.9`（封顶 10）。
+- `attribution.items[]` 仍按 probe 展开，`confidence` 取所属簇的值（同一簇内相同）；归因结果不包含 `verdict`。
 - 端点未到达时返回 `404 STEP_NOT_READY`；`input` 在 `preparing` 时返回准备态，不返回 404。
 - 六个端点共享同一 run 的权限和 readiness；服务端只复用同一个 `build_step_payload`，不复制业务逻辑。
 
@@ -372,7 +374,7 @@ erDiagram
   "payload": {
     "clusters": [
       { "probeClusterId": "C1", "title": "检索索引读取失败", "description": "检索索引读取失败",
-        "type": "error", "probeCount": 1, "confidence": 0.82, "severity": 8.2,
+        "type": "error", "probeCount": 1, "confidence": 0.82, "severity": 7.4,
         "probes": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...", "sessionTitle": "研究…",
           "model": "glm-5.3", "probeType": "skill", "probeObject": "deep-research",
           "objectVersion": "v2.0.0", "attributeType": "error", "description": "检索索引读取失败…",
@@ -392,7 +394,7 @@ erDiagram
       { "clusterId": "C1", "probeId": "pr-050b-03", "probeObject": "deep-research",
         "objectVersion": "v2.0.0", "attributeType": "error",
         "description": "检索索引读取失败", "analysis": "在对象逻辑中复现并确认索引未校验",
-        "confidence": 0.82, "verdict": "confirmed" }
+        "confidence": 0.82 }
     ]
   }
 }
@@ -406,7 +408,7 @@ erDiagram
   "payload": {
     "rows": [
       { "rank": 1, "clusterId": "C1", "title": "检索索引读取失败", "type": "error", "probeCount": 1,
-        "reportCount": 1, "confidence": 0.82, "impact": 4, "severity": 8.2 }
+        "reportCount": 1, "confidence": 0.82, "impact": 9, "severity": 7.4 }
     ]
   }
 }
@@ -420,7 +422,7 @@ erDiagram
   "payload": {
     "rounds": [
       { "roundId": "r-01", "clusterId": "C1", "title": "检索索引读取失败", "type": "error",
-        "probeCount": 1, "confidence": 0.82, "severity": 8.2, "status": "accepted",
+        "probeCount": 1, "confidence": 0.82, "severity": 7.4, "status": "accepted",
         "probes": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...", "sessionTitle": "研究…",
           "model": "glm-5.3", "attributeType": "error", "description": "检索索引读取失败…",
           "sourceBadCaseIds": ["bc-050b-03"] } ],
@@ -858,7 +860,7 @@ POST /runs（同步校验）
 - 预览落一条 `mode=cluster_only` 的 `evolution_runs`，先 `preparing`，由 `evolution_prepare` 完成筛选与聚类；
 - 完成后 `GET /runs/{rid}/steps/clusters` 取簇；不建 workspace、不做 patch/评测；
 - 前端跳转 `/evolution/cluster/:runId` 后先显示准备中，再轮询/SSE 到簇生成。
-- `steps/clusters` 的簇带占位 `confidence/severity`（仅聚类页簇头要渲染置信度与严重程度条）；`cluster_only` 的 run 请求 `attribution/severity/iteration/final` 步一律 `404 STEP_NOT_READY`。
+- `steps/clusters` 的簇带落库的 `confidence/severity`（未算完为 `null`；仅聚类页簇头要渲染置信度与严重程度条）；`cluster_only` 的 run 请求 `attribution/severity/iteration/final` 步一律 `404 STEP_NOT_READY`。
 
 ### 4.13 清单
 

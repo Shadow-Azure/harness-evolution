@@ -445,12 +445,21 @@ erDiagram
 |---|---|---|
 | `probe_cluster_id` | `VARCHAR(64)` PK | 外部/本服务生成 |
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` | **按 run 归属** |
-| `seq` | `INTEGER` | 排序（严重程度降序） |
+| `seq` | `INTEGER` | 创建顺序（1..M）；不随 severity 重排 |
 | `probe_cluster_description` | `TEXT` | 簇描述（V1 占位文案） |
 | `probe_cluster_type` | `VARCHAR(16)` | `model` / `prompt` / `error` |
+| `confidence` | `DOUBLE` NULL | 簇级置信度 0–1；第 2 步归因完成后写入 |
+| `impact` | `DOUBLE` NULL | 影响面 0–10；建簇时按 `probe_cluster_type` 映射并固化（V1：`error=9` / `prompt=7` / `model=5`） |
+| `severity` | `DOUBLE` NULL | 排序分 0–10；第 3 步按 `confidence × impact × 报告频次权重` 写入 |
+| `rank` | `INTEGER` NULL | 严重度排名（1 = 最高）；第 3 步写入；迭代顺序按它 |
 | `created_at` | DATETIME | — |
 
-索引：`UNIQUE(run_id, seq)`、`INDEX(run_id)`。
+索引：`UNIQUE(run_id, seq)`、`INDEX(run_id)`、`INDEX(run_id, rank)`。
+
+> `impact` 是 **V1 的 type 固定映射**，不是真实影响面：`error=9` / `prompt=7` / `model=5`。写入后固化，后续调整映射常量只影响新 run，历史行保留当时的值。
+> `confidence` 在第 2 步归因完成时写入（簇级，一个簇一个值）；`severity` / `rank` 在第 3 步排序完成时写入。三个值落库后接口只读，不再用占位计算；重跑对应步骤时覆盖同 run 的值。
+> `severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`；`reportCount` 是簇内 probe 反查到的 distinct `bad_case_id` 数（V1 通常等于 probe 数），封顶 10。
+> `seq` 只表示创建顺序，`rank` 才是严重度排名；两者分开避免 `UNIQUE(run_id, seq)` 在重排时冲突。
 
 ### 5.4 `probe_cluster_probes` —— 簇 ↔ probe 多对多
 
