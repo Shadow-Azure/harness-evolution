@@ -10,7 +10,7 @@ Status: proposed
 
 ## Decision
 
-采用 6 个新 milestone、41 个带稳定 id 与 depends 的 issue；实现取舍统一指向 `plans/fullstack-design`；issue 强制包含实施、验证、验收和门禁章节；GitHub 同步完整中文正文；`--retire-missing` 只关闭而非删除不在新树的开放对象。本地 Claude 数据仅用于 SQLite 导入验收，仓库自动门禁使用合成 fixtures。
+采用 6 个新 milestone、41 个带稳定 id 与 depends 的 issue；实现取舍统一指向 `plans/fullstack-design`；issue 强制包含实施、验证、验收和门禁章节；GitHub 同步完整中文正文；`--retire-missing` 只关闭而非删除不在新树的开放对象。本地 Claude 数据仅用于 SQLite 导入验收，仓库自动门禁使用合成 fixtures。diff 门禁把 base 中不存在的新 issue 视为从 backlog 激活，因此同一 PR 内新建并收口属于合法状态推进。
 
 生成流程实例前，`plans/fullstack-design` 的 6 个 review 问题已在 2026-10-24 固化为 D16–D19 等决策；`05 §10` 只作为本服务客户端契约用于 mock 联调，不表示真实上游已承诺。
 

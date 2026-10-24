@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -12,6 +16,7 @@ import {
 import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
 import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
+import { verifyFlowDiff } from "./verify-flow.mjs";
 
 const roadmap = `# Roadmap
 
@@ -120,6 +125,50 @@ test("github backfill removes the bootstrap exemption", () => {
   const next = applyGithubRef(content, 42, "https://github.com/o/r/issues/42");
   assert.match(next, /number: 42/);
   assert.doesNotMatch(next, /bootstrap: true/);
+});
+
+test("diff mode treats an issue created and completed in this PR as activated", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "harness-flow-diff-"));
+  const git = (args) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+  try {
+    mkdirSync(path.join(dir, ".agents/flow/milestones"), { recursive: true });
+    mkdirSync(path.join(dir, ".agents/flow/issues"), { recursive: true });
+    writeFileSync(path.join(dir, ".agents/flow/roadmap.md"), roadmap.replace("- m1", ""));
+    writeFileSync(
+      path.join(dir, ".agents/flow/milestones/m0-a.md"),
+      milestone("m0", "done").replace("github:\n  number: null", "github:\n  number: 1"),
+    );
+    git(["init", "-q"]);
+    git(["add", "."]);
+    git(["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "baseline"]);
+
+    const issueText = issue("m0", "done")
+      .replace("- m0\n  - m1", "- m0")
+      .replace("scope:\n  - apps/**", "scope:\n  - .agents/flow/**")
+      .replace("number: null", "number: 7");
+    const sections = ["背景", "目标", "设计依据", "实现内容", "实施步骤", "依赖与交付边界", "独立验证", "验收标准", "门禁与 CI", "非目标"]
+      .map((heading) => `## ${heading}\n\n验收夹具内容。`)
+      .join("\n\n");
+    writeFileSync(path.join(dir, ".agents/flow/issues/m0-01-done.md"), `${issueText}\n\n${sections}\n`);
+    git(["add", "."]);
+    git(["-c", "user.email=test@example.com", "-c", "user.name=test", "commit", "-qm", "complete bootstrap (#7)"]);
+
+    const previousCwd = process.cwd();
+    const previousTitle = process.env.PR_TITLE;
+    process.chdir(dir);
+    process.env.PR_TITLE = "bootstrap (#7)";
+    try {
+      const result = await verifyFlowDiff("HEAD~1");
+      assert.deepEqual(result.errors, []);
+      assert.equal(result.ok, true);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousTitle === undefined) delete process.env.PR_TITLE;
+      else process.env.PR_TITLE = previousTitle;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("flow yaml rejects duplicate keys and generator emits canonical empty lists", () => {

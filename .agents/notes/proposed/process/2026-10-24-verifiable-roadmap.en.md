@@ -10,7 +10,7 @@ The legacy roadmap混合已裁撤时间线，依赖顺序把鉴权放在数据�
 
 ## Decision
 
-Adopt 6 个新 milestone、41 个带稳定 id 与 depends 的 issue；实现取舍统一指向 `plans/fullstack-design`；issue 强制包含实施、验证、验收和门禁章节；GitHub 同步完整中文正文；`--retire-missing` 只关闭而非删除不在新树的开放对象。本地 Claude 数据仅用于 SQLite 导入验收，仓库自动门禁使用合成 fixtures。
+Adopt 6 个新 milestone、41 个带稳定 id 与 depends 的 issue；实现取舍统一指向 `plans/fullstack-design`；issue 强制包含实施、验证、验收和门禁章节；GitHub 同步完整中文正文；`--retire-missing` 只关闭而非删除不在新树的开放对象。本地 Claude 数据仅用于 SQLite 导入验收，仓库自动门禁使用合成 fixtures。The diff gate treats an issue absent from base as a backlog activation, so creating and completing it in the same PR is valid state progression.
 
 Before flow instances are generated, the six review questions in `plans/fullstack-design` are resolved as D16–D19 and related decisions as of 2026-10-24; `05 §10` is used only as this service's client-side contract for mock integration and does not imply upstream commitment.
 
