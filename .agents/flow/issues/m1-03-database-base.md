@@ -17,6 +17,7 @@ scope:
   - apps/web/**
   - package.json
   - packages/contracts/**
+  - plans/**
   - scripts/**
   - tests/integration/**
   - reports/**
