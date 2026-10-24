@@ -96,7 +96,7 @@ test("bootstrap is limited to the first milestone", () => {
 });
 
 test("scope globs cover intended files only", () => {
-  assert.equal(globToRegExp("apps/server/src/**").test("apps/server/src/ingest/a.ts"), true);
+  assert.equal(globToRegExp("apps/api/**").test("apps/api/app/main.py"), true);
   assert.equal(globToRegExp("apps/**").test("apps/web/src/App.tsx"), true);
   assert.deepEqual(uncoveredFiles(["apps/a.ts", "docs/b.md"], ["apps/**"]), ["docs/b.md"]);
 });
@@ -118,6 +118,17 @@ test("route gates recommend build and docs for app changes", () => {
   const paths = worktreePaths(" M apps/web/src/App.tsx\n?? docs/new.md\n");
   assert.deepEqual(paths, ["apps/web/src/App.tsx", "docs/new.md"]);
   assert.deepEqual(recommend(paths).commands, ["build", "verify:docs"]);
+});
+
+test("route gates recommend the Python toolchain for API changes", () => {
+  const paths = worktreePaths(" M apps/api/app/main.py\n");
+  assert.deepEqual(paths, ["apps/api/app/main.py"]);
+  assert.deepEqual(recommend(paths).commands, [
+    "lint:api",
+    "typecheck:api",
+    "test:api",
+    "verify:docs",
+  ]);
 });
 
 test("github backfill removes the bootstrap exemption", () => {

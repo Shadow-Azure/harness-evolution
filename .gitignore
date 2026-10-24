@@ -4,6 +4,13 @@
 runs/
 *.log
 __pycache__/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
 node_modules/
 data/
 coverage/

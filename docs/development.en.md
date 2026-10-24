@@ -6,8 +6,8 @@ English | [中文](development.md)
 
 ## Environment
 
-- Node ≥ 22 and pnpm ≥ 10.
-- Run `pnpm install` after the first clone; install local hooks with `pnpm install:hooks`.
+- Node ≥ 22, pnpm ≥ 10 and Python ≥ 3.12.
+- Run `pnpm install && pnpm setup:api` after the first clone; install local hooks with `pnpm install:hooks`.
 - `gh` must be logged in for `flow:sync` and `verify:flow-online`.
 
 ## Development flow
@@ -17,9 +17,10 @@ Once the flow tree is initialized, every change starts with an issue: `.agents/f
 ## Daily loop
 
 ```sh
-pnpm dev          # API + Web 并行开发
-pnpm typecheck    # 跨包类型检查
-pnpm test         # 各包测试
+pnpm dev          # API + Web development
+pnpm typecheck    # Workspace type checks
+pnpm test         # Workspace tests
+pnpm test:api     # FastAPI tests and coverage
 ```
 
 Choose gates by change surface before committing (do not default to everything; exhaustive coverage belongs to CI):
@@ -27,7 +28,8 @@ Choose gates by change surface before committing (do not default to everything; 
 | Change | Run locally |
 |---|---|
 | Docs / Agent Note only | `pnpm lint:docs` |
-| Web or server code | `pnpm typecheck && pnpm build` |
+| Web code | `pnpm typecheck && pnpm build` |
+| Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api` |
 | Contracts or cross-package types | `pnpm typecheck && pnpm test` |
 | Flow tree | `pnpm verify:flow` |
 | Documentation examples or links | `pnpm verify:docs` |

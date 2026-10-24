@@ -6,8 +6,8 @@
 
 ## 环境
 
-- Node ≥ 22、pnpm ≥ 10。
-- 首次 clone 后运行 `pnpm install`；本地钩子用 `pnpm install:hooks` 安装。
+- Node ≥ 22、pnpm ≥ 10、Python ≥ 3.12。
+- 首次 clone 后运行 `pnpm install && pnpm setup:api`；本地钩子用 `pnpm install:hooks` 安装。
 - 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
 
 ## 开发流程
@@ -17,9 +17,10 @@
 ## 日常循环
 
 ```sh
-pnpm dev          # API + Web 并行开发
-pnpm typecheck    # 跨包类型检查
-pnpm test         # 各包测试
+pnpm dev          # API + Web development
+pnpm typecheck    # Workspace type checks
+pnpm test         # Workspace tests
+pnpm test:api     # FastAPI tests and coverage
 ```
 
 提交前按改动面选门禁（不要默认全量跑，穷尽覆盖归 CI）：
@@ -27,7 +28,8 @@ pnpm test         # 各包测试
 | 改动 | 本地跑 |
 |---|---|
 | 仅文档 / Agent Note | `pnpm lint:docs` |
-| 前端或后端代码 | `pnpm typecheck && pnpm build` |
+| 前端代码 | `pnpm typecheck && pnpm build` |
+| 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api` |
 | 契约或跨包类型 | `pnpm typecheck && pnpm test` |
 | 流程树 | `pnpm verify:flow` |
 | 涉及文档示例或死链 | `pnpm verify:docs` |

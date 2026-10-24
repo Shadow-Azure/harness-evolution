@@ -13,7 +13,13 @@ import { execFileSync } from "node:child_process";
  */
 export const ROUTES = [
   {
-    match: (p) => p.startsWith("apps/") || p.startsWith("packages/"),
+    match: (p) => p.startsWith("apps/api/"),
+    commands: ["lint:api", "typecheck:api", "test:api", "verify:docs"],
+    reason: "Python API：ruff、mypy、pytest/coverage 与文档门禁",
+  },
+  {
+    match: (p) =>
+      (p.startsWith("apps/") && !p.startsWith("apps/api/")) || p.startsWith("packages/"),
     commands: ["build", "verify:docs"],
     reason: "TS 源码：export-docs、type-equiv、doc-typecheck 读 apps/packages；build 连带 tsc 检查",
   },
@@ -50,7 +56,16 @@ export function classify(paths) {
   return ROUTES.filter((route) => paths.some((p) => route.match(p)));
 }
 
-const COMMAND_ORDER = ["build", "test:gates", "verify:flow", "verify:docs", "lint:docs"];
+const COMMAND_ORDER = [
+  "build",
+  "lint:api",
+  "typecheck:api",
+  "test:api",
+  "test:gates",
+  "verify:flow",
+  "verify:docs",
+  "lint:docs",
+];
 
 /** 命中组的命令并集（按固定顺序去重），无命中回退 FALLBACK。 */
 export function recommend(paths) {

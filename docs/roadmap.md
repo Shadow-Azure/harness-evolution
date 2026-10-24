@@ -2,49 +2,40 @@
 
 [English](roadmap.en.md) | 中文
 
-## M0 脚手架（已完成）
+产品按可独立验收的 milestone 推进；机读状态与 issue 依赖以 [.agents/flow/roadmap.md](../.agents/flow/roadmap.md) 为准。
 
-- pnpm workspace
-- React + Vite 前端
-- Fastify + TypeScript 后端
-- 共享 contracts 包
-- 健康检查打通前后端
+## M1 工程骨架与质量门禁
 
-## M1 前端体验原型（当前）
+当前阶段。交付 FastAPI、Vue 3、双方言数据基座、OpenAPI、鉴权、任务/SSE 与 CI 元门禁。
 
-- 选择 4 个真实 Codex 主会话，递归包含全部后代 subagent
-- 搜索并切换 session；展示主 agent 与全部子 agent 的执行流程图
-- 本地快照适配层，不接 SQLite 与 API
-- 主/子 agent 问题统一展示在同一问题面板，并归因到具体 skill 或 agent
-- 按目标 skill/agent 聚合问题，模拟自进化/训练与验证指标
-- 从问题到接纳/拒绝的完整演示链路
+验收：空系统登录可用；静态、数据、契约与流程门禁生效。
 
-验收：能从执行流程图定位子 agent 问题，完成归因，选择目标 skill/agent，用其问题集合完成一次模拟自进化并接纳或拒绝。
+## M2 轨迹数据与归一化
 
-## M2 Codex 轨迹服务
+接入合成 fixtures、本地真实轨迹、JSONL 归一化、Agent 会话树、幂等重放、查询 API 与增量调度。
 
-- 流式扫描 rollout，按 parent_thread_id 组装 session family
-- 增量导入、SQLite schema 与 repository
-- session、family、ingest 与 timeline API
-- 前端切换为真实数据源
+验收：同一 payload 重复处理不产生重复业务行；结构异常按条隔离；查询契约覆盖列表、概览与 Agent 树。
 
-验收：4 个主会话家族可幂等导入，前端展示与原型一致。
+## M3 会话浏览与执行流
 
-## M3 AI 轨迹诊断
+交付会话列表、概览、Agent 执行流图、稳定深链与性能预算。
 
-- 规则诊断：工具失败、重复重试、未验证修改、错误未闭环等
-- 先逐 agent 分析，再由主 agent 汇总跨 agent 问题
-- AI 结构化输出问题、证据与改进建议
-- 诊断任务状态与历史记录
-- 问题回链到轨迹
+验收：用户可从列表进入会话，在图中定位主/子 Agent 与触发事件，并回到同一节点。
 
-验收：主会话的一次分析覆盖全部后代 subagent，证据带 agent 路径并可跳转。
+## M4 问题与归因
 
-## M4 自进化闭环
+接入外部只读 bad_case/probe，交付问题 API、问题卡与错误详情。
 
-- 把问题归因到 skill / prompt / 工具 / 控制流
-- 按 skill 或 agent 聚合已归因问题
-- 生成最小改动提案
-- 对照评测与采纳/回滚记录
+验收：问题与归因数据从真实只读表进入执行流，深链字段与跨会话校验完整。
 
-验收：至少一条真实问题能走完“诊断 → 提案 → 对照验证 → 采纳或拒绝”的闭环。
+## M5 自进化闭环
+
+交付对象配置、运行列表、启动向导、六步状态、事件日志、真实 git candidate 与占位 patch/评测闭环。
+
+验收：一次运行可从 preparing 推进到终评，阻塞可重试，所有阶段可通过事件与快照恢复。
+
+## M6 真实接入与兑现
+
+接入真实上游轨迹、外部契约、真实 patch 评测与聚类升级。
+
+验收：真实数据与评测服务替代开发适配层，契约与失败边界有实跑证据。

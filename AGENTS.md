@@ -21,7 +21,11 @@ Harness Evolution 是面向 coding agent 的轨迹查看与问题诊断服务。
 ```sh
 pnpm install             # 安装 workspace 依赖
 pnpm dev                 # 同时启动 API 与 Web
-pnpm build               # 构建 server 与 web
+pnpm build               # 构建 web
+pnpm setup:api           # 创建 Python venv 并安装 API 依赖
+pnpm lint:api            # FastAPI ruff 检查
+pnpm typecheck:api       # FastAPI mypy 检查
+pnpm test:api            # FastAPI pytest 与 coverage
 pnpm typecheck           # 全 workspace 类型检查
 pnpm test                # 各包测试
 pnpm test:gates          # 门禁自测试

@@ -8,11 +8,12 @@ id: m1-02
 milestone: m1
 depends: []
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/**
   - apps/server/**
   - apps/web/**
+  - .gitignore
   - packages/contracts/**
   - package.json
   - pnpm-workspace.yaml
@@ -23,6 +24,10 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - AGENTS.md
+  - README.md
+  - README.en.md
+  - README.i18n.yaml
 adr: []
 github:
   number: 25
