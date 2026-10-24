@@ -300,29 +300,35 @@ async def get_probe(probe_id: str) -> ProbeReport:
 ### 4.3 Agent 执行流图问题卡
 
 - 取该 session 全部 `bad_cases`；`bad_case_agent_id` 非空时解析为上报人 A，为空时 A = main；找不到 A 时降级挂 main 并告警。
+- **锚点计算不查库**：§3.2 树装配已把该 session 的 `agents` / `agent_events` 全量加载，先建内存索引再纯函数匹配。一个 session 的问题卡可能有几十张，逐卡回表就是 N+1——严禁在循环里调 `crud`。
 - 按 `bad_case_type + object_type` 计算锚点：
 
 ```python
-async def anchor_for(bc) -> Anchor:
-    A = await resolve_agent(bc.bad_case_agent_id) or main
+@dataclass
+class AnchorIndex:                      # 由树装配阶段已加载的数据构建
+    agents_by_id: dict[str, Agent]
+    events_by_agent: dict[str, list[AgentEvent]]   # 按 event_index 升序
+
+def anchor_for(bc, idx: AnchorIndex, main: Agent) -> Anchor:   # 纯函数，无 await
+    A = idx.agents_by_id.get(bc.bad_case_agent_id) or main
     if bc.bad_case_agent_id and A.id == main.id:
         log.warning("bad_case_agent_id not normalized: %s", bc.bad_case_id)
     if bc.bad_case_type == "self":
         if bc.object_type == "agent":
             return Anchor(A.id, -1)
-        return Anchor(A.id, await last_skill_event(A, bc.object_name))
+        return Anchor(A.id, last_skill_event(idx, A, bc.object_name))
     if bc.object_type == "skill":
-        return Anchor(A.id, await last_skill_event(A, bc.object_name))
+        return Anchor(A.id, last_skill_event(idx, A, bc.object_name))
     # discovery + agent：锚到父节点调用 A 的那条 agent 事件
     if A.id == main.id:
         log.warning("discovery + agent with main reporter: %s", bc.bad_case_id)
         return Anchor(main.id, -1)
-    P = await crud.agents.get(A.parent_agent_id) or main
-    return Anchor(P.id, await agent_call_event(P, A.tool_use_id))
+    P = idx.agents_by_id.get(A.parent_agent_id) or main
+    return Anchor(P.id, agent_call_event(idx, P, A.tool_use_id))
 ```
 
-- `last_skill_event`：在 A 的 `agent_events` 里筛 `kind=skill and name=object_name`，按 `event_index` 取最大；没有 → `-1`。
-- `agent_call_event`：在 P 的 `agent_events` 里筛 `kind=agent and tool_use_id=A.tool_use_id`；匹配不到 → `-1`。**不要**按 `object_name` 匹配。
+- `last_skill_event`：在 `idx.events_by_agent[A.id]` 里筛 `kind=skill and name=object_name`，按 `event_index` 取最大；没有 → `-1`。
+- `agent_call_event`：在 `idx.events_by_agent[P.id]` 里筛 `kind=agent and tool_use_id=A.tool_use_id`；匹配不到 → `-1`。**不要**按 `object_name` 匹配。
 - 返回 `anchor: { agentId, eventIndex }`；`eventIndex` 取该事件的 `agent_events.event_index`（0 起、连续编号），API 按 `event_index` 升序返回 `events[]`，因此它同时就是前端 `events[]` 的 0-based 下标（[05 §3.2](05-api-design.md)）——不是 line、也不是 messageOffset。`badCaseAgent` 仍是上报人 A，`anchor.agentId` 在 `discovery + agent` 时等于父节点 P。
 
 ## 5. 自进化（`service/evolution`）
@@ -410,11 +416,13 @@ async def prepare_run(job) -> None:
     # 第 1 步问题聚类：写簇与簇内 probe（unit 1 → 2）
     async with db.transaction():
         clusters = simple_cluster(probes)               # 见 5.4
+        cluster_rows, link_rows = [], []
         for seq, c in enumerate(clusters, start=1):
             cid = ulid()
-            await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type,
-                                             impact=TYPE_IMPACT[c.type])
-            await crud.probe_cluster_probes.bulk_insert(cid, [p.probe_id for p in c.probes])
+            cluster_rows.append((cid, run.id, seq, c.description, c.type, TYPE_IMPACT[c.type]))
+            link_rows += [(cid, p.probe_id) for p in c.probes]
+        await crud.probe_clusters.bulk_insert(cluster_rows)        # 同事务批量写入，不逐簇 RTT
+        await crud.probe_cluster_probes.bulk_insert(link_rows)
         await crud.runs.set_progress(run.id, progress_unit=2)
     await events.record(run.id, "clusters_created", stage="cluster", step_index=1,
                         message=f"聚类完成：{len(clusters)} 个簇")
