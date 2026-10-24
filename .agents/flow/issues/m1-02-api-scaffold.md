@@ -20,6 +20,9 @@ scope:
   - pnpm-lock.yaml
   - pyproject.toml
   - scripts/**
+  - tests/**
+  - plans/**
+  - reports/**
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**

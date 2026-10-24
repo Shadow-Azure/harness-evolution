@@ -1,0 +1,139 @@
+{
+  "lang": "zh-CN",
+  "title": "M1-02 FastAPI 骨架集成 Smoke",
+  "eyebrow": "Computer Use · Integration Smoke",
+  "summary": "真实浏览器、Vite 代理和 FastAPI 服务联调通过：首页与四个计划模块正常渲染，health 连接态正确，受保护接口返回统一 401 错误壳。",
+  "meta": "2026-10-25 · macOS · Google Chrome · desktop viewport",
+  "metrics": [
+    { "value": "7 / 7", "label": "Scenarios passed" },
+    { "value": "0", "label": "Defects" },
+    { "value": "3", "label": "Screenshots" },
+    { "value": "2 / 2", "label": "Cross-stack tests" }
+  ],
+  "facts": [
+    { "label": "Application", "value": "Harness Evolution web + FastAPI" },
+    { "label": "Branch", "value": "codex/m1-02-fastapi-scaffold" },
+    { "label": "Commit", "value": "e90d54d99ebb5d81a91a5f8e2c6a140b8e354d0b" },
+    { "label": "Services", "value": "FastAPI 8787 + Vite 5173, launched on the host" },
+    { "label": "Browser", "value": "Google Chrome at desktop viewport" },
+    { "label": "Execution note", "value": "The agent sandbox cannot bind loopback; equivalent host processes were used for the real browser run." }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "断言与证据", "截图/命令"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "启动前后端真实进程",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "FastAPI 在 8787、Vite 在 5173 监听；启动完成后没有进程错误。",
+        "evidence": ["host lsof", "host launch"]
+      },
+      {
+        "id": "02",
+        "name": "首页正常渲染",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面标题为 Harness Lens，hero、技术栈和 main/footer 内容均出现在 accessibility tree。",
+        "evidence": ["01-home-safe.jpeg"]
+      },
+      {
+        "id": "03",
+        "name": "四个计划模块完整可见",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "轨迹导入、Session 浏览、AI 诊断、问题看板四卡均渲染，架构说明与 footer 可见。",
+        "evidence": ["02-modules-safe.jpeg"]
+      },
+      {
+        "id": "04",
+        "name": "真实 health 驱动连接态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面状态为“API 已连接”，而不是 loading 或 failure。",
+        "evidence": ["01-home-safe.jpeg", "accessibility tree"]
+      },
+      {
+        "id": "05",
+        "name": "桌面布局无明显溢出",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "桌面视口下 header、hero、四列卡片与架构说明无重叠、裁切或横向溢出；长页面滚动正常。",
+        "evidence": ["01-home-safe.jpeg", "02-modules-safe.jpeg"]
+      },
+      {
+        "id": "06",
+        "name": "Vite 代理 health 契约",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET http://localhost:5173/api/health → 200；body={ok:true,service:'harness-evolution',phase:'scaffold'}。",
+        "evidence": ["host curl"]
+      },
+      {
+        "id": "07",
+        "name": "受保护接口统一 401",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET http://localhost:5173/api/sessions → 401；body={error:{code:'AUTH_REQUIRED',message:'authentication is required',details:{}}}。",
+        "evidence": ["03-protected-401-safe.jpeg", "host curl"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-home-safe.jpeg",
+      "alt": "Harness Lens 首页与 API 已连接状态",
+      "label": "01 · Home",
+      "caption": "真实 health 请求完成后，顶栏显示“API 已连接”。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-modules-safe.jpeg",
+      "alt": "四个计划模块与当前边界说明",
+      "label": "02 · Modules",
+      "caption": "四个计划模块、未实现状态和架构边界说明均正常渲染。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-protected-401-safe.jpeg",
+      "alt": "受保护接口的统一 401 错误响应",
+      "label": "03 · Protected API",
+      "caption": "通过 Vite 代理访问 /api/sessions，得到统一 AUTH_REQUIRED 错误壳。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "实测覆盖率", "结果", "备注"],
+    "rows": [
+      [
+        "前端单元测试 + V8 coverage",
+        "97.21% statements / 83.90% branches / 100% functions / 97.21% lines",
+        "27 passed，1 个既有 skip；四项均高于 80% 阈值",
+        "pnpm test 实测通过"
+      ],
+      [
+        "FastAPI 单元与路由测试",
+        "92%",
+        "14 passed；高于 80% 要求",
+        "pnpm test:api 实测通过"
+      ],
+      [
+        "跨栈集成测试",
+        "2 scenarios",
+        "health 200 与 protected 401 均通过真实 Vite→FastAPI 链路",
+        "pnpm test:integration 实测通过"
+      ],
+      [
+        "Computer Use 人工 smoke",
+        "7 scenarios",
+        "渲染、连接态、模块列表、布局和错误壳均有实测证据",
+        "本报告"
+      ]
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "READY",
+    "summary": "M1-02 前后端骨架在真实浏览器和代理链路中通过集成 smoke，未发现产品缺陷。",
+    "points": [
+      "前后端单元、跨栈集成与 80% 覆盖率门禁均已实测通过。",
+      "本次 smoke 的临时启动进程已停止，临时候选启动器已删除。",
+      "后续业务页面仍按 M1 后续 issue 接入；本报告不把占位模块当作已实现能力。"
+    ]
+  },
+  "footer": "Harness Evolution · Computer Use smoke evidence · 2026-10-25"
+}
