@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-25-database-boundary.md
+2026-10-25-database-boundary.md: d81f07a7084e8d5201ea763368bde52478568720
+2026-10-25-database-boundary.en.md: 8235a9387e641967014f87174a755a18696fd0ac

@@ -38,7 +38,13 @@ describe("App", () => {
         json: async () => ({
           ok: true,
           phase: "scaffold",
-          service: "harness-evolution"
+          service: "harness-evolution",
+          version: "0.1.0",
+          db: {
+            dialect: "sqlite",
+            ok: true,
+            latencyMs: 0.4
+          }
         })
       })
     );
@@ -46,6 +52,7 @@ describe("App", () => {
     const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("API 已连接");
+    expect(container.textContent).toContain("SQLite");
     expect(container.textContent).toContain("FastAPI + Python");
     await act(async () => root.unmount());
   });
@@ -56,6 +63,34 @@ describe("App", () => {
     const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("API 未连接");
+    await act(async () => root.unmount());
+  });
+
+  it("renders a database failure when the API is reachable but unhealthy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({
+          ok: false,
+          phase: "scaffold",
+          service: "harness-evolution",
+          version: "0.1.0",
+          db: {
+            dialect: "mysql",
+            ok: false,
+            latencyMs: 1.2,
+            error: "OperationalError: unavailable"
+          }
+        })
+      })
+    );
+
+    const { container, root } = await renderApp();
+
+    expect(container.textContent).toContain("数据库异常");
+    expect(container.textContent).toContain("MySQL");
     await act(async () => root.unmount());
   });
 

@@ -34,21 +34,27 @@ export function App() {
 
   useEffect(() => {
     fetch("/api/health")
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<HealthResponse>;
+      .then(async (response) => {
+        const payload = (await response.json()) as HealthResponse;
+        if (!response.ok && response.status !== 503) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        setHealth(payload);
       })
-      .then(setHealth)
       .catch((error: unknown) => {
         setConnectionError(error instanceof Error ? error.message : String(error));
       });
   }, []);
 
-  const status = health
-    ? "API 已连接"
+  const databaseLabel = health?.db.dialect === "mysql" ? "MySQL" : "SQLite";
+  const status = health?.db.ok
+    ? `API 已连接 · ${databaseLabel}`
+    : health
+      ? "数据库异常"
     : connectionError
       ? "API 未连接"
       : "连接中…";
+  const statusClass = health?.db.ok ? "ok" : health || connectionError ? "error" : "";
 
   return (
     <div className="shell">
@@ -60,7 +66,7 @@ export function App() {
             <span>Agent 轨迹诊断台</span>
           </div>
         </div>
-        <div className={`status-pill ${health ? "ok" : connectionError ? "error" : ""}`}>
+        <div className={`status-pill ${statusClass}`}>
           <span className="status-dot" />
           {status}
         </div>
@@ -81,7 +87,7 @@ export function App() {
           <div className="hero-meta">
             <span>React + Vite</span>
             <span>FastAPI + Python</span>
-            <span>SQLite（待接入）</span>
+            <span>{databaseLabel} · {health?.db.ok ? "已连接" : "连接状态检查中"}</span>
           </div>
         </section>
 

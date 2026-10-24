@@ -9,11 +9,17 @@ milestone: m1
 depends:
   - m1-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - apps/api/alembic/**
+  - apps/web/**
+  - package.json
+  - packages/contracts/**
   - scripts/**
+  - tests/integration/**
+  - reports/**
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
@@ -64,6 +70,7 @@ pnpm test:db:mysql
 
 - 空库 upgrade head 在双方言通过；事务异常零残留。
 - MySQL service 在 CI 成功运行标记用例。
+- 前后端单元测试与 Web→Vite→FastAPI 集成测试同步通过。
 
 ## 验收标准
 
@@ -75,6 +82,7 @@ pnpm test:db:mysql
 
 - 双库 lane 从本 issue 起常驻 CI。
 - 迁移脚本和数据库纪律有测试。
+- 前后端覆盖率四项指标均不低于 80%，CI 必须实际执行对应命令。
 
 ## 非目标
 

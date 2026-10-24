@@ -10,6 +10,7 @@ English | [中文](development.md)
 - Run `pnpm install && pnpm setup:api` after the first clone; install local hooks with `pnpm install:hooks`.
 - `gh` must be logged in for `flow:sync` and `verify:flow-online`.
 - API docs and OpenAPI are closed by default; `pnpm dev` enables them explicitly and production keeps the default or sets `HE_DOCS_ENABLED=false`.
+- `pnpm dev` defaults to SQLite; MySQL sets `HE_DB_DIALECT=mysql` and `HE_DB_URL`, with credentials only from the environment.
 
 ## Development flow
 
@@ -18,12 +19,14 @@ Once the flow tree is initialized, every change starts with an issue: `.agents/f
 ## Daily loop
 
 ```sh
-pnpm dev          # API + Web development
-pnpm typecheck    # Workspace type checks
-pnpm test:web     # Web unit tests and coverage ≥80%
-pnpm test:api     # FastAPI tests and coverage ≥80%
-pnpm test:integration # Web → Vite proxy → FastAPI
-pnpm test:all     # Unit and integration suites
+pnpm dev
+pnpm typecheck
+pnpm test:web
+pnpm test:api
+pnpm test:db
+pnpm test:db:mysql
+pnpm test:integration
+pnpm test:all
 ```
 
 Choose gates by change surface before committing:
@@ -32,7 +35,7 @@ Choose gates by change surface before committing:
 |---|---|
 | Docs / Agent Note only | `pnpm lint:docs` |
 | Web code | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
-| Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:integration` |
+| Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
 | Contracts or cross-package types | `pnpm typecheck && pnpm test:all` |
 | Flow tree | `pnpm verify:flow` |
 | Documentation examples or links | `pnpm verify:docs` |

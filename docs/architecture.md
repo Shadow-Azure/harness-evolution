@@ -41,11 +41,13 @@ Web ──► FastAPI middleware ──► api/health
                      └──► non-public /api/* → 401 AUTH_REQUIRED
 ```
 
-`/api/health` 无需登录并返回 `ok/service/phase`。身份实现落地前，其他 `/api/*` 路径默认拒绝；未知路由、校验失败与未捕获异常都使用统一错误 envelope。
+`/api/health` 无需登录并返回 `ok/service/phase/version/db`。数据库健康检查失败时 HTTP 返回 503，但 API 进程保持可达。身份实现落地前，其他 `/api/*` 路径默认拒绝；未知路由、校验失败与未捕获异常都使用统一错误 envelope。
 
 ## 数据层策略
 
-- 生产数据库目标为 MySQL，自动化测试使用 SQLite；当前骨架尚未创建连接或迁移。
+- 生产数据库目标为 MySQL 8，本地快跑与自动化测试使用 SQLite；`HE_DB_DIALECT` 是唯一选择点。
+- `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
+- Alembic 维护一棵双方言迁移树；空 SQLite 与 MySQL 都可升级到 head，SQLite 的变更使用 batch 模式。
 - 业务代码只依赖 repository/Database 接口，不直接拼接 SQL。
 - 原始轨迹 payload 是事实源；归一化数据必须可重放且幂等。
 - 问题与归因数据由外部系统写入，本服务只读。
@@ -61,7 +63,7 @@ GET /api/health
 
 ## 共享契约
 
-健康检查响应是当前前后端的最小契约样本：
+健康检查响应是当前前后端的最小契约样本，数据库状态与 API 状态分别可判：
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
@@ -69,6 +71,8 @@ export interface HealthResponse {
   ok: boolean;
   service: "harness-evolution";
   phase: ServicePhase;
+  version: string;
+  db: DatabaseHealth;
 }
 ```
 
@@ -83,11 +87,17 @@ const health: HealthResponse = {
   ok: true,
   service: "harness-evolution",
   phase: "scaffold",
+  version: "0.1.0",
+  db: {
+    dialect: "sqlite",
+    ok: true,
+    latencyMs: 0.2,
+  },
 };
 ```
 
 ## 当前状态与非目标
 
-- 已具备：FastAPI 模块化骨架、统一错误模型、健康检查、Python lint/type/test 门禁。
-- 未具备：数据库、迁移、真实鉴权、轨迹解析、问题查询、自进化执行。
+- 已具备：FastAPI 模块化骨架、统一错误模型、SQLite/MySQL Database 基座、Alembic 基线、健康检查、Python lint/type/test 门禁。
+- 未具备：领域表、真实鉴权、轨迹解析、问题查询、自进化执行。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

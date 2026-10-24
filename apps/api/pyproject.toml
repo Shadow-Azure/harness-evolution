@@ -8,8 +8,12 @@ version = "0.1.0"
 description = "Harness Evolution FastAPI service"
 requires-python = ">=3.12"
 dependencies = [
+  "aiosqlite>=0.20,<1",
+  "alembic>=1.14,<2",
+  "asyncmy>=0.2.10,<1",
   "fastapi>=0.115,<1",
   "pydantic-settings>=2.6,<3",
+  "sqlalchemy[asyncio]>=2.0.36,<3",
   "uvicorn[standard]>=0.32,<1",
 ]
 
@@ -41,6 +45,9 @@ files = ["app", "tests"]
 addopts = "-q --strict-markers --strict-config"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "mysql: integration tests requiring a MySQL service",
+]
 
 [tool.ruff]
 target-version = "py312"

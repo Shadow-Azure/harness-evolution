@@ -26,6 +26,7 @@ pnpm setup:api           # 安装 API 依赖
 pnpm lint:api            # FastAPI ruff 检查
 pnpm typecheck:api       # FastAPI mypy 检查
 pnpm test:api            # FastAPI 单测与 coverage（≥80%）
+pnpm test:db[:mysql]     # SQLite / MySQL 数据库门禁
 pnpm test:all            # 前后端覆盖率单测 + 跨栈集成测试
 pnpm typecheck           # 全 workspace 类型检查
 pnpm test                # 前后端单测（覆盖率门禁）

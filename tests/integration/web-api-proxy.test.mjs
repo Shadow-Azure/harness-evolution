@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { after, before, test } from "node:test";
 
 const root = process.cwd();
@@ -10,6 +13,7 @@ let web;
 let webBaseUrl;
 let apiLogs = "";
 let webLogs = "";
+let dataDir;
 
 function capture(child, append) {
   child.stdout.on("data", (chunk) => append(String(chunk)));
@@ -82,6 +86,7 @@ async function stop(child) {
 before(async () => {
   const apiPort = await availablePort();
   const webPort = await availablePort();
+  dataDir = await mkdtemp(path.join(tmpdir(), "harness-integration-"));
   webBaseUrl = `http://127.0.0.1:${webPort}`;
 
   api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
@@ -89,6 +94,8 @@ before(async () => {
     env: {
       ...process.env,
       HE_DOCS_ENABLED: "false",
+      HE_DATA_DIR: dataDir,
+      HE_DB_DIALECT: "sqlite",
       HE_HOST: "127.0.0.1",
       HE_PORT: String(apiPort),
       PYTHONUNBUFFERED: "1"
@@ -123,6 +130,7 @@ before(async () => {
 after(async () => {
   await stop(web);
   await stop(api);
+  if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
 test("health succeeds through the Vite proxy with the shared contract", async () => {
@@ -131,11 +139,13 @@ test("health succeeds through the Vite proxy with the shared contract", async ()
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("x-request-id") ?? "", /\S/);
-  assert.deepEqual(body, {
-    ok: true,
-    phase: "scaffold",
-    service: "harness-evolution"
-  });
+  assert.equal(body.ok, true);
+  assert.equal(body.phase, "scaffold");
+  assert.equal(body.service, "harness-evolution");
+  assert.equal(body.version, "0.1.0");
+  assert.equal(body.db.dialect, "sqlite");
+  assert.equal(body.db.ok, true);
+  assert.equal(typeof body.db.latencyMs, "number");
 });
 
 test("protected API failures keep the unified envelope through the proxy", async () => {
