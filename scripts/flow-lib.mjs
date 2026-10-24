@@ -48,6 +48,7 @@ export function parseFlowYaml(lines, file) {
     const m = /^([a-z][a-z0-9-]*):(?:\s+(.*))?$/.exec(line);
     if (!m) throw new Error(`${file}:${lineNo}: 无法解析的行 ${JSON.stringify(line)}（期望 key: value）`);
     const [, key, rest] = m;
+    if (key in out) throw new Error(`${file}:${lineNo}: 重复 key ${key}`);
     if (rest !== undefined && rest.trim() !== "") {
       const v = rest.trim();
       if (v === "[]") out[key] = [];

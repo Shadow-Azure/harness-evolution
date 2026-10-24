@@ -6,7 +6,6 @@ English | [中文](m1-01-roadmap-gates.md)
 kind: issue
 id: m1-01
 milestone: m1
-depends:
 depends: []
 priority: P0
 status: done
@@ -19,7 +18,7 @@ scope:
   - package.json
   - plans/**
 adr:
-adr: []
+  - ../../notes/proposed/process/2026-10-24-verifiable-roadmap.md
 github:
   number: 24
   url: https://github.com/Shadow-Azure/harness-evolution/issues/24

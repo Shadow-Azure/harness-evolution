@@ -17,7 +17,6 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
-adr:
 adr: []
 github:
   number: 48

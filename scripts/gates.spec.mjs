@@ -4,6 +4,7 @@ import {
   collectRefs,
   globToRegExp,
   parseFlowDocument,
+  parseFlowYaml,
   uncoveredFiles,
   validateTree,
   validateIssueSections,
@@ -119,6 +120,10 @@ test("github backfill removes the bootstrap exemption", () => {
   const next = applyGithubRef(content, 42, "https://github.com/o/r/issues/42");
   assert.match(next, /number: 42/);
   assert.doesNotMatch(next, /bootstrap: true/);
+});
+
+test("flow yaml rejects duplicate keys and generator emits canonical empty lists", () => {
+  assert.throws(() => parseFlowYaml(["kind: roadmap", "kind: milestone"], "x.md"), /重复 key/);
 });
 
 test("issue sections require an executable implementation and verification contract", () => {

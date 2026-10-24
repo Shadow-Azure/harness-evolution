@@ -6,7 +6,6 @@
 kind: issue
 id: m2-01
 milestone: m2
-depends:
 depends: []
 priority: P0
 status: backlog
@@ -19,7 +18,6 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
-adr:
 adr: []
 github:
   number: 33
