@@ -8,7 +8,7 @@ id: m1-02
 milestone: m1
 depends: []
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/server/**
