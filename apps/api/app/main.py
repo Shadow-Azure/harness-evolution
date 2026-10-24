@@ -34,13 +34,14 @@ def create_app(
         try:
             await resolved_database.start()
             phase = "migration"
-            await upgrade_database(resolved_database, resolved_settings)
-        except Exception:
-            logger.exception(
+            await upgrade_database(resolved_database)
+        except Exception as exc:
+            logger.error(
                 "database initialization failed",
                 extra={
                     "dialect": resolved_settings.db_dialect.value,
                     "phase": phase,
+                    "error_type": type(exc).__name__,
                 },
             )
             lifespan_app.state.database_start_error = "startup or migration failed"

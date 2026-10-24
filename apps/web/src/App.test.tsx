@@ -94,6 +94,8 @@ describe("App", () => {
 
     expect(container.textContent).toContain("数据库异常");
     expect(container.textContent).toContain("MySQL");
+    expect(container.textContent).toContain("MySQL · 连接异常");
+    expect(container.textContent).not.toContain("连接状态检查中");
     await act(async () => root.unmount());
   });
 
@@ -103,6 +105,8 @@ describe("App", () => {
     const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("连接中…");
+    expect(container.textContent).toContain("数据库 · 检查中");
+    expect(container.textContent).not.toContain("SQLite · 检查中");
     await act(async () => root.unmount());
   });
 });

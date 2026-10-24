@@ -148,10 +148,10 @@ async def test_sqlite_health_failure_is_sanitized(tmp_path: Path) -> None:
     assert health.error == "OperationalError: database is unavailable"
 
 
-async def test_health_failure_redacts_driver_context_but_logs_it(
+async def test_health_failure_logs_stable_diagnostics_without_driver_context(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Sensitive driver details stay in logs and never reach the public health model."""
+    """Logs and public health both exclude sensitive driver details."""
     driver_error = (
         "mysql+asyncmy://ops:super-secret@db.internal:3306/private"
         "?charset=utf8mb4 failed at /var/lib/mysql/private"
@@ -166,7 +166,13 @@ async def test_health_failure_redacts_driver_context_but_logs_it(
     assert "super-secret" not in health.error
     assert "db.internal" not in health.error
     assert "/var/lib/mysql/private" not in health.error
-    assert driver_error in caplog.text
+    assert driver_error not in caplog.text
+    assert "super-secret" not in caplog.text
+    assert "db.internal" not in caplog.text
+    assert "/var/lib/mysql/private" not in caplog.text
+    record = next(record for record in caplog.records if record.name == "app.db.database")
+    assert record.exc_info is None
+    assert getattr(record, "error_type", None) == "RuntimeError"
 
 
 async def test_mysql_engine_uses_the_designed_pool_configuration() -> None:
@@ -197,8 +203,8 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
 
     await database.start()
     try:
-        await upgrade_database(database, settings)
-        await upgrade_database(database, settings)
+        await upgrade_database(database)
+        await upgrade_database(database)
 
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
@@ -301,8 +307,8 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
     database = MySqlDatabase(settings)
     await database.start()
     try:
-        await upgrade_database(database, settings)
-        await upgrade_database(database, settings)
+        await upgrade_database(database)
+        await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
         assert result.scalar_one() == "0001"

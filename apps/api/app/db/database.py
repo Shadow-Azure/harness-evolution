@@ -37,6 +37,11 @@ class SqlAlchemyDatabase:
             raise RuntimeError("database has not been started")
         return self._engine
 
+    @property
+    def url(self) -> str:
+        """Return the configured target without creating an engine."""
+        return self._url
+
     def _build_engine(self) -> AsyncEngine:
         """Create the dialect-specific engine."""
         raise NotImplementedError
@@ -85,9 +90,12 @@ class SqlAlchemyDatabase:
             async with self.engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
         except Exception as exc:
-            logger.exception(
+            logger.error(
                 "database health check failed",
-                extra={"dialect": self.dialect},
+                extra={
+                    "dialect": self.dialect,
+                    "error_type": type(exc).__name__,
+                },
             )
             return DBHealth(
                 ok=False,

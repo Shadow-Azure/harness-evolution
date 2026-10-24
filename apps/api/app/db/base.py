@@ -23,6 +23,10 @@ class Database(Protocol):
     dialect: str
 
     @property
+    def url(self) -> str:
+        """Return the exact target used by this database instance."""
+
+    @property
     def engine(self) -> AsyncEngine:
         """Return the started SQLAlchemy engine."""
 

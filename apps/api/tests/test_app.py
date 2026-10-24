@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException
 import app.main as main_module
 from app.config import DatabaseDialect, ServicePhase, Settings
 from app.db.base import Database, DBHealth
+from app.db.factory import create_database
 from app.errors import AppError
 from app.main import create_app
 
@@ -20,6 +21,7 @@ class HealthyDatabase:
     """Small API test double with deterministic database health."""
 
     dialect = "sqlite"
+    url = "sqlite+aiosqlite:///:memory:"
 
     @property
     def engine(self) -> object:
@@ -166,6 +168,39 @@ async def test_lifespan_starts_database_and_runs_migrations(tmp_path: Path) -> N
     assert (tmp_path / "harness.db").exists()
 
 
+async def test_lifespan_migrates_the_injected_database_not_settings_target(
+    tmp_path: Path,
+) -> None:
+    """Migration follows the exact Database instance owned by the application."""
+    injected_path = tmp_path / "injected.db"
+    settings_path = tmp_path / "settings.db"
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        db_url=f"sqlite+aiosqlite:///{settings_path}",
+    )
+    database = create_database(
+        Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            db_url=f"sqlite+aiosqlite:///{injected_path}",
+        )
+    )
+    app = create_app(settings, database=database)
+    transport = httpx.ASGITransport(app=app)
+
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as test_client,
+    ):
+        response = await test_client.get("/api/health")
+
+    assert response.status_code == 200
+    assert injected_path.exists()
+    assert not settings_path.exists()
+
+
 async def test_lifespan_logs_start_failure_and_keeps_health_sanitized(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
@@ -194,10 +229,12 @@ async def test_lifespan_logs_start_failure_and_keeps_health_sanitized(
         "DatabaseInitializationError: startup or migration failed"
     )
     assert str(sensitive_path) not in response.text
-    assert "sqlite3.OperationalError" in caplog.text
+    assert str(sensitive_path) not in caplog.text
     migration_record = next(record for record in caplog.records if record.name == "app.main")
     assert getattr(migration_record, "phase", None) == "migration"
     assert getattr(migration_record, "dialect", None) == "sqlite"
+    assert getattr(migration_record, "error_type", None) == "OperationalError"
+    assert migration_record.exc_info is None
 
 
 async def test_migration_failure_marks_reachable_database_unhealthy(
@@ -207,7 +244,7 @@ async def test_migration_failure_marks_reachable_database_unhealthy(
     """A failed migration cannot be hidden by a successful ping."""
     sensitive_error = "migration failed: mysql+asyncmy://ops:secret@db.internal/private"
 
-    async def fail_upgrade(_database: Database, _settings: Settings) -> None:
+    async def fail_upgrade(_database: Database) -> None:
         raise RuntimeError(sensitive_error)
 
     monkeypatch.setattr(main_module, "upgrade_database", fail_upgrade)
@@ -235,10 +272,14 @@ async def test_migration_failure_marks_reachable_database_unhealthy(
         "error": "DatabaseInitializationError: startup or migration failed",
     }
     assert sensitive_error not in response.text
-    assert sensitive_error in caplog.text
+    assert sensitive_error not in caplog.text
+    assert "super-secret" not in caplog.text
+    assert "db.internal" not in caplog.text
     migration_record = next(record for record in caplog.records if record.name == "app.main")
     assert getattr(migration_record, "phase", None) == "migration"
     assert getattr(migration_record, "dialect", None) == "sqlite"
+    assert getattr(migration_record, "error_type", None) == "RuntimeError"
+    assert migration_record.exc_info is None
 
 
 async def test_startup_failure_logs_without_exposing_driver_context(
@@ -267,10 +308,13 @@ async def test_startup_failure_logs_without_exposing_driver_context(
     )
     assert "db.internal" not in response.text
     assert "super-secret" not in response.text
-    assert "db.internal" in caplog.text
+    assert "db.internal" not in caplog.text
+    assert "secret" not in caplog.text
     startup_record = next(record for record in caplog.records if record.name == "app.main")
     assert getattr(startup_record, "phase", None) == "startup"
     assert getattr(startup_record, "dialect", None) == "sqlite"
+    assert getattr(startup_record, "error_type", None) == "RuntimeError"
+    assert startup_record.exc_info is None
 
 
 async def test_protected_api_path_returns_auth_required_before_routing(

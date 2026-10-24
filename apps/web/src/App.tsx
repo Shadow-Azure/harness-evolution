@@ -46,9 +46,11 @@ export function App() {
       });
   }, []);
 
-  const databaseLabel = health?.db.dialect === "mysql" ? "MySQL" : "SQLite";
+  const databaseName =
+    health?.db.dialect === "mysql" ? "MySQL" : health?.db.dialect === "sqlite" ? "SQLite" : "数据库";
+  const databaseState = health ? (health.db.ok ? "已连接" : "连接异常") : connectionError ? "未知" : "检查中";
   const status = health?.db.ok
-    ? `API 已连接 · ${databaseLabel}`
+    ? `API 已连接 · ${databaseName}`
     : health
       ? "数据库异常"
     : connectionError
@@ -87,7 +89,7 @@ export function App() {
           <div className="hero-meta">
             <span>React + Vite</span>
             <span>FastAPI + Python</span>
-            <span>{databaseLabel} · {health?.db.ok ? "已连接" : "连接状态检查中"}</span>
+            <span>{databaseName} · {databaseState}</span>
           </div>
         </section>
 
