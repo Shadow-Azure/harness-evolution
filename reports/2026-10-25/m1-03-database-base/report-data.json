@@ -1,0 +1,220 @@
+{
+  "lang": "zh-CN",
+  "title": "M1-03 Database 基座集成 Smoke",
+  "eyebrow": "Computer Use Integration Smoke",
+  "summary": "真实 Chrome 会话验证了 SQLite 正常态、Vite 代理 health 契约、统一 401，以及故障数据库下的 503 与一致前端状态。6 个场景全部通过，未发现产品缺陷。",
+  "meta": "2026-10-25 · macOS · Google Chrome · FastAPI + Vite",
+  "metrics": [
+    {
+      "value": "6/6",
+      "label": "场景通过"
+    },
+    {
+      "value": "0",
+      "label": "产品缺陷"
+    },
+    {
+      "value": "93%",
+      "label": "后端覆盖率"
+    },
+    {
+      "value": "84.53%",
+      "label": "前端 branches"
+    }
+  ],
+  "facts": [
+    {
+      "label": "Commit",
+      "value": "d6779d9"
+    },
+    {
+      "label": "Branch",
+      "value": "codex/m1-03-database-base"
+    },
+    {
+      "label": "正常库",
+      "value": "SQLite · 临时数据目录"
+    },
+    {
+      "label": "故障库",
+      "value": "SQLite · 不存在父目录"
+    },
+    {
+      "label": "验证路径",
+      "value": "Chrome → Vite :5173 → FastAPI :8787"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "断言与证据",
+      "截图"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "正常首页与服务连接",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "页面渲染完整；真实 health 请求完成后显示“API 已连接 · SQLite”，无检查中残留。",
+        "evidence": [
+          "01-home-success.jpeg"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "正常 health 契约",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "经真实代理返回 ok=true、service=harness-evolution、phase=scaffold、db.ok=true、db.dialect=sqlite 和数值 latencyMs；响应不含路径或凭据。",
+        "evidence": [
+          "02-health-success.jpeg"
+        ]
+      },
+      {
+        "id": "03",
+        "name": "受保护 API 401",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "GET /api/sessions 返回统一 {error:{code:AUTH_REQUIRED,message,details}} 外形。",
+        "evidence": [
+          "03-protected-401.jpeg"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "模块与架构说明",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "四个计划模块、未实现状态、MySQL 8 生产与 SQLite 本地测试文案均可见；桌面布局无横向溢出或遮挡。",
+        "evidence": [
+          "04-modules-success.jpeg"
+        ]
+      },
+      {
+        "id": "05",
+        "name": "数据库故障前端状态",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "API 可达但数据库初始化失败时，顶部显示“数据库异常”，hero 显示“SQLite · 连接异常”；不再显示检查中或已连接。",
+        "evidence": [
+          "05-db-failure-ui.jpeg"
+        ]
+      },
+      {
+        "id": "06",
+        "name": "数据库故障 503 脱敏",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "代理返回 ok=false、db.ok=false 与固定 DatabaseInitializationError 摘要；FastAPI 日志记录 503，浏览器响应未暴露故障路径、DSN 或凭据。",
+        "evidence": [
+          "06-db-failure-health.jpeg"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-home-success.jpeg",
+      "alt": "SQLite 正常连接时的 Harness Lens 首页",
+      "label": "01 · 正常首页",
+      "caption": "顶部状态为 API 已连接 · SQLite，hero 数据库状态为 SQLite · 已连接。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-health-success.jpeg",
+      "alt": "正常 health JSON 响应",
+      "label": "02 · 正常 health",
+      "caption": "真实 Vite 代理链路返回完整 health/db 契约，响应无私有路径。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-protected-401.jpeg",
+      "alt": "受保护 API 的统一 401 响应",
+      "label": "03 · 401",
+      "caption": "受保护路径保持统一 AUTH_REQUIRED 错误外形。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-modules-success.jpeg",
+      "alt": "计划模块与数据库架构说明",
+      "label": "04 · 模块与架构",
+      "caption": "四个计划模块与生产 MySQL 8、本地 SQLite 的现状说明完整可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-db-failure-ui.jpeg",
+      "alt": "数据库故障时的前端状态",
+      "label": "05 · 故障 UI",
+      "caption": "API 仍可达但数据库失败时，页面统一显示数据库异常与连接异常。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-db-failure-health.jpeg",
+      "alt": "数据库故障 503 响应",
+      "label": "06 · 故障 health",
+      "caption": "503 响应保留 dialect 与固定错误摘要，不泄露故障路径或连接细节。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "范围",
+      "自动化",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "SQLite / MySQL 适配器与事务",
+        "coverage": "后端单测 + 双库门禁",
+        "conclusion": "SQLite 本地 10 passed；真实 MySQL 8.4 CI lane 3 passed。",
+        "recommendation": "保持双方言 CI 常驻。"
+      },
+      {
+        "area": "health 正常与故障契约",
+        "coverage": "后端路由测试 + 前端状态单测",
+        "conclusion": "200/503、脱敏、SQLite/MySQL 展示均有确定性覆盖。",
+        "recommendation": "后续新增健康字段时同步契约测试。"
+      },
+      {
+        "area": "Web → Vite → FastAPI",
+        "coverage": "跨栈集成 + Computer Use",
+        "conclusion": "自动化 3/3 passed；浏览器实测正常 health、401 与 503。",
+        "recommendation": "真实入口 smoke 保留在合并门禁。"
+      },
+      {
+        "area": "覆盖率门槛",
+        "coverage": "Vitest V8 + Python coverage",
+        "conclusion": "前端 97.11/84.53/100/97.11；后端 93%，两端均高于 80%。",
+        "recommendation": "继续由 CI 实际执行并阻断低覆盖。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready to merge",
+    "summary": "m1-03 的正常、认证边界与数据库故障链路均在真实浏览器中符合设计。",
+    "points": [
+      "未发现需要提交新检视意见的产品问题。",
+      "故障响应保持公开脱敏，诊断信息仅进入服务端日志。",
+      "前后端覆盖率与跨栈自动化门禁均高于 80%。"
+    ]
+  },
+  "footer": "Evidence generated from Computer Use screenshots; HTML is rendered from report-data.json."
+}
