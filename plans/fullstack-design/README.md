@@ -3,7 +3,7 @@
 > 目标：把 [14-15-ui-prototype 原型](../14-15-ui-prototype/harness-evolution.html) 里的全部功能与 UI 效果，落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
 > 状态：**讨论稿** —— 等待 review，确认后再排 milestone / roadmap / issue。
 >
-> 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。数据模型统一为 `session_families` / `agents` / `user_turns` / `messages` / `content_blocks` / `agent_events`；前端组件为 `agent-tree/`、`AgentTree.vue`、`SessionOverview.vue`，API 类型 `SessionTree` 保留。
+> 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。数据模型统一为 `session_families` / `agents` / `user_turns` / `agent_events`；消息与内容块只在解析期用于统计，不落库；前端组件为 `agent-tree/`、`AgentTree.vue`、`SessionOverview.vue`，API 类型 `SessionTree` 保留。
 
 ## 这套文档怎么读
 
@@ -37,7 +37,7 @@
 
 ## 系统一句话说明
 
-Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 组成的 Agent 会话树）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在 Agent 执行流图上查看主/子 agent 的执行过程、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，范围与替代说明见 [02 §2.1](02-features.md)。
+Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 组成的 Agent 会话树）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在 Agent 执行流图上查看主/子 agent 的执行过程、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，完整时间线由外部平台承担；本服务只保留用户输入锚点，见 [02 §2.1](02-features.md)。
 
 ```text
 轨迹输入：上游查询接口 / trajectory_payloads（脚本写入）
@@ -71,7 +71,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D5 | 部署形态（2026-10-22 修订） | **SaaS 服务**：多用户、远程访问、MySQL 主库；不再是本地单机工具 | 引入鉴权、用户体系与远程部署；原先"预留服务化"的接缝全部兑现 |
 | D6 | 自进化边界（2026-10-23 修订） | **V1 真实修改 skill/agent 文件、candidate commit、push 临时 ref 供评测，接纳后 fast-forward run 分支**；聚类与 patch 内容、评测分数为占位 | candidate 先 push 到 `.../candidate/r{n}` 再评测；接纳 amend + ff，拒绝删 candidate；run 分支只含已接纳 commit；push 失败 blocked |
 | D7 | 进度推送 | **页面级 SSE**：仅 `preparing/running` 的 run 订阅；ticket 绑定 topics 与 cursor，完成/阻塞即关闭；轨迹归一化走 REST 轮询 | EventSource 不能带头，用一次性票据；已完成任务不建 SSE |
-| D8 | 范围裁剪（2026-10-22） | **时间线页面（原型 B 页）不做** | 用户轮次/消息/内容块仍入库，仅用于统计与后续诊断；移除时间线路由、接口、组件与对应里程碑 issue。见 [02 §2.1](02-features.md) |
+| D8 | 范围裁剪（2026-10-22） | **时间线页面（原型 B 页）不做，完整时间线由外部平台承担** | 本服务只保留 `user_turns` 用户输入锚点，消息/内容块不落库；移除时间线路由、接口、组件与对应里程碑 issue。见 [02 §2.1](02-features.md) |
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |

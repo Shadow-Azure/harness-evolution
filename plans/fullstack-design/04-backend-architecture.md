@@ -16,7 +16,7 @@
 | ASGI 服务器 | uvicorn（dev `--reload`） | 运行 | 单实例起步；多实例时 worker 与 SSE 单独扩展（§8） |
 | 数据校验/序列化 | Pydantic v2 | 领域模型 = 契约源头 | `model_config = ConfigDict(extra="forbid")` 防止契约偷偷膨胀 |
 | 配置 | pydantic-settings | env → 配置对象 | `.env` 本地、不提交；密钥不进仓库 |
-| 鉴权 | **PyJWT + argon2-cffi** | 自建账号登录 | access JWT（30min）+ refresh（httpOnly cookie，14d）；密码哈希 argon2 |
+| 鉴权 | **PyJWT + argon2-cffi** | 自建账号登录 | access JWT（30min）+ refresh（httpOnly cookie，14d）；密码哈希 argon2id（盐内嵌 PHC 串，不存明文）；首登强制改密 |
 | ORM | **SQLAlchemy 2.0（async）** | 真实数据存储 | 表达式层跨方言；见 §2.1 与 §4 |
 | 数据库驱动 | `asyncmy`（MySQL，主库）/ `aiosqlite`（测试） | 连接驱动 | 驱动差异被 `Database` 适配器吸收；备选 `aiomysql`（生态更老但稳） |
 | 迁移 | Alembic（单版本树，双方言） | 版本化建表/改表 | SQLite 用 batch 模式；`alembic upgrade head` 由启动脚本执行 |
@@ -194,7 +194,7 @@ def create_database(settings: Settings) -> Database:
 | 约束 | 原因 | 做法 |
 |---|---|---|
 | 不用 `INSERT OR REPLACE` / `ON DUPLICATE KEY` 裸写 | 两种方言语法不同 | 跨库默认"先查后写"包在事务里；确需 upsert 时用 SQLAlchemy 方言构造（SQLite `on_conflict_do_update` / MySQL `on_duplicate_key_update`）封装在 Repository 内 |
-| 索引列不用 `TEXT` | MySQL 索引键长上限（3072 字节） | 索引/唯一键列用 `VARCHAR(n)`（n ≤ 255）；正文用 `MEDIUMTEXT` 且不建索引 |
+| 索引列不用 `TEXT` | MySQL 索引键长上限（3072 字节） | 索引/唯一键列用 `VARCHAR(n)`（n ≤ 255）；正文用 `TEXT`/`LONGTEXT` 且不建索引 |
 | 不依赖 `LIKE` 的大小写行为 | SQLite ASCII 不敏感、MySQL 取决于 collation | 写入时维护 `search_text`（lower），查询统一 `LIKE` 该列 |
 | JSON 不在 SQL 里查 | SQLite JSON1 与 MySQL JSON 函数不同 | JSON 列只做整存整取（`sa.JSON`），过滤在 Python 侧做（数据量小） |
 | 时间统一 Asia/Shanghai | 两种库时区语义不同 | `DateTime(timezone=True)` + 应用层写 `Asia/Shanghai`；API 输出 `+08:00`；禁止 `NOW()` 默认值 |
@@ -264,7 +264,7 @@ class PayloadSource(Protocol):
 | `AppError`（其他业务错误） | 400 | `*_ERROR` |
 | 未捕获异常 | 500 | `INTERNAL`（响应不含堆栈，日志含 request_id） |
 
-- 请求上下文：JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点仅 `/api/health` 与 `/api/auth/login`、`/api/auth/refresh`，其余一律要求登录。
+- 请求上下文：JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点仅 `/api/health` 与 `/api/auth/login`、`/api/auth/refresh`，其余一律要求登录；`must_change_password` 的账号只放行改密/登出/`me`，其余 `403 PASSWORD_CHANGE_REQUIRED`（[07 §8.2](07-backend-implementation.md)）。
 - 日志：`structlog` 风格的结构化字段（`request_id / module / principal / duration_ms / code`），不打印轨迹原文（可能含敏感内容）。
 - CORS：只允许配置的正式域名（`HE_CORS_ORIGINS`）；同源托管后可关闭。
 - 限流（轻量）：登录端点按 IP 限速（如 10 次/分钟），防暴力破解；业务端点暂不限流（组织内部）。

@@ -15,6 +15,7 @@
 | 真实 ID（`badCaseId` / `probeId` / `runId`）与点击深链（新窗口、指定 tab） | F2 | [05 §5](05-api-design.md) · [08 §7](08-frontend-implementation.md) |
 | 健康检查、空态/加载/失败三态 | F17 | [05 §4.1](05-api-design.md) · [08 §13](08-frontend-implementation.md) |
 | 登录页（用户名/密码、错误提示、登录跳转） | F18 | [05 §4.1](05-api-design.md)（auth 端点）· [08 §4](08-frontend-implementation.md) |
+| 强制改密页（首登改密、成功后换 token 并放行） | F18 | [05 §4.1](05-api-design.md)（`change-password`）· [08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md) |
 | 顶栏用户区：演示数据角标、轨迹处理状态、当前用户与退出 | F18 / F9 | [08 §4.2](08-frontend-implementation.md) |
 | 轨迹处理状态（`GET /acquisition/status`）与后台定时 | F9 / F14 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
 
@@ -49,7 +50,7 @@
 | 双 Tab：问题描述 / 归因分析 | F8 | [08 §7.3](08-frontend-implementation.md) |
 | 问题描述：badCaseId、reason、状态 chip、metaData facts、上报对象 | F8 | [05 §3.4](05-api-design.md) |
 | 归因：结论横幅（问题/非问题/未分析） | F8 | [05 §3.4](05-api-design.md)（`analysis.status`）· [08 §7.3](08-frontend-implementation.md) |
-| 归因：根因对象、问题分类、问题描述、分析推导过程 | F8 | [05 §3.4](05-api-design.md)（`ProbeReport`） |
+| 归因：根因对象、问题分类、问题描述、分析推导过程（Markdown） | F8 | [05 §3.4](05-api-design.md)（`ProbeReport`） |
 | 归因：非问题原因 | F8 | 同上（`analysis.result.reason`） |
 | 归因：未分析空态 | F8 | 同上（`unanalyzed` 占位） |
 | 未实现 / 待定：卡片「查看原始 JSON」overlay（原属时间线卡片） | — | **未覆盖**，见 §2 问题 Q3 |
@@ -110,7 +111,7 @@
 ### Q3. 「查看原始 JSON」overlay 是否纳入
 
 - 原型：overlay 组件挂在时间线卡片上（"查看原始载荷"），时间线裁撤后该入口不复存在。
-- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，再加 `GET /api/content-blocks/{blockId}/raw`（按 `trajectory_payloads.payload + 行号` 回读，见 [06 §3.0](06-database-design.md)）。
+- 选项 A（推荐）：**不纳入首版**。后续若做诊断证据查看，按 `(sessionId, agentId, lineNo)` 从 `trajectory_payloads.payload` 回读（见 [06 §3.0](06-database-design.md)）；不恢复消息/内容块明细表。
 - 选项 B：现在纳入，作为独立 issue——但没有消费入口（时间线没了），收益存疑。
 
 ### Q4. 用户管理界面范围
@@ -143,7 +144,7 @@
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend、拒绝 reset；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
-| R15 | 异常详情泄露密钥/环境 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据）并截断 8KB；接口只返回脱敏内容 |
+| R15 | 异常详情泄露密钥/环境/密码 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据、`password`/`password_hash`）并截断 8KB；接口只返回脱敏内容；密码与哈希不写任何 payload 列（[06 §3.8](06-database-design.md)） |
 | R16 | 定时与手动同时触发同步 | 重复处理/并发写同一 session | `sync_lock` 单飞 + TTL；手动幂等返回已有 `jobId`；`job_runs` 仅一个活跃 sync |
 | R17 | 评测接口长时间不返回/超时 | 单 worker 被占、页面误以为卡死 | `eval_poller` 每 5min 轮询、`next_poll_at` 落库、超时置 `blocked(eval)`；`/retry` 重新提交 |
 

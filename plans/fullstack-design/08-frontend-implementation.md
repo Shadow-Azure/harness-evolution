@@ -8,6 +8,7 @@
 | 路由 | 页面组件 | 主要数据 | 对应原型 |
 |---|---|---|---|
 | `/login` | `pages/login/Index.vue` | `POST /auth/login` | 登录页（唯一公开页） |
+| `/change-password` | `pages/login/ChangePassword.vue` | `POST /auth/change-password`、`POST /auth/refresh`、`GET /auth/me` | 首次登录强制改密（需登录） |
 | `/sessions`、`/sessions/:sid` | `pages/sessions/Index.vue` | `GET /sessions`、`GET /sessions/{sid}`、`/tree`、`/bad-cases` | Session 浏览器 + 会话概览 |
 | `/sessions/:sid/errors` | `pages/errors/Index.vue` | `GET /sessions/{sid}/bad-cases`、`GET /bad-cases/{badCaseId}`、`/analysis`、`GET /probes/{probeId}` | 错误详情与归因 |
 | `/evolution` | `pages/evolution/Index.vue` | `GET /evolution/runs`、`GET /catalogs/*` | 自进化列表 + 启动向导 |
@@ -20,6 +21,7 @@
 ```text
 router
 ├── /login ───────────────────────► login/Index
+├── /change-password ─────────────► login/ChangePassword
 ├── /sessions ────────────────────► sessions/Index
 │                                     ├──► agent-tree/AgentTree
 │                                     └──► bad-cases/BadCaseList
@@ -43,10 +45,10 @@ router
 
 | 文件 | 内容 |
 |---|---|
-| `api/http.ts` | 传输层（Bearer/401 刷新/`ApiError`/取消） |
+| `api/http.ts` | 传输层（Bearer/401 刷新/403 改密跳转/`ApiError`/取消） |
 | `api/queryClient.ts` | 全局缓存策略 |
 | `api/queryKeys.ts` | queryKey 工厂（集中） |
-| `api/auth.ts` | login / refresh / logout / me |
+| `api/auth.ts` | login / refresh / logout / changePassword / me |
 | `api/sessions.ts` | 列表 / 会话概览 / Agent 会话树 / 问题 |
 | `api/badCases.ts` | 问题详情 / 归因状态 |
 | `api/probes.ts` | 归因结论 |
@@ -83,7 +85,8 @@ async function request<T>(path: string, init?: RequestInit, _retried = false): P
 - 取消：`AbortController` 由 vue-query 传入 `signal`，http 层透传。
 - 不在这里做重试——重试策略归 queryClient（4xx 不重试）。
 - 401 处理只在 http 层这一处：先 refresh 一次再重放；`AUTH_EXPIRED` 且 refresh 也失败 → 清登录态 + 跳 `/login?redirect=…`。
-- **避免循环依赖**：`http.ts` 不直接 import auth store；refresh 通过注入的回调（`setRefreshHandler`）或独立的 `authApi.ts` 完成，由 store 在初始化时注册。
+- `403 PASSWORD_CHANGE_REQUIRED` 也在这里兜底：说明本地 `mustChangePassword` 已陈旧，置 store 标记后跳 `/change-password?redirect=…`，不把业务页渲染成错误态（正常路径由路由守卫先拦，见 [03 §6](03-frontend-architecture.md)）。
+- **避免循环依赖**：`http.ts` 不直接 import auth store 或 router；refresh 与改密跳转都通过注入的回调（`setRefreshHandler` / `setPasswordChangeHandler`）完成，由 store 在初始化时注册。
 
 ### 2.3 `api/queryClient.ts`
 
@@ -138,9 +141,10 @@ export const keys = {
 
 ```ts
 // useAuth.ts
-useLogin()          // mutation：成功 → 写 stores/auth + 跳 redirect
+useLogin()          // mutation：成功 → 写 stores/auth + 跳 redirect（mustChangePassword=true 时被守卫改道改密页）
 useLogout()         // mutation：登出 → 清态 + 跳 /login
 useCurrentUser()    // 读 stores/auth（app 启动时 tryRefresh 填充）
+useChangePassword() // mutation：改密 → 成功后 refresh() + 重取 me → 跳 redirect
 
 // useSessions.ts
 useSessionList(filters: Ref<SessionFilters>)        // GET /sessions?…
@@ -232,7 +236,8 @@ agent-tree/
 ```
 
 - `TreeEvent`：`line`、`kind`、`name?`、`desc?`、`toolUseId?`、`messageOffset`。
-- `TreeNode`：`agentId`、`parentAgentId`、`kind`、`agentType`、`taskKind`、`spawnDepth`、`messagesCount`、`events`。
+- `TreeNode`：`agentId`、`parentAgentId`、`kind`、`agentType`、`taskKind`、`spawnDepth`、`label`、`messagesCount`、`events`。
+- 节点标题直接用后端 `label`，不在前端按 `agentType` / skill 名重算；普通 skill 只是 `events[]` 里的触发点，没有自己的节点。
 
 ### 3.2 布局核心（对原型逻辑的保留与简化）
 
@@ -253,9 +258,10 @@ agent-tree/
 
 - 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `anchor {agentId, eventIndex}`；`badCaseType` 决定挂载方向。
 - 两类锚定规则（对应真实的 `self` / `discovery`）：
-  1. **`self`（对象自身问题）**：卡挂在 `anchor.agentId` 对应对象自身的触发点上——skill 用下方对齐（`TriggerEdge`），agent 用节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
-  2. **`discovery`（发现前置步骤问题）**：卡挂在发现者（`object`）的触发点正上方（`DiscoveryEdge`），表达"它发现了前置步骤的问题"。
+  1. **`self`（对象自身问题）**：`anchor.agentId` 就是上报人 A；skill 卡挂在 A 的该 skill 触发药丸下方（`TriggerEdge`），agent 卡挂在 A 节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
+  2. **`discovery`（发现前置步骤问题）**：卡挂在发现者的触发点正上方（`DiscoveryEdge`）。发现者是 skill 时触发点在 A 内；发现者是 subagent A 时，触发点是**父节点 P 中调用 A 的 Agent 药丸**，`anchor.agentId = P`，不等于 `badCaseAgent.agentId`。
   3. 无锚点（`anchor.eventIndex = -1`）：挂在 `anchor.agentId` 节点右侧，避免卡片漂浮。
+- 前端只用 `anchor` 定位，不用 `badCaseAgent` 反推宿主；`badCaseAgent` 用于展示"谁上报"。
 
 ```ts
 // layout.ts 关键签名
@@ -293,9 +299,9 @@ export function badCaseAnchors(cases: BadCase[], tree: SessionTree): BadCaseAnch
 - 列表按 `createdAt` 升序；卡片点击 → `locate(badCaseId)`：滚动画布到视野中心 + 高亮。
 - ID 徽章显示 `badCaseId` 前 8 位（`title` 给全量）；点击 → `window.open(badCaseDeepLink(...), "_blank")`。
 
-## 4. 登录页与顶栏用户区（`pages/login/Index.vue`）
+## 4. 登录页、强制改密与顶栏用户区（`pages/login/*`）
 
-### 4.1 登录页
+### 4.1 登录页与强制改密
 
 ```text
 Index.vue（居中卡片，无顶栏）
@@ -308,7 +314,21 @@ Index.vue（居中卡片，无顶栏）
 
 - 提交：`useLogin().mutate({username, password})`；成功后写 `stores/auth`（access token + user）→ 跳 `route.query.redirect ?? "/sessions"`。
 - 已登录访问 `/login` 直接跳 `/sessions`（路由守卫处理）。
-- 首次登录要求改密码（后端 `mustChangePassword` 标记，可选，首版可省）。
+- **首次登录强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此登录响应带 `user.mustChangePassword=true`；此时业务端点回 `403 PASSWORD_CHANGE_REQUIRED`，前端只放行 `/change-password`。
+
+`pages/login/ChangePassword.vue`（同款居中卡片，需登录，未登录跳 `/login`）：
+
+```text
+ChangePasswordCard.vue
+├── 提示条：初始密码由管理员分配，首次登录请设置自己的密码
+├── oldPassword / newPassword / confirmPassword（el-input type=password）
+├── 本地校验：两次新密码一致、新密码不等于旧密码
+└── 提交 → POST /auth/change-password → 成功后 refresh() + 重取 me → 跳 redirect ?? "/sessions"
+```
+
+- 成功后**必须换一次 token**：access token 的 `mcp` 声明是登录时签的，改密后要 `POST /auth/refresh`（重读用户行重签）再 `GET /auth/me` 拿到 `mustChangePassword=false`，守卫才放行到 `redirect`。
+- 守卫：`user.mustChangePassword === true` 时，除 `/change-password` 与 `/login` 外的导航一律重定向到 `/change-password?redirect=<原路径>`（[03 §6](03-frontend-architecture.md)）。
+- 兜底：http 层收到 `403 PASSWORD_CHANGE_REQUIRED`（本地标记已陈旧）时置 store 标记并跳改密页，不渲染业务页错误态。
 
 ### 4.2 顶栏用户区
 
@@ -356,7 +376,7 @@ Index.vue
 
 ## 6. 时间线页（已裁撤，不做）
 
-2026-10-22 评审决定：**时间线页面（原型 B 页）不做**。本方案不再实现 `pages/timeline/*`、用户轮次吸顶、事件过滤 chips、消息卡、展开/折叠与跳转用户轮次；相应路由、composable（`useTimeline`）与 queryKey 均已移除。
+2026-10-22 评审决定：**时间线页面（原型 B 页）不做**，完整时间线由外部平台承担。本方案不再实现 `pages/timeline/*`、用户轮次吸顶、事件过滤 chips、消息卡、展开/折叠与跳转用户轮次；相应路由、composable（`useTimeline`）与 queryKey 均已移除。
 
 裁撤带来的前端调整：
 
@@ -365,10 +385,10 @@ Index.vue
 | 会话概览 CTA | 只保留「打开错误详情」，移除「打开时间线」 |
 | 错误详情页头 | 移除「打开时间线」按钮，只保留「返回 Session」 |
 | 面包屑 | 不再有"Session 浏览器 › 标题"的时间线面包屑；Session 页用顶栏 + 返回链接 |
-| 数据层 | 不请求用户轮次/消息/内容块；列表与会话概览只用 `session_families` 的聚合字段（用户轮次、消息、工具失败、token） |
+| 数据层 | 不请求用户轮次/消息/内容块；列表与会话概览只用 `session_families` 的整树聚合字段（用户轮次、消息、工具失败、token） |
 | 代码高亮/长输出折叠 | 随页面一并移除，首版不引 highlight.js |
 
-保留下来的能力：会话统计（用户轮次数、消息数、工具失败数、token）仍由同步时聚合，展示在列表卡与会话概览统计条上；这些数字不依赖时间线页面。
+保留下来的能力：会话统计（用户轮次数、消息数、工具失败数、token）由解析期按 agent 累计、组装时整树求和；这些数字不依赖时间线页面。
 
 ## 7. 错误详情页（`pages/errors/Index.vue`）
 
@@ -392,7 +412,7 @@ Index.vue（grid: 340px 1fr）
 | 行为 | 实现 |
 |---|---|
 | 选中错误 | URL 写 `?case={badCaseId}&tab=desc`；本地选中由 URL 派生（刷新可恢复） |
-| 执行流过滤 | 选中时只保留该 `badCaseId` 对应的节点及其边；agent/skill 节点保留 |
+| 执行流过滤 | 选中时只保留该 `badCaseId` 对应的节点及其边；相关 agent 节点与其触发点保留 |
 | 全部错误 | `case` 参数移除，恢复完整执行流 + 空态详情 |
 | Tab 切换 | URL `tab=desc` / `tab=attr`；归因 tab 需要 `analysis.probeId` |
 | 再点已选中卡 | 保持选中，不取消 |
@@ -403,8 +423,10 @@ Index.vue（grid: 340px 1fr）
 1. 结论横幅：`analyzed_issue` + `probe.attributeType` → 问题（模型/prompt/错误）；`analyzed_nonissue` → 非问题；`unanalyzed` → 未分析
 2. 非问题原因（`analysis.result.reason`）**或** 问题分类 + 根因对象（`probe.probeObject @ objectVersion`）
 3. 归因出的问题描述（`probe.probeDescription`）
-4. 分析推导过程（`probe.probeAnalysis`）
+4. 分析推导过程（`probe.probeAnalysis`，Markdown 渲染：换行、列表、代码块）
 5. 来源 bad_case（`probe.fromBadCases`，显示 badCaseId 截短 + 链接）
+
+> `probe.probeAnalysis` 是 Markdown 字符串，用 `markdown-it`（`html:false`、`breaks:true`、`linkify:true`）渲染；代码块输出 `<pre><code>`，横向滚动，不接语法高亮。外链统一加 `target="_blank" rel="noopener noreferrer"`；禁用裸 HTML，避免外部内容注入。`probeDescription` 按纯文本 + `white-space: pre-wrap` 渲染，不解析 Markdown。
 
 > 注意：问题描述 tab 的"关联对象"是 **bad_case 的 object（上报者）**；归因 tab 的"根因对象"是 **probe.probeObject**，`discovery` 场景下两者不同，不要混用。
 
@@ -517,7 +539,7 @@ RunDetail.vue
 | 交互 | 实现 |
 |---|---|
 | 默认选中步 | `run.steps` 中第一个 `active`；没有则最后一个 `done`；没有则第 0 步（但不可点）；`preparing` 时显示 step 0 的准备态 |
-| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl`（路径可折叠）；点击可复制分支名 |
+| 工作区信息 | infoPanel 展示 `workspace.branchName / baseRef / baseCommit / repoUrl / subDir`（路径可折叠）；点击可复制分支名 |
 | 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
 | 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
 | 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |

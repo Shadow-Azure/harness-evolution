@@ -141,8 +141,8 @@ apps/web/
                                ▼
                    ┌──────────────────────────────┐
                    │ normalize                    │
-                   │ JSONL -> user_turns          │
-                   │ messages / content_blocks    │
+                   │ JSONL -> 整树统计 / user_turns│
+                   │ agent_events                 │
                    └──────────────┬───────────────┘
                                ▼
                    ┌─────────────────────────┐
@@ -150,8 +150,6 @@ apps/web/
                    │ session_families        │
                    │ agents                  │
                    │ user_turns              │
-                   │ messages                │
-                   │ content_blocks          │
                    │ agent_events            │
                    └─────────────────────────┘
 ```
@@ -266,7 +264,7 @@ POST /runs（同步校验 target/probe）
 
 #### 4.3.4 轨迹归一化：后台定时处理 + 单飞锁
 
-这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `session_families / agents / user_turns / messages / content_blocks / agent_events`。
+这里的「同步」**不是采集，也不是自进化**：它处理第三方脚本已经写入 `trajectory_payloads` 的原始 JSONL，归一化写入 `session_families / agents / user_turns / agent_events`。消息与内容块只在解析期用于统计和状态判定，不落库；需要原文时从 payload 回读。
 
 ```text
 lifespan 启动 scheduler（默认每 60s）
@@ -404,7 +402,7 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
 | 同步幂等 | `(root_session_id, agent_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
-| 大轨迹 | Agent 会话树触发点处理时预计算；聚合统计入库时冗余；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
+| 大轨迹 | Agent 会话树触发点处理时预计算；轨迹聚合统计入库时冗余（跨写入方的派生值如问题数除外，查询时聚合）；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
 | 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |

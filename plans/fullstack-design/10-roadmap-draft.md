@@ -64,8 +64,8 @@ M6 接真实现（执行器 + 真实来源）
 | m2-04 | PayloadSource 与 fixtures（`trajectory_payloads` 读取 + HttpApiSource 接口 + 演示种子数据） | P0 | `apps/api/app/service/acquisition/**`、`apps/api/app/third_party_api/**`、`fixtures/**` | m2-01 | payload 可读；fixtures seed 后 UI 可演示；无运行时桩分支 |
 | m2-05 | SSE 事件总线与任务运行器骨架（job_runs + 串行 worker + 票据） | P1 | `apps/api/app/service/jobs.py`、`apps/api/app/service/events.py` | m2-01 | 订阅/发布/心跳/断线补发可用；job_runs 落状态；票据绑定 topics/cursor；重启可续 |
 | m2-06 | 前端三态、全局错误处理、顶栏与演示数据角标 | P1 | `apps/web/src/**` | m2-03 | 空/加载/失败三态统一；`phase=demo` 显示角标 |
-| m2-07 | 鉴权后端：users 表、登录/刷新/登出、JWT 中间件、初始管理员播种、SSE 票据 | P0 | `apps/api/app/modules/identity/**`、`apps/api/app/core/**` | m2-01 | 登录/刷新/登出链路通；错误密码 401；未登录访问业务 API 401；票据一次性 |
-| m2-08 | 鉴权前端：登录页、auth store、http Bearer 注入与 401 刷新、路由守卫、顶栏用户区 | P0 | `apps/web/src/pages/login/**`、`apps/web/src/stores/**`、`apps/web/src/api/**` | m2-03、m2-07 | 未登录跳登录页；登录后回跳 redirect；access 过期自动 refresh；退出清态断 SSE |
+| m2-07 | 鉴权后端：users 表（含 `must_change_password`）、登录/刷新/登出/改密、JWT 中间件与强制改密闸、初始管理员播种、SSE 票据 | P0 | `apps/api/app/modules/identity/**`、`apps/api/app/core/**` | m2-01 | 登录/刷新/登出/改密链路通；错误密码 401；未登录访问业务 API 401；首登未改密访问业务 API 403 `PASSWORD_CHANGE_REQUIRED`；票据一次性 |
+| m2-08 | 鉴权前端：登录页、强制改密页、auth store、http Bearer 注入与 401 刷新、路由守卫、顶栏用户区 | P0 | `apps/web/src/pages/login/**`、`apps/web/src/stores/**`、`apps/web/src/api/**` | m2-03、m2-07 | 未登录跳登录页；登录后回跳 redirect；`mustChangePassword` 时被改道改密页、改密后放行；access 过期自动 refresh；退出清态断 SSE |
 
 ### 3.2 m3 轨迹接入与归一化（9 个）
 
@@ -74,9 +74,9 @@ M6 接真实现（执行器 + 真实来源）
 | m3-01 | Database 接口 + SQLite / MySQL 两实现（连接、事务、health） | P0 | `apps/api/app/storage/**` | m2-01 | 默认 MySQL 可跑；SQLite 用于测试；`/api/health` 报告 dialect |
 | m3-02 | Alembic 双方言迁移（真实表 + 预留表 + users/source_records/sync_*） | P0 | `apps/api/alembic/**` | m3-01 | 两种库空库 upgrade 建全表；重放脚本可跑 |
 | m3-03 | 读 `trajectory_payloads` + 归一化幂等（hash/parser_version）与 fixtures 种子 | P0 | `apps/api/app/service/acquisition/**`、`fixtures/**` | m3-02 | 同一 payload 重复处理幂等；单条结构异常隔离；fixtures 可灌入真实表 |
-| m3-04 | 归一化器（JSONL 行数组 → 用户轮次/消息/内容块/token/元记录/每个 agent 的 model） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的用户轮次/消息/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
-| m3-05 | Agent 会话树组装（子转录、toolUseId、agent_events 预计算、session_families.models 聚合） | P0 | `apps/api/app/modules/acquisition/agent_tree.py` | m3-04 | 子 agent 挂接位置正确；缺 toolUseId 有告警 |
-| m3-06 | 会话 API（列表/会话概览/Agent 会话树；统计读聚合列） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
+| m3-04 | 归一化器（JSONL 行数组 → 整树统计/user_turns/agent_events/每个 agent 的 model；消息与内容块仅解析期） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的用户轮次/消息/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
+| m3-05 | Agent 会话树组装（子转录、toolUseId、agent_events 预计算、节点统计与会话聚合） | P0 | `apps/api/app/modules/acquisition/agent_tree.py` | m3-04 | 子 agent 挂接位置正确；普通 skill 不建节点、forked skill 一行；整树统计与 payload 一致；缺 toolUseId 有告警 |
+| m3-06 | 会话 API（列表/会话概览/Agent 会话树；轨迹统计读聚合列，问题数按会话查询聚合） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
 | m3-07 | 前端 Session 列表 + 会话概览 | P0 | `apps/web/src/pages/sessions/**` | m2-03、m3-06 | 与原型列表/会话概览视觉一致；搜索/筛选/排序可用 |
 | m3-08 | 后台定时调度与单飞锁（sync_lock）+ 顶栏状态 | P1 | `apps/api/app/service/acquisition/**`、`apps/api/app/service/jobs.py`、`apps/web/src/**` | m2-05、m3-03 | 定时处理 pending；手动幂等复用 jobId；无并发重复任务 |
 | m3-09 | 上游轨迹查询契约定稿与 HttpApiSource | P1 | `apps/api/app/third_party_api/**`、`plans/**` | m3-03 | 契约（[05 §10](05-api-design.md)）评审通过；HttpApiSource 对 mock 上游联调通过（上游就绪前 payload 表先跑通） |

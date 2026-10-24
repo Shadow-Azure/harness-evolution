@@ -129,6 +129,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | 路由 | 页面 | 承载状态 |
 |---|---|---|
 | `/login` | 登录页（唯一公开页） | `?redirect=/sessions/...` |
+| `/change-password` | 首次登录强制改密（需登录） | `?redirect=/sessions/...` |
 | `/sessions` | Session 浏览器（列表 + 会话概览） | `?q=&status=&sort=`；选中 session 用 `/sessions/:sid` |
 | `/sessions/:sid` | 会话概览（默认落地页） | — |
 | `/sessions/:sid/errors` | 错误详情与归因 | `?case={badCaseId}&tab=desc\|attr` |
@@ -138,6 +139,8 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | `/evolution/runs/:rid` | 运行详情 | `?step={key}`（`input / clusters / attribution / severity / iteration / final`） |
 
 **登录守卫**：全局 `beforeEach`——未登录（无 access token 且 refresh 失败）且目标不是 `/login` 时跳 `/login?redirect=<原路径>`；已登录访问 `/login` 跳回 `/sessions`。登录后跳回 `redirect` 或 `/sessions`。
+
+**强制改密守卫**：`user.mustChangePassword === true` 时只放行 `/change-password` 与 `/login`，其余目标一律重定向到 `/change-password?redirect=<原路径>`；该判定排在登录守卫之后，两者都依赖 `tryRefresh()` 已填充的登录态。服务端另有 `403 PASSWORD_CHANGE_REQUIRED` 硬闸，守卫只负责体验（[08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md)）。
 
 **真实 ID 深链契约**：URL 直接用 `badCaseId` / `probeId` / `runId`（不再造 `I-`/`R-` 展示号）；问题描述与归因 tab 用 `?case={badCaseId}&tab=desc|attr`。`sessionId` 由后端在 bad-case 响应中给出，前端不拼接、不反推。
 
@@ -210,7 +213,7 @@ App.vue
 | `agent-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
 | `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
 | `bad-cases/BadCaseCard.vue` | `.finding-item` | 列表卡（reason/状态/事实/上报对象） |
-| `bad-cases/ProbeReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程 |
+| `bad-cases/ProbeReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
 | `pages/evolution/components/Stepper.vue` | `stepperHTML` | 6 步进度，可点击已到达节点 |
 | `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片 |
 | `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 两步 Modal |

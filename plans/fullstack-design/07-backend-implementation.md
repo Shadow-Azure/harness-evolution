@@ -38,8 +38,8 @@ def create_app(settings: Settings) -> FastAPI:
 | 文件 | 职责 |
 |---|---|
 | `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload + `agent_meta`；按 `(root_session_id, agent_id)` 取原文 |
-| `normalize.py` | JSONL 行数组 → 用户轮次/消息/内容块/token/元记录/Agent 会话树触发点 |
-| `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树与 `agent_events` |
+| `normalize.py` | JSONL 行数组 → 用户输入锚点 / 节点统计 / Agent 会话树触发点（消息与内容块只在内存中） |
+| `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树、`agent_events` 与会话统计 |
 | `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
 | `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
@@ -65,7 +65,7 @@ ORDER BY tp.updated_at
 |---|---|
 | `source_records` 无该 `(root_session_id, agent_id)` | 插入处理索引，归一化并写业务表 |
 | `processed_hash = content_hash` 且 `parser_version` 相同 | 跳过（累加 `skipped`） |
-| hash 不同 | 删除该 agent 派生的行（`content_blocks→messages→user_turns→agent_events→agents`），重新归一化 |
+| hash 不同 | 删除该 agent 派生的行（`agent_events→agents`；主 agent 另删 `user_turns`），重新归一化并重算会话统计 |
 | 解析器版本升级 | 即使 hash 相同也重放 |
 | payload 侧删除 | 首版保留业务数据并记日志（不级联删除） |
 
@@ -119,14 +119,18 @@ class ParsedTranscript:
     task_kind: str | None            # in_process_teammate / forked_skill
     team_name: str | None
     name: str | None
+    skill_name: str | None           # 仅 forked skill（.forked-skill.json）
     model: str | None                # 实际 message.model
     requested_model: str | None      # meta.model
     parent_tool_use_id: str | None   # meta.toolUseId
     spawn_depth: int
     lines: int
     messages_count: int              # 该 agent 的唯一 assistant message.id 数
-    user_turns: list[ParsedUserTurn]     # 仅主会话有用户轮次
-    content_blocks_outside_user_turns: list[ParsedBlock]
+    tokens_total: int                # usage 按 message.id 去重后求和
+    tools_count: int                 # tool_use 块数
+    errors_count: int                # is_error 块数
+    user_turns: list[ParsedUserTurn]     # 仅主会话有用户输入锚点
+    blocks_outside_user_turns: list[ParsedBlock]
     events: list[ParsedEvent]        # skill / agent / workflow 触发点
     agent_meta: dict                 # 原始 meta.json
 ```
@@ -135,31 +139,31 @@ class ParsedTranscript:
 
 0. **agent id**：主文件取 `sessionId`；子 agent 文件取行内 `agentId`（缺失时用文件名 `agent-<agentId>.jsonl`）。
 1. **逐行 JSON**：坏行记录到 `errors`，跳过该行继续。
-2. **用户轮次切分**：`type == "user"` 且 `isMeta != true`，content 不是 `tool_result`，且不以 `<local-command-caveat>` / `<command-name>` / `<task-notification>` / `<system-reminder>` 开头 → 新用户轮次。`last-prompt` / `queue-operation` **不作为轮次来源**；`attachment.queued_command` 的 `origin.kind=human` 可作为候选，`peer` 不算。
-3. **消息与内容块归属**：assistant 按 `message.id` 聚成 message；`thinking/text/tool_use` 成 content_block；`tool_result` 按 `tool_use_id` 回填。同一个 `message.id` 的 `usage` 只取一次，不能按 content block 行重复求和。
-4. **子 agent / workflow**：`Agent` 调用记录 `toolUseId`；子 agent 的 `meta.toolUseId` 指向父调用，`parent_agent_id` 指向父 agent。`task_kind=in_process_teammate` 的 teammate 没有 toolUseId，挂到 main 并记录 `team_name`；`task_kind=forked_skill` 用 meta/`.forked-skill.json` 的 `skillName` 关联父 Skill 触发点，`tool_use_id` 可为 NULL。`Workflow` 调用创建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`），其 `workflow-subagent` 子节点 `parent_agent_id` 指向 workflow 节点。
-5. **Agent 会话树事件**：`Skill` 工具调用、`Agent` 调用、`Workflow` 调用 → `agent_events`；记录 `line_no` 和 `message_offset` = 该行之前已经出现的 assistant message 数。
-6. **token**：按 `message.id` 去重后的 `usage` 聚合到 message/user_turn/session_family。
+2. **用户轮次切分**：`type == "user"` 且 `isMeta != true`，content 不是 `tool_result`，且不以 `<local-command-caveat>` / `<command-name>` / `<task-notification>` / `<system-reminder>` 开头 → 新用户轮次；同时记录该行 `line_no` 与该轮开始前的 assistant message 数 `message_offset`。`last-prompt` / `queue-operation` **不作为轮次来源**；`attachment.queued_command` 的 `origin.kind=human` 可作为候选，`peer` 不算。
+3. **消息与内容块归属**：assistant 按 `message.id` 聚成 message；`thinking/text/tool_use` 成 content_block；`tool_result` 按 `tool_use_id` 回填。同一个 `message.id` 的 `usage` 只取一次，不能按 content block 行重复求和。这些结构只在解析期使用，不落表。
+4. **子 agent / workflow**：`Agent` 调用记录 `toolUseId`；子 agent 的 `meta.toolUseId` 指向父调用，`parent_agent_id` 指向父 agent。`task_kind=in_process_teammate` 的 teammate 没有 toolUseId，挂到 main 并记录 `team_name`；`task_kind=forked_skill` 用 meta/`.forked-skill.json` 的 `skillName` 关联父 Skill 触发点，`tool_use_id` 可为 NULL；该值写 `agents.skill_name`，`name` 仍只放 `meta.name`。`Workflow` 调用创建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`），其 `workflow-subagent` 子节点 `parent_agent_id` 指向 workflow 节点。
+5. **Agent 会话树事件**：`Skill` 工具调用、`Agent` 调用、`Workflow` 调用 → `agent_events`；**普通 skill 只落事件、不建节点**；记录 `line_no` 和 `message_offset` = 该行之前已经出现的 assistant message 数。
+6. **token**：按 `message.id` 去重后的 `usage` 聚合到 `agents.tokens_total`，组装时求和到 `session_families.tokens_total`。
 7. **时间**：真实 JSONL 的 `timestamp` 是 UTC `Z`；入库前转换为 Asia/Shanghai（`+08:00`）。
 8. **行数**：payload 行数即 `agents.lines`。
-9. **消息数**：唯一 `message.id` 计数即 `agents.messages_count`；workflow 节点为 0。
+9. **节点统计**：唯一 `message.id` 计数 → `agents.messages_count`；`tool_use` 块数 → `tools_count`；`is_error` 块数 → `errors_count`；usage 去重求和 → `tokens_total`；workflow 节点全为 0。
 10. **模型**：从 assistant 消息的 `model` 字段取该 agent 的实际模型，写 `agents.model`；`meta.model` 写 `requested_model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。
 11. **会话元数据**：主 payload 的 `cwd` / `gitBranch` / `version` / `entrypoint` 写 `session_families.project_path/git_branch/cli_version/entrypoint`。
 
-agent 写入时一并落 `model` / `requested_model` / `task_kind` / `team_name` / `spawn_depth` / `agent_meta`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型）。
+agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `task_kind` / `team_name` / `spawn_depth` / `lines` / `messages_count` / `tokens_total` / `tools_count` / `errors_count` / `agent_meta`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型 + 四项统计求和）。
 
 ### 2.4 Agent 会话树组装
 
 ```text
-主 agent payload ──┬──► agents[main]
-                   └──► user_turns → messages → content_blocks ──┐
-                                                    ├──► agent_events ──► 写入事务
-子 agent payload ──► 按 parent_tool_use_id 找父 agent  │
-                     └──► 建 agent ──► 把父 agent 里的 Agent 调用块指向该 agent ──┘
+主 agent payload ──┬──► agents[main]（含节点统计）
+                   └──► user_turns（输入锚点） + agent_events ──► 写入事务
+子 agent payload ──► 按 parent_tool_use_id 找父 agent
+                     └──► 建 agent（含节点统计） ──► 把父 agent 里的 Agent 调用块指向该 agent
 ```
 
 - `Workflow` 调用建 `kind=workflow` 的合成节点（`agent_id=wf_...`、`lines=0`、`messages_count=0`）；workflow 内部的子 agent 是 `kind=subagent`、`agent_type=workflow-subagent`，`parent_agent_id` 指向 workflow 节点。
 - 普通子 agent 的父调用来自 `meta.toolUseId`；teammate（`task_kind=in_process_teammate`）没有 toolUseId，挂到 main 并保留 `team_name`；forked skill（`task_kind=forked_skill`）用 `skillName` 找父 Skill 事件。
+- 普通 skill 不建节点：`Skill` 调用只写 `agent_events`；仅 forked skill（有独立转录）建 `agents` 行，`task_kind=forked_skill`、`skill_name` 非空、`name` 为空。
 - 子 agent 的 `sessionId` 与主 agent 相同，不能靠 sessionId 找父；必须用 meta / `agentId`。
 
 **两个防线**：
@@ -191,12 +195,13 @@ async def pull(session_refs: list[str]) -> SyncResult:
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不再有 `payload/content_hash/source_ref`。
 - 单条失败不中断整批（记 `errors`），全部完成 `status=completed`（有错误也 completed）。
 - 进度每 5 条或 500ms 发一次。
-- 归一化与 `source_records` 更新同事务；payload 是外部只读表，不在事务里改（pull 的 upsert 除外）。
+- 归一化与 `source_records` 更新同事务；业务表只写 `session_families / agents / user_turns / agent_events`，消息与内容块不落库；payload 是外部只读表，不在事务里改（pull 的 upsert 除外）。
 - 大 payload 不经过 SSE/日志。
 
 ### 2.6 测试点
 
 - 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。
+- 统计四列（`messages_count / tokens_total / tools_count / errors_count`）与 payload 实际内容一致；会话值为各 agent 求和。
 - `trajectory_payloads` 新增一行 → 只处理该 `(root_session_id, agent_id)`，其他 agent/session 不受影响。
 - payload 内容变化 → 该 agent 派生的行被重写，`processed_hash` 更新。
 - `parser_version` 升级 → 全部重放，业务表结果一致。
@@ -220,12 +225,13 @@ async def pull(session_refs: list[str]) -> SyncResult:
 ```python
 async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
     rows = await repo.list_sessions(filters)          # SQL 里做 q/status/sort
-    return [to_list_item(r, bad_cases_count=bad_cases.count_for(r.id)) for r in rows]
+    counts = await crud.bad_cases.count_by_sessions([r.id for r in rows])   # 当前页一条 GROUP BY
+    return [to_list_item(r, bad_cases_count=counts.get(r.id, 0)) for r in rows]
 ```
 
 - `q`：`search_text LIKE '%q%'`（同步时把 `lower(title + repo)` 写进 `search_text`；SQLite/MySQL 行为一致，后续可换全文索引）。
 - `sort`：`latest → started_at DESC`、`userTurns → user_turns_count DESC`、`messages → messages_count DESC`、`agents → agents_count DESC`。
-- `bad_cases_count`：从 `bad_cases` 按 `session_id` 聚合（只读表），查询时 LEFT JOIN 或由定时任务刷新；不再有 Provider。
+- `bad_cases_count`：**不落 `session_families` 列**。列表装配时按当前页 session id 做一次 `SELECT bad_case_session_id, COUNT(*) … GROUP BY`（只读表，走 `INDEX(bad_case_session_id)`），无记录按 0 计；会话概览复用同一口径。不做定时刷新——问题侧写入不发通知，刷新同样会陈旧；也**不支持**按问题数排序/筛选（若要支持，再单独评审物化缓存的刷新边界）。
 
 ### 3.2 会话概览与 Agent 会话树
 
@@ -234,16 +240,24 @@ async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
 
 ### 3.3 时间线（已裁撤）
 
-时间线页面不做，`sessions` 模块**不提供轨迹读接口**。用户轮次/消息/内容块在同步时就聚合进 `session_families` 的列（`user_turns_count / messages_count / tools_count / errors_count / tokens_total`），列表与会话概览只读这些列，不读 `messages` 明细。
+时间线页面不做，完整时间线由外部平台承担，`sessions` 模块**不提供轨迹读接口**。消息与内容块只在解析期存在、不落库；会话统计在解析期按 agent 累计，组装时对整棵树求和写入 `session_families`（`user_turns_count / messages_count / tools_count / errors_count / tokens_total`），列表与会话概览只读这些列。
 
 ```python
 async def aggregate_session_stats(root_session_id: str) -> SessionStats:
-    row = await repo.count_user_turns_messages_tools_errors(root_session_id)   # 一条 GROUP BY
-    tokens = await repo.sum_tokens(root_session_id)
-    return SessionStats(**row, tokens=tokens)
+    agents = await repo.get_agents(root_session_id)
+    return SessionStats(
+        user_turns_count=await repo.count_user_turns(root_session_id),
+        messages_count=sum(a.messages_count for a in agents),
+        tools_count=sum(a.tools_count for a in agents),
+        errors_count=sum(a.errors_count for a in agents),
+        tokens_total=sum(a.tokens_total for a in agents),
+        agents_count=sum(1 for a in agents if a.kind == "subagent" and a.task_kind != "forked_skill"),
+    )
 ```
 
-保留 `user_turns/messages/content_blocks` 表的理由：统计口径需要可重算；后续诊断器需要工具输入/输出/错误原文作为证据；解析规则升级时可重放。未来若恢复时间线，按 [05 §3.3](05-api-design.md) 的说明补两个端点即可，表结构不动。
+- 增量重放：单个 agent 重新归一化后，更新它自己的四列统计，再重算该会话汇总；不需要读取其他 agent 的 payload。
+- `user_turns` 只保留用户输入锚点（`prompt_text` + `line_no`/`message_offset`），供未来在 Agent 执行流图展示用户输入；不含轮级统计。
+- 证据原文按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读；不恢复消息/内容块明细表。
 
 ## 4. 问题与归因（`service/bad_cases` + `service/probes`，只读）
 
@@ -280,10 +294,31 @@ async def get_probe(probe_id: str) -> ProbeReport:
 
 ### 4.3 Agent 执行流图问题卡
 
-- 取该 session 全部 `bad_cases`；`bad_case_agent_id` 非空时按 `agents.id` 找到子 agent；为空时用 `bad_case_session_id` 找到 main agent；
-- 按 `bad_case_type` / `object_type` / `object_name` 选择锚定 agent：`self` 选对象宿主，`discovery` 选发现者；
-- 按 `object_name` 在锚定 agent 的 `agent_events` 里找匹配触发点，得到 `eventIndex`；找不到 → `-1`；
-- 返回 `anchor: { agentId, eventIndex }`，不返回上报者 session。
+- 取该 session 全部 `bad_cases`；`bad_case_agent_id` 非空时解析为上报人 A，为空时 A = main；找不到 A 时降级挂 main 并告警。
+- 按 `bad_case_type + object_type` 计算锚点：
+
+```python
+async def anchor_for(bc) -> Anchor:
+    A = await resolve_agent(bc.bad_case_agent_id) or main
+    if bc.bad_case_agent_id and A.id == main.id:
+        log.warning("bad_case_agent_id not normalized: %s", bc.bad_case_id)
+    if bc.bad_case_type == "self":
+        if bc.object_type == "agent":
+            return Anchor(A.id, -1)
+        return Anchor(A.id, await last_skill_event(A, bc.object_name))
+    if bc.object_type == "skill":
+        return Anchor(A.id, await last_skill_event(A, bc.object_name))
+    # discovery + agent：锚到父节点调用 A 的那条 agent 事件
+    if A.id == main.id:
+        log.warning("discovery + agent with main reporter: %s", bc.bad_case_id)
+        return Anchor(main.id, -1)
+    P = await crud.agents.get(A.parent_agent_id) or main
+    return Anchor(P.id, await agent_call_event(P, A.tool_use_id))
+```
+
+- `last_skill_event`：在 A 的 `agent_events` 里筛 `kind=skill and name=object_name`，按 `event_index` 取最大；没有 → `-1`。
+- `agent_call_event`：在 P 的 `agent_events` 里筛 `kind=agent and tool_use_id=A.tool_use_id`；匹配不到 → `-1`。**不要**按 `object_name` 匹配。
+- 返回 `anchor: { agentId, eventIndex }`；`eventIndex` 用 `agent_events.event_index`，不是 `events[]` 数组下标。`badCaseAgent` 仍是上报人 A，`anchor.agentId` 在 `discovery + agent` 时等于父节点 P。
 
 ## 5. 自进化（`service/evolution`）
 
@@ -338,7 +373,7 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
             progress_unit=0, target_config_id=cfg.id,
             target_type=q.target_type, target_name=q.target_name,
             target_version=q.version or cfg.default_ref,
-            repo_url=cfg.repo_url,
+            repo_url=cfg.repo_url, sub_dir=cfg.sub_dir,
         )
     job = await jobs.submit(
         "evolution_prepare",
@@ -362,9 +397,9 @@ async def prepare_run(job) -> None:
     cache = None
     ws = None
     if run.mode == "full":
-        cache = RepoCache.ensure(cfg)                     # data/repos/{target_id}
+        cache = RepoCache.ensure_by_url(run.repo_url)     # 本地仓库缓存
         ws = Workspace.prepare(
-            repo_path=cache.path, sub_dir=cfg.sub_dir,
+            repo_path=cache.path, sub_dir=run.sub_dir,
             ref=run.target_version, run_id=run.id,
         )                                               # clone → 建 evo/... 分支
 
@@ -393,6 +428,7 @@ async def prepare_run(job) -> None:
 - `POST /runs` 返回 `202 {runId, jobId, status:"preparing"}`；前端立即跳详情，不等 clone。
 - `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
+- prepare 只读 run 快照的 `repo_url` / `sub_dir` / `target_version`，不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
 - 仓库不可用/ref 不存在 → prepare job 失败；run 置 `failed`，`error_stage=clone`，用户在详情页看到原因。
 - 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
 
@@ -788,9 +824,12 @@ async def events(ticket: str, request: Request, last_event_id: str | None = Head
 @router.post("/auth/login", limiter="10/minute")          # 按 IP 限速防爆破
 async def login(body: LoginRequest, db: Database, response: Response):
     user = await repo.get_user_by_username(body.username.lower())
-    if not user or not user.is_active or not argon2.verify(body.password, user.password_hash):
+    # 用户不存在时也跑一次同参校验，让两条失败路径耗时相当（防账号枚举）
+    passed = hasher.verify(user.password_hash if user else DUMMY_HASH, body.password)
+    if not user or not user.is_active or not passed:
         raise Unauthorized("AUTH_INVALID")                 # 不区分"用户不存在"与"密码错"
-    access = jwt_sign({"sub": user.id, "role": user.role}, ttl=settings.access_ttl)
+    access = jwt_sign({"sub": user.id, "role": user.role, "mcp": user.must_change_password},
+                      ttl=settings.access_ttl)             # mcp = must-change-password
     refresh = jwt_sign({"sub": user.id, "typ": "refresh", "jti": ulid()}, ttl=settings.refresh_ttl)
     response.set_cookie("refresh_token", refresh, httponly=True, samesite="strict",
                         secure=settings.is_production, max_age=settings.refresh_ttl_seconds, path="/api/auth")
@@ -798,7 +837,10 @@ async def login(body: LoginRequest, db: Database, response: Response):
     return LoginResponse(accessToken=access, expiresIn=..., user=to_public(user))
 ```
 
-- 密码哈希用 **argon2id**（`argon2-cffi`）；登录响应不区分"用户不存在"与"密码错误"，防枚举。
+- **密码校验用 `argon2-cffi` 的 `PasswordHasher`（argon2id）**：`hasher.verify(stored_hash, password)`——**哈希串在前、明文在后**；盐与参数从该 PHC 串里解析。把明文当哈希传入会抛 `InvalidHashError`，两边都是 `str`，类型检查发现不了（`verify_secret` 同样 hash 在前）。
+- `DUMMY_HASH` 是启动时对固定串算好的常量哈希，只用于抹平"用户不存在"的耗时差；登录失败一律 `AUTH_INVALID`，不区分用户是否存在，防枚举。
+- `to_public(user)` 只含 `{id, username, displayName, role, mustChangePassword}`，`password_hash` 不出服务。
+- access token 带 `mcp`（must-change-password）声明，middleware 据此强制改密（§8.2）；改密后前端走一次 `/auth/refresh`，`refresh` 重读用户行并重签该声明，从而拿到 `mcp=false` 的新 token。
 - refresh cookie 的 `path=/api/auth`：只在刷新/登出时带回，业务请求不携带（减小暴露面）。
 - 登出：删 cookie + 可选把 jti 记入短期黑名单（`auth_revocations` 小表，或首版接受 refresh 自然过期）。
 
@@ -806,6 +848,7 @@ async def login(body: LoginRequest, db: Database, response: Response):
 
 ```python
 PUBLIC_PATHS = {"/api/health", "/api/auth/login", "/api/auth/refresh"}
+ALLOWED_WHEN_MUST_CHANGE = {"/api/auth/change-password", "/api/auth/logout", "/api/auth/me"}
 
 async def auth_middleware(request, call_next):
     if request.url.path in PUBLIC_PATHS:
@@ -815,17 +858,21 @@ async def auth_middleware(request, call_next):
         claims = jwt_verify(token)
     except ExpiredSignatureError:
         raise Unauthorized("AUTH_EXPIRED")                 # 前端据此先 refresh 再重试
+    if claims.get("mcp") and request.url.path not in ALLOWED_WHEN_MUST_CHANGE:
+        raise Forbidden("PASSWORD_CHANGE_REQUIRED")        # 首次登录必须改密，服务端硬卡
     request.state.principal = Principal(user_id=claims["sub"], role=claims["role"])
     return await call_next(request)
 ```
 
 - **鉴权全部在 middleware**（2026-10-22 决定）：middleware 内按路径规则判定——公开 `/api/health`、`/api/auth/login|refresh`；`/api/events` 校验一次性票据；`/api/users*` 与 `POST /api/acquisition/sync` 要求 `role=admin`；其余要求登录。资源级归属校验（badCase 属于该 session）仍在 service。
+- **强制改密也在 middleware**：`mcp` 为 true 的请求只放行改密、登出与 `me`，其余 `403 PASSWORD_CHANGE_REQUIRED`；前端守卫只是体验层，越权不依赖它（[08 §4.1](08-frontend-implementation.md)）。
 - `RequestContext` = `Principal + request_id`；业务代码只读 context，不解析 header。
 
 ### 8.3 用户播种与管理
 
-- 首次启动：`users` 表为空且配置了 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` → 播种 admin（幂等，已有用户则跳过）。
-- `GET /api/users`（admin）：列出用户；`POST /api/users`（admin）：创建（初始密码由 admin 设置，首次登录提示修改——修改密码端点 `POST /api/auth/change-password`）。
+- 首次启动：`users` 表为空且配置了 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` → 播种 admin（幂等，已有用户则跳过）；播种时 `hasher.hash(HE_ADMIN_PASSWORD)` 入库并置 `must_change_password=true`，首次登录强制改掉 env 里的初始密码。
+- `GET /api/users`（admin）：列出用户；`POST /api/users`（admin）：创建（初始密码由 admin 设置并立即哈希，`must_change_password=true`，用户首次登录必须自行改密——修改密码端点 `POST /api/auth/change-password`）。
+- 改密（`POST /api/auth/change-password`）：`hasher.verify(user.password_hash, body.old_password)` 校验旧密码 → `hasher.hash(body.new_password)` 写入 `password_hash`、更新 `password_changed_at`、置 `must_change_password=false`；旧密码错 → `401 AUTH_INVALID`。响应 `204`，前端随后换 token（§8.1）。
 - 首版不做注册、找回密码、SSO。
 
 ### 8.4 SSE 票据
@@ -862,7 +909,7 @@ async def issue_ticket(body: TicketRequest, principal: Principal = Depends(get_p
 | 只读安全 | `trajectory_payloads` 只读（pull 除外）；上游接口按契约只读；禁止把业务数据写回 payload 表 |
 | 数据目录 | `HE_DATA_DIR` 必须存在且可写；启动时创建 `data/` 并 `chmod` 仅当前用户（POSIX 上） |
 | 数据库 | 只依赖 `Database` 接口与 SQLAlchemy 表达式；SQLite/MySQL 切换只改 env；启动时 `health()` 失败给出明确错误 |
-| 性能 | 查询全部 async；统计在同步时聚合，查询只读聚合列；列表页 SQL 分页（未来） |
+| 性能 | 查询全部 async；轨迹统计在解析期按 agent 累计、组装时汇总，查询只读聚合列；跨写入方的派生值（如问题数）查询时聚合；列表页 SQL 分页（未来） |
 | 停机 | `lifespan` 关闭时取消任务、关闭 SSE 队列、`engine.dispose()` |
 
 ## 10. 实施顺序（后端内部依赖）
@@ -894,9 +941,9 @@ catalogs + health + 收尾
 | 域 | 必测 |
 |---|---|
 | identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性 |
-| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `(root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话 |
+| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `(root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话、普通 skill 不建 `agents` 行、forked skill 恰好一行且 `skill_name` 正确、整树统计四列与 payload 一致 |
 | sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
-| session_families | 4 种排序、状态筛选、搜索、聚合统计 |
+| session_families | 4 种排序、状态筛选、搜索、整树聚合统计（各 agent 求和）；问题数按会话聚合（无记录=0、外部新增后列表立即可见） |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |
 | evolution | 状态机边界（preparing/running/blocked/completed）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked |

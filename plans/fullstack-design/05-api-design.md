@@ -41,9 +41,6 @@ erDiagram
     AGENT ||--o{ AGENT : "parent / child"
     AGENT ||--o{ AGENT_EVENT : "trigger points"
     SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
-    USER_TURN ||--o{ MESSAGE : "messages"
-    AGENT ||--o{ MESSAGE : "produces"
-    MESSAGE ||--o{ CONTENT_BLOCK : "content_blocks"
 
     SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
     BAD_CASE ||--o| BAD_CASE_ANALYSIS : "归因状态"
@@ -60,7 +57,7 @@ erDiagram
     EVOLUTION_RUN ||--o| EVOLUTION_FINAL : "终评"
 ```
 
-> 轨迹侧表由本服务同步写入；`BAD_CASE / BAD_CASE_ANALYSIS / PROBE_REPORT` 由外部归因/上报系统写入，本服务只读；`EVOLUTION_*` 与 `PROBE_CLUSTER*` 由本服务写。`USER_TURN/MESSAGE/CONTENT_BLOCK` 是内部表，不对外暴露（见 §3.3）。
+> 轨迹侧表由本服务同步写入；`BAD_CASE / BAD_CASE_ANALYSIS / PROBE_REPORT` 由外部归因/上报系统写入，本服务只读；`EVOLUTION_*` 与 `PROBE_CLUSTER*` 由本服务写。`USER_TURN` 是内部表，不对外暴露（见 §3.3）。
 
 ## 3. 领域模型（OpenAPI Schema 的源头）
 
@@ -78,15 +75,17 @@ erDiagram
   "status": "partial",
   "skills": ["deep-research"],
   "stats": {
-    "userTurns": 12, "messages": 375, "tools": 197, "errors": 4,
+    "userTurns": 12, "messages": 1103, "tools": 197, "errors": 4,
     "agents": 57, "badCases": 3, "tokens": 58368517,
-    "failPer100Messages": 1.07, "badCasesPer100Messages": 0.8
+    "failPer100Messages": 0.36, "badCasesPer100Messages": 0.27
   }
 }
 ```
 
 - `status`：`ok`（完成）/ `partial`（有失败）/ `fail`（整体失败）。密度只由后端计算，前端不算（避免口径漂移）。
 - `short`：列表卡标题（截断展示）；`title`：完整标题。两者都由首个用户提问派生，`short` 允许为空（前端回退到 title）。
+- `stats.badCases` 是**查询时**按会话聚合 `bad_cases` 的计数（问题侧外部写入、随上报/删除实时变化），不落 `session_families` 列；`stats` 中其余计数来自同步聚合列（整棵树口径，见 [06 §3.2](06-database-design.md)）。
+- 示例的 `agents[]` 是节选，`stats` 为整树口径（含未展示节点），数值仅示意，不要用可见行手算。
 
 ### 3.2 Agent 会话树
 
@@ -110,6 +109,7 @@ erDiagram
     {
       "agentId": "wf_1fb8ca61-c70",
       "parentAgentId": "cb819c5b-...", "kind": "workflow", "agentType": "workflow",
+      "label": "workflow",
       "taskKind": null, "spawnDepth": 1,
       "desc": "56 个 workflow 子 agent", "toolUseId": "call_ca6f...",
       "lines": 0, "messagesCount": 0, "events": []
@@ -117,6 +117,7 @@ erDiagram
     {
       "agentId": "a000f718c770a5b36",
       "parentAgentId": "cb819c5b-...", "kind": "subagent", "agentType": "general-purpose",
+      "label": "general-purpose",
       "taskKind": null, "spawnDepth": 1,
       "desc": "检索工具层四项+综述", "toolUseId": "call_721e...",
       "lines": 218, "messagesCount": 120,
@@ -129,6 +130,7 @@ erDiagram
     {
       "agentId": "a17945bf58c8af55f",
       "parentAgentId": "a000f718c770a5b36", "kind": "subagent", "agentType": "Explore",
+      "label": "Explore",
       "taskKind": null, "spawnDepth": 2,
       "desc": "只读检索子任务", "toolUseId": "call_b",
       "lines": 96, "messagesCount": 48, "events": []
@@ -136,6 +138,7 @@ erDiagram
     {
       "agentId": "wf-sub-1...",
       "parentAgentId": "wf_1fb8ca61-c70", "kind": "subagent", "agentType": "workflow-subagent",
+      "label": "workflow-subagent",
       "taskKind": null, "spawnDepth": 2,
       "desc": "", "toolUseId": null,
       "lines": 18, "messagesCount": 10, "events": []
@@ -148,6 +151,13 @@ erDiagram
       "anchor": { "agentId": "a000f718c770a5b36", "eventIndex": 0 },
       "badCaseAgent": { "sessionId": "cb819c5b-...", "agentId": "a000f718c770a5b36" },
       "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败"
+    },
+    {
+      "badCaseId": "bc-050b-04", "badCaseType": "discovery",
+      "objectName": "general-purpose", "objectType": "agent", "objectVersion": null,
+      "anchor": { "agentId": "cb819c5b-...", "eventIndex": 2 },
+      "badCaseAgent": { "sessionId": "cb819c5b-...", "agentId": "a000f718c770a5b36" },
+      "reason": "subagent发现前置步骤存在问题：工具层检索结果未去重"
     }
   ]
 }
@@ -157,7 +167,9 @@ erDiagram
 
 - **`agents` 是扁平列表**，不再有 `main/subs/children` 嵌套；前端用 `parentAgentId` 建树。`main` 也作为一行，`parentAgentId=null`。
 - **结构关系**：`parentAgentId` 指向父节点；`toolUseId` 指向父节点中触发该节点的调用，用于画布边锚点。workflow 的 `toolUseId` 填父级 workflow 调用；workflow-subagent 允许为 `null`。
-- **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / 自定义 teammate / workflow / workflow-subagent`；`taskKind` 是 `in_process_teammate / forked_skill / null`；`spawnDepth` 来自 meta.spawnDepth。workflow 节点没有独立 transcript，`lines=0`。
+- **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / 自定义 teammate / workflow / workflow-subagent`；`taskKind` 是 `in_process_teammate / forked_skill / null`；`spawnDepth` 来自 meta.spawnDepth。workflow 节点没有独立 transcript，`lines=0`；forked skill 是 `kind=subagent` + `taskKind=forked_skill`、`agentType=null`，靠 `label` 显示 skill 名。
+- **普通 skill 不是节点**：只以父节点 `events[]`（`kind=skill`）出现；forked skill 同时有父节点的 skill 事件和自己的节点。
+- **`label` 必填、由后端算**：主节点固定“主会话”；其余按 `name` → `skill_name`（forked skill）→ `agentType` → `kind` 取。前端不重算显示名。
 - `events[].name` 是触发调用名，不是类型；workflow 名可以与 skill 同名（原型 line 30 的 `deep-research` 就是 workflow 名，line 24 的 `deep-research` 是 skill 名）。
 - **`×N` 间隔**：`messagesCount` 是该节点自己的 assistant message 总数；`events[].messageOffset` 是该触发点之前已经出现的 assistant message 数。前端计算：
   - 首个触发点之前：`first.messageOffset`
@@ -165,19 +177,19 @@ erDiagram
   - 尾部：`messagesCount - last.messageOffset`
 - `line` 仍保留，用于显示 `L30`、定位/调试；`×N` 不再用行号差。
 - 示例只展示 workflow 的 1 个 `workflow-subagent`，实际原型有 56 个；扁平列表省略其余。
-- **问题卡锚点**：API 只暴露 `anchor.agentId + anchor.eventIndex`，不暴露上报者 session。服务端用 DB 的 `bad_case_agent_id`、`badCaseType` 和 `object_*` 计算锚定 agent，再在该 agent 的 `agent_events` 中找匹配触发点；`eventIndex=-1` 表示未匹配到触发点，前端挂到 agent 节点本身。
+- **问题卡锚点**：API 只暴露 `anchor.agentId + anchor.eventIndex`，不暴露上报者 session。服务端以 `bad_case_agent_id`（上报人 A）为起点计算宿主：`self + agent` → A 节点（`eventIndex=-1`）；`self/discovery + skill` → A 中该 skill 的最后一次触发；`discovery + agent` → A 的父节点 P 中调用 A 的 `agent` 事件（用 `A.toolUseId` 匹配）。`eventIndex=-1` 表示未匹配到触发点，前端挂到宿主节点本身。
 - `anchor.eventIndex` 是目标 agent `events[]` 的 0-based 下标，不是 line，也不是 messageOffset。
+- **`badCaseAgent` 不一定是宿主**：示例 `bc-050b-04` 是 `discovery + agent`，上报人是 a000，但卡片挂在主会话调用 a000 的 L42 `agent` 触发点上；这类卡片的 `anchor.agentId` 是父节点。
 - **命名映射**：API 的 `sessionId` = 根会话；`agentId` = 主 agent 的 root session id / 子 agent 的真实 `agentId`，对应 DB `agents.id`；`root_session_id` 只在内部表出现。
 
 ### 3.3 内部轨迹模型（不对外暴露）
 
-时间线页面在 2026-10-22 评审中裁撤，因此**不提供用户轮次/消息/内容块的读接口**。`user_turns/messages/content_blocks` 三张表仍然保留（见 [06 §3.5–3.7](06-database-design.md)），术语定义见 [06 §1.4](06-database-design.md)。用途是：
+时间线页面在 2026-10-22 评审中裁撤，完整时间线由外部平台承担，因此**不提供用户轮次/消息/内容块的读接口**。归一化只保留 `user_turns` 作为用户输入锚点（`promptText` + `lineNo`/`messageOffset`，见 [06 §3.5](06-database-design.md)），供未来在 Agent 执行流图里展示用户输入。
 
-- 同步时计算 `session_families` 的聚合列（用户轮次数、消息数、工具调用数、错误数、token 总数）；
-- 为后续诊断器保留证据（工具输入/输出/错误原文）；
-- 解析规则升级时可重放。
+- 消息与内容块只在解析期存在：用于整树统计（消息数、token、工具、错误）、usage 去重与状态判定，**不落库**；
+- 需要原文证据时，按 `(sessionId, agentId)` 从 `trajectory_payloads` 回读，或走外部平台的时间线。
 
-也就是说：**数据照常入库，契约里没有 `Timeline/UserTurn/Message/ContentBlock` 这些响应模型**。如果未来恢复时间线，按原设计补 `GET /api/sessions/{sid}/timeline` 与 `.../user_turns/{index}/messages` 两个端点即可，表结构无需迁移。
+也就是说：**契约里没有 `Timeline/UserTurn/Message/ContentBlock` 响应模型**，轨迹明细层只保留 `user_turns` 输入锚点。未来若在流图里显示用户输入，只需在读接口补 `userTurns`（含 `promptText` / `lineNo` / `messageOffset`），不恢复消息/内容块表。
 
 ### 3.4 问题（bad_case）、归因状态与 probe
 
@@ -198,8 +210,9 @@ erDiagram
 ```
 
 - `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看 `probe`。
-- `badCaseAgent` 记录触发问题的 agent：`sessionId` 是根会话，`agentId` 主 agent 为 `null`、子 agent 为真实 `agentId`。服务端据此计算 `anchor`。
-- `anchor` 是后端算出的挂载点：`anchor.agentId` 是 agent 节点，`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
+- `badCaseAgent` 记录**上报/发现问题的 agent**：`sessionId` 是根会话，`agentId` 主 agent 为 `null`、子 agent 为真实 `agentId`。它是锚点计算的输入，不一定是卡片宿主；`discovery + agent` 时 `anchor.agentId` 会解析到父节点。
+- 上报契约：`badCaseAgent.agentId` 指向的 agent 必须包含 `objectName` 的触发记录；skill 型问题只在该 agent 的 `agent_events` 里查找，找不到时 `anchor.eventIndex=-1`。
+- `anchor` 是后端算出的挂载点：`anchor.agentId` 是宿主节点（可能是上报人的父节点），`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
 - `analysis.attributeType`：仅 `analyzed_issue` 非空（冗余自 `probe.attributeType`），问题列表/错误页左栏据此一次渲染 5 种展示态，无需逐条取 probe；`unanalyzed` / `analyzed_nonissue` 为 `null`。
 - `analysis.status` 与原型展示的映射：
@@ -221,15 +234,14 @@ erDiagram
   "probeType": "agent", "probeObject": "Explore", "objectVersion": "v1.0.1",
   "attributeType": "prompt",
   "probeDescription": "prompt 未要求读取快照前校验用户轮次字段，subagent 直接读取导致越界。",
-  "probeAnalysis": ["从 bad_case 的 reason 与 meta_data 定位到 Explore 的读取步骤。",
-    "同批次有校验的 subagent 未报错，说明是 prompt 约定缺失。"],
+  "probeAnalysis": "1. 从 bad_case 的 `reason` 与 `meta_data` 定位到 Explore 的读取步骤。\n2. 同批次有校验的 subagent 未报错，说明是 prompt 约定缺失。\n\n~~~ts\nconst snap = readSnapshot(id); // 未校验 userTurn\n~~~",
   "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1
 }
 ```
 
 - `probeObject @ objectVersion` 是**自进化 target 的唯一来源**。
 - `fromBadCases` / `fromBadCasesCount` 由 `bad_case_analysis.probe_id` 反查得出（V1 恒 1 条）。
-- `probeAnalysis` 是有序推导步骤数组（`string[]`），前端按原型"分析推导过程"有序列表逐条渲染；对应 DB `probe_reports.probe_analysis`（JSON）。
+- `probeAnalysis` 是 **Markdown 字符串**（对应 DB `probe_reports.probe_analysis`，`TEXT`）；前端按 Markdown 渲染，保留换行、列表与代码块。渲染时禁用裸 HTML、外链加安全属性；不接语法高亮，代码块按等宽 + 横向滚动展示。
 
 ### 3.5 自进化运行
 
@@ -270,6 +282,7 @@ erDiagram
 "evalStatus": "failed",
 "workspace": {
   "repoUrl": "https://git.example.com/agent-skills.git",
+  "subDir": "skills/deep-research",
   "repoPath": "data/repos/tgt-123", "baseRef": "v2.0.0", "baseCommit": "9f3c2a1…",
   "branchName": "evo/20261023-evo-20261023-01", "workspacePath": "data/workspaces/evo-20261023-01",
   "remote": "origin", "pushStatus": "succeeded", "pushedAt": "2026-10-23T09:40:00+08:00", "pushError": null
@@ -446,6 +459,7 @@ erDiagram
 ┌─ 基础与鉴权 ──────────────────────────────────────────────┐
 │ GET  /api/health                                         │
 │ POST /api/auth/login · refresh · logout                  │
+│ POST /api/auth/change-password                           │
 │ GET  /api/auth/me                                        │
 │ POST /api/events/ticket                                  │
 └──────────────────────────────────────────────────────────┘
@@ -510,18 +524,20 @@ erDiagram
 
 | 端点 | 说明 |
 |---|---|
-| `POST /api/auth/login` | body `{username, password}` → `200 {accessToken, expiresIn, user:{id, username, displayName, role}}`；refresh token 写入 httpOnly + SameSite=Strict cookie（14 天）。密码错误 → `401 AUTH_INVALID`；账号停用 → `403 FORBIDDEN` |
-| `POST /api/auth/refresh` | 读取 refresh cookie → 新 `{accessToken, expiresIn}`；cookie 缺失/失效 → `401 AUTH_EXPIRED` |
+| `POST /api/auth/login` | body `{username, password}` → `200 {accessToken, expiresIn, user:{id, username, displayName, role, mustChangePassword}}`；refresh token 写入 httpOnly + SameSite=Strict cookie（14 天）。密码错误 → `401 AUTH_INVALID`；账号停用 → `403 FORBIDDEN` |
+| `POST /api/auth/refresh` | 读取 refresh cookie → 重读用户行 → 新 `{accessToken, expiresIn}`（token 内 `mcp` 声明取最新值）；cookie 缺失/失效 → `401 AUTH_EXPIRED` |
 | `POST /api/auth/logout` | 使 refresh cookie 失效（过期化）→ `204` |
-| `POST /api/auth/change-password` | 登录用户修改自己的密码 `{oldPassword, newPassword}` → `204`；旧密码校验失败 `401 AUTH_INVALID` |
-| `GET /api/auth/me` | 当前用户信息 `{id, username, displayName, role}` |
-| `GET /api/users`、`POST /api/users` | 管理员创建/列出用户（单组织共享，仅 `role=admin`）；成员管理界面首版从简，可先只用 API |
+| `POST /api/auth/change-password` | 登录用户修改自己的密码 `{oldPassword, newPassword}` → `204`，成功后清 `must_change_password`；旧密码校验失败 `401 AUTH_INVALID` |
+| `GET /api/auth/me` | 当前用户信息 `{id, username, displayName, role, mustChangePassword}` |
+| `GET /api/users`、`POST /api/users` | 管理员创建/列出用户（单组织共享，仅 `role=admin`）；成员管理界面首版从简，可先只用 API。新建账号的 `mustChangePassword` 恒为 `true` |
+
+**强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此服务端用 `must_change_password` 硬卡——该标记为 true 时仍签发 token，但除 `POST /api/auth/change-password`、`POST /api/auth/logout`、`GET /api/auth/me` 外的请求一律 `403 PASSWORD_CHANGE_REQUIRED`。改密成功后前端先 `POST /api/auth/refresh` 换新 access token、再 `GET /api/auth/me` 取到 `mustChangePassword=false`，然后放行到 `redirect`（[07 §8.2](07-backend-implementation.md) · [08 §4.1](08-frontend-implementation.md)）。
 
 `GET /users` 示例：
 
 ```json
 { "items": [
-  { "id": "u-admin", "username": "admin", "displayName": "管理员", "role": "admin", "isActive": true }
+  { "id": "u-admin", "username": "admin", "displayName": "管理员", "role": "admin", "isActive": true, "mustChangePassword": true }
 ] }
 ```
 
@@ -531,7 +547,7 @@ erDiagram
 { "username": "alice", "displayName": "Alice", "password": "临时密码", "role": "member" }
 ```
 
-→ `201` 创建后的用户（不含密码哈希）。
+→ `201` 创建后的用户（不含密码哈希；`mustChangePassword` 恒为 `true`，用户首次登录必须改密）。
 
 **SSE 票据**：`POST /api/events/ticket`（需登录）
 
@@ -569,9 +585,9 @@ erDiagram
 
 ### 4.5 时间线端点（已裁撤）
 
-时间线页面不做，因此不提供 `GET /api/sessions/{sid}/timeline` 及其消息展开端点。用户轮次/消息/内容块照常入库，仅用于统计聚合与后续诊断（见 §3.3）。
+时间线页面不做，因此不提供 `GET /api/sessions/{sid}/timeline` 及其消息展开端点。`user_turns` 只保留用户输入锚点；消息/内容块不落库（见 §3.3）。
 
-用户轮次内需要计数时（列表/会话概览），使用 `session_families` 上的聚合列，不读 `messages` 明细。
+列表/会话概览的计数全部来自 `session_families` 上的整树聚合列；消息/内容块明细不存在，也没有按轮次计数的读接口。`stats.badCases` 不在这批聚合列里，按会话聚合 `bad_cases`（见 [06 §3.2](06-database-design.md)）。
 
 ### 4.6 会话问题列表
 
@@ -641,7 +657,7 @@ erDiagram
   "probeType": "skill", "probeObject": "deep-research", "objectVersion": "v2.0.0",
   "attributeType": "error",
   "probeDescription": "检索索引读取失败",
-  "probeAnalysis": ["从 bad_case 的 reason 与 meta_data 定位到索引读取步骤。", "当前版本未做快照校验。"],
+  "probeAnalysis": "1. 从 bad_case 的 `reason` 与 `meta_data` 定位到索引读取步骤。\n2. 当前版本未做快照校验。",
   "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1
 }
 ```
@@ -978,6 +994,7 @@ FastAPI /api/openapi.json
 | `TICKET_INVALID` | 401 | SSE 票据不存在、已被使用或 topics 非法 |
 | `TICKET_EXPIRED` | 401 | SSE 票据超过 60 秒 |
 | `FORBIDDEN` | 403 | 已登录但无权限（如非 admin 调用户管理、账号被停用） |
+| `PASSWORD_CHANGE_REQUIRED` | 403 | 已登录但 `mustChangePassword=true`；除改密、登出与 `GET /api/auth/me` 外一律拒绝（前端跳改密页） |
 | `SESSION_NOT_FOUND` | 404 | sid 不存在 |
 | `BAD_CASE_NOT_FOUND` | 404 | badCaseId 不存在 |
 | `BAD_CASE_SESSION_MISMATCH` | 409 | badCaseId 存在但不属于 URL 里的 sid |
@@ -1009,7 +1026,7 @@ FastAPI /api/openapi.json
 | `TREE[sid].main/subs` | `SessionTree.agents[]` | 改为扁平列表；`id/agentType/desc/toolUseId/lines/events` 一一对应，新增 `agentId/parentAgentId/taskKind/spawnDepth/messagesCount`，事件新增 `messageOffset` |
 | `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel`；挂载位置改为 `anchor {agentId,eventIndex}` |
 | `ERROR_META[title].status` | `BadCase.analysis.status` | `unanalyzed / analyzed_nonissue / analyzed_issue`（5 种展示值） |
-| `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` + `analysis.result` | `probe_description / probe_analysis(string[]) / attribute_type` 对应"问题描述/推导过程/分类"；非问题的 `{reason, reasoning[]}` 在 `analysis.result` |
+| `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` + `analysis.result` | `probe_description / probe_analysis(Markdown) / attribute_type` 对应"问题描述/推导过程/分类"；非问题的 `{reason, reasoning[]}` 在 `analysis.result` |
 | `REPORTS[]` | `ProbeReport` | 原"问题报告"= 归因报告；`reportId` → `probeId`，`issueId` → `badCaseId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | `stats.reports/used/byType` → `stats.probes/usedProbes/byAttributeType` |
 | `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
