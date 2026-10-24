@@ -144,7 +144,7 @@
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend + fast-forward、拒绝删 candidate（run 分支不 reset）；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
-| R15 | 异常详情泄露密钥/环境/密码 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据、`password`/`password_hash`）并截断 8KB；接口只返回脱敏内容；密码与哈希不写任何 payload 列（[06 §3.8](06-database-design.md)） |
+| R15 | 异常详情泄露密钥/环境/密码 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据、`password`/`password_hash`）并截断 8KB；接口只返回脱敏内容；密码与哈希不写任何 payload 列；commit message 同样脱敏且只含 ID（[06 §3.8](06-database-design.md) · [07 §5.8](07-backend-implementation.md)） |
 | R16 | 定时与手动同时触发同步 | 重复处理/并发写同一 session | `sync_lock` 单飞 + TTL；手动幂等返回已有 `jobId`；`job_runs` 仅一个活跃 sync |
 | R17 | 评测接口长时间不返回/超时 | 单 worker 被占、页面误以为卡死 | `eval_poller` 每 5min 轮询、`next_poll_at` 落库、超时置 `blocked(eval)`；`/retry` 重新提交 |
 

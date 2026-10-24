@@ -439,7 +439,7 @@ class EvolutionEngine(ABC):
     @abstractmethod def final_status(self) -> str: ...
     @abstractmethod async def kickoff(self, run, clusters) -> None: ...
     @abstractmethod async def make_patch(self, run, round_) -> Patch: ...   # V1 占位 → 真实 LLM/规则
-    @abstractmethod def decide(self, result: EvalResult) -> bool: ...       # 接纳判定
+    @abstractmethod def decide(self, result: EvalResult) -> Decision: ...  # 接纳判定 + 一句话理由
     @abstractmethod async def build_final(self, run) -> Final: ...          # 终评
     @abstractmethod def gateway(self) -> EvalGateway: ...                   # 评测接入（§5.7）
 ```
@@ -508,7 +508,8 @@ class FullEvolutionEngine(EvolutionEngine):
         if clusters:
             await jobs.submit("evolution_advance", {"run_id": run.id}, ref_id=run.id)
     async def make_patch(self, run, round_): return placeholder_patch(run, round_.cluster_id)
-    def decide(self, result): return result.accepted                       # V1：采纳外部 verdict
+    def decide(self, result) -> Decision:                                  # V1：采纳外部 verdict
+        return Decision(result.accepted, decision_sentence(result, result.accepted))
     async def build_final(self, run): return build_placeholder_final(run)
     def gateway(self): return build_eval_gateway(self.run.eval_config)     # 创建期快照（§5.7）
 
@@ -719,7 +720,7 @@ class EvalGateway(Protocol):
 ### 5.8 应用评测结果、重试与终评（`apply_eval` / `finalize` / `retry` 模板）
 
 ```python
-# base.py —— apply 模板：接纳判定 decide() 是子类变异点
+# base.py —— apply 模板：接纳判定 decide() 是子类变异点，返回 Decision（含人话理由）
 async def apply_eval(self, job):
     round = await evolution_rounds.get(job.payload['evolution_round_id'])
     run = self.run
@@ -727,9 +728,10 @@ async def apply_eval(self, job):
     result = await evolution_rounds.get_eval_result(round.id)
     await evolution_rounds.mark_deciding(round.id)
 
-    if self.decide(result):                     # 变异点：V1 采纳外部 verdict → 真实阈值/规则
-        # 1) 先在 candidate 上 amend，追加评测信息
-        final = ws.amend(build_accepted_message(round.candidate_message, result))
+    decision = self.decide(result)               # 变异点：V1 external-verdict → 真实阈值/规则
+    if decision.accepted:
+        # 1) 先在 candidate 上 amend：改写 subject 并追加"为什么接纳"
+        final = ws.amend(build_accepted_message(run, round, result, decision))
         await ws.force_push_candidate(final.hash, round.candidate_ref)  # --force-with-lease
         # 2) 回到 run 分支并 fast-forward 到接纳后的 candidate
         await ws.switch(run.branch_name)
@@ -743,8 +745,27 @@ async def apply_eval(self, job):
         await ws.switch(run.branch_name)             # 回到已接纳基线，不 reset 掉之前轮次
         await ws.delete_local_branch(round.candidate_ref)
         await evolution_rounds.reject(round.id, result.candidate_score)
+        # 拒绝不改写 commit message（理由进 cluster_rejected 事件 payload）
 
+    await events.record(run.id,
+                        'cluster_accepted' if decision.accepted else 'cluster_rejected',
+                        stage='apply', evolution_round_id=round.id,
+                        message=decision.reason, payload={'reason': decision.reason})
     await jobs.submit('evolution_advance', {'run_id': run.id}, ref_id=run.id)
+```
+
+```python
+@dataclass
+class Decision:
+    accepted: bool
+    reason: str        # 一句话人话理由：写进 commit message 与 cluster_accepted/rejected 事件
+
+
+def decision_sentence(result, accepted: bool) -> str:      # V1：把分数比较翻成人话
+    cmp_word = "高于" if accepted else "未高于"
+    verdict = "接纳" if accepted else "拒绝"
+    return (f"候选分 {result.candidate_score:.1f} {cmp_word}基线 {result.current_score:.1f}"
+            f"（{result.delta:+.1f}），按 external-verdict 规则{verdict}")
 ```
 
 - 接纳时 run 分支 **只 fast-forward，不 force-push**；candidate ref 上才允许 `--force-with-lease`。
@@ -792,42 +813,87 @@ async def finalize(self, job):
 - 终评写入先落库；run 分支最终 push 成功后才把 run 置 `completed`。
 - 最终 push 失败同样进入 `blocked(stage=push)`，保留 final 与 run 分支，`/retry` 继续，不重新跑迭代。
 
-**commit message 约定**（candidate 阶段就带全追溯信息）：
+**commit message 约定**：推送后不可变，按"**不了解本项目的人也能读懂**"写——人读的叙事在上，机器 trailer 在下。两个 builder：`build_candidate_message(run, round)` 与 `build_accepted_message(run, round, result, decision)`，结构固定为 **subject → 问题 → 分析 → 改动 →（接纳后）为什么接纳 → 追溯 → trailer**。
+
+candidate（未评测，假设式）：
 
 ```text
-evolve(deep-research@v2.0.0): error 类问题 · 第 1 组
+evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更
 
+## 问题
+deep-research 在读取快照前未校验 userTurn 字段，子 agent 直接按索引读取导致越界，
+表现为检索索引读取失败（ENOENT）。来源问题：bc-050b-03、bc-050b-11。
+
+## 分析
+1. 从 bad_case 的 reason 与 meta_data 定位到索引读取步骤。
+2. 同批次有校验的 subagent 未报错，说明是步骤缺失而非环境问题。
+3. 修复思路：读取前校验快照字段，缺失时回退到最近一次有效轮次。
+…（完整推导见下方归因链接）
+
+## 改动
+- skills/deep-research/SKILL.md（+3 / −0；patch sha256:1f2a…）
+- 注意：V1 为占位 patch，内容不是真实修复，仅用于贯通流程。
+
+## 状态
+候选变更，尚未评测；评测完成后本消息会被 amend 改写为结论。
+
+## 追溯
+- 自进化运行：[evo-20261023-01](https://harness.example.com/evolution/runs/evo-20261023-01?step=iteration)
+- 问题簇：[C1 检索索引读取失败](https://harness.example.com/evolution/runs/evo-20261023-01?step=clusters&cluster=C1)
+- 根因归因：[pr-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=attr)
+- 来源问题：[bc-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=desc)、[bc-050b-11](…&case=bc-050b-11&tab=desc)
+- 基线：`9f3c2a1f`（tag `v2.0.0`）
+
+---
 Harness-Run-Id: evo-20261023-01
 Harness-Cluster-Id: C1
-Harness-Job-Id: job-01J...
-Harness-Step: 4
 Harness-Round: 2
-Harness-Candidate-Ref: evo/20261023-evo-20261023-01/candidate/r2
-Harness-Probes: pr-050b-01, pr-050b-07
+Harness-Probes: pr-050b-03, pr-050b-07
 Harness-Bad-Cases: bc-050b-03, bc-050b-11
-Harness-Base-Commit: 9f3c2a1f...
-Harness-Target: skill:deep-research@v2.0.0
-Harness-Patch-Hash: sha256:...
+Harness-Base-Commit: 9f3c2a1f…
+Harness-Patch-Hash: sha256:1f2a…
 Harness-Created-At: 2026-10-23T09:40:12+08:00
-Harness-Commit-Duration-Ms: 812
 ```
 
-接纳后 amend 追加：
+接纳后 amend（subject 改为断言式，追加"为什么接纳"）：
 
 ```text
-Evaluation:
-- current: 84.6
-- candidate: 87.2
-- delta: +2.6
-- verdict: accepted
+evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取
 
-Harness-Evaluated-Commit: C1
-Harness-Eval-Current: 84.6
-Harness-Eval-Candidate: 87.2
-Harness-Eval-Delta: +2.6
+## 问题
+…（与 candidate 相同，事实不变）
+
+## 分析
+…
+
+## 改动
+…
+
+## 为什么接纳
+候选分 87.2 高于基线 84.6（+2.6），按 external-verdict 规则接纳。
+
+## 追溯
+…（同 candidate）
+
+---
+Harness-Run-Id: evo-20261023-01
+Harness-Cluster-Id: C1
+Harness-Round: 2
+Harness-Probes: pr-050b-03, pr-050b-07
+Harness-Bad-Cases: bc-050b-03, bc-050b-11
+Harness-Base-Commit: 9f3c2a1f…
+Harness-Patch-Hash: sha256:1f2a…
+Harness-Evaluated-Commit: ab12…（评测时的 candidate commit）
 Harness-Verdict: accepted
+Harness-Decision-Rule: external-verdict
 ```
 
+- **subject 说人话**：`evolve(对象@版本): <一句话问题/结论>`，≤ 72 字符；candidate 用假设式（"针对…的候选变更"），接纳后改写为断言式（"修复…"）；正文事实部分不改写。
+- **"为什么接纳"是一句话**：`Decision.reason` 由 engine 的 `decide()` 生成，把分数比较翻成人话（V1：`候选分 87.2 高于基线 84.6（+2.6），按 external-verdict 规则接纳`）；规则标识另写 `Harness-Decision-Rule` trailer 供机器筛选；真实执行器换阈值/多指标规则时，下游（message、"为什么接纳"段、`cluster_accepted` 事件）形状不变。
+- **链接规则**：URL 前缀取 `HE_WEB_BASE_URL`（[04 §9](04-backend-architecture.md)），路径按 [05 §5](05-api-design.md) 深链拼接（run → `?step=…`、簇 → `?step=clusters&cluster={id}`、问题 → `/sessions/{sid}/errors?case=…&tab=desc|attr`）；**未配置时只输出 ID、不输出链接**（避免相对路径死链）。链接只含 ID，不含任何 token/凭据。
+- **截断与脱敏**：`probe_analysis` 超过 30 行或 3000 字符时按行截断并附"完整推导见归因链接"；strip HTML；不写 payload 原文、token、环境变量（与 [09 R15](09-review-guide.md) 同一清单）。
+- **trailer 只在末尾**：`Harness-Run-Id` 必填（push 校验依赖）；`Job-Id` / `Step` / 耗时等已落 `evolution_run_events` 的字段不重复进 message。
+- **拒绝不改写**：rejected 轮次保留 candidate message（随后删除 candidate ref），拒绝理由进 `cluster_rejected` 事件 payload。
 - `Harness-Evaluated-Commit` 记录评测时的 candidate commit（amend 后 hash 会变，但代码内容相同）。
 - 每个 candidate 一次 commit；拒绝不产生合并提交，接纳只做 amend + fast-forward。
 - 分支命名：run 分支 `evo/{YYYYMMDD}-{run_id}`；candidate ref `evo/{YYYYMMDD}-{run_id}/candidate/r{n}`。

@@ -136,7 +136,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | `/evolution` | 运行列表 | — |
 | `/evolution/targets` | 进化对象配置（repoUrl/defaultRef/子目录/启用） | — |
 | `/evolution/cluster/:previewId` | 仅聚类结果 | — |
-| `/evolution/runs/:rid` | 运行详情 | `?step={key}`（`input / clusters / attribution / severity / iteration / final`） |
+| `/evolution/runs/:rid` | 运行详情 | `?step={key}`（`input / clusters / attribution / severity / iteration / final`）；簇定位 `?step=clusters&cluster={probeClusterId}` |
 
 **登录守卫**：全局 `beforeEach`——未登录（无 access token 且 refresh 失败）且目标不是 `/login` 时跳 `/login?redirect=<原路径>`；已登录访问 `/login` 跳回 `/sessions`。登录后跳回 `redirect` 或 `/sessions`。
 

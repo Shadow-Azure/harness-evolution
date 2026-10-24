@@ -373,6 +373,7 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_SSE_HEARTBEAT_SECONDS` | `15` | SSE 心跳 |
 | `HE_LOG_LEVEL` | `info` | 日志级别 |
 | `HE_CORS_ORIGINS` | `http://localhost:5173` | 允许的前端域名 |
+| `HE_WEB_BASE_URL` | 空 | 对外可访问的 Web 基址（如 `https://harness.example.com`），用于 commit message 中的追溯链接；空 = 只输出 ID、不输出链接 |
 | `HE_LLM_BASE_URL` / `HE_LLM_API_KEY` | 空 | **预留**，V1 不读取；密钥走环境变量，不入库 |
 
 ## 10. 测试策略

@@ -427,12 +427,12 @@ erDiagram
           "model": "glm-5.3", "attributeType": "error", "description": "检索索引读取失败…",
           "sourceBadCaseIds": ["bc-050b-03"] } ],
         "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1",
-          "commit": "ab12…", "message": "evolve(deep-research@v2.0.0): error 类问题 · 第 1 组" },
+          "commit": "ab12…", "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
         "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
         "push": { "status": "succeeded", "attempts": 1, "error": null },
         "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
         "accepted": true,
-        "finalCommit": { "hash": "cd34…", "message": "evolve(...): 接纳评测对比" } }
+        "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取" } }
     ]
   }
 }
@@ -953,6 +953,7 @@ ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / 
 | 问题描述 | `/sessions/{sid}/errors?case={badCaseId}&tab=desc` | `BadCase.badCaseId/sessionId` |
 | 归因分析 | `/sessions/{sid}/errors?case={badCaseId}&tab=attr` | `BadCase.analysis.probeId` |
 | 自进化某步 | `/evolution/runs/{rid}?step=iteration` | `RunDetail.steps[].status` |
+| 自进化某簇 | `/evolution/runs/{rid}?step=clusters&cluster={probeClusterId}` | `steps/clusters` 的 `probeClusterId`；未命中时忽略参数并提示 |
 
 **解析规则**：
 
