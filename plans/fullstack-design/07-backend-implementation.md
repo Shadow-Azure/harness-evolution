@@ -394,66 +394,126 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
     return RunAccepted(run_id=run_id, job_id=job.id, status="preparing")
 ```
 
-后台 handler 完成全部重活：
+后台 handler 按 `run.mode` 走**策略基类 + 工厂**（`service/evolution/prepare/`）：公共骨架只写一份，差异步骤由子类实现，handler 不含任何 `if mode` 分支：
+
+```text
+service/evolution/prepare/
+  base.py          # RunPreparer 抽象基类：模板方法 run()，串起公共骨架
+  full.py          # FullPreparer：clone workspace + 建迭代轮 + 提交 advance
+  cluster_only.py  # ClusterOnlyPreparer：只聚类，完成即终态
+  factory.py       # PreparerFactory：mode → preparer（新增 mode 在此注册）
+```
+
+```python
+# base.py —— 模板方法：所有 mode 共享的公共骨架
+class RunPreparer(ABC):
+    def __init__(self, deps: PrepareDeps): ...         # crud / jobs / events / settings
+
+    async def run(self, run, q: ProbeQuery) -> None:
+        probes = await crud.probes.list_matching(q)    # probe_reports JOIN session_families
+        if not probes:
+            raise Conflict("NO_PROBES_MATCHED")
+
+        ws = await self.setup_workspace(run)           # 差异点①：clone / 建 run 分支
+
+        # 第 1 步问题聚类：写簇与簇内 probe（unit 1 → 2）
+        async with db.transaction():
+            clusters = simple_cluster(probes)
+            cluster_rows, link_rows = [], []
+            for seq, c in enumerate(clusters, start=1):
+                cid = ulid()
+                cluster_rows.append((cid, run.id, seq, c.description, c.type, TYPE_IMPACT[c.type]))
+                link_rows += [(cid, p.probe_id) for p in c.probes]
+            await crud.probe_clusters.bulk_insert(cluster_rows)        # 同事务批量写入，不逐簇 RTT
+            await crud.probe_cluster_probes.bulk_insert(link_rows)
+            await crud.runs.set_progress(run.id, progress_unit=2)
+        await events.record(run.id, "clusters_created", stage="cluster", step_index=1,
+                            message=f"聚类完成：{len(clusters)} 个簇")
+
+        # 第 2 步归因确认：逐簇写 probe_clusters.confidence（unit 2 → 3）
+        await attribution_step(run.id)
+        # 第 3 步严重程度排序：写 probe_clusters.severity / rank（unit 3 → 4）
+        await severity_step(run.id)
+
+        async with db.transaction():
+            await self.build_rounds(run)               # 差异点②：按 rank 建迭代轮
+            await crud.runs.mark_prepared(
+                run.id,
+                status=self.final_status(),            # 差异点③：running / completed
+                progress_unit=4,
+                repo_path=ws.repo_path if ws else None, base_ref=ws.ref if ws else None,
+                base_commit=ws.base_commit if ws else None,
+                branch_name=ws.branch if ws else None,
+                workspace_path=ws.path if ws else None,
+                finished_at=now() if self.final_status() == "completed" else None,
+                stats=summarize(probes),
+            )
+        await self.kickoff(run, clusters)              # 差异点④：是否提交 evolution_advance
+
+    # ---- 差异点由子类实现 ----
+    @abstractmethod
+    async def setup_workspace(self, run) -> Workspace | None: ...
+    @abstractmethod
+    async def build_rounds(self, run) -> None: ...
+    @abstractmethod
+    def final_status(self) -> str: ...
+    @abstractmethod
+    async def kickoff(self, run, clusters) -> None: ...
+```
+
+两个实现子类：
+
+```python
+# full.py —— 完整自进化
+class FullPreparer(RunPreparer):
+    async def setup_workspace(self, run):
+        cache = RepoCache.ensure_by_url(run.repo_url)  # 本地仓库缓存
+        return Workspace.prepare(
+            repo_path=cache.path, sub_dir=run.sub_dir,
+            ref=run.target_version, run_id=run.id,
+        )                                              # clone → 建 evo/... 分支
+    async def build_rounds(self, run):
+        # 按 rank（严重度降序）建迭代轮：evolution_rounds.seq 即执行顺序
+        await crud.evolution_rounds.bulk_insert_pending(run.id)
+    def final_status(self): return "running"
+    async def kickoff(self, run, clusters):
+        if clusters:
+            await jobs.submit("evolution_advance", {"run_id": run.id}, ref_id=run.id)
+
+# cluster_only.py —— 仅聚类预览
+class ClusterOnlyPreparer(RunPreparer):
+    async def setup_workspace(self, run): return None  # 不 clone、不建分支
+    async def build_rounds(self, run): pass            # 不建 evolution_rounds
+    def final_status(self): return "completed"         # 聚类完成即终态，归入历史组
+    async def kickoff(self, run, clusters): pass       # 不进入迭代
+```
+
+```python
+# factory.py —— 唯一选择点（fail fast）
+class PreparerFactory:
+    _REGISTRY = {"full": FullPreparer, "cluster_only": ClusterOnlyPreparer}
+
+    @classmethod
+    def create(cls, mode: str, deps: PrepareDeps) -> RunPreparer:
+        try:
+            return cls._REGISTRY[mode](deps)
+        except KeyError:
+            raise ConfigError(f"unknown evolution mode: {mode}")  # 新增 mode 必须显式注册
+```
+
+JobRunner handler 只剩装配，没有业务分支：
 
 ```python
 async def prepare_run(job) -> None:
     run = await crud.runs.get(job.payload["run_id"]) or raise NotFound("RUN_NOT_FOUND")
-    q = ProbeQuery(**job.payload["query"])
-    probes = await crud.probes.list_matching(q)          # probe_reports JOIN session_families
-    if not probes:
-        raise Conflict("NO_PROBES_MATCHED")
-
-    cache = None
-    ws = None
-    if run.mode == "full":
-        cache = RepoCache.ensure_by_url(run.repo_url)     # 本地仓库缓存
-        ws = Workspace.prepare(
-            repo_path=cache.path, sub_dir=run.sub_dir,
-            ref=run.target_version, run_id=run.id,
-        )                                               # clone → 建 evo/... 分支
-
-    # 第 1 步问题聚类：写簇与簇内 probe（unit 1 → 2）
-    async with db.transaction():
-        clusters = simple_cluster(probes)               # 见 5.4
-        cluster_rows, link_rows = [], []
-        for seq, c in enumerate(clusters, start=1):
-            cid = ulid()
-            cluster_rows.append((cid, run.id, seq, c.description, c.type, TYPE_IMPACT[c.type]))
-            link_rows += [(cid, p.probe_id) for p in c.probes]
-        await crud.probe_clusters.bulk_insert(cluster_rows)        # 同事务批量写入，不逐簇 RTT
-        await crud.probe_cluster_probes.bulk_insert(link_rows)
-        await crud.runs.set_progress(run.id, progress_unit=2)
-    await events.record(run.id, "clusters_created", stage="cluster", step_index=1,
-                        message=f"聚类完成：{len(clusters)} 个簇")
-
-    # 第 2 步归因确认：逐簇写 probe_clusters.confidence（unit 2 → 3）
-    await attribution_step(run.id)
-    # 第 3 步严重程度排序：写 probe_clusters.severity / rank（unit 3 → 4）
-    await severity_step(run.id)
-
-    async with db.transaction():
-        if run.mode == "full":
-            # 按 rank（严重度降序）建迭代轮：evolution_rounds.seq 即执行顺序
-            await crud.evolution_rounds.bulk_insert_pending(run.id)
-        await crud.runs.mark_prepared(
-            run.id,
-            status="running" if run.mode == "full" else "completed",
-            progress_unit=4,
-            repo_path=cache.path if cache else None, base_ref=ws.ref if ws else None,
-            base_commit=ws.base_commit if ws else None,
-            branch_name=ws.branch if ws else None,
-            workspace_path=ws.path if ws else None,
-            finished_at=now() if run.mode == "cluster_only" else None,
-            stats=summarize(probes),
-        )
-    if run.mode == "full" and clusters:
-        await jobs.submit("evolution_advance", {"run_id": run.id}, ref_id=run.id)
+    await PreparerFactory.create(run.mode, deps).run(run, ProbeQuery(**job.payload["query"]))
 ```
 
 - `POST /runs` 返回 `202 {runId, jobId, status:"preparing"}`；前端立即跳详情，不等 clone。
-- `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
-- `attribution_step` / `severity_step` 各自独立事务、各记一条 `step_advanced` 事件；V1 在 prepare 内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
+- `POST /cluster-previews` 与 `POST /runs` 共用同一 handler；差异全部收敛在 `ClusterOnlyPreparer`：不建 workspace、不建 `evolution_rounds`、不提交 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
+- **扩展方式**：新增 mode（如增量补簇 `incremental`、只筛选不聚类的 `dry_run`）= 新写一个 `RunPreparer` 子类 + 工厂注册一行；公共骨架、`progress_unit` 状态机、表结构都不动。工厂 `fail fast`——忘记注册就在启动/提交期报错，不会静默走错分支。
+- **为什么是 ABC 模板方法而不是 Protocol**：prepare 的差异是"同一骨架里的四个步骤"，骨架本身（筛选 → 聚类 → 归因 → 排序 → 收口）有共享实现，Protocol 表达不了；纯出站/外部接缝（`PayloadSource`、`EvalGateway`）才用 Protocol（接口 + 实现成对，见 [04 §5](04-backend-architecture.md)）。
+- `attribution_step` / `severity_step` 各自独立事务、各记一条 `step_advanced` 事件；V1 在 prepare 骨架内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
 - prepare 只读 run 快照的 `repo_url` / `sub_dir` / `target_version`，不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
 - `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；第 2 步归因完成更新 `confidence`，第 3 步排序完成更新 `severity` / `rank`，`build_step_payload` 只读这些列。
