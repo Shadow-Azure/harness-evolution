@@ -403,48 +403,45 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
 
 ### 5.4 执行引擎：`EvolutionEngine` 基类 + 工厂（六步流程的完整收口）
 
-第 1–6 步是一个完整流程，组织上收口为一个类层级：**编排（阶段顺序、事务边界、事件记录、状态推进）只在基类写一份；随实现代际变化的部分是子类的变异点**。每个阶段方法仍是一个短 job（activity）——不 sleep、不占 worker、可恢复状态全落 DB，并发与崩溃恢复语义不变；这是 durable execution 的穷人版：job handler ≈ activity，DB 表 ≈ 执行历史，`eval_poller` ≈ 定时器触发。**替换实现 = 新增子类 + 工厂注册一个 `engine_key`**，前端、API、表结构零改动。
+第 1–6 步是一个完整流程，组织上收口为一个类层级：**能力边界由 `stages()` 声明，阶段编排写在"拥有该阶段"的类里**——`prepare` 骨架与生命周期在基类，迭代阶段（advance/apply/finalize/retry）只在 `FullEvolutionEngine`；随实现代际变化的钩子放在真正使用它的子类。每个阶段方法仍是一个短 job（activity）——不 sleep、不占 worker、可恢复状态全落 DB，并发与崩溃恢复语义不变；这是 durable execution 的穷人版：job handler ≈ activity，DB 表 ≈ 执行历史，`eval_poller` ≈ 定时器触发。**替换实现 = 新增子类 + 工厂注册一个 `engine_key`**，前端、API、表结构零改动。
 
 ```text
 service/evolution/engine/
-  base.py          # EvolutionEngine 抽象基类：五个阶段模板 + handle() 分发
+  base.py          # EvolutionEngine 抽象基类：生命周期（stages/handle/gateway）+ prepare 骨架
   full.py          # FullEvolutionEngine：V1 完整自进化（占位 patch / decide / final）
   cluster_only.py  # ClusterOnlyEngine：prepare 后即终态
   factory.py       # EngineFactory：engine_key → engine 类（fail fast 注册表）
 ```
 
 ```python
-# base.py —— 基类：阶段模板 + JobRunner 统一入口
+# base.py —— 基类：生命周期 + prepare 骨架（所有引擎共有）
 class EvolutionEngine(ABC):
+    KIND_TO_METHOD = {"evolution_prepare": "prepare"}
+
     def __init__(self, run, deps: EngineDeps): ...     # run 由工厂装载；deps = crud / jobs / events / settings
 
+    # ===== PUB：engine 之外只允许调这三个 =====
+    @abstractmethod
+    def stages(self) -> list[str]:
+        """本引擎支持的 stage key（= job.kind）；handle 只分发这里声明的阶段。"""
+
     async def handle(self, job) -> None:
-        stage = {"evolution_prepare": self.prepare,
-                 "evolution_advance": self.advance_one_round,
-                 "evolution_apply": self.apply_eval,
-                 "evolution_finalize": self.finalize,
-                 "evolution_retry": self.retry}[job.kind]
-        await stage(job)
+        if job.kind not in self.stages():
+            raise ConfigError(f"{type(self).__name__} 不支持阶段 {job.kind}")   # fail fast
+        await getattr(self, self.KIND_TO_METHOD[job.kind])(job)
 
-    # ---- 阶段模板：编排与事件记录只在这里写 ----
+    def gateway(self) -> EvalGateway:          # eval_poller 用；默认由 run.eval_config 构造，子类可覆盖
+        return build_eval_gateway(self.run.eval_config)
+
+    # ===== INTERNAL：prepare 骨架（所有引擎共有）+ 它的 4 个钩子 =====
     async def prepare(self, job): ...            # 筛选→setup_workspace→聚类→归因→排序→build_rounds→收口→kickoff
-    async def advance_one_round(self, job): ...  # §5.6：next_pending→patching→make_patch→commit→push→submit eval
-    async def apply_eval(self, job): ...         # §5.8：deciding→decide→接纳(ff)/拒绝(删)→下一轮或 finalize
-    async def finalize(self, job): ...           # §5.8：build_final→校验→push run 分支→completed
-    async def retry(self, job): ...              # §5.8.1：按 blocked_stage+现场状态分发回上面某阶段
-
-    # ---- 变异点：子类实现 ----
     @abstractmethod async def setup_workspace(self, run) -> Workspace | None: ...
     @abstractmethod async def build_rounds(self, run) -> None: ...
     @abstractmethod def final_status(self) -> str: ...
     @abstractmethod async def kickoff(self, run, clusters) -> None: ...
-    @abstractmethod async def make_patch(self, run, round_) -> Patch: ...   # V1 占位 → 真实 LLM/规则
-    @abstractmethod def decide(self, result: EvalResult) -> Decision: ...  # 接纳判定 + 一句话理由
-    @abstractmethod async def build_final(self, run) -> Final: ...          # 终评
-    @abstractmethod def gateway(self) -> EvalGateway: ...                   # 评测接入（§5.7）
 ```
 
-`prepare` 模板的全貌（其余阶段模板见 §5.6 / §5.8）：
+`prepare` 模板的全貌（迭代阶段见 §5.6 / §5.8，均在 `FullEvolutionEngine`）：
 
 ```python
     async def prepare(self, job) -> None:
@@ -454,7 +451,7 @@ class EvolutionEngine(ABC):
         if not probes:
             raise Conflict("NO_PROBES_MATCHED")
 
-        ws = await self.setup_workspace(run)           # 差异点①：clone / 建 run 分支
+        ws = await self.setup_workspace(run)           # 钩子①：clone / 建 run 分支
 
         # 第 1 步问题聚类：写簇与簇内 probe（unit 1 → 2）
         async with db.transaction():
@@ -476,10 +473,10 @@ class EvolutionEngine(ABC):
         await severity_step(run.id)
 
         async with db.transaction():
-            await self.build_rounds(run)               # 差异点②：按 rank 建迭代轮
+            await self.build_rounds(run)               # 钩子②：按 rank 建迭代轮
             await crud.runs.mark_prepared(
                 run.id,
-                status=self.final_status(),            # 差异点③：running / completed
+                status=self.final_status(),            # 钩子③：running / completed
                 progress_unit=4,
                 repo_path=ws.repo_path if ws else None, base_ref=ws.ref if ws else None,
                 base_commit=ws.base_commit if ws else None,
@@ -488,14 +485,25 @@ class EvolutionEngine(ABC):
                 finished_at=now() if self.final_status() == "completed" else None,
                 stats=summarize(probes),
             )
-        await self.kickoff(run, clusters)              # 差异点④：是否提交 evolution_advance
+        await self.kickoff(run, clusters)              # 钩子④：是否提交 evolution_advance
 ```
 
 两个 V1 子类：
 
 ```python
-# full.py —— 完整自进化
+# full.py —— 完整自进化：迭代阶段与迭代钩子只在这里
 class FullEvolutionEngine(EvolutionEngine):
+    KIND_TO_METHOD = {**EvolutionEngine.KIND_TO_METHOD,
+                      "evolution_advance": "advance_one_round",
+                      "evolution_apply": "apply_eval",
+                      "evolution_finalize": "finalize",
+                      "evolution_retry": "retry"}
+
+    def stages(self):
+        return ["evolution_prepare", "evolution_advance",
+                "evolution_apply", "evolution_finalize", "evolution_retry"]
+
+    # ---- prepare 钩子 ----
     async def setup_workspace(self, run):
         cache = RepoCache.ensure_by_url(run.repo_url)  # 本地仓库缓存
         return Workspace.prepare(repo_path=cache.path, sub_dir=run.sub_dir,
@@ -507,20 +515,32 @@ class FullEvolutionEngine(EvolutionEngine):
     async def kickoff(self, run, clusters):
         if clusters:
             await jobs.submit("evolution_advance", {"run_id": run.id}, ref_id=run.id)
+
+    # ---- 迭代阶段：只在 Full 存在（§5.6 / §5.8）----
+    async def advance_one_round(self, job): ...        # 模板见 §5.6
+    async def apply_eval(self, job):
+        round = await evolution_rounds.get(job.payload["evolution_round_id"])
+        await self.apply_round(round)                  # retry 复用同一个 apply_round
+    async def apply_round(self, round): ...            # §5.8 的 apply 模板（入参是轮次，不是 job）
+    async def finalize(self, job): ...                 # 模板见 §5.8
+    async def retry(self, job): ...                    # §5.8.1：分发到 apply_round / finalize / 重推 candidate
+
+    # ---- 迭代钩子：只有 Full 需要 ----
     async def make_patch(self, run, round_): return placeholder_patch(run, round_.cluster_id)
     def decide(self, result) -> Decision:                                  # V1：采纳外部 verdict
         return Decision(result.accepted, decision_sentence(result, result.accepted))
     async def build_final(self, run): return build_placeholder_final(run)
-    def gateway(self): return build_eval_gateway(self.run.eval_config)     # 创建期快照（§5.7）
 
-# cluster_only.py —— 仅聚类预览：prepare 后即终态
+# cluster_only.py —— 仅聚类预览：只声明并实现 prepare
 class ClusterOnlyEngine(EvolutionEngine):
+    def stages(self): return ["evolution_prepare"]
+
     async def setup_workspace(self, run): return None  # 不 clone、不建分支
     async def build_rounds(self, run): pass            # 不建 evolution_rounds
     def final_status(self): return "completed"         # 聚类完成即终态，归入历史组
     async def kickoff(self, run, clusters): pass       # 不进入迭代
-    # advance/apply/finalize/retry 不会被调度（kickoff 不提交后续 job、run 已终态）；
-    # 防御起见仍给出实现：直接 raise ConfigError("cluster_only 无迭代阶段")
+    # 没有 advance/apply/finalize/retry，也没有 make_patch/decide/build_final：
+    # 这些方法及其 kind 不在本引擎契约里；若收到对应 job，handle 直接 ConfigError。
 ```
 
 ```python
@@ -544,9 +564,13 @@ async def evolution_dispatch(job) -> None:
     await EngineFactory.for_run(run, deps).handle(job)
 ```
 
-- **扩展方式**：新增执行类型（m6 的真实执行器 `LlmEvolutionEngine`、增量补簇 `incremental`、只筛选的 `dry_run`）= 新子类 + 注册一行；`engine_key` 随 run 落库（[06 §5.2](06-database-design.md)），历史 run 永远由当时的引擎复现，不受后续注册表变更影响。
-- **为什么是 ABC 模板方法而不是 Protocol**：六步流程的差异是"同一编排里的若干变异点"，编排本身有共享实现，Protocol 表达不了；纯出站接缝（`PayloadSource`、`EvalGateway`）才用 Protocol（接口 + 实现成对，见 [04 §5](04-backend-architecture.md)）。
-- **事件记录由父类统一**：`events.record(...)` 调用全部在基类模板里（先统一，后续确有差异化需求再开子类口子），保证 F20 执行日志不因子类遗漏而缺行。
+- **公开面只有三个**：`stages()` / `handle()` / `gateway()`（`pub` 标注如上）；`prepare` 与迭代阶段只由 `handle` 派发，四个 prepare 钩子与三个迭代钩子只由所在类的模板调用——外部（JobRunner、`eval_poller`）不直接碰阶段方法。
+- **能力由 `stages()` 声明**：`handle` 第一步校验 `job.kind ∈ stages()`，未声明的 kind 立即 `ConfigError`（fail fast + 告警日志）。`ClusterOnlyEngine` 只声明 `["evolution_prepare"]`，迭代阶段的方法在它身上**根本不存在**——不是靠空实现或状态判断来"挡住"，而是契约上就没有。
+- **测试看护**（[§11](#11-测试清单)）：① `ClusterOnlyEngine` 收到 `evolution_advance/apply/finalize/retry` → `ConfigError`；② 每个引擎的 `stages()` 恰好覆盖 `KIND_TO_METHOD` 的键；③ `gateway()` 默认值来自 `run.eval_config`；④ 工厂对未注册 `engine_key` 抛错。
+- **扩展方式**：新增执行类型（m6 的真实执行器 `LlmEvolutionEngine`、增量补簇 `incremental`、只筛选的 `dry_run`）= 新子类（按需选择继承 `EvolutionEngine` 或 `FullEvolutionEngine`）+ 声明 `stages()` + 注册一行；`engine_key` 随 run 落库（[06 §5.2](06-database-design.md)），历史 run 永远由当时的引擎复现，不受后续注册表变更影响。
+- **为什么是 ABC 模板方法而不是 Protocol**：六步流程的差异是"同一编排里的若干钩子"，编排本身有共享实现，Protocol 表达不了；纯出站接缝（`PayloadSource`、`EvalGateway`）才用 Protocol（接口 + 实现成对，见 [04 §5](04-backend-architecture.md)）。
+- **钩子只放在使用它的类里**：`make_patch` / `decide` / `build_final` 只有 Full 用，就只在 Full 声明；基类不留"仅部分子类需要"的抽象方法（那会逼 ClusterOnly 写空实现或抛异常的桩——Template Method 里这属于把钩子错当抽象步骤）。
+- **事件记录由各阶段模板所在类统一调用**：prepare 的事件在基类，advance/apply/finalize 的事件在 Full；子类（钩子实现）不直接调 `events.record`，保证 F20 执行日志不因子类遗漏而缺行。
 - `eval_poller` / `blocked_sweeper` 是进程级基础设施循环，不属于 engine；但遇到具体 run 时同样经 `EngineFactory.for_run` 解析，用 `engine.gateway` 调外部评测（§5.7）。
 - `POST /cluster-previews` 与 `POST /runs` 共用同一入口；差异全部收敛在 `ClusterOnlyEngine`：不建 workspace、不建 `evolution_rounds`、不提交 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
@@ -585,7 +609,7 @@ def simple_cluster(probes: list[Probe]) -> list[Cluster]:
 - 这是**占位算法**：只为让六步流程跑通，不追求语义质量；后续替换成真正的聚类服务时，只改 `simple_cluster` 与簇描述生成，表结构不变。
 - 确定性：排序键用 `probe_id`，同输入同输出，便于测试与复现。
 
-### 5.6 单轮执行：candidate → push → 提交评测（`EvolutionEngine.advance_one_round`）
+### 5.6 单轮执行：candidate → push → 提交评测（`FullEvolutionEngine.advance_one_round`）
 
 push 是评测的前置条件，不再等 run 结束后统一 push。
 
@@ -595,7 +619,7 @@ candidate ref： evo/{YYYYMMDD}-{run_id}/candidate/r{round_seq}
 ```
 
 ```python
-# base.py —— advance 模板：编排与事件在父类；patch 内容与评测接入是子类变异点
+# full.py —— advance 阶段（仅 FullEvolutionEngine）：编排与事件在这里；patch 内容与评测接入是钩子
 async def advance_one_round(self, job):
     run = self.run
     if run.status != 'running':
@@ -610,7 +634,7 @@ async def advance_one_round(self, job):
     candidate_ref = f'{run.branch_name}/candidate/r{round.seq}'
     ws.create_candidate(run.branch_name, candidate_ref)   # 从已接纳基线拉临时分支
 
-    patch = await self.make_patch(run, round)             # 变异点：V1 占位 → 真实 LLM/规则
+    patch = await self.make_patch(run, round)             # 钩子：V1 占位 → 真实 LLM/规则
     ws.apply(patch)
     candidate = ws.commit(build_candidate_message(run, round))
     await evolution_rounds.mark_candidate(round.id, candidate_ref, candidate.hash, candidate.message)
@@ -717,18 +741,21 @@ class EvalGateway(Protocol):
 - 外部接口字段变化时只改 `EvalMapper` 和 `HttpEvalGateway`，业务 service 不动；
 - V1 可用 `FakeEvalGateway` 返回占位分数，但 push 必须真实发生。
 
-### 5.8 应用评测结果、重试与终评（`apply_eval` / `finalize` / `retry` 模板）
+### 5.8 应用评测结果、重试与终评（`FullEvolutionEngine.apply_round` / `finalize` / `retry`）
 
 ```python
-# base.py —— apply 模板：接纳判定 decide() 是子类变异点，返回 Decision（含人话理由）
+# full.py —— apply 阶段：apply_eval 只解包 job，核心是 apply_round（retry 复用）
 async def apply_eval(self, job):
     round = await evolution_rounds.get(job.payload['evolution_round_id'])
+    await self.apply_round(round)
+
+async def apply_round(self, round):
     run = self.run
     ws = Workspace(run.workspace_path)
     result = await evolution_rounds.get_eval_result(round.id)
     await evolution_rounds.mark_deciding(round.id)
 
-    decision = self.decide(result)               # 变异点：V1 external-verdict → 真实阈值/规则
+    decision = self.decide(result)               # 钩子：V1 external-verdict → 真实阈值/规则
     if decision.accepted:
         # 1) 先在 candidate 上 amend：改写 subject 并追加"为什么接纳"
         final = ws.amend(build_accepted_message(run, round, result, decision))
@@ -773,7 +800,7 @@ def decision_sentence(result, accepted: bool) -> str:      # V1：把分数比�
 - patch 阶段失败（生成 / 落盘 / commit）：可重试错误走 `block_run(stage='patch')`，run `blocked`、本轮停在 `patching`；不可恢复错误把本轮置 `failed`、run 置 `failed`（`error_stage` 按子步骤记 `patch` / `commit`）。重试从 `patching` 重新生成 patch，不进入 push/eval。
 - candidate 删除失败不阻塞流程：记 warn 日志，并把 `cleanupError` 写进 `cluster_accepted` / `cluster_rejected` 事件的 `payload`（事件类型严格以 [06 §5.7](06-database-design.md) 枚举为准，不新增 event_type），后续 `clean-candidates` 清理。
 - 若 accept 阶段 push candidate/run 分支失败：走同一 `block_run` + `RunBlocked`，run 进入 `blocked`，保留 candidate ref 和评测结果；`/retry` 从 apply 继续，不重新评测。
-- 因此 `apply_eval` 内所有 push 也必须包在 `try/except GitPushError` 中，不能落入 JobRunner 的通用 `run_failed` 分支。
+- 因此 `apply_round` 内所有 push 也必须包在 `try/except GitPushError` 中，不能落入 JobRunner 的通用 `run_failed` 分支。
 
 #### 5.8.1 阻塞重试策略
 
@@ -791,16 +818,16 @@ push 失败（瞬时错误）
 - 自动退避每次只做 1 次 push；`evolution_retry` 先把 `retry_attempts += 1` 再执行，失败后按 `1min → 5min → 15min` 安排下一次；第 3 次后 `next_retry_at=NULL`。
 - 初始 `block_run` 不重置为“无重试”：`retry_attempts=0`，首次失败后 1min 进入第一次退避；手动 `/retry` 才把计数重置为 0。
 - 手动 `POST /runs/{rid}/retry` 立即入队；`push` 阶段按正常 3 次立即重试，`eval` 阶段重新 submit；成功则继续，失败重新进入 blocked。
-- `retry` 是基类模板：按 `blocked_stage` + 现场状态分发回本 engine 的阶段方法，两种"继续"情形都不重新评测、不重跑迭代：`push` 且本轮已有评测结果 → 调 `apply_eval` 继续（重推 amended candidate / run 分支）；final 已落库 → 调 `finalize` 继续（最终 push）；否则重推当前 candidate。`eval` → 重新 submit 评测（新 evalId）。
+- `retry` 是 Full 的阶段方法：按 `blocked_stage` + 现场状态分发，两种"继续"情形都不重新评测、不重跑迭代：`push` 且本轮已有评测结果 → 调 `self.apply_round(round)` 继续（重推 amended candidate / run 分支）；final 已落库 → 调 `self.finalize` 继续（最终 push）；否则重推当前 candidate。`eval` → 重新 submit 评测（新 evalId）。
 - 认证/权限/分支保护/non-fast-forward 等永久错误不进入自动退避；直接 `blocked` + `next_retry_at=NULL`，等人工修复后 `/retry`。
 - `eval` 失败/超时不自动重试；`/retry` 重新 submit 评测（新 evalId），旧的 `eval_external_id` 保留在事件 payload 中。
 - 手动重试会重置自动退避计数；若再次进入同一阶段失败，重新从 3 次立即 + 1/5/15min 开始。
 - 所有登录用户可调用 `/retry`；同一 run 已有 retry job 时返回 `202 {jobId, reused:true}`，不重复入队。
 
-- 终评（`finalize` 模板；终评内容 `build_final` 是子类变异点）：
+- 终评（`finalize` 阶段；终评内容 `build_final` 是钩子）：
 
 ```python
-# base.py —— finalize 模板
+# full.py —— finalize 阶段
 async def finalize(self, job):
     run = self.run
     await finals.insert(run.id, await self.build_final(run))   # 变异点：占位 → 真实终评
@@ -935,7 +962,7 @@ severity = round(min(10, confidence * impact * report_weight(report_count)), 1)
 - `StepPayload` 用 `key` 判别；`index` 只用于排序/展示，不参与路由分发。
 
 - 第 4 步：patch 落盘、candidate commit、candidate push、amend/fast-forward/拒绝删 ref 都是真实的；patch 内容与评测分数是占位；终评结果占位。
-- 真实 patch/评测接入后，新增 `EvolutionEngine` 子类（覆盖 `make_patch` / `decide` / `build_final` / `gateway`）并注册新 `engine_key`，状态机、表与 git 流程不变（§5.4）。
+- 真实 patch/评测接入后，新增 `EvolutionEngine` 子类（覆盖 `make_patch` / `decide` / `build_final`，需要时覆盖 `gateway`）并注册新 `engine_key`，状态机、表与 git 流程不变（§5.4）。
 
 ## 6. 任务执行与 SSE（`service/jobs.py` + `service/events.py`）
 
@@ -1168,7 +1195,7 @@ catalogs + health + 收尾
 | session_families | 4 种排序、状态筛选、搜索、整树聚合统计（各 agent 求和）；问题数按会话聚合（无记录=0、外部新增后列表立即可见） |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |
-| evolution | 状态机边界（preparing/running/blocked/completed）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked；engine 工厂 fail fast（未知 `engine_key`）、`cluster_only` 终态不推进、`make_patch`/`decide`/`build_final` 变异点可用 fake 子类单测 |
+| evolution | 状态机边界（preparing/running/blocked/completed）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked；engine 工厂 fail fast（未知 `engine_key`）、stages 契约（`ClusterOnlyEngine` 收到 `evolution_advance/apply/finalize/retry` → `ConfigError`；每个引擎 `stages()` 与 `KIND_TO_METHOD` 键一致）、`gateway()` 默认值来自 `run.eval_config`、迭代钩子可用 fake 子类单测 |
 | evolution git | 临时 git 仓库：clone、run 分支、candidate ref、push 重试（3 次立即 + 1/5/15min）、接纳 fast-forward、拒绝删 ref、run 分支不被污染 |
 | eval_poller | 到期扫描、每 5min 轮询、completed→apply、failed/timeout→blocked、重启后从 `next_poll_at` 恢复 |
 | blocked_sweeper | 只对可重试错误退避；1/5/15min 各一次；3 次后不再自动；`/retry` 手动恢复 |
