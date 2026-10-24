@@ -6,82 +6,62 @@ Records the current service boundaries, data flow and data-layer strategy. Imple
 
 ## Product boundary
 
-Currently Codex only:
-
-1. Import Codex session traces from this machine.
-2. Browse messages, reasoning, tool calls, outputs and errors turn by turn in the web app.
-3. Diagnose traces with rules or AI.
-4. Link every finding back to concrete trace evidence and turn it into an actionable improvement.
-
-Claude Code, automatic skill rewriting and the comparative-evaluation loop belong to later milestones, outside the M1 slice.
+Harness Evolution works with coding-agent traces to provide navigable session browsing, problem attribution and evolution runs. M1 currently delivers the platform foundation only; trace, problem and evolution data are not yet in the runtime path.
 
 ## Service split
 
 | Unit | Technology | Responsibility |
 |---|---|---|
-| `apps/web` | React + Vite | Trace browsing, diagnosis interaction, findings board |
-| `apps/server` | Fastify + TypeScript | HTTP API, ingestion, storage access, analysis orchestration |
-| `packages/contracts` | TypeScript | Shared protocols and domain types across API and web |
-| `research/` | Markdown + YAML | Evaluation tasks, harness adapters, experiment records |
+| `apps/api` | Python 3.12 + FastAPI | HTTP API, service orchestration, storage and third-party boundaries |
+| `apps/web` | React + Vite | Current development shell; M1 later switches to Vue 3 |
+| `packages/contracts` | TypeScript | Shared protocols and domain types for the web app |
+| `research/` | Markdown + YAML | Evaluation tasks, harness adapters and experiment records |
 
-The backend is a modular monolith, not microservices; split services only when independent scaling or isolation demands it.
+The backend is a modular monolith. Routes are registered only in `apps/api/app/main.py`; the HTTP layer handles validation, identity and responses, business rules live in `service/`, and storage and third parties are isolated in `db/` and `third_party_api/`.
 
 ## Vertical slices
 
 ```text
-apps/server/src/
-  app.ts                HTTP 组装入口
-  sessions/             session 列表、详情、时间线
-  ingest/               Codex rollout 扫描与解析
-  storage/              repository 接口与 SQLite 实现
-  analysis/             规则诊断、AI 诊断、分析任务
+apps/api/app/
+  main.py               FastAPI composition root
+  api/                  domain routers
+  service/              business rules and orchestration
+  db/                   database and CRUD boundary
+  third_party_api/      outbound API adapters
+  middleware/           request context and identity boundary
 ```
 
-Slices collaborate through explicit interfaces; routes are registered only in `app.ts`, so feature entry points never scatter.
+Slices collaborate through explicit interfaces; dependency direction remains `api → service → db/third_party_api`.
 
-## Data flow
+## Current request path
 
 ```text
-~/.codex/sessions/**/*.jsonl
-        │
-        ▼
-  ingest 解析与归一化
-        │
-        ▼
-  SQLite（raw_records / sessions / turns / items）
-        │
-        ├──► REST API ──► Web 时间线
-        │
-        └──► analysis worker ──► findings ──► Web 问题看板
+Web ──► FastAPI middleware ──► api/health
+                     │
+                     └──► non-public /api/* → 401 AUTH_REQUIRED
 ```
 
-Raw records and normalized views are stored separately: parser upgrades can replay without rereading the user's directory.
+`/api/health` is public and returns `ok/service/phase`. Until identity lands, every other `/api/*` path fails closed; unknown routes, validation failures and uncaught exceptions share one error envelope.
 
 ## Data-layer strategy
 
-- Start with SQLite, keep the database file under `data/`, and never commit it.
-- Business code depends only on repository interfaces and never concatenates SQL.
-- Keep schemas portable and avoid SQLite-specific types; migrations are versioned.
-- Switching to Postgres replaces repository implementations and migrations without changing the API contract.
-- Ingestion must be idempotent: rescanning the same rollout creates no duplicate session or turn.
+- Production targets MySQL while automated tests use SQLite; the scaffold does not yet create connections or migrations.
+- Business code depends on repository/Database interfaces and never concatenates SQL directly.
+- Raw trace payloads are the source of truth; normalized data must be replayable and idempotent.
+- External systems own problem and attribution writes; this service reads them.
+- Secrets enter only through environment variables, never the repository or database.
 
-## API draft
+## Current API
 
 ```text
-GET  /api/health
-GET  /api/sessions
-GET  /api/sessions/:id
-GET  /api/sessions/:id/timeline
-POST /api/ingest
-POST /api/sessions/:id/analyze
-GET  /api/analyses/:id
+GET /api/health
 ```
 
-Only `GET /api/health` exists today. Later endpoints change `packages/contracts` first, then the server; the web app never copies field definitions.
+Other draft endpoints belong to later milestones and are not implemented.
 
 ## Shared contract
 
-The health response is the first contract sample across both ends:
+The health response is the current minimal contract between both ends:
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
@@ -108,6 +88,6 @@ const health: HealthResponse = {
 
 ## Current state and non-goals
 
-- Present: workspace, web shell, server shell, shared contract, health check.
-- Missing: database, migrations, trace parsing, diagnosis, model calls, user system.
-- Explicitly out: multi-tenancy, permissions, production credentials, automatic code changes without evaluation evidence.
+- Present: modular FastAPI scaffold, unified error model, health check and Python lint/type/test gates.
+- Missing: database, migrations, real identity, trace parsing, problem queries and evolution execution.
+- Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

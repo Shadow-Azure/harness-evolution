@@ -71,4 +71,82 @@ describe("example findings", () => {
       agentThreadId: "a",
     });
   });
+
+  it("rejects targets and anchors that cannot be resolved", async () => {
+    const source = createMemorySnapshotSource({
+      "root.jsonl": [metaLine({ threadId: "r" })],
+    });
+    const index = await buildFamilyIndex({ roots: ["r"], source });
+    const family = index.families[0];
+    if (!family) throw new Error("family missing");
+    const base = {
+      ...EXAMPLE_FINDINGS[0]!,
+      familyRootThreadId: "r",
+      evidence: [],
+    };
+
+    await expect(
+      resolveFinding({
+        finding: {
+          ...base,
+          attribution: {
+            ...base.attribution,
+            target: { type: "agent", id: "agent:missing", name: "" },
+          },
+        },
+        family,
+        source,
+      }),
+    ).rejects.toThrow("不在家族");
+    await expect(
+      resolveFinding({
+        finding: {
+          ...base,
+          attribution: {
+            ...base.attribution,
+            target: { type: "skill", id: "Skill:Invalid", name: "Invalid" },
+          },
+        },
+        family,
+        source,
+      }),
+    ).rejects.toThrow("invalid skill target");
+    await expect(
+      resolveFinding({
+        finding: { ...base, familyRootThreadId: "other" },
+        family,
+        source,
+      }),
+    ).rejects.toThrow("不是 r");
+    await expect(
+      resolveFinding({
+        finding: {
+          ...base,
+          attribution: {
+            ...base.attribution,
+            target: { type: "skill", id: "skill:test", name: "test" },
+          },
+          evidence: [{ ...EXAMPLE_FINDINGS[1]!.evidence[0]!, rolloutId: "missing.jsonl" }],
+        },
+        family,
+        source,
+      }),
+    ).rejects.toThrow("不在家族");
+    await expect(
+      resolveFinding({
+        finding: {
+          ...base,
+          attribution: {
+            ...base.attribution,
+            target: { type: "skill", id: "skill:test", name: "test" },
+          },
+          evidence: [
+            { ...EXAMPLE_FINDINGS[0]!.evidence[0]!, rolloutId: "root.jsonl", ordinal: 99 },
+          ],
+        },
+        family,
+        source,
+      }),
+    ).rejects.toThrow("ordinal 99");
+  });
 });

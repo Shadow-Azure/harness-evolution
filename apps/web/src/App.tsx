@@ -68,7 +68,7 @@ export function App() {
 
       <main>
         <section className="hero">
-          <span className="eyebrow">SCAFFOLD · M0</span>
+          <span className="eyebrow">SCAFFOLD · M1</span>
           <h1>
             看清 agent 每一步，
             <br />
@@ -80,7 +80,7 @@ export function App() {
           </p>
           <div className="hero-meta">
             <span>React + Vite</span>
-            <span>Fastify + TypeScript</span>
+            <span>FastAPI + Python</span>
             <span>SQLite（待接入）</span>
           </div>
         </section>

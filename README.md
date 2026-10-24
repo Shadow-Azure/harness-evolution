@@ -2,21 +2,22 @@
 
 [English](README.en.md) | 中文
 
-面向 coding agent（先支持 Codex）的轨迹查看与问题诊断服务：导入真实执行轨迹，按轮次看清目标、工具调用、错误与结果，把问题回链到证据，再转化为可评测的 harness 改进项。
+面向 coding agent 的轨迹查看与问题诊断服务：导入真实执行轨迹，按轮次看清目标、工具调用、错误与结果，把问题回链到证据，再转化为可评测的 harness 改进项。
 
 ## 当前状态
 
-M0 工程基线：pnpm workspace、React + Vite 前端、Fastify + TypeScript 后端、共享 contracts 包与健康检查已打通。轨迹解析、SQLite 存储与诊断能力按 roadmap 逐步接入，边界见 [docs/architecture.md](docs/architecture.md)。
+M1 工程骨架推进中：pnpm workspace、React + Vite 前端、Python 3.12 + FastAPI 后端、共享 contracts 包与健康检查已打通。数据、鉴权、轨迹和诊断能力按 [路线图](docs/roadmap.md) 逐步接入，边界见 [架构](docs/architecture.md)。
 
 ## 快速开始
 
 ```sh
 pnpm install
+pnpm setup:api
 pnpm dev
 ```
 
 - Web：http://localhost:5173
-- API：http://127.0.0.1:4310/api/health
+- API：http://127.0.0.1:8787/api/health
 
 ## 文档与门禁
 
@@ -36,13 +37,13 @@ pnpm verify:flow   # 开发流程状态机
 ## 结构
 
 ```text
-apps/web/          React + Vite 前端
-apps/server/       Fastify + TypeScript 后端
-packages/contracts 前后端共享协议
-docs/              工程文档（分层见 docs/AGENTS.md）
-.agents/flow/      roadmap / milestone / issue 流程树
-.agents/notes/     设计决策记录
-.agents/skills/    PR 检视、Computer Use 等可复用技能
-research/          评测任务、harness 适配与实验记录
-scripts/           零依赖门禁脚本
+apps/web/          React + Vite frontend
+apps/api/          Python 3.12 + FastAPI backend
+packages/contracts Shared protocols
+docs/              Engineering docs (layers in docs/AGENTS.md)
+.agents/flow/      Roadmap / milestone / issue tree
+.agents/notes/     Decision records
+.agents/skills/    Reusable review and Computer Use skills
+research/          Evaluation tasks, adapters and experiments
+scripts/           Dependency-free gates
 ```

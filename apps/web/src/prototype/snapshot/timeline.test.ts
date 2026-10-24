@@ -203,4 +203,118 @@ describe("toTimelineItems", () => {
       details: { type: "message", role: "assistant" },
     });
   });
+
+  it("normalizes every remaining response and event shape", () => {
+    const lines = [
+      responseLine(1, { type: "message", role: "developer", content: "rules" }),
+      responseLine(2, {
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "thought" }],
+      }),
+      responseLine(3, { type: "web_search_call", query: "vitest coverage" }),
+      responseLine(4, { type: "custom_tool_call", call_id: "custom", input: "input" }),
+      responseLine(5, {
+        type: "custom_tool_call_output",
+        call_id: "custom",
+        output: "Process exited with code 1\n",
+      }),
+      responseLine(6, { type: "unknown_response" }),
+      eventLine(7, {
+        type: "item_completed",
+        item: { type: "UserMessage", content: [{ type: "text", text: "event user" }] },
+      }),
+      eventLine(8, {
+        type: "item_completed",
+        item: { type: "Reasoning", summary_text: [{ type: "summary_text", text: "event thought" }] },
+      }),
+      eventLine(9, {
+        type: "item_completed",
+        item: { type: "CommandExecution", status: "failed" },
+      }),
+      eventLine(10, {
+        type: "item_completed",
+        item: { type: "FileChange", changes: {}, status: "failed" },
+      }),
+      eventLine(11, {
+        type: "item_completed",
+        item: { type: "McpToolCall", status: "failed" },
+      }),
+      eventLine(12, {
+        type: "item_completed",
+        item: {
+          type: "CollabAgentToolCall",
+          status: "failed",
+          receiver_thread_ids: [1, "receiver"],
+          receiver_agents: [null, { agent_path: "/root/receiver" }],
+        },
+      }),
+      eventLine(13, { type: "item_completed", item: { type: "SubAgentActivity" } }),
+      eventLine(14, { type: "item_completed", item: { type: "WebSearch", query: "search" } }),
+      eventLine(15, { type: "item_completed", item: { type: "ImageView", path: "/tmp/image.png" } }),
+      eventLine(16, { type: "item_completed", item: { type: "ContextCompaction" } }),
+      eventLine(17, { type: "item_completed", item: { type: "UnknownItem", id: "unknown" } }),
+      eventLine(18, { type: "item_completed", item: {} }),
+      eventLine(19, { type: "task_started", error: "failed to start" }),
+      eventLine(20, { type: "task_complete" }),
+      eventLine(21, { type: "thread_settings_applied" }),
+      eventLine(22, { type: "ignored_event" }),
+      tokenLine(23, { info: {} }),
+      JSON.stringify({ ordinal: 24, type: "compacted", payload: { retained_context: "retained" } }),
+      JSON.stringify({ ordinal: 25, type: "unknown_record", payload: {} }),
+      JSON.stringify({ ordinal: 26, type: "session_meta", payload: {} }),
+    ];
+    const parsed = lines
+      .map((line, index) => toRecord("r.jsonl", line, index + 1))
+      .filter((record): record is NonNullable<typeof record> => record !== null);
+
+    const items = toTimelineItems({ agent, records: parsed });
+
+    expect(items.map((item) => item.kind)).toEqual([
+      "developer-message",
+      "reasoning",
+      "web-search",
+      "tool-call",
+      "tool-output",
+      "other",
+      "user-message",
+      "reasoning",
+      "command",
+      "file-change",
+      "mcp-call",
+      "collab-call",
+      "subagent-activity",
+      "web-search",
+      "image-view",
+      "context-compaction",
+      "other",
+      "turn",
+      "turn",
+      "other",
+      "token-usage",
+      "context-compaction",
+      "other",
+    ]);
+    expect(items[1]?.text).toBe("thought");
+    expect(items[4]).toMatchObject({ status: "error", callId: "custom" });
+    expect(items[10]?.details).toMatchObject({
+      type: "mcp",
+      server: "unknown",
+      tool: "unknown",
+      durationMs: null,
+    });
+    expect(items[11]?.details).toMatchObject({
+      type: "collab",
+      receiverThreadIds: ["receiver"],
+      receiverAgentPaths: ["/root/receiver"],
+    });
+    expect(items[17]).toMatchObject({ status: "error", text: "failed to start" });
+    expect(items[18]?.status).toBe("ok");
+    expect(items[20]?.details).toMatchObject({
+      type: "token-usage",
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    });
+    expect(items[21]?.text).toBe("retained");
+  });
 });
