@@ -39,6 +39,8 @@ jobs:
         run: pnpm lint:api
       - name: API typecheck
         run: pnpm typecheck:api
+      - name: SQLite 数据库测试
+        run: pnpm test:db
       - name: 单元测试（前后端，覆盖率 ≥80%）
         run: pnpm test
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
@@ -54,6 +56,40 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: node scripts/verify-flow.mjs --diff origin/${{ github.base_ref }}
+
+  mysql:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: harness-test
+          MYSQL_DATABASE: harness_evolution_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pharness-test"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
+      - name: Python 环境
+        run: |
+          python -m venv apps/api/.venv
+          apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
+      - name: MySQL 双方言 repository 测试
+        env:
+          HE_DB_DIALECT: mysql
+          HE_DB_URL: mysql+asyncmy://root:harness-test@127.0.0.1:3306/harness_evolution_test?charset=utf8mb4
+          HE_REQUIRE_MYSQL: "1"
+        run: pnpm test:db:mysql
 
   flow-online:
     # 在线 lane：流程树与 GitHub 双侧一致（只校验；写 GitHub 的唯一入口是 pnpm flow:sync）。

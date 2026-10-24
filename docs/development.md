@@ -10,6 +10,7 @@
 - 首次 clone 后运行 `pnpm install && pnpm setup:api`；本地钩子用 `pnpm install:hooks` 安装。
 - 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
 - API 文档与 OpenAPI 默认关闭；`pnpm dev` 显式开启，生产保持默认或显式设置 `HE_DOCS_ENABLED=false`。
+- `pnpm dev` 默认 SQLite；MySQL 设 `HE_DB_DIALECT=mysql`、`HE_DB_URL`，凭据仅走环境。
 
 ## 开发流程
 
@@ -18,12 +19,14 @@
 ## 日常循环
 
 ```sh
-pnpm dev          # API + Web development
-pnpm typecheck    # Workspace type checks
-pnpm test:web     # Web unit tests and coverage ≥80%
-pnpm test:api     # FastAPI tests and coverage ≥80%
-pnpm test:integration # Web → Vite proxy → FastAPI
-pnpm test:all     # Unit and integration suites
+pnpm dev
+pnpm typecheck
+pnpm test:web
+pnpm test:api
+pnpm test:db
+pnpm test:db:mysql
+pnpm test:integration
+pnpm test:all
 ```
 
 提交前按改动面选择门禁：
@@ -32,7 +35,7 @@ pnpm test:all     # Unit and integration suites
 |---|---|
 | 仅文档 / Agent Note | `pnpm lint:docs` |
 | 前端代码 | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
-| 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:integration` |
+| 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
 | 契约或跨包类型 | `pnpm typecheck && pnpm test:all` |
 | 流程树 | `pnpm verify:flow` |
 | 涉及文档示例或死链 | `pnpm verify:docs` |

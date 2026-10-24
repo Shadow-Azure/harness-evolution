@@ -15,6 +15,8 @@ const PYTHON =
 
 const COMMANDS = {
   dev: ["-m", "app", "--reload"],
+  db: ["-m", "pytest", "tests/test_database.py", "-m", "not mysql"],
+  "db-mysql": ["-m", "pytest", "tests/test_database.py", "-m", "mysql", "--maxfail=1"],
   lint: ["-m", "ruff", "check", ".", "--output-format", "concise"],
   start: ["-m", "app"],
   test: [
@@ -46,7 +48,11 @@ const result = spawnSync(PYTHON, COMMANDS[command], {
   cwd: API_DIR,
   env:
     command === "dev"
-      ? { ...process.env, HE_DOCS_ENABLED: process.env.HE_DOCS_ENABLED ?? "true" }
+      ? {
+          ...process.env,
+          HE_DB_DIALECT: process.env.HE_DB_DIALECT ?? "sqlite",
+          HE_DOCS_ENABLED: process.env.HE_DOCS_ENABLED ?? "true",
+        }
       : process.env,
   stdio: "inherit",
 });

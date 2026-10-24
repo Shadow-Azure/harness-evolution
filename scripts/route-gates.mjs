@@ -14,14 +14,26 @@ import { execFileSync } from "node:child_process";
 export const ROUTES = [
   {
     match: (p) => p.startsWith("apps/api/"),
-    commands: ["lint:api", "typecheck:api", "test:api", "test:integration", "verify:docs"],
-    reason: "Python API：ruff、mypy、pytest/coverage、跨栈集成测试与文档门禁",
+    commands: [
+      "lint:api",
+      "typecheck:api",
+      "test:api",
+      "test:db",
+      "test:integration",
+      "verify:docs",
+    ],
+    reason: "Python API：ruff、mypy、pytest/coverage、数据库测试、跨栈集成与文档门禁",
   },
   {
     match: (p) =>
       (p.startsWith("apps/") && !p.startsWith("apps/api/")) || p.startsWith("packages/"),
     commands: ["build", "test:web", "test:integration", "verify:docs"],
     reason: "TS 源码：Web 单测/80% 覆盖率、跨栈集成测试、构建与文档门禁",
+  },
+  {
+    match: (p) => p.startsWith("tests/integration/"),
+    commands: ["test:integration", "verify:docs"],
+    reason: "跨栈测试：真实启动 Web 与 API",
   },
   {
     match: (p) => p.startsWith("scripts/"),
@@ -61,6 +73,7 @@ const COMMAND_ORDER = [
   "lint:api",
   "typecheck:api",
   "test:api",
+  "test:db",
   "test:web",
   "test:integration",
   "test:gates",

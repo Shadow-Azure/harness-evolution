@@ -41,11 +41,13 @@ Web ──► FastAPI middleware ──► api/health
                      └──► non-public /api/* → 401 AUTH_REQUIRED
 ```
 
-`/api/health` is public and returns `ok/service/phase`. Until identity lands, every other `/api/*` path fails closed; unknown routes, validation failures and uncaught exceptions share one error envelope.
+`/api/health` is public and returns `ok/service/phase/version/db`. A failed database check returns HTTP 503 while the API process stays reachable. Until identity lands, every other `/api/*` path fails closed; unknown routes, validation failures and uncaught exceptions share one error envelope.
 
 ## Data-layer strategy
 
-- Production targets MySQL while automated tests use SQLite; the scaffold does not yet create connections or migrations.
+- Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
+- The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
+- Alembic maintains one dual-dialect migration tree; both empty SQLite and MySQL databases upgrade to head, with batch mode for SQLite changes.
 - Business code depends on repository/Database interfaces and never concatenates SQL directly.
 - Raw trace payloads are the source of truth; normalized data must be replayable and idempotent.
 - External systems own problem and attribution writes; this service reads them.
@@ -61,7 +63,7 @@ Other draft endpoints belong to later milestones and are not implemented.
 
 ## Shared contract
 
-The health response is the current minimal contract between both ends:
+The health response is the current minimal contract between both ends, with API and database state independently observable:
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
@@ -69,6 +71,8 @@ export interface HealthResponse {
   ok: boolean;
   service: "harness-evolution";
   phase: ServicePhase;
+  version: string;
+  db: DatabaseHealth;
 }
 ```
 
@@ -83,11 +87,17 @@ const health: HealthResponse = {
   ok: true,
   service: "harness-evolution",
   phase: "scaffold",
+  version: "0.1.0",
+  db: {
+    dialect: "sqlite",
+    ok: true,
+    latencyMs: 0.2,
+  },
 };
 ```
 
 ## Current state and non-goals
 
-- Present: modular FastAPI scaffold, unified error model, health check and Python lint/type/test gates.
-- Missing: database, migrations, real identity, trace parsing, problem queries and evolution execution.
+- Present: modular FastAPI scaffold, unified error model, SQLite/MySQL Database boundary, Alembic baseline, health check and Python lint/type/test gates.
+- Missing: domain tables, real identity, trace parsing, problem queries and evolution execution.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

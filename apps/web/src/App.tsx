@@ -34,21 +34,29 @@ export function App() {
 
   useEffect(() => {
     fetch("/api/health")
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<HealthResponse>;
+      .then(async (response) => {
+        const payload = (await response.json()) as HealthResponse;
+        if (!response.ok && response.status !== 503) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        setHealth(payload);
       })
-      .then(setHealth)
       .catch((error: unknown) => {
         setConnectionError(error instanceof Error ? error.message : String(error));
       });
   }, []);
 
-  const status = health
-    ? "API 已连接"
+  const databaseName =
+    health?.db.dialect === "mysql" ? "MySQL" : health?.db.dialect === "sqlite" ? "SQLite" : "数据库";
+  const databaseState = health ? (health.db.ok ? "已连接" : "连接异常") : connectionError ? "未知" : "检查中";
+  const status = health?.db.ok
+    ? `API 已连接 · ${databaseName}`
+    : health
+      ? "数据库异常"
     : connectionError
       ? "API 未连接"
       : "连接中…";
+  const statusClass = health?.db.ok ? "ok" : health || connectionError ? "error" : "";
 
   return (
     <div className="shell">
@@ -60,7 +68,7 @@ export function App() {
             <span>Agent 轨迹诊断台</span>
           </div>
         </div>
-        <div className={`status-pill ${health ? "ok" : connectionError ? "error" : ""}`}>
+        <div className={`status-pill ${statusClass}`}>
           <span className="status-dot" />
           {status}
         </div>
@@ -81,7 +89,7 @@ export function App() {
           <div className="hero-meta">
             <span>React + Vite</span>
             <span>FastAPI + Python</span>
-            <span>SQLite（待接入）</span>
+            <span>{databaseName} · {databaseState}</span>
           </div>
         </section>
 
@@ -103,8 +111,8 @@ export function App() {
           </div>
           <p>
             前端负责浏览与诊断交互；后端负责导入、存储和分析编排；共享协议放在
-            <code> packages/contracts</code>。数据层会先使用 SQLite，但业务只依赖
-            repository 接口，后续可替换为 Postgres。
+            <code> packages/contracts</code>。生产使用 MySQL 8，SQLite 用于本地开发与测试；
+            业务只依赖 repository 接口。
           </p>
         </section>
       </main>

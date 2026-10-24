@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { after, before, test } from "node:test";
 
 const root = process.cwd();
@@ -10,6 +13,7 @@ let web;
 let webBaseUrl;
 let apiLogs = "";
 let webLogs = "";
+let dataDir;
 
 function capture(child, append) {
   child.stdout.on("data", (chunk) => append(String(chunk)));
@@ -33,7 +37,7 @@ async function availablePort() {
   });
 }
 
-async function waitFor(url, child, logs) {
+async function waitFor(url, child, logs, accept = (response) => response.ok) {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
@@ -41,7 +45,7 @@ async function waitFor(url, child, logs) {
     }
     try {
       const response = await fetch(url);
-      if (response.ok) return;
+      if (accept(response)) return response;
     } catch {
       // The child has not bound its port yet.
     }
@@ -82,6 +86,7 @@ async function stop(child) {
 before(async () => {
   const apiPort = await availablePort();
   const webPort = await availablePort();
+  dataDir = await mkdtemp(path.join(tmpdir(), "harness-integration-"));
   webBaseUrl = `http://127.0.0.1:${webPort}`;
 
   api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
@@ -89,6 +94,8 @@ before(async () => {
     env: {
       ...process.env,
       HE_DOCS_ENABLED: "false",
+      HE_DATA_DIR: dataDir,
+      HE_DB_DIALECT: "sqlite",
       HE_HOST: "127.0.0.1",
       HE_PORT: String(apiPort),
       PYTHONUNBUFFERED: "1"
@@ -123,6 +130,7 @@ before(async () => {
 after(async () => {
   await stop(web);
   await stop(api);
+  if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
 test("health succeeds through the Vite proxy with the shared contract", async () => {
@@ -131,11 +139,13 @@ test("health succeeds through the Vite proxy with the shared contract", async ()
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("x-request-id") ?? "", /\S/);
-  assert.deepEqual(body, {
-    ok: true,
-    phase: "scaffold",
-    service: "harness-evolution"
-  });
+  assert.equal(body.ok, true);
+  assert.equal(body.phase, "scaffold");
+  assert.equal(body.service, "harness-evolution");
+  assert.equal(body.version, "0.1.0");
+  assert.equal(body.db.dialect, "sqlite");
+  assert.equal(body.db.ok, true);
+  assert.equal(typeof body.db.latencyMs, "number");
 });
 
 test("protected API failures keep the unified envelope through the proxy", async () => {
@@ -150,4 +160,88 @@ test("protected API failures keep the unified envelope through the proxy", async
       message: "authentication is required"
     }
   });
+});
+
+test("database failure returns a sanitized 503 through the real proxy", async () => {
+  const brokenApiPort = await availablePort();
+  const brokenWebPort = await availablePort();
+  const brokenDataDir = await mkdtemp(path.join(tmpdir(), "harness-broken-db-"));
+  const brokenDbPath = path.join(brokenDataDir, "missing", "harness.db");
+  const brokenWebUrl = `http://127.0.0.1:${brokenWebPort}`;
+  let brokenApi;
+  let brokenWeb;
+  let brokenApiLogs = "";
+  let brokenWebLogs = "";
+
+  try {
+    brokenApi = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
+      cwd: root,
+      env: {
+        ...process.env,
+        HE_DOCS_ENABLED: "false",
+        HE_DB_DIALECT: "sqlite",
+        HE_DB_URL: `sqlite+aiosqlite:///${brokenDbPath}`,
+        HE_HOST: "127.0.0.1",
+        HE_PORT: String(brokenApiPort),
+        PYTHONUNBUFFERED: "1"
+      },
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    capture(brokenApi, (chunk) => {
+      brokenApiLogs += chunk;
+    });
+    await waitFor(
+      `http://127.0.0.1:${brokenApiPort}/api/health`,
+      brokenApi,
+      () => brokenApiLogs,
+      (response) => response.status === 503
+    );
+
+    brokenWeb = spawn(
+      pnpm,
+      [
+        "--filter",
+        "@harness/web",
+        "exec",
+        "vite",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(brokenWebPort),
+        "--strictPort"
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          HE_API_PROXY_URL: `http://127.0.0.1:${brokenApiPort}`
+        },
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    );
+    capture(brokenWeb, (chunk) => {
+      brokenWebLogs += chunk;
+    });
+    await waitFor(brokenWebUrl, brokenWeb, () => brokenWebLogs);
+
+    const response = await fetch(`${brokenWebUrl}/api/health`);
+    const rawBody = await response.text();
+    const body = JSON.parse(rawBody);
+
+    assert.equal(response.status, 503);
+    assert.equal(body.ok, false);
+    assert.equal(body.db.dialect, "sqlite");
+    assert.equal(body.db.ok, false);
+    assert.equal(typeof body.db.error, "string");
+    assert.doesNotMatch(rawBody, /super-secret|db\.internal/);
+    const escapedDbPath = brokenDbPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.doesNotMatch(rawBody, new RegExp(escapedDbPath));
+    assert.doesNotMatch(brokenApiLogs, new RegExp(escapedDbPath));
+  } finally {
+    await stop(brokenWeb);
+    await stop(brokenApi);
+    await rm(brokenDataDir, { recursive: true, force: true });
+  }
 });

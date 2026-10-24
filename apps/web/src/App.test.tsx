@@ -38,7 +38,13 @@ describe("App", () => {
         json: async () => ({
           ok: true,
           phase: "scaffold",
-          service: "harness-evolution"
+          service: "harness-evolution",
+          version: "0.1.0",
+          db: {
+            dialect: "sqlite",
+            ok: true,
+            latencyMs: 0.4
+          }
         })
       })
     );
@@ -46,7 +52,11 @@ describe("App", () => {
     const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("API 已连接");
+    expect(container.textContent).toContain("SQLite");
     expect(container.textContent).toContain("FastAPI + Python");
+    expect(container.textContent).toContain("生产使用 MySQL 8");
+    expect(container.textContent).toContain("SQLite 用于本地开发与测试");
+    expect(container.textContent).not.toContain("Postgres");
     await act(async () => root.unmount());
   });
 
@@ -59,12 +69,44 @@ describe("App", () => {
     await act(async () => root.unmount());
   });
 
+  it("renders a database failure when the API is reachable but unhealthy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: async () => ({
+          ok: false,
+          phase: "scaffold",
+          service: "harness-evolution",
+          version: "0.1.0",
+          db: {
+            dialect: "mysql",
+            ok: false,
+            latencyMs: 1.2,
+            error: "OperationalError: unavailable"
+          }
+        })
+      })
+    );
+
+    const { container, root } = await renderApp();
+
+    expect(container.textContent).toContain("数据库异常");
+    expect(container.textContent).toContain("MySQL");
+    expect(container.textContent).toContain("MySQL · 连接异常");
+    expect(container.textContent).not.toContain("连接状态检查中");
+    await act(async () => root.unmount());
+  });
+
   it("renders the loading state while the health request is pending", async () => {
     vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise(() => undefined)));
 
     const { container, root } = await renderApp();
 
     expect(container.textContent).toContain("连接中…");
+    expect(container.textContent).toContain("数据库 · 检查中");
+    expect(container.textContent).not.toContain("SQLite · 检查中");
     await act(async () => root.unmount());
   });
 });

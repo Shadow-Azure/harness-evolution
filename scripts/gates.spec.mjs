@@ -132,9 +132,15 @@ test("route gates recommend the Python toolchain for API changes", () => {
     "lint:api",
     "typecheck:api",
     "test:api",
+    "test:db",
     "test:integration",
     "verify:docs",
   ]);
+});
+
+test("route gates execute cross-stack integration tests", () => {
+  const paths = worktreePaths(" M tests/integration/web-api-proxy.test.mjs\n");
+  assert.deepEqual(recommend(paths).commands, ["test:integration", "verify:docs"]);
 });
 
 test("test gates execute frontend, backend, integration, and 80% coverage", () => {
@@ -147,9 +153,13 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
 
   assert.match(rootPackage.scripts.test, /test:web/);
   assert.match(rootPackage.scripts.test, /test:api/);
+  assert.match(rootPackage.scripts["test:db"], /run-api\.mjs db/);
+  assert.match(rootPackage.scripts["test:db:mysql"], /db-mysql/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(ci, /run: pnpm test$/m);
+  assert.match(ci, /run: pnpm test:db$/m);
+  assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
   for (const metric of ["branches", "functions", "lines", "statements"]) {
     assert.match(webCoverage, new RegExp(`${metric}: 80`));
