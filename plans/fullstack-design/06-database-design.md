@@ -422,11 +422,11 @@ erDiagram
 | `window_from` / `window_to` | DATE | session 启动时间窗 |
 | `models` | JSON | 模型多选 |
 | `status` | `VARCHAR(16)` | `preparing` / `running` / `blocked` / `completed` / `failed` / `interrupted` |
-| `blocked_stage` | `VARCHAR(16)` NULL | `push` / `eval`；仅 `status=blocked` 时非空 |
+| `blocked_stage` | `VARCHAR(16)` NULL | `patch` / `push` / `eval`；仅 `status=blocked` 时非空 |
 | `retry_attempts` | `INTEGER` | 自动退避重试已执行次数（0..3） |
 | `next_retry_at` | `DATETIME` NULL | 下一次自动退避时间；NULL = 不再自动重试 |
 | `eval_status` | `VARCHAR(16)` | 最近一轮评测聚合：`pending` / `evaluating` / `completed` / `failed` / `timeout` |
-| `error_stage` | `VARCHAR(32)` NULL | 失败阶段：`prepare` / `clone` / `cluster` / `eval` / `commit` / `push` / `apply` |
+| `error_stage` | `VARCHAR(32)` NULL | 失败阶段：`prepare` / `clone` / `cluster` / `patch` / `eval` / `commit` / `push` / `deciding` |
 | `error_message` | `TEXT` NULL | 失败摘要（脱敏，供列表/详情头部展示） |
 | `error_at` | `DATETIME` NULL | 失败发生时间 |
 | `progress_unit` | `INTEGER` | 状态机游标（[07 §5](07-backend-implementation.md)） |
@@ -479,8 +479,8 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK | — |
 | `probe_cluster_id` | `VARCHAR(64)` FK | 该轮针对的簇 |
 | `seq` | `INTEGER` | 第几轮 |
-| `status` | `VARCHAR(16)` | `pending` / `pushing` / `evaluating` / `applying` / `accepted` / `rejected` / `failed` |
-| `started_at` / `finished_at` | DATETIME NULL | 本轮开始/结束 |
+| `status` | `VARCHAR(16)` | `pending` 排队未开始 / `patching` 生成并应用 patch、commit candidate / `pushing` 推送 candidate ref / `evaluating` 等待评测 / `deciding` 根据评测结果接纳或拒绝 / `accepted` 已接纳 / `rejected` 已拒绝 / `failed` 不可恢复失败 |
+| `started_at` / `finished_at` | DATETIME NULL | 进入 `patching` 时写开始时间；终态时写结束时间 |
 | `duration_ms` | `INTEGER` NULL | 耗时（毫秒） |
 | `error_message` | `TEXT` NULL | 本轮失败原因（脱敏）；`status=failed` 时非空 |
 | `patch` | JSON | `{file, lines[]}`（占位内容，真实落盘） |
@@ -498,10 +498,13 @@ erDiagram
 | `eval_current` / `eval_candidate` | DOUBLE | 评测分（V1 占位） |
 | `eval_result` | JSON NULL | 评测平台返回的规范化结果 + 原始 payload |
 | `eval_error` | `TEXT` NULL | 评测失败/超时摘要（脱敏） |
-| `accepted` | BOOLEAN | — |
+| `accepted` | BOOLEAN | 与 `status` 同步：`accepted=true` / `rejected=false`；未到 `deciding` 时为 false |
 | `commit_hash` / `commit_message` | `VARCHAR(40)` / `TEXT` | 接纳后的最终 commit（amend 后）；拒绝时清空 |
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`、`INDEX(run_id, status)`、`INDEX(eval_status, eval_next_poll_at)`。
+
+> `patching` 覆盖 patch 生成 → 落盘 → candidate commit；`started_at` 在进入 `patching` 时写。patch 失败包括：生成失败（无输出 / 格式非法 / LLM 超时）、应用失败（上下文不匹配、文件冲突、`sub_dir` 不存在）、candidate commit 失败（hook / 脏工作区 / 权限）。可重试 → run `blocked`、`blocked_stage=patch`，本轮停在 `patching`；不可恢复 → 本轮 `failed`、run `failed`、`error_stage=patch`。
+> `deciding`：拿到评测结果后执行接纳/拒绝、fast-forward / 删 ref。`accepted` / `rejected` 是终态，`accepted` 布尔列与 `status` 同步。
 
 ### 5.6 `evolution_finals` —— 终评结果
 

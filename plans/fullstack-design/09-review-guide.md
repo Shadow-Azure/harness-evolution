@@ -84,7 +84,7 @@
 | 第 2 步：聚类卡 + 簇内 probe 列表 | F13 | [05 §3.6](05-api-design.md)（step 1） |
 | 第 3 步：归因确认（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
 | 第 4 步：严重程度排序表（顺序/类型/probe 数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3） |
-| 第 5 步：迭代卡（candidate → push → eval → 接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.5](07-backend-implementation.md) |
+| 第 5 步：迭代卡（patch → push → eval → 决策：接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.5](07-backend-implementation.md) |
 | 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |
 | 第 6 步：分支名、push 状态、blocked 阶段与重试 | F13 | [05 §4.10](05-api-design.md)（`workspace/pushStatus`）· [08 §10.2](08-frontend-implementation.md) |
 | 执行日志：准备/候选/push/eval/阻塞/重试事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |

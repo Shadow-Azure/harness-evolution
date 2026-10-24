@@ -556,12 +556,13 @@ RunDetail.vue
 
 ### 10.3 Step4 迭代卡
 
-- 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 推送中 / 评测中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
+- 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
 - 展开内容顺序：簇内 probe 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
+- 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 已接纳：展示 **amend 后的 commit**（保留追溯信息并追加 current/candidate/delta/verdict），以及 `Harness-Evaluated-Commit`（评测时的 commit）。
 - 未接纳：显示“candidate 已删除，run 分支不变”；不展示 commit hash。
-- blocked：显示是 push 还是 eval 阶段失败；push 阶段保留 candidate ref，可重试。
+- blocked：显示是 patch、push 还是 eval 阶段失败；patch/push 阶段保留本轮中间状态，可重试。
 - `DiffView`：行首 `+`/`-`/`@@` 着色；原型的 diff 行数组直接渲染即可，不需要解析 unified diff。
 - `EvalCompare`：两条横向条（current 灰 / candidate 绿或红），宽度按 `max(cur,cand)*1.06` 归一（原型算法）。
 
