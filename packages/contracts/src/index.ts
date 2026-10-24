@@ -5,8 +5,11 @@
  * together with the corresponding API vertical slice.
  */
 
-/** 服务交付阶段；随垂直切片推进扩展，前端只按此字段判断可用能力。 */
-export type ServicePhase = "scaffold";
+/** 服务交付阶段；后端配置、health 响应与前端展示共用这一封闭集合。 */
+export const SERVICE_PHASES = ["scaffold", "demo", "live"] as const;
+
+/** 服务交付阶段；前端只按此字段判断可用能力。 */
+export type ServicePhase = (typeof SERVICE_PHASES)[number];
 
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
 export interface HealthResponse {

@@ -25,11 +25,26 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/pyproject.toml
       - run: pnpm install --frozen-lockfile
+      - name: Python 环境
+        run: |
+          python -m venv apps/api/.venv
+          apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
+      - name: API lint
+        run: pnpm lint:api
+      - name: API typecheck
+        run: pnpm typecheck:api
+      - name: 单元测试（前后端，覆盖率 ≥80%）
+        run: pnpm test
+      - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
+        run: pnpm test:integration
       - name: 类型检查
         run: pnpm typecheck
-      - name: 测试
-        run: pnpm test
       - name: 构建
         run: pnpm build
       - name: 文档门禁（doc-sync）

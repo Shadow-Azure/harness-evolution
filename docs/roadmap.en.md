@@ -2,49 +2,40 @@
 
 English | [中文](roadmap.md)
 
-## M0 Scaffold (done)
+The product advances through independently verifiable milestones; machine-readable status and issue dependencies live in [.agents/flow/roadmap.md](../.agents/flow/roadmap.en.md).
 
-- pnpm workspace
-- React + Vite web app
-- Fastify + TypeScript server
-- Shared contracts package
-- Health check wired across both ends
+## M1 Engineering foundation and quality gates
 
-## M1 Frontend experience prototype (current)
+Current phase. Deliver FastAPI, Vue 3, the dual-dialect data foundation, OpenAPI, identity, jobs/SSE and CI meta-gates.
 
-- Four real Codex root sessions with every descendant subagent included
-- Search and switch sessions; inspect an execution-flow diagram covering the root agent and every subagent
-- Local snapshot adapter without SQLite or the API
-- Show root and child-agent findings together in one panel, then attribute each to a specific skill or agent
-- Aggregate findings by target skill or agent and simulate evolution/training plus validation metrics
-- One complete demo path from finding to accept or reject
+Acceptance: an empty system supports login; static, data, contract and flow gates are enforced.
 
-Acceptance: locate a child-agent finding from the execution-flow diagram, attribute it, select a target skill or agent, run one simulated evolution over that target's findings, and accept or reject the result.
+## M2 Trace data and normalization
 
-## M2 Codex trace service
+Connect synthetic fixtures, local real traces, JSONL normalization, the agent session tree, idempotent replay, query APIs and incremental scheduling.
 
-- Stream rollouts and assemble session families by parent_thread_id
-- Incremental import, SQLite schema and repository
-- Session, family, ingest and timeline APIs
-- Replace prototype snapshots with the real data source
+Acceptance: reprocessing one payload creates no duplicate business rows; malformed structures are isolated per record; query contracts cover lists, overviews and agent trees.
 
-Acceptance: the four root families import idempotently and the web app matches the prototype.
+## M3 Session browsing and execution flow
 
-## M3 AI trace diagnosis
+Deliver the session list, overview, agent execution-flow graph, stable deep links and performance budgets.
 
-- Rule diagnosis: tool failures, repeated retries, unverified edits, unclosed errors
-- Analyze each agent first, then let the root agent synthesize cross-agent findings
-- AI emits structured findings, evidence and improvement suggestions
-- Diagnosis job state and history
-- Findings linked back to traces
+Acceptance: users can enter a session from the list, locate root and child agents and trigger events in the graph, and return to the same node.
 
-Acceptance: one root analysis covers every descendant subagent, and evidence carries the agent path and remains navigable.
+## M4 Problems and attribution
 
-## M4 Evolution loop
+Connect external read-only bad_case/probe data and deliver problem APIs, cards and error details.
 
-- Attribute problems to skill / prompt / tools / control flow
-- Aggregate attributed problems by skill or agent
-- Generate minimal-change proposals
-- Comparative evaluation and adoption/rollback records
+Acceptance: problems and attribution enter the execution flow from real read-only tables, with complete deep-link fields and cross-session validation.
 
-Acceptance: at least one real problem completes "diagnosis → proposal → comparative verification → adopt or reject".
+## M5 Evolution loop
+
+Deliver target configuration, run lists, the launch wizard, six-stage state, event logs, real git candidates and a placeholder patch/evaluation loop.
+
+Acceptance: a run advances from preparing to final evaluation, blocked work is retryable, and every stage is recoverable from events and snapshots.
+
+## M6 Real integration and delivery
+
+Connect the real upstream trace source, external contracts, real patch evaluation and clustering upgrades.
+
+Acceptance: real data and evaluation services replace development adapters, with live evidence for contracts and failure boundaries.

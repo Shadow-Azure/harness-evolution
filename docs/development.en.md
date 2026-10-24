@@ -6,33 +6,38 @@ English | [中文](development.md)
 
 ## Environment
 
-- Node ≥ 22 and pnpm ≥ 10.
-- Run `pnpm install` after the first clone; install local hooks with `pnpm install:hooks`.
+- Node ≥ 22, pnpm ≥ 10 and Python ≥ 3.12.
+- Run `pnpm install && pnpm setup:api` after the first clone; install local hooks with `pnpm install:hooks`.
 - `gh` must be logged in for `flow:sync` and `verify:flow-online`.
+- API docs and OpenAPI are closed by default; `pnpm dev` enables them explicitly and production keeps the default or sets `HE_DOCS_ENABLED=false`.
 
 ## Development flow
 
-Once the flow tree is initialized, every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priority rules in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes the flow tree to GitHub and backfills numbers. `pnpm verify:flow` checks the state machine locally, while CI adds diff checks and the GitHub consistency lane on PRs.
+Once the flow tree is initialized, every change starts with an issue: `.agents/flow/` holds the roadmap → milestone → issue working files, with the contract and priority rules in [.agents/flow/README.md](../.agents/flow/README.en.md). Create a trio with `pnpm flow:new-issue -- …`; commits and PR titles carry `(#N)`; `pnpm flow:sync` writes the flow tree to GitHub and backfills numbers.
 
 ## Daily loop
 
 ```sh
-pnpm dev          # API + Web 并行开发
-pnpm typecheck    # 跨包类型检查
-pnpm test         # 各包测试
+pnpm dev          # API + Web development
+pnpm typecheck    # Workspace type checks
+pnpm test:web     # Web unit tests and coverage ≥80%
+pnpm test:api     # FastAPI tests and coverage ≥80%
+pnpm test:integration # Web → Vite proxy → FastAPI
+pnpm test:all     # Unit and integration suites
 ```
 
-Choose gates by change surface before committing (do not default to everything; exhaustive coverage belongs to CI):
+Choose gates by change surface before committing:
 
 | Change | Run locally |
 |---|---|
 | Docs / Agent Note only | `pnpm lint:docs` |
-| Web or server code | `pnpm typecheck && pnpm build` |
-| Contracts or cross-package types | `pnpm typecheck && pnpm test` |
+| Web code | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
+| Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:integration` |
+| Contracts or cross-package types | `pnpm typecheck && pnpm test:all` |
 | Flow tree | `pnpm verify:flow` |
 | Documentation examples or links | `pnpm verify:docs` |
 
-When unsure, run `pnpm route:gates` to get suggested commands from changed paths.
+When unsure, run `pnpm route:gates`.
 
 ## Docs and pairing
 

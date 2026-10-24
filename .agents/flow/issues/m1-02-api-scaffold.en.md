@@ -8,11 +8,12 @@ id: m1-02
 milestone: m1
 depends: []
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/server/**
   - apps/web/**
+  - .gitignore
   - packages/contracts/**
   - package.json
   - pnpm-workspace.yaml
@@ -23,6 +24,10 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - AGENTS.md
+  - README.md
+  - README.en.md
+  - README.i18n.yaml
 adr: []
 github:
   number: 25
@@ -46,6 +51,7 @@ github:
 - 创建 apps/api 的 FastAPI 3.12 模块化骨架。
 - 实现 pydantic-settings 配置、统一错误模型和 /api/health。
 - 接入 ruff、mypy、pytest、coverage 与 CI Python 环境。
+- 同步交付前后端单元测试、跨栈集成测试与 80% 覆盖率门禁。
 
 ## Design authority
 
@@ -75,6 +81,7 @@ github:
 2. 创建 config、app、routes 和错误模型实现。
 3. 建立 venv/pip 安装脚本和根 pnpm 包装命令。
 4. 删除旧 server 并更新 docs/architecture 与 Agent Note。
+5. 建立 Web→Vite→FastAPI 集成测试，并让 CI 实际执行全部测试与覆盖率检查。
 
 ## Dependencies and boundary
 
@@ -93,12 +100,15 @@ github:
 
 ```sh
 pnpm test:api
+pnpm test:web
+pnpm test:integration
 pnpm lint:api
 pnpm typecheck:api
 ```
 
 - health 返回 ok/service/phase；错误路径返回统一 error 对象。
 - ruff/mypy 无 warning；pytest 覆盖全部新增路由。
+- 前端单测与后端单测覆盖率均不低于 80%；集成测试经 Vite proxy 验证 health 与 401 envelope。
 
 ## Acceptance
 
@@ -109,6 +119,7 @@ pnpm typecheck:api
 - `pnpm dev:api` 可启动且 /api/health 可访问。
 - Fastify 实现不再存在于仓库。
 - CI 静态 lane 执行 Python lint/type/test。
+- CI 执行前后端单测、跨栈集成测试并强制覆盖率下限 80%。
 
 ## Gates and CI
 
@@ -117,6 +128,7 @@ pnpm typecheck:api
 
 
 - Python lint/type/test 进入 CI。
+- 前后端单测、Web→Vite→FastAPI 集成测试与覆盖率报告进入 CI。
 - pnpm route:gates 对 apps/api 改动推荐后端命令。
 
 ## Non-goals
