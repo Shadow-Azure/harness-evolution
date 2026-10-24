@@ -64,5 +64,5 @@
 - Modify: GitHub milestones/issues through `scripts/flow-sync.mjs`; local YAML backfills and pair records
 
 - [x] **Step 1:** Inspect the complete diff and scan for placeholders/private-data paths. Expected: no `TBD`, template placeholder, raw session content, or tracked local database.
-- [ ] **Step 2:** Authenticate `gh` if necessary, then run `pnpm flow:sync -- --retire-missing`. Expected: six new milestones and 41 detailed issues are created; old open objects are closed; no remote object is deleted. Blocked: current gh token is invalid.
-- [ ] **Step 3:** Re-record backfilled pairs and run offline/online verification. Expected: local and GitHub states, milestone ownership, and detailed bodies agree. Blocked until Step 2.
+- [x] **Step 2:** Authenticate `gh` if necessary, then run `pnpm flow:sync -- --retire-missing`. Expected: six new milestones and 41 detailed issues are created; old open objects are closed; no remote object is deleted. Completed: milestones #9–#14 and issues #24–#64 created; #5–#8 and #8–#17 retired/closed as applicable.
+- [x] **Step 3:** Re-record backfilled pairs and run offline/online verification. Expected: local and GitHub states, milestone ownership, and detailed bodies agree. Completed: verify:flow-online ok after YAML canonicalization.
