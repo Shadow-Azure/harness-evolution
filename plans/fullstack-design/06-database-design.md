@@ -503,7 +503,7 @@ erDiagram
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`、`INDEX(run_id, status)`、`INDEX(eval_status, eval_next_poll_at)`。
 
-> `patching` 覆盖 patch 生成 → 落盘 → candidate commit；`started_at` 在进入 `patching` 时写。patch 失败包括：生成失败（无输出 / 格式非法 / LLM 超时）、应用失败（上下文不匹配、文件冲突、`sub_dir` 不存在）、candidate commit 失败（hook / 脏工作区 / 权限）。可重试 → run `blocked`、`blocked_stage=patch`，本轮停在 `patching`；不可恢复 → 本轮 `failed`、run `failed`、`error_stage=patch`。
+> `patching` 覆盖 patch 生成 → 落盘 → candidate commit；`started_at` 在进入 `patching` 时写。patch 失败包括：生成失败（无输出 / 格式非法 / LLM 超时）、应用失败（上下文不匹配、文件冲突、`sub_dir` 不存在）、candidate commit 失败（hook / 脏工作区 / 权限）。可重试 → run `blocked`、`blocked_stage=patch`，本轮停在 `patching`；不可恢复 → 本轮 `failed`、run `failed`，`error_stage` 按子步骤记 `patch` 或 `commit`。
 > `deciding`：拿到评测结果后执行接纳/拒绝、fast-forward / 删 ref。`accepted` / `rejected` 是终态，`accepted` 布尔列与 `status` 同步。
 
 ### 5.6 `evolution_finals` —— 终评结果

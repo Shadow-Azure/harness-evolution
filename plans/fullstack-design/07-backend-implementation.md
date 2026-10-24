@@ -622,7 +622,7 @@ async def apply_eval(job):
 
 - 接纳时 run 分支 **只 fast-forward，不 force-push**；candidate ref 上才允许 `--force-with-lease`。
 - 拒绝时删除 candidate ref，切回 run 分支；run 分支 HEAD 不变，不 reset 之前已接纳轮次。
-- patch 阶段失败（生成 / 落盘 / commit）：可重试错误走 `block_run(stage='patch')`，run `blocked`、本轮停在 `patching`；不可恢复错误把本轮置 `failed`、run 置 `failed(error_stage=patch)`。重试从 `patching` 重新生成 patch，不进入 push/eval。
+- patch 阶段失败（生成 / 落盘 / commit）：可重试错误走 `block_run(stage='patch')`，run `blocked`、本轮停在 `patching`；不可恢复错误把本轮置 `failed`、run 置 `failed`（`error_stage` 按子步骤记 `patch` / `commit`）。重试从 `patching` 重新生成 patch，不进入 push/eval。
 - candidate 删除失败不阻塞流程：记 `candidate_cleanup_failed`，后续 `clean-candidates` 清理。
 - 若 accept 阶段 push candidate/run 分支失败：走同一 `block_run` + `RunBlocked`，run 进入 `blocked`，保留 candidate ref 和评测结果；`/retry` 从 apply 继续，不重新评测。
 - 因此 `apply_eval` 内所有 push 也必须包在 `try/except GitPushError` 中，不能落入 JobRunner 的通用 `run_failed` 分支。
