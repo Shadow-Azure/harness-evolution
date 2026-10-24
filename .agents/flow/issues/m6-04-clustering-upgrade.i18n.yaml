@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m6-04-clustering-upgrade.md
+m6-04-clustering-upgrade.md: 5fcf2f7a5f76c6bd431afc2aefd2402999412527
+m6-04-clustering-upgrade.en.md: 8eba95beb97623523bb52e20a68a77521540d50b

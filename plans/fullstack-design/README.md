@@ -1,7 +1,7 @@
 # Harness Evolution 前后端整体设计方案
 
 > 目标：把 [14-15-ui-prototype 原型](../14-15-ui-prototype/harness-evolution.html) 里的全部功能与 UI 效果，落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
-> 状态：**讨论稿** —— 等待 review，确认后再排 milestone / roadmap / issue。
+> 状态：**关键设计决策已确认（2026-10-24）**；milestone / roadmap / issue 排期仍需确认 [10 §5](10-roadmap-draft.md)。
 >
 > 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。数据模型统一为 `session_families` / `agents` / `user_turns` / `agent_events`；消息与内容块只在解析期用于统计，不落库；前端组件为 `agent-tree/`、`AgentTree.vue`、`SessionOverview.vue`，API 类型 `SessionTree` 保留。
 
@@ -32,8 +32,8 @@
 | [06 数据库表结构设计](06-database-design.md) | ER 图、逐表字段、索引、迁移策略 | 写后端前 |
 | [07 后端接口的实现设计](07-backend-implementation.md) | 每个功能域的路由/服务/数据访问/任务怎么落地 | 写后端时 |
 | [08 前端的实现设计](08-frontend-implementation.md) | 每个页面的组件树、数据流、交互与打桩接入点 | 写前端时 |
-| [09 Review 指南与待讨论问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q5 开放问题、评审重点 | **review 时先看这篇** |
-| [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 设计确认后怎么排期：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
+| [09 Review 指南与已决问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q6 决策记录、评审重点 | **review 时先看这篇** |
+| [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 排期方案：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
 
 ## 系统一句话说明
 
@@ -60,7 +60,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 └───────────────────────────────────────────────────────────────┘
 ```
 
-## 已确认的顶层决策（2026-10-22 与维护者讨论拍板）
+## 已确认的顶层决策（2026-10-22 与维护者讨论拍板；2026-10-24 补齐 review 结论）
 
 | # | 决策点 | 结论 | 影响 |
 |---|---|---|---|
@@ -75,23 +75,19 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
-| D12 | 轨迹来源（2026-10-23 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时读取+归一化，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；幂等靠 `(root_session_id, agent_id)` + hash + `parser_version` |
+| D12 | 轨迹来源（2026-10-24 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时（默认 60s）+ 单飞锁读取并归一化，admin 可手动立即处理，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；手动 sync 复用运行中的任务；幂等靠 `(root_session_id, agent_id)` + hash + `parser_version` |
 | D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；模型清单来自归一化后的 `agents.model` |
 | D14 | 自进化 git 流程（2026-10-23） | **candidate commit → push 临时 candidate ref → 评测 → 接纳 amend + fast-forward run 分支 / 拒绝删 candidate；push 是评测前置条件** | run 分支只含已接纳 commit，评测用 `.../candidate/r{n}`；push 失败 run 进入 blocked，3 次立即 + 1/5/15min 退避，`/retry` 恢复 |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
 
-## Review 前必看：6 个待确认项
+| D16 | UI 控件与主题（2026-10-24） | **Element Plus 只做表单控件、弹窗、日期、分页与消息；布局和业务组件自研；首版只做亮色，令牌结构保留暗色扩展位** | 视觉以原型设计令牌为准；Element Plus 只做少量变量映射，避免整站组件化导致视觉偏离原型。见 [03 §2](03-frontend-architecture.md) · [03 §9](03-frontend-architecture.md) |
+| D17 | 原始 JSON 查看（2026-10-24） | **首版不提供「查看原始 JSON」overlay 或独立入口** | 时间线裁撤后没有消费入口；后续诊断功能可按 `(sessionId, agentId, lineNo)` 回读 payload，不恢复消息/内容块明细表。见 [06 §3.0](06-database-design.md) |
+| D18 | 用户管理（2026-10-24） | **首版只提供 admin 的 `GET/POST /api/users` 和顶栏用户区；不做管理页，也不提供停用/恢复用户 API** | 管理操作先走 API/脚本；`is_active` 继续作为登录闸门字段保留，未来恢复停用管理时再补写路径。见 [05 §4.1](05-api-design.md) · [08 §4.2](08-frontend-implementation.md) |
+| D19 | 上游轨迹查询契约（2026-10-24） | **[05 §10](05-api-design.md) 是本服务定义的客户端契约，用于 `HttpApiSource` 和 mock 契约联调；不表示真实上游已承诺该契约** | 上游就绪前继续用 `trajectory_payloads` 和 fixtures；真实上游接入时以其实现为准，主版本不兼容先评审适配，不静默放宽校验。 |
 
-设计已按 SaaS 前提重写，以下 6 项需要你拍板后才会进入 roadmap/issue 与实现（详细选项见 [09 §2](09-review-guide.md)）：
+## Review 前必看：结论状态
 
-| # | 待确认 | 当前建议 |
-|---|---|---|
-| 1 | UI 控件库与主题 | Element Plus 只做控件，结构自研；首版只做亮色 |
-| 2 | 「模拟推进」按钮 | **已定**：生产 UI 删除；后台自动逐轮推进 |
-| 3 | 「查看原始 JSON」overlay | 首版不做，后续按诊断证据需求再加 |
-| 4 | 用户管理界面范围 | 首版只做 API + 顶栏用户区，不做管理页 |
-| 5 | 轨迹归一化触发方式 | 后台定时（默认 60s）+ 单飞锁；手动仅 admin 立即处理 |
-| 6 | 上游轨迹查询契约（[05 §10](05-api-design.md)） | 按"轨迹包 + 窗口列举"设计；如果你知道上游实际 API 形态，告诉我再调整 |
+原 6 个 review 问题已固化：模拟推进见 D6，轨迹归一化触发见 D12，其余四项见 D16–D19。唯一外部边界是 [05 §10](05-api-design.md) 只是我方客户端契约；排期问题仍以 [10 §5](10-roadmap-draft.md) 为准。
 
 ## 数据边界与演示数据（全局最重要的设计约束）
 

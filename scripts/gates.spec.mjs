@@ -6,10 +6,11 @@ import {
   parseFlowDocument,
   uncoveredFiles,
   validateTree,
+  validateIssueSections,
 } from "./flow-lib.mjs";
 import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
-import { applyGithubRef } from "./flow-sync.mjs";
+import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 
 const roadmap = `# Roadmap
 
@@ -38,7 +39,9 @@ const issue = (milestoneId, status = "backlog", extra = "") => `# Issue
 
 \`\`\`yaml flow
 kind: issue
+id: ${milestoneId}-01
 milestone: ${milestoneId}
+depends: []
 priority: P0
 status: ${status}
 ${extra}scope:
@@ -62,6 +65,7 @@ function tree() {
         file: ".agents/flow/issues/m0-01-a.md",
         name: "m0-01-a",
         data: parseFlowDocument(issue("m0", "done", "bootstrap: true\n"), "m0-01-a.md").data,
+        content: "## 背景\n## 目标\n## 设计依据\n## 实现内容\n## 实施步骤\n## 依赖与交付边界\n## 独立验证\n## 验收标准\n## 门禁与 CI\n## 非目标",
       },
     ],
   };
@@ -115,4 +119,66 @@ test("github backfill removes the bootstrap exemption", () => {
   const next = applyGithubRef(content, 42, "https://github.com/o/r/issues/42");
   assert.match(next, /number: 42/);
   assert.doesNotMatch(next, /bootstrap: true/);
+});
+
+test("issue sections require an executable implementation and verification contract", () => {
+  const required = ["背景", "目标", "设计依据", "实现内容", "实施步骤", "依赖与交付边界", "独立验证", "验收标准", "门禁与 CI", "非目标"];
+  const complete = required.map((heading) => `## ${heading}\n内容`).join("\n");
+  assert.deepEqual(validateIssueSections(complete), []);
+  assert.match(validateIssueSections(complete.replace("## 独立验证", "## 验证")).join("\n"), /独立验证/);
+});
+
+test("issue dependencies must exist, stay in earlier milestones and be acyclic", () => {
+  const valid = tree();
+  valid.issues.push({
+    file: ".agents/flow/issues/m1-02-b.md",
+    name: "m1-02-b",
+    data: parseFlowDocument(issue("m1").replace("id: m1-01", "id: m1-02").replace("depends: []", "depends: [m0-01]"), "m1-02-b.md").data,
+    content: valid.issues[0].content,
+  });
+  assert.deepEqual(validateTree(valid, { exists: () => true }), []);
+  const missing = structuredClone(valid);
+  missing.issues[1].data.depends = ["m0-99"];
+  assert.match(validateTree(missing, { exists: () => true }).join("\n"), /依赖.*不存在/);
+  const cycle = structuredClone(valid);
+  cycle.issues[0].data.depends = ["m1-02"];
+  assert.match(validateTree(cycle, { exists: () => true }).join("\n"), /依赖.*后续 milestone|依赖环/);
+});
+
+test("github issue body is detailed and design links resolve to the repository", () => {
+  const body = renderIssueBody(`# 标题\n\n[English](m1-a.en.md) | 中文\n\n\`\`\`yaml flow\nkind: issue\n\`\`\`\n\n## 设计依据\n\n[API](../../../plans/fullstack-design/05-api-design.md#41-基础端点)\n`, "o/r");
+  assert.match(body, /## 设计依据/);
+  assert.match(body, /https:\/\/github.com\/o\/r\/blob\/main\/plans\/fullstack-design\/05-api-design.md#41-基础端点/);
+  assert.doesNotMatch(body, /yaml flow|English/);
+});
+
+test("retire-missing closes only open remote objects absent from the local tree", () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2, url: "https://github.com/o/r/milestone/2" };
+  current.issues[0].data.github = { number: 20, url: "https://github.com/o/r/issues/20" };
+  assert.deepEqual(planRetirements(current, {
+    milestones: [{ number: 1, state: "open" }, { number: 2, state: "open" }, { number: 3, state: "closed" }],
+    issues: [{ number: 10, state: "OPEN" }, { number: 20, state: "OPEN" }, { number: 30, state: "CLOSED" }],
+  }), { milestones: [1], issues: [10] });
+});
+
+test("sync republish changed detailed issue bodies", async () => {
+  const current = tree();
+  current.milestones[0].data.github = { number: 2, url: "https://github.com/o/r/milestone/2" };
+  current.milestones[0].data.status = "active";
+  current.milestones[1].data.github = { number: 3, url: "https://github.com/o/r/milestone/3" };
+  current.milestones[1].data.status = "planned";
+  for (const [index, issue] of current.issues.entries())
+    issue.data.github = { number: 20 + index, url: `https://github.com/o/r/issues/${20 + index}` };
+  current.issues[0].data.status = "ready";
+  delete current.issues[0].data.bootstrap;
+  const updates = [];
+  await runSync(current, {
+    createMilestone() { throw new Error("unexpected"); }, createIssue() { throw new Error("unexpected"); }, backfill() {},
+    readMilestoneState: () => "open", updateMilestoneState() {},
+    readIssueState: () => "OPEN", updateIssueState() {},
+    readIssueBody: () => "old", updateIssueBody: (_issue, body) => updates.push(body),
+    issueBody: () => "new detailed body",
+  });
+  assert.deepEqual(updates, ["new detailed body"]);
 });

@@ -1,0 +1,82 @@
+# Database 接口与 SQLite/MySQL 双方言基座
+
+[English](m1-03-database-base.en.md) | 中文
+
+```yaml flow
+kind: issue
+id: m1-03
+milestone: m1
+depends:
+  - m1-02
+priority: P0
+status: backlog
+scope:
+  - apps/api/**
+  - apps/api/alembic/**
+  - scripts/**
+  - .github/workflows/ci.yml
+  - docs/**
+  - .agents/flow/**
+  - .agents/notes/**
+adr:
+adr: []
+github:
+  number: 26
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/26
+```
+
+## 背景
+
+鉴权、轨迹和自进化都依赖同一个存储接缝；必须先确立跨方言规则，避免本地绿而 MySQL 红。
+
+## 目标
+
+- 实现 Database 抽象、SQLite/MySQL 适配器、事务、health 和 Alembic 基座。
+- 建立跨方言 SQL 纪律和双方言 repository 测试基类。
+- CI 添加 MySQL 8 service 并分离 sqlite/mysql 标记。
+
+## 设计依据
+
+- [04 后端架构](../../../plans/fullstack-design/04-backend-architecture.md)
+
+## 实现内容
+
+- SQLAlchemy async 引擎通过 Database 接口暴露，业务不直接创建 engine。
+- 迁移使用双方言兼容类型；SQLite 变更走 batch 模式。
+- health 报告 dialect 且失败有明确错误。
+
+## 实施步骤
+
+1. 先写连接、事务回滚、迁移升级和 health 的双方言失败测试。
+2. 实现 Database、两个适配器、 Alembic env 和基线迁移。
+3. 在 CI 配置 MySQL service 并运行 test:db:mysql。
+
+## 依赖与交付边界
+
+- 依赖：m1-02
+- 交付边界：只交付连接/事务/迁移基座，不建领域业务表。
+
+## 独立验证
+
+```sh
+pnpm test:db
+pnpm test:db:mysql
+```
+
+- 空库 upgrade head 在双方言通过；事务异常零残留。
+- MySQL service 在 CI 成功运行标记用例。
+
+## 验收标准
+
+- 同一 repository 测试类在两个 dialect 通过。
+- `.env` 可选择 HE_DB_DIALECT 且无凭据入库。
+- 数据库失败不会导致未处理崩溃。
+
+## 门禁与 CI
+
+- 双库 lane 从本 issue 起常驻 CI。
+- 迁移脚本和数据库纪律有测试。
+
+## 非目标
+
+- 不建 users、trajectory、bad_case 或 evolution 表。

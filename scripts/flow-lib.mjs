@@ -171,12 +171,26 @@ export async function loadFlowTree(root = FLOW_ROOT) {
       errors.push(`${file}: kind 必须是 issue`);
       continue;
     }
-    tree.issues.push({ file, name: path.basename(file, ".md"), data: parsed.data });
+    tree.issues.push({ file, name: path.basename(file, ".md"), data: parsed.data, content: await readFile(file, "utf8") });
   }
   return { tree, errors };
 }
 
 // ── 离线校验 ─────────────────────────────────────────────────────────────────
+
+const ISSUE_SECTIONS = ["背景", "目标", "设计依据", "实现内容", "实施步骤", "依赖与交付边界", "独立验证", "验收标准", "门禁与 CI", "非目标"];
+
+/**
+ * 校验 issue 中文正文是否包含可直接实施与独立验收的完整章节。
+ * @param {string} content issue 中文正文。
+ * @returns {string[]} 缺失章节错误。
+ */
+export function validateIssueSections(content) {
+  if (typeof content !== "string") return ["缺中文正文，无法校验实施与验收章节"];
+  return ISSUE_SECTIONS.filter((heading) => !new RegExp(`^## ${heading.replace(" ", "\\s")}$`, "m").test(content))
+    .map((heading) => `缺 "## ${heading}" 章节`);
+}
+
 
 function checkGithub(file, data, repo, kindLabel, errors) {
   const gh = data.github;
@@ -260,6 +274,12 @@ export function validateTree(tree, opts = {}) {
       errors.push(`${file}: milestone 必须引用 roadmap 序列内的 id（实有 ${JSON.stringify(data.milestone)}）`);
       continue;
     }
+    if (typeof data.id !== "string" || !new RegExp(`^${data.milestone}-\\d{2}$`).test(data.id))
+      errors.push(`${file}: id 必须是 ${data.milestone}-NN 形式的稳定规划编号`);
+    if (!Array.isArray(data.depends) || data.depends.some((d) => typeof d !== "string" || !d))
+      errors.push(`${file}: depends 必须是稳定 issue id 列表（无依赖时用 []）`);
+    for (const sectionError of validateIssueSections(issue.content))
+      errors.push(`${file}: ${sectionError}`);
     if (!name.startsWith(`${data.milestone}-`))
       errors.push(`${file}: 文件名必须以所属 milestone id 开头（${data.milestone}-*）`);
     if (!PRIORITIES.includes(data.priority))
@@ -292,6 +312,37 @@ export function validateTree(tree, opts = {}) {
         else if (!exists(resolved)) errors.push(`${file}: adr 链接不存在 → ${ref}`);
       }
   }
+  const issueById = new Map();
+  for (const issue of tree.issues) {
+    if (typeof issue.data.id !== "string") continue;
+    if (issueById.has(issue.data.id)) errors.push(`${issue.file}: id ${issue.data.id} 重复`);
+    issueById.set(issue.data.id, issue);
+  }
+  const milestoneIndex = new Map((Array.isArray(order) ? order : []).map((id, index) => [id, index]));
+  for (const issue of tree.issues) {
+    for (const dependency of issue.data.depends ?? []) {
+      const target = issueById.get(dependency);
+      if (!target) errors.push(`${issue.file}: 依赖 ${dependency} 不存在`);
+      else if ((milestoneIndex.get(target.data.milestone) ?? Infinity) > (milestoneIndex.get(issue.data.milestone) ?? -Infinity))
+        errors.push(`${issue.file}: 依赖 ${dependency} 位于后续 milestone`);
+    }
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  const visitDependency = (issue) => {
+    if (visited.has(issue.data.id) || visiting.has(issue.data.id)) return;
+    visiting.add(issue.data.id);
+    for (const dependency of issue.data.depends ?? []) {
+      const target = issueById.get(dependency);
+      if (!target) continue;
+      if (visiting.has(dependency)) errors.push(`${issue.file}: 依赖环 ${issue.data.id} → ${dependency}`);
+      else visitDependency(target);
+    }
+    visiting.delete(issue.data.id);
+    visited.add(issue.data.id);
+  };
+  for (const issue of tree.issues) visitDependency(issue);
+
   if (bootstraps.length > 1)
     errors.push(`bootstrap: true 全库至多一个（自举豁免），实有 ${bootstraps.map((b) => b.file).join("、")}`);
   if (bootstraps.length === 1 && Array.isArray(order) && bootstraps[0].data.milestone !== order[0])

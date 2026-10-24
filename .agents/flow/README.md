@@ -2,24 +2,38 @@
 
 [English](README.en.md) | 中文
 
-> 契约 home：roadmap → milestone → issue → ADR 四层工作文件的格式、状态机与门禁。机械执行归 `verify-flow` / `verify-flow --diff` / `verify-flow-online`，本页只说规则。
-
-当前仓库只安装流程机制，尚未初始化 roadmap / milestone / issue 实例；由维护者讨论后创建 `.agents/flow/roadmap.md`。未初始化时 `verify-flow` 跳过状态机校验，`flow:new-issue` 会提示先建 roadmap。
+> 契约 home：roadmap → milestone → issue → ADR 四层工作文件的格式、状态机与门禁。机械执行归 `verify:flow` / `verify:flow --diff` / `verify:flow-online`，本页只说规则。
 
 ## 层级
 
 | 层 | 文件 | 职责 |
 |---|---|---|
-| roadmap | `.agents/flow/roadmap.md` | 愿景 + milestone 有序序列（唯一事实源） |
-| milestone | milestones/&lt;id&gt;-*.md | 阶段交付目标与验收 |
-| issue | issues/&lt;milestone-id&gt;-*.md | 最小工作单元：背景、目标、验收、scope |
-| ADR | [../notes/](../notes/README.md) | 决策记录复用 Agent Notes，issue 以 adr 字段关联 |
+| roadmap | `roadmap.md` | 愿景、milestone 有序序列和实施规则 |
+| milestone | `milestones/<id>-*.md` | 阶段目标、范围、验收与非目标 |
+| issue | `issues/<milestone-id>-*.md` | 可独立验收的最小工作单元 |
+| ADR | `../notes/` | 决策记录，issue 用 `adr` 关联 |
 
 ## 机读面：yaml flow 围栏
 
-每个工作文件带且仅带一个 yaml flow 围栏；配对门禁要求围栏两侧逐字节一致，机读字段因此天然不漂移。围栏内是 yaml 子集：顶层 `key: 标量`、`key:` 加 `- 项` 列表、缩进两格的一层嵌套 map、行内列表 `[a, b]`；标量只认 null、true/false、非负整数、字符串。
+每个工作文件带且仅带一个 yaml flow 围栏；中英两侧围栏逐字节一致。roadmap 记 `kind` 与 `milestones`；milestone 记 `kind/id/title/status/github`。issue 记：
 
-roadmap 围栏字段：`kind: roadmap`、`milestones`（id 有序列表）。milestone 围栏字段：`kind: milestone`、`id`、`title`（GitHub milestone 同步用）、`status`、`github: {number, url}`。issue 围栏字段：`kind: issue`、`milestone`、`priority`、`status`、`bootstrap`、`scope`（允许触碰的文件 glob 列表）、`adr`（Agent Note 相对路径列表）、`github: {number, url}`。
+```text
+kind: issue
+id: m2-03
+milestone: m2
+depends: [m2-01, m2-02]
+priority: P0
+status: backlog
+scope: [允许修改的 glob]
+adr: [相对 Agent Note 路径]
+github: {number, url}
+```
+
+`id` 是仓库内稳定规划编号；`github.number` 才是远端编号。`depends` 只能指向同 milestone 或更早 milestone 的已存在 id，且不得成环。
+
+## Issue 正文契约
+
+中文正文必须包含：背景、目标、设计依据、实现内容、实施步骤、依赖与交付边界、独立验证、验收标准、门禁与 CI、非目标。英文侧保持等价章节结构。`设计依据` 必须链接 `plans/fullstack-design` 的具体章节；实现冲突时以链接章节为准。`独立验证` 必须给出命令、数据和预期结果。
 
 ## 封闭集合
 
@@ -27,36 +41,26 @@ roadmap 围栏字段：`kind: roadmap`、`milestones`（id 有序列表）。mil
 - milestone status：`planned` / `active` / `done`
 - priority：`P0` / `P1` / `P2`（P0 最高）
 
-## 编号与引用
+## 编号、依赖与推进
 
-- issue 编号耦合 GitHub issue 编号：提交与 PR 标题用 `(#N)` 引用。
-- draft 过渡态：`github.number` 为 null 的 issue 只能处于 backlog；`pnpm flow:sync` 回填编号后才能流转。
-- bootstrap 豁免：流程自举的 issue 无法挂自身编号，`bootstrap: true` 允许无编号流转；全库至多一个，且必须属于 roadmap 序列的第一个 milestone；编号回填后移除该标记。
-- 无豁免通道：机械修复同样挂 issue。
-
-## 优先级推进
-
-- 跨 milestone 同档串行：m(i+1) 的 P0 可开工，当且仅当之前 milestone 的 P0 全部 done；P1、P2 同理各走各的串行链。
-- 档内并行不限：同 milestone 同档位可同时多个 in-progress。
-- 退档解锁：milestone 内最高未清档仅剩 1 个未 done 时，下一档解锁。
-- 规则约束 in-progress / done 的资格；ready 只是"已备好"的梳理标记，不构成承诺。
-- milestone status 与 issue 互检：milestone 为 done 当且仅当其 issue 全部 done。
+- draft 的 `github.number` 为 null 时只能在 backlog；`flow:sync` 回填后可流转。
+- `bootstrap: true` 全库至多一个，仅允许 roadmap 第一个 milestone；编号回填后移除。
+- 跨 milestone 同 priority 串行；milestone 内按既有退档规则解锁。
+- in-progress/done 的依赖必须在同档或更早 milestone 且已完成；依赖环即红。
 
 ## 门禁与拦截点
 
-| 检查 | 位置 | 内容 |
-|---|---|---|
-| `pnpm verify:flow` | 本地 + CI 静态 lane | 本页全部离线规则 |
-| `verify-flow --diff <base>` | CI on PR | commit 与 PR 标题含 `(#N)`、被引 issue 在 base ready/in-progress，或由本 PR 自 backlog 激活、diff 落在所挂 issue 的 scope 并集（base 无 roadmap 整项跳过：自举不绑人） |
-| `verify-flow-online` | CI 在线 lane | 与 GitHub 双侧一致：issue 存在、milestone 归属、状态映射、PR 关联 milestone 与 project |
-| commit-msg 钩子 | 本地（`pnpm install:hooks`） | 提交标题含 `(#N)`（提醒级，穷尽覆盖归 CI） |
+| 检查 | 内容 |
+|---|---|
+| `pnpm verify:flow` | 全部离线规则、稳定 id、依赖、章节与状态机 |
+| `verify-flow --diff <base>` | 提交/PR 标题 `(#N)`、issue 资格与 diff scope 覆盖 |
+| `pnpm verify:flow-online` | GitHub milestone/issue/PR 关联一致性 |
+| `pnpm test:gates` | flow 解析、依赖、正文、GitHub 正文、退休计划与路由自测试 |
 
 ## GitHub 同步
 
-`pnpm flow:sync` 是把流程树写到 GitHub 的唯一入口（建单、回填、状态映射、重录；不删远端）；CI 在线 lane 只校验不修改。需要 gh 已登录。
-
-issue / milestone / 状态映射用 `GITHUB_TOKEN` 可校验；**PR 的 project 关联**要读用户级 Projects v2，app token 恒见空列表：配 `FLOW_TOKEN`（PAT，`project` scope）则 CI 强校验，否则降级为提醒，由本地 `pnpm verify:flow-online` 把关。
+`pnpm flow:sync` 是唯一 GitHub 写入口。它按本地详细中文正文创建/更新 issue body，同步状态，并在显式 `-- --retire-missing` 时关闭不在本地流程树中的开放 issue/milestone。**远端对象只关闭，不物理删除。** 需要 gh 已登录；Projects v2 强校验需 `FLOW_TOKEN`。
 
 ## 工具
 
-`pnpm flow:new-issue -- --milestone <id> --priority <P0> --slug <kebab> --title <中文标题> --title-en <English title> --scope <glob,glob>` 生成 issue 三件套骨架。
+`pnpm flow:new-issue -- --milestone <id> --id <milestone-NN> --priority <P0> --slug <kebab> --title <中文标题> --title-en <English title> --scope <glob,glob> --depends <id,id>` 生成三件套骨架；生成后必须补齐正文契约。

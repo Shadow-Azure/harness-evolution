@@ -1,6 +1,6 @@
 # 10 · Milestone / Roadmap / Issue 重排草案（待确认）
 
-> **状态：讨论稿。** 本文不写入 `.agents/flow/`，不触发 `flow:sync`；等 [09 的 Q1–Q5](09-review-guide.md) 与本文 §5 的路线图问题都有结论后，再用 `pnpm flow:new-issue` 正式生成三件套并更新 roadmap。
+> **状态：排期讨论稿。** 本文不写入 `.agents/flow/`，不触发 `flow:sync`；[09 的 Q1–Q6](09-review-guide.md) 已有结论，等本文 §5 的路线图问题有结论后，再用 `pnpm flow:new-issue` 正式生成三件套并更新 roadmap。
 > 目的：把"设计确认之后怎么排期"提前摆到桌面上，避免确认当天从零开始讨论。
 > 范围前提（2026-10-22 多轮评审）：① 时间线页面（原型 B 页）裁撤；② 产品定位为 **SaaS 服务**（自建账号 + JWT、单组织共享、MySQL 主库）；③ 轨迹输入为"第三方脚本写入的 `trajectory_payloads` + 契约先行的上游 pull"，本服务只做归一化；问题/归因数据来自外部只读表；④ 演示数据用 `fixtures` seed，不做运行时打桩。
 

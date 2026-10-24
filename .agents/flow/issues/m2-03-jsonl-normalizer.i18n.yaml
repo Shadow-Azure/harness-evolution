@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m2-03-jsonl-normalizer.md
+m2-03-jsonl-normalizer.md: d55a6632df6c513c326b517c61ed9e124724cd2e
+m2-03-jsonl-normalizer.en.md: f28d33bbd8fcb84c8674393503167d28d7ba3384
