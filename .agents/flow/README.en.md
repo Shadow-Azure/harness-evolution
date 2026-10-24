@@ -1,62 +1,66 @@
-# Development Flow
+# Development flow
 
 English | [中文](README.md)
 
-> Contract home: the format, state machine and gates for the four working-file layers — roadmap → milestone → issue → ADR. Mechanical enforcement belongs to `verify-flow` / `verify-flow --diff` / `verify-flow-online`; this page states the rules only.
+> Contract home: roadmap → milestone → issue → ADR format, state machine, and gates. Mechanical checks live in `verify:flow`, `verify:flow --diff`, and `verify:flow-online`.
 
-This repository installs the flow mechanism only; no roadmap / milestone / issue instances exist yet. The maintainer creates `.agents/flow/roadmap.md` after discussion. Until then `verify-flow` skips the state-machine check and `flow:new-issue` asks for the roadmap first.
+## Hierarchy
 
-## Layers
-
-| Layer | File | Responsibility |
+| Layer | Files | Responsibility |
 |---|---|---|
-| roadmap | `.agents/flow/roadmap.md` | Vision + the ordered milestone sequence (single source of truth) |
-| milestone | milestones/&lt;id&gt;-*.md | A phase's delivery goal and acceptance |
-| issue | issues/&lt;milestone-id&gt;-*.md | Smallest work unit: background, goals, acceptance, scope |
-| ADR | [../notes/](../notes/README.en.md) | Decision records reuse Agent Notes; issues reference them via the adr field |
+| Roadmap | `roadmap.md` | Vision, ordered milestones, delivery rules |
+| Milestone | `milestones/<id>-*.md` | Stage goals, scope, acceptance, non-goals |
+| Issue | `issues/<milestone-id>-*.md` | Independently verifiable work unit |
+| ADR | `../notes/` | Decision records linked from issues |
 
-## Machine-readable surface: the yaml flow fence
+## Machine-readable yaml flow fence
 
-Every working file carries exactly one yaml flow fence; the pairing gate requires fences to be byte-identical across both sides, so machine-readable fields cannot drift between languages. Inside the fence is a yaml subset: top-level `key: scalar`, `key:` plus `- item` lists, a one-level nested map indented two spaces, inline lists `[a, b]`; scalars are limited to null, true/false, non-negative integers and strings.
+Every file has exactly one yaml flow fence with byte-identical fences on both languages. Roadmaps record `kind` and `milestones`; milestones record `kind/id/title/status/github`. Issues record:
 
-roadmap fence fields: `kind: roadmap`, `milestones` (ordered id list). milestone fence fields: `kind: milestone`, `id`, `title` (used for GitHub milestone sync), `status`, `github: {number, url}`. issue fence fields: `kind: issue`, `milestone`, `priority`, `status`, `bootstrap`, `scope` (file globs this issue may touch), `adr` (relative paths to Agent Notes), `github: {number, url}`.
+```text
+kind: issue
+id: m2-03
+milestone: m2
+depends: [m2-01, m2-02]
+priority: P0
+status: backlog
+scope: [允许修改的 glob]
+adr: [相对 Agent Note 路径]
+github: {number, url}
+```
+
+`id` is the stable local planning ID; `github.number` is the remote ID. Dependencies must exist, stay in the same or an earlier milestone, and remain acyclic.
+
+## Issue body contract
+
+Chinese bodies require Background, Goals, Design authority, Implementation, Implementation steps, Dependencies and boundary, Verification, Acceptance, Gates and CI, and Non-goals; English mirrors the structure. Design authority links exact `plans/fullstack-design` sections. Verification names commands, data, and expected output.
 
 ## Closed sets
 
-- issue status: `backlog` / `ready` / `in-progress` / `done`
-- milestone status: `planned` / `active` / `done`
-- priority: `P0` / `P1` / `P2` (P0 is highest)
+- Issue status: `backlog` / `ready` / `in-progress` / `done`
+- Milestone status: `planned` / `active` / `done`
+- Priority: `P0` / `P1` / `P2` (P0 highest)
 
-## Numbering and references
+## IDs, dependencies, and progression
 
-- Issue ids are coupled to GitHub issue numbers: commits and PR titles reference them as `(#N)`.
-- Draft transition state: an issue whose `github.number` is null may only sit in backlog; it may move on only after `pnpm flow:sync` backfills the number.
-- Bootstrap exemption: the flow's own bootstrap issue cannot reference its own number, so `bootstrap: true` permits status moves without one; at most one such issue exists repo-wide and it must belong to the first milestone in the roadmap sequence; remove the flag once the number is backfilled.
-- No exemption lane: even mechanical fixes reference an issue.
+- A draft with null `github.number` stays in backlog until sync backfills it.
+- At most one `bootstrap: true` issue exists, in the first milestone; remove it after backfill.
+- Equal priorities serialize across milestones; within-milestone demotion follows the existing rule.
+- Active work requires completed dependencies; dependency cycles are red.
 
-## Priority progression
+## Gates
 
-- Same tier is serial across milestones: P0 of m(i+1) may start if and only if every P0 of earlier milestones is done; P1 and P2 each follow their own serial chain.
-- Unlimited parallelism within a tier: several issues of the same milestone and tier may be in-progress at once.
-- Step-down unlock: when the highest not-finished tier inside a milestone has exactly 1 issue left not done, the next tier unlocks.
-- The rules gate eligibility for in-progress / done; ready is only a grooming marker, not a commitment.
-- milestone status cross-checks with issues: a milestone is done if and only if all of its issues are done.
+| Check | Purpose |
+|---|---|
+| `pnpm verify:flow` | Offline rules, stable IDs, dependencies, sections, state machine |
+| `verify-flow --diff <base>` | `(#N)` titles, issue eligibility, diff scope coverage |
+| `pnpm verify:flow-online` | GitHub milestone/issue/PR consistency |
+| `pnpm test:gates` | Flow parsing, dependencies, bodies, GitHub rendering, retirement, routing |
 
-## Gates and interception points
+## GitHub synchronization
 
-| Check | Where | Coverage |
-|---|---|---|
-| `pnpm verify:flow` | local + CI static lane | every offline rule on this page |
-| `verify-flow --diff <base>` | CI on PR | `(#N)` references in commit and PR titles, referenced issues ready/in-progress on base, or activated from backlog by this PR, diff files covered by the referenced issues' scope union (skipped wholly when the base lacks a roadmap: bootstrap PRs are not bound) |
-| `verify-flow-online` | CI online lane | two-sided consistency with GitHub: issue exists, milestone membership, state mapping, PR linked to a milestone and a project |
-| commit-msg hook | local (`pnpm install:hooks`) | commit title carries `(#N)` (reminder-level; exhaustive coverage belongs to CI) |
-
-## GitHub sync
-
-`pnpm flow:sync` is the only entry point that writes the flow tree to GitHub (create, backfill, map status, re-record; never delete remotely); the CI online lane verifies without modifying. Requires a logged-in gh.
-
-Issues / milestones / state mapping check out with `GITHUB_TOKEN`; **a PR's project link** needs user-level Projects v2, where an app token only ever sees an empty list: with `FLOW_TOKEN` (a PAT carrying `project`) CI enforces it, otherwise it drops to a reminder and the local `pnpm verify:flow-online` enforces it.
+`pnpm flow:sync` is the sole GitHub writer. It creates and updates issue bodies from the detailed Chinese files, maps status, and only with explicit `-- --retire-missing` closes open remote issues/milestones absent locally. **Remote objects are closed, never deleted.** gh authentication is required; `FLOW_TOKEN` enables strong Projects v2 checks.
 
 ## Tooling
 
-`pnpm flow:new-issue -- --milestone <id> --priority <P0> --slug <kebab> --title <中文标题> --title-en <English title> --scope <glob,glob>` generates the issue trio skeleton.
+`pnpm flow:new-issue -- --milestone <id> --id <milestone-NN> --priority <P0> --slug <kebab> --title <Chinese title> --title-en <English title> --scope <glob,glob> --depends <id,id>` scaffolds three files; complete the body contract before readiness.

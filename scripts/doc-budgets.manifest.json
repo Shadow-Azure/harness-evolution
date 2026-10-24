@@ -16,9 +16,11 @@
   "docs/i18n/translation-prompt.md": 320,
   ".agents/notes/README.md": 1000,
   ".agents/flow/README.md": 980,
-  ".agents/flow/roadmap.md": 520,
-  ".agents/flow/milestones/m1-prototype.md": 620,
-  ".agents/flow/milestones/m2-trace-service.md": 320,
-  ".agents/flow/milestones/m3-ai-diagnosis.md": 380,
-  ".agents/flow/milestones/m4-evolution-loop.md": 300
+  ".agents/flow/roadmap.md": 700,
+  ".agents/flow/milestones/m1-milestone.md": 500,
+  ".agents/flow/milestones/m2-milestone.md": 500,
+  ".agents/flow/milestones/m3-milestone.md": 500,
+  ".agents/flow/milestones/m4-milestone.md": 500,
+  ".agents/flow/milestones/m5-milestone.md": 500,
+  ".agents/flow/milestones/m6-milestone.md": 500
 }

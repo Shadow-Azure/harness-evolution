@@ -40,18 +40,19 @@ function git(args) {
 /**
  * PR 内引用 issue 的有效状态：优先按 base 评估，避免引用已在 main 上 done
  * 的 issue。base 为 backlog 且 HEAD 已推进为 ready/in-progress/done 时视为
- * 本 PR 完成开工激活。base 无该文件（新 issue 首次提交）返回 undefined，
- * 调用方回落到 HEAD 状态。
+ * 本 PR 完成开工激活。base 无该文件（新 issue 首次提交）视为 base backlog，
+ * 因此同一 PR 内新建并推进到 ready/in-progress/done 属于合法激活。
  */
 function baseIssueStatus(base, file) {
   try {
-    const text = execFileSync("git", ["show", `${base}:${file}`], {
-      encoding: "utf8",
-    });
-    return parseFlowDocument(text, file).data.status;
+    execFileSync("git", ["cat-file", "-e", `${base}:${file}`], { stdio: "ignore" });
   } catch {
-    return undefined;
+    return "backlog";
   }
+  const text = execFileSync("git", ["show", `${base}:${file}`], {
+    encoding: "utf8",
+  });
+  return parseFlowDocument(text, file).data.status;
 }
 
 /** base 树是否已启用流程（无 roadmap 则本 PR 是流程自身的自举，跳过 diff 校验）。 */

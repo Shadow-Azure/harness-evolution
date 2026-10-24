@@ -1,5 +1,0 @@
-# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
-#   pnpm run record:i18n -- .agents/flow/milestones/m4-evolution-loop.md
-m4-evolution-loop.md: 208392362020cc0cd8051e87623ec5a4af352209
-m4-evolution-loop.en.md: 7f86eafeaf49985b073ffe97533a344e300ba81d

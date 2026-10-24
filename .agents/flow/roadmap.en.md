@@ -9,32 +9,26 @@ milestones:
   - m2
   - m3
   - m4
+  - m5
+  - m6
 ```
 
-## M0 Engineering scaffold (done)
+## Vision
 
-The web and server workspace, shared contracts and health check are wired.
+Harness Evolution turns linked Claude Code traces, external problems, and attribution data into diagnosable, evolvable coding-agent improvements. Delivery follows the SaaS boundary in `plans/fullstack-design`; the timeline page remains retired.
 
-## M1 Frontend experience prototype: session family and agent collaboration (current)
+## Milestone sequence
 
-Validate the final information architecture with four real root session families. The root agent and every descendant subagent share one execution-flow diagram; root and child-agent findings appear together in one findings panel and are attributable to a specific skill or agent. Findings, attribution and evolution data are stubbed, and the prototype uses local snapshots without SQLite or the API. See [m1](milestones/m1-prototype.en.md).
+- **m1 Engineering baseline and quality gates:** FastAPI, Vue 3, dual-dialect storage, contracts, auth, jobs/SSE, and CI meta-gates.
+- **m2 Trace data and normalization:** fixtures, local real-data import, parsing, agent trees, idempotency, session APIs, and scheduling.
+- **m3 Session browsing and execution flow:** list, overview, agent execution graph, deep links, and performance budgets.
+- **m4 Problems and attribution:** external read-only bad_case/probe data through API, graph cards, and error details.
+- **m5 Evolution loop:** targets, runs, six steps, events, real git candidates, and placeholder patch/eval automation.
+- **m6 Real integrations:** real upstream, external contracts, real patch/evaluation, and clustering upgrade.
 
-Acceptance: without switching agents, one findings list shows every root and child-agent problem; attribute from the diagram or list, select a target skill or agent, aggregate that target's findings, run simulated evolution/training and validation, then accept or reject based on metrics.
+## Delivery rules
 
-## M2 Real trace service: session family import and storage
-
-Stream rollouts, assemble families by parent_thread_id, implement idempotent import, SQLite repositories and REST APIs, then replace prototype snapshots with real data. See [m2](milestones/m2-trace-service.en.md).
-
-Acceptance: importing the four root families repeatedly creates no duplicates, and the web app matches the prototype.
-
-## M3 AI trace diagnosis: cross-agent evidence links
-
-Rule and AI diagnosis both scope to a session family. Analyze each agent first, then let the root agent merge, deduplicate and produce cross-agent conclusions. See [m3](milestones/m3-ai-diagnosis.en.md).
-
-Acceptance: one root analysis covers every descendant subagent, and each finding locates its agent path, rollout and event.
-
-## M4 Evolution loop: skill and agent improvement evaluation
-
-Aggregate attributed findings by skill or agent, generate minimal-change proposals, and record comparative evaluation plus adoption or rollback. See [m4](milestones/m4-evolution-loop.en.md).
-
-Acceptance: at least one real problem completes "diagnosis → proposal → comparative verification → adopt or reject".
+- Every issue treats its linked `plans/fullstack-design` sections as the technical authority; issues define slices, steps, verification, and boundaries.
+- Every issue runs repository static gates plus focused verification; every new gate has a self-test and route entry.
+- CI uses synthetic fixtures; `claude-code-sessions/` and `data/` remain local and never enter Git or issue bodies.
+- Remote flow objects are closed, never deleted; `pnpm flow:sync -- --retire-missing` is the sole retirement entry.

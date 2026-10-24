@@ -1,0 +1,80 @@
+# 登录、强制改密与前端鉴权状态
+
+[English](m1-07-identity-frontend.en.md) | 中文
+
+```yaml flow
+kind: issue
+id: m1-07
+milestone: m1
+depends:
+  - m1-05
+  - m1-06
+priority: P0
+status: backlog
+scope:
+  - apps/web/**
+  - packages/contracts/**
+  - .github/workflows/ci.yml
+  - docs/**
+  - .agents/flow/**
+  - .agents/notes/**
+adr: []
+github:
+  number: 30
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/30
+```
+
+## 背景
+
+业务页面必须在真实 JWT 下运行，且 token 过期/首登改密不能让用户停留在错误页。
+
+## 目标
+
+- 实现登录页、强制改密页、auth store、Bearer 注入和路由守卫。
+- 处理 401 自动刷新一次、redirect 回跳、退出清态和错误态。
+- 为顶栏用户区提供当前用户与退出。
+
+## 设计依据
+
+- [04 后端架构](../../../plans/fullstack-design/04-backend-architecture.md)
+
+## 实现内容
+
+- access token 只存内存；refresh cookie 由后端管理。
+- query/mutation 失败按统一错误模型展示，不弹原生 alert。
+- 每个守卫分支可由 MSW 响应驱动测试。
+
+## 实施步骤
+
+1. 先写未登录、redirect、强改密、401 刷新、登出的组件/组合式失败测试。
+2. 实现 api/auth、store、http、守卫和页面。
+3. 接 OpenAPI 类型并更新 CI 测试。
+
+## 依赖与交付边界
+
+- 依赖：m1-05, m1-06
+- 交付边界：不做用户管理页、记住密码和注册。
+
+## 独立验证
+
+```sh
+pnpm test:web -- auth
+pnpm typecheck:web
+pnpm build
+```
+
+- 未登录访问 /sessions 跳登录并回跳；过期 token 自动刷新后重放。
+- 首登被改道改密，成功后放行。
+
+## 验收标准
+
+- 三种鉴权状态和登录失败态都有明确 UI。
+- 退出后内存态与 query 缓存清空。
+
+## 门禁与 CI
+
+- 前端鉴权测试进入 CI。
+
+## 非目标
+
+- 不做 OAuth 或用户 CRUD UI。
