@@ -770,6 +770,7 @@ erDiagram
   "mode": "full" }
 ```
   - 同步前置校验：target 已配置/启用、条件合法、probe 数 > 0；失败直接 `409 TARGET_NOT_CONFIGURED` / `409 NO_PROBES_MATCHED`
+  - 可选字段：`engineKey`（执行引擎，默认 = `mode`）与 `eval`（评测接入配置，缺省用全局 `HE_EVAL_*`；密钥用 env 引用名，不落库）；两者随 run 快照（[07 §5.3](07-backend-implementation.md)）；`engineKey` 未注册或 `eval` 非法 → `422 ENGINE_INVALID`
   - 校验通过后只创建 `status=preparing` 的 run 并入队 `evolution_prepare`；workspace clone、repo/ref 校验、聚类、迭代轮（`evolution_rounds`）全部在后台完成；repo/ref 失败使 run `failed(error_stage=clone)`
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
@@ -858,6 +859,7 @@ POST /runs（同步校验）
 ```
 
 - 预览落一条 `mode=cluster_only` 的 `evolution_runs`，先 `preparing`，由 `evolution_prepare` 完成筛选与聚类；
+- body 同样支持可选 `engineKey` / `eval`（同 §4.10；`cluster_only` 默认引擎不做 patch/评测，`eval` 仅在为该 mode 注册的引擎需要时生效）；
 - 完成后 `GET /runs/{rid}/steps/clusters` 取簇；不建 workspace、不做 patch/评测；
 - 前端跳转 `/evolution/cluster/:runId` 后先显示准备中，再轮询/SSE 到簇生成。
 - `steps/clusters` 的簇带落库的 `confidence/severity`（未算完为 `null`；仅聚类页簇头要渲染置信度与严重程度条）；`cluster_only` 的 run 请求 `attribution/severity/iteration/final` 步一律 `404 STEP_NOT_READY`。
@@ -1013,6 +1015,7 @@ FastAPI /api/openapi.json
 | `TARGET_NOT_CONFIGURED` | 409 | 启动 run 时目标未配置或已停用 |
 | `TARGET_IN_USE` | 409 | 删除配置时仍有进行中的 run |
 | `REPO_INVALID` | 422 | 仓库路径不存在/不是 git 仓库/ref 不存在 |
+| `ENGINE_INVALID` | 422 | `engineKey` 未注册或 `eval` 评测接入配置非法 |
 | `GIT_ERROR` | 500 | git 操作失败（clone/branch/commit；消息含 stderr 摘要） |
 | `UPSTREAM_NOT_AVAILABLE` | 409 | 上游查询接口未配置或未实现时的 pull 请求 |
 | `USERNAME_CONFLICT` | 409 | 创建用户时用户名已存在 |

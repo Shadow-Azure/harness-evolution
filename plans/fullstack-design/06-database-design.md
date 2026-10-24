@@ -404,6 +404,8 @@ erDiagram
 | `id` | `VARCHAR(36)` PK | `evo-…` |
 | `title` | `VARCHAR(255)` | — |
 | `mode` | `VARCHAR(16)` | `full`（完整自进化）/ `cluster_only`（仅聚类预览） |
+| `engine_key` | `VARCHAR(64)` | 执行引擎选择键，默认 = `mode`；决定该 run 由哪个 `EvolutionEngine` 子类执行（[07 §5.4](07-backend-implementation.md)）；创建时固化 |
+| `eval_config` | JSON | 评测接入配置快照（上游传入，缺省为全局 `HE_EVAL_*`）；密钥不落库，只存 env 引用名（[07 §5.7](07-backend-implementation.md)） |
 | `target_config_id` | `VARCHAR(36)` | FK → `evolution_targets.id` |
 | `target_type` | `VARCHAR(16)` | `skill` / `agent`（来自 probe） |
 | `target_name` | `VARCHAR(128)` | `probe_object` |

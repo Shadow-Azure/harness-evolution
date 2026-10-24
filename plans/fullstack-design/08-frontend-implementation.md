@@ -586,7 +586,7 @@ RunLogPanel.vue
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
-- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}` 到 `status=completed`（cluster_only 聚类完成即终态，见 [07 §5.3](07-backend-implementation.md)），再拉 `steps/clusters`。
+- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}` 到 `status=completed`（cluster_only 聚类完成即终态，见 [07 §5.4](07-backend-implementation.md)），再拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：session / probe / 聚类数。
 - 聚类列表：每簇展示类型、probe 数、簇内 probe 列表（可展开）。
