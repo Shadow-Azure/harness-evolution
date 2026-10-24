@@ -36,14 +36,14 @@ M6 接真实现（执行器 + 真实来源）
 | m2 | 平台骨架与契约 | planned | Vue 3 前端骨架 + FastAPI 后端骨架 + OpenAPI 契约 + 登录鉴权 + 外部表接入跑通 | `pnpm dev` 起前后端；登录后 `/api/health` 正常；未登录 401；`contract:check` 通过 |
 | m3 | 轨迹接入与归一化 | planned | 读 `trajectory_payloads` + 上游 pull + 归一化入库（MySQL）+ 会话两页（列表/会话概览）+ Agent 会话树结构 | 同一 payload 重复处理不重复；结构异常按条隔离；切 MySQL 后同一套 API 与测试通过 |
 | m4 | 问题与归因（外部只读） | planned | bad_case 列表/详情、归因 tab、Agent 执行流图问题卡 | 5 种展示状态正确；badCaseId 深链可用；外部表字段缺失可降级 |
-| m5 | 自进化闭环（占位聚类/评测） | planned | 对象配置、运行列表、启动向导、六步详情、workspace/candidate commit、执行日志 | 每个 candidate 有 commit；接纳 amend、拒绝 reset；失败/中断可在日志看到；进度经 SSE 更新 |
+| m5 | 自进化闭环（占位聚类/评测） | planned | 对象配置、运行列表、启动向导、六步详情、workspace/candidate commit、执行日志 | 每个 candidate 有 commit；接纳 amend + fast-forward、拒绝删 candidate；失败/中断可在日志看到；进度经 SSE 更新 |
 | m6 | 接真实现 | planned | 接真实执行器与上游来源：真实 PayloadSource/HttpApiSource、聚类升级、patch/评测执行 | 至少一条真实问题走完"payload → 归一化 → 聚类 → patch → 评测接纳或拒绝"；前端零改动 |
 
 ### 2.1 为什么这样拆
 
 - **m2 单独成阶段**：前端要从 React 重建为 Vue 3，后端要从 Fastify 换成 FastAPI，还要加登录鉴权，契约生成链路也要重建——这些与"接入真实轨迹"没有依赖关系，混在一起会让 m2 变成巨型 milestone，验收说不清。
 - **m3 只做"看得见的真实数据"**：来源同步 + 会话两页（列表/会话概览）+ Agent 会话树结构，问题卡先用空数组渲染（Agent 执行流图上没有红色卡片），保证这一阶段可独立演示；时间线页面已裁撤，不在任何 milestone 内。数据库以 MySQL 为主库、SQLite 仅测试，双库 CI 从 m3 第一天就跑。
-- **m4/m5 只做打桩 UI**：把"UI 完成度"和"算法真实度"解耦；m4/m5 的验收是"与原型一致"，m6 才是"结论真实"。
+- **m4/m5 解耦"UI 完成度"与"算法真实度"**：m4 的数据来自真实外部表（开发期 fixtures seed 灌入），不是运行时桩；m5 的聚类/patch/评测是占位实现但 git 链路真实；两者的验收都是"与原型一致"，m6 才是"结论真实"。
 - **m6 是占位实现的兑现**：只换执行器与聚类算法，不动前端、不动契约。
 
 ### 2.2 备选方案（更保守，5 个 milestone）
@@ -58,30 +58,30 @@ M6 接真实现（执行器 + 真实来源）
 
 | # | 标题 | 优先级 | scope | 依赖 | 验收 |
 |---|---|---|---|---|---|
-| m2-01 | 后端切换：新建 `apps/api`（FastAPI 骨架、配置、错误模型、health） | P0 | `apps/api/**`、`pnpm-workspace.yaml` | — | `/api/health` 返回 `phase=demo`；错误模型统一；`python -m pytest` 通过 |
+| m2-01 | 后端切换：新建 `apps/api`（FastAPI 骨架、配置、错误模型、health） | P0 | `apps/api/**`、`pnpm-workspace.yaml` | — | `/api/health` 返回 `phase=scaffold`（seed 后转 `demo`）；错误模型统一；`python -m pytest` 通过 |
 | m2-02 | OpenAPI 契约生成链路与 CI 防漂移 | P0 | `packages/contracts/**`、`scripts/**` | m2-01 | `contract:generate` 产出类型；`contract:check` 在 CI 失败可复现 |
 | m2-03 | 前端重建为 Vue 3（router/pinia/query/Element Plus/tokens/基元） | P0 | `apps/web/**` | m2-02 | 两大视图空壳可切换；设计令牌与原型一致 |
 | m2-04 | PayloadSource 与 fixtures（`trajectory_payloads` 读取 + HttpApiSource 接口 + 演示种子数据） | P0 | `apps/api/app/service/acquisition/**`、`apps/api/app/third_party_api/**`、`fixtures/**` | m2-01 | payload 可读；fixtures seed 后 UI 可演示；无运行时桩分支 |
-| m2-05 | SSE 事件总线与任务运行器骨架（job_runs + 串行 worker + 票据） | P1 | `apps/api/app/service/jobs.py`、`apps/api/app/service/events.py` | m2-01 | 订阅/发布/心跳/断线补发可用；job_runs 落状态；票据绑定 topics/cursor；重启可续 |
+| m2-05 | SSE 事件总线与任务运行器骨架（job_runs + 串行 worker + 票据） | P1 | `apps/api/app/service/jobs.py`、`apps/api/app/service/events.py` | m2-01 | 订阅/发布/心跳/断线补发可用；job_runs 落状态、重启可续；票据绑定 topics/cursor（内存票据一次性 60s，重连重新取票） |
 | m2-06 | 前端三态、全局错误处理、顶栏与演示数据角标 | P1 | `apps/web/src/**` | m2-03 | 空/加载/失败三态统一；`phase=demo` 显示角标 |
-| m2-07 | 鉴权后端：users 表（含 `must_change_password`）、登录/刷新/登出/改密、JWT 中间件与强制改密闸、初始管理员播种、SSE 票据 | P0 | `apps/api/app/modules/identity/**`、`apps/api/app/core/**` | m2-01 | 登录/刷新/登出/改密链路通；错误密码 401；未登录访问业务 API 401；首登未改密访问业务 API 403 `PASSWORD_CHANGE_REQUIRED`；票据一次性 |
+| m2-07 | 鉴权后端：users 表（含 `must_change_password`）、登录/刷新/登出/改密、JWT 中间件与强制改密闸、初始管理员播种、SSE 票据 | P0 | `apps/api/app/service/identity/**`、`apps/api/app/middleware/**` | m2-01 | 登录/刷新/登出/改密链路通；错误密码 401；未登录访问业务 API 401；首登未改密访问业务 API 403 `PASSWORD_CHANGE_REQUIRED`；票据一次性 |
 | m2-08 | 鉴权前端：登录页、强制改密页、auth store、http Bearer 注入与 401 刷新、路由守卫、顶栏用户区 | P0 | `apps/web/src/pages/login/**`、`apps/web/src/stores/**`、`apps/web/src/api/**` | m2-03、m2-07 | 未登录跳登录页；登录后回跳 redirect；`mustChangePassword` 时被改道改密页、改密后放行；access 过期自动 refresh；退出清态断 SSE |
 
 ### 3.2 m3 轨迹接入与归一化（9 个）
 
 | # | 标题 | 优先级 | scope | 依赖 | 验收 |
 |---|---|---|---|---|---|
-| m3-01 | Database 接口 + SQLite / MySQL 两实现（连接、事务、health） | P0 | `apps/api/app/storage/**` | m2-01 | 默认 MySQL 可跑；SQLite 用于测试；`/api/health` 报告 dialect |
-| m3-02 | Alembic 双方言迁移（真实表 + 预留表 + users/source_records/sync_*） | P0 | `apps/api/alembic/**` | m3-01 | 两种库空库 upgrade 建全表；重放脚本可跑 |
+| m3-01 | Database 接口 + SQLite / MySQL 两实现（连接、事务、health） | P0 | `apps/api/app/db/**` | m2-01 | 默认 MySQL 可跑；SQLite 用于测试；`/api/health` 报告 dialect |
+| m3-02 | Alembic 双方言迁移（轨迹侧 + 问题侧只读 + 自进化侧 + users/source_records/sync_*） | P0 | `apps/api/alembic/**` | m3-01 | 两种库空库 upgrade 建全表；重放脚本可跑 |
 | m3-03 | 读 `trajectory_payloads` + 归一化幂等（hash/parser_version）与 fixtures 种子 | P0 | `apps/api/app/service/acquisition/**`、`fixtures/**` | m3-02 | 同一 payload 重复处理幂等；单条结构异常隔离；fixtures 可灌入真实表 |
-| m3-04 | 归一化器（JSONL 行数组 → 整树统计/user_turns/agent_events/每个 agent 的 model；消息与内容块仅解析期） | P0 | `apps/api/app/modules/acquisition/normalize.py` | m3-03 | 4 个会话的用户轮次/消息/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
-| m3-05 | Agent 会话树组装（子转录、toolUseId、agent_events 预计算、节点统计与会话聚合） | P0 | `apps/api/app/modules/acquisition/agent_tree.py` | m3-04 | 子 agent 挂接位置正确；普通 skill 不建节点、forked skill 一行；整树统计与 payload 一致；缺 toolUseId 有告警 |
-| m3-06 | 会话 API（列表/会话概览/Agent 会话树；轨迹统计读聚合列，问题数按会话查询聚合） | P0 | `apps/api/app/modules/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05](05-api-design.md)；不提供时间线端点 |
+| m3-04 | 归一化器（JSONL 行数组 → 整树统计/user_turns/agent_events/每个 agent 的 model；消息与内容块仅解析期） | P0 | `apps/api/app/service/acquisition/normalize.py` | m3-03 | 4 个会话的用户轮次/消息/工具有数可对；坏行不毁整文件；主/子 agent 模型分别入库 |
+| m3-05 | Agent 会话树组装（子转录、toolUseId、agent_events 预计算、节点统计与会话聚合） | P0 | `apps/api/app/service/acquisition/agent_tree.py` | m3-04 | 子 agent 挂接位置正确；普通 skill 不建节点、forked skill 一行；整树统计与 payload 一致；缺 toolUseId 有告警 |
+| m3-06 | 会话 API（列表/会话概览/Agent 会话树；轨迹统计读聚合列，问题数按会话查询聚合） | P0 | `apps/api/app/service/sessions/**` | m3-05 | 4 种排序、密度口径符合 [05 §3.1](05-api-design.md) / [06 §7.3](06-database-design.md)；不提供时间线端点 |
 | m3-07 | 前端 Session 列表 + 会话概览 | P0 | `apps/web/src/pages/sessions/**` | m2-03、m3-06 | 与原型列表/会话概览视觉一致；搜索/筛选/排序可用 |
 | m3-08 | 后台定时调度与单飞锁（sync_lock）+ 顶栏状态 | P1 | `apps/api/app/service/acquisition/**`、`apps/api/app/service/jobs.py`、`apps/web/src/**` | m2-05、m3-03 | 定时处理 pending；手动幂等复用 jobId；无并发重复任务 |
 | m3-09 | 上游轨迹查询契约定稿与 HttpApiSource | P1 | `apps/api/app/third_party_api/**`、`plans/**` | m3-03 | 契约（[05 §10](05-api-design.md)）评审通过；HttpApiSource 对 mock 上游联调通过（上游就绪前 payload 表先跑通） |
 
-### 3.3 m4 问题与归因（打桩，6 个）
+### 3.3 m4 问题与归因（外部只读，6 个）
 
 | # | 标题 | 优先级 | scope | 依赖 | 验收 |
 |---|---|---|---|---|---|
@@ -90,7 +90,7 @@ M6 接真实现（执行器 + 真实来源）
 | m4-03 | Agent 执行流图布局移植与最小树验证 | P0 | `apps/web/src/components/agent-tree/**` | m2-03 | `demo-nested` 四件事全对（归属/嵌套/折叠/连线不穿） |
 | m4-04 | Agent 执行流图全量（节点链/问题卡锚定/折叠/fitView/定位） | P0 | 同上 | m4-03 | 4 个会话与原型一致；点击定位高亮 |
 | m4-05 | 问题列表面板与定位联动 | P1 | `apps/web/src/components/bad-cases/**` | m4-02、m4-04 | 列表↔画布联动；badCaseId 新窗口打开 |
-| m4-06 | 错误详情页（左栏/执行流过滤/双 Tab/深链恢复） | P0 | `apps/web/src/pages/errors/**` | m4-02、m4-04 | 六状态、全部错误恢复、tab 顺序、刷新恢复 |
+| m4-06 | 错误详情页（左栏/执行流过滤/双 Tab/深链恢复） | P0 | `apps/web/src/pages/errors/**` | m4-02、m4-04 | 5 种展示状态、全部错误恢复、tab 顺序、刷新恢复 |
 
 ### 3.4 m5 自进化闭环（9 个）
 
@@ -133,7 +133,7 @@ M6 接真实现（执行器 + 真实来源）
 | F12 仅聚类结果 | | | | ● | |
 | F13 运行详情六步 | | | | ● | |
 | F14 SSE 进度 | ●（机制） | | | ●（运行） | |
-| F15 对象/模型清单 | ●（桩） | | | | ●（真实） |
+| F15 对象/模型清单 | | | | ●（targets 配置 + 模型聚合） | |
 | F16 模拟推进 | —（已取消，改为自动逐轮） | | | | |
 | F17 三态与错误处理 | ● | | | | |
 | F18 登录与鉴权 | ● | | | | |
@@ -143,7 +143,7 @@ M6 接真实现（执行器 + 真实来源）
 ## 5. 需要你拍板的路线图问题
 
 1. **里程碑数量**：采用 §2 的 6 个（推荐，m2 单独做平台骨架），还是 §2.2 的 5 个（不动现有编号，骨架塞进 m2）？
-2. **m6 是否现在纳入 roadmap**：纳入（推荐，明确打桩预留的兑现路径）还是等 m5 完成后再加？
+2. **m6 是否现在纳入 roadmap**：纳入（推荐，明确占位实现的兑现路径）还是等 m5 完成后再加？
 3. **issue 粒度**：§3 的粒度（约 34 个）是否合适？还是要更细（如把"归一化"拆成轮次/块/token 三个）或更粗（按页面合并）？
 4. **既有 m1 issue**：全部保持 `done` 不动，还是把"原型打磨"类 issue 关闭/归档？
 5. **双语文件**：新增 milestone/issue 是否同步产出英文版（`flow:new-issue` 默认生成三件套）？还是允许先中文、后补英文（会触发 i18n 门禁）。

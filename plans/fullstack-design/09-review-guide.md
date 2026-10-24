@@ -17,7 +17,7 @@
 | 登录页（用户名/密码、错误提示、登录跳转） | F18 | [05 §4.1](05-api-design.md)（auth 端点）· [08 §4](08-frontend-implementation.md) |
 | 强制改密页（首登改密、成功后换 token 并放行） | F18 | [05 §4.1](05-api-design.md)（`change-password`）· [08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md) |
 | 顶栏用户区：演示数据角标、轨迹处理状态、当前用户与退出 | F18 / F9 | [08 §4.2](08-frontend-implementation.md) |
-| 轨迹处理状态（`GET /acquisition/status`）与后台定时 | F9 / F14 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
+| 轨迹处理状态（`GET /acquisition/status`）与后台定时 | F9 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
 
 ### 1.2 Session 错误查看
 
@@ -141,7 +141,7 @@
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
 | R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
 | R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
-| R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend、拒绝 reset；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
+| R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend + fast-forward、拒绝删 candidate（run 分支不 reset）；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
 | R15 | 异常详情泄露密钥/环境/密码 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据、`password`/`password_hash`）并截断 8KB；接口只返回脱敏内容；密码与哈希不写任何 payload 列（[06 §3.8](06-database-design.md)） |

@@ -17,6 +17,7 @@
 | `/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | `GET /evolution/runs/{rid}`、`/steps/clusters` | 仅聚类结果 |
 
 > 时间线页面（原型 B 页）已裁撤，不设路由、不建页面，详见 §6。
+> `/evolution/cluster/:previewId` 的 `previewId` 即 `mode=cluster_only` run 的 `runId`（[05 §4.12](05-api-design.md)），页面复用 run 详情的数据接口（`GET /runs/{rid}` + `steps/clusters`），不单独建数据通道。
 
 ```text
 router
@@ -52,7 +53,7 @@ router
 | `api/sessions.ts` | 列表 / 会话概览 / Agent 会话树 / 问题 |
 | `api/badCases.ts` | 问题详情 / 归因状态 |
 | `api/probes.ts` | 归因结论 |
-| `api/evolution.ts` | runs / 六步 / 事件 / 配置 / 启动推进 / push |
+| `api/evolution.ts` | runs / 六步 / 事件 / 配置 / 启动（runs、cluster-previews）/ 重试 |
 | `api/acquisition.ts` | 同步 / 拉取 / 状态 |
 | `api/catalogs.ts` | 对象 / 模型清单 |
 
@@ -121,7 +122,6 @@ export const keys = {
   run: (rid: string) => ["evolution", rid] as const,
   runStep: (rid: string, key: StepKey) => ["evolution", rid, "step", key] as const,
   runEvents: (rid: string, afterSeq = 0) => ["evolution", rid, "events", afterSeq] as const,
-  preview: (id: string) => ["evolution", "preview", id] as const,
   catalogs: () => ["catalogs"] as const,
   syncStatus: () => ["acquisition", "status"] as const,
   targets: () => ["evolution", "targets"] as const,
@@ -135,7 +135,9 @@ export const keys = {
 |---|---|
 | `POST /evolution/runs` | `["evolution","runs"]` |
 | `POST /runs/{rid}/retry` / SSE `run.progress` | `["evolution", rid]` 前缀（详情 + 全部 step） |
-| `POST /api/acquisition/sync` 完成（SSE） | `["sessions"]`、所有 `["session", …]` 前缀 |
+| sync job 完成（轮询 `GET /jobs/{jobId}` 发现；sync 无 SSE） | `["sessions"]`、所有 `["session", …]` 前缀、`["catalogs"]`（模型清单随归一化更新） |
+
+> 仅聚类预览页复用 `keys.run(rid)` / `keys.runStep(rid, "clusters")`：`previewId` 即 `cluster_only` run 的 runId，不单设 queryKey。
 
 ### 2.5 composables 签名
 
@@ -162,9 +164,9 @@ useSessionProbes(sid: Ref<string>)
 useRuns()
 useRun(rid: Ref<string>)
 useRunStep(rid: Ref<string>, key: Ref<StepKey>)      // enabled: 该 step 可达
-useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive: Ref<boolean>)  // GET /evolution/runs/{rid}/events
+useRunEventLog(rid: Ref<string>)                     // GET /evolution/runs/{rid}/events（afterSeq 分页拉取，日志面板数据源；REST 是事实源）
 useProbeQuery()                                      // mutation → POST /evolution/probes/query
-useCreatePreview()  usePreview(id)
+useCreatePreview()
 useStartRun()   useRetry(rid)
 
 // useAcquisition.ts
@@ -179,7 +181,7 @@ useTargetVersions(id) // GET /evolution/targets/{id}/versions（仓库 tag）
 useCreateTarget() useUpdateTarget() useDeleteTarget()   // admin 写操作
 
 // useCatalogs.ts
-useModels()           // GET /catalogs/models（来自 agents.model 聚合；staleTime: 5min）
+useModels()           // GET /catalogs/models（来自 agents.model 聚合；staleTime ∞，见 [03 §7](03-frontend-architecture.md)，靠写路径显式失效刷新）
 ```
 
 - 所有 composable 返回 `{ data, isLoading, isError, error, refetch }`，页面不直接碰 `http.ts`。
@@ -195,7 +197,7 @@ export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive:
     if (closed) return
     const { ticket } = await request<{ ticket: string }>("/api/events/ticket", {
       method: "POST",
-      body: { topics: [`run:${rid.value}`], lastEventId: loadedSeq.value },
+      body: JSON.stringify({ topics: [`run:${rid.value}`], lastEventId: loadedSeq.value }),
     })
     es = new EventSource(`/api/events?ticket=${ticket}`)
     es.addEventListener("run.event", e => { appendEvent(JSON.parse(e.data)); loadedSeq.value = ... })
@@ -257,7 +259,7 @@ agent-tree/
 简化（因为后端给了显式归属）：
 
 - 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `anchor {agentId, eventIndex}`；`badCaseType` 决定挂载方向。
-- 两类锚定规则（对应真实的 `self` / `discovery`）：
+- 锚定规则（`self` / `discovery` 两类 + 无锚点兜底）：
   1. **`self`（对象自身问题）**：`anchor.agentId` 就是上报人 A；skill 卡挂在 A 的该 skill 触发药丸下方（`TriggerEdge`），agent 卡挂在 A 节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
   2. **`discovery`（发现前置步骤问题）**：卡挂在发现者的触发点正上方（`DiscoveryEdge`）。发现者是 skill 时触发点在 A 内；发现者是 subagent A 时，触发点是**父节点 P 中调用 A 的 Agent 药丸**，`anchor.agentId = P`，不等于 `badCaseAgent.agentId`。
   3. 无锚点（`anchor.eventIndex = -1`）：挂在 `anchor.agentId` 节点右侧，避免卡片漂浮。
@@ -486,7 +488,7 @@ GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 
 - probe 表：6 列（probe ID / 归属会话 / 模型 / 根因对象@版本 / 属性类型 / 来源 bad_case）；ID 显示截短 + tooltip，点击新窗口打开对应问题详情。
 - 分页：每页 8 条。
 - 两个出口：
-  - 「启动问题聚类分析」→ `useCreatePreview()`（`POST /cluster-previews`，返回 `202 runId`）→ 路由 `/evolution/cluster/:runId`，页面先显示“准备中”
+  - 「仅聚类」（原型文案"启动问题聚类分析"）→ `useCreatePreview()`（`POST /cluster-previews`，返回 `202 runId`）→ 路由 `/evolution/cluster/:runId`，页面先显示“准备中”
   - 「启动自进化 →」→ `useStartRun()`（`POST /runs`，返回 `202 runId`）→ 路由 `/evolution/runs/:rid`，页面先显示“准备中”
 - 202 只表示“已受理准备”；不要等接口返回簇或 RunDetail。
 
@@ -543,14 +545,14 @@ RunDetail.vue
 | 推送状态 | 每轮展示 candidate `pushStatus`；终评展示最终 `pushStatus` 与 `pushedAt`；失败展示脱敏错误 + 「重试」按钮（调 `POST /runs/{rid}/retry`，不是旧的 `/push`） |
 | 阻塞状态 | `status=blocked` 时顶部显示 `blockedStage`、`retryAttempts`、`nextRetryAt`、错误摘要；按钮「重试」→ `/retry` → `202 jobId`；自动退避期间显示“等待自动重试” |
 | 首屏加载 | 先并行 `GET /runs/{rid}` + `/steps/{currentKey}`（`preparing` 可为空）+ `/events?afterSeq=0`（分页拉完）渲染初版；`preparing/running` 才建立 SSE，`blocked` 用轮询/重试，终态不建 |
-| 执行日志 | 独立 tab「执行日志」：`useRunEvents(rid, loadedSeq, isActive)` 拉库；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
+| 执行日志 | 独立 tab「执行日志」：`useRunEventLog(rid)` 分页拉库（REST 是事实源）；默认 100 条，滚动到底加载下一页；`level=error` 过滤 |
 | 异常展示 | `run.error` 存在时详情顶部显示错误横幅（stage/message/at），按钮跳日志并展开 `error.detail` |
 | 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
-| 评测状态 | `evalStatus`：pending/evaluating/completed/failed；`evaluating` 显示“评测中，下一次轮询 …”；失败时进入 blocked |
+| 评测状态 | `evalStatus`：pending/evaluating/completed/failed/timeout；`evaluating` 显示“评测中，下一次轮询 …”；failed/timeout 进入 blocked |
 | 进度实时更新 | 仅 `preparing/running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress`/`run.blocked` → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` 并关闭 |
 | 未到达的 step | 后端返回 404 `STEP_NOT_READY`；前端不请求（`enabled: step.clickable`） |
 
@@ -584,7 +586,7 @@ RunLogPanel.vue
 
 ## 11. 仅聚类页（`pages/evolution/ClusterPreview.vue`）
 
-- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}`，完成后拉 `steps/clusters`。
+- 页面先处理 `preparing`：显示“正在筛选/聚类”，轮询 `GET /runs/{rid}` 到 `status=completed`（cluster_only 聚类完成即终态，见 [07 §5.3](07-backend-implementation.md)），再拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
 - 输入概况：session / probe / 聚类数。
 - 聚类列表：每簇展示类型、probe 数、簇内 probe 列表（可展开）。
@@ -683,6 +685,6 @@ Agent 执行流图全量 + 问题卡
 
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
 - 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有 `preparing/running` 的 run 页面才申请 SSE 票据，重连重新取票，完成/阻塞/离开即关闭。
-- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate 并 reset。patch 内容与评分是占位，但 commit/amend/reset/push 都是真的。UI 需明示"占位 patch / 占位评测"。
+- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate ref、切回 run 分支（不 reset 已接纳轮次）。patch 内容与评分是占位，但 commit/amend/fast-forward/push 都是真的。UI 需明示"占位 patch / 占位评测"。
 - 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 的齿轮图标。
 - 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。

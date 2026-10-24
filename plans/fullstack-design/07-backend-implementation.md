@@ -12,6 +12,8 @@ def create_app(settings: Settings) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)      # request_id + principal 占位
     register_exception_handlers(app)                  # AppError → 统一错误响应
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins)
+    app.add_middleware(AuthMiddleware)                # JWT 校验 + 强制改密闸 + admin 路径规则（§8.2）
+    app.add_middleware(RateLimitMiddleware)           # 仅登录端点按 IP 限速（§8.1）
     include_routers(app)                              # 唯一的路由注册点
     app.router.lifespan_context = lifespan(settings)  # 迁移、残留任务清理、DB 健康检查
     return app
@@ -42,7 +44,7 @@ def create_app(settings: Settings) -> FastAPI:
 | `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树、`agent_events` 与会话统计 |
 | `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
-| `router.py` | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
+| 路由在 `api/acquisition.py`（薄层，不在本目录） | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` |
 
 ### 2.2 待处理判定（无水位线）
 
@@ -103,7 +105,8 @@ async def trigger_sync(source: str) -> TriggerResult:
 ```
 
 - `POST /acquisition/sync` 调同一个 `trigger_sync("manual")`；已有任务时返回 `202 {jobId, reused:true}`，不重复入队。
-- 入队与抢锁在同一事务：先 `INSERT sync_lock`（主键冲突即退出），再写 `job_runs`；写 job 失败则删除锁。
+- 入队与抢锁在同一事务：先写 `job_runs` 再 `INSERT sync_lock`；主键冲突或任一步失败都整体回滚——既不留下没有 job 的锁，也不留下没有锁的孤儿 job。
+- `jobs.insert_queued` + `jobs.start` 是 §6.1 `JobRunner` 的低层 API：sync 要在同一事务里落 job 与锁、提交后才让 worker 认领，因此不走 `submit` 的立即 `create_task`；其余域一律用 `submit`。
 - `JobRunner` 串行执行；任务完成/失败在 `finally` 里释放 `sync_lock`。
 - 锁 TTL 30 分钟；进程崩溃后下一次 tick 回收。
 - 多实例：`sync_lock` 表承担跨进程互斥；V1 单实例再加 `asyncio.Lock`。
@@ -186,8 +189,10 @@ async def run_sync(job_id: str) -> SyncResult:
                 sr.id, p.content_hash, CURRENT_PARSER_VERSION, job_id)
         await jobs.update_progress(job_id, (i + 1) / max(len(pending), 1))
 
-async def pull(session_refs: list[str]) -> SyncResult:
-    bundles = await http_source.fetch_many(session_refs)
+async def pull(job_id: str, session_ids: list[str] | None = None,
+               window: tuple[date, date] | None = None) -> SyncResult:
+    # sessionIds 与 window 二选一（05 §4.8）；上游未配置时路由层已返回 409 UPSTREAM_NOT_AVAILABLE
+    bundles = await http_source.fetch_many(session_ids=session_ids, window=window)
     await payloads.upsert_many(bundles)                     # 写入 trajectory_payloads
     return await run_sync(job_id)                           # 走同一管线
 ```
@@ -218,7 +223,7 @@ async def pull(session_refs: list[str]) -> SyncResult:
 - 时间戳应用生成 Asia/Shanghai（UTC+8）；不在 DDL 用 `NOW()` 默认值；API 序列化带 `+08:00`。
 - `source_records.id` 用 BIGINT 自增（外部 payload 表按 `(root_session_id, agent_id)` 关联，不需要应用生成 id）。
 
-## 3. 会话查询（`modules/sessions`）
+## 3. 会话查询（`service/sessions`）
 
 ### 3.1 列表
 
@@ -266,9 +271,9 @@ async def aggregate_session_stats(root_session_id: str) -> SessionStats:
 ```python
 async def list_bad_cases(sid: str) -> list[BadCase]:
     session = await crud.session_families.get(sid) or raise NotFound("SESSION_NOT_FOUND")
-    cases = await crud.bad_cases.list_by_session(sid)          # 问题侧表，只读
-    analyses = await crud.bad_case_analysis.get_by_case_ids([c.id for c in cases])
-    return [merge(c, analyses.get(c.id)) for c in cases]       # 合并状态/probeId/attributeType（attributeType 由 probe_id join probe_reports）
+    cases = await crud.bad_cases.list_by_session(sid)          # 问题侧表，只读，按 created_at 升序（05 §4.6）
+    analyses = await crud.bad_case_analysis.get_by_case_ids([c.bad_case_id for c in cases])
+    return [merge(c, analyses.get(c.bad_case_id)) for c in cases]  # 合并状态/probeId/attributeType（attributeType 由 probe_id join probe_reports）
 
 async def get_bad_case(case_id: str, sid: str | None) -> BadCase:
     case = await crud.bad_cases.get(case_id) or raise NotFound("BAD_CASE_NOT_FOUND")
@@ -318,7 +323,7 @@ async def anchor_for(bc) -> Anchor:
 
 - `last_skill_event`：在 A 的 `agent_events` 里筛 `kind=skill and name=object_name`，按 `event_index` 取最大；没有 → `-1`。
 - `agent_call_event`：在 P 的 `agent_events` 里筛 `kind=agent and tool_use_id=A.tool_use_id`；匹配不到 → `-1`。**不要**按 `object_name` 匹配。
-- 返回 `anchor: { agentId, eventIndex }`；`eventIndex` 用 `agent_events.event_index`，不是 `events[]` 数组下标。`badCaseAgent` 仍是上报人 A，`anchor.agentId` 在 `discovery + agent` 时等于父节点 P。
+- 返回 `anchor: { agentId, eventIndex }`；`eventIndex` 取该事件的 `agent_events.event_index`（0 起、连续编号），API 按 `event_index` 升序返回 `events[]`，因此它同时就是前端 `events[]` 的 0-based 下标（[05 §3.2](05-api-design.md)）——不是 line、也不是 messageOffset。`badCaseAgent` 仍是上报人 A，`anchor.agentId` 在 `discovery + agent` 时等于父节点 P。
 
 ## 5. 自进化（`service/evolution`）
 
@@ -349,7 +354,7 @@ stateDiagram-v2
 
 ### 5.2 对象配置（`service/evolution/targets.py`）
 
-- CRUD 维护 `evolution_targets`；写操作仅 admin（middleware 路径规则 `/api/evolution/targets*`）。
+- CRUD 维护 `evolution_targets`；写操作仅 admin（middleware 按「方法 + 路径」判定：`POST/PUT/DELETE /api/evolution/targets*` 要求 `role=admin`，`GET` 只需登录，成员只读配置页）。
 - 保存前校验：`repo_url` 可访问且 `default_ref` 可解析（`git ls-remote --exit-code <repo_url> <default_ref>`）、`sub_dir` 非空且不以 `..` 越界；失败 → `422 REPO_INVALID`。
 - 版本列表：拉取/更新仓库缓存到 `data/repos/{target_id}`，执行 `git tag --list`；V1 也允许 `git ls-remote --tags` 只读查询。
 - 唯一约束 `(object_type, object_name)` → 重复新增 `409 TARGET_EXISTS`；删除时若有进行中 run → `409 TARGET_IN_USE`。
@@ -372,7 +377,7 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
             id=run_id, mode=mode, status="preparing",
             progress_unit=0, target_config_id=cfg.id,
             target_type=q.target_type, target_name=q.target_name,
-            target_version=q.version or cfg.default_ref,
+            target_version=q.target_version or cfg.default_ref,
             repo_url=cfg.repo_url, sub_dir=cfg.sub_dir,
         )
     job = await jobs.submit(
@@ -388,7 +393,6 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
 ```python
 async def prepare_run(job) -> None:
     run = await crud.runs.get(job.payload["run_id"]) or raise NotFound("RUN_NOT_FOUND")
-    cfg = await targets.get(run.target_config_id) or raise NotFound("TARGET_NOT_FOUND")
     q = ProbeQuery(**job.payload["query"])
     probes = await crud.probes.list_matching(q)          # probe_reports JOIN session_families
     if not probes:
@@ -403,6 +407,7 @@ async def prepare_run(job) -> None:
             ref=run.target_version, run_id=run.id,
         )                                               # clone → 建 evo/... 分支
 
+    # 第 1 步问题聚类：写簇与簇内 probe（unit 1 → 2）
     async with db.transaction():
         clusters = simple_cluster(probes)               # 见 5.4
         for seq, c in enumerate(clusters, start=1):
@@ -410,28 +415,41 @@ async def prepare_run(job) -> None:
             await crud.probe_clusters.insert(cid, run.id, seq, c.description, c.type,
                                              impact=TYPE_IMPACT[c.type])
             await crud.probe_cluster_probes.bulk_insert(cid, [p.probe_id for p in c.probes])
+        await crud.runs.set_progress(run.id, progress_unit=2)
+    await events.record(run.id, "clusters_created", stage="cluster", step_index=1,
+                        message=f"聚类完成：{len(clusters)} 个簇")
+
+    # 第 2 步归因确认：逐簇写 probe_clusters.confidence（unit 2 → 3）
+    await attribution_step(run.id)
+    # 第 3 步严重程度排序：写 probe_clusters.severity / rank（unit 3 → 4）
+    await severity_step(run.id)
+
+    async with db.transaction():
         if run.mode == "full":
-            await crud.evolution_rounds.bulk_insert_pending(run.id, clusters)
+            # 按 rank（严重度降序）建迭代轮：evolution_rounds.seq 即执行顺序
+            await crud.evolution_rounds.bulk_insert_pending(run.id)
         await crud.runs.mark_prepared(
-            run.id, status="running", progress_unit=2,
+            run.id,
+            status="running" if run.mode == "full" else "completed",
+            progress_unit=4,
             repo_path=cache.path if cache else None, base_ref=ws.ref if ws else None,
             base_commit=ws.base_commit if ws else None,
             branch_name=ws.branch if ws else None,
             workspace_path=ws.path if ws else None,
+            finished_at=now() if run.mode == "cluster_only" else None,
             stats=summarize(probes),
         )
-    await events.record(run.id, "clusters_created", stage="cluster",
-                        message=f"聚类完成：{len(clusters)} 个簇")
     if run.mode == "full" and clusters:
         await jobs.submit("evolution_advance", {"run_id": run.id}, ref_id=run.id)
 ```
 
 - `POST /runs` 返回 `202 {runId, jobId, status:"preparing"}`；前端立即跳详情，不等 clone。
-- `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance。
+- `POST /cluster-previews` 共用 `prepare_run`，但 `mode=cluster_only`：不建 workspace、不建 `evolution_rounds`、不自动 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
+- `attribution_step` / `severity_step` 各自独立事务、各记一条 `step_advanced` 事件；V1 在 prepare 内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
 - prepare 只读 run 快照的 `repo_url` / `sub_dir` / `target_version`，不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
 - `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；第 2 步归因完成更新 `confidence`，第 3 步排序完成更新 `severity` / `rank`，`build_step_payload` 只读这些列。
-- 第 2/3 步必须是独立写库点：归因 job 写 `confidence`，排序 job 写 `severity` / `rank`，之后才创建/推进 `evolution_rounds`。不能沿用“聚类后直接建轮次”的路径，否则分数没有落库时机，迭代顺序也不是严重度顺序。
+- 第 2/3 步必须是独立写库点：归因步骤写 `confidence`，排序步骤写 `severity` / `rank`，**之后才**按 rank 顺序创建/推进 `evolution_rounds`。不能沿用"聚类后直接建轮次"的路径，否则分数没有落库时机，迭代顺序也不是严重度顺序。
 - 仓库不可用/ref 不存在 → prepare job 失败；run 置 `failed`，`error_stage=clone`，用户在详情页看到原因。
 - 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
 
@@ -494,6 +512,7 @@ async def advance_one_round(job):
     candidate = ws.commit(build_candidate_message(run, round))
     await evolution_rounds.mark_candidate(round.id, candidate_ref, candidate.hash, candidate.message)
 
+    await evolution_rounds.mark_pushing(round.id)        # 进入 pushing，push 失败时本轮停在此状态
     try:
         await push_with_retry(ws, candidate.hash, candidate_ref)  # 3 次 / 5s
     except GitPushError as e:
@@ -511,7 +530,8 @@ async def advance_one_round(job):
     ))
     await evolution_rounds.mark_evaluating(
         round.id, eval_external_id=submission.eval_id,
-        eval_status='evaluating', eval_next_poll_at=now() + timedelta(minutes=5),
+        eval_status='evaluating',
+        eval_next_poll_at=now() + timedelta(seconds=settings.eval_poll_seconds),
     )
     await events.record(run.id, 'eval_submitted', stage='eval', evolution_round_id=round.id,
                         message=f'已提交评测 {submission.eval_id}', payload={'ref': candidate_ref})
@@ -571,6 +591,7 @@ async def eval_poller_loop():
 
 - 轮询间隔 `HE_EVAL_POLL_SECONDS=300`；扫描节奏 30s，只查 `next_poll_at<=now` 的行。
 - `next_poll_at` 落库，进程重启后可继续，不依赖内存 sleep。
+- 超时兜底：网关长时间不返回终态时，按 `eval_started_at + HE_EVAL_TIMEOUT_SECONDS`（默认 2h）判 `timeout`，与网关返回的 `failed/timeout` 走同一条 `blocked(stage=eval)` 路径。
 - `eval_poller` 只做 DB 读写和外部 HTTP，不执行 git，也不持有 JobRunner 全局锁。
 - 评测失败/超时 → `run.status=blocked`、`blocked_stage=eval`；不自动重新提交，等 `/retry` 或人工处理。
 - 外部接口多一层适配，见 §5.6.1。
@@ -623,7 +644,7 @@ async def apply_eval(job):
 - 接纳时 run 分支 **只 fast-forward，不 force-push**；candidate ref 上才允许 `--force-with-lease`。
 - 拒绝时删除 candidate ref，切回 run 分支；run 分支 HEAD 不变，不 reset 之前已接纳轮次。
 - patch 阶段失败（生成 / 落盘 / commit）：可重试错误走 `block_run(stage='patch')`，run `blocked`、本轮停在 `patching`；不可恢复错误把本轮置 `failed`、run 置 `failed`（`error_stage` 按子步骤记 `patch` / `commit`）。重试从 `patching` 重新生成 patch，不进入 push/eval。
-- candidate 删除失败不阻塞流程：记 `candidate_cleanup_failed`，后续 `clean-candidates` 清理。
+- candidate 删除失败不阻塞流程：记 warn 日志，并把 `cleanupError` 写进 `cluster_accepted` / `cluster_rejected` 事件的 `payload`（事件类型严格以 [06 §5.7](06-database-design.md) 枚举为准，不新增 event_type），后续 `clean-candidates` 清理。
 - 若 accept 阶段 push candidate/run 分支失败：走同一 `block_run` + `RunBlocked`，run 进入 `blocked`，保留 candidate ref 和评测结果；`/retry` 从 apply 继续，不重新评测。
 - 因此 `apply_eval` 内所有 push 也必须包在 `try/except GitPushError` 中，不能落入 JobRunner 的通用 `run_failed` 分支。
 
@@ -643,6 +664,7 @@ push 失败（瞬时错误）
 - 自动退避每次只做 1 次 push；`evolution_retry` 先把 `retry_attempts += 1` 再执行，失败后按 `1min → 5min → 15min` 安排下一次；第 3 次后 `next_retry_at=NULL`。
 - 初始 `block_run` 不重置为“无重试”：`retry_attempts=0`，首次失败后 1min 进入第一次退避；手动 `/retry` 才把计数重置为 0。
 - 手动 `POST /runs/{rid}/retry` 立即入队；`push` 阶段按正常 3 次立即重试，`eval` 阶段重新 submit；成功则继续，失败重新进入 blocked。
+- `evolution_retry` 按 `blocked_stage` + 现场状态分发，两种"继续"情形都不重新评测、不重跑迭代：`push` 且本轮已有评测结果 → 从 apply 继续（重推 amended candidate / run 分支）；final 已落库 → 从 finalize 的最终 push 继续；否则重推当前 candidate。`eval` → 重新 submit 评测（新 evalId）。
 - 认证/权限/分支保护/non-fast-forward 等永久错误不进入自动退避；直接 `blocked` + `next_retry_at=NULL`，等人工修复后 `/retry`。
 - `eval` 失败/超时不自动重试；`/retry` 重新 submit 评测（新 evalId），旧的 `eval_external_id` 保留在事件 payload 中。
 - 手动重试会重置自动退避计数；若再次进入同一阶段失败，重新从 3 次立即 + 1/5/15min 开始。
@@ -707,7 +729,7 @@ Harness-Verdict: accepted
 
 ### 5.8 执行事件记录（`service/evolution/events.py`）
 
-- 调用点：`run_created`、`prepare_started`、`workspace_prepared`、`clusters_created`、`patch_started`、`patch_generated`、`patch_failed`、`candidate_committed`、`candidate_pushed`、`push_retry_scheduled`、`eval_submitted`、`eval_polled`、`eval_completed`、`eval_failed`、`eval_timeout`、`cluster_accepted|rejected`、`step_advanced`、`run_blocked`、`run_resumed`、`final_completed`、`push_started|succeeded|failed`、`run_failed`、`run_interrupted`。
+- 调用点（`event_type` 严格以 [06 §5.7](06-database-design.md) 的枚举为准）：`run_created`、`prepare_started`、`workspace_prepared`、`clusters_created`、`step_advanced`、`candidate_committed`、`candidate_pushed`、`push_started|succeeded|failed`、`push_retry_scheduled`、`eval_submitted`、`eval_polled`、`eval_completed`、`eval_failed`、`eval_timeout`、`cluster_accepted|rejected`、`run_blocked`、`run_resumed`、`final_completed`、`run_failed`、`run_interrupted`。patch 阶段不新增事件类型：生成/落盘/提交的信息并入 `candidate_committed` 的 `payload`（`patchHash/files/durationMs`），失败按可重试性记 `run_blocked` 或 `run_failed`（`stage=patch`/`commit`）。
 - 异常必须落库；`run.blocked` 与 `run.failed` 区分：可重试的外部失败记 `run_blocked`，不可恢复错误记 `run_failed`。
 - 脱敏、截断、SSE 只通知的约定不变。
 
@@ -715,11 +737,11 @@ Harness-Verdict: accepted
 
 | step | 服务端组装 | 数据来源 |
 |---|---|---|
-| 0 `input` | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` |
+| 0 `input` | 查询条件 + `hits` + probe 行 | `probe_reports` + `session_families` + `bad_cases` / `bad_case_analysis`（命中计数） |
 | 1 `clusters` | 簇列表 + 每簇 probe | `probe_clusters` + `probe_cluster_probes` |
 | 2 `attribution` | 归因确认项（对象/类型/描述/推导/confidence） | `probe_reports` + `probe_clusters.confidence` |
 | 3 `severity` | rank/clusterId/title/confidence/impact/probeCount/reportCount/severity | `probe_clusters`（confidence/impact/severity/rank）+ 关联计数 |
-| 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 |
+| 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + `probe_clusters` + `probe_reports`（`ProbeRow`） |
 | 5 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
 
 - 六个端点：`GET /runs/{rid}/steps/{input|clusters|attribution|severity|iteration|final}`；共享 `build_step_payload(run, key)`，只按 key 组装对应 DTO。
@@ -743,7 +765,7 @@ severity = round(min(10, confidence * impact * report_weight(report_count)), 1)
 V1 的同步/聚类/推进都是"秒级到分钟级、同一时刻只跑一个"的任务，且跑在服务本地，**不引入队列、不单独建 jobs 目录**：
 
 - `service/jobs.py` 提供 `JobRunner`：`submit(kind, payload, ref_id)` 落 `job_runs` 行（`queued`），由进程内 worker 串行执行；
-- **串行**用一把全局 `asyncio.Lock` 保证；同 `(kind, ref_id)` 重复提交 → `409`；
+- **串行**用一把全局 `asyncio.Lock` 保证；同 `(kind, ref_id)` 已有活跃任务时按 kind 区分：`sync` / `evolution_retry` 命中去重，service 层捕获后返回已有 job（路由层 `202 {jobId, reused:true}`，见 §2.2.1 / §5.7.1）；`evolution_prepare` / `evolution_advance` / `evolution_apply` 冲突抛 `RUN_BUSY`（409）；
 - 状态与进度写 `job_runs`（`queued/running/completed/failed/interrupted` + `progress`）；
 - 重启恢复：lifespan 把残留 `running` 标 `interrupted`；若 `ref_id` 指向 evolution run，同时写 `run_interrupted` 事件；可重试的 kind（sync）重新入队；
 - 未来并行/CI：新增 executor 实现（调 CI 平台接口），`job_runs.executor='ci'`、`external_job_id` 记录远端任务 id，业务 service 不变。
@@ -756,7 +778,7 @@ class JobRunner:
 
     async def submit(self, kind: str, payload: dict, ref_id: str | None = None,
                      created_by: str | None = None) -> JobRun:
-        await self._reject_duplicate(kind, ref_id)      # 同 kind+ref 只允许一个活跃任务
+        await self._reject_duplicate(kind, ref_id)      # 命中抛 DuplicateJobError，service 层按 kind 转 202 reused / 409 RUN_BUSY
         job = await self._crud.job_runs.insert(
             kind=kind, ref_id=ref_id, payload=payload,
             status="queued", executor="local", created_by=created_by)
@@ -819,8 +841,11 @@ async def events(ticket: str, request: Request, last_event_id: str | None = Head
             yield {"id": str(ev.seq), "event": ev.event, "data": json.dumps(ev.data)}
         while True:
             if await request.is_disconnected(): break
-            item = await wait_for(q.get(), timeout=heartbeat)
-            yield {"id": str(item.id), "event": item.event, "data": json.dumps(item.data)}
+            try:
+                item = await wait_for(q.get(), timeout=heartbeat)
+                yield {"id": str(item.id), "event": item.event, "data": json.dumps(item.data)}
+            except TimeoutError:
+                yield {"event": "ping", "data": "{}"}    # 心跳（HE_SSE_HEARTBEAT_SECONDS），防代理断流
     return EventSourceResponse(gen())
 ```
 
@@ -832,9 +857,9 @@ async def events(ticket: str, request: Request, last_event_id: str | None = Head
 
 - `GET /catalogs/targets`：读 `evolution_targets`（`enabled=true`），按 `object_type` 分组；每个对象带 `repoUrl/subDir/defaultRef/versions`，`versions` 来自仓库缓存 tag；只读查询。
 - `GET /catalogs/models`：`SELECT model, COUNT(DISTINCT root_session_id) AS session_count, COUNT(*) AS agent_count FROM agents WHERE model IS NOT NULL GROUP BY model ORDER BY agent_count DESC`；只读查询。
-- 前端 `staleTime: 5min`；配置变更或同步完成后失效 `["catalogs"]`，不再 `Infinity` 缓存。
+- 前端 `staleTime: Infinity`（[03 §7](03-frontend-architecture.md)）：靠显式失效刷新，不靠轮询——targets 配置变更失效 `["catalogs"]` 与 `["evolution","targets"]`，同步完成后失效 `["catalogs"]`（模型清单随归一化更新）。
 
-## 8. 身份与鉴权（`modules/identity`）
+## 8. 身份与鉴权（`service/identity`）
 
 ### 8.1 登录流程
 
@@ -913,7 +938,7 @@ async def issue_ticket(body: TicketRequest, principal: Principal = Depends(get_p
 ```
 
 - 票据存内存（TTL dict，含 topics/cursor）；多实例时换 Redis（同一接口）。
-- **不传 jobId**：订阅单位是资源 topic（`run:{rid}` / `sync`）；事件里带 jobId。
+- **不传 jobId**：订阅单位是资源 topic（仅 `run:{rid}`；sync 不提供 SSE topic，见 [05 §4.1](05-api-design.md)）；事件里带 jobId。
 - 已完成 run 不发票；前端也不应申请。
 - EventSource 重连由浏览器自动带 `Last-Event-ID`；票据过期后前端重新 `POST /events/ticket` 再连。
 
@@ -935,7 +960,7 @@ async def issue_ticket(body: TicketRequest, principal: Principal = Depends(get_p
 ```text
 config/errors/Database 接口 + 迁移
   ▼
-storage 模型 + repository
+db/models + db/crud（repository）
   ▼
 identity 登录/JWT/票据
   ▼
