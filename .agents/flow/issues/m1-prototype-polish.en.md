@@ -6,10 +6,14 @@ English | [中文](m1-prototype-polish.md)
 kind: issue
 milestone: m1
 priority: P1
-status: backlog
+status: ready
 scope:
   - apps/web/src/**
   - apps/web/index.html
+  - .gitignore
+  - .agents/flow/issues/m1-prototype-polish*
+  - .agents/flow/issues/m1-contracts-snapshot-loader*
+  - plans/**
 adr:
   - ../../notes/proposed/architecture/2026-10-19-session-family-prototype.md
 github:
