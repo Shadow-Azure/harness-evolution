@@ -1,5 +1,6 @@
 """Database lifecycle, migration, and cross-dialect repository contracts."""
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -7,14 +8,30 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from sqlalchemy import Column, Integer, MetaData, String, Table, insert, select, text
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.database import SqlAlchemyDatabase
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
+
+
+class FailingHealthDatabase(SqlAlchemyDatabase):
+    """Database double whose health check raises a synthetic driver error."""
+
+    def __init__(self, error: str) -> None:
+        """Keep the sensitive driver text available only to the raised exception."""
+        super().__init__(dialect="mysql", url="mysql+asyncmy://redacted", echo=False)
+        self._error = error
+
+    @property
+    def engine(self) -> AsyncEngine:
+        """Raise the synthetic driver failure during the health probe."""
+        raise RuntimeError(self._error)
 
 
 def sqlite_settings(tmp_path: Path) -> Settings:
@@ -91,8 +108,29 @@ async def test_sqlite_health_and_transaction_rollback(tmp_path: Path) -> None:
         await database.dispose()
 
 
-async def test_health_failure_is_sanitized(tmp_path: Path) -> None:
-    """Connection failures become structured health rather than escaping."""
+async def test_sqlite_connection_applies_design_pragmas(tmp_path: Path) -> None:
+    """The SQLite adapter applies the concurrency and integrity contract."""
+    database = SqliteDatabase(sqlite_settings(tmp_path))
+    await database.start()
+    try:
+        async with database.session() as session:
+            pragmas: dict[str, object] = {
+                "journal_mode": (await session.execute(text("PRAGMA journal_mode"))).scalar_one(),
+                "foreign_keys": (await session.execute(text("PRAGMA foreign_keys"))).scalar_one(),
+                "busy_timeout": (await session.execute(text("PRAGMA busy_timeout"))).scalar_one(),
+                "synchronous": (await session.execute(text("PRAGMA synchronous"))).scalar_one(),
+            }
+    finally:
+        await database.dispose()
+
+    assert str(pragmas["journal_mode"]).lower() == "wal"
+    assert pragmas["foreign_keys"] == 1
+    assert pragmas["busy_timeout"] == 5000
+    assert pragmas["synchronous"] == 1
+
+
+async def test_sqlite_health_failure_is_sanitized(tmp_path: Path) -> None:
+    """Real connection failures expose only the stable unavailable summary."""
     database = SqliteDatabase(
         Settings(
             db_dialect=DatabaseDialect.SQLITE,
@@ -107,8 +145,28 @@ async def test_health_failure_is_sanitized(tmp_path: Path) -> None:
 
     assert health.ok is False
     assert health.dialect == "sqlite"
-    assert health.error
-    assert "password" not in health.error.lower()
+    assert health.error == "OperationalError: database is unavailable"
+
+
+async def test_health_failure_redacts_driver_context_but_logs_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Sensitive driver details stay in logs and never reach the public health model."""
+    driver_error = (
+        "mysql+asyncmy://ops:super-secret@db.internal:3306/private"
+        "?charset=utf8mb4 failed at /var/lib/mysql/private"
+    )
+    database = FailingHealthDatabase(driver_error)
+
+    with caplog.at_level(logging.ERROR, logger="app.db.database"):
+        health = await database.health()
+
+    assert health.ok is False
+    assert health.error == "RuntimeError: database is unavailable"
+    assert "super-secret" not in health.error
+    assert "db.internal" not in health.error
+    assert "/var/lib/mysql/private" not in health.error
+    assert driver_error in caplog.text
 
 
 async def test_mysql_engine_uses_the_designed_pool_configuration() -> None:
@@ -126,6 +184,8 @@ async def test_mysql_engine_uses_the_designed_pool_configuration() -> None:
         assert isinstance(pool, QueuePool)
         assert pool.size() == 3
         assert pool._max_overflow == 7
+        assert pool._pre_ping is True
+        assert pool._recycle == 1800
     finally:
         await database.dispose()
 
@@ -215,6 +275,18 @@ class TestMySqlRepository(RepositoryContract):
     """Run the same repository contract against a MySQL service."""
 
     dialect = "mysql"
+
+    async def test_mysql_session_uses_shanghai_time_zone(
+        self,
+        database: Database,
+    ) -> None:
+        """Every pooled MySQL connection starts with the Shanghai session zone."""
+        async with database.session() as session:
+            time_zone: object = (
+                await session.execute(text("SELECT @@session.time_zone"))
+            ).scalar_one()
+
+        assert time_zone == "+08:00"
 
 
 @pytest.mark.mysql

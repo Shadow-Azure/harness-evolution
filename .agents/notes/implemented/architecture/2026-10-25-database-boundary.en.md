@@ -13,7 +13,7 @@ Identity, trace normalization and evolution all need persistence, yet their envi
 - A `Database` protocol owns connection lifecycle, read sessions, write transactions and health; `create_database()` is the sole `HE_DB_DIALECT` dispatch point.
 - SQLite enables WAL, foreign keys, busy timeout and NORMAL synchronous mode; MySQL uses pooling, pre-ping, recycling and a `+08:00` session timezone.
 - Alembic uses one migration tree and an async URL, with batch mode for SQLite table changes; domain tables arrive in later issues while this stage establishes an empty baseline.
-- `/api/health` reports both API and database state; connection failure does not prevent process startup and instead returns HTTP 503 with a sanitized database summary.
+- `/api/health` reports both API and database state; connection failure does not prevent process startup and instead returns HTTP 503 with a sanitized database summary while the original exception stays in server logs.
 - The `-m mysql` repository contract reuses the same SQLAlchemy expressions as SQLite; CI's MySQL 8 service must execute that suite.
 
 ## Alternatives considered

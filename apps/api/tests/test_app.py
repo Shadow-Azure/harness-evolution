@@ -58,6 +58,14 @@ class UnhealthyDatabase(HealthyDatabase):
         )
 
 
+class StartFailingDatabase(HealthyDatabase):
+    """Database double whose lifecycle startup fails before migration."""
+
+    async def start(self) -> None:
+        """Raise a sensitive startup error for logging and redaction tests."""
+        raise RuntimeError("mysql+asyncmy://ops:secret@db.internal/private")
+
+
 def as_database(database: HealthyDatabase) -> Database:
     """Treat a deterministic health double as the storage protocol in API tests."""
     return cast(Database, database)
@@ -158,35 +166,49 @@ async def test_lifespan_starts_database_and_runs_migrations(tmp_path: Path) -> N
     assert (tmp_path / "harness.db").exists()
 
 
-async def test_lifespan_survives_database_start_failure(tmp_path: Path) -> None:
-    """A broken database URL leaves the API reachable with unhealthy health."""
+async def test_lifespan_logs_start_failure_and_keeps_health_sanitized(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A broken database URL is logged while health exposes no infrastructure path."""
+    sensitive_path = tmp_path / "missing" / "harness.db"
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
-        db_url=f"sqlite+aiosqlite:///{tmp_path / 'missing' / 'harness.db'}",
+        db_url=f"sqlite+aiosqlite:///{sensitive_path}",
     )
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
 
-    async with app.router.lifespan_context(app):
-        assert app.state.database_start_error is not None
-        async with httpx.AsyncClient(
-            transport=transport,
-            base_url="http://testserver",
-        ) as test_client:
-            response = await test_client.get("/api/health")
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        async with app.router.lifespan_context(app):
+            assert app.state.database_start_error is not None
+            async with httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as test_client:
+                response = await test_client.get("/api/health")
 
     assert response.status_code == 503
     assert response.json()["ok"] is False
-    assert response.json()["db"]["error"]
+    assert response.json()["db"]["error"] == (
+        "DatabaseInitializationError: startup or migration failed"
+    )
+    assert str(sensitive_path) not in response.text
+    assert "sqlite3.OperationalError" in caplog.text
+    migration_record = next(record for record in caplog.records if record.name == "app.main")
+    assert getattr(migration_record, "phase", None) == "migration"
+    assert getattr(migration_record, "dialect", None) == "sqlite"
 
 
 async def test_migration_failure_marks_reachable_database_unhealthy(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """A failed migration cannot be hidden by a successful ping."""
+    sensitive_error = "migration failed: mysql+asyncmy://ops:secret@db.internal/private"
 
     async def fail_upgrade(_database: Database, _settings: Settings) -> None:
-        raise RuntimeError("migration failed")
+        raise RuntimeError(sensitive_error)
 
     monkeypatch.setattr(main_module, "upgrade_database", fail_upgrade)
     app = create_app(
@@ -195,14 +217,15 @@ async def test_migration_failure_marks_reachable_database_unhealthy(
     )
     transport = httpx.ASGITransport(app=app)
 
-    async with (
-        app.router.lifespan_context(app),
-        httpx.AsyncClient(
-            transport=transport,
-            base_url="http://testserver",
-        ) as test_client,
-    ):
-        response = await test_client.get("/api/health")
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as test_client,
+        ):
+            response = await test_client.get("/api/health")
 
     assert response.status_code == 503
     assert response.json()["db"] == {
@@ -211,6 +234,43 @@ async def test_migration_failure_marks_reachable_database_unhealthy(
         "latencyMs": 0.1,
         "error": "DatabaseInitializationError: startup or migration failed",
     }
+    assert sensitive_error not in response.text
+    assert sensitive_error in caplog.text
+    migration_record = next(record for record in caplog.records if record.name == "app.main")
+    assert getattr(migration_record, "phase", None) == "migration"
+    assert getattr(migration_record, "dialect", None) == "sqlite"
+
+
+async def test_startup_failure_logs_without_exposing_driver_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A start failure is logged while public health keeps only a stable summary."""
+    app = create_app(
+        Settings(db_dialect=DatabaseDialect.SQLITE),
+        database=as_database(StartFailingDatabase()),
+    )
+    transport = httpx.ASGITransport(app=app)
+
+    with caplog.at_level(logging.ERROR, logger="app.main"):
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport,
+                base_url="http://testserver",
+            ) as test_client,
+        ):
+            response = await test_client.get("/api/health")
+
+    assert response.status_code == 503
+    assert response.json()["db"]["error"] == (
+        "DatabaseInitializationError: startup or migration failed"
+    )
+    assert "db.internal" not in response.text
+    assert "super-secret" not in response.text
+    assert "db.internal" in caplog.text
+    startup_record = next(record for record in caplog.records if record.name == "app.main")
+    assert getattr(startup_record, "phase", None) == "startup"
+    assert getattr(startup_record, "dialect", None) == "sqlite"
 
 
 async def test_protected_api_path_returns_auth_required_before_routing(

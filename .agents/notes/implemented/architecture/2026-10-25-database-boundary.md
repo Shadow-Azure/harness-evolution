@@ -13,7 +13,7 @@ Status: implemented
 - `Database` 协议统一提供连接生命周期、只读 session、写事务和 health；`create_database()` 是 `HE_DB_DIALECT` 的唯一分派点。
 - SQLite 连接启用 WAL、foreign keys、busy timeout 与 NORMAL synchronous；MySQL 使用连接池、pre-ping、回收与 `+08:00` 会话时区。
 - Alembic 使用一棵迁移树和 async URL，SQLite 以 batch 模式处理表变更；领域表由后续 issue 添加，本阶段只建立空基线。
-- `/api/health` 同时报告 API 与数据库状态；连接失败不阻止进程启动，而是返回 HTTP 503 与脱敏数据库摘要。
+- `/api/health` 同时报告 API 与数据库状态；连接失败不阻止进程启动，而是返回 HTTP 503 与脱敏数据库摘要，原始诊断异常只进入服务端日志。
 - `-m mysql` 的 repository contract 与 SQLite 共用同一套 SQLAlchemy 表达式；CI 的 MySQL 8 service 必须执行该套测试。
 
 ## Alternatives considered

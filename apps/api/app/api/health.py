@@ -56,7 +56,7 @@ async def health(request: Request, response: Response) -> HealthResponse:
     version: str = request.app.state.settings.version
     database = cast(Database, request.app.state.database)
     database_health = await database.health()
-    if database_health.ok and request.app.state.database_start_error is not None:
+    if request.app.state.database_start_error is not None:
         database_health = DBHealth(
             ok=False,
             dialect=database_health.dialect,

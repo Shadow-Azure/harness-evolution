@@ -109,8 +109,8 @@ export function App() {
           </div>
           <p>
             前端负责浏览与诊断交互；后端负责导入、存储和分析编排；共享协议放在
-            <code> packages/contracts</code>。数据层会先使用 SQLite，但业务只依赖
-            repository 接口，后续可替换为 Postgres。
+            <code> packages/contracts</code>。生产使用 MySQL 8，SQLite 用于本地开发与测试；
+            业务只依赖 repository 接口。
           </p>
         </section>
       </main>

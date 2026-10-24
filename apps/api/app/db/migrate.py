@@ -15,6 +15,7 @@ def _alembic_config(settings: Settings) -> Config:
     api_root = Path(__file__).resolve().parents[2]
     config = Config(str(api_root / "alembic.ini"))
     config.set_main_option("sqlalchemy.url", settings.effective_db_url.replace("%", "%%"))
+    config.attributes["configure_logger"] = False
     return config
 
 

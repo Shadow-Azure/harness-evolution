@@ -1,5 +1,6 @@
 """Shared SQLAlchemy database implementation."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from time import perf_counter
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.db.base import DBHealth
+
+logger = logging.getLogger(__name__)
 
 
 class SqlAlchemyDatabase:
@@ -82,12 +85,15 @@ class SqlAlchemyDatabase:
             async with self.engine.connect() as connection:
                 await connection.execute(text("SELECT 1"))
         except Exception as exc:
-            error = str(exc).splitlines()[0][:240] or type(exc).__name__
+            logger.exception(
+                "database health check failed",
+                extra={"dialect": self.dialect},
+            )
             return DBHealth(
                 ok=False,
                 dialect=self.dialect,
                 latency_ms=round((perf_counter() - started) * 1000, 3),
-                error=f"{type(exc).__name__}: {error}",
+                error=f"{type(exc).__name__}: database is unavailable",
             )
         return DBHealth(
             ok=True,

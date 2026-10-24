@@ -54,6 +54,9 @@ describe("App", () => {
     expect(container.textContent).toContain("API 已连接");
     expect(container.textContent).toContain("SQLite");
     expect(container.textContent).toContain("FastAPI + Python");
+    expect(container.textContent).toContain("生产使用 MySQL 8");
+    expect(container.textContent).toContain("SQLite 用于本地开发与测试");
+    expect(container.textContent).not.toContain("Postgres");
     await act(async () => root.unmount());
   });
 
