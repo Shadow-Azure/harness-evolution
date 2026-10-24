@@ -1,12 +1,14 @@
 """HTTP behavior for the FastAPI scaffold."""
 
+import logging
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 
-from app.config import Settings
+from app.config import ServicePhase, Settings
 from app.errors import AppError
 from app.main import create_app
 
@@ -92,7 +94,9 @@ async def test_method_not_allowed_returns_unified_error(
     }
 
 
-async def test_unexpected_error_hides_exception_and_returns_request_id() -> None:
+async def test_unexpected_error_hides_exception_and_returns_request_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Unhandled exceptions become a safe INTERNAL response that is traceable."""
     app: FastAPI = create_app(Settings())
 
@@ -101,14 +105,15 @@ async def test_unexpected_error_hides_exception_and_returns_request_id() -> None
         raise RuntimeError("sensitive database details")
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(
-        transport=transport,
-        base_url="http://testserver",
-    ) as test_client:
-        response = await test_client.get(
-            "/explode",
-            headers={"X-Request-Id": "req-test-123"},
-        )
+    with caplog.at_level(logging.ERROR, logger="app.errors"):
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as test_client:
+            response = await test_client.get(
+                "/explode",
+                headers={"X-Request-Id": "req-test-123"},
+            )
 
     assert response.status_code == 500
     assert response.headers["X-Request-Id"] == "req-test-123"
@@ -120,6 +125,12 @@ async def test_unexpected_error_hides_exception_and_returns_request_id() -> None
         }
     }
     assert "sensitive" not in response.text
+    error_record = next(record for record in caplog.records if record.name == "app.errors")
+    error_fields = vars(error_record)
+    assert error_record.exc_info is not None
+    assert error_fields["request_id"] == "req-test-123"
+    assert error_fields["method"] == "GET"
+    assert error_fields["path"] == "/explode"
 
 
 def test_config_reads_he_prefixed_environment(
@@ -137,6 +148,21 @@ def test_config_reads_he_prefixed_environment(
     assert settings.port == 9123
     assert settings.cors_origins == ["https://example.test"]
     assert settings.docs_enabled is False
+
+
+def test_docs_are_disabled_by_default() -> None:
+    """Production-safe defaults do not expose API documentation accidentally."""
+    assert Settings().docs_enabled is False
+
+
+def test_service_phase_matches_the_shared_typescript_contract() -> None:
+    """The handwritten cross-language phase contract cannot drift from FastAPI."""
+    contract_path = Path(__file__).resolve().parents[3] / "packages/contracts/src/index.ts"
+    contract = contract_path.read_text(encoding="utf-8")
+
+    expected = 'export const SERVICE_PHASES = ["scaffold", "demo", "live"] as const;'
+    assert expected in contract
+    assert [phase.value for phase in ServicePhase] == ["scaffold", "demo", "live"]
 
 
 async def test_docs_are_available_when_enabled() -> None:

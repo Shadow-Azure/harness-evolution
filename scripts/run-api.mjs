@@ -44,6 +44,10 @@ if (lintFormat.status !== 0) process.exit(lintFormat.status ?? 1);
 
 const result = spawnSync(PYTHON, COMMANDS[command], {
   cwd: API_DIR,
+  env:
+    command === "dev"
+      ? { ...process.env, HE_DOCS_ENABLED: process.env.HE_DOCS_ENABLED ?? "true" }
+      : process.env,
   stdio: "inherit",
 });
 if (result.error) {

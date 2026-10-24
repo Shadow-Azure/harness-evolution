@@ -2,7 +2,7 @@
 
 English | [中文](README.md)
 
-A trace-viewing and problem-diagnosis service for coding agents (Codex first): import real execution traces, inspect goals, tool calls, errors and results turn by turn, link every problem back to evidence, and turn it into evaluable harness improvements.
+A trace-viewing and problem-diagnosis service for coding agents: import real execution traces, inspect goals, tool calls, errors and results turn by turn, link every problem back to evidence, and turn it into evaluable harness improvements.
 
 ## Current state
 

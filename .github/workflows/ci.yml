@@ -39,12 +39,12 @@ jobs:
         run: pnpm lint:api
       - name: API typecheck
         run: pnpm typecheck:api
-      - name: API tests
-        run: pnpm test:api
+      - name: 单元测试（前后端，覆盖率 ≥80%）
+        run: pnpm test
+      - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
+        run: pnpm test:integration
       - name: 类型检查
         run: pnpm typecheck
-      - name: 测试
-        run: pnpm test
       - name: 构建
         run: pnpm build
       - name: 文档门禁（doc-sync）

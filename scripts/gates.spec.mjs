@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -114,10 +114,15 @@ test("structure signature mirrors headings, fences and links", () => {
   assert.notDeepEqual(parseSignature(zh), parseSignature(en.replace("- b", "- b\n- c")));
 });
 
-test("route gates recommend build and docs for app changes", () => {
+test("route gates recommend web tests, integration, build, and docs for app changes", () => {
   const paths = worktreePaths(" M apps/web/src/App.tsx\n?? docs/new.md\n");
   assert.deepEqual(paths, ["apps/web/src/App.tsx", "docs/new.md"]);
-  assert.deepEqual(recommend(paths).commands, ["build", "verify:docs"]);
+  assert.deepEqual(recommend(paths).commands, [
+    "build",
+    "test:web",
+    "test:integration",
+    "verify:docs",
+  ]);
 });
 
 test("route gates recommend the Python toolchain for API changes", () => {
@@ -127,8 +132,31 @@ test("route gates recommend the Python toolchain for API changes", () => {
     "lint:api",
     "typecheck:api",
     "test:api",
+    "test:integration",
     "verify:docs",
   ]);
+});
+
+test("test gates execute frontend, backend, integration, and 80% coverage", () => {
+  const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
+  const webPackage = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
+  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  const webCoverage = readFileSync("apps/web/vitest.config.ts", "utf8");
+  const apiCoverage = readFileSync("apps/api/pyproject.toml", "utf8");
+  const apiRunner = readFileSync("scripts/run-api.mjs", "utf8");
+
+  assert.match(rootPackage.scripts.test, /test:web/);
+  assert.match(rootPackage.scripts.test, /test:api/);
+  assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
+  assert.match(webPackage.scripts.test, /--coverage/);
+  assert.match(ci, /run: pnpm test$/m);
+  assert.match(ci, /run: pnpm test:integration$/m);
+  for (const metric of ["branches", "functions", "lines", "statements"]) {
+    assert.match(webCoverage, new RegExp(`${metric}: 80`));
+  }
+  const backendThreshold = Number(/fail_under = (\d+)/.exec(apiCoverage)?.[1]);
+  assert.ok(backendThreshold >= 80);
+  assert.match(apiRunner, /HE_DOCS_ENABLED.*true/);
 });
 
 test("github backfill removes the bootstrap exemption", () => {

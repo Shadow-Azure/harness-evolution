@@ -9,33 +9,35 @@
 - Node ≥ 22、pnpm ≥ 10、Python ≥ 3.12。
 - 首次 clone 后运行 `pnpm install && pnpm setup:api`；本地钩子用 `pnpm install:hooks` 安装。
 - 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
-- 生产设 `HE_DOCS_ENABLED=false` 关闭 API 文档与 OpenAPI。
+- API 文档与 OpenAPI 默认关闭；`pnpm dev` 显式开启，生产保持默认或显式设置 `HE_DOCS_ENABLED=false`。
 
 ## 开发流程
 
-流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 三层工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。本地 `pnpm verify:flow` 校验状态机，CI 在 PR 上加跑 diff 校验与 GitHub 一致性 lane。
+流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 三层工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。
 
 ## 日常循环
 
 ```sh
 pnpm dev          # API + Web development
 pnpm typecheck    # Workspace type checks
-pnpm test         # Workspace tests
-pnpm test:api     # FastAPI tests and coverage
+pnpm test:web     # Web unit tests and coverage ≥80%
+pnpm test:api     # FastAPI tests and coverage ≥80%
+pnpm test:integration # Web → Vite proxy → FastAPI
+pnpm test:all     # Unit and integration suites
 ```
 
-提交前按改动面选门禁（不要默认全量跑，穷尽覆盖归 CI）：
+提交前按改动面选择门禁：
 
 | 改动 | 本地跑 |
 |---|---|
 | 仅文档 / Agent Note | `pnpm lint:docs` |
-| 前端代码 | `pnpm typecheck && pnpm build` |
-| 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api` |
-| 契约或跨包类型 | `pnpm typecheck && pnpm test` |
+| 前端代码 | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
+| 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:integration` |
+| 契约或跨包类型 | `pnpm typecheck && pnpm test:all` |
 | 流程树 | `pnpm verify:flow` |
 | 涉及文档示例或死链 | `pnpm verify:docs` |
 
-不确定时跑 `pnpm route:gates`，按改动路径获取建议命令。
+不确定时运行 `pnpm route:gates`。
 
 ## 文档与配对
 

@@ -1,5 +1,6 @@
 """Application errors and the shared API error envelope."""
 
+import logging
 from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPStatus
@@ -11,6 +12,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorCode(StrEnum):
@@ -80,6 +83,21 @@ def error_response(
     )
 
 
+def _log_internal_error(request: Request, exc: Exception) -> str:
+    """Log an internal failure with correlation fields and return its request ID."""
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "unhandled request error",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+        },
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    return request_id
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Install handlers that keep every failure on the shared envelope."""
 
@@ -106,7 +124,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             message = "method not allowed"
             details = {"method": request.method, "path": request.url.path}
         else:
-            request_id = getattr(request.state, "request_id", "unknown")
+            request_id = _log_internal_error(request, http_error)
             return error_response(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 code=ErrorCode.INTERNAL,
@@ -135,8 +153,8 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
-        request_id = getattr(request.state, "request_id", "unknown")
+    async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        request_id = _log_internal_error(request, exc)
         return error_response(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             code=ErrorCode.INTERNAL,

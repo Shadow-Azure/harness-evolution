@@ -12,10 +12,11 @@ Status: implemented
 
 - 后端改为 `apps/api` 下的 Python 3.12 + FastAPI 模块化单体，按 `api/service/db/third_party_api` 分层，路由只在 `main.py` 注册。
 - 配置统一从 `HE_` 环境命名空间读取；健康检查保持公开并返回 `phase=scaffold`。
-- API 文档与 OpenAPI 由 `HE_DOCS_ENABLED` 控制；开发默认开启，生产部署显式关闭。
+- API 文档与 OpenAPI 由 `HE_DOCS_ENABLED` 控制；默认关闭，`pnpm dev` 显式开启，生产保持关闭。
 - 所有可预期错误、未知路由、校验失败与未捕获异常输出 `{error:{code,message,details}}`；未捕获异常只暴露 request ID。
 - 身份实现落地前，非公开 `/api/*` 路径由边界 middleware 返回 `401 AUTH_REQUIRED`，避免业务路由在无鉴权状态下意外开放。
 - Python 依赖使用 `venv + pip`，仓库根提供 pnpm 包装命令；CI 使用 Python 3.12 执行 ruff、mypy、pytest 与覆盖率。
+- 前后端行为同步交付单元测试与跨栈集成测试；CI 实际执行两套单测与 Web→Vite→FastAPI 集成测试，单测覆盖率下限为 80%。
 - 删除 `apps/server` Fastify 壳，避免双后端长期并存。
 
 ## Alternatives considered
@@ -30,4 +31,5 @@ Status: implemented
 - 本地与 CI 需要先建立 Python 3.12 venv；新增开发者命令由根 pnpm 包装保持统一入口。
 - m1-06 必须替换临时鉴权边界，而不是在其后追加鉴权；否则健康检查之外仍会全部 401。
 - 统一错误 envelope 成为前端拦截器与后续 OpenAPI 生成物的稳定输入。
+- 测试与覆盖率门禁让跨端接线、失败状态和环境默认值在合并前得到机器验证，代价是 CI 需要同时准备 Node、Python 与两个本地进程。
 - Web 壳暂留 React，直到 m1-05 单独切换 Vue；本轮只替换后端边界。

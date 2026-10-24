@@ -35,4 +35,15 @@ describe("memory snapshot source", () => {
     expect(source.calls.readRecords).toBe(1);
     expect(source.calls.recordsRolloutIds).toEqual(["root.jsonl"]);
   });
+
+  it("reports missing, empty, and malformed rollouts", async () => {
+    const source = createMemorySnapshotSource({
+      "empty.jsonl": [],
+      "invalid.jsonl": ['{"type":"response_item","payload":{"type":"message"}}'],
+    });
+
+    await expect(source.readMeta("empty.jsonl")).rejects.toThrow("empty rollout");
+    await expect(source.readMeta("invalid.jsonl")).rejects.toThrow("invalid session_meta");
+    await expect(source.readRecords("missing.jsonl")).rejects.toThrow("missing rollout");
+  });
 });
