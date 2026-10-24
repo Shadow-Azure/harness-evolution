@@ -503,9 +503,18 @@ erDiagram
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`、`INDEX(run_id, status)`、`INDEX(eval_status, eval_next_poll_at)`。
 
-### 5.6 `evolution_finals`
+### 5.6 `evolution_finals` —— 终评结果
 
-`run_id` PK、`best_version`、`verdict`、`best_score`、`init_score`、`metrics` JSON。
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `run_id` | `VARCHAR(36)` PK, FK → `evolution_runs.id` | 一个 run 一行 |
+| `best_version` | `VARCHAR(64)` | 终评选出的最佳版本（tag/分支） |
+| `verdict` | `BOOLEAN` | 自进化是否有效；`true` = 有效 |
+| `best_score` | `DOUBLE` | 最佳 candidate 的终评分（V1 占位） |
+| `init_score` | `DOUBLE` | 初始基线分（V1 占位） |
+| `metrics` | `JSON` | 终评指标数组（分数、对比项等，结构见 [05 §3.6](05-api-design.md) 的 final payload） |
+
+终评完成时写入；V1 的分数与指标为占位值，真实评测接入后只替换数据来源，表结构不变。
 
 ### 5.7 `evolution_run_events` —— 执行过程与异常（追加）
 
