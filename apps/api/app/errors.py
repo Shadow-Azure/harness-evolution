@@ -106,9 +106,14 @@ def register_exception_handlers(app: FastAPI) -> None:
             message = "method not allowed"
             details = {"method": request.method, "path": request.url.path}
         else:
-            code = ErrorCode.INTERNAL
-            message = "request failed"
-            details = {"path": request.url.path, "status": http_error.status_code}
+            request_id = getattr(request.state, "request_id", "unknown")
+            return error_response(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                code=ErrorCode.INTERNAL,
+                message="internal server error",
+                details={"requestId": request_id},
+                headers={"X-Request-Id": request_id},
+            )
         return error_response(
             status_code=http_error.status_code,
             code=code,

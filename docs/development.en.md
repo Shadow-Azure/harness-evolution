@@ -9,6 +9,7 @@ English | [中文](development.md)
 - Node ≥ 22, pnpm ≥ 10 and Python ≥ 3.12.
 - Run `pnpm install && pnpm setup:api` after the first clone; install local hooks with `pnpm install:hooks`.
 - `gh` must be logged in for `flow:sync` and `verify:flow-online`.
+- Set `HE_DOCS_ENABLED=false` in production to disable API docs and OpenAPI.
 
 ## Development flow
 

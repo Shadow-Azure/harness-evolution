@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-24-fastapi-service-boundary.md
-2026-10-24-fastapi-service-boundary.md: 370aed33f21f55586e75e343340cf6c5a75be1d9
-2026-10-24-fastapi-service-boundary.en.md: eeb438114b879c1cf70ce1bc63f93ccc20a75115
+2026-10-24-fastapi-service-boundary.md: 7fc16f523f316348da7a45bbdb2176ce37a6b1a6
+2026-10-24-fastapi-service-boundary.en.md: 37a4e28e60f882e6ef2c48684ee19a39c4b120c7

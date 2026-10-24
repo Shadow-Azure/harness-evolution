@@ -9,6 +9,7 @@
 - Node ≥ 22、pnpm ≥ 10、Python ≥ 3.12。
 - 首次 clone 后运行 `pnpm install && pnpm setup:api`；本地钩子用 `pnpm install:hooks` 安装。
 - 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
+- 生产设 `HE_DOCS_ENABLED=false` 关闭 API 文档与 OpenAPI。
 
 ## 开发流程
 

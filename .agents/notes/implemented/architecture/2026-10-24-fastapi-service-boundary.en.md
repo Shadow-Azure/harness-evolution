@@ -12,6 +12,7 @@ The TypeScript/Fastify shell served only a health check, yet diverged from the t
 
 - Replace the backend with a Python 3.12 + FastAPI modular monolith under `apps/api`, split into `api/service/db/third_party_api`, with routes registered only in `main.py`.
 - Load configuration from the `HE_` environment namespace; keep the health check public and return `phase=scaffold`.
+- Control API documentation and OpenAPI with `HE_DOCS_ENABLED`; development enables both by default and production deployments explicitly disable them.
 - Return `{error:{code,message,details}}` for expected failures, unknown routes, validation failures and uncaught exceptions; expose only the request ID for unexpected errors.
 - Until identity lands, a boundary middleware returns `401 AUTH_REQUIRED` for non-public `/api/*` paths so business routes cannot accidentally open unauthenticated.
 - Manage Python dependencies with `venv + pip` and expose pnpm wrapper commands from the repository root; CI runs ruff, mypy, pytest and coverage on Python 3.12.

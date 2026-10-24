@@ -42,7 +42,7 @@ pnpm install:hooks       # 安装本地 git 钩子
 
 ## 代码惯例
 
-- 后端保持模块化单体，按 `sessions` / `ingest` / `storage` / `analysis` 垂直切片组织；业务代码只依赖 repository 接口。
+- 后端保持模块化单体：HTTP 层只放 `api/` 路由，业务规则进 `service/`，存储隔离在 `db/` 接口与 repository 后，出站集成放 `third_party_api/`。
 - `packages/contracts` 是前后端共享协议的唯一来源；跨端字段变化先改契约。
 - 导出声明必须带 JSDoc；导出函数的每个形参写 `@param`，非 void 返回写 `@returns`。
 - 常驻文档受词数预算约束，未登记预算即红门禁；超限处置顺序为搬层、压缩、提预算。

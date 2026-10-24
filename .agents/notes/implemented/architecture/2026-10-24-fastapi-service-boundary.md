@@ -12,6 +12,7 @@ Status: implemented
 
 - 后端改为 `apps/api` 下的 Python 3.12 + FastAPI 模块化单体，按 `api/service/db/third_party_api` 分层，路由只在 `main.py` 注册。
 - 配置统一从 `HE_` 环境命名空间读取；健康检查保持公开并返回 `phase=scaffold`。
+- API 文档与 OpenAPI 由 `HE_DOCS_ENABLED` 控制；开发默认开启，生产部署显式关闭。
 - 所有可预期错误、未知路由、校验失败与未捕获异常输出 `{error:{code,message,details}}`；未捕获异常只暴露 request ID。
 - 身份实现落地前，非公开 `/api/*` 路径由边界 middleware 返回 `401 AUTH_REQUIRED`，避免业务路由在无鉴权状态下意外开放。
 - Python 依赖使用 `venv + pip`，仓库根提供 pnpm 包装命令；CI 使用 Python 3.12 执行 ruff、mypy、pytest 与覆盖率。

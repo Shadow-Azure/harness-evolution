@@ -15,7 +15,7 @@ class HealthResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ok: Literal[True] = True
+    ok: bool = True
     service: Literal["harness-evolution"] = "harness-evolution"
     phase: ServicePhase
 

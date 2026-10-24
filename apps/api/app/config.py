@@ -29,4 +29,5 @@ class Settings(BaseSettings):
     port: int = 8787
     phase: ServicePhase = ServicePhase.SCAFFOLD
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    docs_enabled: bool = True
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"

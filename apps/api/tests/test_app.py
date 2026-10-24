@@ -35,6 +35,17 @@ async def test_health_returns_scaffold_contract(client: httpx.AsyncClient) -> No
     }
 
 
+def test_health_openapi_allows_unavailable_state() -> None:
+    """The health schema must be able to represent a database outage."""
+    app = create_app(Settings())
+
+    health_schema = app.openapi()["components"]["schemas"]["HealthResponse"]
+    ok_schema = health_schema["properties"]["ok"]
+
+    assert ok_schema["type"] == "boolean"
+    assert "const" not in ok_schema
+
+
 async def test_protected_api_path_returns_auth_required_before_routing(
     client: httpx.AsyncClient,
 ) -> None:
@@ -118,12 +129,46 @@ def test_config_reads_he_prefixed_environment(
     monkeypatch.setenv("HE_HOST", "127.0.0.1")
     monkeypatch.setenv("HE_PORT", "9123")
     monkeypatch.setenv("HE_CORS_ORIGINS", '["https://example.test"]')
+    monkeypatch.setenv("HE_DOCS_ENABLED", "false")
 
     settings = Settings()
 
     assert settings.host == "127.0.0.1"
     assert settings.port == 9123
     assert settings.cors_origins == ["https://example.test"]
+    assert settings.docs_enabled is False
+
+
+async def test_docs_are_available_when_enabled() -> None:
+    """Development deployments can expose interactive and machine docs."""
+    app = create_app(Settings(docs_enabled=True))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as test_client:
+        docs_response = await test_client.get("/api/docs")
+        schema_response = await test_client.get("/api/openapi.json")
+
+    assert docs_response.status_code == 200
+    assert schema_response.status_code == 200
+
+
+async def test_docs_are_closed_when_disabled() -> None:
+    """Production deployments can remove both interactive and machine docs."""
+    app = create_app(Settings(docs_enabled=False))
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as test_client:
+        docs_response = await test_client.get("/api/docs")
+        schema_response = await test_client.get("/api/openapi.json")
+
+    assert docs_response.status_code == 404
+    assert docs_response.json()["error"]["code"] == "NOT_FOUND"
+    assert schema_response.status_code == 404
+    assert schema_response.json()["error"]["code"] == "NOT_FOUND"
 
 
 async def test_validation_error_uses_unified_error() -> None:
@@ -191,13 +236,17 @@ async def test_other_http_error_uses_unified_error() -> None:
         transport=transport,
         base_url="http://testserver",
     ) as test_client:
-        response = await test_client.get("/teapot")
+        response = await test_client.get(
+            "/teapot",
+            headers={"X-Request-Id": "req-http-error"},
+        )
 
-    assert response.status_code == 418
+    assert response.status_code == 500
+    assert response.headers["X-Request-Id"] == "req-http-error"
     assert response.json() == {
         "error": {
             "code": "INTERNAL",
-            "message": "request failed",
-            "details": {"path": "/teapot", "status": 418},
+            "message": "internal server error",
+            "details": {"requestId": "req-http-error"},
         },
     }

@@ -13,12 +13,14 @@ from app.middleware.request_context import RequestContextMiddleware
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
+    docs_url = "/api/docs" if resolved_settings.docs_enabled else None
+    openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None
     app = FastAPI(
         title="harness-evolution-api",
         version="0.1.0",
-        docs_url="/api/docs",
+        docs_url=docs_url,
         redoc_url=None,
-        openapi_url="/api/openapi.json",
+        openapi_url=openapi_url,
     )
     app.state.settings = resolved_settings
 
