@@ -840,8 +840,12 @@ deep-research 在读取快照前未校验 userTurn 字段，子 agent 直接按�
 ## 追溯
 - 自进化运行：[evo-20261023-01](https://harness.example.com/evolution/runs/evo-20261023-01?step=iteration)
 - 问题簇：[C1 检索索引读取失败](https://harness.example.com/evolution/runs/evo-20261023-01?step=clusters&cluster=C1)
-- 根因归因：[pr-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=attr)
-- 来源问题：[bc-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=desc)、[bc-050b-11](…&case=bc-050b-11&tab=desc)
+- 根因归因：
+    - [pr-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=attr)（检索索引读取失败）
+    - [pr-050b-07](https://harness.example.com/sessions/2b7e9d4f-…/errors?case=bc-2b7e-01&tab=attr)（索引未校验快照字段）
+- 来源问题：
+    - [bc-050b-03](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-03&tab=desc)（session：研究"用户数据驱动自进化"提到的所有方法）
+    - [bc-050b-11](https://harness.example.com/sessions/050b81ba-…/errors?case=bc-050b-11&tab=desc)（session：同上）
 - 基线：`9f3c2a1f`（tag `v2.0.0`）
 
 ---
@@ -873,7 +877,7 @@ evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取
 候选分 87.2 高于基线 84.6（+2.6），按 external-verdict 规则接纳。
 
 ## 追溯
-…（同 candidate）
+…（同 candidate：运行 / 簇 / 根因归因 / 来源问题逐条缩进）
 
 ---
 Harness-Run-Id: evo-20261023-01
@@ -890,7 +894,8 @@ Harness-Decision-Rule: external-verdict
 
 - **subject 说人话**：`evolve(对象@版本): <一句话问题/结论>`，≤ 72 字符；candidate 用假设式（"针对…的候选变更"），接纳后改写为断言式（"修复…"）；正文事实部分不改写。
 - **"为什么接纳"是一句话**：`Decision.reason` 由 engine 的 `decide()` 生成，把分数比较翻成人话（V1：`候选分 87.2 高于基线 84.6（+2.6），按 external-verdict 规则接纳`）；规则标识另写 `Harness-Decision-Rule` trailer 供机器筛选；真实执行器换阈值/多指标规则时，下游（message、"为什么接纳"段、`cluster_accepted` 事件）形状不变。
-- **链接规则**：URL 前缀取 `HE_WEB_BASE_URL`（[04 §9](04-backend-architecture.md)），路径按 [05 §5](05-api-design.md) 深链拼接（run → `?step=…`、簇 → `?step=clusters&cluster={id}`、问题 → `/sessions/{sid}/errors?case=…&tab=desc|attr`）；**未配置时只输出 ID、不输出链接**（避免相对路径死链）。链接只含 ID，不含任何 token/凭据。
+- **链接规则**：URL 前缀取 `HE_WEB_BASE_URL`（[04 §9](04-backend-architecture.md)，由 `.env` 注入、不落库），路径按 [05 §5](05-api-design.md) 深链拼接（run → `?step=…`、簇 → `?step=clusters&cluster={id}`、问题 → `/sessions/{sid}/errors?case=…&tab=desc|attr`）；**未配置时只输出 ID、不输出链接**（避免相对路径死链）。链接只含 ID，不含任何 token/凭据。
+- **多来源逐行**：根因归因（probe）与来源问题（bad case）可能有多条，每条独立一行、缩进一级（4 空格 / 一个 tab）；同一行不并列多个链接，保证在 `git log` 终端里也逐条对齐。
 - **截断与脱敏**：`probe_analysis` 超过 30 行或 3000 字符时按行截断并附"完整推导见归因链接"；strip HTML；不写 payload 原文、token、环境变量（与 [09 R15](09-review-guide.md) 同一清单）。
 - **trailer 只在末尾**：`Harness-Run-Id` 必填（push 校验依赖）；`Job-Id` / `Step` / 耗时等已落 `evolution_run_events` 的字段不重复进 message。
 - **拒绝不改写**：rejected 轮次保留 candidate message（随后删除 candidate ref），拒绝理由进 `cluster_rejected` 事件 payload。
