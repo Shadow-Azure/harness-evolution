@@ -9,8 +9,9 @@ milestone: m1
 depends:
   - m1-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/web/**
   - packages/contracts/**
   - package.json
@@ -20,6 +21,7 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 28
@@ -28,91 +30,57 @@ github:
 
 ## Background
 
-
-
-
-
-原型交互需要 Vue Flow、Pinia/Query 和统一 tokens；先建立正确骨架可避免后续页面返工。
+The prototype interaction needs Vue Flow, Pinia/Query, and unified tokens; establishing the correct skeleton first avoids rework in later pages.
 
 ## Goals
 
-
-
-
-
-- 用 Vue 3、router、pinia、@tanstack/query 和设计 tokens 重建 apps/web。
-- 建立 node/jsdom Vitest、ESLint、vue-tsc、bundle 预算和构建守卫。
-- 两个空视图可导航且契约类型可编译。
+- Rebuild `apps/web` with Vue 3, router, Pinia, TanStack Query, and design tokens.
+- Establish node/jsdom Vitest, ESLint, vue-tsc, bundle boundaries, and build guards.
+- Make two empty views navigable with contract types checked at compile time.
 
 ## Design authority
 
-
-
-
-
-- [04 后端架构](../../../plans/fullstack-design/04-backend-architecture.md)
+- [03 Frontend architecture](../../../plans/fullstack-design/03-frontend-architecture.md)
+- [08 Frontend implementation](../../../plans/fullstack-design/08-frontend-implementation.md)
 
 ## Implementation
 
-
-
-
-
-- 路由懒加载非默认页；Vue Flow 不进入首屏闭包。
-- tokens.css 成唯一颜色源，禁止组件硬编码色值。
-- MSW 只用于测试，运行时不留 mock 分支。
+- Lazy-load non-default routes; Vue Flow must not enter the first-screen closure.
+- Make `tokens.css` the only color source and reject hard-coded component colors.
+- Keep MSW test-only, with no mock branch in runtime code.
 
 ## Implementation steps
 
-
-
-
-
-1. 先写路由、tokens、健康 API 调用和 bundle 守卫失败测试。
-2. 创建 App/TopNav/router/query/http 骨架并删除 React。
-3. 接入 lint/type/test/build 和 verify:bundle。
+1. Write failing route, token, health API, and bundle-guard tests first.
+2. Create the App/TopNav/router/query/http skeleton and remove React.
+3. Wire lint/type/test/build and `verify:bundle` into local and CI gates.
 
 ## Dependencies and boundary
 
-
-
-
-
-- 依赖：m1-04
-- 交付边界：只交付可导航空壳和公共数据层；不含登录与领域页面。
+- Depends on m1-04.
+- Delivers only a navigable empty shell and shared data layer; login and domain pages are out of scope.
 
 ## Verification
-
-
-
-
-
 ```sh
 pnpm test:web
 pnpm typecheck:web
+pnpm lint:web
 pnpm build
 pnpm verify:bundle
+pnpm verify:web-style
 ```
 
-- 首屏包不含 Vue Flow；bundle 超预算时构建后门禁失败。
-- 组件和 API 测试均通过。
+- The first-screen bundle excludes Vue Flow; boundary violations fail after build.
+- Component and API tests pass with the shared real-response contract fixtures.
 
 ## Acceptance
 
-
-
-
-
-- `pnpm dev:web` 可打开空态导航。
-- React 文件被移除且构建成功。
+- `pnpm dev:web` opens the empty-state navigation.
+- React files are removed and the build succeeds.
 
 ## Gates and CI
 
-
-
-
-
-- 前端 lint/type/test/build/bundle 进入 CI。
+- Frontend lint/type/test/build/bundle, token checks, and CI gate self-tests run in CI.
 
 ## Non-goals
 

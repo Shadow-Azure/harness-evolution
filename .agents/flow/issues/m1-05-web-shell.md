@@ -9,8 +9,9 @@ milestone: m1
 depends:
   - m1-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/web/**
   - packages/contracts/**
   - package.json
@@ -20,6 +21,7 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 28
@@ -38,7 +40,8 @@ github:
 
 ## 设计依据
 
-- [04 后端架构](../../../plans/fullstack-design/04-backend-architecture.md)
+- [03 前端架构](../../../plans/fullstack-design/03-frontend-architecture.md)
+- [08 前端实现](../../../plans/fullstack-design/08-frontend-implementation.md)
 
 ## 实现内容
 
@@ -62,8 +65,10 @@ github:
 ```sh
 pnpm test:web
 pnpm typecheck:web
+pnpm lint:web
 pnpm build
 pnpm verify:bundle
+pnpm verify:web-style
 ```
 
 - 首屏包不含 Vue Flow；bundle 超预算时构建后门禁失败。
@@ -76,7 +81,7 @@ pnpm verify:bundle
 
 ## 门禁与 CI
 
-- 前端 lint/type/test/build/bundle 进入 CI。
+- 前端 lint/type/test/build/bundle、tokens 与 CI 门禁自测试进入 CI。
 
 ## 非目标
 

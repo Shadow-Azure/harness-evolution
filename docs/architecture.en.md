@@ -13,7 +13,7 @@ This trace-diagnostics service currently delivers only the M1 platform foundatio
 | Unit | Technology | Responsibility |
 |---|---|---|
 | `apps/api` | Python 3.12 + FastAPI | HTTP API, service orchestration, storage and third-party boundaries |
-| `apps/web` | React + Vite | Current development shell; M1 later switches to Vue 3 |
+| `apps/web` | Vue 3 + Vite | Routing, shared data access, and progressively loaded business pages |
 | `packages/contracts` | TypeScript | Shared protocols and domain types for the web app |
 | `research/` | Markdown + YAML | Evaluation tasks, harness adapters and experiment records |
 

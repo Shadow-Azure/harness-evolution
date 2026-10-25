@@ -1,0 +1,32 @@
+:root {
+  --surface-base: #0b0d11;
+  --surface-raised: rgba(11, 13, 17, 0.78);
+  --surface-overlay: rgba(255, 255, 255, 0.03);
+  --surface-selected: rgba(142, 169, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --page-gradient: linear-gradient(180deg, rgba(157, 184, 255, 0.1), transparent 40%), var(--surface-base);
+  --brand-gradient: linear-gradient(135deg, #9db8ff, #6ee7b7 58%, #f0b66b);
+  --text-primary: #ffffff;
+  --text-muted: #9aa3b2;
+  --state-neutral: #7d8594;
+  --state-success: #6ee7b7;
+  --state-success-text: #87e6bd;
+  --state-success-border: rgba(110, 231, 183, 0.24);
+  --state-success-surface: rgba(110, 231, 183, 0.07);
+  --state-error: #ff7878;
+  --state-error-text: #ff9f9f;
+  --state-error-border: rgba(255, 120, 120, 0.24);
+  --state-error-surface: rgba(255, 120, 120, 0.07);
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+  --radius-circle: 999px;
+  --radius-pill: 999px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --font-title: 24px;
+  --weight-bold: 800;
+  --shell-header-height: 68px;
+}

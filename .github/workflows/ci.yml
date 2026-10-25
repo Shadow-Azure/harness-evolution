@@ -31,6 +31,12 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/pyproject.toml
       - run: pnpm install --frozen-lockfile
+      - name: 门禁自测试
+        run: pnpm test:gates
+      - name: Web lint
+        run: pnpm lint:web
+      - name: Web typecheck
+        run: pnpm typecheck:web
       - name: Python 环境
         run: |
           python -m venv apps/api/.venv
@@ -47,10 +53,14 @@ jobs:
         run: pnpm test:integration
       - name: OpenAPI 契约防漂移
         run: pnpm contract:check
-      - name: 类型检查
+      - name: 工作区类型检查
         run: pnpm typecheck
+      - name: 设计 token 颜色源
+        run: pnpm verify:web-style
       - name: 构建
         run: pnpm build
+      - name: 首屏 bundle 边界
+        run: pnpm verify:bundle
       - name: 文档门禁（doc-sync）
         run: pnpm verify:docs
       - name: 开发流程门禁（PR diff）
