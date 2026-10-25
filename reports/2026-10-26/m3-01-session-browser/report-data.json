@@ -1,0 +1,260 @@
+{
+  "title": "M3-01 Session 浏览器 · 集成冒烟",
+  "eyebrow": "Harness Evolution · PR #102",
+  "summary": "在真实 FastAPI、Vite 与 headless Chrome/CDP 中途经 4 个 canonical Session，验证原型两栏布局、Session 卡、双密度条、概览、URL 恢复和 390px 响应式。",
+  "meta": "2026-10-26 · macOS · Chrome headless/CDP · loopback",
+  "metrics": [
+    {
+      "value": "8",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "8",
+      "label": "通过"
+    },
+    {
+      "value": "4",
+      "label": "真实 Session"
+    },
+    {
+      "value": "0",
+      "label": "控制台异常"
+    }
+  ],
+  "facts": [
+    {
+      "label": "Issue",
+      "value": "#41 · M3 session browser"
+    },
+    {
+      "label": "PR",
+      "value": "#102"
+    },
+    {
+      "label": "Commit",
+      "value": "506bd01"
+    },
+    {
+      "label": "Runtime",
+      "value": "FastAPI + Vite + Chrome CDP"
+    },
+    {
+      "label": "Data",
+      "value": "fixtures seed → SQLite"
+    },
+    {
+      "label": "Computer Use",
+      "value": "macOS locked；证据来自真实 headless Chrome/CDP"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "观测",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "登录页原型视觉",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "亮色背景、白色认证卡、无 TopNav，页面可操作。",
+        "evidence": [
+          "screenshots/01-login.png"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "两栏 Session 浏览器",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "360px 侧栏、4 张白卡、1 个选中态、8 条密度条、720px 后续占位。",
+        "evidence": [
+          "screenshots/02-sessions-default.png",
+          "body=rgb(244, 245, 247)",
+          "sidebar=360px"
+        ]
+      },
+      {
+        "id": "03",
+        "name": "搜索与空态",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "搜索写入 URL，匹配为空时展示明确空态。",
+        "evidence": [
+          "screenshots/03-search-empty.png",
+          "?q=no-such-session"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "键盘选择与独立概览",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "第二张卡 Enter 选择成功，路径更新，概览同步切换。",
+        "evidence": [
+          "screenshots/04-second-session-overview.png",
+          "/sessions/10000000-0000-4000-8000-000000000003"
+        ]
+      },
+      {
+        "id": "05",
+        "name": "前进/后退恢复",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "后退恢复搜索 URL，前进恢复选中 Session 路径。",
+        "evidence": [
+          "history.back/forward assertions"
+        ]
+      },
+      {
+        "id": "06",
+        "name": "概览错误态",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "不存在的 Session 显示错误态，列表/壳层不白屏。",
+        "evidence": [
+          "screenshots/05-detail-error.png"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "390px 单列",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "4 张卡纵向堆叠，无横向溢出，用户菜单保留。",
+        "evidence": [
+          "screenshots/06-mobile-sessions.png",
+          "scroll=390/390"
+        ]
+      },
+      {
+        "id": "08",
+        "name": "原型边界",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "无 /tree 请求、无 Vue Flow；错误详情保持后续能力入口。",
+        "evidence": [
+          "treeRequests=0",
+          "overviewStats=9"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "Session 浏览器原型参考",
+      "label": "原型参考",
+      "caption": "最终视觉基准：360px Session 侧栏、白卡、双密度条和右侧概览。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-login.png",
+      "alt": "亮色登录页",
+      "label": "登录页",
+      "caption": "认证页保持原型亮色表面。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-sessions-default.png",
+      "alt": "Session 浏览器默认状态",
+      "label": "Session 浏览器",
+      "caption": "360px Session 侧栏、四张白卡和概览。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-search-empty.png",
+      "alt": "Session 搜索空态",
+      "label": "搜索空态",
+      "caption": "没有匹配筛选时的真实空态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-second-session-overview.png",
+      "alt": "第二个 Session 的概览",
+      "label": "选中与概览",
+      "caption": "键盘选择后概览同步更新。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-detail-error.png",
+      "alt": "Session 概览错误态",
+      "label": "错误态",
+      "caption": "不存在的 Session 展示可恢复错误态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-mobile-sessions.png",
+      "alt": "390px Session 浏览器",
+      "label": "390px",
+      "caption": "单列堆叠且没有横向溢出。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "Session API",
+        "coverage": "真实 FastAPI + SQLite + fixtures",
+        "conclusion": "4 个 Session 与真实概览数据可用。",
+        "recommendation": "CI 继续执行 API 与 MySQL lane。"
+      },
+      {
+        "area": "列表交互",
+        "coverage": "真实 Chrome/CDP",
+        "conclusion": "搜索、空态、键盘选择、前进后退已验证。",
+        "recommendation": "页面改动继续跑 m3-session-browser E2E。"
+      },
+      {
+        "area": "视觉原型",
+        "coverage": "截图 + computed style",
+        "conclusion": "360px 侧栏、白卡、亮色底、8 条密度条、720px 占位已确认。",
+        "recommendation": "后续 m3-02 继续复用原型 token。"
+      },
+      {
+        "area": "原生 Computer Use",
+        "coverage": "macOS 锁定",
+        "conclusion": "未绕过锁屏；使用真实 headless Chrome/CDP。",
+        "recommendation": "解锁后可用浏览器标签补充人工截图。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "m3-01 的列表、概览、URL 状态和原型响应式行为在真实进程中正常，未发现集成缺陷。",
+    "points": [
+      "4 个真实 Session 和 8 条密度条完成页面级验证。",
+      "前端没有请求 Agent tree，执行流仍明确留给后续 issue。",
+      "390px 单列无横向溢出，控制台无异常。"
+    ]
+  },
+  "footer": "证据源：真实 FastAPI、Vite、SQLite 与 Chrome headless/CDP；HTML 由 report-data.json 生成。"
+}
