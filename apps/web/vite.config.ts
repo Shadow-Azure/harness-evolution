@@ -2,6 +2,7 @@ import vue from "@vitejs/plugin-vue";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import type { ComponentResolver } from "unplugin-vue-components/types";
 import { defineConfig } from "vitest/config";
 
 const apiProxyUrl = process.env.HE_API_PROXY_URL ?? "http://127.0.0.1:8787";
@@ -11,15 +12,23 @@ const elementPlusDirectories: Readonly<Record<string, string>> = {
   ElInput: "input",
 };
 
-function resolveElementPlusComponent(name: string) {
-  const directory = elementPlusDirectories[name];
-  if (!directory) {
-    return undefined;
-  }
+function elementPlusOnDemandResolver(): ComponentResolver {
   return {
-    name,
-    from: `element-plus/es/components/${directory}/index`,
-    sideEffects: `element-plus/es/components/${directory}/style/css`,
+    type: "component",
+    resolve(name: string) {
+      const directory = elementPlusDirectories[name];
+      if (!directory) {
+        return;
+      }
+      return {
+        name,
+        from: `element-plus/es/components/${directory}/index`,
+        sideEffects: [
+          "element-plus/es/components/base/style/css",
+          `element-plus/es/components/${directory}/style/css`,
+        ],
+      };
+    },
   };
 }
 
@@ -33,9 +42,12 @@ export default defineConfig({
     }),
     Components({
       dts: "src/components.d.ts",
-      resolvers: [resolveElementPlusComponent, ElementPlusResolver()]
-    })
+      resolvers: [elementPlusOnDemandResolver()],
+    }),
   ],
+  optimizeDeps: {
+    exclude: ["element-plus"],
+  },
   server: {
     port: webPort,
     strictPort: true,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,6 +15,23 @@ let webBaseUrl;
 let apiLogs = "";
 let webLogs = "";
 let dataDir;
+
+const chromeCandidates = [
+  process.env.CHROME_BIN,
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+].filter(Boolean);
+
+function chromeExecutable() {
+  const executable = chromeCandidates.find((candidate) => existsSync(candidate));
+  if (!executable) {
+    throw new Error(`Chrome executable not found; checked ${chromeCandidates.join(", ")}`);
+  }
+  return executable;
+}
 
 function capture(child, append) {
   child.stdout.on("data", (chunk) => append(String(chunk)));
@@ -83,6 +101,166 @@ async function stop(child) {
   });
 }
 
+async function waitForValue(read, label, timeout = 20_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const value = await read();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+}
+
+class CdpSession {
+  constructor(url) {
+    this.socket = new WebSocket(url);
+    this.nextId = 1;
+    this.pending = new Map();
+    this.listeners = new Map();
+    this.socket.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data));
+      if (message.id) {
+        const pending = this.pending.get(message.id);
+        if (!pending) return;
+        this.pending.delete(message.id);
+        if (message.error) {
+          pending.reject(new Error(`${pending.method}: ${message.error.message}`));
+        } else {
+          pending.resolve(message.result);
+        }
+        return;
+      }
+      for (const listener of this.listeners.get(message.method) ?? []) {
+        listener(message.params);
+      }
+    });
+  }
+
+  async open() {
+    if (this.socket.readyState === WebSocket.OPEN) return this;
+    await new Promise((resolve, reject) => {
+      this.socket.addEventListener("open", resolve, { once: true });
+      this.socket.addEventListener("error", () => reject(new Error("CDP websocket failed")), {
+        once: true,
+      });
+    });
+    return this;
+  }
+
+  on(method, listener) {
+    const listeners = this.listeners.get(method) ?? [];
+    listeners.push(listener);
+    this.listeners.set(method, listeners);
+  }
+
+  async send(method, params = {}) {
+    const id = this.nextId++;
+    const response = new Promise((resolve, reject) => {
+      this.pending.set(id, { method, resolve, reject });
+    });
+    this.socket.send(JSON.stringify({ id, method, params }));
+    return await response;
+  }
+
+  close() {
+    this.socket.close();
+  }
+}
+
+async function createBrowserPage() {
+  const debuggingPort = await availablePort();
+  const profileDir = await mkdtemp(path.join(tmpdir(), "harness-chrome-"));
+  let logs = "";
+  const browser = spawn(
+    chromeExecutable(),
+    [
+      "--headless=new",
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-background-networking",
+      "--no-first-run",
+      "--no-default-browser-check",
+      `--remote-debugging-port=${debuggingPort}`,
+      `--user-data-dir=${profileDir}`,
+      "about:blank",
+    ],
+    {
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  capture(browser, (chunk) => {
+    logs += chunk;
+  });
+  await waitFor(
+    `http://127.0.0.1:${debuggingPort}/json/version`,
+    browser,
+    () => logs,
+  );
+  const response = await fetch(
+    `http://127.0.0.1:${debuggingPort}/json/new?about:blank`,
+    { method: "PUT" },
+  );
+  assert.equal(response.ok, true, `failed to create Chrome target:\n${logs}`);
+  const target = await response.json();
+  const session = await new CdpSession(target.webSocketDebuggerUrl).open();
+  await Promise.all([
+    session.send("Page.enable"),
+    session.send("Runtime.enable"),
+    session.send("Log.enable"),
+  ]);
+  return {
+    session,
+    async close() {
+      session.close();
+      await stop(browser);
+      await rm(profileDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
+    },
+  };
+}
+
+async function waitForDocument(session, expression, label) {
+  return await waitForValue(async () => {
+    const result = await session.send("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+    return result.result.value;
+  }, label);
+}
+
+function browserViolations(session) {
+  const violations = [];
+  session.on("Runtime.consoleAPICalled", ({ type, args }) => {
+    if (type === "warning" || type === "error") {
+      violations.push(
+        `${type}: ${args.map((arg) => arg.value ?? arg.description ?? "").join(" ")}`,
+      );
+    }
+  });
+  session.on("Runtime.exceptionThrown", ({ exceptionDetails }) => {
+    violations.push(`exception: ${exceptionDetails.text} ${exceptionDetails.exception?.description ?? ""}`);
+  });
+  session.on("Log.entryAdded", ({ entry }) => {
+    const expectedAuthProbe =
+      entry.source === "network" &&
+      /Failed to load resource: the server responded with a status of (401|404)/.test(
+        entry.text,
+      );
+    if (!expectedAuthProbe && (entry.level === "warning" || entry.level === "error")) {
+      violations.push(`${entry.level}: ${entry.text}`);
+    }
+  });
+  return violations;
+}
+
 before(async () => {
   const apiPort = await availablePort();
   const webPort = await availablePort();
@@ -113,7 +291,18 @@ before(async () => {
 
   web = spawn(
     pnpm,
-    ["--filter", "@harness/web", "exec", "vite", "--host", "127.0.0.1", "--port", String(webPort), "--strictPort"],
+    [
+      "--filter",
+      "@harness/web",
+      "exec",
+      "vite",
+      "--force",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(webPort),
+      "--strictPort",
+    ],
     {
       cwd: root,
       env: {
@@ -301,5 +490,147 @@ test("database failure returns a sanitized 503 through the real proxy", async ()
     await stop(brokenWeb);
     await stop(brokenApi);
     await rm(brokenDataDir, { recursive: true, force: true });
+  }
+});
+
+test("browser renders the login form and narrow shell without console or layout errors", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    const webLogOffset = webLogs.length;
+    await page.session.send("Page.navigate", {
+      url: `${webBaseUrl}/login?redirect=/sessions`,
+    });
+    await waitForDocument(
+      page.session,
+      "document.readyState === 'complete' && Boolean(document.querySelector('form'))",
+      "login page",
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        for (const [selector, value] of [
+          ['#login-username', 'admin'],
+          ['#login-password', 'temporary-password'],
+        ]) {
+          const input = document.querySelector(selector);
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            'value',
+          ).set;
+          setter.call(input, value);
+          input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        }
+      })()`,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const browserWebLogs = webLogs.slice(webLogOffset);
+    assert.doesNotMatch(
+      browserWebLogs,
+      /optimized dependencies changed\. reloading/i,
+      `First browser page must load without a dependency reload:\n${browserWebLogs}`,
+    );
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+
+    let login = await fetch(`${webBaseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: "admin",
+        password: "integration-initial-password",
+      }),
+    });
+    if (login.status === 200) {
+      const body = await login.json();
+      assert.equal(body.user.mustChangePassword, true);
+      const changed = await fetch(`${webBaseUrl}/api/auth/change-password`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${body.accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          oldPassword: "integration-initial-password",
+          newPassword: "integration-replacement-password",
+        }),
+      });
+      assert.equal(changed.status, 204);
+      const initialRefreshCookie = login.headers
+        .get("set-cookie")
+        ?.match(/refresh_token=([^;]+)/)?.[1];
+      assert.ok(initialRefreshCookie);
+      login = await fetch(`${webBaseUrl}/api/auth/refresh`, {
+        method: "POST",
+        headers: { cookie: `refresh_token=${initialRefreshCookie}` },
+      });
+    }
+    if (login.status === 401) {
+      login = await fetch(`${webBaseUrl}/api/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          username: "admin",
+          password: "integration-replacement-password",
+        }),
+      });
+    }
+    assert.equal(login.status, 200);
+    const refreshCookie = login.headers
+      .get("set-cookie")
+      ?.match(/refresh_token=([^;]+)/)?.[1];
+    assert.ok(refreshCookie);
+    await page.session.send("Network.enable");
+    await page.session.send("Network.setCookie", {
+      name: "refresh_token",
+      value: refreshCookie,
+      url: `${webBaseUrl}/api/auth`,
+      httpOnly: true,
+      sameSite: "Strict",
+    });
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await page.session.send("Page.navigate", { url: `${webBaseUrl}/sessions` });
+    const layout = await waitForDocument(
+      page.session,
+      `(() => {
+        const menu = document.querySelector(".user-menu");
+        if (!menu) return null;
+        return {
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          menuRight: menu.getBoundingClientRect().right,
+        };
+      })()`,
+      "authenticated narrow shell",
+    );
+    const layoutContext = `${JSON.stringify(layout)}\n\nVite:\n${webLogs}`;
+    assert.ok(layout.scrollWidth <= layout.clientWidth, layoutContext);
+    assert.ok(layout.menuRight <= layout.clientWidth, layoutContext);
+    const userMenu = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const menu = document.querySelector(".user-menu");
+        menu.open = true;
+        const button = menu.querySelector("button[data-testid='logout']");
+        const bounds = button.getBoundingClientRect();
+        return {
+          open: menu.open,
+          buttonLeft: bounds.left,
+          buttonRight: bounds.right,
+          buttonWidth: bounds.width,
+        };
+      })()`,
+      returnByValue: true,
+    });
+    const menu = userMenu.result.value;
+    assert.equal(menu.open, true);
+    assert.ok(menu.buttonWidth > 0, JSON.stringify(menu));
+    assert.ok(menu.buttonLeft >= 0, JSON.stringify(menu));
+    assert.ok(menu.buttonRight <= layout.clientWidth, JSON.stringify(menu));
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
   }
 });

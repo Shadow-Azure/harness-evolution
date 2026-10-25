@@ -15,6 +15,7 @@ scope:
   - apps/web/**
   - packages/contracts/**
   - .github/workflows/ci.yml
+  - tests/integration/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

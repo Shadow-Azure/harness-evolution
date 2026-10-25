@@ -13,7 +13,7 @@ Refresh credentials must remain in an httpOnly cookie while the access token mus
 - Pinia keeps only the access token and current user in memory. Startup first tries refresh plus `/me`, then waits for router readiness and mounting. Guards reuse the same startup Promise while restoration is in flight.
 - `api/http.ts` reaches identity only through injected access-token, refresh, expiry, and forced-change callbacks. Only login/refresh are public endpoints that skip recovery; concurrent 401 responses share one refresh Promise, then replay each original method and body once. `AUTH_INVALID` always retains form semantics without refreshing or triggering session expiry, while protected requests that remain unauthorized after renewal clear state and return to login.
 - Login and password-change return targets accept only app-relative paths. Password changes strictly run `change-password → refresh → me → redirect`, so the new token carries the updated forced-change claim.
-- A component resolver automatically imports Element Plus inputs and buttons, mapping them to component directories to preserve on-demand tree-shaking and a separate vendor chunk. Logout calls the backend but always clears memory and the query cache.
+- A typed on-demand resolver automatically imports Element Plus inputs and buttons with base and component styles. Element Plus is excluded from Vite dependency pre-bundling to prevent a first-use full reload while retaining a separate 58.47 kB vendor chunk. The top bar condenses brand text and the user summary at 1100px and 640px breakpoints. Logout calls the backend but always clears memory and the query cache.
 
 ## Alternatives considered
 

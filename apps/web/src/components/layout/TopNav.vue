@@ -157,4 +157,42 @@ nav a.router-link-active {
   color: var(--text-primary);
   border-color: var(--border-strong);
 }
+
+@media (max-width: 1100px) {
+  .brand-copy small {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: var(--space-xs);
+    padding: 0 var(--space-md);
+  }
+
+  .brand-copy {
+    display: none;
+  }
+
+  nav {
+    gap: 0;
+  }
+
+  nav a {
+    padding-inline: 8px;
+  }
+
+  .user-menu {
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .user-menu summary {
+    display: block;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 </style>
