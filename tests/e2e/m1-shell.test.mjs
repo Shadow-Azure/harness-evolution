@@ -259,7 +259,6 @@ test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", asy
     // Reproduce a cold first paint where the scoped .canvas rule arrives late.
     await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
       source: `(() => {
-        const deadline = performance.now() + 2000;
         const removeDelayedCanvasRule = () => {
           for (const sheet of document.styleSheets) {
             try {
@@ -271,9 +270,14 @@ test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", asy
               // Only same-origin Vite stylesheets are inspected.
             }
           }
-          if (performance.now() < deadline) requestAnimationFrame(removeDelayedCanvasRule);
         };
-        requestAnimationFrame(removeDelayedCanvasRule);
+        removeDelayedCanvasRule();
+        new MutationObserver(removeDelayedCanvasRule).observe(document, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+        document.addEventListener("DOMContentLoaded", removeDelayedCanvasRule);
       })()`,
     });
 
@@ -286,6 +290,8 @@ test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", asy
         const bounds = canvas.getBoundingClientRect();
         return {
           height: bounds.height,
+          inlineHeight: canvas.style.height,
+          inlineWidth: canvas.style.width,
           path: location.pathname,
           width: bounds.width,
         };
@@ -297,6 +303,8 @@ test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", asy
     assert.equal(canvas.path, "/evolution");
     assert.ok(canvas.width > 0, JSON.stringify(canvas));
     assert.ok(canvas.height > 0, JSON.stringify(canvas));
+    assert.match(canvas.inlineHeight, /\S/, JSON.stringify(canvas));
+    assert.match(canvas.inlineWidth, /\S/, JSON.stringify(canvas));
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.close();
