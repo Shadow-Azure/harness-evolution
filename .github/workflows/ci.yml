@@ -61,7 +61,7 @@ jobs:
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
         timeout-minutes: 5
         run: pnpm test:integration
-      - name: 真实浏览器 E2E（M1 shell）
+      - name: 真实浏览器 E2E（M1 shell + M3 Session 浏览器）
         timeout-minutes: 5
         run: pnpm test:e2e
       - name: OpenAPI 契约防漂移

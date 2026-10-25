@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { mount } from "@vue/test-utils";
+import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,7 +37,11 @@ async function withRouter(component: Parameters<typeof mount>[0]) {
   await router.isReady();
   return mount(component, {
     global: {
-      plugins: [pinia, router],
+      plugins: [
+        [VueQueryPlugin, { queryClient: new QueryClient() }],
+        pinia,
+        router,
+      ],
     },
   });
 }
@@ -45,9 +50,8 @@ describe("M1 shell pages", () => {
   it("uses the common empty state without fabricating sessions", async () => {
     const wrapper = await withRouter(SessionsPage);
 
-    expect(wrapper.text()).toContain("暂无会话");
-    expect(wrapper.text()).toContain("后续 milestone");
-    expect(wrapper.find("[data-testid='session-row']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Session 浏览器");
+    expect(wrapper.find("[data-testid='session-card']").exists()).toBe(false);
   });
 
   it("explains that the top-level errors entry arrives later", async () => {

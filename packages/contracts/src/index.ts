@@ -57,6 +57,15 @@ export type AcquisitionStatusResponse =
 /** Result of a manual acquisition sync trigger. */
 export type SyncTriggerResponse = components["schemas"]["SyncTriggerResponse"];
 
+/** One root-session card shared by the list and overview API. */
+export type SessionListItem = components["schemas"]["SessionListItem"];
+
+/** Current-page root-session cards in server order. */
+export type SessionListResponse = components["schemas"]["SessionListResponse"];
+
+/** Whole-tree card statistics computed by the backend. */
+export type SessionStats = components["schemas"]["SessionStats"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

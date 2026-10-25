@@ -304,11 +304,11 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
           badge: document.querySelector("[data-testid='demo-badge']").textContent.trim(),
           pending: sync.querySelector(".sync-summary")?.textContent.trim() ?? "",
           pendingDetail: sync.getAttribute("aria-label"),
-          hasEmpty: document.body.textContent.includes("暂无会话"),
+          hasEmpty: document.body.textContent.includes("没有匹配当前筛选的 session"),
           bodyBackground: getComputedStyle(document.body).backgroundColor,
           topbarBackground: getComputedStyle(document.querySelector(".topbar")).backgroundColor,
           topbarHeight: document.querySelector(".topbar").getBoundingClientRect().height,
-          emptyBackground: getComputedStyle(document.querySelector(".empty-state")).backgroundColor,
+          emptyBackground: getComputedStyle(document.querySelector(".sidebar")).backgroundColor,
           activeUnderline: getComputedStyle(
             document.querySelector("nav a.router-link-active"),
           ).borderBottomColor,
@@ -328,7 +328,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
     assert.equal(initial.topbarBackground, "rgb(250, 251, 252)");
     assert.equal(initial.topbarHeight, 56);
-    assert.equal(initial.emptyBackground, "rgb(255, 255, 255)");
+    assert.equal(initial.emptyBackground, "rgb(250, 251, 252)");
     assert.equal(initial.activeUnderline, "rgb(47, 111, 224)");
     assert.equal(initial.brand, "Harness Evolution轨迹诊断与自进化");
     assert.ok(initial.clientWidth > 0);

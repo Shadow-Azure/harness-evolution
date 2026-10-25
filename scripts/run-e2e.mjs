@@ -17,6 +17,7 @@ function testTitles(source) {
   return [...source.matchAll(pattern)].map((match) => match[2]);
 }
 
+let selectedFiles = files;
 if (requestedPattern) {
   let matcher;
   try {
@@ -25,10 +26,10 @@ if (requestedPattern) {
     console.error(`run-e2e: invalid test-name pattern: ${error.message}`);
     process.exit(2);
   }
-  const matched = files.some((file) =>
+  selectedFiles = files.filter((file) =>
     testTitles(readFileSync(file, "utf8")).some((title) => matcher.test(title)),
   );
-  if (!matched) {
+  if (selectedFiles.length === 0) {
     console.error(`run-e2e: no tests matched test-name pattern ${JSON.stringify(requestedPattern)}`);
     process.exit(2);
   }
@@ -38,7 +39,7 @@ const nodeArguments = ["--test"];
 if (requestedPattern) {
   nodeArguments.push(`--test-name-pattern=${requestedPattern}`);
 }
-nodeArguments.push(...files);
+nodeArguments.push(...selectedFiles);
 
 const result = spawnSync(process.execPath, nodeArguments, {
   stdio: "inherit",

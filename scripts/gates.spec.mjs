@@ -343,6 +343,12 @@ test("E2E runner rejects an unmatched test-name pattern before starting services
   const runner = readFileSync("scripts/run-e2e.mjs", "utf8");
   assert.match(runner, /timeout:/);
   assert.match(runner, /killSignal: "SIGTERM"/);
+  assert.match(runner, /selectedFiles = files\.filter/);
+  assert.match(runner, /nodeArguments\.push\(\.\.\.selectedFiles\)/);
+  assert.match(
+    readFileSync("tests/e2e/m3-session-browser.test.mjs", "utf8"),
+    /m3-session-browser matches the prototype/,
+  );
 });
 
 test("route gates require contract checks for API and shared contract changes", () => {

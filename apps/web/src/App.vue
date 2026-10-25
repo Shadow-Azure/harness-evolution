@@ -12,6 +12,7 @@ import { queryKeys } from "./api/queryKeys";
 
 const route = useRoute();
 const isAuthLayout = computed(() => route.meta.authLayout === true);
+const isWorkspace = computed(() => route.meta.workspace === true);
 
 const { data, error, isPending, refetch } = useQuery({
   enabled: computed(() => !isAuthLayout.value),
@@ -55,7 +56,12 @@ function retryHealth() {
       v-if="!isAuthLayout"
       :demo="data?.phase === 'demo'"
     />
-    <main :class="{ 'auth-main': isAuthLayout }">
+    <main
+      :class="{
+        'auth-main': isAuthLayout,
+        'workspace-main': isWorkspace && !isAuthLayout,
+      }"
+    >
       <template v-if="isAuthLayout">
         <RouterView />
       </template>
@@ -101,6 +107,13 @@ main.auth-main {
   padding-top: 0;
 }
 
+main.workspace-main {
+  width: 100%;
+  height: calc(100vh - var(--shell-header-height));
+  padding: 0;
+  overflow: hidden;
+}
+
 .shell-state {
   margin-bottom: 14px;
 }
@@ -109,6 +122,13 @@ main.auth-main {
   main {
     width: calc(100% - 24px);
     padding-top: 12px;
+  }
+
+  main.workspace-main {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    overflow: visible;
   }
 }
 </style>

@@ -28,7 +28,9 @@ Only health, login, refresh, and ticket-authenticated SSE are public; other APIs
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
 
-After migrations and JobRunner recovery, the lifespan adopts `sync_lock` before starting the sync scheduler and dispatching queued replacements. It checks pending work every 60 seconds by default, and `0` disables timers. Scheduler and admin manual triggers share one coordinator, in-process guard, and durable `sync_lock`. No pending work creates no job, and the top bar renders only real status.
+The session browser uses a 360px list and overview. Search, status, sort, and selection live in the URL; statistics and density bars come from `/api/sessions`.
+
+After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before starting the scheduler. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 
 ## Data-layer strategy
 

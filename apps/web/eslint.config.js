@@ -15,5 +15,13 @@ export default tseslint.config(
     rules: {
       "vue/multi-word-component-names": "off"
     }
+  },
+  {
+    files: ["**/*.vue"],
+    languageOptions: {
+      parserOptions: {
+        parser: tseslint.parser
+      }
+    }
   }
 );
