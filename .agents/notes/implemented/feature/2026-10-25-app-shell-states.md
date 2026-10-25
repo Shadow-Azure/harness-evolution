@@ -11,7 +11,7 @@ M1 尚无领域数据，但登录用户仍需要看见产品稳定入口、统�
 ## Decision
 
 - 已鉴权壳固定展示 Sessions、Errors、Evolution 三个顶层入口；Errors 在 M1 只说明问题归属将在后续 milestone 接入，不渲染假问题行。
-- 页面共享 `LoadingSkeleton`、`EmptyState`、`ErrorState`；health 首载在 shell 内显示骨架，故障显示可重试错误态，404 使用“不存在或已删除”的终态文案。查询/变更的 409 `RUN_BUSY` 通过带样式的 `ElMessage` 提示并保留当前页面；Vue 未捕获错误统一写控制台并显示通用 `ElMessage`，保留已挂载 shell。
+- 页面共享 `LoadingSkeleton`、`EmptyState`、`ErrorState`；health 首载在 shell 内显示骨架，故障显示可重试错误态，404 使用“不存在或已删除”的终态文案。health 成功 payload 在进入模板前做运行时契约校验，区分合法降级响应与错误 envelope。查询/变更的 409 `RUN_BUSY` 通过带样式的 `ElMessage` 提示并保留当前页面；Vue 未捕获错误统一写控制台并显示通用 `ElMessage`，保留已挂载 shell。
 - health 的 `phase` 是唯一演示标志；只有 `demo` 显示“演示数据”，`scaffold` 与 `live` 不显示。
 - Evolution 的 Vue Flow 画布在首帧内联提供宽高，scoped CSS 只负责视觉样式，避免样式模块延迟生效时图表在零尺寸容器中初始化。
 - `fixtures/m1-shell.json` 是 M1 seed 的严格封闭 manifest；`python -m app.cli seed` 只运行迁移并复用幂等管理员播种，拒绝 production/live，不创建会话、问题、探针、运行或其他领域数据。
@@ -26,6 +26,7 @@ M1 尚无领域数据，但登录用户仍需要看见产品稳定入口、统�
 ## Consequences
 
 - M1 的演示入口是真实可运行的壳和 CLI，但领域区域保持诚实的空态。
+- health 的 TypeScript 类型不被当作运行时证明；错误 envelope 与畸形成功 payload 都进入可重试失败态，而不是让模板读取缺失字段。
 - `test:all`、CI、route gates 与门禁自测共同保护真实浏览器 E2E 和 fixture seed 命令，删除任一接线都会失败。
 - M2-01 接管完整 fixture schema 与会话数据；它应扩展 seed manifest/action，而不是绕开 CLI。
 - 会话级问题详情仍归后续 milestone；顶层 Errors 入口在 M1 只承担导航与边界说明。

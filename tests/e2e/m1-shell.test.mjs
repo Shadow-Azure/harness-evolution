@@ -401,3 +401,106 @@ test("m1-shell presents a 409 as a styled message without replacing the page", a
     await page.close();
   }
 });
+
+test("m1-shell rejects an error-envelope health response and retries into the shell", async () => {
+  const page = await createBrowserPage();
+  try {
+    const refreshCookie = await browserRefreshCookie();
+    await page.session.send("Network.enable");
+    await page.session.send("Network.setCookie", {
+      name: "refresh_token",
+      value: refreshCookie,
+      url: `${baseUrl}/api/auth`,
+      httpOnly: true,
+      sameSite: "Strict",
+    });
+    await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `window.__e2eErrors = [];
+        window.addEventListener("error", (event) => window.__e2eErrors.push(String(event.error || event.message)));
+        window.addEventListener("unhandledrejection", (event) => window.__e2eErrors.push(String(event.reason)));`,
+    });
+    await page.session.send("Fetch.enable", {
+      patterns: [{ urlPattern: "*://*/api/health", requestStage: "Request" }],
+    });
+    let healthAttempts = 0;
+    let failHealth = true;
+    const violatedLogs = browserViolations(page.session, {
+      isExpectedLogEntry: (entry) =>
+        entry.source === "network" &&
+        entry.url?.endsWith("/api/health") &&
+        /status of 503/.test(entry.text),
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      healthAttempts += 1;
+      if (failHealth) {
+        void page.session.send("Fetch.fulfillRequest", {
+          requestId: event.requestId,
+          responseCode: 503,
+          responseHeaders: [
+            { name: "content-type", value: "application/json" },
+            { name: "access-control-allow-origin", value: baseUrl },
+          ],
+          body: Buffer.from(
+            JSON.stringify({
+              error: {
+                code: "HEALTH_UNAVAILABLE",
+                details: {},
+                message: "database unavailable",
+              },
+            }),
+          ).toString("base64"),
+        });
+        return;
+      }
+      void page.session.send("Fetch.continueRequest", {
+        requestId: event.requestId,
+      });
+    });
+
+    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    const failure = await waitForDocument(
+      page.session,
+      `(() => {
+        const alert = document.querySelector(".error-state");
+        if (!alert || !document.querySelector(".shell")) return null;
+        return {
+          code: alert.textContent,
+          hasNav: Boolean(document.querySelector("nav")),
+          runtimeErrors: window.__e2eErrors ?? [],
+        };
+      })()`,
+      "retryable health error state",
+    );
+    assert.match(failure.code, /HEALTH_UNAVAILABLE/);
+    assert.equal(failure.hasNav, true);
+    assert.deepEqual(failure.runtimeErrors, []);
+
+    failHealth = false;
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector(".error-state button").click()`,
+    });
+    const recovered = await waitForDocument(
+      page.session,
+      `(() => {
+        if (document.querySelector(".error-state")) return null;
+        if (!document.body.textContent.includes("Session 浏览器")) return null;
+        return {
+          hasNav: Boolean(document.querySelector("nav")),
+          runtimeErrors: window.__e2eErrors ?? [],
+        };
+      })()`,
+      "recovered M1 shell",
+    );
+    assert.ok(healthAttempts >= 4, `health attempts: ${healthAttempts}`);
+    assert.equal(recovered.hasNav, true);
+    assert.deepEqual(recovered.runtimeErrors, []);
+    assert.deepEqual(
+      violatedLogs,
+      [],
+      `${violatedLogs.join("\n")}\n\nVite:\n${webLogs}`,
+    );
+    await page.session.send("Fetch.disable");
+  } finally {
+    await page.close();
+  }
+});

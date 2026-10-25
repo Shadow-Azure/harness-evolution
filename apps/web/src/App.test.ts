@@ -123,6 +123,38 @@ describe("App shell", () => {
     expect(attempts).toBe(2);
   });
 
+  it("turns a standard error-envelope health response into the retryable shell state", async () => {
+    let attempts = 0;
+    server.use(
+      http.get("/api/health", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(
+              {
+                error: {
+                  code: "HEALTH_UNAVAILABLE",
+                  message: "database unavailable",
+                },
+              },
+              { status: 503 },
+            )
+          : HttpResponse.json(healthFixtures.healthy);
+      }),
+    );
+    const { wrapper } = await mountApp();
+
+    expect(wrapper.find("nav").exists()).toBe(true);
+    expect(wrapper.get("[role='alert']").text()).toContain("HEALTH_UNAVAILABLE");
+    expect(wrapper.text()).not.toContain("Session 浏览器");
+
+    await wrapper.get("[role='alert'] button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Session 浏览器");
+    expect(attempts).toBe(2);
+  });
+
   it("lazily reaches the evolution view", async () => {
     const { router, wrapper } = await mountApp();
     await router.push("/evolution");

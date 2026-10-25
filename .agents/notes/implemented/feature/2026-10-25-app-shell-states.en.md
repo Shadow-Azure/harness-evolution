@@ -11,7 +11,7 @@ M1 has no domain data, but authenticated users still need stable product destina
 ## Decision
 
 - The authenticated shell always exposes Sessions, Errors, and Evolution. Errors only explains that problem ownership arrives in a later milestone and never renders fake problem rows.
-- Pages share `LoadingSkeleton`, `EmptyState`, and `ErrorState`; health renders a skeleton inside the shell while loading and a retryable error state on failure, while 404 uses the terminal copy “does not exist or was deleted.” Query and mutation 409 `RUN_BUSY` conflicts use a styled `ElMessage` and leave the current page in place; uncaught Vue errors are logged and presented through one generic `ElMessage` while the mounted shell remains available.
+- Pages share `LoadingSkeleton`, `EmptyState`, and `ErrorState`; health renders a skeleton inside the shell while loading and a retryable error state on failure, while 404 uses the terminal copy “does not exist or was deleted.” Successful health payloads are validated against their runtime contract before reaching templates so canonical degraded responses remain distinct from error envelopes. Query and mutation 409 `RUN_BUSY` conflicts use a styled `ElMessage` and leave the current page in place; uncaught Vue errors are logged and presented through one generic `ElMessage` while the mounted shell remains available.
 - The health `phase` is the sole demo marker: only `demo` shows the demo-data badge; `scaffold` and `live` do not.
 - The Evolution Vue Flow canvas provides inline dimensions before first paint; scoped CSS owns only visual styling, preventing the graph from initializing in a zero-size container when the style module loads late.
 - `fixtures/m1-shell.json` is a strict, closed seed manifest for M1. `python -m app.cli seed` runs migrations and reuses idempotent administrator seeding, rejects production/live targets, and creates no sessions, problems, probes, runs, or other domain rows.
@@ -26,6 +26,7 @@ M1 has no domain data, but authenticated users still need stable product destina
 ## Consequences
 
 - M1's demo entry points are a real shell and CLI while domain areas remain honest empty states.
+- TypeScript health types are not treated as proof of runtime data; error envelopes and malformed success payloads enter the retryable failure state instead of letting templates read absent fields.
 - `test:all`, CI, route gates, and the gate self-test jointly protect the real-browser E2E and fixture-seed commands; removing any wiring fails.
 - M2-01 owns the full fixture schema and session data; it should extend the seed manifest/action rather than bypass the CLI.
 - Session-scoped problem details remain for a later milestone; the top-level Errors entry only establishes navigation and boundary copy in M1.
