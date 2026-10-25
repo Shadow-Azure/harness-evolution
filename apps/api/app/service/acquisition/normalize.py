@@ -123,6 +123,8 @@ class ParsedTranscript:
     root_metadata: RootMetadata
     started_at: datetime | None
     ended_at: datetime | None
+    ended_with_assistant: bool
+    fatal_error_unrecovered: bool
 
     def agent_meta_dict(self) -> dict[str, object]:
         """Return a detached JSON-compatible copy of provider metadata."""
@@ -305,6 +307,8 @@ def normalize_transcript(
     tokens_total = 0
     tools_count = 0
     errors_count = 0
+    ended_with_assistant = False
+    fatal_error_unrecovered = False
 
     for line_no, line in enumerate(physical_lines, start=1):
         if not line.strip():
@@ -337,6 +341,11 @@ def normalize_transcript(
         if not record:
             continue
 
+        record_type = record.get("type")
+        if record_type == "assistant":
+            ended_with_assistant = True
+            fatal_error_unrecovered = record.get("isApiErrorMessage") is True
+
         record_timestamp = _timestamp(record.get("timestamp"))
         if record_timestamp is not None:
             observed_timestamps.append(record_timestamp)
@@ -353,9 +362,9 @@ def normalize_transcript(
                 entrypoint=entrypoint or root_metadata.entrypoint,
             )
 
-        record_type = record.get("type")
         message = _dict(record.get("message"))
         is_user_turn = False
+        is_attachment_user_turn = False
         if record_type == "user" and agent_kind == "main" and record.get("isMeta") is not True:
             prompt = _text_from_content(message.get("content"))
             if prompt is not None and not prompt.startswith(_CONTROL_PREFIXES):
@@ -384,6 +393,7 @@ def normalize_transcript(
         elif agent_kind == "main" and record_type == "attachment":
             prompt, started_at = _attachment_prompt(record)
             if prompt is not None:
+                is_attachment_user_turn = True
                 if started_at is None:
                     issues.append(
                         ParsedIssue(
@@ -405,6 +415,11 @@ def normalize_transcript(
                         ),
                     )
                     is_user_turn = True
+
+        if (record_type == "user" and record.get("isMeta") is not True) or (
+            record_type == "attachment" and is_attachment_user_turn
+        ):
+            ended_with_assistant = False
 
         for block in _content_blocks(message):
             is_error = block.get("is_error") is True
@@ -494,6 +509,8 @@ def normalize_transcript(
         root_metadata=root_metadata,
         started_at=min(observed_timestamps, default=None),
         ended_at=max(observed_timestamps, default=None),
+        ended_with_assistant=ended_with_assistant,
+        fatal_error_unrecovered=fatal_error_unrecovered,
     )
 
 

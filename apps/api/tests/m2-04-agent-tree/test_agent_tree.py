@@ -89,6 +89,26 @@ def assistant(
     return record
 
 
+def api_error(
+    message_id: str,
+    *,
+    timestamp: str = "2026-10-20T01:01:00Z",
+) -> dict[str, object]:
+    """Build one provider API-error assistant record."""
+    return {
+        "type": "assistant",
+        "sessionId": ROOT_ID,
+        "timestamp": timestamp,
+        "isApiErrorMessage": True,
+        "error": "PRIVATE_API_ERROR",
+        "message": {
+            "id": message_id,
+            "model": "model-main",
+            "content": [],
+        },
+    }
+
+
 def parse(
     *records: object | str,
     agent_id: str,
@@ -258,6 +278,17 @@ def test_missing_or_unknown_parent_tool_use_id_degrades_to_main() -> None:
     tree = result.trees[0]
     assert tree.parent_by_id()["agent-missing"] == ROOT_ID
     assert tree.parent_by_id()["agent-unknown"] == ROOT_ID
+    main_node = next(node for node in tree.nodes if node.id == ROOT_ID)
+    for agent_id in ("agent-missing", "agent-unknown"):
+        child = next(node for node in tree.nodes if node.id == agent_id)
+        matching = [
+            event
+            for event in main_node.events
+            if event.kind == "agent" and event.tool_use_id == child.tool_use_id
+        ]
+        assert len(matching) == 1
+        assert matching[0].message_offset == main_node.messages_count
+        assert matching[0].line_no > 0
     assert [issue.code for issue in result.issues] == [
         "MISSING_PARENT_TOOL_USE_ID",
         "UNKNOWN_PARENT_TOOL_USE_ID",
@@ -265,6 +296,84 @@ def test_missing_or_unknown_parent_tool_use_id_degrades_to_main() -> None:
     rendered = repr(result.issues)
     for secret in ("PRIVATE_PROMPT", "PRIVATE_DESCRIPTION", "PRIVATE_ASSISTANT_TEXT"):
         assert secret not in rendered
+
+
+def test_duplicate_parent_tool_use_ids_do_not_create_ambiguous_edges() -> None:
+    """Children never share an ambiguous parent call or synthetic anchor."""
+    main = parse(
+        assistant(
+            "root-message",
+            (
+                ("duplicate-parent", "Agent"),
+                ("duplicate-parent", "Agent"),
+            ),
+        ),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    first = parse(
+        assistant("first-message"),
+        agent_id="agent-first",
+        meta={"agentType": "Explore", "toolUseId": "duplicate-parent"},
+    )
+    second = parse(
+        assistant("second-message"),
+        agent_id="agent-second",
+        meta={"agentType": "Explore", "toolUseId": "duplicate-parent"},
+    )
+
+    result = assemble_agent_trees((main, first, second))
+
+    tree = result.trees[0]
+    main_node = next(node for node in tree.nodes if node.id == ROOT_ID)
+    children = [
+        next(node for node in tree.nodes if node.id == agent_id)
+        for agent_id in ("agent-first", "agent-second")
+    ]
+    assert all(child.parent_agent_id == ROOT_ID for child in children)
+    assert len({child.tool_use_id for child in children}) == 2
+    for child in children:
+        assert child.tool_use_id is not None
+        assert (
+            sum(
+                event.tool_use_id == child.tool_use_id and event.kind == "agent"
+                for event in main_node.events
+            )
+            == 1
+        )
+    codes = [issue.code for issue in result.issues]
+    assert codes.count("DUPLICATE_TOOL_USE_ID") == 1
+    assert codes.count("AMBIGUOUS_PARENT_TOOL_USE_ID") == 2
+
+
+def test_session_status_uses_final_assistant_and_fatal_error_rules() -> None:
+    """Unanswered and unrecovered provider failures are fail, not ok."""
+    unanswered = parse(
+        user("FIRST_PRIVATE_PROMPT"),
+        assistant("first-answer"),
+        user("SECOND_PRIVATE_PROMPT", timestamp="2026-10-20T01:02:00Z"),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    assert assemble_agent_trees((unanswered,)).trees[0].status == "fail"
+
+    fatal = parse(
+        user("PRIVATE_PROMPT"),
+        assistant("answer"),
+        api_error("fatal", timestamp="2026-10-20T01:02:00Z"),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    assert assemble_agent_trees((fatal,)).trees[0].status == "fail"
+
+    recovered = parse(
+        user("PRIVATE_PROMPT"),
+        api_error("transient"),
+        assistant("answer", timestamp="2026-10-20T01:02:00Z"),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    assert assemble_agent_trees((recovered,)).trees[0].status == "ok"
 
 
 def test_rejects_missing_duplicate_main_and_parent_cycle() -> None:
@@ -332,6 +441,24 @@ def test_synthetic_corpus_assembles_all_documented_node_types() -> None:
     )
 
     result = assemble_agent_trees(transcripts)
+    workflow_manifest = next(
+        agent.record
+        for root in corpus.root_sessions
+        for agent in root.agents
+        if agent.record.kind == "workflow"
+    )
+    worker_manifest = next(
+        agent.record
+        for root in corpus.root_sessions
+        for agent in root.agents
+        if agent.record.agent_type == "workflow-subagent"
+    )
+    assembled_workflow = next(
+        node for tree in result.trees for node in tree.nodes if node.kind == "workflow"
+    )
+    assembled_worker = next(
+        node for tree in result.trees for node in tree.nodes if node.id == worker_manifest.id
+    )
 
     assert result.aggregate == AgentTreeAggregate(
         root_sessions=4,
@@ -356,6 +483,11 @@ def test_synthetic_corpus_assembles_all_documented_node_types() -> None:
     assert (
         sum(node.task_kind == "forked_skill" for tree in result.trees for node in tree.nodes) == 1
     )
+    assert assembled_workflow.id == workflow_manifest.id
+    assert assembled_workflow.parent_agent_id == workflow_manifest.parent_agent_id
+    assert assembled_workflow.tool_use_id == workflow_manifest.tool_use_id
+    assert assembled_worker.parent_agent_id == worker_manifest.parent_agent_id
+    assert assembled_worker.parent_agent_id == assembled_workflow.id
     assert [tree.status for tree in result.trees] == ["ok", "ok", "partial", "ok"]
 
 

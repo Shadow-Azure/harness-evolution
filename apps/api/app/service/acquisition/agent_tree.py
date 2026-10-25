@@ -270,32 +270,44 @@ def _canonical_order(
     return tuple(replace(node, sort_key=float(index)) for index, node in enumerate(ordered))
 
 
+def _synthetic_tool_use_id(root_session_id: str, agent_id: str) -> str:
+    """Create a deterministic parent-call identity for a recovered edge."""
+    digest = hashlib.sha256(f"{root_session_id}\0{agent_id}".encode()).hexdigest()[:16]
+    return f"synthetic-agent-{digest}"
+
+
 def _synthetic_agent_event(
-    transcript: ParsedTranscript,
+    *,
+    root_session_id: str,
+    agent_id: str,
     event_index: int,
+    message_offset: int,
+    line_no: int,
 ) -> ParsedEvent:
     """Create the deterministic edge anchor for a missing parent trigger."""
-    if transcript.parent_tool_use_id is not None:
-        tool_use_id = transcript.parent_tool_use_id
-    else:
-        digest = hashlib.sha256(transcript.agent_id.encode()).hexdigest()[:16]
-        tool_use_id = f"synthetic-agent-{digest}"
     return ParsedEvent(
         event_index=event_index,
-        line_no=0,
-        message_offset=0,
+        line_no=line_no,
+        message_offset=message_offset,
         kind="agent",
         name="synthetic-agent",
         description=None,
-        tool_use_id=tool_use_id,
+        tool_use_id=_synthetic_tool_use_id(root_session_id, agent_id),
     )
 
 
 def _session_status(
-    main: AssembledAgentNode, nodes: tuple[AssembledAgentNode, ...]
+    main: AssembledAgentNode,
+    main_transcript: ParsedTranscript,
+    nodes: tuple[AssembledAgentNode, ...],
+    transcripts: tuple[ParsedTranscript, ...],
 ) -> SessionStatus:
     """Apply the documented whole-tree status precedence."""
-    if main.messages_count == 0:
+    if (
+        main.messages_count == 0
+        or not main_transcript.ended_with_assistant
+        or any(transcript.fatal_error_unrecovered for transcript in transcripts)
+    ):
         return "fail"
     if any(node.errors_count > 0 for node in nodes):
         return "partial"
@@ -359,6 +371,7 @@ def _assemble_root(
     }
 
     tool_events: dict[str, tuple[str, ParsedEvent]] = {}
+    ambiguous_tool_ids: set[str] = set()
     skill_events: dict[str, list[tuple[str, ParsedEvent]]] = {}
     workflow_events: dict[str, tuple[str, ParsedEvent]] = {}
     skill_name_events: dict[str, list[tuple[str, ParsedEvent]]] = {}
@@ -367,6 +380,7 @@ def _assemble_root(
             if event.tool_use_id is None:
                 continue
             if event.tool_use_id in tool_events:
+                ambiguous_tool_ids.add(event.tool_use_id)
                 issues.append(
                     _issue(
                         root_session_id,
@@ -429,11 +443,28 @@ def _assemble_root(
 
     def append_missing_parent_event(transcript: ParsedTranscript) -> None:
         main = nodes[main_id]
+        tool_use_id = _synthetic_tool_use_id(root_session_id, transcript.agent_id)
+        suffix = 0
+        while tool_use_id in tool_events:
+            suffix += 1
+            tool_use_id = f"{_synthetic_tool_use_id(root_session_id, transcript.agent_id)}-{suffix}"
         event = _synthetic_agent_event(
-            transcript,
-            len(main.events),
+            root_session_id=root_session_id,
+            agent_id=transcript.agent_id,
+            event_index=len(main.events),
+            message_offset=main.messages_count,
+            line_no=max((item.line_no for item in main.events), default=0) + 1,
         )
+        if suffix:
+            event = replace(event, tool_use_id=f"{event.tool_use_id}-{suffix}")
         nodes[main_id] = replace(main, events=(*main.events, event))
+        nodes[transcript.agent_id] = replace(
+            nodes[transcript.agent_id],
+            parent_agent_id=main_id,
+            tool_use_id=event.tool_use_id,
+        )
+        anchors[transcript.agent_id] = _event_anchor(event)
+        tool_events[event.tool_use_id or ""] = (main_id, event)
 
     for transcript in sorted(
         (item for item in transcripts if item.agent_kind == "subagent"),
@@ -512,6 +543,14 @@ def _assemble_root(
                 transcript,
                 "MISSING_PARENT_TOOL_USE_ID",
                 "Subagent has no parent tool-use identity",
+            )
+            append_missing_parent_event(transcript)
+            continue
+        if parent_tool in ambiguous_tool_ids:
+            fallback_to_main(
+                transcript,
+                "AMBIGUOUS_PARENT_TOOL_USE_ID",
+                "Subagent parent tool-use identity is ambiguous",
             )
             append_missing_parent_event(transcript)
             continue
@@ -619,7 +658,7 @@ def _assemble_root(
                 },
             ),
         ),
-        status=_session_status(main, ordered_nodes),
+        status=_session_status(main, main_transcript, ordered_nodes, transcripts),
         user_turns_count=len(main.user_turns),
         messages_count=sum(node.messages_count for node in ordered_nodes),
         tools_count=sum(node.tools_count for node in ordered_nodes),
