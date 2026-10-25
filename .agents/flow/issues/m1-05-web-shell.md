@@ -22,6 +22,7 @@ scope:
   - .agents/flow/**
   - .agents/notes/**
   - plans/**
+  - reports/**
 adr: []
 github:
   number: 28
