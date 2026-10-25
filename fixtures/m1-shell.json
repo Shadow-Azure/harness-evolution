@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "scope": "m1-shell",
+  "actions": [
+    "identity-admin"
+  ]
+}

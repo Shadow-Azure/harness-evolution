@@ -20,8 +20,9 @@ export class ApiError extends Error {
   }
 }
 
-type RequestOptions = {
+type RequestOptions<T> = {
   acceptedStatuses?: readonly number[];
+  validate?: (payload: unknown, status: number) => T;
 };
 
 let accessTokenProvider = (): string | null => null;
@@ -128,7 +129,7 @@ function isPublicAuthRequest(path: string): boolean {
 async function execute<T>(
   path: string,
   init: RequestInit | undefined,
-  options: RequestOptions | undefined,
+  options: RequestOptions<T> | undefined,
   retried: boolean,
 ): Promise<T> {
   let response: Response;
@@ -164,11 +165,15 @@ async function execute<T>(
     return undefined as T;
   }
 
+  let payload: unknown;
   try {
-    return (await response.json()) as T;
+    payload = await response.json();
   } catch {
     throw new ApiError(response.status, "INVALID_JSON", "API returned invalid JSON");
   }
+  return options?.validate
+    ? options.validate(payload, response.status)
+    : (payload as T);
 }
 
 /**
@@ -182,7 +187,7 @@ async function execute<T>(
 export async function request<T>(
   path: string,
   init?: RequestInit,
-  options?: RequestOptions,
+  options?: RequestOptions<T>,
 ): Promise<T> {
   return execute<T>(path, init, options, false);
 }

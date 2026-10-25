@@ -39,6 +39,10 @@ jobs:
         run: |
           python -m venv apps/api/.venv
           apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
+      - name: Fixtures seed 清单冒烟
+        env:
+          HE_DATA_DIR: ${{ runner.temp }}/harness-fixtures-seed
+        run: pnpm fixtures:seed
       - name: 门禁自测试
         run: pnpm test:gates
       - name: API lint
@@ -51,6 +55,8 @@ jobs:
         run: pnpm test
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
         run: pnpm test:integration
+      - name: 真实浏览器 E2E（M1 shell）
+        run: pnpm test:e2e
       - name: OpenAPI 契约防漂移
         run: pnpm contract:check
       - name: 工作区类型检查

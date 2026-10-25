@@ -2,14 +2,22 @@
 import { VueFlow } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 
+import EmptyState from "../../components/ui/EmptyState.vue";
+
 defineOptions({ name: "EvolutionPage" });
 </script>
 
 <template>
   <section class="placeholder">
     <h1>Evolution 骨架</h1>
-    <p>Vue Flow 已通过动态 vendor chunk 挂载。</p>
-    <div class="canvas">
+    <EmptyState
+      description="自进化运行将在后续 milestone 接入；Vue Flow 容器已就绪。"
+      title="暂无自进化运行"
+    />
+    <div
+      class="canvas"
+      style="height: 320px; width: 100%"
+    >
       <VueFlow
         :edges="[]"
         :nodes="[]"
@@ -28,12 +36,8 @@ h1 {
   font-size: var(--font-title);
 }
 
-p {
-  margin: 0 0 var(--space-md);
-  color: var(--text-muted);
-}
-
 .canvas {
+  margin-top: var(--space-md);
   height: 320px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);

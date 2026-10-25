@@ -46,6 +46,16 @@ export const ROUTES = [
     reason: "跨栈测试：真实启动 Web 与 API",
   },
   {
+    match: (p) => p.startsWith("tests/e2e/") || p.startsWith("tests/support/"),
+    commands: ["test:e2e", "test:integration", "verify:docs"],
+    reason: "真实浏览器测试：共享 CDP 运行时、E2E 与跨栈回归",
+  },
+  {
+    match: (p) => p.startsWith("fixtures/"),
+    commands: ["fixtures:seed", "test:api", "verify:docs"],
+    reason: "开发/演示 fixtures：清单 seed 冒烟、API 约束与文档门禁",
+  },
+  {
     match: (p) => p.startsWith("scripts/"),
     commands: ["test:gates", "verify:docs"],
     reason: "门禁脚本：自测试必跑，全量文档档兜底",
@@ -88,6 +98,8 @@ const COMMAND_ORDER = [
   "test:db",
   "test:web",
   "test:integration",
+  "test:e2e",
+  "fixtures:seed",
   "test:gates",
   "verify:flow",
   "verify:web-style",

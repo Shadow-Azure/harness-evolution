@@ -2,7 +2,7 @@
 
 English | [中文](development.md)
 
-> Type: tutorial | Layer: contributor onboarding. The authoritative list of CI and gates lives in `package.json` scripts and [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page explains how to use them.
+> Type: tutorial | Layer: contributor onboarding. The authoritative gate list lives in `package.json` scripts and [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page explains usage.
 
 ## Environment
 
@@ -27,6 +27,8 @@ pnpm test:api
 pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
+pnpm test:e2e
+pnpm fixtures:seed
 pnpm test:all
 pnpm contract:generate
 pnpm contract:check

@@ -1,0 +1,8 @@
+[
+  {
+    "level": "error",
+    "message": "[vue] TypeError: Cannot read properties of undefined (reading 'ok')\n    at ComputedRefImpl.fn (http://127.0.0.1:52744/src/App.vue:58:28)\n    at refreshComputed (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:732:29)\n    at get value (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:2013:5)\n    at unref (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:1868:30)\n    at Object.get (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:1874:64)\n    at Proxy._sfc_render (http://127.0.0.1:52744/src/App.vue:97:63)\n    at renderComponentRoot (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:7019:17)\n    at ReactiveEffect.componentUpdateFn [as fn] (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:8691:26)\n    at ReactiveEffect.run (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:578:19)\n    at ReactiveEffect.runIfDirty (http://127.0.0.1:52744/node_modules/.vite/deps/chunk-52CZVHND.js?v=a171952e:616:12) render function",
+    "timestamp": "2026-10-25T08:55:53.631Z",
+    "url": "http://127.0.0.1:52744/src/app/globalError.ts"
+  }
+]

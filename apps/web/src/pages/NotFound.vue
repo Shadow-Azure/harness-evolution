@@ -1,21 +1,30 @@
+<script setup lang="ts">
+import ErrorState from "../components/ui/ErrorState.vue";
+</script>
+
 <template>
   <section class="page">
-    <p class="eyebrow">
-      404
-    </p>
-    <h1>页面不存在</h1>
+    <ErrorState
+      code="404"
+      message="页面不存在或已删除"
+      :retryable="false"
+      title="页面不可用"
+    />
     <RouterLink to="/sessions">
-      返回会话浏览器
+      返回 Session 浏览器
     </RouterLink>
   </section>
 </template>
 
 <style scoped>
 .page {
+  display: grid;
+  gap: var(--space-md);
   padding: var(--space-xl) 0;
 }
 
-.eyebrow {
-  color: var(--text-muted);
+a {
+  width: max-content;
+  color: var(--brand-accent);
 }
 </style>

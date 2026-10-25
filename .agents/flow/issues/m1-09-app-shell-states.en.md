@@ -10,8 +10,12 @@ depends:
   - m1-05
   - m1-08
 priority: P1
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
+  - package.json
+  - scripts/**
+  - tests/**
   - apps/web/**
   - apps/api/**
   - fixtures/**
@@ -20,6 +24,8 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 32
