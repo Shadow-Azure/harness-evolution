@@ -8,7 +8,7 @@ id: m2-01
 milestone: m2
 depends: []
 priority: P0
-status: in-progress
+status: done
 scope:
   - AGENTS.md
   - fixtures/**
