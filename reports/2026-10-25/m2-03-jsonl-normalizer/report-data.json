@@ -1,0 +1,193 @@
+{
+  "title": "M2-03 JSONL 归一化器集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #87",
+  "summary": "在真实本地 payload、临时 SQLite、FastAPI、Vite 与 Chrome 上验证 JSONL 归一化、坏行隔离、隐私边界和全局壳。所有场景通过，未发现集成缺陷。",
+  "meta": "2026-10-25 · macOS · Chrome · FastAPI · SQLite",
+  "metrics": [
+    { "value": "11", "label": "冒烟场景" },
+    { "value": "11", "label": "通过" },
+    { "value": "0", "label": "控制台告警/错误" },
+    { "value": "19", "label": "聚焦测试通过" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#35 · M2 JSONL normalizer" },
+    { "label": "PR", "value": "#87" },
+    { "label": "Commit", "value": "7f3d937" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome + SQLite" },
+    { "label": "Data scope", "value": "aggregate-only local verification; no transcript text persisted in report" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "真实本地聚合",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 roots、66 agents、15,507 lines、2,755 messages、9,743,423 tokens、3,536 tools、97 errors、53 user turns；所有 root 均有模型和用户轮次。",
+        "evidence": ["normalizer-evidence.json · localAggregate", "pnpm data:normalize:sessions"]
+      },
+      {
+        "id": "02",
+        "name": "Fixture golden oracle",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 roots、8 agents、3,605 bytes；manifest 与 payload 派生统计一致。",
+        "evidence": ["normalizer-evidence.json · fixturesCheck", "pnpm fixtures:check"]
+      },
+      {
+        "id": "03",
+        "name": "坏行隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "标量 JSON 与畸形 JSONL 分别生成 INVALID_TRANSCRIPT_RECORD、INVALID_JSONL_LINE，后续有效行继续统计。",
+        "evidence": ["normalizer-evidence.json · syntheticRegression.issueCodes"]
+      },
+      {
+        "id": "04",
+        "name": "累计 usage 去重",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "重复 assistant message.id 只计一次，并采用最终累计 usage；合成样本 tokens=28。",
+        "evidence": ["normalizer-evidence.json · syntheticRegression.tokensTotal"]
+      },
+      {
+        "id": "05",
+        "name": "用户轮次筛选",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "仅 attachment 记录的 human origin 生成轮次；queue-operation、meta、peer 与 tool-result 不生成轮次。",
+        "evidence": ["normalizer-evidence.json · syntheticRegression.userTurnCount", "focused tests 19/19"]
+      },
+      {
+        "id": "06",
+        "name": "事件与模型选择",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Skill/Agent/Workflow 事件按源顺序、lineNo/messageOffset 记录；多模型最高频且首见破平。",
+        "evidence": ["normalizer-evidence.json · syntheticRegression.eventKinds", "focused tests 19/19"]
+      },
+      {
+        "id": "07",
+        "name": "隐私与 agent_meta",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "message/thinking/tool-result 文本不进入持久化结果；原始 agent_meta 以冻结副本保留。",
+        "evidence": ["normalizer-evidence.json · syntheticRegression.toolResultTextPersisted"]
+      },
+      {
+        "id": "08",
+        "name": "sync_runs.errors 脱敏",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时 SQLite 中只写入稳定 code、位置与脱敏消息；私有记录文本未落库。",
+        "evidence": ["normalizer-evidence.json · syncErrorAdapter"]
+      },
+      {
+        "id": "09",
+        "name": "真实 Chrome 壳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "登录、强制改密、Sessions/Errors/Evolution、demo 角标和用户菜单正常；console warning/error=0。",
+        "evidence": ["screenshots/03-sessions.png", "screenshots/04-errors.png", "screenshots/05-evolution.png"]
+      },
+      {
+        "id": "10",
+        "name": "390×844 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Computer Use 视口为 390×844，scrollWidth=clientWidth=390，用户菜单右边界 366。",
+        "evidence": ["screenshots/06-narrow-390.png", "browser-evidence.json · narrowViewport"]
+      },
+      {
+        "id": "11",
+        "name": "自动化边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 Chrome E2E 4/4；m2-03 仅验证纯 parser 与脱敏 issue 适配，树组装和业务表重写留待 m2-04/m2-05。",
+        "evidence": ["browser-evidence.json · e2e", "pnpm test:e2e -- m1-shell"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-login.png",
+      "alt": "需要登录的 Harness Lens 页面",
+      "label": "登录边界",
+      "caption": "未登录访问受保护路由时进入登录页。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-change-password.png",
+      "alt": "首次登录强制改密页面",
+      "label": "强制改密",
+      "caption": "临时管理员账号登录后被引导到改密页。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-sessions.png",
+      "alt": "Sessions 空态和顶部导览",
+      "label": "Sessions 壳",
+      "caption": "真实 Chrome 中显示三入口、演示数据和空态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-errors.png",
+      "alt": "Errors 后续功能占位页",
+      "label": "Errors 壳",
+      "caption": "Errors 保持真实空态，不展示假问题数据。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-evolution.png",
+      "alt": "Evolution 骨架页",
+      "label": "Evolution 壳",
+      "caption": "Evolution 占位页正常挂载 Vue Flow 容器。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-narrow-390.png",
+      "alt": "390px 视口下的 Evolution 页面",
+      "label": "390×844",
+      "caption": "窄视口无横向溢出，导航与用户入口保持可用。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "纯 JSONL parser",
+        "coverage": "19 个聚焦测试 + 合成 mixed transcript",
+        "conclusion": "统计、用户轮次、trigger、模型与隐私边界有确定性证据。",
+        "recommendation": "保持 golden oracle 与 parser version 同步。"
+      },
+      {
+        "area": "真实本地数据",
+        "coverage": "只读聚合命令 + Computer Use",
+        "conclusion": "4/66/15,507 与修正后的 token 总量一致，所有 root 可产出模型和轮次。",
+        "recommendation": "后续树组装继续使用同一真实数据做聚合验收。"
+      },
+      {
+        "area": "坏行与 sync errors",
+        "coverage": "临时 SQLite 真实写入",
+        "conclusion": "稳定错误码可持久化，原始行和私有文本不落库。",
+        "recommendation": "m2-05 重放时继续复用该脱敏适配器。"
+      },
+      {
+        "area": "浏览器壳和响应式",
+        "coverage": "Computer Use + 真实 Chrome E2E",
+        "conclusion": "登录、强制改密、导航、控制台和 390px 均正常。",
+        "recommendation": "会话列表 UI 接入后扩充领域页面冒烟。"
+      },
+      {
+        "area": "树组装与业务重写",
+        "coverage": "不在 m2-03 范围",
+        "conclusion": "m2-03 不写 session/agent/event 业务表，也不标记 processed。",
+        "recommendation": "由 m2-04/m2-05 分别覆盖。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交的 JSONL 归一化器与真实本地 payload、SQLite 错误适配和现有 Chrome 壳协同正常，未发现集成缺陷。",
+    "points": [
+      "真实聚合保持 4 roots、66 agents、15,507 lines 和修正后的 9,743,423 tokens。",
+      "坏行与非对象行均隔离为脱敏 issue，后续有效记录继续解析。",
+      "浏览器控制台无 warning/error，390×844 无横向溢出。",
+      "敏感轨迹正文、thinking 和 tool-result 文本未进入报告或持久化错误。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、脱敏聚合/HTTP/DB 证据、真实 Chrome E2E 与聚焦自动测试。生成 HTML 不应手改。"
+}

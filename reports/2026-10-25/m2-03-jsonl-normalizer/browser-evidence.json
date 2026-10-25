@@ -1,0 +1,19 @@
+{
+  "computerUse": {
+    "consoleWarnings": 0,
+    "consoleErrors": 0,
+    "consoleExceptions": 0
+  },
+  "narrowViewport": {
+    "width": 390,
+    "height": 844,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "userMenuRight": 366,
+    "overflow": false
+  },
+  "e2e": {
+    "passed": 4,
+    "failed": 0
+  }
+}
