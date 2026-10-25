@@ -4,7 +4,6 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Mapping
-from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -62,6 +61,7 @@ class RunEventRecorder(Protocol):
         run_id: str,
         stage: str,
         message: str,
+        job_id: str,
     ) -> int | None:
         """Persist one interruption event and return its run sequence, if supported."""
 
@@ -146,10 +146,30 @@ class EventBus:
         )
         for queue in tuple(self._by_topic.get(topic, ())):
             if queue.full():
-                with suppress(asyncio.QueueEmpty):
-                    queue.get_nowait()
+                items: list[SSEEvent] = []
+                while not queue.empty():
+                    items.append(queue.get_nowait())
+                progress_index = next(
+                    (index for index, queued in enumerate(items) if queued.event == "run.progress"),
+                    None,
+                )
+                if progress_index is None:
+                    for queued in items:
+                        queue.put_nowait(queued)
+                    subscription = self._subscriptions.get(queue)
+                    if subscription is not None:
+                        subscription.closed = True
+                        self._remove(subscription)
+                    logger.warning(
+                        "closing slow SSE subscriber rather than dropping critical events",
+                        extra={"topic": topic, "event": event},
+                    )
+                    continue
+                items.pop(progress_index)
+                for queued in items:
+                    queue.put_nowait(queued)
                 logger.warning(
-                    "dropping oldest SSE notification for slow subscriber",
+                    "compacting progress notification for slow subscriber",
                     extra={"topic": topic, "event": event},
                 )
             try:
@@ -232,12 +252,16 @@ async def stream_events(
                 raise RuntimeError("run event replay reported more pages without advancing")
 
         while True:
+            if subscription.closed and subscription.queue.empty():
+                return
             try:
                 item = await asyncio.wait_for(
                     subscription.queue.get(),
                     timeout=heartbeat_seconds,
                 )
             except TimeoutError:
+                if subscription.closed and subscription.queue.empty():
+                    return
                 yield SSEEvent(event="ping", data={})
                 continue
             if item.topic is None:

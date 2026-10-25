@@ -79,5 +79,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## Current state and non-goals
 
 - Present: modular API scaffold, unified errors, dual-dialect database boundary, users/job_runs migrations, real identity, user and job-status APIs, SSE ticket and transport foundation, health check, contract pipeline, and Python gates.
-- Missing: trace and evolution business tables, the real run-event replay adapter, a user-deactivation interface, trace parsing, problem queries and evolution execution.
+- Missing: trace and evolution business tables, evolution parent-table relationships and real run-resource authorization, a user-deactivation interface, trace parsing, problem queries and evolution execution.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

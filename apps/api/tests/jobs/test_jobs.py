@@ -336,7 +336,7 @@ async def test_restart_persists_interrupted_event_before_publishing(
     class RecordingRunEvents:
         """Capture the recovery write requested by the job runner."""
 
-        calls: ClassVar[list[tuple[str, str, str]]] = []
+        calls: ClassVar[list[tuple[str, str, str, str]]] = []
 
         async def record_interrupted(
             self,
@@ -344,9 +344,10 @@ async def test_restart_persists_interrupted_event_before_publishing(
             run_id: str,
             stage: str,
             message: str,
+            job_id: str,
         ) -> int:
             """Return the durable sequence assigned by the persisted event."""
-            self.calls.append((run_id, stage, message))
+            self.calls.append((run_id, stage, message, job_id))
             return 41
 
     recorder = RecordingRunEvents()
@@ -360,11 +361,77 @@ async def test_restart_persists_interrupted_event_before_publishing(
         await subscription.close()
 
     assert recorder.calls == [
-        ("run-recovered", "evolution_prepare", "job interrupted by process restart"),
+        (
+            "run-recovered",
+            "prepare",
+            "job interrupted by process restart",
+            interrupted.id,
+        ),
     ]
     assert notification.event == "run.interrupted"
     assert notification.event_id == 41
     assert notification.data["eventSeq"] == 41
+
+
+async def test_shutdown_persists_the_same_interruption_history(
+    job_environment: JobEnvironment,
+) -> None:
+    """Graceful shutdown records the run event before publishing it."""
+    _, repository, bus, _ = job_environment
+    started = asyncio.Event()
+
+    async def wait_forever(_job: JobRunRecord) -> None:
+        started.set()
+        await asyncio.Event().wait()
+
+    class RecordingRunEvents:
+        """Capture shutdown interruption writes."""
+
+        calls: ClassVar[list[tuple[str, str, str, str]]] = []
+
+        async def record_interrupted(
+            self,
+            *,
+            run_id: str,
+            stage: str,
+            message: str,
+            job_id: str,
+        ) -> int:
+            """Return a durable sequence for the published interruption."""
+            self.calls.append((run_id, stage, message, job_id))
+            return 52
+
+    recorder = RecordingRunEvents()
+    runner = JobRunner(repository, bus, run_events=recorder)
+    runner.register_handler("evolution_advance", wait_forever)
+    subscription = await bus.subscribe(("run:run-shutdown",))
+    job = await repository.insert(
+        kind="evolution_advance",
+        payload={},
+        ref_id="run-shutdown",
+        created_by=None,
+    )
+    try:
+        await runner.start()
+        await asyncio.wait_for(started.wait(), timeout=1)
+        await runner.close()
+        notification = subscription.queue.get_nowait()
+    finally:
+        await subscription.close()
+
+    interrupted_job = await repository.get(job.id)
+    assert interrupted_job is not None
+    assert interrupted_job.status == "interrupted"
+    assert recorder.calls == [
+        (
+            "run-shutdown",
+            "step",
+            "job interrupted during shutdown",
+            job.id,
+        ),
+    ]
+    assert notification.event == "run.interrupted"
+    assert notification.event_id == 52
 
 
 async def test_start_resumes_jobs_persisted_as_queued(

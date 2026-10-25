@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import ClassVar
 
 import httpx
+from fastapi import Response
+from pytest import MonkeyPatch
 
+from app.api import events as events_api
 from app.config import DatabaseDialect, Settings
 from app.errors import AppError, ErrorCode
 from app.main import create_app
@@ -94,6 +97,30 @@ async def test_ticket_issue_uses_injected_run_topic_authorizer(tmp_path: Path) -
     assert authorizer.calls == [(("run:missing",), "user-1")]
 
 
+async def test_ticket_issue_rejects_multiple_topics(tmp_path: Path) -> None:
+    """M1 uses one integer cursor and therefore accepts exactly one run topic."""
+    settings = Settings(db_dialect=DatabaseDialect.SQLITE, data_dir=tmp_path)
+    app = create_app(settings)
+    access_token = app.state.identity.tokens.create_access_token(
+        user_id="user-1",
+        role="member",
+        must_change_password=False,
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await client.post(
+            "/api/events/ticket",
+            json={"topics": ["run:a", "run:b"], "lastEventId": 0},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_INVALID"
+
+
 async def test_event_stream_rejects_url_topics(tmp_path: Path) -> None:
     """Topics are authorized only inside the signed ticket."""
     settings = Settings(db_dialect=DatabaseDialect.SQLITE, data_dir=tmp_path)
@@ -161,3 +188,36 @@ def test_openapi_documents_jobs_and_ticket_stream_without_bearer() -> None:
     assert schema["components"]["schemas"]["ErrorCode"]["enum"]
     assert "JOB_NOT_FOUND" in schema["components"]["schemas"]["ErrorCode"]["enum"]
     assert "RUN_BUSY" in schema["components"]["schemas"]["ErrorCode"]["enum"]
+    ticket_request = schema["components"]["schemas"]["TicketRequest"]
+    assert ticket_request["properties"]["topics"]["maxItems"] == 1
+
+
+async def test_event_stream_disables_library_keepalive_ping(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Only the application's configurable named ping remains active."""
+    settings = Settings(db_dialect=DatabaseDialect.SQLITE, data_dir=tmp_path)
+    app = create_app(settings)
+    token = app.state.identity.tickets.issue(
+        user_id="user-1",
+        topics=("run:r1",),
+        last_event_id=0,
+    )
+    captured: dict[str, object] = {}
+
+    def capture_response(content: object, **kwargs: object) -> Response:
+        captured["content"] = content
+        captured.update(kwargs)
+        return Response(media_type="text/event-stream")
+
+    monkeypatch.setattr(events_api, "EventSourceResponse", capture_response)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await client.get(f"/api/events?ticket={token}")
+
+    assert response.status_code == 200
+    assert captured["ping"] == 0

@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 JobHandler = Callable[[JobRunRecord], Awaitable[Mapping[str, Any] | None]]
 _REUSABLE_DUPLICATE_KINDS = frozenset({"sync", "evolution_retry"})
 _INTERRUPTIBLE_KINDS = frozenset({"sync"})
+_KIND_TO_STAGE = {
+    "evolution_prepare": "prepare",
+    "evolution_advance": "step",
+    "evolution_apply": "apply",
+    "evolution_finalize": "final",
+    "evolution_retry": "step",
+}
 _SECRET_PATTERN = re.compile(
     r"(?i)\b(password|passwd|token|secret|authorization|api[_-]?key)\b"
     r"\s*[:=]\s*(?:bearer\s+)?\S+",
@@ -107,27 +114,10 @@ class JobRunner:
         """Recover interrupted rows before accepting or retrying durable work."""
         recovered = await self.repository.mark_running_interrupted("process restarted")
         for job in recovered:
-            if job.kind.startswith("evolution") and job.ref_id:
-                event_seq = (
-                    await self._run_events.record_interrupted(
-                        run_id=job.ref_id,
-                        stage=job.kind,
-                        message="job interrupted by process restart",
-                    )
-                    if self._run_events is not None
-                    else None
-                )
-                self._bus.publish(
-                    f"run:{job.ref_id}",
-                    "run.interrupted",
-                    {
-                        "runId": job.ref_id,
-                        "stage": job.kind,
-                        "message": "job interrupted by process restart",
-                        "eventSeq": event_seq or 0,
-                    },
-                    event_id=event_seq,
-                )
+            await self._record_interruption(
+                job,
+                message="job interrupted by process restart",
+            )
             if job.kind in _INTERRUPTIBLE_KINDS:
                 await self.repository.insert(
                     kind=job.kind,
@@ -244,6 +234,16 @@ class JobRunner:
                 await self.repository.complete(job.id, result)
             except asyncio.CancelledError:
                 await self.repository.interrupt(job.id, "job cancelled during shutdown")
+                try:
+                    await self._record_interruption(
+                        job,
+                        message="job interrupted during shutdown",
+                    )
+                except Exception:
+                    logger.exception(
+                        "failed to persist shutdown interruption",
+                        extra={"job_id": job.id, "kind": job.kind},
+                    )
                 raise
             except Exception as exc:
                 error = sanitize_job_error(str(exc))
@@ -252,6 +252,41 @@ class JobRunner:
                     "job execution failed",
                     extra={"job_id": job.id, "kind": job.kind, "error_type": type(exc).__name__},
                 )
+
+    async def _record_interruption(
+        self,
+        job: JobRunRecord,
+        *,
+        message: str,
+    ) -> int | None:
+        """Persist and publish one interruption using legal stage and job identity."""
+        if self._run_events is None or not job.ref_id:
+            return None
+        stage = _KIND_TO_STAGE.get(job.kind)
+        if stage is None:
+            logger.warning(
+                "skipping interruption event for unknown evolution job kind",
+                extra={"job_id": job.id, "kind": job.kind},
+            )
+            return None
+        event_seq = await self._run_events.record_interrupted(
+            run_id=job.ref_id,
+            stage=stage,
+            message=message,
+            job_id=job.id,
+        )
+        self._bus.publish(
+            f"run:{job.ref_id}",
+            "run.interrupted",
+            {
+                "runId": job.ref_id,
+                "stage": stage,
+                "message": message,
+                "eventSeq": event_seq or 0,
+            },
+            event_id=event_seq,
+        )
+        return event_seq
 
     def _schedule(self, job_id: str) -> None:
         """Schedule one durable queue row at most once in this process."""

@@ -50,6 +50,12 @@ class TicketStore:
 
     def issue(self, *, user_id: str, topics: tuple[str, ...], last_event_id: int) -> str:
         """Bind the issuing user, topics, and cursor to one signed opaque ticket."""
+        if len(topics) != 1:
+            raise AppError(
+                status_code=401,
+                code=ErrorCode.TICKET_INVALID,
+                message="exactly one run topic is required",
+            )
         ticket_id = token_urlsafe(32)
         grant = EventTicketGrant(
             user_id=user_id,

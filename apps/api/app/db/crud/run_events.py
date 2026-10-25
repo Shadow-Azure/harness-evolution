@@ -94,6 +94,7 @@ class SqlRunEventStore:
         run_id: str,
         stage: str,
         message: str,
+        job_id: str,
     ) -> int | None:
         """Persist one run interruption and return its monotonic run sequence."""
         if not await self._has_table():
@@ -117,7 +118,7 @@ class SqlRunEventStore:
                     step_index=None,
                     cluster_id=None,
                     evolution_round_id=None,
-                    job_id=None,
+                    job_id=job_id,
                     message=message,
                     payload=None,
                     error_type="ProcessInterrupted",

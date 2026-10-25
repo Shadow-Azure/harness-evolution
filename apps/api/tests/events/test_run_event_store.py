@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest_asyncio
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -81,9 +81,23 @@ async def test_sql_replay_pages_and_records_interrupted_events(
     second = await store.read(("run:r1",), first.next_cursors, 1)
     interrupted_seq = await store.record_interrupted(
         run_id="r1",
-        stage="evolution_prepare",
+        stage="prepare",
         message="job interrupted by process restart",
+        job_id="job-1",
     )
+    async with event_database.session() as session:
+        interrupted = (
+            (
+                await session.execute(
+                    select(evolution_run_events).where(
+                        evolution_run_events.c.run_id == "r1",
+                        evolution_run_events.c.seq == interrupted_seq,
+                    ),
+                )
+            )
+            .mappings()
+            .one()
+        )
 
     assert [event.event_id for event in first.events] == [1]
     assert first.has_more is True
@@ -91,6 +105,8 @@ async def test_sql_replay_pages_and_records_interrupted_events(
     assert [event.event_id for event in second.events] == [2]
     assert second.has_more is False
     assert interrupted_seq == 3
+    assert interrupted["stage"] == "prepare"
+    assert interrupted["job_id"] == "job-1"
 
 
 async def test_missing_future_owned_table_is_an_explicit_empty_capability(
@@ -106,8 +122,9 @@ async def test_missing_future_owned_table_is_an_explicit_empty_capability(
         page = await store.read(("run:r1",), {"run:r1": 0}, 100)
         sequence = await store.record_interrupted(
             run_id="r1",
-            stage="evolution_prepare",
+            stage="prepare",
             message="interrupted",
+            job_id="job-1",
         )
     finally:
         await database.dispose()

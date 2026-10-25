@@ -79,5 +79,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## 当前状态与非目标
 
 - 已具备：模块化 API、统一错误、双方言存储、users/job_runs 迁移、鉴权、用户与任务 API、SSE 基座、契约和 Python 门禁。
-- 未具备：轨迹与自进化业务表、真实 event replay adapter、用户停用界面、轨迹解析、问题查询、自进化执行。
+- 未具备：轨迹与自进化业务表、evolution 父表外键与真实 run 资源授权、用户停用界面、轨迹解析、问题查询、自进化执行。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

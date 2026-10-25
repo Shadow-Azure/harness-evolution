@@ -153,6 +153,21 @@ async def test_event_ticket_is_bound_to_run_topics_and_single_use(tmp_path: Path
     assert replay.value.code == "TICKET_INVALID"
 
 
+def test_ticket_store_rejects_multiple_topics() -> None:
+    """The M1 single integer cursor cannot safely resume multiple run topics."""
+    store = TicketStore()
+
+    with pytest.raises(AppError) as invalid:
+        store.issue(
+            user_id="user-1",
+            topics=("run:a", "run:b"),
+            last_event_id=0,
+        )
+
+    assert invalid.value.status_code == 401
+    assert invalid.value.code == "TICKET_INVALID"
+
+
 async def test_event_ticket_is_bound_to_the_issuing_user(tmp_path: Path) -> None:
     """A ticket grant carries the authenticated principal that requested it."""
     settings = identity_settings(

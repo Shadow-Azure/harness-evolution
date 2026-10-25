@@ -157,4 +157,4 @@ async def event_stream(
         heartbeat_seconds=settings.sse_heartbeat_seconds,
         replay_limit=settings.event_replay_limit,
     )
-    return EventSourceResponse(_server_events(source))
+    return EventSourceResponse(_server_events(source), ping=0)
