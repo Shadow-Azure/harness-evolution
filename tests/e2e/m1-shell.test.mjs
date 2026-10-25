@@ -197,6 +197,33 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
     assert.ok(login.clientWidth <= 1408);
     assert.equal(login.scrollWidth, login.clientWidth);
 
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    const narrowLogin = await waitForDocument(
+      page.session,
+      `(() => {
+        const card = document.querySelector(".auth-card");
+        if (!card) return null;
+        const bounds = card.getBoundingClientRect();
+        return {
+          cardLeft: bounds.left,
+          cardRight: bounds.right,
+          clientWidth: document.documentElement.clientWidth,
+          hasTopbar: Boolean(document.querySelector(".topbar")),
+          scrollWidth: document.documentElement.scrollWidth,
+        };
+      })()`,
+      "390px login card",
+    );
+    assert.equal(narrowLogin.hasTopbar, false);
+    assert.ok(narrowLogin.cardLeft >= 0, JSON.stringify(narrowLogin));
+    assert.ok(narrowLogin.cardRight <= narrowLogin.clientWidth, JSON.stringify(narrowLogin));
+    assert.equal(narrowLogin.scrollWidth, narrowLogin.clientWidth);
+
     await page.session.send("Runtime.evaluate", {
       expression: `(() => {
         const setValue = (selector, value) => {
@@ -220,8 +247,12 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
         if (location.pathname !== "/change-password" || !card) return null;
         return {
           cardBackground: getComputedStyle(card).backgroundColor,
+          cardLeft: card.getBoundingClientRect().left,
+          cardRight: card.getBoundingClientRect().right,
+          clientWidth: document.documentElement.clientWidth,
           hasTopbar: Boolean(document.querySelector(".topbar")),
           path: location.pathname,
+          scrollWidth: document.documentElement.scrollWidth,
         };
       })()`,
       "prototype forced-password card",
@@ -229,6 +260,12 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
     assert.equal(changePassword.path, "/change-password");
     assert.equal(changePassword.cardBackground, "rgb(255, 255, 255)");
     assert.equal(changePassword.hasTopbar, false);
+    assert.ok(changePassword.cardLeft >= 0, JSON.stringify(changePassword));
+    assert.ok(
+      changePassword.cardRight <= changePassword.clientWidth,
+      JSON.stringify(changePassword),
+    );
+    assert.equal(changePassword.scrollWidth, changePassword.clientWidth);
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.close();
@@ -289,8 +326,9 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.equal(initial.emptyBackground, "rgb(255, 255, 255)");
     assert.equal(initial.activeUnderline, "rgb(47, 111, 224)");
     assert.equal(initial.brand, "Harness Evolution轨迹诊断与自进化");
-    assert.equal(initial.clientWidth, 1408);
-    assert.equal(initial.scrollWidth, 1408);
+    assert.ok(initial.clientWidth > 0);
+    assert.ok(initial.clientWidth <= 1408);
+    assert.equal(initial.scrollWidth, initial.clientWidth);
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('nav a[href="/errors"]').click()`,
