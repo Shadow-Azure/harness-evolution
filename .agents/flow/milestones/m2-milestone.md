@@ -6,7 +6,7 @@
 kind: milestone
 id: m2
 title: M2 轨迹数据与归一化
-status: active
+status: done
 github:
   number: 10
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/10
