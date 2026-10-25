@@ -13,7 +13,7 @@
 | 单元 | 技术 | 职责 |
 |---|---|---|
 | `apps/api` | Python 3.12 + FastAPI | HTTP API、服务编排、存储与外部数据边界 |
-| `apps/web` | React + Vite | 当前开发壳；M1 后续切换 Vue 3 |
+| `apps/web` | Vue 3 + Vite | 路由、公共数据层与渐进加载的业务页面 |
 | `packages/contracts` | TypeScript | 前端共享协议与领域类型 |
 | `research/` | Markdown + YAML | 评测任务、harness 适配、实验记录 |
 

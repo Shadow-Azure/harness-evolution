@@ -116,13 +116,16 @@ test("structure signature mirrors headings, fences and links", () => {
 });
 
 test("route gates recommend web tests, integration, build, and docs for app changes", () => {
-  const paths = worktreePaths(" M apps/web/src/App.tsx\n?? docs/new.md\n");
-  assert.deepEqual(paths, ["apps/web/src/App.tsx", "docs/new.md"]);
+  const paths = worktreePaths(" M apps/web/src/App.vue\n?? docs/new.md\n");
+  assert.deepEqual(paths, ["apps/web/src/App.vue", "docs/new.md"]);
   assert.deepEqual(recommend(paths).commands, [
     "contract:check",
+    "lint:web",
     "build",
     "test:web",
     "test:integration",
+    "verify:web-style",
+    "verify:bundle",
     "verify:docs",
   ]);
 });
@@ -158,9 +161,12 @@ test("route gates require contract checks for API and shared contract changes", 
   ]);
   assert.deepEqual(recommend(["packages/contracts/openapi.json"]).commands, [
     "contract:check",
+    "lint:web",
     "build",
     "test:web",
     "test:integration",
+    "verify:web-style",
+    "verify:bundle",
     "verify:docs",
   ]);
 });
@@ -224,6 +230,8 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   const webCoverage = readFileSync("apps/web/vitest.config.ts", "utf8");
   const apiCoverage = readFileSync("apps/api/pyproject.toml", "utf8");
   const apiRunner = readFileSync("scripts/run-api.mjs", "utf8");
+  const webStyle = readFileSync("scripts/verify-web-style.mjs", "utf8");
+  const bundle = readFileSync("scripts/verify-bundle.mjs", "utf8");
 
   assert.match(rootPackage.scripts.test, /test:web/);
   assert.match(rootPackage.scripts.test, /test:api/);
@@ -233,14 +241,37 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(webPackage.scripts.test, /--coverage/);
+  assert.match(rootPackage.scripts["lint:web"], /filter @harness\/web lint/);
+  assert.match(rootPackage.scripts["typecheck:web"], /filter @harness\/web typecheck/);
+  assert.match(rootPackage.scripts["verify:web-style"], /verify-web-style\.mjs/);
+  assert.match(rootPackage.scripts["verify:bundle"], /verify-bundle\.mjs/);
   assert.match(ci, /run: pnpm test$/m);
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
+  assert.match(ci, /run: pnpm test:gates$/m);
+  assert.match(ci, /run: pnpm lint:web$/m);
+  assert.match(ci, /run: pnpm typecheck:web$/m);
+  assert.match(ci, /run: pnpm verify:web-style$/m);
+  assert.match(ci, /run: pnpm verify:bundle$/m);
   const contractCheck = ci.indexOf("run: pnpm contract:check");
   const build = ci.indexOf("run: pnpm build");
   assert.ok(contractCheck >= 0);
   assert.ok(build > contractCheck, "contract:check must run before build");
+  const gateTests = ci.indexOf("run: pnpm test:gates");
+  const webLint = ci.indexOf("run: pnpm lint:web");
+  const webStylePosition = ci.indexOf("run: pnpm verify:web-style");
+  const bundlePosition = ci.indexOf("run: pnpm verify:bundle");
+  assert.ok(bundlePosition > build, "bundle gate must run after build");
+  for (const [label, position] of [
+    ["gate tests", gateTests],
+    ["web lint", webLint],
+    ["web style", webStylePosition],
+  ]) {
+    assert.ok(position >= 0, `${label} must be wired into CI`);
+  }
+  assert.match(webStyle, /COLOR_PATTERN/);
+  assert.match(bundle, /vendor-vue-flow/);
   for (const metric of ["branches", "functions", "lines", "statements"]) {
     assert.match(webCoverage, new RegExp(`${metric}: 80`));
   }

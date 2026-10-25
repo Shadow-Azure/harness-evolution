@@ -28,8 +28,17 @@ export const ROUTES = [
   {
     match: (p) =>
       (p.startsWith("apps/") && !p.startsWith("apps/api/")) || p.startsWith("packages/"),
-    commands: ["contract:check", "build", "test:web", "test:integration", "verify:docs"],
-    reason: "TS 源码：OpenAPI 防漂移、Web 单测/80% 覆盖率、跨栈集成测试、构建与文档门禁",
+    commands: [
+      "contract:check",
+      "lint:web",
+      "build",
+      "test:web",
+      "test:integration",
+      "verify:web-style",
+      "verify:bundle",
+      "verify:docs",
+    ],
+    reason: "TS 源码：OpenAPI 防漂移、前端 lint/80% 覆盖率、跨栈集成、tokens 样式、bundle 边界、构建与文档门禁",
   },
   {
     match: (p) => p.startsWith("tests/integration/"),
@@ -71,6 +80,7 @@ export function classify(paths) {
 
 const COMMAND_ORDER = [
   "contract:check",
+  "lint:web",
   "build",
   "lint:api",
   "typecheck:api",
@@ -80,6 +90,8 @@ const COMMAND_ORDER = [
   "test:integration",
   "test:gates",
   "verify:flow",
+  "verify:web-style",
+  "verify:bundle",
   "verify:docs",
   "lint:docs",
 ];

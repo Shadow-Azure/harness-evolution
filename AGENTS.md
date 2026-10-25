@@ -24,6 +24,7 @@ pnpm dev                 # 启动 API/Web
 pnpm build               # 构建
 pnpm setup:api           # 安装 API 依赖
 pnpm lint:api            # ruff
+pnpm lint:web            # eslint
 pnpm typecheck:api       # mypy
 pnpm test:api            # API 测试
 pnpm test:db[:mysql]     # 数据库测试
@@ -31,10 +32,13 @@ pnpm test:all            # 全测试
 pnpm contract:generate   # 生成契约
 pnpm contract:check      # 校验契约
 pnpm typecheck           # TS 类型
+pnpm typecheck:web       # Vue TS 类型
 pnpm test                # 单测
 pnpm test:gates          # 门禁测试
 pnpm lint:docs           # 快档文档
 pnpm verify:docs         # 全量文档
+pnpm verify:bundle       # 首屏 bundle 边界
+pnpm verify:web-style    # 设计 token 颜色源
 pnpm verify:flow         # 流程
 pnpm verify:flow-online  # 流程在线
 pnpm flow:sync           # 发布流程

@@ -21,6 +21,7 @@ Once the flow tree is initialized, every change starts with an issue: `.agents/f
 ```sh
 pnpm dev
 pnpm typecheck
+pnpm typecheck:web
 pnpm test:web
 pnpm test:api
 pnpm test:db
@@ -36,7 +37,7 @@ Choose gates by change surface before committing:
 | Change | Run locally |
 |---|---|
 | Docs / Agent Note only | `pnpm lint:docs` |
-| Web code | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
+| Web code | `pnpm lint:web && pnpm typecheck:web && pnpm test:web && pnpm test:integration && pnpm verify:web-style && pnpm build && pnpm verify:bundle` |
 | Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
 | Contracts or cross-package types | `pnpm contract:check && pnpm typecheck && pnpm test:all` |
 | Flow tree | `pnpm verify:flow` |

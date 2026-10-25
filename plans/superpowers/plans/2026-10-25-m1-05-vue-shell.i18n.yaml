@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- docs/superpowers/plans/2026-10-25-m1-05-vue-shell.md
+2026-10-25-m1-05-vue-shell.md: 69f05bed25d74afbbb60b6f3696329fe4cf5045a
+2026-10-25-m1-05-vue-shell.en.md: 69f05bed25d74afbbb60b6f3696329fe4cf5045a

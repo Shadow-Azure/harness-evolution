@@ -1,9 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "react-jsx",
     "noEmit": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts", "src/**/*.vue"]
 }
