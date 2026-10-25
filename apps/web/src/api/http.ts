@@ -36,10 +36,14 @@ export async function request<T>(
     throw new ApiError(0, "NETWORK_ERROR", "API is unreachable");
   }
 
-  const payload = (await response.json()) as T;
   const acceptedStatuses = options?.acceptedStatuses ?? [200];
   if (!acceptedStatuses.includes(response.status)) {
     throw new ApiError(response.status, "HTTP_ERROR", `API returned HTTP ${response.status}`);
   }
-  return payload;
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(response.status, "INVALID_JSON", "API returned invalid JSON");
+  }
 }

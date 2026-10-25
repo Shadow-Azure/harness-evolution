@@ -12,6 +12,7 @@ React 开发壳没有路由化空视图、共享 query 数据层和 token 约束
 
 - `apps/web` 使用 Vue 3、Vue Router、Pinia 和 TanStack Query 重建；`/sessions` 同步首屏，`/evolution` 路由懒加载并把 Vue Flow 隔离到 vendor chunk。
 - 前端执行 ESLint、`vue-tsc`、Vitest jsdom、V8 四项 80% 覆盖率、MSW 测试服务、tokens 颜色扫描和 Vite manifest bundle 边界检查。
+- 共享 HTTP 层把网络故障、拒绝状态与 malformed JSON 统一归一为 `ApiError`，health 的契约化 503 不误判为网络失败。
 - CI 显式运行门禁自测试、前端 lint/type/test、tokens 与 bundle 守卫；跨栈集成继续验证真实 proxy、FastAPI 和共享契约。
 
 ## Alternatives considered

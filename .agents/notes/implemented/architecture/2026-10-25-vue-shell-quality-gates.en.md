@@ -12,6 +12,7 @@ The React development shell lacked routed empty views, a shared query data layer
 
 - Rebuild `apps/web` with Vue 3, Vue Router, Pinia, and TanStack Query. `/sessions` stays synchronous on first screen, while `/evolution` lazy-loads and isolates Vue Flow in a vendor chunk.
 - The frontend runs ESLint, `vue-tsc`, Vitest with jsdom, V8 coverage at 80% across four metrics, MSW test services, token color scanning, and Vite manifest bundle-boundary checks.
+- The shared HTTP layer normalizes network failures, rejected statuses, and malformed JSON into `ApiError`; health's contractual 503 is not mistaken for a network failure.
 - CI explicitly runs gate self-tests, frontend lint/type/tests, and token and bundle guards; cross-stack integration continues to verify the real proxy, FastAPI, and shared contracts.
 
 ## Alternatives considered
