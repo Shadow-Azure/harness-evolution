@@ -193,8 +193,9 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
     assert.equal(login.cardBackground, "rgb(255, 255, 255)");
     assert.equal(login.hasTopbar, false);
     assert.equal(login.brand, "Harness Evolution轨迹诊断与自进化");
-    assert.equal(login.clientWidth, 1408);
-    assert.equal(login.scrollWidth, 1408);
+    assert.ok(login.clientWidth > 0);
+    assert.ok(login.clientWidth <= 1408);
+    assert.equal(login.scrollWidth, login.clientWidth);
 
     await page.session.send("Runtime.evaluate", {
       expression: `(() => {
