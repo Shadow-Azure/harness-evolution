@@ -13,7 +13,7 @@ Status: implemented
 - 开发导入只消费 root JSONL，以及每个 root 下 `subagents/agent-*.jsonl` 与其精确配对的 `.meta.json`；工具结果、marker 和错误文本保留在本地但不读取。JSONL framing 只识别 LF/CRLF，字符串内的 Unicode 行分隔符保留为正文。root 主 Agent 的 `agent_id` 等于 root session id；Claude 允许部分 root 行省略 `sessionId`，但至少一条必须声明，所有已声明值都必须与文件名一致。subagent 的 `agentId` 同时校验 JSONL 与文件名；Agent 身份以 `(root_session_id, agent_id)` 为复合键，允许不同 root 复用同一个 provider agent id。
 - JSONL 原文以 `(root_session_id, agent_id)` stable key 一次性写入 `trajectory_payloads`，hash 与行数从原始字节派生；`agent_meta` 只存通过封闭 schema 的 subagent meta，长度上限与后续 `agents` 表一致。全部 payload 先扫描验证，再用单一事务写入，失败不留部分行。
 - `source_records` 只建立处理索引，`processed_*` 与 `last_sync_run_id` 保持未处理；`received_at` 记录首次发现时间，payload 的 `updated_at` 才来自源文件写入时间。双方言时间统一到 MySQL `DATETIME` 的秒精度。重复导入未变内容零写入，内容变化只更新对应 payload，不覆盖归一化运行态或首次发现时间。
-- 本地目录与 `data/harness-evolution.sqlite` 均 gitignored；CLI 对路径只做不跟随 symlink 的绝对化，source root symlink 在扫描前拒绝。命令只输出 root/JSONL/subagent/payload 聚合，不输出正文、源路径或连接串，文件系统失败也会移除路径详情。生产与 live phase 在扫描和连接数据库前拒绝。`verify-local` 验证本地身份集合已完整落库，允许共享数据库存在其他来源的额外行。
+- 本地目录与 `data/harness.db` 均 gitignored；CLI 对路径只做不跟随 symlink 的绝对化，source root symlink 在扫描前拒绝。命令只输出 root/JSONL/subagent/payload 聚合，不输出正文、源路径或连接串，文件系统失败也会移除路径详情。生产与 live phase 在扫描和连接数据库前拒绝。`verify-local` 验证本地身份集合已完整落库，允许共享数据库存在其他来源的额外行。
 
 ## Alternatives considered
 

@@ -9,14 +9,17 @@ milestone: m2
 depends:
   - m2-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - scripts/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 38
@@ -41,15 +44,16 @@ m2-06 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实现内容
 
-- 实现 session list、overview、agent tree 查询
-- 支持搜索、状态、时间、密度排序和分页
-- 统计读聚合列，问题数当前恒为 0
+- 实现会话列表、概览与扁平 Agent 会话树查询。
+- 列表支持标题/仓库搜索、状态过滤、稳定排序与 limit。
+- 统计读会话聚合列；问题数按当前页会话实时聚合外部只读表。
+- tree 返回事件偏移、稳定 label、父子/工具调用边和问题卡锚点。
 
 ## 实施步骤
 
-1. 用 seed fixture 写路由/分页/排序/空态失败测试
-2. 实现 sessions service
-3. 生成 OpenAPI 契约
+1. 用 seed fixture 写路由、搜索、排序、空态与鉴权失败测试。
+2. 实现 sessions repository/service 和只读 API。
+3. 生成 OpenAPI 契约并验证 SQLite/MySQL 查询口径。
 
 ## 依赖与交付边界
 
@@ -67,11 +71,13 @@ pnpm contract:check
 - 会话 API 测试通过
 - contract:check 无漂移
 - 固定 fixture 的列表聚合可精确断言
+- MySQL 会话查询 contract 通过
 
 ## 验收标准
 
 - API 契约与数据库口径一致
 - 深链字段齐全
+- 不存在的时间线端点保持不可访问
 
 ## 门禁与 CI
 

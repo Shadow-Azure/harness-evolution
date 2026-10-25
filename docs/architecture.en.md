@@ -6,7 +6,7 @@ Records service boundaries, data flow and storage. Work advances by vertical sli
 
 ## Product boundary
 
-The service contains fixtures, local import, JSONL normalization, and Agent-tree assembly; queries are not running.
+The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, and session queries.
 
 ## Service split
 
@@ -59,12 +59,13 @@ GET /api/health
 POST /api/auth/{login,refresh,logout,change-password}
 GET /api/auth/me
 GET|POST /api/users
+GET /api/sessions[/{sessionId}[/tree]]
 GET /api/jobs/{jobId}
 POST /api/events/ticket
 GET /api/events?ticket=…
 ```
 
-SSE tickets bind the user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. A connection pages history before live events, emits `ping` while idle, and emits `reset` for a stale cursor. An injectable authorizer checks run topics; refresh rotation rejects replay, and timestamps use Asia/Shanghai.
+Session lists read canonical aggregate columns and count `bad_cases` for the current page. Overview reuses the list item; trees return flat `agents[]`, trigger events, and problem anchors. SSE tickets bind the user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. A connection pages history before live events, emits `ping` while idle, and emits `reset` for a stale cursor. An injectable authorizer checks run topics; refresh rotation rejects replay, and timestamps use Asia/Shanghai.
 
 ## Shared contract
 
@@ -79,6 +80,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E and contract gates.
-- Missing: session queries, issue queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
+- Missing: issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

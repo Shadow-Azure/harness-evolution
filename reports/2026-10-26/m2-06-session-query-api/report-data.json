@@ -1,0 +1,180 @@
+{
+  "title": "M2-06 Session Query API 集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #96",
+  "summary": "在真实 SQLite、FastAPI、Vite 与 Chrome 上验证 Session 列表、详情、执行树和错误契约；本地导入/重放与 API 共享默认数据库，亮色原型壳无回归。",
+  "meta": "2026-10-26 · macOS · Chrome · localhost",
+  "metrics": [
+    { "value": "12", "label": "冒烟场景" },
+    { "value": "12", "label": "通过" },
+    { "value": "4", "label": "Session" },
+    { "value": "66", "label": "Agent 节点" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#38 · M2-06 Session Query API" },
+    { "label": "PR", "value": "#96" },
+    { "label": "Base commit", "value": "6c72742 + path regression fix" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + Chrome" },
+    { "label": "Database", "value": "temporary HE_DATA_DIR/harness.db" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "默认数据库路径一致",
+        "status": { "kind": "fixed", "label": "FAIL → FIXED" },
+        "detail": "修复前 CLI 写 harness-evolution.sqlite、API 读 harness.db；修复后全新 HE_DATA_DIR 的 import、replay、API 共用 harness.db。",
+        "evidence": ["api-results.json", "pnpm test:gates: local session commands use the API default SQLite database"]
+      },
+      {
+        "id": "02",
+        "name": "Session 列表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET /api/sessions 返回 4 个 root session，契约字段完整。",
+        "evidence": ["api-results.json: listCount=4"]
+      },
+      {
+        "id": "03",
+        "name": "搜索与通配符转义",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "实际标题搜索命中 3 个；通配符字面搜索返回 0，未扩大查询。",
+        "evidence": ["api-results.json: searchMatches=3、wildcardEscaped=true"]
+      },
+      {
+        "id": "04",
+        "name": "状态过滤与稳定排序",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "all/ok/partial/fail/problem 以及 latest/userTurns/messages/agents 均返回 200，limit=2 生效。",
+        "evidence": ["api-results.json", "scripts: API smoke assertions"]
+      },
+      {
+        "id": "05",
+        "name": "列表/详情同构",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET /api/sessions/{id} 与列表卡字段、统计完全一致。",
+        "evidence": ["api-results.json: listShape/statsShape"]
+      },
+      {
+        "id": "06",
+        "name": "执行树规模",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "四棵树节点数为 2/1/2/61，总计 66；每个 root 恰好一个 main。",
+        "evidence": ["api-results.json: treeAgentCounts"]
+      },
+      {
+        "id": "07",
+        "name": "事件偏移与问题锚点",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "事件行号、messageOffset 均在契约范围；当前临时树无外部 bad case，锚点计数为 0。",
+        "evidence": ["api-results.json: badCaseCounts"]
+      },
+      {
+        "id": "08",
+        "name": "统一错误契约",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "limit=0 返回 VALIDATION_INVALID；不存在 Session 返回 SESSION_NOT_FOUND；匿名请求返回 AUTH_REQUIRED。",
+        "evidence": ["api-results.json: invalidLimit/missingSession/anonymous"]
+      },
+      {
+        "id": "09",
+        "name": "内容隐私边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "响应契约不含 prompt/content/payload/thinking，未暴露轨迹正文或本地路径。",
+        "evidence": ["api-results.json: contentLeak=false"]
+      },
+      {
+        "id": "10",
+        "name": "原型亮色壳层",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "body rgb(244,245,247)、topbar rgb(250,251,252) 且高 56px、内容卡纯白；Sessions/Errors/Evolution 占位页正常。",
+        "evidence": [
+          "screenshots/01-sessions.jpg",
+          "screenshots/02-errors.jpg",
+          "screenshots/03-evolution.jpg"
+        ]
+      },
+      {
+        "id": "11",
+        "name": "浏览器控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "登录、Sessions、Errors、Evolution 导航后 warning/error 为 0。",
+        "evidence": ["console-main.json"]
+      },
+      {
+        "id": "12",
+        "name": "自动化与双方言边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Session/OpenAPI 聚焦测试 12 passed；SQLite 17 passed；MySQL 查询契约由 CI service lane 实跑。",
+        "evidence": [
+          "CI run for PR #96",
+          "focused session/openapi tests"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions.jpg",
+      "alt": "亮色 Session 占位页",
+      "label": "Sessions",
+      "caption": "原型亮色壳层与蓝色下划线导航正常；Session 领域列表按计划仍由后续页面 issue 接入。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-errors.jpg",
+      "alt": "亮色 Errors 占位页",
+      "label": "Errors",
+      "caption": "Errors 占位页保留真实空态，不展示伪造问题数据。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-evolution.jpg",
+      "alt": "亮色 Evolution 占位页",
+      "label": "Evolution",
+      "caption": "Evolution 使用紫色下划线激活态，亮色页面与 Vue Flow 容器正常。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "Session API",
+        "coverage": "真实 HTTP + SQLite canonical data",
+        "conclusion": "列表、详情、树、搜索、过滤、排序和错误契约均通过。",
+        "recommendation": "保持 MySQL marked contract 在 CI 执行。"
+      },
+      {
+        "area": "CLI/API 数据库路径",
+        "coverage": "全新临时 HE_DATA_DIR + cross-language gate",
+        "conclusion": "import、replay 和 API 共用 harness.db，跨栈路径回归已覆盖。",
+        "recommendation": "其它本地数据命令继续复用同一派生规则。"
+      },
+      {
+        "area": "浏览器壳层",
+        "coverage": "Computer Use + 自动 E2E",
+        "conclusion": "亮色原型视觉基线正常，正常路径控制台无告警。",
+        "recommendation": "Session 页面实现时继续以原型 HTML 为验收基准。"
+      },
+      {
+        "area": "并发快照",
+        "coverage": "自动化 repository/service 回归",
+        "conclusion": "tree 使用单一数据库 session 快照；CUA 不重复制造并发写入。",
+        "recommendation": "保留并发 replay 回归。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "M2-06 Session Query API 与真实 canonical 数据、共享 SQLite 路径及亮色原型壳协同正常。",
+    "points": [
+      "4 个 Session、66 个 Agent 节点全部可查询。",
+      "Session 页面仍为真实空态，页面实现留给后续 UI issue。",
+      "发现并修复本地 CLI/API 默认数据库路径不一致。",
+      "浏览器控制台无 warning/error。"
+    ]
+  },
+  "footer": "证据源：真实 HTTP、临时 SQLite、Computer Use 截图、浏览器日志和自动门禁。"
+}

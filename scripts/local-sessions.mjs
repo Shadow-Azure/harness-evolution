@@ -32,7 +32,7 @@ if (!existsSync(PYTHON)) {
 
 const dataDir = path.resolve(process.env.HE_DATA_DIR ?? "data");
 mkdirSync(dataDir, { recursive: true });
-const databasePath = path.join(dataDir, "harness-evolution.sqlite");
+const databasePath = path.join(dataDir, "harness.db");
 const sessionsDir = path.resolve(
   process.env.HE_LOCAL_SESSIONS_DIR ?? "claude-code-sessions",
 );

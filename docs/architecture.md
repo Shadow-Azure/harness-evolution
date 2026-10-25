@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-含 fixture、本地导入、归一化与树组装；查询未运行。
+含 fixture、本地导入、归一化、树组装与会话查询。
 
 ## 服务划分
 
@@ -59,12 +59,13 @@ GET /api/health
 POST /api/auth/{login,refresh,logout,change-password}
 GET /api/auth/me
 GET|POST /api/users
+GET /api/sessions[/{sessionId}[/tree]]
 GET /api/jobs/{jobId}
 POST /api/events/ticket
 GET /api/events?ticket=…
 ```
 
-票据绑定用户、topics 与游标，HMAC 认证，60 秒且单次消费；连接分页回放后实时，空闲 `ping`、尾游标 `reset`。run topic 资源经可注入 authorizer 校验；refresh 旋转拒绝重放，时间写 Asia/Shanghai。
+会话 API 返回列表、概览和扁平 Agent 树。票据绑定用户、topics 与游标，HMAC 认证，60 秒且单次消费；连接分页回放后实时，空闲 `ping`、尾游标 `reset`。run topic 资源经可注入 authorizer 校验；refresh 旋转拒绝重放，时间写 Asia/Shanghai。
 
 ## 共享契约
 
@@ -79,6 +80,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、亮色原型壳、fixtures/seed、本地导入、Agent 树组装、幂等重放、E2E 与契约门禁。
-- 未具备：会话查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、亮色壳、fixtures、数据链、E2E/门禁。
+- 未具备：问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

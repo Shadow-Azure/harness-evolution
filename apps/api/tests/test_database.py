@@ -28,6 +28,7 @@ from sqlalchemy.pool import QueuePool
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.sessions import SessionRepository
 from app.db.database import SqlAlchemyDatabase
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -896,5 +897,98 @@ async def test_mysql_replay_round_trip_is_idempotent() -> None:
         assert counts["events"] == 1
         assert counts["turns"] == 1
         assert counts["sources"] == 2
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
+    """Session list and tree SQL execute against the real MySQL lane."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("HE_DB_URL is not configured for MySQL")
+    root_id = "77777777-7777-4777-8777-777777777777"
+    content = (
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": root_id,
+                        "timestamp": "2026-10-24T08:00:00Z",
+                        "cwd": "/workspace/mysql-queryable",
+                        "gitBranch": "main",
+                        "message": {"content": "MySQL queryable session"},
+                    },
+                ),
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": root_id,
+                        "timestamp": "2026-10-24T08:01:00Z",
+                        "message": {
+                            "id": "mysql-query-message",
+                            "model": "mysql-query-model",
+                            "content": [{"type": "text", "text": "done"}],
+                            "usage": {"input_tokens": 4, "output_tokens": 2},
+                        },
+                    },
+                ),
+            ],
+        )
+        + "\n"
+    )
+    database = create_database(
+        Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url),
+    )
+    await database.start()
+    try:
+        await upgrade_database(database)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(trajectory_payloads).where(
+                    trajectory_payloads.c.root_session_id == root_id,
+                ),
+            )
+            await session.execute(
+                trajectory_payloads.insert().values(
+                    root_session_id=root_id,
+                    agent_id=root_id,
+                    agent_kind="main",
+                    payload=content,
+                    agent_meta=None,
+                    content_hash=hashlib.sha256(content.encode()).hexdigest(),
+                    line_count=content.count("\n"),
+                    source_type="script",
+                    updated_at=datetime(2026, 10, 24, 8, tzinfo=UTC),
+                ),
+            )
+
+        await replay_pending_payloads(database)
+        repository = SessionRepository(database)
+        records = await repository.list_sessions(
+            query="queryable",
+            status="all",
+            sort="latest",
+            limit=10,
+        )
+        matching = [record for record in records if record.id == root_id]
+        tree_agents = await repository.list_agents(root_id)
+        tree_snapshot = await repository.tree_snapshot(root_id)
+        counts = await repository.bad_case_counts([root_id])
+
+        assert len(matching) == 1
+        assert matching[0].model == "mysql-query-model"
+        assert matching[0].user_turns_count == 1
+        assert matching[0].messages_count == 1
+        assert tree_agents[0].kind == "main"
+        assert tree_snapshot is not None
+        assert tree_snapshot.session.id == root_id
+        assert [agent.id for agent in tree_snapshot.agents] == [root_id]
+        assert tree_snapshot.events == ()
+        assert tree_snapshot.bad_cases == ()
+        assert counts == {}
     finally:
         await database.dispose()

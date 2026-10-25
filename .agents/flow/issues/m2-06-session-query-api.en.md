@@ -9,14 +9,17 @@ milestone: m2
 depends:
   - m2-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - scripts/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 38
@@ -57,9 +60,10 @@ m2-06 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 实现 session list、overview、agent tree 查询
-- 支持搜索、状态、时间、密度排序和分页
-- 统计读聚合列，问题数当前恒为 0
+- Implement session list, overview, and flat Agent-tree queries.
+- Search titles/repositories, filter status, sort stably, and apply a limit.
+- Read canonical aggregate columns; aggregate issue counts from the read-only external table for the current page.
+- Return event offsets, stable labels, parent/tool-use edges, and bad-case anchors.
 
 ## Implementation steps
 
@@ -67,9 +71,9 @@ m2-06 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-1. 用 seed fixture 写路由/分页/排序/空态失败测试
-2. 实现 sessions service
-3. 生成 OpenAPI 契约
+1. Add failing route, search, sort, empty-state, and authentication tests from seeded fixtures.
+2. Implement the sessions repository/service and read-only API.
+3. Generate OpenAPI contracts and verify SQLite/MySQL query semantics.
 
 ## Dependencies and boundary
 
@@ -95,6 +99,7 @@ pnpm contract:check
 - 会话 API 测试通过
 - contract:check 无漂移
 - 固定 fixture 的列表聚合可精确断言
+- MySQL session-query contracts pass.
 
 ## Acceptance
 
@@ -104,6 +109,7 @@ pnpm contract:check
 
 - API 契约与数据库口径一致
 - 深链字段齐全
+- The retired timeline endpoint remains unavailable.
 
 ## Gates and CI
 

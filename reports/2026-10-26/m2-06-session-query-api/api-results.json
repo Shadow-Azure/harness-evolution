@@ -1,0 +1,75 @@
+{
+  "listCount": 4,
+  "listShape": [
+    "id",
+    "short",
+    "title",
+    "repo",
+    "model",
+    "startedAt",
+    "durationSeconds",
+    "status",
+    "skills",
+    "stats"
+  ],
+  "statsShape": [
+    "userTurns",
+    "messages",
+    "tools",
+    "errors",
+    "agents",
+    "badCases",
+    "tokens",
+    "failPer100Messages",
+    "badCasesPer100Messages"
+  ],
+  "sessionIds": [
+    "<redacted>",
+    "<redacted>",
+    "<redacted>",
+    "<redacted>"
+  ],
+  "treeAgentCounts": [
+    {
+      "sessionId": "<redacted>",
+      "agents": 2,
+      "badCases": 0,
+      "status": "partial",
+      "userTurns": 4
+    },
+    {
+      "sessionId": "<redacted>",
+      "agents": 1,
+      "badCases": 0,
+      "status": "fail",
+      "userTurns": 2
+    },
+    {
+      "sessionId": "<redacted>",
+      "agents": 2,
+      "badCases": 0,
+      "status": "fail",
+      "userTurns": 9
+    },
+    {
+      "sessionId": "<redacted>",
+      "agents": 61,
+      "badCases": 0,
+      "status": "partial",
+      "userTurns": 38
+    }
+  ],
+  "totalTreeAgents": 66,
+  "badCaseCounts": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "searchMatches": 3,
+  "wildcardEscaped": true,
+  "invalidLimit": "VALIDATION_INVALID",
+  "missingSession": "SESSION_NOT_FOUND",
+  "anonymous": "AUTH_REQUIRED",
+  "contentLeak": false
+}

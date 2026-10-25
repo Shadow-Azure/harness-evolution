@@ -40,6 +40,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/events/ticket",
         "/api/events",
         "/api/jobs/{jobId}",
+        "/api/sessions",
+        "/api/sessions/{sessionId}",
+        "/api/sessions/{sessionId}/tree",
     }
     assert {
         "HealthResponse",
@@ -56,6 +59,13 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "TicketRequest",
         "EventTicketResponse",
         "JobResponse",
+        "SessionStats",
+        "SessionListItem",
+        "SessionListResponse",
+        "SessionEvent",
+        "SessionAgent",
+        "SessionBadCase",
+        "SessionTree",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -79,6 +89,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/users", "post"),
         ("/api/events/ticket", "post"),
         ("/api/jobs/{jobId}", "get"),
+        ("/api/sessions", "get"),
+        ("/api/sessions/{sessionId}", "get"),
+        ("/api/sessions/{sessionId}/tree", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -88,6 +101,24 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/auth/refresh", "post"),
     ]:
         assert "security" not in paths[path][method]
+
+    assert {parameter["name"] for parameter in paths["/api/sessions"]["get"]["parameters"]} == {
+        "q",
+        "status",
+        "sort",
+        "limit",
+    }
+    session_task_kind = components["SessionAgent"]["properties"]["taskKind"]
+    assert session_task_kind["anyOf"][0]["enum"] == [
+        "in_process_teammate",
+        "forked_skill",
+    ]
+    for path in ("/api/sessions/{sessionId}", "/api/sessions/{sessionId}/tree"):
+        validation = paths[path]["get"]["responses"]["422"]
+        assert validation["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/ErrorResponse"
+        }
+    assert "/api/sessions/{sessionId}/timeline" not in paths
 
 
 def test_checked_in_openapi_snapshot_is_current() -> None:

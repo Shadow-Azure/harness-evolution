@@ -1,6 +1,54 @@
 {
   "components": {
     "schemas": {
+      "BadCaseAgent": {
+        "additionalProperties": false,
+        "description": "The reporter that originally supplied a problem report.",
+        "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agentid"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "agentId"
+        ],
+        "title": "BadCaseAgent",
+        "type": "object"
+      },
+      "BadCaseAnchor": {
+        "additionalProperties": false,
+        "description": "Stable host Agent and event index for one problem card.",
+        "properties": {
+          "agentId": {
+            "title": "Agentid",
+            "type": "string"
+          },
+          "eventIndex": {
+            "minimum": -1.0,
+            "title": "Eventindex",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agentId",
+          "eventIndex"
+        ],
+        "title": "BadCaseAnchor",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "additionalProperties": false,
         "description": "Owner-supplied current and replacement passwords.",
@@ -145,6 +193,7 @@
           "FORBIDDEN",
           "PASSWORD_CHANGE_REQUIRED",
           "USERNAME_CONFLICT",
+          "SESSION_NOT_FOUND",
           "JOB_NOT_FOUND",
           "RUN_BUSY",
           "INTERNAL",
@@ -483,6 +532,456 @@
         ],
         "title": "ServicePhase",
         "type": "string"
+      },
+      "SessionAgent": {
+        "additionalProperties": false,
+        "description": "One flat Agent node consumed directly by the execution-flow graph.",
+        "properties": {
+          "agentId": {
+            "title": "Agentid",
+            "type": "string"
+          },
+          "agentType": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenttype"
+          },
+          "desc": {
+            "title": "Desc",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SessionEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "main",
+              "subagent",
+              "workflow"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lines": {
+            "minimum": 0.0,
+            "title": "Lines",
+            "type": "integer"
+          },
+          "messagesCount": {
+            "minimum": 0.0,
+            "title": "Messagescount",
+            "type": "integer"
+          },
+          "parentAgentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentagentid"
+          },
+          "skillName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skillname"
+          },
+          "spawnDepth": {
+            "minimum": 0.0,
+            "title": "Spawndepth",
+            "type": "integer"
+          },
+          "taskKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "in_process_teammate",
+                  "forked_skill"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taskkind"
+          },
+          "teamName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teamname"
+          },
+          "toolUseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tooluseid"
+          }
+        },
+        "required": [
+          "agentId",
+          "parentAgentId",
+          "kind",
+          "agentType",
+          "taskKind",
+          "teamName",
+          "skillName",
+          "label",
+          "desc",
+          "toolUseId",
+          "spawnDepth",
+          "lines",
+          "messagesCount",
+          "events"
+        ],
+        "title": "SessionAgent",
+        "type": "object"
+      },
+      "SessionBadCase": {
+        "additionalProperties": false,
+        "description": "One read-only problem connected to the execution tree.",
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/BadCaseAnchor"
+          },
+          "badCaseAgent": {
+            "$ref": "#/components/schemas/BadCaseAgent"
+          },
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "badCaseType",
+          "objectName",
+          "objectType",
+          "objectVersion",
+          "anchor",
+          "badCaseAgent",
+          "reason"
+        ],
+        "title": "SessionBadCase",
+        "type": "object"
+      },
+      "SessionEvent": {
+        "additionalProperties": false,
+        "description": "One skill, Agent, or workflow trigger within an Agent node.",
+        "properties": {
+          "desc": {
+            "title": "Desc",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "skill",
+              "agent",
+              "workflow"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "line": {
+            "minimum": 1.0,
+            "title": "Line",
+            "type": "integer"
+          },
+          "messageOffset": {
+            "minimum": 0.0,
+            "title": "Messageoffset",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "toolUseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tooluseid"
+          }
+        },
+        "required": [
+          "line",
+          "kind",
+          "name",
+          "desc",
+          "toolUseId",
+          "messageOffset"
+        ],
+        "title": "SessionEvent",
+        "type": "object"
+      },
+      "SessionListItem": {
+        "additionalProperties": false,
+        "description": "One root-session card shared by list and overview routes.",
+        "properties": {
+          "durationSeconds": {
+            "minimum": 0.0,
+            "title": "Durationseconds",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "short": {
+            "title": "Short",
+            "type": "string"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skills",
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "title": "Startedat",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/SessionStats"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "fail"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "short",
+          "title",
+          "repo",
+          "model",
+          "startedAt",
+          "durationSeconds",
+          "status",
+          "skills",
+          "stats"
+        ],
+        "title": "SessionListItem",
+        "type": "object"
+      },
+      "SessionListResponse": {
+        "additionalProperties": false,
+        "description": "Current-page session cards.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SessionListResponse",
+        "type": "object"
+      },
+      "SessionStats": {
+        "additionalProperties": false,
+        "description": "Backend-computed whole-tree card statistics.",
+        "properties": {
+          "agents": {
+            "minimum": 0.0,
+            "title": "Agents",
+            "type": "integer"
+          },
+          "badCases": {
+            "minimum": 0.0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "badCasesPer100Messages": {
+            "minimum": 0.0,
+            "title": "Badcasesper100Messages",
+            "type": "number"
+          },
+          "errors": {
+            "minimum": 0.0,
+            "title": "Errors",
+            "type": "integer"
+          },
+          "failPer100Messages": {
+            "minimum": 0.0,
+            "title": "Failper100Messages",
+            "type": "number"
+          },
+          "messages": {
+            "minimum": 0.0,
+            "title": "Messages",
+            "type": "integer"
+          },
+          "tokens": {
+            "minimum": 0.0,
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "tools": {
+            "minimum": 0.0,
+            "title": "Tools",
+            "type": "integer"
+          },
+          "userTurns": {
+            "minimum": 0.0,
+            "title": "Userturns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "userTurns",
+          "messages",
+          "tools",
+          "errors",
+          "agents",
+          "badCases",
+          "tokens",
+          "failPer100Messages",
+          "badCasesPer100Messages"
+        ],
+        "title": "SessionStats",
+        "type": "object"
+      },
+      "SessionTree": {
+        "additionalProperties": false,
+        "description": "Flat canonical Agent tree plus anchored read-only problem cards.",
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/SessionAgent"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "badCases": {
+            "items": {
+              "$ref": "#/components/schemas/SessionBadCase"
+            },
+            "title": "Badcases",
+            "type": "array"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "agents",
+          "badCases"
+        ],
+        "title": "SessionTree",
+        "type": "object"
       },
       "TicketRequest": {
         "additionalProperties": false,
@@ -1124,6 +1623,277 @@
         "summary": "Get Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "description": "Return the current page of root-session cards.",
+        "operationId": "list_sessions_api_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 512,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "ok",
+                "partial",
+                "fail",
+                "problem"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "latest",
+              "enum": [
+                "latest",
+                "userTurns",
+                "messages",
+                "agents"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Sessions",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}": {
+      "get": {
+        "description": "Return one session overview card.",
+        "operationId": "get_session_api_sessions__sessionId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Session does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/tree": {
+      "get": {
+        "description": "Return the flat canonical Agent tree and anchored problem cards.",
+        "operationId": "get_session_tree_api_sessions__sessionId__tree_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTree"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Session does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Session Tree",
+        "tags": [
+          "sessions"
         ]
       }
     },
