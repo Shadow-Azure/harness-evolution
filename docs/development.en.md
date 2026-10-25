@@ -27,6 +27,8 @@ pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
 pnpm test:all
+pnpm contract:generate
+pnpm contract:check
 ```
 
 Choose gates by change surface before committing:
@@ -36,7 +38,7 @@ Choose gates by change surface before committing:
 | Docs / Agent Note only | `pnpm lint:docs` |
 | Web code | `pnpm typecheck && pnpm test:web && pnpm test:integration && pnpm build` |
 | Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
-| Contracts or cross-package types | `pnpm typecheck && pnpm test:all` |
+| Contracts or cross-package types | `pnpm contract:check && pnpm typecheck && pnpm test:all` |
 | Flow tree | `pnpm verify:flow` |
 | Documentation examples or links | `pnpm verify:docs` |
 

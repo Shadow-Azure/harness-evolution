@@ -45,6 +45,8 @@ jobs:
         run: pnpm test
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
         run: pnpm test:integration
+      - name: OpenAPI 契约防漂移
+        run: pnpm contract:check
       - name: 类型检查
         run: pnpm typecheck
       - name: 构建

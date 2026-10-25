@@ -2,11 +2,11 @@
 
 English | [中文](architecture.md)
 
-Records the current service boundaries, data flow and data-layer strategy. Implementation advances slice by slice; this page states the present, while rationale lives in `.agents/notes/`.
+Records current service boundaries, data flow and storage strategy. Implementation advances by vertical slices; rationale lives in `.agents/notes/`.
 
 ## Product boundary
 
-Harness Evolution works with coding-agent traces to provide navigable session browsing, problem attribution and evolution runs. M1 currently delivers the platform foundation only; trace, problem and evolution data are not yet in the runtime path.
+This trace-diagnostics service currently delivers only the M1 platform foundation; trace, problem and evolution data are not yet in the runtime path.
 
 ## Service split
 
@@ -17,7 +17,7 @@ Harness Evolution works with coding-agent traces to provide navigable session br
 | `packages/contracts` | TypeScript | Shared protocols and domain types for the web app |
 | `research/` | Markdown + YAML | Evaluation tasks, harness adapters and experiment records |
 
-The backend is a modular monolith. Routes are registered only in `apps/api/app/main.py`; the HTTP layer handles validation, identity and responses, business rules live in `service/`, and storage and third parties are isolated in `db/` and `third_party_api/`.
+Routes are registered only in `apps/api/app/main.py`; HTTP handles validation and identity, business rules live in `service/`, and storage and integrations are isolated in `db/` and `third_party_api/`.
 
 ## Vertical slices
 
@@ -31,7 +31,7 @@ apps/api/app/
   middleware/           request context and identity boundary
 ```
 
-Slices collaborate through explicit interfaces; dependency direction remains `api → service → db/third_party_api`.
+Dependency direction is `api → service → db/third_party_api`.
 
 ## Current request path
 
@@ -41,7 +41,7 @@ Web ──► FastAPI middleware ──► api/health
                      └──► non-public /api/* → 401 AUTH_REQUIRED
 ```
 
-`/api/health` is public and returns `ok/service/phase/version/db`. A failed database check returns HTTP 503 while the API process stays reachable. Until identity lands, every other `/api/*` path fails closed; unknown routes, validation failures and uncaught exceptions share one error envelope.
+`/api/health` is public and returns `ok/service/phase/version/db`; database failure returns 503 while the process stays reachable. Other `/api/*` paths default to 401; unknown routes, validation failures and uncaught exceptions share one error envelope.
 
 ## Data-layer strategy
 
@@ -63,20 +63,16 @@ Other draft endpoints belong to later milestones and are not implemented.
 
 ## Shared contract
 
+FastAPI OpenAPI is the sole contract source. The export script writes the deterministic `packages/contracts/openapi.json` snapshot, and `openapi-typescript` derives `packages/contracts/src/generated/api.d.ts` from it; `src/index.ts` exposes only stable aliases and cross-end constants. `contract:check` regenerates in a temporary directory and compares byte for byte, so hand edits or backend drift fail before the build.
+
 The health response is the current minimal contract between both ends, with API and database state independently observable:
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
-export interface HealthResponse {
-  ok: boolean;
-  service: "harness-evolution";
-  phase: ServicePhase;
-  version: string;
-  db: DatabaseHealth;
-}
+export type HealthResponse = components["schemas"]["HealthResponse"];
 ```
 
-The type fence is compared verbatim with source by `verify-type-equiv`; contract drift turns red.
+The type fence is structurally compared with source by `verify-type-equiv`; generated-type drift is blocked by `contract:check`.
 
 Minimal web-side contract usage (compiled for real by `doc-typecheck`):
 
@@ -98,6 +94,6 @@ const health: HealthResponse = {
 
 ## Current state and non-goals
 
-- Present: modular FastAPI scaffold, unified error model, SQLite/MySQL Database boundary, Alembic baseline, health check and Python lint/type/test gates.
+- Present: modular FastAPI scaffold, unified error model, SQLite/MySQL Database boundary, Alembic baseline, health check, OpenAPI contract generation and drift prevention, and Python lint/type/test gates.
 - Missing: domain tables, real identity, trace parsing, problem queries and evolution execution.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

@@ -17,6 +17,7 @@ import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
 import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
+import { compareContractFiles } from "./contract.mjs";
 
 const roadmap = `# Roadmap
 
@@ -118,6 +119,7 @@ test("route gates recommend web tests, integration, build, and docs for app chan
   const paths = worktreePaths(" M apps/web/src/App.tsx\n?? docs/new.md\n");
   assert.deepEqual(paths, ["apps/web/src/App.tsx", "docs/new.md"]);
   assert.deepEqual(recommend(paths).commands, [
+    "contract:check",
     "build",
     "test:web",
     "test:integration",
@@ -129,6 +131,7 @@ test("route gates recommend the Python toolchain for API changes", () => {
   const paths = worktreePaths(" M apps/api/app/main.py\n");
   assert.deepEqual(paths, ["apps/api/app/main.py"]);
   assert.deepEqual(recommend(paths).commands, [
+    "contract:check",
     "lint:api",
     "typecheck:api",
     "test:api",
@@ -143,6 +146,38 @@ test("route gates execute cross-stack integration tests", () => {
   assert.deepEqual(recommend(paths).commands, ["test:integration", "verify:docs"]);
 });
 
+test("route gates require contract checks for API and shared contract changes", () => {
+  assert.deepEqual(recommend(["apps/api/app/api/health.py"]).commands, [
+    "contract:check",
+    "lint:api",
+    "typecheck:api",
+    "test:api",
+    "test:db",
+    "test:integration",
+    "verify:docs",
+  ]);
+  assert.deepEqual(recommend(["packages/contracts/openapi.json"]).commands, [
+    "contract:check",
+    "build",
+    "test:web",
+    "test:integration",
+    "verify:docs",
+  ]);
+});
+
+test("contract check detects stale and hand-edited generated files", () => {
+  const expected = "/* @generated */\nexport type Version = 1;\n";
+  const edited = "/* @generated */\nexport type Version = 2;\n";
+  const missingMarker = "export type Version = 1;\n";
+
+  assert.deepEqual(compareContractFiles(expected, expected, "api.d.ts"), []);
+  assert.match(compareContractFiles(expected, edited, "api.d.ts").join("\n"), /真实 OpenAPI 不一致/);
+  assert.match(
+    compareContractFiles(expected, missingMarker, "api.d.ts").join("\n"),
+    /@generated/,
+  );
+});
+
 test("test gates execute frontend, backend, integration, and 80% coverage", () => {
   const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
   const webPackage = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
@@ -155,12 +190,18 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts.test, /test:api/);
   assert.match(rootPackage.scripts["test:db"], /run-api\.mjs db/);
   assert.match(rootPackage.scripts["test:db:mysql"], /db-mysql/);
+  assert.match(rootPackage.scripts["contract:generate"], /contract\.mjs generate/);
+  assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(ci, /run: pnpm test$/m);
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
+  const contractCheck = ci.indexOf("run: pnpm contract:check");
+  const build = ci.indexOf("run: pnpm build");
+  assert.ok(contractCheck >= 0);
+  assert.ok(build > contractCheck, "contract:check must run before build");
   for (const metric of ["branches", "functions", "lines", "statements"]) {
     assert.match(webCoverage, new RegExp(`${metric}: 80`));
   }

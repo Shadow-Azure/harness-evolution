@@ -9,12 +9,18 @@ milestone: m1
 depends:
   - m1-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
+  - apps/web/**
   - packages/contracts/**
+  - plans/**
+  - reports/**
   - scripts/**
+  - tests/integration/**
   - package.json
+  - pnpm-lock.yaml
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**

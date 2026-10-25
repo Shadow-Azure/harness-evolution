@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Harness Evolution 是面向 coding agent 的轨迹查看与问题诊断服务。改代码先读 [docs/architecture.md](docs/architecture.md)；写文档先读 [docs/AGENTS.md](docs/AGENTS.md)；改流程先读 [.agents/flow/README.md](.agents/flow/README.md)。
+轨迹诊断服务。改代码读 [architecture](docs/architecture.md)，写文档读 [docs rules](docs/AGENTS.md)，改流程读 [flow rules](.agents/flow/README.md)。
 
 ## 文档与决策
 
@@ -19,33 +19,36 @@ Harness Evolution 是面向 coding agent 的轨迹查看与问题诊断服务。
 ## 命令
 
 ```sh
-pnpm install             # 安装 workspace 依赖
-pnpm dev                 # 同时启动 API 与 Web
-pnpm build               # 构建 web
+pnpm install             # 安装依赖
+pnpm dev                 # 启动 API/Web
+pnpm build               # 构建
 pnpm setup:api           # 安装 API 依赖
-pnpm lint:api            # FastAPI ruff 检查
-pnpm typecheck:api       # FastAPI mypy 检查
-pnpm test:api            # FastAPI 单测与 coverage（≥80%）
-pnpm test:db[:mysql]     # SQLite / MySQL 数据库门禁
-pnpm test:all            # 前后端覆盖率单测 + 跨栈集成测试
-pnpm typecheck           # 全 workspace 类型检查
-pnpm test                # 前后端单测（覆盖率门禁）
-pnpm test:gates          # 门禁自测试
-pnpm lint:docs           # 快速文档门禁
-pnpm verify:docs         # 全量文档门禁
-pnpm verify:flow         # 流程树离线状态机
-pnpm verify:flow-online  # 流程树与 GitHub 双侧一致（需 gh）
-pnpm flow:sync           # 流程树 → GitHub（唯一写入口）
-pnpm flow:new-issue -- … # 新建 issue 三件套
-pnpm record:i18n -- <pair> # 双语配对重录
-pnpm route:gates         # 按改动面推荐门禁
-pnpm install:hooks       # 安装本地 git 钩子
+pnpm lint:api            # ruff
+pnpm typecheck:api       # mypy
+pnpm test:api            # API 测试
+pnpm test:db[:mysql]     # 数据库测试
+pnpm test:all            # 全测试
+pnpm contract:generate   # 生成契约
+pnpm contract:check      # 校验契约
+pnpm typecheck           # TS 类型
+pnpm test                # 单测
+pnpm test:gates          # 门禁测试
+pnpm lint:docs           # 快档文档
+pnpm verify:docs         # 全量文档
+pnpm verify:flow         # 流程
+pnpm verify:flow-online  # 流程在线
+pnpm flow:sync           # 发布流程
+pnpm flow:new-issue -- … # 新 issue
+pnpm record:i18n -- <pair> # 重录双语
+pnpm route:gates         # 推荐门禁
+pnpm install:hooks       # Git hooks
 ```
 
 ## 代码惯例
 
 - 后端保持模块化单体：HTTP 层只放 `api/` 路由，业务规则进 `service/`，存储隔离在 `db/` 接口与 repository 后，出站集成放 `third_party_api/`。
 - `packages/contracts` 是前后端共享协议的唯一来源；跨端字段变化先改契约。
+- FastAPI OpenAPI 是接口契约源；`packages/contracts/openapi.json` 与生成类型禁止手改，改接口后运行 `pnpm contract:generate`。
 - 前后端行为变更同步交付单元测试与跨栈集成测试；CI 必须实际执行测试，单测覆盖率不得低于 80%。
 - 导出声明必须带 JSDoc；导出函数的每个形参写 `@param`，非 void 返回写 `@returns`。
 - 常驻文档受词数预算约束，未登记预算即红门禁；超限处置顺序为搬层、压缩、提预算。
