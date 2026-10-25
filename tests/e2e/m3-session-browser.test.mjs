@@ -220,47 +220,32 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     assert.ok(initialTree.legend.leftGap >= 0 && initialTree.legend.leftGap <= 24, JSON.stringify(initialTree));
     assert.ok(initialTree.legend.bottomGap >= 0 && initialTree.legend.bottomGap <= 24, JSON.stringify(initialTree));
 
-    const transformBefore = await page.session.send("Runtime.evaluate", {
-      expression: `(() => {
-        const node = document.querySelector("[data-testid='agent-tree'] .rf-agent.sub");
-        node.focus();
-        return getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform;
-      })()`,
-      returnByValue: true,
-    });
-    await page.session.send("Input.dispatchKeyEvent", {
-      type: "keyDown",
-      key: "Enter",
-      code: "Enter",
-      windowsVirtualKeyCode: 13,
-    });
-    await page.session.send("Input.dispatchKeyEvent", {
-      type: "keyUp",
-      key: "Enter",
-      code: "Enter",
-      windowsVirtualKeyCode: 13,
-    });
-    const selectedNode = await waitForDocument(
-      page.session,
-      `(() => {
-        const active = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
-          .filter((node) => node.getAttribute("aria-pressed") === "true");
-        const transform = getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform;
-        return active.length === 1
-          ? {
-              border: getComputedStyle(document.querySelector("[data-testid='agent-tree']")).borderTopWidth,
-              label: active[0].getAttribute("aria-label"),
-              transform,
-            }
-          : null;
-      })()`,
-      "selected Agent node",
-    );
-    assert.ok(selectedNode.label, JSON.stringify(selectedNode));
-    assert.notEqual(selectedNode.transform, transformBefore.result.value, JSON.stringify(selectedNode));
-    assert.equal(selectedNode.border, "0px", JSON.stringify(selectedNode));
-
+    const pressKey = async (key, code, windowsVirtualKeyCode) => {
+      await page.session.send("Input.dispatchKeyEvent", {
+        type: key === "Enter" ? "rawKeyDown" : "keyDown",
+        key,
+        code,
+        windowsVirtualKeyCode,
+      });
+      if (key === "Enter") {
+        await page.session.send("Input.dispatchKeyEvent", {
+          type: "char",
+          key,
+          code,
+          text: "\r",
+          unmodifiedText: "\r",
+          windowsVirtualKeyCode,
+        });
+      }
+      await page.session.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key,
+        code,
+        windowsVirtualKeyCode,
+      });
+    };
     const treeCounts = [];
+    let keyboardCheck = null;
     for (let index = 0; index < initial.cards; index += 1) {
       await page.session.send("Runtime.evaluate", {
         expression: `document.querySelectorAll("[data-testid='session-card']")[${index}].click()`,
@@ -276,9 +261,73 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       );
       assert.match(tree.path, /^\/sessions\/.+/);
       treeCounts.push(tree.nodes);
+      if (!keyboardCheck && tree.nodes > 1) {
+        const focusState = await page.session.send("Runtime.evaluate", {
+          expression: `(() => {
+            const tree = document.querySelector("[data-testid='agent-tree']");
+            tree.tabIndex = -1;
+            tree.focus();
+            return {
+              edgeTabStops: [...document.querySelectorAll(".vue-flow__edge")].filter((node) => node.tabIndex >= 0).length,
+              nodeWrapperTabStops: [...document.querySelectorAll(".vue-flow__node")].filter((node) => node.tabIndex >= 0).length,
+            };
+          })()`,
+          returnByValue: true,
+        });
+        assert.equal(focusState.result.value.edgeTabStops, 0);
+        assert.equal(focusState.result.value.nodeWrapperTabStops, 0);
+        await pressKey("Tab", "Tab", 9);
+        const firstFocus = await page.session.send("Runtime.evaluate", {
+          expression: `(() => {
+            const active = document.activeElement;
+            return {
+              className: active?.className ?? "",
+              label: active?.getAttribute?.("aria-label") ?? "",
+              tagName: active?.tagName ?? "",
+            };
+          })()`,
+          returnByValue: true,
+        });
+        assert.equal(firstFocus.result.value.tagName, "BUTTON", JSON.stringify(firstFocus));
+        assert.match(firstFocus.result.value.className, /rf-agent/);
+        await pressKey("Tab", "Tab", 9);
+        const secondFocus = await page.session.send("Runtime.evaluate", {
+          expression: `(() => {
+            const active = document.activeElement;
+            return {
+              className: active?.className ?? "",
+              label: active?.getAttribute?.("aria-label") ?? "",
+              tagName: active?.tagName ?? "",
+            };
+          })()`,
+          returnByValue: true,
+        });
+        assert.equal(secondFocus.result.value.tagName, "BUTTON", JSON.stringify(secondFocus));
+        assert.match(secondFocus.result.value.className, /rf-agent/);
+        assert.notEqual(secondFocus.result.value.label, "主会话", JSON.stringify(secondFocus));
+        await pressKey("Enter", "Enter", 13);
+        const selectedNode = await waitForDocument(
+          page.session,
+          `(() => {
+            const active = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+              .filter((node) => node.getAttribute("aria-pressed") === "true");
+            return active.length === 1
+              ? {
+                  border: getComputedStyle(document.querySelector("[data-testid='agent-tree']")).borderTopWidth,
+                  label: active[0].getAttribute("aria-label"),
+                }
+              : null;
+          })()`,
+          "selected Agent node",
+        );
+        assert.ok(selectedNode.label, JSON.stringify(selectedNode));
+        assert.equal(selectedNode.border, "0px", JSON.stringify(selectedNode));
+        keyboardCheck = selectedNode;
+      }
     }
     assert.equal(treeCounts.length, 4);
     assert.equal(treeCounts.reduce((sum, count) => sum + count, 0), 8);
+    assert.ok(keyboardCheck, "expected at least one multi-Agent Session");
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,

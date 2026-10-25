@@ -238,6 +238,20 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector("button[aria-label='适应画布']").click()`,
     });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const locateBefore = await page.session.send("Runtime.evaluate", {
+      expression: `getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform`,
+      returnByValue: true,
+    });
+    await page.session.send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll(".rf-agent.sub")].at(-1).click()`,
+    });
+    const located = await waitForDocument(
+      page.session,
+      `getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform !== ${JSON.stringify(locateBefore.result.value)}`,
+      "located Agent tree node",
+    );
+    assert.equal(located, true);
     await page.session.send("Runtime.evaluate", {
       expression: `history.pushState({}, "", "/agent-tree-demo?variant=large");
         window.dispatchEvent(new PopStateEvent("popstate"))`,

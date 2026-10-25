@@ -245,6 +245,8 @@ function onNodesInitialized() {
       :edge-types="edgeTypes"
       :nodes-draggable="false"
       :nodes-connectable="false"
+      :nodes-focusable="false"
+      :edges-focusable="false"
       :elements-selectable="true"
       :min-zoom="0.2"
       :max-zoom="2.5"

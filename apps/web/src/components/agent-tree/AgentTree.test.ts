@@ -16,7 +16,16 @@ vi.mock("@vue-flow/core", async () => {
   return {
     VueFlow: defineComponent({
       name: "VueFlow",
-      props: ["nodes", "edges", "nodesDraggable", "nodesConnectable", "minZoom", "maxZoom"],
+      props: [
+        "nodes",
+        "edges",
+        "nodesDraggable",
+        "nodesConnectable",
+        "nodesFocusable",
+        "edgesFocusable",
+        "minZoom",
+        "maxZoom",
+      ],
       emits: ["nodes-initialized", "node-click"],
       setup(props, { attrs, slots }) {
         return () => h("div", {
@@ -94,6 +103,8 @@ describe("AgentTree", () => {
     });
     expect(wrapper.getComponent({ name: "VueFlow" }).props("nodesDraggable")).toBe(false);
     expect(wrapper.getComponent({ name: "VueFlow" }).props("nodesConnectable")).toBe(false);
+    expect(wrapper.getComponent({ name: "VueFlow" }).props("nodesFocusable")).toBe(false);
+    expect(wrapper.getComponent({ name: "VueFlow" }).props("edgesFocusable")).toBe(false);
     expect(wrapper.get('[aria-label="放大"]').attributes("title")).toBe("放大");
     expect(wrapper.get('[aria-label="缩小"]').attributes("title")).toBe("缩小");
     expect(wrapper.get('[aria-label="适应画布"]').attributes("title")).toBe("适应画布");
