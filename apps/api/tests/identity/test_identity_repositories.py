@@ -183,18 +183,42 @@ async def test_event_ticket_is_bound_to_the_issuing_user(tmp_path: Path) -> None
     assert grant.user_id == user_id
 
 
-def test_event_ticket_store_lazily_removes_expired_grants() -> None:
-    """Cleanup moves expired grants to bounded tombstones that retain their error code."""
+def test_self_describing_ticket_remains_expired_after_grant_cleanup() -> None:
+    """A signed expiry outlives in-memory grants and preserves the stable error code."""
     now = [100.0]
     store = TicketStore(ttl_seconds=60, clock=lambda: now[0])
     old_ticket = store.issue(user_id="user-1", topics=("run:old",), last_event_id=0)
     now[0] = 161.0
     store.issue(user_id="user-1", topics=("run:new",), last_event_id=0)
+    now[0] = 10_000.0
 
-    assert store.active_count == 1
+    assert store.active_count == 0
     with pytest.raises(AppError) as expired:
         store.consume(old_ticket)
     assert expired.value.code == "TICKET_EXPIRED"
+
+
+def test_tampered_ticket_is_invalid_even_if_its_expiry_is_in_the_past() -> None:
+    """Clients cannot fabricate an expired ticket by editing an issued value."""
+    now = [100.0]
+    store = TicketStore(ttl_seconds=60, clock=lambda: now[0])
+    ticket = store.issue(user_id="user-1", topics=("run:old",), last_event_id=0)
+    tampered = f"{ticket[:-1]}{'A' if ticket[-1] != 'A' else 'B'}"
+
+    with pytest.raises(AppError) as invalid:
+        store.consume(tampered)
+    assert invalid.value.code == "TICKET_INVALID"
+
+
+def test_non_ascii_ticket_signature_is_invalid_instead_of_raising() -> None:
+    """Malformed client text cannot escape as TypeError from constant-time comparison."""
+    store = TicketStore()
+
+    with pytest.raises(AppError) as invalid:
+        store.consume("abc.123.é")
+
+    assert invalid.value.status_code == 401
+    assert invalid.value.code == "TICKET_INVALID"
 
 
 async def test_refresh_revocations_expire_without_unbounded_growth() -> None:

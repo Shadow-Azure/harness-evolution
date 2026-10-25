@@ -1,7 +1,7 @@
 """Application errors and the shared API error envelope."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, cast
@@ -105,6 +105,17 @@ def _log_internal_error(request: Request, exc: Exception) -> str:
     return request_id
 
 
+def _safe_validation_errors(
+    errors: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep actionable validation fields while dropping submitted input and context."""
+    allowed = ("type", "loc", "msg")
+    return [
+        {field: jsonable_encoder(error[field]) for field in allowed if field in error}
+        for error in errors
+    ]
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Install handlers that keep every failure on the shared envelope."""
 
@@ -156,7 +167,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
             code=ErrorCode.VALIDATION_INVALID,
             message="request validation failed",
-            details={"errors": jsonable_encoder(validation_error.errors())},
+            details={"errors": _safe_validation_errors(validation_error.errors())},
         )
 
     @app.exception_handler(Exception)

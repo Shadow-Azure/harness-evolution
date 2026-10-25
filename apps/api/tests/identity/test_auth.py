@@ -110,6 +110,83 @@ async def test_login_updates_last_login_and_refresh_does_not(tmp_path: Path) -> 
     assert after_refresh.last_login_at == last_login
 
 
+async def test_change_password_rejects_reusing_the_initial_password(tmp_path: Path) -> None:
+    """A forced first change cannot be cleared by submitting the same secret again."""
+    settings = identity_settings(
+        tmp_path,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        authenticated = await login(client)
+        initial_access = authenticated.json()["accessToken"]
+        unchanged = await client.post(
+            "/api/auth/change-password",
+            headers={"Authorization": f"Bearer {initial_access}"},
+            json={
+                "oldPassword": "initial-password",
+                "newPassword": "initial-password",
+            },
+        )
+        me = await client.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {initial_access}"},
+        )
+        refreshed = await client.post("/api/auth/refresh")
+        blocked = await client.get(
+            "/api/users",
+            headers={"Authorization": f"Bearer {refreshed.json()['accessToken']}"},
+        )
+
+    assert unchanged.status_code == 422
+    assert unchanged.json()["error"]["code"] == ErrorCode.VALIDATION_INVALID
+    assert "initial-password" not in unchanged.text
+    assert me.json()["mustChangePassword"] is True
+    assert refreshed.status_code == 200
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == ErrorCode.MUST_CHANGE_PASSWORD
+
+
+async def test_validation_errors_never_echo_plaintext_passwords(tmp_path: Path) -> None:
+    """Global validation details retain diagnostics without reflecting rejected input."""
+    settings = identity_settings(
+        tmp_path,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    login_password = "login-" + "x" * 129
+    change_password = "change-" + "y" * 129
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        invalid_login = await login(client, password=login_password)
+        authenticated = await login(client)
+        invalid_change = await client.post(
+            "/api/auth/change-password",
+            headers={"Authorization": f"Bearer {authenticated.json()['accessToken']}"},
+            json={"oldPassword": change_password, "newPassword": change_password},
+        )
+
+    for response, submitted in [
+        (invalid_login, login_password),
+        (invalid_change, change_password),
+    ]:
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == ErrorCode.VALIDATION_INVALID
+        assert submitted not in response.text
+        errors = response.json()["error"]["details"]["errors"]
+        assert errors
+        assert all(set(error) <= {"type", "loc", "msg"} for error in errors)
+
+
 async def test_wrong_password_returns_the_same_invalid_identity_error(tmp_path: Path) -> None:
     """Authentication does not reveal whether a username exists."""
     settings = identity_settings(

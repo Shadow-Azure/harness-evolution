@@ -58,7 +58,7 @@ GET|POST /api/users
 POST /api/events/ticket
 ```
 
-SSE transport belongs to a later milestone; tickets bind the issuing user, `run:{rid}` topics and a cursor for one 60-second use and are pruned on demand. Refresh rotation atomically rejects concurrent replay, and revocations expire with their tokens. An empty database seeds a forced-password-change administrator from environment credentials. Passwords use argon2id; public user responses exclude password material, and application timestamps use Asia/Shanghai.
+SSE comes later; tickets bind the user, `run:{rid}` topics and cursor, authenticating 60-second expiry with a process HMAC while active grants remain single-use. Refresh rotation atomically rejects concurrent replay, and revocations expire with their tokens. An empty database seeds a forced-password-change administrator from environment credentials. Password change must replace the current secret, validation errors omit submitted values, passwords use argon2id, responses exclude password material, and timestamps use Asia/Shanghai.
 
 ## Shared contract
 

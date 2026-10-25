@@ -127,6 +127,12 @@ class IdentityService:
                 code=ErrorCode.AUTH_INVALID,
                 message="current password is invalid",
             )
+        if new_password == old_password:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="new password must differ from current password",
+            )
         await self.users.update_password(user_id, self._hasher.hash(new_password))
 
     async def get_user(self, user_id: str) -> UserRecord | None:

@@ -58,7 +58,7 @@ GET|POST /api/users
 POST /api/events/ticket
 ```
 
-SSE 传输属于后续 milestone；票据绑定签发用户、`run:{rid}` topics 和游标，60 秒单次使用并按需清理。refresh 旋转原子拒绝并发重放，撤销记录随令牌到期清理。空库用环境凭据播种必须改密的管理员；密码用 argon2id，公共用户响应不含密码或哈希，应用时间戳写 Asia/Shanghai。
+SSE 属后续；票据绑定用户、`run:{rid}` topics、游标，并以进程 HMAC 认证 60 秒到期，活动 grant 单次消费。refresh 旋转原子拒绝并发重放，撤销随到期清理。空库用环境凭据播种强制改密管理员；改密须换密码，校验错误不含提交值；密码用 argon2id，响应不含密码/hash，时间戳写 Asia/Shanghai。
 
 ## 共享契约
 
