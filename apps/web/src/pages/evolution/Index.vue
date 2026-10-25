@@ -14,7 +14,10 @@ defineOptions({ name: "EvolutionPage" });
       description="自进化运行将在后续 milestone 接入；Vue Flow 容器已就绪。"
       title="暂无自进化运行"
     />
-    <div class="canvas">
+    <div
+      class="canvas"
+      style="height: 320px; width: 100%"
+    >
       <VueFlow
         :edges="[]"
         :nodes="[]"

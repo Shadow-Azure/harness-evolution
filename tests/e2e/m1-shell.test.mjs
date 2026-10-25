@@ -243,6 +243,66 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
   }
 });
 
+test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    const refreshCookie = await browserRefreshCookie();
+    await page.session.send("Network.enable");
+    await page.session.send("Network.setCookie", {
+      name: "refresh_token",
+      value: refreshCookie,
+      url: `${baseUrl}/api/auth`,
+      httpOnly: true,
+      sameSite: "Strict",
+    });
+    // Reproduce a cold first paint where the scoped .canvas rule arrives late.
+    await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `(() => {
+        const deadline = performance.now() + 2000;
+        const removeDelayedCanvasRule = () => {
+          for (const sheet of document.styleSheets) {
+            try {
+              for (let index = sheet.cssRules.length - 1; index >= 0; index -= 1) {
+                const rule = sheet.cssRules[index];
+                if (rule.selectorText?.includes(".canvas")) sheet.deleteRule(index);
+              }
+            } catch {
+              // Only same-origin Vite stylesheets are inspected.
+            }
+          }
+          if (performance.now() < deadline) requestAnimationFrame(removeDelayedCanvasRule);
+        };
+        requestAnimationFrame(removeDelayedCanvasRule);
+      })()`,
+    });
+
+    await page.session.send("Page.navigate", { url: `${baseUrl}/evolution` });
+    const canvas = await waitForDocument(
+      page.session,
+      `(() => {
+        const canvas = document.querySelector(".canvas");
+        if (!canvas || !document.body.textContent.includes("暂无自进化运行")) return null;
+        const bounds = canvas.getBoundingClientRect();
+        return {
+          height: bounds.height,
+          path: location.pathname,
+          width: bounds.width,
+        };
+      })()`,
+      "direct evolution canvas",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    assert.equal(canvas.path, "/evolution");
+    assert.ok(canvas.width > 0, JSON.stringify(canvas));
+    assert.ok(canvas.height > 0, JSON.stringify(canvas));
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.close();
+  }
+});
+
 test("m1-shell presents a 409 as a styled message without replacing the page", async () => {
   const page = await createBrowserPage();
   try {
