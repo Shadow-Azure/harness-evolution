@@ -1,0 +1,211 @@
+{
+  "lang": "zh-CN",
+  "title": "M1-08 任务与 SSE 集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #79",
+  "summary": "在真实 Chrome、Vite、FastAPI 与临时 SQLite 上验证身份主链路、任务 REST、持久事件 replay、Last-Event-ID 续传、心跳、一次性票据和窄视口布局。14 项运行时场景通过；直播 event-bus 的内部发布由自动化测试覆盖。",
+  "meta": "2026-10-25 · macOS · Chrome · localhost",
+  "metrics": [
+    { "value": "15", "label": "冒烟场景" },
+    { "value": "14", "label": "运行时通过" },
+    { "value": "1", "label": "自动化边界" },
+    { "value": "0", "label": "控制台告警/错误" },
+    { "value": "2", "label": "持久事件回放" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#31 · M1 jobs and SSE" },
+    { "label": "PR", "value": "#79" },
+    { "label": "Commit", "value": "8efca2b" },
+    { "label": "Runtime", "value": "Chrome + Vite + FastAPI" },
+    { "label": "Database", "value": "temporary SQLite" },
+    { "label": "Heartbeat", "value": "1 second" },
+    { "label": "Replay limit", "value": "2 events per page" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "登录页首次渲染",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "登录表单完整渲染，初始控制台无 warning/error。",
+        "evidence": ["screenshots/01-login.png", "console-summary.txt"]
+      },
+      {
+        "id": "02",
+        "name": "首登强制改密",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时密码登录后跳转 /change-password?redirect=/sessions。",
+        "evidence": ["screenshots/02-force-change.png", "HTTP login=200 · mustChangeBefore=true"]
+      },
+      {
+        "id": "03",
+        "name": "临时账号改密",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "通过本地 API 将临时密码改为随机测试密码；change=204，refresh=200。",
+        "evidence": ["HTTP change=204", "HTTP refresh=200"]
+      },
+      {
+        "id": "04",
+        "name": "queued 任务状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET 返回 status=queued、progress=0，起止时间为 null。",
+        "evidence": ["jobs-summary.json"]
+      },
+      {
+        "id": "05",
+        "name": "running/completed 任务状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "running 进度 0.42；completed 进度 1.0，并返回 startedAt/finishedAt。",
+        "evidence": ["jobs-summary.json"]
+      },
+      {
+        "id": "06",
+        "name": "任务不存在",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不存在 job 返回 404 JOB_NOT_FOUND。",
+        "evidence": ["jobs-summary.json"]
+      },
+      {
+        "id": "07",
+        "name": "SSE 历史回放",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "ticket cursor=0，Last-Event-ID=1 优先，replay 仅返回 seq 2、3；limit=2 时跨页未丢事件。",
+        "evidence": ["sse-replay.txt"]
+      },
+      {
+        "id": "08",
+        "name": "SSE 心跳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "连接保持 3 秒收到两次 event: ping / data: {}，配置间隔为 1 秒。",
+        "evidence": ["sse-replay.txt"]
+      },
+      {
+        "id": "09",
+        "name": "票据单次消费",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "同一 ticket 第二次连接返回 401 TICKET_INVALID；缺失 ticket 同为 401。",
+        "evidence": ["ticket-errors.json"]
+      },
+      {
+        "id": "10",
+        "name": "topic 授权边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "URL 注入 topics 返回 401；多 topic 申请返回 422 VALIDATION_INVALID。",
+        "evidence": ["ticket-errors.json"]
+      },
+      {
+        "id": "11",
+        "name": "断线续传去重",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "首次从 1 续传得到 2、3；下一次从 2 续传仅得到 3，无重复或遗漏。",
+        "evidence": ["sse-reconnect-1.txt", "sse-reconnect-2.txt"]
+      },
+      {
+        "id": "12",
+        "name": "退出与新密码重登",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "用户菜单可见退出按钮；退出后以新密码登录并回到 /sessions。",
+        "evidence": ["screenshots/04-user-menu.png", "screenshots/05-relogin-sessions.png"]
+      },
+      {
+        "id": "13",
+        "name": "浏览器控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "全会话仅 4 条 Vite debug 连接日志，warning/error/exception 为 0。",
+        "evidence": ["console-summary.txt"]
+      },
+      {
+        "id": "14",
+        "name": "390px 窄视口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "clientWidth=390、scrollWidth=390；用户菜单 right=366，退出按钮 right=353。",
+        "evidence": ["screenshots/06-narrow-390.png", "narrow-metrics.json"]
+      },
+      {
+        "id": "15",
+        "name": "直播 event-bus 发布",
+        "status": { "kind": "manual", "label": "AUTOMATED" },
+        "detail": "M1 公共 API 没有主动发布直播事件的入口；背压、handoff 与慢消费者关闭由提交内自动化测试覆盖。",
+        "evidence": ["Automated unit/integration coverage", "PR #79 CI"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-login.png",
+      "alt": "M1-08 冒烟登录页",
+      "label": "登录页",
+      "caption": "首次渲染无 warning/error，身份入口可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-force-change.png",
+      "alt": "首次登录后的强制改密页",
+      "label": "强制改密",
+      "caption": "临时密码登录后被正确导向改密页。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-user-menu.png",
+      "alt": "Sessions 顶栏用户菜单",
+      "label": "用户菜单",
+      "caption": "当前管理员与退出入口可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-relogin-sessions.png",
+      "alt": "新密码重新登录后的 Sessions 页面",
+      "label": "新密码重登",
+      "caption": "退出后使用新密码登录成功并回到 Sessions。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-narrow-390.png",
+      "alt": "390 像素视口下展开的用户菜单",
+      "label": "390px 布局",
+      "caption": "无横向滚动，用户菜单与退出按钮完整位于视口内。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "身份与浏览器壳",
+        "coverage": "Computer Use 实机 + 真实 HTTP",
+        "conclusion": "登录、首登改密入口、退出、新密码重登和响应式布局均有运行时证据。",
+        "recommendation": "保持浏览器控制台与 390px 溢出检查为身份相关 PR 的烟雾项。"
+      },
+      {
+        "area": "任务 REST",
+        "coverage": "真实 FastAPI + 临时 SQLite",
+        "conclusion": "queued/running/completed、时间戳、进度和 404 闭集错误均符合契约。",
+        "recommendation": "M2 接入真实 job producer 后增加端到端提交与完成场景。"
+      },
+      {
+        "area": "SSE 回放与票据",
+        "coverage": "真实 HTTP 流 + 持久 SQLite 事件",
+        "conclusion": "跨页 replay、Last-Event-ID 优先、心跳、断线续传和 ticket 重放拒绝均有实际证据。",
+        "recommendation": "保留 1 秒心跳与 2 条 replay limit 的测试配置，以便暴露边界问题。"
+      },
+      {
+        "area": "直播 event-bus 内部路径",
+        "coverage": "自动化单元/跨栈测试",
+        "conclusion": "公开 API 在 M1 没有主动发布直播事件的入口，因此未用浏览器伪造生产者；背压与 handoff 由提交内测试覆盖。",
+        "recommendation": "M2/M5 接入具体 job/run producer 后追加真实直播事件烟雾。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交的任务 REST、持久 replay、SSE 心跳与票据边界在真实进程中按设计工作，未发现运行时缺陷。",
+    "points": [
+      "M1 公共 API 尚无主动发布直播事件的入口，该边界已如实标明。",
+      "m5-08 仍需接入真实 run 资源 authorizer 与父表外键。",
+      "MySQL 实跑与跨栈测试由 PR CI 覆盖。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、脱敏 HTTP/SSE 输出、临时 SQLite 与 PR CI。生成 HTML 不应手改。"
+}
