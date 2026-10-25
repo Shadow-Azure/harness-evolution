@@ -22,6 +22,7 @@ scope:
   - docs/**
   - plans/**
   - reports/**
+  - .agents/skills/computer-use-smoke-reporting/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

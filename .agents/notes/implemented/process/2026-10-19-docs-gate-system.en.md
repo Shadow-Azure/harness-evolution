@@ -15,6 +15,7 @@ The repository already had a web and server scaffold, but docs, development flow
 - Development flow uses roadmap → milestone → issue → ADR; machine fields live in a `yaml flow` fence; issue ids couple to GitHub numbers, and `bootstrap: true` is reserved for the first milestone's self-bootstrapping issue. This change installs the mechanism only and pre-fills no roadmap / milestone / issue instances; the flow tree is initialized after maintainer discussion.
 - Gates have two modes: `doc-quick` covers index, budgets, wrapping, pairing, terminology, type-equiv, export docs and source references; `doc-sync` adds real ts-fence compilation, dead links and gate self-tests.
 - Port `pr-review`, `pr-review-fix`, `computer-use`, `computer-use-smoke-reporting` and the walkthrough metadata skill; review documents live in `plans/` and never enter Agent Notes.
+- The smoke report template owns the `<table>` boundary while the renderer emits only thead/tbody fragments; coverage rows map by schema field, and a gate self-test renders real output to lock both behaviors.
 - The scan surface moves from StudyWiki's `src/` to `apps/*/src` and `packages/*/src`; Tauri, Rust, artifact-link and walkthrough-specific gates are dropped, keeping only what matches this stack.
 
 ## Alternatives considered
@@ -30,4 +31,5 @@ The repository already had a web and server scaffold, but docs, development flow
 - `flow:sync` and `verify:flow-online` require a logged-in `gh`; the flow tree is currently uninitialized (no `.agents/flow/roadmap.md`), so `verify:flow` reports skipped and GitHub has no milestone / issue; `flow:sync` creates them after the initialization discussion.
 - Gate self-tests use Node's built-in `node --test` and add no dependency; new gate leaves must update both `run-gates` and the self-tests.
 - The walkthrough site and release pipeline are not ported; if needed later, add them incrementally under the same layering and gate pattern.
+- Smoke report template or schema changes must verify both a single table boundary and the rendered coverage values; otherwise the generated page may render while losing its coverage evidence.
 - Debt: roadmap / milestone / issue content and priority await maintainer discussion; the PR review template has not yet been exercised on a real PR.
