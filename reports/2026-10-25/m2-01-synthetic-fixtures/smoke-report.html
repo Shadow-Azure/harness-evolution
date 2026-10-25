@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2-01 合成 Fixtures 集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #83</p>
+    <h1>M2-01 合成 Fixtures 集成冒烟报告</h1>
+    <p class="summary">在真实 SQLite、FastAPI、Vite 与 Chrome 上验证四会话合成语料、严格校验、事务化幂等 seed、运行态字段保护、双次执行和真实登录壳。fixture 静态检查与 22 项聚焦回归通过，浏览器 E2E 4/4 通过，未发现集成缺陷。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite</span>
+    <div class="metrics"><div class="metric"><b>4</b><span>根会话</span></div><div class="metric"><b>8</b><span>Agent</span></div><div class="metric"><b>7</b><span>JSONL payload</span></div><div class="metric"><b>0</b><span>缺陷</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#33 · M2-01 synthetic fixtures</dd></div><div class="fact"><dt>PR</dt><dd>#83</dd></div><div class="fact"><dt>Commit</dt><dd>febddaa</dd></div><div class="fact"><dt>Database</dt><dd>临时 SQLite，真实 Alembic 迁移</dd></div><div class="fact"><dt>Browser</dt><dd>Google Chrome + CDP 控制台断言</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>15 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>静态 corpus 校验</td><td><span class="status pass">PASS</span></td><td>fixtures:check 返回 4 roots、8 agents、2841 bytes、status=valid；再次执行结果一致。</td><td class="evidence">fixtures:check ×2<br>8 个 fixture 文件 SHA-256 已记录</td></tr><tr><td class="num">02</td><td>空库首次 seed</td><td><span class="status pass">PASS</span></td><td>真实 Alembic 升级后 corpus seed 返回 44 inserted、0 changed、4 roots、8 agents、7 payloads。</td><td class="evidence">fixtures:seed first run</td></tr><tr><td class="num">03</td><td>四会话树结构</td><td><span class="status pass">PASS</span></td><td>数据库含四个稳定根 ID；Agent 分布为 4 main、2 subagent、1 workflow、1 forked-skill subagent。</td><td class="evidence">SQLite 查询<br>screenshots/03-sessions.jpeg</td></tr><tr><td class="num">04</td><td>真实表写入</td><td><span class="status pass">PASS</span></td><td>session_families=4、agents=8、trajectory_payloads=7、source_records=7、agent_events=3、user_turns=4、bad_cases=4、probe_reports=2、evolution_targets=1。</td><td class="evidence">SQLite 表计数</td></tr><tr><td class="num">05</td><td>派生假数据隔离</td><td><span class="status pass">PASS</span></td><td>probe_clusters、evolution_runs、evolution_rounds、evolution_finals 均为 0；未伪造运行、簇、轮次或终评。</td><td class="evidence">SQLite 派生表计数</td></tr><tr><td class="num">06</td><td>重复 seed 幂等</td><td><span class="status pass">PASS</span></td><td>相同 corpus 再次执行返回 0 inserted、0 changed、status=noop，稳定 ID 与时间戳保持不变。</td><td class="evidence">fixtures:seed second run</td></tr><tr><td class="num">07</td><td>运行态处理字段保护</td><td><span class="status pass">PASS</span></td><td>人工写入 received_at、processed_at、processed_hash、parser_version、last_sync_run_id 后重跑 seed，五个值全部原样保留。</td><td class="evidence">SQLite 前后对照<br>focused fixture suite</td></tr><tr><td class="num">08</td><td>目标归属保护</td><td><span class="status pass">PASS</span></td><td>将 evolution_targets.created_by 指向真实 admin 后重跑 seed，归属仍保持，seed 返回 0 changed。</td><td class="evidence">SQLite join users 验证</td></tr><tr><td class="num">09</td><td>严格语料拒绝</td><td><span class="status pass">PASS</span></td><td>聚焦测试覆盖未知字段、重复 JSON key、错误 session/agent、主 Agent badCase 非空、路径逃逸、凭据 URL、畸形/超大 JSONL、未知文件与 hash/line drift；22 passed。</td><td class="evidence">pnpm test:api -- tests/m2-01-synthetic-fixtures</td></tr><tr><td class="num">10</td><td>CLI 稳定失败</td><td><span class="status pass">PASS</span></td><td>不存在的 corpus 返回 exit 2 与单行 stderr，无 Python traceback。</td><td class="evidence">HE_FIXTURE_CORPUS=&lt;missing&gt; fixtures:check</td></tr><tr><td class="num">11</td><td>生产与 live 拒绝</td><td><span class="status pass">PASS</span></td><td>phase=live 时 seed 在开启数据库前拒绝，exit 2；生产拒绝由同一环境守卫测试覆盖。</td><td class="evidence">HE_PHASE=live fixtures:seed<br>seed environment tests</td></tr><tr><td class="num">12</td><td>真实登录与首次改密</td><td><span class="status pass">PASS</span></td><td>Chrome 中 admin 登录进入强制改密页，提交新密码后回跳 Sessions，顶栏显示 demo 角标与当前用户。</td><td class="evidence">screenshots/01-login.jpeg<br>screenshots/02-change-password.jpeg</td></tr><tr><td class="num">13</td><td>三大入口与空态</td><td><span class="status pass">PASS</span></td><td>Sessions、Errors、Evolution 三个入口可达，active 状态与后续 milestone 空态文案正确，未展示伪造领域列表。</td><td class="evidence">screenshots/03-sessions.jpeg<br>screenshots/04-errors.jpeg<br>screenshots/05-evolution.jpeg</td></tr><tr><td class="num">14</td><td>浏览器回归</td><td><span class="status pass">PASS</span></td><td>真实 Chrome E2E 4/4：390px 无横向溢出、直接 Evolution 深链无 Vue Flow warning、409 message 可见、health 503 retry 恢复。</td><td class="evidence">pnpm test:e2e -- m1-shell：4 passed</td></tr><tr><td class="num">15</td><td>敏感数据卫生</td><td><span class="status pass">PASS</span></td><td>fixtures 与报告未发现本机用户路径、Bearer/JWT、环境密码或 API key；截图已裁剪到应用内容区，不包含其他浏览器标签或账号信息。</td><td class="evidence">敏感标记扫描<br>截图隐私复核</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>5 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-login.jpeg" alt="Harness Lens 登录页"><figcaption><b>登录页</b><span>真实 Chrome 加载登录页，使用临时管理员凭据进入强制改密流程。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-change-password.jpeg" alt="首次登录强制改密表单"><figcaption><b>首次改密</b><span>管理员临时密码登录后进入强制改密页，完成后回跳 Sessions。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-sessions.jpeg" alt="Sessions 空态和 demo 角标"><figcaption><b>Sessions</b><span>SQLite 已连接、demo 角标可见；M2 尚未提供会话列表 API，因此页面保持真实空态。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-errors.jpeg" alt="Errors 顶层占位页"><figcaption><b>Errors</b><span>Errors 入口已鉴权可达，明确显示问题归因将在后续 milestone 接入。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-evolution.jpeg" alt="Evolution 顶层占位页"><figcaption><b>Evolution</b><span>Evolution 入口与 Vue Flow 容器正常挂载，不展示伪造自进化运行。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>Fixture schema</td><td>22 项 pytest + fixtures:check</td><td>静态结构、哈希、路径、大小、JSONL 与跨引用校验均通过。</td><td>保持 fixtures:check 在 CI 前置执行。</td></tr><tr><td>Seed 数据库</td><td>真实 SQLite + Alembic + CLI</td><td>首次 44 行、第二次 0/0，运行态字段和目标归属不被覆盖。</td><td>MySQL 由 PR CI 的真实 service container 继续验证。</td></tr><tr><td>浏览器 UI</td><td>Computer Use + CDP</td><td>登录、改密、三入口、demo、390px 与控制台清洁均通过。</td><td>会话列表读接口接入后，在 m2-06 增补真实数据 UI 冒烟。</td></tr><tr><td>领域展示</td><td>不在 M2-01 范围</td><td>M2-01 已验证真实表数据，但尚无会话列表 API，页面不伪造列表。</td><td>由后续 M2 API/UI issue 消费相同表。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>四会话合成 fixture 可确定性校验、真实落库、重复 seed 零副作用，并保持后续运行态数据；真实浏览器壳与回归无明显缺陷。</strong></p><ul><li>首次 seed 44 行，重复 seed 0 inserted / 0 changed。</li><li>四根会话、8 Agent、7 payload 与零派生假数据符合设计边界。</li><li>真实 Chrome E2E 4/4，浏览器控制台无意外 warning/error。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 截图、真实 CLI/SQLite 查询、fixture 聚焦测试、Chrome CDP E2E。HTML 由 report-data.json 生成，不应手改。</p>
+</main>
+</body>
+</html>
