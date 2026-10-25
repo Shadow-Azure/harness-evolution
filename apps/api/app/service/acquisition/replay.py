@@ -15,6 +15,7 @@ from app.db.crud.acquisition_replay import (
     count_payloads,
     create_sync_run,
     finish_sync_run,
+    list_missing_payload_sources,
     list_pending_payloads,
     list_root_payloads,
     replace_normalized_root,
@@ -116,13 +117,58 @@ async def replay_pending_payloads(
     for payload in pending:
         grouped.setdefault(payload.root_session_id, []).append(payload)
 
+    missing_sources = await list_missing_payload_sources(database)
+    missing_by_root: dict[str, list[str]] = {}
+    for source in missing_sources:
+        missing_by_root.setdefault(source.root_session_id, []).append(source.agent_id)
+
     imported = 0
     failed = 0
-    errors: list[dict[str, object]] = []
+    errors: list[dict[str, object]] = [
+        _issue_record(
+            source.root_session_id,
+            source.agent_id,
+            "MISSING_PAYLOAD_SOURCE",
+            "Source payload no longer exists",
+        )
+        for source in missing_sources
+    ]
     rebuilt_roots = 0
     processed_candidates = 0
+    progress_callback = on_progress
+
+    async def notify_progress(
+        root_session_id: str,
+        agent_id: str,
+        done: int,
+    ) -> None:
+        nonlocal progress_callback
+        if progress_callback is None:
+            return
+        try:
+            await progress_callback(done, len(pending))
+        except Exception:
+            errors.append(
+                _issue_record(
+                    root_session_id,
+                    agent_id,
+                    "SYNC_PROGRESS_FAILED",
+                    "Replay progress notification failed",
+                ),
+            )
+            progress_callback = None
+
     for root_session_id in sorted(grouped):
         root_pending = tuple(grouped[root_session_id])
+        if root_session_id in missing_by_root:
+            failed += len(root_pending)
+            processed_candidates += len(root_pending)
+            await notify_progress(
+                root_session_id,
+                root_pending[0].agent_id,
+                processed_candidates,
+            )
+            continue
         try:
             payloads = await list_root_payloads(database, root_session_id)
             parsed = tuple(_normalize_payload(payload) for payload in payloads)
@@ -141,8 +187,11 @@ async def replay_pending_payloads(
                 errors.extend(root_issues)
                 failed += len(root_pending)
                 processed_candidates += len(root_pending)
-                if on_progress is not None:
-                    await on_progress(processed_candidates, len(pending))
+                await notify_progress(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    processed_candidates,
+                )
                 continue
             if len(assembled.trees) != 1:
                 errors.append(
@@ -155,13 +204,17 @@ async def replay_pending_payloads(
                 )
                 failed += len(root_pending)
                 processed_candidates += len(root_pending)
-                if on_progress is not None:
-                    await on_progress(processed_candidates, len(pending))
+                await notify_progress(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    processed_candidates,
+                )
                 continue
             await replace_normalized_root(
                 database,
                 tree=assembled.trees[0],
                 payloads=payloads,
+                pending_agent_ids=frozenset(payload.agent_id for payload in root_pending),
                 parser_version=parser_version,
                 sync_run_id=sync_run_id,
                 completed_at=now_shanghai(),
@@ -177,22 +230,28 @@ async def replay_pending_payloads(
             )
             failed += len(root_pending)
             processed_candidates += len(root_pending)
-            if on_progress is not None:
-                await on_progress(processed_candidates, len(pending))
+            await notify_progress(
+                root_session_id,
+                root_pending[0].agent_id,
+                processed_candidates,
+            )
             continue
         errors.extend(root_issues)
         imported += len(root_pending)
         processed_candidates += len(root_pending)
         rebuilt_roots += 1
-        if on_progress is not None:
-            await on_progress(processed_candidates, len(pending))
+        await notify_progress(
+            root_session_id,
+            root_pending[0].agent_id,
+            processed_candidates,
+        )
 
     skipped = max(0, total_payloads - len(pending))
     await finish_sync_run(
         database,
         sync_run_id=sync_run_id,
         finished_at=now_shanghai(),
-        records_done=imported + skipped,
+        records_done=imported + skipped + failed,
         imported=imported,
         skipped=skipped,
         errors=errors,

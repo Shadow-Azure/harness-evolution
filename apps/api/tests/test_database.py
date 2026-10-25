@@ -812,6 +812,16 @@ async def test_mysql_replay_round_trip_is_idempotent() -> None:
 
         first = await replay_pending_payloads(database)
         second = await replay_pending_payloads(database)
+        async with database.session() as session:
+            main_source_before = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == root_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
 
         expanded_child = child_content + (
             json.dumps(
@@ -865,11 +875,22 @@ async def test_mysql_replay_round_trip_is_idempotent() -> None:
                 .mappings()
                 .one()
             )
+            main_source_after = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == root_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
         assert first.imported == 2
         assert second.imported == 0
         assert second.skipped == 2
         assert changed.imported == 1
         assert child_source["line_count"] == 2
+        assert main_source_after["processed_at"] == main_source_before["processed_at"]
+        assert main_source_after["last_sync_run_id"] == main_source_before["last_sync_run_id"]
         assert counts["families"] == 1
         assert counts["agents"] == 2
         assert counts["events"] == 1

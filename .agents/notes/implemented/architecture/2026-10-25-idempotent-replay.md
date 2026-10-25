@@ -10,9 +10,9 @@ Status: implemented
 
 ## Decision
 
-pending 按 source record 的 `processed_hash` 与 `parser_version` 判定，再按 `root_session_id` 分组。执行前读取该 root 全部当前 payload，完成纯 normalizer 与 Agent tree assembler；只有组装成功才打开单 root 事务。事务按事件、Agent、用户轮次、会话的 FK 顺序删除旧派生行，再写当前 canonical 快照并推进该 root 所有现存 source 游标；游标更新同步当前 payload 的 `line_count/kind/source_type`，保留 source 的 `id/received_at`。
+pending 按 source record 的 `processed_hash` 与 `parser_version` 判定，再按 `root_session_id` 分组。执行前读取该 root 全部当前 payload，完成纯 normalizer 与 Agent tree assembler；只有组装成功才打开单 root 事务。事务按事件、Agent、用户轮次、会话的 FK 顺序删除旧派生行，再写当前 canonical 快照；只推进本批 pending source 的游标，未变化 sibling 的 `processed_at/last_sync_run_id` 保持不变。游标更新同步当前 payload 的 `line_count/kind/source_type`，保留 source 的 `id/received_at`。
 
-hash 与 parser version 均未变化的 payload 不进入 pending，重复批次只记 skipped，不刷新 processed 时间。parser 升级即使 hash 相同也重放整个 root。结构失败保留旧树与该 root 的游标，其他 root 独立完成；可恢复坏行仍写树并将稳定脱敏 issue 写入 `sync_runs.errors`。`trajectory_payloads` 是只读输入，当前重放不因源文件消失而删除既有业务树。
+hash 与 parser version 均未变化的 payload 不进入 pending，重复批次只记 skipped，不刷新 processed 时间。parser 升级即使 hash 相同也重放整个 root。结构失败保留旧树与该 root 的游标，其他 root 独立完成；可恢复坏行仍写树并将稳定脱敏 issue 写入 `sync_runs.errors`。progress 回调异常只记录 `SYNC_PROGRESS_FAILED`，不改变已提交 root 的结果或中止批次。`trajectory_payloads` 是只读输入；某 source 的 payload 消失时批次记录 `MISSING_PAYLOAD_SOURCE`，受影响 root 不再删除重写，已有业务树保持不变。
 
 ## Alternatives considered
 

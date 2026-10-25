@@ -58,6 +58,14 @@ class RootPayload:
     received_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class MissingPayloadSource:
+    """One source identity whose raw payload no longer exists."""
+
+    root_session_id: str
+    agent_id: str
+
+
 def _payload_values(row: object) -> PendingPayload:
     """Project one joined payload row into a typed immutable value."""
     values = cast(dict[str, object], row)
@@ -168,6 +176,40 @@ async def list_root_payloads(
             .all()
         )
     return tuple(_root_payload_values(dict(row)) for row in rows)
+
+
+async def list_missing_payload_sources(
+    database: Database,
+) -> tuple[MissingPayloadSource, ...]:
+    """Return source identities that have no current raw payload."""
+    async with database.session() as session:
+        rows = (
+            await session.execute(
+                select(
+                    source_records.c.root_session_id,
+                    source_records.c.agent_id,
+                )
+                .select_from(
+                    source_records.outerjoin(
+                        trajectory_payloads,
+                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+                        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                    ),
+                )
+                .where(trajectory_payloads.c.root_session_id.is_(None))
+                .order_by(
+                    source_records.c.root_session_id,
+                    source_records.c.agent_id,
+                ),
+            )
+        ).all()
+    return tuple(
+        MissingPayloadSource(
+            root_session_id=str(root_session_id),
+            agent_id=str(agent_id),
+        )
+        for root_session_id, agent_id in rows
+    )
 
 
 async def count_payloads(database: Database) -> int:
@@ -306,6 +348,7 @@ async def replace_normalized_root(
     *,
     tree: AssembledSessionTree,
     payloads: tuple[RootPayload, ...],
+    pending_agent_ids: frozenset[str],
     parser_version: int,
     sync_run_id: str,
     completed_at: datetime,
@@ -425,6 +468,8 @@ async def replace_normalized_root(
                 ),
             )
         for payload in payloads:
+            if payload.agent_id not in pending_agent_ids:
+                continue
             await session.execute(
                 source_records.update()
                 .where(

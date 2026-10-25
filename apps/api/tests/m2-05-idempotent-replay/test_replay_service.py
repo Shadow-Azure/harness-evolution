@@ -301,6 +301,15 @@ async def test_changed_payload_refreshes_source_line_count(tmp_path: Path) -> No
                 .mappings()
                 .one()
             )
+            untouched_before = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == ROOT_A),
+                    )
+                )
+                .mappings()
+                .one()
+            )
 
         expanded = subagent_payload() + jsonl(
             {
@@ -342,12 +351,23 @@ async def test_changed_payload_refreshes_source_line_count(tmp_path: Path) -> No
                 .mappings()
                 .one()
             )
+            untouched_after = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == ROOT_A),
+                    )
+                )
+                .mappings()
+                .one()
+            )
         assert after["line_count"] == 2
         assert after["kind"] == "subagent"
         assert after["source_type"] == "script"
         assert after["id"] == before["id"]
         assert after["received_at"] == before["received_at"]
         assert after["processed_hash"] != before["processed_hash"]
+        assert untouched_after["processed_at"] == untouched_before["processed_at"]
+        assert untouched_after["last_sync_run_id"] == untouched_before["last_sync_run_id"]
     finally:
         await database.dispose()
 
@@ -520,6 +540,7 @@ async def test_structural_failure_isolated_and_keeps_old_cursor(tmp_path: Path) 
         assert broken_source is None
         assert run["errors"][0]["code"] == "MISSING_MAIN_AGENT"
         assert run["errors"][0]["sessionId"] == ROOT_B
+        assert run["records_done"] == 3
     finally:
         await database.dispose()
 
@@ -557,7 +578,20 @@ async def test_missing_source_is_created_and_payload_deletion_is_non_destructive
                 list[datetime],
                 (await session.execute(select(source_records.c.received_at))).scalars().all(),
             )
+            run = (
+                (
+                    await session.execute(
+                        select(sync_runs).where(sync_runs.c.id == result.sync_run_id)
+                    )
+                )
+                .mappings()
+                .one()
+            )
         assert source_after == source_before
+        assert result.errors == 1
+        assert run["errors"][0]["code"] == "MISSING_PAYLOAD_SOURCE"
+        assert run["errors"][0]["sessionId"] == ROOT_A
+        assert run["records_done"] == 1
     finally:
         await database.dispose()
 
@@ -621,5 +655,144 @@ async def test_replay_reports_progress_for_successful_and_failed_roots(
         await replay_pending_payloads(database, on_progress=on_progress)
 
         assert progress == [(2, 3), (3, 3)]
+    finally:
+        await database.dispose()
+
+
+async def test_payload_deletion_blocks_root_rebuild_and_preserves_tree(
+    tmp_path: Path,
+) -> None:
+    """A missing payload prevents destructive rebuild of its surviving root."""
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await upgrade_database(database)
+        await seed_valid_root(database)
+        await replay_pending_payloads(database)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(trajectory_payloads).where(
+                    trajectory_payloads.c.root_session_id == ROOT_A,
+                    trajectory_payloads.c.agent_id == SUB_A,
+                ),
+            )
+            changed_main = main_payload() + jsonl(
+                {
+                    "type": "user",
+                    "sessionId": ROOT_A,
+                    "timestamp": "2026-10-20T01:04:00Z",
+                    "message": {"content": "second private prompt"},
+                },
+            )
+            await session.execute(
+                trajectory_payloads.update()
+                .where(
+                    trajectory_payloads.c.root_session_id == ROOT_A,
+                    trajectory_payloads.c.agent_id == ROOT_A,
+                )
+                .values(
+                    payload=changed_main,
+                    content_hash=hashlib.sha256(changed_main.encode()).hexdigest(),
+                    line_count=changed_main.count("\n"),
+                ),
+            )
+
+        result = await replay_pending_payloads(database)
+
+        async with database.session() as session:
+            agent_ids = set(
+                cast(
+                    list[str],
+                    (
+                        await session.execute(
+                            select(agents.c.id).where(
+                                agents.c.root_session_id == ROOT_A,
+                            ),
+                        )
+                    )
+                    .scalars()
+                    .all(),
+                ),
+            )
+            main_source = (
+                (
+                    await session.execute(
+                        select(source_records).where(
+                            source_records.c.agent_id == ROOT_A,
+                        ),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            run = (
+                (
+                    await session.execute(
+                        select(sync_runs).where(sync_runs.c.id == result.sync_run_id)
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert agent_ids == {ROOT_A, SUB_A}
+        assert result.imported == 0
+        assert result.failed == 1
+        assert result.errors == 1
+        assert (
+            main_source["processed_hash"]
+            != hashlib.sha256(
+                changed_main.encode(),
+            ).hexdigest()
+        )
+        assert run["errors"][0]["code"] == "MISSING_PAYLOAD_SOURCE"
+        assert run["records_done"] == 1
+    finally:
+        await database.dispose()
+
+
+async def test_progress_callback_failure_does_not_reclassify_committed_root(
+    tmp_path: Path,
+) -> None:
+    """A progress observer fault remains observational and cannot abort replay."""
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await upgrade_database(database)
+        await seed_valid_root(database)
+        await insert_payload(
+            database,
+            root_id=ROOT_B,
+            agent_id=SUB_B,
+            agent_kind="subagent",
+            content=subagent_payload(),
+        )
+        calls: list[tuple[int, int]] = []
+
+        async def on_progress(done: int, total: int) -> None:
+            calls.append((done, total))
+            raise RuntimeError("progress transport unavailable")
+
+        result = await replay_pending_payloads(database, on_progress=on_progress)
+
+        async with database.session() as session:
+            run = (
+                (
+                    await session.execute(
+                        select(sync_runs).where(sync_runs.c.id == result.sync_run_id)
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert calls == [(2, 3)]
+        assert result.imported == 2
+        assert result.failed == 1
+        assert result.errors == 2
+        assert run["status"] == "completed"
+        assert run["records_done"] == 3
+        assert [error["code"] for error in run["errors"]] == [
+            "SYNC_PROGRESS_FAILED",
+            "MISSING_MAIN_AGENT",
+        ]
     finally:
         await database.dispose()
