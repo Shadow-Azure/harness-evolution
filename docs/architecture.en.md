@@ -48,7 +48,7 @@ Web restores the session before mounting routes; tokens and users stay in memory
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
-- Local import reads only JSONL/metadata, transactionally writes payloads and unprocessed indexes, preserves runtime state on re-import, and ignores other local state.
+- Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
 - External systems write problems and attribution; this service reads only.
 - Secrets enter only through environment variables, never repo or database.
 
@@ -79,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, prototype shell, fixtures/seed, local import, Agent-tree assembly, E2E/contract gates.
-- Missing: session queries and business-table tree rewriting, issue queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E and contract gates.
+- Missing: session queries, issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

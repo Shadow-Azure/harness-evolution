@@ -1,13 +1,28 @@
 """Database lifecycle, migration, and cross-dialect repository contracts."""
 
+import hashlib
+import json
 import logging
 import os
 from collections.abc import AsyncIterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import Column, Integer, MetaData, String, Table, insert, inspect, select, text
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    delete,
+    insert,
+    inspect,
+    select,
+    text,
+)
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.pool import QueuePool
 
@@ -16,9 +31,18 @@ from app.db.base import Database
 from app.db.database import SqlAlchemyDatabase
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.db.models.domain import (
+    agent_events,
+    agents,
+    session_families,
+    source_records,
+    trajectory_payloads,
+    user_turns,
+)
 from app.db.models.jobs import job_runs
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
+from app.service.acquisition.replay import replay_pending_payloads
 
 
 class FailingHealthDatabase(SqlAlchemyDatabase):
@@ -663,5 +687,214 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "evolution_targets",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_replay_round_trip_is_idempotent() -> None:
+    """The root-atomic replay repository works against the real MySQL lane."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("HE_DB_URL is not configured for MySQL")
+    root_id = "55555555-5555-4555-8555-555555555555"
+    child_id = "mysql-child-agent"
+    database = create_database(
+        Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url),
+    )
+    await database.start()
+    try:
+        await upgrade_database(database)
+        async with database.transaction() as session:
+            child_ids = cast(
+                list[str],
+                (
+                    await session.execute(
+                        text("SELECT id FROM agents WHERE root_session_id = :root"),
+                        {"root": root_id},
+                    )
+                )
+                .scalars()
+                .all(),
+            )
+            if child_ids:
+                await session.execute(
+                    delete(agent_events).where(agent_events.c.agent_id.in_(child_ids)),
+                )
+            await session.execute(
+                text("DELETE FROM agents WHERE root_session_id = :root"),
+                {"root": root_id},
+            )
+            await session.execute(
+                text("DELETE FROM user_turns WHERE root_session_id = :root"),
+                {"root": root_id},
+            )
+            await session.execute(
+                text("DELETE FROM session_families WHERE id = :root"),
+                {"root": root_id},
+            )
+            await session.execute(
+                text("DELETE FROM source_records WHERE root_session_id = :root"),
+                {"root": root_id},
+            )
+            await session.execute(
+                text("DELETE FROM trajectory_payloads WHERE root_session_id = :root"),
+                {"root": root_id},
+            )
+
+            main_content = (
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": root_id,
+                        "timestamp": "2026-10-20T01:00:00Z",
+                        "message": {"content": "mysql replay prompt"},
+                    },
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": root_id,
+                        "timestamp": "2026-10-20T01:01:00Z",
+                        "message": {
+                            "id": "mysql-main-message",
+                            "model": "mysql-model",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "mysql-tool",
+                                    "name": "Agent",
+                                    "input": {"subagent_type": "Explore"},
+                                },
+                            ],
+                            "usage": {"input_tokens": 3, "output_tokens": 2},
+                        },
+                    },
+                )
+                + "\n"
+            )
+            child_content = (
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": root_id,
+                        "timestamp": "2026-10-20T01:02:00Z",
+                        "message": {
+                            "id": "mysql-child-message",
+                            "model": "mysql-model",
+                            "content": [{"type": "text", "text": "child"}],
+                            "usage": {"input_tokens": 2, "output_tokens": 1},
+                        },
+                    },
+                )
+                + "\n"
+            )
+            for agent_id, kind, content, meta in (
+                (root_id, "main", main_content, None),
+                (child_id, "subagent", child_content, {"toolUseId": "mysql-tool"}),
+            ):
+                await session.execute(
+                    trajectory_payloads.insert().values(
+                        root_session_id=root_id,
+                        agent_id=agent_id,
+                        agent_kind=kind,
+                        payload=content,
+                        agent_meta=meta,
+                        content_hash=hashlib.sha256(content.encode()).hexdigest(),
+                        line_count=content.count("\n"),
+                        source_type="script",
+                        updated_at=datetime(2026, 10, 20, 1, tzinfo=UTC),
+                    ),
+                )
+
+        first = await replay_pending_payloads(database)
+        second = await replay_pending_payloads(database)
+        async with database.session() as session:
+            main_source_before = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == root_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+
+        expanded_child = child_content + (
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "sessionId": root_id,
+                    "timestamp": "2026-10-20T01:03:00Z",
+                    "message": {
+                        "id": "mysql-child-message-2",
+                        "model": "mysql-model",
+                        "content": [{"type": "text", "text": "second child chunk"}],
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                },
+            )
+            + "\n"
+        )
+        async with database.transaction() as session:
+            await session.execute(
+                trajectory_payloads.update()
+                .where(
+                    trajectory_payloads.c.root_session_id == root_id,
+                    trajectory_payloads.c.agent_id == child_id,
+                )
+                .values(
+                    payload=expanded_child,
+                    content_hash=hashlib.sha256(expanded_child.encode()).hexdigest(),
+                    line_count=expanded_child.count("\n"),
+                ),
+            )
+        changed = await replay_pending_payloads(database)
+
+        async with database.session() as session:
+            counts = {
+                "families": len(
+                    (await session.execute(select(session_families.c.id))).all(),
+                ),
+                "agents": len((await session.execute(select(agents.c.id))).all()),
+                "events": len((await session.execute(select(agent_events.c.id))).all()),
+                "turns": len((await session.execute(select(user_turns.c.id))).all()),
+                "sources": len(
+                    (await session.execute(select(source_records.c.id))).all(),
+                ),
+            }
+            child_source = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == child_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            main_source_after = (
+                (
+                    await session.execute(
+                        select(source_records).where(source_records.c.agent_id == root_id),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert first.imported == 2
+        assert second.imported == 0
+        assert second.skipped == 2
+        assert changed.imported == 1
+        assert child_source["line_count"] == 2
+        assert main_source_after["processed_at"] == main_source_before["processed_at"]
+        assert main_source_after["last_sync_run_id"] == main_source_before["last_sync_run_id"]
+        assert counts["families"] == 1
+        assert counts["agents"] == 2
+        assert counts["events"] == 1
+        assert counts["turns"] == 1
+        assert counts["sources"] == 2
     finally:
         await database.dispose()
