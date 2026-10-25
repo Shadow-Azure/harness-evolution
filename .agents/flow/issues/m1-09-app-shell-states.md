@@ -12,6 +12,7 @@ depends:
 priority: P1
 status: in-progress
 scope:
+  - AGENTS.md
   - package.json
   - scripts/**
   - tests/**

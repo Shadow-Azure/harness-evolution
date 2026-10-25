@@ -2,7 +2,7 @@
 
 [English](development.en.md) | 中文
 
-> 类型：教程 | 层级：贡献者上手。CI 与门禁的权威清单在 `package.json` scripts 与 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页只讲怎么用。
+> 类型：教程 | 层级：贡献者上手。门禁权威清单在 `package.json` scripts 与 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页只讲用法。
 
 ## 环境
 
@@ -27,6 +27,8 @@ pnpm test:api
 pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
+pnpm test:e2e
+pnpm fixtures:seed
 pnpm test:all
 pnpm contract:generate
 pnpm contract:check
@@ -43,7 +45,7 @@ pnpm contract:check
 | 流程树 | `pnpm verify:flow` |
 | 涉及文档示例或死链 | `pnpm verify:docs` |
 
-不确定时运行 `pnpm route:gates`。
+不确定时跑 `pnpm route:gates`。
 
 ## 文档与配对
 

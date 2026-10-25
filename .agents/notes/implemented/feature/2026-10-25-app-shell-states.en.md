@@ -14,7 +14,7 @@ M1 has no domain data, but authenticated users still need stable product destina
 - Pages share `LoadingSkeleton`, `EmptyState`, and `ErrorState`; health renders a skeleton inside the shell while loading and a retryable error state on failure, while 404 uses the terminal copy “does not exist or was deleted.” Query and mutation 409 `RUN_BUSY` conflicts use a styled `ElMessage` and leave the current page in place; uncaught Vue errors are logged and presented through one generic `ElMessage` while the mounted shell remains available.
 - The health `phase` is the sole demo marker: only `demo` shows the demo-data badge; `scaffold` and `live` do not.
 - `fixtures/m1-shell.json` is a strict, closed seed manifest for M1. `python -m app.cli seed` runs migrations and reuses idempotent administrator seeding, rejects production/live targets, and creates no sessions, problems, probes, runs, or other domain rows.
-- Real-browser E2E runs against the API and Vite processes and covers authenticated navigation, empty states, the Errors placeholder, the demo badge, clean console output, and narrow layout.
+- Real-browser E2E runs against the API and Vite processes and covers authenticated navigation, empty states, the Errors placeholder, the demo badge, clean console output, and narrow layout. A 401 or 404 is ignored only when a test declares the exact URL and status; an unmatched test-name pattern fails before services start, and both signals and the total timeout clean up child processes.
 
 ## Alternatives considered
 
@@ -25,5 +25,6 @@ M1 has no domain data, but authenticated users still need stable product destina
 ## Consequences
 
 - M1's demo entry points are a real shell and CLI while domain areas remain honest empty states.
+- `test:all`, CI, route gates, and the gate self-test jointly protect the real-browser E2E and fixture-seed commands; removing any wiring fails.
 - M2-01 owns the full fixture schema and session data; it should extend the seed manifest/action rather than bypass the CLI.
 - Session-scoped problem details remain for a later milestone; the top-level Errors entry only establishes navigation and boundary copy in M1.

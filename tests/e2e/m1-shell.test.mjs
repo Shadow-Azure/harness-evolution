@@ -25,6 +25,25 @@ let dataDir;
 let baseUrl;
 let currentAdminPassword = "m1-shell-initial-password";
 let passwordRevision = 0;
+let cleanupPromise;
+
+async function cleanupRuntime() {
+  cleanupPromise ??= (async () => {
+    await stop(web);
+    await stop(api);
+    if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  })();
+  await cleanupPromise;
+}
+
+for (const [signal, exitCode] of [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+]) {
+  process.once(signal, () => {
+    void cleanupRuntime().finally(() => process.exit(exitCode));
+  });
+}
 
 async function browserRefreshCookie() {
   const password = currentAdminPassword;
@@ -71,69 +90,70 @@ async function browserRefreshCookie() {
 }
 
 before(async () => {
-  const apiPort = await availablePort();
-  const webPort = await availablePort();
-  dataDir = await mkdtemp(path.join(tmpdir(), "harness-e2e-"));
-  baseUrl = `http://127.0.0.1:${webPort}`;
+  try {
+    const apiPort = await availablePort();
+    const webPort = await availablePort();
+    dataDir = await mkdtemp(path.join(tmpdir(), "harness-e2e-"));
+    baseUrl = `http://127.0.0.1:${webPort}`;
 
-  api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
-    cwd: root,
-    env: {
-      ...process.env,
-      HE_ADMIN_PASSWORD: "m1-shell-initial-password",
-      HE_ADMIN_USERNAME: "admin",
-      HE_DATA_DIR: dataDir,
-      HE_DB_DIALECT: "sqlite",
-      HE_DOCS_ENABLED: "false",
-      HE_HOST: "127.0.0.1",
-      HE_JWT_SECRET: "m1-shell-e2e-signing-secret-with-sufficient-length",
-      HE_PHASE: "demo",
-      HE_PORT: String(apiPort),
-      PYTHONUNBUFFERED: "1",
-    },
-    detached: process.platform !== "win32",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  capture(api, (chunk) => {
-    apiLogs += chunk;
-  });
-  await waitFor(`http://127.0.0.1:${apiPort}/api/health`, api, () => apiLogs);
-
-  web = spawn(
-    pnpm,
-    [
-      "--filter",
-      "@harness/web",
-      "exec",
-      "vite",
-      "--force",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(webPort),
-      "--strictPort",
-    ],
-    {
+    api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
       cwd: root,
       env: {
         ...process.env,
-        HE_API_PROXY_URL: `http://127.0.0.1:${apiPort}`,
+        HE_ADMIN_PASSWORD: "m1-shell-initial-password",
+        HE_ADMIN_USERNAME: "admin",
+        HE_DATA_DIR: dataDir,
+        HE_DB_DIALECT: "sqlite",
+        HE_DOCS_ENABLED: "false",
+        HE_HOST: "127.0.0.1",
+        HE_JWT_SECRET: "m1-shell-e2e-signing-secret-with-sufficient-length",
+        HE_PHASE: "demo",
+        HE_PORT: String(apiPort),
+        PYTHONUNBUFFERED: "1",
       },
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  capture(web, (chunk) => {
-    webLogs += chunk;
-  });
-  await waitFor(baseUrl, web, () => webLogs);
+    });
+    capture(api, (chunk) => {
+      apiLogs += chunk;
+    });
+    await waitFor(`http://127.0.0.1:${apiPort}/api/health`, api, () => apiLogs);
+
+    web = spawn(
+      pnpm,
+      [
+        "--filter",
+        "@harness/web",
+        "exec",
+        "vite",
+        "--force",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(webPort),
+        "--strictPort",
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          HE_API_PROXY_URL: `http://127.0.0.1:${apiPort}`,
+        },
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    capture(web, (chunk) => {
+      webLogs += chunk;
+    });
+    await waitFor(baseUrl, web, () => webLogs);
+  } catch (error) {
+    await cleanupRuntime();
+    throw error;
+  }
 });
 
-after(async () => {
-  await stop(web);
-  await stop(api);
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
-});
+after(cleanupRuntime);
 
 test("m1-shell exposes three destinations, demo state, and clean responsive rendering", async () => {
   const page = await createBrowserPage();
@@ -226,7 +246,12 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
 test("m1-shell presents a 409 as a styled message without replacing the page", async () => {
   const page = await createBrowserPage();
   try {
-    const violations = browserViolations(page.session);
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: (entry) =>
+        entry.source === "network" &&
+        entry.url?.endsWith("/api/health") &&
+        /status of 409/.test(entry.text),
+    });
     const refreshCookie = await browserRefreshCookie();
     await page.session.send("Network.enable");
     await page.session.send("Network.setCookie", {
@@ -297,6 +322,12 @@ test("m1-shell presents a 409 as a styled message without replacing the page", a
     assert.equal(conflict.hasPage, true, JSON.stringify(conflict));
     assert.equal(conflict.hasErrorState, false, JSON.stringify(conflict));
     assert.equal(conflict.position, "fixed", JSON.stringify(conflict));
+    assert.deepEqual(conflict.runtimeErrors, [], JSON.stringify(conflict));
+    assert.deepEqual(
+      violations,
+      [],
+      `${violations.join("\n")}\n\nIntercepted:\n${interceptedRequests.join("\n")}\n\nVite:\n${webLogs}`,
+    );
     await page.session.send("Fetch.disable");
   } finally {
     await page.close();

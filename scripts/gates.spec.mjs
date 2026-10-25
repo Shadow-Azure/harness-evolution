@@ -18,6 +18,7 @@ import { recommend, worktreePaths } from "./route-gates.mjs";
 import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
 import { checkContracts, compareContractFiles } from "./contract.mjs";
+import { browserViolations } from "../tests/support/runtime.mjs";
 
 const roadmap = `# Roadmap
 
@@ -147,6 +148,88 @@ test("route gates recommend the Python toolchain for API changes", () => {
 test("route gates execute cross-stack integration tests", () => {
   const paths = worktreePaths(" M tests/integration/web-api-proxy.test.mjs\n");
   assert.deepEqual(recommend(paths).commands, ["test:integration", "verify:docs"]);
+});
+
+test("route gates recommend browser E2E and fixture seed validation", () => {
+  assert.deepEqual(recommend(["tests/e2e/m1-shell.test.mjs"]).commands, [
+    "test:integration",
+    "test:e2e",
+    "verify:docs",
+  ]);
+  assert.deepEqual(recommend(["tests/support/runtime.mjs"]).commands, [
+    "test:integration",
+    "test:e2e",
+    "verify:docs",
+  ]);
+  assert.deepEqual(recommend(["fixtures/m1-shell.json"]).commands, [
+    "test:api",
+    "fixtures:seed",
+    "verify:docs",
+  ]);
+});
+
+test("browser log gate only ignores test-declared expected failures", () => {
+  function sessionFor(listeners) {
+    return {
+      on(method, listener) {
+        listeners.set(method, listener);
+      },
+    };
+  }
+
+  const strictListeners = new Map();
+  const strictViolations = browserViolations(sessionFor(strictListeners));
+  strictListeners.get("Log.entryAdded")({
+    entry: {
+      source: "network",
+      level: "error",
+      text: "Failed to load resource: the server responded with a status of 404",
+      url: "http://127.0.0.1/missing.js",
+    },
+  });
+  assert.equal(strictViolations.length, 1);
+
+  const expectedListeners = new Map();
+  const expectedViolations = browserViolations(sessionFor(expectedListeners), {
+    isExpectedLogEntry: (entry) =>
+      entry.url === "http://127.0.0.1/api/auth/refresh" && /status of 401/.test(entry.text),
+  });
+  expectedListeners.get("Log.entryAdded")({
+    entry: {
+      source: "network",
+      level: "error",
+      text: "Failed to load resource: the server responded with a status of 401",
+      url: "http://127.0.0.1/api/auth/refresh",
+    },
+  });
+  expectedListeners.get("Log.entryAdded")({
+    entry: {
+      source: "network",
+      level: "error",
+      text: "Failed to load resource: the server responded with a status of 404",
+      url: "http://127.0.0.1/missing.js",
+    },
+  });
+  assert.deepEqual(expectedViolations, [
+    "error: Failed to load resource: the server responded with a status of 404 [http://127.0.0.1/missing.js]",
+  ]);
+});
+
+test("E2E runner rejects an unmatched test-name pattern before starting services", () => {
+  const pattern = "definitely-not-a-real-test";
+  const result = spawnSync(process.execPath, ["scripts/run-e2e.mjs", pattern], {
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /no tests matched test-name pattern/);
+  assert.doesNotMatch(result.stdout, /harness-e2e-|Starting development server/);
+  const runner = readFileSync("scripts/run-e2e.mjs", "utf8");
+  assert.match(runner, /timeout:/);
+  assert.match(runner, /killSignal: "SIGTERM"/);
 });
 
 test("route gates require contract checks for API and shared contract changes", () => {
@@ -304,6 +387,9 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["contract:generate"], /contract\.mjs generate/);
   assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
+  assert.match(rootPackage.scripts["test:e2e"], /run-e2e\.mjs/);
+  assert.match(rootPackage.scripts["fixtures:seed"], /fixtures-seed\.mjs/);
+  assert.match(rootPackage.scripts["test:all"], /test:e2e/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(rootPackage.scripts["lint:web"], /filter @harness\/web lint/);
   assert.match(rootPackage.scripts["typecheck:web"], /filter @harness\/web typecheck/);
@@ -313,6 +399,8 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
+  assert.match(ci, /run: pnpm test:e2e$/m);
+  assert.match(ci, /run: pnpm fixtures:seed$/m);
   assert.match(ci, /run: pnpm test:gates$/m);
   assert.match(ci, /run: pnpm lint:web$/m);
   assert.match(ci, /run: pnpm typecheck:web$/m);

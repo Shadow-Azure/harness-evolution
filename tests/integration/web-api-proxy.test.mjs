@@ -320,7 +320,12 @@ test("database failure returns a sanitized 503 through the real proxy", async ()
 test("browser renders the login form and narrow shell without console or layout errors", async () => {
   const page = await createBrowserPage();
   try {
-    const violations = browserViolations(page.session);
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: (entry) =>
+        entry.source === "network" &&
+        entry.url?.endsWith("/api/auth/refresh") &&
+        /status of 401/.test(entry.text),
+    });
     const webLogOffset = webLogs.length;
     await page.session.send("Page.navigate", {
       url: `${webBaseUrl}/login?redirect=/sessions`,

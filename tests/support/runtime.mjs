@@ -268,10 +268,12 @@ export async function waitForDocument(session, expression, label) {
 /**
  * Collect browser console, exception, and unexpected log entries.
  * @param {CdpSession} session Browser session.
+ * @param {{isExpectedLogEntry?: (entry: object) => boolean}} [options] Test-specific expected log predicate.
  * @returns {string[]} Mutable violation list.
  */
-export function browserViolations(session) {
+export function browserViolations(session, options = {}) {
   const violations = [];
+  const isExpectedLogEntry = options.isExpectedLogEntry ?? (() => false);
   session.on("Runtime.consoleAPICalled", ({ type, args }) => {
     if (type === "warning" || type === "error") {
       violations.push(
@@ -283,13 +285,12 @@ export function browserViolations(session) {
     violations.push(`exception: ${exceptionDetails.text} ${exceptionDetails.exception?.description ?? ""}`);
   });
   session.on("Log.entryAdded", ({ entry }) => {
-    const expectedAuthProbe =
-      entry.source === "network" &&
-      /Failed to load resource: the server responded with a status of (401|404)/.test(
-        entry.text,
-      );
-    if (!expectedAuthProbe && (entry.level === "warning" || entry.level === "error")) {
-      violations.push(`${entry.level}: ${entry.text}`);
+    if (
+      !isExpectedLogEntry(entry) &&
+      (entry.level === "warning" || entry.level === "error")
+    ) {
+      const location = entry.url ? ` [${entry.url}]` : "";
+      violations.push(`${entry.level}: ${entry.text}${location}`);
     }
   });
   return violations;

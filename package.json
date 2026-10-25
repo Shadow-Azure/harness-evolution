@@ -19,7 +19,7 @@
     "test:integration": "node --test tests/integration/web-api-proxy.test.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "fixtures:seed": "node scripts/fixtures-seed.mjs",
-    "test:all": "pnpm test:web && pnpm test:api && pnpm test:db:mysql && pnpm test:integration",
+    "test:all": "pnpm test:web && pnpm test:api && pnpm test:db:mysql && pnpm test:integration && pnpm test:e2e",
     "contract:generate": "node scripts/contract.mjs generate",
     "contract:check": "node scripts/contract.mjs check",
     "typecheck:api": "node scripts/run-api.mjs typecheck",
