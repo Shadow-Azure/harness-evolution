@@ -9,7 +9,7 @@ from starlette.responses import Response
 from app.errors import AppError, ErrorCode, error_response
 from app.service.identity.principals import principal_from_claims
 
-_PUBLIC_API_PATHS = {"/api/health", "/api/auth/login", "/api/auth/refresh"}
+_PUBLIC_API_PATHS = {"/api/health", "/api/auth/login", "/api/auth/refresh", "/api/events"}
 _DOC_PATHS = {"/api/docs", "/api/openapi.json"}
 _MCP_ALLOWED_PATHS = {
     "/api/auth/change-password",

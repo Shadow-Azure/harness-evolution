@@ -35,18 +35,19 @@ middleware/
 ## 当前请求链路
 
 ```text
-Web ──► middleware ──► public endpoints | bearer APIs → api routers
+Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-只有健康、登录和刷新公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员可用。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict`、路径限定 `/api/auth`，生产加 `Secure`。登录按 IP 限流，强制改密只放行改密、登出和当前身份；失败共用错误 envelope。
+仅健康、登录、刷新和票据认证 SSE 公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict` 且路径限定 `/api/auth`。登录限流，强制改密只放行必要端点，失败共用错误 envelope。
 
-Web 启动先刷新会话再等待路由挂载；access token 与用户只留内存。未登录或首登用户由守卫改道登录/改密；HTTP 对并发 401 单飞刷新并各重放一次，退出清 query cache。
+Web 启动先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密，并发 401 单飞刷新并各重放一次，退出清 query cache。
 
 ## 数据层策略
 
 - 生产数据库目标为 MySQL 8，本地快跑与自动化测试使用 SQLite；`HE_DB_DIALECT` 是唯一选择点。
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
 - Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
+- `job_runs` 是真值；串行 worker 写 run 级 `evolution_run_events`，事件总线只广播有界通知，中断事件先落库。
 - 原始轨迹 payload 可重放且幂等；问题和归因由外部系统写入，本服务只读。
 - 密钥只从环境变量注入，不进入仓库或数据库。
 
@@ -57,10 +58,12 @@ GET /api/health
 POST /api/auth/{login,refresh,logout,change-password}
 GET /api/auth/me
 GET|POST /api/users
+GET /api/jobs/{jobId}
 POST /api/events/ticket
+GET /api/events?ticket=…
 ```
 
-SSE 属后续；票据绑定用户、topics 与游标，以 HMAC 认证 60 秒到期且单次消费。refresh 旋转原子拒绝重放。密码用 argon2id，时间戳写 Asia/Shanghai，敏感值不入响应。
+票据绑定用户、topics 与游标，HMAC 认证，60 秒且单次消费；连接分页回放后实时，空闲 `ping`、尾游标 `reset`。run topic 资源经可注入 authorizer 校验；refresh 旋转拒绝重放，时间写 Asia/Shanghai。
 
 ## 共享契约
 
@@ -75,6 +78,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 当前状态与非目标
 
-- 已具备：模块化 API 骨架、统一错误、双方言数据库基座、users 迁移、真实鉴权、用户 API、SSE 票据签发、健康检查、契约管线、Python 门禁。
-- 未具备：业务领域表、SSE 传输、用户停用界面、轨迹解析、问题查询、自进化执行。
+- 已具备：模块化 API、统一错误、双方言存储、users/job_runs 迁移、鉴权、用户与任务 API、SSE 基座、契约和 Python 门禁。
+- 未具备：轨迹与自进化业务表、真实 event replay adapter、用户停用界面、轨迹解析、问题查询、自进化执行。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

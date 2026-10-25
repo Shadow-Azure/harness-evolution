@@ -74,7 +74,7 @@ class TicketRequest(IdentityModel):
 
 
 class EventTicketResponse(IdentityModel):
-    """Opaque single-use grant for a future SSE connection."""
+    """Opaque single-use grant for one SSE connection."""
 
     ticket: str
     expires_in: int

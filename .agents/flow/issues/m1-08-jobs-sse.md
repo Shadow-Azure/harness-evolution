@@ -9,16 +9,19 @@ milestone: m1
 depends:
   - m1-06
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/api/alembic/**
   - packages/contracts/**
   - scripts/**
+  - tests/integration/**
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 31

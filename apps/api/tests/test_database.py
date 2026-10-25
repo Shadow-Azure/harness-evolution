@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from sqlalchemy import Column, Integer, MetaData, String, Table, insert, inspect, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.pool import QueuePool
 
 from app.config import DatabaseDialect, Settings
@@ -16,6 +16,7 @@ from app.db.base import Database
 from app.db.database import SqlAlchemyDatabase
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.db.models.jobs import job_runs
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 
@@ -59,6 +60,61 @@ def assert_true_server_default(column: Mapping[str, object]) -> None:
     assert default in {"1", "true"}
 
 
+async def reflected_event_schema(
+    connection: AsyncConnection,
+) -> tuple[set[str], set[str], set[tuple[str, ...]]]:
+    """Inspect the shared event projection through a real dialect connection."""
+    columns, indexes, uniques = await connection.run_sync(
+        lambda sync_connection: (
+            {
+                column["name"]
+                for column in inspect(sync_connection).get_columns("evolution_run_events")
+            },
+            {
+                index["name"]
+                for index in inspect(sync_connection).get_indexes("evolution_run_events")
+                if index["name"] is not None
+            },
+            {
+                tuple(constraint["column_names"])
+                for constraint in inspect(sync_connection).get_unique_constraints(
+                    "evolution_run_events",
+                )
+            },
+        ),
+    )
+    return columns, indexes, uniques
+
+
+async def job_recency_index_directions(
+    database: Database,
+) -> list[tuple[str, bool]]:
+    """Return ordered column directions for the kind/recency index."""
+    index_name = "ix_job_runs_kind_created_at"
+    async with database.session() as session:
+        if database.dialect == "sqlite":
+            rows = (await session.execute(text(f"PRAGMA index_xinfo('{index_name}')"))).mappings()
+            return [
+                (str(row["name"]), bool(row["desc"]))
+                for row in rows
+                if row["name"] is not None and row["key"]
+            ]
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT column_name, collation "
+                    "FROM information_schema.statistics "
+                    "WHERE table_schema = DATABASE() "
+                    "AND table_name = 'job_runs' "
+                    "AND index_name = :index_name "
+                    "ORDER BY seq_in_index",
+                ),
+                {"index_name": index_name},
+            )
+        ).mappings()
+        return [(str(row["column_name"]), str(row["collation"]).upper() == "D") for row in rows]
+
+
 @pytest.mark.parametrize(
     ("reflected", "expected"),
     [
@@ -94,6 +150,16 @@ def test_database_factory_selects_both_adapters(tmp_path: Path) -> None:
 
     assert isinstance(sqlite, SqliteDatabase)
     assert isinstance(mysql, MySqlDatabase)
+
+
+def test_job_index_declares_descending_recency() -> None:
+    """The kind/recency index encodes newest-job ordering without table scans."""
+    index = next(item for item in job_runs.indexes if item.name == "ix_job_runs_kind_created_at")
+
+    assert [str(expression) for expression in index.expressions] == [
+        "job_runs.kind",
+        "job_runs.created_at DESC",
+    ]
 
 
 def test_sqlite_adapter_creates_the_default_data_directory(
@@ -242,7 +308,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0002"
+        assert result.scalar_one() == "0003"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -265,6 +331,68 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         assert normalized_server_default(by_name["created_at"]) is None
         assert normalized_server_default(by_name["updated_at"]) is None
         assert_true_server_default(by_name["must_change_password"])
+        async with database.engine.connect() as connection:
+            job_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("job_runs")
+            )
+            job_indexes = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_indexes("job_runs")
+            )
+
+        assert {column["name"] for column in job_columns} == {
+            "id",
+            "kind",
+            "ref_id",
+            "status",
+            "progress",
+            "executor",
+            "external_job_id",
+            "attempt",
+            "payload",
+            "result",
+            "error",
+            "created_by",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "updated_at",
+        }
+        assert {index["name"] for index in job_indexes} == {
+            "ix_job_runs_status",
+            "ix_job_runs_kind_created_at",
+            "ix_job_runs_ref_id",
+        }
+        assert await job_recency_index_directions(database) == [
+            ("kind", False),
+            ("created_at", True),
+        ]
+        async with database.engine.connect() as connection:
+            event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
+        assert event_columns == {
+            "id",
+            "run_id",
+            "seq",
+            "event_type",
+            "level",
+            "stage",
+            "step_index",
+            "cluster_id",
+            "evolution_round_id",
+            "job_id",
+            "message",
+            "payload",
+            "error_type",
+            "error_message",
+            "error_detail",
+            "created_at",
+        }
+        assert event_indexes == {
+            "ix_evolution_run_events_run_created",
+            "ix_evolution_run_events_event_type",
+            "ix_evolution_run_events_level",
+            "ix_evolution_run_events_cluster_id",
+        }
+        assert event_uniques == {("run_id", "seq")}
     finally:
         await database.dispose()
 
@@ -366,7 +494,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0002"
+        assert result.scalar_one() == "0003"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -389,5 +517,67 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         assert normalized_server_default(by_name["created_at"]) is None
         assert normalized_server_default(by_name["updated_at"]) is None
         assert_true_server_default(by_name["must_change_password"])
+        async with database.engine.connect() as connection:
+            job_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("job_runs")
+            )
+            job_indexes = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_indexes("job_runs")
+            )
+
+        assert {column["name"] for column in job_columns} == {
+            "id",
+            "kind",
+            "ref_id",
+            "status",
+            "progress",
+            "executor",
+            "external_job_id",
+            "attempt",
+            "payload",
+            "result",
+            "error",
+            "created_by",
+            "created_at",
+            "started_at",
+            "finished_at",
+            "updated_at",
+        }
+        assert {index["name"] for index in job_indexes} == {
+            "ix_job_runs_status",
+            "ix_job_runs_kind_created_at",
+            "ix_job_runs_ref_id",
+        }
+        assert await job_recency_index_directions(database) == [
+            ("kind", False),
+            ("created_at", True),
+        ]
+        async with database.engine.connect() as connection:
+            event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
+        assert event_columns == {
+            "id",
+            "run_id",
+            "seq",
+            "event_type",
+            "level",
+            "stage",
+            "step_index",
+            "cluster_id",
+            "evolution_round_id",
+            "job_id",
+            "message",
+            "payload",
+            "error_type",
+            "error_message",
+            "error_detail",
+            "created_at",
+        }
+        assert event_indexes == {
+            "ix_evolution_run_events_run_created",
+            "ix_evolution_run_events_event_type",
+            "ix_evolution_run_events_level",
+            "ix_evolution_run_events_cluster_id",
+        }
+        assert event_uniques == {("run_id", "seq")}
     finally:
         await database.dispose()
