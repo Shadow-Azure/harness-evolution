@@ -35,10 +35,10 @@ Dependency direction is `api → service → db/third_party_api`.
 ## Current request path
 
 ```text
-Web ──► middleware ──► public endpoints | bearer APIs → api routers
+Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, and refresh are public; other APIs require bearer JWTs, and `/api/users` is admin-only. Access tokens last 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scoping, and production `Secure`. Login is IP-limited, forced password change exposes only change, logout, and current identity, and failures share one envelope.
+Only health, login, refresh, and ticket-authenticated SSE transport are public; other APIs require bearer JWTs, and `/api/users` is admin-only. Access tokens last 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scoping, and production `Secure`. Login is IP-limited, forced password change exposes only change, logout, and current identity, and failures share one envelope.
 
 Web startup refreshes before waiting for the router to mount; the access token and user stay in memory. Guards route unauthenticated or first-login users to login/password change; HTTP refresh is single-flight across concurrent 401s, and logout clears the query cache.
 
@@ -47,6 +47,7 @@ Web startup refreshes before waiting for the router to mount; the access token a
 - Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect migration tree with batch mode for SQLite changes; business code depends on `db/crud/` repositories and never concatenates SQL directly.
+- `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - Raw trace payloads are replayable and idempotent; external systems write problems and attribution, which this service reads.
 - Secrets enter only through environment variables, never the repository or database.
 
@@ -57,10 +58,12 @@ GET /api/health
 POST /api/auth/{login,refresh,logout,change-password}
 GET /api/auth/me
 GET|POST /api/users
+GET /api/jobs/{jobId}
 POST /api/events/ticket
+GET /api/events?ticket=…
 ```
 
-SSE follows later; tickets bind user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. Refresh rotation atomically rejects replay. Passwords use argon2id, timestamps use Asia/Shanghai, and responses omit sensitive values.
+SSE tickets bind the user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. A connection pages history before live events, emits `ping` while idle, and emits `reset` for a stale cursor. An injectable authorizer checks run topics; refresh rotation rejects replay, and timestamps use Asia/Shanghai.
 
 ## Shared contract
 
@@ -75,6 +78,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## Current state and non-goals
 
-- Present: modular API scaffold, unified errors, dual-dialect database boundary, users migration, real identity, user APIs, SSE ticket issuance, health check, contract pipeline, and Python gates.
-- Missing: business domain tables, SSE transport, a user-deactivation interface, trace parsing, problem queries and evolution execution.
+- Present: modular API scaffold, unified errors, dual-dialect database boundary, users/job_runs migrations, real identity, user and job-status APIs, SSE ticket and transport foundation, health check, contract pipeline, and Python gates.
+- Missing: trace and evolution business tables, evolution parent-table relationships and real run-resource authorization, a user-deactivation interface, trace parsing, problem queries and evolution execution.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

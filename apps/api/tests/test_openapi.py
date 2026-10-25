@@ -38,6 +38,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/auth/me",
         "/api/users",
         "/api/events/ticket",
+        "/api/events",
+        "/api/jobs/{jobId}",
     }
     assert {
         "HealthResponse",
@@ -53,6 +55,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "UserListResponse",
         "TicketRequest",
         "EventTicketResponse",
+        "JobResponse",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -75,6 +78,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/users", "get"),
         ("/api/users", "post"),
         ("/api/events/ticket", "post"),
+        ("/api/jobs/{jobId}", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -103,6 +107,9 @@ def test_identity_time_and_secret_configuration_matches_design() -> None:
     assert settings.access_ttl_seconds == 1_800
     assert settings.refresh_ttl_seconds == 1_209_600
     assert settings.event_ticket_ttl_seconds == 60
+    assert settings.sse_heartbeat_seconds == 15
+    assert settings.sse_queue_capacity == 100
+    assert settings.event_replay_limit == 500
 
 
 def test_openapi_export_ignores_service_environment() -> None:

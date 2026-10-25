@@ -1,0 +1,18 @@
+{
+  "ticketReplay": {
+    "status": 401,
+    "code": "TICKET_INVALID"
+  },
+  "missingTicket": {
+    "status": 401,
+    "code": "TICKET_INVALID"
+  },
+  "multipleTopics": {
+    "status": 422,
+    "code": "VALIDATION_INVALID"
+  },
+  "urlTopics": {
+    "status": 401,
+    "code": "TICKET_INVALID"
+  }
+}

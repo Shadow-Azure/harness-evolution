@@ -1,0 +1,14 @@
+id: 2
+event: run.event
+data: {"runId":"smoke-run-01","seq":2,"eventType":"step_advanced","level":"info","stage":"step","stepIndex":null,"clusterId":null,"roundId":null,"jobId":"01M5RYNSJOBRUNNING000001","message":"step advanced","createdAt":"2026-10-25T04:02:00+08:00","payload":{"marker":"two"},"error":null}
+
+id: 3
+event: run.event
+data: {"runId":"smoke-run-01","seq":3,"eventType":"final_completed","level":"info","stage":"final","stepIndex":null,"clusterId":null,"roundId":null,"jobId":"01M5RYNSJOBCOMPLETED0001","message":"final completed","createdAt":"2026-10-25T04:03:00+08:00","payload":{"marker":"three"},"error":null}
+
+event: ping
+data: {}
+
+event: ping
+data: {}
+

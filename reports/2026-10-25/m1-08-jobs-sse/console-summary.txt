@@ -1,0 +1,26 @@
+[
+  {
+    "level": "debug",
+    "message": "[vite] connecting...",
+    "timestamp": "2026-10-25T07:17:10.431Z",
+    "url": "http://localhost:5173/@vite/client"
+  },
+  {
+    "level": "debug",
+    "message": "[vite] connected.",
+    "timestamp": "2026-10-25T07:17:10.456Z",
+    "url": "http://localhost:5173/@vite/client"
+  },
+  {
+    "level": "debug",
+    "message": "[vite] connecting...",
+    "timestamp": "2026-10-25T07:17:46.915Z",
+    "url": "http://localhost:5173/@vite/client"
+  },
+  {
+    "level": "debug",
+    "message": "[vite] connected.",
+    "timestamp": "2026-10-25T07:17:46.927Z",
+    "url": "http://localhost:5173/@vite/client"
+  }
+]

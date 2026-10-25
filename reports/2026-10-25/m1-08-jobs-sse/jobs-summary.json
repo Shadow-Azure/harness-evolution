@@ -1,0 +1,24 @@
+{
+  "queued": {
+    "status": "queued",
+    "progress": 0.0,
+    "startedAt": null,
+    "finishedAt": null
+  },
+  "running": {
+    "status": "running",
+    "progress": 0.42,
+    "startedAt": "2026-10-25T04:02:00+08:00",
+    "finishedAt": null
+  },
+  "completed": {
+    "status": "completed",
+    "progress": 1.0,
+    "startedAt": "2026-10-25T04:04:00+08:00",
+    "finishedAt": "2026-10-25T05:04:00+08:00"
+  },
+  "missing": {
+    "status": 404,
+    "code": "JOB_NOT_FOUND"
+  }
+}

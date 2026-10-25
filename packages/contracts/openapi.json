@@ -145,6 +145,8 @@
           "FORBIDDEN",
           "PASSWORD_CHANGE_REQUIRED",
           "USERNAME_CONFLICT",
+          "JOB_NOT_FOUND",
+          "RUN_BUSY",
           "INTERNAL",
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
@@ -170,7 +172,7 @@
       },
       "EventTicketResponse": {
         "additionalProperties": false,
-        "description": "Opaque single-use grant for a future SSE connection.",
+        "description": "Opaque single-use grant for one SSE connection.",
         "properties": {
           "expiresIn": {
             "title": "Expiresin",
@@ -194,6 +196,19 @@
           "topics"
         ],
         "title": "EventTicketResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
         "type": "object"
       },
       "HealthResponse": {
@@ -228,6 +243,128 @@
           "db"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "JobResponse": {
+        "additionalProperties": false,
+        "description": "Durable job state returned as the REST source of truth.",
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "sync",
+              "pull",
+              "evolution_prepare",
+              "evolution_advance",
+              "evolution_apply",
+              "evolution_finalize",
+              "evolution_retry"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "progress": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "refId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refid"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "kind",
+          "refId",
+          "status",
+          "progress",
+          "attempt",
+          "createdBy",
+          "createdAt",
+          "startedAt",
+          "finishedAt",
+          "error"
+        ],
+        "title": "JobResponse",
         "type": "object"
       },
       "LoginRequest": {
@@ -361,7 +498,7 @@
             "items": {
               "type": "string"
             },
-            "maxItems": 32,
+            "maxItems": 1,
             "minItems": 1,
             "title": "Topics",
             "type": "array"
@@ -389,6 +526,46 @@
           "items"
         ],
         "title": "UserListResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       }
     },
@@ -647,6 +824,122 @@
         ]
       }
     },
+    "/api/events": {
+      "get": {
+        "description": "Consume a one-time ticket and stream replay plus live run notifications.",
+        "operationId": "event_stream_api_events_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ticket",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticket"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "additionalProperties": false,
+                  "description": "Logical Server-Sent Event frame documented for typed browser clients.",
+                  "properties": {
+                    "data": {
+                      "additionalProperties": true,
+                      "title": "Data",
+                      "type": "object"
+                    },
+                    "event": {
+                      "enum": [
+                        "ping",
+                        "run.event",
+                        "run.progress",
+                        "run.blocked",
+                        "run.resumed",
+                        "run.completed",
+                        "run.failed",
+                        "run.interrupted",
+                        "reset"
+                      ],
+                      "title": "Event",
+                      "type": "string"
+                    },
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "title": "Id"
+                    }
+                  },
+                  "required": [
+                    "event",
+                    "data"
+                  ],
+                  "title": "SSEEventFrame",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server-Sent Event frames for authorized run topics"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Event ticket is invalid or expired"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Replay cursor is invalid"
+          }
+        },
+        "summary": "Event Stream",
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/events/ticket": {
       "post": {
         "description": "Bind authenticated run topics and a cursor to a single-use ticket.",
@@ -753,6 +1046,84 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/jobs/{jobId}": {
+      "get": {
+        "description": "Return the latest durable state for one job.",
+        "operationId": "get_job_api_jobs__jobId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jobId",
+            "required": true,
+            "schema": {
+              "title": "Jobid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
         ]
       }
     },

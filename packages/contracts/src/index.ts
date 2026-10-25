@@ -38,8 +38,17 @@ export type RefreshResponse = components["schemas"]["RefreshResponse"];
 /** Current-user password change payload. */
 export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
 
+/** Single-use SSE authorization request bound to run topics and a replay cursor. */
+export type TicketRequest = components["schemas"]["TicketRequest"];
+
+/** Opaque short-lived SSE ticket and the topics it authorizes. */
+export type EventTicketResponse = components["schemas"]["EventTicketResponse"];
+
 /** User fields safe to retain in the browser. */
 export type PublicUser = components["schemas"]["PublicUser"];
+
+/** Durable job status returned by the REST source of truth. */
+export type JobResponse = components["schemas"]["JobResponse"];
 
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";

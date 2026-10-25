@@ -102,6 +102,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Event Stream
+         * @description Consume a one-time ticket and stream replay plus live run notifications.
+         */
+        get: operations["event_stream_api_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/ticket": {
         parameters: {
             query?: never;
@@ -134,6 +154,26 @@ export interface paths {
          * @description Report API reachability, delivery phase, and database health.
          */
         get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{jobId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job
+         * @description Return the latest durable state for one job.
+         */
+        get: operations["get_job_api_jobs__jobId__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -235,7 +275,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -245,7 +285,7 @@ export interface components {
         };
         /**
          * EventTicketResponse
-         * @description Opaque single-use grant for a future SSE connection.
+         * @description Opaque single-use grant for one SSE connection.
          */
         EventTicketResponse: {
             /** Expiresin */
@@ -254,6 +294,11 @@ export interface components {
             ticket: string;
             /** Topics */
             topics: string[];
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /**
          * HealthResponse
@@ -271,6 +316,43 @@ export interface components {
             service: "harness-evolution";
             /** Version */
             version: string;
+        };
+        /**
+         * JobResponse
+         * @description Durable job state returned as the REST source of truth.
+         */
+        JobResponse: {
+            /** Attempt */
+            attempt: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string | null;
+            /** Error */
+            error: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Jobid */
+            jobId: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sync" | "pull" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry";
+            /** Progress */
+            progress: number;
+            /** Refid */
+            refId: string | null;
+            /** Startedat */
+            startedAt: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "interrupted";
         };
         /**
          * LoginRequest
@@ -348,6 +430,19 @@ export interface components {
         UserListResponse: {
             /** Items */
             items: components["schemas"]["PublicUser"][];
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -561,6 +656,60 @@ export interface operations {
             };
         };
     };
+    event_stream_api_events_get: {
+        parameters: {
+            query?: {
+                ticket?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-Sent Event frames for authorized run topics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": {
+                        /** Data */
+                        data: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * Event
+                         * @enum {string}
+                         */
+                        event: "ping" | "run.event" | "run.progress" | "run.blocked" | "run.resumed" | "run.completed" | "run.failed" | "run.interrupted" | "reset";
+                        /** Id */
+                        id?: string | null;
+                    };
+                };
+            };
+            /** @description Event ticket is invalid or expired */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Replay cursor is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     issue_ticket_api_events_ticket_post: {
         parameters: {
             query?: never;
@@ -646,6 +795,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+        };
+    };
+    get_job_api_jobs__jobId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                jobId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Job does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

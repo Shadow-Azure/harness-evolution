@@ -111,6 +111,24 @@ async function waitForValue(read, label, timeout = 20_000) {
   throw new Error(`timed out waiting for ${label}`);
 }
 
+async function integrationAdmin() {
+  for (const password of [
+    "integration-initial-password",
+    "integration-replacement-password",
+  ]) {
+    const response = await fetch(`${webBaseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "admin", password }),
+    });
+    if (response.status === 200) return await response.json();
+    if (response.status !== 401) {
+      throw new Error(`unexpected admin login status ${response.status}`);
+    }
+  }
+  throw new Error("integration administrator credentials are unavailable");
+}
+
 class CdpSession {
   constructor(url) {
     this.socket = new WebSocket(url);
@@ -277,6 +295,7 @@ before(async () => {
       HE_JWT_SECRET: "integration-signing-secret-with-sufficient-length",
       HE_ADMIN_USERNAME: "admin",
       HE_ADMIN_PASSWORD: "integration-initial-password",
+      HE_SSE_HEARTBEAT_SECONDS: "0.2",
       HE_HOST: "127.0.0.1",
       HE_PORT: String(apiPort),
       PYTHONUNBUFFERED: "1"
@@ -406,6 +425,48 @@ test("seeded admin completes forced password change through the proxy", async ()
   });
   assert.equal(after.status, 200);
   assert.equal((await after.json()).mustChangePassword, false);
+});
+
+test("job lookup and one-time SSE ticket work through the real proxy", async () => {
+  const admin = await integrationAdmin();
+  const headers = { authorization: `Bearer ${admin.accessToken}` };
+  const missing = await fetch(`${webBaseUrl}/api/jobs/not-a-real-job`, { headers });
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error.code, "JOB_NOT_FOUND");
+
+  const issued = await fetch(`${webBaseUrl}/api/events/ticket`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ topics: ["run:integration-smoke"], lastEventId: 0 }),
+  });
+  assert.equal(issued.status, 200);
+  const ticket = (await issued.json()).ticket;
+  assert.match(ticket, /\S/);
+
+  const controller = new AbortController();
+  const stream = await fetch(
+    `${webBaseUrl}/api/events?ticket=${encodeURIComponent(ticket)}`,
+    { signal: controller.signal },
+  );
+  assert.equal(stream.status, 200);
+  assert.match(stream.headers.get("content-type") ?? "", /text\/event-stream/);
+  const reader = stream.body?.getReader();
+  assert.ok(reader);
+  let payload = "";
+  const deadline = Date.now() + 5_000;
+  while (!payload.includes("event: ping") && Date.now() < deadline) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    payload += new TextDecoder().decode(chunk.value);
+  }
+  controller.abort();
+  assert.match(payload, /event: ping\r?\ndata: \{\}/);
+
+  const replay = await fetch(
+    `${webBaseUrl}/api/events?ticket=${encodeURIComponent(ticket)}`,
+  );
+  assert.equal(replay.status, 401);
+  assert.equal((await replay.json()).error.code, "TICKET_INVALID");
 });
 
 test("database failure returns a sanitized 503 through the real proxy", async () => {
