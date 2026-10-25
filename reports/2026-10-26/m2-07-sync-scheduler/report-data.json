@@ -1,0 +1,222 @@
+{
+  "title": "M2-07 同步调度器集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #98",
+  "summary": "在真实 FastAPI、临时 SQLite、Vite 与 Chrome 上验证同步 pending 状态、管理员立即处理、member 权限、无待处理 idle、390px 原型布局和审计闭环；并发与恢复细节由 focused 测试补齐。",
+  "meta": "2026-10-26 · macOS · Chrome · 127.0.0.1",
+  "metrics": [
+    { "value": "12", "label": "冒烟场景" },
+    { "value": "12", "label": "通过" },
+    { "value": "0", "label": "缺陷" },
+    { "value": "16", "label": "调度器测试" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#39 · M2 sync scheduler" },
+    { "label": "PR", "value": "#98" },
+    { "label": "Head", "value": "f4a804d" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome" },
+    { "label": "Database", "value": "临时 SQLite" },
+    { "label": "Scheduler", "value": "自动 interval 关闭，管理员手动触发" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "导入后 pending 状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "导入 66 个 agent payload 后，顶栏显示“待处理 66”，未创建 job。",
+        "evidence": ["screenshots/01-pending-admin.png", "SQLite payloads=66"]
+      },
+      {
+        "id": "02",
+        "name": "pending 详情可读",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击状态摘要后显示空闲、已处理、最近导入和跳过数量。",
+        "evidence": ["screenshots/02-pending-detail.png", "aria-label 含同源摘要"]
+      },
+      {
+        "id": "03",
+        "name": "管理员立即处理入口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "admin 用户菜单出现“立即处理”，沿用亮色原型顶栏。",
+        "evidence": ["screenshots/03-admin-menu.png"]
+      },
+      {
+        "id": "04",
+        "name": "处理中状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击后按钮变为“处理中…”，禁用重复触发。",
+        "evidence": ["screenshots/04-processing.png"]
+      },
+      {
+        "id": "05",
+        "name": "同步完成与审计",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "完成后待处理为 0、已处理 66、导入 66；job completed，sync run completed，sync lock 已释放。",
+        "evidence": ["screenshots/05-completed.png", "jobs=1, locks=0, sync_runs=1"]
+      },
+      {
+        "id": "06",
+        "name": "member 无管理操作",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时 member 登录后仍可见 pending 摘要，但菜单没有“立即处理”。",
+        "evidence": ["screenshots/06-member-menu.png"]
+      },
+      {
+        "id": "07",
+        "name": "390px member 布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390px 隐藏辅助 pending 摘要，用户菜单保留；scrollWidth=clientWidth=390。",
+        "evidence": ["screenshots/07-member-390.png"]
+      },
+      {
+        "id": "08",
+        "name": "无 pending 显式 idle",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "无待处理时管理员再次点击只刷新状态，不创建伪 job，状态仍为 idle。",
+        "evidence": ["screenshots/08-idle-admin.png", "jobs count remains 1"]
+      },
+      {
+        "id": "09",
+        "name": "390px 管理员布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "辅助摘要隐藏，管理员菜单保留且完全位于视口内。",
+        "evidence": ["screenshots/09-admin-390.png", "screenshots/10-admin-390-menu.png"]
+      },
+      {
+        "id": "10",
+        "name": "single-flight 与权限",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "focused 测试验证并发 trigger 只创建一个 job/lock，manual 401/403/202 边界正确。",
+        "evidence": ["16 focused scheduler tests passed"]
+      },
+      {
+        "id": "11",
+        "name": "重启与失败审计",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "recovery 先 adoption 再 dispatch；失败、取消与重启均终结对应 sync run 并释放匹配锁。",
+        "evidence": ["restart/failure/cancel focused tests"]
+      },
+      {
+        "id": "12",
+        "name": "控制台与安全边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 Chrome warning/error/exception 为 0；status 错误使用闭集文案，不返回 token 或本地路径。",
+        "evidence": ["Chrome dev logs=[]", "sanitization focused tests"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-pending-admin.png",
+      "alt": "待处理 66 的亮色顶栏",
+      "label": "pending 状态",
+      "caption": "导入后仅显示待处理摘要，不自动创建任务。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-pending-detail.png",
+      "alt": "pending 摘要的详情浮层",
+      "label": "状态详情",
+      "caption": "状态摘要可聚焦并展开，内容保持用户可读。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-admin-menu.png",
+      "alt": "管理员菜单中的立即处理按钮",
+      "label": "管理员操作",
+      "caption": "管理员可立即处理，操作入口位于用户菜单。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-processing.png",
+      "alt": "处理中按钮",
+      "label": "处理中",
+      "caption": "处理期间按钮禁用并显示处理中状态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-completed.png",
+      "alt": "同步完成后的待处理 0 状态",
+      "label": "完成",
+      "caption": "完成后 pending 归零，已处理与导入数量来自 durable truth。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-member-menu.png",
+      "alt": "member 用户菜单无立即处理",
+      "label": "member 权限",
+      "caption": "普通成员看不到管理操作，只保留退出登录。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-member-390.png",
+      "alt": "390px member 页面",
+      "label": "390px member",
+      "caption": "窄视口隐藏辅助状态，无横向溢出。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/08-idle-admin.png",
+      "alt": "无待处理时的管理员页面",
+      "label": "idle",
+      "caption": "无 pending 的操作不会伪造任务。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/09-admin-390.png",
+      "alt": "390px 管理员页面",
+      "label": "390px admin shell",
+      "caption": "窄视口隐藏次要同步摘要，保留导航与用户入口，页面无横向溢出。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/10-admin-390-menu.png",
+      "alt": "390px 管理员菜单",
+      "label": "390px admin",
+      "caption": "管理员操作和退出入口在窄视口内完整可见。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "调度与单飞",
+        "coverage": "真实 UI + focused tests",
+        "conclusion": "手动/调度共享 trigger；并发只产生一个 job/lock；无 pending 不建 job。",
+        "recommendation": "保留 SQLite/MySQL trigger contract 与真实 UI 冒烟。"
+      },
+      {
+        "area": "恢复与审计",
+        "coverage": "focused tests",
+        "conclusion": "重启先 adoption；失败、取消和重启都会终结 sync run 并释放锁。",
+        "recommendation": "继续覆盖进程级 crash 与更长 TTL 窗口。"
+      },
+      {
+        "area": "顶栏 UI",
+        "coverage": "真实 Chrome",
+        "conclusion": "pending 摘要、详情、admin 操作、member 隐藏和 390px 布局符合原型。",
+        "recommendation": "领域 Session 页面仍由后续 issue 按原型实现。"
+      },
+      {
+        "area": "安全",
+        "coverage": "focused tests + browser",
+        "conclusion": "状态错误已闭集化，浏览器无 warning/error；无 SSE 或原始轨迹泄漏。",
+        "recommendation": "后续日志采集继续只接收稳定错误码。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "同步调度器与顶栏状态在真实进程和亮色原型 UI 中完整工作，未发现集成缺陷。",
+    "points": [
+      "真实 pending→manual sync→completed 全链路通过。",
+      "member 无管理入口，390px 无溢出。",
+      "并发、重启、失败与审计由 focused 测试补齐。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、SQLite 运行态、16 项调度器测试与 Chrome 日志；HTML 由 JSON 生成，不应手改。"
+}
