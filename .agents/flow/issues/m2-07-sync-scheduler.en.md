@@ -9,7 +9,7 @@ milestone: m2
 depends:
   - m2-06
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
