@@ -1,0 +1,25 @@
+{
+  "healthy": {
+    "db": {
+      "dialect": "sqlite",
+      "latencyMs": 0.1,
+      "ok": true
+    },
+    "ok": true,
+    "phase": "scaffold",
+    "service": "harness-evolution",
+    "version": "0.1.0"
+  },
+  "unavailable": {
+    "db": {
+      "dialect": "sqlite",
+      "error": "OperationalError: database is unavailable",
+      "latencyMs": 0.2,
+      "ok": false
+    },
+    "ok": false,
+    "phase": "scaffold",
+    "service": "harness-evolution",
+    "version": "0.1.0"
+  }
+}

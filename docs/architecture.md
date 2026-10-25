@@ -2,11 +2,11 @@
 
 [English](architecture.en.md) | 中文
 
-记录当前服务边界、数据流与数据层策略。实现按垂直切片推进；本文写现状，取舍理由进 `.agents/notes/`。
+记录当前服务边界、数据流与存储策略；实现按垂直切片推进，取舍理由见 `.agents/notes/`。
 
 ## 产品边界
 
-Harness Evolution 面向 coding agent 轨迹，提供可回链的会话浏览、问题归因与自进化运行。当前 M1 只交付平台骨架；轨迹、问题和自进化数据尚未进入运行链路。
+轨迹诊断服务当前只交付 M1 平台骨架；轨迹、问题和自进化数据尚未进入运行链路。
 
 ## 服务划分
 
@@ -17,7 +17,7 @@ Harness Evolution 面向 coding agent 轨迹，提供可回链的会话浏览、
 | `packages/contracts` | TypeScript | 前端共享协议与领域类型 |
 | `research/` | Markdown + YAML | 评测任务、harness 适配、实验记录 |
 
-后端是模块化单体。路由只在 `apps/api/app/main.py` 注册；HTTP 层只做校验、鉴权与响应，业务规则进入 `service/`，存储和第三方系统分别隔离在 `db/` 与 `third_party_api/`。
+路由只在 `apps/api/app/main.py` 注册；HTTP 层负责校验与鉴权，业务进 `service/`，存储与外部集成分别隔离在 `db/` 与 `third_party_api/`。
 
 ## 垂直切片
 
@@ -31,7 +31,7 @@ apps/api/app/
   middleware/           request context and identity boundary
 ```
 
-切片之间通过显式接口协作；依赖方向保持 `api → service → db/third_party_api`。
+依赖方向为 `api → service → db/third_party_api`。
 
 ## 当前请求链路
 
@@ -41,7 +41,7 @@ Web ──► FastAPI middleware ──► api/health
                      └──► non-public /api/* → 401 AUTH_REQUIRED
 ```
 
-`/api/health` 无需登录并返回 `ok/service/phase/version/db`。数据库健康检查失败时 HTTP 返回 503，但 API 进程保持可达。身份实现落地前，其他 `/api/*` 路径默认拒绝；未知路由、校验失败与未捕获异常都使用统一错误 envelope。
+`/api/health` 无需登录并返回 `ok/service/phase/version/db`；数据库故障返回 503，进程仍可达。其他 `/api/*` 默认 401；未知路由、校验失败与未捕获异常共用错误 envelope。
 
 ## 数据层策略
 
@@ -63,20 +63,16 @@ GET /api/health
 
 ## 共享契约
 
+FastAPI OpenAPI 是唯一契约源。导出脚本生成 `packages/contracts/openapi.json` 快照，`openapi-typescript` 再从快照生成 `packages/contracts/src/generated/api.d.ts`；`src/index.ts` 只暴露稳定别名与跨端常量。`contract:check` 在临时目录重新生成并逐字比对，生成物手改或后端漂移都会在构建前失败。
+
 健康检查响应是当前前后端的最小契约样本，数据库状态与 API 状态分别可判：
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
-export interface HealthResponse {
-  ok: boolean;
-  service: "harness-evolution";
-  phase: ServicePhase;
-  version: string;
-  db: DatabaseHealth;
-}
+export type HealthResponse = components["schemas"]["HealthResponse"];
 ```
 
-类型围栏由 `verify-type-equiv` 与源码逐字对账；契约漂移即红。
+类型围栏由 `verify-type-equiv` 与源码结构对账；生成类型漂移由 `contract:check` 拦截。
 
 前端消费契约的最小示例（由 `doc-typecheck` 真实编译）：
 
@@ -98,6 +94,6 @@ const health: HealthResponse = {
 
 ## 当前状态与非目标
 
-- 已具备：FastAPI 模块化骨架、统一错误模型、SQLite/MySQL Database 基座、Alembic 基线、健康检查、Python lint/type/test 门禁。
+- 已具备：FastAPI 模块化骨架、统一错误模型、SQLite/MySQL Database 基座、Alembic 基线、健康检查、OpenAPI 契约生成与防漂移、Python lint/type/test 门禁。
 - 未具备：领域表、真实鉴权、轨迹解析、问题查询、自进化执行。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

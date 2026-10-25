@@ -118,6 +118,7 @@ def test_health_openapi_allows_unavailable_state() -> None:
 
     assert ok_schema["type"] == "boolean"
     assert "const" not in ok_schema
+    assert set(health_schema["required"]) == {"ok", "service", "phase", "version", "db"}
 
 
 async def test_health_returns_503_when_database_is_unavailable() -> None:
@@ -432,16 +433,23 @@ def test_docs_are_disabled_by_default() -> None:
     assert Settings().docs_enabled is False
 
 
-def test_service_phase_matches_the_shared_typescript_contract() -> None:
-    """The handwritten cross-language health contract cannot drift from FastAPI."""
+def test_generated_contract_exports_match_the_fastapi_schema() -> None:
+    """The TypeScript entry point aliases generated API schemas instead of duplicating them."""
     contract_path = Path(__file__).resolve().parents[3] / "packages/contracts/src/index.ts"
     contract = contract_path.read_text(encoding="utf-8")
 
-    expected = 'export const SERVICE_PHASES = ["scaffold", "demo", "live"] as const;'
+    expected = (
+        'export const SERVICE_PHASES = ["scaffold", "demo", "live"] as const '
+        "satisfies readonly ServicePhase[];"
+    )
     assert expected in contract
-    assert 'export const DATABASE_DIALECTS = ["sqlite", "mysql"] as const;' in contract
-    assert "version: string;" in contract
-    assert "db: DatabaseHealth;" in contract
+    assert (
+        'export const DATABASE_DIALECTS = ["sqlite", "mysql"] as const '
+        "satisfies readonly DatabaseDialect[];"
+    ) in contract
+    assert 'export type ServicePhase = components["schemas"]["ServicePhase"];' in contract
+    assert 'export type HealthResponse = components["schemas"]["HealthResponse"];' in contract
+    assert 'export type ErrorResponse = components["schemas"]["ErrorResponse"];' in contract
     assert [phase.value for phase in ServicePhase] == ["scaffold", "demo", "live"]
 
 

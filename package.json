@@ -17,6 +17,8 @@
     "test:web": "pnpm --filter @harness/web test",
     "test:integration": "node --test tests/integration/web-api-proxy.test.mjs",
     "test:all": "pnpm test:web && pnpm test:api && pnpm test:db:mysql && pnpm test:integration",
+    "contract:generate": "node scripts/contract.mjs generate",
+    "contract:check": "node scripts/contract.mjs check",
     "typecheck:api": "node scripts/run-api.mjs typecheck",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm test:web && pnpm test:api",
@@ -33,6 +35,7 @@
     "install:hooks": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3"
   }
 }

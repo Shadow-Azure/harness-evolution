@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,6 +17,7 @@ import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
 import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
+import { checkContracts, compareContractFiles } from "./contract.mjs";
 
 const roadmap = `# Roadmap
 
@@ -118,6 +119,7 @@ test("route gates recommend web tests, integration, build, and docs for app chan
   const paths = worktreePaths(" M apps/web/src/App.tsx\n?? docs/new.md\n");
   assert.deepEqual(paths, ["apps/web/src/App.tsx", "docs/new.md"]);
   assert.deepEqual(recommend(paths).commands, [
+    "contract:check",
     "build",
     "test:web",
     "test:integration",
@@ -129,6 +131,7 @@ test("route gates recommend the Python toolchain for API changes", () => {
   const paths = worktreePaths(" M apps/api/app/main.py\n");
   assert.deepEqual(paths, ["apps/api/app/main.py"]);
   assert.deepEqual(recommend(paths).commands, [
+    "contract:check",
     "lint:api",
     "typecheck:api",
     "test:api",
@@ -143,6 +146,77 @@ test("route gates execute cross-stack integration tests", () => {
   assert.deepEqual(recommend(paths).commands, ["test:integration", "verify:docs"]);
 });
 
+test("route gates require contract checks for API and shared contract changes", () => {
+  assert.deepEqual(recommend(["apps/api/app/api/health.py"]).commands, [
+    "contract:check",
+    "lint:api",
+    "typecheck:api",
+    "test:api",
+    "test:db",
+    "test:integration",
+    "verify:docs",
+  ]);
+  assert.deepEqual(recommend(["packages/contracts/openapi.json"]).commands, [
+    "contract:check",
+    "build",
+    "test:web",
+    "test:integration",
+    "verify:docs",
+  ]);
+});
+
+test("contract check detects stale and hand-edited generated files", () => {
+  const expected = "/* @generated */\nexport type Version = 1;\n";
+  const edited = "/* @generated */\nexport type Version = 2;\n";
+  const missingMarker = "export type Version = 1;\n";
+
+  assert.deepEqual(compareContractFiles(expected, expected, "api.d.ts"), []);
+  assert.match(compareContractFiles(expected, edited, "api.d.ts").join("\n"), /真实 OpenAPI 不一致/);
+  assert.match(
+    compareContractFiles(expected, missingMarker, "api.d.ts").join("\n"),
+    /@generated/,
+  );
+});
+
+test("contract checker covers executable missing and stale artifact workflows", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "harness-contract-cli-"));
+  try {
+    const checkedSnapshot = path.resolve("packages/contracts/openapi.json");
+    const checkedTypes = path.resolve("packages/contracts/src/generated/api.d.ts");
+    const checkedFixtures = path.resolve("packages/contracts/fixtures/health.json");
+    const missingSnapshot = path.join(directory, "missing-openapi.json");
+    const missingTypes = path.join(directory, "missing-api.d.ts");
+    const missingFixtures = path.join(directory, "missing-health.json");
+    const staleTypes = path.join(directory, "stale-api.d.ts");
+    const missingSnapshotResult = await checkContracts(missingSnapshot, checkedTypes, checkedFixtures);
+    const missingTypesResult = await checkContracts(checkedSnapshot, missingTypes, checkedFixtures);
+    const missingFixturesResult = await checkContracts(checkedSnapshot, checkedTypes, missingFixtures);
+
+    assert.equal(missingSnapshotResult.ok, false);
+    assert.match(missingSnapshotResult.errors.join("\n"), /missing-openapi\.json: 文件缺失/);
+    assert.equal(missingTypesResult.ok, false);
+    assert.match(missingTypesResult.errors.join("\n"), /missing-api\.d\.ts: 文件缺失/);
+    assert.equal(missingFixturesResult.ok, false);
+    assert.match(missingFixturesResult.errors.join("\n"), /missing-health\.json: 文件缺失/);
+
+    writeFileSync(staleTypes, "/* @generated */\nexport type Stale = true;\n");
+    const staleCli = spawnSync(process.execPath, [path.resolve("scripts/contract.mjs"), "check"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HE_CONTRACT_SNAPSHOT: checkedSnapshot,
+        HE_CONTRACT_TYPES: staleTypes,
+        HE_CONTRACT_FIXTURES: checkedFixtures,
+      },
+    });
+    assert.equal(staleCli.status, 1);
+    assert.match(`${staleCli.stderr}${staleCli.stdout}`, /真实 OpenAPI 不一致/);
+    assert.match(`${staleCli.stderr}${staleCli.stdout}`, /pnpm contract:generate/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("test gates execute frontend, backend, integration, and 80% coverage", () => {
   const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
   const webPackage = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
@@ -155,12 +229,18 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts.test, /test:api/);
   assert.match(rootPackage.scripts["test:db"], /run-api\.mjs db/);
   assert.match(rootPackage.scripts["test:db:mysql"], /db-mysql/);
+  assert.match(rootPackage.scripts["contract:generate"], /contract\.mjs generate/);
+  assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(ci, /run: pnpm test$/m);
   assert.match(ci, /run: pnpm test:db$/m);
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
+  const contractCheck = ci.indexOf("run: pnpm contract:check");
+  const build = ci.indexOf("run: pnpm build");
+  assert.ok(contractCheck >= 0);
+  assert.ok(build > contractCheck, "contract:check must run before build");
   for (const metric of ["branches", "functions", "lines", "statements"]) {
     assert.match(webCoverage, new RegExp(`${metric}: 80`));
   }

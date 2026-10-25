@@ -15,6 +15,7 @@ export const ROUTES = [
   {
     match: (p) => p.startsWith("apps/api/"),
     commands: [
+      "contract:check",
       "lint:api",
       "typecheck:api",
       "test:api",
@@ -22,13 +23,13 @@ export const ROUTES = [
       "test:integration",
       "verify:docs",
     ],
-    reason: "Python API：ruff、mypy、pytest/coverage、数据库测试、跨栈集成与文档门禁",
+    reason: "Python API：OpenAPI 防漂移、ruff、mypy、pytest/coverage、数据库测试、跨栈集成与文档门禁",
   },
   {
     match: (p) =>
       (p.startsWith("apps/") && !p.startsWith("apps/api/")) || p.startsWith("packages/"),
-    commands: ["build", "test:web", "test:integration", "verify:docs"],
-    reason: "TS 源码：Web 单测/80% 覆盖率、跨栈集成测试、构建与文档门禁",
+    commands: ["contract:check", "build", "test:web", "test:integration", "verify:docs"],
+    reason: "TS 源码：OpenAPI 防漂移、Web 单测/80% 覆盖率、跨栈集成测试、构建与文档门禁",
   },
   {
     match: (p) => p.startsWith("tests/integration/"),
@@ -69,6 +70,7 @@ export function classify(paths) {
 }
 
 const COMMAND_ORDER = [
+  "contract:check",
   "build",
   "lint:api",
   "typecheck:api",

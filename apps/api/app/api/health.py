@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import DatabaseDialect, ServicePhase
 from app.db.base import Database, DBHealth
+from app.errors import ErrorResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -38,8 +39,8 @@ class HealthResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ok: bool = True
-    service: Literal["harness-evolution"] = "harness-evolution"
+    ok: bool
+    service: Literal["harness-evolution"]
     phase: ServicePhase
     version: str
     db: DatabaseHealthResponse
@@ -48,7 +49,10 @@ class HealthResponse(BaseModel):
 @router.get(
     "/health",
     response_model_exclude_none=True,
-    responses={HTTPStatus.SERVICE_UNAVAILABLE: {"model": HealthResponse}},
+    responses={
+        HTTPStatus.INTERNAL_SERVER_ERROR: {"model": ErrorResponse},
+        HTTPStatus.SERVICE_UNAVAILABLE: {"model": HealthResponse},
+    },
 )
 async def health(request: Request, response: Response) -> HealthResponse:
     """Report API reachability, delivery phase, and database health."""
@@ -67,6 +71,7 @@ async def health(request: Request, response: Response) -> HealthResponse:
         response.status_code = HTTPStatus.SERVICE_UNAVAILABLE
     return HealthResponse(
         ok=database_health.ok,
+        service="harness-evolution",
         phase=phase,
         version=version,
         db=DatabaseHealthResponse.from_health(database_health),

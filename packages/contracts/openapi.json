@@ -1,0 +1,183 @@
+{
+  "components": {
+    "schemas": {
+      "DatabaseDialect": {
+        "description": "Supported SQLAlchemy database dialects.",
+        "enum": [
+          "sqlite",
+          "mysql"
+        ],
+        "title": "DatabaseDialect",
+        "type": "string"
+      },
+      "DatabaseHealthResponse": {
+        "additionalProperties": false,
+        "description": "Sanitized database health included in the public health response.",
+        "properties": {
+          "dialect": {
+            "$ref": "#/components/schemas/DatabaseDialect"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "latencyMs": {
+            "title": "Latencyms",
+            "type": "number"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dialect",
+          "ok",
+          "latencyMs"
+        ],
+        "title": "DatabaseHealthResponse",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "additionalProperties": false,
+        "description": "Error payload shared by browser and API clients.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "description": "Top-level failure response.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "description": "Public health-check contract.",
+        "properties": {
+          "db": {
+            "$ref": "#/components/schemas/DatabaseHealthResponse"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ServicePhase"
+          },
+          "service": {
+            "const": "harness-evolution",
+            "title": "Service",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "service",
+          "phase",
+          "version",
+          "db"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "ServicePhase": {
+        "description": "Delivery phase exposed by the health endpoint.",
+        "enum": [
+          "scaffold",
+          "demo",
+          "live"
+        ],
+        "title": "ServicePhase",
+        "type": "string"
+      }
+    }
+  },
+  "info": {
+    "title": "harness-evolution-api",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "description": "Report API reachability, delivery phase, and database health.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}
