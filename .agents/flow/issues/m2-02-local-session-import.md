@@ -56,7 +56,7 @@ m2-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 1. 写本地导入命令与 baseline 断言
 2. 用合成 fixture 覆盖接口
 3. 本地执行真实导入
-4. 生成 gitignored data/harness-evolution.sqlite
+4. 生成 gitignored data/harness.db
 
 ## 依赖与交付边界
 

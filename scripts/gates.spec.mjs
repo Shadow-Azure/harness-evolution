@@ -150,6 +150,36 @@ test("route gates execute cross-stack integration tests", () => {
   assert.deepEqual(recommend(paths).commands, ["test:integration", "verify:docs"]);
 });
 
+test("local session commands use the API default SQLite database", () => {
+  const dataDir = mkdtempSync(path.join(tmpdir(), "harness-local-db-path-"));
+  try {
+    const python = path.resolve(
+      "apps/api",
+      process.platform === "win32" ? ".venv/Scripts/python.exe" : ".venv/bin/python",
+    );
+    const apiUrl = execFileSync(
+      python,
+      ["-c", "from app.config import Settings; print(Settings().effective_db_url)"],
+      {
+        cwd: "apps/api",
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HE_DATA_DIR: dataDir,
+          HE_DB_DIALECT: "sqlite",
+          HE_DB_URL: "",
+          HE_JWT_SECRET: "local-session-path-contract-secret",
+        },
+      },
+    ).trim();
+    assert.equal(apiUrl, `sqlite+aiosqlite:///${path.join(dataDir, "harness.db")}`);
+    assert.match(readFileSync("scripts/local-sessions.mjs", "utf8"), /"harness\.db"/);
+    assert.match(readFileSync("scripts/verify-local-data.mjs", "utf8"), /data\/harness\.db/);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("route gates recommend browser E2E and fixture seed validation", () => {
   assert.deepEqual(recommend(["tests/e2e/m1-shell.test.mjs"]).commands, [
     "test:integration",

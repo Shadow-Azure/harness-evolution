@@ -14,6 +14,7 @@ scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - scripts/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

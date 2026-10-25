@@ -30,11 +30,11 @@ if (tracked) {
 const ignored = output("git", [
   "check-ignore",
   "--no-index",
-  "data/harness-evolution.sqlite",
+  "data/harness.db",
   "claude-code-sessions/root.jsonl",
 ]).split("\n");
 if (
-  !ignored.includes("data/harness-evolution.sqlite") ||
+  !ignored.includes("data/harness.db") ||
   !ignored.includes("claude-code-sessions/root.jsonl")
 ) {
   console.error("local-data: local data directories are not fully ignored");
