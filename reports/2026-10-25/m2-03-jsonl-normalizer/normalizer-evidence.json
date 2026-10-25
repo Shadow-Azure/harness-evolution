@@ -1,0 +1,56 @@
+{
+  "localAggregate": {
+    "roots": 4,
+    "agents": 66,
+    "lines": 15507,
+    "uniqueMessages": 2755,
+    "tokensTotal": 9743423,
+    "toolUses": 3536,
+    "errorBlocks": 97,
+    "userTurns": 53,
+    "issues": 0,
+    "rootsWithModel": 4,
+    "rootsWithUserTurns": 4
+  },
+  "syntheticRegression": {
+    "lines": 11,
+    "uniqueMessages": 3,
+    "tokensTotal": 28,
+    "toolUses": 3,
+    "errorBlocks": 1,
+    "dominantModel": "model-a",
+    "models": [
+      "model-a",
+      "model-b"
+    ],
+    "userTurnCount": 2,
+    "eventKinds": [
+      "skill",
+      "agent",
+      "workflow"
+    ],
+    "issueCodes": [
+      "INVALID_TRANSCRIPT_RECORD",
+      "INVALID_JSONL_LINE"
+    ],
+    "controlAttachmentTurns": 0,
+    "toolResultTextPersisted": false
+  },
+  "syncErrorAdapter": {
+    "codes": [
+      "INVALID_TRANSCRIPT_RECORD",
+      "INVALID_JSONL_LINE"
+    ],
+    "privateRecordTextPersisted": false
+  },
+  "focusedTests": {
+    "passed": 19,
+    "failed": 0
+  },
+  "fixturesCheck": {
+    "roots": 4,
+    "agents": 8,
+    "bytes": 3605,
+    "status": "valid"
+  }
+}

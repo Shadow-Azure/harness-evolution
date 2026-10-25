@@ -33,6 +33,7 @@ pnpm test:e2e            # 浏览器 E2E
 pnpm fixtures:check
 pnpm fixtures:seed       # 演示 fixture
 pnpm data:import:sessions
+pnpm data:normalize:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm contract:generate

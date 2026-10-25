@@ -32,6 +32,7 @@ pnpm test:e2e
 pnpm fixtures:check
 pnpm fixtures:seed
 pnpm data:import:sessions
+pnpm data:normalize:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm test:all

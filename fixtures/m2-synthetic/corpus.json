@@ -25,6 +25,7 @@
           "model": "claude-sonnet-synthetic",
           "requestedModel": "sonnet",
           "spawnDepth": 0,
+          "meta": { "model": "sonnet" },
           "messagesCount": 1,
           "tokensTotal": 100,
           "toolsCount": 1,
@@ -71,6 +72,7 @@
           "payloadFile": "payloads/session-01-review.jsonl",
           "meta": {
             "agentType": "Explore",
+            "model": "haiku",
             "spawnDepth": 1,
             "toolUseId": "tool-agent-1"
           }
@@ -100,6 +102,7 @@
           "model": "claude-sonnet-synthetic",
           "requestedModel": "sonnet",
           "spawnDepth": 0,
+          "meta": { "model": "sonnet" },
           "messagesCount": 1,
           "tokensTotal": 130,
           "toolsCount": 1,
@@ -159,6 +162,7 @@
           "payloadFile": "payloads/session-02-worker.jsonl",
           "meta": {
             "agentType": "workflow-subagent",
+            "model": "haiku",
             "spawnDepth": 2
           }
         }
@@ -187,6 +191,7 @@
           "model": "claude-sonnet-synthetic",
           "requestedModel": "sonnet",
           "spawnDepth": 0,
+          "meta": { "model": "sonnet" },
           "messagesCount": 1,
           "tokensTotal": 78,
           "toolsCount": 1,
@@ -232,6 +237,7 @@
           "sortKey": 40,
           "payloadFile": "payloads/session-03-fork.jsonl",
           "meta": {
+            "model": "sonnet",
             "skillName": "synthetic-review",
             "spawnDepth": 1,
             "taskKind": "forked_skill"
@@ -262,6 +268,7 @@
           "model": "claude-sonnet-synthetic",
           "requestedModel": "sonnet",
           "spawnDepth": 0,
+          "meta": { "model": "sonnet" },
           "messagesCount": 1,
           "tokensTotal": 40,
           "toolsCount": 0,

@@ -26,6 +26,7 @@ from app.fixtures_seed import (
 from app.service.acquisition.local_sessions import (
     LocalSessionSourceError,
     import_local_sessions,
+    normalize_local_sessions,
     verify_local_sessions,
 )
 from app.service.identity.service import IdentityService
@@ -159,6 +160,15 @@ def _parser() -> argparse.ArgumentParser:
         default="../../claude-code-sessions",
         type=Path,
     )
+    normalize_local = subcommands.add_parser(
+        "normalize-local",
+        help="parse local payloads and print aggregate-only statistics",
+    )
+    normalize_local.add_argument(
+        "--sessions-dir",
+        default="../../claude-code-sessions",
+        type=Path,
+    )
     return parser
 
 
@@ -198,6 +208,13 @@ def main(argv: list[str] | None = None) -> int:
                         Settings(),
                         _absolute_path_without_resolving_symlinks(args.sessions_dir),
                     ),
+                ),
+            )
+        elif args.command == "normalize-local":
+            result = asdict(
+                normalize_local_sessions(
+                    Settings(),
+                    _absolute_path_without_resolving_symlinks(args.sessions_dir),
                 ),
             )
         else:

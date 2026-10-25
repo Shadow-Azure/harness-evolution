@@ -1,2 +1,2 @@
-{"type":"user","sessionId":"10000000-0000-4000-8000-000000000004","cwd":"/workspace/minimal-repo","gitBranch":"main","version":"synthetic-1","message":{"content":"记录最小示例会话"}}
+{"type":"user","sessionId":"10000000-0000-4000-8000-000000000004","timestamp":"2026-10-23T04:00:00Z","cwd":"/workspace/minimal-repo","gitBranch":"main","version":"synthetic-1","entrypoint":"sdk","message":{"content":"记录最小示例会话"}}
 {"type":"assistant","sessionId":"10000000-0000-4000-8000-000000000004","message":{"id":"msg-s4-a1","model":"claude-sonnet-synthetic","content":[{"type":"text","text":"最小会话完成。"}],"usage":{"input_tokens":30,"output_tokens":10}}}

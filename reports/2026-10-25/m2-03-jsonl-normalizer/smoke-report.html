@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2-03 JSONL 归一化器集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #87</p>
+    <h1>M2-03 JSONL 归一化器集成冒烟报告</h1>
+    <p class="summary">在真实本地 payload、临时 SQLite、FastAPI、Vite 与 Chrome 上验证 JSONL 归一化、坏行隔离、隐私边界和全局壳。所有场景通过，未发现集成缺陷。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · FastAPI · SQLite</span>
+    <div class="metrics"><div class="metric"><b>11</b><span>冒烟场景</span></div><div class="metric"><b>11</b><span>通过</span></div><div class="metric"><b>0</b><span>控制台告警/错误</span></div><div class="metric"><b>19</b><span>聚焦测试通过</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · FastAPI · SQLite</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#35 · M2 JSONL normalizer</dd></div><div class="fact"><dt>PR</dt><dd>#87</dd></div><div class="fact"><dt>Commit</dt><dd>7f3d937</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome + SQLite</dd></div><div class="fact"><dt>Data scope</dt><dd>aggregate-only local verification; no transcript text persisted in report</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>11 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>真实本地聚合</td><td><span class="status pass">PASS</span></td><td>4 roots、66 agents、15,507 lines、2,755 messages、9,743,423 tokens、3,536 tools、97 errors、53 user turns；所有 root 均有模型和用户轮次。</td><td class="evidence">normalizer-evidence.json · localAggregate<br>pnpm data:normalize:sessions</td></tr><tr><td class="num">02</td><td>Fixture golden oracle</td><td><span class="status pass">PASS</span></td><td>4 roots、8 agents、3,605 bytes；manifest 与 payload 派生统计一致。</td><td class="evidence">normalizer-evidence.json · fixturesCheck<br>pnpm fixtures:check</td></tr><tr><td class="num">03</td><td>坏行隔离</td><td><span class="status pass">PASS</span></td><td>标量 JSON 与畸形 JSONL 分别生成 INVALID_TRANSCRIPT_RECORD、INVALID_JSONL_LINE，后续有效行继续统计。</td><td class="evidence">normalizer-evidence.json · syntheticRegression.issueCodes</td></tr><tr><td class="num">04</td><td>累计 usage 去重</td><td><span class="status pass">PASS</span></td><td>重复 assistant message.id 只计一次，并采用最终累计 usage；合成样本 tokens=28。</td><td class="evidence">normalizer-evidence.json · syntheticRegression.tokensTotal</td></tr><tr><td class="num">05</td><td>用户轮次筛选</td><td><span class="status pass">PASS</span></td><td>仅 attachment 记录的 human origin 生成轮次；queue-operation、meta、peer 与 tool-result 不生成轮次。</td><td class="evidence">normalizer-evidence.json · syntheticRegression.userTurnCount<br>focused tests 19/19</td></tr><tr><td class="num">06</td><td>事件与模型选择</td><td><span class="status pass">PASS</span></td><td>Skill/Agent/Workflow 事件按源顺序、lineNo/messageOffset 记录；多模型最高频且首见破平。</td><td class="evidence">normalizer-evidence.json · syntheticRegression.eventKinds<br>focused tests 19/19</td></tr><tr><td class="num">07</td><td>隐私与 agent_meta</td><td><span class="status pass">PASS</span></td><td>message/thinking/tool-result 文本不进入持久化结果；原始 agent_meta 以冻结副本保留。</td><td class="evidence">normalizer-evidence.json · syntheticRegression.toolResultTextPersisted</td></tr><tr><td class="num">08</td><td>sync_runs.errors 脱敏</td><td><span class="status pass">PASS</span></td><td>临时 SQLite 中只写入稳定 code、位置与脱敏消息；私有记录文本未落库。</td><td class="evidence">normalizer-evidence.json · syncErrorAdapter</td></tr><tr><td class="num">09</td><td>真实 Chrome 壳</td><td><span class="status pass">PASS</span></td><td>登录、强制改密、Sessions/Errors/Evolution、demo 角标和用户菜单正常；console warning/error=0。</td><td class="evidence">screenshots/03-sessions.png<br>screenshots/04-errors.png<br>screenshots/05-evolution.png</td></tr><tr><td class="num">10</td><td>390×844 响应式</td><td><span class="status pass">PASS</span></td><td>Computer Use 视口为 390×844，scrollWidth=clientWidth=390，用户菜单右边界 366。</td><td class="evidence">screenshots/06-narrow-390.png<br>browser-evidence.json · narrowViewport</td></tr><tr><td class="num">11</td><td>自动化边界</td><td><span class="status pass">PASS</span></td><td>真实 Chrome E2E 4/4；m2-03 仅验证纯 parser 与脱敏 issue 适配，树组装和业务表重写留待 m2-04/m2-05。</td><td class="evidence">browser-evidence.json · e2e<br>pnpm test:e2e -- m1-shell</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>6 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-login.png" alt="需要登录的 Harness Lens 页面"><figcaption><b>登录边界</b><span>未登录访问受保护路由时进入登录页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-change-password.png" alt="首次登录强制改密页面"><figcaption><b>强制改密</b><span>临时管理员账号登录后被引导到改密页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-sessions.png" alt="Sessions 空态和顶部导览"><figcaption><b>Sessions 壳</b><span>真实 Chrome 中显示三入口、演示数据和空态。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-errors.png" alt="Errors 后续功能占位页"><figcaption><b>Errors 壳</b><span>Errors 保持真实空态，不展示假问题数据。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-evolution.png" alt="Evolution 骨架页"><figcaption><b>Evolution 壳</b><span>Evolution 占位页正常挂载 Vue Flow 容器。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-narrow-390.png" alt="390px 视口下的 Evolution 页面"><figcaption><b>390×844</b><span>窄视口无横向溢出，导航与用户入口保持可用。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>纯 JSONL parser</td><td>19 个聚焦测试 + 合成 mixed transcript</td><td>统计、用户轮次、trigger、模型与隐私边界有确定性证据。</td><td>保持 golden oracle 与 parser version 同步。</td></tr><tr><td>真实本地数据</td><td>只读聚合命令 + Computer Use</td><td>4/66/15,507 与修正后的 token 总量一致，所有 root 可产出模型和轮次。</td><td>后续树组装继续使用同一真实数据做聚合验收。</td></tr><tr><td>坏行与 sync errors</td><td>临时 SQLite 真实写入</td><td>稳定错误码可持久化，原始行和私有文本不落库。</td><td>m2-05 重放时继续复用该脱敏适配器。</td></tr><tr><td>浏览器壳和响应式</td><td>Computer Use + 真实 Chrome E2E</td><td>登录、强制改密、导航、控制台和 390px 均正常。</td><td>会话列表 UI 接入后扩充领域页面冒烟。</td></tr><tr><td>树组装与业务重写</td><td>不在 m2-03 范围</td><td>m2-03 不写 session/agent/event 业务表，也不标记 processed。</td><td>由 m2-04/m2-05 分别覆盖。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>当前提交的 JSONL 归一化器与真实本地 payload、SQLite 错误适配和现有 Chrome 壳协同正常，未发现集成缺陷。</strong></p><ul><li>真实聚合保持 4 roots、66 agents、15,507 lines 和修正后的 9,743,423 tokens。</li><li>坏行与非对象行均隔离为脱敏 issue，后续有效记录继续解析。</li><li>浏览器控制台无 warning/error，390×844 无横向溢出。</li><li>敏感轨迹正文、thinking 和 tool-result 文本未进入报告或持久化错误。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 截图、脱敏聚合/HTTP/DB 证据、真实 Chrome E2E 与聚焦自动测试。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>

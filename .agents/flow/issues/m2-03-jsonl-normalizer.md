@@ -9,14 +9,19 @@ milestone: m2
 depends:
   - m2-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - fixtures/**
   - packages/contracts/**
+  - scripts/**
+  - package.json
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 35
@@ -61,6 +66,7 @@ m2-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m2-03-jsonl-normalizer
 pnpm test:db
+pnpm data:normalize:sessions
 ```
 
 - 归一化测试通过
