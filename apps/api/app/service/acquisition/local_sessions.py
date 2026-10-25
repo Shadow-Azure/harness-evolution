@@ -24,8 +24,13 @@ from app.db.crud.local_sessions import (
 )
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.service.acquisition.agent_tree import (
+    AgentTreeAggregate,
+    assemble_agent_trees,
+)
 from app.service.acquisition.normalize import (
     NormalizationAggregate,
+    ParsedTranscript,
     aggregate_transcripts,
     normalize_transcript,
 )
@@ -453,9 +458,17 @@ def normalize_local_sessions(
     source_root: Path,
 ) -> NormalizationAggregate:
     """Parse every local payload and return aggregate-only statistics."""
+    return aggregate_transcripts(normalize_local_transcripts(settings, source_root))
+
+
+def normalize_local_transcripts(
+    settings: Settings,
+    source_root: Path,
+) -> tuple[ParsedTranscript, ...]:
+    """Parse every local payload without writing or retaining source paths."""
     _ensure_local_environment(settings)
     corpus = scan_local_sessions(source_root)
-    transcripts = tuple(
+    return tuple(
         normalize_transcript(
             payload.content,
             root_session_id=payload.root_session_id,
@@ -465,4 +478,13 @@ def normalize_local_sessions(
         )
         for payload in corpus.payloads
     )
-    return aggregate_transcripts(transcripts)
+
+
+def assemble_local_sessions(
+    settings: Settings,
+    source_root: Path,
+) -> AgentTreeAggregate:
+    """Assemble local trees and return stable aggregate-only verification."""
+    return assemble_agent_trees(
+        normalize_local_transcripts(settings, source_root),
+    ).aggregate

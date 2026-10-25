@@ -15,10 +15,13 @@ const commands = new Map([
   ["import", "import-local"],
   ["verify", "verify-local"],
   ["normalize", "normalize-local"],
+  ["tree", "tree-local"],
 ]);
 
 if (!commands.has(mode)) {
-  console.error("local-sessions: expected `import`, `verify`, or `normalize`");
+  console.error(
+    "local-sessions: expected `import`, `verify`, `normalize`, or `tree`",
+  );
   process.exit(2);
 }
 if (!existsSync(PYTHON)) {

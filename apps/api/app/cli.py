@@ -25,6 +25,7 @@ from app.fixtures_seed import (
 )
 from app.service.acquisition.local_sessions import (
     LocalSessionSourceError,
+    assemble_local_sessions,
     import_local_sessions,
     normalize_local_sessions,
     verify_local_sessions,
@@ -169,6 +170,15 @@ def _parser() -> argparse.ArgumentParser:
         default="../../claude-code-sessions",
         type=Path,
     )
+    tree_local = subcommands.add_parser(
+        "tree-local",
+        help="assemble local Agent trees and print aggregate-only statistics",
+    )
+    tree_local.add_argument(
+        "--sessions-dir",
+        default="../../claude-code-sessions",
+        type=Path,
+    )
     return parser
 
 
@@ -213,6 +223,13 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "normalize-local":
             result = asdict(
                 normalize_local_sessions(
+                    Settings(),
+                    _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                ),
+            )
+        elif args.command == "tree-local":
+            result = asdict(
+                assemble_local_sessions(
                     Settings(),
                     _absolute_path_without_resolving_symlinks(args.sessions_dir),
                 ),

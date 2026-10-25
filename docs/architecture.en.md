@@ -6,7 +6,7 @@ Records service boundaries, data flow and storage. Work advances by vertical sli
 
 ## Product boundary
 
-The service contains M1/M2 fixtures, local import, and per-payload JSONL normalization; Agent-tree assembly and session queries are not running yet.
+The service contains fixtures, local import, JSONL normalization, and Agent-tree assembly; queries are not running.
 
 ## Service split
 
@@ -79,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, three-entry shell, fixtures/seed, local import, E2E, and contract gates.
-- Missing: Agent-tree assembly/session queries, issue queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, three-entry shell, fixtures/seed, local import, Agent-tree assembly, E2E, and contract gates.
+- Missing: session queries and business-table tree rewriting, issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

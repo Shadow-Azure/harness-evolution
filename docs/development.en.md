@@ -2,7 +2,7 @@
 
 English | [中文](development.md)
 
-> Type: tutorial | Layer: contributor onboarding. Gates are listed in [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page explains usage.
+> Type: tutorial | Layer: contributor onboarding. Gates are listed in [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page covers usage.
 
 ## Environment
 
@@ -33,6 +33,7 @@ pnpm fixtures:check
 pnpm fixtures:seed
 pnpm data:import:sessions
 pnpm data:normalize:sessions
+pnpm data:tree:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm test:all

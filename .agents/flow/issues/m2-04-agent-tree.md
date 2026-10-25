@@ -9,13 +9,18 @@ milestone: m2
 depends:
   - m2-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - fixtures/**
   - docs/**
+  - scripts/**
+  - package.json
+  - AGENTS.md
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 36

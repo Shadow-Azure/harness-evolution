@@ -132,7 +132,7 @@
           ]
         },
         {
-          "id": "wf-s2-0001",
+          "id": "wf_9e88822acbfcd60c0837bf523793af78",
           "kind": "workflow",
           "agentType": "workflow",
           "description": "运行合成工作流",
@@ -152,7 +152,7 @@
           "model": "claude-haiku-synthetic",
           "requestedModel": "haiku",
           "description": "执行工作流子任务",
-          "parentAgentId": "wf-s2-0001",
+          "parentAgentId": "wf_9e88822acbfcd60c0837bf523793af78",
           "spawnDepth": 2,
           "messagesCount": 1,
           "tokensTotal": 28,

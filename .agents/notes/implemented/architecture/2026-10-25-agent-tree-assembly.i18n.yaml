@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-25-agent-tree-assembly.md
+2026-10-25-agent-tree-assembly.md: f273bf68fb9a422b41d297747a3ee204e8e85977
+2026-10-25-agent-tree-assembly.en.md: 0f6bfac8f22f3f633650d5387773a64ed1ba2668
