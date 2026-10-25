@@ -31,8 +31,6 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/pyproject.toml
       - run: pnpm install --frozen-lockfile
-      - name: 门禁自测试
-        run: pnpm test:gates
       - name: Web lint
         run: pnpm lint:web
       - name: Web typecheck
@@ -41,6 +39,8 @@ jobs:
         run: |
           python -m venv apps/api/.venv
           apps/api/.venv/bin/python -m pip install -e 'apps/api[dev]'
+      - name: 门禁自测试
+        run: pnpm test:gates
       - name: API lint
         run: pnpm lint:api
       - name: API typecheck
