@@ -93,13 +93,15 @@ async def job_recency_index_directions(
     index_name = "ix_job_runs_kind_created_at"
     async with database.session() as session:
         if database.dialect == "sqlite":
-            rows = (await session.execute(text(f"PRAGMA index_xinfo('{index_name}')"))).mappings()
+            sqlite_rows = (
+                await session.execute(text(f"PRAGMA index_xinfo('{index_name}')"))
+            ).mappings()
             return [
                 (str(row["name"]), bool(row["desc"]))
-                for row in rows
+                for row in sqlite_rows
                 if row["name"] is not None and row["key"]
             ]
-        rows = (
+        mysql_rows = (
             await session.execute(
                 text(
                     "SELECT column_name, collation "
@@ -111,8 +113,8 @@ async def job_recency_index_directions(
                 ),
                 {"index_name": index_name},
             )
-        ).mappings()
-        return [(str(row["column_name"]), str(row["collation"]).upper() == "D") for row in rows]
+        ).all()
+        return [(str(row[0]), str(row[1]).upper() == "D") for row in mysql_rows]
 
 
 @pytest.mark.parametrize(
