@@ -10,7 +10,7 @@ depends:
   - m2-06
   - m2-07
 priority: P0
-status: in-progress
+status: done
 scope:
   - AGENTS.md
   - apps/web/**
