@@ -1,0 +1,216 @@
+{
+  "title": "M2-02 本地会话导入集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #85",
+  "summary": "在真实 Claude Code 本地目录、临时 SQLite、FastAPI、Vite 与 Chrome 上验证本地轨迹导入。4/66/62 身份一致，首次写入 66+66 行，重复导入零变更，严格异常路径拒绝，浏览器主链路无失败。",
+  "meta": "2026-10-25 · macOS · Chrome · FastAPI · Vite · SQLite",
+  "metrics": [
+    { "value": "16", "label": "冒烟检查" },
+    { "value": "0", "label": "失败" },
+    { "value": "4 / 66 / 62", "label": "roots / JSONL / subagents" },
+    { "value": "27", "label": "聚焦导入测试" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#34 · M2 本地会话导入" },
+    { "label": "PR", "value": "#85" },
+    { "label": "Commit", "value": "2cdb11e" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome" },
+    { "label": "Database", "value": "temporary SQLite" },
+    { "label": "Source", "value": "local Claude Code sessions · structure only in report" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "本地目录身份扫描",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "发现 4 个 root、66 个 JSONL、62 个 subagent；root 使用 session id，subagent 身份与文件/目录交叉一致。",
+        "evidence": ["verify:local-sessions", "focused identity tests"]
+      },
+      {
+        "id": "02",
+        "name": "首次事务导入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "首次导入写入 66 个 payload 与 66 个 source index 行。",
+        "evidence": ["inserted_payloads=66", "inserted_source_records=66"]
+      },
+      {
+        "id": "03",
+        "name": "重复导入零副作用",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "相同源再次导入为 0 inserted / 0 updated / 66 unchanged。",
+        "evidence": ["second import result"]
+      },
+      {
+        "id": "04",
+        "name": "数据库聚合一致",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 roots、62 subagents、66 payloads、66 source records；无重复复合键或坏 hash/line count。",
+        "evidence": ["SQLite aggregate query"]
+      },
+      {
+        "id": "05",
+        "name": "运行时状态保留",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "人为写入的 processed_at/hash/parser_version 与 received_at 在再次导入后保持不变。",
+        "evidence": ["processed marker preserved", "received_at preserved"]
+      },
+      {
+        "id": "06",
+        "name": "时间字段语义",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "payload updated_at 来自源文件 mtime 并截到秒；source received_at 使用首次发现时间。",
+        "evidence": ["mtime 2026-10-23", "received_at 2026-10-25"]
+      },
+      {
+        "id": "07",
+        "name": "未提前归一化",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "session_families、agents、agent_events、user_turns 均未写入；source_records 仅一条用于验证运行态保留的显式标记。",
+        "evidence": ["families=0", "agents=0", "events=0", "turns=0"]
+      },
+      {
+        "id": "08",
+        "name": "原文单次落库",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "trajectory_payloads 中共 66 行，每对 (rootSessionId, agentId) 唯一，payload 文本只保存一次。",
+        "evidence": ["duplicate_payload_keys=0", "bad_rows=0"]
+      },
+      {
+        "id": "09",
+        "name": "严格异常输入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "27 个聚焦测试覆盖 malformed JSONL、重复键、错误/过长身份、缺 meta、orphan meta、symlink、大小上限和 CLI 脱敏。",
+        "evidence": ["pnpm test:api -- tests/m2-02-local-session-import · 27 passed"]
+      },
+      {
+        "id": "10",
+        "name": "Symlink 源拒绝",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "通过 symlink 指向真实源时，CLI 在建库前返回 exit 2，只输出 `session source must not be a symlink`，不含绝对路径。",
+        "evidence": ["real CLI symlink attempt"]
+      },
+      {
+        "id": "11",
+        "name": "本地数据卫生",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "data/ 与 claude-code-sessions/ 均被忽略，git 跟踪文件数为 0；报告与日志无轨迹正文。",
+        "evidence": ["verify:local-data", "git ls-files count=0"]
+      },
+      {
+        "id": "12",
+        "name": "登录与强制改密",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时管理员登录后强制进入改密页；完成改密后回到 /sessions。",
+        "evidence": ["screenshots/01-sessions.jpg"]
+      },
+      {
+        "id": "13",
+        "name": "三入口导航",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Sessions、Errors、Evolution 三入口均可达，active 状态与占位文案正确；页面不展示伪领域数据。",
+        "evidence": ["screenshots/02-errors.jpg", "screenshots/03-evolution.jpg"]
+      },
+      {
+        "id": "14",
+        "name": "390px 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390×844 下 scrollWidth=clientWidth=390；用户菜单与退出按钮完整位于视口内。",
+        "evidence": ["screenshots/04-narrow-sessions.jpg", "responsive measurements"]
+      },
+      {
+        "id": "15",
+        "name": "退出与受保护回跳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "退出到 /login；再访问 /sessions 安全回跳为 /login?redirect=/sessions。",
+        "evidence": ["screenshots/05-login-after-logout.jpg", "logoutUrl and protectedUrl"]
+      },
+      {
+        "id": "16",
+        "name": "全新标签控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "全新 Chrome 标签深链 /evolution，在 1408px 与 390px 均无 warning/error；warm tab 的 viewport-resize warning 未在全新标签复现，记录为非产品缺陷观察。",
+        "evidence": ["console-fresh.json · []", "console-warm.json · observation"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions.jpg",
+      "alt": "登录改密后的 Sessions 页面",
+      "label": "Sessions",
+      "caption": "真实 Chrome 完成首登改密后回到 Sessions，顶栏显示当前管理员与 demo 角标。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-errors.jpg",
+      "alt": "Errors 占位页面",
+      "label": "Errors",
+      "caption": "Errors 为后续 milestone 占位，不展示伪造问题数据。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-evolution.jpg",
+      "alt": "Evolution 占位页面",
+      "label": "Evolution",
+      "caption": "Evolution 空态与 Vue Flow 容器正常挂载。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-narrow-sessions.jpg",
+      "alt": "390px 用户菜单",
+      "label": "390px Session",
+      "caption": "窄视口无横向溢出，用户菜单和退出入口位于视口内。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-login-after-logout.jpg",
+      "alt": "退出后的登录页",
+      "label": "退出",
+      "caption": "退出后回到登录页，随后受保护路由仍安全回跳。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "本地导入",
+        "coverage": "真实本地目录 + 临时 SQLite + 27 个聚焦测试",
+        "conclusion": "4/66/62 身份、首次事务写入、重复导入与运行态保留均通过。",
+        "recommendation": "继续在 CI 使用合成目录，真实目录只做本地发布前验证。"
+      },
+      {
+        "area": "异常与安全",
+        "coverage": "严格负例测试 + 真实 symlink CLI",
+        "conclusion": "身份、JSON、路径、大小、meta 和生产/live 防护均有稳定失败语义。",
+        "recommendation": "后续解析器继续复用同一 source error 边界。"
+      },
+      {
+        "area": "浏览器壳",
+        "coverage": "Computer Use + 全新 Chrome 标签",
+        "conclusion": "登录、强制改密、三入口、窄视口、退出和安全回跳通过。",
+        "recommendation": "会话列表 API/UI 在后续 issue 接入后扩展浏览器数据场景。"
+      },
+      {
+        "area": "开发态控制台",
+        "coverage": "warm tab + fresh tab comparison",
+        "conclusion": "warm tab 在人为 viewport resize 时出现一次 Vue Flow warning；fresh tab 在 1408px/390px 深链均无日志。",
+        "recommendation": "以 fresh-tab 结果作为产品判断；若后续再次出现，回到 m1-09 的 canvas sizing 回归继续定位。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "m2-02 本地会话导入在真实数据、数据库和浏览器主链路上通过，未发现需要修复的集成缺陷。",
+    "points": [
+      "真实本地导入为 4 个 root、66 个 Agent payload、62 个 subagent，重复导入零变更。",
+      "运行态处理字段与 received_at 在重导后保留，未提前生成归一化领域数据。",
+      "本地数据没有进入 Git，命令和报告未暴露轨迹正文或绝对路径。",
+      "全新 Chrome 标签无 warning/error；后续会话列表 UI 仍由后续 issue 负责。"
+    ]
+  },
+  "footer": "证据源：真实本地 Claude Code 目录、临时 SQLite、FastAPI/Vite、Chrome Computer Use、聚焦自动测试。生成 HTML 不应手改。"
+}

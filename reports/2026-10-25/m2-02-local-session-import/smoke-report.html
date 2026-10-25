@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2-02 本地会话导入集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #85</p>
+    <h1>M2-02 本地会话导入集成冒烟报告</h1>
+    <p class="summary">在真实 Claude Code 本地目录、临时 SQLite、FastAPI、Vite 与 Chrome 上验证本地轨迹导入。4/66/62 身份一致，首次写入 66+66 行，重复导入零变更，严格异常路径拒绝，浏览器主链路无失败。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · FastAPI · Vite · SQLite</span>
+    <div class="metrics"><div class="metric"><b>16</b><span>冒烟检查</span></div><div class="metric"><b>0</b><span>失败</span></div><div class="metric"><b>4 / 66 / 62</b><span>roots / JSONL / subagents</span></div><div class="metric"><b>27</b><span>聚焦导入测试</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · FastAPI · Vite · SQLite</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#34 · M2 本地会话导入</dd></div><div class="fact"><dt>PR</dt><dd>#85</dd></div><div class="fact"><dt>Commit</dt><dd>2cdb11e</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome</dd></div><div class="fact"><dt>Database</dt><dd>temporary SQLite</dd></div><div class="fact"><dt>Source</dt><dd>local Claude Code sessions · structure only in report</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>16 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>本地目录身份扫描</td><td><span class="status pass">PASS</span></td><td>发现 4 个 root、66 个 JSONL、62 个 subagent；root 使用 session id，subagent 身份与文件/目录交叉一致。</td><td class="evidence">verify:local-sessions<br>focused identity tests</td></tr><tr><td class="num">02</td><td>首次事务导入</td><td><span class="status pass">PASS</span></td><td>首次导入写入 66 个 payload 与 66 个 source index 行。</td><td class="evidence">inserted_payloads=66<br>inserted_source_records=66</td></tr><tr><td class="num">03</td><td>重复导入零副作用</td><td><span class="status pass">PASS</span></td><td>相同源再次导入为 0 inserted / 0 updated / 66 unchanged。</td><td class="evidence">second import result</td></tr><tr><td class="num">04</td><td>数据库聚合一致</td><td><span class="status pass">PASS</span></td><td>4 roots、62 subagents、66 payloads、66 source records；无重复复合键或坏 hash/line count。</td><td class="evidence">SQLite aggregate query</td></tr><tr><td class="num">05</td><td>运行时状态保留</td><td><span class="status pass">PASS</span></td><td>人为写入的 processed_at/hash/parser_version 与 received_at 在再次导入后保持不变。</td><td class="evidence">processed marker preserved<br>received_at preserved</td></tr><tr><td class="num">06</td><td>时间字段语义</td><td><span class="status pass">PASS</span></td><td>payload updated_at 来自源文件 mtime 并截到秒；source received_at 使用首次发现时间。</td><td class="evidence">mtime 2026-10-23<br>received_at 2026-10-25</td></tr><tr><td class="num">07</td><td>未提前归一化</td><td><span class="status pass">PASS</span></td><td>session_families、agents、agent_events、user_turns 均未写入；source_records 仅一条用于验证运行态保留的显式标记。</td><td class="evidence">families=0<br>agents=0<br>events=0<br>turns=0</td></tr><tr><td class="num">08</td><td>原文单次落库</td><td><span class="status pass">PASS</span></td><td>trajectory_payloads 中共 66 行，每对 (rootSessionId, agentId) 唯一，payload 文本只保存一次。</td><td class="evidence">duplicate_payload_keys=0<br>bad_rows=0</td></tr><tr><td class="num">09</td><td>严格异常输入</td><td><span class="status pass">PASS</span></td><td>27 个聚焦测试覆盖 malformed JSONL、重复键、错误/过长身份、缺 meta、orphan meta、symlink、大小上限和 CLI 脱敏。</td><td class="evidence">pnpm test:api -- tests/m2-02-local-session-import · 27 passed</td></tr><tr><td class="num">10</td><td>Symlink 源拒绝</td><td><span class="status pass">PASS</span></td><td>通过 symlink 指向真实源时，CLI 在建库前返回 exit 2，只输出 `session source must not be a symlink`，不含绝对路径。</td><td class="evidence">real CLI symlink attempt</td></tr><tr><td class="num">11</td><td>本地数据卫生</td><td><span class="status pass">PASS</span></td><td>data/ 与 claude-code-sessions/ 均被忽略，git 跟踪文件数为 0；报告与日志无轨迹正文。</td><td class="evidence">verify:local-data<br>git ls-files count=0</td></tr><tr><td class="num">12</td><td>登录与强制改密</td><td><span class="status pass">PASS</span></td><td>临时管理员登录后强制进入改密页；完成改密后回到 /sessions。</td><td class="evidence">screenshots/01-sessions.jpg</td></tr><tr><td class="num">13</td><td>三入口导航</td><td><span class="status pass">PASS</span></td><td>Sessions、Errors、Evolution 三入口均可达，active 状态与占位文案正确；页面不展示伪领域数据。</td><td class="evidence">screenshots/02-errors.jpg<br>screenshots/03-evolution.jpg</td></tr><tr><td class="num">14</td><td>390px 响应式</td><td><span class="status pass">PASS</span></td><td>390×844 下 scrollWidth=clientWidth=390；用户菜单与退出按钮完整位于视口内。</td><td class="evidence">screenshots/04-narrow-sessions.jpg<br>responsive measurements</td></tr><tr><td class="num">15</td><td>退出与受保护回跳</td><td><span class="status pass">PASS</span></td><td>退出到 /login；再访问 /sessions 安全回跳为 /login?redirect=/sessions。</td><td class="evidence">screenshots/05-login-after-logout.jpg<br>logoutUrl and protectedUrl</td></tr><tr><td class="num">16</td><td>全新标签控制台</td><td><span class="status pass">PASS</span></td><td>全新 Chrome 标签深链 /evolution，在 1408px 与 390px 均无 warning/error；warm tab 的 viewport-resize warning 未在全新标签复现，记录为非产品缺陷观察。</td><td class="evidence">console-fresh.json · []<br>console-warm.json · observation</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>5 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-sessions.jpg" alt="登录改密后的 Sessions 页面"><figcaption><b>Sessions</b><span>真实 Chrome 完成首登改密后回到 Sessions，顶栏显示当前管理员与 demo 角标。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-errors.jpg" alt="Errors 占位页面"><figcaption><b>Errors</b><span>Errors 为后续 milestone 占位，不展示伪造问题数据。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-evolution.jpg" alt="Evolution 占位页面"><figcaption><b>Evolution</b><span>Evolution 空态与 Vue Flow 容器正常挂载。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-narrow-sessions.jpg" alt="390px 用户菜单"><figcaption><b>390px Session</b><span>窄视口无横向溢出，用户菜单和退出入口位于视口内。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-login-after-logout.jpg" alt="退出后的登录页"><figcaption><b>退出</b><span>退出后回到登录页，随后受保护路由仍安全回跳。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>本地导入</td><td>真实本地目录 + 临时 SQLite + 27 个聚焦测试</td><td>4/66/62 身份、首次事务写入、重复导入与运行态保留均通过。</td><td>继续在 CI 使用合成目录，真实目录只做本地发布前验证。</td></tr><tr><td>异常与安全</td><td>严格负例测试 + 真实 symlink CLI</td><td>身份、JSON、路径、大小、meta 和生产/live 防护均有稳定失败语义。</td><td>后续解析器继续复用同一 source error 边界。</td></tr><tr><td>浏览器壳</td><td>Computer Use + 全新 Chrome 标签</td><td>登录、强制改密、三入口、窄视口、退出和安全回跳通过。</td><td>会话列表 API/UI 在后续 issue 接入后扩展浏览器数据场景。</td></tr><tr><td>开发态控制台</td><td>warm tab + fresh tab comparison</td><td>warm tab 在人为 viewport resize 时出现一次 Vue Flow warning；fresh tab 在 1408px/390px 深链均无日志。</td><td>以 fresh-tab 结果作为产品判断；若后续再次出现，回到 m1-09 的 canvas sizing 回归继续定位。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>m2-02 本地会话导入在真实数据、数据库和浏览器主链路上通过，未发现需要修复的集成缺陷。</strong></p><ul><li>真实本地导入为 4 个 root、66 个 Agent payload、62 个 subagent，重复导入零变更。</li><li>运行态处理字段与 received_at 在重导后保留，未提前生成归一化领域数据。</li><li>本地数据没有进入 Git，命令和报告未暴露轨迹正文或绝对路径。</li><li>全新 Chrome 标签无 warning/error；后续会话列表 UI 仍由后续 issue 负责。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：真实本地 Claude Code 目录、临时 SQLite、FastAPI/Vite、Chrome Computer Use、聚焦自动测试。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>
