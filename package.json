@@ -48,6 +48,7 @@
     "install:hooks": "node scripts/install-git-hooks.mjs"
   },
   "devDependencies": {
+    "@redocly/ajv": "8.11.2",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3"
   }

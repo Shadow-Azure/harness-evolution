@@ -209,6 +209,13 @@ test("job lookup and one-time SSE ticket work through the real proxy", async () 
     status: "idle",
     reused: false,
   });
+  const pull = await fetch(`${webBaseUrl}/api/acquisition/pull`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ sessionIds: ["integration-session"] }),
+  });
+  assert.equal(pull.status, 409);
+  assert.equal((await pull.json()).error.code, "UPSTREAM_NOT_AVAILABLE");
 
   const missing = await fetch(`${webBaseUrl}/api/jobs/not-a-real-job`, { headers });
   assert.equal(missing.status, 404);

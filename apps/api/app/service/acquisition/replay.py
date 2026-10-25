@@ -100,6 +100,7 @@ async def replay_pending_payloads(
     parser_version: int = CURRENT_PARSER_VERSION,
     on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     sync_run_id: str | None = None,
+    source_type: str | None = None,
 ) -> ReplayResult:
     """Replay every pending root atomically and return aggregate-only counts."""
     pending = await list_pending_payloads(database, parser_version)
@@ -109,7 +110,7 @@ async def replay_pending_payloads(
     await create_sync_run(
         database,
         sync_run_id=resolved_sync_run_id,
-        source_type=pending[0].source_type if pending else "script",
+        source_type=(pending[0].source_type if pending else source_type or "script"),
         started_at=started_at,
         records_total=total_payloads,
     )

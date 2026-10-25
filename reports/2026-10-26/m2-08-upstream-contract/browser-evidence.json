@@ -1,0 +1,39 @@
+{
+  "shell": {
+    "path": "/sessions",
+    "brand": "Harness Evolution轨迹诊断与自进化",
+    "body": "rgb(244, 245, 247)",
+    "topbar": "rgb(250, 251, 252)",
+    "topbarHeight": "56px",
+    "card": "rgb(255, 255, 255)",
+    "nav": [
+      "Sessions",
+      "Errors",
+      "Evolution"
+    ],
+    "pendingText": "待处理 1空闲 · 已处理 6 · 最近导入 0 · 跳过 6 · 最近问题：同步发现问题 演示数据 Administratoradmin立即处理退出登录",
+    "scrollWidth": 1408,
+    "clientWidth": 1408
+  },
+  "adminMenu": {
+    "text": "admin立即处理退出登录",
+    "hasImmediate": true
+  },
+  "narrow": {
+    "path": "/evolution",
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "menuRight": 378,
+    "pendingVisible": false,
+    "brandLabel": "Harness Evolution"
+  },
+  "login": {
+    "body": "rgb(244, 245, 247)",
+    "card": "rgb(255, 255, 255)",
+    "width": 1408,
+    "scrollWidth": 1408,
+    "topbar": false
+  },
+  "violations": [],
+  "memberApiLoginStatus": 200
+}

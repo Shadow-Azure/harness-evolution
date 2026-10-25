@@ -2,10 +2,21 @@
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_upstream_api_major(value: object) -> object:
+    """Normalize an environment-backed decimal major version before validation."""
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip(), 10)
+    return value
+
+
+UpstreamApiMajor = Annotated[Literal[1], BeforeValidator(_parse_upstream_api_major)]
 
 
 class ServicePhase(StrEnum):
@@ -47,6 +58,13 @@ class Settings(BaseSettings):
     event_replay_limit: int = Field(default=500, gt=0, le=5_000)
     sync_interval_seconds: int = Field(default=60, ge=0)
     sync_lock_ttl_seconds: int = Field(default=30 * 60, gt=0)
+    upstream_base_url: str | None = None
+    upstream_token: SecretStr | None = None
+    upstream_api_major: UpstreamApiMajor = 1
+    upstream_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    upstream_retry_attempts: int = Field(default=3, ge=0, le=3)
+    upstream_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
+    upstream_max_pages: int = Field(default=100, gt=0, le=1_000)
     admin_username: str | None = None
     admin_password: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
@@ -75,6 +93,24 @@ class Settings(BaseSettings):
             raise ValueError("HE_JWT_SECRET must not be empty")
         return self
 
+    @field_validator("upstream_base_url")
+    @classmethod
+    def validate_upstream_url(cls, value: str | None) -> str | None:
+        """Allow only explicit HTTP(S) endpoints without embedded credentials."""
+        if value is None or not value.strip():
+            return None
+        normalized = value.rstrip("/")
+        parsed = urlsplit(normalized)
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("HE_UPSTREAM_BASE_URL must use http or https")
+        if not parsed.hostname:
+            raise ValueError("HE_UPSTREAM_BASE_URL must include a host")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("HE_UPSTREAM_BASE_URL must not contain credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("HE_UPSTREAM_BASE_URL must not contain query or fragment")
+        return normalized
+
     @property
     def access_ttl_seconds(self) -> int:
         """Return the configured bearer-token lifetime in seconds."""
@@ -89,3 +125,12 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """Return whether transport and operational safeguards are production grade."""
         return self.production
+
+    @property
+    def upstream_configured(self) -> bool:
+        """Return whether both upstream endpoint and bearer token are configured."""
+        return bool(
+            self.upstream_base_url
+            and self.upstream_token
+            and self.upstream_token.get_secret_value(),
+        )

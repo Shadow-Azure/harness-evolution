@@ -36,8 +36,12 @@ def _comparable(value: object) -> object:
 async def write_local_payloads(
     database: Database,
     payloads: tuple[LocalAgentPayload, ...],
+    *,
+    source_type: str = "script",
 ) -> LocalImportWriteResult:
-    """Insert or update local payloads in one rollback-safe transaction."""
+    """Insert or update one source's payloads in a rollback-safe transaction."""
+    if source_type not in {"script", "http_api"}:
+        raise ValueError("unsupported payload source type")
     inserted_payloads = 0
     updated_payloads = 0
     unchanged_payloads = 0
@@ -62,7 +66,7 @@ async def write_local_payloads(
                 "agent_meta": payload.agent_meta,
                 "content_hash": payload.content_hash,
                 "line_count": payload.line_count,
-                "source_type": "script",
+                "source_type": source_type,
                 "updated_at": payload.source_updated_at,
             }
             if existing is None:
@@ -98,7 +102,7 @@ async def write_local_payloads(
                         root_session_id=payload.root_session_id,
                         agent_id=payload.agent_id,
                         kind=payload.agent_kind,
-                        source_type="script",
+                        source_type=source_type,
                         line_count=payload.line_count,
                         received_at=payload.discovered_at,
                         processed_at=None,
@@ -113,7 +117,7 @@ async def write_local_payloads(
                     name: value
                     for name, value in {
                         "kind": payload.agent_kind,
-                        "source_type": "script",
+                        "source_type": source_type,
                         "line_count": payload.line_count,
                     }.items()
                     if _comparable(existing_source[name]) != _comparable(value)

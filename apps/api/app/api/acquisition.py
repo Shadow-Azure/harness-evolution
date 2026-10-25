@@ -6,8 +6,9 @@ from typing import Literal, cast
 from fastapi import APIRouter, Request, Response, Security
 
 from app.api.security import BEARER_AUTH
-from app.errors import ErrorResponse
+from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.acquisition.sync import SyncCoordinator, SyncStatus, SyncTriggerResult
+from app.service.acquisition.upstream_pull import PullJobPayload, UpstreamPullService
 from app.service.identity.schemas import IdentityModel
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition"])
@@ -27,6 +28,9 @@ _SYNC_ERROR_MESSAGES: dict[str, str] = {
     "SYNC_PROGRESS_FAILED": "Sync progress reporting failed",
     "SYNC_JOB_FAILED": "Sync job failed",
     "SYNC_JOB_INTERRUPTED": "Sync job was interrupted",
+    "UPSTREAM_REQUEST_FAILED": "Upstream trajectory request failed",
+    "UPSTREAM_INVALID_RESPONSE": "Upstream trajectory response was invalid",
+    "UPSTREAM_VERSION_INCOMPATIBLE": "Upstream trajectory API version is incompatible",
 }
 
 
@@ -63,9 +67,20 @@ class SyncTriggerResponse(IdentityModel):
     reused: bool
 
 
+class PullResponse(IdentityModel):
+    """Queued pull job identity."""
+
+    job_id: str
+
+
 def sync_from(request: Request) -> SyncCoordinator:
     """Return the application-scoped acquisition coordinator."""
     return cast(SyncCoordinator, request.app.state.sync)
+
+
+def pull_from(request: Request) -> UpstreamPullService:
+    """Return the application-scoped upstream pull service."""
+    return cast(UpstreamPullService, request.app.state.upstream_pull)
 
 
 def _status_response(status: SyncStatus) -> AcquisitionStatusResponse:
@@ -153,3 +168,34 @@ async def trigger_sync(request: Request, response: Response) -> SyncTriggerRespo
     if result.status == "idle":
         response.status_code = 200
     return _trigger_response(result)
+
+
+@router.post(
+    "/pull",
+    status_code=202,
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Admin role is required"},
+        409: {"model": ErrorResponse, "description": "Upstream is not configured"},
+        422: {"model": ErrorResponse, "description": "Selector validation failed"},
+    },
+)
+async def trigger_pull(request: Request, body: PullJobPayload) -> PullResponse:
+    """Queue one administrator pull from the configured upstream source."""
+    pull = pull_from(request)
+    if not pull.available:
+        raise AppError(
+            status_code=409,
+            code=ErrorCode.UPSTREAM_NOT_AVAILABLE,
+            message="upstream trajectory query is not configured",
+        )
+    payload = body
+    principal = request.state.principal
+    submitted = await request.app.state.jobs.submit(
+        kind="pull",
+        payload=payload.model_dump(by_alias=True, mode="json"),
+        ref_id=None,
+        created_by=principal.user_id,
+    )
+    return PullResponse(job_id=submitted.job.id)

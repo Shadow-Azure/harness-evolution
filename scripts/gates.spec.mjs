@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import Ajv2020 from "@redocly/ajv/dist/2020.js";
 import {
   collectRefs,
   globToRegExp,
@@ -82,6 +83,82 @@ function tree() {
 test("flow document requires exactly one yaml flow fence", () => {
   assert.throws(() => parseFlowDocument("# no fence\n", "x.md"), /恰好一个/);
   assert.equal(parseFlowDocument(roadmap, "roadmap.md").kind, "roadmap");
+});
+
+test("upstream trajectory JSON Schema enforces transcript identity", () => {
+  const schema = JSON.parse(
+    readFileSync("packages/contracts/upstream/trajectory.schema.json", "utf8"),
+  );
+  const fixture = JSON.parse(
+    readFileSync("packages/contracts/upstream/trajectory.fixture.json", "utf8"),
+  ).package;
+  const ajv = new Ajv2020({
+    allErrors: true,
+    $data: true,
+    strict: false,
+    validateFormats: true,
+  });
+  ajv.addFormat("date-time", {
+    validate: (value) =>
+      typeof value === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+      !Number.isNaN(Date.parse(value)),
+  });
+  ajv.addKeyword({
+    keyword: "x-time-range",
+    schemaType: "object",
+    validate: (range, data) =>
+      Date.parse(data[range.start]) <= Date.parse(data[range.end]),
+  });
+  const validate = ajv.compile(schema);
+  assert.equal(validate(fixture), true, JSON.stringify(validate.errors));
+
+  const invalid = [
+    {
+      ...structuredClone(fixture),
+      transcripts: [fixture.transcripts[0], fixture.transcripts[0]],
+    },
+    {
+      ...structuredClone(fixture),
+      transcripts: [
+        { ...fixture.transcripts[0], agentId: "main-agent" },
+        fixture.transcripts[1],
+      ],
+    },
+    {
+      ...structuredClone(fixture),
+      transcripts: [
+        fixture.transcripts[0],
+        { ...fixture.transcripts[1], agentId: null },
+      ],
+    },
+    {
+      ...structuredClone(fixture),
+      transcripts: [
+        fixture.transcripts[0],
+        { ...fixture.transcripts[1], agentId: fixture.sessionId },
+      ],
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: { ...fixture.metadata, startedAt: "not-a-date" },
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: { ...fixture.metadata, startedAt: "2026-10-20T01:00:00" },
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: {
+        ...fixture.metadata,
+        startedAt: "2026-10-20T02:00:00+08:00",
+        endedAt: "2026-10-20T01:00:00+08:00",
+      },
+    },
+  ];
+  for (const document of invalid) {
+    assert.equal(validate(document), false, JSON.stringify(document));
+  }
 });
 
 test("valid tree passes and milestone/issue status is cross-checked", () => {
@@ -309,13 +386,53 @@ test("contract checker covers executable missing and stale artifact workflows", 
     const checkedSnapshot = path.resolve("packages/contracts/openapi.json");
     const checkedTypes = path.resolve("packages/contracts/src/generated/api.d.ts");
     const checkedFixtures = path.resolve("packages/contracts/fixtures/health.json");
+    const checkedUpstreamSchema = path.resolve(
+      "packages/contracts/upstream/trajectory.schema.json",
+    );
+    const checkedUpstreamFixture = path.resolve(
+      "packages/contracts/upstream/trajectory.fixture.json",
+    );
     const missingSnapshot = path.join(directory, "missing-openapi.json");
     const missingTypes = path.join(directory, "missing-api.d.ts");
     const missingFixtures = path.join(directory, "missing-health.json");
+    const missingUpstreamSchema = path.join(directory, "missing-trajectory-schema.json");
+    const missingUpstreamFixture = path.join(directory, "missing-trajectory-fixture.json");
     const staleTypes = path.join(directory, "stale-api.d.ts");
-    const missingSnapshotResult = await checkContracts(missingSnapshot, checkedTypes, checkedFixtures);
-    const missingTypesResult = await checkContracts(checkedSnapshot, missingTypes, checkedFixtures);
-    const missingFixturesResult = await checkContracts(checkedSnapshot, checkedTypes, missingFixtures);
+    const missingSnapshotResult = await checkContracts(
+      missingSnapshot,
+      checkedTypes,
+      checkedFixtures,
+      checkedUpstreamSchema,
+      checkedUpstreamFixture,
+    );
+    const missingTypesResult = await checkContracts(
+      checkedSnapshot,
+      missingTypes,
+      checkedFixtures,
+      checkedUpstreamSchema,
+      checkedUpstreamFixture,
+    );
+    const missingFixturesResult = await checkContracts(
+      checkedSnapshot,
+      checkedTypes,
+      missingFixtures,
+      checkedUpstreamSchema,
+      checkedUpstreamFixture,
+    );
+    const missingUpstreamSchemaResult = await checkContracts(
+      checkedSnapshot,
+      checkedTypes,
+      checkedFixtures,
+      missingUpstreamSchema,
+      checkedUpstreamFixture,
+    );
+    const missingUpstreamFixtureResult = await checkContracts(
+      checkedSnapshot,
+      checkedTypes,
+      checkedFixtures,
+      checkedUpstreamSchema,
+      missingUpstreamFixture,
+    );
 
     assert.equal(missingSnapshotResult.ok, false);
     assert.match(missingSnapshotResult.errors.join("\n"), /missing-openapi\.json: 文件缺失/);
@@ -323,6 +440,16 @@ test("contract checker covers executable missing and stale artifact workflows", 
     assert.match(missingTypesResult.errors.join("\n"), /missing-api\.d\.ts: 文件缺失/);
     assert.equal(missingFixturesResult.ok, false);
     assert.match(missingFixturesResult.errors.join("\n"), /missing-health\.json: 文件缺失/);
+    assert.equal(missingUpstreamSchemaResult.ok, false);
+    assert.match(
+      missingUpstreamSchemaResult.errors.join("\n"),
+      /missing-trajectory-schema\.json: 文件缺失/,
+    );
+    assert.equal(missingUpstreamFixtureResult.ok, false);
+    assert.match(
+      missingUpstreamFixtureResult.errors.join("\n"),
+      /missing-trajectory-fixture\.json: 文件缺失/,
+    );
 
     writeFileSync(staleTypes, "/* @generated */\nexport type Stale = true;\n");
     const staleCli = spawnSync(process.execPath, [path.resolve("scripts/contract.mjs"), "check"], {
@@ -332,6 +459,8 @@ test("contract checker covers executable missing and stale artifact workflows", 
         HE_CONTRACT_SNAPSHOT: checkedSnapshot,
         HE_CONTRACT_TYPES: staleTypes,
         HE_CONTRACT_FIXTURES: checkedFixtures,
+        HE_UPSTREAM_SCHEMA: checkedUpstreamSchema,
+        HE_UPSTREAM_FIXTURE: checkedUpstreamFixture,
       },
     });
     assert.equal(staleCli.status, 1);
