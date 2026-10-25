@@ -29,6 +29,7 @@ from sqlalchemy.pool import QueuePool
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.sessions import SessionRepository
+from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.database import SqlAlchemyDatabase
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -345,7 +346,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0004"
+        assert result.scalar_one() == "0005"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -412,6 +413,29 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             ("created_at", True),
         ]
         async with database.engine.connect() as connection:
+            sync_columns, sync_indexes, sync_foreign_keys = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_columns("sync_lock"),
+                    inspect(sync_connection).get_indexes("sync_lock"),
+                    inspect(sync_connection).get_foreign_keys("sync_lock"),
+                )
+            )
+        assert {column["name"] for column in sync_columns} == {
+            "name",
+            "job_id",
+            "owner",
+            "acquired_at",
+            "expires_at",
+        }
+        assert {"ix_sync_lock_expires_at"}.issubset(
+            {index["name"] for index in sync_indexes if index["name"] is not None}
+        )
+        assert {
+            foreign_key["name"]
+            for foreign_key in sync_foreign_keys
+            if foreign_key["name"] is not None
+        } == {"fk_sync_lock_job_runs"}
+        async with database.engine.connect() as connection:
             event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
         assert event_columns == {
             "id",
@@ -461,6 +485,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "bad_case_analysis",
             "probe_reports",
             "evolution_targets",
+            "sync_lock",
         } <= table_names
         assert {
             "root_session_id",
@@ -570,7 +595,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0004"
+        assert result.scalar_one() == "0005"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -637,6 +662,29 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             ("created_at", True),
         ]
         async with database.engine.connect() as connection:
+            sync_columns, sync_indexes, sync_foreign_keys = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_columns("sync_lock"),
+                    inspect(sync_connection).get_indexes("sync_lock"),
+                    inspect(sync_connection).get_foreign_keys("sync_lock"),
+                )
+            )
+        assert {column["name"] for column in sync_columns} == {
+            "name",
+            "job_id",
+            "owner",
+            "acquired_at",
+            "expires_at",
+        }
+        assert {"ix_sync_lock_expires_at"}.issubset(
+            {index["name"] for index in sync_indexes if index["name"] is not None}
+        )
+        assert {
+            foreign_key["name"]
+            for foreign_key in sync_foreign_keys
+            if foreign_key["name"] is not None
+        } == {"fk_sync_lock_job_runs"}
+        async with database.engine.connect() as connection:
             event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
         assert event_columns == {
             "id",
@@ -686,6 +734,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "bad_case_analysis",
             "probe_reports",
             "evolution_targets",
+            "sync_lock",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
     finally:
@@ -898,6 +947,51 @@ async def test_mysql_replay_round_trip_is_idempotent() -> None:
         assert counts["turns"] == 1
         assert counts["sources"] == 2
     finally:
+        await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_sync_lock_is_single_flight_and_reacquirable() -> None:
+    """MySQL unique locking serializes sync job creation and permits reacquire."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    database = MySqlDatabase(Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url))
+    await database.start()
+    created_ids: list[str] = []
+    try:
+        await upgrade_database(database)
+        repository = SyncLockRepository(database)
+        first = await repository.create_job(
+            owner="mysql-contract",
+            source="manual",
+            created_by=None,
+            ttl_seconds=60,
+        )
+        created_ids.append(first.job.id)
+        with pytest.raises(SyncLockConflict):
+            await repository.create_job(
+                owner="mysql-contract",
+                source="scheduler",
+                created_by=None,
+                ttl_seconds=60,
+            )
+        await repository.release(first.job.id)
+        second = await repository.create_job(
+            owner="mysql-contract",
+            source="scheduler",
+            created_by=None,
+            ttl_seconds=60,
+        )
+        created_ids.append(second.job.id)
+        assert second.job.id != first.job.id
+        await repository.release(second.job.id)
+    finally:
+        if created_ids:
+            async with database.transaction() as session:
+                await session.execute(delete(job_runs).where(job_runs.c.id.in_(created_ids)))
         await database.dispose()
 
 

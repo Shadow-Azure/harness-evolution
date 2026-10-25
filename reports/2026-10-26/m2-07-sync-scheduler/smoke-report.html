@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2-07 同步调度器集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #98</p>
+    <h1>M2-07 同步调度器集成冒烟报告</h1>
+    <p class="summary">在真实 FastAPI、临时 SQLite、Vite 与 Chrome 上验证同步 pending 状态、管理员立即处理、member 权限、无待处理 idle、390px 原型布局和审计闭环；并发与恢复细节由 focused 测试补齐。</p>
+    <span class="meta">2026-10-26 · macOS · Chrome · 127.0.0.1</span>
+    <div class="metrics"><div class="metric"><b>12</b><span>冒烟场景</span></div><div class="metric"><b>12</b><span>通过</span></div><div class="metric"><b>0</b><span>缺陷</span></div><div class="metric"><b>16</b><span>调度器测试</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-26 · macOS · Chrome · 127.0.0.1</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#39 · M2 sync scheduler</dd></div><div class="fact"><dt>PR</dt><dd>#98</dd></div><div class="fact"><dt>Head</dt><dd>f4a804d</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome</dd></div><div class="fact"><dt>Database</dt><dd>临时 SQLite</dd></div><div class="fact"><dt>Scheduler</dt><dd>自动 interval 关闭，管理员手动触发</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>12 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>导入后 pending 状态</td><td><span class="status pass">PASS</span></td><td>导入 66 个 agent payload 后，顶栏显示“待处理 66”，未创建 job。</td><td class="evidence">screenshots/01-pending-admin.png<br>SQLite payloads=66</td></tr><tr><td class="num">02</td><td>pending 详情可读</td><td><span class="status pass">PASS</span></td><td>点击状态摘要后显示空闲、已处理、最近导入和跳过数量。</td><td class="evidence">screenshots/02-pending-detail.png<br>aria-label 含同源摘要</td></tr><tr><td class="num">03</td><td>管理员立即处理入口</td><td><span class="status pass">PASS</span></td><td>admin 用户菜单出现“立即处理”，沿用亮色原型顶栏。</td><td class="evidence">screenshots/03-admin-menu.png</td></tr><tr><td class="num">04</td><td>处理中状态</td><td><span class="status pass">PASS</span></td><td>点击后按钮变为“处理中…”，禁用重复触发。</td><td class="evidence">screenshots/04-processing.png</td></tr><tr><td class="num">05</td><td>同步完成与审计</td><td><span class="status pass">PASS</span></td><td>完成后待处理为 0、已处理 66、导入 66；job completed，sync run completed，sync lock 已释放。</td><td class="evidence">screenshots/05-completed.png<br>jobs=1, locks=0, sync_runs=1</td></tr><tr><td class="num">06</td><td>member 无管理操作</td><td><span class="status pass">PASS</span></td><td>临时 member 登录后仍可见 pending 摘要，但菜单没有“立即处理”。</td><td class="evidence">screenshots/06-member-menu.png</td></tr><tr><td class="num">07</td><td>390px member 布局</td><td><span class="status pass">PASS</span></td><td>390px 隐藏辅助 pending 摘要，用户菜单保留；scrollWidth=clientWidth=390。</td><td class="evidence">screenshots/07-member-390.png</td></tr><tr><td class="num">08</td><td>无 pending 显式 idle</td><td><span class="status pass">PASS</span></td><td>无待处理时管理员再次点击只刷新状态，不创建伪 job，状态仍为 idle。</td><td class="evidence">screenshots/08-idle-admin.png<br>jobs count remains 1</td></tr><tr><td class="num">09</td><td>390px 管理员布局</td><td><span class="status pass">PASS</span></td><td>辅助摘要隐藏，管理员菜单保留且完全位于视口内。</td><td class="evidence">screenshots/09-admin-390.png<br>screenshots/10-admin-390-menu.png</td></tr><tr><td class="num">10</td><td>single-flight 与权限</td><td><span class="status pass">PASS</span></td><td>focused 测试验证并发 trigger 只创建一个 job/lock，manual 401/403/202 边界正确。</td><td class="evidence">16 focused scheduler tests passed</td></tr><tr><td class="num">11</td><td>重启与失败审计</td><td><span class="status pass">PASS</span></td><td>recovery 先 adoption 再 dispatch；失败、取消与重启均终结对应 sync run 并释放匹配锁。</td><td class="evidence">restart/failure/cancel focused tests</td></tr><tr><td class="num">12</td><td>控制台与安全边界</td><td><span class="status pass">PASS</span></td><td>真实 Chrome warning/error/exception 为 0；status 错误使用闭集文案，不返回 token 或本地路径。</td><td class="evidence">Chrome dev logs=[]<br>sanitization focused tests</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>10 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-pending-admin.png" alt="待处理 66 的亮色顶栏"><figcaption><b>pending 状态</b><span>导入后仅显示待处理摘要，不自动创建任务。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-pending-detail.png" alt="pending 摘要的详情浮层"><figcaption><b>状态详情</b><span>状态摘要可聚焦并展开，内容保持用户可读。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-admin-menu.png" alt="管理员菜单中的立即处理按钮"><figcaption><b>管理员操作</b><span>管理员可立即处理，操作入口位于用户菜单。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-processing.png" alt="处理中按钮"><figcaption><b>处理中</b><span>处理期间按钮禁用并显示处理中状态。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-completed.png" alt="同步完成后的待处理 0 状态"><figcaption><b>完成</b><span>完成后 pending 归零，已处理与导入数量来自 durable truth。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-member-menu.png" alt="member 用户菜单无立即处理"><figcaption><b>member 权限</b><span>普通成员看不到管理操作，只保留退出登录。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/07-member-390.png" alt="390px member 页面"><figcaption><b>390px member</b><span>窄视口隐藏辅助状态，无横向溢出。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-idle-admin.png" alt="无待处理时的管理员页面"><figcaption><b>idle</b><span>无 pending 的操作不会伪造任务。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/09-admin-390.png" alt="390px 管理员页面"><figcaption><b>390px admin shell</b><span>窄视口隐藏次要同步摘要，保留导航与用户入口，页面无横向溢出。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/10-admin-390-menu.png" alt="390px 管理员菜单"><figcaption><b>390px admin</b><span>管理员操作和退出入口在窄视口内完整可见。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>调度与单飞</td><td>真实 UI + focused tests</td><td>手动/调度共享 trigger；并发只产生一个 job/lock；无 pending 不建 job。</td><td>保留 SQLite/MySQL trigger contract 与真实 UI 冒烟。</td></tr><tr><td>恢复与审计</td><td>focused tests</td><td>重启先 adoption；失败、取消和重启都会终结 sync run 并释放锁。</td><td>继续覆盖进程级 crash 与更长 TTL 窗口。</td></tr><tr><td>顶栏 UI</td><td>真实 Chrome</td><td>pending 摘要、详情、admin 操作、member 隐藏和 390px 布局符合原型。</td><td>领域 Session 页面仍由后续 issue 按原型实现。</td></tr><tr><td>安全</td><td>focused tests + browser</td><td>状态错误已闭集化，浏览器无 warning/error；无 SSE 或原始轨迹泄漏。</td><td>后续日志采集继续只接收稳定错误码。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>同步调度器与顶栏状态在真实进程和亮色原型 UI 中完整工作，未发现集成缺陷。</strong></p><ul><li>真实 pending→manual sync→completed 全链路通过。</li><li>member 无管理入口，390px 无溢出。</li><li>并发、重启、失败与审计由 focused 测试补齐。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 截图、SQLite 运行态、16 项调度器测试与 Chrome 日志；HTML 由 JSON 生成，不应手改。</p>
+</main>
+</body>
+</html>

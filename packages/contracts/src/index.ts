@@ -50,6 +50,13 @@ export type PublicUser = components["schemas"]["PublicUser"];
 /** Durable job status returned by the REST source of truth. */
 export type JobResponse = components["schemas"]["JobResponse"];
 
+/** Durable acquisition progress shown by the quiet top bar. */
+export type AcquisitionStatusResponse =
+  components["schemas"]["AcquisitionStatusResponse"];
+
+/** Result of a manual acquisition sync trigger. */
+export type SyncTriggerResponse = components["schemas"]["SyncTriggerResponse"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

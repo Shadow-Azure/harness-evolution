@@ -15,20 +15,8 @@ The service contains fixtures, local import, JSONL normalization, Agent-tree ass
 | `apps/api` | Python 3.12 + FastAPI | HTTP API, service orchestration, storage and third-party boundaries |
 | `apps/web` | Vue 3 + Vite | Routing, shared data access, and progressively loaded business pages |
 | `packages/contracts` | TypeScript | Shared protocols and domain types for the web app |
-| `research/` | Markdown + YAML | Evaluation tasks, harness adapters and experiment records |
 
 Routes are registered only in `apps/api/app/main.py`; dependency direction is `api → service → db/third_party_api`.
-
-## Vertical slices
-
-```text
-main.py
-api/
-service/
-db/
-third_party_api/
-middleware/
-```
 
 ## Current request path
 
@@ -36,9 +24,11 @@ middleware/
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users` is admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`. Login is IP-limited, forced password change exposes only required endpoints, and failures share one envelope.
+Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users` plus manual sync are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`. Login is IP-limited, forced password change exposes only required endpoints, and failures share one envelope.
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
+
+After migrations and JobRunner recovery, the lifespan adopts `sync_lock` before starting the sync scheduler and dispatching queued replacements. It checks pending work every 60 seconds by default, and `0` disables timers. Scheduler and admin manual triggers share one coordinator, in-process guard, and durable `sync_lock`. No pending work creates no job, and the top bar renders only real status.
 
 ## Data-layer strategy
 
@@ -46,30 +36,16 @@ Web restores the session before mounting routes; tokens and users stay in memory
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect migration tree with batch mode for SQLite changes; business code depends on `db/crud/` repositories and never concatenates SQL directly.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
+- `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
 - External systems write problems and attribution; this service reads only.
 - Secrets enter only through environment variables, never repo or database.
 
-## API
-
-```text
-GET /api/health
-POST /api/auth/{login,refresh,logout,change-password}
-GET /api/auth/me
-GET|POST /api/users
-GET /api/sessions[/{sessionId}[/tree]]
-GET /api/jobs/{jobId}
-POST /api/events/ticket
-GET /api/events?ticket=…
-```
-
-Session lists read canonical aggregate columns and count `bad_cases` for the current page. Overview reuses the list item; trees return flat `agents[]`, trigger events, and problem anchors. SSE tickets bind the user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. A connection pages history before live events, emits `ping` while idle, and emits `reset` for a stale cursor. An injectable authorizer checks run topics; refresh rotation rejects replay, and timestamps use Asia/Shanghai.
-
 ## Shared contract
 
-FastAPI OpenAPI is the sole contract source. The exported snapshot drives generated types; `src/index.ts` exposes only stable aliases and constants. `contract:check` regenerates and compares bytes, so drift fails before build.
+FastAPI OpenAPI is the sole contract source for health, identity, users, sessions, jobs, acquisition, and events. The snapshot drives generated types, and `contract:check` compares bytes to reject drift.
 
 The health response makes API and database state independently observable:
 
@@ -80,6 +56,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
+- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
 - Missing: issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

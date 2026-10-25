@@ -43,6 +43,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/sessions",
         "/api/sessions/{sessionId}",
         "/api/sessions/{sessionId}/tree",
+        "/api/acquisition/status",
+        "/api/acquisition/sync",
     }
     assert {
         "HealthResponse",
@@ -66,6 +68,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "SessionAgent",
         "SessionBadCase",
         "SessionTree",
+        "AcquisitionStatusResponse",
+        "SyncStatusError",
+        "SyncTriggerResponse",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -92,6 +97,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/sessions", "get"),
         ("/api/sessions/{sessionId}", "get"),
         ("/api/sessions/{sessionId}/tree", "get"),
+        ("/api/acquisition/status", "get"),
+        ("/api/acquisition/sync", "post"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -119,6 +126,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
             "$ref": "#/components/schemas/ErrorResponse"
         }
     assert "/api/sessions/{sessionId}/timeline" not in paths
+    trigger_responses = paths["/api/acquisition/sync"]["post"]["responses"]
+    assert {"200", "202", "401", "403"} <= set(trigger_responses)
+    assert trigger_responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/SyncTriggerResponse"
+    }
 
 
 def test_checked_in_openapi_snapshot_is_current() -> None:
@@ -141,6 +153,8 @@ def test_identity_time_and_secret_configuration_matches_design() -> None:
     assert settings.sse_heartbeat_seconds == 15
     assert settings.sse_queue_capacity == 100
     assert settings.event_replay_limit == 500
+    assert settings.sync_interval_seconds == 60
+    assert settings.sync_lock_ttl_seconds == 1_800
 
 
 def test_openapi_export_ignores_service_environment() -> None:

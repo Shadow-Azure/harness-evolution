@@ -251,6 +251,25 @@ async def test_progress_is_persisted_and_published_to_the_run_topic(
     }
 
 
+async def test_sync_progress_is_persisted_without_an_sse_notification(
+    job_environment: JobEnvironment,
+) -> None:
+    """Sync tracks progress through REST and never publishes an event topic."""
+    _, repository, bus, runner = job_environment
+    subscription = await bus.subscribe(("run:sync-progress",))
+    job = await repository.insert(
+        kind="sync",
+        payload={"source": "manual"},
+        ref_id="sync-progress",
+        created_by=None,
+    )
+
+    updated = await runner.update_progress(job.id, 0.5, unit="payloads", total=2)
+    assert subscription.queue.empty()
+    await subscription.close()
+    assert updated.progress == 0.5
+
+
 async def test_submit_redacts_secret_payload_fields_before_persistence(
     job_environment: JobEnvironment,
 ) -> None:
@@ -308,8 +327,9 @@ async def test_restart_marks_running_interrupted_and_requeues_sync(
     adapter = runner
     adapter.register_handler("sync", complete)
     await adapter.start()
-    replacement = await repository.find_active("sync", "sync-recover")
+    replacement = await repository.find_active_kind("sync")
     assert replacement is not None
+    assert replacement.ref_id != "sync-recover"
     await adapter.wait(replacement.id)
 
     sync_original = await adapter.get(recovered_sync.id)

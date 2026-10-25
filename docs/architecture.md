@@ -15,20 +15,8 @@
 | `apps/api` | Python 3.12 + FastAPI | HTTP API、服务编排、存储与外部数据边界 |
 | `apps/web` | Vue 3 + Vite | 路由、公共数据层与渐进加载的业务页面 |
 | `packages/contracts` | TypeScript | 前端共享协议与领域类型 |
-| `research/` | Markdown + YAML | 评测任务、harness 适配、实验记录 |
 
 路由只在 `apps/api/app/main.py` 注册；依赖方向为 `api → service → db/third_party_api`。
-
-## 垂直切片
-
-```text
-main.py
-api/
-service/
-db/
-third_party_api/
-middleware/
-```
 
 ## 当前请求链路
 
@@ -36,9 +24,11 @@ middleware/
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员。access 有效 30 分钟；refresh cookie 有效期 14 天，`httpOnly`、`SameSite=Strict`、路径 `/api/auth`。登录限流，强改密只放行必要端点，错误共用 envelope。
+仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，`/api/users` 与手动 sync 仅管理员。access 有效 30 分钟；refresh cookie 有效期 14 天，`httpOnly`、`SameSite=Strict`、路径 `/api/auth`。登录限流，强改密只放行必要端点，错误共用 envelope。
 
 Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密；并发 401 单飞刷新并各重放一次；退出清 query cache。
+
+应用 lifespan 在迁移和 JobRunner 恢复之后先完成 `sync_lock` adoption，再启动 sync scheduler 并 dispatch queued replacement。默认 60 秒检查 pending，`0` 关闭定时；scheduler 与 admin 手动触发共用 coordinator、进程内锁和 durable `sync_lock`。无 pending 不建 job，顶栏只显示真实状态。
 
 ## 数据层策略
 
@@ -46,30 +36,16 @@ Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理�
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
 - Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
 - `job_runs` 是真值；串行 worker 写 run 级 `evolution_run_events`，事件总线只广播有界通知，中断事件先落库。
+- `sync_lock` 是跨触发单飞真值，默认 TTL 30 分钟；job 与锁在同一事务创建，terminal job 通过 runner hook 先终结异常 `sync_runs`，再释放匹配锁。重启重排保留旧 interrupted 审计并使用新的 replay run id。
 - 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 通过 CLI 幂等写同构表。
 - 归一化按 payload 独立解析，消息与内容块只在内存中存在；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
 - 重放按 root 原子执行：先解析/组装，再事务重写并推进 source 游标。
 - 问题和归因由外部系统写入，服务只读。
 - 密钥只从环境变量注入，不入仓库或数据库。
 
-## API
-
-```text
-GET /api/health
-POST /api/auth/{login,refresh,logout,change-password}
-GET /api/auth/me
-GET|POST /api/users
-GET /api/sessions[/{sessionId}[/tree]]
-GET /api/jobs/{jobId}
-POST /api/events/ticket
-GET /api/events?ticket=…
-```
-
-会话 API 返回列表、概览和扁平 Agent 树。票据绑定用户、topics 与游标，HMAC 认证，60 秒且单次消费；连接分页回放后实时，空闲 `ping`、尾游标 `reset`。run topic 资源经可注入 authorizer 校验；refresh 旋转拒绝重放，时间写 Asia/Shanghai。
-
 ## 共享契约
 
-FastAPI OpenAPI 是唯一契约源。导出快照后由 `openapi-typescript` 生成类型，`src/index.ts` 只暴露稳定别名与常量；`contract:check` 临时重生成并逐字比对，构建前拦截漂移。
+FastAPI OpenAPI 是唯一契约源，覆盖 health、身份、用户、sessions、jobs、acquisition 与 events。快照由 `openapi-typescript` 生成类型，`contract:check` 逐字防漂移。
 
 健康响应让 API 与数据库状态分别可判：
 
@@ -80,6 +56,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、会话查询、亮色壳、fixtures、数据链、E2E/门禁。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、sync 调度与状态、亮色壳、fixtures、数据链、E2E/门禁。
 - 未具备：问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

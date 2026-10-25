@@ -2,6 +2,46 @@
 /** @generated */
 
 export interface paths {
+    "/api/acquisition/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Acquisition Status
+         * @description Return durable acquisition progress for all authenticated users.
+         */
+        get: operations["acquisition_status_api_acquisition_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/acquisition/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Sync
+         * @description Queue one administrator-triggered sync or return explicit no-work.
+         */
+        post: operations["trigger_sync_api_acquisition_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/change-password": {
         parameters: {
             query?: never;
@@ -270,6 +310,38 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AcquisitionStatusResponse
+         * @description Current acquisition counts and durable latest-run metadata.
+         */
+        AcquisitionStatusResponse: {
+            /** Activejobid */
+            activeJobId: string | null;
+            /** Errors */
+            errors: components["schemas"]["SyncStatusError"][];
+            /** Imported */
+            imported: number;
+            /** Lastrunat */
+            lastRunAt: string | null;
+            /** Nextrunat */
+            nextRunAt: string | null;
+            /**
+             * Payloadtable
+             * @default trajectory_payloads
+             */
+            payloadTable: string;
+            /** Pending */
+            pending: number;
+            /** Processed */
+            processed: number;
+            /** Skipped */
+            skipped: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "queued" | "running" | "completed" | "failed" | "interrupted";
+        };
         /**
          * BadCaseAgent
          * @description The reporter that originally supplied a problem report.
@@ -650,6 +722,37 @@ export interface components {
             sessionId: string;
         };
         /**
+         * SyncStatusError
+         * @description Sanitized issue summary retained from the latest replay batch.
+         */
+        SyncStatusError: {
+            /** Agentid */
+            agentId?: string | null;
+            /** Code */
+            code: string;
+            /** Lineno */
+            lineNo?: number | null;
+            /** Message */
+            message: string;
+            /** Sessionid */
+            sessionId?: string | null;
+        };
+        /**
+         * SyncTriggerResponse
+         * @description Queued/reused job identity, or an explicit successful no-work result.
+         */
+        SyncTriggerResponse: {
+            /** Jobid */
+            jobId: string | null;
+            /** Reused */
+            reused: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "reused" | "idle";
+        };
+        /**
          * TicketRequest
          * @description Run topics and optional replay cursor bound to an event ticket.
          */
@@ -692,6 +795,91 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    acquisition_status_api_acquisition_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AcquisitionStatusResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    trigger_sync_api_acquisition_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No pending payloads; no job was created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncTriggerResponse"];
+                };
+            };
+            /** @description A sync job was queued or an active job was reused */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncTriggerResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Admin role is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     change_password_api_auth_change_password_post: {
         parameters: {
             query?: never;

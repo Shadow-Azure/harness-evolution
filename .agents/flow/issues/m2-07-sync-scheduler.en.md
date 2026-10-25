@@ -9,11 +9,16 @@ milestone: m2
 depends:
   - m2-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
   - fixtures/**
+  - packages/contracts/**
+  - tests/**
+  - plans/**
+  - reports/**
+  - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -25,11 +30,7 @@ github:
 
 ## Background
 
-
-
-
-
-m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+Local payload import and idempotent replay exist, but the service cannot yet discover pending data periodically, trigger a sync manually, or serialize all trigger sources.
 
 ## Goals
 
@@ -37,9 +38,9 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 完成 m2-07 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- Process pending payloads by default every 60 seconds; when configured as `0`, only admins may trigger manually.
+- Let the scheduler and manual callers share the durable `sync_lock`, in-process guard, and serial JobRunner.
+- Show real pending state in the top bar and let admins process immediately; sync never uses SSE.
 
 ## Design authority
 
@@ -47,18 +48,17 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- [01 §4.3.4 后台定时](../../../plans/fullstack-design/01-architecture.md)
-- [04 §7 任务](../../../plans/fullstack-design/04-backend-architecture.md)
+- [01 §4.3.4 Background scheduling](../../../plans/fullstack-design/01-architecture.md)
+- [04 §7 Jobs](../../../plans/fullstack-design/04-backend-architecture.md)
 - [06 §3.7 sync_lock](../../../plans/fullstack-design/06-database-design.md)
 
 ## Implementation
 
-
-
-
-
-- 实现默认 60 秒 scheduler、admin 手动 sync、sync_lock 单飞、TTL 回收和顶栏状态接口
-- 无 pending 跳过
+- `sync_lock` has a 30-minute TTL. An active job is reused even after the TTL, while terminal or missing jobs may be reclaimed.
+- Job and lock rows are created in one transaction. The handler runs through the serial JobRunner, and a terminal hook releases only the matching jobId.
+- `GET /api/acquisition/status` returns activeJobId, pending/processed counts, the latest batch, last/next run times, and sanitized errors.
+- `POST /api/acquisition/sync` is admin-only. With no pending work it returns `200 {jobId:null,status:"idle",reused:false}`.
+- The light prototype top bar shows a quiet pending summary. The admin menu offers immediate processing, polls the job, and invalidates session queries.
 
 ## Implementation steps
 
@@ -66,9 +66,9 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-1. 写 scheduler/manual 并发、TTL、异常释放和无 pending 的失败测试
-2. 实现调度与 API
-3. 接 job_runs 状态
+1. Write failing tests for concurrency, TTL, error/cancellation release, no-pending, status, and the top bar.
+2. Add the `sync_lock` migration, repository, shared coordinator, and scheduler lifespan.
+3. Register the sync handler, generate contracts, and integrate the light top bar.
 
 ## Dependencies and boundary
 
@@ -88,11 +88,14 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m2-07-sync-scheduler
 pnpm test:db
+pnpm test:web -- TopNav
+pnpm test:e2e -- m1-shell
 ```
 
-- sync 并发只产生一个 job
-- TTL 过期后可恢复
-- 无 pending 不建 job
+- Concurrent scheduler/manual callers create exactly one job; the loser reuses the same jobId.
+- Success, failure, and cancellation release the matching lock; stale terminal or missing jobs are recoverable.
+- No pending work creates no job; manual returns explicit idle.
+- At 390px the auxiliary pending status is hidden while the user menu and logout remain available.
 
 ## Acceptance
 
@@ -100,8 +103,9 @@ pnpm test:db
 
 
 
-- 同步可恢复且状态可观察
-- 手动仅 admin 可用
+- Sync is recoverable and observable.
+- Manual sync is admin-only.
+- Missing status or a narrow viewport cannot break the shell or show fabricated counts.
 
 ## Gates and CI
 
@@ -109,8 +113,8 @@ pnpm test:db
 
 
 
-- 并发测试、job gate、SSE 状态冒烟
+- Concurrency tests, dual-dialect schema, contract generation, and real-Chrome top-bar E2E.
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- Upstream pull is not implemented here.

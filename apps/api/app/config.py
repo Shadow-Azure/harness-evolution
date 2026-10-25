@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     sse_heartbeat_seconds: float = Field(default=15, gt=0)
     sse_queue_capacity: int = Field(default=100, gt=0)
     event_replay_limit: int = Field(default=500, gt=0, le=5_000)
+    sync_interval_seconds: int = Field(default=60, ge=0)
+    sync_lock_ttl_seconds: int = Field(default=30 * 60, gt=0)
     admin_username: str | None = None
     admin_password: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])

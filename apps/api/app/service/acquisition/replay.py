@@ -99,15 +99,16 @@ async def replay_pending_payloads(
     *,
     parser_version: int = CURRENT_PARSER_VERSION,
     on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+    sync_run_id: str | None = None,
 ) -> ReplayResult:
     """Replay every pending root atomically and return aggregate-only counts."""
     pending = await list_pending_payloads(database, parser_version)
     total_payloads = await count_payloads(database)
     started_at = now_shanghai()
-    sync_run_id = new_id()
+    resolved_sync_run_id = sync_run_id or new_id()
     await create_sync_run(
         database,
-        sync_run_id=sync_run_id,
+        sync_run_id=resolved_sync_run_id,
         source_type=pending[0].source_type if pending else "script",
         started_at=started_at,
         records_total=total_payloads,
@@ -216,7 +217,7 @@ async def replay_pending_payloads(
                 payloads=payloads,
                 pending_agent_ids=frozenset(payload.agent_id for payload in root_pending),
                 parser_version=parser_version,
-                sync_run_id=sync_run_id,
+                sync_run_id=resolved_sync_run_id,
                 completed_at=now_shanghai(),
             )
         except Exception:
@@ -249,7 +250,7 @@ async def replay_pending_payloads(
     skipped = max(0, total_payloads - len(pending))
     await finish_sync_run(
         database,
-        sync_run_id=sync_run_id,
+        sync_run_id=resolved_sync_run_id,
         finished_at=now_shanghai(),
         records_done=imported + skipped + failed,
         imported=imported,
@@ -258,7 +259,7 @@ async def replay_pending_payloads(
     )
     return ReplayResult(
         status="completed",
-        sync_run_id=sync_run_id,
+        sync_run_id=resolved_sync_run_id,
         root_sessions=rebuilt_roots,
         payloads=total_payloads,
         imported=imported,

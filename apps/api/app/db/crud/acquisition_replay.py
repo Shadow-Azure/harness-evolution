@@ -22,6 +22,7 @@ from app.db.models.domain import (
     trajectory_payloads,
     user_turns,
 )
+from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.service.acquisition.agent_tree import AssembledSessionTree
 from app.utils.time import as_shanghai
 
@@ -64,6 +65,29 @@ class MissingPayloadSource:
 
     root_session_id: str
     agent_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class SyncBatchSnapshot:
+    """Latest durable replay batch summary used by the status endpoint."""
+
+    sync_run_id: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    imported: int
+    skipped: int
+    errors: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SyncStatusSnapshot:
+    """Consistent acquisition counters, active job, and relevant replay batch."""
+
+    pending: int
+    processed: int
+    active_job: JobRunRecord | None
+    batch: SyncBatchSnapshot | None
 
 
 def _payload_values(row: object) -> PendingPayload:
@@ -221,6 +245,194 @@ async def count_payloads(database: Database) -> int:
     return int(value)
 
 
+async def count_pending_payloads(
+    database: Database,
+    parser_version: int,
+) -> int:
+    """Count raw identities whose processing cursor is absent or stale."""
+    async with database.session() as session:
+        value = (
+            await session.execute(
+                select(func.count())
+                .select_from(
+                    trajectory_payloads.outerjoin(
+                        source_records,
+                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+                        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                    ),
+                )
+                .where(
+                    or_(
+                        source_records.c.id.is_(None),
+                        source_records.c.processed_hash.is_(None),
+                        source_records.c.processed_hash != trajectory_payloads.c.content_hash,
+                        source_records.c.parser_version.is_(None),
+                        source_records.c.parser_version < parser_version,
+                    ),
+                ),
+            )
+        ).scalar_one()
+    return int(value)
+
+
+async def count_processed_payloads(
+    database: Database,
+    parser_version: int,
+) -> int:
+    """Count raw identities with a current hash and parser cursor."""
+    async with database.session() as session:
+        value = (
+            await session.execute(
+                select(func.count())
+                .select_from(
+                    trajectory_payloads.join(
+                        source_records,
+                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+                        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                    ),
+                )
+                .where(
+                    source_records.c.processed_hash == trajectory_payloads.c.content_hash,
+                    source_records.c.parser_version >= parser_version,
+                ),
+            )
+        ).scalar_one()
+    return int(value)
+
+
+async def latest_sync_batch(database: Database) -> SyncBatchSnapshot | None:
+    """Return the latest durable replay batch without exposing payload data."""
+    async with database.session() as session:
+        row = (
+            (
+                await session.execute(
+                    select(sync_runs).order_by(sync_runs.c.started_at.desc()).limit(1),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+    if row is None:
+        return None
+    return _batch_snapshot(dict(row))
+
+
+def _batch_snapshot(row: Mapping[str, object]) -> SyncBatchSnapshot:
+    """Project one sync audit row without exposing arbitrary payload fields."""
+    errors = tuple(
+        dict(item)
+        for item in cast(list[dict[str, object]], row["errors"])
+        if isinstance(item, Mapping)
+    )
+    finished_at = row["finished_at"]
+    return SyncBatchSnapshot(
+        sync_run_id=str(row["id"]),
+        status=str(row["status"]),
+        started_at=as_shanghai(cast(datetime, row["started_at"])),
+        finished_at=(as_shanghai(cast(datetime, finished_at)) if finished_at is not None else None),
+        imported=int(cast(int, row["imported"])),
+        skipped=int(cast(int, row["skipped"])),
+        errors=errors,
+    )
+
+
+async def read_sync_status_snapshot(
+    database: Database,
+    parser_version: int,
+) -> SyncStatusSnapshot:
+    """Read all acquisition status facts through one consistent DB transaction."""
+    async with database.session() as session:
+        pending = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(
+                        trajectory_payloads.outerjoin(
+                            source_records,
+                            (
+                                source_records.c.root_session_id
+                                == trajectory_payloads.c.root_session_id
+                            )
+                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                        ),
+                    )
+                    .where(
+                        or_(
+                            source_records.c.id.is_(None),
+                            source_records.c.processed_hash.is_(None),
+                            source_records.c.processed_hash != trajectory_payloads.c.content_hash,
+                            source_records.c.parser_version.is_(None),
+                            source_records.c.parser_version < parser_version,
+                        ),
+                    ),
+                )
+            ).scalar_one(),
+        )
+        processed = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(
+                        trajectory_payloads.join(
+                            source_records,
+                            (
+                                source_records.c.root_session_id
+                                == trajectory_payloads.c.root_session_id
+                            )
+                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                        ),
+                    )
+                    .where(
+                        source_records.c.processed_hash == trajectory_payloads.c.content_hash,
+                        source_records.c.parser_version >= parser_version,
+                    ),
+                )
+            ).scalar_one(),
+        )
+        active_row = (
+            (
+                await session.execute(
+                    select(job_runs)
+                    .where(
+                        job_runs.c.kind == "sync",
+                        job_runs.c.status.in_(("queued", "running")),
+                    )
+                    .order_by(job_runs.c.created_at.desc())
+                    .limit(1),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        active = record_from_row(active_row) if active_row else None
+        if active is not None and active.ref_id:
+            batch_row = (
+                (
+                    await session.execute(
+                        select(sync_runs).where(sync_runs.c.id == active.ref_id),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        else:
+            batch_row = (
+                (
+                    await session.execute(
+                        select(sync_runs).order_by(sync_runs.c.started_at.desc()).limit(1),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+    return SyncStatusSnapshot(
+        pending=pending,
+        processed=processed,
+        active_job=active,
+        batch=_batch_snapshot(dict(batch_row)) if batch_row else None,
+    )
+
+
 async def create_sync_run(
     database: Database,
     *,
@@ -268,6 +480,53 @@ async def finish_sync_run(
                 records_done=records_done,
                 imported=imported,
                 skipped=skipped,
+                errors=errors,
+            ),
+        )
+
+
+async def terminalize_sync_run(
+    database: Database,
+    *,
+    sync_run_id: str,
+    status: str,
+    finished_at: datetime,
+    code: str,
+    message: str,
+) -> None:
+    """Finalize a running replay audit after its owning job terminates abnormally."""
+    if status not in {"failed", "interrupted"}:
+        return
+    async with database.transaction() as session:
+        row = (
+            (
+                await session.execute(
+                    select(sync_runs.c.status, sync_runs.c.errors).where(
+                        sync_runs.c.id == sync_run_id,
+                    ),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None or row["status"] != "running":
+            return
+        errors = list(row["errors"]) if isinstance(row["errors"], list) else []
+        issue = {
+            "sessionId": "sync",
+            "agentId": "sync",
+            "lineNo": 0,
+            "code": code,
+            "message": message,
+        }
+        if not any(item.get("code") == code for item in errors if isinstance(item, dict)):
+            errors.append(issue)
+        await session.execute(
+            sync_runs.update()
+            .where(sync_runs.c.id == sync_run_id, sync_runs.c.status == "running")
+            .values(
+                finished_at=as_shanghai(finished_at),
+                status=status,
                 errors=errors,
             ),
         )

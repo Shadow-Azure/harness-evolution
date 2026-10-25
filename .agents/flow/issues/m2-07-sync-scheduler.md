@@ -9,11 +9,16 @@ milestone: m2
 depends:
   - m2-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
   - fixtures/**
+  - packages/contracts/**
+  - tests/**
+  - plans/**
+  - reports/**
+  - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -25,13 +30,13 @@ github:
 
 ## 背景
 
-m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+本地 payload 导入和幂等重放已经可用，但系统仍缺少定时发现待处理数据、管理员手动触发与跨触发单飞保护。
 
 ## 目标
 
-- 完成 m2-07 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- 默认每 60 秒处理 pending payload，`0` 时只允许 admin 手动触发。
+- scheduler 与手动触发共用 durable `sync_lock`、进程内锁和串行 JobRunner。
+- 顶栏展示真实 pending 状态，并允许 admin 立即处理；sync 不使用 SSE。
 
 ## 设计依据
 
@@ -41,14 +46,17 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实现内容
 
-- 实现默认 60 秒 scheduler、admin 手动 sync、sync_lock 单飞、TTL 回收和顶栏状态接口
-- 无 pending 跳过
+- `sync_lock` 采用 30 分钟 TTL；活动 job 即使 TTL 已过仍复用，terminal/missing job 的锁可回收。
+- job 与锁在同一事务创建；handler 由 JobRunner 串行执行，terminal hook 按 jobId 释放匹配锁。
+- `GET /api/acquisition/status` 返回 activeJobId、pending/processed、最近批次、last/next run 与脱敏错误。
+- `POST /api/acquisition/sync` 仅 admin 可用；无 pending 时返回 `200 {jobId:null,status:"idle",reused:false}`。
+- 亮色原型顶栏只显示安静 pending 摘要；admin 菜单提供“立即处理”，完成后轮询 job 并失效 sessions 查询。
 
 ## 实施步骤
 
-1. 写 scheduler/manual 并发、TTL、异常释放和无 pending 的失败测试
-2. 实现调度与 API
-3. 接 job_runs 状态
+1. 先写并发、TTL、异常/取消释放、无 pending、状态与顶栏失败测试。
+2. 增加 `sync_lock` 迁移、repository、共享 coordinator 和 scheduler lifespan。
+3. 注册 sync handler、生成契约并接入亮色顶栏。
 
 ## 依赖与交付边界
 
@@ -60,20 +68,24 @@ m2-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m2-07-sync-scheduler
 pnpm test:db
+pnpm test:web -- TopNav
+pnpm test:e2e -- m1-shell
 ```
 
-- sync 并发只产生一个 job
-- TTL 过期后可恢复
-- 无 pending 不建 job
+- scheduler/manual 并发只产生一个 job，失败方复用同一 jobId。
+- 成功、失败与取消后匹配锁释放；terminal/missing job 的遗留锁可恢复。
+- 无 pending 不建 job；manual 返回显式 idle。
+- 390px 隐藏辅助 pending 状态，用户菜单与退出仍可用。
 
 ## 验收标准
 
 - 同步可恢复且状态可观察
 - 手动仅 admin 可用
+- 窄屏与缺少 status 时壳层不破坏，不展示伪造计数。
 
 ## 门禁与 CI
 
-- 并发测试、job gate、SSE 状态冒烟
+- 并发测试、双方言 schema、契约生成、真实 Chrome 顶栏 E2E
 
 ## 非目标
 
