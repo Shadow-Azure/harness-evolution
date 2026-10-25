@@ -9,13 +9,20 @@ milestone: m3
 depends:
   - m3-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
+  - tests/**
+  - scripts/**
+  - AGENTS.md
+  - package.json
+  - pnpm-lock.yaml
 adr: []
 github:
   number: 42
@@ -58,10 +65,10 @@ m3-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/m3-02-graph-layout-core
-pnpm test:db
-pnpm test:web
+pnpm test:web -- agent-tree
 pnpm test:e2e
+pnpm build
+pnpm verify:bundle
 ```
 
 - 布局测试通过

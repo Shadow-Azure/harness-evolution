@@ -32,6 +32,18 @@ describe("web router", () => {
     expect(component.default.name).toBe("EvolutionPage");
   });
 
+  it("lazily loads the development-only Agent tree visual fixture", async () => {
+    const router = createAppRouter();
+    const route = router.options.routes.find((item) => item.path === "/agent-tree-demo");
+    const loader = route?.component;
+
+    expect(import.meta.env.DEV).toBe(true);
+    expect(route?.meta?.workspace).toBe(true);
+    expect(typeof loader).toBe("function");
+    const component = await (loader as () => Promise<{ default: { name: string } }>)();
+    expect(component.default.name).toBe("AgentTreeDemoPage");
+  });
+
   it("protects and lazily loads the top-level errors placeholder", async () => {
     const router = createAppRouter();
     const errorsRoute = router.options.routes.find((route) => route.path === "/errors");

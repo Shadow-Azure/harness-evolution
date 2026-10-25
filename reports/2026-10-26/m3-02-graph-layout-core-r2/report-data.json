@@ -1,0 +1,168 @@
+{
+  "title": "m3-02 Agent 图布局修复复测",
+  "eyebrow": "Harness Evolution · PR #104",
+  "summary": "真实 FastAPI、Vite 与 headless Chrome 复测 Agent 执行流开发演示。修复容器缩放和节点展开后的视口适应，390×844 下展开大图的全部节点均位于画布内。",
+  "meta": "2026-10-26 · macOS · Chrome CDP · 1408×900 / 390×844",
+  "metrics": [
+    { "value": "8", "label": "复测场景" },
+    { "value": "8", "label": "通过" },
+    { "value": "13", "label": "展开节点" },
+    { "value": "0", "label": "控制台错误" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#42 · m3-02 graph layout core" },
+    { "label": "PR", "value": "#104" },
+    { "label": "Code state", "value": "b13dbdf + responsive fit fix" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome CDP" },
+    { "label": "Evidence mode", "value": "真实 headless Chrome；macOS 锁屏，未使用原生 CUA" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "原型四节点画布",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "核心画布显示 4 个节点和 3 条父边，层级、标签与行数宽度符合原型范围。",
+        "evidence": ["screenshots/01-desktop-four-node.png"]
+      },
+      {
+        "id": "02",
+        "name": "节点与箭头",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "父边为正交路径且带闭合箭头；根、子 Agent 与 Workflow 使用不同状态色。",
+        "evidence": ["E2E marker-end 与 border color assertions"]
+      },
+      {
+        "id": "03",
+        "name": "Controls 与 Background",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "放大、缩小、适应画布三个控制按钮具备可见图标、尺寸和无障碍名称。",
+        "evidence": ["E2E controls assertions"]
+      },
+      {
+        "id": "04",
+        "name": "折叠大图",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "大图初始显示 main 与 collapse 两个节点，并标明折叠的子 Agent 数量。",
+        "evidence": ["E2E collapse 2-node assertion"]
+      },
+      {
+        "id": "05",
+        "name": "展开 13 节点",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击 collapse 后展开为 13 个节点；布局结果稳定且 24px 内兄弟触发聚合为 trunk。",
+        "evidence": ["E2E 2→13 assertion"]
+      },
+      {
+        "id": "06",
+        "name": "390px 自动适应",
+        "status": { "kind": "fixed", "label": "FAIL → FIXED" },
+        "detail": "容器缩放和展开完成后重新 fitView；390×844 下 13 个节点的 bounding box 全部位于画布内。",
+        "evidence": [
+          "screenshots/02-before-mobile-expanded-blank.png",
+          "screenshots/03-after-mobile-expanded-fit.png",
+          "E2E allVisible bounding-box assertion"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "无生产树请求",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "开发静态演示路由没有请求生产 Session tree，也没有渲染问题卡。",
+        "evidence": ["E2E resource request count=0"]
+      },
+      {
+        "id": "08",
+        "name": "控制台与资源清理",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "非预期 warning/error/exception 为 0；临时 API、Vite、Chrome 和端口均已清理。",
+        "evidence": ["browserViolations=[]", "process cleanup verification"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P1",
+      "title": "窄屏展开大图后节点落在视区外",
+      "facts": [
+        { "label": "现象", "value": "390×844 下点击折叠节点后，13 个节点位于画布可见区域之外。" },
+        { "label": "预期", "value": "容器缩放和节点集合变化后重新计算 fitView，所有节点保持可见。" },
+        { "label": "根因", "value": "只在首次 nodes-initialized 时执行 fitView，未监听容器尺寸和展开后的节点变化。" },
+        { "label": "修复", "value": "监听 ResizeObserver 与节点集合变化，等待 DOM 更新后执行 fitView，并在 120ms 后重试一次。" },
+        { "label": "回归", "value": "真实 Chrome 断言 13 个节点 bounding box 全部位于 390px 画布内。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · responsive fit" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "Agent 执行流原型参考",
+      "label": "原型参考",
+      "caption": "原型定义的水平 Agent 条、父子正交边、触发点和状态色。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-desktop-four-node.png",
+      "alt": "桌面四节点 Agent 执行流图",
+      "label": "桌面核心树",
+      "caption": "开发视觉 fixture 的 4 节点、3 条边和可访问 Controls。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-before-mobile-expanded-blank.png",
+      "alt": "修复前 390px 展开后空白画布",
+      "label": "修复前 · 节点不可见",
+      "caption": "展开后仅剩空白画布，证明原有 390px 测试的覆盖缺口。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/03-after-mobile-expanded-fit.png",
+      "alt": "修复后 390px 展开节点全部可见",
+      "label": "修复后 · 全节点可见",
+      "caption": "13 个节点在 390px 画布中完成适应，页面无横向溢出。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "纯布局",
+        "coverage": "22 项单测",
+        "conclusion": "输入不变性、重复 ID、24px trunk、行数宽度、嵌套与折叠均有断言。",
+        "recommendation": "后续改布局常量时同步更新几何快照。"
+      },
+      {
+        "area": "响应式画布",
+        "coverage": "真实 Chrome E2E",
+        "conclusion": "390×844 展开 13 节点后全部 bounding box 位于画布内。",
+        "recommendation": "生产接线 m3-03 继续保留同一可见性断言。"
+      },
+      {
+        "area": "原型视觉",
+        "coverage": "真实画布 + 原型截图",
+        "conclusion": "水平条、正交边、状态色、Controls 和四节点层级一致。",
+        "recommendation": "领域问题卡仍由 m4 按 anchor descriptor 渲染。"
+      },
+      {
+        "area": "生产 Session",
+        "coverage": "不在 m3-02 范围",
+        "conclusion": "开发 fixture 未请求生产 tree，生产图由 m3-03 接入。",
+        "recommendation": "m3-03 复用本布局与 fitView 生命周期。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "390px 展开后的节点不可见问题已修复；布局、视觉和动态 chunk 边界未发现新的产品问题。",
+    "points": [
+      "容器 resize 与节点集合变化均触发安全重排。",
+      "真实 Chrome 13 节点全部位于移动端画布内。",
+      "无生产 tree 请求、问题卡越界或非预期控制台错误。"
+    ]
+  },
+  "footer": "证据源：真实 headless Chrome/CDP、Vue Flow DOM geometry 与自动化测试。HTML 由 JSON renderer 生成。"
+}

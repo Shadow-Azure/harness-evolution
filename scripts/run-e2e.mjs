@@ -35,7 +35,7 @@ if (requestedPattern) {
   }
 }
 
-const nodeArguments = ["--test"];
+const nodeArguments = ["--test", "--test-concurrency=1"];
 if (requestedPattern) {
   nodeArguments.push(`--test-name-pattern=${requestedPattern}`);
 }

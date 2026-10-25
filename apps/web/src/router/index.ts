@@ -33,6 +33,15 @@ export function createAppRouter() {
         component: SessionsPage,
         meta: { workspace: true },
       },
+      ...(import.meta.env.DEV
+        ? [
+            {
+              path: "/agent-tree-demo",
+              component: () => import("../pages/agent-tree-demo/Index.vue"),
+              meta: { workspace: true },
+            },
+          ]
+        : []),
       {
         component: () => import("../pages/evolution/Index.vue"),
         path: "/evolution",

@@ -1,0 +1,171 @@
+{
+  "title": "M3-02 Agent 图布局核心集成冒烟",
+  "eyebrow": "Harness Evolution · PR #104",
+  "summary": "四节点原型画布、行数比例、折叠/展开、控制按钮与边箭头均通过；390px 展开大图时节点落在可视区外，是当前唯一产品缺陷。",
+  "meta": "2026-10-26 · macOS · headless Chrome/CDP · isolated FastAPI + Vite",
+  "metrics": [
+    { "value": "7", "label": "冒烟场景" },
+    { "value": "6", "label": "通过" },
+    { "value": "1", "label": "失败" },
+    { "value": "0", "label": "意外控制台错误" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#42 · m3-02 graph layout core" },
+    { "label": "PR", "value": "#104" },
+    { "label": "Commit", "value": "b13dbdf" },
+    { "label": "Runtime", "value": "FastAPI + Vite + headless Chrome/CDP" },
+    { "label": "Native CUA", "value": "Blocked by locked macOS session; not bypassed" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "四节点原型画布",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "主会话、嵌套 Agent、forked skill 与两个子 Agent 可读，720px 画布与原型层级一致。",
+        "evidence": [
+          "screenshots/00-prototype-reference.png",
+          "screenshots/01-desktop-four-node.png"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "行数宽度与箭头边",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "100/60/20/40 行节点宽度有明确差异；3 条父边均是正交路径且带箭头。",
+        "evidence": ["screenshots/01-desktop-four-node.png"]
+      },
+      {
+        "id": "03",
+        "name": "控制按钮与背景",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "放大、缩小、适应画布三个按钮均有图标、可访问名称和 ≥24px 点击区。",
+        "evidence": ["screenshots/01-desktop-four-node.png"]
+      },
+      {
+        "id": "04",
+        "name": "11 子 Agent 折叠",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "大图初始为 2 个可见节点，主会话下的折叠节点显示“11 个子 agent · 点击展开”。",
+        "evidence": ["screenshots/02-collapsed-large.png"]
+      },
+      {
+        "id": "05",
+        "name": "折叠节点展开",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击后节点数由 2 展开为 13；Workflow、forked skill、嵌套与 trunk 通道均被渲染。",
+        "evidence": ["screenshots/03-expanded-large.png"]
+      },
+      {
+        "id": "06",
+        "name": "390px 展开图可见性",
+        "status": { "kind": "fail", "label": "FAIL" },
+        "detail": "视口缩至 390×844 后未重新 fit，画布内节点全部不可见；只留下诊断码和控件。",
+        "evidence": ["screenshots/04-mobile-expanded-blank.png"]
+      },
+      {
+        "id": "07",
+        "name": "边界与自动化",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "未请求生产 Session tree；Vue Flow 保持动态 chunk；官方图 E2E 与布局单测通过且无意外控制台错误。",
+        "evidence": [
+          "pnpm test:e2e -- m3-agent-tree",
+          "pnpm test:web -- agent-tree",
+          "pnpm verify:bundle"
+        ]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "390px 展开大图后节点不可见",
+      "facts": [
+        { "label": "位置", "value": "AgentTree.vue 的 fitView 生命周期与响应式尺寸变化" },
+        { "label": "复现", "value": "1408px 打开 large demo，展开 11 子 Agent，再切换到 390×844" },
+        { "label": "实际", "value": "画布只剩空白、MISSING_PARENT_EVENT 诊断和控制按钮，节点全部在可视区外" },
+        { "label": "期望", "value": "尺寸变化后重新 fit 或保持节点可读可操作" },
+        { "label": "测试缺口", "value": "现有 390px E2E 只断言画布高度与 controls，没有断言节点 bounding box 仍在视口内" }
+      ],
+      "state": { "kind": "fail", "label": "未修复" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "原型 Agent 家族树参考",
+      "label": "原型参考",
+      "caption": "原型使用浅色画布、横条节点、紫色子 Agent、青色 Skill 与正交父子边。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-desktop-four-node.png",
+      "alt": "桌面四节点 Agent 执行流图",
+      "label": "桌面四节点",
+      "caption": "实现保留原型横条比例、嵌套层级、颜色编码、控制按钮与箭头边。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-collapsed-large.png",
+      "alt": "折叠后的大图",
+      "label": "折叠大图",
+      "caption": "超过阈值后子 Agent 折叠为单一可操作节点。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-expanded-large.png",
+      "alt": "展开的十三节点大图",
+      "label": "展开大图",
+      "caption": "展开后保留 Workflow、forked skill、嵌套 Agent 和 trunk 几何。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-mobile-expanded-blank.png",
+      "alt": "390px 展开大图空白缺陷",
+      "label": "390px 缺陷",
+      "caption": "切换窄视口后节点落在画布外，只剩控件与诊断文本。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "布局核心",
+        "coverage": "单元测试 + 真实 Chrome",
+        "conclusion": "纯布局、trunk、折叠、锚点与确定性均有自动证据。",
+        "recommendation": "保留布局单测为几何事实源。"
+      },
+      {
+        "area": "浏览器渲染",
+        "coverage": "headless Chrome/CDP",
+        "conclusion": "真实 Vue Flow 节点、边、标记、Controls 与 Background 已验证。",
+        "recommendation": "补 390px 节点可见性断言并修复 resize fit。"
+      },
+      {
+        "area": "原生 Computer Use",
+        "coverage": "阻塞",
+        "conclusion": "macOS 锁屏，无法读取桌面前台；未绕过锁屏或伪造 CUA 证据。",
+        "recommendation": "解锁后可在同一报告补桌面截图，不影响 CDP 功能证据。"
+      },
+      {
+        "area": "范围边界",
+        "coverage": "代码与网络请求",
+        "conclusion": "未请求生产 Session tree，未渲染问题卡，DEV 路由不进入生产。",
+        "recommendation": "生产接线与问题卡分别留给 m3-03、m4。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "fail",
+    "label": "需修复后复测",
+    "summary": "桌面、折叠和展开布局与原型一致，但 390px 展开图的节点可见性失败。",
+    "points": [
+      "PR #104 已记录可复现检视意见。",
+      "修复应监听容器尺寸并在 resize 后安全 fit。",
+      "真正 390px E2E 需断言至少一个节点 bounding box 位于视口内。"
+    ]
+  },
+  "footer": "证据来源：真实 FastAPI、Vite、headless Chrome/CDP 截图与自动测试；HTML 由官方 renderer 生成。"
+}

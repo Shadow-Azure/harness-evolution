@@ -19,7 +19,7 @@
 ## 命令
 
 ```sh
-pnpm install             # 安装依赖
+pnpm install             # 安装
 pnpm dev                 # 启动 API/Web
 pnpm build               # 构建
 pnpm setup:api           # 安装 API 依赖
@@ -29,7 +29,7 @@ pnpm typecheck:api       # mypy
 pnpm test:api            # API 测试
 pnpm test:db[:mysql]     # 数据库测试
 pnpm test:all
-pnpm test:e2e            # 浏览器 E2E；--pattern 只跑匹配文件
+pnpm test:e2e            # 串行浏览器 E2E；--pattern 只跑匹配文件
 pnpm fixtures:check
 pnpm fixtures:seed       # 演示 fixture
 pnpm data:import:sessions

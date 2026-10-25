@@ -185,66 +185,94 @@ class CdpSession {
   }
 }
 
-/**
- * Start an isolated headless Chrome page with Runtime and Log enabled.
- * @returns {Promise<{session: CdpSession, close: () => Promise<void>}>} Browser page.
- */
-export async function createBrowserPage() {
+async function createBrowserPageOnce() {
   const debuggingPort = await availablePort();
   const profileDir = await mkdtemp(path.join(tmpdir(), "harness-chrome-"));
   let logs = "";
-  const browser = spawn(
-    chromeExecutable(),
-    [
-      "--headless=new",
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--disable-background-networking",
-      "--no-first-run",
-      "--no-default-browser-check",
-      `--remote-debugging-port=${debuggingPort}`,
-      `--user-data-dir=${profileDir}`,
-      "about:blank",
-    ],
-    {
-      detached: process.platform !== "win32",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  capture(browser, (chunk) => {
-    logs += chunk;
-  });
-  await waitFor(
-    `http://127.0.0.1:${debuggingPort}/json/version`,
-    browser,
-    () => logs,
-  );
-  const response = await fetch(
-    `http://127.0.0.1:${debuggingPort}/json/new?about:blank`,
-    { method: "PUT" },
-  );
-  assert.equal(response.ok, true, `failed to create Chrome target:\n${logs}`);
-  const target = await response.json();
-  const session = await new CdpSession(target.webSocketDebuggerUrl).open();
-  await Promise.all([
-    session.send("Page.enable"),
-    session.send("Runtime.enable"),
-    session.send("Log.enable"),
-  ]);
-  return {
-    session,
-    async close() {
-      session.close();
-      await stop(browser);
-      await rm(profileDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 10,
-        retryDelay: 100,
-      });
-    },
-  };
+  let browser;
+  let session;
+  try {
+    browser = spawn(
+      chromeExecutable(),
+      [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-background-networking",
+        "--no-first-run",
+        "--no-default-browser-check",
+        `--remote-debugging-port=${debuggingPort}`,
+        `--user-data-dir=${profileDir}`,
+        "about:blank",
+      ],
+      {
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    capture(browser, (chunk) => {
+      logs += chunk;
+    });
+    await waitFor(
+      `http://127.0.0.1:${debuggingPort}/json/version`,
+      browser,
+      () => logs,
+    );
+    const response = await fetch(
+      `http://127.0.0.1:${debuggingPort}/json/new?about:blank`,
+      { method: "PUT" },
+    );
+    assert.equal(response.ok, true, `failed to create Chrome target:\n${logs}`);
+    const target = await response.json();
+    session = await new CdpSession(target.webSocketDebuggerUrl).open();
+    await Promise.all([
+      session.send("Page.enable"),
+      session.send("Runtime.enable"),
+      session.send("Log.enable"),
+    ]);
+    return {
+      session,
+      async close() {
+        session.close();
+        await stop(browser);
+        await rm(profileDir, {
+          recursive: true,
+          force: true,
+          maxRetries: 10,
+          retryDelay: 100,
+        });
+      },
+    };
+  } catch (error) {
+    session?.close();
+    await stop(browser);
+    await rm(profileDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+    throw error;
+  }
+}
+
+/**
+ * Start an isolated headless Chrome page with Runtime and Log enabled.
+ * A failed launch is cleaned up and retried once to tolerate transient
+ * browser startup failures on shared CI runners.
+ * @returns {Promise<{session: CdpSession, close: () => Promise<void>}>} Browser page.
+ */
+export async function createBrowserPage() {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await createBrowserPageOnce();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 /**
