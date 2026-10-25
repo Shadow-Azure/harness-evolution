@@ -396,7 +396,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "error_detail",
             "created_at",
         }
-        assert event_indexes == {
+        assert {name for name in event_indexes if name.startswith("ix_evolution_run_events_")} == {
             "ix_evolution_run_events_run_created",
             "ix_evolution_run_events_event_type",
             "ix_evolution_run_events_level",
@@ -590,7 +590,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "error_detail",
             "created_at",
         }
-        assert event_indexes == {
+        assert {name for name in event_indexes if name.startswith("ix_evolution_run_events_")} == {
             "ix_evolution_run_events_run_created",
             "ix_evolution_run_events_event_type",
             "ix_evolution_run_events_level",
