@@ -51,6 +51,8 @@ jobs:
         run: pnpm test
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
         run: pnpm test:integration
+      - name: 真实浏览器 E2E（M1 shell）
+        run: pnpm test:e2e
       - name: OpenAPI 契约防漂移
         run: pnpm contract:check
       - name: 工作区类型检查

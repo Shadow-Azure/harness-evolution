@@ -4,16 +4,42 @@ import { computed } from "vue";
 import { RouterView, useRoute } from "vue-router";
 
 import TopNav from "./components/layout/TopNav.vue";
+import ErrorState from "./components/ui/ErrorState.vue";
+import LoadingSkeleton from "./components/ui/LoadingSkeleton.vue";
 import { fetchHealth } from "./api/health";
+import { ApiError } from "./api/http";
 import { queryKeys } from "./api/queryKeys";
 
 const route = useRoute();
 const isAuthLayout = computed(() => route.meta.authLayout === true);
 
-const { data, error, isPending } = useQuery({
+const { data, error, isPending, refetch } = useQuery({
   enabled: computed(() => !isAuthLayout.value),
   queryFn: fetchHealth,
   queryKey: queryKeys.health
+});
+
+const isConflict = computed(
+  () => error.value instanceof ApiError && error.value.status === 409,
+);
+
+const healthFailure = computed(() => {
+  if (isPending.value || isConflict.value) {
+    return false;
+  }
+  return Boolean(
+    error.value ||
+      !data.value ||
+      !data.value.ok ||
+      !data.value.db.ok,
+  );
+});
+
+const healthErrorCode = computed(() => {
+  if (error.value instanceof ApiError) {
+    return error.value.code;
+  }
+  return "HEALTH_UNAVAILABLE";
 });
 
 const status = computed(() => {
@@ -39,24 +65,53 @@ const statusTone = computed(() => {
   }
   return data.value.db.ok ? "ok" : "error";
 });
+
+function retryHealth() {
+  void refetch().catch(() => {
+    // The shared error state remains visible with the latest failure.
+  });
+}
 </script>
 
 <template>
   <div class="shell">
-    <TopNav v-if="!isAuthLayout" />
+    <TopNav
+      v-if="!isAuthLayout"
+      :demo="data?.phase === 'demo'"
+    />
     <main :class="{ 'auth-main': isAuthLayout }">
-      <p
-        v-if="!isAuthLayout"
-        class="status-pill"
-        :class="statusTone"
-        aria-live="polite"
-      >
-        <span class="status-dot" />
-        {{ status }}<template v-if="data?.db?.ok">
-          · {{ databaseLabel }}
-        </template>
-      </p>
-      <RouterView />
+      <template v-if="isAuthLayout">
+        <RouterView />
+      </template>
+      <template v-else>
+        <p
+          v-if="data && !isConflict"
+          class="status-pill"
+          :class="statusTone"
+          aria-live="polite"
+        >
+          <span class="status-dot" />
+          {{ status }}<template v-if="data?.db?.ok">
+            · {{ databaseLabel }}
+          </template>
+        </p>
+        <section
+          v-if="isPending"
+          data-testid="health-loading"
+        >
+          <LoadingSkeleton
+            label="正在连接 API"
+            :rows="2"
+          />
+        </section>
+        <ErrorState
+          v-else-if="healthFailure"
+          :code="healthErrorCode"
+          message="API 或数据库当前不可用，请稍后重试。"
+          @retry="retryHealth"
+        />
+        <RouterView v-else />
+      </template>
     </main>
   </div>
 </template>

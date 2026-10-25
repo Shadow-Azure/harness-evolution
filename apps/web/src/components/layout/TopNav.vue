@@ -3,6 +3,13 @@ import { RouterLink } from "vue-router";
 
 import { useCurrentUser, useLogout } from "../../composables/useAuth";
 
+const props = defineProps({
+  demo: {
+    type: Boolean,
+    default: false,
+  },
+});
+
 const { data: user } = useCurrentUser();
 const { isLoading, refetch: logoutUser } = useLogout();
 
@@ -29,27 +36,39 @@ function logout() {
       <RouterLink to="/sessions">
         Sessions
       </RouterLink>
+      <RouterLink to="/errors">
+        Errors
+      </RouterLink>
       <RouterLink to="/evolution">
         Evolution
       </RouterLink>
     </nav>
-    <details
-      v-if="user"
-      class="user-menu"
-    >
-      <summary>{{ user.displayName }}</summary>
-      <div class="user-popover">
-        <span>{{ user.username }}</span>
-        <button
-          data-testid="logout"
-          :disabled="isLoading"
-          type="button"
-          @click="logout"
-        >
-          {{ isLoading ? "退出中…" : "退出登录" }}
-        </button>
-      </div>
-    </details>
+    <div class="actions">
+      <span
+        v-if="props.demo"
+        class="demo-badge"
+        data-testid="demo-badge"
+      >
+        演示数据
+      </span>
+      <details
+        v-if="user"
+        class="user-menu"
+      >
+        <summary>{{ user.displayName }}</summary>
+        <div class="user-popover">
+          <span>{{ user.username }}</span>
+          <button
+            data-testid="logout"
+            :disabled="isLoading"
+            type="button"
+            @click="logout"
+          >
+            {{ isLoading ? "退出中…" : "退出登录" }}
+          </button>
+        </div>
+      </details>
+    </div>
   </header>
 </template>
 
@@ -107,6 +126,24 @@ nav a {
 nav a.router-link-active {
   color: var(--text-primary);
   background: var(--surface-selected);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.demo-badge {
+  padding: 5px 9px;
+  border: 1px solid var(--state-success-border);
+  border-radius: var(--radius-pill);
+  background: var(--state-success-surface);
+  color: var(--state-success-text);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
 }
 
 .user-menu {
@@ -185,6 +222,15 @@ nav a.router-link-active {
   .user-menu {
     min-width: 0;
     margin-left: 0;
+  }
+
+  .actions {
+    gap: var(--space-xs);
+  }
+
+  .demo-badge {
+    padding-inline: 6px;
+    font-size: 10px;
   }
 
   .user-menu summary {

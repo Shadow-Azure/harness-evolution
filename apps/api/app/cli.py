@@ -1,0 +1,119 @@
+"""Development-only data seeding commands."""
+
+import argparse
+import asyncio
+import json
+import sys
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.config import ServicePhase, Settings
+from app.db.base import Database
+from app.db.factory import create_database
+from app.db.migrate import upgrade_database
+from app.service.identity.service import IdentityService
+
+
+class SeedEnvironmentError(RuntimeError):
+    """Raised when the requested seed target is not a development database."""
+
+
+class M1SeedManifest(BaseModel):
+    """Strict manifest for the only data actions allowed in M1."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    actions: tuple[Literal["identity-admin"], ...] = Field(min_length=1, max_length=1)
+    scope: Literal["m1-shell"]
+    version: Literal[1]
+
+
+@dataclass(frozen=True, slots=True)
+class SeedResult:
+    """Stable output of one idempotent M1 seed invocation."""
+
+    admin_user_id: str | None
+    status: Literal["seeded", "noop"]
+
+
+def load_seed_manifest(path: Path) -> M1SeedManifest:
+    """Read and validate the closed M1 seed manifest schema."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return M1SeedManifest.model_validate(payload)
+    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+        raise ValueError(f"invalid seed manifest {path}: {exc}") from exc
+
+
+def _ensure_seed_environment(settings: Settings) -> None:
+    """Reject production and live targets before opening the database."""
+    if settings.production:
+        raise SeedEnvironmentError("seed refuses a production target")
+    if settings.phase is ServicePhase.LIVE:
+        raise SeedEnvironmentError("seed refuses a live target")
+
+
+async def _seed(
+    settings: Settings,
+    manifest: M1SeedManifest,
+    database: Database,
+) -> SeedResult:
+    """Apply the validated manifest through existing storage boundaries."""
+    await database.start()
+    try:
+        await upgrade_database(database)
+        identity = IdentityService(settings, database)
+        if "identity-admin" in manifest.actions:
+            await identity.seed_admin_if_empty()
+        username = settings.admin_username
+        user = await identity.users.get_by_username(username.lower()) if username else None
+        return SeedResult(
+            admin_user_id=user.id if user else None,
+            status="seeded" if user else "noop",
+        )
+    finally:
+        await database.dispose()
+
+
+async def run_seed(
+    settings: Settings,
+    manifest: M1SeedManifest,
+) -> SeedResult:
+    """Run one idempotent M1 seed against the configured database."""
+    _ensure_seed_environment(settings)
+    return await _seed(settings, manifest, create_database(settings))
+
+
+def _parser() -> argparse.ArgumentParser:
+    """Build the command-line parser without starting any service."""
+    parser = argparse.ArgumentParser(prog="python -m app.cli")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    seed = subcommands.add_parser("seed", help="seed development-only M1 state")
+    seed.add_argument(
+        "--manifest",
+        default="../../fixtures/m1-shell.json",
+        type=Path,
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Execute a CLI command and return a process-compatible status."""
+    args = _parser().parse_args(argv)
+    if args.command != "seed":
+        return 2
+    try:
+        manifest = load_seed_manifest(args.manifest.resolve())
+        result = asyncio.run(run_seed(Settings(), manifest))
+    except (SeedEnvironmentError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(json.dumps(asdict(result), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

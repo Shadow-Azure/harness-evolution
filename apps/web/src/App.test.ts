@@ -74,23 +74,53 @@ async function mountApp() {
 }
 
 describe("App shell", () => {
+  it("renders the shared loading state until canonical health settles", async () => {
+    server.use(http.get("/api/health", async () => await new Promise<Response>(() => {})));
+
+    const { wrapper } = await mountApp();
+
+    expect(wrapper.find("[data-testid='health-loading']").exists()).toBe(true);
+    expect(wrapper.get("[role='status']").attributes("aria-label")).toBe(
+      "正在连接 API",
+    );
+    expect(wrapper.find("nav").exists()).toBe(true);
+  });
+
   it("uses /sessions as the default empty view and shows canonical health", async () => {
     server.use(http.get("/api/health", () => HttpResponse.json(healthFixtures.healthy)));
     const { router, wrapper } = await mountApp();
 
     expect(router.currentRoute.value.path).toBe("/sessions");
     expect(wrapper.find("nav").text()).toContain("Sessions");
+    expect(wrapper.find("nav").text()).toContain("Errors");
+    expect(wrapper.find("nav").text()).toContain("Evolution");
     expect(wrapper.text()).toContain("Session 浏览器");
     expect(wrapper.text()).toContain("API 已连接 · SQLite");
+    expect(wrapper.find("[data-testid='demo-badge']").exists()).toBe(false);
   });
 
   it("keeps the shell mounted when health is unavailable", async () => {
+    let attempts = 0;
     server.use(
-      http.get("/api/health", () => HttpResponse.json(healthFixtures.unavailable, { status: 503 }))
+      http.get("/api/health", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(healthFixtures.unavailable, { status: 503 })
+          : HttpResponse.json(healthFixtures.healthy);
+      }),
     );
     const { wrapper } = await mountApp();
 
-    expect(wrapper.text()).toContain("数据库异常");
+    expect(wrapper.find("nav").exists()).toBe(true);
+    expect(wrapper.get("[role='alert']").text()).toContain("API 或数据库当前不可用");
+    expect(wrapper.text()).not.toContain("Session 浏览器");
+
+    await wrapper.get("[role='alert'] button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Session 浏览器");
+    expect(attempts).toBe(2);
   });
 
   it("lazily reaches the evolution view", async () => {
@@ -100,5 +130,39 @@ describe("App shell", () => {
 
     expect(router.currentRoute.value.path).toBe("/evolution");
     expect(wrapper.text()).toContain("Evolution 骨架");
+  });
+
+  it("shows the demo badge only for the demo phase", async () => {
+    server.use(
+      http.get("/api/health", () =>
+        HttpResponse.json({ ...healthFixtures.healthy, phase: "demo" }),
+      ),
+    );
+
+    const { wrapper } = await mountApp();
+
+    expect(wrapper.get("[data-testid='demo-badge']").text()).toContain("演示数据");
+  });
+
+  it("hides the demo badge for live data", async () => {
+    server.use(
+      http.get("/api/health", () =>
+        HttpResponse.json({ ...healthFixtures.healthy, phase: "live" }),
+      ),
+    );
+
+    const { wrapper } = await mountApp();
+
+    expect(wrapper.find("[data-testid='demo-badge']").exists()).toBe(false);
+  });
+
+  it("reaches the authenticated errors placeholder", async () => {
+    const { router, wrapper } = await mountApp();
+
+    await router.push("/errors");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/errors");
+    expect(wrapper.text()).toContain("暂无问题");
   });
 });

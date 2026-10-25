@@ -60,4 +60,36 @@ describe("top navigation user area", () => {
       expect(router.currentRoute.value.path).toBe("/login");
     });
   });
+
+  it("renders all M1 destinations and the optional demo badge", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/errors");
+    await router.isReady();
+
+    const wrapper = mount(TopNav, {
+      props: { demo: true },
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+
+    expect(wrapper.find("nav").text()).toContain("Sessions");
+    expect(wrapper.find("nav").text()).toContain("Errors");
+    expect(wrapper.find("nav").text()).toContain("Evolution");
+    expect(wrapper.get("[data-testid='demo-badge']").text()).toContain("演示数据");
+    expect(wrapper.get("nav a.router-link-active").text()).toBe("Errors");
+  });
 });

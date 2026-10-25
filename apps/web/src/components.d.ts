@@ -13,6 +13,9 @@ declare module 'vue' {
   export interface GlobalComponents {
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']
     ElInput: typeof import('element-plus/es/components/input/index')['ElInput']
+    EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
+    ErrorState: typeof import('./components/ui/ErrorState.vue')['default']
+    LoadingSkeleton: typeof import('./components/ui/LoadingSkeleton.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     TopNav: typeof import('./components/layout/TopNav.vue')['default']
