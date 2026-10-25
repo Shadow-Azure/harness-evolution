@@ -1,0 +1,173 @@
+{
+  "title": "M2-05 幂等重放集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #91",
+  "summary": "在独立临时 SQLite 上完成真实本地会话首次重放、连续零写入重放，并通过真实 Chrome 与浏览器 E2E 验证现有应用壳、导航、控制台和响应式布局。",
+  "meta": "2026-10-25 · macOS · SQLite · FastAPI + Vite + Chrome",
+  "metrics": [
+    { "value": "4", "label": "根会话" },
+    { "value": "66", "label": "Agent payload" },
+    { "value": "0", "label": "第二次重放写入" },
+    { "value": "11", "label": "重放专项测试" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#37 · M2-05 idempotent replay" },
+    { "label": "PR", "value": "#91" },
+    { "label": "Commit", "value": "39eeeba" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome" },
+    { "label": "Database", "value": "临时 SQLite（<redacted>）" },
+    { "label": "Local data", "value": "4 roots / 66 JSONL / 62 subagents" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "首次真实重放",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 个 root、66 个 payload 全部 imported；canonical 表写入 4 families、66 agents、53 user turns。",
+        "evidence": ["data:replay:sessions imported=66", "SQLite counts 4/66/53/66/66"]
+      },
+      {
+        "id": "02",
+        "name": "连续重放零写入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "第二次重放为 0 imported / 66 skipped / 0 failed / 0 errors。",
+        "evidence": ["data:replay:sessions repeat", "sync_runs completed 66/66"]
+      },
+      {
+        "id": "03",
+        "name": "结构指纹稳定",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "两次重放前后 session、Agent、source 游标结构指纹一致。",
+        "evidence": ["SHA-256 304d281c668e6363b3351040230da5f071f988c17b25c80fac73eb68db6faf74"]
+      },
+      {
+        "id": "04",
+        "name": "Payload 只读",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "第三次重放仍为 0 imported / 66 skipped；payload 元数据指纹未变化。",
+        "evidence": ["SHA-256 b0ae00a83ebe5a38651e999bf4baa402c35b479023a5d373ae1c7113a8b50b57"]
+      },
+      {
+        "id": "05",
+        "name": "批次审计与脱敏",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "首次批次 66 done / 66 imported，仅含 1 条 MISSING_PARENT_TOOL_USE_ID；第二次 66 done / 66 skipped 且无错误。",
+        "evidence": ["sync_runs records_total=66", "errors contain stable codes only"]
+      },
+      {
+        "id": "06",
+        "name": "Child 变化与 line_count",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "自动化契约验证 child 内容变化会重建 root，并同步 source line_count；未变化 sibling 游标保持。",
+        "evidence": ["test_changed_payload_refreshes_source_line_count", "test_new_child_and_parser_upgrade_rebuild_only_affected_root"]
+      },
+      {
+        "id": "07",
+        "name": "Payload 删除保留旧树",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "自动化契约验证 payload 消失时记录 MISSING_PAYLOAD_SOURCE，受影响 root 禁止删除重写，旧业务树与游标保留。",
+        "evidence": ["test_payload_deletion_blocks_root_rebuild_and_preserves_tree"]
+      },
+      {
+        "id": "08",
+        "name": "单 root 结构失败隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "自动化契约验证结构失败只回滚该 root，旧树和 processed 指针保留，其他 root 继续。",
+        "evidence": ["test_structural_failure_isolated_and_keeps_old_cursor"]
+      },
+      {
+        "id": "09",
+        "name": "Progress 回调异常",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "已提交 root 不因 progress 回调异常被重新标记失败，批次追加稳定 SYNC_PROGRESS_FAILED。",
+        "evidence": ["test_progress_callback_failure_does_not_reclassify_committed_root"]
+      },
+      {
+        "id": "10",
+        "name": "真实 Chrome 页面",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "完成临时管理员登录与首登改密，访问 Sessions、Errors、Evolution；导航、demo 角标和空态正确。",
+        "evidence": ["screenshots/01-sessions.jpg", "screenshots/02-errors.jpg", "screenshots/03-evolution.jpg"]
+      },
+      {
+        "id": "11",
+        "name": "浏览器 E2E",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 Chrome E2E 4/4；控制台无意外 warning/error，390px 主页面无横向溢出。",
+        "evidence": ["pnpm test:e2e -- m1-shell 4/4"]
+      },
+      {
+        "id": "12",
+        "name": "数据卫生",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "本地轨迹与 SQLite 未被 Git 跟踪；报告未包含 payload 正文、凭据、token 或绝对路径。",
+        "evidence": ["verify:local-data", "Git status only report directory"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions.jpg",
+      "alt": "Sessions 空态、导航与 demo 角标",
+      "label": "Sessions",
+      "caption": "真实 Chrome 完成首登改密后进入 Sessions，显示 API 连接、demo 角标和真实空态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-errors.jpg",
+      "alt": "Errors 路由占位页",
+      "label": "Errors",
+      "caption": "Errors 为后续 milestone 的真实空态，不展示模拟问题。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-evolution.jpg",
+      "alt": "Evolution 骨架与 Vue Flow 容器",
+      "label": "Evolution",
+      "caption": "Evolution 骨架正常渲染，Vue Flow 容器未产生尺寸 warning。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "首次与重复 replay",
+        "coverage": "真实本地数据 + 独立临时 SQLite",
+        "conclusion": "4/66 payload 首次写入，连续重放零副作用。",
+        "recommendation": "保持真实本地数据验证为手工/发布前冒烟。"
+      },
+      {
+        "area": "变更、删除、失败隔离",
+        "coverage": "自动回归（真实 repository）",
+        "conclusion": "hash/parser/line_count、payload 消失、结构失败与 progress 异常都有确定性覆盖。",
+        "recommendation": "CI 保留 SQLite 与 MySQL 双方言 replay contract。"
+      },
+      {
+        "area": "浏览器壳",
+        "coverage": "Computer Use + CDP E2E",
+        "conclusion": "登录、改密、三入口、控制台与 390px 均正常。",
+        "recommendation": "后续会话列表 API 接入后增加数据态浏览器回归。"
+      },
+      {
+        "area": "本地数据隐私",
+        "coverage": "Git 清洁态 + 报告扫描",
+        "conclusion": "本地 payload、SQLite 与绝对路径未进入提交物。",
+        "recommendation": "继续由 verify:local-data 门禁保护。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交的真实 replay、幂等游标、失败隔离、审计与浏览器集成均正常，未发现需要修复的集成缺陷。",
+    "points": [
+      "首次 66 imported，后续连续 replay 均 0 imported / 66 skipped。",
+      "payload 与 canonical 结构指纹在重复运行后保持不变。",
+      "真实 Chrome 页面与 E2E 无意外控制台错误。"
+    ]
+  },
+  "footer": "证据源：真实本地会话、独立临时 SQLite、replay CLI、聚焦 pytest、Computer Use 截图与真实 Chrome E2E。生成 HTML 不应手改。"
+}
