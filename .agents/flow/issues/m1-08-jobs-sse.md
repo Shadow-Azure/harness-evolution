@@ -9,7 +9,7 @@ milestone: m1
 depends:
   - m1-06
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/api/alembic/**
