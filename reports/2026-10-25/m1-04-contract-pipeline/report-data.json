@@ -1,0 +1,160 @@
+{
+  "lang": "zh-CN",
+  "title": "M1-04 OpenAPI 契约链路集成 Smoke",
+  "eyebrow": "Computer Use · Integration Smoke",
+  "summary": "真实 Chrome、Vite 代理与 FastAPI 联调通过：canonical OpenAPI 在污染环境下保持稳定，前端可连接并按同一契约展示 200/503，健康响应字段与生成 fixture 形状一致。",
+  "meta": "2026-10-25 · macOS · Google Chrome · desktop viewport",
+  "metrics": [
+    { "value": "8 / 8", "label": "Scenarios passed" },
+    { "value": "0", "label": "Defects" },
+    { "value": "5", "label": "Screenshots" },
+    { "value": "3 / 3", "label": "Cross-stack tests" }
+  ],
+  "facts": [
+    { "label": "Application", "value": "Harness Evolution web + FastAPI" },
+    { "label": "Branch", "value": "codex/m1-04-contract-pipeline" },
+    { "label": "Commit", "value": "3c08a3b2ba2f0ff0169935488e05650a9c8b75b0" },
+    { "label": "Services", "value": "FastAPI 8787 + Vite 5173 on host loopback" },
+    { "label": "Browser", "value": "Google Chrome at desktop viewport" },
+    { "label": "Failure injection", "value": "Controlled sqlite URL with an unavailable parent directory" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "断言与证据", "截图/命令"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "启动真实前后端",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Vite 监听 localhost:5173，FastAPI 监听 8787；启动日志无异常。",
+        "evidence": ["host lsof", "dev session log"]
+      },
+      {
+        "id": "02",
+        "name": "首页消费 health 契约",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "顶栏显示“API 已连接 · SQLite”，hero 显示 SQLite · 已连接。",
+        "evidence": ["01-home-connected.jpeg", "accessibility tree"]
+      },
+      {
+        "id": "03",
+        "name": "契约边界与模块布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "四个模块、packages/contracts 边界说明和 footer 完整可见，无横向溢出或遮挡。",
+        "evidence": ["02-modules-contracts.jpeg"]
+      },
+      {
+        "id": "04",
+        "name": "真实 200 health 契约",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "浏览器收到 ok/service/phase/version/db 完整结构；latencyMs 使用 camelCase，省略 null error。",
+        "evidence": ["03-health-success.jpeg", "host curl"]
+      },
+      {
+        "id": "05",
+        "name": "canonical 导出不受环境污染",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "设置 HE_VERSION/HE_PHASE/HE_DOCS_ENABLED 后 contract:check 仍与提交的 canonical OpenAPI 逐字一致。",
+        "evidence": ["HE_VERSION=contract-probe HE_PHASE=live HE_DOCS_ENABLED=true pnpm contract:check"]
+      },
+      {
+        "id": "06",
+        "name": "四件契约产物防漂移",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "contract:check 在临时目录重算 OpenAPI、API 类型、health JSON 和 typed fixture 并逐字比较；门禁自测试 21/21。",
+        "evidence": ["pnpm contract:check", "pnpm test:gates"]
+      },
+      {
+        "id": "07",
+        "name": "受控数据库故障 503",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Vite 代理返回 ok=false、db.ok=false 与固定 DatabaseInitializationError 摘要；未泄露受控 URL、私有路径或连接细节。",
+        "evidence": ["04-health-db-failure.jpeg", "dev session log"]
+      },
+      {
+        "id": "08",
+        "name": "503 前端状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "顶栏变为“数据库异常”，hero 变为 SQLite · 连接异常；页面继续渲染契约边界与模块。",
+        "evidence": ["05-db-failure-ui.jpeg", "accessibility tree"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-home-connected.jpeg",
+      "alt": "Harness Lens 首页显示 API 已连接",
+      "label": "01 · Home",
+      "caption": "真实 health 请求完成后，顶栏与 hero 都使用契约中的数据库状态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-modules-contracts.jpeg",
+      "alt": "计划模块与共享契约边界",
+      "label": "02 · Contracts boundary",
+      "caption": "四个计划模块和 packages/contracts 边界说明完整渲染。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-health-success.jpeg",
+      "alt": "浏览器中的 200 health JSON",
+      "label": "03 · Health 200",
+      "caption": "真实代理返回稳定 health 字段和 camelCase latencyMs。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-health-db-failure.jpeg",
+      "alt": "浏览器中的数据库故障 503 JSON",
+      "label": "04 · Health 503",
+      "caption": "故障响应只保留固定初始化错误摘要，不暴露底层连接细节。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-db-failure-ui.jpeg",
+      "alt": "数据库异常时 Harness Lens 首页",
+      "label": "05 · Failure UI",
+      "caption": "顶栏显示数据库异常，hero 显示 SQLite · 连接异常。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "实测覆盖率", "结果", "备注"],
+    "rows": [
+      {
+        "area": "前端单元测试 + V8 coverage",
+        "coverage": "97.11% statements / 84.53% branches / 100% functions / 97.11% lines",
+        "conclusion": "30 passed，1 个既有 skip；四项均高于 80% 阈值。",
+        "recommendation": "保持 Vitest coverage gate 常驻。"
+      },
+      {
+        "area": "FastAPI 单元与路由测试",
+        "coverage": "93% coverage",
+        "conclusion": "33 passed，3 个 MySQL-only skip。",
+        "recommendation": "真实 MySQL 由 CI service lane 执行。"
+      },
+      {
+        "area": "OpenAPI/fixture 防漂移",
+        "coverage": "contract:check + executable negative tests",
+        "conclusion": "四件产物缺失、手改或漂移均被阻断；污染环境通过。",
+        "recommendation": "继续在 CI build 前执行。"
+      },
+      {
+        "area": "Web → Vite → FastAPI",
+        "coverage": "跨栈自动化 + Computer Use",
+        "conclusion": "自动化 3/3 passed；真实浏览器验证 200、503 与 UI 状态。",
+        "recommendation": "保留合并前 GUI smoke。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready to merge",
+    "summary": "m1-04 的 canonical 契约链路、真实响应 fixture 和 503 展示在真实浏览器中均符合设计。",
+    "points": [
+      "未发现需要提交新检视意见的产品问题。",
+      "污染环境不再导致 contract 输出漂移。",
+      "故障响应保持公开脱敏，双端覆盖率均高于 80%。"
+    ]
+  },
+  "footer": "Evidence generated from Computer Use screenshots; HTML is rendered from report-data.json."
+}

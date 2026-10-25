@@ -31,6 +31,7 @@ Implemented on `codex/m1-04-contract-pipeline`.
 - `pnpm test:gates` — 21 passed.
 - `pnpm lint:api`, `pnpm typecheck`, `pnpm build`, `pnpm verify:flow`, `pnpm verify:docs` — passed.
 - Frontend coverage from `pnpm test`: statements 97.11%, branches 84.53%, functions 100%, lines 97.11%.
+- Computer Use smoke: 8/8 scenarios passed with real Chrome, Vite proxy, canonical-environment probe and controlled 503; evidence is in [`reports/2026-10-25/m1-04-contract-pipeline`](../reports/2026-10-25/m1-04-contract-pipeline/smoke-report.html).
 
 ## Deviations and risks
 
