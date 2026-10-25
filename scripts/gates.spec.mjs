@@ -96,7 +96,19 @@ test("upstream trajectory JSON Schema enforces transcript identity", () => {
     allErrors: true,
     $data: true,
     strict: false,
-    validateFormats: false,
+    validateFormats: true,
+  });
+  ajv.addFormat("date-time", {
+    validate: (value) =>
+      typeof value === "string" &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+      !Number.isNaN(Date.parse(value)),
+  });
+  ajv.addKeyword({
+    keyword: "x-time-range",
+    schemaType: "object",
+    validate: (range, data) =>
+      Date.parse(data[range.start]) <= Date.parse(data[range.end]),
   });
   const validate = ajv.compile(schema);
   assert.equal(validate(fixture), true, JSON.stringify(validate.errors));
@@ -126,6 +138,22 @@ test("upstream trajectory JSON Schema enforces transcript identity", () => {
         fixture.transcripts[0],
         { ...fixture.transcripts[1], agentId: fixture.sessionId },
       ],
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: { ...fixture.metadata, startedAt: "not-a-date" },
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: { ...fixture.metadata, startedAt: "2026-10-20T01:00:00" },
+    },
+    {
+      ...structuredClone(fixture),
+      metadata: {
+        ...fixture.metadata,
+        startedAt: "2026-10-20T02:00:00+08:00",
+        endedAt: "2026-10-20T01:00:00+08:00",
+      },
     },
   ];
   for (const document of invalid) {

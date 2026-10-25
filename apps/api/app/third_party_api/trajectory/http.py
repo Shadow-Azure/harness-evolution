@@ -34,13 +34,17 @@ class HttpTrajectorySource:
         self,
         client: httpx.AsyncClient,
         *,
+        supported_major: int = 1,
         max_retries: int = 3,
         backoff_seconds: float = 0.25,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         max_pages: int = 100,
     ) -> None:
         """Bind one lifespan-owned HTTP client and deterministic retry policy."""
+        if supported_major != 1:
+            raise ValueError("only upstream trajectory API major version 1 is supported")
         self._client = client
+        self._supported_major = supported_major
         self._max_retries = max(0, min(max_retries, 3))
         self._backoff_seconds = max(0.0, backoff_seconds)
         self._sleep = sleep or asyncio.sleep
@@ -110,18 +114,22 @@ class HttpTrajectorySource:
                     raise
                 code = exc.code.value if isinstance(exc, AppError) else "UPSTREAM_INVALID_RESPONSE"
                 issues.append(
-                    UpstreamItemIssue(
-                        session_id=session_id,
-                        code=code,
-                        message="Upstream session could not be imported",
+                    UpstreamItemIssue.model_validate(
+                        {
+                            "sessionId": session_id,
+                            "code": code,
+                            "message": "Upstream session could not be imported",
+                        },
                     ),
                 )
             except httpx.HTTPError:
                 issues.append(
-                    UpstreamItemIssue(
-                        session_id=session_id,
-                        code=ErrorCode.UPSTREAM_INVALID_RESPONSE.value,
-                        message="Upstream session could not be imported",
+                    UpstreamItemIssue.model_validate(
+                        {
+                            "sessionId": session_id,
+                            "code": ErrorCode.UPSTREAM_INVALID_RESPONSE.value,
+                            "message": "Upstream session could not be imported",
+                        },
                     ),
                 )
         return FetchManyResult(packages=tuple(packages), issues=tuple(issues))
@@ -174,7 +182,7 @@ class HttpTrajectorySource:
 
     def _validate_version(self, value: str | None) -> None:
         match = _VERSION_PATTERN.fullmatch(value or "")
-        if match is None or match.group("major") != "1":
+        if match is None or int(match.group("major")) != self._supported_major:
             raise AppError(
                 status_code=HTTPStatus.BAD_GATEWAY,
                 code=ErrorCode.UPSTREAM_VERSION_INCOMPATIBLE,

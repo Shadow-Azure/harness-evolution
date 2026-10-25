@@ -33,6 +33,7 @@ class FakeSource:
 
     package: TrajectoryPackage
     issues: tuple[UpstreamItemIssue, ...] = ()
+    closed: bool = False
 
     async def fetch(self, session_id: str) -> TrajectoryPackage:
         assert session_id == self.package.session_id
@@ -62,7 +63,7 @@ class FakeSource:
         return FetchManyResult(packages=(self.package,), issues=self.issues)
 
     async def close(self) -> None:
-        return None
+        self.closed = True
 
 
 class IssueOnlySource(FakeSource):
@@ -144,6 +145,23 @@ async def pull_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
         yield client
 
 
+async def test_injected_source_closes_during_application_shutdown(tmp_path: Path) -> None:
+    """Always release an injected source, including sources opened outside Settings."""
+    source = FakeSource(package=upstream_package())
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        jwt_secret=SecretStr("upstream-contract-test-signing-secret"),
+        sync_interval_seconds=0,
+    )
+    app = create_app(settings, trajectory_source=source)
+
+    async with app.router.lifespan_context(app):
+        assert source.closed is False
+
+    assert source.closed is True
+
+
 async def admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     login = await client.post(
         "/api/auth/login",
@@ -210,8 +228,26 @@ async def test_pull_requires_exact_one_selector_and_admin(pull_client: httpx.Asy
             "window": {"from": "2026-10-01", "to": "2026-10-31"},
         },
     )
+    snake_case = await pull_client.post(
+        "/api/acquisition/pull",
+        headers=headers,
+        json={"session_ids": [ROOT]},
+    )
+    string_bool = await pull_client.post(
+        "/api/acquisition/pull",
+        headers=headers,
+        json={
+            "window": {
+                "from": "2026-10-01",
+                "to": "2026-10-31",
+                "problemOnly": "false",
+            },
+        },
+    )
     assert empty.status_code == 422
     assert both.status_code == 422
+    assert snake_case.status_code == 422
+    assert string_bool.status_code == 422
     assert empty.json()["error"]["code"] == "VALIDATION_INVALID"
     assert both.json()["error"]["code"] == "VALIDATION_INVALID"
 
@@ -344,10 +380,12 @@ async def test_upstream_item_issue_is_isolated_and_sanitized(tmp_path: Path) -> 
     source = FakeSource(
         package=upstream_package(),
         issues=(
-            UpstreamItemIssue(
-                session_id="00000000-0000-4000-8000-000000000099",
-                code="UPSTREAM_REQUEST_FAILED",
-                message="Upstream session could not be imported",
+            UpstreamItemIssue.model_validate(
+                {
+                    "sessionId": "00000000-0000-4000-8000-000000000099",
+                    "code": "UPSTREAM_REQUEST_FAILED",
+                    "message": "Upstream session could not be imported",
+                },
             ),
         ),
     )

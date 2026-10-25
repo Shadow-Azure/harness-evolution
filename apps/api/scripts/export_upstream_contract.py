@@ -134,6 +134,10 @@ def strict_schema(models_schema: dict[str, Any]) -> dict[str, Any]:
         "The child agentId inequality uses the Ajv $data extension. Runtime also "
         "enforces subagent agentId uniqueness."
     )
+    defs["TrajectoryMetadata"]["x-time-range"] = {
+        "start": "startedAt",
+        "end": "endedAt",
+    }
     return defs
 
 

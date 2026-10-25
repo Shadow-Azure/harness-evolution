@@ -76,6 +76,16 @@ async def source_for(
     )
 
 
+async def test_source_rejects_unsupported_major_before_requests() -> None:
+    """Reject an incompatible protocol major before constructing a live source."""
+    client = httpx.AsyncClient(base_url="https://upstream.test")
+    try:
+        with pytest.raises(ValueError, match="major version 1"):
+            HttpTrajectorySource(client, supported_major=2)
+    finally:
+        await client.aclose()
+
+
 async def test_fetch_returns_validated_package() -> None:
     calls = 0
 

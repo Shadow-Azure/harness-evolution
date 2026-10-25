@@ -70,6 +70,7 @@ def create_app(
         )
         resolved_source = HttpTrajectorySource(
             upstream_client,
+            supported_major=resolved_settings.upstream_api_major,
             max_retries=resolved_settings.upstream_retry_attempts,
             backoff_seconds=resolved_settings.upstream_retry_backoff_seconds,
             max_pages=resolved_settings.upstream_max_pages,
@@ -114,12 +115,20 @@ def create_app(
         try:
             yield
         finally:
-            await sync.stop_scheduler()
-            await jobs.close()
-            if upstream_client is not None:
-                await upstream_client.aclose()
-            await event_bus.close()
-            await resolved_database.dispose()
+            try:
+                await sync.stop_scheduler()
+            finally:
+                try:
+                    await jobs.close()
+                finally:
+                    try:
+                        if resolved_source is not None:
+                            await resolved_source.close()
+                    finally:
+                        try:
+                            await event_bus.close()
+                        finally:
+                            await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None

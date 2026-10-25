@@ -145,6 +145,39 @@ def test_package_rejects_extra_and_malformed_timestamp() -> None:
         )
 
 
+def test_wire_models_are_alias_only_and_do_not_coerce_booleans() -> None:
+    """Keep runtime validation as strict as the canonical JSON wire schema."""
+    with pytest.raises(ValidationError):
+        TrajectoryPackage.model_validate(package().model_dump(by_alias=False))
+
+    payload = package().model_dump(by_alias=True)
+    payload["metadata"]["problemFlag"] = "false"
+    with pytest.raises(ValidationError):
+        TrajectoryPackage.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "started_at",
+    ["not-a-date", "2026-10-20T01:00:00", "2026-10-20T01:00:00+08:00"],
+)
+def test_metadata_requires_ordered_timezone_timestamps(started_at: str) -> None:
+    """Reject malformed, timezone-free, and reversed metadata intervals."""
+    ended_at = (
+        "2026-10-20T00:59:59+08:00"
+        if started_at == "2026-10-20T01:00:00+08:00"
+        else "2026-10-20T01:05:00+08:00"
+    )
+    with pytest.raises(ValidationError):
+        TrajectoryMetadata.model_validate(
+            {
+                "project": "fixture-project",
+                "model": "model-a",
+                "startedAt": started_at,
+                "endedAt": ended_at,
+            },
+        )
+
+
 def test_package_mapping_preserves_raw_lines_and_derives_payload_metadata() -> None:
     """Map root identity to the session id and child identity to agentId."""
     parsed = package()
@@ -224,6 +257,18 @@ def test_upstream_configuration_rejects_credentials_in_url() -> None:
             db_dialect=DatabaseDialect.SQLITE,
             jwt_secret=SecretStr("test-secret"),
             upstream_base_url="https://user:password@upstream.test",
+        )
+
+
+def test_upstream_configuration_rejects_incompatible_major_version() -> None:
+    """Reject an unsupported upstream protocol before application startup."""
+    with pytest.raises(ValidationError):
+        Settings.model_validate(
+            {
+                "db_dialect": DatabaseDialect.SQLITE,
+                "jwt_secret": SecretStr("test-secret"),
+                "upstream_api_major": 2,
+            },
         )
 
 

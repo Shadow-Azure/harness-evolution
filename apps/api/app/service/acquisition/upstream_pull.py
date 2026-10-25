@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import date
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from app.db.base import Database
 from app.db.crud.local_sessions import write_local_payloads
@@ -23,11 +23,11 @@ from app.utils.time import now_shanghai
 class PullWindow(BaseModel):
     """Date window accepted by the upstream enumeration endpoint."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=False)
 
     from_date: date = Field(alias="from")
     to_date: date = Field(alias="to")
-    problem_only: bool = Field(default=True, alias="problemOnly")
+    problem_only: StrictBool = Field(default=True, alias="problemOnly")
     cursor: str | None = None
 
     @model_validator(mode="after")
@@ -41,7 +41,7 @@ class PullWindow(BaseModel):
 class PullJobPayload(BaseModel):
     """Durable selector stored on one queued pull job."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=False)
 
     session_ids: (
         list[

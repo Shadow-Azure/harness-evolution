@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -15,7 +15,7 @@ class TrajectoryApiModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel,
         extra="forbid",
-        populate_by_name=True,
+        populate_by_name=False,
         frozen=True,
     )
 
@@ -27,7 +27,7 @@ class TrajectoryMetadata(TrajectoryApiModel):
     model: str = Field(min_length=1, max_length=64)
     started_at: datetime
     ended_at: datetime
-    problem_flag: bool = False
+    problem_flag: StrictBool = False
     problem_tags: tuple[str, ...] = ()
 
     @model_validator(mode="after")
@@ -100,7 +100,7 @@ class TrajectoryWindowItem(TrajectoryApiModel):
     )
     started_at: datetime
     model: str | None = Field(default=None, max_length=64)
-    problem_flag: bool = False
+    problem_flag: StrictBool = False
 
     @model_validator(mode="after")
     def validate_timestamp(self) -> TrajectoryWindowItem:

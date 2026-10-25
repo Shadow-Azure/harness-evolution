@@ -48,7 +48,11 @@
         "endedAt"
       ],
       "title": "TrajectoryMetadata",
-      "type": "object"
+      "type": "object",
+      "x-time-range": {
+        "end": "endedAt",
+        "start": "startedAt"
+      }
     },
     "TrajectoryPackage": {
       "$comment": "The child agentId inequality uses the Ajv $data extension. Runtime also enforces subagent agentId uniqueness.",
