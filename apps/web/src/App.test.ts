@@ -86,7 +86,7 @@ describe("App shell", () => {
     expect(wrapper.find("nav").exists()).toBe(true);
   });
 
-  it("uses /sessions as the default empty view and shows canonical health", async () => {
+  it("uses /sessions as the default empty view without developer status chrome", async () => {
     server.use(http.get("/api/health", () => HttpResponse.json(healthFixtures.healthy)));
     const { router, wrapper } = await mountApp();
 
@@ -95,7 +95,7 @@ describe("App shell", () => {
     expect(wrapper.find("nav").text()).toContain("Errors");
     expect(wrapper.find("nav").text()).toContain("Evolution");
     expect(wrapper.text()).toContain("Session 浏览器");
-    expect(wrapper.text()).toContain("API 已连接 · SQLite");
+    expect(wrapper.text()).not.toContain("API 已连接");
     expect(wrapper.find("[data-testid='demo-badge']").exists()).toBe(false);
   });
 
@@ -161,7 +161,7 @@ describe("App shell", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe("/evolution");
-    expect(wrapper.text()).toContain("Evolution 骨架");
+    expect(wrapper.text()).toContain("自进化");
   });
 
   it("shows the demo badge only for the demo phase", async () => {

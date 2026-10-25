@@ -155,6 +155,85 @@ before(async () => {
 
 after(cleanupRuntime);
 
+test("m1-auth uses the prototype light cards and protected-page handoff", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: (entry) =>
+        entry.source === "network" &&
+        entry.url?.endsWith("/api/auth/refresh") &&
+        /status of 401/.test(entry.text),
+    });
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.navigate", { url: `${baseUrl}/login` });
+    const login = await waitForDocument(
+      page.session,
+      `(() => {
+        const card = document.querySelector(".auth-card");
+        if (!card || !document.body.textContent.includes("Harness Evolution")) return null;
+        return {
+          bodyBackground: getComputedStyle(document.body).backgroundColor,
+          cardBackground: getComputedStyle(card).backgroundColor,
+          hasTopbar: Boolean(document.querySelector(".topbar")),
+          brand: document.querySelector(".brand-lockup")?.textContent.trim() ?? "",
+          path: location.pathname,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+      "prototype login card",
+    );
+    assert.equal(login.path, "/login");
+    assert.equal(login.bodyBackground, "rgb(244, 245, 247)");
+    assert.equal(login.cardBackground, "rgb(255, 255, 255)");
+    assert.equal(login.hasTopbar, false);
+    assert.equal(login.brand, "Harness Evolution轨迹诊断与自进化");
+    assert.equal(login.clientWidth, 1408);
+    assert.equal(login.scrollWidth, 1408);
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const setValue = (selector, value) => {
+          const input = document.querySelector(selector);
+          const setter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+          ).set;
+          setter.call(input, value);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        setValue('input[name="username"]', "admin");
+        setValue('input[name="password"]', ${JSON.stringify(currentAdminPassword)});
+        document.querySelector("form").requestSubmit();
+      })()`,
+    });
+    const changePassword = await waitForDocument(
+      page.session,
+      `(() => {
+        const card = document.querySelector(".auth-card");
+        if (location.pathname !== "/change-password" || !card) return null;
+        return {
+          cardBackground: getComputedStyle(card).backgroundColor,
+          hasTopbar: Boolean(document.querySelector(".topbar")),
+          path: location.pathname,
+        };
+      })()`,
+      "prototype forced-password card",
+    );
+    assert.equal(changePassword.path, "/change-password");
+    assert.equal(changePassword.cardBackground, "rgb(255, 255, 255)");
+    assert.equal(changePassword.hasTopbar, false);
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.close();
+  }
+});
+
 test("m1-shell exposes three destinations, demo state, and clean responsive rendering", async () => {
   const page = await createBrowserPage();
   try {
@@ -168,6 +247,12 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       httpOnly: true,
       sameSite: "Strict",
     });
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
     await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
     const initial = await waitForDocument(
       page.session,
@@ -179,6 +264,16 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
           links: [...nav.querySelectorAll("a")].map((link) => link.textContent.trim()),
           badge: document.querySelector("[data-testid='demo-badge']").textContent.trim(),
           hasEmpty: document.body.textContent.includes("暂无会话"),
+          bodyBackground: getComputedStyle(document.body).backgroundColor,
+          topbarBackground: getComputedStyle(document.querySelector(".topbar")).backgroundColor,
+          topbarHeight: document.querySelector(".topbar").getBoundingClientRect().height,
+          emptyBackground: getComputedStyle(document.querySelector(".empty-state")).backgroundColor,
+          activeUnderline: getComputedStyle(
+            document.querySelector("nav a.router-link-active"),
+          ).borderBottomColor,
+          brand: document.querySelector(".brand").textContent.trim(),
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
         };
       })()`,
       "authenticated M1 shell",
@@ -187,28 +282,99 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.deepEqual(initial.links, ["Sessions", "Errors", "Evolution"]);
     assert.equal(initial.badge, "演示数据");
     assert.equal(initial.hasEmpty, true);
+    assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
+    assert.equal(initial.topbarBackground, "rgb(250, 251, 252)");
+    assert.equal(initial.topbarHeight, 56);
+    assert.equal(initial.emptyBackground, "rgb(255, 255, 255)");
+    assert.equal(initial.activeUnderline, "rgb(47, 111, 224)");
+    assert.equal(initial.brand, "Harness Evolution轨迹诊断与自进化");
+    assert.equal(initial.clientWidth, 1408);
+    assert.equal(initial.scrollWidth, 1408);
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('nav a[href="/errors"]').click()`,
     });
     const errorsPage = await waitForDocument(
       page.session,
-      `location.pathname === "/errors" && document.body.textContent.includes("暂无问题")`,
+      `(() => {
+        const active = document.querySelector("nav a.router-link-active");
+        if (location.pathname !== "/errors" || !document.body.textContent.includes("暂无问题")) {
+          return null;
+        }
+        return {
+          path: location.pathname,
+          underline: active ? getComputedStyle(active).borderBottomColor : null,
+        };
+      })()`,
       "errors placeholder",
     );
-    assert.equal(errorsPage, true);
+    assert.equal(errorsPage.path, "/errors");
+    assert.equal(errorsPage.underline, "rgb(47, 111, 224)");
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('nav a[href="/evolution"]').click()`,
     });
     const evolutionPage = await waitForDocument(
       page.session,
-      `location.pathname === "/evolution" &&
-        document.body.textContent.includes("暂无自进化运行") &&
-        Boolean(document.querySelector(".canvas"))`,
+      `(() => {
+        const active = document.querySelector("nav a.router-link-active");
+        if (
+          location.pathname !== "/evolution" ||
+          !document.body.textContent.includes("暂无自进化运行") ||
+          !document.querySelector(".canvas")
+        ) {
+          return null;
+        }
+        return {
+          path: location.pathname,
+          underline: active ? getComputedStyle(active).borderBottomColor : null,
+        };
+      })()`,
       "evolution placeholder",
     );
-    assert.equal(evolutionPage, true);
+    assert.equal(evolutionPage.path, "/evolution");
+    assert.equal(evolutionPage.underline, "rgb(138, 85, 201)");
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        window.history.pushState({}, "", "/missing-prototype-page");
+        window.dispatchEvent(new PopStateEvent("popstate", {
+          state: window.history.state,
+        }));
+      })()`,
+    });
+    const notFound = await waitForDocument(
+      page.session,
+      `(() => {
+        const error = document.querySelector(".error-state");
+        if (location.pathname !== "/missing-prototype-page" || !error) return null;
+        return {
+          bodyBackground: getComputedStyle(document.body).backgroundColor,
+          cardBackground: getComputedStyle(error).backgroundColor,
+          borderLeft: getComputedStyle(error).borderLeftColor,
+          messageColor: getComputedStyle(error.querySelector(".error-message")).color,
+        };
+      })()`,
+      "prototype not-found state",
+    );
+    assert.equal(notFound.bodyBackground, "rgb(244, 245, 247)");
+    assert.equal(notFound.cardBackground, "rgb(255, 245, 245)");
+    assert.equal(notFound.borderLeft, "rgb(214, 60, 60)");
+    assert.equal(notFound.messageColor, "rgb(90, 99, 114)");
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        window.history.pushState({}, "", "/evolution");
+        window.dispatchEvent(new PopStateEvent("popstate", {
+          state: window.history.state,
+        }));
+      })()`,
+    });
+    await waitForDocument(
+      page.session,
+      `location.pathname === "/evolution" && Boolean(document.querySelector(".canvas"))`,
+      "return to evolution placeholder",
+    );
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,
@@ -221,9 +387,15 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       `(() => {
         if (!document.querySelector(".shell")) return null;
         const menu = document.querySelector(".user-menu");
+        const brand = document.querySelector(".brand");
+        const demo = document.querySelector("[data-testid='demo-badge']");
         return {
           path: location.pathname,
           hasMenu: Boolean(menu),
+          brandAriaLabel: brand?.getAttribute("aria-label") ?? null,
+          demoText: demo?.textContent.trim() ?? null,
+          demoColor: demo ? getComputedStyle(demo).color : null,
+          demoWidth: demo ? demo.getBoundingClientRect().width : null,
           scrollWidth: document.documentElement.scrollWidth,
           clientWidth: document.documentElement.clientWidth,
           menuRight: menu?.getBoundingClientRect().right ?? null,
@@ -234,6 +406,10 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     );
     assert.equal(shell.path, "/evolution", JSON.stringify(shell));
     assert.equal(shell.hasMenu, true, JSON.stringify(shell));
+    assert.equal(shell.brandAriaLabel, "Harness Evolution");
+    assert.equal(shell.demoText, "演示数据");
+    assert.equal(shell.demoColor, "rgb(217, 123, 28)");
+    assert.ok(shell.demoWidth > 24, JSON.stringify(shell));
     const layout = shell;
     assert.ok(layout.scrollWidth <= layout.clientWidth, JSON.stringify(layout));
     assert.ok(layout.menuRight <= layout.clientWidth, JSON.stringify(layout));
@@ -465,6 +641,9 @@ test("m1-shell rejects an error-envelope health response and retries into the sh
         if (!alert || !document.querySelector(".shell")) return null;
         return {
           code: alert.textContent,
+          background: getComputedStyle(alert).backgroundColor,
+          borderLeft: getComputedStyle(alert).borderLeftColor,
+          messageColor: getComputedStyle(alert.querySelector(".error-message")).color,
           hasNav: Boolean(document.querySelector("nav")),
           runtimeErrors: window.__e2eErrors ?? [],
         };
@@ -472,6 +651,9 @@ test("m1-shell rejects an error-envelope health response and retries into the sh
       "retryable health error state",
     );
     assert.match(failure.code, /HEALTH_UNAVAILABLE/);
+    assert.equal(failure.background, "rgb(255, 245, 245)");
+    assert.equal(failure.borderLeft, "rgb(214, 60, 60)");
+    assert.equal(failure.messageColor, "rgb(90, 99, 114)");
     assert.equal(failure.hasNav, true);
     assert.deepEqual(failure.runtimeErrors, []);
 

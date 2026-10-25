@@ -91,5 +91,35 @@ describe("top navigation user area", () => {
     expect(wrapper.find("nav").text()).toContain("Evolution");
     expect(wrapper.get("[data-testid='demo-badge']").text()).toContain("演示数据");
     expect(wrapper.get("nav a.router-link-active").text()).toBe("Errors");
+    expect(wrapper.get(".brand").text()).toContain("Harness Evolution");
+  });
+
+  it("keeps the compact brand and demo state accessible", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+
+    const wrapper = mount(TopNav, {
+      props: { demo: true },
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+
+    expect(wrapper.get(".brand").attributes("aria-label")).toBe("Harness Evolution");
+    expect(wrapper.get("[data-testid='demo-badge']").text()).toBe("演示数据");
   });
 });

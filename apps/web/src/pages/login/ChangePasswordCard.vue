@@ -60,9 +60,12 @@ async function submit() {
 <template>
   <article class="auth-card">
     <div class="brand-lockup">
-      <span class="brand-mark">HL</span>
+      <span
+        class="brand-mark"
+        aria-hidden="true"
+      />
       <div>
-        <strong>Harness Lens</strong>
+        <strong>Harness Evolution</strong>
         <span>首次登录</span>
       </div>
     </div>
@@ -131,10 +134,10 @@ async function submit() {
 <style scoped>
 .auth-card {
   width: min(440px, 100%);
-  padding: var(--space-xl);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-raised);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
   box-shadow: var(--shadow-card);
 }
 
@@ -149,41 +152,47 @@ async function submit() {
 }
 
 .brand-lockup span {
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-faint);
+  font-size: 10px;
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
   background: var(--brand-gradient);
-  color: var(--surface-base);
-  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-mark);
+}
+
+.brand-lockup strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 .heading {
-  margin: var(--space-xl) 0 var(--space-lg);
+  margin: 28px 0 20px;
 }
 
 .eyebrow {
-  margin: 0 0 var(--space-xs);
-  color: var(--brand-accent);
-  font-size: 11px;
-  letter-spacing: 0.16em;
+  margin: 0 0 4px;
+  color: var(--blue);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 h1 {
-  margin: 0 0 var(--space-xs);
-  font-size: 32px;
+  margin: 0 0 5px;
+  font-size: 24px;
+  font-weight: 650;
 }
 
 .heading p {
   margin: 0;
-  color: var(--text-muted);
-  line-height: 1.7;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.65;
 }
 
 form {

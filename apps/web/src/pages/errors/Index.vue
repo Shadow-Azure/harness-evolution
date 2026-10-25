@@ -22,8 +22,8 @@ defineOptions({ name: "ErrorsPage" });
 <style scoped>
 .page {
   display: grid;
-  gap: var(--space-md);
-  padding: var(--space-xl) 0;
+  gap: 14px;
+  padding: 8px 0;
 }
 
 header {
@@ -33,9 +33,9 @@ header {
 
 .eyebrow {
   margin: 0;
-  color: var(--brand-accent);
-  font-size: 12px;
-  font-weight: var(--weight-bold);
+  color: var(--blue);
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -43,5 +43,6 @@ header {
 h1 {
   margin: 0;
   font-size: var(--font-title);
+  font-weight: 650;
 }
 </style>

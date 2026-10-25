@@ -15,7 +15,7 @@ defineOptions({ name: "ChangePasswordPage" });
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: var(--space-lg);
-  background: var(--page-gradient);
+  padding: 24px;
+  background: var(--bg);
 }
 </style>
