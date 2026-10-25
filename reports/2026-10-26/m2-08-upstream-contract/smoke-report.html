@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M2-08 上游轨迹契约与 Pull 冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #100</p>
+    <h1>M2-08 上游轨迹契约与 Pull 冒烟报告</h1>
+    <p class="summary">在隔离 FastAPI、SQLite、Vite、本地 mock upstream 与真实 headless Chrome/CDP 上验证 admin pull、分页、重试、逐会话隔离、版本拒绝、payload 幂等和亮色原型壳。核心链路通过，但发现 HE_UPSTREAM_API_MAJOR=1 环境变量导致服务启动失败。macOS 处于锁屏状态，原生 Computer Use 截图受阻；浏览器证据来自真实 Chrome/CDP，未用 mock UI 替代。</p>
+    <span class="meta">2026-10-26 · macOS · Chrome CDP · loopback only</span>
+    <div class="metrics"><div class="metric"><b>15</b><span>冒烟场景</span></div><div class="metric"><b>13</b><span>通过</span></div><div class="metric"><b>1</b><span>失败</span></div><div class="metric"><b>1</b><span>基础设施阻塞</span></div><div class="metric"><b>0</b><span>意外控制台日志</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-26 · macOS · Chrome CDP · loopback only</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#40 · M2 upstream contract</dd></div><div class="fact"><dt>PR</dt><dd>#100</dd></div><div class="fact"><dt>Commit</dt><dd>985928a</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + headless Chrome</dd></div><div class="fact"><dt>Upstream</dt><dd>local mock only · no external network</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>1 fail · 13 pass · 1 info</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>显式 upstream major 环境变量启动</td><td><span class="status fail">FAIL</span></td><td>HE_UPSTREAM_API_MAJOR=1 被作为字符串输入严格 Literal[1]，应用启动在 Settings 校验阶段失败。移除显式变量后使用默认值可启动。</td><td class="evidence">Pydantic literal_error input_value=&#39;1&#39;<br>PR #100 issue comment</td></tr><tr><td class="num">02</td><td>Session package 拉取与映射</td><td><span class="status pass">PASS</span></td><td>main 使用 root session id，child 保留 agentId；原始两行与一行 payload、hash、line_count 正确。</td><td class="evidence">SQLite trajectory_payloads / source_records<br>tree snapshot 2 agents</td></tr><tr><td class="num">03</td><td>Cursor window 分页</td><td><span class="status pass">PASS</span></td><td>两页 cursor 拉取出 alpha/beta 两个 root，生成 4 个 http_api payload。</td><td class="evidence">sync_runs completed records_total=4<br>DB root sessions alpha/beta</td></tr><tr><td class="num">04</td><td>重复 pull 零副作用</td><td><span class="status pass">PASS</span></td><td>第二次相同 pull 为 0 imported / 2 skipped，payload 和 source 稳定键与处理游标不变。</td><td class="evidence">sync_runs imported=0 skipped=2<br>6 个 runtime rows</td></tr><tr><td class="num">05</td><td>429/5xx 重试</td><td><span class="status pass">PASS</span></td><td>mock upstream 前两次返回 503，第三次成功；pull job completed。</td><td class="evidence">mock attempt count=3<br>retry root canonical rows</td></tr><tr><td class="num">06</td><td>404 逐会话隔离</td><td><span class="status pass">PASS</span></td><td>404 session 只产生稳定 UPSTREAM_REQUEST_FAILED，批次继续 completed，其他 payload 不受影响。</td><td class="evidence">sync_runs errors missing-session<br>no new payload for 404 root</td></tr><tr><td class="num">07</td><td>坏 gzip 隔离</td><td><span class="status pass">PASS</span></td><td>bad-gzip session 产生 UPSTREAM_INVALID_RESPONSE，后续正常 alpha 会话仍保持已有 canonical 数据。</td><td class="evidence">sync_runs completed + sanitized error<br>payload count unchanged</td></tr><tr><td class="num">08</td><td>错 session package 拒绝</td><td><span class="status pass">PASS</span></td><td>请求 wrongSession 返回 alpha package 被拒绝，错误为 UPSTREAM_INVALID_RESPONSE，零 payload 写入。</td><td class="evidence">sync_runs error wrong-session<br>payload/source counts</td></tr><tr><td class="num">09</td><td>版本不兼容 fatal</td><td><span class="status pass">PASS</span></td><td>响应头 major=2 时 pull job 直接 failed，错误明确，版本校验前未写 payload。</td><td class="evidence">job status=failed<br>UPSTREAM_VERSION_INCOMPATIBLE</td></tr><tr><td class="num">10</td><td>来源类型与未处理游标</td><td><span class="status pass">PASS</span></td><td>所有 upstream payload/source 均为 http_api；处理后写入 hash/parser_version，而无 package 的失败 item 不伪造 script payload。</td><td class="evidence">6 http_api payload/source rows<br>parser_version=1</td></tr><tr><td class="num">11</td><td>Pull 权限与 selector</td><td><span class="status pass">PASS</span></td><td>未登录 401、member 403；空/双 selector、snake_case、字符串布尔均 422 统一 ErrorResponse。</td><td class="evidence">HTTP 401/403/422 matrix</td></tr><tr><td class="num">12</td><td>状态错误脱敏</td><td><span class="status pass">PASS</span></td><td>API status 只返回稳定 code/message，不回显 token、上游路径、gzip 原始内容或本地绝对路径。</td><td class="evidence">sanitized status JSON<br>DB errors retained separately</td></tr><tr><td class="num">13</td><td>真实浏览器亮色原型壳</td><td><span class="status pass">PASS</span></td><td>body rgb(244,245,247)、topbar rgb(250,251,252) 高 56px、白卡片；登录无 TopNav，pending=1 与 admin 立即处理可见。</td><td class="evidence">01-login.png<br>02-sessions.png<br>02b-admin-menu.png</td></tr><tr><td class="num">14</td><td>1408/390 与控制台</td><td><span class="status pass">PASS</span></td><td>1408 与 390 均 scrollWidth=clientWidth；390 隐藏辅助状态但保留用户与 demo，无意外 console warning/error。</td><td class="evidence">05-evolution-390.png<br>browser-evidence.json</td></tr><tr><td class="num">15</td><td>原生 Computer Use 实机截图</td><td><span class="status info">BLOCKED</span></td><td>macOS 锁屏导致 @oai/sky 无法取得应用状态；未绕过锁屏。改用同机真实 headless Chrome/CDP 完成浏览器交互与截图。</td><td class="evidence">Computer Use: Mac is locked<br>Chrome CDP screenshots</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P1 HE_UPSTREAM_API_MAJOR=1 导致服务启动失败</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P1</span><h3>HE_UPSTREAM_API_MAJOR=1 导致服务启动失败</h3><dl><div><dt>位置</dt><dd>Settings.upstream_api_major / HE_UPSTREAM_API_MAJOR environment parsing</dd></div><div><dt>实际</dt><dd>环境值为字符串 &quot;1&quot;，严格 Literal[1] 校验拒绝，FastAPI 无法启动。</dd></div><div><dt>期望</dt><dd>标准环境变量值 1 成功解析并与 supported major 1 一致。</dd></div><div><dt>根因候选</dt><dd>缺少环境变量层的整数/枚举解析测试与 validator。</dd></div><div><dt>状态</dt><dd>未修复 · PR #100 issue comment 已提交</dd></div></dl></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>6 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-login.png" alt="亮色登录页"><figcaption><b>登录页</b><span>原型亮色背景与白色卡片，认证页不显示 TopNav。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-sessions.png" alt="登录后的亮色壳层与待处理 1"><figcaption><b>Session 壳层</b><span>待处理 1 以安静辅助状态显示；业务列表仍由后续 issue 实现。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02b-admin-menu.png" alt="管理员用户菜单"><figcaption><b>Admin 操作</b><span>管理员可见立即处理，成员不可见由单元与 API 测试覆盖。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-errors.png" alt="Errors 占位页"><figcaption><b>Errors</b><span>亮色共享壳层与真实空态保持原型基线。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-evolution.png" alt="Evolution 占位页"><figcaption><b>Evolution</b><span>Evolution 保持紫色激活线，不伪造业务数据。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-evolution-390.png" alt="390px Evolution 页面"><figcaption><b>390px</b><span>窄屏无横向溢出，辅助 pending 状态隐藏，用户入口保留。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>Upstream contract</td><td>Pydantic + canonical JSON Schema + Ajv</td><td>严格字段、身份、日期和版本约束由自动测试覆盖。</td><td>保留 mock-only CI 和 contract drift gate。</td></tr><tr><td>HTTP client / retry / isolation</td><td>MockTransport + loopback mock server</td><td>429/5xx、分页、坏 gzip、404、错 session 与版本 fatal 均已验证。</td><td>M6 接入真实上游时复用相同 contract tests。</td></tr><tr><td>Pull persistence</td><td>真实 FastAPI + 临时 SQLite</td><td>http_api payload/source、幂等重复 pull、source runtime 游标与锁释放正确。</td><td>CI 继续执行 MySQL marked contract。</td></tr><tr><td>UI</td><td>真实 Chrome 1408/390 + computed style</td><td>亮色原型壳、pending 摘要和 admin-only 操作符合当前实现范围。</td><td>Sessions 业务列表仍由后续页面 issue 交付。</td></tr><tr><td>Native Computer Use</td><td>Blocked by locked macOS</td><td>未冒充原生 CUA 证据；真实 Chrome/CDP 截图已保留。</td><td>设备解锁后重采原生 CUA 截图。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>核心链路通过 · 1 个配置缺陷待修</small></div>
+    <article class="card conclusion warn"><p><strong>上游契约、pull、幂等、隔离、权限和原型 UI 主链路通过；显式 HE_UPSTREAM_API_MAJOR=1 启动失败是当前唯一产品阻断项。</strong></p><ul><li>先修复环境变量整数解析并增加启动回归。</li><li>macOS 解锁后补做原生 Computer Use 截图；不得把 CDP 证据写成 CUA 实机通过。</li><li>真实上游仍未接入，本地 mock 边界符合 M2 设计。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：隔离 FastAPI/SQLite/Vite、本地 mock upstream、真实 Chrome/CDP、脱敏 HTTP 与 SQLite 结果。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>

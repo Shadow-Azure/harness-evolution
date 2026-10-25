@@ -1,0 +1,233 @@
+{
+  "title": "M2-08 上游轨迹契约与 Pull 冒烟报告",
+  "eyebrow": "Harness Evolution · PR #100",
+  "summary": "在隔离 FastAPI、SQLite、Vite、本地 mock upstream 与真实 headless Chrome/CDP 上验证 admin pull、分页、重试、逐会话隔离、版本拒绝、payload 幂等和亮色原型壳。核心链路通过，但发现 HE_UPSTREAM_API_MAJOR=1 环境变量导致服务启动失败。macOS 处于锁屏状态，原生 Computer Use 截图受阻；浏览器证据来自真实 Chrome/CDP，未用 mock UI 替代。",
+  "meta": "2026-10-26 · macOS · Chrome CDP · loopback only",
+  "metrics": [
+    { "value": "15", "label": "冒烟场景" },
+    { "value": "13", "label": "通过" },
+    { "value": "1", "label": "失败" },
+    { "value": "1", "label": "基础设施阻塞" },
+    { "value": "0", "label": "意外控制台日志" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#40 · M2 upstream contract" },
+    { "label": "PR", "value": "#100" },
+    { "label": "Commit", "value": "985928a" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + headless Chrome" },
+    { "label": "Upstream", "value": "local mock only · no external network" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "显式 upstream major 环境变量启动",
+        "status": { "kind": "fail", "label": "FAIL" },
+        "detail": "HE_UPSTREAM_API_MAJOR=1 被作为字符串输入严格 Literal[1]，应用启动在 Settings 校验阶段失败。移除显式变量后使用默认值可启动。",
+        "evidence": ["Pydantic literal_error input_value='1'", "PR #100 issue comment"]
+      },
+      {
+        "id": "02",
+        "name": "Session package 拉取与映射",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "main 使用 root session id，child 保留 agentId；原始两行与一行 payload、hash、line_count 正确。",
+        "evidence": ["SQLite trajectory_payloads / source_records", "tree snapshot 2 agents"]
+      },
+      {
+        "id": "03",
+        "name": "Cursor window 分页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "两页 cursor 拉取出 alpha/beta 两个 root，生成 4 个 http_api payload。",
+        "evidence": ["sync_runs completed records_total=4", "DB root sessions alpha/beta"]
+      },
+      {
+        "id": "04",
+        "name": "重复 pull 零副作用",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "第二次相同 pull 为 0 imported / 2 skipped，payload 和 source 稳定键与处理游标不变。",
+        "evidence": ["sync_runs imported=0 skipped=2", "6 个 runtime rows"]
+      },
+      {
+        "id": "05",
+        "name": "429/5xx 重试",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "mock upstream 前两次返回 503，第三次成功；pull job completed。",
+        "evidence": ["mock attempt count=3", "retry root canonical rows"]
+      },
+      {
+        "id": "06",
+        "name": "404 逐会话隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "404 session 只产生稳定 UPSTREAM_REQUEST_FAILED，批次继续 completed，其他 payload 不受影响。",
+        "evidence": ["sync_runs errors missing-session", "no new payload for 404 root"]
+      },
+      {
+        "id": "07",
+        "name": "坏 gzip 隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "bad-gzip session 产生 UPSTREAM_INVALID_RESPONSE，后续正常 alpha 会话仍保持已有 canonical 数据。",
+        "evidence": ["sync_runs completed + sanitized error", "payload count unchanged"]
+      },
+      {
+        "id": "08",
+        "name": "错 session package 拒绝",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "请求 wrongSession 返回 alpha package 被拒绝，错误为 UPSTREAM_INVALID_RESPONSE，零 payload 写入。",
+        "evidence": ["sync_runs error wrong-session", "payload/source counts"]
+      },
+      {
+        "id": "09",
+        "name": "版本不兼容 fatal",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "响应头 major=2 时 pull job 直接 failed，错误明确，版本校验前未写 payload。",
+        "evidence": ["job status=failed", "UPSTREAM_VERSION_INCOMPATIBLE"]
+      },
+      {
+        "id": "10",
+        "name": "来源类型与未处理游标",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "所有 upstream payload/source 均为 http_api；处理后写入 hash/parser_version，而无 package 的失败 item 不伪造 script payload。",
+        "evidence": ["6 http_api payload/source rows", "parser_version=1"]
+      },
+      {
+        "id": "11",
+        "name": "Pull 权限与 selector",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "未登录 401、member 403；空/双 selector、snake_case、字符串布尔均 422 统一 ErrorResponse。",
+        "evidence": ["HTTP 401/403/422 matrix"]
+      },
+      {
+        "id": "12",
+        "name": "状态错误脱敏",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "API status 只返回稳定 code/message，不回显 token、上游路径、gzip 原始内容或本地绝对路径。",
+        "evidence": ["sanitized status JSON", "DB errors retained separately"]
+      },
+      {
+        "id": "13",
+        "name": "真实浏览器亮色原型壳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "body rgb(244,245,247)、topbar rgb(250,251,252) 高 56px、白卡片；登录无 TopNav，pending=1 与 admin 立即处理可见。",
+        "evidence": ["01-login.png", "02-sessions.png", "02b-admin-menu.png"]
+      },
+      {
+        "id": "14",
+        "name": "1408/390 与控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "1408 与 390 均 scrollWidth=clientWidth；390 隐藏辅助状态但保留用户与 demo，无意外 console warning/error。",
+        "evidence": ["05-evolution-390.png", "browser-evidence.json"]
+      },
+      {
+        "id": "15",
+        "name": "原生 Computer Use 实机截图",
+        "status": { "kind": "info", "label": "BLOCKED" },
+        "detail": "macOS 锁屏导致 @oai/sky 无法取得应用状态；未绕过锁屏。改用同机真实 headless Chrome/CDP 完成浏览器交互与截图。",
+        "evidence": ["Computer Use: Mac is locked", "Chrome CDP screenshots"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P1",
+      "title": "HE_UPSTREAM_API_MAJOR=1 导致服务启动失败",
+      "facts": [
+        { "label": "位置", "value": "Settings.upstream_api_major / HE_UPSTREAM_API_MAJOR environment parsing" },
+        { "label": "实际", "value": "环境值为字符串 \"1\"，严格 Literal[1] 校验拒绝，FastAPI 无法启动。" },
+        { "label": "期望", "value": "标准环境变量值 1 成功解析并与 supported major 1 一致。" },
+        { "label": "根因候选", "value": "缺少环境变量层的整数/枚举解析测试与 validator。" },
+        { "label": "状态", "value": "未修复 · PR #100 issue comment 已提交" }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/01-login.png",
+      "alt": "亮色登录页",
+      "label": "登录页",
+      "caption": "原型亮色背景与白色卡片，认证页不显示 TopNav。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-sessions.png",
+      "alt": "登录后的亮色壳层与待处理 1",
+      "label": "Session 壳层",
+      "caption": "待处理 1 以安静辅助状态显示；业务列表仍由后续 issue 实现。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02b-admin-menu.png",
+      "alt": "管理员用户菜单",
+      "label": "Admin 操作",
+      "caption": "管理员可见立即处理，成员不可见由单元与 API 测试覆盖。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-errors.png",
+      "alt": "Errors 占位页",
+      "label": "Errors",
+      "caption": "亮色共享壳层与真实空态保持原型基线。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-evolution.png",
+      "alt": "Evolution 占位页",
+      "label": "Evolution",
+      "caption": "Evolution 保持紫色激活线，不伪造业务数据。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-evolution-390.png",
+      "alt": "390px Evolution 页面",
+      "label": "390px",
+      "caption": "窄屏无横向溢出，辅助 pending 状态隐藏，用户入口保留。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "Upstream contract",
+        "coverage": "Pydantic + canonical JSON Schema + Ajv",
+        "conclusion": "严格字段、身份、日期和版本约束由自动测试覆盖。",
+        "recommendation": "保留 mock-only CI 和 contract drift gate。"
+      },
+      {
+        "area": "HTTP client / retry / isolation",
+        "coverage": "MockTransport + loopback mock server",
+        "conclusion": "429/5xx、分页、坏 gzip、404、错 session 与版本 fatal 均已验证。",
+        "recommendation": "M6 接入真实上游时复用相同 contract tests。"
+      },
+      {
+        "area": "Pull persistence",
+        "coverage": "真实 FastAPI + 临时 SQLite",
+        "conclusion": "http_api payload/source、幂等重复 pull、source runtime 游标与锁释放正确。",
+        "recommendation": "CI 继续执行 MySQL marked contract。"
+      },
+      {
+        "area": "UI",
+        "coverage": "真实 Chrome 1408/390 + computed style",
+        "conclusion": "亮色原型壳、pending 摘要和 admin-only 操作符合当前实现范围。",
+        "recommendation": "Sessions 业务列表仍由后续页面 issue 交付。"
+      },
+      {
+        "area": "Native Computer Use",
+        "coverage": "Blocked by locked macOS",
+        "conclusion": "未冒充原生 CUA 证据；真实 Chrome/CDP 截图已保留。",
+        "recommendation": "设备解锁后重采原生 CUA 截图。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "warn",
+    "label": "核心链路通过 · 1 个配置缺陷待修",
+    "summary": "上游契约、pull、幂等、隔离、权限和原型 UI 主链路通过；显式 HE_UPSTREAM_API_MAJOR=1 启动失败是当前唯一产品阻断项。",
+    "points": [
+      "先修复环境变量整数解析并增加启动回归。",
+      "macOS 解锁后补做原生 Computer Use 截图；不得把 CDP 证据写成 CUA 实机通过。",
+      "真实上游仍未接入，本地 mock 边界符合 M2 设计。"
+    ]
+  },
+  "footer": "证据源：隔离 FastAPI/SQLite/Vite、本地 mock upstream、真实 Chrome/CDP、脱敏 HTTP 与 SQLite 结果。生成 HTML 不应手改。"
+}
