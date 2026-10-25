@@ -1,0 +1,202 @@
+{
+  "title": "M3-03 生产 Agent 执行流集成冒烟",
+  "eyebrow": "Harness Evolution · PR #106",
+  "summary": "在真实 FastAPI、SQLite、Vite 与 Chrome 上验证四个生产 Session 的 Agent 树接线、独立状态、键盘定位、缩放、折叠和响应式布局。",
+  "meta": "2026-10-26 · macOS · Chrome headless/CDP · localhost",
+  "metrics": [
+    { "value": "4", "label": "生产 Session" },
+    { "value": "8", "label": "树节点" },
+    { "value": "12", "label": "已验证场景" },
+    { "value": "0", "label": "未解决缺陷" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#43 · M3 Agent flow graph" },
+    { "label": "PR", "value": "#106" },
+    { "label": "Commit", "value": "11cc9da + reviewed smoke fix" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome CDP" },
+    { "label": "Database", "value": "SQLite seeded fixtures" },
+    { "label": "CUA limitation", "value": "macOS locked; native AX unavailable; real Chrome/CDP used without bypass" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "四个 Session 加载树",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "四个 canonical Session 逐个选中，树节点数为 1/2/3/2，合计 8。",
+        "evidence": ["screenshots/02-four-session-tree.jpg", "URL 与 selected card 同步"]
+      },
+      {
+        "id": "02",
+        "name": "生产树 API 与懒加载",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "选中后请求 /api/sessions/{sid}/tree；Vue Flow 独立 chunk，不进入 /sessions 首屏闭包。",
+        "evidence": ["API server logs", "pnpm verify:bundle"]
+      },
+      {
+        "id": "03",
+        "name": "键盘焦点与选择",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Vue Flow 外层节点/边不作为 Tab stop；节点原生 button 接受 Enter 并更新 aria-pressed。",
+        "evidence": ["m3-session-browser E2E", "outerTabs 全为 null"]
+      },
+      {
+        "id": "04",
+        "name": "节点居中定位",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "选中节点后 setCenter 更新 viewport transform；生产 E2E 断言 transform 改变。",
+        "evidence": ["m3-session-browser E2E", "screenshots/03-keyboard-locate-zoom.jpg"]
+      },
+      {
+        "id": "05",
+        "name": "缩放与适应画布",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "缩小后矩阵从 2.5 变为 2.08333，放大恢复 2.5，适应画布保持节点可见。",
+        "evidence": ["Chrome CDP transform 对比", "3 个可访问控制按钮"]
+      },
+      {
+        "id": "06",
+        "name": "大图折叠展开",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "demo-nested 大图从 2 个节点展开到 13 个节点，折叠节点可操作。",
+        "evidence": ["screenshots/04-large-expanded-tree.jpg", "m3-agent-tree E2E"]
+      },
+      {
+        "id": "07",
+        "name": "单层树面板与图例",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "树外层白色面板边框正常，Vue Flow 内层 border=0；图例位于画布左下角，距左边 6px、底边 5px。",
+        "evidence": ["screenshots/01-production-tree.jpg", "computed style"]
+      },
+      {
+        "id": "08",
+        "name": "树错误与列表隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "CDP 注入 tree 503 后显示执行流错误态，四个 Session 卡仍保留且可继续选择。",
+        "evidence": ["screenshots/05-tree-error.jpg", "list=4"]
+      },
+      {
+        "id": "09",
+        "name": "问题卡边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "未渲染 m4 问题卡；只计算布局 anchor，不伪造问题数据。",
+        "evidence": ["issueCards=0", "代码与契约审查"]
+      },
+      {
+        "id": "10",
+        "name": "1408px 布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面宽度与视口一致，侧栏 360px，树面板 720px，无横向溢出。",
+        "evidence": ["screenshots/01-production-tree.jpg", "scrollWidth=clientWidth=1408"]
+      },
+      {
+        "id": "11",
+        "name": "390px 布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "单列布局，生产树 fit 后全部节点位于画布内，页面无横向溢出。",
+        "evidence": ["screenshots/06-production-tree-390.jpg", "scrollWidth=clientWidth=390"]
+      },
+      {
+        "id": "12",
+        "name": "控制台与隐私",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "正常路径无 warning/error；tree 503 和初始 refresh 401 仅由精确测试谓词忽略。报告不含正文、凭据或绝对路径。",
+        "evidence": ["browserViolations=[]", "报告资产扫描"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "原型 Agent 家族树",
+      "label": "原型参考",
+      "caption": "原型中的浅色画布、主/子会话条、触发药丸、正交边和左下角图例。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-production-tree.jpg",
+      "alt": "生产 Session 概览与 Agent 执行流",
+      "label": "生产树",
+      "caption": "真实 Session API 后的单层白色树面板与 Vue Flow 画布。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-four-session-tree.jpg",
+      "alt": "第四个生产 Session 的树",
+      "label": "四会话浏览",
+      "caption": "四个 Session 依次选中，树节点合计八个。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-keyboard-locate-zoom.jpg",
+      "alt": "键盘选择后的 Agent 树",
+      "label": "焦点与缩放",
+      "caption": "节点选择、居中定位和画布控制后的真实页面。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-large-expanded-tree.jpg",
+      "alt": "展开后的 13 节点 Agent 树",
+      "label": "大图展开",
+      "caption": "折叠占位从 2 个节点展开为 13 个节点。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-tree-error.jpg",
+      "alt": "Agent 树错误态且列表保留",
+      "label": "独立错误态",
+      "caption": "tree 503 只替换执行流区域，Session 列表和概览保持可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-production-tree-390.jpg",
+      "alt": "390px 生产 Agent 树",
+      "label": "窄屏",
+      "caption": "390px 单列布局，树 fit 成功且页面无横向溢出。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "生产 Session 接线",
+        "coverage": "真实 API + Chrome",
+        "conclusion": "四个 Session 均加载独立 tree，节点合计八个。",
+        "recommendation": "后续页面 issue 复用同一 query key 与树组件。"
+      },
+      {
+        "area": "交互与无障碍",
+        "coverage": "真实 Chrome E2E + CDP",
+        "conclusion": "单焦点、Enter 选择、setCenter、缩放与折叠均有证据。",
+        "recommendation": "m4 问题定位复用 locateAgent。"
+      },
+      {
+        "area": "状态隔离",
+        "coverage": "组件测试 + CDP 503",
+        "conclusion": "树错误不替换列表或概览，retry 可单独执行。",
+        "recommendation": "保持 tree query 独立。"
+      },
+      {
+        "area": "原生 Computer Use",
+        "coverage": "受 macOS 锁屏阻塞",
+        "conclusion": "未绕过锁屏，使用真实 Chrome/CDP；页面视觉和交互证据完整。",
+        "recommendation": "解锁后可补一次原生窗口截图，不改变产品结论。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "生产 Session 页面的 Agent 执行流接线与原型交互验收通过，未发现未解决产品缺陷。",
+    "points": [
+      "四个 canonical Session 的树均可见且可追踪到根。",
+      "Vue Flow 保持懒加载，首屏 bundle 边界不变。",
+      "键盘、定位、缩放、折叠和 390px 均通过。",
+      "原生 CUA 被 macOS 锁屏阻塞，报告使用真实 Chrome/CDP 证据并明确标注。"
+    ]
+  },
+  "footer": "证据源：真实 FastAPI/Vite/Chrome/CDP、截图、computed style 与既有自动化门禁。HTML 由 JSON renderer 生成。"
+}

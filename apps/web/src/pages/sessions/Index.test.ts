@@ -283,6 +283,7 @@ describe("session browser", () => {
     expect(overview.text()).toContain("执行流读取失败");
     expect(overview.text()).toContain("重试");
     expect(overview.text()).toContain(item.title);
+    expect(overview.find("[data-testid='tree-placeholder']").exists()).toBe(false);
   });
 
   it("supports listbox arrow, Home, and End keyboard navigation", async () => {

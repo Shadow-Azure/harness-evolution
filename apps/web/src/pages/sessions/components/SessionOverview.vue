@@ -174,24 +174,24 @@ const stats = computed<Array<{
           message="执行流读取失败，请重试。"
           @retry="emit('tree-retry')"
         />
-        <AgentTree
-          v-else-if="tree"
-          :active-agent-id="activeAgentId"
-          :expanded="expandedAgentIds"
-          :tree="tree"
-          @node-select="emit('node-select', $event)"
-          @toggle-expanded="emit('toggle-expanded', $event)"
-        />
-        <div
-          v-if="tree"
-          class="tree-legend"
-          aria-label="执行流图例"
-        >
-          <span class="skill">◆ Skill</span>
-          <span class="subagent">◆ Subagent</span>
-          <span class="workflow">◆ Workflow</span>
-          <span class="gap">×N 消息</span>
-        </div>
+        <template v-else-if="tree">
+          <AgentTree
+            :active-agent-id="activeAgentId"
+            :expanded="expandedAgentIds"
+            :tree="tree"
+            @node-select="emit('node-select', $event)"
+            @toggle-expanded="emit('toggle-expanded', $event)"
+          />
+          <div
+            class="tree-legend"
+            aria-label="执行流图例"
+          >
+            <span class="skill">◆ Skill</span>
+            <span class="subagent">◆ Subagent</span>
+            <span class="workflow">◆ Workflow</span>
+            <span class="gap">×N 消息</span>
+          </div>
+        </template>
         <div
           v-else
           class="tree-placeholder"
