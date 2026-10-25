@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-含 M1/M2 fixture、本地导入与逐 payload JSONL 归一化；Agent 树组装和会话查询尚未运行。
+含 fixture、本地导入、JSONL 归一化与 Agent 树组装；查询未运行。
 
 ## 服务划分
 
@@ -79,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、三入口壳、fixtures/seed、本地导入、E2E 与契约门禁。
-- 未具备：Agent 树组装/会话查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、三入口壳、fixtures/seed、本地导入、Agent 树组装、E2E 与契约门禁。
+- 未具备：会话查询/业务表树重写、问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

@@ -121,6 +121,8 @@ class ParsedTranscript:
     issues: tuple[ParsedIssue, ...]
     agent_meta: Mapping[str, object]
     root_metadata: RootMetadata
+    started_at: datetime | None
+    ended_at: datetime | None
 
     def agent_meta_dict(self) -> dict[str, object]:
         """Return a detached JSON-compatible copy of provider metadata."""
@@ -299,6 +301,7 @@ def normalize_transcript(
     transcript_models: list[str] = []
     model_sequence: list[str] = []
     root_metadata = RootMetadata()
+    observed_timestamps: list[datetime] = []
     tokens_total = 0
     tools_count = 0
     errors_count = 0
@@ -333,6 +336,10 @@ def normalize_transcript(
         record = raw
         if not record:
             continue
+
+        record_timestamp = _timestamp(record.get("timestamp"))
+        if record_timestamp is not None:
+            observed_timestamps.append(record_timestamp)
 
         if agent_kind == "main":
             cwd = _string(record.get("cwd"))
@@ -485,6 +492,8 @@ def normalize_transcript(
         issues=tuple(issues),
         agent_meta=meta,
         root_metadata=root_metadata,
+        started_at=min(observed_timestamps, default=None),
+        ended_at=max(observed_timestamps, default=None),
     )
 
 

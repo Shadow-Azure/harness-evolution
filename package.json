@@ -23,6 +23,7 @@
     "data:import:sessions": "node scripts/local-sessions.mjs import",
     "verify:local-sessions": "node scripts/local-sessions.mjs verify",
     "data:normalize:sessions": "node scripts/local-sessions.mjs normalize",
+    "data:tree:sessions": "node scripts/local-sessions.mjs tree",
     "verify:local-data": "node scripts/verify-local-data.mjs",
     "test:all": "pnpm test:web && pnpm test:api && pnpm test:db:mysql && pnpm test:integration && pnpm test:e2e && pnpm fixtures:check",
     "contract:generate": "node scripts/contract.mjs generate",

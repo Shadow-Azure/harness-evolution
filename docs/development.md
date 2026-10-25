@@ -2,7 +2,7 @@
 
 [English](development.en.md) | 中文
 
-> 类型：教程 | 层级：贡献者上手。门禁清单见 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页只讲用法。
+> 类型：教程 | 层级：贡献者上手。门禁见 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页讲用法。
 
 ## 环境
 
@@ -33,6 +33,7 @@ pnpm fixtures:check
 pnpm fixtures:seed
 pnpm data:import:sessions
 pnpm data:normalize:sessions
+pnpm data:tree:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm test:all

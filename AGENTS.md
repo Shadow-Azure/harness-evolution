@@ -34,6 +34,7 @@ pnpm fixtures:check
 pnpm fixtures:seed       # 演示 fixture
 pnpm data:import:sessions
 pnpm data:normalize:sessions
+pnpm data:tree:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm contract:generate
