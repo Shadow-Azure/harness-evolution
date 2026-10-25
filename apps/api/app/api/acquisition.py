@@ -12,6 +12,23 @@ from app.service.identity.schemas import IdentityModel
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition"])
 
+_SYNC_ERROR_MESSAGES: dict[str, str] = {
+    "INVALID_JSONL_LINE": "JSONL line could not be parsed",
+    "INVALID_TRANSCRIPT_RECORD": "Transcript record was invalid",
+    "MISSING_USER_TURN_TIMESTAMP": "User turn timestamp was missing",
+    "MISSING_PARENT_TOOL_USE_ID": "Parent tool use id was missing",
+    "AMBIGUOUS_PARENT_TOOL_USE_ID": "Parent tool use id was ambiguous",
+    "MISSING_MAIN_AGENT": "Main Agent was missing",
+    "MISSING_FORKED_SKILL_PARENT": "Forked skill parent was missing",
+    "AMBIGUOUS_WORKFLOW_PARENT": "Workflow parent was ambiguous",
+    "MISSING_SESSION_TIMESTAMP": "Session timestamp was missing",
+    "INVALID_ROOT_SESSION_ID": "Root session id was invalid",
+    "MISSING_PAYLOAD_SOURCE": "Source payload was missing",
+    "SYNC_PROGRESS_FAILED": "Sync progress reporting failed",
+    "SYNC_JOB_FAILED": "Sync job failed",
+    "SYNC_JOB_INTERRUPTED": "Sync job was interrupted",
+}
+
 
 class SyncStatusError(IdentityModel):
     """Sanitized issue summary retained from the latest replay batch."""
@@ -55,17 +72,17 @@ def _status_response(status: SyncStatus) -> AcquisitionStatusResponse:
     errors: list[SyncStatusError] = []
     for issue in status.errors:
         code = issue.get("code")
-        message = issue.get("message")
-        if not isinstance(code, str) or not isinstance(message, str):
+        if not isinstance(code, str):
             continue
+        safe_code = code if code in _SYNC_ERROR_MESSAGES else "SYNC_ISSUE"
         line_no = issue.get("lineNo")
         errors.append(
             SyncStatusError(
                 session_id=_optional_str(issue.get("sessionId")),
                 agent_id=_optional_str(issue.get("agentId")),
                 line_no=int(line_no) if isinstance(line_no, int) else None,
-                code=code,
-                message=message,
+                code=safe_code,
+                message=_SYNC_ERROR_MESSAGES.get(safe_code, "Sync issue was reported"),
             ),
         )
     return AcquisitionStatusResponse(

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-26-sync-scheduler.md
-2026-10-26-sync-scheduler.md: ffc757a3b4c508be2b0756370b97b09020616042
-2026-10-26-sync-scheduler.en.md: f3932656e18a64d3d6b434c9a6b3f6a2b23293d6
+2026-10-26-sync-scheduler.md: ff0a64550556880ab0f6c7a2de0dcd098988bf19
+2026-10-26-sync-scheduler.en.md: 35116d6f83dae0373dc1eff1ab36222261ef493d

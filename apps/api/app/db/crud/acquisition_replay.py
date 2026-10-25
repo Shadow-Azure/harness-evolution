@@ -22,6 +22,7 @@ from app.db.models.domain import (
     trajectory_payloads,
     user_turns,
 )
+from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.service.acquisition.agent_tree import AssembledSessionTree
 from app.utils.time import as_shanghai
 
@@ -77,6 +78,16 @@ class SyncBatchSnapshot:
     imported: int
     skipped: int
     errors: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SyncStatusSnapshot:
+    """Consistent acquisition counters, active job, and relevant replay batch."""
+
+    pending: int
+    processed: int
+    active_job: JobRunRecord | None
+    batch: SyncBatchSnapshot | None
 
 
 def _payload_values(row: object) -> PendingPayload:
@@ -303,6 +314,11 @@ async def latest_sync_batch(database: Database) -> SyncBatchSnapshot | None:
         )
     if row is None:
         return None
+    return _batch_snapshot(dict(row))
+
+
+def _batch_snapshot(row: Mapping[str, object]) -> SyncBatchSnapshot:
+    """Project one sync audit row without exposing arbitrary payload fields."""
     errors = tuple(
         dict(item)
         for item in cast(list[dict[str, object]], row["errors"])
@@ -314,9 +330,106 @@ async def latest_sync_batch(database: Database) -> SyncBatchSnapshot | None:
         status=str(row["status"]),
         started_at=as_shanghai(cast(datetime, row["started_at"])),
         finished_at=(as_shanghai(cast(datetime, finished_at)) if finished_at is not None else None),
-        imported=int(row["imported"]),
-        skipped=int(row["skipped"]),
+        imported=int(cast(int, row["imported"])),
+        skipped=int(cast(int, row["skipped"])),
         errors=errors,
+    )
+
+
+async def read_sync_status_snapshot(
+    database: Database,
+    parser_version: int,
+) -> SyncStatusSnapshot:
+    """Read all acquisition status facts through one consistent DB transaction."""
+    async with database.session() as session:
+        pending = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(
+                        trajectory_payloads.outerjoin(
+                            source_records,
+                            (
+                                source_records.c.root_session_id
+                                == trajectory_payloads.c.root_session_id
+                            )
+                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                        ),
+                    )
+                    .where(
+                        or_(
+                            source_records.c.id.is_(None),
+                            source_records.c.processed_hash.is_(None),
+                            source_records.c.processed_hash != trajectory_payloads.c.content_hash,
+                            source_records.c.parser_version.is_(None),
+                            source_records.c.parser_version < parser_version,
+                        ),
+                    ),
+                )
+            ).scalar_one(),
+        )
+        processed = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(
+                        trajectory_payloads.join(
+                            source_records,
+                            (
+                                source_records.c.root_session_id
+                                == trajectory_payloads.c.root_session_id
+                            )
+                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+                        ),
+                    )
+                    .where(
+                        source_records.c.processed_hash == trajectory_payloads.c.content_hash,
+                        source_records.c.parser_version >= parser_version,
+                    ),
+                )
+            ).scalar_one(),
+        )
+        active_row = (
+            (
+                await session.execute(
+                    select(job_runs)
+                    .where(
+                        job_runs.c.kind == "sync",
+                        job_runs.c.status.in_(("queued", "running")),
+                    )
+                    .order_by(job_runs.c.created_at.desc())
+                    .limit(1),
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        active = record_from_row(active_row) if active_row else None
+        if active is not None and active.ref_id:
+            batch_row = (
+                (
+                    await session.execute(
+                        select(sync_runs).where(sync_runs.c.id == active.ref_id),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        else:
+            batch_row = (
+                (
+                    await session.execute(
+                        select(sync_runs).order_by(sync_runs.c.started_at.desc()).limit(1),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+    return SyncStatusSnapshot(
+        pending=pending,
+        processed=processed,
+        active_job=active,
+        batch=_batch_snapshot(dict(batch_row)) if batch_row else None,
     )
 
 

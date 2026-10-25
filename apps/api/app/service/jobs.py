@@ -122,8 +122,8 @@ class JobRunner:
         """Install post-terminal lifecycle handling for lock-owning services."""
         self._on_terminal = hook
 
-    async def start(self) -> None:
-        """Recover interrupted rows before accepting or retrying durable work."""
+    async def recover(self) -> None:
+        """Recover interrupted rows and create durable retries without dispatching."""
         recovered = await self.repository.mark_running_interrupted("process restarted")
         for job in recovered:
             await self._record_interruption(
@@ -138,8 +138,16 @@ class JobRunner:
                     ref_id=new_id(),
                     created_by=job.created_by,
                 )
+
+    async def start_queued(self) -> None:
+        """Dispatch queued work after lock-owning services have adopted state."""
         for queued in await self.repository.list_queued():
             self._schedule(queued.id)
+
+    async def start(self) -> None:
+        """Recover and dispatch durable work in one standard startup sequence."""
+        await self.recover()
+        await self.start_queued()
 
     async def submit(
         self,

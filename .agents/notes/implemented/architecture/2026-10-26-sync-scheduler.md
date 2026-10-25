@@ -12,9 +12,9 @@ scheduler 与 admin 手动触发可以同时发现 pending payload。如果 job 
 
 `sync_lock` 是跨进程单飞真值，固定 `name=sync`，TTL 默认 30 分钟；进程内 `asyncio.Lock` 只作为 V1 快速兜底。sync job 和锁在同一事务创建，任何主键冲突都会整体回滚。活动 job 即使 TTL 已过仍然复用；关联 job 缺失或 terminal 时才回收遗留锁。
 
-Scheduler 与手动 API 共用一个 coordinator。默认每 60 秒检查 pending，`0` 关闭自动 tick。无 pending 不建 job；手动请求返回显式 `200 idle`，不伪造 jobId。正常 sync run id 复用 job id，`ref_id` 因而同时保留 job provenance 和批次关联；进程重启重排时保留旧审计并把旧 run 标为 interrupted，替代 job 使用新的 replay run id。进度写 `job_runs.progress`，不经过 SSE。JobRunner terminal hook 在 completed、failed 或 interrupted 落库后，先将仍为 running 的对应 sync run 终结为同一异常状态，再按 jobId 释放锁。
+Scheduler 与手动 API 共用一个 coordinator。默认每 60 秒检查 pending，`0` 关闭自动 tick。无 pending 不建 job；手动请求返回显式 `200 idle`，不伪造 jobId。正常 sync run id 复用 job id，`ref_id` 因而同时保留 job provenance 和批次关联；进程重启重排时保留旧审计并把旧 run 标为 interrupted，替代 job 使用新的 replay run id。启动恢复先完成 sync lock adoption，再由 runner dispatch queued replacement，避免任务在无锁窗口运行。进度写 `job_runs.progress`，不经过 SSE。JobRunner terminal hook 在 completed、failed 或 interrupted 落库后，先将仍为 running 的对应 sync run 终结为同一异常状态，再按 jobId 释放锁。scheduler 异常日志只记录异常类型和稳定 code，不含异常正文。
 
-亮色原型顶栏只显示真实 pending 摘要和最近批次；admin 菜单才出现“立即处理”。操作后轮询 durable job，终态时失效 sessions 查询。status 不可用时隐藏摘要，不显示假计数。
+状态 API 在一个数据库快照中读取 pending、processed、active job 与对应 replay batch；有活跃 job 时不会借用其他批次计数。持久化 issue 在出站边界按闭集 code 重映射固定文案，未知 code 不返回自由文本。亮色原型顶栏只显示真实 pending 摘要和最近批次；admin 菜单才出现“立即处理”。操作后轮询 durable job，终态时失效 sessions 查询，failed/interrupted 只显示固定用户提示，不回显 job 自由文本。status 不可用时隐藏摘要，不显示假计数。
 
 ## Alternatives considered
 

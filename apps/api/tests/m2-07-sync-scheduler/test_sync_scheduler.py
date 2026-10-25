@@ -290,7 +290,7 @@ async def test_status_reports_counts_batch_and_next_run(
                         "agentId": ROOT,
                         "lineNo": 3,
                         "code": "INVALID_JSONL_LINE",
-                        "message": "JSONL line could not be parsed",
+                        "message": "token=must-not-leak /private/local/path",
                     },
                     {"message": "unstructured detail must not be exposed"},
                 ],
@@ -318,8 +318,42 @@ async def test_status_reports_counts_batch_and_next_run(
         },
     ]
     assert "unstructured detail" not in status.text
+    assert "must-not-leak" not in status.text
+    assert "/private/local/path" not in status.text
     assert body["lastRunAt"] is not None
     assert body["nextRunAt"] is None
+
+
+async def test_status_uses_batch_attached_to_active_job(
+    sync_environment: SyncEnvironment,
+) -> None:
+    """An active job never borrows counters from an unrelated newer batch."""
+    active_ref = "sync-active-batch"
+    await sync_environment.sync.job_repository.insert(
+        kind="sync",
+        payload={"source": "active-status"},
+        ref_id=active_ref,
+        created_by=None,
+    )
+    await insert_sync_run(sync_environment.database, sync_run_id=active_ref)
+    await insert_sync_run(sync_environment.database, sync_run_id="sync-newer-batch")
+    async with sync_environment.database.transaction() as session:
+        await session.execute(
+            update(sync_runs)
+            .where(sync_runs.c.id == active_ref)
+            .values(imported=2, skipped=1, started_at=now_shanghai() - timedelta(minutes=2)),
+        )
+        await session.execute(
+            update(sync_runs)
+            .where(sync_runs.c.id == "sync-newer-batch")
+            .values(imported=9, skipped=8, started_at=now_shanghai()),
+        )
+
+    status = await sync_environment.sync.status()
+
+    assert status.active_job_id is not None
+    assert status.imported == 2
+    assert status.skipped == 1
 
 
 async def test_manual_endpoint_queues_one_job_with_sync_run_provenance(
@@ -432,6 +466,32 @@ async def test_positive_scheduler_interval_ticks_and_shutdown_cancels(
     assert app.state.sync._scheduler_task is None
 
 
+async def test_scheduler_failure_log_contains_no_exception_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Scheduler diagnostics retain only a stable type and code."""
+    logged = asyncio.Event()
+    app = create_app(settings_for(tmp_path, interval=1))
+
+    async def fail_tick() -> SyncTriggerResult:
+        logged.set()
+        raise RuntimeError("sqlite:////private/secret.db?token=must-not-leak")
+
+    monkeypatch.setattr(app.state.sync, "run_once", fail_tick)
+    caplog.set_level("ERROR", logger="app.service.acquisition.sync")
+    async with app.router.lifespan_context(app):
+        await asyncio.wait_for(logged.wait(), timeout=2)
+        await asyncio.sleep(0)
+
+    assert "scheduled sync trigger failed" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert "UNEXPECTED_ERROR" in caplog.text
+    assert "private/secret.db" not in caplog.text
+    assert "must-not-leak" not in caplog.text
+
+
 async def test_shutdown_cancels_handler_and_releases_lock(
     sync_environment: SyncEnvironment,
     monkeypatch: pytest.MonkeyPatch,
@@ -504,6 +564,38 @@ async def test_restart_requeues_sync_with_fresh_run_and_finalizes_old_audit(
         )
     assert old_audit["status"] == "interrupted"
     assert old_audit["finished_at"] is not None
+
+
+async def test_restart_adopts_lock_before_dispatching_replacement(
+    sync_environment: SyncEnvironment,
+) -> None:
+    """Recovered sync work remains undispatched until lock adoption completes."""
+    await sync_environment.sync.stop_scheduler()
+    await insert_pending_payload(sync_environment.database)
+    original_ref = "sync-restart-lock-order"
+    original = await sync_environment.sync.job_repository.insert(
+        kind="sync",
+        payload={"source": "restart-order"},
+        ref_id=original_ref,
+        created_by=None,
+    )
+    await sync_environment.sync.job_repository.claim(original.id)
+    await insert_sync_run(sync_environment.database, sync_run_id=original_ref)
+
+    await sync_environment.sync.jobs.recover()
+    replacement = await sync_environment.sync.job_repository.find_active_kind("sync")
+
+    assert replacement is not None
+    assert replacement.id not in sync_environment.sync.jobs._tasks
+    assert await lock_count(sync_environment.database) == 0
+
+    await sync_environment.sync.start_scheduler()
+    assert await lock_count(sync_environment.database) == 1
+
+    await sync_environment.sync.jobs.start_queued()
+    terminal = await sync_environment.sync.jobs.wait(replacement.id)
+    assert terminal.status == "completed"
+    assert await lock_count(sync_environment.database) == 0
 
 
 async def test_sync_run_is_finalized_when_handler_fails(

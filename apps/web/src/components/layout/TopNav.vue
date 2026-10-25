@@ -77,6 +77,7 @@ async function processNow() {
   }
   actionError.value = "";
   isProcessing.value = true;
+  let terminalStatus = "";
   try {
     const triggered = await triggerSync();
     if (!triggered.jobId) {
@@ -86,6 +87,7 @@ async function processNow() {
     while (!disposed) {
       const job = await getJob(triggered.jobId);
       if (["completed", "failed", "interrupted"].includes(job.status)) {
+        terminalStatus = job.status;
         break;
       }
       await waitForSyncPoll(500);
@@ -95,6 +97,11 @@ async function processNow() {
         queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
         queryClient.invalidateQueries({ queryKey: queryKeys.acquisitionStatus })
       ]);
+    }
+    if (!disposed && terminalStatus === "failed") {
+      actionError.value = "同步失败，请稍后重试";
+    } else if (!disposed && terminalStatus === "interrupted") {
+      actionError.value = "同步已中断，请稍后重试";
     }
   } catch (error) {
     actionError.value =

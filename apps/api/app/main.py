@@ -71,9 +71,11 @@ def create_app(
             phase = "identity-seed"
             await identity.seed_admin_if_empty()
             phase = "job-recovery"
-            await jobs.start()
+            await jobs.recover()
             phase = "sync-scheduler"
             await sync.start_scheduler()
+            phase = "job-dispatch"
+            await jobs.start_queued()
         except Exception as exc:
             logger.error(
                 "database initialization failed",

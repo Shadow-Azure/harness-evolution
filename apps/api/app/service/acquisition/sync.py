@@ -15,13 +15,13 @@ from app.db.base import Database
 from app.db.crud.acquisition_replay import (
     SyncBatchSnapshot,
     count_pending_payloads,
-    count_processed_payloads,
-    latest_sync_batch,
+    read_sync_status_snapshot,
     terminalize_sync_run,
 )
 from app.db.crud.jobs import JobRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.models.jobs import JobRunRecord
+from app.errors import AppError
 from app.service.acquisition.normalize import CURRENT_PARSER_VERSION
 from app.service.acquisition.replay import ReplayResult, replay_pending_payloads
 from app.service.jobs import JobRunner
@@ -160,15 +160,17 @@ class SyncCoordinator:
 
     async def status(self) -> SyncStatus:
         """Read pending counts, the active job, and the latest durable batch."""
-        pending = await count_pending_payloads(self.database, CURRENT_PARSER_VERSION)
-        processed = await count_processed_payloads(self.database, CURRENT_PARSER_VERSION)
-        active = await self.job_repository.find_active_kind("sync")
-        batch = await latest_sync_batch(self.database)
+        snapshot = await read_sync_status_snapshot(
+            self.database,
+            CURRENT_PARSER_VERSION,
+        )
+        active = snapshot.active_job
+        batch = snapshot.batch
         return SyncStatus(
             active_job_id=active.id if active is not None else None,
             status=active.status if active is not None else "idle",
-            pending=pending,
-            processed=processed,
+            pending=snapshot.pending,
+            processed=snapshot.processed,
             imported=batch.imported if batch is not None else 0,
             skipped=batch.skipped if batch is not None else 0,
             last_run_at=self._batch_time(batch),
@@ -239,8 +241,17 @@ class SyncCoordinator:
                 pass
             try:
                 await self.run_once()
-            except Exception:
-                logger.exception("scheduled sync trigger failed")
+            except Exception as exc:
+                safe_code = exc.code.value if isinstance(exc, AppError) else "UNEXPECTED_ERROR"
+                logger.error(
+                    "scheduled sync trigger failed (%s/%s)",
+                    type(exc).__name__,
+                    safe_code,
+                    extra={
+                        "error_type": type(exc).__name__,
+                        "error_code": safe_code,
+                    },
+                )
 
     @staticmethod
     def _batch_time(batch: SyncBatchSnapshot | None) -> datetime | None:

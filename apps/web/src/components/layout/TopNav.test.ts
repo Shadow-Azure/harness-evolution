@@ -263,6 +263,80 @@ describe("top navigation user area", () => {
     );
   });
 
+  it.each([
+    ["failed", "同步失败，请稍后重试"],
+    ["interrupted", "同步已中断，请稍后重试"],
+  ])(
+    "shows a safe inline error when an admin-triggered sync is %s",
+    async (jobStatus, expectedError) => {
+    server.use(
+      http.get("/api/acquisition/status", () =>
+        HttpResponse.json({
+          activeJobId: null,
+          status: "idle",
+          payloadTable: "trajectory_payloads",
+          pending: 1,
+          processed: 0,
+          imported: 0,
+          skipped: 0,
+          lastRunAt: null,
+          nextRunAt: null,
+          errors: []
+        }),
+      ),
+      http.post("/api/acquisition/sync", () =>
+        HttpResponse.json(
+          { jobId: `job-${jobStatus}`, status: "queued", reused: false },
+          { status: 202 },
+        ),
+      ),
+      http.get(`/api/jobs/job-${jobStatus}`, () =>
+        HttpResponse.json({
+          jobId: `job-${jobStatus}`,
+          kind: "sync",
+          refId: `sync-${jobStatus}`,
+          status: jobStatus,
+          progress: 0,
+          attempt: 1,
+          createdBy: "u-admin",
+          createdAt: "2026-10-26T08:00:00+08:00",
+          startedAt: "2026-10-26T08:00:01+08:00",
+          finishedAt: "2026-10-26T08:00:02+08:00",
+          error: "password=must-not-leak"
+        }),
+      ),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-admin",
+        username: "admin",
+        displayName: "管理员",
+        role: "admin",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get("[data-testid='sync-now']").trigger("click");
+    await vi.waitFor(() => {
+      expect(wrapper.get("[role='alert']").text()).toBe(expectedError);
+    });
+    expect(wrapper.text()).not.toContain("must-not-leak");
+    },
+  );
+
   it("keeps the shell stable when acquisition status is unavailable", async () => {
     server.use(
       http.get("/api/acquisition/status", () =>
