@@ -17,6 +17,7 @@ scope:
   - scripts/**
   - tests/**
   - package.json
+  - pnpm-lock.yaml
   - .github/workflows/ci.yml
   - plans/**
   - reports/**
