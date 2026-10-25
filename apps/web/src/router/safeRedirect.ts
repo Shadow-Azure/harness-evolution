@@ -1,3 +1,13 @@
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Sanitize a login or password-change return target.
  * @param candidate User-provided route query value.
@@ -13,9 +23,30 @@ export function safeRedirect(candidate: unknown, fallback = "/sessions"): string
   }
   try {
     const url = new URL(candidate, "https://app.invalid");
-    return url.origin === "https://app.invalid"
-      ? `${url.pathname}${url.search}${url.hash}`
-      : fallback;
+    if (url.origin !== "https://app.invalid") {
+      return fallback;
+    }
+
+    let decodedPath = url.pathname;
+    for (let round = 0; round < 4; round += 1) {
+      const decoded = decodeURIComponent(decodedPath);
+      if (
+        decoded.startsWith("//") ||
+        decoded.includes("\\") ||
+        containsControlCharacter(decoded)
+      ) {
+        return fallback;
+      }
+      if (decoded === decodedPath) {
+        return `${url.pathname}${url.search}${url.hash}`;
+      }
+      const normalized = new URL(decoded, "https://app.invalid");
+      if (normalized.origin !== "https://app.invalid") {
+        return fallback;
+      }
+      decodedPath = normalized.pathname;
+    }
+    return fallback;
   } catch {
     return fallback;
   }

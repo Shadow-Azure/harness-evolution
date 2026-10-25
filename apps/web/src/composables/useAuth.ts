@@ -1,6 +1,6 @@
 import type { ChangePasswordRequest, LoginRequest } from "@harness/contracts";
 import { useMutation, useQueryClient } from "@tanstack/vue-query";
-import { computed } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { safeRedirect } from "../router/safeRedirect";
@@ -70,12 +70,28 @@ export function useLogout() {
  */
 export function useCurrentUser() {
   const auth = useAuthStore();
+  const isRefetching = ref(false);
+  const requestError = shallowRef<Error | null>(null);
+
+  async function refetch() {
+    isRefetching.value = true;
+    requestError.value = null;
+    try {
+      return await auth.loadCurrentUser();
+    } catch (caught) {
+      requestError.value = caught instanceof Error ? caught : new Error(String(caught));
+      throw caught;
+    } finally {
+      isRefetching.value = false;
+    }
+  }
+
   return {
     data: computed(() => auth.user),
-    isLoading: computed(() => !auth.isBootstrapped),
-    isError: computed(() => false),
-    error: computed<Error | null>(() => null),
-    refetch: () => auth.loadCurrentUser(),
+    isLoading: computed(() => !auth.isBootstrapped || isRefetching.value),
+    isError: computed(() => requestError.value !== null),
+    error: computed(() => requestError.value),
+    refetch,
   };
 }
 
@@ -85,12 +101,22 @@ export function useCurrentUser() {
  */
 export function useChangePassword() {
   const auth = useAuthStore();
+  const queryClient = useQueryClient();
   const route = useRoute();
   const router = useRouter();
   const mutation = useMutation({
     mutationFn: (passwords: ChangePasswordRequest) => auth.changePassword(passwords),
     onSuccess: async () => {
       await router.push(safeRedirect(route.query.redirect));
+    },
+    onError: async () => {
+      if (!auth.isAuthenticated) {
+        queryClient.clear();
+        await router.push({
+          path: "/login",
+          query: { redirect: safeRedirect(route.query.redirect) },
+        });
+      }
     },
   });
   return {

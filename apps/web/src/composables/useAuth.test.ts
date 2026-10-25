@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { PublicUser } from "@harness/contracts";
 import { flushPromises, mount } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
@@ -28,12 +29,19 @@ type AuthComposables = {
   changePassword: ReturnType<typeof useChangePassword>;
 };
 
-async function mountComposables() {
+async function mountComposables(initialPath = "/login", user: PublicUser | null = null) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  if (user) {
+    useAuthStore(pinia).setSession({
+      accessToken: "active",
+      expiresIn: 1_800,
+      user,
+    });
+  }
   const queryClient = new QueryClient();
   const router = createAppRouter();
-  await router.push("/login");
+  await router.push(initialPath);
   await router.isReady();
   let composables!: AuthComposables;
   const Harness = defineComponent({
@@ -56,7 +64,7 @@ async function mountComposables() {
       ],
     },
   });
-  return { composables, pinia, router, wrapper };
+  return { composables, pinia, queryClient, router, wrapper };
 }
 
 describe("auth composables", () => {
@@ -98,6 +106,94 @@ describe("auth composables", () => {
     expect(useAuthStore(pinia).user?.displayName).toBe("操作员");
     expect(composables.currentUser.data.value?.displayName).toBe("操作员");
     expect(router.currentRoute.value.path).toBe("/sessions");
+    wrapper.unmount();
+  });
+
+  it("returns to login when refresh fails after changing the password", async () => {
+    server.use(
+      http.post(
+        "/api/auth/change-password",
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+      http.post("/api/auth/refresh", () =>
+        HttpResponse.json(
+          { error: { code: "AUTH_EXPIRED", message: "expired" } },
+          { status: 401 },
+        ),
+      ),
+    );
+    const user: PublicUser = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member",
+      mustChangePassword: true,
+    };
+    const { composables, pinia, queryClient, router, wrapper } = await mountComposables(
+      "/change-password?redirect=/sessions",
+      user,
+    );
+    const auth = useAuthStore(pinia);
+    queryClient.setQueryData(["sessions"], [{ id: "s-1" }]);
+
+    await expect(
+      composables.changePassword.refetch({
+        oldPassword: "temporary-password",
+        newPassword: "replacement-password",
+      }),
+    ).rejects.toBeTruthy();
+    await flushPromises();
+
+    expect(auth.isAuthenticated).toBe(false);
+    expect(queryClient.getQueryData(["sessions"])).toBeUndefined();
+    expect(router.currentRoute.value.path).toBe("/login");
+    expect(router.currentRoute.value.query.redirect).toBe("/sessions");
+    wrapper.unmount();
+  });
+
+  it("tracks current-user refetch failures and clears them after recovery", async () => {
+    let calls = 0;
+    server.use(
+      http.get("/api/auth/me", () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json(
+              { error: { code: "INTERNAL", message: "temporary failure" } },
+              { status: 500 },
+            )
+          : HttpResponse.json({
+              id: "u-1",
+              username: "operator",
+              displayName: "操作员",
+              role: "member",
+              mustChangePassword: false,
+            });
+      }),
+    );
+    const { composables, pinia, wrapper } = await mountComposables("/sessions");
+    const auth = useAuthStore(pinia);
+    auth.setSession({
+      accessToken: "active",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+
+    await expect(composables.currentUser.refetch()).rejects.toMatchObject({
+      code: "INTERNAL",
+    });
+    expect(composables.currentUser.isLoading.value).toBe(false);
+    expect(composables.currentUser.isError.value).toBe(true);
+    expect(composables.currentUser.error.value).toMatchObject({ code: "INTERNAL" });
+
+    await expect(composables.currentUser.refetch()).resolves.toMatchObject({ id: "u-1" });
+    expect(composables.currentUser.isError.value).toBe(false);
+    expect(composables.currentUser.error.value).toBeNull();
     wrapper.unmount();
   });
 });

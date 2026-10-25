@@ -10,12 +10,18 @@ import { server } from "../../test/server";
 import { useAuthStore } from "../../stores/auth";
 import { createAppRouter } from "../../router";
 import TopNav from "./TopNav.vue";
+import TopNavSource from "./TopNav.vue?raw";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("top navigation user area", () => {
+  it("styles the rendered user popover button", () => {
+    expect(TopNavSource).toContain(".user-popover button:hover");
+    expect(TopNavSource).not.toContain(".user-area button:hover");
+  });
+
   it("shows the current user and clears session state on logout", async () => {
     server.use(http.post("/api/auth/logout", () => new HttpResponse(null, { status: 204 })));
     const pinia = createPinia();

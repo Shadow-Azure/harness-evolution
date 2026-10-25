@@ -128,17 +128,100 @@ describe("request", () => {
 
   it("never refreshes public auth requests", async () => {
     const refresh = vi.fn().mockResolvedValue(true);
+    const expired = vi.fn();
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({ error: { code: "AUTH_EXPIRED", message: "expired" } }, 401),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setRefreshHandler(refresh);
+    setAuthExpiredHandler(expired);
+
+    await expect(request("/api/auth/login", { method: "POST" })).rejects.toMatchObject({
+      code: "AUTH_EXPIRED",
+    });
+    await expect(request("/api/auth/refresh", { method: "POST" })).rejects.toMatchObject({
+      code: "AUTH_EXPIRED",
+    });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(expired).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes once and replays a protected auth request with an expired access token", async () => {
+    let accessToken = "expired";
+    let refreshCalls = 0;
+    const fetchMock = vi.fn(async (_path: string, init?: RequestInit) => {
+      const authorization = new Headers(init?.headers).get("authorization");
+      if (authorization === "Bearer expired") {
+        return jsonResponse({ error: { code: "AUTH_EXPIRED", message: "expired" } }, 401);
+      }
+      return jsonResponse({
+        id: "u-1",
+        username: "operator",
+        displayName: "Operator",
+        role: "member",
+        mustChangePassword: false,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setAccessTokenProvider(() => accessToken);
+    setRefreshHandler(async () => {
+      refreshCalls += 1;
+      accessToken = "fresh";
+      return true;
+    });
+
+    await expect(request("/api/auth/me")).resolves.toMatchObject({ id: "u-1" });
+
+    expect(refreshCalls).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization")).toBe(
+      "Bearer fresh",
+    );
+  });
+
+  it("does not refresh or expire the session for an authentication credential failure", async () => {
+    const refresh = vi.fn().mockResolvedValue(true);
+    const expired = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ error: { code: "AUTH_INVALID", message: "bad credentials" } }, 401),
     );
     vi.stubGlobal("fetch", fetchMock);
     setRefreshHandler(refresh);
+    setAuthExpiredHandler(expired);
 
-    await expect(request("/api/auth/login", { method: "POST" })).rejects.toMatchObject({
+    await expect(request("/api/auth/change-password", { method: "POST" })).rejects.toMatchObject({
       code: "AUTH_INVALID",
     });
+
     expect(refresh).not.toHaveBeenCalled();
+    expect(expired).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears auth when a refreshed request is still unauthorized", async () => {
+    const expired = vi.fn();
+    let refreshCalls = 0;
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({ error: { code: "AUTH_EXPIRED", message: "expired" } }, 401),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setRefreshHandler(async () => {
+      refreshCalls += 1;
+      return true;
+    });
+    setAuthExpiredHandler(expired);
+
+    await expect(request("/api/users")).rejects.toMatchObject({ code: "AUTH_EXPIRED" });
+
+    expect(refreshCalls).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(expired).toHaveBeenCalledOnce();
+    expect(expired).toHaveBeenCalledWith("/");
   });
 
   it("clears auth through the injected expired handler when refresh fails", async () => {

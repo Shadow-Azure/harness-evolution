@@ -121,6 +121,10 @@ async function refreshOnce(): Promise<boolean> {
   return refreshPromise;
 }
 
+function isPublicAuthRequest(path: string): boolean {
+  return path === "/api/auth/login" || path === "/api/auth/refresh";
+}
+
 async function execute<T>(
   path: string,
   init: RequestInit | undefined,
@@ -134,18 +138,22 @@ async function execute<T>(
     throw new ApiError(0, "NETWORK_ERROR", "API is unreachable");
   }
 
-  const isAuthRequest = path.startsWith("/api/auth/");
-  if (response.status === 401 && !retried && !isAuthRequest) {
-    const refreshed = await refreshOnce();
-    if (refreshed) {
-      return execute<T>(path, init, options, true);
-    }
-    authExpiredHandler?.(currentAppPath());
-  }
-
   const acceptedStatuses = options?.acceptedStatuses ?? [200, 201, 204];
   if (!acceptedStatuses.includes(response.status)) {
     const error = await decodeFailure(response);
+    if (
+      error.status === 401 &&
+      error.code !== "AUTH_INVALID" &&
+      !isPublicAuthRequest(path)
+    ) {
+      if (!retried) {
+        const refreshed = await refreshOnce();
+        if (refreshed) {
+          return execute<T>(path, init, options, true);
+        }
+      }
+      authExpiredHandler?.(currentAppPath());
+    }
     if (error.code === "PASSWORD_CHANGE_REQUIRED" && passwordChangeHandler) {
       passwordChangeHandler(currentAppPath());
     }

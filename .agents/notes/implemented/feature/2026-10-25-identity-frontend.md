@@ -11,7 +11,7 @@ refresh 凭据只能在 httpOnly cookie 中，access token 又不能落持久存
 ## Decision
 
 - Pinia 只在内存保存 access token 与当前用户；应用启动先尝试 refresh 与 `/me`，再等待 router ready 和挂载。路由守卫在未完成恢复时复用同一个启动 Promise。
-- `api/http.ts` 只通过注入的 access-token、refresh、过期和强制改密回调接触身份；并发 401 共享一个 refresh Promise，并保留原请求方法与 body 各重放一次。
+- `api/http.ts` 只通过注入的 access-token、refresh、过期和强制改密回调接触身份；只有 login/refresh 是无需恢复的公开端点，并发 401 共享一个 refresh Promise，并保留原请求方法与 body 各重放一次。`AUTH_INVALID` 始终保留表单语义，不刷新也不触发会话过期；换 token 后仍失败的受保护请求统一清态回登录。
 - 登录与改密回跳只接受应用相对路径；改密成功严格按 `change-password → refresh → me → redirect` 执行，确保新 token 的强制改密声明已更新。
 - Element Plus 的输入与按钮由组件解析器自动导入，并映射到组件目录以保留按需 tree-shaking 和独立 vendor chunk；退出由 mutation 调后端，但无论请求成败都清内存态和 query cache。
 
@@ -23,6 +23,6 @@ refresh 凭据只能在 httpOnly cookie 中，access token 又不能落持久存
 
 ## Consequences
 
-- 页面首次导航可能等待一次 `/api/auth/refresh`；无有效 cookie 时以 `AUTH_EXPIRED` 快速进入登录页。
+- 页面首次导航可能等待一次 `/api/auth/refresh`；无有效 cookie 时以 `AUTH_EXPIRED` 快速进入登录页，改密后的显式 refresh 失败也走同一恢复边界。
 - 所有受保护业务请求共享传输层语义；新增域 API 不得自行处理 401 或读取 refresh cookie。
 - 未实现用户管理、注册、OAuth 与记住密码；这些能力需要新的契约和决策，不能复用当前前端状态模型。

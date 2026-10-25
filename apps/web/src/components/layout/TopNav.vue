@@ -153,7 +153,7 @@ nav a.router-link-active {
   cursor: pointer;
 }
 
-.user-area button:hover {
+.user-popover button:hover {
   color: var(--text-primary);
   border-color: var(--border-strong);
 }
