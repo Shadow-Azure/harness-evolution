@@ -162,7 +162,8 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         const cards = [...document.querySelectorAll("[data-testid='session-card']")];
         const sidebar = document.querySelector(".sidebar");
         const card = cards.find((candidate) => candidate.dataset.selected === "false");
-        if (cards.length !== 4 || !sidebar || !card) return null;
+        const detailCta = document.querySelector(".overview-head [data-testid='detail-cta']");
+        if (cards.length !== 4 || !sidebar || !card || !detailCta) return null;
         return {
           path: location.pathname,
           query: location.search,
@@ -172,7 +173,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
           browserWidth: document.querySelector(".session-browser").getBoundingClientRect().width,
           browserRadius: getComputedStyle(document.querySelector(".session-browser")).borderRadius,
           filterLabels: [...document.querySelectorAll(".filter-label")].map((node) => node.textContent.trim()),
-          ctaInHeader: Boolean(document.querySelector(".overview-head [data-testid='detail-cta']")),
+          ctaInHeader: Boolean(detailCta),
           cardBackground: getComputedStyle(card).backgroundColor,
           bodyBackground: getComputedStyle(document.body).backgroundColor,
         };
