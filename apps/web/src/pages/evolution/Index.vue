@@ -9,7 +9,10 @@ defineOptions({ name: "EvolutionPage" });
 
 <template>
   <section class="placeholder">
-    <h1>Evolution 骨架</h1>
+    <p class="eyebrow">
+      EVOLUTION
+    </p>
+    <h1>自进化</h1>
     <EmptyState
       description="自进化运行将在后续 milestone 接入；Vue Flow 容器已就绪。"
       title="暂无自进化运行"
@@ -28,19 +31,30 @@ defineOptions({ name: "EvolutionPage" });
 
 <style scoped>
 .placeholder {
-  padding: var(--space-xl) 0;
+  display: grid;
+  gap: 14px;
+  padding: 8px 0;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--purple);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 h1 {
-  margin: 0 0 var(--space-sm);
+  margin: 0;
   font-size: var(--font-title);
+  font-weight: 650;
 }
 
 .canvas {
-  margin-top: var(--space-md);
   height: 320px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  background: var(--surface-overlay);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-card);
 }
 </style>

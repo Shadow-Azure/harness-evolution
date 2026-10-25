@@ -1,21 +1,33 @@
 :root {
   --el-border-radius-base: var(--radius-md);
-  --el-color-primary: var(--brand-accent);
-  --el-color-danger: var(--state-error);
-  --el-fill-color-blank: var(--surface-overlay);
-  --el-fill-color-light: var(--surface-selected);
+  --el-color-primary: var(--blue);
+  --el-color-danger: var(--red);
+  --el-fill-color-blank: var(--bg-card);
+  --el-fill-color-light: var(--bg-inset);
   --el-font-family: inherit;
-  --el-text-color-primary: var(--text-primary);
-  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-primary: var(--text);
+  --el-text-color-regular: var(--text-dim);
+  --el-border-color: var(--border);
+  --el-border-color-hover: var(--border-strong);
 }
 
 .el-input__wrapper {
-  background: var(--surface-overlay);
-  box-shadow: 0 0 0 1px var(--border-subtle) inset;
+  min-height: 34px;
+  background: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--border) inset;
 }
 
 .el-input__wrapper:hover,
 .el-input__wrapper.is-focus {
-  background: var(--surface-raised);
-  box-shadow: 0 0 0 1px var(--brand-accent) inset;
+  background: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--blue) inset;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--blue);
+  --el-button-border-color: var(--blue);
+  --el-button-hover-bg-color: color-mix(in srgb, var(--blue) 88%, var(--text));
+  --el-button-hover-border-color: color-mix(in srgb, var(--blue) 88%, var(--text));
+  --el-button-active-bg-color: color-mix(in srgb, var(--blue) 82%, var(--text));
+  --el-button-active-border-color: color-mix(in srgb, var(--blue) 82%, var(--text));
 }

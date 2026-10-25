@@ -79,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、三入口壳、fixtures/seed、本地导入、Agent 树组装、幂等重放、E2E 与契约门禁。
+- 已具备：双库 API、鉴权、任务/SSE、亮色原型壳、fixtures/seed、本地导入、Agent 树组装、幂等重放、E2E 与契约门禁。
 - 未具备：会话查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

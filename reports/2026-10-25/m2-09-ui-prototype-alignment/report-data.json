@@ -1,0 +1,201 @@
+{
+  "title": "m2-09 原型 UI 对齐集成冒烟",
+  "eyebrow": "Harness Evolution · PR #93",
+  "summary": "真实 Chrome、Vite 与 FastAPI 已验证共享壳层从深色开发界面迁移到原型定义的亮色视觉系统。页面背景、顶栏、卡片、品牌、导航激活线、认证页、错误态与 390px 响应式均符合原型和 fullstack-design 的已实现范围。",
+  "meta": "2026-10-25 · macOS · Chrome · 1408px / 390px",
+  "metrics": [
+    { "value": "12", "label": "检查场景" },
+    { "value": "12", "label": "通过" },
+    { "value": "0", "label": "缺陷" },
+    { "value": "0", "label": "意外控制台消息" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#92 · UI prototype alignment" },
+    { "label": "PR", "value": "#93" },
+    { "label": "Commit", "value": "0db8f8d" },
+    { "label": "Prototype", "value": "harness-evolution.html · light-first baseline" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + Chrome" },
+    { "label": "Scope", "value": "Shared shell, auth, states, placeholders" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "暗色 before 基线",
+        "status": { "kind": "fixed", "label": "FIXED" },
+        "detail": "旧实现使用近黑页面、白色正文、Harness Lens 与胶囊导航；已由亮色原型基线替换。",
+        "evidence": ["screenshots/01-before-dark-sessions.jpg", "screenshots/03-before-dark-evolution.jpg"]
+      },
+      {
+        "id": "02",
+        "name": "原型参考",
+        "status": { "kind": "info", "label": "REFERENCE" },
+        "detail": "原型以浅灰页面、白色卡片、蓝紫业务色和紧凑数据层级作为最终视觉基准。",
+        "evidence": ["screenshots/04-prototype-evolution-list.png", "screenshots/05-prototype-family-tree.png"]
+      },
+      {
+        "id": "03",
+        "name": "页面与顶栏令牌",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "body 为 rgb(244,245,247)，topbar 为 rgb(250,251,252) 且高度 56px，内容卡片为纯白。",
+        "evidence": ["screenshots/08-after-sessions.png", "computed style assertions"]
+      },
+      {
+        "id": "04",
+        "name": "品牌与导航",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "品牌为 Harness Evolution；Sessions/Errors 使用蓝色下划线，Evolution 使用紫色下划线。",
+        "evidence": ["screenshots/08-after-sessions.png", "screenshots/10-after-evolution.png"]
+      },
+      {
+        "id": "05",
+        "name": "登录页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "登录页无顶栏，使用浅灰页面与白色认证卡片；品牌、输入和按钮层级符合原型令牌。",
+        "evidence": ["screenshots/06-after-login.png"]
+      },
+      {
+        "id": "06",
+        "name": "强制改密页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "首登改密页保持亮色认证卡片，无受保护导航，390px 下无横向溢出。",
+        "evidence": ["screenshots/07-after-change-password.png", "real Chrome E2E"]
+      },
+      {
+        "id": "07",
+        "name": "Sessions 空态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "白色内容卡、蓝色激活线和真实空态呈现；未伪造 Session 领域数据。",
+        "evidence": ["screenshots/08-after-sessions.png"]
+      },
+      {
+        "id": "08",
+        "name": "Errors 与 Evolution 占位",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Errors 与 Evolution 使用统一亮色卡片和后续 milestone 文案；Evolution 激活线为紫色。",
+        "evidence": ["screenshots/09-after-errors.png", "screenshots/10-after-evolution.png"]
+      },
+      {
+        "id": "09",
+        "name": "390px 响应式与 demo",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390px 下 scrollWidth=clientWidth=390；演示数据橙色文字可读，品牌链接仍有无障碍名称。",
+        "evidence": ["screenshots/11-after-evolution-390.png", "computed style assertions"]
+      },
+      {
+        "id": "10",
+        "name": "404 亮色错误态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "404 展示浅红错误卡片、红色左边框和可读正文，壳层与导航保持可用。",
+        "evidence": ["screenshots/12-after-404.png"]
+      },
+      {
+        "id": "11",
+        "name": "浏览器控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "正常登录、强制改密和三入口导航期间未捕获 warning/error。",
+        "evidence": ["Chrome dev logs count=0"]
+      },
+      {
+        "id": "12",
+        "name": "领域页面边界",
+        "status": { "kind": "manual", "label": "OUT OF SCOPE" },
+        "detail": "真实 Session、问题详情与自进化运行页仍由后续 milestone 交付；本报告不把占位内容冒充已完成领域页面。",
+        "evidence": ["Issue #92 non-goals", "fixture/domain smoke reports"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-before-dark-sessions.jpg",
+      "alt": "旧深色 Sessions 页面",
+      "label": "Before · 深色壳层",
+      "caption": "旧实现使用 Harness Lens、近黑背景、白色正文和胶囊导航。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/04-prototype-evolution-list.png",
+      "alt": "原型亮色自进化页面",
+      "label": "Prototype · 自进化",
+      "caption": "原型以浅灰页面、白色卡片、蓝色主操作和紫色自进化语义构成视觉基线。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-after-login.png",
+      "alt": "亮色登录页",
+      "label": "After · 登录",
+      "caption": "登录页使用原型亮色令牌和白色认证卡片。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-after-sessions.png",
+      "alt": "亮色 Sessions 页面",
+      "label": "After · Sessions",
+      "caption": "56px 顶栏、Harness Evolution 品牌、蓝色下划线导航与白色空态卡片。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/10-after-evolution.png",
+      "alt": "亮色 Evolution 页面",
+      "label": "After · Evolution",
+      "caption": "Evolution 激活态使用原型定义的紫色下划线。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/11-after-evolution-390.png",
+      "alt": "390px Evolution 页面",
+      "label": "After · 390px",
+      "caption": "窄视口无横向溢出，演示数据角标保持可读。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/12-after-404.png",
+      "alt": "亮色 404 错误态",
+      "label": "After · 404",
+      "caption": "404 使用浅红错误面和红色强调边，导航仍可操作。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "共享壳层",
+        "coverage": "Computer Use + computed style",
+        "conclusion": "页面、顶栏、卡片、品牌、导航和 390px 视觉令牌通过。",
+        "recommendation": "后续领域页面必须复用同一原型令牌和组件语言。"
+      },
+      {
+        "area": "认证页面",
+        "coverage": "Computer Use + 真实 Chrome E2E",
+        "conclusion": "登录和强制改密在 1408px/390px 下使用亮色白卡且无横向溢出。",
+        "recommendation": "保留认证页无 TopNav 的布局边界。"
+      },
+      {
+        "area": "三态与 404",
+        "coverage": "组件测试 + 真实 Chrome",
+        "conclusion": "Loading/Empty/Error/404 使用统一亮色表面和语义色。",
+        "recommendation": "后续页面直接复用共享状态组件。"
+      },
+      {
+        "area": "领域页面",
+        "coverage": "不在本 issue 范围",
+        "conclusion": "Session 浏览、问题详情与自进化运行数据由后续 milestone 实现。",
+        "recommendation": "用对应原型章节和截图验收，不在本阶段伪造内容。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前已实现的共享 UI 已从错误的深色开发工具风格恢复为原型定义的亮色视觉系统，未发现需要阻断合入的视觉或交互缺陷。",
+    "points": [
+      "原型令牌、56px 顶栏、品牌和导航激活语义已落地。",
+      "登录、强制改密、共享三态和三个占位页均使用亮色基线。",
+      "真实领域页面仍等待各自 milestone，不在本 issue 中伪造。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、原型稳定截图、computed style、Chrome 控制台与自动化 E2E。生成 HTML 不应手改。"
+}

@@ -51,10 +51,11 @@ defineEmits(["retry"]);
 .error-state {
   display: grid;
   justify-items: start;
-  gap: var(--space-sm);
-  padding: var(--space-xl) var(--space-lg);
+  gap: 10px;
+  padding: 20px;
   border: 1px solid var(--state-error-border);
-  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--red);
+  border-radius: 10px;
   background: var(--state-error-surface);
 }
 
@@ -63,7 +64,7 @@ defineEmits(["retry"]);
   gap: var(--space-xs);
   margin: 0;
   color: var(--state-error-text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -71,15 +72,16 @@ defineEmits(["retry"]);
 
 .error-message {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-dim);
+  font-size: 12.5px;
 }
 
 button {
-  padding: 7px 14px;
-  border: 1px solid var(--state-error-border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-overlay);
-  color: var(--text-primary);
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 38%, transparent);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--red);
   cursor: pointer;
 }
 </style>

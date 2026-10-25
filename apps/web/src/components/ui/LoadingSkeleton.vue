@@ -31,16 +31,20 @@ defineProps({
 <style scoped>
 .loading-state {
   display: grid;
-  gap: var(--space-sm);
+  gap: 10px;
   width: min(100%, 720px);
-  padding: var(--space-lg) 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
 }
 
 .skeleton-line {
   display: block;
   height: 14px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-overlay);
+  border-radius: 4px;
+  background: var(--bg-inset);
   animation: pulse 1.5s ease-in-out infinite alternate;
 }
 
