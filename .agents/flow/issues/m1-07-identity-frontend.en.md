@@ -10,7 +10,7 @@ depends:
   - m1-05
   - m1-06
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - packages/contracts/**
