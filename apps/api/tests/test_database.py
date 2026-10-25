@@ -335,8 +335,11 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             job_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("job_runs")
             )
-            job_indexes = await connection.run_sync(
-                lambda sync_connection: inspect(sync_connection).get_indexes("job_runs")
+            job_indexes, job_foreign_keys = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_indexes("job_runs"),
+                    inspect(sync_connection).get_foreign_keys("job_runs"),
+                )
             )
 
         assert {column["name"] for column in job_columns} == {
@@ -357,11 +360,16 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "finished_at",
             "updated_at",
         }
-        assert {index["name"] for index in job_indexes} == {
+        assert {
             "ix_job_runs_status",
             "ix_job_runs_kind_created_at",
             "ix_job_runs_ref_id",
-        }
+        }.issubset({index["name"] for index in job_indexes if index["name"] is not None})
+        assert {
+            foreign_key["name"]
+            for foreign_key in job_foreign_keys
+            if foreign_key["name"] is not None
+        } == {"fk_job_runs_created_by_users"}
         assert await job_recency_index_directions(database) == [
             ("kind", False),
             ("created_at", True),
@@ -521,8 +529,11 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             job_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("job_runs")
             )
-            job_indexes = await connection.run_sync(
-                lambda sync_connection: inspect(sync_connection).get_indexes("job_runs")
+            job_indexes, job_foreign_keys = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_indexes("job_runs"),
+                    inspect(sync_connection).get_foreign_keys("job_runs"),
+                )
             )
 
         assert {column["name"] for column in job_columns} == {
@@ -543,11 +554,16 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "finished_at",
             "updated_at",
         }
-        assert {index["name"] for index in job_indexes} == {
+        assert {
             "ix_job_runs_status",
             "ix_job_runs_kind_created_at",
             "ix_job_runs_ref_id",
-        }
+        }.issubset({index["name"] for index in job_indexes if index["name"] is not None})
+        assert {
+            foreign_key["name"]
+            for foreign_key in job_foreign_keys
+            if foreign_key["name"] is not None
+        } == {"fk_job_runs_created_by_users"}
         assert await job_recency_index_directions(database) == [
             ("kind", False),
             ("created_at", True),
