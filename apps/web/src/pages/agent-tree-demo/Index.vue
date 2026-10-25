@@ -1,12 +1,27 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 
 import AgentTree from "../../components/agent-tree/AgentTree.vue";
-import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
+import {
+  demoCoreTree,
+  demoNestedTree,
+} from "../../components/agent-tree/fixtures/demo-nested";
 
 defineOptions({ name: "AgentTreeDemoPage" });
 
-const expanded = ref(["main", "agent-a"]);
+const route = useRoute();
+const isLarge = computed(() => route.query.variant === "large");
+const tree = computed(() => (isLarge.value ? demoNestedTree : demoCoreTree));
+const expanded = ref<string[]>([]);
+
+watch(
+  isLarge,
+  (large) => {
+    expanded.value = large ? ["agent-a"] : ["main", "agent-a"];
+  },
+  { immediate: true },
+);
 
 function toggleExpanded(agentId: string) {
   if (!expanded.value.includes(agentId)) {
@@ -25,11 +40,13 @@ function toggleExpanded(agentId: string) {
         <span class="eyebrow">AGENT FLOW</span>
         <h1>Agent 执行流图</h1>
       </div>
-      <span class="scope">开发视觉验收 · demo-nested 核心四节点</span>
+      <span class="scope">
+        开发视觉验收 · {{ isLarge ? "collapse / trunk 大图" : "demo-nested 核心四节点" }}
+      </span>
     </header>
     <AgentTree
       :expanded="expanded"
-      :tree="demoCoreTree"
+      :tree="tree"
       @toggle-expanded="toggleExpanded"
     />
   </section>

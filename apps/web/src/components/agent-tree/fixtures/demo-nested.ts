@@ -231,7 +231,20 @@ export const demoNestedTree = {
  */
 export const demoCoreTree = {
   ...demoNestedTree,
-  agents: demoNestedTree.agents.filter((agent) =>
-    ["main", "agent-a", "agent-b", "agent-c"].includes(agent.agentId),
-  ),
+  agents: demoNestedTree.agents
+    .filter((agent) => ["main", "agent-a", "agent-b", "agent-c"].includes(agent.agentId))
+    .map((agent) => {
+      if (agent.agentId !== "main") {
+        return agent;
+      }
+      const renderedToolIds = new Set(["tool-a", "tool-b"]);
+      return {
+        ...agent,
+        events: agent.events.filter(
+          (event) =>
+            (event.kind !== "agent" && event.kind !== "workflow") ||
+            renderedToolIds.has(event.toolUseId),
+        ),
+      };
+    }),
 } satisfies SessionTree;

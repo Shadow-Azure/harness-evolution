@@ -54,6 +54,9 @@ export const BRANCH_COLOR = "var(--graph-branch)";
 /** Trigger pill font used by the injected measurer. */
 export const FONT_PILL =
   '10px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+/** Agent node label font used by the injected measurer. */
+export const FONT_AGENT_LABEL =
+  '11px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
 /** Mono font used by compressed-message pills. */
 export const FONT_MONO_PILL =
   '10px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
@@ -192,7 +195,10 @@ function agentEventIndex(parent: SessionAgent, child: SessionAgent): number {
       return index;
     }
   }
-  return parent.events.findIndex((event) => event.kind === "workflow");
+  if (child.kind === "workflow" || child.agentType === "workflow-subagent") {
+    return parent.events.findIndex((event) => event.kind === "workflow");
+  }
+  return -1;
 }
 
 function childSortKey(parent: SessionAgent, child: SessionAgent) {
@@ -506,6 +512,11 @@ export function buildGraph(
     measure,
     main.lines,
   );
+  const mainLabelWidth = measure(main.label, FONT_AGENT_LABEL);
+  const mainBoxW = Math.max(
+    mainChain.width + 2 * (BOX_PAD + BOX_EDGE),
+    mainLabelWidth + 2 * (BOX_PAD + BOX_EDGE) + 16,
+  );
   nodes.push({
     id: main.agentId,
     type: "agent",
@@ -514,8 +525,8 @@ export function buildGraph(
       label: main.label,
       kind: "root",
       w: mainChain.width,
-      boxW: mainChain.width + 2 * (BOX_PAD + BOX_EDGE),
-      visualW: mainChain.width + 2 * (BOX_PAD + BOX_EDGE),
+      boxW: mainBoxW,
+      visualW: Math.max(mainBoxW, mainLabelWidth + 60),
       lines: main.lines,
       desc: main.desc,
       chain: mainChain,
@@ -574,6 +585,13 @@ export function buildGraph(
         type: "orth",
         data: { idx: 0, trunkX: triggerX },
         style: { stroke: BRANCH_COLOR, strokeWidth: 1.4 },
+      });
+      branchSegments.push({
+        source: parentNode.id,
+        target: nodeId,
+        x: triggerX,
+        y1: Math.min(parentNode.position.y + 39, node.position.y + 39),
+        y2: Math.max(parentNode.position.y + 39, node.position.y + 39),
       });
       cursorY += 96;
       row += 1;
@@ -635,13 +653,10 @@ export function buildGraph(
         measure,
         item.agent.lines,
       );
-      const labelWidth = measure(item.agent.label, FONT_PILL);
-      const boxW = Math.min(
-        520,
-        Math.max(
-          chain.width + 2 * (BOX_PAD + BOX_EDGE),
-          labelWidth + 2 * (BOX_PAD + BOX_EDGE) + 16,
-        ),
+      const labelWidth = measure(item.agent.label, FONT_AGENT_LABEL);
+      const boxW = Math.max(
+        chain.width + 2 * (BOX_PAD + BOX_EDGE),
+        labelWidth + 2 * (BOX_PAD + BOX_EDGE) + 16,
       );
       const visualW = Math.max(boxW, labelWidth + 60);
       const node: AgentLayoutNode = {

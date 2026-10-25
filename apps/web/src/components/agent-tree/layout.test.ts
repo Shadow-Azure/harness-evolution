@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { SessionAgent, SessionTree } from "@harness/contracts";
 
-import { demoNestedTree } from "./fixtures/demo-nested";
+import { demoCoreTree, demoNestedTree } from "./fixtures/demo-nested";
 import {
   AGENT_BOX_H,
+  BOX_EDGE,
+  BOX_PAD,
+  FONT_AGENT_LABEL,
   INDENT,
   MIN_STEP,
   ROW_STEP,
@@ -149,6 +152,136 @@ describe("agent-tree graph layout", () => {
     expect(
       clusterByX([100, 120, 157], (value) => value).map((cluster) => cluster),
     ).toEqual([[100, 120], [157]]);
+  });
+
+  it("does not attach an unknown ordinary child to a workflow trigger", () => {
+    const tree: SessionTree = {
+      sessionId: "unknown-tool",
+      agents: [
+        agent({
+          events: [
+            {
+              kind: "workflow",
+              line: 4,
+              messageOffset: 4,
+              name: "workflow",
+              desc: "workflow",
+              toolUseId: "workflow-tool",
+            },
+          ],
+        }),
+        agent({
+          agentId: "ordinary",
+          parentAgentId: "main",
+          kind: "subagent",
+          agentType: "general-purpose",
+          label: "ordinary",
+          toolUseId: "unknown-tool",
+        }),
+      ],
+      badCases: [],
+    };
+
+    const result = buildGraph(tree, new Set(["main"]), measure);
+    const edge = result.edges.find((item) => item.target === "ordinary");
+
+    expect(result.diagnostics.map((item) => item.code)).toContain(
+      "MISSING_PARENT_EVENT",
+    );
+    expect(edge?.sourceHandle).not.toBe("h0");
+  });
+
+  it("expands wide trigger chains instead of placing handles outside the node", () => {
+    const childEvents = Array.from({ length: 20 }, (_, index) => ({
+      kind: "skill" as const,
+      line: index + 1,
+      messageOffset: index + 1,
+      name: `long-trigger-${index}`,
+      desc: `trigger-${index}`,
+      toolUseId: `skill-${index}`,
+    }));
+    const tree: SessionTree = {
+      sessionId: "wide-chain",
+      agents: [
+        agent({
+          events: [
+            {
+              kind: "agent",
+              line: 1,
+              messageOffset: 1,
+              name: "wide",
+              desc: "wide",
+              toolUseId: "wide-tool",
+            },
+          ],
+        }),
+        agent({
+          agentId: "wide",
+          parentAgentId: "main",
+          kind: "subagent",
+          label: "wide",
+          lines: 40,
+          messagesCount: 20,
+          toolUseId: "wide-tool",
+          events: childEvents,
+        }),
+      ],
+      badCases: [],
+    };
+    const result = buildGraph(tree, new Set(["main"]), measure);
+    const wide = nodeMap(result).get("wide")!;
+    const lastOffset = Math.max(...wide.data.chain.offsets);
+
+    expect(wide.data.boxW).toBeGreaterThanOrEqual(
+      wide.data.chain.width + 2 * (BOX_PAD + BOX_EDGE),
+    );
+    expect(lastOffset + BOX_PAD + BOX_EDGE).toBeLessThanOrEqual(wide.data.boxW);
+  });
+
+  it("keeps every core-demo trigger connected to a rendered Agent", () => {
+    const main = demoCoreTree.agents.find((item) => item.agentId === "main")!;
+    const renderedToolIds = new Set(
+      demoCoreTree.agents
+        .filter((item) => item.kind !== "main")
+        .map((item) => item.toolUseId)
+        .filter(Boolean),
+    );
+
+    expect(
+      main.events.filter((event) => event.kind === "agent" || event.kind === "workflow"),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toolUseId: "tool-a" }),
+        expect.objectContaining({ toolUseId: "tool-b" }),
+      ]),
+    );
+    for (const event of main.events) {
+      if (event.kind === "agent" || event.kind === "workflow") {
+        expect(renderedToolIds.has(event.toolUseId)).toBe(true);
+      }
+    }
+  });
+
+  it("records the collapse branch as an obstacle for finding placement", () => {
+    const collapsed = buildGraph(demoNestedTree, new Set(["agent-a"]), measure);
+
+    expect(collapsed.edges.some((edge) => edge.target === "main-group")).toBe(true);
+    expect(
+      collapsed.branchSegments.some((segment) => segment.target === "main-group"),
+    ).toBe(true);
+  });
+
+  it("measures Agent labels with the rendered 11px font", () => {
+    const fonts: string[] = [];
+    const recordingMeasure = (text: string, font: string) => {
+      fonts.push(font);
+      return text.length * 7;
+    };
+
+    buildGraph(demoCoreTree, new Set(["main"]), recordingMeasure);
+
+    expect(FONT_AGENT_LABEL.startsWith("11px")).toBe(true);
+    expect(fonts).toContain(FONT_AGENT_LABEL);
   });
 
   it("does not mutate input Agents while reconciling missing parent edges", () => {

@@ -169,6 +169,9 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
         return {
           nodes: measured,
           edges: document.querySelectorAll(".vue-flow__edge-path").length,
+          markerEnds: [...document.querySelectorAll(".vue-flow__edge-path")].map(
+            (edge) => edge.getAttribute("marker-end"),
+          ),
           height: tree.getBoundingClientRect().height,
           controls: Boolean(document.querySelector(".vue-flow__controls")),
           controlButtons: controls.map((button) => {
@@ -202,6 +205,7 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
 
     assert.equal(result.nodes.length, 4);
     assert.equal(result.edges, 3);
+    assert.equal(result.markerEnds.every(Boolean), true, JSON.stringify(result));
     assert.ok(Math.abs(result.height - 720) < 1, JSON.stringify(result));
     assert.equal(result.controls, true);
     assert.ok(result.controlButtons.length >= 3, JSON.stringify(result));
@@ -217,6 +221,71 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     assert.ok(main.y < nested.y && nested.y < child.y, JSON.stringify({ main, nested, child }));
     assert.notEqual(main.border, nested.border);
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `history.pushState({}, "", "/agent-tree-demo?variant=large");
+        window.dispatchEvent(new PopStateEvent("popstate"))`,
+    });
+    const loadedLarge = await waitForDocument(
+      page.session,
+      `location.href.includes("variant=large") && document.readyState !== "loading"
+        ? {
+            href: location.href,
+            title: document.title,
+            body: document.body.innerText.slice(0, 300),
+            nodes: document.querySelectorAll(".vue-flow__node").length
+          }
+        : null`,
+      "large demo document",
+    );
+    const collapsed = await waitForDocument(
+      page.session,
+      `(() => {
+        const nodes = [...document.querySelectorAll(".vue-flow__node")];
+        const collapse = document.querySelector(".rf-agent.collapse");
+        if (!nodes.length) return null;
+        return {
+          count: nodes.length,
+          hasCollapse: Boolean(collapse),
+          label: collapse?.textContent?.trim() ?? "",
+          path: location.pathname + location.search
+        };
+      })()`,
+      "collapsed large demo",
+    );
+    assert.equal(loadedLarge.href.includes("variant=large"), true, JSON.stringify(loadedLarge));
+    assert.equal(collapsed.count, 2, JSON.stringify(collapsed));
+    assert.equal(collapsed.hasCollapse, true, JSON.stringify(collapsed));
+    assert.match(collapsed.label, /个子 agent/);
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector(".rf-agent.collapse").click()`,
+    });
+    const expanded = await waitForDocument(
+      page.session,
+      `document.querySelectorAll(".vue-flow__node").length === 13`,
+      "expanded large demo",
+    );
+    assert.equal(expanded, true);
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    const narrow = await waitForDocument(
+      page.session,
+      `(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        treeHeight: document.querySelector("[data-testid='agent-tree']")?.getBoundingClientRect().height,
+        controls: document.querySelectorAll(".vue-flow__controls-button").length
+      }))()`,
+      "narrow agent tree",
+    );
+    assert.equal(narrow.scrollWidth <= narrow.clientWidth, true, JSON.stringify(narrow));
+    assert.ok(narrow.treeHeight >= 300, JSON.stringify(narrow));
+    assert.ok(narrow.controls >= 3, JSON.stringify(narrow));
 
     if (process.env.HE_E2E_ARTIFACT_DIR) {
       const capture = await page.session.send("Page.captureScreenshot", {

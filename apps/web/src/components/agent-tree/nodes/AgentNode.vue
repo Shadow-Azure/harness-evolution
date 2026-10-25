@@ -151,6 +151,7 @@ const sourceHandles = computed(() =>
 .rf-chain {
   display: flex;
   align-items: center;
+  width: 100%;
   min-height: 22px;
   overflow: hidden;
 }
@@ -165,6 +166,7 @@ const sourceHandles = computed(() =>
 .rf-cnode {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   height: 20px;
   box-sizing: border-box;
   padding: 0 9px;

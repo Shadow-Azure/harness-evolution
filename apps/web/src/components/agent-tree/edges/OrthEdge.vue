@@ -24,13 +24,37 @@ const path = computed(() =>
     trunkX: props.data?.trunkX,
   }),
 );
+
+const markerId = computed(
+  () => `agent-tree-arrow-${props.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`,
+);
+const markerEnd = computed(() => `url(#${markerId.value})`);
 </script>
 
 <template>
-  <path
-    :id="id"
-    class="vue-flow__edge-path"
-    :d="path"
-    :style="style"
-  />
+  <g>
+    <defs>
+      <marker
+        :id="markerId"
+        markerWidth="8"
+        markerHeight="8"
+        refX="7"
+        refY="4"
+        orient="auto"
+        markerUnits="strokeWidth"
+      >
+        <path
+          d="M 0 0 L 8 4 L 0 8 z"
+          fill="var(--graph-branch)"
+        />
+      </marker>
+    </defs>
+    <path
+      :id="id"
+      class="vue-flow__edge-path"
+      :d="path"
+      :marker-end="markerEnd"
+      :style="style"
+    />
+  </g>
 </template>
