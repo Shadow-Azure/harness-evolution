@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -161,6 +162,11 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _absolute_path_without_resolving_symlinks(path: Path) -> Path:
+    """Make a path absolute while preserving its final symlink boundary."""
+    return Path(os.path.abspath(path))
+
+
 def main(argv: list[str] | None = None) -> int:
     """Execute a CLI command and return a process-compatible status."""
     args = _parser().parse_args(argv)
@@ -179,13 +185,19 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "import-local":
             result = asdict(
                 asyncio.run(
-                    import_local_sessions(Settings(), args.sessions_dir.resolve()),
+                    import_local_sessions(
+                        Settings(),
+                        _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                    ),
                 ),
             )
         elif args.command == "verify-local":
             result = asdict(
                 asyncio.run(
-                    verify_local_sessions(Settings(), args.sessions_dir.resolve()),
+                    verify_local_sessions(
+                        Settings(),
+                        _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                    ),
                 ),
             )
         else:

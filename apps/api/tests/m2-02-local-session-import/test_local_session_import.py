@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -431,6 +432,190 @@ async def test_import_separates_source_write_and_discovery_times(
     assert repeated_received_at == received_at
 
 
+async def test_import_normalizes_source_timestamps_for_mysql_datetime_precision(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    settings = settings_for(tmp_path)
+    database = tmp_path / "sessions.db"
+
+    await import_local_sessions(settings, source)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            UPDATE trajectory_payloads
+            SET updated_at = strftime('%Y-%m-%d %H:%M:%S', updated_at)
+            """,
+        )
+
+    repeated = await import_local_sessions(settings, source)
+
+    assert repeated.updated_payloads == 0
+    assert repeated.unchanged_payloads == 5
+
+
+def test_scan_accepts_unicode_line_separators_inside_json_strings(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sessions"
+    source.mkdir()
+    record = json.dumps(
+        {
+            "message": "left\u2028middle\u2029right\u0085end",
+            "sessionId": SESSION_A,
+            "type": "assistant",
+        },
+        ensure_ascii=False,
+    )
+    (source / f"{SESSION_A}.jsonl").write_text(f"{record}\n", encoding="utf-8")
+
+    corpus = scan_local_sessions(source)
+
+    assert corpus.jsonl_files == 1
+    assert corpus.payloads[0].line_count == 1
+
+
+def test_scan_uses_composite_root_and_agent_identity(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    shared_agent_id = "shared-provider-agent"
+    write_subagent(source, SESSION_A, shared_agent_id)
+    write_subagent(source, SESSION_B, shared_agent_id)
+
+    corpus = scan_local_sessions(source)
+
+    matching = [payload for payload in corpus.payloads if payload.agent_id == shared_agent_id]
+    assert {payload.root_session_id for payload in matching} == {SESSION_A, SESSION_B}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("agentType", "a" * 65),
+        ("model", "m" * 65),
+        ("taskKind", "t" * 33),
+    ],
+)
+def test_scan_rejects_metadata_beyond_downstream_column_limits(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    meta: dict[str, object] = {
+        "agentType": "reviewer",
+        "description": "Synthetic reviewer",
+        "model": "test-model",
+        "spawnDepth": 1,
+    }
+    meta[field] = value
+    write_subagent(source, SESSION_A, "bounded-meta", meta=meta)
+
+    with pytest.raises(LocalSessionSourceError, match="closed schema"):
+        scan_local_sessions(source)
+
+
+def test_cli_rejects_source_root_symlink_before_resolving_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    alias = tmp_path / "sessions-link"
+    alias.symlink_to(source, target_is_directory=True)
+    database = tmp_path / "sessions.db"
+    monkeypatch.setenv("HE_DB_DIALECT", "sqlite")
+    monkeypatch.setenv("HE_DB_URL", f"sqlite+aiosqlite:///{database}")
+    monkeypatch.setenv("HE_JWT_SECRET", "local-session-import-test-secret")
+    monkeypatch.setenv("HE_PHASE", "demo")
+
+    assert cli_main(["import-local", "--sessions-dir", str(alias)]) == 2
+    captured = capsys.readouterr()
+    assert "must not be a symlink" in captured.err
+    assert str(alias) not in captured.err
+    assert not database.exists()
+
+
+def test_cli_verify_rejects_source_root_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    settings = settings_for(tmp_path)
+    asyncio.run(import_local_sessions(settings, source))
+    alias = tmp_path / "sessions-link"
+    alias.symlink_to(source, target_is_directory=True)
+    monkeypatch.setenv("HE_DB_DIALECT", "sqlite")
+    assert settings.db_url is not None
+    monkeypatch.setenv("HE_DB_URL", settings.db_url)
+    monkeypatch.setenv("HE_JWT_SECRET", "local-session-import-test-secret")
+    monkeypatch.setenv("HE_PHASE", "demo")
+
+    assert cli_main(["verify-local", "--sessions-dir", str(alias)]) == 2
+    captured = capsys.readouterr()
+    assert "must not be a symlink" in captured.err
+    assert str(alias) not in captured.err
+
+
+async def test_verify_allows_unrelated_payloads_in_shared_database(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    settings = settings_for(tmp_path)
+    await import_local_sessions(settings, source)
+    database = tmp_path / "sessions.db"
+    digest = "0" * 64
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            INSERT INTO trajectory_payloads (
+                root_session_id, agent_id, agent_kind, payload, agent_meta,
+                content_hash, line_count, source_type, updated_at
+            ) VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+            """,
+            (
+                "fixture-root",
+                "fixture-agent",
+                "main",
+                "{}\n",
+                digest,
+                1,
+                "fixture",
+                "2026-01-01 00:00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO source_records (
+                root_session_id, agent_id, kind, source_type, line_count,
+                received_at, processed_at, processed_hash, parser_version,
+                last_sync_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL)
+            """,
+            (
+                "fixture-root",
+                "fixture-agent",
+                "main",
+                "fixture",
+                1,
+                "2026-01-01 00:00:00",
+            ),
+        )
+
+    verified = await verify_local_sessions(settings, source)
+
+    assert verified.payload_rows == 5
+    assert verified.source_record_rows == 5
+
+
 async def test_import_refuses_production_before_creating_database(
     tmp_path: Path,
 ) -> None:
@@ -459,7 +644,10 @@ async def test_verify_reports_database_mismatch(tmp_path: Path) -> None:
             (SESSION_B, SESSION_B),
         )
 
-    with pytest.raises(LocalSessionSourceError, match="payload row count mismatch"):
+    with pytest.raises(
+        LocalSessionSourceError,
+        match="payload identities missing from database: 1",
+    ):
         await verify_local_sessions(settings, source)
 
 

@@ -18,8 +18,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.config import ServicePhase, Settings
 from app.db.crud.local_sessions import (
     LocalImportWriteResult,
-    count_local_session_rows,
     list_local_session_keys,
+    list_local_source_record_keys,
     write_local_payloads,
 )
 from app.db.factory import create_database
@@ -46,17 +46,17 @@ class ClaudeSubagentMeta(BaseModel):
         populate_by_name=True,
     )
 
-    agent_type: str = Field(min_length=1, max_length=128)
+    agent_type: str = Field(min_length=1, max_length=64)
     color: str | None = Field(default=None, max_length=64)
     description: str = Field(min_length=1, max_length=4_000)
-    model: str | None = Field(default=None, max_length=128)
+    model: str | None = Field(default=None, max_length=64)
     name: str | None = Field(default=None, max_length=255)
     permission_mode: str | None = Field(default=None, max_length=64)
     plan_mode_required: bool | None = None
     request_non_interactive: bool | None = None
     request_shape: str | None = Field(default=None, max_length=128)
     spawn_depth: int = Field(ge=0)
-    task_kind: str | None = Field(default=None, max_length=64)
+    task_kind: str | None = Field(default=None, max_length=32)
     team_name: str | None = Field(default=None, max_length=128)
     tool_use_id: str | None = Field(default=None, max_length=128)
 
@@ -137,6 +137,17 @@ def _read_json_object(path: Path, *, label: str) -> dict[str, object]:
     return value
 
 
+def _jsonl_lines(content: str, *, label: str) -> list[str]:
+    """Split JSONL framing only on LF, preserving Unicode JSON string content."""
+    lines = content.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    lines = [line[:-1] if line.endswith("\r") else line for line in lines]
+    if not lines or any(not line.strip() for line in lines):
+        raise LocalSessionSourceError(f"{label} must contain non-empty JSONL lines")
+    return lines
+
+
 def _read_payload(path: Path, *, label: str) -> tuple[str, str, int, int]:
     """Return raw text, digest, non-empty line count, and byte size."""
     try:
@@ -151,9 +162,7 @@ def _read_payload(path: Path, *, label: str) -> tuple[str, str, int, int]:
         content = data.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise LocalSessionSourceError(f"{label} is not UTF-8") from exc
-    lines = content.splitlines()
-    if not lines or any(not line.strip() for line in lines):
-        raise LocalSessionSourceError(f"{label} must contain non-empty JSONL lines")
+    lines = _jsonl_lines(content, label=label)
     return content, hashlib.sha256(data).hexdigest(), len(lines), len(data)
 
 
@@ -161,7 +170,7 @@ def _jsonl_objects(path: Path, *, label: str) -> tuple[list[dict[str, object]], 
     """Parse all JSONL objects while preserving raw text for storage."""
     content, _digest, _count, _size = _read_payload(path, label=label)
     values: list[dict[str, object]] = []
-    for line in content.splitlines():
+    for line in _jsonl_lines(content, label=label):
         try:
             value = json.loads(line, object_pairs_hook=_reject_duplicate_json_keys)
         except (json.JSONDecodeError, LocalSessionSourceError) as exc:
@@ -178,7 +187,7 @@ def _source_updated_at(path: Path) -> datetime:
         modified = path.stat().st_mtime
     except OSError as exc:
         raise LocalSessionSourceError("local session timestamp could not be read") from exc
-    return as_shanghai(datetime.fromtimestamp(modified, tz=UTC))
+    return as_shanghai(datetime.fromtimestamp(modified, tz=UTC)).replace(microsecond=0)
 
 
 def _validate_root_payload(
@@ -203,7 +212,7 @@ def _validate_root_payload(
         agent_kind="main",
         content=content,
         content_hash=hashlib.sha256(data).hexdigest(),
-        line_count=len(content.splitlines()),
+        line_count=len(_jsonl_lines(content, label="root transcript")),
         agent_meta=None,
         source_updated_at=_source_updated_at(path),
         discovered_at=discovered_at,
@@ -243,15 +252,15 @@ def _validate_subagent_pair(
         agent_kind="subagent",
         content=content,
         content_hash=hashlib.sha256(data).hexdigest(),
-        line_count=len(content.splitlines()),
+        line_count=len(_jsonl_lines(content, label="subagent transcript")),
         agent_meta=meta.model_dump(by_alias=True, exclude_none=True),
         source_updated_at=_source_updated_at(payload_path),
         discovered_at=discovered_at,
     )
 
 
-def _ensure_unique(values: Iterable[str], label: str) -> None:
-    seen: set[str] = set()
+def _ensure_unique(values: Iterable[object], label: str) -> None:
+    seen: set[object] = set()
     for value in values:
         if value in seen:
             raise LocalSessionSourceError(f"duplicate {label}")
@@ -338,7 +347,10 @@ def scan_local_sessions(source_root: Path) -> LocalSessionCorpus:
             subagent_count += 1
             total_bytes += len(payload.content.encode("utf-8"))
 
-    _ensure_unique((payload.agent_id for payload in payloads), "agent id")
+    _ensure_unique(
+        ((payload.root_session_id, payload.agent_id) for payload in payloads),
+        "payload identity",
+    )
     if total_bytes > MAX_LOCAL_SOURCE_BYTES:
         raise LocalSessionSourceError("session source exceeds the total size limit")
     payloads.sort(
@@ -397,38 +409,35 @@ async def verify_local_sessions(
     settings: Settings,
     source_root: Path,
 ) -> LocalVerificationResult:
-    """Prove that database identities exactly match the validated source tree."""
+    """Prove that every validated source identity exists in the database."""
     _ensure_local_environment(settings)
     corpus = scan_local_sessions(source_root)
     database = create_database(settings)
     await database.start()
     try:
         try:
-            payload_rows, source_record_rows = await count_local_session_rows(database)
-            database_keys = await list_local_session_keys(database)
+            payload_keys = await list_local_session_keys(database)
+            source_keys = await list_local_source_record_keys(database)
         except SQLAlchemyError as exc:
             raise LocalSessionSourceError(
                 "local session database is not initialized",
             ) from exc
         expected_keys = {(payload.root_session_id, payload.agent_id) for payload in corpus.payloads}
-        if payload_rows != len(corpus.payloads):
+        if missing := expected_keys - payload_keys:
             raise LocalSessionSourceError(
-                f"payload row count mismatch: expected {len(corpus.payloads)}, got {payload_rows}",
+                f"payload identities missing from database: {len(missing)}",
             )
-        if source_record_rows != len(corpus.payloads):
+        if missing := expected_keys - source_keys:
             raise LocalSessionSourceError(
-                "source record row count mismatch: "
-                f"expected {len(corpus.payloads)}, got {source_record_rows}",
+                f"source-record identities missing from database: {len(missing)}",
             )
-        if database_keys != expected_keys:
-            raise LocalSessionSourceError("database identities do not match local sessions")
         return LocalVerificationResult(
             status="verified",
             root_sessions=corpus.root_sessions,
             jsonl_files=corpus.jsonl_files,
             subagents=corpus.subagents,
-            payload_rows=payload_rows,
-            source_record_rows=source_record_rows,
+            payload_rows=len(expected_keys),
+            source_record_rows=len(expected_keys),
         )
     finally:
         await database.dispose()

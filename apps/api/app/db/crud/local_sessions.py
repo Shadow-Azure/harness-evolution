@@ -29,7 +29,7 @@ class LocalImportWriteResult:
 def _comparable(value: object) -> object:
     """Normalize database datetime reflection for stable comparisons."""
     if isinstance(value, datetime):
-        return value.replace(tzinfo=None)
+        return value.replace(tzinfo=None, microsecond=0)
     return value
 
 
@@ -132,14 +132,6 @@ async def write_local_payloads(
     )
 
 
-async def count_local_session_rows(database: Database) -> tuple[int, int]:
-    """Return payload and processing-index row counts."""
-    async with database.session() as session:
-        payload_rows = len((await session.execute(select(trajectory_payloads))).all())
-        source_rows = len((await session.execute(select(source_records))).all())
-    return payload_rows, source_rows
-
-
 async def list_local_session_keys(database: Database) -> set[tuple[str, str]]:
     """Return all persisted payload identities."""
     async with database.session() as session:
@@ -148,6 +140,20 @@ async def list_local_session_keys(database: Database) -> set[tuple[str, str]]:
                 select(
                     trajectory_payloads.c.root_session_id,
                     trajectory_payloads.c.agent_id,
+                ),
+            )
+        ).all()
+    return {(str(row[0]), str(row[1])) for row in rows}
+
+
+async def list_local_source_record_keys(database: Database) -> set[tuple[str, str]]:
+    """Return all processing-index identities."""
+    async with database.session() as session:
+        rows = (
+            await session.execute(
+                select(
+                    source_records.c.root_session_id,
+                    source_records.c.agent_id,
                 ),
             )
         ).all()
