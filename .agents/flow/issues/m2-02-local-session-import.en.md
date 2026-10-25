@@ -9,7 +9,7 @@ milestone: m2
 depends:
   - m2-01
 priority: P0
-status: in-progress
+status: done
 scope:
   - AGENTS.md
   - apps/api/**
