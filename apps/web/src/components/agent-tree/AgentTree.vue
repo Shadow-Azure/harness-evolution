@@ -33,10 +33,12 @@ const props = withDefaults(
   defineProps<{
     tree: SessionTree;
     expanded?: string[];
+    activeAgentId?: string | null;
     height?: string;
   }>(),
   {
     expanded: () => [],
+    activeAgentId: null,
     height: "720px",
   },
 );
@@ -87,7 +89,18 @@ const graph = computed(() =>
     measureText: browserMeasure,
   }),
 );
-const { fitView, zoomIn, zoomOut } = useVueFlow();
+const renderedNodes = computed(() =>
+  graph.value.nodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      active: Boolean(
+        props.activeAgentId && node.data.agentId === props.activeAgentId,
+      ),
+    },
+  })),
+);
+const { fitView, getViewport, setCenter, zoomIn, zoomOut } = useVueFlow();
 const treeRoot = ref<HTMLElement | null>(null);
 let fitAnimationFrame: number | undefined;
 let fitRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -176,8 +189,29 @@ function onNodeClick(event: NodeMouseEvent) {
   }
   if (node.data.agentId) {
     emit("node-select", node.data.agentId);
+    locateAgent(node.data.agentId);
   }
 }
+
+/**
+ * Center the viewport on one rendered Agent.
+ * @param agentId Stable Agent identifier.
+ * @returns Nothing.
+ */
+function locateAgent(agentId: string) {
+  const node = graph.value.nodes.find(
+    (candidate) => candidate.data.agentId === agentId,
+  );
+  if (!node) return;
+  const zoom = Math.max(getViewport().zoom, 0.85);
+  void setCenter(
+    node.position.x + node.data.visualW / 2,
+    node.position.y + 40,
+    { zoom, duration: 260 },
+  );
+}
+
+defineExpose({ fitView, locateAgent, zoomIn, zoomOut });
 
 function toggleCollapse(node: AgentLayoutNode) {
   const agentId = node.data.parentForCollapse ?? node.data.parentAgentId;
@@ -205,7 +239,7 @@ function onNodesInitialized() {
     aria-label="Agent 执行流图"
   >
     <VueFlow
-      :nodes="graph.nodes"
+      :nodes="renderedNodes"
       :edges="graph.edges"
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
@@ -334,9 +368,13 @@ function onNodesInitialized() {
 
 .diagnostics {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  top: 10px;
+  left: 10px;
   margin: 0;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--orange) 28%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--orange) 8%, var(--bg-card));
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10px;

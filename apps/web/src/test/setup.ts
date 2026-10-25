@@ -12,3 +12,21 @@ config.global.components = {
   ...config.global.components,
   ...elementPlusComponents,
 };
+
+/** Minimal jsdom observer used by Vue Flow layout measurement. */
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+Object.defineProperty(globalThis, "ResizeObserver", {
+  configurable: true,
+  value: ResizeObserverMock,
+});
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    value: ResizeObserverMock,
+  });
+}

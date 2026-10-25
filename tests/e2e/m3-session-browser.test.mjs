@@ -173,11 +173,8 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
           browserRadius: getComputedStyle(document.querySelector(".session-browser")).borderRadius,
           filterLabels: [...document.querySelectorAll(".filter-label")].map((node) => node.textContent.trim()),
           ctaInHeader: Boolean(document.querySelector(".overview-head [data-testid='detail-cta']")),
-          placeholderHeight: document.querySelector("[data-testid='tree-placeholder']").getBoundingClientRect().height,
           cardBackground: getComputedStyle(card).backgroundColor,
           bodyBackground: getComputedStyle(document.body).backgroundColor,
-          treeRequests: performance.getEntriesByType("resource")
-            .filter((entry) => entry.name.endsWith("/tree")).length,
         };
       })()`,
       "four session cards",
@@ -188,12 +185,99 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     assert.ok(Math.abs(initial.sidebarWidth - 360) < 1, JSON.stringify(initial));
     assert.equal(initial.cardBackground, "rgb(255, 255, 255)");
     assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
-    assert.equal(initial.treeRequests, 0);
     assert.ok(initial.browserWidth >= 1390, JSON.stringify(initial));
     assert.equal(initial.browserRadius, "0px");
     assert.deepEqual(initial.filterLabels, ["状态", "排序"]);
     assert.equal(initial.ctaInHeader, true);
-    assert.ok(Math.abs(initial.placeholderHeight - 720) < 1, JSON.stringify(initial));
+
+    const initialTree = await waitForDocument(
+      page.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const nodes = tree?.querySelectorAll(".vue-flow__node").length ?? 0;
+        if (!tree || nodes === 0) return null;
+        return {
+          height: tree.getBoundingClientRect().height,
+          nodes,
+          legend: (() => {
+            const node = document.querySelector(".tree-legend");
+            if (!node) return null;
+            const box = node.getBoundingClientRect();
+            const treeBox = tree.getBoundingClientRect();
+            return {
+              bottomGap: treeBox.bottom - box.bottom,
+              leftGap: box.left - treeBox.left,
+            };
+          })(),
+        };
+      })()`,
+      "production Agent tree",
+    );
+    assert.ok(Math.abs(initialTree.height - 720) < 1, JSON.stringify(initialTree));
+    assert.ok(initialTree.nodes > 0, JSON.stringify(initialTree));
+    assert.ok(initialTree.legend, JSON.stringify(initialTree));
+    assert.ok(initialTree.legend.leftGap >= 0 && initialTree.legend.leftGap <= 24, JSON.stringify(initialTree));
+    assert.ok(initialTree.legend.bottomGap >= 0 && initialTree.legend.bottomGap <= 24, JSON.stringify(initialTree));
+
+    const transformBefore = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const node = document.querySelector("[data-testid='agent-tree'] .rf-agent.sub");
+        node.focus();
+        return getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform;
+      })()`,
+      returnByValue: true,
+    });
+    await page.session.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "Enter",
+      code: "Enter",
+      windowsVirtualKeyCode: 13,
+    });
+    await page.session.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "Enter",
+      code: "Enter",
+      windowsVirtualKeyCode: 13,
+    });
+    const selectedNode = await waitForDocument(
+      page.session,
+      `(() => {
+        const active = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+          .filter((node) => node.getAttribute("aria-pressed") === "true");
+        const transform = getComputedStyle(document.querySelector(".vue-flow__transformationpane")).transform;
+        return active.length === 1
+          ? {
+              border: getComputedStyle(document.querySelector("[data-testid='agent-tree']")).borderTopWidth,
+              label: active[0].getAttribute("aria-label"),
+              transform,
+            }
+          : null;
+      })()`,
+      "selected Agent node",
+    );
+    assert.ok(selectedNode.label, JSON.stringify(selectedNode));
+    assert.notEqual(selectedNode.transform, transformBefore.result.value, JSON.stringify(selectedNode));
+    assert.equal(selectedNode.border, "0px", JSON.stringify(selectedNode));
+
+    const treeCounts = [];
+    for (let index = 0; index < initial.cards; index += 1) {
+      await page.session.send("Runtime.evaluate", {
+        expression: `document.querySelectorAll("[data-testid='session-card']")[${index}].click()`,
+      });
+      const tree = await waitForDocument(
+        page.session,
+        `(() => {
+          const selected = document.querySelector("[data-testid='session-card'][data-selected='true']");
+          const nodes = document.querySelectorAll("[data-testid='agent-tree'] .vue-flow__node").length;
+          return selected && nodes > 0 ? { path: location.pathname, nodes } : null;
+        })()`,
+        `Agent tree for session ${index + 1}`,
+      );
+      assert.match(tree.path, /^\/sessions\/.+/);
+      treeCounts.push(tree.nodes);
+    }
+    assert.equal(treeCounts.length, 4);
+    assert.equal(treeCounts.reduce((sum, count) => sum + count, 0), 8);
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,

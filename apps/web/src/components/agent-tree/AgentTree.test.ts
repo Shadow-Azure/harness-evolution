@@ -6,6 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { demoNestedTree } from "./fixtures/demo-nested";
 
+const { fitViewMock, setCenterMock } = vi.hoisted(() => ({
+  fitViewMock: vi.fn(),
+  setCenterMock: vi.fn(),
+}));
+
 vi.mock("@vue-flow/core", async () => {
   const { defineComponent, h } = await import("vue");
   return {
@@ -24,7 +29,13 @@ vi.mock("@vue-flow/core", async () => {
     }),
     Handle: defineComponent({ setup: () => () => h("div") }),
     Position: { Left: "left", Bottom: "bottom" },
-    useVueFlow: () => ({ fitView: vi.fn() }),
+    useVueFlow: () => ({
+      fitView: fitViewMock,
+      getViewport: () => ({ x: 0, y: 0, zoom: 0.7 }),
+      setCenter: setCenterMock,
+      zoomIn: vi.fn(),
+      zoomOut: vi.fn(),
+    }),
   };
 });
 
@@ -86,5 +97,27 @@ describe("AgentTree", () => {
     expect(wrapper.get('[aria-label="放大"]').attributes("title")).toBe("放大");
     expect(wrapper.get('[aria-label="缩小"]').attributes("title")).toBe("缩小");
     expect(wrapper.get('[aria-label="适应画布"]').attributes("title")).toBe("适应画布");
+  });
+
+  it("locates a selected Agent through the viewport", () => {
+    setCenterMock.mockClear();
+    const wrapper = mount(AgentTree, {
+      props: { tree: demoNestedTree, expanded: ["main"] },
+    });
+
+    wrapper.getComponent({ name: "VueFlow" }).vm.$emit("node-click", {
+      node: {
+        id: "main",
+        type: "agent",
+        data: { agentId: "main" },
+      },
+    });
+
+    expect(wrapper.emitted("node-select")).toEqual([["main"]]);
+    expect(setCenterMock).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ zoom: 0.85, duration: 260 }),
+    );
   });
 });

@@ -12,7 +12,7 @@ Session tree 已由后端返回扁平 Agent、触发事件与显式 bad-case anc
 
 `components/agent-tree/layout.ts` 只消费 `SessionTree`，输出与框架无关的节点、正交通道、分支竖段和 bad-case anchor 描述。布局先复制输入 Agent 与事件，父边修补不会改写调用方数据；重复 Agent 或 main 身份直接 fail-closed，不生成部分重复图。触发链的 `×N` 使用 assistant `messageOffset` 间隔，节点条宽下限由 JSONL 行数按比例计算，文本宽度由注入函数按实际 11px 标签字体提供。触发链过长时节点随链扩展，source handle 与药丸共用最终坐标，不把 handle 留在截断容器外。未知普通父调用只降级到 main 并补合成 agent 事件，不会借用 Workflow。兄弟触发仅在触发点 X 距离不超过 24px 时共用 trunk，超过八个子节点生成 collapse 节点，collapse 竖段也进入问题卡侧向碰撞集合。
 
-问题卡在 m3-02 只计算 self-skill、self-agent、discovery、fallback 的锚点，不生成 finding 节点。最小 `AgentTree.vue` 是纯布局结果的 Vue Flow 薄渲染器，不抓取 Session 数据；开发环境专用的隐藏 `/agent-tree-demo` 默认显示 `demo-nested` 的四节点核心树，`?variant=large` 仅用于折叠与 trunk 的真实交互验证，生产 Session 接线仍由 m3-03 完成。画布在节点集合或容器尺寸变化后等待 DOM 测量完成并重新执行 `fitView`，所以窄屏展开大图仍保持全部节点可见；清理时同时取消待执行帧、定时器与 ResizeObserver。画布控制按钮复用 Vue Flow 的官方 `ControlButton` 与样式，并由本组件提供明确的放大、缩小和适应画布标签；父边使用闭合箭头。Vue Flow 继续留在独立动态 chunk。
+问题卡在 m3-02 只计算 self-skill、self-agent、discovery、fallback 的锚点，不生成 finding 节点。最小 `AgentTree.vue` 是纯布局结果的 Vue Flow 薄渲染器，不抓取 Session 数据；开发环境专用的隐藏 `/agent-tree-demo` 默认显示 `demo-nested` 的四节点核心树，`?variant=large` 仅用于折叠与 trunk 的真实交互验证。m3-03 的生产 Session 概览通过 `/api/sessions/{sid}/tree` 独立读取树数据，在数据到达后才异步挂载 `AgentTree.vue`；树加载、空态、失败与重试不影响列表和概要，节点点击更新当前 Agent 焦点，分支全部展开后可从面板收起。画布在节点集合或容器尺寸变化后等待 DOM 测量完成并重新执行 `fitView`，所以窄屏展开大图仍保持全部节点可见；清理时同时取消待执行帧、定时器与 ResizeObserver。画布控制按钮复用 Vue Flow 的官方 `ControlButton` 与样式，并由本组件提供明确的放大、缩小和适应画布标签；父边使用闭合箭头。Vue Flow 继续留在独立动态 chunk，不进入 `/sessions` 首屏闭包。
 
 ## Alternatives considered
 

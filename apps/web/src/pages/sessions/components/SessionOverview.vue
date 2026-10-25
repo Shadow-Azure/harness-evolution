@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { SessionListItem } from "@harness/contracts";
-import { computed } from "vue";
+import type { SessionListItem, SessionTree } from "@harness/contracts";
+import { computed, defineAsyncComponent } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
@@ -10,6 +10,10 @@ import {
   formatStartedAt,
   formatTokens,
 } from "../../../utils/sessionDisplay";
+
+const AgentTree = defineAsyncComponent(
+  () => import("../../../components/agent-tree/AgentTree.vue"),
+);
 
 const props = defineProps({
   item: {
@@ -24,10 +28,34 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  tree: {
+    type: Object as () => SessionTree | null,
+    default: null,
+  },
+  treeLoading: {
+    type: Boolean,
+    default: false,
+  },
+  treeError: {
+    type: Object as () => Error | null,
+    default: null,
+  },
+  expandedAgentIds: {
+    type: Array as () => string[],
+    default: () => [],
+  },
+  activeAgentId: {
+    type: String as () => string | null,
+    default: null,
+  },
 });
 
 const emit = defineEmits<{
   retry: [];
+  "tree-retry": [];
+  "node-select": [agentId: string];
+  "toggle-expanded": [agentId: string];
+  "collapse-all": [];
 }>();
 
 const statusLabel = computed(() =>
@@ -117,13 +145,62 @@ const stats = computed<Array<{
 
       <StatStrip :items="stats" />
 
-      <div
-        class="tree-placeholder"
-        data-testid="tree-placeholder"
+      <section
+        class="tree-panel"
+        data-testid="agent-tree-container"
+        aria-labelledby="agent-tree-title"
       >
-        <strong>Agent 执行流</strong>
-        <span>执行流图将在后续 issue 接入；当前只展示 Session 概览。</span>
-      </div>
+        <header class="tree-head">
+          <strong id="agent-tree-title">Agent 执行流</strong>
+          <span>横条长度表示轨迹行数，状态记号定位 Skill、Agent 与 Workflow 触发点。</span>
+          <button
+            v-if="expandedAgentIds.length"
+            class="collapse-tree"
+            data-testid="collapse-tree"
+            type="button"
+            @click="emit('collapse-all')"
+          >
+            收起分支
+          </button>
+        </header>
+        <LoadingSkeleton
+          v-if="treeLoading"
+          label="正在读取 Agent 执行流"
+          :rows="4"
+        />
+        <ErrorState
+          v-else-if="treeError"
+          code="SESSION_TREE_UNAVAILABLE"
+          message="执行流读取失败，请重试。"
+          @retry="emit('tree-retry')"
+        />
+        <AgentTree
+          v-else-if="tree"
+          :active-agent-id="activeAgentId"
+          :expanded="expandedAgentIds"
+          :tree="tree"
+          @node-select="emit('node-select', $event)"
+          @toggle-expanded="emit('toggle-expanded', $event)"
+        />
+        <div
+          v-if="tree"
+          class="tree-legend"
+          aria-label="执行流图例"
+        >
+          <span class="skill">◆ Skill</span>
+          <span class="subagent">◆ Subagent</span>
+          <span class="workflow">◆ Workflow</span>
+          <span class="gap">×N 消息</span>
+        </div>
+        <div
+          v-else
+          class="tree-placeholder"
+          data-testid="tree-placeholder"
+        >
+          <strong>Agent 执行流</strong>
+          <span>当前 Session 没有可展示的 Agent 节点。</span>
+        </div>
+      </section>
     </div>
     <div
       v-else
@@ -260,6 +337,88 @@ const stats = computed<Array<{
   opacity: .55;
 }
 
+.tree-panel {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.tree-panel :deep(.agent-tree) {
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-panel);
+}
+
+.tree-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tree-head strong {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.tree-head span {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.tree-legend {
+  position: absolute;
+  bottom: 17px;
+  left: 18px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 96px);
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+  color: var(--text-faint);
+  font-size: 10px;
+  flex-wrap: wrap;
+}
+
+.tree-legend .skill {
+  color: var(--cyan);
+}
+
+.tree-legend .subagent {
+  color: var(--purple);
+}
+
+.tree-legend .workflow {
+  color: var(--orange);
+}
+
+.collapse-tree {
+  margin-left: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.collapse-tree:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
 .tree-placeholder {
   display: grid;
   place-content: center;
@@ -293,8 +452,10 @@ const stats = computed<Array<{
 }
 
 @media (max-width: 860px) {
-  .tree-placeholder {
+  .tree-placeholder,
+  .tree-panel :deep(.agent-tree) {
     min-height: 420px;
   }
+
 }
 </style>

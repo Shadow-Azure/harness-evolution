@@ -25,10 +25,13 @@ const sourceHandles = computed(() =>
 </script>
 
 <template>
-  <article
+  <button
     class="rf-agent"
-    :class="data.kind"
+    :class="[data.kind, { active: data.active }]"
+    :aria-label="data.label"
+    :aria-pressed="Boolean(data.active)"
     :style="{ width: `${data.boxW}px` }"
+    type="button"
   >
     <div
       class="rf-label"
@@ -93,7 +96,7 @@ const sourceHandles = computed(() =>
       class="rf-stub"
       :style="{ left: `${handle.left}px` }"
     />
-  </article>
+  </button>
 </template>
 
 <style scoped>
@@ -105,6 +108,20 @@ const sourceHandles = computed(() =>
   border-radius: 10px;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.rf-agent.active {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 32%, transparent),
+    var(--shadow-card);
+}
+
+.rf-agent:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .rf-agent.root {
