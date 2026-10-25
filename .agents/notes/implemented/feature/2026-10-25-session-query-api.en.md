@@ -10,7 +10,7 @@ Normalized sessions, Agent events, and external issue data need stable read mode
 
 ## Decision
 
-The read-only `sessions` module provides list, overview, and tree queries. Lists read whole-tree aggregate columns from `session_families` and group-count `bad_cases` once for the current page. Overview reuses the same contract. Trees return flat `agents[]` rows with backend-computed labels, event offsets, and problem anchors. Search and ordering run in SQL with session ids as stable tie-breakers.
+The read-only `sessions` module provides list, overview, and tree queries. Lists read whole-tree aggregate columns from `session_families` and group-count `bad_cases` once for the current page. Overview reuses the same contract. A tree read obtains the session, Agents, trigger events, and problems through one database read and returns flat `agents[]` rows with backend-computed labels, event offsets, and problem anchors. Anchor `eventIndex` is the array index in the returned `events[]`; an unknown reporter always degrades to the main node itself. Search and ordering run in SQL with session ids as stable tie-breakers.
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ The read-only `sessions` module provides list, overview, and tree queries. Lists
 
 ## Consequences
 
-List and overview share one Pydantic contract, while tree fields map directly to the prototype execution-flow graph. Issue counts always reflect the read-only external table at query time. Messages and content blocks remain neither stored nor exposed. Missing sessions consistently return `SESSION_NOT_FOUND`, and SQLite plus MySQL tests constrain the query semantics.
+List and overview share one Pydantic contract, while tree fields map directly to the prototype execution-flow graph. The single tree read prevents a concurrent replay from being assembled into a mixed-version response. Issue counts always reflect the read-only external table at query time. Messages and content blocks remain neither stored nor exposed. Missing sessions consistently return `SESSION_NOT_FOUND`, and SQLite plus MySQL tests constrain the query semantics.

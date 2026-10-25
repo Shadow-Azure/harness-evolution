@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-会话列表、概览和树查询由只读 `sessions` 模块统一提供。列表直接读取 `session_families` 的整树聚合列，并在当前页按 `bad_cases` 一次分组计数；概览复用同一契约。树返回扁平 `agents[]`，后端计算 label、事件偏移和问题锚点。搜索与排序在 SQL 中执行，并使用 session id 稳定破平。
+会话列表、概览和树查询由只读 `sessions` 模块统一提供。列表直接读取 `session_families` 的整树聚合列，并在当前页按 `bad_cases` 一次分组计数；概览复用同一契约。树在同一次数据库读取中取得会话、Agent、触发事件和问题，返回扁平 `agents[]`；后端计算 label、事件偏移和问题锚点。锚点 `eventIndex` 是返回 `events[]` 的数组下标，未知上报 Agent 固定降级到主节点自身。搜索与排序在 SQL 中执行，并使用 session id 稳定破平。
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ Status: implemented
 
 ## Consequences
 
-列表和概览共享一个 Pydantic 契约，树字段直接对应原型执行流图。问题计数始终反映查询时的只读外部表。时间线消息和内容块仍不落库、不暴露；缺失会话统一返回 `SESSION_NOT_FOUND`，SQLite 与 MySQL 查询由双库测试约束。
+列表和概览共享一个 Pydantic 契约，树字段直接对应原型执行流图。tree 的单次读取避免与并发 replay 拼出新旧混合版本。问题计数始终反映查询时的只读外部表。时间线消息和内容块仍不落库、不暴露；缺失会话统一返回 `SESSION_NOT_FOUND`，SQLite 与 MySQL 查询由双库测试约束。

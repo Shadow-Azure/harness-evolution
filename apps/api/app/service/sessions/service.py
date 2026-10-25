@@ -131,10 +131,11 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
 
 
 def _last_skill(events: list[EventRecord], name: str) -> int:
-    """Return the last same-name skill event index, or the node fallback."""
-    for event in reversed(events):
+    """Return the returned-array index of the last same-name skill event."""
+    for index in range(len(events) - 1, -1, -1):
+        event = events[index]
         if event.kind == "skill" and event.name == name:
-            return event.event_index
+            return index
     return -1
 
 
@@ -147,8 +148,9 @@ def _bad_case(
 ) -> SessionBadCase:
     """Resolve one externally-owned problem to its prototype anchor semantics."""
     reported_agent_id = case.bad_case_agent_id
+    reporter_found = reported_agent_id is None or reported_agent_id in agents_by_id
     reporter = agents_by_id.get(reported_agent_id or main.id, main)
-    if reported_agent_id is not None and reported_agent_id not in agents_by_id:
+    if not reporter_found:
         logger.warning(
             "bad case reporter Agent was not found",
             extra={"badCaseId": case.bad_case_id, "agentId": reported_agent_id},
@@ -157,7 +159,7 @@ def _bad_case(
     anchor_agent = reporter
     event_index = -1
 
-    if case.object_type == "skill":
+    if case.object_type == "skill" and reporter_found:
         event_index = _last_skill(reporter_events, case.object_name)
         if event_index < 0:
             logger.warning(
@@ -168,9 +170,9 @@ def _bad_case(
         parent = agents_by_id.get(reporter.parent_agent_id)
         if parent is not None and reporter.tool_use_id is not None:
             anchor_agent = parent
-            for event in events_by_agent.get(parent.id, []):
+            for index, event in enumerate(events_by_agent.get(parent.id, [])):
                 if event.kind == "agent" and event.tool_use_id == reporter.tool_use_id:
-                    event_index = event.event_index
+                    event_index = index
                     break
         if event_index < 0:
             anchor_agent = main
@@ -233,20 +235,16 @@ class SessionService:
 
     async def tree(self, session_id: str) -> SessionTree:
         """Return a flat Agent tree with server-computed labels and anchors."""
-        record = await self._repository.get(session_id)
-        if record is None:
+        snapshot = await self._repository.tree_snapshot(session_id)
+        if snapshot is None:
             raise AppError(
                 status_code=404,
                 code=ErrorCode.SESSION_NOT_FOUND,
                 message="session not found",
             )
-        agent_records = await self._repository.list_agents(session_id)
-        event_records = await self._repository.list_events(
-            [agent.id for agent in agent_records],
-        )
-        bad_case_records = await self._repository.list_bad_cases(session_id)
-        events_by_agent = self._repository.event_lookup(event_records)
-        agents_by_id = {agent.id: agent for agent in agent_records}
+        agent_records = list(snapshot.agents)
+        events_by_agent = self._repository.event_lookup(list(snapshot.events))
+        agents_by_id = {agent.id: agent for agent in snapshot.agents}
         main = next(
             (agent for agent in agent_records if agent.kind == "main"),
             None,
@@ -280,6 +278,6 @@ class SessionService:
                     events_by_agent=events_by_agent,
                     main=main,
                 )
-                for case in bad_case_records
+                for case in snapshot.bad_cases
             ],
         )

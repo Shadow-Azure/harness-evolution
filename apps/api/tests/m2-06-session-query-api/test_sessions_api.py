@@ -1,11 +1,15 @@
 """HTTP and read-model contracts for the session query API."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from sqlalchemy import update
 
-from app.db.models.domain import agents, bad_cases, session_families
+from app.db.crud.sessions import SessionRepository
+from app.db.models.domain import agent_events, agents, bad_cases, session_families
+from app.service.sessions.service import SessionService
 
 SESSION_1 = "10000000-0000-4000-8000-000000000001"
 SESSION_2 = "10000000-0000-4000-8000-000000000002"
@@ -261,11 +265,26 @@ async def test_tree_resolves_skill_and_discovery_agent_anchors(
     session_query: Any,
 ) -> None:
     """Skill and discovery anchors use the reported Agent's trigger history."""
+    async with session_query.database.transaction() as session:
+        await session.execute(
+            update(agent_events)
+            .where(
+                agent_events.c.agent_id == SESSION_3,
+                agent_events.c.event_index == 0,
+            )
+            .values(event_index=5),
+        )
+
     skill_tree = await session_query.client.get(
         f"/api/sessions/{SESSION_3}/tree",
         headers=session_query.authorization,
     )
     skill_case = skill_tree.json()["badCases"][0]
+    skill_agent = next(
+        agent for agent in skill_tree.json()["agents"] if agent["agentId"] == SESSION_3
+    )
+    assert len(skill_agent["events"]) == 1
+    assert skill_agent["events"][0]["kind"] == "skill"
     assert skill_case["anchor"] == {"agentId": SESSION_3, "eventIndex": 0}
     assert skill_case["badCaseAgent"] == {
         "sessionId": SESSION_3,
@@ -273,6 +292,14 @@ async def test_tree_resolves_skill_and_discovery_agent_anchors(
     }
 
     async with session_query.database.transaction() as session:
+        await session.execute(
+            update(agent_events)
+            .where(
+                agent_events.c.agent_id == SESSION_1,
+                agent_events.c.event_index == 0,
+            )
+            .values(event_index=7),
+        )
         await session.execute(
             update(bad_cases)
             .where(bad_cases.c.bad_case_id == "badcase-synthetic-0001")
@@ -312,6 +339,55 @@ async def test_tree_warns_when_reporter_agent_is_unknown(
     assert case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1}
     assert case["badCaseAgent"]["agentId"] == "missing-reporter"
     assert "bad case reporter Agent was not found" in caplog.text
+
+
+async def test_tree_unknown_skill_reporter_does_not_borrow_main_trigger(
+    session_query: Any,
+    caplog: Any,
+) -> None:
+    """A missing skill reporter anchors to main itself, never a same-name trigger."""
+    async with session_query.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == "badcase-synthetic-0003")
+            .values(bad_case_agent_id="missing-skill-reporter"),
+        )
+
+    with caplog.at_level(logging.WARNING, logger="app.service.sessions.service"):
+        response = await session_query.client.get(
+            f"/api/sessions/{SESSION_3}/tree",
+            headers=session_query.authorization,
+        )
+
+    case = response.json()["badCases"][0]
+    assert case["anchor"] == {"agentId": SESSION_3, "eventIndex": -1}
+    assert case["badCaseAgent"]["agentId"] == "missing-skill-reporter"
+    assert "bad case reporter Agent was not found" in caplog.text
+
+
+async def test_tree_uses_one_repository_session_for_a_consistent_snapshot(
+    session_query: Any,
+    monkeypatch: Any,
+) -> None:
+    """Family, agents, events, and bad cases come from one read transaction."""
+    original_session = session_query.database.session
+    session_count = 0
+
+    @asynccontextmanager
+    async def counted_session() -> AsyncIterator[Any]:
+        nonlocal session_count
+        session_count += 1
+        async with original_session() as session:
+            yield session
+
+    monkeypatch.setattr(session_query.database, "session", counted_session)
+    service = SessionService(SessionRepository(session_query.database))
+
+    tree = await service.tree(SESSION_1)
+
+    assert tree.session_id == SESSION_1
+    assert len(tree.agents) == 2
+    assert session_count == 1
 
 
 async def test_tree_rejects_unsupported_persisted_task_kind(

@@ -92,6 +92,16 @@ class BadCaseRecord:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class SessionTreeSnapshot:
+    """One consistent canonical and external read-model version for a tree."""
+
+    session: SessionRecord
+    agents: tuple[AgentRecord, ...]
+    events: tuple[EventRecord, ...]
+    bad_cases: tuple[BadCaseRecord, ...]
+
+
 def _strings(value: object) -> tuple[str, ...]:
     """Normalize a JSON string array from SQLAlchemy mappings."""
     if not isinstance(value, list):
@@ -243,6 +253,74 @@ class SessionRepository:
                 .one_or_none()
             )
         return _session_record(row) if row is not None else None
+
+    async def tree_snapshot(self, session_id: str) -> SessionTreeSnapshot | None:
+        """Read one complete tree version from a single database snapshot."""
+        async with self._database.session() as session:
+            family_row = (
+                (
+                    await session.execute(
+                        select(session_families).where(
+                            session_families.c.id == session_id,
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if family_row is None:
+                return None
+
+            agent_rows = (
+                (
+                    await session.execute(
+                        select(agents)
+                        .where(agents.c.root_session_id == session_id)
+                        .order_by(agents.c.sort_key, agents.c.id),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            agent_records = tuple(_agent_record(row) for row in agent_rows)
+            agent_ids = [agent.id for agent in agent_records]
+
+            if agent_ids:
+                event_rows = (
+                    (
+                        await session.execute(
+                            select(agent_events)
+                            .where(agent_events.c.agent_id.in_(agent_ids))
+                            .order_by(
+                                agent_events.c.agent_id,
+                                agent_events.c.event_index,
+                            ),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+            else:
+                event_rows = []
+
+            bad_case_rows = (
+                (
+                    await session.execute(
+                        select(bad_cases)
+                        .where(bad_cases.c.bad_case_session_id == session_id)
+                        .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            return SessionTreeSnapshot(
+                session=_session_record(family_row),
+                agents=agent_records,
+                events=tuple(_event_record(row) for row in event_rows),
+                bad_cases=tuple(_bad_case_record(row) for row in bad_case_rows),
+            )
 
     async def bad_case_counts(self, session_ids: list[str]) -> dict[str, int]:
         """Aggregate external bad-case counts once for the current page."""

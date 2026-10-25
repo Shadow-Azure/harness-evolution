@@ -976,6 +976,7 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
         )
         matching = [record for record in records if record.id == root_id]
         tree_agents = await repository.list_agents(root_id)
+        tree_snapshot = await repository.tree_snapshot(root_id)
         counts = await repository.bad_case_counts([root_id])
 
         assert len(matching) == 1
@@ -983,6 +984,11 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
         assert matching[0].user_turns_count == 1
         assert matching[0].messages_count == 1
         assert tree_agents[0].kind == "main"
+        assert tree_snapshot is not None
+        assert tree_snapshot.session.id == root_id
+        assert [agent.id for agent in tree_snapshot.agents] == [root_id]
+        assert tree_snapshot.events == ()
+        assert tree_snapshot.bad_cases == ()
         assert counts == {}
     finally:
         await database.dispose()
