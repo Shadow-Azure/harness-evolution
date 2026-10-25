@@ -9,11 +9,16 @@ milestone: m2
 depends:
   - m2-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/api/alembic/**
   - fixtures/**
+  - scripts/**
+  - tests/**
+  - package.json
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -29,9 +34,9 @@ m2-05 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 目标
 
-- 完成 m2-05 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- 以 root 为原子单位重建会话、Agent、触发点和用户轮次，并推进 source 处理游标。
+- hash 与 parser version 未变时零写入；升级或内容变化时只重放受影响 root。
+- 同批 root 失败互相隔离，payload 始终只读。
 
 ## 设计依据
 
@@ -41,15 +46,16 @@ m2-05 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实现内容
 
-- 实现 source_records、content hash、parser_version 和事务内先删后写
-- 重复 payload 零重复
-- 同一批内单条失败可隔离重放
+- pending 由 `processed_hash` 与 `parser_version` 判定，hash/版本未变不刷新处理时间。
+- canonical 写入按 `agent_events → agents → user_turns → session_families` 删除，再按 stable key 重写。
+- `sync_runs` 记录 total/done/imported/skipped/errors，错误只含脱敏身份与稳定 code。
+- 本地 CLI 支持首次重放和重复零副作用验证。
 
 ## 实施步骤
 
-1. 写双方言重复导入、升级重放、坏行重放的失败测试
-2. 实现 replay service
-3. 验证 sqlite 与 mysql 行数一致
+1. 先写 pending、首次写入、重复跳过、hash/parser 升级、坏行和 root 隔离测试。
+2. 实现 replay repository 与 service，统一处理 source 游标。
+3. 以 SQLite、MySQL contract 和真实 4 roots / 66 payload 验证。
 
 ## 依赖与交付边界
 
@@ -61,15 +67,17 @@ m2-05 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m2-05-idempotent-replay
 pnpm test:db
+pnpm data:replay:sessions
 ```
 
 - test:db 与 test:db:mysql 通过
-- 重复导入 count/source_records/hash 不变
+- 首次真实重放导入 66 个 payload；第二次 `imported=0`、`skipped=66`，业务行与游标时间不变。
 
 ## 验收标准
 
-- 幂等指标无 diff
-- 升级后可重放并保留审计
+- 4 roots / 66 agents / 53 main user turns 与 pure pipeline 一致。
+- 结构失败不推进该 root 游标；其他 root 继续完成。
+- 重复输入和 parser 升级均保留可审计的 `sync_runs`。
 
 ## 门禁与 CI
 
@@ -77,4 +85,5 @@ pnpm test:db
 
 ## 非目标
 
-- 不删除或改写外部 payload
+- 不删除或改写外部 payload。
+- 不实现调度、同步锁、HTTP/SSE 触发与 `processed_*` 之外的作业进度；留给 m2-06/m2-07。

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m2-05-idempotent-replay.md
-m2-05-idempotent-replay.md: f58df274e7370f03128c965fa04cbd0611229729
-m2-05-idempotent-replay.en.md: cf39740e9eedbe6382d46f3712afeb189217db11
+m2-05-idempotent-replay.md: c8ac7905238fa645c66e233f54745cb2634eca26
+m2-05-idempotent-replay.en.md: f5f03fddc4e8f22447b1e3df290dfe71957e0bb3

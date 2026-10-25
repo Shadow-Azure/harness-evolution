@@ -15,7 +15,7 @@
 
 ## 开发流程
 
-流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 三层工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。
+流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。
 
 ## 日常循环
 
@@ -34,6 +34,7 @@ pnpm fixtures:seed
 pnpm data:import:sessions
 pnpm data:normalize:sessions
 pnpm data:tree:sessions
+pnpm data:replay:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm test:all

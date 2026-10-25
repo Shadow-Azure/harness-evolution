@@ -11,7 +11,7 @@ English | [中文](development.md)
 - Authenticate `gh` for `flow:sync` and `verify:flow-online`.
 - `pnpm dev` enables API docs; production defaults closed or sets `HE_DOCS_ENABLED=false`.
 - `pnpm dev` defaults to SQLite; MySQL sets `HE_DB_DIALECT`/`HE_DB_URL` with environment-only credentials.
-- Local sessions/generated data stay gitignored; CI uses synthetic fixtures.
+- Local sessions/data stay gitignored; CI uses synthetic fixtures.
 
 ## Development flow
 
@@ -34,6 +34,7 @@ pnpm fixtures:seed
 pnpm data:import:sessions
 pnpm data:normalize:sessions
 pnpm data:tree:sessions
+pnpm data:replay:sessions
 pnpm verify:local-sessions
 pnpm verify:local-data
 pnpm test:all

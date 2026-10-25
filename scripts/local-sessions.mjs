@@ -16,11 +16,12 @@ const commands = new Map([
   ["verify", "verify-local"],
   ["normalize", "normalize-local"],
   ["tree", "tree-local"],
+  ["replay", "replay-local"],
 ]);
 
 if (!commands.has(mode)) {
   console.error(
-    "local-sessions: expected `import`, `verify`, `normalize`, or `tree`",
+    "local-sessions: expected `import`, `verify`, `normalize`, `tree`, or `replay`",
   );
   process.exit(2);
 }

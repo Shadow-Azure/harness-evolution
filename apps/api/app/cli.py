@@ -30,6 +30,7 @@ from app.service.acquisition.local_sessions import (
     normalize_local_sessions,
     verify_local_sessions,
 )
+from app.service.acquisition.replay import replay_local_payloads
 from app.service.identity.service import IdentityService
 
 
@@ -179,6 +180,15 @@ def _parser() -> argparse.ArgumentParser:
         default="../../claude-code-sessions",
         type=Path,
     )
+    replay_local = subcommands.add_parser(
+        "replay-local",
+        help="import and idempotently replay local payloads into canonical tables",
+    )
+    replay_local.add_argument(
+        "--sessions-dir",
+        default="../../claude-code-sessions",
+        type=Path,
+    )
     return parser
 
 
@@ -232,6 +242,15 @@ def main(argv: list[str] | None = None) -> int:
                 assemble_local_sessions(
                     Settings(),
                     _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                ),
+            )
+        elif args.command == "replay-local":
+            result = asdict(
+                asyncio.run(
+                    replay_local_payloads(
+                        Settings(),
+                        _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                    ),
                 ),
             )
         else:
