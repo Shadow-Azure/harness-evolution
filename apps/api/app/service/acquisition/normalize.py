@@ -295,7 +295,7 @@ def normalize_transcript(
     blocks_outside_user_turns: list[ParsedBlock] = []
     events: list[ParsedEvent] = []
     seen_messages: set[str] = set()
-    counted_usage: set[str] = set()
+    usage_by_message: dict[str, int] = {}
     transcript_models: list[str] = []
     model_sequence: list[str] = []
     root_metadata = RootMetadata()
@@ -319,7 +319,18 @@ def normalize_transcript(
                 ),
             )
             continue
-        record = _dict(raw)
+        if not isinstance(raw, dict):
+            issues.append(
+                ParsedIssue(
+                    session_id=root_session_id,
+                    agent_id=agent_id,
+                    line_no=line_no,
+                    code="INVALID_TRANSCRIPT_RECORD",
+                    message="JSONL record is not an object",
+                ),
+            )
+            continue
+        record = raw
         if not record:
             continue
 
@@ -394,7 +405,9 @@ def normalize_transcript(
                 errors_count += 1
             if not is_user_turn:
                 block_type = str(block.get("type", "unknown"))
-                tool_use_id = _string(block.get("id"))
+                tool_use_id = _string(
+                    block.get("tool_use_id") if block_type == "tool_result" else block.get("id"),
+                )
                 block_name = _string(block.get("name"))
                 blocks_outside_user_turns.append(
                     ParsedBlock(
@@ -416,11 +429,10 @@ def normalize_transcript(
                 model_sequence.append(model)
         if message_id is not None:
             seen_messages.add(message_id)
-            if message_id not in counted_usage:
-                usage = _dict(message.get("usage"))
-                tokens_total += _integer(usage.get("input_tokens"))
-                tokens_total += _integer(usage.get("output_tokens"))
-                counted_usage.add(message_id)
+            usage = _dict(message.get("usage"))
+            usage_by_message[message_id] = _integer(
+                usage.get("input_tokens"),
+            ) + _integer(usage.get("output_tokens"))
 
         for block in _content_blocks(message):
             block_type = str(block.get("type", "unknown"))
@@ -444,6 +456,8 @@ def normalize_transcript(
                     tool_use_id=tool_use_id,
                 ),
             )
+
+    tokens_total = sum(usage_by_message.values())
 
     return ParsedTranscript(
         root_session_id=root_session_id,

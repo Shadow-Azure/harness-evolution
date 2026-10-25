@@ -200,7 +200,7 @@ def test_normalizes_mixed_transcript_without_persisting_message_detail() -> None
     assert parsed.agent_id == ROOT_ID
     assert parsed.lines == 14
     assert parsed.messages_count == 3
-    assert parsed.tokens_total == 28
+    assert parsed.tokens_total == 2011
     assert parsed.tools_count == 3
     assert parsed.errors_count == 1
     assert parsed.model == "claude-a"
@@ -425,7 +425,7 @@ def test_records_only_blocks_outside_user_turns() -> None:
         for block in parsed.blocks_outside_user_turns
     ] == [
         ("text", None, None, False),
-        ("tool_result", None, None, False),
+        ("tool_result", "tool-1", None, False),
     ]
     rendered = repr(parsed)
     assert "ASSISTANT_SECRET" not in rendered
@@ -457,6 +457,41 @@ def test_error_count_includes_blocks_inside_user_turns() -> None:
     assert parsed.errors_count == 1
     assert parsed.blocks_outside_user_turns == ()
     assert parsed.user_turns[0].prompt_text == "USER_PROMPT"
+
+
+def test_non_object_json_records_are_isolated_without_hiding_later_records() -> None:
+    """Scalar JSON is valid JSON syntax but not a transcript record."""
+    parsed = normalize_transcript(
+        jsonl(
+            42,
+            ["FORBIDDEN_SCALAR"],
+            None,
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "message-after-invalid-records",
+                    "model": "test-model",
+                    "content": [{"type": "text", "text": "PRIVATE_TEXT"}],
+                    "usage": {"input_tokens": 2, "output_tokens": 3},
+                },
+            },
+        ),
+        root_session_id=ROOT_ID,
+        agent_id=ROOT_ID,
+        agent_kind="main",
+        agent_meta=None,
+    )
+
+    assert parsed.messages_count == 1
+    assert parsed.tokens_total == 5
+    assert [(issue.line_no, issue.code, issue.message) for issue in parsed.issues] == [
+        (1, "INVALID_TRANSCRIPT_RECORD", "JSONL record is not an object"),
+        (2, "INVALID_TRANSCRIPT_RECORD", "JSONL record is not an object"),
+        (3, "INVALID_TRANSCRIPT_RECORD", "JSONL record is not an object"),
+    ]
+    rendered = repr(parsed)
+    assert "FORBIDDEN_SCALAR" not in rendered
+    assert "PRIVATE_TEXT" not in rendered
 
 
 @pytest.mark.parametrize("record_type", ["queue-operation", "last-prompt"])
