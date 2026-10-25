@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    DensityBar: typeof import('./components/ui/DensityBar.vue')['default']
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']
     ElInput: typeof import('element-plus/es/components/input/index')['ElInput']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
@@ -18,6 +19,7 @@ declare module 'vue' {
     LoadingSkeleton: typeof import('./components/ui/LoadingSkeleton.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatStrip: typeof import('./components/ui/StatStrip.vue')['default']
     TopNav: typeof import('./components/layout/TopNav.vue')['default']
   }
 }

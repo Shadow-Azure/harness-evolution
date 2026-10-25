@@ -23,7 +23,16 @@ export function createAppRouter() {
         component: () => import("../pages/login/ChangePassword.vue"),
         meta: { authLayout: true },
       },
-      { path: "/sessions", component: SessionsPage },
+      {
+        path: "/sessions",
+        component: SessionsPage,
+        meta: { workspace: true },
+      },
+      {
+        path: "/sessions/:sessionId",
+        component: SessionsPage,
+        meta: { workspace: true },
+      },
       {
         component: () => import("../pages/evolution/Index.vue"),
         path: "/evolution",

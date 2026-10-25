@@ -10,14 +10,20 @@ depends:
   - m2-06
   - m2-07
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - scripts/**
+  - tests/**
+  - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 41
@@ -30,7 +36,7 @@ github:
 
 
 
-m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+m3-01 connects real canonical sessions to the prototype's two-column browser so operators can triage, search, filter, and inspect an overview in one screen.
 
 ## Goals
 
@@ -38,9 +44,10 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 完成 m3-01 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- Deliver the 360px session sidebar, real white cards, dual density bars, and the right-hand session overview.
+- Persist search, status, sort, and selected session in the URL with refresh and history restoration.
+- Provide independent loading, empty, and retryable error states without requesting the future Agent tree.
+- Display the real `stats.badCases` value without fabricated counts or frontend data.
 
 ## Design authority
 
@@ -48,9 +55,10 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- [03 §5 Session 浏览器](../../../plans/fullstack-design/03-frontend-architecture.md)
-- [08 §5 组件树](../../../plans/fullstack-design/08-frontend-implementation.md)
+- [03 §5 Session browser](../../../plans/fullstack-design/03-frontend-architecture.md)
+- [08 §5 component tree](../../../plans/fullstack-design/08-frontend-implementation.md)
 - [02 §2.1 F3/F4](../../../plans/fullstack-design/02-features.md)
+- [Prototype acceptance baseline](../../../plans/14-15-ui-prototype/harness-evolution.html)
 
 ## Implementation
 
@@ -58,8 +66,10 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 实现列表卡、概览、同步状态、搜索筛选排序、空/加载/失败态和 URL 恢复
-- 问题数显示 0
+- Prototype session cards with status, title, time, repo, duration, tool/agent counts, five statistics, and two density bars.
+- Overview title/meta/status, nine statistics, readable token counts, and an explicit future Agent-tree placeholder.
+- Debounced search, status chips, sorting, automatic first selection, and `/sessions/:sid` deep links.
+- Prototype light tokens, two columns at 1408px, and a single-column mobile layout at 390px.
 
 ## Implementation steps
 
@@ -67,9 +77,9 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-1. 先用 MSW 和 seed 写组件/E2E 失败测试
-2. 实现 SessionCard/Overview/query
-3. 接真实 API 并做本地 4 会话检查
+1. Add failing MSW and real seeded E2E tests first.
+2. Implement the sessions API/query layer, cards, overview, and URL state.
+3. Verify computed styles, URL restoration, and responsive behavior with four canonical sessions.
 
 ## Dependencies and boundary
 
@@ -77,8 +87,8 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 依赖：m2-06, m2-07
-- 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- Depends on m2-06 and m2-07.
+- The Agent execution graph and error-detail page remain owned by later issues.
 
 ## Verification
 
@@ -90,11 +100,11 @@ m3-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 pnpm test:api -- tests/m3-01-session-browser
 pnpm test:db
 pnpm test:web
-pnpm test:e2e
+pnpm test:e2e -- m3-session-browser
 ```
 
-- CI seed E2E 通过
-- 本地会话列表和概览与 API 统计一致
+- Seeded CI E2E passes.
+- Local list and overview statistics match the API.
 
 ## Acceptance
 
@@ -102,8 +112,8 @@ pnpm test:e2e
 
 
 
-- 刷新后搜索、排序、选中 session 恢复
-- 三态可重试
+- Search, sorting, and selection survive refresh.
+- List and overview expose retryable states.
 
 ## Gates and CI
 
@@ -111,8 +121,8 @@ pnpm test:e2e
 
 
 
-- 组件测试、query gate、Playwright 冒烟
+- Component tests, query gates, and real-browser computed-style regression.
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- Do not render the Agent execution graph or implement the error-detail page.

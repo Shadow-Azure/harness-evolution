@@ -28,7 +28,9 @@ Web ──► middleware ──► public endpoints | bearer APIs | ticket-authe
 
 Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密；并发 401 单飞刷新并各重放一次；退出清 query cache。
 
-应用 lifespan 在迁移和 JobRunner 恢复之后采纳 `sync_lock`，再启动 scheduler 和 queued replacement。默认 60 秒检查 pending，`0` 关闭；手动与定时共用 coordinator、进程锁和 durable lock。无 pending 不建 job，顶栏只显示真实状态。
+Session 浏览器用 360px 列表与概览；搜索、状态、排序、选中写 URL，统计和密度来自 `/api/sessions`。
+
+lifespan 先恢复 JobRunner 并采纳 `sync_lock`，再启动 scheduler；手动与定时共用单飞锁，无 pending 不建 job。
 
 ## 数据层策略
 
