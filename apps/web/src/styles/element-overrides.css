@@ -1,0 +1,21 @@
+:root {
+  --el-border-radius-base: var(--radius-md);
+  --el-color-primary: var(--brand-accent);
+  --el-color-danger: var(--state-error);
+  --el-fill-color-blank: var(--surface-overlay);
+  --el-fill-color-light: var(--surface-selected);
+  --el-font-family: inherit;
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+}
+
+.el-input__wrapper {
+  background: var(--surface-overlay);
+  box-shadow: 0 0 0 1px var(--border-subtle) inset;
+}
+
+.el-input__wrapper:hover,
+.el-input__wrapper.is-focus {
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--brand-accent) inset;
+}

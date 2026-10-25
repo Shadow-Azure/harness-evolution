@@ -1,5 +1,16 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+
+import { useCurrentUser, useLogout } from "../../composables/useAuth";
+
+const { data: user } = useCurrentUser();
+const { isLoading, refetch: logoutUser } = useLogout();
+
+function logout() {
+  void logoutUser().catch(() => {
+    // The store always clears local state and the mutation still navigates.
+  });
+}
 </script>
 
 <template>
@@ -22,6 +33,23 @@ import { RouterLink } from "vue-router";
         Evolution
       </RouterLink>
     </nav>
+    <details
+      v-if="user"
+      class="user-menu"
+    >
+      <summary>{{ user.displayName }}</summary>
+      <div class="user-popover">
+        <span>{{ user.username }}</span>
+        <button
+          data-testid="logout"
+          :disabled="isLoading"
+          type="button"
+          @click="logout"
+        >
+          {{ isLoading ? "退出中…" : "退出登录" }}
+        </button>
+      </div>
+    </details>
   </header>
 </template>
 
@@ -79,5 +107,92 @@ nav a {
 nav a.router-link-active {
   color: var(--text-primary);
   background: var(--surface-selected);
+}
+
+.user-menu {
+  position: relative;
+  margin-left: var(--space-md);
+}
+
+.user-menu summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.user-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-popover {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  min-width: 160px;
+  padding: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.user-popover span {
+  display: block;
+  margin-bottom: var(--space-xs);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.user-popover button {
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-overlay);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.user-popover button:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 1100px) {
+  .brand-copy small {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    gap: var(--space-xs);
+    padding: 0 var(--space-md);
+  }
+
+  .brand-copy {
+    display: none;
+  }
+
+  nav {
+    gap: 0;
+  }
+
+  nav a {
+    padding-inline: 8px;
+  }
+
+  .user-menu {
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .user-menu summary {
+    display: block;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 </style>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M1-07 身份前端真实 Chrome 冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #77</p>
+    <h1>M1-07 身份前端真实 Chrome 冒烟报告</h1>
+    <p class="summary">在真实 Chrome、Vite 与 FastAPI/SQLite 上走通未登录回跳、登录失败、首登改密、退出、重新登录及 refresh/me。发现登录输入首次渲染控制台错误和 390px 顶栏溢出两项缺陷，当前不建议合并。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · localhost</span>
+    <div class="metrics"><div class="metric"><b>14</b><span>冒烟场景</span></div><div class="metric"><b>12</b><span>通过</span></div><div class="metric"><b>2</b><span>失败</span></div><div class="metric"><b>84</b><span>Web 自动测试通过</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · localhost</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#30 · M1 identity frontend</dd></div><div class="fact"><dt>PR</dt><dd>#77</dd></div><div class="fact"><dt>Commit</dt><dd>839e752</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + Chrome</dd></div><div class="fact"><dt>Browser viewport</dt><dd>1408×611 主视口；390×844 窄视口</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>12 pass · 2 fail</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>未登录直达受保护页</td><td><span class="status pass">PASS</span></td><td>访问 /sessions 被重定向到 /login?redirect=/sessions。</td><td class="evidence">screenshots/01-unauthenticated-login.jpg<br>URL /login?redirect=/sessions</td></tr><tr><td class="num">02</td><td>错误密码内联提示</td><td><span class="status pass">PASS</span></td><td>错误密码显示“用户名或密码错误”，未触发原生 alert。</td><td class="evidence">screenshots/02-login-invalid.jpg<br>JS dialog count=0</td></tr><tr><td class="num">03</td><td>首登强制改密</td><td><span class="status pass">PASS</span></td><td>临时密码登录后只到 /change-password?redirect=/sessions。</td><td class="evidence">screenshots/03-force-password-change.jpg</td></tr><tr><td class="num">04</td><td>确认密码不一致</td><td><span class="status pass">PASS</span></td><td>显示“两次输入的新密码不一致”，停留改密页。</td><td class="evidence">screenshots/04-password-mismatch.jpg</td></tr><tr><td class="num">05</td><td>新旧密码相同</td><td><span class="status pass">PASS</span></td><td>显示“新密码不能与当前密码相同”，停留改密页。</td><td class="evidence">screenshots/05-same-password-rejected.jpg</td></tr><tr><td class="num">06</td><td>正常改密并回跳</td><td><span class="status pass">PASS</span></td><td>合法新密码保存后回到 /sessions，顶栏显示当前用户。</td><td class="evidence">screenshots/06-password-changed-sessions.jpg</td></tr><tr><td class="num">07</td><td>顶栏用户区</td><td><span class="status pass">PASS</span></td><td>用户菜单展示用户名与退出入口。</td><td class="evidence">screenshots/07-user-menu.jpg</td></tr><tr><td class="num">08</td><td>退出登录</td><td><span class="status pass">PASS</span></td><td>退出后回到 /login，受保护导航消失。</td><td class="evidence">screenshots/08-logout-login.jpg</td></tr><tr><td class="num">09</td><td>退出后访问受保护页</td><td><span class="status pass">PASS</span></td><td>再次访问 /sessions 仍回到 /login?redirect=/sessions。</td><td class="evidence">screenshots/08-logout-login.jpg</td></tr><tr><td class="num">10</td><td>新密码重新登录</td><td><span class="status pass">PASS</span></td><td>新密码登录成功并回跳 /sessions。</td><td class="evidence">screenshots/09-relogin-success.jpg</td></tr><tr><td class="num">11</td><td>Refresh 与 me</td><td><span class="status pass">PASS</span></td><td>真实 HTTP refresh 签发新 access，me 返回 admin 且 mustChangePassword=false。</td><td class="evidence">HTTP refreshIssuedAccess=true<br>HTTP meUsername=admin</td></tr><tr><td class="num">12</td><td>初始渲染控制台</td><td><span class="status fail">FAIL</span></td><td>登录页 ElInput 首次渲染产生 3 条 Vue warn 和 1 条 TypeError。</td><td class="evidence">console-initial.txt<br>screenshots/02-login-invalid.jpg</td></tr><tr><td class="num">13</td><td>390px 窄视口</td><td><span class="status fail">FAIL</span></td><td>视口 390px，文档滚动宽度 444px；用户菜单位于 x=348、宽约 96px，被右侧裁切。</td><td class="evidence">screenshots/10-narrow-overflow.jpg<br>scrollWidth=444 &gt; clientWidth=390</td></tr><tr><td class="num">14</td><td>主视口无溢出</td><td><span class="status pass">PASS</span></td><td>1408px 主视口下 scrollWidth 与 clientWidth 均为 1408。</td><td class="evidence">scrollWidth=1408 = clientWidth=1408</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P1 登录与改密输入首次渲染产生 Vue 控制台错误<br>P2 390px 窄视口顶栏横向溢出</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P1</span><h3>登录与改密输入首次渲染产生 Vue 控制台错误</h3><dl><div><dt>位置</dt><dd>LoginForm.vue 的 ElInput；ChangePasswordCard.vue 使用同类控件</dd></div><div><dt>实际</dt><dd>控制台出现 Missing ref owner context、Unhandled error during execution of render function，以及 renderSlot 读取 null.ce 的 TypeError。</dd></div><div><dt>期望</dt><dd>页面首次渲染与后续导航不产生 warning/error。</dd></div><div><dt>根因候选</dt><dd>自定义 Element Plus 解析器与 ElementPlusResolver 同时参与组件解析；输入组件未能稳定创建 ref owner 上下文。</dd></div><div><dt>复现</dt><dd>新开 Chrome 标签访问 /login，读取该 tab 的 warn/error 日志。</dd></div></dl><div class="fixed">未修复</div></article><article class="issueCard"><span class="tag">P2</span><h3>390px 窄视口顶栏横向溢出</h3><dl><div><dt>位置</dt><dd>TopNav.vue 顶栏 brand/nav/user-menu 布局</dd></div><div><dt>实际</dt><dd>scrollWidth=444，user-menu right=444.1，超过 390px 视口。</dd></div><div><dt>期望</dt><dd>窄视口无横向滚动，导航与用户入口保持可操作。</dd></div><div><dt>根因候选</dt><dd>顶栏始终单行 flex，缺少窄视口压缩、换行或菜单收纳规则。</dd></div><div><dt>复现</dt><dd>登录后进入 /sessions，将视口设为 390×844，读取 documentElement.scrollWidth。</dd></div></dl><div class="fixed">未修复</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>10 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-unauthenticated-login.jpg" alt="未登录访问 Sessions 后跳转登录页"><figcaption><b>01 · 未登录回跳</b><span>直达 /sessions 后落到 /login?redirect=/sessions。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-login-invalid.jpg" alt="错误密码内联提示"><figcaption><b>02 · 登录失败</b><span>错误凭据保留在登录页并以内联错误提示。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-force-password-change.jpg" alt="首登强制改密页面"><figcaption><b>03 · 强制改密</b><span>临时密码登录后进入设置新密码页面。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-password-mismatch.jpg" alt="两次新密码不一致提示"><figcaption><b>04 · 密码不一致</b><span>确认密码不一致时内联拒绝。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-same-password-rejected.jpg" alt="新旧密码相同提示"><figcaption><b>05 · 禁止旧密码复用</b><span>新旧密码相同时内联拒绝。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-password-changed-sessions.jpg" alt="改密成功后的 Sessions 页面"><figcaption><b>06 · 改密成功</b><span>改密成功后回跳 Sessions 并显示当前用户。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/07-user-menu.jpg" alt="顶栏用户菜单"><figcaption><b>07 · 用户菜单</b><span>顶栏用户区显示用户名与退出操作。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-logout-login.jpg" alt="退出登录后的登录页"><figcaption><b>08 · 退出</b><span>退出后清除受保护界面并返回登录。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/09-relogin-success.jpg" alt="新密码重新登录后的 Sessions 页面"><figcaption><b>09 · 新密码登录</b><span>退出后用新密码重新登录成功。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/10-narrow-overflow.jpg" alt="390px 窄视口下顶栏用户入口被裁切"><figcaption><b>10 · 窄视口溢出</b><span>390px 视口中顶栏内容宽 444px，用户入口被裁切。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>身份主链路</td><td>真实 Chrome + FastAPI/SQLite</td><td>登录失败、首登改密、成功回跳、退出与重新登录已验证。</td><td>保留浏览器冒烟作为发布前集成门禁。</td></tr><tr><td>Token 恢复</td><td>真实 HTTP refresh + me</td><td>refresh 可签发新 access，me 返回最新强制改密状态。</td><td>继续保留单飞 refresh 的自动测试。</td></tr><tr><td>控制台健康</td><td>Chrome tab dev logs</td><td>首次登录渲染存在 Vue warn 与 TypeError，必须修复。</td><td>修复后从新 tab 重跑并断言 warn/error 为 0。</td></tr><tr><td>响应式布局</td><td>390×844 + 1408×611 实视口</td><td>主视口无溢出；窄视口顶栏溢出 54px。</td><td>补 390px 回归测试并增加窄屏导航收纳。</td></tr><tr><td>自动测试</td><td>Web/API/集成套件</td><td>Web 84 通过、1 跳过；但现有 jsdom 测试未捕获真实浏览器渲染错误与横向溢出。</td><td>新增浏览器级 console 断言与窄视口布局断言。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>需修复后复测</small></div>
+    <article class="card conclusion fail"><p><strong>身份功能主链路可用，但两项真实浏览器问题阻止合并。</strong></p><ul><li>修复登录/改密输入组件首次渲染的 Vue warn 与 TypeError。</li><li>修复 390px 窄视口顶栏横向溢出，并各自补回归测试。</li><li>修复后必须从新 Chrome tab 重跑控制台和窄视口断言。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 实机截图、Chrome tab 控制台、脱敏 HTTP 结果与自动测试。HTML 由 report-data.json 生成，不手改。</p>
+</main>
+</body>
+</html>

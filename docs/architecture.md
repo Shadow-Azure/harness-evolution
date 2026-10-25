@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-轨迹诊断服务当前只交付 M1 平台骨架；轨迹、问题和自进化数据尚未进入运行链路。
+轨迹诊断服务当前为 M1 平台骨架；轨迹、问题与自进化尚未进入运行链路。
 
 ## 服务划分
 
@@ -38,7 +38,9 @@ middleware/
 Web ──► middleware ──► public endpoints | bearer APIs → api routers
 ```
 
-只有健康、登录和刷新公开；业务 API 读取 bearer JWT，`/api/users` 仅管理员可用，OpenAPI 以 `BearerAuth` 声明受保护操作。登录按 IP 限制为每分钟 10 次，强制改密只放行改密、登出和当前身份。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict`、路径限定 `/api/auth`，生产加 `Secure`。健康检查在数据库故障时返回 503，各类失败共用错误 envelope。
+只有健康、登录和刷新公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员可用。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict`、路径限定 `/api/auth`，生产加 `Secure`。登录按 IP 限流，强制改密只放行改密、登出和当前身份；失败共用错误 envelope。
+
+Web 启动先刷新会话再等待路由挂载；access token 与用户只留内存。未登录或首登用户由守卫改道登录/改密；HTTP 对并发 401 单飞刷新并各重放一次，退出清 query cache。
 
 ## 数据层策略
 
@@ -58,7 +60,7 @@ GET|POST /api/users
 POST /api/events/ticket
 ```
 
-SSE 属后续；票据绑定用户、`run:{rid}` topics、游标，并以进程 HMAC 认证 60 秒到期，活动 grant 单次消费。refresh 旋转原子拒绝并发重放，撤销随到期清理。空库用环境凭据播种强制改密管理员；改密须换密码，校验错误不含提交值；密码用 argon2id，响应不含密码/hash，时间戳写 Asia/Shanghai。
+SSE 属后续；票据绑定用户、topics 与游标，以 HMAC 认证 60 秒到期且单次消费。refresh 旋转原子拒绝重放。密码用 argon2id，时间戳写 Asia/Shanghai，敏感值不入响应。
 
 ## 共享契约
 

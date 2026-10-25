@@ -10,14 +10,18 @@ depends:
   - m1-05
   - m1-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - .github/workflows/ci.yml
+  - tests/integration/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
+  - pnpm-lock.yaml
 adr: []
 github:
   number: 30
@@ -48,7 +52,9 @@ github:
 
 
 
-- [04 后端架构](../../../plans/fullstack-design/04-backend-architecture.md)
+- [03 前端架构](../../../plans/fullstack-design/03-frontend-architecture.md)
+- [05 接口设计](../../../plans/fullstack-design/05-api-design.md)
+- [08 前端实现](../../../plans/fullstack-design/08-frontend-implementation.md)
 
 ## Implementation
 
@@ -86,13 +92,16 @@ github:
 
 
 ```sh
-pnpm test:web -- auth
+pnpm test:web
+pnpm lint:web
 pnpm typecheck:web
 pnpm build
+pnpm verify:web-style
+pnpm verify:bundle
 ```
 
-- 未登录访问 /sessions 跳登录并回跳；过期 token 自动刷新后重放。
-- 首登被改道改密，成功后放行。
+- 全部测试与覆盖率门禁通过；未登录访问 /sessions 跳登录并回跳；过期 token 自动刷新后重放。
+- 首登被改道改密，成功后放行；Element Plus 保持按需 chunk。
 
 ## Acceptance
 

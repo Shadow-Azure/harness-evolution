@@ -1,0 +1,267 @@
+{
+  "lang": "zh-CN",
+  "title": "M1-07 身份前端真实 Chrome 冒烟报告",
+  "eyebrow": "Harness Evolution · PR #77",
+  "summary": "在真实 Chrome、Vite 与 FastAPI/SQLite 上走通未登录回跳、登录失败、首登改密、退出、重新登录及 refresh/me。发现登录输入首次渲染控制台错误和 390px 顶栏溢出两项缺陷，当前不建议合并。",
+  "meta": "2026-10-25 · macOS · Chrome · localhost",
+  "metrics": [
+    { "value": "14", "label": "冒烟场景" },
+    { "value": "12", "label": "通过" },
+    { "value": "2", "label": "失败" },
+    { "value": "84", "label": "Web 自动测试通过" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#30 · M1 identity frontend" },
+    { "label": "PR", "value": "#77" },
+    { "label": "Commit", "value": "839e752" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + Chrome" },
+    { "label": "Browser viewport", "value": "1408×611 主视口；390×844 窄视口" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "未登录直达受保护页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "访问 /sessions 被重定向到 /login?redirect=/sessions。",
+        "evidence": ["screenshots/01-unauthenticated-login.jpg", "URL /login?redirect=/sessions"]
+      },
+      {
+        "id": "02",
+        "name": "错误密码内联提示",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "错误密码显示“用户名或密码错误”，未触发原生 alert。",
+        "evidence": ["screenshots/02-login-invalid.jpg", "JS dialog count=0"]
+      },
+      {
+        "id": "03",
+        "name": "首登强制改密",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时密码登录后只到 /change-password?redirect=/sessions。",
+        "evidence": ["screenshots/03-force-password-change.jpg"]
+      },
+      {
+        "id": "04",
+        "name": "确认密码不一致",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "显示“两次输入的新密码不一致”，停留改密页。",
+        "evidence": ["screenshots/04-password-mismatch.jpg"]
+      },
+      {
+        "id": "05",
+        "name": "新旧密码相同",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "显示“新密码不能与当前密码相同”，停留改密页。",
+        "evidence": ["screenshots/05-same-password-rejected.jpg"]
+      },
+      {
+        "id": "06",
+        "name": "正常改密并回跳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "合法新密码保存后回到 /sessions，顶栏显示当前用户。",
+        "evidence": ["screenshots/06-password-changed-sessions.jpg"]
+      },
+      {
+        "id": "07",
+        "name": "顶栏用户区",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "用户菜单展示用户名与退出入口。",
+        "evidence": ["screenshots/07-user-menu.jpg"]
+      },
+      {
+        "id": "08",
+        "name": "退出登录",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "退出后回到 /login，受保护导航消失。",
+        "evidence": ["screenshots/08-logout-login.jpg"]
+      },
+      {
+        "id": "09",
+        "name": "退出后访问受保护页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "再次访问 /sessions 仍回到 /login?redirect=/sessions。",
+        "evidence": ["screenshots/08-logout-login.jpg"]
+      },
+      {
+        "id": "10",
+        "name": "新密码重新登录",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "新密码登录成功并回跳 /sessions。",
+        "evidence": ["screenshots/09-relogin-success.jpg"]
+      },
+      {
+        "id": "11",
+        "name": "Refresh 与 me",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 HTTP refresh 签发新 access，me 返回 admin 且 mustChangePassword=false。",
+        "evidence": ["HTTP refreshIssuedAccess=true", "HTTP meUsername=admin"]
+      },
+      {
+        "id": "12",
+        "name": "初始渲染控制台",
+        "status": { "kind": "fail", "label": "FAIL" },
+        "detail": "登录页 ElInput 首次渲染产生 3 条 Vue warn 和 1 条 TypeError。",
+        "evidence": ["console-initial.txt", "screenshots/02-login-invalid.jpg"]
+      },
+      {
+        "id": "13",
+        "name": "390px 窄视口",
+        "status": { "kind": "fail", "label": "FAIL" },
+        "detail": "视口 390px，文档滚动宽度 444px；用户菜单位于 x=348、宽约 96px，被右侧裁切。",
+        "evidence": ["screenshots/10-narrow-overflow.jpg", "scrollWidth=444 > clientWidth=390"]
+      },
+      {
+        "id": "14",
+        "name": "主视口无溢出",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "1408px 主视口下 scrollWidth 与 clientWidth 均为 1408。",
+        "evidence": ["scrollWidth=1408 = clientWidth=1408"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P1",
+      "title": "登录与改密输入首次渲染产生 Vue 控制台错误",
+      "facts": [
+        { "label": "位置", "value": "LoginForm.vue 的 ElInput；ChangePasswordCard.vue 使用同类控件" },
+        { "label": "实际", "value": "控制台出现 Missing ref owner context、Unhandled error during execution of render function，以及 renderSlot 读取 null.ce 的 TypeError。" },
+        { "label": "期望", "value": "页面首次渲染与后续导航不产生 warning/error。" },
+        { "label": "根因候选", "value": "自定义 Element Plus 解析器与 ElementPlusResolver 同时参与组件解析；输入组件未能稳定创建 ref owner 上下文。" },
+        { "label": "复现", "value": "新开 Chrome 标签访问 /login，读取该 tab 的 warn/error 日志。" }
+      ],
+      "state": { "kind": "fail", "label": "未修复" }
+    },
+    {
+      "severity": "P2",
+      "title": "390px 窄视口顶栏横向溢出",
+      "facts": [
+        { "label": "位置", "value": "TopNav.vue 顶栏 brand/nav/user-menu 布局" },
+        { "label": "实际", "value": "scrollWidth=444，user-menu right=444.1，超过 390px 视口。" },
+        { "label": "期望", "value": "窄视口无横向滚动，导航与用户入口保持可操作。" },
+        { "label": "根因候选", "value": "顶栏始终单行 flex，缺少窄视口压缩、换行或菜单收纳规则。" },
+        { "label": "复现", "value": "登录后进入 /sessions，将视口设为 390×844，读取 documentElement.scrollWidth。" }
+      ],
+      "state": { "kind": "fail", "label": "未修复" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/01-unauthenticated-login.jpg",
+      "alt": "未登录访问 Sessions 后跳转登录页",
+      "label": "01 · 未登录回跳",
+      "caption": "直达 /sessions 后落到 /login?redirect=/sessions。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-login-invalid.jpg",
+      "alt": "错误密码内联提示",
+      "label": "02 · 登录失败",
+      "caption": "错误凭据保留在登录页并以内联错误提示。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-force-password-change.jpg",
+      "alt": "首登强制改密页面",
+      "label": "03 · 强制改密",
+      "caption": "临时密码登录后进入设置新密码页面。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-password-mismatch.jpg",
+      "alt": "两次新密码不一致提示",
+      "label": "04 · 密码不一致",
+      "caption": "确认密码不一致时内联拒绝。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-same-password-rejected.jpg",
+      "alt": "新旧密码相同提示",
+      "label": "05 · 禁止旧密码复用",
+      "caption": "新旧密码相同时内联拒绝。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-password-changed-sessions.jpg",
+      "alt": "改密成功后的 Sessions 页面",
+      "label": "06 · 改密成功",
+      "caption": "改密成功后回跳 Sessions 并显示当前用户。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-user-menu.jpg",
+      "alt": "顶栏用户菜单",
+      "label": "07 · 用户菜单",
+      "caption": "顶栏用户区显示用户名与退出操作。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-logout-login.jpg",
+      "alt": "退出登录后的登录页",
+      "label": "08 · 退出",
+      "caption": "退出后清除受保护界面并返回登录。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/09-relogin-success.jpg",
+      "alt": "新密码重新登录后的 Sessions 页面",
+      "label": "09 · 新密码登录",
+      "caption": "退出后用新密码重新登录成功。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/10-narrow-overflow.jpg",
+      "alt": "390px 窄视口下顶栏用户入口被裁切",
+      "label": "10 · 窄视口溢出",
+      "caption": "390px 视口中顶栏内容宽 444px，用户入口被裁切。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "身份主链路",
+        "coverage": "真实 Chrome + FastAPI/SQLite",
+        "conclusion": "登录失败、首登改密、成功回跳、退出与重新登录已验证。",
+        "recommendation": "保留浏览器冒烟作为发布前集成门禁。"
+      },
+      {
+        "area": "Token 恢复",
+        "coverage": "真实 HTTP refresh + me",
+        "conclusion": "refresh 可签发新 access，me 返回最新强制改密状态。",
+        "recommendation": "继续保留单飞 refresh 的自动测试。"
+      },
+      {
+        "area": "控制台健康",
+        "coverage": "Chrome tab dev logs",
+        "conclusion": "首次登录渲染存在 Vue warn 与 TypeError，必须修复。",
+        "recommendation": "修复后从新 tab 重跑并断言 warn/error 为 0。"
+      },
+      {
+        "area": "响应式布局",
+        "coverage": "390×844 + 1408×611 实视口",
+        "conclusion": "主视口无溢出；窄视口顶栏溢出 54px。",
+        "recommendation": "补 390px 回归测试并增加窄屏导航收纳。"
+      },
+      {
+        "area": "自动测试",
+        "coverage": "Web/API/集成套件",
+        "conclusion": "Web 84 通过、1 跳过；但现有 jsdom 测试未捕获真实浏览器渲染错误与横向溢出。",
+        "recommendation": "新增浏览器级 console 断言与窄视口布局断言。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "fail",
+    "label": "需修复后复测",
+    "summary": "身份功能主链路可用，但两项真实浏览器问题阻止合并。",
+    "points": [
+      "修复登录/改密输入组件首次渲染的 Vue warn 与 TypeError。",
+      "修复 390px 窄视口顶栏横向溢出，并各自补回归测试。",
+      "修复后必须从新 Chrome tab 重跑控制台和窄视口断言。"
+    ]
+  },
+  "footer": "证据源：Computer Use 实机截图、Chrome tab 控制台、脱敏 HTTP 结果与自动测试。HTML 由 report-data.json 生成，不手改。"
+}

@@ -6,7 +6,7 @@ Records current service boundaries, data flow and storage strategy. Implementati
 
 ## Product boundary
 
-This trace-diagnostics service currently delivers only the M1 platform foundation; trace, problem and evolution data are not yet in the runtime path.
+This trace-diagnostics service is currently the M1 platform foundation; trace, problem and evolution data are not yet in the runtime path.
 
 ## Service split
 
@@ -38,7 +38,9 @@ Dependency direction is `api → service → db/third_party_api`.
 Web ──► middleware ──► public endpoints | bearer APIs → api routers
 ```
 
-Only health, login and refresh are public; business APIs read bearer JWTs, `/api/users` is admin-only, and OpenAPI declares protected operations with `BearerAuth`. Login is limited to 10 attempts per IP per minute, and forced password change permits only password change, logout and current identity. Access tokens last 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scoping, and `Secure` in production. Health returns 503 on database failure, and every failure shares one error envelope.
+Only health, login, and refresh are public; other APIs require bearer JWTs, and `/api/users` is admin-only. Access tokens last 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scoping, and production `Secure`. Login is IP-limited, forced password change exposes only change, logout, and current identity, and failures share one envelope.
+
+Web startup refreshes before waiting for the router to mount; the access token and user stay in memory. Guards route unauthenticated or first-login users to login/password change; HTTP refresh is single-flight across concurrent 401s, and logout clears the query cache.
 
 ## Data-layer strategy
 
@@ -58,7 +60,7 @@ GET|POST /api/users
 POST /api/events/ticket
 ```
 
-SSE comes later; tickets bind the user, `run:{rid}` topics and cursor, authenticating 60-second expiry with a process HMAC while active grants remain single-use. Refresh rotation atomically rejects concurrent replay, and revocations expire with their tokens. An empty database seeds a forced-password-change administrator from environment credentials. Password change must replace the current secret, validation errors omit submitted values, passwords use argon2id, responses exclude password material, and timestamps use Asia/Shanghai.
+SSE follows later; tickets bind user, topics, and cursor, use HMAC with a 60-second expiry, and allow one consumption. Refresh rotation atomically rejects replay. Passwords use argon2id, timestamps use Asia/Shanghai, and responses omit sensitive values.
 
 ## Shared contract
 
