@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M1-09 应用壳与三态集成冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #81</p>
+    <h1>M1-09 应用壳与三态集成冒烟</h1>
+    <p class="summary">在真实 Chrome、Vite、FastAPI 与隔离 SQLite 上验证三入口、共享三态、demo 角标、409 Message、全局错误提示、Vue Flow 深链、seed 幂等与响应式布局。16 个运行时场景全部通过，标准 503 可重试恢复，未发现意外浏览器告警或运行时异常。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite</span>
+    <div class="metrics"><div class="metric"><b>16</b><span>运行时场景</span></div><div class="metric"><b>16</b><span>通过</span></div><div class="metric"><b>0</b><span>意外控制台告警/错误</span></div><div class="metric"><b>4/4</b><span>仓库 Chrome E2E</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#32 · M1 app shell states</dd></div><div class="fact"><dt>PR</dt><dd>#81</dd></div><div class="fact"><dt>Commit</dt><dd>2366a5a</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + Chrome</dd></div><div class="fact"><dt>Viewports</dt><dd>1408×667 · 390×844</dd></div><div class="fact"><dt>Credentials</dt><dd>&lt;redacted&gt;</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>16 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>Sessions 默认页与三入口</td><td><span class="status pass">PASS</span></td><td>登录后进入 /sessions；Sessions、Errors、Evolution 三个入口可见，Sessions active，空态与 demo 角标正确。</td><td class="evidence">screenshots/01-sessions-demo.png</td></tr><tr><td class="num">02</td><td>Errors 占位</td><td><span class="status pass">PASS</span></td><td>/errors 为已鉴权占位页，active 为 Errors；显示“暂无问题”并明确后续 milestone 接入，没有模拟问题行。</td><td class="evidence">screenshots/02-errors-placeholder.png</td></tr><tr><td class="num">03</td><td>Evolution 占位</td><td><span class="status pass">PASS</span></td><td>显示“暂无自进化运行”和 320px 容器，未提前展示假运行数据。</td><td class="evidence">screenshots/03-evolution-placeholder.png</td></tr><tr><td class="num">04</td><td>用户菜单</td><td><span class="status pass">PASS</span></td><td>当前用户菜单可展开，退出入口可见；受保护页面仍保留 shell。</td><td class="evidence">screenshots/14-user-menu.png</td></tr><tr><td class="num">05</td><td>未登录回跳</td><td><span class="status pass">PASS</span></td><td>清 cookie 后访问 /sessions 跳转 /login 并携带原路径；仓库 E2E 同时覆盖 /errors、/evolution。</td><td class="evidence">screenshots/16-unauth-redirect.png<br>expected refresh 401 only</td></tr><tr><td class="num">06</td><td>Health loading</td><td><span class="status pass">PASS</span></td><td>health 延迟响应时显示共享 LoadingSkeleton“正在连接 API”，TopNav 与 shell 保持。</td><td class="evidence">screenshots/08-health-loading.png</td></tr><tr><td class="num">07</td><td>标准 503 ErrorState</td><td><span class="status pass">PASS</span></td><td>503 HEALTH_UNAVAILABLE 被解码为 ApiError；页面显示共享 ErrorState、错误码和重试按钮，没有 TypeError 或白屏。</td><td class="evidence">screenshots/09-health-error.png<br>runtime exceptions=0</td></tr><tr><td class="num">08</td><td>503 后手动重试恢复</td><td><span class="status pass">PASS</span></td><td>点击重试后 health 返回 200，Sessions 内容恢复，导航与 shell 保持。</td><td class="evidence">screenshots/10-health-retry-success.png</td></tr><tr><td class="num">09</td><td>409 RUN_BUSY Message</td><td><span class="status pass">PASS</span></td><td>409 显示固定定位 ElMessage“已有任务正在运行”；shell、导航和页面均保留，无整页 ErrorState。</td><td class="evidence">screenshots/13-conflict-toast.png<br>toast position=fixed</td></tr><tr><td class="num">10</td><td>全局 Vue 错误提示</td><td><span class="status pass">PASS</span></td><td>专用错误触发后 ElMessage 显示“操作失败，请稍后重试”，shell 保留；只有预期错误日志。</td><td class="evidence">screenshots/15-global-error-toast.png<br>console-summary.json</td></tr><tr><td class="num">11</td><td>Demo 角标</td><td><span class="status pass">PASS</span></td><td>HE_PHASE=demo 时顶栏显示“演示数据”。</td><td class="evidence">screenshots/01-sessions-demo.png</td></tr><tr><td class="num">12</td><td>Scaffold 无角标</td><td><span class="status pass">PASS</span></td><td>API 以 HE_PHASE=scaffold 重启后，同一账号页面不显示 demo 角标。</td><td class="evidence">screenshots/05-scaffold-no-badge.png</td></tr><tr><td class="num">13</td><td>Live 无角标</td><td><span class="status pass">PASS</span></td><td>API 以 HE_PHASE=live 重启后，同一账号页面不显示 demo 角标。</td><td class="evidence">screenshots/06-live-no-badge.png</td></tr><tr><td class="num">14</td><td>Seed 幂等且无领域假数据</td><td><span class="status pass">PASS</span></td><td>fixtures:seed 连续两次返回同一管理员 id；SQLite users=1、job_runs=0、evolution_run_events=0，没有伪造会话、问题、probe 或 run。</td><td class="evidence">same admin id across two runs<br>rows users=1 job_runs=0 events=0</td></tr><tr><td class="num">15</td><td>390px 响应式</td><td><span class="status pass">PASS</span></td><td>390×844 下 scrollWidth=clientWidth=390，用户菜单与退出入口保持在视口内；三入口无横向滚动。</td><td class="evidence">screenshots/11-narrow-390.png</td></tr><tr><td class="num">16</td><td>Evolution 全新深链控制台</td><td><span class="status pass">PASS</span></td><td>全新标签直接访问 /evolution，canvas 首帧尺寸为 708×320（CUA）及 1080×320（CDP），Vue Flow warning/error/exception=0。</td><td class="evidence">screenshots/04-evolution-direct.png<br>screenshots/12-evolution-direct.png<br>vueFlowDirect=[]</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>10 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-sessions-demo.png" alt="Sessions 默认页、三入口和 demo 角标"><figcaption><b>Sessions 与 demo</b><span>三个顶层入口、active navigation、空态和演示角标同时可见。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-errors-placeholder.png" alt="Errors 已鉴权占位页"><figcaption><b>Errors 占位</b><span>Errors 明确显示后续 milestone 接入，没有伪造问题数据。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-evolution-placeholder.png" alt="Evolution 占位页与 Vue Flow 容器"><figcaption><b>Evolution 占位</b><span>空态和固定高度容器可见。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-health-loading.png" alt="health 加载骨架"><figcaption><b>Health loading</b><span>共享 LoadingSkeleton 在 shell 内显示。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/09-health-error.png" alt="标准 503 health 错误态"><figcaption><b>503 ErrorState</b><span>标准错误 envelope 显示可重试 ErrorState，没有白屏。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/10-health-retry-success.png" alt="health 重试恢复后的 Sessions 页面"><figcaption><b>Retry recovery</b><span>重试 200 后页面恢复且 shell 保留。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/13-conflict-toast.png" alt="409 RUN_BUSY ElMessage"><figcaption><b>409 Message</b><span>冲突提示以固定定位 toast 展示，页面不切换。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/15-global-error-toast.png" alt="全局 Vue 错误处理 toast"><figcaption><b>Global error</b><span>全局 handler 显示 ElMessage 并保留 shell。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/11-narrow-390.png" alt="390px 窄视口"><figcaption><b>390px</b><span>页面无横向溢出，导航和用户入口保持可用。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-evolution-direct.png" alt="全新标签直接访问 Evolution"><figcaption><b>Evolution deep link</b><span>深链首帧无 Vue Flow 尺寸 warning。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>应用壳与导航</td><td>Computer Use + Chrome E2E</td><td>三入口、active 状态、auth 边界和响应式均通过。</td><td>后续新增入口时沿用 shell E2E。</td></tr><tr><td>共享三态</td><td>真实 503 fault proxy + E2E</td><td>loading、错误码、ErrorState 与手动 retry 均实际验证。</td><td>保留标准 ErrorResponse fault 测试。</td></tr><tr><td>全局错误与 409</td><td>CDP 注入 + 真实 Chrome</td><td>409 与 Vue handler 都显示可定位 ElMessage，shell 不消失。</td><td>继续区分可重试页错误和非阻塞冲突。</td></tr><tr><td>Seed</td><td>两次真实 CLI + SQLite 行数</td><td>身份种子幂等，未生成领域假数据。</td><td>完整 fixture corpus 留给 M2-01。</td></tr><tr><td>自动化回归</td><td>pnpm test:e2e -- m1-shell</td><td>4/4 真实 Chrome 场景通过。</td><td>CI 每次 PR 继续执行。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>当前提交已满足 M1-09 的应用壳、三态、demo 角标、seed 和浏览器集成验收。</strong></p><ul><li>标准 503 不再白屏，ErrorState 和手动重试均真实通过。</li><li>Vue Flow 全新深链控制台清洁。</li><li>临时服务、SQLite、cookie 与凭据均已清理或脱敏。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use、真实 Chrome/CDP、fault proxy、仓库 E2E、seed CLI 与 SQLite 行数。HTML 由 JSON 渲染，不手改。</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "vueFlowDirect": [],
+  "unexpectedViolations": [],
+  "expectedViolations": [
+    {
+      "scenario": "global Vue error handler",
+      "entry": "[vue] Error: smoke-global-error",
+      "reason": "Dedicated trigger verifies the configured global handler before it presents ElMessage."
+    },
+    {
+      "scenario": "unauthenticated redirect",
+      "entry": "POST /api/auth/refresh 401",
+      "reason": "Expected when testing an unauthenticated protected route with an intentionally cleared cookie."
+    }
+  ]
+}

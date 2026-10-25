@@ -1,0 +1,257 @@
+{
+  "title": "M1-09 应用壳与三态集成冒烟",
+  "eyebrow": "Harness Evolution · PR #81",
+  "lang": "zh-CN",
+  "summary": "在真实 Chrome、Vite、FastAPI 与隔离 SQLite 上验证三入口、共享三态、demo 角标、409 Message、全局错误提示、Vue Flow 深链、seed 幂等与响应式布局。16 个运行时场景全部通过，标准 503 可重试恢复，未发现意外浏览器告警或运行时异常。",
+  "meta": "2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite",
+  "metrics": [
+    { "value": "16", "label": "运行时场景" },
+    { "value": "16", "label": "通过" },
+    { "value": "0", "label": "意外控制台告警/错误" },
+    { "value": "4/4", "label": "仓库 Chrome E2E" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#32 · M1 app shell states" },
+    { "label": "PR", "value": "#81" },
+    { "label": "Commit", "value": "2366a5a" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + Chrome" },
+    { "label": "Viewports", "value": "1408×667 · 390×844" },
+    { "label": "Credentials", "value": "<redacted>" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Sessions 默认页与三入口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "登录后进入 /sessions；Sessions、Errors、Evolution 三个入口可见，Sessions active，空态与 demo 角标正确。",
+        "evidence": ["screenshots/01-sessions-demo.png"]
+      },
+      {
+        "id": "02",
+        "name": "Errors 占位",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "/errors 为已鉴权占位页，active 为 Errors；显示“暂无问题”并明确后续 milestone 接入，没有模拟问题行。",
+        "evidence": ["screenshots/02-errors-placeholder.png"]
+      },
+      {
+        "id": "03",
+        "name": "Evolution 占位",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "显示“暂无自进化运行”和 320px 容器，未提前展示假运行数据。",
+        "evidence": ["screenshots/03-evolution-placeholder.png"]
+      },
+      {
+        "id": "04",
+        "name": "用户菜单",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "当前用户菜单可展开，退出入口可见；受保护页面仍保留 shell。",
+        "evidence": ["screenshots/14-user-menu.png"]
+      },
+      {
+        "id": "05",
+        "name": "未登录回跳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "清 cookie 后访问 /sessions 跳转 /login 并携带原路径；仓库 E2E 同时覆盖 /errors、/evolution。",
+        "evidence": ["screenshots/16-unauth-redirect.png", "expected refresh 401 only"]
+      },
+      {
+        "id": "06",
+        "name": "Health loading",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "health 延迟响应时显示共享 LoadingSkeleton“正在连接 API”，TopNav 与 shell 保持。",
+        "evidence": ["screenshots/08-health-loading.png"]
+      },
+      {
+        "id": "07",
+        "name": "标准 503 ErrorState",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "503 HEALTH_UNAVAILABLE 被解码为 ApiError；页面显示共享 ErrorState、错误码和重试按钮，没有 TypeError 或白屏。",
+        "evidence": ["screenshots/09-health-error.png", "runtime exceptions=0"]
+      },
+      {
+        "id": "08",
+        "name": "503 后手动重试恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击重试后 health 返回 200，Sessions 内容恢复，导航与 shell 保持。",
+        "evidence": ["screenshots/10-health-retry-success.png"]
+      },
+      {
+        "id": "09",
+        "name": "409 RUN_BUSY Message",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "409 显示固定定位 ElMessage“已有任务正在运行”；shell、导航和页面均保留，无整页 ErrorState。",
+        "evidence": ["screenshots/13-conflict-toast.png", "toast position=fixed"]
+      },
+      {
+        "id": "10",
+        "name": "全局 Vue 错误提示",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "专用错误触发后 ElMessage 显示“操作失败，请稍后重试”，shell 保留；只有预期错误日志。",
+        "evidence": ["screenshots/15-global-error-toast.png", "console-summary.json"]
+      },
+      {
+        "id": "11",
+        "name": "Demo 角标",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "HE_PHASE=demo 时顶栏显示“演示数据”。",
+        "evidence": ["screenshots/01-sessions-demo.png"]
+      },
+      {
+        "id": "12",
+        "name": "Scaffold 无角标",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "API 以 HE_PHASE=scaffold 重启后，同一账号页面不显示 demo 角标。",
+        "evidence": ["screenshots/05-scaffold-no-badge.png"]
+      },
+      {
+        "id": "13",
+        "name": "Live 无角标",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "API 以 HE_PHASE=live 重启后，同一账号页面不显示 demo 角标。",
+        "evidence": ["screenshots/06-live-no-badge.png"]
+      },
+      {
+        "id": "14",
+        "name": "Seed 幂等且无领域假数据",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "fixtures:seed 连续两次返回同一管理员 id；SQLite users=1、job_runs=0、evolution_run_events=0，没有伪造会话、问题、probe 或 run。",
+        "evidence": ["same admin id across two runs", "rows users=1 job_runs=0 events=0"]
+      },
+      {
+        "id": "15",
+        "name": "390px 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390×844 下 scrollWidth=clientWidth=390，用户菜单与退出入口保持在视口内；三入口无横向滚动。",
+        "evidence": ["screenshots/11-narrow-390.png"]
+      },
+      {
+        "id": "16",
+        "name": "Evolution 全新深链控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "全新标签直接访问 /evolution，canvas 首帧尺寸为 708×320（CUA）及 1080×320（CDP），Vue Flow warning/error/exception=0。",
+        "evidence": ["screenshots/04-evolution-direct.png", "screenshots/12-evolution-direct.png", "vueFlowDirect=[]"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions-demo.png",
+      "alt": "Sessions 默认页、三入口和 demo 角标",
+      "label": "Sessions 与 demo",
+      "caption": "三个顶层入口、active navigation、空态和演示角标同时可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-errors-placeholder.png",
+      "alt": "Errors 已鉴权占位页",
+      "label": "Errors 占位",
+      "caption": "Errors 明确显示后续 milestone 接入，没有伪造问题数据。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-evolution-placeholder.png",
+      "alt": "Evolution 占位页与 Vue Flow 容器",
+      "label": "Evolution 占位",
+      "caption": "空态和固定高度容器可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-health-loading.png",
+      "alt": "health 加载骨架",
+      "label": "Health loading",
+      "caption": "共享 LoadingSkeleton 在 shell 内显示。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/09-health-error.png",
+      "alt": "标准 503 health 错误态",
+      "label": "503 ErrorState",
+      "caption": "标准错误 envelope 显示可重试 ErrorState，没有白屏。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/10-health-retry-success.png",
+      "alt": "health 重试恢复后的 Sessions 页面",
+      "label": "Retry recovery",
+      "caption": "重试 200 后页面恢复且 shell 保留。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/13-conflict-toast.png",
+      "alt": "409 RUN_BUSY ElMessage",
+      "label": "409 Message",
+      "caption": "冲突提示以固定定位 toast 展示，页面不切换。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/15-global-error-toast.png",
+      "alt": "全局 Vue 错误处理 toast",
+      "label": "Global error",
+      "caption": "全局 handler 显示 ElMessage 并保留 shell。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/11-narrow-390.png",
+      "alt": "390px 窄视口",
+      "label": "390px",
+      "caption": "页面无横向溢出，导航和用户入口保持可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-evolution-direct.png",
+      "alt": "全新标签直接访问 Evolution",
+      "label": "Evolution deep link",
+      "caption": "深链首帧无 Vue Flow 尺寸 warning。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "应用壳与导航",
+        "coverage": "Computer Use + Chrome E2E",
+        "conclusion": "三入口、active 状态、auth 边界和响应式均通过。",
+        "recommendation": "后续新增入口时沿用 shell E2E。"
+      },
+      {
+        "area": "共享三态",
+        "coverage": "真实 503 fault proxy + E2E",
+        "conclusion": "loading、错误码、ErrorState 与手动 retry 均实际验证。",
+        "recommendation": "保留标准 ErrorResponse fault 测试。"
+      },
+      {
+        "area": "全局错误与 409",
+        "coverage": "CDP 注入 + 真实 Chrome",
+        "conclusion": "409 与 Vue handler 都显示可定位 ElMessage，shell 不消失。",
+        "recommendation": "继续区分可重试页错误和非阻塞冲突。"
+      },
+      {
+        "area": "Seed",
+        "coverage": "两次真实 CLI + SQLite 行数",
+        "conclusion": "身份种子幂等，未生成领域假数据。",
+        "recommendation": "完整 fixture corpus 留给 M2-01。"
+      },
+      {
+        "area": "自动化回归",
+        "coverage": "pnpm test:e2e -- m1-shell",
+        "conclusion": "4/4 真实 Chrome 场景通过。",
+        "recommendation": "CI 每次 PR 继续执行。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交已满足 M1-09 的应用壳、三态、demo 角标、seed 和浏览器集成验收。",
+    "points": [
+      "标准 503 不再白屏，ErrorState 和手动重试均真实通过。",
+      "Vue Flow 全新深链控制台清洁。",
+      "临时服务、SQLite、cookie 与凭据均已清理或脱敏。"
+    ]
+  },
+  "footer": "证据源：Computer Use、真实 Chrome/CDP、fault proxy、仓库 E2E、seed CLI 与 SQLite 行数。HTML 由 JSON 渲染，不手改。"
+}

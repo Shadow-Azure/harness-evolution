@@ -1,0 +1,26 @@
+[
+  {
+    "level": "warn",
+    "message": "[Vue Flow]: The Vue Flow parent container needs a width and a height to render the graph",
+    "timestamp": "2026-10-25T08:32:14.684Z",
+    "url": "http://localhost:5174/node_modules/.vite/deps/@vue-flow_core.js?v=270eb875"
+  },
+  {
+    "level": "warn",
+    "message": "[Vue Flow]: The Vue Flow parent container needs a width and a height to render the graph",
+    "timestamp": "2026-10-25T08:32:14.684Z",
+    "url": "http://localhost:5174/node_modules/.vite/deps/@vue-flow_core.js?v=270eb875"
+  },
+  {
+    "level": "warn",
+    "message": "[Vue Flow]: The Vue Flow parent container needs a width and a height to render the graph",
+    "timestamp": "2026-10-25T08:32:19.492Z",
+    "url": "http://localhost:5174/node_modules/.vite/deps/@vue-flow_core.js?v=270eb875"
+  },
+  {
+    "level": "warn",
+    "message": "[Vue Flow]: The Vue Flow parent container needs a width and a height to render the graph",
+    "timestamp": "2026-10-25T08:32:19.504Z",
+    "url": "http://localhost:5174/node_modules/.vite/deps/@vue-flow_core.js?v=270eb875"
+  }
+]

@@ -1,0 +1,284 @@
+{
+  "title": "M1-09 应用壳与三态集成冒烟复测",
+  "eyebrow": "Harness Evolution · PR #81 · after",
+  "summary": "在真实 Chrome、Vite、FastAPI 与隔离 SQLite 上复测三入口、共享三态、demo 角标、409 Message、Vue Flow 首帧和响应式布局。13 个运行时场景中 12 个通过；health 503 使用统一 ErrorResponse 时触发前端 TypeError 与白屏，因此错误态验收仍失败。",
+  "meta": "2026-10-25 · macOS · Chrome · localhost",
+  "metrics": [
+    { "value": "13", "label": "运行时场景" },
+    { "value": "12", "label": "通过" },
+    { "value": "1", "label": "失败" },
+    { "value": "0", "label": "Vue Flow warning" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#32 · M1 app shell states" },
+    { "label": "PR", "value": "#81" },
+    { "label": "Commit", "value": "1d65354" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome" },
+    { "label": "Database", "value": "隔离 SQLite" },
+    { "label": "Phase", "value": "demo / scaffold / live 均实测" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Sessions 默认页与三入口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "新密码重登后进入 /sessions；Sessions、Errors、Evolution 均可见，Sessions active，空态与 demo 角标正确。",
+        "evidence": ["screenshots/02-sessions-demo.png"]
+      },
+      {
+        "id": "02",
+        "name": "Errors 占位",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "/errors 为已鉴权占位页，active 为 Errors；显示“暂无问题”并明确后续 milestone 接入，没有模拟问题行。",
+        "evidence": ["screenshots/03-errors-placeholder.png"]
+      },
+      {
+        "id": "03",
+        "name": "Evolution 与 Vue Flow 首帧",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Evolution 显示空态与 320px Vue Flow 容器；顺序导航及全新标签直接深链均无 Vue Flow warning/error。",
+        "evidence": [
+          "screenshots/04-evolution-placeholder.png",
+          "direct canvas=1080×320 · dev logs=0"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "强制首登改密入口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "临时管理员登录后进入 /change-password?redirect=/sessions，受保护壳层未闪现；新密码保存后进入 Sessions。",
+        "evidence": ["screenshots/01-force-password.png"]
+      },
+      {
+        "id": "05",
+        "name": "用户菜单",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "窄视口下用户菜单可展开，退出入口可见且位于视口内。",
+        "evidence": ["screenshots/05-user-menu.png"]
+      },
+      {
+        "id": "06",
+        "name": "退出与未登录回跳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "退出后回到登录；/sessions、/errors、/evolution 分别跳到带原路径的安全 redirect，未渲染受保护内容。",
+        "evidence": [
+          "screenshots/06-unauth-redirect.png",
+          "redirects=/sessions,/errors,/evolution"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "新密码重新登录",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "改密后的账号成功重新登录，并按最近未登录目标回到 /evolution 后继续导航。",
+        "evidence": ["HTTP login=200 · mustChange=false"]
+      },
+      {
+        "id": "08",
+        "name": "Health loading",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "health 延迟 2.5 秒时显示共享 LoadingSkeleton“正在连接 API”，TopNav 与 shell 保持可见。",
+        "evidence": ["screenshots/07-health-loading.png"]
+      },
+      {
+        "id": "09",
+        "name": "Health 503 ErrorState + retry",
+        "status": { "kind": "fail", "label": "FAIL" },
+        "detail": "真实 503 ErrorResponse 被当作 HealthResponse；App 读取不存在的 db，出现 TypeError 与白屏，ErrorState/retry 未出现。",
+        "evidence": ["screenshots/08-health-error-retry.png", "console-main.json"]
+      },
+      {
+        "id": "10",
+        "name": "409 RUN_BUSY Message",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "409 health 注入显示固定定位 ElMessage“已有任务正在运行”；shell 保留，无整页 ErrorState。",
+        "evidence": ["screenshots/09-conflict-toast.png", "toast position=fixed"]
+      },
+      {
+        "id": "11",
+        "name": "Demo 角标 phase 三分支",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "demo 显示“演示数据”；重启 API 为 scaffold 与 live 后角标均隐藏。",
+        "evidence": [
+          "screenshots/02-sessions-demo.png",
+          "screenshots/11-scaffold-no-badge.png",
+          "screenshots/12-live-no-badge.png"
+        ]
+      },
+      {
+        "id": "12",
+        "name": "Seed 幂等与无假领域数据",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "fixtures:seed 连续两次返回同一管理员 id；SQLite 行数为 users=1、job_runs=0、events=0，无会话/问题/probe 假数据。",
+        "evidence": [
+          "same admin id across two runs",
+          "rows users=1 job_runs=0 events=0"
+        ]
+      },
+      {
+        "id": "13",
+        "name": "390px 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390×844 下 scrollWidth=clientWidth=390，用户菜单右边界 366px，三入口与退出入口均可操作。",
+        "evidence": ["screenshots/10-narrow-viewport.png", "scrollWidth=390 · clientWidth=390"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P1",
+      "title": "Health 503 ErrorResponse 导致 TypeError 和白屏",
+      "facts": [
+        {
+          "label": "位置",
+          "value": "apps/web/src/api/health.ts 与 apps/web/src/App.vue；统一 503 error envelope 进入 HealthResponse"
+        },
+        {
+          "label": "实际",
+          "value": "fetchHealth 接受 503 并返回 { error }；App 读取 data.db.ok，浏览器记录 TypeError 并白屏。"
+        },
+        {
+          "label": "期望",
+          "value": "显示共享 ErrorState、错误码与重试入口，TopNav 和 shell 保持。"
+        },
+        {
+          "label": "根因",
+          "value": "acceptedStatuses 包含 503，绕过了统一错误解码；503 被静态断言为 HealthResponse。"
+        },
+        {
+          "label": "复现",
+          "value": "让 /api/health 返回 503 {error:{code:HEALTH_UNAVAILABLE,...}} 后刷新受保护页面。"
+        }
+      ],
+      "state": { "kind": "fail", "label": "未修复 · PR comment 6395663803" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/01-force-password.png",
+      "alt": "首次登录强制改密页",
+      "label": "首登改密",
+      "caption": "临时管理员登录后进入强制改密页。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-sessions-demo.png",
+      "alt": "Sessions 空态、三入口和 demo 角标",
+      "label": "Sessions · demo",
+      "caption": "三入口、Sessions active、空态和演示角标同时可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-errors-placeholder.png",
+      "alt": "Errors 顶层占位页",
+      "label": "Errors 占位",
+      "caption": "Errors 为已鉴权空态，没有模拟问题行。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-evolution-placeholder.png",
+      "alt": "Evolution 空态和 Vue Flow 容器",
+      "label": "Evolution",
+      "caption": "Vue Flow 首帧尺寸稳定，控制台无 warning。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-user-menu.png",
+      "alt": "窄视口下展开的用户菜单",
+      "label": "用户菜单",
+      "caption": "用户菜单和退出入口在 390px 视口内。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/06-unauth-redirect.png",
+      "alt": "退出后的登录页",
+      "label": "安全回跳",
+      "caption": "三个受保护路线都回到带安全 redirect 的登录页。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-health-loading.png",
+      "alt": "health 延迟时的加载骨架",
+      "label": "Health loading",
+      "caption": "TopNav 和 shell 保持可见，内容区显示共享加载态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-health-error-retry.png",
+      "alt": "health 503 后白屏的失败页面",
+      "label": "Health 503 失败",
+      "caption": "统一 503 ErrorResponse 被误读，页面白屏且无重试入口。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/09-conflict-toast.png",
+      "alt": "409 RUN_BUSY 非阻断提示",
+      "label": "409 Message",
+      "caption": "Message 固定定位显示，页面和导航不被替换。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/10-narrow-viewport.png",
+      "alt": "390px 下的 Sessions 页面",
+      "label": "390px",
+      "caption": "无水平溢出，顶部导航与用户入口均可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/11-scaffold-no-badge.png",
+      "alt": "scaffold phase 无 demo 角标",
+      "label": "scaffold",
+      "caption": "scaffold phase 不显示演示角标。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/12-live-no-badge.png",
+      "alt": "live phase 无 demo 角标",
+      "label": "live",
+      "caption": "live phase 不显示演示角标。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "三入口与鉴权",
+        "coverage": "真实 Chrome + FastAPI",
+        "conclusion": "Sessions/Errors/Evolution、active、安全回跳和用户菜单均已实测。",
+        "recommendation": "保留真实 Chrome E2E 作为 CI 基线。"
+      },
+      {
+        "area": "共享三态与 409",
+        "coverage": "真实 Chrome + 故障注入代理 + HTTP",
+        "conclusion": "loading、409 Message 通过；标准 503 ErrorResponse 触发 P1 白屏。",
+        "recommendation": "先修正 fetchHealth 的 503 解码，再从标准 ErrorResponse 重测 ErrorState 与 retry。"
+      },
+      {
+        "area": "Vue Flow 首帧",
+        "coverage": "顺序导航 + 全新标签深链",
+        "conclusion": "容器首帧为 1080×320，控制台无 Vue Flow warning/error。",
+        "recommendation": "保留尺寸回归和直接深链 E2E。"
+      },
+      {
+        "area": "Seed 幂等",
+        "coverage": "真实 CLI + SQLite",
+        "conclusion": "重复执行复用同一管理员 id，领域表仍为空。",
+        "recommendation": "M2 继续由 m2-01 管理 fixture corpus。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "fail",
+    "label": "需修复",
+    "summary": "本轮修复了 Vue Flow 首帧 warning，但真实 503 ErrorResponse 暴露了新的 health 错误态白屏，不能合并。",
+    "points": [
+      "Vue Flow 直接深链控制台清洁已通过。",
+      "P1 已在 PR #81 留言，等待失败测试复现与 pr-review-fix。",
+      "修复后必须重新执行本完整冒烟。"
+    ]
+  },
+  "footer": "证据源：Computer Use Chrome 截图、控制台、故障注入 HTTP 与隔离 SQLite。生成 HTML 不应手改。"
+}

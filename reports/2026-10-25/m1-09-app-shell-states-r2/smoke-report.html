@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M1-09 应用壳与三态集成冒烟复测</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #81 · after</p>
+    <h1>M1-09 应用壳与三态集成冒烟复测</h1>
+    <p class="summary">在真实 Chrome、Vite、FastAPI 与隔离 SQLite 上复测三入口、共享三态、demo 角标、409 Message、Vue Flow 首帧和响应式布局。13 个运行时场景中 12 个通过；health 503 使用统一 ErrorResponse 时触发前端 TypeError 与白屏，因此错误态验收仍失败。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · localhost</span>
+    <div class="metrics"><div class="metric"><b>13</b><span>运行时场景</span></div><div class="metric"><b>12</b><span>通过</span></div><div class="metric"><b>1</b><span>失败</span></div><div class="metric"><b>0</b><span>Vue Flow warning</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · localhost</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#32 · M1 app shell states</dd></div><div class="fact"><dt>PR</dt><dd>#81</dd></div><div class="fact"><dt>Commit</dt><dd>1d65354</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome</dd></div><div class="fact"><dt>Database</dt><dd>隔离 SQLite</dd></div><div class="fact"><dt>Phase</dt><dd>demo / scaffold / live 均实测</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>12 pass · 1 fail</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>Sessions 默认页与三入口</td><td><span class="status pass">PASS</span></td><td>新密码重登后进入 /sessions；Sessions、Errors、Evolution 均可见，Sessions active，空态与 demo 角标正确。</td><td class="evidence">screenshots/02-sessions-demo.png</td></tr><tr><td class="num">02</td><td>Errors 占位</td><td><span class="status pass">PASS</span></td><td>/errors 为已鉴权占位页，active 为 Errors；显示“暂无问题”并明确后续 milestone 接入，没有模拟问题行。</td><td class="evidence">screenshots/03-errors-placeholder.png</td></tr><tr><td class="num">03</td><td>Evolution 与 Vue Flow 首帧</td><td><span class="status pass">PASS</span></td><td>Evolution 显示空态与 320px Vue Flow 容器；顺序导航及全新标签直接深链均无 Vue Flow warning/error。</td><td class="evidence">screenshots/04-evolution-placeholder.png<br>direct canvas=1080×320 · dev logs=0</td></tr><tr><td class="num">04</td><td>强制首登改密入口</td><td><span class="status pass">PASS</span></td><td>临时管理员登录后进入 /change-password?redirect=/sessions，受保护壳层未闪现；新密码保存后进入 Sessions。</td><td class="evidence">screenshots/01-force-password.png</td></tr><tr><td class="num">05</td><td>用户菜单</td><td><span class="status pass">PASS</span></td><td>窄视口下用户菜单可展开，退出入口可见且位于视口内。</td><td class="evidence">screenshots/05-user-menu.png</td></tr><tr><td class="num">06</td><td>退出与未登录回跳</td><td><span class="status pass">PASS</span></td><td>退出后回到登录；/sessions、/errors、/evolution 分别跳到带原路径的安全 redirect，未渲染受保护内容。</td><td class="evidence">screenshots/06-unauth-redirect.png<br>redirects=/sessions,/errors,/evolution</td></tr><tr><td class="num">07</td><td>新密码重新登录</td><td><span class="status pass">PASS</span></td><td>改密后的账号成功重新登录，并按最近未登录目标回到 /evolution 后继续导航。</td><td class="evidence">HTTP login=200 · mustChange=false</td></tr><tr><td class="num">08</td><td>Health loading</td><td><span class="status pass">PASS</span></td><td>health 延迟 2.5 秒时显示共享 LoadingSkeleton“正在连接 API”，TopNav 与 shell 保持可见。</td><td class="evidence">screenshots/07-health-loading.png</td></tr><tr><td class="num">09</td><td>Health 503 ErrorState + retry</td><td><span class="status fail">FAIL</span></td><td>真实 503 ErrorResponse 被当作 HealthResponse；App 读取不存在的 db，出现 TypeError 与白屏，ErrorState/retry 未出现。</td><td class="evidence">screenshots/08-health-error-retry.png<br>console-main.json</td></tr><tr><td class="num">10</td><td>409 RUN_BUSY Message</td><td><span class="status pass">PASS</span></td><td>409 health 注入显示固定定位 ElMessage“已有任务正在运行”；shell 保留，无整页 ErrorState。</td><td class="evidence">screenshots/09-conflict-toast.png<br>toast position=fixed</td></tr><tr><td class="num">11</td><td>Demo 角标 phase 三分支</td><td><span class="status pass">PASS</span></td><td>demo 显示“演示数据”；重启 API 为 scaffold 与 live 后角标均隐藏。</td><td class="evidence">screenshots/02-sessions-demo.png<br>screenshots/11-scaffold-no-badge.png<br>screenshots/12-live-no-badge.png</td></tr><tr><td class="num">12</td><td>Seed 幂等与无假领域数据</td><td><span class="status pass">PASS</span></td><td>fixtures:seed 连续两次返回同一管理员 id；SQLite 行数为 users=1、job_runs=0、events=0，无会话/问题/probe 假数据。</td><td class="evidence">same admin id across two runs<br>rows users=1 job_runs=0 events=0</td></tr><tr><td class="num">13</td><td>390px 响应式</td><td><span class="status pass">PASS</span></td><td>390×844 下 scrollWidth=clientWidth=390，用户菜单右边界 366px，三入口与退出入口均可操作。</td><td class="evidence">screenshots/10-narrow-viewport.png<br>scrollWidth=390 · clientWidth=390</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P1 Health 503 ErrorResponse 导致 TypeError 和白屏</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P1</span><h3>Health 503 ErrorResponse 导致 TypeError 和白屏</h3><dl><div><dt>位置</dt><dd>apps/web/src/api/health.ts 与 apps/web/src/App.vue；统一 503 error envelope 进入 HealthResponse</dd></div><div><dt>实际</dt><dd>fetchHealth 接受 503 并返回 { error }；App 读取 data.db.ok，浏览器记录 TypeError 并白屏。</dd></div><div><dt>期望</dt><dd>显示共享 ErrorState、错误码与重试入口，TopNav 和 shell 保持。</dd></div><div><dt>根因</dt><dd>acceptedStatuses 包含 503，绕过了统一错误解码；503 被静态断言为 HealthResponse。</dd></div><div><dt>复现</dt><dd>让 /api/health 返回 503 {error:{code:HEALTH_UNAVAILABLE,...}} 后刷新受保护页面。</dd></div></dl><div class="fixed">未修复 · PR comment 6395663803</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>12 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-force-password.png" alt="首次登录强制改密页"><figcaption><b>首登改密</b><span>临时管理员登录后进入强制改密页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-sessions-demo.png" alt="Sessions 空态、三入口和 demo 角标"><figcaption><b>Sessions · demo</b><span>三入口、Sessions active、空态和演示角标同时可见。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-errors-placeholder.png" alt="Errors 顶层占位页"><figcaption><b>Errors 占位</b><span>Errors 为已鉴权空态，没有模拟问题行。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-evolution-placeholder.png" alt="Evolution 空态和 Vue Flow 容器"><figcaption><b>Evolution</b><span>Vue Flow 首帧尺寸稳定，控制台无 warning。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/05-user-menu.png" alt="窄视口下展开的用户菜单"><figcaption><b>用户菜单</b><span>用户菜单和退出入口在 390px 视口内。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-unauth-redirect.png" alt="退出后的登录页"><figcaption><b>安全回跳</b><span>三个受保护路线都回到带安全 redirect 的登录页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/07-health-loading.png" alt="health 延迟时的加载骨架"><figcaption><b>Health loading</b><span>TopNav 和 shell 保持可见，内容区显示共享加载态。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/08-health-error-retry.png" alt="health 503 后白屏的失败页面"><figcaption><b>Health 503 失败</b><span>统一 503 ErrorResponse 被误读，页面白屏且无重试入口。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/09-conflict-toast.png" alt="409 RUN_BUSY 非阻断提示"><figcaption><b>409 Message</b><span>Message 固定定位显示，页面和导航不被替换。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/10-narrow-viewport.png" alt="390px 下的 Sessions 页面"><figcaption><b>390px</b><span>无水平溢出，顶部导航与用户入口均可用。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/11-scaffold-no-badge.png" alt="scaffold phase 无 demo 角标"><figcaption><b>scaffold</b><span>scaffold phase 不显示演示角标。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/12-live-no-badge.png" alt="live phase 无 demo 角标"><figcaption><b>live</b><span>live phase 不显示演示角标。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>三入口与鉴权</td><td>真实 Chrome + FastAPI</td><td>Sessions/Errors/Evolution、active、安全回跳和用户菜单均已实测。</td><td>保留真实 Chrome E2E 作为 CI 基线。</td></tr><tr><td>共享三态与 409</td><td>真实 Chrome + 故障注入代理 + HTTP</td><td>loading、409 Message 通过；标准 503 ErrorResponse 触发 P1 白屏。</td><td>先修正 fetchHealth 的 503 解码，再从标准 ErrorResponse 重测 ErrorState 与 retry。</td></tr><tr><td>Vue Flow 首帧</td><td>顺序导航 + 全新标签深链</td><td>容器首帧为 1080×320，控制台无 Vue Flow warning/error。</td><td>保留尺寸回归和直接深链 E2E。</td></tr><tr><td>Seed 幂等</td><td>真实 CLI + SQLite</td><td>重复执行复用同一管理员 id，领域表仍为空。</td><td>M2 继续由 m2-01 管理 fixture corpus。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>需修复</small></div>
+    <article class="card conclusion fail"><p><strong>本轮修复了 Vue Flow 首帧 warning，但真实 503 ErrorResponse 暴露了新的 health 错误态白屏，不能合并。</strong></p><ul><li>Vue Flow 直接深链控制台清洁已通过。</li><li>P1 已在 PR #81 留言，等待失败测试复现与 pr-review-fix。</li><li>修复后必须重新执行本完整冒烟。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use Chrome 截图、控制台、故障注入 HTTP 与隔离 SQLite。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>
