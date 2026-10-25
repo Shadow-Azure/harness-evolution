@@ -1,5 +1,6 @@
 """Contracts for the deterministic m2-01 synthetic fixture corpus."""
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -47,6 +48,19 @@ def write_json(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8")
 
 
+def copied_corpus(tmp_path: Path) -> Path:
+    """Copy the canonical corpus into an isolated mutable test directory."""
+    corpus_dir = tmp_path / "corpus"
+    (corpus_dir / "payloads").mkdir(parents=True)
+    write_json(
+        corpus_dir / "corpus.json",
+        CORPUS_PATH.read_text(encoding="utf-8"),
+    )
+    for payload in (CORPUS_PATH.parent / "payloads").glob("*.jsonl"):
+        (corpus_dir / "payloads" / payload.name).write_bytes(payload.read_bytes())
+    return corpus_dir / "corpus.json"
+
+
 def test_canonical_corpus_has_four_bounded_synthetic_roots() -> None:
     """The checked-in corpus is deterministic, four-root, and hash-derived."""
     corpus = load_fixture_corpus(CORPUS_PATH)
@@ -78,6 +92,46 @@ def test_loader_rejects_unknown_fields_and_real_path_markers(tmp_path: Path) -> 
     unsafe = source.replace("/workspace/example-repo", "/Users/example/real-repo")
     write_json(altered, unsafe)
     with pytest.raises(ValueError, match=r"real-session|path marker"):
+        load_fixture_corpus(altered)
+
+
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "/home/example/real-repo",
+        r"C:\Users\example\real-repo",
+        r"\\server\share\real-repo",
+    ],
+)
+def test_loader_rejects_platform_local_project_paths(
+    tmp_path: Path,
+    unsafe_path: str,
+) -> None:
+    """Project paths are synthetic workspace paths, never local user paths."""
+    altered = tmp_path / "corpus.json"
+    write_json(
+        altered,
+        CORPUS_PATH.read_text(encoding="utf-8").replace(
+            "/workspace/example-repo",
+            json.dumps(unsafe_path)[1:-1],
+        ),
+    )
+    with pytest.raises(ValueError, match=r"synthetic /workspace|path marker"):
+        load_fixture_corpus(altered)
+
+
+def test_loader_rejects_credentialed_repository_urls(tmp_path: Path) -> None:
+    """Repository URLs may identify a host but must not carry credentials."""
+    altered = tmp_path / "corpus.json"
+    write_json(
+        altered,
+        CORPUS_PATH.read_text(encoding="utf-8").replace(
+            "https://example.invalid/example/skills.git",
+            "https://user:secret@example.invalid/synthetic-skill",
+            1,
+        ),
+    )
+    with pytest.raises(ValueError, match=r"credential|userinfo"):
         load_fixture_corpus(altered)
 
 
@@ -125,6 +179,94 @@ def test_loader_rejects_duplicate_keys_and_unlisted_files(tmp_path: Path) -> Non
     (corpus_dir / "unlisted.json").write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match=r"unlisted fixture file"):
         load_fixture_corpus(corpus_dir / "corpus.json")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            '"sessionId":"10000000-0000-4000-8000-000000000001"',
+            '"sessionId":"10000000-0000-4000-8000-000000000002"',
+            "payload session id",
+        ),
+        (
+            '"agentId":"agent-s1-review-0001"',
+            '"agentId":"agent-wrong-0001"',
+            "payload agent id",
+        ),
+    ],
+)
+def test_payload_identity_must_match_manifest(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    message: str,
+) -> None:
+    """A payload cannot claim a session or agent other than its manifest owner."""
+    corpus = copied_corpus(tmp_path)
+    payload = (
+        corpus.parent / "payloads" / "session-01-main.jsonl"
+        if message.endswith("session id")
+        else corpus.parent / "payloads" / "session-01-review.jsonl"
+    )
+    payload.write_text(
+        payload.read_text(encoding="utf-8").replace(old, new, 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=message):
+        load_fixture_corpus(corpus)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('{"type":"user"', '{"type":"user","type":"user"'),
+        (
+            '"message":{"content":"复盘第一个示例会话"}',
+            '"message":{"content":"first","content":"second"}',
+        ),
+    ],
+)
+def test_payload_duplicate_keys_are_rejected_at_every_depth(
+    tmp_path: Path,
+    old: str,
+    new: str,
+) -> None:
+    """Duplicate JSON keys cannot hide a different parsed value from reviewers."""
+    corpus = copied_corpus(tmp_path)
+    payload = corpus.parent / "payloads" / "session-01-main.jsonl"
+    payload.write_text(
+        payload.read_text(encoding="utf-8").replace(old, new, 1),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match=r"duplicate JSON key"):
+        load_fixture_corpus(corpus)
+
+
+def test_bad_case_agent_must_be_a_same_session_child(tmp_path: Path) -> None:
+    """Main-agent anchors stay null; non-null anchors must name a child."""
+    corpus = copied_corpus(tmp_path)
+    source = corpus.read_text(encoding="utf-8")
+    main_id = "10000000-0000-4000-8000-000000000001"
+    child_id = "agent-s1-review-0001"
+
+    write_json(
+        corpus,
+        source.replace(f'"badCaseAgentId": "{child_id}"', f'"badCaseAgentId": "{main_id}"', 1),
+    )
+    with pytest.raises(ValueError, match=r"main agent|child agent"):
+        load_fixture_corpus(corpus)
+
+    write_json(
+        corpus,
+        source.replace(
+            f'"badCaseAgentId": "{child_id}"',
+            '"badCaseAgentId": "agent-s2-worker-0001"',
+            1,
+        ),
+    )
+    with pytest.raises(ValueError, match=r"same session"):
+        load_fixture_corpus(corpus)
 
 
 async def test_seed_writes_real_tables_and_repeat_is_idempotent(tmp_path: Path) -> None:
@@ -268,6 +410,50 @@ async def test_reseed_preserves_normalized_source_processing_state(tmp_path: Pat
         assert row["processed_hash"] == "normalized"
         assert row["parser_version"] == 3
         assert row["last_sync_run_id"] == sync_run_id
+    finally:
+        await database.dispose()
+
+
+async def test_reseed_preserves_first_received_at(tmp_path: Path) -> None:
+    """The first-seen timestamp is an audit fact, not a fixture-owned value."""
+    settings = sqlite_settings(tmp_path)
+    corpus = load_fixture_corpus(CORPUS_PATH)
+    await run_corpus_seed(settings, corpus)
+
+    database = create_database(settings)
+    await database.start()
+    try:
+        await upgrade_database(database)
+        received_at = datetime(2025, 1, 1, 8, 0, tzinfo=UTC)
+        async with database.transaction() as session:
+            source_id: int = (
+                await session.execute(select(source_records.c.id).limit(1))
+            ).scalar_one()
+            await session.execute(
+                update(source_records)
+                .where(source_records.c.id == source_id)
+                .values(received_at=received_at),
+            )
+    finally:
+        await database.dispose()
+
+    reseeded = await run_corpus_seed(settings, corpus)
+    assert reseeded.inserted == 0
+    assert reseeded.changed == 0
+
+    database = create_database(settings)
+    await database.start()
+    try:
+        async with database.session() as session:
+            stored: datetime | None = (
+                await session.execute(
+                    select(source_records.c.received_at).where(
+                        source_records.c.id == source_id,
+                    ),
+                )
+            ).scalar_one()
+        assert stored is not None
+        assert stored == received_at.replace(tzinfo=None)
     finally:
         await database.dispose()
 

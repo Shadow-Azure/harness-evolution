@@ -64,6 +64,7 @@ _UPSERT_KEYS: dict[Table, tuple[Column[Any], ...]] = {
 _INSERT_ONLY_COLUMNS: dict[Table, frozenset[str]] = {
     source_records: frozenset(
         {
+            "received_at",
             "processed_at",
             "processed_hash",
             "parser_version",

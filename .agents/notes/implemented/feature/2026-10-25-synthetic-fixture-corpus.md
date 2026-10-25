@@ -10,9 +10,9 @@ M2 的后续解析、查询和展示都需要一组可重复、足够小且不�
 
 ## Decision
 
-`fixtures/m2-synthetic/` 保存四棵确定性 Agent 会话树、逐 agent JSONL、问题/归因和目标配置。manifest 使用封闭 Pydantic schema；payload 的文件路径必须留在 corpus 内，SHA-256 与行数由原始字节派生，单项和总量都有字节上限，并拒绝本地真实路径或密钥标记。
+`fixtures/m2-synthetic/` 保存四棵确定性 Agent 会话树、逐 agent JSONL、问题/归因和目标配置。manifest 使用封闭 Pydantic schema；项目路径限定在合成的 `/workspace/` 根，仓库 URL 不接受凭据。payload 的文件路径必须留在 corpus 内，每个 JSON 对象拒绝重复键，每行 `sessionId` 必须与 manifest 会话一致，子 Agent 还必须声明匹配的 `agentId`。SHA-256 与行数由原始字节派生，单项和总量都有字节上限，并拒绝本地真实路径或密钥标记。
 
-seed 在 demo 或测试环境通过 Alembic 创建基础领域表，然后在一个事务中按稳定键 upsert 轨迹 payload、处理索引、会话、agent、触发点、用户输入、问题、归因和进化目标。写入前完成整棵 corpus 校验；相同内容重复执行不写库，源字段变化时原位更新且不替换主键。已有 `source_records` 的处理状态与 `last_sync_run_id`、已有进化目标的管理员归属属于运行态，重复 seed 不覆盖；`created_by` 只在插入目标时初始化。`fixtures:check` 提供无数据库的静态检查，CI 同时执行 check 与 seed。
+seed 在 demo 或测试环境通过 Alembic 创建基础领域表，然后在一个事务中按稳定键 upsert 轨迹 payload、处理索引、会话、agent、触发点、用户输入、问题、归因和进化目标。写入前完成整棵 corpus 校验；相同内容重复执行不写库，源字段变化时原位更新且不替换主键。已有 `source_records.received_at`、处理状态与 `last_sync_run_id`、已有进化目标的管理员归属属于运行态，重复 seed 不覆盖；`created_by` 只在插入目标时初始化。主 Agent 的问题锚点固定为 `null`，非空锚点只能引用同一会话的子 Agent。`fixtures:check` 提供无数据库的静态检查，CI 同时执行 check 与 seed。
 
 ## Alternatives considered
 

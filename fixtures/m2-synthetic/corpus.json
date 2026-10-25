@@ -322,7 +322,7 @@
       "objectName": "synthetic-review",
       "objectType": "skill",
       "objectVersion": "synthetic-1",
-      "badCaseAgentId": "10000000-0000-4000-8000-000000000003",
+      "badCaseAgentId": null,
       "reason": "合成示例：技能输出格式不稳定。",
       "metaData": {
         "fixture": true
@@ -337,7 +337,7 @@
       "badCaseType": "discovery",
       "objectName": "claude",
       "objectType": "agent",
-      "badCaseAgentId": "10000000-0000-4000-8000-000000000004",
+      "badCaseAgentId": null,
       "reason": "合成示例：最小会话信息不足。",
       "metaData": {
         "fixture": true
