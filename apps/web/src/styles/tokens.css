@@ -52,4 +52,7 @@
   --shadow-card: 0 1px 3px rgb(30 40 60 / 6%);
   --shadow-mark: 0 1px 3px rgb(30 40 60 / 18%);
   --shadow-popover: 0 8px 24px rgb(30 40 60 / 12%);
+  --graph-grid: #e6e9ef;
+  --graph-branch: #c4cbd6;
+  --graph-link: #c8cfd9;
 }

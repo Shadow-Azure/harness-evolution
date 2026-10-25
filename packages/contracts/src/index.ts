@@ -66,6 +66,24 @@ export type SessionListResponse = components["schemas"]["SessionListResponse"];
 /** Whole-tree card statistics computed by the backend. */
 export type SessionStats = components["schemas"]["SessionStats"];
 
+/** Flat canonical Agent tree, events, and read-only problem anchors. */
+export type SessionTree = components["schemas"]["SessionTree"];
+
+/** One Agent row in the flat canonical Session tree. */
+export type SessionAgent = components["schemas"]["SessionAgent"];
+
+/** One skill, Agent, or workflow trigger inside an Agent chain. */
+export type SessionEvent = components["schemas"]["SessionEvent"];
+
+/** One anchored read-only problem returned with a Session tree. */
+export type SessionBadCase = components["schemas"]["SessionBadCase"];
+
+/** Stable host Agent and event index for a problem card. */
+export type BadCaseAnchor = components["schemas"]["BadCaseAnchor"];
+
+/** Reporter that originally supplied a problem report. */
+export type BadCaseAgent = components["schemas"]["BadCaseAgent"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

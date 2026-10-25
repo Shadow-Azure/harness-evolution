@@ -11,12 +11,16 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AgentNode: typeof import('./components/agent-tree/nodes/AgentNode.vue')['default']
+    AgentTree: typeof import('./components/agent-tree/AgentTree.vue')['default']
+    CollapseNode: typeof import('./components/agent-tree/nodes/CollapseNode.vue')['default']
     DensityBar: typeof import('./components/ui/DensityBar.vue')['default']
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']
     ElInput: typeof import('element-plus/es/components/input/index')['ElInput']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
     ErrorState: typeof import('./components/ui/ErrorState.vue')['default']
     LoadingSkeleton: typeof import('./components/ui/LoadingSkeleton.vue')['default']
+    OrthEdge: typeof import('./components/agent-tree/edges/OrthEdge.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     StatStrip: typeof import('./components/ui/StatStrip.vue')['default']
