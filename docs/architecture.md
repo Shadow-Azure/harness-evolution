@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-含 M1/M2 fixture 与本地导入；归一化等领域未运行。
+含 M1/M2 fixture、本地导入与逐 payload JSONL 归一化；Agent 树组装和会话查询尚未运行。
 
 ## 服务划分
 
@@ -17,7 +17,7 @@
 | `packages/contracts` | TypeScript | 前端共享协议与领域类型 |
 | `research/` | Markdown + YAML | 评测任务、harness 适配、实验记录 |
 
-路由只在 `apps/api/app/main.py` 注册；HTTP 层负责校验与鉴权，业务进 `service/`，存储与外部集成分别隔离在 `db/` 与 `third_party_api/`。
+路由只在 `apps/api/app/main.py` 注册；依赖方向为 `api → service → db/third_party_api`。
 
 ## 垂直切片
 
@@ -30,17 +30,15 @@ third_party_api/
 middleware/
 ```
 
-依赖方向为 `api → service → db/third_party_api`。
-
 ## 当前请求链路
 
 ```text
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新和票据认证 SSE 公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict` 且路径限定 `/api/auth`。登录限流，强制改密只放行必要端点，失败共用错误 envelope。
+仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，`/api/users` 仅管理员。access 有效 30 分钟；refresh cookie 有效期 14 天，`httpOnly`、`SameSite=Strict`、路径 `/api/auth`。登录限流，强改密只放行必要端点，错误共用 envelope。
 
-Web 启动先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密，并发 401 单飞刷新并各重放一次，退出清 query cache。
+Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密；并发 401 单飞刷新并各重放一次；退出清 query cache。
 
 ## 数据层策略
 
@@ -48,12 +46,13 @@ Web 启动先恢复会话再挂载路由；token 与用户只留内存。守卫�
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
 - Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
 - `job_runs` 是真值；串行 worker 写 run 级 `evolution_run_events`，事件总线只广播有界通知，中断事件先落库。
-- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 通过 CLI 幂等写同构表，归一化尚未启用。
+- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 通过 CLI 幂等写同构表。
+- 归一化按 payload 独立解析，消息与内容块只在内存中存在；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
 - 本地导入写 payload/meta 与未处理索引；重跑保留运行态，其他状态不入库。
-- 问题和归因由外部系统写入，本服务只读。
-- 密钥只从环境变量注入，不进入仓库或数据库。
+- 问题和归因由外部系统写入，服务只读。
+- 密钥只从环境变量注入，不入仓库或数据库。
 
-## 当前 API
+## API
 
 ```text
 GET /api/health
@@ -81,5 +80,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## 状态与边界
 
 - 已具备：双库 API、鉴权、任务/SSE、三入口壳、fixtures/seed、本地导入、E2E 与契约门禁。
-- 未具备：轨迹归一化/查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
+- 未具备：Agent 树组装/会话查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

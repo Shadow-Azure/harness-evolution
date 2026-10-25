@@ -398,6 +398,10 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["fixtures:seed"], /fixtures-seed\.mjs/);
   assert.match(rootPackage.scripts["data:import:sessions"], /local-sessions\.mjs import/);
   assert.match(rootPackage.scripts["verify:local-sessions"], /local-sessions\.mjs verify/);
+  assert.match(
+    rootPackage.scripts["data:normalize:sessions"],
+    /local-sessions\.mjs normalize/,
+  );
   assert.match(rootPackage.scripts["verify:local-data"], /verify-local-data\.mjs/);
   assert.match(rootPackage.scripts["test:all"], /test:e2e/);
   assert.match(rootPackage.scripts["test:all"], /fixtures:check/);

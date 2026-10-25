@@ -24,6 +24,11 @@ from app.db.crud.local_sessions import (
 )
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.service.acquisition.normalize import (
+    NormalizationAggregate,
+    aggregate_transcripts,
+    normalize_transcript,
+)
 from app.utils.time import as_shanghai
 
 MAX_LOCAL_PAYLOAD_BYTES = 64 * 1024 * 1024
@@ -441,3 +446,23 @@ async def verify_local_sessions(
         )
     finally:
         await database.dispose()
+
+
+def normalize_local_sessions(
+    settings: Settings,
+    source_root: Path,
+) -> NormalizationAggregate:
+    """Parse every local payload and return aggregate-only statistics."""
+    _ensure_local_environment(settings)
+    corpus = scan_local_sessions(source_root)
+    transcripts = tuple(
+        normalize_transcript(
+            payload.content,
+            root_session_id=payload.root_session_id,
+            agent_id=payload.agent_id,
+            agent_kind=payload.agent_kind,
+            agent_meta=payload.agent_meta,
+        )
+        for payload in corpus.payloads
+    )
+    return aggregate_transcripts(transcripts)

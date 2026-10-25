@@ -14,10 +14,11 @@ const mode = process.argv[2];
 const commands = new Map([
   ["import", "import-local"],
   ["verify", "verify-local"],
+  ["normalize", "normalize-local"],
 ]);
 
 if (!commands.has(mode)) {
-  console.error("local-sessions: expected `import` or `verify`");
+  console.error("local-sessions: expected `import`, `verify`, or `normalize`");
   process.exit(2);
 }
 if (!existsSync(PYTHON)) {
