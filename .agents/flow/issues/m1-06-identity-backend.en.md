@@ -20,6 +20,8 @@ scope:
   - tests/integration/**
   - .github/workflows/ci.yml
   - docs/**
+  - plans/**
+  - reports/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
