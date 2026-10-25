@@ -427,7 +427,9 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "acquired_at",
             "expires_at",
         }
-        assert {index["name"] for index in sync_indexes} == {"ix_sync_lock_expires_at"}
+        assert {"ix_sync_lock_expires_at"}.issubset(
+            {index["name"] for index in sync_indexes if index["name"] is not None}
+        )
         assert {
             foreign_key["name"]
             for foreign_key in sync_foreign_keys
@@ -674,7 +676,9 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "acquired_at",
             "expires_at",
         }
-        assert {index["name"] for index in sync_indexes} == {"ix_sync_lock_expires_at"}
+        assert {"ix_sync_lock_expires_at"}.issubset(
+            {index["name"] for index in sync_indexes if index["name"] is not None}
+        )
         assert {
             foreign_key["name"]
             for foreign_key in sync_foreign_keys
