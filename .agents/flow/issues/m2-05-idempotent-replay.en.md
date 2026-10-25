@@ -11,6 +11,7 @@ depends:
 priority: P0
 status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - apps/api/alembic/**
   - fixtures/**
