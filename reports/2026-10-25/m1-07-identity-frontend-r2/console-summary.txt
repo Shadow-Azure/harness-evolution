@@ -1,0 +1,7 @@
+Runtime console API warnings/errors/exceptions: 0
+Vue warnings: 0
+Element Plus render exceptions: 0
+Vite dependency reload messages: 0
+Expected HTTP network diagnostics: 401 refresh bootstrap and 401 invalid-login response
+Browser-extension diagnostic excluded: unload permissions-policy violation from extension bundle 33402.js
+Cross-stack browser regression: pnpm test:integration 5/5 passed
