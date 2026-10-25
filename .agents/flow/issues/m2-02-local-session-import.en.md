@@ -9,12 +9,16 @@ milestone: m2
 depends:
   - m2-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - scripts/**
+  - .github/workflows/ci.yml
   - fixtures/**
   - package.json
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -54,14 +58,10 @@ m2-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## Implementation
 
-
-
-
-
-- 实现开发专用 Claude session 目录到 trajectory_payloads 的导入器
-- 按每 agent 一行写入 SQLite
-- 聚合输出 4 root、66 JSONL、62 subagent、约 50MB
-- 不读取或提交正文以外的本地状态
+- Implement a development-only scanner and transactional importer from Claude session directories into `trajectory_payloads`.
+- Store one row per Agent and cross-check root/subagent identity across directory names, JSONL, and sidecar metadata.
+- Report 4 roots, 66 JSONL files, 62 subagents, and 66 payload rows; repeated imports have zero side effects.
+- Consume only JSONL and Agent metadata while ignoring local tool results and error text; fail before writing when preparation fails.
 
 ## Implementation steps
 
@@ -94,6 +94,7 @@ pnpm test:api -- tests/m2-02-local-session-import
 pnpm test:db
 pnpm data:import:sessions
 pnpm verify:local-sessions
+pnpm verify:local-data
 ```
 
 - pnpm data:import:sessions 成功
@@ -116,7 +117,7 @@ pnpm verify:local-sessions
 
 
 
-- local-data gate、payload schema 测试、数据卫生 gate
+- `verify:local-data`, payload schema tests, and synthetic-directory import run in CI; the MySQL lane continues to validate the dual-dialect schema.
 
 ## Non-goals
 

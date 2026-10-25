@@ -6,11 +6,12 @@ English | [中文](development.md)
 
 ## Environment
 
-- Node ≥ 22, pnpm ≥ 10 and Python ≥ 3.12.
-- Run `pnpm install && pnpm setup:api` after the first clone; install local hooks with `pnpm install:hooks`.
-- `gh` must be logged in for `flow:sync` and `verify:flow-online`.
-- API docs and OpenAPI are closed by default; `pnpm dev` enables them explicitly and production keeps the default or sets `HE_DOCS_ENABLED=false`.
-- `pnpm dev` defaults to SQLite; MySQL sets `HE_DB_DIALECT=mysql` and `HE_DB_URL`, with credentials only from the environment.
+- Node ≥ 22, pnpm ≥ 10, Python ≥ 3.12.
+- Run `pnpm install && pnpm setup:api` after cloning; install hooks with `pnpm install:hooks`.
+- Authenticate `gh` for `flow:sync` and `verify:flow-online`.
+- `pnpm dev` enables API docs; production defaults closed or sets `HE_DOCS_ENABLED=false`.
+- `pnpm dev` defaults to SQLite; MySQL sets `HE_DB_DIALECT`/`HE_DB_URL` with environment-only credentials.
+- Local sessions/generated data stay gitignored; CI uses synthetic fixtures.
 
 ## Development flow
 
@@ -30,6 +31,9 @@ pnpm test:integration
 pnpm test:e2e
 pnpm fixtures:check
 pnpm fixtures:seed
+pnpm data:import:sessions
+pnpm verify:local-sessions
+pnpm verify:local-data
 pnpm test:all
 pnpm contract:generate
 pnpm contract:check

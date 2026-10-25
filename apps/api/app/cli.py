@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,6 +22,11 @@ from app.fixtures_seed import (
 )
 from app.fixtures_seed import (
     SeedEnvironmentError as SeedEnvironmentError,
+)
+from app.service.acquisition.local_sessions import (
+    LocalSessionSourceError,
+    import_local_sessions,
+    verify_local_sessions,
 )
 from app.service.identity.service import IdentityService
 
@@ -135,7 +141,30 @@ def _parser() -> argparse.ArgumentParser:
         default="../../fixtures/m2-synthetic/corpus.json",
         type=Path,
     )
+    import_local = subcommands.add_parser(
+        "import-local",
+        help="import development-only Claude session JSONL payloads",
+    )
+    import_local.add_argument(
+        "--sessions-dir",
+        default="../../claude-code-sessions",
+        type=Path,
+    )
+    verify_local = subcommands.add_parser(
+        "verify-local",
+        help="verify local session identities against the development database",
+    )
+    verify_local.add_argument(
+        "--sessions-dir",
+        default="../../claude-code-sessions",
+        type=Path,
+    )
     return parser
+
+
+def _absolute_path_without_resolving_symlinks(path: Path) -> Path:
+    """Make a path absolute while preserving its final symlink boundary."""
+    return Path(os.path.abspath(path))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -153,9 +182,32 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "seed":
             manifest = load_any_seed_manifest(args.manifest.resolve())
             result = asdict(asyncio.run(run_any_seed(Settings(), manifest)))
+        elif args.command == "import-local":
+            result = asdict(
+                asyncio.run(
+                    import_local_sessions(
+                        Settings(),
+                        _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                    ),
+                ),
+            )
+        elif args.command == "verify-local":
+            result = asdict(
+                asyncio.run(
+                    verify_local_sessions(
+                        Settings(),
+                        _absolute_path_without_resolving_symlinks(args.sessions_dir),
+                    ),
+                ),
+            )
         else:
             return 2
-    except (OSError, SeedEnvironmentError, ValueError) as exc:
+    except (
+        LocalSessionSourceError,
+        OSError,
+        SeedEnvironmentError,
+        ValueError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))

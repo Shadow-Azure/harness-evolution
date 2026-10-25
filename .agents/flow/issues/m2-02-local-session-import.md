@@ -9,12 +9,16 @@ milestone: m2
 depends:
   - m2-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - scripts/**
+  - .github/workflows/ci.yml
   - fixtures/**
   - package.json
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -42,10 +46,10 @@ m2-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实现内容
 
-- 实现开发专用 Claude session 目录到 trajectory_payloads 的导入器
-- 按每 agent 一行写入 SQLite
-- 聚合输出 4 root、66 JSONL、62 subagent、约 50MB
-- 不读取或提交正文以外的本地状态
+- 实现开发专用 Claude session 目录到 `trajectory_payloads` 的扫描与事务导入。
+- 按每 Agent 一行写入 SQLite，root 与 subagent 身份同目录名、JSONL 和 sidecar meta 交叉校验。
+- 聚合输出 4 root、66 JSONL、62 subagent、66 payload rows；重复导入保持零副作用。
+- 只消费 JSONL 与 Agent meta，忽略本机工具结果和错误文本等非 payload 状态，准备阶段失败时不写入。
 
 ## 实施步骤
 
@@ -66,6 +70,7 @@ pnpm test:api -- tests/m2-02-local-session-import
 pnpm test:db
 pnpm data:import:sessions
 pnpm verify:local-sessions
+pnpm verify:local-data
 ```
 
 - pnpm data:import:sessions 成功
@@ -80,7 +85,7 @@ pnpm verify:local-sessions
 
 ## 门禁与 CI
 
-- local-data gate、payload schema 测试、数据卫生 gate
+- `verify:local-data`、payload schema 测试与真实合成目录导入进入 CI；MySQL lane 继续校验双方言表结构。
 
 ## 非目标
 

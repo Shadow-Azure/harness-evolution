@@ -56,6 +56,11 @@ export const ROUTES = [
     reason: "开发/演示 fixtures：schema/预算检查、幂等 seed、API 约束与文档门禁",
   },
   {
+    match: (p) => p === "scripts/local-sessions.mjs",
+    commands: ["verify:local-data", "test:gates", "verify:docs"],
+    reason: "本地 session 导入桥接：数据目录卫生、命令接线与文档门禁",
+  },
+  {
     match: (p) => p.startsWith("scripts/"),
     commands: ["test:gates", "verify:docs"],
     reason: "门禁脚本：自测试必跑，全量文档档兜底",
@@ -102,6 +107,7 @@ const COMMAND_ORDER = [
   "fixtures:check",
   "fixtures:seed",
   "test:gates",
+  "verify:local-data",
   "verify:flow",
   "verify:web-style",
   "verify:bundle",

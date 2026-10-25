@@ -1,0 +1,8 @@
+{
+  "levels": [
+    "warn",
+    "error",
+    "warning"
+  ],
+  "entries": []
+}
