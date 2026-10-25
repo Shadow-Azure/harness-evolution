@@ -45,6 +45,8 @@ jobs:
         run: |
           pnpm fixtures:check
           pnpm fixtures:seed
+      - name: 本地数据卫生
+        run: pnpm verify:local-data
       - name: 门禁自测试
         run: pnpm test:gates
       - name: API lint

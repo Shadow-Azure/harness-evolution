@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-当前含 M1 平台与 M2 fixture 基座；归一化、问题与自进化尚未进入运行链路。
+含 M1/M2 fixture 与本地导入；归一化等领域未运行。
 
 ## 服务划分
 
@@ -48,7 +48,8 @@ Web 启动先恢复会话再挂载路由；token 与用户只留内存。守卫�
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
 - Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
 - `job_runs` 是真值；串行 worker 写 run 级 `evolution_run_events`，事件总线只广播有界通知，中断事件先落库。
-- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；四会话 fixtures 通过 CLI 幂等写入同构领域表，归一化尚未启用。
+- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 通过 CLI 幂等写同构表，归一化尚未启用。
+- 本地导入写 payload/meta 与未处理索引；重跑保留运行态，其他状态不入库。
 - 问题和归因由外部系统写入，本服务只读。
 - 密钥只从环境变量注入，不进入仓库或数据库。
 
@@ -77,8 +78,8 @@ FastAPI OpenAPI 是唯一契约源。导出快照后由 `openapi-typescript` 生
 export type HealthResponse = components["schemas"]["HealthResponse"];
 ```
 
-## 当前状态与非目标
+## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、三入口壳、严格 fixtures、真实表 seed、E2E 与契约门禁。
+- 已具备：双库 API、鉴权、任务/SSE、三入口壳、fixtures/seed、本地导入、E2E 与契约门禁。
 - 未具备：轨迹归一化/查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

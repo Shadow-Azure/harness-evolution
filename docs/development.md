@@ -7,10 +7,11 @@
 ## 环境
 
 - Node ≥ 22、pnpm ≥ 10、Python ≥ 3.12。
-- 首次 clone 后运行 `pnpm install && pnpm setup:api`；本地钩子用 `pnpm install:hooks` 安装。
+- 首次 clone 后跑 `pnpm install && pnpm setup:api`；Git hooks 用 `pnpm install:hooks`。
 - 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
-- API 文档与 OpenAPI 默认关闭；`pnpm dev` 显式开启，生产保持默认或显式设置 `HE_DOCS_ENABLED=false`。
-- `pnpm dev` 默认 SQLite；MySQL 设 `HE_DB_DIALECT=mysql`、`HE_DB_URL`，凭据仅走环境。
+- `pnpm dev` 开启 API 文档；生产默认关闭或设 `HE_DOCS_ENABLED=false`。
+- `pnpm dev` 默认 SQLite；MySQL 设 `HE_DB_DIALECT`/`HE_DB_URL`，凭据仅走环境。
+- 本地 session/生成库 gitignored；CI 只用合成 fixtures。
 
 ## 开发流程
 
@@ -30,6 +31,9 @@ pnpm test:integration
 pnpm test:e2e
 pnpm fixtures:check
 pnpm fixtures:seed
+pnpm data:import:sessions
+pnpm verify:local-sessions
+pnpm verify:local-data
 pnpm test:all
 pnpm contract:generate
 pnpm contract:check
