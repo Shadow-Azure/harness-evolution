@@ -2,7 +2,7 @@
 
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
 import pytest
@@ -42,6 +42,39 @@ def sqlite_settings(tmp_path: Path) -> Settings:
         db_pool_size=2,
         db_max_overflow=1,
     )
+
+
+def normalized_server_default(column: Mapping[str, object]) -> str | None:
+    """Normalize dialect-specific quoting around a reflected server default."""
+    default = column["default"]
+    if default is None:
+        return None
+    return str(default).strip().strip("'\"").lower()
+
+
+def assert_true_server_default(column: Mapping[str, object]) -> None:
+    """Assert one reflected column has a truthy boolean server default."""
+    default = normalized_server_default(column)
+    assert default is not None
+    assert default in {"1", "true"}
+
+
+@pytest.mark.parametrize(
+    ("reflected", "expected"),
+    [
+        (1, "1"),
+        ("'1'", "1"),
+        ('"1"', "1"),
+        ("true", "true"),
+        (None, None),
+    ],
+)
+def test_normalized_server_default_accepts_truthy_dialect_forms(
+    reflected: object,
+    expected: str | None,
+) -> None:
+    """SQLite and MySQL reflection may quote the same DEFAULT 1 constraint."""
+    assert normalized_server_default({"default": reflected}) == expected
 
 
 def test_settings_derive_database_urls(tmp_path: Path) -> None:
@@ -229,10 +262,9 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "password_changed_at",
         }
         by_name = {column["name"]: column for column in columns}
-        assert by_name["created_at"]["default"] is None
-        assert by_name["updated_at"]["default"] is None
-        assert by_name["must_change_password"]["default"] is not None
-        assert str(by_name["must_change_password"]["default"]).lower() in {"1", "true"}
+        assert normalized_server_default(by_name["created_at"]) is None
+        assert normalized_server_default(by_name["updated_at"]) is None
+        assert_true_server_default(by_name["must_change_password"])
     finally:
         await database.dispose()
 
@@ -354,9 +386,8 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "password_changed_at",
         }
         by_name = {column["name"]: column for column in mysql_columns}
-        assert by_name["created_at"]["default"] is None
-        assert by_name["updated_at"]["default"] is None
-        assert by_name["must_change_password"]["default"] is not None
-        assert str(by_name["must_change_password"]["default"]).lower() in {"1", "true"}
+        assert normalized_server_default(by_name["created_at"]) is None
+        assert normalized_server_default(by_name["updated_at"]) is None
+        assert_true_server_default(by_name["must_change_password"])
     finally:
         await database.dispose()
