@@ -14,10 +14,11 @@ def main() -> None:
     args = parser.parse_args()
     settings = Settings()
     uvicorn.run(
-        "app.main:app",
+        "app.main:create_default_app",
         host=settings.host,
         port=settings.port,
         reload=args.reload,
+        factory=True,
         log_level=settings.log_level,
     )
 

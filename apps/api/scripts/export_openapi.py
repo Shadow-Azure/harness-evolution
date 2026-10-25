@@ -27,7 +27,11 @@ def canonical_settings() -> Settings:
     environment_keys = [key for key in os.environ if key.startswith("HE_")]
     saved_environment = {key: os.environ.pop(key) for key in environment_keys}
     try:
-        return Settings(db_dialect=DatabaseDialect.SQLITE, _env_file=None)
+        return Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            jwt_secret="canonical-openapi-signing-secret",
+            _env_file=None,
+        )
     finally:
         os.environ.update(saved_environment)
 

@@ -20,11 +20,18 @@ class ErrorCode(StrEnum):
     """Stable machine-readable error codes."""
 
     AUTH_REQUIRED = "AUTH_REQUIRED"
+    AUTH_INVALID = "AUTH_INVALID"
+    AUTH_EXPIRED = "AUTH_EXPIRED"
+    TICKET_INVALID = "TICKET_INVALID"
+    TICKET_EXPIRED = "TICKET_EXPIRED"
     FORBIDDEN = "FORBIDDEN"
+    MUST_CHANGE_PASSWORD = "PASSWORD_CHANGE_REQUIRED"
+    USERNAME_CONFLICT = "USERNAME_CONFLICT"
     INTERNAL = "INTERNAL"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_INVALID = "VALIDATION_INVALID"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 class ErrorBody(BaseModel):
@@ -32,7 +39,7 @@ class ErrorBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    code: str
+    code: ErrorCode
     message: str
     details: dict[str, Any]
 
@@ -51,7 +58,7 @@ class AppError(Exception):
     def __init__(
         self,
         *,
-        code: str,
+        code: ErrorCode,
         message: str,
         status_code: int = HTTPStatus.BAD_REQUEST,
         details: Mapping[str, Any] | None = None,
@@ -67,7 +74,7 @@ class AppError(Exception):
 def error_response(
     *,
     status_code: int,
-    code: str,
+    code: ErrorCode,
     message: str,
     details: Mapping[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,

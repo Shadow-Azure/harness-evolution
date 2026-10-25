@@ -280,6 +280,18 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(apiRunner, /HE_DOCS_ENABLED.*true/);
 });
 
+test("focused backend tests forward path arguments through the API runner", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const output = await promisify(execFile)("pnpm", ["test:api", "--", "tests/identity"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+
+  assert.match(output.stdout, /run-api\.mjs test -- tests\/identity/);
+  assert.match(output.stdout, /\d+ passed/);
+});
+
 test("github backfill removes the bootstrap exemption", () => {
   const content = "kind: issue\nbootstrap: true\ngithub:\n  number: null\n  url: null\n";
   const next = applyGithubRef(content, 42, "https://github.com/o/r/issues/42");

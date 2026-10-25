@@ -54,6 +54,7 @@ pnpm install:hooks       # Git hooks
 - `packages/contracts` 是前后端共享协议的唯一来源；跨端字段变化先改契约。
 - FastAPI OpenAPI 是接口契约源；`packages/contracts/openapi.json` 与生成类型禁止手改，改接口后运行 `pnpm contract:generate`。
 - 前后端行为变更同步交付单元测试与跨栈集成测试；CI 必须实际执行测试，单测覆盖率不得低于 80%。
+- 门禁测试参数需经 API runner 透传；路径或数量变更同步 `scripts/gates.spec.mjs`。
 - 导出声明必须带 JSDoc；导出函数的每个形参写 `@param`，非 void 返回写 `@returns`。
 - 常驻文档受词数预算约束，未登记预算即红门禁；超限处置顺序为搬层、压缩、提预算。
 - 门禁脚本改动必须同步更新本文件与 `scripts/gates.spec.mjs`。

@@ -27,6 +27,7 @@ const COMMANDS = {
 };
 
 const command = process.argv[2];
+const commandArguments = process.argv.slice(3);
 if (!Object.hasOwn(COMMANDS, command)) {
   console.error(`run-api: expected one of ${Object.keys(COMMANDS).join(", ")}`);
   process.exit(2);
@@ -44,7 +45,15 @@ const lintFormat =
   }) : { status: 0 };
 if (lintFormat.status !== 0) process.exit(lintFormat.status ?? 1);
 
-const result = spawnSync(PYTHON, COMMANDS[command], {
+const commandLine = [...COMMANDS[command]];
+if (command === "test") {
+  commandLine[1] = commandLine[1]?.replace(
+    "pytest.main([])",
+    `pytest.main(${JSON.stringify(commandArguments)})`,
+  );
+}
+
+const result = spawnSync(PYTHON, commandLine, {
   cwd: API_DIR,
   env:
     command === "dev"

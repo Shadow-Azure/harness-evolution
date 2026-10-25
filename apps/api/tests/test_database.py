@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import Column, Integer, MetaData, String, Table, insert, select, text
+from sqlalchemy import Column, Integer, MetaData, String, Table, insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
@@ -209,7 +209,30 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0001"
+        assert result.scalar_one() == "0002"
+        async with database.engine.connect() as connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("users")
+            )
+
+        assert {column["name"] for column in columns} == {
+            "id",
+            "username",
+            "password_hash",
+            "display_name",
+            "role",
+            "is_active",
+            "must_change_password",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+            "password_changed_at",
+        }
+        by_name = {column["name"]: column for column in columns}
+        assert by_name["created_at"]["default"] is None
+        assert by_name["updated_at"]["default"] is None
+        assert by_name["must_change_password"]["default"] is not None
+        assert str(by_name["must_change_password"]["default"]).lower() in {"1", "true"}
     finally:
         await database.dispose()
 
@@ -311,6 +334,29 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0001"
+        assert result.scalar_one() == "0002"
+        async with database.engine.connect() as connection:
+            mysql_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("users")
+            )
+
+        assert {column["name"] for column in mysql_columns} == {
+            "id",
+            "username",
+            "password_hash",
+            "display_name",
+            "role",
+            "is_active",
+            "must_change_password",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+            "password_changed_at",
+        }
+        by_name = {column["name"]: column for column in mysql_columns}
+        assert by_name["created_at"]["default"] is None
+        assert by_name["updated_at"]["default"] is None
+        assert by_name["must_change_password"]["default"] is not None
+        assert str(by_name["must_change_password"]["default"]).lower() in {"1", "true"}
     finally:
         await database.dispose()

@@ -8,12 +8,13 @@ from typing import cast
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
+from pydantic import ValidationError
 
 import app.main as main_module
 from app.config import DatabaseDialect, ServicePhase, Settings
 from app.db.base import Database, DBHealth
 from app.db.factory import create_database
-from app.errors import AppError
+from app.errors import AppError, ErrorCode
 from app.main import create_app
 
 
@@ -409,6 +410,7 @@ def test_config_reads_he_prefixed_environment(
     """Deployment settings come from the HE_ environment namespace."""
     monkeypatch.setenv("HE_HOST", "127.0.0.1")
     monkeypatch.setenv("HE_PORT", "9123")
+    monkeypatch.setenv("HE_JWT_SECRET", "configured-signing-secret")
     monkeypatch.setenv("HE_CORS_ORIGINS", '["https://example.test"]')
     monkeypatch.setenv("HE_DOCS_ENABLED", "false")
     monkeypatch.setenv("HE_DB_DIALECT", "sqlite")
@@ -426,6 +428,13 @@ def test_config_reads_he_prefixed_environment(
     assert settings.db_url == "sqlite+aiosqlite:////tmp/example.db"
     assert settings.db_pool_size == 4
     assert settings.db_max_overflow == 2
+
+
+def test_jwt_secret_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production identity configuration cannot silently fall back to a default key."""
+    monkeypatch.delenv("HE_JWT_SECRET")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 def test_docs_are_disabled_by_default() -> None:
@@ -450,6 +459,7 @@ def test_generated_contract_exports_match_the_fastapi_schema() -> None:
     assert 'export type ServicePhase = components["schemas"]["ServicePhase"];' in contract
     assert 'export type HealthResponse = components["schemas"]["HealthResponse"];' in contract
     assert 'export type ErrorResponse = components["schemas"]["ErrorResponse"];' in contract
+    assert 'export type ErrorCode = components["schemas"]["ErrorCode"];' in contract
     assert [phase.value for phase in ServicePhase] == ["scaffold", "demo", "live"]
 
 
@@ -520,7 +530,7 @@ async def test_application_error_preserves_status_and_code() -> None:
     @app.get("/conflict")
     async def conflict() -> None:
         raise AppError(
-            code="DEMO_CONFLICT",
+            code=ErrorCode.USERNAME_CONFLICT,
             message="demo conflict",
             status_code=409,
             details={"resource": "demo"},
@@ -536,7 +546,7 @@ async def test_application_error_preserves_status_and_code() -> None:
     assert response.status_code == 409
     assert response.json() == {
         "error": {
-            "code": "DEMO_CONFLICT",
+            "code": "USERNAME_CONFLICT",
             "message": "demo conflict",
             "details": {"resource": "demo"},
         },

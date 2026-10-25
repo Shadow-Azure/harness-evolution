@@ -4,7 +4,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     port: int = 8787
     version: str = "0.1.0"
     phase: ServicePhase = ServicePhase.SCAFFOLD
+    production: bool = False
+    jwt_secret: SecretStr = SecretStr("")
+    access_token_ttl_min: int = Field(default=30, gt=0)
+    refresh_token_ttl_days: int = Field(default=14, gt=0)
+    event_ticket_ttl_seconds: int = Field(default=60, gt=0)
+    admin_username: str | None = None
+    admin_password: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     docs_enabled: bool = False
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
@@ -55,3 +62,25 @@ class Settings(BaseSettings):
         if self.db_dialect is DatabaseDialect.SQLITE:
             return f"sqlite+aiosqlite:///{self.data_dir / 'harness.db'}"
         return "mysql+asyncmy://127.0.0.1:3306/harness_evolution?charset=utf8mb4"
+
+    @model_validator(mode="after")
+    def require_jwt_secret(self) -> "Settings":
+        """Reject configuration that would sign JWTs with an empty key."""
+        if not self.jwt_secret.get_secret_value():
+            raise ValueError("HE_JWT_SECRET must not be empty")
+        return self
+
+    @property
+    def access_ttl_seconds(self) -> int:
+        """Return the configured bearer-token lifetime in seconds."""
+        return self.access_token_ttl_min * 60
+
+    @property
+    def refresh_ttl_seconds(self) -> int:
+        """Return the configured refresh-cookie lifetime in seconds."""
+        return self.refresh_token_ttl_days * 24 * 60 * 60
+
+    @property
+    def is_production(self) -> bool:
+        """Return whether transport and operational safeguards are production grade."""
+        return self.production
