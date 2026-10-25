@@ -1,14 +1,17 @@
-import { VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 
 import App from "./App.vue";
 import { createAppQueryClient } from "./api/queryClient";
+import { bootstrapApp } from "./bootstrap";
 import { createAppRouter } from "./router";
 import "./styles/main.css";
+import "./styles/element-overrides.css";
 
-createApp(App)
-  .use(createPinia())
-  .use(VueQueryPlugin, { queryClient: createAppQueryClient() })
-  .use(createAppRouter())
-  .mount("#app");
+void bootstrapApp({
+  app: createApp(App),
+  mountTarget: "#app",
+  pinia: createPinia(),
+  queryClient: createAppQueryClient(),
+  router: createAppRouter(),
+});

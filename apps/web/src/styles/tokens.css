@@ -4,9 +4,12 @@
   --surface-overlay: rgba(255, 255, 255, 0.03);
   --surface-selected: rgba(142, 169, 255, 0.1);
   --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
   --page-gradient: linear-gradient(180deg, rgba(157, 184, 255, 0.1), transparent 40%), var(--surface-base);
   --brand-gradient: linear-gradient(135deg, #9db8ff, #6ee7b7 58%, #f0b66b);
+  --brand-accent: #8ea9ff;
   --text-primary: #ffffff;
+  --text-secondary: #c7ceda;
   --text-muted: #9aa3b2;
   --state-neutral: #7d8594;
   --state-success: #6ee7b7;
@@ -29,4 +32,5 @@
   --font-title: 24px;
   --weight-bold: 800;
   --shell-header-height: 68px;
+  --shadow-card: 0 24px 70px rgba(0, 0, 0, 0.28);
 }

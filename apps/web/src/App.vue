@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { useQuery } from "@tanstack/vue-query";
 import { computed } from "vue";
-import { RouterView } from "vue-router";
+import { RouterView, useRoute } from "vue-router";
 
 import TopNav from "./components/layout/TopNav.vue";
 import { fetchHealth } from "./api/health";
 import { queryKeys } from "./api/queryKeys";
 
+const route = useRoute();
+const isAuthLayout = computed(() => route.meta.authLayout === true);
+
 const { data, error, isPending } = useQuery({
+  enabled: computed(() => !isAuthLayout.value),
   queryFn: fetchHealth,
   queryKey: queryKeys.health
 });
@@ -39,9 +43,10 @@ const statusTone = computed(() => {
 
 <template>
   <div class="shell">
-    <TopNav />
-    <main>
+    <TopNav v-if="!isAuthLayout" />
+    <main :class="{ 'auth-main': isAuthLayout }">
       <p
+        v-if="!isAuthLayout"
         class="status-pill"
         :class="statusTone"
         aria-live="polite"
@@ -67,6 +72,11 @@ main {
   width: min(1080px, calc(100% - var(--space-xl)));
   margin: 0 auto;
   padding-top: var(--space-lg);
+}
+
+main.auth-main {
+  width: 100%;
+  padding-top: 0;
 }
 
 .status-pill {

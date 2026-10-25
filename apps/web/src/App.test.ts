@@ -2,7 +2,7 @@
 
 import { flushPromises, mount } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
-import { createPinia } from "pinia";
+import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
 import {
   afterAll,
@@ -18,6 +18,7 @@ import {
 import { healthFixtures } from "@harness/contracts";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
+import { useAuthStore } from "./stores/auth";
 import { server } from "./test/server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -48,10 +49,23 @@ async function mountApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { gcTime: 0, retry: false, staleTime: 0 } }
   });
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().setSession({
+    accessToken: "test-access",
+    expiresIn: 1_800,
+    user: {
+      id: "u-test",
+      username: "operator",
+      displayName: "测试用户",
+      role: "member",
+      mustChangePassword: false,
+    },
+  });
   const router = createAppRouter();
   const wrapper = mount(App, {
     global: {
-      plugins: [[VueQueryPlugin, { queryClient }], createPinia(), router]
+      plugins: [[VueQueryPlugin, { queryClient }], pinia, router]
     }
   });
   await router.isReady();

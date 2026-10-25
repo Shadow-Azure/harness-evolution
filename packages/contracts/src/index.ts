@@ -26,6 +26,21 @@ export type DatabaseHealth = components["schemas"]["DatabaseHealthResponse"];
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
 export type HealthResponse = components["schemas"]["HealthResponse"];
 
+/** Login request accepted by the identity API. */
+export type LoginRequest = components["schemas"]["LoginRequest"];
+
+/** Successful login payload containing only short-lived access credentials. */
+export type LoginResponse = components["schemas"]["LoginResponse"];
+
+/** Refresh payload after the httpOnly cookie has been rotated. */
+export type RefreshResponse = components["schemas"]["RefreshResponse"];
+
+/** Current-user password change payload. */
+export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
+
+/** User fields safe to retain in the browser. */
+export type PublicUser = components["schemas"]["PublicUser"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

@@ -1,11 +1,41 @@
 import vue from "@vitejs/plugin-vue";
-import { defineConfig } from "vite";
+import AutoImport from "unplugin-auto-import/vite";
+import Components from "unplugin-vue-components/vite";
+import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
+import { defineConfig } from "vitest/config";
 
 const apiProxyUrl = process.env.HE_API_PROXY_URL ?? "http://127.0.0.1:8787";
 const webPort = Number(process.env.HE_WEB_PORT ?? 5173);
+const elementPlusDirectories: Readonly<Record<string, string>> = {
+  ElButton: "button",
+  ElInput: "input",
+};
+
+function resolveElementPlusComponent(name: string) {
+  const directory = elementPlusDirectories[name];
+  if (!directory) {
+    return undefined;
+  }
+  return {
+    name,
+    from: `element-plus/es/components/${directory}/index`,
+    sideEffects: `element-plus/es/components/${directory}/style/css`,
+  };
+}
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    AutoImport({
+      dts: "src/auto-imports.d.ts",
+      imports: [],
+      resolvers: [ElementPlusResolver()],
+    }),
+    Components({
+      dts: "src/components.d.ts",
+      resolvers: [resolveElementPlusComponent, ElementPlusResolver()]
+    })
+  ],
   server: {
     port: webPort,
     strictPort: true,
@@ -25,6 +55,9 @@ export default defineConfig({
           if (id.includes("@vue-flow")) {
             return "vendor-vue-flow";
           }
+          if (id.includes("/node_modules/element-plus/")) {
+            return "vendor-element-plus";
+          }
           if (id.includes("/node_modules/vue/") || id.includes("/node_modules/vue-router/") || id.includes("/node_modules/pinia/") || id.includes("/node_modules/@tanstack/")) {
             return "vendor-vue";
           }
@@ -32,5 +65,8 @@ export default defineConfig({
         }
       }
     }
+  },
+  test: {
+    setupFiles: ["./src/test/setup.ts"]
   }
 });
