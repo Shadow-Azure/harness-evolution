@@ -152,9 +152,31 @@ describe("session browser", () => {
     expect(router.currentRoute.value.query.status).toBe("ok");
   });
 
+  it("cancels a pending debounced search when navigation changes the query", async () => {
+    mockSessionApi([session()]);
+    const { router, wrapper } = await mountPage("/sessions");
+    await flushPromises();
+    vi.useFakeTimers();
+
+    try {
+      await wrapper.get("[data-testid='search-input']").setValue("stale");
+      await router.push({
+        path: "/sessions/root-1",
+        query: { q: "server" },
+      });
+      await flushPromises();
+      await vi.advanceTimersByTimeAsync(300);
+      await flushPromises();
+
+      expect(router.currentRoute.value.query.q).toBe("server");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders prototype cards and automatically selects the first session", async () => {
     mockSessionApi([
-      session(),
+      session({ short: "", title: "Fallback title" }),
       session({
         id: "root-2",
         title: "Obsidian 插件机制分析",
@@ -172,9 +194,9 @@ describe("session browser", () => {
     expect(wrapper.text()).toContain("工具失败");
     expect(wrapper.findAll("[data-testid='density-bar']")).toHaveLength(4);
     expect(wrapper.get("[data-testid='session-overview']").text()).toContain(
-      "分析 agent loop 与 LLM 层",
+      "Fallback title",
     );
-    expect(wrapper.get("[data-testid='session-overview']").text()).toContain("1.25M");
+    expect(wrapper.get("[data-testid='session-overview']").text()).toContain("1.3M");
     expect(wrapper.get("[data-testid='session-overview']").text()).toContain("有失败");
     expect(wrapper.find("[role='listbox']").exists()).toBe(true);
     const firstCard = wrapper.get("[data-testid='session-card']");
@@ -189,6 +211,80 @@ describe("session browser", () => {
     });
     expect(wrapper.text()).not.toContain("暂无会话");
     expect(wrapper.find("[data-testid='tree-placeholder']").exists()).toBe(true);
+    expect(firstCard.text()).toContain("Fallback title");
+  });
+
+  it("supports listbox arrow, Home, and End keyboard navigation", async () => {
+    mockSessionApi([
+      session(),
+      session({ id: "root-2", title: "Second" }),
+      session({ id: "root-3", title: "Third" }),
+    ]);
+    const { router, wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+
+    const listbox = wrapper.get("[role='listbox']");
+    const cards = wrapper.findAll("[data-testid='session-card']");
+
+    await cards[0]?.trigger("keydown", { key: "ArrowDown" });
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe("/sessions/root-2");
+    expect(wrapper.findAll("[data-testid='session-card']").map((card) =>
+      card.attributes("tabindex"),
+    )).toEqual(["-1", "0", "-1"]);
+
+    await listbox.trigger("keydown", { key: "End" });
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe("/sessions/root-3");
+
+    await listbox.trigger("keydown", { key: "Home" });
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+  });
+
+  it.each([
+    ["partial", "problem"],
+    ["fail", "fail"],
+  ] as const)(
+    "normalizes %s URLs to the failed chip and keeps its severity color",
+    async (status, badgeClass) => {
+      mockSessionApi([session({ status })]);
+      const { wrapper } = await mountPage(`/sessions/root-1?status=${status}`);
+      await flushPromises();
+
+      const overview = wrapper.get("[data-testid='session-overview']");
+      expect(overview.find(`.status-badge.${badgeClass}`).exists()).toBe(true);
+      expect(overview.find(".status-badge.ok").exists()).toBe(false);
+      expect(
+        wrapper
+          .findAll("button")
+          .find((button) => button.text() === "有失败")
+          ?.classes(),
+      ).toContain("active");
+    },
+  );
+
+  it("formats long durations, compact tokens, and density units like the prototype", async () => {
+    mockSessionApi([
+      session({
+        durationSeconds: 63_420,
+        stats: {
+          ...session().stats,
+          badCasesPer100Messages: 2.04,
+          failPer100Messages: 2.04,
+          tokens: 1_345_678,
+        },
+      }),
+    ]);
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+
+    const overview = wrapper.get("[data-testid='session-overview']");
+    expect(overview.text()).toContain("17h37m");
+    expect(overview.text()).toContain("1.3M");
+    expect(wrapper.findAll("[data-testid='density-bar']")[0]?.text()).toContain(
+      "2.0/百消息",
+    );
   });
 
   it("restores URL state and keeps the active card tied to the route", async () => {
@@ -221,6 +317,8 @@ describe("session browser", () => {
     expect(empty.wrapper.find("[data-testid='session-overview']").text()).toContain(
       "从左侧选择",
     );
+    expect(empty.wrapper.find("[role='listbox']").exists()).toBe(false);
+    expect(empty.wrapper.get(".empty-list").attributes("role")).toBe("status");
 
     server.use(
       http.get("/api/sessions", () =>
@@ -235,5 +333,6 @@ describe("session browser", () => {
 
     expect(failed.wrapper.text()).toContain("Session 列表加载失败");
     expect(failed.wrapper.get("[role='alert'] button").text()).toContain("重试");
+    expect(failed.wrapper.find("[role='listbox']").exists()).toBe(false);
   });
 });

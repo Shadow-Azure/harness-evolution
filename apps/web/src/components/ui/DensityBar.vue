@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-import { densityWidth, formatTokens } from "../../utils/sessionDisplay";
+import { densityWidth, formatDensity } from "../../utils/sessionDisplay";
 
 const props = defineProps({
   label: {
@@ -20,7 +20,7 @@ const props = defineProps({
 });
 
 const width = computed(() => densityWidth(props.value));
-const valueText = computed(() => formatTokens(props.value));
+const valueText = computed(() => formatDensity(props.value));
 </script>
 
 <template>
@@ -43,7 +43,7 @@ const valueText = computed(() => formatTokens(props.value));
 <style scoped>
 .density-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 34px;
+  grid-template-columns: 44px minmax(0, 1fr) 64px;
   align-items: center;
   gap: 6px;
   font-size: 10.5px;

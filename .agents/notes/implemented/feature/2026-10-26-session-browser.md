@@ -12,7 +12,7 @@ Session 查询 API 已返回真实 root session 与整树统计，但前端仍�
 
 Session 浏览器以后端返回顺序为唯一列表顺序，所有搜索、状态和排序值写回 URL query，选中根会话写入 `/sessions/:sessionId`。`/sessions` 有数据时自动选中第一项；筛选后不存在的选中项会替换为当前结果首项。列表与概览各自请求，概览以 detail 响应为准，只有 detail 尚在途中时才以当前列表项承接骨架；任一侧失败不会阻断另一侧。问题数使用 `stats.badCases`，双密度条直接使用后端百消息统计并按 3/100 满格截断。
 
-Session 路由使用全宽 workspace，在 56px 顶栏下直接铺设 360px `--bg-panel` 左栏与自适应右栏，不再套圆角浮层。状态和排序各占一行标签，九项 StatStrip 下的执行流占位沿用原型 720px 面板尺度，错误详情 CTA 位于概览标题区。Session 卡使用 listbox/option 语义、`aria-selected` 和可读状态文本；执行流不请求 `/tree`，错误详情 CTA 在 m4 页面就绪前保持禁用，避免假链接。
+Session 路由使用全宽 workspace，在 56px 顶栏下直接铺设 360px `--bg-panel` 左栏与自适应右栏，不再套圆角浮层。状态和排序各占一行标签，九项 StatStrip 下的执行流占位沿用原型 720px 面板尺度，错误详情 CTA 位于概览标题区。Session 卡只在 option 数据态启用 listbox/option 语义，使用 roving tabindex、方向键与 Home/End、`aria-selected` 和可读状态文本；搜索 timer 在路由外部变化时作废，避免历史导航被旧输入覆盖。执行流不请求 `/tree`，错误详情 CTA 在 m4 页面就绪前保持禁用，避免假链接。
 
 ## Alternatives considered
 

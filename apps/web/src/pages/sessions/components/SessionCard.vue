@@ -13,9 +13,14 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  focusable: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits<{
+  focus: [];
   select: [sessionId: string];
 }>();
 </script>
@@ -29,8 +34,9 @@ const emit = defineEmits<{
     :class="{ selected }"
     role="option"
     :aria-selected="selected"
-    tabindex="0"
+    :tabindex="focusable ? 0 : -1"
     @click="emit('select', item.id)"
+    @focus="emit('focus')"
     @keydown.enter="emit('select', item.id)"
     @keydown.space.prevent="emit('select', item.id)"
   >
@@ -41,7 +47,7 @@ const emit = defineEmits<{
         aria-hidden="true"
       />
       <span class="sr-only">{{ item.status === "ok" ? "完成" : "有失败" }}</span>
-      <strong>{{ item.short }}</strong>
+      <strong>{{ item.short || item.title }}</strong>
       <time :datetime="item.startedAt">{{ formatStartedAt(item.startedAt) }}</time>
     </div>
     <div class="card-meta">

@@ -6,22 +6,33 @@
 export function formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`;
   if (seconds < 3_600) return `${Math.round(seconds / 60)}m`;
-  return `${(seconds / 3_600).toFixed(seconds < 36_000 ? 1 : 0)}h`;
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  return minutes ? `${hours}h${minutes}m` : `${hours}h`;
 }
 
 /**
  * Format token counts using compact engineering units.
  * @param tokens Non-negative token count.
- * @returns Compact token text such as `12k` or `1.25M`.
+ * @returns Compact token text such as `12k` or `1.3M`.
  */
 export function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) {
-    return `${Number((tokens / 1_000_000).toFixed(2))}M`;
+    return `${(tokens / 1_000_000).toFixed(1)}M`;
   }
   if (tokens >= 1_000) {
-    return `${Number((tokens / 1_000).toFixed(1))}k`;
+    return `${Math.round(tokens / 1_000)}k`;
   }
   return String(tokens);
+}
+
+/**
+ * Format a per-hundred-message density for the prototype progress rows.
+ * @param value Density value whose full scale is three.
+ * @returns One-decimal value with its denominator.
+ */
+export function formatDensity(value: number): string {
+  return `${Math.max(0, value).toFixed(1)}/百消息`;
 }
 
 /**

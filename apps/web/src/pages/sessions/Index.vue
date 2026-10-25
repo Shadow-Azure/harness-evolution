@@ -16,6 +16,7 @@ const route = useRoute();
 const router = useRouter();
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
+let searchRevision = 0;
 
 const validStatuses = new Set<SessionStatusFilter>([
   "all",
@@ -51,6 +52,12 @@ const filters = computed<SessionFilters>(() => {
 const selectedId = computed(() =>
   typeof route.params.sessionId === "string" ? route.params.sessionId : "",
 );
+const activeStatus = computed<SessionStatusFilter>(() => {
+  if (filters.value.status === "all" || filters.value.status === "ok") {
+    return filters.value.status;
+  }
+  return "problem";
+});
 
 const listQuery = useSessionList(filters);
 const summaryQuery = useSessionSummary(
@@ -99,7 +106,10 @@ async function updateFilter(overrides: Partial<SessionFilters>) {
 function updateSearch(value: string) {
   searchInput.value = value;
   clearTimeout(searchTimer);
+  const revision = ++searchRevision;
   searchTimer = setTimeout(() => {
+    searchTimer = undefined;
+    if (revision !== searchRevision) return;
     void updateFilter({ q: value.trim() });
   }, 300);
 }
@@ -122,6 +132,9 @@ function selectSession(sessionId: string) {
 watch(
   () => route.query.q,
   (value) => {
+    searchRevision += 1;
+    clearTimeout(searchTimer);
+    searchTimer = undefined;
     searchInput.value = typeof value === "string" ? value : "";
   },
 );
@@ -148,7 +161,11 @@ watch(
   { immediate: true },
 );
 
-onBeforeUnmount(() => clearTimeout(searchTimer));
+onBeforeUnmount(() => {
+  searchRevision += 1;
+  clearTimeout(searchTimer);
+  searchTimer = undefined;
+});
 </script>
 
 <template>
@@ -175,7 +192,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
           <div class="filter-row">
             <span class="filter-label">状态</span>
             <StatusChips
-              :model-value="filters.status ?? 'all'"
+              :model-value="activeStatus"
               @update:model-value="updateStatus"
             />
           </div>

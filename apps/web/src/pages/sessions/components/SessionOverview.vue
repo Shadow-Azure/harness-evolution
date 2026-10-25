@@ -33,6 +33,10 @@ const emit = defineEmits<{
 const statusLabel = computed(() =>
   props.item?.status === "ok" ? "完成" : "有失败",
 );
+const statusClass = computed(() => {
+  if (props.item?.status === "ok") return "ok";
+  return props.item?.status === "fail" ? "fail" : "problem";
+});
 
 const stats = computed<Array<{
   label: string;
@@ -86,7 +90,7 @@ const stats = computed<Array<{
             <h2>{{ item.title }}</h2>
             <span
               class="status-badge"
-              :class="item.status === 'ok' ? 'ok' : 'problem'"
+              :class="statusClass"
             >
               {{ statusLabel }}
             </span>
@@ -208,6 +212,11 @@ const stats = computed<Array<{
 .status-badge.problem {
   background: color-mix(in srgb, var(--orange) 14%, transparent);
   color: var(--orange);
+}
+
+.status-badge.fail {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
 }
 
 .meta {
