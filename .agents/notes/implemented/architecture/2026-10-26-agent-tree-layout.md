@@ -22,4 +22,4 @@ Session tree 已由后端返回扁平 Agent、触发事件与显式 bad-case anc
 
 ## Consequences
 
-布局可输入乱序数组复现相同结果，单元测试不需要浏览器，开发演示路由负责真实画布回归；组件只负责渲染、尺寸适应和折叠事件。坏边会通过稳定 diagnostics 暴露，真实问题卡仍需 m4 消费 anchor descriptor。首屏 bundle 不获得 Vue Flow，生产 Session 页面接线由 m3-03 完成。真实 Chrome E2E 串行执行，因为每个用例都启动独立的 API、Vite、SQLite 和 Chrome，并行会争用本地端口与浏览器资源。
+布局可输入乱序数组复现相同结果，单元测试不需要浏览器，开发演示路由负责真实画布回归；组件只负责渲染、尺寸适应和折叠事件。坏边会通过稳定 diagnostics 暴露，真实问题卡仍需 m4 消费 anchor descriptor。首屏 bundle 不获得 Vue Flow，生产 Session 页面接线由 m3-03 完成。真实 Chrome E2E 串行执行，因为每个用例都启动独立的 API、Vite、SQLite 和 Chrome，并行会争用本地端口与浏览器资源；共享浏览器 launcher 在首次启动失败时清理子进程与 profile 并重试一次，避免瞬时 CI 故障拖住整个测试步骤。

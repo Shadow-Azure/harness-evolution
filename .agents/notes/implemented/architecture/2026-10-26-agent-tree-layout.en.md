@@ -22,4 +22,4 @@ m3-02 computes anchors for self-skill, self-agent, discovery, and fallback cases
 
 ## Consequences
 
-Layout results are stable under input permutations without a browser, and a development route covers the real canvas. Components only render geometry, resize the viewport, and emit collapse events, while malformed input surfaces as stable diagnostics. Real problem cards consume anchor descriptors in m4 later; production Session integration remains m3-03.
+Layout results are stable under input permutations without a browser, and a development route covers the real canvas. Components only render geometry, resize the viewport, and emit collapse events, while malformed input surfaces as stable diagnostics. Real problem cards consume anchor descriptors in m4 later; production Session integration remains m3-03. Real-browser suites run serially because each owns an API, Vite server, SQLite file, and Chrome process; the shared browser launcher also cleans its child process and profile after a failed startup and retries once so a transient CI failure cannot leave the test step hanging.
