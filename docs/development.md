@@ -2,7 +2,7 @@
 
 [English](development.en.md) | 中文
 
-> 类型：教程 | 层级：贡献者上手。门禁权威清单在 `package.json` scripts 与 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页只讲用法。
+> 类型：教程 | 层级：贡献者上手。门禁清单见 [scripts/run-gates.mjs](../scripts/run-gates.mjs)，本页只讲用法。
 
 ## 环境
 
@@ -28,6 +28,7 @@ pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
 pnpm test:e2e
+pnpm fixtures:check
 pnpm fixtures:seed
 pnpm test:all
 pnpm contract:generate

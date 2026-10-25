@@ -1,0 +1,2 @@
+{"type":"assistant","sessionId":"10000000-0000-4000-8000-000000000001","agentId":"agent-s1-review-0001","message":{"id":"msg-s1-r1","model":"claude-haiku-synthetic","content":[{"type":"text","text":"检查了示例路径。"}],"usage":{"input_tokens":40,"output_tokens":10}}}
+{"type":"user","sessionId":"10000000-0000-4000-8000-000000000001","agentId":"agent-s1-review-0001","message":{"content":[{"type":"tool_result","content":"路径检查完成"}]}}

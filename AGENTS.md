@@ -28,10 +28,11 @@ pnpm lint:web            # eslint
 pnpm typecheck:api       # mypy
 pnpm test:api            # API 测试
 pnpm test:db[:mysql]     # 数据库测试
-pnpm test:all            # 全测试
+pnpm test:all
 pnpm test:e2e            # 浏览器 E2E
+pnpm fixtures:check
 pnpm fixtures:seed       # 演示 fixture
-pnpm contract:generate   # 生成契约
+pnpm contract:generate
 pnpm contract:check      # 校验契约
 pnpm typecheck           # TS 类型
 pnpm typecheck:web       # Vue TS 类型

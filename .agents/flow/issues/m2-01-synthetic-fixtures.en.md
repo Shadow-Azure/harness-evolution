@@ -8,8 +8,9 @@ id: m2-01
 milestone: m2
 depends: []
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - fixtures/**
   - apps/api/**
   - scripts/**
@@ -18,6 +19,8 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 33
@@ -91,6 +94,8 @@ m2-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m2-01-synthetic-fixtures
 pnpm test:db
+pnpm fixtures:check
+pnpm fixtures:seed
 ```
 
 - fixture:check 与 seed 测试通过

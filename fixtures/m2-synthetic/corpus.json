@@ -1,0 +1,425 @@
+{
+  "version": 1,
+  "scope": "m2-synthetic",
+  "rootSessions": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "shortTitle": "示例会话一",
+      "title": "示例会话一：主会话与评审子任务",
+      "repoName": "example-repo",
+      "projectPath": "/workspace/example-repo",
+      "gitBranch": "main",
+      "cliVersion": "synthetic-1",
+      "entrypoint": "cli",
+      "startedAt": "2026-10-20T09:00:00+08:00",
+      "endedAt": "2026-10-20T09:04:00+08:00",
+      "status": "ok",
+      "sourceType": "script",
+      "importedAt": "2026-10-20T09:05:00+08:00",
+      "updatedAt": "2026-10-20T09:05:00+08:00",
+      "agents": [
+        {
+          "id": "10000000-0000-4000-8000-000000000001",
+          "kind": "main",
+          "agentType": "claude",
+          "model": "claude-sonnet-synthetic",
+          "requestedModel": "sonnet",
+          "spawnDepth": 0,
+          "messagesCount": 1,
+          "tokensTotal": 100,
+          "toolsCount": 1,
+          "errorsCount": 0,
+          "sortKey": 0,
+          "payloadFile": "payloads/session-01-main.jsonl",
+          "events": [
+            {
+              "eventIndex": 0,
+              "lineNo": 2,
+              "messageOffset": 0,
+              "kind": "agent",
+              "name": "Explore",
+              "description": "检查合成路径",
+              "toolUseId": "tool-agent-1"
+            }
+          ],
+          "userTurns": [
+            {
+              "id": "20000000-0000-4000-8000-000000000001",
+              "seq": 1,
+              "promptText": "复盘第一个示例会话",
+              "startedAt": "2026-10-20T09:00:00+08:00",
+              "lineNo": 1,
+              "messageOffset": 0
+            }
+          ]
+        },
+        {
+          "id": "agent-s1-review-0001",
+          "kind": "subagent",
+          "agentType": "Explore",
+          "model": "claude-haiku-synthetic",
+          "requestedModel": "haiku",
+          "description": "检查合成路径",
+          "toolUseId": "tool-agent-1",
+          "parentAgentId": "10000000-0000-4000-8000-000000000001",
+          "spawnDepth": 1,
+          "messagesCount": 1,
+          "tokensTotal": 50,
+          "toolsCount": 1,
+          "errorsCount": 0,
+          "sortKey": 10,
+          "payloadFile": "payloads/session-01-review.jsonl",
+          "meta": {
+            "agentType": "Explore",
+            "spawnDepth": 1,
+            "toolUseId": "tool-agent-1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "shortTitle": "示例工作流",
+      "title": "示例会话二：工作流与子任务",
+      "repoName": "workflow-repo",
+      "projectPath": "/workspace/workflow-repo",
+      "gitBranch": "feature/workflow",
+      "cliVersion": "synthetic-1",
+      "entrypoint": "cli",
+      "startedAt": "2026-10-21T10:00:00+08:00",
+      "endedAt": "2026-10-21T10:06:00+08:00",
+      "status": "ok",
+      "sourceType": "script",
+      "importedAt": "2026-10-21T10:07:00+08:00",
+      "updatedAt": "2026-10-21T10:07:00+08:00",
+      "agents": [
+        {
+          "id": "10000000-0000-4000-8000-000000000002",
+          "kind": "main",
+          "agentType": "claude",
+          "model": "claude-sonnet-synthetic",
+          "requestedModel": "sonnet",
+          "spawnDepth": 0,
+          "messagesCount": 1,
+          "tokensTotal": 130,
+          "toolsCount": 1,
+          "errorsCount": 0,
+          "sortKey": 0,
+          "payloadFile": "payloads/session-02-main.jsonl",
+          "events": [
+            {
+              "eventIndex": 0,
+              "lineNo": 2,
+              "messageOffset": 0,
+              "kind": "workflow",
+              "name": "review-workflow",
+              "description": "运行合成工作流",
+              "toolUseId": "tool-wf-1"
+            }
+          ],
+          "userTurns": [
+            {
+              "id": "20000000-0000-4000-8000-000000000002",
+              "seq": 1,
+              "promptText": "运行工作流示例",
+              "startedAt": "2026-10-21T10:00:00+08:00",
+              "lineNo": 1,
+              "messageOffset": 0
+            }
+          ]
+        },
+        {
+          "id": "wf-s2-0001",
+          "kind": "workflow",
+          "agentType": "workflow",
+          "description": "运行合成工作流",
+          "toolUseId": "tool-wf-1",
+          "parentAgentId": "10000000-0000-4000-8000-000000000002",
+          "spawnDepth": 1,
+          "messagesCount": 0,
+          "tokensTotal": 0,
+          "toolsCount": 0,
+          "errorsCount": 0,
+          "sortKey": 20
+        },
+        {
+          "id": "agent-s2-worker-0001",
+          "kind": "subagent",
+          "agentType": "workflow-subagent",
+          "model": "claude-haiku-synthetic",
+          "requestedModel": "haiku",
+          "description": "执行工作流子任务",
+          "parentAgentId": "wf-s2-0001",
+          "spawnDepth": 2,
+          "messagesCount": 1,
+          "tokensTotal": 28,
+          "toolsCount": 0,
+          "errorsCount": 0,
+          "sortKey": 30,
+          "payloadFile": "payloads/session-02-worker.jsonl",
+          "meta": {
+            "agentType": "workflow-subagent",
+            "spawnDepth": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "shortTitle": "示例技能分叉",
+      "title": "示例会话三：技能分叉",
+      "repoName": "skill-repo",
+      "projectPath": "/workspace/skill-repo",
+      "gitBranch": "main",
+      "cliVersion": "synthetic-1",
+      "entrypoint": "cli",
+      "startedAt": "2026-10-22T11:00:00+08:00",
+      "endedAt": "2026-10-22T11:03:00+08:00",
+      "status": "partial",
+      "sourceType": "script",
+      "importedAt": "2026-10-22T11:04:00+08:00",
+      "updatedAt": "2026-10-22T11:04:00+08:00",
+      "agents": [
+        {
+          "id": "10000000-0000-4000-8000-000000000003",
+          "kind": "main",
+          "agentType": "claude",
+          "model": "claude-sonnet-synthetic",
+          "requestedModel": "sonnet",
+          "spawnDepth": 0,
+          "messagesCount": 1,
+          "tokensTotal": 78,
+          "toolsCount": 1,
+          "errorsCount": 0,
+          "sortKey": 0,
+          "payloadFile": "payloads/session-03-main.jsonl",
+          "events": [
+            {
+              "eventIndex": 0,
+              "lineNo": 2,
+              "messageOffset": 0,
+              "kind": "skill",
+              "name": "synthetic-review",
+              "description": "运行合成技能",
+              "toolUseId": "tool-skill-1"
+            }
+          ],
+          "userTurns": [
+            {
+              "id": "20000000-0000-4000-8000-000000000003",
+              "seq": 1,
+              "promptText": "验证技能分叉示例",
+              "startedAt": "2026-10-22T11:00:00+08:00",
+              "lineNo": 1,
+              "messageOffset": 0
+            }
+          ]
+        },
+        {
+          "id": "agent-s3-fork-0001",
+          "kind": "subagent",
+          "taskKind": "forked_skill",
+          "skillName": "synthetic-review",
+          "model": "claude-sonnet-synthetic",
+          "requestedModel": "sonnet",
+          "description": "技能分叉执行",
+          "parentAgentId": "10000000-0000-4000-8000-000000000003",
+          "spawnDepth": 1,
+          "messagesCount": 1,
+          "tokensTotal": 37,
+          "toolsCount": 0,
+          "errorsCount": 1,
+          "sortKey": 40,
+          "payloadFile": "payloads/session-03-fork.jsonl",
+          "meta": {
+            "skillName": "synthetic-review",
+            "spawnDepth": 1,
+            "taskKind": "forked_skill"
+          }
+        }
+      ]
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "shortTitle": "示例最小会话",
+      "title": "示例会话四：最小主会话",
+      "repoName": "minimal-repo",
+      "projectPath": "/workspace/minimal-repo",
+      "gitBranch": "main",
+      "cliVersion": "synthetic-1",
+      "entrypoint": "sdk",
+      "startedAt": "2026-10-23T12:00:00+08:00",
+      "endedAt": "2026-10-23T12:01:00+08:00",
+      "status": "ok",
+      "sourceType": "script",
+      "importedAt": "2026-10-23T12:02:00+08:00",
+      "updatedAt": "2026-10-23T12:02:00+08:00",
+      "agents": [
+        {
+          "id": "10000000-0000-4000-8000-000000000004",
+          "kind": "main",
+          "agentType": "claude",
+          "model": "claude-sonnet-synthetic",
+          "requestedModel": "sonnet",
+          "spawnDepth": 0,
+          "messagesCount": 1,
+          "tokensTotal": 40,
+          "toolsCount": 0,
+          "errorsCount": 0,
+          "sortKey": 0,
+          "payloadFile": "payloads/session-04-main.jsonl",
+          "userTurns": [
+            {
+              "id": "20000000-0000-4000-8000-000000000004",
+              "seq": 1,
+              "promptText": "记录最小示例会话",
+              "startedAt": "2026-10-23T12:00:00+08:00",
+              "lineNo": 1,
+              "messageOffset": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "badCases": [
+    {
+      "badCaseId": "badcase-synthetic-0001",
+      "badCaseSessionId": "10000000-0000-4000-8000-000000000001",
+      "badCaseType": "self",
+      "objectName": "Explore",
+      "objectType": "agent",
+      "objectVersion": "synthetic-1",
+      "badCaseAgentId": "agent-s1-review-0001",
+      "reason": "合成示例：检查结论缺少目标文件。",
+      "metaData": {
+        "fixture": true
+      },
+      "source": "fixtures",
+      "createdAt": "2026-10-20T09:03:00+08:00",
+      "updatedAt": "2026-10-20T09:03:00+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0002",
+      "badCaseSessionId": "10000000-0000-4000-8000-000000000002",
+      "badCaseType": "discovery",
+      "objectName": "review-workflow",
+      "objectType": "agent",
+      "objectVersion": "synthetic-1",
+      "badCaseAgentId": "agent-s2-worker-0001",
+      "reason": "合成示例：工作流未汇总检查项。",
+      "metaData": {
+        "fixture": true
+      },
+      "source": "fixtures",
+      "createdAt": "2026-10-21T10:05:00+08:00",
+      "updatedAt": "2026-10-21T10:05:00+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0003",
+      "badCaseSessionId": "10000000-0000-4000-8000-000000000003",
+      "badCaseType": "self",
+      "objectName": "synthetic-review",
+      "objectType": "skill",
+      "objectVersion": "synthetic-1",
+      "badCaseAgentId": "10000000-0000-4000-8000-000000000003",
+      "reason": "合成示例：技能输出格式不稳定。",
+      "metaData": {
+        "fixture": true
+      },
+      "source": "fixtures",
+      "createdAt": "2026-10-22T11:02:00+08:00",
+      "updatedAt": "2026-10-22T11:02:00+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0004",
+      "badCaseSessionId": "10000000-0000-4000-8000-000000000004",
+      "badCaseType": "discovery",
+      "objectName": "claude",
+      "objectType": "agent",
+      "badCaseAgentId": "10000000-0000-4000-8000-000000000004",
+      "reason": "合成示例：最小会话信息不足。",
+      "metaData": {
+        "fixture": true
+      },
+      "source": "fixtures",
+      "createdAt": "2026-10-23T12:00:30+08:00",
+      "updatedAt": "2026-10-23T12:00:30+08:00"
+    }
+  ],
+  "probeReports": [
+    {
+      "probeId": "probe-synthetic-0001",
+      "sessionId": "10000000-0000-4000-8000-000000000001",
+      "probeType": "agent",
+      "probeObject": "Explore",
+      "objectVersion": "synthetic-1",
+      "attributeType": "prompt",
+      "probeDescription": "合成归因：提示缺少输出约束。",
+      "probeAnalysis": "示例推导：先定位子任务，再确认提示缺少文件摘要要求。",
+      "createdAt": "2026-10-20T09:03:30+08:00",
+      "updatedAt": "2026-10-20T09:03:30+08:00"
+    },
+    {
+      "probeId": "probe-synthetic-0002",
+      "sessionId": "10000000-0000-4000-8000-000000000003",
+      "probeType": "skill",
+      "probeObject": "synthetic-review",
+      "objectVersion": "synthetic-1",
+      "attributeType": "error",
+      "probeDescription": "合成归因：技能参数校验失败。",
+      "probeAnalysis": "示例推导：检查技能调用参数并确认缺少目标字段。",
+      "createdAt": "2026-10-22T11:02:30+08:00",
+      "updatedAt": "2026-10-22T11:02:30+08:00"
+    }
+  ],
+  "badCaseAnalyses": [
+    {
+      "badCaseId": "badcase-synthetic-0001",
+      "analysisStatus": "analyzed_issue",
+      "probeId": "probe-synthetic-0001",
+      "analysisResult": {
+        "summary": "提示缺少输出约束"
+      },
+      "updatedAt": "2026-10-20T09:03:30+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0002",
+      "analysisStatus": "analyzed_nonissue",
+      "analysisResult": {
+        "reason": "示例数据本身不完整",
+        "reasoning": [
+          "工作流输入是合成占位"
+        ]
+      },
+      "updatedAt": "2026-10-21T10:05:30+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0003",
+      "analysisStatus": "analyzed_issue",
+      "probeId": "probe-synthetic-0002",
+      "analysisResult": {
+        "summary": "参数校验失败"
+      },
+      "updatedAt": "2026-10-22T11:02:30+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0004",
+      "analysisStatus": "unanalyzed",
+      "updatedAt": "2026-10-23T12:01:00+08:00"
+    }
+  ],
+  "evolutionTargets": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "objectType": "skill",
+      "objectName": "synthetic-review",
+      "repoUrl": "https://example.invalid/example/skills.git",
+      "subDir": "skills/synthetic-review",
+      "defaultRef": "main",
+      "enabled": true,
+      "createdAt": "2026-10-24T09:00:00+08:00",
+      "updatedAt": "2026-10-24T09:00:00+08:00"
+    }
+  ]
+}

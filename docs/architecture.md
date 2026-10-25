@@ -2,11 +2,11 @@
 
 [English](architecture.en.md) | 中文
 
-记录当前服务边界、数据流与存储策略；实现按垂直切片推进，取舍理由见 `.agents/notes/`。
+记录服务边界、数据流与存储；按垂直切片实现，理由见 `.agents/notes/`。
 
 ## 产品边界
 
-轨迹诊断服务当前为 M1 平台骨架；轨迹、问题与自进化尚未进入运行链路。
+当前含 M1 平台与 M2 fixture 基座；归一化、问题与自进化尚未进入运行链路。
 
 ## 服务划分
 
@@ -48,7 +48,8 @@ Web 启动先恢复会话再挂载路由；token 与用户只留内存。守卫�
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
 - Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
 - `job_runs` 是真值；串行 worker 写 run 级 `evolution_run_events`，事件总线只广播有界通知，中断事件先落库。
-- 原始轨迹 payload 可重放且幂等；问题和归因由外部系统写入，本服务只读。
+- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；四会话 fixtures 通过 CLI 幂等写入同构领域表，归一化尚未启用。
+- 问题和归因由外部系统写入，本服务只读。
 - 密钥只从环境变量注入，不进入仓库或数据库。
 
 ## 当前 API
@@ -78,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 当前状态与非目标
 
-- 已具备：模块化 API、统一错误、双库存储与迁移、鉴权、任务/SSE、三入口壳、seed、E2E 与契约门禁。
-- 未具备：轨迹与自进化业务表、evolution 父表外键与真实 run 资源授权、用户停用界面、轨迹解析、问题查询、自进化执行。
+- 已具备：双库 API、鉴权、任务/SSE、三入口壳、严格 fixtures、真实表 seed、E2E 与契约门禁。
+- 未具备：轨迹归一化/查询、问题查询、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。
