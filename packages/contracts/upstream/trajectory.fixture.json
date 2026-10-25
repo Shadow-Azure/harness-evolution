@@ -1,0 +1,47 @@
+{
+  "package": {
+    "metadata": {
+      "endedAt": "2026-10-20T01:01:00+08:00",
+      "model": "fixture-model",
+      "problemFlag": true,
+      "problemTags": [
+        "tool-error"
+      ],
+      "project": "fixture-project",
+      "startedAt": "2026-10-20T01:00:00+08:00"
+    },
+    "sessionId": "00000000-0000-4000-8000-000000000000",
+    "transcripts": [
+      {
+        "agentId": null,
+        "agentType": null,
+        "kind": "main",
+        "lines": [
+          "{\"type\":\"user\",\"sessionId\":\"00000000-0000-4000-8000-000000000000\"}",
+          "{\"type\":\"assistant\",\"sessionId\":\"00000000-0000-4000-8000-000000000000\"}"
+        ],
+        "parentToolUseId": null
+      },
+      {
+        "agentId": "agent-fixture",
+        "agentType": "general-purpose",
+        "kind": "subagent",
+        "lines": [
+          "{\"type\":\"assistant\",\"agentId\":\"agent-fixture\"}"
+        ],
+        "parentToolUseId": "tool-fixture"
+      }
+    ]
+  },
+  "window": {
+    "items": [
+      {
+        "model": "fixture-model",
+        "problemFlag": true,
+        "sessionId": "00000000-0000-4000-8000-000000000000",
+        "startedAt": "2026-10-20T01:00:00+08:00"
+      }
+    ],
+    "nextCursor": ""
+  }
+}

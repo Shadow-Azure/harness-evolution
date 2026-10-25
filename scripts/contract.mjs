@@ -27,6 +27,14 @@ const GENERATED_FIXTURES = path.join(
   "packages/contracts/src/generated/health-fixtures.ts",
 );
 const FIXTURES = path.join(ROOT, "packages/contracts/fixtures/health.json");
+const UPSTREAM_SCHEMA = path.join(
+  ROOT,
+  "packages/contracts/upstream/trajectory.schema.json",
+);
+const UPSTREAM_FIXTURE = path.join(
+  ROOT,
+  "packages/contracts/upstream/trajectory.fixture.json",
+);
 const GENERATED_HEADER =
   "/* This file is generated from packages/contracts/openapi.json. Do not edit. */\n" +
   "/** @generated */\n\n";
@@ -88,6 +96,17 @@ export function exportHealthFixtures() {
 }
 
 /**
+ * Export canonical upstream trajectory client artifacts.
+ * @param {"schema" | "fixture"} kind artifact variant
+ * @returns {string} JSON text with one trailing newline
+ */
+export function exportUpstreamContract(kind) {
+  return run(PYTHON, ["scripts/export_upstream_contract.py", kind], {
+    cwd: API_DIR,
+  });
+}
+
+/**
  * Convert canonical response JSON into a typed, importable fixture module.
  * @param {string} fixturesText canonical health fixture JSON
  * @returns {string} generated TypeScript fixture text
@@ -109,19 +128,38 @@ export async function generateTypeScript(snapshotText) {
   return `${GENERATED_HEADER}${astToString(ast)}`;
 }
 
-async function render(snapshotPath, generatedPath, fixturesPath) {
+async function render(
+  snapshotPath,
+  generatedPath,
+  fixturesPath,
+  upstreamSchemaPath,
+  upstreamFixturePath,
+) {
   const snapshotText = exportOpenApi();
   const generatedText = await generateTypeScript(snapshotText);
   const fixturesText = exportHealthFixtures();
   const generatedFixturesText = generateHealthFixtures(fixturesText);
+  const upstreamSchemaText = exportUpstreamContract("schema");
+  const upstreamFixtureText = exportUpstreamContract("fixture");
   mkdirSync(path.dirname(snapshotPath), { recursive: true });
   mkdirSync(path.dirname(generatedPath), { recursive: true });
   mkdirSync(path.dirname(fixturesPath), { recursive: true });
+  mkdirSync(path.dirname(upstreamSchemaPath), { recursive: true });
+  mkdirSync(path.dirname(upstreamFixturePath), { recursive: true });
   writeFileSync(snapshotPath, snapshotText);
   writeFileSync(generatedPath, generatedText);
   writeFileSync(fixturesPath, fixturesText);
   writeFileSync(GENERATED_FIXTURES, generatedFixturesText);
-  return { snapshotText, generatedText, generatedFixturesText, fixturesText };
+  writeFileSync(upstreamSchemaPath, upstreamSchemaText);
+  writeFileSync(upstreamFixturePath, upstreamFixtureText);
+  return {
+    snapshotText,
+    generatedText,
+    generatedFixturesText,
+    fixturesText,
+    upstreamSchemaText,
+    upstreamFixtureText,
+  };
 }
 
 /**
@@ -129,33 +167,51 @@ async function render(snapshotPath, generatedPath, fixturesPath) {
  * @param {string} [snapshotPathOverride] checked OpenAPI artifact to verify
  * @param {string} [generatedPathOverride] checked TypeScript artifact to verify
  * @param {string} [fixturesPathOverride] checked health fixture to verify
+ * @param {string} [upstreamSchemaPathOverride] checked upstream JSON Schema
+ * @param {string} [upstreamFixturePathOverride] checked upstream example fixture
  * @returns {Promise<{ok: boolean, errors: string[]}>} check outcome
  */
 export async function checkContracts(
   snapshotPathOverride = process.env.HE_CONTRACT_SNAPSHOT ?? SNAPSHOT,
   generatedPathOverride = process.env.HE_CONTRACT_TYPES ?? GENERATED,
   fixturesPathOverride = process.env.HE_CONTRACT_FIXTURES ?? FIXTURES,
+  upstreamSchemaPathOverride = process.env.HE_UPSTREAM_SCHEMA ?? UPSTREAM_SCHEMA,
+  upstreamFixturePathOverride = process.env.HE_UPSTREAM_FIXTURE ?? UPSTREAM_FIXTURE,
 ) {
   const directory = mkdtempSync(path.join(tmpdir(), "harness-contracts-"));
   try {
     const temporarySnapshot = path.join(directory, "openapi.json");
     const temporaryTypes = path.join(directory, "api.d.ts");
     const temporaryFixtures = path.join(directory, "health.json");
-    await render(temporarySnapshot, temporaryTypes, temporaryFixtures);
+    const temporaryUpstreamSchema = path.join(directory, "trajectory.schema.json");
+    const temporaryUpstreamFixture = path.join(directory, "trajectory.fixture.json");
+    await render(
+      temporarySnapshot,
+      temporaryTypes,
+      temporaryFixtures,
+      temporaryUpstreamSchema,
+      temporaryUpstreamFixture,
+    );
     const expectedSnapshot = readFileSync(temporarySnapshot, "utf8");
     const expectedTypes = readFileSync(temporaryTypes, "utf8");
     const expectedFixtures = readFileSync(temporaryFixtures, "utf8");
     const expectedGeneratedFixtures = generateHealthFixtures(expectedFixtures);
+    const expectedUpstreamSchema = readFileSync(temporaryUpstreamSchema, "utf8");
+    const expectedUpstreamFixture = readFileSync(temporaryUpstreamFixture, "utf8");
     const snapshotName = path.relative(ROOT, snapshotPathOverride);
     const typesName = path.relative(ROOT, generatedPathOverride);
     const generatedFixturesName = path.relative(ROOT, GENERATED_FIXTURES);
     const fixturesName = path.relative(ROOT, fixturesPathOverride);
+    const upstreamSchemaName = path.relative(ROOT, upstreamSchemaPathOverride);
+    const upstreamFixtureName = path.relative(ROOT, upstreamFixturePathOverride);
     const errors = [];
     for (const [expected, checkedPath, name, marker] of [
       [expectedSnapshot, snapshotPathOverride, snapshotName, false],
       [expectedTypes, generatedPathOverride, typesName, true],
       [expectedGeneratedFixtures, GENERATED_FIXTURES, generatedFixturesName, true],
       [expectedFixtures, fixturesPathOverride, fixturesName, false],
+      [expectedUpstreamSchema, upstreamSchemaPathOverride, upstreamSchemaName, false],
+      [expectedUpstreamFixture, upstreamFixturePathOverride, upstreamFixtureName, false],
     ]) {
       if (!existsSync(checkedPath)) {
         errors.push(`${name}: 文件缺失；运行 \`pnpm contract:generate\``);
@@ -179,8 +235,12 @@ async function main() {
     const snapshot = process.env.HE_CONTRACT_SNAPSHOT ?? SNAPSHOT;
     const generated = process.env.HE_CONTRACT_TYPES ?? GENERATED;
     const fixtures = process.env.HE_CONTRACT_FIXTURES ?? FIXTURES;
-    await render(snapshot, generated, fixtures);
-    console.log("contract:generate: wrote OpenAPI snapshot, TypeScript types, and health fixtures");
+    const upstreamSchema = process.env.HE_UPSTREAM_SCHEMA ?? UPSTREAM_SCHEMA;
+    const upstreamFixture = process.env.HE_UPSTREAM_FIXTURE ?? UPSTREAM_FIXTURE;
+    await render(snapshot, generated, fixtures, upstreamSchema, upstreamFixture);
+    console.log(
+      "contract:generate: wrote OpenAPI, TypeScript, health fixtures, and upstream contract artifacts",
+    );
     return;
   }
   if (command === "check") {

@@ -2,6 +2,26 @@
 /** @generated */
 
 export interface paths {
+    "/api/acquisition/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger Pull
+         * @description Queue one administrator pull from the configured upstream source.
+         */
+        post: operations["trigger_pull_api_acquisition_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/acquisition/status": {
         parameters: {
             query?: never;
@@ -427,7 +447,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -545,6 +565,46 @@ export interface components {
             role: "admin" | "member";
             /** Username */
             username: string;
+        };
+        /**
+         * PullJobPayload
+         * @description Durable selector stored on one queued pull job.
+         */
+        PullJobPayload: {
+            /** Sessionids */
+            sessionIds?: string[] | null;
+            window?: components["schemas"]["PullWindow"] | null;
+        };
+        /**
+         * PullResponse
+         * @description Queued pull job identity.
+         */
+        PullResponse: {
+            /** Jobid */
+            jobId: string;
+        };
+        /**
+         * PullWindow
+         * @description Date window accepted by the upstream enumeration endpoint.
+         */
+        PullWindow: {
+            /** Cursor */
+            cursor?: string | null;
+            /**
+             * From
+             * Format: date
+             */
+            from: string;
+            /**
+             * Problemonly
+             * @default true
+             */
+            problemOnly: boolean;
+            /**
+             * To
+             * Format: date
+             */
+            to: string;
         };
         /**
          * RefreshResponse
@@ -795,6 +855,66 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    trigger_pull_api_acquisition_pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PullJobPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Admin role is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Upstream is not configured */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Selector validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     acquisition_status_api_acquisition_status_get: {
         parameters: {
             query?: never;

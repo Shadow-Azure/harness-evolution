@@ -294,7 +294,11 @@
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
           "VALIDATION_INVALID",
-          "RATE_LIMITED"
+          "RATE_LIMITED",
+          "UPSTREAM_NOT_AVAILABLE",
+          "UPSTREAM_VERSION_INCOMPATIBLE",
+          "UPSTREAM_INVALID_RESPONSE",
+          "UPSTREAM_REQUEST_FAILED"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -595,6 +599,94 @@
           "mustChangePassword"
         ],
         "title": "PublicUser",
+        "type": "object"
+      },
+      "PullJobPayload": {
+        "additionalProperties": false,
+        "description": "Durable selector stored on one queued pull job.",
+        "properties": {
+          "sessionIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "maxLength": 36,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionids"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PullWindow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PullJobPayload",
+        "type": "object"
+      },
+      "PullResponse": {
+        "additionalProperties": false,
+        "description": "Queued pull job identity.",
+        "properties": {
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "title": "PullResponse",
+        "type": "object"
+      },
+      "PullWindow": {
+        "additionalProperties": false,
+        "description": "Date window accepted by the upstream enumeration endpoint.",
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "from": {
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "problemOnly": {
+            "default": true,
+            "title": "Problemonly",
+            "type": "boolean"
+          },
+          "to": {
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "PullWindow",
         "type": "object"
       },
       "RefreshResponse": {
@@ -1266,6 +1358,83 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/acquisition/pull": {
+      "post": {
+        "description": "Queue one administrator pull from the configured upstream source.",
+        "operationId": "trigger_pull_api_acquisition_pull_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullJobPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Admin role is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Upstream is not configured"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Selector validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Trigger Pull",
+        "tags": [
+          "acquisition"
+        ]
+      }
+    },
     "/api/acquisition/status": {
       "get": {
         "description": "Return durable acquisition progress for all authenticated users.",

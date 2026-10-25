@@ -45,6 +45,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/sessions/{sessionId}/tree",
         "/api/acquisition/status",
         "/api/acquisition/sync",
+        "/api/acquisition/pull",
     }
     assert {
         "HealthResponse",

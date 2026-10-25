@@ -9,10 +9,17 @@ milestone: m2
 depends:
   - m2-07
 priority: P1
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
+  - packages/contracts/**
+  - scripts/**
+  - tests/**
+  - package.json
+  - .github/workflows/ci.yml
   - plans/**
+  - reports/**
   - fixtures/**
   - docs/**
   - .agents/flow/**
@@ -59,12 +66,13 @@ m2-08 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ```sh
 pnpm test:api -- tests/m2-08-upstream-contract
-pnpm test:db
+pnpm contract:generate
 pnpm contract:check
+pnpm test:db
 ```
 
-- HttpApiSource 对 mock 上游通过
-- 版本不兼容返回明确错误且不写库
+- `HttpTrajectorySource` 对 `httpx.MockTransport` 通过分页、重试和按会话隔离。
+- 缺失、非法或主版本不兼容的版本头在任何 payload 写入前失败。
 
 ## 验收标准
 

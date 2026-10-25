@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -26,10 +27,13 @@ from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
 from app.service.acquisition.sync import SyncCoordinator
+from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
 from app.service.sessions.service import SessionService
+from app.third_party_api.trajectory.http import HttpTrajectorySource
+from app.third_party_api.trajectory.source import TrajectorySource
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,7 @@ def create_default_app() -> FastAPI:
 def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
+    trajectory_source: TrajectorySource | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -51,6 +56,26 @@ def create_app(
     run_event_store = SqlRunEventStore(resolved_database)
     job_repository = JobRepository(resolved_database)
     jobs = JobRunner(job_repository, event_bus, run_event_store)
+    upstream_client: httpx.AsyncClient | None = None
+    resolved_source = trajectory_source
+    if resolved_source is None and resolved_settings.upstream_configured:
+        token = resolved_settings.upstream_token
+        if token is None:
+            raise RuntimeError("upstream configuration lost its token")
+        upstream_client = httpx.AsyncClient(
+            base_url=resolved_settings.upstream_base_url or "",
+            headers={"Authorization": f"Bearer {token.get_secret_value()}"},
+            timeout=resolved_settings.upstream_timeout_seconds,
+            follow_redirects=False,
+        )
+        resolved_source = HttpTrajectorySource(
+            upstream_client,
+            max_retries=resolved_settings.upstream_retry_attempts,
+            backoff_seconds=resolved_settings.upstream_retry_backoff_seconds,
+            max_pages=resolved_settings.upstream_max_pages,
+        )
+    pull_service = UpstreamPullService(resolved_database, jobs, resolved_source)
+    jobs.register_handler("pull", pull_service.handle)
     sync = SyncCoordinator(
         resolved_database,
         jobs,
@@ -91,6 +116,8 @@ def create_app(
         finally:
             await sync.stop_scheduler()
             await jobs.close()
+            if upstream_client is not None:
+                await upstream_client.aclose()
             await event_bus.close()
             await resolved_database.dispose()
 
@@ -110,6 +137,7 @@ def create_app(
     app.state.event_bus = event_bus
     app.state.jobs = jobs
     app.state.sync = sync
+    app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.sessions = sessions
     app.state.run_event_replay = run_event_store

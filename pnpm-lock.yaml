@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@redocly/ajv':
+        specifier: 8.11.2
+        version: 8.11.2
       openapi-typescript:
         specifier: ^7.13.0
         version: 7.13.0(typescript@5.9.3)

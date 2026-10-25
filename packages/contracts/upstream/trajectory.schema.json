@@ -1,0 +1,326 @@
+{
+  "$comment": "Generated from the upstream trajectory client models. Do not edit.",
+  "$defs": {
+    "TrajectoryMetadata": {
+      "additionalProperties": false,
+      "description": "Optional session metadata returned with or beside a trajectory package.",
+      "properties": {
+        "endedAt": {
+          "format": "date-time",
+          "title": "Endedat",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "problemFlag": {
+          "default": false,
+          "title": "Problemflag",
+          "type": "boolean"
+        },
+        "problemTags": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Problemtags",
+          "type": "array"
+        },
+        "project": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Project",
+          "type": "string"
+        },
+        "startedAt": {
+          "format": "date-time",
+          "title": "Startedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project",
+        "model",
+        "startedAt",
+        "endedAt"
+      ],
+      "title": "TrajectoryMetadata",
+      "type": "object"
+    },
+    "TrajectoryPackage": {
+      "$comment": "The child agentId inequality uses the Ajv $data extension. Runtime also enforces subagent agentId uniqueness.",
+      "additionalProperties": false,
+      "description": "One root session plus every raw agent transcript.",
+      "properties": {
+        "metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TrajectoryMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sessionId": {
+          "maxLength": 36,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Sessionid",
+          "type": "string"
+        },
+        "transcripts": {
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "kind": {
+                    "const": "main"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "maxContains": 1,
+              "minContains": 1
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/TrajectoryTranscript"
+          },
+          "minItems": 1,
+          "title": "Transcripts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessionId",
+        "transcripts"
+      ],
+      "title": "TrajectoryPackage",
+      "type": "object"
+    },
+    "TrajectoryTranscript": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "main"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "agentId": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "subagent"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "agentId": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "agentId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "subagent"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "agentId": {
+                "not": {
+                  "const": {
+                    "$data": "3/sessionId"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "One raw JSONL transcript belonging to a root session.",
+      "properties": {
+        "agentId": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agentid"
+        },
+        "agentType": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agenttype"
+        },
+        "kind": {
+          "enum": [
+            "main",
+            "subagent"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Lines",
+          "type": "array"
+        },
+        "parentToolUseId": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parenttooluseid"
+        }
+      },
+      "required": [
+        "kind",
+        "lines"
+      ],
+      "title": "TrajectoryTranscript",
+      "type": "object"
+    },
+    "TrajectoryWindow": {
+      "additionalProperties": false,
+      "description": "One page of session summaries and its opaque continuation cursor.",
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/TrajectoryWindowItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nextcursor"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "TrajectoryWindow",
+      "type": "object"
+    },
+    "TrajectoryWindowItem": {
+      "additionalProperties": false,
+      "description": "One session summary returned by cursor enumeration.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "problemFlag": {
+          "default": false,
+          "title": "Problemflag",
+          "type": "boolean"
+        },
+        "sessionId": {
+          "maxLength": 36,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "title": "Sessionid",
+          "type": "string"
+        },
+        "startedAt": {
+          "format": "date-time",
+          "title": "Startedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "startedAt"
+      ],
+      "title": "TrajectoryWindowItem",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TrajectoryPackage"
+    },
+    {
+      "$ref": "#/$defs/TrajectoryWindow"
+    }
+  ]
+}

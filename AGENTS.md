@@ -62,11 +62,11 @@ pnpm install:hooks       # Git hooks
 - 后端保持模块化单体：HTTP 层只放 `api/` 路由，业务规则进 `service/`，存储隔离在 `db/` 接口与 repository 后，出站集成放 `third_party_api/`。
 - `packages/contracts` 是前后端共享协议的唯一来源；跨端字段变化先改契约。
 - FastAPI OpenAPI 是接口契约源；`packages/contracts/openapi.json` 与生成类型禁止手改，改接口后运行 `pnpm contract:generate`。
+- 上游 Schema 跨字段身份约束用 Ajv 2020 `$data`；改动跑 `test:gates`、`contract:check`。
 - 行为变更同步单测与跨栈集成；CI 必须执行测试，覆盖率不得低于 80%。
-- 门禁测试参数需经 API runner 透传；路径或数量变更同步 `scripts/gates.spec.mjs`。
-- 导出声明必须带 JSDoc；导出函数的每个形参写 `@param`，非 void 返回写 `@returns`。
+- 门禁参数经 API runner 透传；门禁脚本改动同步本文件与 `scripts/gates.spec.mjs`。
+- 导出声明带 JSDoc：各形参写 `@param`，非 void 返回写 `@returns`。
 - 常驻文档受词数预算约束，未登记预算即红门禁；超限处置顺序为搬层、压缩、提预算。
-- 门禁脚本改动必须同步更新本文件与 `scripts/gates.spec.mjs`。
 
 ## 密钥
 

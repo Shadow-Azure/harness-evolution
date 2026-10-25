@@ -11,6 +11,29 @@ from app.db.models.domain import sync_runs
 from app.service.acquisition.normalize import ParsedIssue
 
 
+async def append_sync_error_records(
+    database: Database,
+    sync_run_id: str,
+    errors: Sequence[dict[str, object]],
+) -> None:
+    """Append already-sanitized structured failures to one sync audit row."""
+    if not errors:
+        return
+    async with database.transaction() as session:
+        existing = (
+            await session.execute(
+                select(sync_runs.c.errors).where(sync_runs.c.id == sync_run_id),
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            raise ValueError("sync run does not exist")
+        combined = list(existing)
+        combined.extend(dict(error) for error in errors)
+        await session.execute(
+            sync_runs.update().where(sync_runs.c.id == sync_run_id).values(errors=combined),
+        )
+
+
 async def append_normalization_issues(
     database: Database,
     sync_run_id: str,

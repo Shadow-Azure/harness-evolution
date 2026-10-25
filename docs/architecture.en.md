@@ -24,7 +24,7 @@ Routes are registered only in `apps/api/app/main.py`; dependency direction is `a
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users` plus manual sync are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`. Login is IP-limited, forced password change exposes only required endpoints, and failures share one envelope.
+Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`. Login is IP-limited, forced password change exposes only required endpoints, and failures share one envelope.
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
 
@@ -38,6 +38,7 @@ After migrations and JobRunner recovery, the lifespan adopts `sync_lock` before 
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
+- Upstream trace queries use a separate versioned outbound contract. A pull job writes validated raw lines with the `http_api` source before entering the shared replay pipeline. Missing configuration is unavailable, and CI uses only mock transport.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
 - External systems write problems and attribution; this service reads only.
@@ -45,7 +46,7 @@ After migrations and JobRunner recovery, the lifespan adopts `sync_lock` before 
 
 ## Shared contract
 
-FastAPI OpenAPI is the sole contract source for health, identity, users, sessions, jobs, acquisition, and events. The snapshot drives generated types, and `contract:check` compares bytes to reject drift.
+FastAPI OpenAPI is the sole contract source for inbound APIs covering health, identity, users, sessions, jobs, acquisition, and events. The upstream query is a client-side outbound contract whose strict Pydantic models export an independent JSON Schema and fixture snapshot. `contract:check` compares both byte-for-byte to reject drift.
 
 The health response makes API and database state independently observable:
 
@@ -56,6 +57,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
+- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
 - Missing: issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
