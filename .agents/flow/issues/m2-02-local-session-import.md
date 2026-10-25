@@ -14,6 +14,7 @@ scope:
   - AGENTS.md
   - apps/api/**
   - scripts/**
+  - .github/workflows/ci.yml
   - fixtures/**
   - package.json
   - plans/**
