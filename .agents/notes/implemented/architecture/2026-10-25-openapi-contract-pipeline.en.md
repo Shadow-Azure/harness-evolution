@@ -12,7 +12,7 @@ Handwritten frontend health and error types duplicate the same fields from FastA
 
 - FastAPI OpenAPI is the sole interface contract source. Export recursively sorts object keys and fixes JSON indentation so the repository stores a deterministic snapshot.
 - `openapi-typescript` generates `packages/contracts/src/generated/api.d.ts` from that snapshot with an `@generated` marker; `src/index.ts` exports only stable aliases and cross-end constants.
-- `contract:generate` updates the snapshot and generated file. `contract:check` recomputes both in a temporary directory and compares byte for byte without modifying the worktree; missing files, hand edits or backend drift fail with a regeneration command.
+- `contract:generate` updates the snapshot, API types, real health JSON, and typed fixtures. `contract:check` recomputes every artifact in a temporary directory and compares byte for byte without modifying the worktree; missing files, hand edits or backend drift fail with a regeneration command. The JSON fixture remains the cross-language record of the real response, while the TypeScript fixture removes literal widening from JSON imports.
 - CI runs `contract:check` before the build, and route gates send API, shared-contract and web changes through the same check.
 
 ## Alternatives considered

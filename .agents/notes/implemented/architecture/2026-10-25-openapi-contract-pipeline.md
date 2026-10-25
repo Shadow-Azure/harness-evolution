@@ -12,7 +12,7 @@ Status: implemented
 
 - FastAPI OpenAPI 是接口契约唯一事实源；导出时递归排序对象 key 并固定 JSON 缩进，版本库保存确定性快照。
 - `openapi-typescript` 从快照生成 `packages/contracts/src/generated/api.d.ts`，文件带 `@generated` 标记；`src/index.ts` 只导出稳定别名和跨端常量。
-- `contract:generate` 更新快照与生成物；`contract:check` 在临时目录重算并逐字比较，不修改工作树，缺失、手改或后端漂移都会失败并提示重生成命令。
+- `contract:generate` 更新快照、API 类型、真实 health JSON 与 typed fixture；`contract:check` 在临时目录重算全部产物并逐字比较，不修改工作树，缺失、手改或后端漂移都会失败并提示重生成命令。JSON fixture 保留跨语言真实响应档案，TS fixture 只消除 JSON import 的字面量拓宽。
 - CI 在构建前执行 `contract:check`；路由门禁把 API、共享契约和 Web 改动导向同一检查。
 
 ## Alternatives considered
