@@ -2,7 +2,7 @@
 
 English | [中文](development.md)
 
-> Type: tutorial | Layer: contributor onboarding. The authoritative gate list lives in `package.json` scripts and [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page explains usage.
+> Type: tutorial | Layer: contributor onboarding. Gates are listed in [scripts/run-gates.mjs](../scripts/run-gates.mjs); this page explains usage.
 
 ## Environment
 
@@ -28,6 +28,7 @@ pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
 pnpm test:e2e
+pnpm fixtures:check
 pnpm fixtures:seed
 pnpm test:all
 pnpm contract:generate

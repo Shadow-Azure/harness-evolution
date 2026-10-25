@@ -1,0 +1,207 @@
+{
+  "title": "M2-01 合成 Fixtures 集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #83",
+  "summary": "在真实 SQLite、FastAPI、Vite 与 Chrome 上验证四会话合成语料、严格校验、事务化幂等 seed、运行态字段保护、双次执行和真实登录壳。fixture 静态检查与 22 项聚焦回归通过，浏览器 E2E 4/4 通过，未发现集成缺陷。",
+  "meta": "2026-10-25 · macOS · Chrome · FastAPI + Vite + SQLite",
+  "metrics": [
+    { "value": "4", "label": "根会话" },
+    { "value": "8", "label": "Agent" },
+    { "value": "7", "label": "JSONL payload" },
+    { "value": "0", "label": "缺陷" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#33 · M2-01 synthetic fixtures" },
+    { "label": "PR", "value": "#83" },
+    { "label": "Commit", "value": "febddaa" },
+    { "label": "Database", "value": "临时 SQLite，真实 Alembic 迁移" },
+    { "label": "Browser", "value": "Google Chrome + CDP 控制台断言" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "静态 corpus 校验",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "fixtures:check 返回 4 roots、8 agents、2841 bytes、status=valid；再次执行结果一致。",
+        "evidence": ["fixtures:check ×2", "8 个 fixture 文件 SHA-256 已记录"]
+      },
+      {
+        "id": "02",
+        "name": "空库首次 seed",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 Alembic 升级后 corpus seed 返回 44 inserted、0 changed、4 roots、8 agents、7 payloads。",
+        "evidence": ["fixtures:seed first run"]
+      },
+      {
+        "id": "03",
+        "name": "四会话树结构",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "数据库含四个稳定根 ID；Agent 分布为 4 main、2 subagent、1 workflow、1 forked-skill subagent。",
+        "evidence": ["SQLite 查询", "screenshots/03-sessions.jpeg"]
+      },
+      {
+        "id": "04",
+        "name": "真实表写入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "session_families=4、agents=8、trajectory_payloads=7、source_records=7、agent_events=3、user_turns=4、bad_cases=4、probe_reports=2、evolution_targets=1。",
+        "evidence": ["SQLite 表计数"]
+      },
+      {
+        "id": "05",
+        "name": "派生假数据隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "probe_clusters、evolution_runs、evolution_rounds、evolution_finals 均为 0；未伪造运行、簇、轮次或终评。",
+        "evidence": ["SQLite 派生表计数"]
+      },
+      {
+        "id": "06",
+        "name": "重复 seed 幂等",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "相同 corpus 再次执行返回 0 inserted、0 changed、status=noop，稳定 ID 与时间戳保持不变。",
+        "evidence": ["fixtures:seed second run"]
+      },
+      {
+        "id": "07",
+        "name": "运行态处理字段保护",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "人工写入 received_at、processed_at、processed_hash、parser_version、last_sync_run_id 后重跑 seed，五个值全部原样保留。",
+        "evidence": ["SQLite 前后对照", "focused fixture suite"]
+      },
+      {
+        "id": "08",
+        "name": "目标归属保护",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "将 evolution_targets.created_by 指向真实 admin 后重跑 seed，归属仍保持，seed 返回 0 changed。",
+        "evidence": ["SQLite join users 验证"]
+      },
+      {
+        "id": "09",
+        "name": "严格语料拒绝",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "聚焦测试覆盖未知字段、重复 JSON key、错误 session/agent、主 Agent badCase 非空、路径逃逸、凭据 URL、畸形/超大 JSONL、未知文件与 hash/line drift；22 passed。",
+        "evidence": ["pnpm test:api -- tests/m2-01-synthetic-fixtures"]
+      },
+      {
+        "id": "10",
+        "name": "CLI 稳定失败",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不存在的 corpus 返回 exit 2 与单行 stderr，无 Python traceback。",
+        "evidence": ["HE_FIXTURE_CORPUS=<missing> fixtures:check"]
+      },
+      {
+        "id": "11",
+        "name": "生产与 live 拒绝",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "phase=live 时 seed 在开启数据库前拒绝，exit 2；生产拒绝由同一环境守卫测试覆盖。",
+        "evidence": ["HE_PHASE=live fixtures:seed", "seed environment tests"]
+      },
+      {
+        "id": "12",
+        "name": "真实登录与首次改密",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Chrome 中 admin 登录进入强制改密页，提交新密码后回跳 Sessions，顶栏显示 demo 角标与当前用户。",
+        "evidence": ["screenshots/01-login.jpeg", "screenshots/02-change-password.jpeg"]
+      },
+      {
+        "id": "13",
+        "name": "三大入口与空态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Sessions、Errors、Evolution 三个入口可达，active 状态与后续 milestone 空态文案正确，未展示伪造领域列表。",
+        "evidence": ["screenshots/03-sessions.jpeg", "screenshots/04-errors.jpeg", "screenshots/05-evolution.jpeg"]
+      },
+      {
+        "id": "14",
+        "name": "浏览器回归",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 Chrome E2E 4/4：390px 无横向溢出、直接 Evolution 深链无 Vue Flow warning、409 message 可见、health 503 retry 恢复。",
+        "evidence": ["pnpm test:e2e -- m1-shell：4 passed"]
+      },
+      {
+        "id": "15",
+        "name": "敏感数据卫生",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "fixtures 与报告未发现本机用户路径、Bearer/JWT、环境密码或 API key；截图已裁剪到应用内容区，不包含其他浏览器标签或账号信息。",
+        "evidence": ["敏感标记扫描", "截图隐私复核"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-login.jpeg",
+      "alt": "Harness Lens 登录页",
+      "label": "登录页",
+      "caption": "真实 Chrome 加载登录页，使用临时管理员凭据进入强制改密流程。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-change-password.jpeg",
+      "alt": "首次登录强制改密表单",
+      "label": "首次改密",
+      "caption": "管理员临时密码登录后进入强制改密页，完成后回跳 Sessions。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-sessions.jpeg",
+      "alt": "Sessions 空态和 demo 角标",
+      "label": "Sessions",
+      "caption": "SQLite 已连接、demo 角标可见；M2 尚未提供会话列表 API，因此页面保持真实空态。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-errors.jpeg",
+      "alt": "Errors 顶层占位页",
+      "label": "Errors",
+      "caption": "Errors 入口已鉴权可达，明确显示问题归因将在后续 milestone 接入。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-evolution.jpeg",
+      "alt": "Evolution 顶层占位页",
+      "label": "Evolution",
+      "caption": "Evolution 入口与 Vue Flow 容器正常挂载，不展示伪造自进化运行。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "Fixture schema",
+        "coverage": "22 项 pytest + fixtures:check",
+        "conclusion": "静态结构、哈希、路径、大小、JSONL 与跨引用校验均通过。",
+        "recommendation": "保持 fixtures:check 在 CI 前置执行。"
+      },
+      {
+        "area": "Seed 数据库",
+        "coverage": "真实 SQLite + Alembic + CLI",
+        "conclusion": "首次 44 行、第二次 0/0，运行态字段和目标归属不被覆盖。",
+        "recommendation": "MySQL 由 PR CI 的真实 service container 继续验证。"
+      },
+      {
+        "area": "浏览器 UI",
+        "coverage": "Computer Use + CDP",
+        "conclusion": "登录、改密、三入口、demo、390px 与控制台清洁均通过。",
+        "recommendation": "会话列表读接口接入后，在 m2-06 增补真实数据 UI 冒烟。"
+      },
+      {
+        "area": "领域展示",
+        "coverage": "不在 M2-01 范围",
+        "conclusion": "M2-01 已验证真实表数据，但尚无会话列表 API，页面不伪造列表。",
+        "recommendation": "由后续 M2 API/UI issue 消费相同表。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "四会话合成 fixture 可确定性校验、真实落库、重复 seed 零副作用，并保持后续运行态数据；真实浏览器壳与回归无明显缺陷。",
+    "points": [
+      "首次 seed 44 行，重复 seed 0 inserted / 0 changed。",
+      "四根会话、8 Agent、7 payload 与零派生假数据符合设计边界。",
+      "真实 Chrome E2E 4/4，浏览器控制台无意外 warning/error。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、真实 CLI/SQLite 查询、fixture 聚焦测试、Chrome CDP E2E。HTML 由 report-data.json 生成，不应手改。"
+}

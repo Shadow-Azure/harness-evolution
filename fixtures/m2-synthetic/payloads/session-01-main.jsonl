@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"10000000-0000-4000-8000-000000000001","cwd":"/workspace/example-repo","gitBranch":"main","version":"synthetic-1","message":{"content":"复盘第一个示例会话"}}
+{"type":"assistant","sessionId":"10000000-0000-4000-8000-000000000001","message":{"id":"msg-s1-a1","model":"claude-sonnet-synthetic","content":[{"type":"text","text":"已完成示例复盘。"}],"usage":{"input_tokens":80,"output_tokens":20}}}

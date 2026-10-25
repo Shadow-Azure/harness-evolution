@@ -42,7 +42,9 @@ jobs:
       - name: Fixtures seed 清单冒烟
         env:
           HE_DATA_DIR: ${{ runner.temp }}/harness-fixtures-seed
-        run: pnpm fixtures:seed
+        run: |
+          pnpm fixtures:check
+          pnpm fixtures:seed
       - name: 门禁自测试
         run: pnpm test:gates
       - name: API lint

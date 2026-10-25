@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m2-01-synthetic-fixtures.md
-m2-01-synthetic-fixtures.md: b988459892492e169f53fc07a0719d8270494278
-m2-01-synthetic-fixtures.en.md: ad5fad809bee35b48bc7afcd3c67fb25f343ca58
+m2-01-synthetic-fixtures.md: 48e64a9ac215227d64779ee0e6553ebb4db11ed5
+m2-01-synthetic-fixtures.en.md: 9b31e45f204c583e6beb0d0ff4d9216c38e373b5

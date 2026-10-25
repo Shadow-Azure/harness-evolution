@@ -163,6 +163,7 @@ test("route gates recommend browser E2E and fixture seed validation", () => {
   ]);
   assert.deepEqual(recommend(["fixtures/m1-shell.json"]).commands, [
     "test:api",
+    "fixtures:check",
     "fixtures:seed",
     "verify:docs",
   ]);
@@ -388,8 +389,10 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(rootPackage.scripts["test:e2e"], /run-e2e\.mjs/);
+  assert.match(rootPackage.scripts["fixtures:check"], /fixtures-check\.mjs/);
   assert.match(rootPackage.scripts["fixtures:seed"], /fixtures-seed\.mjs/);
   assert.match(rootPackage.scripts["test:all"], /test:e2e/);
+  assert.match(rootPackage.scripts["test:all"], /fixtures:check/);
   assert.match(webPackage.scripts.test, /--coverage/);
   assert.match(rootPackage.scripts["lint:web"], /filter @harness\/web lint/);
   assert.match(rootPackage.scripts["typecheck:web"], /filter @harness\/web typecheck/);
@@ -400,7 +403,8 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(ci, /run: pnpm test:db:mysql$/m);
   assert.match(ci, /run: pnpm test:integration$/m);
   assert.match(ci, /run: pnpm test:e2e$/m);
-  assert.match(ci, /run: pnpm fixtures:seed$/m);
+  assert.match(ci, /pnpm fixtures:check$/m);
+  assert.match(ci, /pnpm fixtures:seed$/m);
   assert.match(ci, /run: pnpm test:gates$/m);
   assert.match(ci, /run: pnpm lint:web$/m);
   assert.match(ci, /run: pnpm typecheck:web$/m);

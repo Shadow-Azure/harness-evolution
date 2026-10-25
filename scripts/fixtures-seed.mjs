@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Forward the development-only M1 seed command through the API virtualenv.
+// Forward the development-only fixture seed command through the API virtualenv.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -10,6 +10,9 @@ const PYTHON =
   process.platform === "win32"
     ? path.join(API_DIR, ".venv", "Scripts", "python.exe")
     : path.join(API_DIR, ".venv", "bin", "python");
+const manifest = path.resolve(
+  process.env.HE_FIXTURE_MANIFEST ?? "fixtures/m2-synthetic/corpus.json",
+);
 
 if (!existsSync(PYTHON)) {
   console.error("fixtures:seed: apps/api/.venv is missing; run `pnpm setup:api` first");
@@ -23,7 +26,7 @@ const result = spawnSync(
     "app.cli",
     "seed",
     "--manifest",
-    path.resolve("fixtures/m1-shell.json"),
+    manifest,
   ],
   {
     cwd: API_DIR,

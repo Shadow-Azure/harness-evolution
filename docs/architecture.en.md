@@ -2,11 +2,11 @@
 
 English | [中文](architecture.md)
 
-Records current service boundaries, data flow and storage strategy. Implementation advances by vertical slices; rationale lives in `.agents/notes/`.
+Records service boundaries, data flow and storage. Work advances by vertical slices; rationale lives in `.agents/notes/`.
 
 ## Product boundary
 
-This trace-diagnostics service is currently the M1 platform foundation; trace, problem and evolution data are not yet in the runtime path.
+The service currently contains the M1 platform and M2 fixture foundation; normalization, problems, and evolution are not yet in the runtime path.
 
 ## Service split
 
@@ -48,7 +48,8 @@ Web startup refreshes before waiting for the router to mount; the access token a
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect migration tree with batch mode for SQLite changes; business code depends on `db/crud/` repositories and never concatenates SQL directly.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
-- Raw trace payloads are replayable and idempotent; external systems write problems and attribution, which this service reads.
+- Raw trace payloads are uniquely stored by `(root_session_id, agent_id)`; four-session fixtures are idempotently written by the CLI into the same domain tables before normalization.
+- External systems write problems and attribution, which this service reads.
 - Secrets enter only through environment variables, never the repository or database.
 
 ## Current API
@@ -78,6 +79,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## Current state and non-goals
 
-- Present: modular API, unified errors, dual-dialect storage and migrations, identity, jobs/SSE, the three-entry shell, seed, E2E, and contract gates.
-- Missing: trace and evolution business tables, evolution parent-table relationships and real run-resource authorization, a user-deactivation interface, trace parsing, problem queries and evolution execution.
+- Present: dual-dialect API, identity, jobs/SSE, three-entry shell, strict fixtures, real-table seed, E2E, and contract gates.
+- Missing: trace normalization/query, issue queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

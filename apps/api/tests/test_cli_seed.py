@@ -49,16 +49,18 @@ async def test_seed_is_idempotent_and_creates_no_domain_rows(tmp_path: Path) -> 
     assert first.admin_user_id == second.admin_user_id
     with sqlite3.connect(tmp_path / "seed.db") as connection:
         user_count = connection.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        tables = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+        domain_counts = {
+            "session_families": connection.execute(
+                "SELECT COUNT(*) FROM session_families"
+            ).fetchone()[0],
+            "bad_cases": connection.execute("SELECT COUNT(*) FROM bad_cases").fetchone()[0],
+            "probe_reports": connection.execute("SELECT COUNT(*) FROM probe_reports").fetchone()[0],
+            "evolution_targets": connection.execute(
+                "SELECT COUNT(*) FROM evolution_targets"
+            ).fetchone()[0],
         }
     assert user_count == 1
-    assert not tables.intersection(
-        {"session_families", "bad_cases", "probe_reports", "evolution_runs"}
-    )
+    assert set(domain_counts.values()) == {0}
 
 
 def test_seed_manifest_rejects_unknown_fields(tmp_path: Path) -> None:

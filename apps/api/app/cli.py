@@ -14,11 +14,15 @@ from app.config import ServicePhase, Settings
 from app.db.base import Database
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.fixture_corpus import FixtureCorpus, load_fixture_corpus
+from app.fixtures_seed import (
+    CorpusSeedResult,
+    run_corpus_seed,
+)
+from app.fixtures_seed import (
+    SeedEnvironmentError as SeedEnvironmentError,
+)
 from app.service.identity.service import IdentityService
-
-
-class SeedEnvironmentError(RuntimeError):
-    """Raised when the requested seed target is not a development database."""
 
 
 class M1SeedManifest(BaseModel):
@@ -46,6 +50,21 @@ def load_seed_manifest(path: Path) -> M1SeedManifest:
         return M1SeedManifest.model_validate(payload)
     except (OSError, json.JSONDecodeError, ValidationError) as exc:
         raise ValueError(f"invalid seed manifest {path}: {exc}") from exc
+
+
+def load_any_seed_manifest(path: Path) -> M1SeedManifest | FixtureCorpus:
+    """Load either the compatibility M1 manifest or the M2 synthetic corpus."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid seed manifest {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid seed manifest {path}: top level must be an object")
+    if payload.get("scope") == "m1-shell":
+        return load_seed_manifest(path)
+    if payload.get("scope") == "m2-synthetic":
+        return load_fixture_corpus(path)
+    raise ValueError(f"invalid seed manifest {path}: unknown scope")
 
 
 def _ensure_seed_environment(settings: Settings) -> None:
@@ -87,6 +106,16 @@ async def run_seed(
     return await _seed(settings, manifest, create_database(settings))
 
 
+async def run_any_seed(
+    settings: Settings,
+    manifest: M1SeedManifest | FixtureCorpus,
+) -> SeedResult | CorpusSeedResult:
+    """Apply one of the supported closed manifest formats."""
+    if isinstance(manifest, FixtureCorpus):
+        return await run_corpus_seed(settings, manifest)
+    return await run_seed(settings, manifest)
+
+
 def _parser() -> argparse.ArgumentParser:
     """Build the command-line parser without starting any service."""
     parser = argparse.ArgumentParser(prog="python -m app.cli")
@@ -94,7 +123,16 @@ def _parser() -> argparse.ArgumentParser:
     seed = subcommands.add_parser("seed", help="seed development-only M1 state")
     seed.add_argument(
         "--manifest",
-        default="../../fixtures/m1-shell.json",
+        default="../../fixtures/m2-synthetic/corpus.json",
+        type=Path,
+    )
+    check = subcommands.add_parser(
+        "fixtures-check",
+        help="validate a fixture corpus without opening a database",
+    )
+    check.add_argument(
+        "--corpus",
+        default="../../fixtures/m2-synthetic/corpus.json",
         type=Path,
     )
     return parser
@@ -103,15 +141,24 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Execute a CLI command and return a process-compatible status."""
     args = _parser().parse_args(argv)
-    if args.command != "seed":
-        return 2
     try:
-        manifest = load_seed_manifest(args.manifest.resolve())
-        result = asyncio.run(run_seed(Settings(), manifest))
-    except (SeedEnvironmentError, ValueError) as exc:
+        if args.command == "fixtures-check":
+            corpus = load_fixture_corpus(args.corpus.resolve())
+            result = {
+                "agents": len(corpus.agents),
+                "bytes": corpus.total_bytes,
+                "root_sessions": len(corpus.root_sessions),
+                "status": "valid",
+            }
+        elif args.command == "seed":
+            manifest = load_any_seed_manifest(args.manifest.resolve())
+            result = asdict(asyncio.run(run_any_seed(Settings(), manifest)))
+        else:
+            return 2
+    except (OSError, SeedEnvironmentError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    print(json.dumps(asdict(result), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 
 

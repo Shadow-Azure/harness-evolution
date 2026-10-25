@@ -230,6 +230,16 @@ async def test_sqlite_connection_applies_design_pragmas(tmp_path: Path) -> None:
     assert pragmas["synchronous"] == 1
 
 
+def test_fixture_migration_is_frozen_from_mutable_model_metadata() -> None:
+    """Historical 0004 must not execute whichever tables the current model holds."""
+    migration = (
+        Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0004_domain_fixtures.py"
+    ).read_text(encoding="utf-8")
+
+    assert "DOMAIN_METADATA" not in migration
+    assert "op.create_table(" in migration
+
+
 async def test_sqlite_health_failure_is_sanitized(tmp_path: Path) -> None:
     """Real connection failures expose only the stable unavailable summary."""
     database = SqliteDatabase(
@@ -310,7 +320,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0003"
+        assert result.scalar_one() == "0004"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -403,6 +413,37 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        async with database.engine.connect() as connection:
+            table_names, payload_columns = await connection.run_sync(
+                lambda sync_connection: (
+                    set(inspect(sync_connection).get_table_names()),
+                    {
+                        column["name"]
+                        for column in inspect(sync_connection).get_columns(
+                            "trajectory_payloads",
+                        )
+                    },
+                )
+            )
+        assert {
+            "trajectory_payloads",
+            "source_records",
+            "session_families",
+            "agents",
+            "agent_events",
+            "user_turns",
+            "bad_cases",
+            "bad_case_analysis",
+            "probe_reports",
+            "evolution_targets",
+        } <= table_names
+        assert {
+            "root_session_id",
+            "agent_id",
+            "payload",
+            "content_hash",
+            "line_count",
+        } <= payload_columns
     finally:
         await database.dispose()
 
@@ -504,7 +545,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0003"
+        assert result.scalar_one() == "0004"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -597,5 +638,30 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        async with database.engine.connect() as connection:
+            table_names, payload_columns = await connection.run_sync(
+                lambda sync_connection: (
+                    set(inspect(sync_connection).get_table_names()),
+                    {
+                        column["name"]
+                        for column in inspect(sync_connection).get_columns(
+                            "trajectory_payloads",
+                        )
+                    },
+                )
+            )
+        assert {
+            "trajectory_payloads",
+            "source_records",
+            "session_families",
+            "agents",
+            "agent_events",
+            "user_turns",
+            "bad_cases",
+            "bad_case_analysis",
+            "probe_reports",
+            "evolution_targets",
+        } <= table_names
+        assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
     finally:
         await database.dispose()

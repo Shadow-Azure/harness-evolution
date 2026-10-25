@@ -52,8 +52,8 @@ export const ROUTES = [
   },
   {
     match: (p) => p.startsWith("fixtures/"),
-    commands: ["fixtures:seed", "test:api", "verify:docs"],
-    reason: "开发/演示 fixtures：清单 seed 冒烟、API 约束与文档门禁",
+    commands: ["fixtures:check", "fixtures:seed", "test:api", "verify:docs"],
+    reason: "开发/演示 fixtures：schema/预算检查、幂等 seed、API 约束与文档门禁",
   },
   {
     match: (p) => p.startsWith("scripts/"),
@@ -99,6 +99,7 @@ const COMMAND_ORDER = [
   "test:web",
   "test:integration",
   "test:e2e",
+  "fixtures:check",
   "fixtures:seed",
   "test:gates",
   "verify:flow",

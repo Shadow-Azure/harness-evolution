@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"10000000-0000-4000-8000-000000000002","cwd":"/workspace/workflow-repo","gitBranch":"feature/workflow","version":"synthetic-1","message":{"content":"运行工作流示例"}}
+{"type":"assistant","sessionId":"10000000-0000-4000-8000-000000000002","message":{"id":"msg-s2-a1","model":"claude-sonnet-synthetic","content":[{"type":"tool_use","id":"tool-wf-1","name":"Workflow","input":{"name":"review-workflow"}}],"usage":{"input_tokens":100,"output_tokens":30}}}
