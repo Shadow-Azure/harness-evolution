@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,7 +17,7 @@ import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
 import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
-import { compareContractFiles } from "./contract.mjs";
+import { checkContracts, compareContractFiles } from "./contract.mjs";
 
 const roadmap = `# Roadmap
 
@@ -176,6 +176,45 @@ test("contract check detects stale and hand-edited generated files", () => {
     compareContractFiles(expected, missingMarker, "api.d.ts").join("\n"),
     /@generated/,
   );
+});
+
+test("contract checker covers executable missing and stale artifact workflows", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "harness-contract-cli-"));
+  try {
+    const checkedSnapshot = path.resolve("packages/contracts/openapi.json");
+    const checkedTypes = path.resolve("packages/contracts/src/generated/api.d.ts");
+    const checkedFixtures = path.resolve("packages/contracts/fixtures/health.json");
+    const missingSnapshot = path.join(directory, "missing-openapi.json");
+    const missingTypes = path.join(directory, "missing-api.d.ts");
+    const missingFixtures = path.join(directory, "missing-health.json");
+    const staleTypes = path.join(directory, "stale-api.d.ts");
+    const missingSnapshotResult = await checkContracts(missingSnapshot, checkedTypes, checkedFixtures);
+    const missingTypesResult = await checkContracts(checkedSnapshot, missingTypes, checkedFixtures);
+    const missingFixturesResult = await checkContracts(checkedSnapshot, checkedTypes, missingFixtures);
+
+    assert.equal(missingSnapshotResult.ok, false);
+    assert.match(missingSnapshotResult.errors.join("\n"), /missing-openapi\.json: 文件缺失/);
+    assert.equal(missingTypesResult.ok, false);
+    assert.match(missingTypesResult.errors.join("\n"), /missing-api\.d\.ts: 文件缺失/);
+    assert.equal(missingFixturesResult.ok, false);
+    assert.match(missingFixturesResult.errors.join("\n"), /missing-health\.json: 文件缺失/);
+
+    writeFileSync(staleTypes, "/* @generated */\nexport type Stale = true;\n");
+    const staleCli = spawnSync(process.execPath, [path.resolve("scripts/contract.mjs"), "check"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HE_CONTRACT_SNAPSHOT: checkedSnapshot,
+        HE_CONTRACT_TYPES: staleTypes,
+        HE_CONTRACT_FIXTURES: checkedFixtures,
+      },
+    });
+    assert.equal(staleCli.status, 1);
+    assert.match(`${staleCli.stderr}${staleCli.stdout}`, /真实 OpenAPI 不一致/);
+    assert.match(`${staleCli.stderr}${staleCli.stdout}`, /pnpm contract:generate/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("test gates execute frontend, backend, integration, and 80% coverage", () => {

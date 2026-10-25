@@ -1,6 +1,7 @@
 """Export the deterministic FastAPI OpenAPI document to standard output."""
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,9 +22,19 @@ def canonicalize(value: Any) -> Any:
     return value
 
 
+def canonical_settings() -> Settings:
+    """Return settings that cannot be changed by the host environment."""
+    environment_keys = [key for key in os.environ if key.startswith("HE_")]
+    saved_environment = {key: os.environ.pop(key) for key in environment_keys}
+    try:
+        return Settings(db_dialect=DatabaseDialect.SQLITE, _env_file=None)
+    finally:
+        os.environ.update(saved_environment)
+
+
 def main() -> None:
     """Print the OpenAPI snapshot for the currently implemented API."""
-    app = create_app(Settings(db_dialect=DatabaseDialect.SQLITE))
+    app = create_app(canonical_settings())
     document = canonicalize(app.openapi())
     json.dump(document, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")

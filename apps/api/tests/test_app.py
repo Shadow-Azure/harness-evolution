@@ -118,6 +118,7 @@ def test_health_openapi_allows_unavailable_state() -> None:
 
     assert ok_schema["type"] == "boolean"
     assert "const" not in ok_schema
+    assert set(health_schema["required"]) == {"ok", "service", "phase", "version", "db"}
 
 
 async def test_health_returns_503_when_database_is_unavailable() -> None:

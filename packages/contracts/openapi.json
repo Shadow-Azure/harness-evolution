@@ -93,7 +93,6 @@
             "$ref": "#/components/schemas/DatabaseHealthResponse"
           },
           "ok": {
-            "default": true,
             "title": "Ok",
             "type": "boolean"
           },
@@ -102,7 +101,6 @@
           },
           "service": {
             "const": "harness-evolution",
-            "default": "harness-evolution",
             "title": "Service",
             "type": "string"
           },
@@ -112,6 +110,8 @@
           }
         },
         "required": [
+          "ok",
+          "service",
           "phase",
           "version",
           "db"

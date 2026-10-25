@@ -26,6 +26,9 @@ export type DatabaseHealth = components["schemas"]["DatabaseHealthResponse"];
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
 export type HealthResponse = components["schemas"]["HealthResponse"];
 
+/** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
+export { healthFixtures } from "./generated/health-fixtures.js";
+
 /** 统一错误体；所有失败响应共享这一结构。 */
 export type ErrorBody = components["schemas"]["ErrorBody"];
 

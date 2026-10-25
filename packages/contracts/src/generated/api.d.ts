@@ -72,15 +72,11 @@ export interface components {
          */
         HealthResponse: {
             db: components["schemas"]["DatabaseHealthResponse"];
-            /**
-             * Ok
-             * @default true
-             */
+            /** Ok */
             ok: boolean;
             phase: components["schemas"]["ServicePhase"];
             /**
              * Service
-             * @default harness-evolution
              * @constant
              */
             service: "harness-evolution";

@@ -1,6 +1,9 @@
 """OpenAPI snapshot and public schema contracts."""
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +12,7 @@ from app.main import create_app
 
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = ROOT / "packages" / "contracts" / "openapi.json"
+API_ROOT = ROOT / "apps" / "api"
 
 
 def canonicalize(value: Any) -> Any:
@@ -37,3 +41,26 @@ def test_checked_in_openapi_snapshot_is_current() -> None:
     actual = create_app(Settings(db_dialect=DatabaseDialect.SQLITE)).openapi()
 
     assert canonicalize(actual) == expected
+
+
+def test_openapi_export_ignores_service_environment() -> None:
+    """Canonical snapshots cannot drift because of local HE_* overrides."""
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("HE_")}
+    environment.update(
+        {
+            "HE_VERSION": "environment-drift",
+            "HE_PHASE": "live",
+            "HE_DOCS_ENABLED": "true",
+            "PATH": os.environ["PATH"],
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "scripts/export_openapi.py"],
+        cwd=API_ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(result.stdout)["info"]["version"] == "0.1.0"

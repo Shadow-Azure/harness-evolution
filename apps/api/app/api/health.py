@@ -39,8 +39,8 @@ class HealthResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ok: bool = True
-    service: Literal["harness-evolution"] = "harness-evolution"
+    ok: bool
+    service: Literal["harness-evolution"]
     phase: ServicePhase
     version: str
     db: DatabaseHealthResponse
@@ -71,6 +71,7 @@ async def health(request: Request, response: Response) -> HealthResponse:
         response.status_code = HTTPStatus.SERVICE_UNAVAILABLE
     return HealthResponse(
         ok=database_health.ok,
+        service="harness-evolution",
         phase=phase,
         version=version,
         db=DatabaseHealthResponse.from_health(database_health),
