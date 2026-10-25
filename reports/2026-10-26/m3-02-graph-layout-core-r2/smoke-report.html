@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>m3-02 Agent 图布局修复复测</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #104</p>
+    <h1>m3-02 Agent 图布局修复复测</h1>
+    <p class="summary">真实 FastAPI、Vite 与 headless Chrome 复测 Agent 执行流开发演示。修复容器缩放和节点展开后的视口适应，390×844 下展开大图的全部节点均位于画布内。</p>
+    <span class="meta">2026-10-26 · macOS · Chrome CDP · 1408×900 / 390×844</span>
+    <div class="metrics"><div class="metric"><b>8</b><span>复测场景</span></div><div class="metric"><b>8</b><span>通过</span></div><div class="metric"><b>13</b><span>展开节点</span></div><div class="metric"><b>0</b><span>控制台错误</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-26 · macOS · Chrome CDP · 1408×900 / 390×844</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#42 · m3-02 graph layout core</dd></div><div class="fact"><dt>PR</dt><dd>#104</dd></div><div class="fact"><dt>Code state</dt><dd>b13dbdf + responsive fit fix</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome CDP</dd></div><div class="fact"><dt>Evidence mode</dt><dd>真实 headless Chrome；macOS 锁屏，未使用原生 CUA</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>7 pass · 1 fixed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>原型四节点画布</td><td><span class="status pass">PASS</span></td><td>核心画布显示 4 个节点和 3 条父边，层级、标签与行数宽度符合原型范围。</td><td class="evidence">screenshots/01-desktop-four-node.png</td></tr><tr><td class="num">02</td><td>节点与箭头</td><td><span class="status pass">PASS</span></td><td>父边为正交路径且带闭合箭头；根、子 Agent 与 Workflow 使用不同状态色。</td><td class="evidence">E2E marker-end 与 border color assertions</td></tr><tr><td class="num">03</td><td>Controls 与 Background</td><td><span class="status pass">PASS</span></td><td>放大、缩小、适应画布三个控制按钮具备可见图标、尺寸和无障碍名称。</td><td class="evidence">E2E controls assertions</td></tr><tr><td class="num">04</td><td>折叠大图</td><td><span class="status pass">PASS</span></td><td>大图初始显示 main 与 collapse 两个节点，并标明折叠的子 Agent 数量。</td><td class="evidence">E2E collapse 2-node assertion</td></tr><tr><td class="num">05</td><td>展开 13 节点</td><td><span class="status pass">PASS</span></td><td>点击 collapse 后展开为 13 个节点；布局结果稳定且 24px 内兄弟触发聚合为 trunk。</td><td class="evidence">E2E 2→13 assertion</td></tr><tr><td class="num">06</td><td>390px 自动适应</td><td><span class="status fixed">FAIL → FIXED</span></td><td>容器缩放和展开完成后重新 fitView；390×844 下 13 个节点的 bounding box 全部位于画布内。</td><td class="evidence">screenshots/02-before-mobile-expanded-blank.png<br>screenshots/03-after-mobile-expanded-fit.png<br>E2E allVisible bounding-box assertion</td></tr><tr><td class="num">07</td><td>无生产树请求</td><td><span class="status pass">PASS</span></td><td>开发静态演示路由没有请求生产 Session tree，也没有渲染问题卡。</td><td class="evidence">E2E resource request count=0</td></tr><tr><td class="num">08</td><td>控制台与资源清理</td><td><span class="status pass">PASS</span></td><td>非预期 warning/error/exception 为 0；临时 API、Vite、Chrome 和端口均已清理。</td><td class="evidence">browserViolations=[]<br>process cleanup verification</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P1 窄屏展开大图后节点落在视区外</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P1</span><h3>窄屏展开大图后节点落在视区外</h3><dl><div><dt>现象</dt><dd>390×844 下点击折叠节点后，13 个节点位于画布可见区域之外。</dd></div><div><dt>预期</dt><dd>容器缩放和节点集合变化后重新计算 fitView，所有节点保持可见。</dd></div><div><dt>根因</dt><dd>只在首次 nodes-initialized 时执行 fitView，未监听容器尺寸和展开后的节点变化。</dd></div><div><dt>修复</dt><dd>监听 ResizeObserver 与节点集合变化，等待 DOM 更新后执行 fitView，并在 120ms 后重试一次。</dd></div><div><dt>回归</dt><dd>真实 Chrome 断言 13 个节点 bounding box 全部位于 390px 画布内。</dd></div></dl><div class="fixed">已修复 · responsive fit</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>4 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/00-prototype-reference.png" alt="Agent 执行流原型参考"><figcaption><b>原型参考</b><span>原型定义的水平 Agent 条、父子正交边、触发点和状态色。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/01-desktop-four-node.png" alt="桌面四节点 Agent 执行流图"><figcaption><b>桌面核心树</b><span>开发视觉 fixture 的 4 节点、3 条边和可访问 Controls。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/02-before-mobile-expanded-blank.png" alt="修复前 390px 展开后空白画布"><figcaption><b>修复前 · 节点不可见</b><span>展开后仅剩空白画布，证明原有 390px 测试的覆盖缺口。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-after-mobile-expanded-fit.png" alt="修复后 390px 展开节点全部可见"><figcaption><b>修复后 · 全节点可见</b><span>13 个节点在 390px 画布中完成适应，页面无横向溢出。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>纯布局</td><td>22 项单测</td><td>输入不变性、重复 ID、24px trunk、行数宽度、嵌套与折叠均有断言。</td><td>后续改布局常量时同步更新几何快照。</td></tr><tr><td>响应式画布</td><td>真实 Chrome E2E</td><td>390×844 展开 13 节点后全部 bounding box 位于画布内。</td><td>生产接线 m3-03 继续保留同一可见性断言。</td></tr><tr><td>原型视觉</td><td>真实画布 + 原型截图</td><td>水平条、正交边、状态色、Controls 和四节点层级一致。</td><td>领域问题卡仍由 m4 按 anchor descriptor 渲染。</td></tr><tr><td>生产 Session</td><td>不在 m3-02 范围</td><td>开发 fixture 未请求生产 tree，生产图由 m3-03 接入。</td><td>m3-03 复用本布局与 fitView 生命周期。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>390px 展开后的节点不可见问题已修复；布局、视觉和动态 chunk 边界未发现新的产品问题。</strong></p><ul><li>容器 resize 与节点集合变化均触发安全重排。</li><li>真实 Chrome 13 节点全部位于移动端画布内。</li><li>无生产 tree 请求、问题卡越界或非预期控制台错误。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：真实 headless Chrome/CDP、Vue Flow DOM geometry 与自动化测试。HTML 由 JSON renderer 生成。</p>
+</main>
+</body>
+</html>

@@ -11,7 +11,15 @@ import "@vue-flow/core/dist/style.css";
 import { Background } from "@vue-flow/background";
 import { ControlButton } from "@vue-flow/controls";
 import "@vue-flow/controls/dist/style.css";
-import { computed, markRaw, ref, watch } from "vue";
+import {
+  computed,
+  markRaw,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 
 import AgentNode from "./nodes/AgentNode.vue";
 import CollapseNode from "./nodes/CollapseNode.vue";
@@ -80,6 +88,85 @@ const graph = computed(() =>
   }),
 );
 const { fitView, zoomIn, zoomOut } = useVueFlow();
+const treeRoot = ref<HTMLElement | null>(null);
+let fitAnimationFrame: number | undefined;
+let fitRetryTimer: ReturnType<typeof setTimeout> | undefined;
+let fitSequence = 0;
+let resizeObserver: ResizeObserver | undefined;
+
+function cancelScheduledFit() {
+  fitSequence += 1;
+  if (fitAnimationFrame !== undefined) {
+    cancelAnimationFrame(fitAnimationFrame);
+    fitAnimationFrame = undefined;
+  }
+  if (fitRetryTimer !== undefined) {
+    clearTimeout(fitRetryTimer);
+    fitRetryTimer = undefined;
+  }
+}
+
+function scheduleFitView() {
+  cancelScheduledFit();
+  const sequence = fitSequence;
+  const fit = async () => {
+    await nextTick();
+    if (sequence !== fitSequence) {
+      return;
+    }
+    await fitView({ padding: 0.12 });
+  };
+
+  if (typeof requestAnimationFrame === "function") {
+    fitAnimationFrame = requestAnimationFrame(() => {
+      fitAnimationFrame = requestAnimationFrame(() => {
+        fitAnimationFrame = undefined;
+        void fit();
+      });
+    });
+  } else {
+    void fit();
+  }
+
+  fitRetryTimer = setTimeout(() => {
+    fitRetryTimer = undefined;
+    if (sequence === fitSequence) {
+      void fit();
+    }
+  }, 120);
+}
+
+watch(
+  () => graph.value.nodes.map((node) => node.id).join("|"),
+  () => {
+    scheduleFitView();
+  },
+  { flush: "post" },
+);
+
+function handleWindowResize() {
+  scheduleFitView();
+}
+
+onMounted(() => {
+  if (treeRoot.value && typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver(() => {
+      scheduleFitView();
+    });
+    resizeObserver.observe(treeRoot.value);
+  } else if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleWindowResize);
+  }
+});
+
+onBeforeUnmount(() => {
+  cancelScheduledFit();
+  resizeObserver?.disconnect();
+  resizeObserver = undefined;
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", handleWindowResize);
+  }
+});
 
 function onNodeClick(event: NodeMouseEvent) {
   const node = event.node as AgentLayoutNode;
@@ -104,13 +191,14 @@ function toggleCollapse(node: AgentLayoutNode) {
 }
 
 function onNodesInitialized() {
-  void fitView({ padding: 0.12 });
+  scheduleFitView();
 }
 
 </script>
 
 <template>
   <section
+    ref="treeRoot"
     class="agent-tree"
     data-testid="agent-tree"
     :style="{ height }"

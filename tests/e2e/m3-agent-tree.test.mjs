@@ -275,13 +275,39 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     });
     const narrow = await waitForDocument(
       page.session,
-      `(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-        treeHeight: document.querySelector("[data-testid='agent-tree']")?.getBoundingClientRect().height,
-        controls: document.querySelectorAll(".vue-flow__controls-button").length
-      }))()`,
-      "narrow agent tree",
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const flow = tree?.querySelector(".vue-flow");
+        const nodes = [...document.querySelectorAll(".vue-flow__node")];
+        if (!tree || !flow || nodes.length !== 13) return null;
+        const viewport = flow.getBoundingClientRect();
+        const boxes = nodes.map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            left: box.left,
+            right: box.right,
+            top: box.top,
+            bottom: box.bottom,
+          };
+        });
+        const allVisible = boxes.every(
+          (box) =>
+            box.left >= viewport.left - 2 &&
+            box.right <= viewport.right + 2 &&
+            box.top >= viewport.top - 2 &&
+            box.bottom <= viewport.bottom + 2,
+        );
+        if (!allVisible) return null;
+        return {
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+          treeHeight: tree.getBoundingClientRect().height,
+          controls: document.querySelectorAll(".vue-flow__controls-button").length,
+          viewport,
+          boxes,
+        };
+      })()`,
+      "narrow expanded agent tree fitted into view",
     );
     assert.equal(narrow.scrollWidth <= narrow.clientWidth, true, JSON.stringify(narrow));
     assert.ok(narrow.treeHeight >= 300, JSON.stringify(narrow));
