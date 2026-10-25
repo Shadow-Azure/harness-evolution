@@ -11,6 +11,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.config import DatabaseDialect, Settings
+from app.main import create_app
 from app.service.acquisition.upstream import package_to_payloads
 from app.third_party_api.trajectory.models import (
     TrajectoryMetadata,
@@ -270,6 +271,37 @@ def test_upstream_configuration_rejects_incompatible_major_version() -> None:
                 "upstream_api_major": 2,
             },
         )
+
+
+async def test_application_starts_with_string_upstream_major_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Parse the environment-backed major version before starting the application."""
+    monkeypatch.setenv("HE_DB_DIALECT", "sqlite")
+    monkeypatch.setenv("HE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HE_JWT_SECRET", "upstream-contract-test-signing-secret")
+    monkeypatch.setenv("HE_SYNC_INTERVAL_SECONDS", "0")
+    monkeypatch.setenv("HE_UPSTREAM_BASE_URL", "https://upstream.test")
+    monkeypatch.setenv("HE_UPSTREAM_TOKEN", "upstream-contract-token")
+    monkeypatch.setenv("HE_UPSTREAM_API_MAJOR", "1")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    app = create_app(settings)
+
+    async with app.router.lifespan_context(app):
+        assert settings.upstream_api_major == 1
+
+
+@pytest.mark.parametrize("major", ["2", "not-a-major"])
+def test_environment_upstream_major_rejects_unsupported_values(
+    monkeypatch: pytest.MonkeyPatch,
+    major: str,
+) -> None:
+    """Keep environment parsing strict after converting decimal strings."""
+    monkeypatch.setenv("HE_UPSTREAM_API_MAJOR", major)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize(

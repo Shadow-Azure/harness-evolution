@@ -2,11 +2,21 @@
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_upstream_api_major(value: object) -> object:
+    """Normalize an environment-backed decimal major version before validation."""
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip(), 10)
+    return value
+
+
+UpstreamApiMajor = Annotated[Literal[1], BeforeValidator(_parse_upstream_api_major)]
 
 
 class ServicePhase(StrEnum):
@@ -50,7 +60,7 @@ class Settings(BaseSettings):
     sync_lock_ttl_seconds: int = Field(default=30 * 60, gt=0)
     upstream_base_url: str | None = None
     upstream_token: SecretStr | None = None
-    upstream_api_major: Literal[1] = 1
+    upstream_api_major: UpstreamApiMajor = 1
     upstream_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     upstream_retry_attempts: int = Field(default=3, ge=0, le=3)
     upstream_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
