@@ -10,8 +10,11 @@ requires-python = ">=3.12"
 dependencies = [
   "aiosqlite>=0.20,<1",
   "alembic>=1.14,<2",
+  "argon2-cffi>=23.1,<26",
   "asyncmy>=0.2.10,<1",
   "fastapi>=0.115,<1",
+  "pyjwt>=2.10,<3",
+  "python-ulid>=2.7,<3",
   "pydantic-settings>=2.6,<3",
   "sqlalchemy[asyncio]>=2.0.36,<3",
   "uvicorn[standard]>=0.32,<1",
@@ -63,3 +66,6 @@ ignore = ["S104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"app/errors.py" = ["S105"]
+"tests/identity/**" = ["S105", "S106", "S107"]
+"scripts/export_openapi.py" = ["S106"]

@@ -10,14 +10,19 @@ depends:
   - m1-03
   - m1-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - AGENTS.md
   - apps/api/**
   - apps/api/alembic/**
   - packages/contracts/**
   - scripts/**
+  - tests/integration/**
   - .github/workflows/ci.yml
   - docs/**
+  - plans/**
+  - reports/**
+  - .agents/skills/computer-use-smoke-reporting/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

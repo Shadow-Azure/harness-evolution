@@ -1,7 +1,7 @@
 """Application errors and the shared API error envelope."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Any, cast
@@ -20,11 +20,18 @@ class ErrorCode(StrEnum):
     """Stable machine-readable error codes."""
 
     AUTH_REQUIRED = "AUTH_REQUIRED"
+    AUTH_INVALID = "AUTH_INVALID"
+    AUTH_EXPIRED = "AUTH_EXPIRED"
+    TICKET_INVALID = "TICKET_INVALID"
+    TICKET_EXPIRED = "TICKET_EXPIRED"
     FORBIDDEN = "FORBIDDEN"
+    MUST_CHANGE_PASSWORD = "PASSWORD_CHANGE_REQUIRED"
+    USERNAME_CONFLICT = "USERNAME_CONFLICT"
     INTERNAL = "INTERNAL"
     METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
     NOT_FOUND = "NOT_FOUND"
     VALIDATION_INVALID = "VALIDATION_INVALID"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 class ErrorBody(BaseModel):
@@ -32,7 +39,7 @@ class ErrorBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    code: str
+    code: ErrorCode
     message: str
     details: dict[str, Any]
 
@@ -51,7 +58,7 @@ class AppError(Exception):
     def __init__(
         self,
         *,
-        code: str,
+        code: ErrorCode,
         message: str,
         status_code: int = HTTPStatus.BAD_REQUEST,
         details: Mapping[str, Any] | None = None,
@@ -67,7 +74,7 @@ class AppError(Exception):
 def error_response(
     *,
     status_code: int,
-    code: str,
+    code: ErrorCode,
     message: str,
     details: Mapping[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,
@@ -96,6 +103,17 @@ def _log_internal_error(request: Request, exc: Exception) -> str:
         exc_info=(type(exc), exc, exc.__traceback__),
     )
     return request_id
+
+
+def _safe_validation_errors(
+    errors: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep actionable validation fields while dropping submitted input and context."""
+    allowed = ("type", "loc", "msg")
+    return [
+        {field: jsonable_encoder(error[field]) for field in allowed if field in error}
+        for error in errors
+    ]
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -149,7 +167,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
             code=ErrorCode.VALIDATION_INVALID,
             message="request validation failed",
-            details={"errors": jsonable_encoder(validation_error.errors())},
+            details={"errors": _safe_validation_errors(validation_error.errors())},
         )
 
     @app.exception_handler(Exception)

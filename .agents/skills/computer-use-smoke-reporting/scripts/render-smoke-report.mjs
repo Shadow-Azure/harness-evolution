@@ -83,7 +83,7 @@ function renderMatrix(matrix) {
     return counts;
   }, new Map());
   const summary = [...counts.entries()].map(([kind, count]) => `${count} ${kind}`).join(" · ");
-  return { table: `<table>${table}</table>`, summary: summary || "no scenarios", count: rows.length };
+  return { table, summary: summary || "no scenarios", count: rows.length };
 }
 
 function renderIssues(issues) {
@@ -113,10 +113,19 @@ function renderScreenshots(screenshots, dataDir, outputDir, missing) {
 function renderCoverage(coverage) {
   const columns = arrayOf(coverage.columns);
   const rows = arrayOf(coverage.rows);
-  if (!columns.length || !rows.length) return '<div class="empty">No coverage assessment was attached.</div>';
+  if (!columns.length || !rows.length) {
+    return `<tbody><tr><td colspan="${Math.max(columns.length, 1)}">No coverage assessment was attached.</td></tr></tbody>`;
+  }
   const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
-  const body = rows.map((row) => `<tr>${columns.map((_, index) => `<td>${escapeHtml(row[index])}</td>`).join("")}</tr>`).join("");
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  const keys = ["area", "coverage", "conclusion", "recommendation"];
+  const body = rows.map((row) => {
+    const cells = columns.map((_, index) => {
+      const value = Array.isArray(row) ? row[index] : row?.[keys[index]];
+      return `<td>${escapeHtml(value)}</td>`;
+    });
+    return `<tr>${cells.join("")}</tr>`;
+  }).join("");
+  return `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>`;
 }
 
 function renderConclusion(conclusion) {

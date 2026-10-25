@@ -223,6 +223,70 @@ test("contract checker covers executable missing and stale artifact workflows", 
   }
 });
 
+test("smoke report renderer emits valid table fragments and coverage values", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "harness-smoke-report-"));
+  try {
+    const dataPath = path.join(directory, "report-data.json");
+    const outputPath = path.join(directory, "smoke-report.html");
+    writeFileSync(
+      dataPath,
+      JSON.stringify({
+        title: "Smoke report",
+        summary: "Renderer regression fixture",
+        metrics: [{ value: "1", label: "Scenario" }],
+        facts: [{ label: "Commit", value: "abc1234" }],
+        matrix: {
+          columns: ["#", "Scenario", "Result", "Detail", "Evidence"],
+          rows: [
+            {
+              id: "01",
+              name: "Launch",
+              status: { kind: "pass", label: "PASS" },
+              detail: "Window rendered.",
+              evidence: ["Accessibility tree"],
+            },
+          ],
+        },
+        coverage: {
+          columns: ["Area", "Coverage", "Conclusion", "Recommendation"],
+          rows: [
+            {
+              area: "识别",
+              coverage: "UT",
+              conclusion: "已验证",
+              recommendation: "保持回归",
+            },
+          ],
+        },
+        conclusion: {
+          kind: "pass",
+          label: "通过",
+          summary: "All checks passed.",
+          points: ["No defects."],
+        },
+      }),
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        path.resolve(".agents/skills/computer-use-smoke-reporting/scripts/render-smoke-report.mjs"),
+        dataPath,
+        outputPath,
+      ],
+      { encoding: "utf8" },
+    );
+
+    const report = readFileSync(outputPath, "utf8");
+    assert.doesNotMatch(report, /<table>\s*<table>/i);
+    for (const value of ["识别", "UT", "已验证", "保持回归"]) {
+      assert.match(report, new RegExp(value));
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("test gates execute frontend, backend, integration, and 80% coverage", () => {
   const rootPackage = JSON.parse(readFileSync("package.json", "utf8"));
   const webPackage = JSON.parse(readFileSync("apps/web/package.json", "utf8"));
@@ -278,6 +342,18 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   const backendThreshold = Number(/fail_under = (\d+)/.exec(apiCoverage)?.[1]);
   assert.ok(backendThreshold >= 80);
   assert.match(apiRunner, /HE_DOCS_ENABLED.*true/);
+});
+
+test("focused backend tests forward path arguments through the API runner", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const output = await promisify(execFile)("pnpm", ["test:api", "--", "tests/identity"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+
+  assert.match(output.stdout, /run-api\.mjs test -- tests\/identity/);
+  assert.match(output.stdout, /\d+ passed/);
 });
 
 test("github backfill removes the bootstrap exemption", () => {

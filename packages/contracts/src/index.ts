@@ -32,6 +32,9 @@ export { healthFixtures } from "./generated/health-fixtures.js";
 /** 统一错误体；所有失败响应共享这一结构。 */
 export type ErrorBody = components["schemas"]["ErrorBody"];
 
+/** 稳定机器错误码；前端按 closed union 分支处理认证、限流与业务失败。 */
+export type ErrorCode = components["schemas"]["ErrorCode"];
+
 /** 统一错误响应；前端拦截器只读取这一外壳。 */
 export type ErrorResponse = components["schemas"]["ErrorResponse"];
 

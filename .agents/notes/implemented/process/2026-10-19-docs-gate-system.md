@@ -15,6 +15,7 @@ Status: implemented
 - 开发流程采用 roadmap → milestone → issue → ADR 四层；机读字段放 `yaml flow` 围栏；issue 编号耦合 GitHub 编号，`bootstrap: true` 只给流程自举的第一个 milestone。本次只安装机制，不预填任何 roadmap / milestone / issue 实例，流程树由维护者讨论后初始化。
 - 门禁分两档：`doc-quick` 覆盖索引、预算、换行、配对、术语、type-equiv、导出注释与源码引用；`doc-sync` 追加 ts 围栏真实编译、死链与门禁自测试。
 - 移植 `pr-review`、`pr-review-fix`、`computer-use`、`computer-use-smoke-reporting` 与 walkthrough 元数据技能；检视文档落 `plans/`，不进入 Agent Notes。
+- 冒烟报告模板独占 `<table>` 边界，renderer 只输出 thead/tbody 片段；coverage 行按 schema 字段映射，并由门禁自测试用真实 renderer 输出锁定。
 - 扫描面从 StudyWiki 的 `src/` 改为 `apps/*/src` 与 `packages/*/src`；去掉 Tauri、Rust、产物链接与讲解站专用门禁，保留与产品技术栈匹配的部分。
 
 ## Alternatives considered
@@ -30,4 +31,5 @@ Status: implemented
 - `flow:sync` 与 `verify:flow-online` 依赖 `gh` 登录；流程树当前未初始化（缺 `.agents/flow/roadmap.md`），`verify:flow` 报 skipped，GitHub 无 milestone / issue；初始化讨论后再由 `flow:sync` 创建。
 - 门禁自测试使用 Node 内置 `node --test`，不新增依赖；后续新增门禁叶子须同步 `run-gates` 与自测试。
 - 当前未移植讲解站与发布流水线；若后续需要，按本 Note 的分层与门禁模式增量接入。
+- 冒烟报告模板或 schema 改动必须同时验证单层 table 结构与 coverage 实际内容，否则生成物可能合法渲染但丢失覆盖证据。
 - 欠账：roadmap / milestone / issue 的内容与优先级待维护者讨论后设置；PR 检视文档模板尚未用真实 PR 验证。

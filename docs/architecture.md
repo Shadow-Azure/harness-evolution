@@ -22,13 +22,12 @@
 ## 垂直切片
 
 ```text
-apps/api/app/
-  main.py               FastAPI composition root
-  api/                  domain routers
-  service/              business rules and orchestration
-  db/                   database and CRUD boundary
-  third_party_api/      outbound API adapters
-  middleware/           request context and identity boundary
+main.py
+api/
+service/
+db/
+third_party_api/
+middleware/
 ```
 
 依赖方向为 `api → service → db/third_party_api`。
@@ -36,64 +35,44 @@ apps/api/app/
 ## 当前请求链路
 
 ```text
-Web ──► FastAPI middleware ──► api/health
-                     │
-                     └──► non-public /api/* → 401 AUTH_REQUIRED
+Web ──► middleware ──► public endpoints | bearer APIs → api routers
 ```
 
-`/api/health` 无需登录并返回 `ok/service/phase/version/db`；数据库故障返回 503，进程仍可达。其他 `/api/*` 默认 401；未知路由、校验失败与未捕获异常共用错误 envelope。
+只有健康、登录和刷新公开；业务 API 读取 bearer JWT，`/api/users` 仅管理员可用，OpenAPI 以 `BearerAuth` 声明受保护操作。登录按 IP 限制为每分钟 10 次，强制改密只放行改密、登出和当前身份。access 有效 30 分钟；refresh cookie 有效 14 天，`httpOnly`、`SameSite=Strict`、路径限定 `/api/auth`，生产加 `Secure`。健康检查在数据库故障时返回 503，各类失败共用错误 envelope。
 
 ## 数据层策略
 
 - 生产数据库目标为 MySQL 8，本地快跑与自动化测试使用 SQLite；`HE_DB_DIALECT` 是唯一选择点。
 - `Database` 接口统一管理连接生命周期、只读 session、写事务和 health；`api/service` 不直接创建 engine。
-- Alembic 维护一棵双方言迁移树；空 SQLite 与 MySQL 都可升级到 head，SQLite 的变更使用 batch 模式。
-- 业务代码只依赖 repository/Database 接口，不直接拼接 SQL。
-- 原始轨迹 payload 是事实源；归一化数据必须可重放且幂等。
-- 问题与归因数据由外部系统写入，本服务只读。
+- Alembic 维护一棵双方言迁移树，SQLite 变更使用 batch 模式；业务代码只依赖 `db/crud/` repository 与 `Database` 接口，不直接拼接 SQL。
+- 原始轨迹 payload 可重放且幂等；问题和归因由外部系统写入，本服务只读。
 - 密钥只从环境变量注入，不进入仓库或数据库。
 
 ## 当前 API
 
 ```text
 GET /api/health
+POST /api/auth/{login,refresh,logout,change-password}
+GET /api/auth/me
+GET|POST /api/users
+POST /api/events/ticket
 ```
 
-其他草案端点属于后续 milestone，不表示已经实现。
+SSE 属后续；票据绑定用户、`run:{rid}` topics、游标，并以进程 HMAC 认证 60 秒到期，活动 grant 单次消费。refresh 旋转原子拒绝并发重放，撤销随到期清理。空库用环境凭据播种强制改密管理员；改密须换密码，校验错误不含提交值；密码用 argon2id，响应不含密码/hash，时间戳写 Asia/Shanghai。
 
 ## 共享契约
 
-FastAPI OpenAPI 是唯一契约源。导出脚本生成 `packages/contracts/openapi.json` 快照，`openapi-typescript` 再从快照生成 `packages/contracts/src/generated/api.d.ts`；`src/index.ts` 只暴露稳定别名与跨端常量。`contract:check` 在临时目录重新生成并逐字比对，生成物手改或后端漂移都会在构建前失败。
+FastAPI OpenAPI 是唯一契约源。导出快照后由 `openapi-typescript` 生成类型，`src/index.ts` 只暴露稳定别名与常量；`contract:check` 临时重生成并逐字比对，构建前拦截漂移。
 
-健康检查响应是当前前后端的最小契约样本，数据库状态与 API 状态分别可判：
+健康响应让 API 与数据库状态分别可判：
 
 ```ts type-equiv
 /** 健康检查响应；前端用它区分 API 可达与服务阶段。 */
 export type HealthResponse = components["schemas"]["HealthResponse"];
 ```
 
-类型围栏由 `verify-type-equiv` 与源码结构对账；生成类型漂移由 `contract:check` 拦截。
-
-前端消费契约的最小示例（由 `doc-typecheck` 真实编译）：
-
-```ts
-import type { HealthResponse } from "./packages/contracts/src/index";
-
-const health: HealthResponse = {
-  ok: true,
-  service: "harness-evolution",
-  phase: "scaffold",
-  version: "0.1.0",
-  db: {
-    dialect: "sqlite",
-    ok: true,
-    latencyMs: 0.2,
-  },
-};
-```
-
 ## 当前状态与非目标
 
-- 已具备：FastAPI 模块化骨架、统一错误模型、SQLite/MySQL Database 基座、Alembic 基线、健康检查、OpenAPI 契约生成与防漂移、Python lint/type/test 门禁。
-- 未具备：领域表、真实鉴权、轨迹解析、问题查询、自进化执行。
+- 已具备：模块化 API 骨架、统一错误、双方言数据库基座、users 迁移、真实鉴权、用户 API、SSE 票据签发、健康检查、契约管线、Python 门禁。
+- 未具备：业务领域表、SSE 传输、用户停用界面、轨迹解析、问题查询、自进化执行。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

@@ -2,12 +2,12 @@
 
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import Column, Integer, MetaData, String, Table, insert, select, text
+from sqlalchemy import Column, Integer, MetaData, String, Table, insert, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.pool import QueuePool
 
@@ -42,6 +42,39 @@ def sqlite_settings(tmp_path: Path) -> Settings:
         db_pool_size=2,
         db_max_overflow=1,
     )
+
+
+def normalized_server_default(column: Mapping[str, object]) -> str | None:
+    """Normalize dialect-specific quoting around a reflected server default."""
+    default = column["default"]
+    if default is None:
+        return None
+    return str(default).strip().strip("'\"").lower()
+
+
+def assert_true_server_default(column: Mapping[str, object]) -> None:
+    """Assert one reflected column has a truthy boolean server default."""
+    default = normalized_server_default(column)
+    assert default is not None
+    assert default in {"1", "true"}
+
+
+@pytest.mark.parametrize(
+    ("reflected", "expected"),
+    [
+        (1, "1"),
+        ("'1'", "1"),
+        ('"1"', "1"),
+        ("true", "true"),
+        (None, None),
+    ],
+)
+def test_normalized_server_default_accepts_truthy_dialect_forms(
+    reflected: object,
+    expected: str | None,
+) -> None:
+    """SQLite and MySQL reflection may quote the same DEFAULT 1 constraint."""
+    assert normalized_server_default({"default": reflected}) == expected
 
 
 def test_settings_derive_database_urls(tmp_path: Path) -> None:
@@ -209,7 +242,29 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0001"
+        assert result.scalar_one() == "0002"
+        async with database.engine.connect() as connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("users")
+            )
+
+        assert {column["name"] for column in columns} == {
+            "id",
+            "username",
+            "password_hash",
+            "display_name",
+            "role",
+            "is_active",
+            "must_change_password",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+            "password_changed_at",
+        }
+        by_name = {column["name"]: column for column in columns}
+        assert normalized_server_default(by_name["created_at"]) is None
+        assert normalized_server_default(by_name["updated_at"]) is None
+        assert_true_server_default(by_name["must_change_password"])
     finally:
         await database.dispose()
 
@@ -311,6 +366,28 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0001"
+        assert result.scalar_one() == "0002"
+        async with database.engine.connect() as connection:
+            mysql_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("users")
+            )
+
+        assert {column["name"] for column in mysql_columns} == {
+            "id",
+            "username",
+            "password_hash",
+            "display_name",
+            "role",
+            "is_active",
+            "must_change_password",
+            "created_at",
+            "updated_at",
+            "last_login_at",
+            "password_changed_at",
+        }
+        by_name = {column["name"]: column for column in mysql_columns}
+        assert normalized_server_default(by_name["created_at"]) is None
+        assert normalized_server_default(by_name["updated_at"]) is None
+        assert_true_server_default(by_name["must_change_password"])
     finally:
         await database.dispose()

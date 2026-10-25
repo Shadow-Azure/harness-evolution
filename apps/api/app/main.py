@@ -7,16 +7,26 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth import router as auth_router
+from app.api.events import router as events_router
 from app.api.health import router as health_router
+from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.errors import register_exception_handlers
-from app.middleware.auth import AuthBoundaryMiddleware
+from app.middleware.auth import AuthMiddleware
+from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.service.identity.service import IdentityService
 
 logger = logging.getLogger(__name__)
+
+
+def create_default_app() -> FastAPI:
+    """Build the environment-configured application for uvicorn's factory mode."""
+    return create_app(Settings())
 
 
 def create_app(
@@ -26,6 +36,7 @@ def create_app(
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
     resolved_database = database or create_database(resolved_settings)
+    identity = IdentityService(resolved_settings, resolved_database)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
@@ -35,6 +46,8 @@ def create_app(
             await resolved_database.start()
             phase = "migration"
             await upgrade_database(resolved_database)
+            phase = "identity-seed"
+            await identity.seed_admin_if_empty()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -60,9 +73,12 @@ def create_app(
     )
     app.state.settings = resolved_settings
     app.state.database = resolved_database
+    app.state.identity = identity
+    app.state.login_rate_limiter = LoginRateLimiter()
     app.state.database_start_error = None
 
-    app.add_middleware(AuthBoundaryMiddleware)
+    app.add_middleware(AuthMiddleware)
+    app.add_middleware(LoginRateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_origins,
@@ -74,7 +90,7 @@ def create_app(
 
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(auth_router)
+    app.include_router(users_router)
+    app.include_router(events_router)
     return app
-
-
-app = create_app()

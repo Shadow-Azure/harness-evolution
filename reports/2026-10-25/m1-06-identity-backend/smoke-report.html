@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M1-06 身份后端集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #75</p>
+    <h1>M1-06 身份后端集成冒烟报告</h1>
+    <p class="summary">在真实 Chrome、Vite 与 FastAPI 进程上验证应用启动、导航、API 连通与身份主链路。所有必测场景通过，浏览器控制台无 warning 或 error。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · localhost</span>
+    <div class="metrics"><div class="metric"><b>9</b><span>冒烟场景</span></div><div class="metric"><b>9</b><span>通过</span></div><div class="metric"><b>0</b><span>控制台告警/错误</span></div><div class="metric"><b>67</b><span>API 自动测试通过</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · localhost</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#29 · M1 identity backend</dd></div><div class="fact"><dt>PR</dt><dd>#75</dd></div><div class="fact"><dt>Commit</dt><dd>4548576</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Chrome</dd></div><div class="fact"><dt>Database</dt><dd>SQLite smoke instance</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>9 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>Sessions 启动</td><td><span class="status pass">PASS</span></td><td>Vue 壳渲染，顶部导航与空态可见。</td><td class="evidence">screenshots/01-sessions-empty.png</td></tr><tr><td class="num">02</td><td>后端健康连通</td><td><span class="status pass">PASS</span></td><td>页面显示“API 已连接 · SQLite”，health 返回 200。</td><td class="evidence">screenshots/01-sessions-empty.png<br>HTTP health=200</td></tr><tr><td class="num">03</td><td>Evolution 导航</td><td><span class="status pass">PASS</span></td><td>路由切换成功，Vue Flow 骨架挂载。</td><td class="evidence">screenshots/02-evolution-empty.png</td></tr><tr><td class="num">04</td><td>Sessions 返回导航</td><td><span class="status pass">PASS</span></td><td>返回后 URL、标题与空态保持正确。</td><td class="evidence">screenshots/03-sessions-return.png</td></tr><tr><td class="num">05</td><td>浏览器控制台</td><td><span class="status pass">PASS</span></td><td>导航前后 error/warning 日志均为空。</td><td class="evidence">Chrome dev logs count=0</td></tr><tr><td class="num">06</td><td>登录换取 token</td><td><span class="status pass">PASS</span></td><td>真实 HTTP 登录返回 200，mustChangePassword=true。</td><td class="evidence">HTTP login=200 · mustChange=true</td></tr><tr><td class="num">07</td><td>422 密码脱敏</td><td><span class="status pass">PASS</span></td><td>超长密码返回 422，响应不回显提交的明文。</td><td class="evidence">HTTP overlongPassword=422 · leaksInput=false</td></tr><tr><td class="num">08</td><td>相同密码拒绝</td><td><span class="status pass">PASS</span></td><td>新旧密码相同返回 422；业务 API 仍被 PASSWORD_CHANGE_REQUIRED 阻止。</td><td class="evidence">HTTP samePassword=422 · users=403 PASSWORD_CHANGE_REQUIRED</td></tr><tr><td class="num">09</td><td>改密、刷新与 admin API</td><td><span class="status pass">PASS</span></td><td>不同新密码改密 204，refresh 200，admin 用户列表 200。</td><td class="evidence">HTTP changePassword=204 · refresh=200 · users=200</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>3 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-sessions-empty.png" alt="Sessions 空态和 API 已连接标记"><figcaption><b>Sessions 启动</b><span>Vite 页面显示 SQLite 后端已连接，空态文案与导航正常。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-evolution-empty.png" alt="Evolution 骨架和 Vue Flow 容器"><figcaption><b>Evolution 导航</b><span>前端路由成功切换，Vue Flow vendor chunk 已挂载。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-sessions-return.png" alt="返回 Sessions 后的空态页面"><figcaption><b>返回导航</b><span>返回 Sessions 后页面与控制台状态保持正常。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>身份 API</td><td>API 自动测试 + 真实 HTTP</td><td>登录、改密、refresh、admin 边界、并发重放和脱敏均有自动证据。</td><td>保持 CI 中的 API、SQLite 与 MySQL lane。</td></tr><tr><td>双方言迁移</td><td>SQLite 本地 + MySQL CI</td><td>当前 PR 的 MySQL CI 已通过。</td><td>后续 schema 变更继续双库执行。</td></tr><tr><td>浏览器壳</td><td>Computer Use 实机</td><td>启动、导航、API 连接和控制台清洁已确认。</td><td>m1-07 接入登录 UI 后扩充登录/改密浏览器场景。</td></tr><tr><td>身份前端</td><td>不在 m1-06 范围</td><td>登录页与路由守卫属于 m1-07；本报告用真实 HTTP 验证后端交付。</td><td>m1-07 完成后增加浏览器级鉴权回归。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>当前提交的 M1-06 后端与现有 Web 壳在真实进程中协同正常，未发现集成缺陷。</strong></p><ul><li>浏览器控制台无 warning/error。</li><li>真实 HTTP 身份主链路与安全回归全部通过。</li><li>登录 UI 尚未实现，浏览器级鉴权回归留给 m1-07。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 截图、Chrome 控制台、脱敏 HTTP 结果与自动测试。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,151 @@
+{
+  "title": "M1-06 身份后端集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #75",
+  "summary": "在真实 Chrome、Vite 与 FastAPI 进程上验证应用启动、导航、API 连通与身份主链路。所有必测场景通过，浏览器控制台无 warning 或 error。",
+  "meta": "2026-10-25 · macOS · Chrome · localhost",
+  "metrics": [
+    { "value": "9", "label": "冒烟场景" },
+    { "value": "9", "label": "通过" },
+    { "value": "0", "label": "控制台告警/错误" },
+    { "value": "67", "label": "API 自动测试通过" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#29 · M1 identity backend" },
+    { "label": "PR", "value": "#75" },
+    { "label": "Commit", "value": "4548576" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome" },
+    { "label": "Database", "value": "SQLite smoke instance" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Sessions 启动",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Vue 壳渲染，顶部导航与空态可见。",
+        "evidence": ["screenshots/01-sessions-empty.png"]
+      },
+      {
+        "id": "02",
+        "name": "后端健康连通",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面显示“API 已连接 · SQLite”，health 返回 200。",
+        "evidence": ["screenshots/01-sessions-empty.png", "HTTP health=200"]
+      },
+      {
+        "id": "03",
+        "name": "Evolution 导航",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "路由切换成功，Vue Flow 骨架挂载。",
+        "evidence": ["screenshots/02-evolution-empty.png"]
+      },
+      {
+        "id": "04",
+        "name": "Sessions 返回导航",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "返回后 URL、标题与空态保持正确。",
+        "evidence": ["screenshots/03-sessions-return.png"]
+      },
+      {
+        "id": "05",
+        "name": "浏览器控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "导航前后 error/warning 日志均为空。",
+        "evidence": ["Chrome dev logs count=0"]
+      },
+      {
+        "id": "06",
+        "name": "登录换取 token",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 HTTP 登录返回 200，mustChangePassword=true。",
+        "evidence": ["HTTP login=200 · mustChange=true"]
+      },
+      {
+        "id": "07",
+        "name": "422 密码脱敏",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "超长密码返回 422，响应不回显提交的明文。",
+        "evidence": ["HTTP overlongPassword=422 · leaksInput=false"]
+      },
+      {
+        "id": "08",
+        "name": "相同密码拒绝",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "新旧密码相同返回 422；业务 API 仍被 PASSWORD_CHANGE_REQUIRED 阻止。",
+        "evidence": ["HTTP samePassword=422 · users=403 PASSWORD_CHANGE_REQUIRED"]
+      },
+      {
+        "id": "09",
+        "name": "改密、刷新与 admin API",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不同新密码改密 204，refresh 200，admin 用户列表 200。",
+        "evidence": ["HTTP changePassword=204 · refresh=200 · users=200"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions-empty.png",
+      "alt": "Sessions 空态和 API 已连接标记",
+      "label": "Sessions 启动",
+      "caption": "Vite 页面显示 SQLite 后端已连接，空态文案与导航正常。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-evolution-empty.png",
+      "alt": "Evolution 骨架和 Vue Flow 容器",
+      "label": "Evolution 导航",
+      "caption": "前端路由成功切换，Vue Flow vendor chunk 已挂载。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-sessions-return.png",
+      "alt": "返回 Sessions 后的空态页面",
+      "label": "返回导航",
+      "caption": "返回 Sessions 后页面与控制台状态保持正常。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "身份 API",
+        "coverage": "API 自动测试 + 真实 HTTP",
+        "conclusion": "登录、改密、refresh、admin 边界、并发重放和脱敏均有自动证据。",
+        "recommendation": "保持 CI 中的 API、SQLite 与 MySQL lane。"
+      },
+      {
+        "area": "双方言迁移",
+        "coverage": "SQLite 本地 + MySQL CI",
+        "conclusion": "当前 PR 的 MySQL CI 已通过。",
+        "recommendation": "后续 schema 变更继续双库执行。"
+      },
+      {
+        "area": "浏览器壳",
+        "coverage": "Computer Use 实机",
+        "conclusion": "启动、导航、API 连接和控制台清洁已确认。",
+        "recommendation": "m1-07 接入登录 UI 后扩充登录/改密浏览器场景。"
+      },
+      {
+        "area": "身份前端",
+        "coverage": "不在 m1-06 范围",
+        "conclusion": "登录页与路由守卫属于 m1-07；本报告用真实 HTTP 验证后端交付。",
+        "recommendation": "m1-07 完成后增加浏览器级鉴权回归。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交的 M1-06 后端与现有 Web 壳在真实进程中协同正常，未发现集成缺陷。",
+    "points": [
+      "浏览器控制台无 warning/error。",
+      "真实 HTTP 身份主链路与安全回归全部通过。",
+      "登录 UI 尚未实现，浏览器级鉴权回归留给 m1-07。"
+    ]
+  },
+  "footer": "证据源：Computer Use 截图、Chrome 控制台、脱敏 HTTP 结果与自动测试。生成 HTML 不应手改。"
+}

@@ -96,6 +96,9 @@ before(async () => {
       HE_DOCS_ENABLED: "false",
       HE_DATA_DIR: dataDir,
       HE_DB_DIALECT: "sqlite",
+      HE_JWT_SECRET: "integration-signing-secret-with-sufficient-length",
+      HE_ADMIN_USERNAME: "admin",
+      HE_ADMIN_PASSWORD: "integration-initial-password",
       HE_HOST: "127.0.0.1",
       HE_PORT: String(apiPort),
       PYTHONUNBUFFERED: "1"
@@ -162,6 +165,60 @@ test("protected API failures keep the unified envelope through the proxy", async
   });
 });
 
+test("seeded admin completes forced password change through the proxy", async () => {
+  const login = await fetch(`${webBaseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: "admin",
+      password: "integration-initial-password"
+    })
+  });
+  assert.equal(login.status, 200);
+  const loginBody = await login.json();
+  assert.equal(loginBody.user.username, "admin");
+  assert.equal(loginBody.user.mustChangePassword, true);
+  assert.equal("passwordHash" in loginBody.user, false);
+  const refreshCookie = login.headers
+    .get("set-cookie")
+    ?.split(";")
+    .find((part) => part.startsWith("refresh_token="));
+  assert.match(refreshCookie ?? "", /refresh_token=\S+/);
+
+  const before = await fetch(`${webBaseUrl}/api/auth/me`, {
+    headers: { authorization: `Bearer ${loginBody.accessToken}` }
+  });
+  assert.equal(before.status, 200);
+  assert.equal((await before.json()).mustChangePassword, true);
+
+  const changed = await fetch(`${webBaseUrl}/api/auth/change-password`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${loginBody.accessToken}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      oldPassword: "integration-initial-password",
+      newPassword: "integration-replacement-password"
+    })
+  });
+  assert.equal(changed.status, 204);
+
+  const refreshed = await fetch(`${webBaseUrl}/api/auth/refresh`, {
+    method: "POST",
+    headers: { cookie: refreshCookie }
+  });
+  assert.equal(refreshed.status, 200);
+  const refreshBody = await refreshed.json();
+  assert.deepEqual(Object.keys(refreshBody).sort(), ["accessToken", "expiresIn"]);
+
+  const after = await fetch(`${webBaseUrl}/api/auth/me`, {
+    headers: { authorization: `Bearer ${refreshBody.accessToken}` }
+  });
+  assert.equal(after.status, 200);
+  assert.equal((await after.json()).mustChangePassword, false);
+});
+
 test("database failure returns a sanitized 503 through the real proxy", async () => {
   const brokenApiPort = await availablePort();
   const brokenWebPort = await availablePort();
@@ -181,6 +238,7 @@ test("database failure returns a sanitized 503 through the real proxy", async ()
         HE_DOCS_ENABLED: "false",
         HE_DB_DIALECT: "sqlite",
         HE_DB_URL: `sqlite+aiosqlite:///${brokenDbPath}`,
+        HE_JWT_SECRET: "integration-signing-secret-with-sufficient-length",
         HE_HOST: "127.0.0.1",
         HE_PORT: String(brokenApiPort),
         PYTHONUNBUFFERED: "1"

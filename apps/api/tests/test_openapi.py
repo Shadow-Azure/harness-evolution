@@ -24,15 +24,66 @@ def canonicalize(value: Any) -> Any:
     return value
 
 
-def test_openapi_exposes_health_and_shared_error_contract() -> None:
-    """Only the implemented health endpoint and shared error models are exported."""
+def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
+    """Only implemented health, identity, user, and ticket endpoints are exported."""
     schema = create_app(Settings(db_dialect=DatabaseDialect.SQLITE)).openapi()
     components = schema["components"]["schemas"]
 
-    assert set(schema["paths"]) == {"/api/health"}
-    assert {"HealthResponse", "DatabaseHealthResponse", "ErrorResponse", "ErrorBody"} <= set(
-        components
-    )
+    assert set(schema["paths"]) == {
+        "/api/health",
+        "/api/auth/login",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+        "/api/auth/change-password",
+        "/api/auth/me",
+        "/api/users",
+        "/api/events/ticket",
+    }
+    assert {
+        "HealthResponse",
+        "DatabaseHealthResponse",
+        "ErrorCode",
+        "ErrorResponse",
+        "ErrorBody",
+        "LoginRequest",
+        "LoginResponse",
+        "ChangePasswordRequest",
+        "CreateUserRequest",
+        "PublicUser",
+        "UserListResponse",
+        "TicketRequest",
+        "EventTicketResponse",
+    } <= set(components)
+    error_body = components["ErrorBody"]
+    assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
+    paths = schema["paths"]
+    assert {"200", "401", "403", "422", "429"} <= set(paths["/api/auth/login"]["post"]["responses"])
+    assert {"200", "401", "403"} <= set(paths["/api/auth/refresh"]["post"]["responses"])
+    assert {"201", "401", "403", "409", "422"} <= set(paths["/api/users"]["post"]["responses"])
+    assert {"200", "401", "403", "422"} <= set(paths["/api/events/ticket"]["post"]["responses"])
+    login_401 = paths["/api/auth/login"]["post"]["responses"]["401"]
+    assert login_401["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+    bearer = schema["components"]["securitySchemes"]["BearerAuth"]
+    assert bearer["type"] == "http"
+    assert bearer["scheme"] == "bearer"
+    protected_operations = [
+        ("/api/auth/logout", "post"),
+        ("/api/auth/change-password", "post"),
+        ("/api/auth/me", "get"),
+        ("/api/users", "get"),
+        ("/api/users", "post"),
+        ("/api/events/ticket", "post"),
+    ]
+    for path, method in protected_operations:
+        assert paths[path][method]["security"] == [{"BearerAuth": []}]
+    for path, method in [
+        ("/api/health", "get"),
+        ("/api/auth/login", "post"),
+        ("/api/auth/refresh", "post"),
+    ]:
+        assert "security" not in paths[path][method]
 
 
 def test_checked_in_openapi_snapshot_is_current() -> None:
@@ -41,6 +92,17 @@ def test_checked_in_openapi_snapshot_is_current() -> None:
     actual = create_app(Settings(db_dialect=DatabaseDialect.SQLITE)).openapi()
 
     assert canonicalize(actual) == expected
+
+
+def test_identity_time_and_secret_configuration_matches_design() -> None:
+    """Deployment names and defaults preserve the authoritative auth contract."""
+    settings = Settings(db_dialect=DatabaseDialect.SQLITE, _env_file=None)  # type: ignore[call-arg]
+
+    assert settings.access_token_ttl_min == 30
+    assert settings.refresh_token_ttl_days == 14
+    assert settings.access_ttl_seconds == 1_800
+    assert settings.refresh_ttl_seconds == 1_209_600
+    assert settings.event_ticket_ttl_seconds == 60
 
 
 def test_openapi_export_ignores_service_environment() -> None:
