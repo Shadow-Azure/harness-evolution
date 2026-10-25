@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-10-25-session-query-api.md
+2026-10-25-session-query-api.md: f95a4e44a98c190bf7fea92d08516325d8005268
+2026-10-25-session-query-api.en.md: 88d0de99221d1fd52e7edb80afdcf3fe0d2f1e78

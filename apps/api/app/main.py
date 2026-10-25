@@ -11,11 +11,13 @@ from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
+from app.api.sessions import router as sessions_router
 from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
 from app.db.crud.jobs import JobRepository
 from app.db.crud.run_events import SqlRunEventStore
+from app.db.crud.sessions import SessionRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.errors import register_exception_handlers
@@ -25,6 +27,7 @@ from app.middleware.request_context import RequestContextMiddleware
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
+from app.service.sessions.service import SessionService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +48,7 @@ def create_app(
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
     run_event_store = SqlRunEventStore(resolved_database)
     jobs = JobRunner(JobRepository(resolved_database), event_bus, run_event_store)
+    sessions = SessionService(SessionRepository(resolved_database))
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
@@ -91,6 +95,7 @@ def create_app(
     app.state.event_bus = event_bus
     app.state.jobs = jobs
     app.state.run_events = run_event_store
+    app.state.sessions = sessions
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
     app.state.login_rate_limiter = LoginRateLimiter()
@@ -112,5 +117,6 @@ def create_app(
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(jobs_router)
+    app.include_router(sessions_router)
     app.include_router(events_router)
     return app

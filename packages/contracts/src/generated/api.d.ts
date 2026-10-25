@@ -182,6 +182,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sessions
+         * @description Return the current page of root-session cards.
+         */
+        get: operations["list_sessions_api_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description Return one session overview card.
+         */
+        get: operations["get_session_api_sessions__sessionId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{sessionId}/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session Tree
+         * @description Return the flat canonical Agent tree and anchored problem cards.
+         */
+        get: operations["get_session_tree_api_sessions__sessionId__tree_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -210,6 +270,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * BadCaseAgent
+         * @description The reporter that originally supplied a problem report.
+         */
+        BadCaseAgent: {
+            /** Agentid */
+            agentId: string | null;
+            /** Sessionid */
+            sessionId: string;
+        };
+        /**
+         * BadCaseAnchor
+         * @description Stable host Agent and event index for one problem card.
+         */
+        BadCaseAnchor: {
+            /** Agentid */
+            agentId: string;
+            /** Eventindex */
+            eventIndex: number;
+        };
         /**
          * ChangePasswordRequest
          * @description Owner-supplied current and replacement passwords.
@@ -275,7 +355,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -410,6 +490,165 @@ export interface components {
          * @enum {string}
          */
         ServicePhase: "scaffold" | "demo" | "live";
+        /**
+         * SessionAgent
+         * @description One flat Agent node consumed directly by the execution-flow graph.
+         */
+        SessionAgent: {
+            /** Agentid */
+            agentId: string;
+            /** Agenttype */
+            agentType: string | null;
+            /** Desc */
+            desc: string;
+            /** Events */
+            events: components["schemas"]["SessionEvent"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "main" | "subagent" | "workflow";
+            /** Label */
+            label: string;
+            /** Lines */
+            lines: number;
+            /** Messagescount */
+            messagesCount: number;
+            /** Parentagentid */
+            parentAgentId: string | null;
+            /** Skillname */
+            skillName: string | null;
+            /** Spawndepth */
+            spawnDepth: number;
+            /** Taskkind */
+            taskKind: ("in_process_teammate" | "forked_skill") | null;
+            /** Teamname */
+            teamName: string | null;
+            /** Tooluseid */
+            toolUseId: string | null;
+        };
+        /**
+         * SessionBadCase
+         * @description One read-only problem connected to the execution tree.
+         */
+        SessionBadCase: {
+            anchor: components["schemas"]["BadCaseAnchor"];
+            badCaseAgent: components["schemas"]["BadCaseAgent"];
+            /** Badcaseid */
+            badCaseId: string;
+            /**
+             * Badcasetype
+             * @enum {string}
+             */
+            badCaseType: "self" | "discovery";
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent";
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * SessionEvent
+         * @description One skill, Agent, or workflow trigger within an Agent node.
+         */
+        SessionEvent: {
+            /** Desc */
+            desc: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "skill" | "agent" | "workflow";
+            /** Line */
+            line: number;
+            /** Messageoffset */
+            messageOffset: number;
+            /** Name */
+            name: string | null;
+            /** Tooluseid */
+            toolUseId: string | null;
+        };
+        /**
+         * SessionListItem
+         * @description One root-session card shared by list and overview routes.
+         */
+        SessionListItem: {
+            /** Durationseconds */
+            durationSeconds: number;
+            /** Id */
+            id: string;
+            /** Model */
+            model: string | null;
+            /** Repo */
+            repo: string;
+            /** Short */
+            short: string;
+            /** Skills */
+            skills: string[];
+            /**
+             * Startedat
+             * Format: date-time
+             */
+            startedAt: string;
+            stats: components["schemas"]["SessionStats"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "fail";
+            /** Title */
+            title: string;
+        };
+        /**
+         * SessionListResponse
+         * @description Current-page session cards.
+         */
+        SessionListResponse: {
+            /** Items */
+            items: components["schemas"]["SessionListItem"][];
+        };
+        /**
+         * SessionStats
+         * @description Backend-computed whole-tree card statistics.
+         */
+        SessionStats: {
+            /** Agents */
+            agents: number;
+            /** Badcases */
+            badCases: number;
+            /** Badcasesper100Messages */
+            badCasesPer100Messages: number;
+            /** Errors */
+            errors: number;
+            /** Failper100Messages */
+            failPer100Messages: number;
+            /** Messages */
+            messages: number;
+            /** Tokens */
+            tokens: number;
+            /** Tools */
+            tools: number;
+            /** Userturns */
+            userTurns: number;
+        };
+        /**
+         * SessionTree
+         * @description Flat canonical Agent tree plus anchored read-only problem cards.
+         */
+        SessionTree: {
+            /** Agents */
+            agents: components["schemas"]["SessionAgent"][];
+            /** Badcases */
+            badCases: components["schemas"]["SessionBadCase"][];
+            /** Sessionid */
+            sessionId: string;
+        };
         /**
          * TicketRequest
          * @description Run topics and optional replay cursor bound to an event ticket.
@@ -853,6 +1092,174 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sessions_api_sessions_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: "all" | "ok" | "partial" | "fail" | "problem";
+                sort?: "latest" | "userTurns" | "messages" | "agents";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_session_api_sessions__sessionId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionListItem"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_session_tree_api_sessions__sessionId__tree_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTree"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
