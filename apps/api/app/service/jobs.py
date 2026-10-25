@@ -11,10 +11,12 @@ from app.db.crud.jobs import JobRepository
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.events import EventBus, RunEventRecorder
+from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
 JobHandler = Callable[[JobRunRecord], Awaitable[Mapping[str, Any] | None]]
+TerminalHook = Callable[[JobRunRecord], Awaitable[None]]
 _REUSABLE_DUPLICATE_KINDS = frozenset({"sync", "evolution_retry"})
 _INTERRUPTIBLE_KINDS = frozenset({"sync"})
 _KIND_TO_STAGE = {
@@ -95,11 +97,13 @@ class JobRunner:
         repository: JobRepository,
         bus: EventBus,
         run_events: RunEventRecorder | None = None,
+        on_terminal: TerminalHook | None = None,
     ) -> None:
         """Create a runner with no handlers until functional services register them."""
         self.repository = repository
         self._bus = bus
         self._run_events = run_events
+        self._on_terminal = on_terminal
         self._handlers: dict[str, JobHandler] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._submit_lock = asyncio.Lock()
@@ -110,6 +114,14 @@ class JobRunner:
         """Register the single callable that owns one durable job kind."""
         self._handlers[kind] = handler
 
+    def schedule(self, job_id: str) -> None:
+        """Schedule one already-committed queued row for local execution."""
+        self._schedule(job_id)
+
+    def set_terminal_hook(self, hook: TerminalHook) -> None:
+        """Install post-terminal lifecycle handling for lock-owning services."""
+        self._on_terminal = hook
+
     async def start(self) -> None:
         """Recover interrupted rows before accepting or retrying durable work."""
         recovered = await self.repository.mark_running_interrupted("process restarted")
@@ -118,11 +130,12 @@ class JobRunner:
                 job,
                 message="job interrupted by process restart",
             )
+            await self._notify_terminal(job)
             if job.kind in _INTERRUPTIBLE_KINDS:
                 await self.repository.insert(
                     kind=job.kind,
                     payload=job.payload,
-                    ref_id=job.ref_id,
+                    ref_id=new_id(),
                     created_by=job.created_by,
                 )
         for queued in await self.repository.list_queued():
@@ -193,7 +206,7 @@ class JobRunner:
         normalized = min(1.0, max(0.0, float(progress)))
         await self.repository.update_progress(job_id, normalized)
         job = await self.get(job_id)
-        if job.ref_id:
+        if job.ref_id and job.kind != "sync":
             self._bus.publish(
                 f"run:{job.ref_id}",
                 "run.progress",
@@ -252,6 +265,22 @@ class JobRunner:
                     "job execution failed",
                     extra={"job_id": job.id, "kind": job.kind, "error_type": type(exc).__name__},
                 )
+            finally:
+                terminal = await self.repository.get(job.id)
+                if terminal is not None:
+                    await self._notify_terminal(terminal)
+
+    async def _notify_terminal(self, job: JobRunRecord) -> None:
+        """Run terminal lifecycle handling without masking the job outcome."""
+        if self._on_terminal is None:
+            return
+        try:
+            await self._on_terminal(job)
+        except Exception:
+            logger.exception(
+                "job terminal hook failed",
+                extra={"job_id": job.id, "kind": job.kind},
+            )
 
     async def _record_interruption(
         self,
@@ -260,6 +289,8 @@ class JobRunner:
         message: str,
     ) -> int | None:
         """Persist and publish one interruption using legal stage and job identity."""
+        if job.kind == "sync":
+            return None
         if self._run_events is None or not job.ref_id:
             return None
         stage = _KIND_TO_STAGE.get(job.kind)

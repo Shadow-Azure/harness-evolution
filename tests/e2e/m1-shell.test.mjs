@@ -296,11 +296,14 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       page.session,
       `(() => {
         const nav = document.querySelector("nav");
-        if (!nav || !document.querySelector("[data-testid='demo-badge']")) return null;
+        const sync = document.querySelector("[data-testid='sync-status']");
+        if (!nav || !document.querySelector("[data-testid='demo-badge']") || !sync) return null;
         return {
           path: location.pathname,
           links: [...nav.querySelectorAll("a")].map((link) => link.textContent.trim()),
           badge: document.querySelector("[data-testid='demo-badge']").textContent.trim(),
+          pending: sync.querySelector(".sync-summary")?.textContent.trim() ?? "",
+          pendingDetail: sync.getAttribute("aria-label"),
           hasEmpty: document.body.textContent.includes("暂无会话"),
           bodyBackground: getComputedStyle(document.body).backgroundColor,
           topbarBackground: getComputedStyle(document.querySelector(".topbar")).backgroundColor,
@@ -319,6 +322,8 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.equal(initial.path, "/sessions");
     assert.deepEqual(initial.links, ["Sessions", "Errors", "Evolution"]);
     assert.equal(initial.badge, "演示数据");
+    assert.equal(initial.pending, "待处理 0");
+    assert.match(initial.pendingDetail, /已处理/);
     assert.equal(initial.hasEmpty, true);
     assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
     assert.equal(initial.topbarBackground, "rgb(250, 251, 252)");
@@ -329,6 +334,39 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.ok(initial.clientWidth > 0);
     assert.ok(initial.clientWidth <= 1408);
     assert.equal(initial.scrollWidth, initial.clientWidth);
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector(".user-menu").open = true`,
+    });
+    const syncAction = await waitForDocument(
+      page.session,
+      `(() => {
+        const action = document.querySelector("[data-testid='sync-now']");
+        return action ? action.textContent.trim() : null;
+      })()`,
+      "admin sync action",
+    );
+    assert.equal(syncAction, "立即处理");
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector("[data-testid='sync-now']").click()`,
+    });
+    await page.session.send("Runtime.evaluate", {
+      expression: "new Promise((resolve) => setTimeout(resolve, 500))",
+      awaitPromise: true,
+    });
+    const idleSync = await waitForDocument(
+      page.session,
+      `(() => {
+        const action = document.querySelector("[data-testid='sync-now']");
+        if (!action || action.disabled || document.querySelector(".sync-error")) return null;
+        return {
+          action: action.textContent.trim(),
+          pending: document.querySelector(".sync-summary")?.textContent.trim() ?? "",
+        };
+      })()`,
+      "idle admin sync",
+    );
+    assert.deepEqual(idleSync, { action: "立即处理", pending: "待处理 0" });
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('nav a[href="/errors"]').click()`,
@@ -428,9 +466,11 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
         const menu = document.querySelector(".user-menu");
         const brand = document.querySelector(".brand");
         const demo = document.querySelector("[data-testid='demo-badge']");
+        const sync = document.querySelector("[data-testid='sync-status']");
         return {
           path: location.pathname,
           hasMenu: Boolean(menu),
+          syncDisplay: sync ? getComputedStyle(sync).display : null,
           brandAriaLabel: brand?.getAttribute("aria-label") ?? null,
           demoText: demo?.textContent.trim() ?? null,
           demoColor: demo ? getComputedStyle(demo).color : null,
@@ -445,6 +485,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     );
     assert.equal(shell.path, "/evolution", JSON.stringify(shell));
     assert.equal(shell.hasMenu, true, JSON.stringify(shell));
+    assert.equal(shell.syncDisplay, "none");
     assert.equal(shell.brandAriaLabel, "Harness Evolution");
     assert.equal(shell.demoText, "演示数据");
     assert.equal(shell.demoColor, "rgb(217, 123, 28)");

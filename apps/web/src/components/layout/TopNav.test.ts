@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../test/server";
+import { queryKeys } from "../../api/queryKeys";
 import { useAuthStore } from "../../stores/auth";
 import { createAppRouter } from "../../router";
 import TopNav from "./TopNav.vue";
@@ -121,5 +122,181 @@ describe("top navigation user area", () => {
 
     expect(wrapper.get(".brand").attributes("aria-label")).toBe("Harness Evolution");
     expect(wrapper.get("[data-testid='demo-badge']").text()).toBe("演示数据");
+  });
+
+  it("shows pending acquisition detail without exposing it to members as an action", async () => {
+    server.use(
+      http.get("/api/acquisition/status", () =>
+        HttpResponse.json({
+          activeJobId: null,
+          status: "idle",
+          payloadTable: "trajectory_payloads",
+          pending: 3,
+          processed: 8,
+          imported: 4,
+          skipped: 1,
+          lastRunAt: "2026-10-26T08:00:00+08:00",
+          nextRunAt: "2026-10-26T08:01:00+08:00",
+          errors: [
+            {
+              sessionId: "s-1",
+              agentId: "a-1",
+              lineNo: 3,
+              code: "INVALID_JSONL_LINE",
+              message: "raw diagnostic"
+            }
+          ]
+        }),
+      ),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='sync-status']").text()).toContain("待处理 3");
+    expect(wrapper.get("[data-testid='sync-status']").attributes("aria-label")).toContain(
+      "已处理 8",
+    );
+    expect(
+      wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
+    ).toContain("空闲");
+    expect(
+      wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
+    ).toContain("有一行轨迹无法解析");
+    expect(
+      wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
+    ).not.toContain("raw diagnostic");
+    expect(wrapper.find("[data-testid='sync-now']").exists()).toBe(false);
+  });
+
+  it("lets admins process sync, poll the job, and invalidate session data", async () => {
+    let calls = 0;
+    server.use(
+      http.get("/api/acquisition/status", () =>
+        HttpResponse.json({
+          activeJobId: null,
+          status: "idle",
+          payloadTable: "trajectory_payloads",
+          pending: 1,
+          processed: 0,
+          imported: 0,
+          skipped: 0,
+          lastRunAt: null,
+          nextRunAt: null,
+          errors: []
+        }),
+      ),
+      http.post("/api/acquisition/sync", () =>
+        HttpResponse.json(
+          { jobId: "job-1", status: "queued", reused: false },
+          { status: 202 },
+        ),
+      ),
+      http.get("/api/jobs/job-1", () => {
+        calls += 1;
+        return HttpResponse.json({
+          jobId: "job-1",
+          kind: "sync",
+          refId: "sync-1",
+          status: calls === 1 ? "running" : "completed",
+          progress: calls === 1 ? 0.4 : 1,
+          attempt: 1,
+          createdBy: "u-admin",
+          createdAt: "2026-10-26T08:00:00+08:00",
+          startedAt: "2026-10-26T08:00:01+08:00",
+          finishedAt: calls === 1 ? null : "2026-10-26T08:00:02+08:00",
+          error: null
+        });
+      }),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-admin",
+        username: "admin",
+        displayName: "管理员",
+        role: "admin",
+        mustChangePassword: false,
+      },
+    });
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(queryKeys.sessions, [{ id: "s-1" }]);
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient }], pinia, router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get("[data-testid='sync-now']").trigger("click");
+    await vi.waitFor(
+      () => {
+        expect(calls).toBe(2);
+        expect(queryClient.getQueryState(queryKeys.sessions)?.isInvalidated).toBe(true);
+      },
+      { timeout: 2_000 },
+    );
+  });
+
+  it("keeps the shell stable when acquisition status is unavailable", async () => {
+    server.use(
+      http.get("/api/acquisition/status", () =>
+        HttpResponse.json(
+          { error: { code: "INTERNAL", message: "unavailable", details: {} } },
+          { status: 503 },
+        ),
+      ),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='sync-status']").exists()).toBe(false);
+    expect(wrapper.find("nav").exists()).toBe(true);
+    expect(wrapper.text()).toContain("操作员");
   });
 });

@@ -16,7 +16,7 @@ _MCP_ALLOWED_PATHS = {
     "/api/auth/logout",
     "/api/auth/me",
 }
-_ADMIN_API_PATHS = {"/api/users"}
+_ADMIN_API_PATHS = {"/api/users", "/api/acquisition/sync"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

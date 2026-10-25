@@ -55,6 +55,22 @@ Index(
     job_runs.c.created_at.desc(),
 )
 
+sync_lock = Table(
+    "sync_lock",
+    JOB_METADATA,
+    Column("name", String(32), primary_key=True),
+    Column(
+        "job_id",
+        String(36),
+        ForeignKey("job_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("owner", String(64), nullable=False),
+    Column("acquired_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Index("ix_sync_lock_expires_at", "expires_at"),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class JobRunRecord:
@@ -76,6 +92,17 @@ class JobRunRecord:
     started_at: datetime | None
     finished_at: datetime | None
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class SyncLockRecord:
+    """One durable single-flight lock row."""
+
+    name: str
+    job_id: str
+    owner: str
+    acquired_at: datetime
+    expires_at: datetime
 
 
 def record_from_row(row: Any) -> JobRunRecord:

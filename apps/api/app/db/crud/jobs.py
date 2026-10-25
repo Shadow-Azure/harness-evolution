@@ -20,6 +20,36 @@ EVOLUTION_JOB_KINDS = (
 )
 
 
+def queued_job_values(
+    *,
+    job_id: str,
+    kind: str,
+    payload: Mapping[str, Any],
+    ref_id: str | None,
+    created_by: str | None,
+) -> dict[str, Any]:
+    """Build the complete insert payload for one queued local job."""
+    now = now_shanghai()
+    return {
+        "id": job_id,
+        "kind": kind,
+        "ref_id": ref_id,
+        "status": "queued",
+        "progress": 0.0,
+        "executor": "local",
+        "external_job_id": None,
+        "attempt": 0,
+        "payload": dict(payload),
+        "result": None,
+        "error": None,
+        "created_by": created_by,
+        "created_at": now,
+        "started_at": None,
+        "finished_at": None,
+        "updated_at": now,
+    }
+
+
 class JobRepository:
     """Read and mutate job state through one shared SQLAlchemy expression tree."""
 
@@ -36,27 +66,17 @@ class JobRepository:
         created_by: str | None,
     ) -> JobRunRecord:
         """Insert one queued local job and return its durable audit row."""
-        now = now_shanghai()
         job_id = new_id()
         async with self._database.transaction() as session:
             await session.execute(
                 insert(job_runs).values(
-                    id=job_id,
-                    kind=kind,
-                    ref_id=ref_id,
-                    status="queued",
-                    progress=0.0,
-                    executor="local",
-                    external_job_id=None,
-                    attempt=0,
-                    payload=dict(payload),
-                    result=None,
-                    error=None,
-                    created_by=created_by,
-                    created_at=now,
-                    started_at=None,
-                    finished_at=None,
-                    updated_at=now,
+                    **queued_job_values(
+                        job_id=job_id,
+                        kind=kind,
+                        payload=payload,
+                        ref_id=ref_id,
+                        created_by=created_by,
+                    ),
                 ),
             )
         created = await self.get(job_id)
@@ -91,6 +111,26 @@ class JobRepository:
                         .where(
                             kind_condition,
                             job_runs.c.ref_id == ref_id,
+                            job_runs.c.status.in_(ACTIVE_JOB_STATUSES),
+                        )
+                        .order_by(job_runs.c.created_at.desc())
+                        .limit(1),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return record_from_row(row) if row else None
+
+    async def find_active_kind(self, kind: str) -> JobRunRecord | None:
+        """Return the newest active job of one kind, independent of resource id."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(job_runs)
+                        .where(
+                            job_runs.c.kind == kind,
                             job_runs.c.status.in_(ACTIVE_JOB_STATUSES),
                         )
                         .order_by(job_runs.c.created_at.desc())

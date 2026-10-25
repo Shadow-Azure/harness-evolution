@@ -1,6 +1,100 @@
 {
   "components": {
     "schemas": {
+      "AcquisitionStatusResponse": {
+        "additionalProperties": false,
+        "description": "Current acquisition counts and durable latest-run metadata.",
+        "properties": {
+          "activeJobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activejobid"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/SyncStatusError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "imported": {
+            "title": "Imported",
+            "type": "integer"
+          },
+          "lastRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrunat"
+          },
+          "nextRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextrunat"
+          },
+          "payloadTable": {
+            "default": "trajectory_payloads",
+            "title": "Payloadtable",
+            "type": "string"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activeJobId",
+          "status",
+          "pending",
+          "processed",
+          "imported",
+          "skipped",
+          "lastRunAt",
+          "nextRunAt",
+          "errors"
+        ],
+        "title": "AcquisitionStatusResponse",
+        "type": "object"
+      },
       "BadCaseAgent": {
         "additionalProperties": false,
         "description": "The reporter that originally supplied a problem report.",
@@ -983,6 +1077,96 @@
         "title": "SessionTree",
         "type": "object"
       },
+      "SyncStatusError": {
+        "additionalProperties": false,
+        "description": "Sanitized issue summary retained from the latest replay batch.",
+        "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agentid"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "lineNo": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lineno"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "sessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessionid"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SyncStatusError",
+        "type": "object"
+      },
+      "SyncTriggerResponse": {
+        "additionalProperties": false,
+        "description": "Queued/reused job identity, or an explicit successful no-work result.",
+        "properties": {
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "reused": {
+            "title": "Reused",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "reused",
+              "idle"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "status",
+          "reused"
+        ],
+        "title": "SyncTriggerResponse",
+        "type": "object"
+      },
       "TicketRequest": {
         "additionalProperties": false,
         "description": "Run topics and optional replay cursor bound to an event ticket.",
@@ -1082,6 +1266,110 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/acquisition/status": {
+      "get": {
+        "description": "Return durable acquisition progress for all authenticated users.",
+        "operationId": "acquisition_status_api_acquisition_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcquisitionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Acquisition Status",
+        "tags": [
+          "acquisition"
+        ]
+      }
+    },
+    "/api/acquisition/sync": {
+      "post": {
+        "description": "Queue one administrator-triggered sync or return explicit no-work.",
+        "operationId": "trigger_sync_api_acquisition_sync_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncTriggerResponse"
+                }
+              }
+            },
+            "description": "No pending payloads; no job was created"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncTriggerResponse"
+                }
+              }
+            },
+            "description": "A sync job was queued or an active job was reused"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Admin role is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Trigger Sync",
+        "tags": [
+          "acquisition"
+        ]
+      }
+    },
     "/api/auth/change-password": {
       "post": {
         "description": "Replace the authenticated user's password and clear forced-change state.",

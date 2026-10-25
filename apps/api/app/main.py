@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.acquisition import router as acquisition_router
 from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
@@ -24,6 +25,7 @@ from app.errors import register_exception_handlers
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.service.acquisition.sync import SyncCoordinator
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -47,7 +49,15 @@ def create_app(
     identity = IdentityService(resolved_settings, resolved_database)
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
     run_event_store = SqlRunEventStore(resolved_database)
-    jobs = JobRunner(JobRepository(resolved_database), event_bus, run_event_store)
+    job_repository = JobRepository(resolved_database)
+    jobs = JobRunner(job_repository, event_bus, run_event_store)
+    sync = SyncCoordinator(
+        resolved_database,
+        jobs,
+        job_repository,
+        resolved_settings,
+    )
+    jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
 
     @asynccontextmanager
@@ -62,6 +72,8 @@ def create_app(
             await identity.seed_admin_if_empty()
             phase = "job-recovery"
             await jobs.start()
+            phase = "sync-scheduler"
+            await sync.start_scheduler()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -75,6 +87,7 @@ def create_app(
         try:
             yield
         finally:
+            await sync.stop_scheduler()
             await jobs.close()
             await event_bus.close()
             await resolved_database.dispose()
@@ -94,6 +107,7 @@ def create_app(
     app.state.identity = identity
     app.state.event_bus = event_bus
     app.state.jobs = jobs
+    app.state.sync = sync
     app.state.run_events = run_event_store
     app.state.sessions = sessions
     app.state.run_event_replay = run_event_store
@@ -119,4 +133,5 @@ def create_app(
     app.include_router(jobs_router)
     app.include_router(sessions_router)
     app.include_router(events_router)
+    app.include_router(acquisition_router)
     return app

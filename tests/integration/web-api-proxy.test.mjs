@@ -193,6 +193,23 @@ test("seeded admin completes forced password change through the proxy", async ()
 test("job lookup and one-time SSE ticket work through the real proxy", async () => {
   const admin = await integrationAdmin();
   const headers = { authorization: `Bearer ${admin.accessToken}` };
+  const acquisition = await fetch(`${webBaseUrl}/api/acquisition/status`, { headers });
+  assert.equal(acquisition.status, 200);
+  const acquisitionBody = await acquisition.json();
+  assert.equal(acquisitionBody.activeJobId, null);
+  assert.equal(acquisitionBody.status, "idle");
+  assert.equal(acquisitionBody.pending, 0);
+  const manualSync = await fetch(`${webBaseUrl}/api/acquisition/sync`, {
+    method: "POST",
+    headers,
+  });
+  assert.equal(manualSync.status, 200);
+  assert.deepEqual(await manualSync.json(), {
+    jobId: null,
+    status: "idle",
+    reused: false,
+  });
+
   const missing = await fetch(`${webBaseUrl}/api/jobs/not-a-real-job`, { headers });
   assert.equal(missing.status, 404);
   assert.equal((await missing.json()).error.code, "JOB_NOT_FOUND");
