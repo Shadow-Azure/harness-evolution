@@ -18,6 +18,7 @@ scope:
   - tests/**
   - plans/**
   - reports/**
+  - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

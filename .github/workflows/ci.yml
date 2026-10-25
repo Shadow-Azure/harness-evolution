@@ -16,6 +16,7 @@ jobs:
   build-and-docs:
     # 静态 lane：文档门禁内嵌在这里（doc-sync 全量），代码与文档没有旁路。
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -58,8 +59,10 @@ jobs:
       - name: 单元测试（前后端，覆盖率 ≥80%）
         run: pnpm test
       - name: 跨栈集成测试（Web → Vite proxy → FastAPI）
+        timeout-minutes: 5
         run: pnpm test:integration
       - name: 真实浏览器 E2E（M1 shell）
+        timeout-minutes: 5
         run: pnpm test:e2e
       - name: OpenAPI 契约防漂移
         run: pnpm contract:check
@@ -81,6 +84,7 @@ jobs:
 
   mysql:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       mysql:
         image: mysql:8.4
@@ -117,6 +121,7 @@ jobs:
     # 在线 lane：流程树与 GitHub 双侧一致（只校验；写 GitHub 的唯一入口是 pnpm flow:sync）。
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: read
