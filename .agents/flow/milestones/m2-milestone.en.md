@@ -6,7 +6,7 @@ English | [中文](m2-milestone.md)
 kind: milestone
 id: m2
 title: M2 轨迹数据与归一化
-status: planned
+status: active
 github:
   number: 10
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/10

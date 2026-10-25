@@ -10,7 +10,7 @@ depends:
   - m1-05
   - m1-08
 priority: P1
-status: in-progress
+status: done
 scope:
   - AGENTS.md
   - package.json

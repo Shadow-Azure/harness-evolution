@@ -6,7 +6,7 @@
 kind: milestone
 id: m1
 title: M1 工程骨架与质量门禁
-status: active
+status: done
 github:
   number: 9
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/9
