@@ -1,0 +1,90 @@
+{
+  "title": "m1-05 Vue Shell Smoke Report",
+  "eyebrow": "Computer Use · Integration",
+  "summary": "Vue shell passed the real-browser smoke: the default sessions view connects to FastAPI, the evolution deep link lazy-loads Vue Flow, and the browser console reports no errors or warnings.",
+  "meta": "2026-10-25 · macOS Chrome-compatible IAB · commit 71594a1",
+  "metrics": [
+    { "value": "2/2", "label": "GUI scenarios" },
+    { "value": "0", "label": "Console warnings/errors" },
+    { "value": "3/3", "label": "Automated integration" },
+    { "value": "97.06%", "label": "Frontend line coverage" }
+  ],
+  "facts": [
+    { "label": "Application", "value": "Harness Lens Vue shell" },
+    { "label": "Issue", "value": "#28 m1-05 web shell" },
+    { "label": "Pull request", "value": "#72" },
+    { "label": "Commit", "value": "71594a1" },
+    { "label": "Runtime", "value": "Vite dev server + FastAPI SQLite" }
+  ],
+  "matrix": {
+    "columns": ["#", "Scenario", "Result", "Detail", "Evidence"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Default sessions view",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "/sessions renders the empty-state page and the global health pill reports API connected with SQLite.",
+        "evidence": ["01-home-connected.png"]
+      },
+      {
+        "id": "02",
+        "name": "Evolution deep link and lazy Vue Flow",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Direct navigation to /evolution mounts the skeleton and Vue Flow canvas through the dynamic vendor route.",
+        "evidence": ["02-evolution-lazy.png"]
+      },
+      {
+        "id": "03",
+        "name": "Browser console health",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "The smoke captured no browser errors or warnings during both routes.",
+        "evidence": ["browser-console.json"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "01-home-connected.png",
+      "alt": "Sessions view with API connected",
+      "label": "01 · Sessions",
+      "caption": "Default empty state and connected health pill.",
+      "variant": "wide"
+    },
+    {
+      "src": "02-evolution-lazy.png",
+      "alt": "Evolution view with Vue Flow canvas",
+      "label": "02 · Evolution",
+      "caption": "Deep link mounts the lazy Vue Flow skeleton.",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["Area", "Coverage", "Conclusion", "Recommendation"],
+    "rows": [
+      {
+        "area": "Routing and shell behavior",
+        "coverage": "UT + integration",
+        "conclusion": "Vitest covers default and lazy routes; real proxy integration passes 3/3.",
+        "recommendation": "Keep real-browser smoke for shell milestones."
+      },
+      {
+        "area": "Health failure handling",
+        "coverage": "UT + integration",
+        "conclusion": "Canonical 503 fixtures and database-failure proxy tests cover the shell status.",
+        "recommendation": "Extend browser smoke if authentication changes status visibility."
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "GUI smoke passed",
+    "summary": "No new GUI defect was found; the shell is ready subject to the remaining CI and review gates.",
+    "points": [
+      "Both required views render with the shared contract health state.",
+      "Vue Flow remains on the lazy evolution route.",
+      "Automated integration remains the authority for API failure envelopes."
+    ]
+  },
+  "footer": "Generated from Computer Use evidence; screenshots and console output are unedited runtime captures."
+}
