@@ -19,12 +19,13 @@ import ErrorState from "../components/ui/ErrorState.vue";
 <style scoped>
 .page {
   display: grid;
-  gap: var(--space-md);
-  padding: var(--space-xl) 0;
+  gap: 14px;
+  padding: 8px 0;
 }
 
 a {
   width: max-content;
-  color: var(--brand-accent);
+  color: var(--blue);
+  font-size: 12.5px;
 }
 </style>

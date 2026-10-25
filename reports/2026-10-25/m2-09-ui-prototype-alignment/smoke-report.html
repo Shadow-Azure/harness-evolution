@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>m2-09 原型 UI 对齐集成冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #93</p>
+    <h1>m2-09 原型 UI 对齐集成冒烟</h1>
+    <p class="summary">真实 Chrome、Vite 与 FastAPI 已验证共享壳层从深色开发界面迁移到原型定义的亮色视觉系统。页面背景、顶栏、卡片、品牌、导航激活线、认证页、错误态与 390px 响应式均符合原型和 fullstack-design 的已实现范围。</p>
+    <span class="meta">2026-10-25 · macOS · Chrome · 1408px / 390px</span>
+    <div class="metrics"><div class="metric"><b>12</b><span>检查场景</span></div><div class="metric"><b>12</b><span>通过</span></div><div class="metric"><b>0</b><span>缺陷</span></div><div class="metric"><b>0</b><span>意外控制台消息</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-25 · macOS · Chrome · 1408px / 390px</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#92 · UI prototype alignment</dd></div><div class="fact"><dt>PR</dt><dd>#93</dd></div><div class="fact"><dt>Commit</dt><dd>0db8f8d</dd></div><div class="fact"><dt>Prototype</dt><dd>harness-evolution.html · light-first baseline</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + Chrome</dd></div><div class="fact"><dt>Scope</dt><dd>Shared shell, auth, states, placeholders</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>1 fixed · 1 info · 9 pass · 1 manual</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>暗色 before 基线</td><td><span class="status fixed">FIXED</span></td><td>旧实现使用近黑页面、白色正文、Harness Lens 与胶囊导航；已由亮色原型基线替换。</td><td class="evidence">screenshots/01-before-dark-sessions.jpg<br>screenshots/03-before-dark-evolution.jpg</td></tr><tr><td class="num">02</td><td>原型参考</td><td><span class="status info">REFERENCE</span></td><td>原型以浅灰页面、白色卡片、蓝紫业务色和紧凑数据层级作为最终视觉基准。</td><td class="evidence">screenshots/04-prototype-evolution-list.png<br>screenshots/05-prototype-family-tree.png</td></tr><tr><td class="num">03</td><td>页面与顶栏令牌</td><td><span class="status pass">PASS</span></td><td>body 为 rgb(244,245,247)，topbar 为 rgb(250,251,252) 且高度 56px，内容卡片为纯白。</td><td class="evidence">screenshots/08-after-sessions.png<br>computed style assertions</td></tr><tr><td class="num">04</td><td>品牌与导航</td><td><span class="status pass">PASS</span></td><td>品牌为 Harness Evolution；Sessions/Errors 使用蓝色下划线，Evolution 使用紫色下划线。</td><td class="evidence">screenshots/08-after-sessions.png<br>screenshots/10-after-evolution.png</td></tr><tr><td class="num">05</td><td>登录页</td><td><span class="status pass">PASS</span></td><td>登录页无顶栏，使用浅灰页面与白色认证卡片；品牌、输入和按钮层级符合原型令牌。</td><td class="evidence">screenshots/06-after-login.png</td></tr><tr><td class="num">06</td><td>强制改密页</td><td><span class="status pass">PASS</span></td><td>首登改密页保持亮色认证卡片，无受保护导航，390px 下无横向溢出。</td><td class="evidence">screenshots/07-after-change-password.png<br>real Chrome E2E</td></tr><tr><td class="num">07</td><td>Sessions 空态</td><td><span class="status pass">PASS</span></td><td>白色内容卡、蓝色激活线和真实空态呈现；未伪造 Session 领域数据。</td><td class="evidence">screenshots/08-after-sessions.png</td></tr><tr><td class="num">08</td><td>Errors 与 Evolution 占位</td><td><span class="status pass">PASS</span></td><td>Errors 与 Evolution 使用统一亮色卡片和后续 milestone 文案；Evolution 激活线为紫色。</td><td class="evidence">screenshots/09-after-errors.png<br>screenshots/10-after-evolution.png</td></tr><tr><td class="num">09</td><td>390px 响应式与 demo</td><td><span class="status pass">PASS</span></td><td>390px 下 scrollWidth=clientWidth=390；演示数据橙色文字可读，品牌链接仍有无障碍名称。</td><td class="evidence">screenshots/11-after-evolution-390.png<br>computed style assertions</td></tr><tr><td class="num">10</td><td>404 亮色错误态</td><td><span class="status pass">PASS</span></td><td>404 展示浅红错误卡片、红色左边框和可读正文，壳层与导航保持可用。</td><td class="evidence">screenshots/12-after-404.png</td></tr><tr><td class="num">11</td><td>浏览器控制台</td><td><span class="status pass">PASS</span></td><td>正常登录、强制改密和三入口导航期间未捕获 warning/error。</td><td class="evidence">Chrome dev logs count=0</td></tr><tr><td class="num">12</td><td>领域页面边界</td><td><span class="status manual">OUT OF SCOPE</span></td><td>真实 Session、问题详情与自进化运行页仍由后续 milestone 交付；本报告不把占位内容冒充已完成领域页面。</td><td class="evidence">Issue #92 non-goals<br>fixture/domain smoke reports</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>7 screenshots</small></div>
+    <div class="shots"><figure class="issue"><img loading="lazy" src="screenshots/01-before-dark-sessions.jpg" alt="旧深色 Sessions 页面"><figcaption><b>Before · 深色壳层</b><span>旧实现使用 Harness Lens、近黑背景、白色正文和胶囊导航。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-prototype-evolution-list.png" alt="原型亮色自进化页面"><figcaption><b>Prototype · 自进化</b><span>原型以浅灰页面、白色卡片、蓝色主操作和紫色自进化语义构成视觉基线。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-after-login.png" alt="亮色登录页"><figcaption><b>After · 登录</b><span>登录页使用原型亮色令牌和白色认证卡片。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-after-sessions.png" alt="亮色 Sessions 页面"><figcaption><b>After · Sessions</b><span>56px 顶栏、Harness Evolution 品牌、蓝色下划线导航与白色空态卡片。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/10-after-evolution.png" alt="亮色 Evolution 页面"><figcaption><b>After · Evolution</b><span>Evolution 激活态使用原型定义的紫色下划线。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/11-after-evolution-390.png" alt="390px Evolution 页面"><figcaption><b>After · 390px</b><span>窄视口无横向溢出，演示数据角标保持可读。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/12-after-404.png" alt="亮色 404 错误态"><figcaption><b>After · 404</b><span>404 使用浅红错误面和红色强调边，导航仍可操作。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>共享壳层</td><td>Computer Use + computed style</td><td>页面、顶栏、卡片、品牌、导航和 390px 视觉令牌通过。</td><td>后续领域页面必须复用同一原型令牌和组件语言。</td></tr><tr><td>认证页面</td><td>Computer Use + 真实 Chrome E2E</td><td>登录和强制改密在 1408px/390px 下使用亮色白卡且无横向溢出。</td><td>保留认证页无 TopNav 的布局边界。</td></tr><tr><td>三态与 404</td><td>组件测试 + 真实 Chrome</td><td>Loading/Empty/Error/404 使用统一亮色表面和语义色。</td><td>后续页面直接复用共享状态组件。</td></tr><tr><td>领域页面</td><td>不在本 issue 范围</td><td>Session 浏览、问题详情与自进化运行数据由后续 milestone 实现。</td><td>用对应原型章节和截图验收，不在本阶段伪造内容。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>当前已实现的共享 UI 已从错误的深色开发工具风格恢复为原型定义的亮色视觉系统，未发现需要阻断合入的视觉或交互缺陷。</strong></p><ul><li>原型令牌、56px 顶栏、品牌和导航激活语义已落地。</li><li>登录、强制改密、共享三态和三个占位页均使用亮色基线。</li><li>真实领域页面仍等待各自 milestone，不在本 issue 中伪造。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：Computer Use 截图、原型稳定截图、computed style、Chrome 控制台与自动化 E2E。生成 HTML 不应手改。</p>
+</main>
+</body>
+</html>

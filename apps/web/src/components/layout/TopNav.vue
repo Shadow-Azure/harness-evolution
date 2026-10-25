@@ -23,26 +23,47 @@ function logout() {
 <template>
   <header class="topbar">
     <RouterLink
+      aria-label="Harness Evolution"
       class="brand"
       to="/sessions"
     >
-      <span class="brand-mark">HL</span>
+      <span
+        class="brand-mark"
+        aria-hidden="true"
+      />
       <span class="brand-copy">
-        <strong>Harness Lens</strong>
-        <small>Vue shell</small>
+        <strong>Harness Evolution</strong>
+        <small>轨迹诊断与自进化</small>
       </span>
     </RouterLink>
-    <nav aria-label="Primary">
-      <RouterLink to="/sessions">
+
+    <nav
+      class="primary-nav"
+      aria-label="Primary"
+    >
+      <RouterLink
+        id="tn-sessions"
+        class="tn-item"
+        to="/sessions"
+      >
         Sessions
       </RouterLink>
-      <RouterLink to="/errors">
+      <RouterLink
+        id="tn-errors"
+        class="tn-item"
+        to="/errors"
+      >
         Errors
       </RouterLink>
-      <RouterLink to="/evolution">
+      <RouterLink
+        id="tn-evo"
+        class="tn-item"
+        to="/evolution"
+      >
         Evolution
       </RouterLink>
     </nav>
+
     <div class="actions">
       <span
         v-if="props.demo"
@@ -74,87 +95,114 @@ function logout() {
 
 <style scoped>
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 350;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
   height: var(--shell-header-height);
-  padding: 0 var(--space-lg);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
 }
 
 .brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  color: var(--text-primary);
+  gap: 9px;
+  margin-right: 26px;
+  color: var(--text);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-md);
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 7px;
   background: var(--brand-gradient);
-  color: var(--surface-base);
-  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-mark);
 }
 
 .brand-copy {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.brand-copy strong {
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
 .brand-copy small {
-  color: var(--text-muted);
+  color: var(--text-faint);
+  font-size: 10px;
 }
 
-nav {
+.primary-nav {
   display: flex;
-  gap: var(--space-xs);
+  align-items: stretch;
 }
 
-nav a {
-  padding: 7px 11px;
-  border-radius: var(--radius-pill);
-  color: var(--text-muted);
+.tn-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: -1px;
+  padding: 0 18px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
   text-decoration: none;
 }
 
-nav a.router-link-active {
-  color: var(--text-primary);
-  background: var(--surface-selected);
+.tn-item:hover {
+  color: var(--text);
+}
+
+.tn-item.router-link-active {
+  color: var(--text);
+  border-bottom-color: var(--blue);
+}
+
+.tn-item#tn-evo.router-link-active {
+  border-bottom-color: var(--purple);
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 10px;
   min-width: 0;
+  margin-left: auto;
 }
 
 .demo-badge {
-  padding: 5px 9px;
-  border: 1px solid var(--state-success-border);
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
   border-radius: var(--radius-pill);
-  background: var(--state-success-surface);
-  color: var(--state-success-text);
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  color: var(--orange);
   font-size: 11px;
-  font-weight: var(--weight-bold);
   white-space: nowrap;
 }
 
 .user-menu {
   position: relative;
-  margin-left: var(--space-md);
 }
 
 .user-menu summary {
-  color: var(--text-secondary);
+  max-width: 144px;
+  overflow: hidden;
+  color: var(--text-dim);
   cursor: pointer;
   list-style: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-menu summary::-webkit-details-marker {
@@ -163,36 +211,36 @@ nav a.router-link-active {
 
 .user-popover {
   position: absolute;
-  top: calc(100% + var(--space-xs));
+  top: calc(100% + 10px);
   right: 0;
   min-width: 160px;
-  padding: var(--space-sm);
-  border: 1px solid var(--border-subtle);
+  padding: 10px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  box-shadow: var(--shadow-card);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-popover);
 }
 
 .user-popover span {
   display: block;
-  margin-bottom: var(--space-xs);
-  color: var(--text-muted);
-  font-size: 12px;
+  margin-bottom: 8px;
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 .user-popover button {
   width: 100%;
-  padding: 7px 11px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  background: var(--surface-overlay);
-  color: var(--text-muted);
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-dim);
   cursor: pointer;
 }
 
 .user-popover button:hover {
-  color: var(--text-primary);
   border-color: var(--border-strong);
+  color: var(--text);
 }
 
 @media (max-width: 1100px) {
@@ -203,42 +251,34 @@ nav a.router-link-active {
 
 @media (max-width: 640px) {
   .topbar {
-    gap: var(--space-xs);
-    padding: 0 var(--space-md);
+    padding-inline: 12px;
+  }
+
+  .brand {
+    gap: 0;
+    margin-right: 10px;
   }
 
   .brand-copy {
     display: none;
   }
 
-  nav {
-    gap: 0;
-  }
-
-  nav a {
-    padding-inline: 8px;
-  }
-
-  .user-menu {
-    min-width: 0;
-    margin-left: 0;
+  .tn-item {
+    padding-inline: 7px;
+    font-size: 12.5px;
   }
 
   .actions {
-    gap: var(--space-xs);
+    gap: 5px;
   }
 
   .demo-badge {
-    padding-inline: 6px;
+    padding: 1px 5px;
     font-size: 10px;
   }
 
   .user-menu summary {
-    display: block;
-    max-width: 72px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-width: 48px;
   }
 }
 </style>
