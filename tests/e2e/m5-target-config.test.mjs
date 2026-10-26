@@ -426,6 +426,8 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         const body = root.querySelector(".target-dialog-body");
         const foot = root.querySelector(".target-dialog-foot");
         const title = root.querySelector(".target-dialog-head .el-dialog__title");
+        const overlay = document.querySelector(".el-overlay");
+        const overlayRect = overlay.getBoundingClientRect();
         const bodyStyle = getComputedStyle(body);
         const titleStyle = getComputedStyle(title);
         return {
@@ -440,6 +442,13 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
           titleFontSize: titleStyle.fontSize,
           titleFontWeight: titleStyle.fontWeight,
           viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+          overlay: {
+            left: overlayRect.left,
+            top: overlayRect.top,
+            right: overlayRect.right,
+            bottom: overlayRect.bottom,
+          },
           hasBodyForm: Boolean(body.querySelector("form")),
           hasFootActions: Boolean(foot.querySelector(".form-actions")),
         };
@@ -458,6 +467,22 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     assert.equal(dialogLayout.footBackground, "rgb(250, 251, 252)");
     assert.equal(dialogLayout.titleFontSize, "15px");
     assert.equal(dialogLayout.titleFontWeight, "700");
+    assert.ok(
+      Math.abs(dialogLayout.overlay.left) <= 1,
+      JSON.stringify(dialogLayout),
+    );
+    assert.ok(
+      Math.abs(dialogLayout.overlay.top) <= 1,
+      JSON.stringify(dialogLayout),
+    );
+    assert.ok(
+      Math.abs(dialogLayout.overlay.right - dialogLayout.viewportWidth) <= 1,
+      JSON.stringify(dialogLayout),
+    );
+    assert.ok(
+      Math.abs(dialogLayout.overlay.bottom - dialogLayout.viewportHeight) <= 1,
+      JSON.stringify(dialogLayout),
+    );
     assert.equal(dialogLayout.hasBodyForm, true);
     assert.equal(dialogLayout.hasFootActions, true);
     await fillTargetForm(page, {

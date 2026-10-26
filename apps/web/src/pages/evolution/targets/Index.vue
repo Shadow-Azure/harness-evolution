@@ -187,14 +187,13 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
 <style scoped>
 .target-config-page {
   position: relative;
-  left: 50%;
   display: grid;
-  width: min(1080px, 100vw);
+  left: max(-24px, calc(50% - 540px));
+  width: min(1080px, calc(100% + 48px));
   min-width: 0;
   margin: 0;
   gap: 16px;
   padding: 0 24px;
-  transform: translateX(-50%);
 }
 
 .page-intro {
@@ -236,6 +235,8 @@ h1 {
 
 @media (max-width: 640px) {
   .target-config-page {
+    left: -12px;
+    width: calc(100% + 24px);
     padding: 8px 24px 0;
   }
 }
