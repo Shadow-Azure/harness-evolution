@@ -30,6 +30,11 @@ from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
+from app.db.crud.evolution_targets import (
+    EvolutionTargetConflict,
+    EvolutionTargetRepository,
+    ModelUsageRecord,
+)
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
@@ -135,6 +140,7 @@ class EvolutionTableSchema(TypedDict):
     columns: dict[str, Mapping[str, object]]
     indexes: set[str]
     foreign_keys: set[tuple[tuple[str, ...], str]]
+    foreign_key_rules: set[tuple[tuple[str, ...], str, str | None]]
 
 
 async def reflected_evolution_schema(
@@ -159,6 +165,17 @@ async def reflected_evolution_schema(
                         (
                             tuple(str(column) for column in foreign_key["constrained_columns"]),
                             str(foreign_key["referred_table"]),
+                        )
+                        for foreign_key in inspect(sync_connection).get_foreign_keys(table)
+                    },
+                    "foreign_key_rules": {
+                        (
+                            tuple(str(column) for column in foreign_key["constrained_columns"]),
+                            str(foreign_key["referred_table"]),
+                            cast(
+                                str | None,
+                                foreign_key.get("options", {}).get("ondelete"),
+                            ),
                         )
                         for foreign_key in inspect(sync_connection).get_foreign_keys(table)
                     },
@@ -187,6 +204,12 @@ def assert_evolution_schema(schema: dict[str, EvolutionTableSchema]) -> None:
         ("target_config_id",),
         "evolution_targets",
     ) in schema["evolution_runs"]["foreign_keys"]
+    assert schema["evolution_runs"]["columns"]["target_config_id"]["nullable"] is True
+    assert (
+        ("target_config_id",),
+        "evolution_targets",
+        "SET NULL",
+    ) in schema["evolution_runs"]["foreign_key_rules"]
     assert schema["probe_clusters"]["columns"]["impact"]["nullable"] is True
     assert {
         "ix_probe_clusters_run",
@@ -449,7 +472,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0006"
+        assert result.scalar_one() == "0007"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -706,7 +729,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0006"
+        assert result.scalar_one() == "0007"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -1566,6 +1589,276 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"
+    finally:
+        try:
+            await cleanup()
+        finally:
+            await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_evolution_target_repository_contract() -> None:
+    """Target CRUD, conflicts, active-run checks, and model aggregation use MySQL."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url)
+    database = MySqlDatabase(settings)
+    await database.start()
+    await upgrade_database(database)
+    repository = EvolutionTargetRepository(database)
+    now = datetime(2026, 10, 27, 2, 4, 5, tzinfo=UTC)
+    target_ids = (
+        "mysql-m5-target-disabled",
+        "mysql-m5-target-agent",
+        "mysql-m5-target-skill",
+        "mysql-m5-target-terminal",
+    )
+    run_ids = tuple(
+        f"mysql-m5-target-run-{status}"
+        for status in (
+            "preparing",
+            "running",
+            "blocked",
+            "completed",
+        )
+    )
+    session_ids = ("mysql-m5-catalog-s1", "mysql-m5-catalog-s2")
+    source_ids = (990_001, 990_002)
+    agent_ids = tuple(f"mysql-m5-catalog-a{index}" for index in range(1, 7))
+
+    async def cleanup() -> None:
+        async with database.transaction() as session:
+            await session.execute(
+                delete(evolution_runs).where(evolution_runs.c.id.in_(run_ids)),
+            )
+            await session.execute(
+                delete(agents).where(agents.c.id.in_(agent_ids)),
+            )
+            await session.execute(
+                delete(session_families).where(
+                    session_families.c.id.in_(session_ids),
+                ),
+            )
+            await session.execute(
+                delete(source_records).where(
+                    source_records.c.id.in_(source_ids),
+                ),
+            )
+            await session.execute(
+                delete(evolution_targets).where(
+                    evolution_targets.c.id.in_(target_ids),
+                ),
+            )
+
+    try:
+        await cleanup()
+        disabled = await repository.insert(
+            {
+                "object_type": "skill",
+                "object_name": "z-disabled",
+                "repo_url": "https://git.example.com/z-disabled.git",
+                "sub_dir": "skills/z-disabled",
+                "default_ref": "main",
+                "enabled": False,
+            },
+        )
+        agent_target = await repository.insert(
+            {
+                "object_type": "agent",
+                "object_name": "b-agent",
+                "repo_url": "ssh://git@git.example.com/b-agent.git",
+                "sub_dir": "agents/b-agent",
+                "default_ref": "main",
+                "enabled": True,
+            },
+        )
+        skill_target = await repository.insert(
+            {
+                "object_type": "skill",
+                "object_name": "a-skill",
+                "repo_url": "git@git.example.com:a-skill.git",
+                "sub_dir": "skills/a-skill",
+                "default_ref": "main",
+                "enabled": True,
+            },
+        )
+        terminal_target = await repository.insert(
+            {
+                "object_type": "skill",
+                "object_name": "terminal",
+                "repo_url": "https://git.example.com/terminal.git",
+                "sub_dir": "skills/terminal",
+                "default_ref": "main",
+                "enabled": True,
+            },
+        )
+
+        assert [target.id for target in await repository.list()] == [
+            agent_target.id,
+            skill_target.id,
+            terminal_target.id,
+            disabled.id,
+        ]
+        assert [target.id for target in await repository.list(enabled_only=True)] == [
+            agent_target.id,
+            skill_target.id,
+            terminal_target.id,
+        ]
+        assert await repository.find("skill", "a-skill") == skill_target
+
+        with pytest.raises(EvolutionTargetConflict):
+            await repository.insert(
+                {
+                    "object_type": "skill",
+                    "object_name": "a-skill",
+                    "repo_url": "https://git.example.com/duplicate.git",
+                    "sub_dir": "skills/duplicate",
+                    "default_ref": "main",
+                    "enabled": True,
+                },
+            )
+
+        updated = await repository.update(
+            skill_target.id,
+            {
+                "object_type": "skill",
+                "object_name": "renamed-skill",
+                "repo_url": "https://git.example.com/renamed.git",
+                "sub_dir": "skills/renamed",
+                "default_ref": "v2",
+                "enabled": False,
+            },
+        )
+        assert updated.object_name == "renamed-skill"
+        assert updated.enabled is False
+        with pytest.raises(LookupError):
+            await repository.update(
+                "mysql-m5-target-missing",
+                {
+                    "object_type": "skill",
+                    "object_name": "missing",
+                    "repo_url": "https://git.example.com/missing.git",
+                    "sub_dir": "skills/missing",
+                    "default_ref": "main",
+                    "enabled": True,
+                },
+            )
+
+        async with database.transaction() as session:
+            for run_id, status in zip(
+                run_ids,
+                ("preparing", "running", "blocked", "completed"),
+                strict=True,
+            ):
+                target = terminal_target if status == "completed" else skill_target
+                await session.execute(
+                    insert(evolution_runs).values(
+                        id=run_id,
+                        title="target contract run",
+                        mode="full",
+                        engine_key="full",
+                        eval_config={},
+                        target_config_id=target.id,
+                        target_type="skill",
+                        target_name=target.object_name,
+                        target_version="main",
+                        repo_url=target.repo_url,
+                        sub_dir=target.sub_dir,
+                        remote_name="origin",
+                        push_status="pending",
+                        models=[],
+                        status=status,
+                        retry_attempts=0,
+                        eval_status="pending",
+                        progress_unit=0,
+                        stats={},
+                        created_at=now,
+                    ),
+                )
+
+        assert await repository.has_active_runs(skill_target.id) is True
+        assert await repository.has_active_runs(terminal_target.id) is False
+        assert await repository.delete(disabled.id) is True
+        assert await repository.delete(disabled.id) is False
+
+        async with database.transaction() as session:
+            for source_id, session_id in zip(source_ids, session_ids, strict=True):
+                await session.execute(
+                    insert(source_records).values(
+                        id=source_id,
+                        root_session_id=session_id,
+                        agent_id=f"{session_id}-main",
+                        kind="main",
+                        source_type="jsonl",
+                        line_count=1,
+                        received_at=now,
+                    ),
+                )
+                await session.execute(
+                    insert(session_families).values(
+                        id=session_id,
+                        short_title=session_id,
+                        title=session_id,
+                        search_text=session_id,
+                        repo_name="repo",
+                        project_path="/repo",
+                        models=[],
+                        started_at=now,
+                        ended_at=now,
+                        duration_seconds=0,
+                        status="ok",
+                        skill_names=[],
+                        user_turns_count=0,
+                        messages_count=1,
+                        tools_count=0,
+                        errors_count=0,
+                        agents_count=0,
+                        tokens_total=0,
+                        source_type="jsonl",
+                        main_record_id=source_id,
+                        imported_at=now,
+                        updated_at=now,
+                    ),
+                )
+            for index, (session_id, model) in enumerate(
+                [
+                    (session_ids[0], "mysql-m5-model"),
+                    (session_ids[0], "mysql-m5-model"),
+                    (session_ids[1], "mysql-m5-model"),
+                    (session_ids[0], "mysql-m5-model-flash"),
+                    (session_ids[0], None),
+                    (session_ids[1], "   "),
+                ],
+                start=1,
+            ):
+                await session.execute(
+                    insert(agents).values(
+                        id=agent_ids[index - 1],
+                        root_session_id=session_id,
+                        parent_agent_id=None,
+                        kind="main" if index == 1 else "subagent",
+                        model=model,
+                        spawn_depth=0,
+                        lines=1,
+                        messages_count=1,
+                        tokens_total=0,
+                        tools_count=0,
+                        errors_count=0,
+                        sort_key=float(index),
+                    ),
+                )
+
+        assert [
+            record
+            for record in await repository.list_models()
+            if record.model.startswith("mysql-m5-model")
+        ] == [
+            ModelUsageRecord(model="mysql-m5-model", session_count=2, agent_count=3),
+            ModelUsageRecord(model="mysql-m5-model-flash", session_count=1, agent_count=1),
+        ]
     finally:
         try:
             await cleanup()

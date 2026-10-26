@@ -137,6 +137,11 @@ async def test_evolution_schema_is_complete_and_indexed(
         "evolution_targets",
         ("id",),
     ) in reflected["evolution_runs"]["foreign_keys"]
+    assert reflected["evolution_runs"]["nullable"]["target_config_id"] is True
+    assert (
+        reflected["evolution_runs"]["foreign_key_options"]["fk_evolution_runs_target_config"]
+        == "SET NULL"
+    )
     assert (
         ("created_by",),
         "users",

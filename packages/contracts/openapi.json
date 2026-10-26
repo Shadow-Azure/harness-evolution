@@ -290,6 +290,118 @@
         "title": "BadCaseListResponse",
         "type": "object"
       },
+      "CatalogModel": {
+        "additionalProperties": false,
+        "description": "One normalized model and its usage across the trace corpus.",
+        "properties": {
+          "agentCount": {
+            "title": "Agentcount",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "sessionCount": {
+            "title": "Sessioncount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "sessionCount",
+          "agentCount"
+        ],
+        "title": "CatalogModel",
+        "type": "object"
+      },
+      "CatalogModels": {
+        "additionalProperties": false,
+        "description": "The complete model catalog.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogModel"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogModels",
+        "type": "object"
+      },
+      "CatalogTarget": {
+        "additionalProperties": false,
+        "description": "One enabled evolution target and its remote versions.",
+        "properties": {
+          "defaultRef": {
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repoUrl": {
+            "title": "Repourl",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "repoUrl",
+          "subDir",
+          "defaultRef",
+          "versions"
+        ],
+        "title": "CatalogTarget",
+        "type": "object"
+      },
+      "CatalogTargets": {
+        "additionalProperties": false,
+        "description": "Enabled targets grouped by the kind selectable in the wizard.",
+        "properties": {
+          "agent": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTarget"
+            },
+            "title": "Agent",
+            "type": "array"
+          },
+          "skill": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTarget"
+            },
+            "title": "Skill",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skill",
+          "agent"
+        ],
+        "title": "CatalogTargets",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "additionalProperties": false,
         "description": "Owner-supplied current and replacement passwords.",
@@ -440,6 +552,10 @@
           "PROBE_NOT_FOUND",
           "JOB_NOT_FOUND",
           "RUN_BUSY",
+          "REPO_INVALID",
+          "TARGET_EXISTS",
+          "TARGET_NOT_FOUND",
+          "TARGET_IN_USE",
           "INTERNAL",
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
@@ -493,6 +609,148 @@
           "topics"
         ],
         "title": "EventTicketResponse",
+        "type": "object"
+      },
+      "EvolutionTarget": {
+        "additionalProperties": false,
+        "description": "Persisted target returned to clients.",
+        "properties": {
+          "defaultRef": {
+            "maxLength": 128,
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "repoUrl": {
+            "maxLength": 1024,
+            "title": "Repourl",
+            "type": "string"
+          },
+          "subDir": {
+            "maxLength": 512,
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "repoUrl",
+          "subDir",
+          "defaultRef",
+          "id"
+        ],
+        "title": "EvolutionTarget",
+        "type": "object"
+      },
+      "EvolutionTargetList": {
+        "additionalProperties": false,
+        "description": "Complete target configuration collection.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionTarget"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EvolutionTargetList",
+        "type": "object"
+      },
+      "EvolutionTargetVersions": {
+        "additionalProperties": false,
+        "description": "Remote tags and the persisted default reference.",
+        "properties": {
+          "defaultRef": {
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions",
+          "defaultRef"
+        ],
+        "title": "EvolutionTargetVersions",
+        "type": "object"
+      },
+      "EvolutionTargetWrite": {
+        "additionalProperties": false,
+        "description": "Mutable target configuration accepted by create and update.",
+        "properties": {
+          "defaultRef": {
+            "maxLength": 128,
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "repoUrl": {
+            "maxLength": 1024,
+            "title": "Repourl",
+            "type": "string"
+          },
+          "subDir": {
+            "maxLength": 512,
+            "title": "Subdir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName",
+          "repoUrl",
+          "subDir",
+          "defaultRef"
+        ],
+        "title": "EvolutionTargetWrite",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2477,6 +2735,110 @@
         ]
       }
     },
+    "/api/catalogs/models": {
+      "get": {
+        "description": "Return normalized model usage from the Agent table.",
+        "operationId": "get_model_catalog_api_catalogs_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogModels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Model Catalog",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
+    "/api/catalogs/targets": {
+      "get": {
+        "description": "Return enabled evolution targets and their remote versions.",
+        "operationId": "get_target_catalog_api_catalogs_targets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogTargets"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Configured remote is unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Target Catalog",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "Consume a one-time ticket and stream replay plus live run notifications.",
@@ -2657,6 +3019,389 @@
         "summary": "Issue Ticket",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/evolution/targets": {
+      "get": {
+        "description": "Return every configured target, including disabled rows.",
+        "operationId": "list_targets_api_evolution_targets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionTargetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Targets",
+        "tags": [
+          "evolution-targets"
+        ]
+      },
+      "post": {
+        "description": "Validate and create one administrator-managed target.",
+        "operationId": "create_target_api_evolution_targets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvolutionTargetWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionTarget"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator role is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object pair already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target or remote is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Target",
+        "tags": [
+          "evolution-targets"
+        ]
+      }
+    },
+    "/api/evolution/targets/{targetId}": {
+      "delete": {
+        "description": "Delete one unused target.",
+        "operationId": "delete_target_api_evolution_targets__targetId__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator role is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target has an active run"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target id is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Target",
+        "tags": [
+          "evolution-targets"
+        ]
+      },
+      "put": {
+        "description": "Replace one target's editable fields after remote validation.",
+        "operationId": "update_target_api_evolution_targets__targetId__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvolutionTargetWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionTarget"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator role is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Object pair already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target or remote is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update Target",
+        "tags": [
+          "evolution-targets"
+        ]
+      }
+    },
+    "/api/evolution/targets/{targetId}/versions": {
+      "get": {
+        "description": "Return sorted tags and the target's default reference.",
+        "operationId": "list_target_versions_api_evolution_targets__targetId__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionTargetVersions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Remote is unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Target Versions",
+        "tags": [
+          "evolution-targets"
         ]
       }
     },

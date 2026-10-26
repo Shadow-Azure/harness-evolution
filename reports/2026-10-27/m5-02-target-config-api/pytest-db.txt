@@ -1,0 +1,6 @@
+
+> harness-evolution@0.1.0 test:db <repo>
+> node scripts/run-api.mjs db
+
+.................                                                        [100%]
+17 passed, 9 deselected in 1.16s

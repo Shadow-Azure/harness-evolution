@@ -51,6 +51,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/acquisition/status",
         "/api/acquisition/sync",
         "/api/acquisition/pull",
+        "/api/evolution/targets",
+        "/api/evolution/targets/{targetId}",
+        "/api/evolution/targets/{targetId}/versions",
+        "/api/catalogs/targets",
+        "/api/catalogs/models",
     }
     assert {
         "HealthResponse",
@@ -82,6 +87,14 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "AcquisitionStatusResponse",
         "SyncStatusError",
         "SyncTriggerResponse",
+        "EvolutionTarget",
+        "EvolutionTargetWrite",
+        "EvolutionTargetList",
+        "EvolutionTargetVersions",
+        "CatalogTarget",
+        "CatalogTargets",
+        "CatalogModel",
+        "CatalogModels",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -115,6 +128,13 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/probes/{probeId}", "get"),
         ("/api/acquisition/status", "get"),
         ("/api/acquisition/sync", "post"),
+        ("/api/evolution/targets", "get"),
+        ("/api/evolution/targets", "post"),
+        ("/api/evolution/targets/{targetId}", "put"),
+        ("/api/evolution/targets/{targetId}", "delete"),
+        ("/api/evolution/targets/{targetId}/versions", "get"),
+        ("/api/catalogs/targets", "get"),
+        ("/api/catalogs/models", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -141,6 +161,37 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         assert validation["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/ErrorResponse"
         }
+    target_collection = paths["/api/evolution/targets"]
+    assert target_collection["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/EvolutionTargetList"}
+    assert target_collection["post"]["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/EvolutionTargetWrite"
+    }
+    assert target_collection["post"]["responses"]["201"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/EvolutionTarget"}
+    target_item = paths["/api/evolution/targets/{targetId}"]
+    assert target_item["put"]["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/EvolutionTarget"
+    }
+    assert set(target_item["delete"]["responses"]) >= {
+        "204",
+        "401",
+        "403",
+        "404",
+        "409",
+        "422",
+    }
+    assert paths["/api/evolution/targets/{targetId}/versions"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"] == {"$ref": "#/components/schemas/EvolutionTargetVersions"}
+    assert paths["/api/catalogs/targets"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CatalogTargets"}
+    assert paths["/api/catalogs/models"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CatalogModels"}
     case_parameters = paths["/api/bad-cases/{badCaseId}"]["get"]["parameters"]
     analysis_parameters = paths["/api/bad-cases/{badCaseId}/analysis"]["get"]["parameters"]
     assert {parameter["name"] for parameter in case_parameters} == {

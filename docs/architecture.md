@@ -42,7 +42,7 @@ lifespan 顺序为恢复任务、采纳锁、启动调度；手动与定时共�
 - `Database` 统一连接、只读 session、写事务和 health。
 - Alembic 维护双方言迁移树；业务只依赖 `db/crud/` 与 `Database`，不拼 SQL。
 - `job_runs` 是任务真值；串行 worker 写 run 事件，事件总线只做有界通知。
-- 自进化状态由 `progress_unit` 驱动，`EngineFactory` 按 `engine_key` 选型。
+- 自进化：`progress_unit`/`EngineFactory`、admin target 写入、git ref/tag、`agents.model` 目录。
 - `sync_lock` 是单飞真值，默认 TTL 30 分钟；job 与锁同事务创建，terminal hook 先终结异常 `sync_runs` 再释放匹配锁。
 - 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
 - 上游使用版本化 outbound contract；pull 以 `http_api` 先写 payload 再共享重放。CI 只用 mock。
@@ -64,6 +64,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、会话查询、问题与归因 API、错误详情页面、sync 调度与状态、上游 mock 契约与 pull、外部问题读模型、亮色壳、fixtures、数据链、E2E/门禁。
-- 未具备：自进化 HTTP/UI、目标配置、patch/评测、run 授权、用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、问题/归因 API、错误详情、sync 调度、上游 pull、外部问题读模型、目标配置/目录 API、fixtures、数据链、E2E/门禁。
+- 未具备：自进化 run HTTP/UI、patch/评测、run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

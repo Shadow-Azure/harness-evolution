@@ -1,0 +1,154 @@
+{
+  "lang": "zh-CN",
+  "title": "M5-02 Target Config API 集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #124",
+  "summary": "在真实 SQLite 迁移、ASGI HTTP、target repository、catalog 聚合和本地 bare git 仓库上验证 M5-02。target 写权限、URL/path/ref 校验、非交互 git 子进程、历史 run 生命周期、catalog 并发限制和契约均通过；本切片没有 GUI，因此原生 Computer Use 明确不适用。",
+  "meta": "2026-10-27 · macOS · SQLite + ASGI + local bare git + MySQL 8.4 CI",
+  "metrics": [
+    { "value": "11", "label": "冒烟场景" },
+    { "value": "10", "label": "通过" },
+    { "value": "1", "label": "不适用（无 GUI）" },
+    { "value": "53", "label": "M5-02 测试" },
+    { "value": "3/3", "label": "CI jobs" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#51 · m5-02 target config api" },
+    { "label": "PR", "value": "#124" },
+    { "label": "Validation head", "value": "93034ba" },
+    { "label": "Branch", "value": "codex/m5-02-target-config-api" },
+    { "label": "Database", "value": "Temporary SQLite + MySQL 8.4 CI" },
+    { "label": "M5-02 suite", "value": "53 passed" },
+    { "label": "CI run", "value": "40388647189 · all three jobs SUCCESS" },
+    { "label": "Native Computer Use", "value": "Not applicable: no frontend or GUI surface in this slice" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Target CRUD + camelCase",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 ASGI + SQLite 完成 create/list/update/delete；201/200/204 与 camelCase 字段符合契约。",
+        "evidence": ["pytest-m5.txt", "test_targets_api.py"]
+      },
+      {
+        "id": "02",
+        "name": "方法级权限",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "GET 允许 admin/member；POST/PUT/DELETE 对 member 返回 403；既有 users/acquisition 权限回归通过。",
+        "evidence": ["pytest-m5.txt", "test_auth_scope.py"]
+      },
+      {
+        "id": "03",
+        "name": "URL / subDir / ref 校验",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "HTTPS/SSH/SCP 受控接受；userinfo、token/query、畸形 IPv6/port、非法 ref 与路径穿越稳定返回 422 REPO_INVALID。",
+        "evidence": ["pytest-m5.txt", "test_targets_api.py"]
+      },
+      {
+        "id": "04",
+        "name": "真实 git 进程",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "对本地 bare repo 执行真实非交互 git ls-remote，main 可解析且 tags 规范化为 v1.9.0/v2.0.0。",
+        "evidence": ["git-smoke.json", "collect-git-smoke.mjs"]
+      },
+      {
+        "id": "05",
+        "name": "超时进程组清理",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "git 使用 DEVNULL stdin、关闭终端 prompt、独立 POSIX session；超时取消时 killpg 并 wait 回收。",
+        "evidence": ["pytest-m5.txt", "test_targets_api.py"]
+      },
+      {
+        "id": "06",
+        "name": "Target 生命周期",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "active run 在同一事务内阻止删除并返回 409；terminal run 允许删除配置，target_config_id 置空且 run 快照保留。",
+        "evidence": ["pytest-m5.txt", "test_database.py", "migration 0007"]
+      },
+      {
+        "id": "07",
+        "name": "Versions",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "versions 返回去重排序 tags 和 defaultRef；远端错误收敛为脱敏 422。",
+        "evidence": ["pytest-m5.txt", "test_targets_api.py"]
+      },
+      {
+        "id": "08",
+        "name": "Enabled target catalog",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "配置列表保留 disabled；catalog 仅返回 enabled，按 skill/agent 分组，多个 enabled target 保序且远端并发不超过 4。",
+        "evidence": ["pytest-m5.txt", "test_catalogs_api.py"]
+      },
+      {
+        "id": "09",
+        "name": "Model catalog",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 agents 行聚合 distinct session/agent 计数，忽略 null/blank，按 session、agent、model 稳定排序。",
+        "evidence": ["pytest-m5.txt", "test_catalogs_api.py", "test_database.py"]
+      },
+      {
+        "id": "10",
+        "name": "OpenAPI / SQLite / MySQL",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "生成契约 current；SQLite 数据库 lane 17 passed；CI MySQL 8.4 执行 migration、schema/FK、repository 和 lifecycle contract。",
+        "evidence": ["contract-check.txt", "pytest-db.txt", "ci-summary.json"]
+      },
+      {
+        "id": "11",
+        "name": "原生 Computer Use",
+        "status": { "kind": "manual", "label": "N/A" },
+        "detail": "M5-02 只新增后端 API 和契约，没有前端路由、页面或可交互桌面表面；不生成伪造截图。",
+        "evidence": ["后端-only issue 边界", "ASGI + real git + CI 证据"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "Target API / auth",
+        "coverage": "真实 SQLite ASGI E2E + component tests",
+        "conclusion": "CRUD、方法级权限、错误 envelope 和稳定状态码已验证。",
+        "recommendation": "M5-03 配置页继续复用这些 API/错误契约。"
+      },
+      {
+        "area": "Remote validation / process safety",
+        "coverage": "Service tests + local bare git + fake process timeout",
+        "conclusion": "URL/path/ref 校验、argv-only、非交互和进程组回收均有证据。",
+        "recommendation": "真实外部 SSH 远端仍属于部署联调，不放入普通 CI。"
+      },
+      {
+        "area": "Lifecycle / persistence",
+        "coverage": "SQLite + MySQL CI + migration reflection",
+        "conclusion": "历史 run 快照与 target 删除、active-run 原子守卫和双库行为已验证。",
+        "recommendation": "后续 run 创建必须继续使用 target 快照。"
+      },
+      {
+        "area": "Catalogs",
+        "coverage": "Real normalized agents + concurrent GitRemote double",
+        "conclusion": "enabled 过滤、分组、排序、模型聚合和并发上限通过。",
+        "recommendation": "若真实 catalog 延迟明显，再把并发度配置化。"
+      },
+      {
+        "area": "GUI / Computer Use",
+        "coverage": "N/A",
+        "conclusion": "本切片没有用户界面。",
+        "recommendation": "M5-03/M5-05 的 UI issue 执行原生 CUA 与原型视觉对照。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "M5-02 后端配置与 catalog 切片通过真实 HTTP、数据库、git 和 CI 验证；最终冒烟未发现未解决产品缺陷。",
+    "points": [
+      "本切片无 GUI，未伪造 Computer Use 证据。",
+      "真实外部网络未在本地使用；本地 bare repo 验证真实 git 进程，MySQL 验证来自 CI。",
+      "M5-03/M5-05 可直接基于当前 target/catalog API 构建 UI 与启动向导。"
+    ]
+  },
+  "footer": "证据源：真实 SQLite/ASGI、本地 bare git、自动化门禁与 PR CI。HTML 由 renderer 生成，不应手改。"
+}

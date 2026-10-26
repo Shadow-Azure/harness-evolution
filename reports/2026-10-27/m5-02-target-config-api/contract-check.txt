@@ -1,0 +1,5 @@
+
+> harness-evolution@0.1.0 contract:check <repo>
+> node scripts/contract.mjs check
+
+contract:check: generated contracts are current

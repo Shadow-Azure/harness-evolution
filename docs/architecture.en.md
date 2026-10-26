@@ -42,7 +42,7 @@ The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual a
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
-- Evolution state follows `progress_unit`; `EngineFactory` selects by `engine_key`.
+- Evolution: `progress_unit`/`EngineFactory`, admin target writes, git refs/tags, and `agents.model` catalogs.
 - `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
@@ -64,6 +64,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
-- Missing: evolution HTTP/UI, target configuration, patch/evaluation, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, evolution target configuration and catalogs, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
+- Missing: evolution run HTTP/UI, patch/evaluation, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
