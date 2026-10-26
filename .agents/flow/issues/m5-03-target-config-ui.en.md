@@ -9,7 +9,7 @@ milestone: m5
 depends:
   - m5-02
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - packages/contracts/**
