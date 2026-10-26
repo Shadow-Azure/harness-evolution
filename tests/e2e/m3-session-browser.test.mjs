@@ -24,6 +24,8 @@ let dataDir;
 let baseUrl;
 let apiLogs = "";
 let webLogs = "";
+let currentAdminPassword = "m3-session-browser-initial-password";
+let passwordRevision = 0;
 
 async function cleanup() {
   await stop(web);
@@ -37,11 +39,13 @@ async function loginCookie() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       username: "admin",
-      password: "m3-session-browser-initial-password",
+      password: currentAdminPassword,
     }),
   });
   assert.equal(login.status, 200);
   const body = await login.json();
+  passwordRevision += 1;
+  const replacement = `m3-session-browser-replacement-password-${passwordRevision}`;
   const changed = await fetch(`${baseUrl}/api/auth/change-password`, {
     method: "POST",
     headers: {
@@ -49,8 +53,8 @@ async function loginCookie() {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      oldPassword: "m3-session-browser-initial-password",
-      newPassword: "m3-session-browser-replacement-password",
+      oldPassword: currentAdminPassword,
+      newPassword: replacement,
     }),
   });
   assert.equal(changed.status, 204);
@@ -65,6 +69,35 @@ async function loginCookie() {
   assert.equal(refresh.status, 200);
   const cookie = refresh.headers.get("set-cookie")?.match(/refresh_token=([^;]+)/)?.[1];
   assert.ok(cookie);
+  currentAdminPassword = replacement;
+  return cookie;
+}
+
+async function installCookie(page, cookie) {
+  await page.session.send("Network.enable");
+  await page.session.send("Network.setCookie", {
+    name: "refresh_token",
+    value: cookie,
+    url: `${baseUrl}/api/auth`,
+    httpOnly: true,
+    sameSite: "Strict",
+  });
+}
+
+async function sessionCookie() {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: "admin",
+      password: currentAdminPassword,
+    }),
+  });
+  assert.equal(response.status, 200);
+  const cookie = response.headers
+    .get("set-cookie")
+    ?.match(/refresh_token=([^;]+)/)?.[1];
+  assert.ok(cookie, "expected a login refresh cookie");
   return cookie;
 }
 
@@ -401,6 +434,403 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     assert.equal(wentForward, true);
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m3 Session and Agent deep links survive refresh and new-window navigation", async () => {
+  let cookie = await loginCookie();
+  const first = await createBrowserPage();
+  let second;
+  try {
+    await installCookie(first, cookie);
+    await first.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await first.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    let target = null;
+    for (let index = 0; index < 4 && !target; index += 1) {
+      await waitForDocument(
+        first.session,
+        `Boolean(document.querySelectorAll("[data-testid='session-card']")[${index}])`,
+        `session card ${index + 1}`,
+      );
+      await first.session.send("Runtime.evaluate", {
+        expression: `document.querySelectorAll("[data-testid='session-card']")[${index}].click()`,
+      });
+      await waitForDocument(
+        first.session,
+        `Boolean(
+          document.querySelector("[data-testid='session-card'][data-selected='true']") &&
+          document.querySelectorAll("[data-testid='agent-tree'] .rf-agent").length
+        )`,
+        `Agent tree for deep-link session ${index + 1}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const candidate = await first.session.send("Runtime.evaluate", {
+        expression: `(() => {
+          const agents = document.querySelectorAll("[data-testid='agent-tree'] .rf-agent");
+          const button = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+            .find((candidate) =>
+              candidate.querySelector(".rf-cnode.skill, .rf-cnode.agent, .rf-cnode.workflow")
+            );
+          const node = button?.closest(".vue-flow__node");
+          const agentId = node?.getAttribute("data-id");
+          const triggerCount = button?.querySelectorAll(".rf-cnode.skill, .rf-cnode.agent, .rf-cnode.workflow").length ?? 0;
+          const rootId = location.pathname.split("/").filter(Boolean).at(-1);
+          return agentId && rootId && triggerCount > 0 && agents.length > 1
+            ? { agentId, rootId, triggerCount, path: location.pathname }
+            : null;
+        })()`,
+        returnByValue: true,
+      });
+      target = candidate.result.value;
+    }
+    assert.ok(target, "expected a Session Agent with an evidence trigger");
+    cookie = await sessionCookie();
+    await installCookie(first, cookie);
+    await first.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const button = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+          .find((candidate) =>
+            candidate.querySelector(".rf-cnode.skill, .rf-cnode.agent, .rf-cnode.workflow")
+          );
+        button?.click();
+      })()`,
+    });
+    const agentUrl = await waitForDocument(
+      first.session,
+      `location.search.includes("agent=") ? location.href : null`,
+      "node click writes Agent deep-link state",
+    );
+    const parsedAgentUrl = new URL(agentUrl);
+    const targetAgentId = parsedAgentUrl.searchParams.get("agent");
+    assert.ok(targetAgentId, agentUrl);
+    parsedAgentUrl.searchParams.set("evidence", "0");
+    const deepLink = parsedAgentUrl.href;
+    await first.session.send("Page.navigate", { url: deepLink });
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    const navigationState = await first.session.send("Runtime.evaluate", {
+      expression: `({
+        href: location.href,
+        path: location.pathname,
+        body: document.body.textContent.slice(0, 300),
+        agents: document.querySelectorAll("[data-testid='agent-tree'] .rf-agent").length,
+      })`,
+      returnByValue: true,
+    });
+    assert.ok(
+      navigationState.result.value.agents > 0,
+      JSON.stringify({ deepLink, ...navigationState.result.value }),
+    );
+    const activeState = await waitForDocument(
+      first.session,
+      `(() => {
+        const agents = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")];
+        const notice = document.querySelector("[data-testid='deep-link-notice']")?.textContent ?? null;
+        const hardError = document.querySelector("[data-testid='deep-link-error']")?.textContent ?? null;
+        if (!agents.length && !notice && !hardError) return null;
+        const selected = agents
+          .find((node) => node.getAttribute("aria-pressed") === "true");
+        const evidence = document.querySelectorAll("[data-testid='agent-tree'] .rf-cnode.evidence").length;
+        return {
+          agentId: selected?.closest(".vue-flow__node")?.getAttribute("data-id") ?? null,
+          agents: agents.map((node) => ({
+            active: node.getAttribute("aria-pressed"),
+            id: node.closest(".vue-flow__node")?.getAttribute("data-id") ?? null,
+          })),
+          evidence,
+          href: location.href,
+          notice,
+          hardError,
+          body: getComputedStyle(document.body).backgroundColor,
+          topbar: getComputedStyle(document.querySelector(".topbar")).backgroundColor,
+        };
+      })()`,
+      "deep-linked Agent and evidence",
+    );
+    assert.equal(activeState.evidence, 1, JSON.stringify(activeState));
+    const active = activeState;
+    assert.equal(active.agentId, targetAgentId, JSON.stringify(active));
+    assert.match(active.href, /agent=/);
+    assert.match(active.href, /evidence=0/);
+    assert.equal(active.body, "rgb(244, 245, 247)", JSON.stringify(active));
+    assert.equal(active.topbar, "rgb(250, 251, 252)", JSON.stringify(active));
+
+    cookie = await sessionCookie();
+    await installCookie(first, cookie);
+    await first.session.send("Page.reload");
+    const refreshed = await waitForDocument(
+      first.session,
+      `(() => {
+        const selected = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+          .find((node) => node.getAttribute("aria-pressed") === "true");
+        return selected?.closest(".vue-flow__node")?.getAttribute("data-id") ?? null;
+      })()`,
+      "deep link after refresh",
+    );
+    assert.equal(refreshed, targetAgentId);
+
+    const otherAgentId = await waitForDocument(
+      first.session,
+      `(() => {
+        const selected = document.querySelector("[data-testid='agent-tree'] .rf-agent[aria-pressed='true']");
+        const agents = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")];
+        const other = agents.find((node) => node !== selected);
+        const id = other?.closest(".vue-flow__node")?.getAttribute("data-id");
+        if (!id) return null;
+        other.click();
+        return id;
+      })()`,
+      "another renderable Agent",
+    );
+    assert.ok(otherAgentId);
+    const selectedOther = await waitForDocument(
+      first.session,
+      `Boolean(
+        location.search.includes("agent=") &&
+        !location.search.includes("evidence=") &&
+        document.querySelector("[data-testid='agent-tree'] .rf-agent[aria-pressed='true']")
+      )`,
+      "Agent click replaces deep-link Agent and clears evidence",
+    );
+    assert.equal(selectedOther, true);
+
+    await first.session.send("Runtime.evaluate", { expression: "history.back()" });
+    const restoredHistory = await waitForDocument(
+      first.session,
+      `Boolean(location.search.includes("evidence=0") &&
+        document.querySelector("[data-testid='agent-tree'] .rf-cnode.evidence"))`,
+      "history restores original deep link",
+    );
+    assert.equal(restoredHistory, true);
+
+    await first.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    const mobileDeepLink = await waitForDocument(
+      first.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const selected = document.querySelector(
+          "[data-testid='agent-tree'] .rf-agent[aria-pressed='true']",
+        );
+        const evidence = document.querySelector(
+          "[data-testid='agent-tree'] .rf-cnode.evidence",
+        );
+        if (!tree || !selected || !evidence) return null;
+        const treeBox = tree.getBoundingClientRect();
+        const selectedBox = selected.getBoundingClientRect();
+        const visible = selectedBox.right > treeBox.left
+          && selectedBox.left < treeBox.right
+          && selectedBox.bottom > treeBox.top
+          && selectedBox.top < treeBox.bottom;
+        return visible
+          ? {
+              evidence: document.querySelectorAll(
+                "[data-testid='agent-tree'] .rf-cnode.evidence",
+              ).length,
+              scrollWidth: document.documentElement.scrollWidth,
+              clientWidth: document.documentElement.clientWidth,
+            }
+          : null;
+      })()`,
+      "390px deep-linked Agent and evidence",
+    );
+    assert.equal(mobileDeepLink.evidence, 1, JSON.stringify(mobileDeepLink));
+    assert.ok(
+      mobileDeepLink.scrollWidth <= mobileDeepLink.clientWidth,
+      JSON.stringify(mobileDeepLink),
+    );
+    await first.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+
+    const copiedUrl = await first.session.send("Runtime.evaluate", {
+      expression: "location.href",
+      returnByValue: true,
+    });
+
+    cookie = await sessionCookie();
+    second = await createBrowserPage();
+    await installCookie(second, cookie);
+    await second.session.send("Page.navigate", {
+      url: copiedUrl.result.value ?? deepLink,
+    });
+    const copied = await waitForDocument(
+      second.session,
+      `(() => {
+        const selected = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
+          .find((node) => node.getAttribute("aria-pressed") === "true");
+        return selected?.closest(".vue-flow__node")?.getAttribute("data-id") ?? null;
+      })()`,
+      "new window restores copied deep link",
+    );
+    assert.equal(copied, targetAgentId);
+  } finally {
+    await second?.close();
+    await first.close();
+  }
+});
+
+test("m3 folded Agent deep links expand ancestors before locating", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    const cookie = await loginCookie();
+    await installCookie(page, cookie);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    const sessionPath = await waitForDocument(
+      page.session,
+      `location.pathname.startsWith("/sessions/") &&
+        document.querySelectorAll("[data-testid='session-card']").length >= 1
+        ? location.pathname
+        : null`,
+      "initial Session selection",
+    );
+    const sessionId = decodeURIComponent(sessionPath.split("/").at(-1));
+    const foldedTree = {
+      sessionId,
+      agents: [
+        {
+          agentId: "main",
+          parentAgentId: null,
+          kind: "main",
+          agentType: null,
+          taskKind: null,
+          spawnDepth: 0,
+          label: "主会话",
+          desc: "主会话",
+          lines: 10,
+          messagesCount: 9,
+          toolUseId: null,
+          skillName: null,
+          teamName: null,
+          events: Array.from({ length: 9 }, (_, index) => ({
+            kind: "agent",
+            line: index + 1,
+            messageOffset: index,
+            name: `Agent ${index + 1}`,
+            desc: `子任务 ${index + 1}`,
+            toolUseId: `tool-${index + 1}`,
+          })),
+        },
+        ...Array.from({ length: 9 }, (_, index) => ({
+          agentId: `child-${index + 1}`,
+          parentAgentId: "main",
+          kind: "subagent",
+          agentType: "general-purpose",
+          taskKind: null,
+          spawnDepth: 1,
+          label: `general-purpose · 子任务 ${index + 1}`,
+          desc: `子任务 ${index + 1}`,
+          lines: 2,
+          messagesCount: 1,
+          toolUseId: `tool-${index + 1}`,
+          skillName: null,
+          teamName: null,
+          events: [],
+        })),
+      ],
+      badCases: [],
+    };
+
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: "*://*/api/sessions/*/tree",
+          requestStage: "Request",
+        },
+      ],
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      void page.session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: 200,
+        responseHeaders: [
+          { name: "content-type", value: "application/json" },
+        ],
+        body: Buffer.from(JSON.stringify(foldedTree)).toString("base64"),
+      });
+    });
+
+    await installCookie(page, await sessionCookie());
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/sessions/${encodeURIComponent(sessionId)}?agent=child-9`,
+    });
+    const restored = await waitForDocument(
+      page.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const notice = document.querySelector("[data-testid='deep-link-notice']");
+        const hardError = document.querySelector("[data-testid='deep-link-error']");
+        const login = document.querySelector("[data-testid='login-submit']");
+        if (notice || hardError || login) {
+          return {
+            agentId: null,
+            collapseNodes: document.querySelectorAll(
+              "[data-testid='agent-tree'] .rf-agent.collapse",
+            ).length,
+            notice: notice?.textContent ?? null,
+            hardError: hardError?.textContent ?? null,
+            login: Boolean(login),
+            body: document.body.textContent?.slice(0, 500) ?? null,
+            href: location.href,
+            treeText: tree?.textContent?.slice(0, 500) ?? null,
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth,
+          };
+        }
+        if (!tree) return null;
+        const selected = document.querySelector(
+          "[data-testid='agent-tree'] .rf-agent[aria-pressed='true']",
+        );
+        const node = selected?.closest(".vue-flow__node");
+        if (!node || node.getAttribute("data-id") !== "child-9") return null;
+        const treeBox = tree.getBoundingClientRect();
+        const nodeBox = selected.getBoundingClientRect();
+        const visible = nodeBox.right > treeBox.left
+          && nodeBox.left < treeBox.right
+          && nodeBox.bottom > treeBox.top
+          && nodeBox.top < treeBox.bottom;
+        if (!visible) return null;
+        return {
+          agentId: node.getAttribute("data-id"),
+          collapseNodes: document.querySelectorAll(
+            "[data-testid='agent-tree'] .rf-agent.collapse",
+          ).length,
+          visible,
+          href: location.href,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+      "folded deep-linked Agent expansion",
+    );
+
+    assert.equal(restored.agentId, "child-9", JSON.stringify(restored));
+    assert.equal(restored.collapseNodes, 0, JSON.stringify(restored));
+    assert.equal(restored.visible, true, JSON.stringify(restored));
+    assert.match(restored.href, /agent=child-9/);
+    assert.ok(restored.scrollWidth <= restored.clientWidth, JSON.stringify(restored));
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+    await page.session.send("Fetch.disable");
   } finally {
     await page.close();
   }

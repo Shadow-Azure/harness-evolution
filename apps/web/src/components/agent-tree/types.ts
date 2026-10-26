@@ -39,6 +39,7 @@ export interface AgentLayoutNodeData {
   parentAgentId: string | null;
   parentForCollapse?: string;
   active?: boolean;
+  activeEvidence?: number | null;
 }
 
 /** DOM-independent Vue Flow-compatible node. */

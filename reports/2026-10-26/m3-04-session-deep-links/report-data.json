@@ -1,0 +1,221 @@
+{
+  "title": "M3-04 Session 深链集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #108",
+  "summary": "在真实 FastAPI、SQLite、Vite 和 Chrome 上验证 Session、Agent 与 evidence 深链恢复。有效深链、原生 Computer Use、1408 桌面、390px 移动端、非法 Agent、History、新标签页与折叠目标展开均通过，未发现未解决产品缺陷。",
+  "meta": "2026-10-26 · macOS · Chrome/CDP · localhost",
+  "metrics": [
+    { "value": "15", "label": "冒烟场景" },
+    { "value": "15", "label": "通过" },
+    { "value": "1", "label": "active evidence" },
+    { "value": "0", "label": "控制台违规" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#44 · m3-04-session-deep-links" },
+    { "label": "PR", "value": "#108" },
+    { "label": "Commit", "value": "7dc031c" },
+    { "label": "Runtime", "value": "FastAPI + Vite + SQLite + Chrome Extension + CDP" },
+    { "label": "Prototype", "value": "plans/14-15-ui-prototype/harness-evolution.html" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "有效 Agent/evidence 深链",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "直开 URL 后选中 Agent 恢复，evidence 高亮数量为 1。",
+        "evidence": ["screenshots/01-deep-link-desktop.jpg", "screenshots/04-native-cua-deep-link.jpg", "runtime-evidence.json"]
+      },
+      {
+        "id": "02",
+        "name": "Agent 当前节点唯一高亮",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "evidence 只出现在 active Agent；相同下标不会串到兄弟节点。",
+        "evidence": ["runtime-evidence.json", "单元回归"]
+      },
+      {
+        "id": "03",
+        "name": "点击节点写 URL",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击 Agent 后写入 canonical agent query 并清除旧 evidence。",
+        "evidence": ["Chrome history.back 回归", "m3-session-browser E2E"]
+      },
+      {
+        "id": "04",
+        "name": "刷新恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面 reload 后 Session、Agent 与 evidence 均保持。",
+        "evidence": ["automated E2E", "deep link refresh"]
+      },
+      {
+        "id": "05",
+        "name": "前进后退恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "切换 Agent 后 history.back 恢复原深链与高亮。",
+        "evidence": ["runtime-evidence.json", "historyRestored=true"]
+      },
+      {
+        "id": "06",
+        "name": "新标签页复制恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "复制深链到新 Chrome target 后同一 Agent/evidence 恢复。",
+        "evidence": ["runtime-evidence.json", "copied.agentId"]
+      },
+      {
+        "id": "07",
+        "name": "非法 Agent",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "清 Agent/evidence，显示 inline 提示，保留同一 Session 和四张卡片。",
+        "evidence": ["screenshots/02-invalid-agent.jpg"]
+      },
+      {
+        "id": "08",
+        "name": "evidence 越界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "保留 Agent、清 evidence，并定位到 Agent。",
+        "evidence": ["Index component tests"]
+      },
+      {
+        "id": "09",
+        "name": "折叠目标自动展开",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "child-9 深链展开祖先 collapse，目标节点出现并可见。",
+        "evidence": ["real Chrome folded E2E 1/1", "child-9 visible"]
+      },
+      {
+        "id": "10",
+        "name": "非法 Session 不误回退",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "非法 session 参数不请求错误资源，也不自动选择首项并继承旧 Agent。",
+        "evidence": ["deepLink parser tests", "Session isolation tests"]
+      },
+      {
+        "id": "11",
+        "name": "390px 深链恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "selected Agent 与唯一 evidence 可见，页面无横向溢出。",
+        "evidence": ["screenshots/03-deep-link-390.jpg", "scrollWidth=390"]
+      },
+      {
+        "id": "12",
+        "name": "亮色原型基线",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "body、topbar、card 分别为 rgb(244,245,247)、rgb(250,251,252)、白色。",
+        "evidence": ["screenshots/00-prototype-reference.png", "computed styles"]
+      },
+      {
+        "id": "13",
+        "name": "m4 边界与控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "未提前实现错误页或伪造跨 Session 409；正常路径控制台违规为 0。",
+        "evidence": ["runtime-evidence.json", "browser violations=[]"]
+      },
+      {
+        "id": "14",
+        "name": "原生 Chrome Computer Use",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生 Chrome 完成登录、Session/Agent 选择与有效 evidence URL 恢复，未使用 headless 替代。",
+        "evidence": ["screenshots/04-native-cua-deep-link.jpg", "ARI 语义按钮与 alert"]
+      },
+      {
+        "id": "15",
+        "name": "原生 Chrome 390px",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生 viewport 切到 390×844 后 selected Agent 与唯一 evidence 可见，scrollWidth=clientWidth=390，warning/error=0。",
+        "evidence": ["screenshots/05-native-cua-390.jpg", "native viewport evaluate"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "原型 Agent 执行流树",
+      "label": "原型参考",
+      "caption": "Agent 树使用原型蓝色主节点、紫色子节点、浅灰画布和紧凑触发节点。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-deep-link-desktop.jpg",
+      "alt": "桌面端恢复 Agent 与 evidence 深链",
+      "label": "桌面深链恢复",
+      "caption": "360px Session 浏览器、亮色概览与选中 Agent 同时恢复，evidence 仅高亮当前节点。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-invalid-agent.jpg",
+      "alt": "非法 Agent 深链提示",
+      "label": "非法深链清态",
+      "caption": "非法 Agent 返回主会话并显示 inline 提示，列表、Session 和树保持可操作。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-deep-link-390.jpg",
+      "alt": "390px 深链恢复",
+      "label": "390px 恢复",
+      "caption": "移动端单列布局保留 Session 列表和深链目标，无页面横向溢出。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-native-cua-deep-link.jpg",
+      "alt": "原生 Chrome 恢复 Agent evidence 深链",
+      "label": "原生 Chrome 深链",
+      "caption": "原生 Chrome 扩展完成登录与选择，主 Agent 的 evidence 深链保持选中和唯一高亮。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-native-cua-390.jpg",
+      "alt": "原生 Chrome 390px 深链恢复",
+      "label": "原生 Chrome 390px",
+      "caption": "原生 viewport 390×844 下深链目标仍可见，页面宽度与视口一致。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "URL 解析",
+        "coverage": "单元 + 真实页面",
+        "conclusion": "重复值、控制字符、长度、二次编码、Agent/evidence 关系均有回归。",
+        "recommendation": "m4 复用 case/tab parser；归属判断必须等真实 bad-case API。"
+      },
+      {
+        "area": "History / 新窗口",
+        "coverage": "真实 Chrome",
+        "conclusion": "刷新、back、forward、复制到新 target 均恢复同一状态。",
+        "recommendation": "保留真实浏览器回归，勿仅用组件测试替代。"
+      },
+      {
+        "area": "折叠 Agent",
+        "coverage": "真实 Chrome + 折叠 fixture",
+        "conclusion": "目标 child-9 的祖先分支自动展开且节点可见。",
+        "recommendation": "后续增加折叠分支问题锚点时应复用同一定位路径。"
+      },
+      {
+        "area": "m4 bad-case",
+        "coverage": "仅 parser/resolver seam",
+        "conclusion": "本 issue 不伪造错误页或跨 Session 409。",
+        "recommendation": "m4-02 接入真实会话归属字段后再交付 mismatch 页面错误。"
+      },
+      {
+        "area": "Computer Use",
+        "coverage": "原生 Chrome 扩展 + 真实 CDP",
+        "conclusion": "原生 Chrome 验证有效深链和 390px；CDP 补充 History、新窗口和折叠路径。",
+        "recommendation": "后续深链变更继续保留原生界面与 CDP 双重证据。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "Session、Agent 与 evidence 深链在桌面、移动端、History、新窗口和折叠分支中均可恢复，未引入原型视觉或 m4 边界回归。",
+    "points": [
+      "桌面与移动端均无双深链高亮或页面溢出。",
+      "非法 Agent 使用非破坏性 inline 提示，不切换 Session。",
+      "真实 Chrome E2E 与自动化解析测试共同覆盖关键状态。",
+      "原生 Chrome Computer Use 与 headless/CDP 证据均通过，原生视口 warning/error 为 0。"
+    ]
+  },
+  "footer": "证据源：真实 FastAPI/SQLite/Vite、headless Chrome/CDP、runtime-evidence.json 与 E2E 输出。"
+}

@@ -34,11 +34,13 @@ const props = withDefaults(
     tree: SessionTree;
     expanded?: string[];
     activeAgentId?: string | null;
+    activeEventIndex?: number | null;
     height?: string;
   }>(),
   {
     expanded: () => [],
     activeAgentId: null,
+    activeEventIndex: null,
     height: "720px",
   },
 );
@@ -94,9 +96,11 @@ const renderedNodes = computed(() =>
     ...node,
     data: {
       ...node.data,
-      active: Boolean(
-        props.activeAgentId && node.data.agentId === props.activeAgentId,
-      ),
+      active: Boolean(props.activeAgentId && node.data.agentId === props.activeAgentId),
+      activeEvidence:
+        props.activeAgentId && node.data.agentId === props.activeAgentId
+          ? props.activeEventIndex
+          : null,
     },
   })),
 );
@@ -155,6 +159,20 @@ watch(
     scheduleFitView();
   },
   { flush: "post" },
+);
+
+watch(
+  [
+    () => props.activeAgentId,
+    () => props.activeEventIndex,
+    () => graph.value.nodes.map((node) => node.id).join("|"),
+  ],
+  async ([agentId]) => {
+    if (!agentId) return;
+    await nextTick();
+    locateAgent(agentId);
+  },
+  { flush: "post", immediate: true },
 );
 
 function handleWindowResize() {

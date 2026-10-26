@@ -58,7 +58,15 @@ const sourceHandles = computed(() =>
         <span
           v-else
           class="rf-cnode"
-          :class="item.kind"
+          :class="[
+            item.kind,
+            {
+              evidence:
+                data.active &&
+                data.activeEvidence !== null &&
+                data.activeEvidence === item.evIdx,
+            },
+          ]"
           :title="`L${item.line} · ${item.name}`"
         >
           <span class="rf-cdot" />
@@ -215,6 +223,10 @@ const sourceHandles = computed(() =>
   border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
   background: color-mix(in srgb, var(--orange) 10%, var(--bg-card));
   color: var(--orange);
+}
+
+.rf-cnode.evidence {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 34%, transparent);
 }
 
 .rf-cdot {

@@ -1,0 +1,16 @@
+{
+  "browser": "Chrome extension",
+  "commit": "7dc031c",
+  "login": "PASS",
+  "deepLinkUrl": "/sessions/10000000-0000-4000-8000-000000000003?agent=10000000-0000-4000-8000-000000000003&evidence=0",
+  "selectedAgent": "main",
+  "evidenceHighlights": 1,
+  "mobile": {
+    "width": 390,
+    "height": 844,
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "evidenceHighlights": 1
+  },
+  "consoleWarningsOrErrors": 0
+}
