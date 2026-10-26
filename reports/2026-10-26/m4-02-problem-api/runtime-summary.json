@@ -1,0 +1,68 @@
+{
+  "authUnauthorizedStatuses": [
+    401,
+    401,
+    401,
+    401,
+    401
+  ],
+  "sessionProblems": 2,
+  "sessionProbes": 2,
+  "mismatchStatus": 409,
+  "missingCaseStatus": 404,
+  "missingProbeStatus": 404,
+  "analysisDriftStatuses": {
+    "list": 200,
+    "detail": 200,
+    "analysis": 200
+  },
+  "degradedPresentation": {
+    "degraded": true,
+    "diagnosticCode": "EXTERNAL_FIELD_INVALID",
+    "anchor": {
+      "agentId": "10000000-0000-4000-8000-000000000001",
+      "eventIndex": -1
+    }
+  },
+  "readFingerprints": {
+    "before": {
+      "bad_case_analysis": {
+        "count": 5,
+        "sha256": "c791cd78c20d8dbf022fcbf1b2e875f2404a673f6747ad1940d8034476855996"
+      },
+      "bad_cases": {
+        "count": 5,
+        "sha256": "b0a7aa3841ecc1fc58ba254824e56d18e1c7b72bdd3b7a9c6f78a236e7a36c1b"
+      },
+      "probe_reports": {
+        "count": 3,
+        "sha256": "d914ae0d38b1eee6c89985e96fc9d67f98747e8504346499e28037681d02bc2a"
+      }
+    },
+    "after": {
+      "bad_case_analysis": {
+        "count": 5,
+        "sha256": "c791cd78c20d8dbf022fcbf1b2e875f2404a673f6747ad1940d8034476855996"
+      },
+      "bad_cases": {
+        "count": 5,
+        "sha256": "b0a7aa3841ecc1fc58ba254824e56d18e1c7b72bdd3b7a9c6f78a236e7a36c1b"
+      },
+      "probe_reports": {
+        "count": 3,
+        "sha256": "d914ae0d38b1eee6c89985e96fc9d67f98747e8504346499e28037681d02bc2a"
+      }
+    },
+    "unchanged": true
+  },
+  "browser": {
+    "cards": 4,
+    "body": "rgb(244, 245, 247)",
+    "topbar": "rgb(250, 251, 252)",
+    "card": "rgb(255, 255, 255)",
+    "topbarHeight": 56,
+    "narrowScrollWidth": 390,
+    "narrowClientWidth": 390,
+    "consoleViolations": 0
+  }
+}
