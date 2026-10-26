@@ -9,12 +9,15 @@ milestone: m5
 depends:
   - m5-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -26,65 +29,37 @@ github:
 
 ## Background
 
-
-
-
-
-m5-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+M5-04 is an independently mergeable vertical slice. Implementation decisions must follow the linked fullstack-design sections and must not create a second design authority inside the Issue.
 
 ## Goals
 
-
-
-
-
-- 完成 m5-04 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- Deliver the boundary declared by M5-04 and make it independently verifiable with the commands below.
+- Keep contracts, the database, the frontend and existing gates aligned.
+- Give failures, empty states and duplicate input explicit behavior.
 
 ## Design authority
 
-
-
-
-
 - [05 §3.5/§4.10 运行模型](../../../plans/fullstack-design/05-api-design.md)
 - [08 §8 列表](../../../plans/fullstack-design/08-frontend-implementation.md)
-- [02 F10](../../../plans/fullstack-design/README.md)
+- [02 F10](../../../plans/fullstack-design/02-features.md)
 
 ## Implementation
 
-
-
-
-
-- 实现 running/history API 与列表 UI，展示阶段、进度、状态、创建人和时间
-- 支持刷新和空态
+- Implement the running/history API and list UI with stage, progress, status, creator and time; place the creator in the prototype's upper-right metadata slot without adding a visual row.
+- Support refresh and empty states.
 
 ## Implementation steps
 
-
-
-
-
-1. 写状态分组和后端文案失败测试
-2. 实现 API/页面
-3. 用 fixture 驱动 E2E
+1. Write failing tests for status grouping and backend-owned copy.
+2. Implement the API and page.
+3. Drive E2E from fixtures.
 
 ## Dependencies and boundary
 
-
-
-
-
-- 依赖：m5-01
-- 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- Depends on: m5-01.
+- Delivery boundary: implement only this Issue's capability; adjacent behavior outside acceptance belongs to dependencies or later Issues.
 
 ## Verification
-
-
-
-
 
 ```sh
 pnpm test:api -- tests/m5-04-run-list
@@ -94,24 +69,16 @@ pnpm test:e2e
 pnpm contract:check
 ```
 
-- 列表测试通过
-- running/history 顺序和进度来自后端
+- List tests pass.
+- Running/history order and progress come from the backend.
 
 ## Acceptance
 
-
-
-
-
-- 不从前端推算状态
+- The frontend does not derive state.
 
 ## Gates and CI
 
-
-
-
-
-- route gate、组件测试、E2E
+- Route gate, component tests and E2E.
 
 ## Non-goals
 

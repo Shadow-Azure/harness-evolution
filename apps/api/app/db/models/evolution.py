@@ -348,6 +348,17 @@ class EvolutionFinalRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class EvolutionRunSummaryRecord:
+    """One run plus the batched facts needed by the list projection."""
+
+    run: EvolutionRunRecord
+    cluster_count: int
+    accepted_count: int
+    final: EvolutionFinalRecord | None
+    created_by_name: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ClusterWrite:
     """Database-neutral cluster payload used by repository writes."""
 

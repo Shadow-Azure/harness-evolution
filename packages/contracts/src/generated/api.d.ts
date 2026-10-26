@@ -282,6 +282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Return backend-ordered running and history groups.
+         */
+        get: operations["list_runs_api_evolution_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/targets": {
         parameters: {
             query?: never;
@@ -777,6 +797,180 @@ export interface components {
             ticket: string;
             /** Topics */
             topics: string[];
+        };
+        /**
+         * EvolutionRunAttributeStats
+         * @description Probe counts by externally supplied attribution type.
+         */
+        EvolutionRunAttributeStats: {
+            /**
+             * Error
+             * @default 0
+             */
+            error: number;
+            /**
+             * Model
+             * @default 0
+             */
+            model: number;
+            /**
+             * Nonissue
+             * @default 0
+             */
+            nonIssue: number;
+            /**
+             * Prompt
+             * @default 0
+             */
+            prompt: number;
+        };
+        /**
+         * EvolutionRunCard
+         * @description One complete run-list card contract.
+         */
+        EvolutionRunCard: {
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string | null;
+            error: components["schemas"]["EvolutionRunError"] | null;
+            final: components["schemas"]["EvolutionRunFinal"] | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "full" | "cluster_only";
+            /** Models */
+            models: string[];
+            progress: components["schemas"]["EvolutionRunProgress"];
+            /** Runid */
+            runId: string;
+            stats: components["schemas"]["EvolutionRunStats"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "preparing" | "running" | "blocked" | "completed" | "failed" | "interrupted";
+            target: components["schemas"]["EvolutionRunTarget"];
+            /** Title */
+            title: string;
+            window: components["schemas"]["EvolutionRunWindow"];
+        };
+        /**
+         * EvolutionRunError
+         * @description Sanitized terminal or blocked error summary.
+         */
+        EvolutionRunError: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Message */
+            message: string;
+            /** Stage */
+            stage: string;
+        };
+        /**
+         * EvolutionRunFinal
+         * @description Terminal evaluation summary shown in the history list.
+         */
+        EvolutionRunFinal: {
+            /** Bestscore */
+            bestScore: number;
+            /** Bestversion */
+            bestVersion: string;
+            /** Branchname */
+            branchName: string | null;
+            /** Initscore */
+            initScore: number;
+            /** Pushstatus */
+            pushStatus: string;
+            /** Verdict */
+            verdict: boolean;
+        };
+        /**
+         * EvolutionRunList
+         * @description Running and history groups already ordered by the backend.
+         */
+        EvolutionRunList: {
+            /** History */
+            history: components["schemas"]["EvolutionRunCard"][];
+            /** Running */
+            running: components["schemas"]["EvolutionRunCard"][];
+        };
+        /**
+         * EvolutionRunProgress
+         * @description Backend-owned cursor, percentages, rounds, and stage copy.
+         */
+        EvolutionRunProgress: {
+            /** Accepted */
+            accepted: number;
+            /** Donerounds */
+            doneRounds: number;
+            /** Percent */
+            percent: number;
+            /** Stagelabel */
+            stageLabel: string;
+            /** Total */
+            total: number;
+            /** Unit */
+            unit: number;
+        };
+        /**
+         * EvolutionRunStats
+         * @description Backend-normalized run statistics.
+         */
+        EvolutionRunStats: {
+            byAttributeType: components["schemas"]["EvolutionRunAttributeStats"];
+            /**
+             * Clusters
+             * @default 0
+             */
+            clusters: number;
+            /**
+             * Probes
+             * @default 0
+             */
+            probes: number;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
+            /**
+             * Usedprobes
+             * @default 0
+             */
+            usedProbes: number;
+        };
+        /**
+         * EvolutionRunTarget
+         * @description Immutable evolution target snapshot shown on one run card.
+         */
+        EvolutionRunTarget: {
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "skill" | "agent";
+            /** Version */
+            version: string;
+        };
+        /**
+         * EvolutionRunWindow
+         * @description Session-time window selected when the run was created.
+         */
+        EvolutionRunWindow: {
+            /** From */
+            from?: string | null;
+            /** To */
+            to?: string | null;
         };
         /**
          * EvolutionTarget
@@ -2027,6 +2221,44 @@ export interface operations {
             };
             /** @description Request validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_runs_api_evolution_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionRunList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

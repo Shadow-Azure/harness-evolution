@@ -12,6 +12,7 @@ from app.api.acquisition import router as acquisition_router
 from app.api.auth import router as auth_router
 from app.api.catalogs import router as catalogs_router
 from app.api.events import router as events_router
+from app.api.evolution_runs import router as evolution_runs_router
 from app.api.evolution_targets import router as evolution_targets_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
@@ -21,6 +22,7 @@ from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import BadCaseRepository
+from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.problems import ProblemRepository
@@ -37,6 +39,7 @@ from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
+from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -104,6 +107,7 @@ def create_app(
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    evolution_runs = EvolutionRunService(EvolutionRepository(resolved_database))
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -174,6 +178,7 @@ def create_app(
     app.state.sessions = sessions
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
+    app.state.evolution_runs = evolution_runs
     app.state.catalogs = catalogs
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
@@ -198,6 +203,7 @@ def create_app(
     app.include_router(jobs_router)
     app.include_router(sessions_router)
     app.include_router(problems_router)
+    app.include_router(evolution_runs_router)
     app.include_router(evolution_targets_router)
     app.include_router(catalogs_router)
     app.include_router(events_router)

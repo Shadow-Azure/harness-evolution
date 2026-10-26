@@ -62,6 +62,7 @@ from app.db.models.evolution import (
     probe_clusters,
 )
 from app.db.models.jobs import job_runs
+from app.db.models.users import users
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 from app.service.acquisition.replay import replay_pending_payloads
@@ -1425,6 +1426,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
     repository = EvolutionRepository(database)
     run_id = "mysql-m5-repository-run"
     target_id = "mysql-m5-repository-target"
+    user_id = "mysql-m5-repository-user"
     probe_ids = ("mysql-m5-model", "mysql-m5-error")
     now = datetime(2026, 10, 27, 2, 3, 4, tzinfo=UTC)
 
@@ -1465,10 +1467,26 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                     evolution_targets.c.id == target_id,
                 ),
             )
+            await session.execute(
+                delete(users).where(users.c.id == user_id),
+            )
 
     try:
         await cleanup()
         async with database.transaction() as session:
+            await session.execute(
+                insert(users).values(
+                    id=user_id,
+                    username="mysql-m5-run-creator",
+                    password_hash="not-used",  # noqa: S106
+                    display_name="MySQL Run Creator",
+                    role="admin",
+                    is_active=True,
+                    must_change_password=False,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
             await session.execute(
                 insert(evolution_targets).values(
                     id=target_id,
@@ -1517,6 +1535,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                 "repo_url": "https://example.invalid/mysql-evolution.git",
                 "sub_dir": "skills/mysql-evolution",
                 "status": "running",
+                "created_by": user_id,
                 "created_at": now,
             },
         )
@@ -1589,6 +1608,10 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"
+        summaries = await repository.list_summaries()
+        summary = next(item for item in summaries if item.run.id == run_id)
+        assert summary.created_by_name == "MySQL Run Creator"
+        assert summary.cluster_count == 1
     finally:
         try:
             await cleanup()

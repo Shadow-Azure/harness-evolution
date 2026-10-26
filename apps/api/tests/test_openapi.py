@@ -51,6 +51,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/acquisition/status",
         "/api/acquisition/sync",
         "/api/acquisition/pull",
+        "/api/evolution/runs",
         "/api/evolution/targets",
         "/api/evolution/targets/{targetId}",
         "/api/evolution/targets/{targetId}/versions",
@@ -87,6 +88,15 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "AcquisitionStatusResponse",
         "SyncStatusError",
         "SyncTriggerResponse",
+        "EvolutionRunCard",
+        "EvolutionRunList",
+        "EvolutionRunTarget",
+        "EvolutionRunWindow",
+        "EvolutionRunError",
+        "EvolutionRunStats",
+        "EvolutionRunAttributeStats",
+        "EvolutionRunProgress",
+        "EvolutionRunFinal",
         "EvolutionTarget",
         "EvolutionTargetWrite",
         "EvolutionTargetList",
@@ -128,6 +138,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/probes/{probeId}", "get"),
         ("/api/acquisition/status", "get"),
         ("/api/acquisition/sync", "post"),
+        ("/api/evolution/runs", "get"),
         ("/api/evolution/targets", "get"),
         ("/api/evolution/targets", "post"),
         ("/api/evolution/targets/{targetId}", "put"),
@@ -162,6 +173,26 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
             "$ref": "#/components/schemas/ErrorResponse"
         }
     target_collection = paths["/api/evolution/targets"]
+    assert paths["/api/evolution/runs"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/EvolutionRunList"}
+    run_card = components["EvolutionRunCard"]
+    assert set(run_card["properties"]) == {
+        "runId",
+        "title",
+        "mode",
+        "target",
+        "window",
+        "models",
+        "createdBy",
+        "createdAt",
+        "status",
+        "error",
+        "stats",
+        "progress",
+        "final",
+    }
+    assert components["EvolutionRunWindow"]["properties"]["from"]["anyOf"][0]["format"] == ("date")
     assert target_collection["get"]["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/EvolutionTargetList"}
