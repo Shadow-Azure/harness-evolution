@@ -84,15 +84,21 @@ async function installCookie(page, cookie) {
   });
 }
 
-async function browserRefreshCookie(page) {
-  const cookies = await page.session.send("Network.getCookies", {
-    urls: [`${baseUrl}/api/auth`],
+async function sessionCookie() {
+  const response = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      username: "admin",
+      password: currentAdminPassword,
+    }),
   });
-  const cookie = cookies.cookies.find(
-    (candidate) => candidate.name === "refresh_token",
-  );
-  assert.ok(cookie, "expected a refresh cookie in the browser");
-  return cookie.value;
+  assert.equal(response.status, 200);
+  const cookie = response.headers
+    .get("set-cookie")
+    ?.match(/refresh_token=([^;]+)/)?.[1];
+  assert.ok(cookie, "expected a login refresh cookie");
+  return cookie;
 }
 
 before(async () => {
@@ -467,6 +473,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       await new Promise((resolve) => setTimeout(resolve, 250));
       const candidate = await first.session.send("Runtime.evaluate", {
         expression: `(() => {
+          const agents = document.querySelectorAll("[data-testid='agent-tree'] .rf-agent");
           const button = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
             .find((candidate) =>
               candidate.querySelector(".rf-cnode.skill, .rf-cnode.agent, .rf-cnode.workflow")
@@ -475,7 +482,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
           const agentId = node?.getAttribute("data-id");
           const triggerCount = button?.querySelectorAll(".rf-cnode.skill, .rf-cnode.agent, .rf-cnode.workflow").length ?? 0;
           const rootId = location.pathname.split("/").filter(Boolean).at(-1);
-          return agentId && rootId && triggerCount > 0
+          return agentId && rootId && triggerCount > 0 && agents.length > 1
             ? { agentId, rootId, triggerCount, path: location.pathname }
             : null;
         })()`,
@@ -484,7 +491,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       target = candidate.result.value;
     }
     assert.ok(target, "expected a Session Agent with an evidence trigger");
-    cookie = await browserRefreshCookie(first);
+    cookie = await sessionCookie();
     await installCookie(first, cookie);
     await first.session.send("Runtime.evaluate", {
       expression: `(() => {
@@ -554,7 +561,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
     assert.equal(active.body, "rgb(244, 245, 247)", JSON.stringify(active));
     assert.equal(active.topbar, "rgb(250, 251, 252)", JSON.stringify(active));
 
-    cookie = await browserRefreshCookie(first);
+    cookie = await sessionCookie();
     await installCookie(first, cookie);
     await first.session.send("Page.reload");
     const refreshed = await waitForDocument(
@@ -567,7 +574,6 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       "deep link after refresh",
     );
     assert.equal(refreshed, targetAgentId);
-    cookie = await browserRefreshCookie(first);
 
     const otherAgentId = await waitForDocument(
       first.session,
@@ -655,6 +661,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       returnByValue: true,
     });
 
+    cookie = await sessionCookie();
     second = await createBrowserPage();
     await installCookie(second, cookie);
     await second.session.send("Page.navigate", {
