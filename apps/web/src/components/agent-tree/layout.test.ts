@@ -2,20 +2,28 @@ import { describe, expect, it } from "vitest";
 
 import type { SessionAgent, SessionTree } from "@harness/contracts";
 
+import { badCaseFixture } from "../../test/badCases";
 import { demoCoreTree, demoNestedTree } from "./fixtures/demo-nested";
 import {
   AGENT_BOX_H,
+  BADCASE_CARD_GAP,
+  BADCASE_CARD_H,
   BOX_EDGE,
   BOX_PAD,
   FONT_AGENT_LABEL,
   INDENT,
   MIN_STEP,
   ROW_STEP,
+  badCaseAnchors,
+  badCasePath,
+  buildBadCaseOverlay,
   buildGraph,
   chainOf,
   clusterByX,
+  discoveryPath,
   orthPath,
   pickFindingSide,
+  triggerPath,
 } from "./layout";
 
 const measure = (text: string) => text.length * 6;
@@ -433,6 +441,231 @@ describe("agent-tree graph layout", () => {
     );
   });
 
+  it("builds semantic problem-card edges for every supported anchor", () => {
+    const details = demoNestedTree.badCases.map((problem, index) =>
+      badCaseFixture({
+        ...problem,
+        analysis: {
+          probeId: `probe-${index}`,
+          attributeType: index === 0 ? "error" : "model",
+          displayState:
+            index === 0
+              ? "analyzed_issue_error"
+              : "analyzed_issue_model",
+          result: { summary: `summary-${index}` },
+          status: "analyzed_issue",
+        },
+      }),
+    );
+    const result = buildGraph(
+      demoNestedTree,
+      {
+        expanded: new Set(["main", "agent-a"]),
+        measureText: measure,
+        problemDetails: details,
+      },
+    );
+    const cards = new Map(
+      result.badCaseNodes.map((node) => [node.data.badCaseId, node]),
+    );
+    const edges = new Map(
+      result.badCaseEdges.map((edge) => [edge.data.badCaseId, edge]),
+    );
+
+    expect(cards).toHaveLength(4);
+    expect(cards.get("case-self-skill")).toMatchObject({
+      data: {
+        displayState: "analyzed_issue_error",
+        shortId: "case-sel",
+      },
+    });
+    expect(edges.get("case-self-skill")).toMatchObject({
+      source: "agent-a",
+      sourceHandle: "h0",
+      targetHandle: "card-top",
+      type: "trigger",
+      style: {
+        stroke: "var(--red)",
+        strokeWidth: 1.2,
+        strokeDasharray: "4 3",
+      },
+    });
+    expect(edges.get("case-discovery")).toMatchObject({
+      source: "main",
+      sourceHandle: "rep0",
+      targetHandle: "card-bottom",
+      type: "discovery",
+    });
+    expect(edges.get("case-self-agent")).toMatchObject({
+      source: "agent-a",
+      sourceHandle: "finding-left",
+      targetHandle: "card-right",
+      type: "badcase",
+    });
+    expect(edges.get("case-fallback")).toMatchObject({
+      source: "main",
+      sourceHandle: "finding-right",
+      targetHandle: "card-left",
+      type: "badcase",
+    });
+  });
+
+  it("stacks cards with the same anchor without changing identity order", () => {
+    const cases = [
+      {
+        ...demoNestedTree.badCases[0]!,
+        badCaseId: "case-stack-b",
+      },
+      {
+        ...demoNestedTree.badCases[0]!,
+        badCaseId: "case-stack-a",
+      },
+    ];
+    const { badCaseNodes, badCaseEdges } = buildBadCaseOverlay(
+      [
+        {
+          badCaseId: "case-stack-b",
+          hostAgentId: "agent-a",
+          eventIndex: 0,
+          kind: "self-skill",
+          side: "below",
+          x: 100,
+          y: 100,
+        },
+        {
+          badCaseId: "case-stack-a",
+          hostAgentId: "agent-a",
+          eventIndex: 0,
+          kind: "self-skill",
+          side: "below",
+          x: 100,
+          y: 100,
+        },
+      ],
+      cases,
+    );
+
+    expect(badCaseNodes.map((node) => node.data.badCaseId)).toEqual([
+      "case-stack-a",
+      "case-stack-b",
+    ]);
+    expect(
+      badCaseNodes[1]!.position.y - badCaseNodes[0]!.position.y,
+    ).toBe(BADCASE_CARD_H + BADCASE_CARD_GAP);
+    expect(badCaseEdges).toHaveLength(2);
+  });
+
+  it("chooses a self-agent side using the full stacked height", () => {
+    const host = {
+      id: "target",
+      type: "agent" as const,
+      position: { x: 100, y: 100 },
+      data: {
+        label: "target",
+        kind: "sub" as const,
+        w: 200,
+        boxW: 200,
+        visualW: 220,
+        lines: 10,
+        desc: "target",
+        chain: { items: [], offsets: [40], width: 40 },
+        agentId: "target",
+        parentAgentId: "main",
+      },
+    };
+    const targetAgent = agent({
+      agentId: "target",
+      parentAgentId: "main",
+      kind: "subagent",
+      label: "target",
+      events: [
+        {
+          kind: "agent",
+          line: 1,
+          messageOffset: 1,
+          name: "child",
+          desc: "child",
+          toolUseId: "child-tool",
+        },
+      ],
+    });
+    const cases = ["case-stack-a", "case-stack-b"].map((badCaseId) => ({
+      ...demoNestedTree.badCases[1]!,
+      badCaseId,
+      anchor: { agentId: "target", eventIndex: 0 },
+    }));
+
+    const anchors = badCaseAnchors({
+      nodes: [host],
+      agents: [targetAgent],
+      badCases: cases,
+      branchSegments: [
+        {
+          source: "main",
+          target: "sibling",
+          x: 350,
+          y1: 100,
+          y2: 110,
+        },
+      ],
+    });
+
+    expect(anchors.map((anchor) => anchor.side)).toEqual(["left", "left"]);
+  });
+
+  it("keeps a problem visible but emits no orphan edge when its anchor host is missing", () => {
+    const missingHost: SessionTree = {
+      sessionId: "missing-host",
+      agents: [agent()],
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-missing-host",
+          anchor: { agentId: "missing-agent", eventIndex: 0 },
+        },
+      ],
+    };
+
+    const result = buildGraph(missingHost, new Set(), measure);
+
+    expect(result.badCaseNodes.map((node) => node.data.badCaseId)).toEqual([
+      "case-missing-host",
+    ]);
+    expect(result.badCaseEdges).toEqual([]);
+  });
+
+  it("degrades an out-of-range event anchor to the host fallback handle", () => {
+    const outOfRange: SessionTree = {
+      sessionId: "out-of-range",
+      agents: demoNestedTree.agents,
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-out-of-range",
+          anchor: { agentId: "agent-a", eventIndex: 99 },
+        },
+      ],
+    };
+
+    const result = buildGraph(
+      outOfRange,
+      new Set(["main", "agent-a"]),
+      measure,
+    );
+
+    expect(result.anchors[0]).toMatchObject({
+      badCaseId: "case-out-of-range",
+      eventIndex: -1,
+      kind: "fallback",
+      hostAgentId: "agent-a",
+      side: "right",
+    });
+    expect(result.badCaseEdges[0]).toMatchObject({
+      sourceHandle: "finding-right",
+      targetHandle: "card-left",
+    });
+  });
+
   it("picks the left side only when the right branch channel intersects the card range", () => {
     const choose = pickFindingSide(
       {
@@ -473,5 +706,81 @@ describe("orthogonal edge paths", () => {
     expect(path).toContain("H 180");
     expect(path).toContain("Q 180 300");
     expect(path).toContain("H 300");
+  });
+});
+
+describe("problem-card edge paths", () => {
+  it("routes side cards with the prototype's rounded trunk on either side", () => {
+    expect(
+      badCasePath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 300,
+        targetY: 140,
+      }),
+    ).toBe(
+      "M 100 100 H 117 Q 124 100 124 107 V 133 Q 124 140 131 140 H 300",
+    );
+    expect(
+      badCasePath({
+        sourceX: 300,
+        sourceY: 100,
+        targetX: 100,
+        targetY: 140,
+      }),
+    ).toBe(
+      "M 300 100 H 283 Q 276 100 276 107 V 133 Q 276 140 269 140 H 100",
+    );
+    expect(
+      badCasePath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 300,
+        targetY: 100,
+      }),
+    ).toBe("M 100 100 H 300");
+    expect(
+      badCasePath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 100,
+        targetY: 100,
+      }),
+    ).toBe("M 100 100 H 100");
+  });
+
+  it("keeps trigger and discovery routing distinct in both vertical directions", () => {
+    expect(
+      triggerPath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 220,
+        targetY: 180,
+      }),
+    ).toBe("M 100 100 H 214 Q 220 100 220 106 V 180");
+    expect(
+      triggerPath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 220,
+        targetY: 80,
+      }),
+    ).toBe("M 100 100 H 214 Q 220 100 220 94 V 80");
+    expect(
+      discoveryPath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 220,
+        targetY: 180,
+      }),
+    ).toBe("M 100 100 V 187 Q 100 180 107 180 H 220");
+    expect(
+      discoveryPath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 220,
+        targetY: 20,
+      }),
+    ).toBe("M 100 100 V 27 Q 100 20 107 20 H 220");
   });
 });

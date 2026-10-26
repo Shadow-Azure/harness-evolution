@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import type { SessionListItem, SessionTree } from "@harness/contracts";
-import { computed, defineAsyncComponent } from "vue";
+import type { BadCase, SessionListItem, SessionTree } from "@harness/contracts";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  ref,
+  watch,
+} from "vue";
 
+import BadCaseList from "../../../components/bad-cases/BadCaseList.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import StatStrip from "../../../components/ui/StatStrip.vue";
@@ -40,6 +47,18 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  problems: {
+    type: Array as () => BadCase[],
+    default: () => [],
+  },
+  problemsLoading: {
+    type: Boolean,
+    default: false,
+  },
+  problemsError: {
+    type: Object as () => Error | null,
+    default: null,
+  },
   expandedAgentIds: {
     type: Array as () => string[],
     default: () => [],
@@ -57,10 +76,49 @@ const props = defineProps({
 const emit = defineEmits<{
   retry: [];
   "tree-retry": [];
+  "problems-retry": [];
   "node-select": [agentId: string];
   "toggle-expanded": [agentId: string];
   "collapse-all": [];
+  "badcase-select": [badCaseId: string];
 }>();
+
+const agentTreeRef = ref<{
+  locateBadCase: (badCaseId: string) => Promise<void>;
+} | null>(null);
+const badCaseListRef = ref<{
+  scrollToProblem: (badCaseId: string) => void;
+} | null>(null);
+const activeBadCaseId = ref<string | null>(null);
+
+watch(
+  () => props.item?.id,
+  () => {
+    activeBadCaseId.value = null;
+  },
+);
+
+watch(
+  () => props.problems,
+  (problems) => {
+    if (
+      activeBadCaseId.value &&
+      !problems.some(
+        (problem) => problem.badCaseId === activeBadCaseId.value,
+      )
+    ) {
+      activeBadCaseId.value = null;
+    }
+  },
+);
+
+async function selectBadCase(badCaseId: string) {
+  emit("badcase-select", badCaseId);
+  activeBadCaseId.value = badCaseId;
+  await agentTreeRef.value?.locateBadCase(badCaseId);
+  await nextTick();
+  badCaseListRef.value?.scrollToProblem(badCaseId);
+}
 
 const statusLabel = computed(() =>
   props.item?.status === "ok" ? "完成" : "有失败",
@@ -180,10 +238,14 @@ const stats = computed<Array<{
         />
         <template v-else-if="tree">
           <AgentTree
+            ref="agentTreeRef"
+            :active-bad-case-id="activeBadCaseId"
             :active-agent-id="activeAgentId"
             :active-event-index="activeEventIndex"
             :expanded="expandedAgentIds"
+            :problems="problems"
             :tree="tree"
+            @badcase-select="selectBadCase"
             @node-select="emit('node-select', $event)"
             @toggle-expanded="emit('toggle-expanded', $event)"
           />
@@ -206,6 +268,15 @@ const stats = computed<Array<{
           <span>当前 Session 没有可展示的 Agent 节点。</span>
         </div>
       </section>
+      <BadCaseList
+        ref="badCaseListRef"
+        :active-bad-case-id="activeBadCaseId"
+        :error="problemsError"
+        :loading="problemsLoading"
+        :problems="problems"
+        @retry="emit('problems-retry')"
+        @select="selectBadCase"
+      />
     </div>
     <div
       v-else

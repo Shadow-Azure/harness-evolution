@@ -22,6 +22,12 @@ const sourceHandles = computed(() =>
     ];
   }),
 );
+const discoveryHandles = computed(() =>
+  sourceHandles.value.map((handle) => ({
+    ...handle,
+    id: `rep${handle.id.slice(1)}`,
+  })),
+);
 </script>
 
 <template>
@@ -90,6 +96,18 @@ const sourceHandles = computed(() =>
       class="hidden-handle"
     />
     <Handle
+      id="finding-left"
+      type="source"
+      :position="Position.Left"
+      class="hidden-handle finding-handle"
+    />
+    <Handle
+      id="finding-right"
+      type="source"
+      :position="Position.Right"
+      class="hidden-handle finding-handle"
+    />
+    <Handle
       v-for="handle in sourceHandles"
       :id="handle.id"
       :key="handle.id"
@@ -98,10 +116,25 @@ const sourceHandles = computed(() =>
       class="hidden-handle"
       :style="{ left: `${handle.left}px` }"
     />
+    <Handle
+      v-for="handle in discoveryHandles"
+      :id="handle.id"
+      :key="handle.id"
+      type="source"
+      :position="Position.Top"
+      class="hidden-handle"
+      :style="{ left: `${handle.left}px` }"
+    />
     <span
       v-for="handle in sourceHandles"
       :key="`stub-${handle.id}`"
       class="rf-stub"
+      :style="{ left: `${handle.left}px` }"
+    />
+    <span
+      v-for="handle in discoveryHandles"
+      :key="`stub-top-${handle.id}`"
+      class="rf-stub-top"
       :style="{ left: `${handle.left}px` }"
     />
   </button>
@@ -251,11 +284,23 @@ const sourceHandles = computed(() =>
   background: var(--graph-branch);
 }
 
+.rf-stub-top {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 31px;
+  background: var(--red);
+}
+
 .hidden-handle {
   width: 8px;
   height: 8px;
   border: 0;
   background: transparent;
   opacity: 0;
+}
+
+.finding-handle {
+  top: 50%;
 }
 </style>

@@ -26,4 +26,7 @@ export const server = setupServer(
       { status: 401 },
     ),
   ),
+  http.get("/api/sessions/:sessionId/bad-cases", () =>
+    HttpResponse.json({ items: [] }),
+  ),
 );

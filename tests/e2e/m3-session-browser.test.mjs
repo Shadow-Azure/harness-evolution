@@ -326,13 +326,16 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         `(() => {
           const selected = document.querySelector("[data-testid='session-card'][data-selected='true']");
           const nodes = document.querySelectorAll("[data-testid='agent-tree'] .vue-flow__node").length;
-          return selected && nodes > 0 ? { path: location.pathname, nodes } : null;
+          const agents = document.querySelectorAll("[data-testid='agent-tree'] .rf-agent").length;
+          return selected && agents > 0
+            ? { path: location.pathname, nodes, agents }
+            : null;
         })()`,
         `Agent tree for session ${index + 1}`,
       );
       assert.match(tree.path, /^\/sessions\/.+/);
-      treeCounts.push(tree.nodes);
-      if (!keyboardCheck && tree.nodes > 1) {
+      treeCounts.push(tree.agents);
+      if (!keyboardCheck && tree.agents > 1) {
         const focusState = await page.session.send("Runtime.evaluate", {
           expression: `(() => {
             const tree = document.querySelector("[data-testid='agent-tree']");

@@ -1,4 +1,10 @@
-import type { SessionAgent, SessionBadCase, SessionEvent, SessionTree } from "@harness/contracts";
+import type {
+  BadCase,
+  SessionAgent,
+  SessionBadCase,
+  SessionEvent,
+  SessionTree,
+} from "@harness/contracts";
 
 /** Measures rendered text width for deterministic pill geometry. */
 export type MeasureText = (text: string, font: string) => number;
@@ -62,6 +68,49 @@ export interface AgentLayoutEdge {
   style: { stroke: string; strokeWidth: number };
 }
 
+/** Five-state attribution displayed by a graph problem card. */
+export type BadCaseDisplayState = BadCase["analysis"]["displayState"];
+
+/** Data rendered by one problem-card node. */
+export interface BadCaseLayoutNodeData {
+  badCaseId: string;
+  shortId: string;
+  reason: string;
+  displayState: BadCaseDisplayState;
+  degraded: boolean;
+  active?: boolean;
+}
+
+/** DOM-independent problem-card node. */
+export interface BadCaseLayoutNode {
+  id: string;
+  type: "badcase";
+  position: { x: number; y: number };
+  data: BadCaseLayoutNodeData;
+}
+
+/** Problem-card connector kind selected from the API anchor. */
+export type BadCaseEdgeType = "badcase" | "discovery" | "trigger";
+
+/** DOM-independent problem-card edge. */
+export interface BadCaseLayoutEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle: string;
+  targetHandle: string;
+  type: BadCaseEdgeType;
+  data: {
+    badCaseId: string;
+    side: BadCaseAnchorDescriptor["side"];
+  };
+  style: {
+    stroke: string;
+    strokeWidth: number;
+    strokeDasharray?: string;
+  };
+}
+
 /** Stable layout diagnostic suitable for logs and tests. */
 export interface LayoutDiagnostic {
   code:
@@ -100,6 +149,8 @@ export interface BadCaseAnchorDescriptor {
 export interface AgentGraphLayout {
   nodes: AgentLayoutNode[];
   edges: AgentLayoutEdge[];
+  badCaseNodes: BadCaseLayoutNode[];
+  badCaseEdges: BadCaseLayoutEdge[];
   anchors: BadCaseAnchorDescriptor[];
   diagnostics: LayoutDiagnostic[];
   branchSegments: BranchSegment[];
@@ -109,6 +160,7 @@ export interface AgentGraphLayout {
 export interface BuildGraphOptions {
   expanded?: Iterable<string>;
   measureText?: MeasureText;
+  problemDetails?: readonly BadCase[];
 }
 
 /** Inputs accepted by `badCaseAnchors`. */

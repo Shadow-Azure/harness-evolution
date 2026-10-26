@@ -9,7 +9,7 @@ milestone: m4
 depends:
   - m4-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
@@ -57,9 +57,11 @@ m4-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 在执行流节点渲染问题卡、状态色、数量与锚点
-- 问题列表与画布双向定位
-- 点击节点/卡片高亮证据
+- Read five-state problem details and render cards against `anchor.agentId + anchor.eventIndex` in the execution-flow graph.
+- Use side, trigger, discovery, and fallback connector semantics for `self + agent`, `self + skill`, `discovery`, and `eventIndex=-1`; an invalid host keeps the card visible without creating an orphan edge.
+- Stack cards sharing an anchor deterministically by `badCaseId`; list the real ID, five-state attribution, summary, reporter, and metadata facts.
+- Share one active `badCaseId` between list and canvas for two-way location and highlighting; scroll the list after canvas location and cancel late initial-scroll resets.
+- Keep problem loading, failure, retry, and empty states independent from summary and tree loading.
 
 ## Implementation steps
 
@@ -67,9 +69,9 @@ m4-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-1. 用五态 fixture 写图卡与联动失败测试
-2. 实现组件与状态
-3. 验证本地会话定位
+1. Write failing tests for five-state cards, anchors, malformed anchors, and two-way selection.
+2. Implement problem cards, semantic connectors, the five-state list, and the independent query.
+3. Cover all five states, desktop/mobile layout, and location recovery with four real fixture Sessions.
 
 ## Dependencies and boundary
 
@@ -87,14 +89,15 @@ m4-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 ```sh
-pnpm test:api -- tests/m4-03-problem-cards
-pnpm test:db
 pnpm test:web
-pnpm test:e2e
+pnpm test:e2e -- "m4 problem cards"
+pnpm typecheck:web
+pnpm lint:web
 ```
 
-- 列表点击画布定位正确
-- 卡片状态色与常量表一致
+- Four fixture Sessions collectively show unanalyzed, non-issue, model, prompt, and error states.
+- Clicking a list row locates and highlights its canvas card; clicking a canvas card scrolls and highlights its list row.
+- The 1408px and 390px layouts have no horizontal overflow and the browser console is clean.
 
 ## Acceptance
 
@@ -110,8 +113,9 @@ pnpm test:e2e
 
 
 
-- 组件测试、E2E、视觉状态断言
+- Component tests, pure layout tests, real Chrome E2E, TypeScript, ESLint, token color source, and bundle boundaries.
 
 ## Non-goals
 
 - No scope creep beyond the listed non-goals and acceptance.
+- Do not implement the m4-04 error-detail page or attribution tabs.

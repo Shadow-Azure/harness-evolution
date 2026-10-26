@@ -38,7 +38,12 @@ vi.mock("@vue-flow/core", async () => {
       },
     }),
     Handle: defineComponent({ setup: () => () => h("div") }),
-    Position: { Left: "left", Bottom: "bottom" },
+    Position: {
+      Left: "left",
+      Right: "right",
+      Top: "top",
+      Bottom: "bottom",
+    },
     useVueFlow: () => ({
       fitView: fitViewMock,
       getViewport: () => ({ x: 0, y: 0, zoom: 0.7 }),
@@ -76,7 +81,7 @@ describe("AgentTree", () => {
       props: { tree: demoNestedTree, expanded: [] },
     });
     const flow = wrapper.get('[data-testid="vue-flow"]');
-    expect(Number(flow.attributes("data-node-count"))).toBe(2);
+    expect(Number(flow.attributes("data-node-count"))).toBe(6);
 
     wrapper.getComponent({ name: "VueFlow" }).vm.$emit("node-click", {
       node: {
@@ -87,9 +92,13 @@ describe("AgentTree", () => {
     });
     await wrapper.setProps({ expanded: ["main"] });
     expect(wrapper.emitted("toggle-expanded")).toEqual([["main"]]);
-    expect(Number(wrapper.get('[data-testid="vue-flow"]').attributes("data-node-count"))).toBeGreaterThan(
-      2,
-    );
+    expect(
+      Number(
+        wrapper
+          .get('[data-testid="vue-flow"]')
+          .attributes("data-node-count"),
+      ),
+    ).toBeGreaterThan(6);
   });
 
   it("keeps the canvas non-draggable and accessible", () => {
@@ -155,7 +164,10 @@ describe("AgentTree", () => {
     expect(activeNode.data.activeEvidence).toBe(1);
     expect(
       flow.props("nodes")
-        .filter((node: { id: string }) => node.id !== "agent-a")
+        .filter(
+          (node: { id: string; type: string }) =>
+            node.type === "agent" && node.id !== "agent-a",
+        )
         .every(
           (node: { data: { activeEvidence: number | null } }) =>
             node.data.activeEvidence === null,
@@ -185,5 +197,62 @@ describe("AgentTree", () => {
       expect.any(Number),
       expect.objectContaining({ zoom: 0.85, duration: 260 }),
     );
+  });
+
+  it("selects a graph problem card without changing Agent selection", async () => {
+    setCenterMock.mockClear();
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: ["main", "agent-a"],
+      },
+    });
+    const flow = wrapper.getComponent({ name: "VueFlow" });
+    const card = flow.props("nodes").find(
+      (node: { type: string }) => node.type === "badcase",
+    );
+    expect(card).toBeDefined();
+
+    flow.vm.$emit("node-click", { node: card });
+    await nextTick();
+
+    expect(wrapper.emitted("badcase-select")).toEqual([
+      [card.data.badCaseId],
+    ]);
+    expect(wrapper.emitted("node-select")).toBeUndefined();
+    expect(setCenterMock).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ zoom: 0.85, duration: 260 }),
+    );
+  });
+
+  it("keeps exactly one graph problem card active for a selected badCaseId", async () => {
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: ["main", "agent-a"],
+        activeBadCaseId: "case-self-agent",
+      },
+    });
+    await nextTick();
+    await nextTick();
+
+    const cards = wrapper
+      .getComponent({ name: "VueFlow" })
+      .props("nodes")
+      .filter((node: { type: string }) => node.type === "badcase");
+    expect(
+      cards.filter(
+        (node: { data: { active?: boolean } }) => node.data.active,
+      ),
+    ).toHaveLength(1);
+    expect(
+      cards.find(
+        (node: {
+          data: { active?: boolean; badCaseId: string };
+        }) => node.data.active,
+      )?.data.badCaseId,
+    ).toBe("case-self-agent");
   });
 });

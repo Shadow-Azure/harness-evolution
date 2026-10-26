@@ -4,6 +4,7 @@ import { computed, type Ref } from "vue";
 import {
   getSession,
   getSessionTree,
+  listSessionBadCases,
   listSessions,
   type SessionFilters,
 } from "../api/sessions";
@@ -52,5 +53,22 @@ export function useSessionTree(sessionId: Ref<string | null>) {
         : (["sessions", "tree", "empty"] as const),
     ),
     queryFn: () => getSessionTree(sessionId.value as string),
+  });
+}
+
+/**
+ * Query the problem cards for one selected root session.
+ * @param sessionId Reactive root-session identifier, or null when unselected.
+ * @returns Session problem-list query state.
+ */
+export function useSessionBadCases(sessionId: Ref<string | null>) {
+  return useQuery({
+    enabled: computed(() => Boolean(sessionId.value)),
+    queryKey: computed(() =>
+      sessionId.value
+        ? queryKeys.sessionBadCases(sessionId.value)
+        : (["sessions", "bad-cases", "empty"] as const),
+    ),
+    queryFn: () => listSessionBadCases(sessionId.value as string),
   });
 }

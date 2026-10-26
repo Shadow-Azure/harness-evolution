@@ -1,4 +1,5 @@
 import type {
+  BadCaseListResponse,
   SessionListItem,
   SessionListResponse,
   SessionTree,
@@ -56,5 +57,18 @@ export function getSession(sessionId: string): Promise<SessionListItem> {
 export function getSessionTree(sessionId: string): Promise<SessionTree> {
   return request<SessionTree>(
     `/api/sessions/${encodeURIComponent(sessionId)}/tree`,
+  );
+}
+
+/**
+ * Read all problems for one root session.
+ * @param sessionId Root session identifier.
+ * @returns Problem cards carrying five-state attribution and anchor data.
+ */
+export function listSessionBadCases(
+  sessionId: string,
+): Promise<BadCaseListResponse> {
+  return request<BadCaseListResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/bad-cases`,
   );
 }

@@ -10,5 +10,7 @@ export const queryKeys = {
     ["sessions", "detail", sessionId] as const,
   sessionTree: (sessionId: string) =>
     ["sessions", "tree", sessionId] as const,
+  sessionBadCases: (sessionId: string) =>
+    ["sessions", "bad-cases", sessionId] as const,
   acquisitionStatus: ["acquisition", "status"] as const,
 };

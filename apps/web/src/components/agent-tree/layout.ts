@@ -1,10 +1,12 @@
-import type { SessionAgent, SessionEvent } from "@harness/contracts";
+import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
 import type {
   AgentChain,
   AgentGraphLayout,
   AgentLayoutEdge,
   AgentLayoutNode,
+  BadCaseLayoutEdge,
+  BadCaseLayoutNode,
   BadCaseAnchorDescriptor,
   BadCaseAnchorOptions,
   BranchSegment,
@@ -45,12 +47,20 @@ export const LINE_WIDTH_SCALE = 3.2;
 export const MIN_LINE_BAR_W = 80;
 /** Maximum proportional Agent bar width. */
 export const MAX_LINE_BAR_W = 520;
+/** Problem-card width in the prototype graph. */
+export const BADCASE_CARD_W = 230;
+/** Problem-card height in the prototype graph. */
+export const BADCASE_CARD_H = 30;
+/** Vertical gap between stacked problem cards. */
+export const BADCASE_CARD_GAP = 6;
 /** Root Agent X coordinate. */
 export const ROOT_X = 60;
 /** Root Agent Y coordinate. */
 export const ROOT_Y = 40;
 /** Shared branch stroke color from the prototype. */
 export const BRANCH_COLOR = "var(--graph-branch)";
+/** Problem-card connector color from the prototype. */
+export const BADCASE_COLOR = "var(--red)";
 /** Trigger pill font used by the injected measurer. */
 export const FONT_PILL =
   '10px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
@@ -246,9 +256,9 @@ export function pickFindingSide(input: {
   count: number;
   branchSegments: BranchSegment[];
 }): "left" | "right" {
-  const boxHeight = 22;
-  const gap = 6;
-  const totalHeight = input.count * boxHeight + Math.max(0, input.count - 1) * gap;
+  const totalHeight =
+    input.count * BADCASE_CARD_H +
+    Math.max(0, input.count - 1) * BADCASE_CARD_GAP;
   const centerY = input.y + 28;
   const top = centerY - totalHeight / 2;
   const bottom = centerY + totalHeight / 2;
@@ -275,13 +285,41 @@ export function pickFindingSide(input: {
 export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescriptor[] {
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
   const agentById = new Map(input.agents.map((agent) => [agent.agentId, agent]));
-  return [...input.badCases]
-    .sort((left, right) => left.badCaseId.localeCompare(right.badCaseId))
+  const cases = [...input.badCases].sort((left, right) =>
+    left.badCaseId.localeCompare(right.badCaseId),
+  );
+  const selfAgentCounts = new Map<string, number>();
+  for (const badCase of cases) {
+    const host = nodeById.get(badCase.anchor.agentId);
+    const hostAgent = agentById.get(badCase.anchor.agentId);
+    const eventIndex = badCase.anchor.eventIndex;
+    if (
+      !host ||
+      !hostAgent ||
+      eventIndex < 0 ||
+      !hostAgent.events[eventIndex] ||
+      host.data.chain.offsets[eventIndex] === undefined ||
+      badCase.badCaseType === "discovery" ||
+      badCase.objectType === "skill"
+    ) {
+      continue;
+    }
+    const key = `${badCase.anchor.agentId}|${eventIndex}`;
+    selfAgentCounts.set(key, (selfAgentCounts.get(key) ?? 0) + 1);
+  }
+
+  return cases
     .map((badCase) => {
       const host = nodeById.get(badCase.anchor.agentId);
       const hostAgent = agentById.get(badCase.anchor.agentId);
       const eventIndex = badCase.anchor.eventIndex;
-      if (!host || !hostAgent || eventIndex < 0) {
+      if (
+        !host ||
+        !hostAgent ||
+        eventIndex < 0 ||
+        !hostAgent.events[eventIndex] ||
+        host.data.chain.offsets[eventIndex] === undefined
+      ) {
         return {
           badCaseId: badCase.badCaseId,
           hostAgentId: badCase.anchor.agentId,
@@ -324,7 +362,10 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
         y: host.position.y,
         w: host.data.w,
         visualW: host.data.visualW,
-        count: 1,
+        count:
+          selfAgentCounts.get(
+            `${badCase.anchor.agentId}|${eventIndex}`,
+          ) ?? 1,
         branchSegments: input.branchSegments,
       });
       return {
@@ -337,6 +378,135 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
         y: host.position.y + 28,
       };
     });
+}
+
+function badCaseEdgeType(
+  anchor: BadCaseAnchorDescriptor,
+): BadCaseLayoutEdge["type"] {
+  if (anchor.kind === "self-skill") {
+    return "trigger";
+  }
+  if (anchor.kind === "discovery") {
+    return "discovery";
+  }
+  return "badcase";
+}
+
+function badCaseHandles(
+  anchor: BadCaseAnchorDescriptor,
+): Pick<BadCaseLayoutEdge, "sourceHandle" | "targetHandle"> {
+  if (anchor.kind === "self-agent" || anchor.kind === "fallback") {
+    return {
+      sourceHandle:
+        anchor.side === "left" ? "finding-left" : "finding-right",
+      targetHandle: anchor.side === "left" ? "card-right" : "card-left",
+    };
+  }
+  if (anchor.kind === "discovery") {
+    return {
+      sourceHandle: `rep${anchor.eventIndex}`,
+      targetHandle: "card-bottom",
+    };
+  }
+  return {
+    sourceHandle: `h${anchor.eventIndex}`,
+    targetHandle: "card-top",
+  };
+}
+
+/**
+ * Place problem cards around their backend-provided anchors.
+ * @param anchors Stable anchor descriptors.
+ * @param treeCases Minimal bad cases carried by the Session tree.
+ * @param details Full problem records used for five-state presentation.
+ * @returns Stable card nodes and their semantic connector edges.
+ */
+export function buildBadCaseOverlay(
+  anchors: BadCaseAnchorDescriptor[],
+  treeCases: BadCaseAnchorOptions["badCases"],
+  details: readonly BadCase[] = [],
+): {
+  badCaseNodes: BadCaseLayoutNode[];
+  badCaseEdges: BadCaseLayoutEdge[];
+} {
+  const caseById = new Map(treeCases.map((item) => [item.badCaseId, item]));
+  const detailById = new Map(details.map((item) => [item.badCaseId, item]));
+  const groups = new Map<string, BadCaseAnchorDescriptor[]>();
+  for (const anchor of [...anchors].sort((left, right) =>
+    left.badCaseId.localeCompare(right.badCaseId),
+  )) {
+    const key = [
+      anchor.hostAgentId,
+      anchor.eventIndex,
+      anchor.kind,
+      anchor.side,
+    ].join("|");
+    const group = groups.get(key) ?? [];
+    group.push(anchor);
+    groups.set(key, group);
+  }
+
+  const badCaseNodes: BadCaseLayoutNode[] = [];
+  const badCaseEdges: BadCaseLayoutEdge[] = [];
+  for (const group of groups.values()) {
+    group.forEach((anchor, index) => {
+      const item = caseById.get(anchor.badCaseId);
+      const detail = detailById.get(anchor.badCaseId);
+      if (!item) {
+        return;
+      }
+      const count = group.length;
+      let x = anchor.x + 46;
+      let y =
+        anchor.y -
+        BADCASE_CARD_H / 2 +
+        (index - (count - 1) / 2) * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      if (anchor.side === "left") {
+        x = anchor.x - BADCASE_CARD_W - 46;
+      } else if (anchor.side === "below") {
+        x = anchor.x - 48;
+        y = anchor.y + 8 + index * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      } else if (anchor.side === "above") {
+        x = anchor.x - 48;
+        y =
+          anchor.y -
+          8 -
+          BADCASE_CARD_H -
+          index * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      }
+      const targetId = `badcase:${anchor.badCaseId}`;
+      badCaseNodes.push({
+        id: targetId,
+        type: "badcase",
+        position: { x, y },
+        data: {
+          badCaseId: anchor.badCaseId,
+          shortId: anchor.badCaseId.slice(0, 8),
+          reason: detail?.reason ?? item.reason,
+          displayState: detail?.analysis.displayState ?? "unanalyzed",
+          degraded: detail?.degraded ?? false,
+        },
+      });
+      const handles = badCaseHandles(anchor);
+      badCaseEdges.push({
+        id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
+        source: anchor.hostAgentId,
+        target: targetId,
+        ...handles,
+        type: badCaseEdgeType(anchor),
+        data: {
+          badCaseId: anchor.badCaseId,
+          side: anchor.side,
+        },
+        style: {
+          stroke: BADCASE_COLOR,
+          strokeWidth: 1.2,
+          strokeDasharray: "4 3",
+        },
+      });
+    });
+  }
+  return { badCaseNodes, badCaseEdges };
 }
 
 /**
@@ -386,6 +556,8 @@ export function buildGraph(
     return {
       nodes: [],
       edges: [],
+      badCaseNodes: [],
+      badCaseEdges: [],
       anchors: [],
       diagnostics: sortDiagnostics(diagnostics),
       branchSegments: [],
@@ -402,6 +574,8 @@ export function buildGraph(
     return {
       nodes: [],
       edges: [],
+      badCaseNodes: [],
+      badCaseEdges: [],
       anchors: [],
       diagnostics: sortDiagnostics(diagnostics),
       branchSegments: [],
@@ -718,10 +892,19 @@ export function buildGraph(
       });
     }
   }
+  const overlay = buildBadCaseOverlay(
+    anchors,
+    tree.badCases,
+    normalizedOptions.problemDetails,
+  );
 
   return {
     nodes,
     edges,
+    badCaseNodes: overlay.badCaseNodes,
+    badCaseEdges: overlay.badCaseEdges.filter((edge) =>
+      nodes.some((node) => node.id === edge.source),
+    ),
     anchors,
     diagnostics: sortDiagnostics(diagnostics),
     branchSegments,
@@ -753,6 +936,89 @@ export function orthPath(input: {
     `H ${trunk}`,
     `V ${input.targetY - radius}`,
     `Q ${trunk} ${input.targetY} ${trunk + radius} ${input.targetY}`,
+    `H ${input.targetX}`,
+  ].join(" ");
+}
+
+/**
+ * Build the side-to-side connector used by self-Agent problem cards.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function badCasePath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const dy = input.targetY - input.sourceY;
+  if (dy === 0) {
+    return `M ${input.sourceX} ${input.sourceY} H ${input.targetX}`;
+  }
+  const direction = Math.sign(input.targetX - input.sourceX) || 1;
+  const horizontalDistance = Math.abs(input.targetX - input.sourceX);
+  const trunk =
+    input.sourceX +
+    direction * Math.min(24, horizontalDistance / 2);
+  const verticalDirection = Math.sign(dy);
+  const radius = Math.min(
+    7,
+    Math.abs(dy) / 2,
+    Math.abs(trunk - input.sourceX),
+    Math.abs(input.targetX - trunk),
+  );
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `H ${trunk - direction * radius}`,
+    `Q ${trunk} ${input.sourceY} ${trunk} ${input.sourceY + verticalDirection * radius}`,
+    `V ${input.targetY - verticalDirection * radius}`,
+    `Q ${trunk} ${input.targetY} ${trunk + direction * radius} ${input.targetY}`,
+    `H ${input.targetX}`,
+  ].join(" ");
+}
+
+/**
+ * Build a horizontal-then-vertical trigger connector for a skill card.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function triggerPath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const directionX = Math.sign(input.targetX - input.sourceX) || 1;
+  const directionY = Math.sign(input.targetY - input.sourceY) || -1;
+  const radius = Math.min(
+    6,
+    Math.abs(input.targetX - input.sourceX) / 2,
+    Math.abs(input.targetY - input.sourceY) / 2,
+  );
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `H ${input.targetX - directionX * radius}`,
+    `Q ${input.targetX} ${input.sourceY} ${input.targetX} ${input.sourceY + directionY * radius}`,
+    `V ${input.targetY}`,
+  ].join(" ");
+}
+
+/**
+ * Build the discovery connector from a top trigger handle toward its card.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function discoveryPath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const radius = Math.min(7, Math.abs(input.targetY - input.sourceY) / 2);
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `V ${input.targetY + radius}`,
+    `Q ${input.sourceX} ${input.targetY} ${input.sourceX + radius} ${input.targetY}`,
     `H ${input.targetX}`,
   ].join(" ");
 }
