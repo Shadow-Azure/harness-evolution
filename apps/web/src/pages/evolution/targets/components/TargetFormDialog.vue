@@ -175,20 +175,24 @@ watch(
           </ElFormItem>
 
           <ElFormItem label="基线分支或标签">
-            <ElInput
+            <ElSelect
               v-model="form.defaultRef"
-              list="target-version-options"
-              maxlength="128"
+              allow-create
+              class="target-version-select"
+              data-testid="target-version-select"
+              default-first-option
+              filterable
+              :loading="versionsLoading"
               name="defaultRef"
               placeholder="main / v2.0.0"
-            />
-            <datalist id="target-version-options">
-              <option
+            >
+              <ElOption
                 v-for="version in versionOptions"
                 :key="version"
+                :label="version"
                 :value="version"
               />
-            </datalist>
+            </ElSelect>
             <p
               v-if="versionsLoading"
               class="field-help"

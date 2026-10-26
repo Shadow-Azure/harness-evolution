@@ -3,6 +3,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import type { EvolutionTarget } from "@harness/contracts";
+import { ElOption, ElSelect } from "element-plus/es/components/select/index";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -147,7 +148,8 @@ describe("target configuration page", () => {
     await wrapper
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
-    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    wrapper.findComponent(ElSelect).vm.$emit("update:modelValue", "main");
+    await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -187,7 +189,8 @@ describe("target configuration page", () => {
     await wrapper
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
-    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    wrapper.findComponent(ElSelect).vm.$emit("update:modelValue", "main");
+    await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -214,13 +217,12 @@ describe("target configuration page", () => {
     await wrapper.get(".edit-target").trigger("click");
     await flushPromises();
 
+    expect(wrapper.findComponent(ElSelect).props("modelValue")).toBe("main");
     expect(
-      wrapper.findAll("#target-version-options option")
-        .map((option) => option.attributes("value")),
+      wrapper
+        .findAllComponents(ElOption)
+        .map((option) => option.props("value")),
     ).toEqual(["main", "v1.9.0", "v2.0.0"]);
-    expect(
-      (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
-    ).toBe("main");
   });
 
   it("maps TARGET_EXISTS into the open edit form", async () => {

@@ -2,6 +2,7 @@
 
 import type { EvolutionTarget } from "@harness/contracts";
 import { flushPromises, mount } from "@vue/test-utils";
+import { ElOption, ElSelect } from "element-plus/es/components/select/index";
 import { describe, expect, it } from "vitest";
 
 import { elementPlusComponents } from "../../../../test/setup";
@@ -55,9 +56,11 @@ async function fillRequired(
   await wrapper.get('input[name="subDir"]').setValue(
     values.subDir ?? "  skills/deep-research  ",
   );
-  await wrapper.get('input[name="defaultRef"]').setValue(
+  wrapper.findComponent(ElSelect).vm.$emit(
+    "update:modelValue",
     values.defaultRef ?? "  main  ",
   );
+  await flushPromises();
 }
 
 describe("TargetFormDialog", () => {
@@ -81,7 +84,6 @@ describe("TargetFormDialog", () => {
 
   it("shows inline required errors and does not submit empty fields", async () => {
     const wrapper = await mountDialog();
-    await wrapper.get('input[name="defaultRef"]').setValue("");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
 
@@ -117,10 +119,16 @@ describe("TargetFormDialog", () => {
     expect(
       (wrapper.get('input[name="objectName"]').element as HTMLInputElement).value,
     ).toBe("deep-research");
+    const select = wrapper.findComponent(ElSelect);
+    expect(select.props("modelValue")).toBe("main");
+    expect(select.props("filterable")).toBe(true);
+    expect(select.props("allowCreate")).toBe(true);
+    expect(select.props("defaultFirstOption")).toBe(true);
     expect(
-      wrapper.findAll("#target-version-options option")
-        .map((option) => option.attributes("value")),
-    ).toContain("v2.0.0");
+      wrapper
+        .findAllComponents(ElOption)
+        .map((option) => option.props("value")),
+    ).toEqual(["main", "v1.9.0", "v2.0.0"]);
     expect(wrapper.get(".el-switch").classes()).toContain("is-checked");
 
     await wrapper.get(".el-switch").trigger("click");
