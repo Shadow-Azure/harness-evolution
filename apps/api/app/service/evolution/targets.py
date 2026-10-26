@@ -134,10 +134,15 @@ def _validate_repo_url(value: str) -> str:
         raise _repo_invalid()
     if _SCP_REMOTE.fullmatch(normalized):
         return normalized
-    parsed = urlsplit(normalized)
+    try:
+        parsed = urlsplit(normalized)
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError:
+        raise _repo_invalid() from None
     if (
         parsed.scheme not in {"https", "ssh"}
-        or not parsed.hostname
+        or not hostname
         or parsed.password is not None
         or parsed.query
         or parsed.fragment

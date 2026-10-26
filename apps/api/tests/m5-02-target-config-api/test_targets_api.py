@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any
 
@@ -174,8 +175,11 @@ async def test_valid_repo_forms_are_normalized_and_validated(repo_url: str) -> N
     [
         _write(repo_url="http://git.example.com/agent-skills.git"),
         _write(repo_url="https://user:password@git.example.com/agent-skills.git"),
+        _write(repo_url="ssh://user:password@git.example.com/agent-skills.git"),
         _write(repo_url="https://git.example.com/agent-skills.git?token=secret"),
         _write(repo_url="https://git.example.com/agent-skills.git#branch"),
+        _write(repo_url="https://[invalid/agent-skills.git"),
+        _write(repo_url="ssh://git.example.com:not-a-port/agent-skills.git"),
         _write(repo_url="https:///missing-host.git"),
         _write(sub_dir=""),
         _write(sub_dir="/absolute"),
@@ -304,6 +308,23 @@ async def test_delete_missing_and_versions_contract() -> None:
     assert deleting.value.code == ErrorCode.TARGET_NOT_FOUND
 
 
+async def test_versions_remote_failure_is_sanitized() -> None:
+    """Tag reads use the same stable invalid-remote response as saves."""
+    repository = FakeRepository()
+    remote = FakeGitRemote()
+    service = EvolutionTargetService(repository, remote)
+    created = await service.create(_write(), created_by=None)
+    remote.fail = True
+
+    with pytest.raises(AppError) as raised:
+        await service.versions(created.id)
+
+    assert raised.value.code == ErrorCode.REPO_INVALID
+    assert raised.value.status_code == 422
+    assert raised.value.message == "repository or ref is invalid"
+    assert "should-not-leak" not in raised.value.message
+
+
 async def test_git_adapter_uses_argument_arrays_and_parses_tags() -> None:
     """The process boundary never invokes a shell and parses only tag refs."""
     calls: list[tuple[str, ...]] = []
@@ -367,3 +388,62 @@ async def test_git_adapter_failures_are_sanitized(
 
     assert str(raised.value) == "repository or ref is invalid"
     assert "secret" not in str(raised.value)
+
+
+async def test_git_timeout_kills_and_reaps_the_child_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timed-out ls-remote cannot leave its child process running."""
+
+    class BlockingProcess:
+        """Child double that only exits when cancellation kills it."""
+
+        returncode: int | None = None
+        killed = False
+        waited = False
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            """Block until the enclosing timeout cancels the operation."""
+            await asyncio.sleep(60)
+            return b"", b""
+
+        def kill(self) -> None:
+            """Record the kill and make wait resolve immediately."""
+            self.killed = True
+            self.returncode = -9
+
+        async def wait(self) -> int:
+            """Record that the killed child was reaped."""
+            self.waited = True
+            return -9
+
+    process = BlockingProcess()
+    calls: list[tuple[tuple[str, ...], dict[str, Any]]] = []
+
+    async def create_process(
+        *argv: str,
+        **kwargs: Any,
+    ) -> BlockingProcess:
+        calls.append((argv, kwargs))
+        return process
+
+    monkeypatch.setattr(
+        asyncio,
+        "create_subprocess_exec",
+        create_process,
+    )
+    remote = SubprocessGitRemote(timeout_seconds=0.01)
+
+    with pytest.raises(RepoInvalid):
+        await remote.validate("https://git.example.com/repo.git", "main")
+
+    assert calls[0][0] == (
+        "git",
+        "ls-remote",
+        "--exit-code",
+        "--",
+        "https://git.example.com/repo.git",
+        "main",
+    )
+    assert process.killed is True
+    assert process.waited is True

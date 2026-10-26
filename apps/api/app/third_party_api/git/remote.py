@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -89,7 +90,13 @@ class SubprocessGitRemote:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await process.communicate()
+        try:
+            stdout, stderr = await process.communicate()
+        except asyncio.CancelledError:
+            with suppress(ProcessLookupError):
+                process.kill()
+            await process.wait()
+            raise
         return GitProcessResult(
             returncode=process.returncode or 0,
             stdout=stdout.decode(errors="replace"),
