@@ -9,6 +9,12 @@ export const ENTRY_RAW_MAX_BYTES = 250 * 1024;
 export const ENTRY_GZIP_MAX_BYTES = 90 * 1024;
 /** Design budget for each manually split vendor chunk. */
 export const VENDOR_RAW_MAX_BYTES = 400 * 1024;
+/** Manual vendor chunks required by the first-screen performance contract. */
+export const REQUIRED_VENDOR_CHUNKS = [
+  "vendor-vue",
+  "vendor-element-plus",
+  "vendor-vue-flow",
+];
 
 /**
  * Validate the Vite manifest against first-screen Vue Flow boundaries.
@@ -87,13 +93,27 @@ export function assertBundleBudgets(manifest, readAsset) {
   }
 
   const vendors = {};
+  const foundRequired = new Set();
   for (const [key, chunk] of Object.entries(manifest)) {
     if (!/(?:^|[/_-])vendor-/.test(`${key} ${chunk.name ?? ""}`)) continue;
     const bytes = readAsset(chunk.file).byteLength;
     vendors[key] = bytes;
+    for (const required of REQUIRED_VENDOR_CHUNKS) {
+      if (
+        key === required ||
+        key === `_${required}.js` ||
+        chunk.name === required
+      ) {
+        foundRequired.add(required);
+      }
+    }
     if (bytes > VENDOR_RAW_MAX_BYTES) {
       throw new Error(`vendor chunk ${key} exceeds ${VENDOR_RAW_MAX_BYTES} bytes`);
     }
+  }
+  const missing = REQUIRED_VENDOR_CHUNKS.filter((name) => !foundRequired.has(name));
+  if (missing.length) {
+    throw new Error(`required vendor chunk missing: ${missing.join(", ")}`);
   }
   return {
     entry: { gzip: entryGzipBytes, raw: entryBytes.byteLength },

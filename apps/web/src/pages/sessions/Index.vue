@@ -39,6 +39,8 @@ let searchRevision = 0;
 let autoSelectionRevision = 0;
 let listPanel: HTMLElement | null = null;
 let overviewPanel: HTMLElement | null = null;
+let initialResetTimers: ReturnType<typeof setTimeout>[] = [];
+let cancelInitialReset: (() => void) | null = null;
 
 const validStatuses = new Set<SessionStatusFilter>([
   "all",
@@ -505,7 +507,29 @@ watch(
 );
 
 onMounted(() => {
-  void nextTick().then(bindScrollPanels);
+  void nextTick().then(() => {
+    bindScrollPanels();
+    if (selectedId.value) restorePanelScroll(selectedId.value);
+    const resetPanels = () => {
+      const list = pageRoot.value?.querySelector<HTMLElement>(".session-list");
+      const overview = pageRoot.value?.querySelector<HTMLElement>(".overview");
+      if (list) list.scrollTop = 0;
+      if (overview) overview.scrollTop = 0;
+    };
+    initialResetTimers = [0, 250, 750].map(
+      (delay) => setTimeout(resetPanels, delay),
+    );
+    const cancel = () => {
+      for (const timer of initialResetTimers) clearTimeout(timer);
+      initialResetTimers = [];
+    };
+    cancelInitialReset = cancel;
+    pageRoot.value?.addEventListener("wheel", cancel, {
+      capture: true,
+      once: true,
+      passive: true,
+    });
+  });
 });
 
 onBeforeUnmount(() => {
@@ -517,6 +541,10 @@ onBeforeUnmount(() => {
   overviewPanel?.removeEventListener("scroll", rememberPanelScroll);
   listPanel = null;
   overviewPanel = null;
+  for (const timer of initialResetTimers) clearTimeout(timer);
+  initialResetTimers = [];
+  cancelInitialReset?.();
+  cancelInitialReset = null;
   searchRevision += 1;
   clearTimeout(searchTimer);
   searchTimer = undefined;

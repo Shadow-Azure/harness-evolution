@@ -14,6 +14,10 @@ import {
   waitFor,
   waitForDocument,
 } from "../support/runtime.mjs";
+import {
+  PERFORMANCE_BUDGETS,
+  SYNTHETIC_LARGEST_TREE,
+} from "../../scripts/performance-budgets.mjs";
 
 const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -129,12 +133,22 @@ before(async () => {
   }
   if (performanceSource === "local") {
     const databasePath = path.join(dataDir, "harness.db");
+    const python = process.env.PYTHON ?? "python3";
     const largest = spawnSync(
-      "sqlite3",
+      python,
       [
-        "-json",
+        "-c",
+        [
+          "import json, sqlite3, sys",
+          "connection = sqlite3.connect(sys.argv[1])",
+          "rows = connection.execute(",
+          "  'select root_session_id as id, count(*) as agents, sum(lines) as lines '",
+          "  'from agents group by root_session_id order by agents desc, lines desc limit 1'",
+          ").fetchall()",
+          "print(json.dumps([dict(zip(('id', 'agents', 'lines'), row)) for row in rows]))",
+          "connection.close()",
+        ].join("\n"),
         databasePath,
-        "select root_session_id as id, count(*) as agents, sum(lines) as lines from agents group by root_session_id order by agents desc, lines desc limit 1;",
       ],
       { encoding: "utf8" },
     );
@@ -868,7 +882,7 @@ test("m3-session-browser stays within performance budgets", async () => {
     await installCookie(page, cookie);
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 1408,
-      height: 560,
+      height: 360,
       deviceScaleFactor: 1,
       mobile: false,
     });
@@ -935,7 +949,7 @@ test("m3-session-browser stays within performance budgets", async () => {
     const cardsReadyAt = cards.readyAt ?? Date.now();
     const readyMs = cardsReadyAt - navigationStarted;
     assert.equal(cards.cards, 4);
-    assert.ok(readyMs <= 2_500, JSON.stringify({ readyMs }));
+    assert.ok(readyMs <= PERFORMANCE_BUDGETS.cardsReadyMs, JSON.stringify({ readyMs }));
 
     const initialTree = await waitForDocument(
       page.session,
@@ -975,7 +989,10 @@ test("m3-session-browser stays within performance budgets", async () => {
       returnByValue: true,
     });
     const interactionMs = interaction.result.value.ms;
-    assert.ok(interactionMs <= 200, JSON.stringify({ interactionMs }));
+    assert.ok(
+      interactionMs <= PERFORMANCE_BUDGETS.interactionMs,
+      JSON.stringify({ interactionMs }),
+    );
     const selectedSessionId = interaction.result.value.id;
     assert.equal(
       detailRequests.filter((entry) => entry.sessionId === selectedSessionId).length,
@@ -992,6 +1009,14 @@ test("m3-session-browser stays within performance budgets", async () => {
       expression: `(async () => {
         const list = document.querySelector(".session-list");
         const overview = document.querySelector(".overview");
+        await new Promise((resolve) => setTimeout(resolve, 320));
+        for (const [panel, height] of [[list, 600], [overview, 600]]) {
+          const probe = document.createElement("div");
+          probe.dataset.scrollProbe = "true";
+          probe.style.height = height + "px";
+          probe.setAttribute("aria-hidden", "true");
+          panel.appendChild(probe);
+        }
         list.scrollTop = Math.min(80, list.scrollHeight - list.clientHeight);
         overview.scrollTop = Math.min(180, overview.scrollHeight - overview.clientHeight);
         await new Promise(requestAnimationFrame);
@@ -999,12 +1024,24 @@ test("m3-session-browser stays within performance budgets", async () => {
         return {
           path: location.pathname,
           list: list.scrollTop,
+          listClient: list.clientHeight,
+          listScroll: list.scrollHeight,
           overview: overview.scrollTop,
+          overviewClient: overview.clientHeight,
+          overviewScroll: overview.scrollHeight,
         };
       })()`,
       awaitPromise: true,
       returnByValue: true,
     });
+    assert.ok(
+      secondScroll.result.value.list > 0,
+      JSON.stringify(secondScroll.result.value),
+    );
+    assert.ok(
+      secondScroll.result.value.overview > 0,
+      JSON.stringify(secondScroll.result.value),
+    );
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelectorAll("[data-testid='session-card']")[0].click()`,
     });
@@ -1015,6 +1052,14 @@ test("m3-session-browser stays within performance budgets", async () => {
         const list = document.querySelector(".session-list");
         const overview = document.querySelector(".overview");
         if (!selected || location.pathname === ${JSON.stringify(secondScroll.result.value.path)}) return null;
+        await new Promise((resolve) => setTimeout(resolve, 320));
+        for (const [panel, height] of [[list, 600], [overview, 600]]) {
+          const probe = document.createElement("div");
+          probe.dataset.scrollProbe = "true";
+          probe.style.height = height + "px";
+          probe.setAttribute("aria-hidden", "true");
+          panel.appendChild(probe);
+        }
         list.scrollTop = Math.min(40, list.scrollHeight - list.clientHeight);
         overview.scrollTop = Math.min(90, overview.scrollHeight - overview.clientHeight);
         await new Promise(requestAnimationFrame);
@@ -1027,6 +1072,8 @@ test("m3-session-browser stays within performance budgets", async () => {
       })()`,
       "first Session scroll state",
     );
+    assert.ok(firstScroll.list > 0, JSON.stringify(firstScroll));
+    assert.ok(firstScroll.overview > 0, JSON.stringify(firstScroll));
     await page.session.send("Runtime.evaluate", {
       expression: "history.back()",
     });
@@ -1036,6 +1083,10 @@ test("m3-session-browser stays within performance budgets", async () => {
         const list = document.querySelector(".session-list");
         const overview = document.querySelector(".overview");
         if (location.pathname !== ${JSON.stringify(secondScroll.result.value.path)}) return null;
+        if (
+          list.scrollTop !== ${secondScroll.result.value.list} ||
+          overview.scrollTop !== ${secondScroll.result.value.overview}
+        ) return null;
         return { list: list.scrollTop, overview: overview.scrollTop };
       })()`,
       "restored second Session scroll",
@@ -1055,12 +1106,45 @@ test("m3-session-browser stays within performance budgets", async () => {
         const list = document.querySelector(".session-list");
         const overview = document.querySelector(".overview");
         if (location.pathname !== ${JSON.stringify(firstScroll.path)}) return null;
+        if (
+          list.scrollTop !== ${firstScroll.list} ||
+          overview.scrollTop !== ${firstScroll.overview}
+        ) return null;
         return { list: list.scrollTop, overview: overview.scrollTop };
       })()`,
       "restored first Session scroll through history",
     );
     assert.equal(restoredFirst.list, firstScroll.list, JSON.stringify(restoredFirst));
     assert.equal(restoredFirst.overview, firstScroll.overview, JSON.stringify(restoredFirst));
+
+    await installCookie(page, await sessionCookie());
+    await page.session.send("Page.reload");
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const reloadDiagnostics = await page.session.send("Runtime.evaluate", {
+      expression: `({
+        href: location.href,
+        list: Boolean(document.querySelector(".session-list")),
+        text: document.body.textContent.slice(0, 120),
+        overview: Boolean(document.querySelector(".overview"))
+      })`,
+      returnByValue: true,
+    });
+    assert.equal(reloadDiagnostics.result.value.list, true, JSON.stringify(reloadDiagnostics.result.value));
+    assert.equal(reloadDiagnostics.result.value.overview, true, JSON.stringify(reloadDiagnostics.result.value));
+    const reloadedScroll = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector(".session-list");
+        const overview = document.querySelector(".overview");
+        if (!list || !overview || list.scrollTop !== 0 || overview.scrollTop !== 0) {
+          return null;
+        }
+        return { list: list.scrollTop, overview: overview.scrollTop };
+      })()`,
+      "reloaded scroll reset",
+    );
+    assert.equal(reloadedScroll.list, 0, JSON.stringify(reloadedScroll));
+    assert.equal(reloadedScroll.overview, 0, JSON.stringify(reloadedScroll));
 
     const scroll = await page.session.send("Runtime.evaluate", {
       expression: `(async () => {
@@ -1084,11 +1168,16 @@ test("m3-session-browser stays within performance budgets", async () => {
       awaitPromise: true,
       returnByValue: true,
     });
-    assert.ok(scroll.result.value.average <= 34, JSON.stringify(scroll.result.value));
+    assert.ok(
+      scroll.result.value.average <= PERFORMANCE_BUDGETS.scrollFrameAverageMs,
+      JSON.stringify(scroll.result.value),
+    );
 
     await installCookie(page, await sessionCookie());
     const largestTargetAgents =
-      performanceSource === "local" ? Number(largestLocalSession.agents) : 61;
+      performanceSource === "local"
+        ? Number(largestLocalSession.agents)
+        : SYNTHETIC_LARGEST_TREE.agents;
     const largestReadyStarted = Date.now();
     await page.session.send("Page.navigate", {
       url:
@@ -1106,7 +1195,10 @@ test("m3-session-browser stays within performance budgets", async () => {
       "61-agent collapse node",
     );
     const largestReadyMs = Date.now() - largestReadyStarted;
-    assert.ok(largestReadyMs <= 2_500, JSON.stringify({ largestReadyMs }));
+    assert.ok(
+      largestReadyMs <= PERFORMANCE_BUDGETS.largestTreeReadyMs,
+      JSON.stringify({ largestReadyMs }),
+    );
     assert.match(collapsed.label, /子 agent/);
     const expansion = await page.session.send("Runtime.evaluate", {
       expression: `(async () => {
@@ -1132,23 +1224,38 @@ test("m3-session-browser stays within performance budgets", async () => {
       largestTargetAgents,
       JSON.stringify(expansion.result.value),
     );
-    assert.ok(expansion.result.value.duration <= 350, JSON.stringify(expansion.result.value));
+    assert.ok(
+      expansion.result.value.duration <= PERFORMANCE_BUDGETS.treeExpandMs,
+      JSON.stringify(expansion.result.value),
+    );
 
     const longTasks = await page.session.send("Runtime.evaluate", {
       expression: `window.__perfLongTasks ?? []`,
       returnByValue: true,
     });
     const maxLongTask = Math.max(0, ...longTasks.result.value);
-    assert.ok(maxLongTask <= 200, JSON.stringify({ maxLongTask }));
+    assert.ok(
+      maxLongTask <= PERFORMANCE_BUDGETS.longTaskMs,
+      JSON.stringify({ maxLongTask }),
+    );
     assert.deepEqual(violations, [], violations.join("\n"));
 
     const browserVersion = await page.session.send("Browser.getVersion");
     const largestAgents =
-      performanceSource === "local" ? Number(largestLocalSession.agents) : 61;
+      performanceSource === "local"
+        ? Number(largestLocalSession.agents)
+        : SYNTHETIC_LARGEST_TREE.agents;
     const largestLines =
-      performanceSource === "local" ? Number(largestLocalSession.lines) : 13_492;
+      performanceSource === "local"
+        ? Number(largestLocalSession.lines)
+        : SYNTHETIC_LARGEST_TREE.lines;
     const report = {
       source: performanceSource,
+      budgets: PERFORMANCE_BUDGETS,
+      dataOrigin:
+        performanceSource === "local"
+          ? "local-import-replay"
+          : "synthetic-fixture",
       browser: {
         deviceScaleFactor: 1,
         product: browserVersion.product,
@@ -1188,7 +1295,7 @@ test("m3-session-browser stays within performance budgets", async () => {
       interactionMs: Math.round(interactionMs),
       scrollFrameAverageMs: Number(scroll.result.value.average.toFixed(2)),
       maxLongTaskMs: Number(maxLongTask.toFixed(2)),
-      viewport: { height: 560, width: 1408 },
+      viewport: { height: 360, width: 1408 },
     };
     const artifactDir = process.env.HE_E2E_ARTIFACT_DIR;
     if (artifactDir) {
