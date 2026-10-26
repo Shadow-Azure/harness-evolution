@@ -2,7 +2,7 @@
 
 ## 结论
 
-D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，也已在同一 PR 收敛；`0c91e3e` 再补齐 prompt 分类原文。`13333e7` 已通过 Web 全量 249 passed/1 skipped（95.77% statements）与真实 Chrome M4 E2E 1/1；`0c91e3e` 目标 Vitest 27/27。typecheck、lint、样式、契约、build、bundle 与文档门禁均通过。
+D1-D4 全部成立并已修复。后续 smoke、原型复核和独立复审又发现 D5-D10，也已在同一 PR 收敛；`0c91e3e` 补齐 prompt 分类原文。最终 Web 全量 254 passed/1 skipped（96.01% statements）、目标 Vitest 79/79、真实 Chrome M4 E2E 1/1。typecheck、lint、样式、契约、build、bundle 与文档门禁均通过。
 
 ## D1 归因信息重复与顺序偏差
 
@@ -93,7 +93,7 @@ D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，�
 
 ## 回归策略
 
-按 TDD 先新增/修改失败测试，再改组件；D1-D7 最终共同覆盖：
+按 TDD 先新增/修改失败测试，再改组件；D1-D10 最终共同覆盖：
 
 - `apps/web/src/utils/badCaseId.test.ts`：短 ID、深链编码和 desc/attr。
 - `apps/web/src/pages/errors/Index.test.ts`：D1 固定顺序与去重、D2 两个新窗口链接、D3 reason 唯一、D4 原型文案。
@@ -102,7 +102,7 @@ D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，�
 - `apps/web/src/app/apiError.test.ts`：页面处理的跨 Session 409 不再重复 toast。
 - `tests/e2e/m4-error-detail.test.mjs`：实际渲染的 ID 为 8 位，链接带正确 href/target/rel，点击卡体仍只更新 URL。
 
-最终复跑结果：`0c91e3e` 目标 Vitest 27/27；`13333e7` Web 全量 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 `0c91e3e` smoke/reporting 已完成 15/15 CDP 与 2/2 原生 Computer Use 场景，证据提交为 `597e3ea`，控制台无非预期错误。
+最终复跑结果：目标 Vitest 79/79；Web 全量 254 passed/1 skipped（96.01% statements）；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 `0c91e3e` smoke/reporting 已完成 15/15 CDP 与 2/2 原生 Computer Use 场景，证据提交为 `597e3ea`，控制台无非预期错误。
 
 ## D5 compact 问题卡结构与报告入口
 
@@ -121,3 +121,21 @@ D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，�
 **Verdict：修复。**
 
 跨 Session 的 `BAD_CASE_SESSION_MISMATCH` 已由页面阻塞错误完整表达。全局 409 presenter 将该 code 标为页面处理，不再弹 toast；其他冲突仍保留原有非阻塞提示。`apiError.test.ts`、`Index.test.ts` 与真实 Chrome E2E 形成三层回归。
+
+## R1 致命布局诊断退化为空白画布
+
+**Verdict：修复。**
+
+`MISSING_MAIN`、`DUPLICATE_MAIN`、`DUPLICATE_AGENT` 会让布局返回零节点。组件现在把零节点和无诊断的正常空树统一显示为“执行流数据不完整，暂时无法绘制。”的状态块，不渲染 VueFlow 或控制按钮，也不暴露机器 code；`graph.diagnostics` 仍保留在布局结果中供降级与测试。`AgentTree.test.ts` 锁定该状态与内部诊断不外泄。
+
+## R2 页面 404、5xx 与重试缺少证据
+
+**Verdict：补验。**
+
+页面原有 404 与通用详情失败分支缺少回归覆盖。`Index.test.ts` 现通过 MSW 锁定 404 不可重试、详情/分析 5xx 可重试，并验证点击重试后描述恢复；不改变生产行为。
+
+## R3 降级详情泄漏机器诊断码
+
+**Verdict：修复。**
+
+降级问题仍显示“数据降级”和“外部字段存在漂移，当前以安全占位展示。”，但可见正文不再拼接 `diagnosticCode`。`Index.test.ts` 锁定用户文案存在且 `BAD_CASE_DISPLAY_STATE_UNKNOWN` 不可见。

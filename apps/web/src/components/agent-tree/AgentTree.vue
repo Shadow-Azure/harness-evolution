@@ -164,6 +164,7 @@ function cancelScheduledFit() {
 
 function scheduleFitView() {
   if (
+    renderedNodes.value.length === 0 ||
     locatingBadCaseCount > 0 ||
     Date.now() < suppressFitUntil
   ) {
@@ -348,69 +349,78 @@ function onNodesInitialized() {
     :style="{ height }"
     aria-label="Agent 执行流图"
   >
-    <VueFlow
-      :nodes="renderedNodes"
-      :edges="renderedEdges"
-      :node-types="nodeTypes"
-      :edge-types="edgeTypes"
-      :nodes-draggable="false"
-      :nodes-connectable="false"
-      :nodes-focusable="false"
-      :edges-focusable="false"
-      :elements-selectable="true"
-      :min-zoom="0.2"
-      :max-zoom="2.5"
-      :fit-view-on-init="false"
-      @node-click="onNodeClick"
-      @nodes-initialized="onNodesInitialized"
-    >
-      <Background
-        :gap="22"
-        color="var(--graph-grid)"
-      />
-      <div
-        class="vue-flow__controls agent-tree-controls"
-        role="group"
-        aria-label="图谱控制"
+    <template v-if="renderedNodes.length">
+      <VueFlow
+        :nodes="renderedNodes"
+        :edges="renderedEdges"
+        :node-types="nodeTypes"
+        :edge-types="edgeTypes"
+        :nodes-draggable="false"
+        :nodes-connectable="false"
+        :nodes-focusable="false"
+        :edges-focusable="false"
+        :elements-selectable="true"
+        :min-zoom="0.2"
+        :max-zoom="2.5"
+        :fit-view-on-init="false"
+        @node-click="onNodeClick"
+        @nodes-initialized="onNodesInitialized"
       >
-        <ControlButton
-          aria-label="放大"
-          title="放大"
-          @click="zoomIn"
+        <Background
+          :gap="22"
+          color="var(--graph-grid)"
+        />
+        <div
+          class="vue-flow__controls agent-tree-controls"
+          role="group"
+          aria-label="图谱控制"
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
+          <ControlButton
+            aria-label="放大"
+            title="放大"
+            @click="zoomIn"
           >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </ControlButton>
-        <ControlButton
-          aria-label="缩小"
-          title="缩小"
-          @click="zoomOut"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </ControlButton>
+          <ControlButton
+            aria-label="缩小"
+            title="缩小"
+            @click="zoomOut"
           >
-            <path d="M5 12h14" />
-          </svg>
-        </ControlButton>
-        <ControlButton
-          aria-label="适应画布"
-          title="适应画布"
-          @click="fitView({ padding: 0.12 })"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+            >
+              <path d="M5 12h14" />
+            </svg>
+          </ControlButton>
+          <ControlButton
+            aria-label="适应画布"
+            title="适应画布"
+            @click="fitView({ padding: 0.12 })"
           >
-            <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-          </svg>
-        </ControlButton>
-      </div>
-    </VueFlow>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+            >
+              <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+            </svg>
+          </ControlButton>
+        </div>
+      </VueFlow>
+    </template>
+    <div
+      v-else
+      class="agent-tree-unavailable"
+      role="status"
+    >
+      执行流数据不完整，暂时无法绘制。
+    </div>
   </section>
 </template>
 
@@ -432,6 +442,16 @@ function onNodesInitialized() {
 
 .agent-tree :deep(.vue-flow__edge-path) {
   stroke: var(--graph-branch);
+}
+
+.agent-tree-unavailable {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 24px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
 }
 
 .agent-tree-controls {
