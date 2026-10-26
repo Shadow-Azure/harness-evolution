@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
@@ -72,6 +72,8 @@ const session = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const mountedWrappers: VueWrapper[] = [];
+
 function mockSessionApi(items = [session()]) {
   const tree = {
     ...demoCoreTree,
@@ -123,12 +125,18 @@ async function mountPage(path = "/sessions?q=agent&status=problem&sort=messages"
       ],
     },
   });
+  mountedWrappers.push(wrapper);
   await flushPromises();
   return { router, wrapper };
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  for (const wrapper of mountedWrappers.splice(0)) {
+    wrapper.unmount();
+  }
+  server.resetHandlers();
+});
 afterAll(() => server.close());
 
 describe("session browser", () => {
@@ -236,6 +244,10 @@ describe("session browser", () => {
       }),
     ]);
     const { router, wrapper } = await mountPage();
+    await flushPromises();
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+    });
     await flushPromises();
 
     expect(wrapper.findAll("[data-testid='session-card']")).toHaveLength(2);

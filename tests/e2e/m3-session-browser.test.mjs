@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -26,6 +26,9 @@ let apiLogs = "";
 let webLogs = "";
 let currentAdminPassword = "m3-session-browser-initial-password";
 let passwordRevision = 0;
+const performanceSource =
+  process.env.HE_PERF_SOURCE === "local" ? "local" : "fixture";
+let largestLocalSession = null;
 
 async function cleanup() {
   await stop(web);
@@ -112,12 +115,33 @@ before(async () => {
     HE_JWT_SECRET: secret,
     HE_PHASE: "demo",
   };
-  const seeded = spawnSync(pnpm, ["fixtures:seed"], {
-    cwd: root,
-    env: baseEnv,
-    encoding: "utf8",
-  });
-  assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+  const setupCommands =
+    performanceSource === "local"
+      ? [["data:import:sessions"], ["data:replay:sessions"]]
+      : [["fixtures:seed"]];
+  for (const args of setupCommands) {
+    const setup = spawnSync(pnpm, args, {
+      cwd: root,
+      env: baseEnv,
+      encoding: "utf8",
+    });
+    assert.equal(setup.status, 0, setup.stderr || setup.stdout);
+  }
+  if (performanceSource === "local") {
+    const databasePath = path.join(dataDir, "harness.db");
+    const largest = spawnSync(
+      "sqlite3",
+      [
+        "-json",
+        databasePath,
+        "select root_session_id as id, count(*) as agents, sum(lines) as lines from agents group by root_session_id order by agents desc, lines desc limit 1;",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(largest.status, 0, largest.stderr);
+    [largestLocalSession] = JSON.parse(largest.stdout);
+    assert.ok(largestLocalSession?.id);
+  }
 
   const apiPort = await availablePort();
   const webPort = await availablePort();
@@ -831,6 +855,349 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
     assert.ok(restored.scrollWidth <= restored.clientWidth, JSON.stringify(restored));
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
     await page.session.send("Fetch.disable");
+  } finally {
+    await page.close();
+  }
+});
+
+test("m3-session-browser stays within performance budgets", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    const cookie = await loginCookie();
+    await installCookie(page, cookie);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 560,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+      source: `window.__perfLongTasks = [];
+        window.__perfCardsReadyAt = null;
+        new PerformanceObserver((list) => {
+          window.__perfLongTasks.push(...list.getEntries().map((entry) => entry.duration));
+        }).observe({ type: "longtask", buffered: true });
+        const watchCards = () => {
+          const markCards = () => {
+            if (
+              window.__perfCardsReadyAt === null &&
+              document.querySelectorAll("[data-testid='session-card']").length === 4
+            ) {
+              window.__perfCardsReadyAt = Date.now();
+            }
+          };
+          new MutationObserver(markCards).observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+          });
+          markCards();
+        };
+        if (document.documentElement) watchCards();
+        else document.addEventListener("DOMContentLoaded", watchCards, { once: true });`,
+    });
+
+    const detailRequests = [];
+    const treeRequests = [];
+    page.session.on("Network.requestWillBeSent", ({ request }) => {
+      const match = new URL(request.url).pathname.match(
+        /^\/api\/sessions\/([^/]+)(\/tree)?$/,
+      );
+      if (!match) return;
+      const entry = {
+        at: Date.now(),
+        sessionId: decodeURIComponent(match[1]),
+        url: request.url,
+      };
+      if (match[2]) {
+        treeRequests.push(entry);
+      } else {
+        detailRequests.push(entry);
+      }
+    });
+    await page.session.send("Network.enable");
+    const navigationStarted = Date.now();
+    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    const cards = await waitForDocument(
+      page.session,
+      `(() => {
+        const cards = [...document.querySelectorAll("[data-testid='session-card']")];
+        return cards.length === 4
+          ? {
+              cards: cards.length,
+              at: performance.now(),
+              readyAt: window.__perfCardsReadyAt,
+            }
+          : null;
+      })()`,
+      "Session cards before graph",
+    );
+    const cardsReadyAt = cards.readyAt ?? Date.now();
+    const readyMs = cardsReadyAt - navigationStarted;
+    assert.equal(cards.cards, 4);
+    assert.ok(readyMs <= 2_500, JSON.stringify({ readyMs }));
+
+    const initialTree = await waitForDocument(
+      page.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        if (!tree || tree.querySelectorAll(".vue-flow__node").length === 0) return null;
+        return {
+          nodes: tree.querySelectorAll(".vue-flow__node").length,
+          flowResource: Boolean(tree.querySelector(".vue-flow")),
+        };
+      })()`,
+      "lazy performance tree",
+    );
+    assert.ok(initialTree.nodes > 0, JSON.stringify(initialTree));
+    assert.equal(initialTree.flowResource, true, JSON.stringify(initialTree));
+    assert.ok(treeRequests.length >= 1, JSON.stringify(treeRequests));
+    assert.ok(
+      treeRequests[0].at >= cardsReadyAt,
+      JSON.stringify({ cardsReadyAt, firstTreeRequest: treeRequests[0] }),
+    );
+
+    const interaction = await page.session.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const cards = [...document.querySelectorAll("[data-testid='session-card']")];
+        const id = cards[1].dataset.sessionId;
+        const started = performance.now();
+        cards[1].click();
+        while (performance.now() - started < 1000) {
+          if (cards[1].dataset.selected === "true") {
+            return { id, ms: performance.now() - started };
+          }
+          await new Promise(requestAnimationFrame);
+        }
+        return { id, ms: 1000 };
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    const interactionMs = interaction.result.value.ms;
+    assert.ok(interactionMs <= 200, JSON.stringify({ interactionMs }));
+    const selectedSessionId = interaction.result.value.id;
+    assert.equal(
+      detailRequests.filter((entry) => entry.sessionId === selectedSessionId).length,
+      1,
+      JSON.stringify(detailRequests),
+    );
+    assert.equal(
+      treeRequests.filter((entry) => entry.sessionId === selectedSessionId).length,
+      1,
+      JSON.stringify(treeRequests),
+    );
+
+    const secondScroll = await page.session.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const list = document.querySelector(".session-list");
+        const overview = document.querySelector(".overview");
+        list.scrollTop = Math.min(80, list.scrollHeight - list.clientHeight);
+        overview.scrollTop = Math.min(180, overview.scrollHeight - overview.clientHeight);
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        return {
+          path: location.pathname,
+          list: list.scrollTop,
+          overview: overview.scrollTop,
+        };
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelectorAll("[data-testid='session-card']")[0].click()`,
+    });
+    const firstScroll = await waitForDocument(
+      page.session,
+      `(async () => {
+        const selected = document.querySelector("[data-testid='session-card'][data-selected='true']");
+        const list = document.querySelector(".session-list");
+        const overview = document.querySelector(".overview");
+        if (!selected || location.pathname === ${JSON.stringify(secondScroll.result.value.path)}) return null;
+        list.scrollTop = Math.min(40, list.scrollHeight - list.clientHeight);
+        overview.scrollTop = Math.min(90, overview.scrollHeight - overview.clientHeight);
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        return {
+          path: location.pathname,
+          list: list.scrollTop,
+          overview: overview.scrollTop,
+        };
+      })()`,
+      "first Session scroll state",
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: "history.back()",
+    });
+    const restoredSecond = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector(".session-list");
+        const overview = document.querySelector(".overview");
+        if (location.pathname !== ${JSON.stringify(secondScroll.result.value.path)}) return null;
+        return { list: list.scrollTop, overview: overview.scrollTop };
+      })()`,
+      "restored second Session scroll",
+    );
+    assert.equal(restoredSecond.list, secondScroll.result.value.list, JSON.stringify(restoredSecond));
+    assert.equal(
+      restoredSecond.overview,
+      secondScroll.result.value.overview,
+      JSON.stringify(restoredSecond),
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: "history.forward()",
+    });
+    const restoredFirst = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector(".session-list");
+        const overview = document.querySelector(".overview");
+        if (location.pathname !== ${JSON.stringify(firstScroll.path)}) return null;
+        return { list: list.scrollTop, overview: overview.scrollTop };
+      })()`,
+      "restored first Session scroll through history",
+    );
+    assert.equal(restoredFirst.list, firstScroll.list, JSON.stringify(restoredFirst));
+    assert.equal(restoredFirst.overview, firstScroll.overview, JSON.stringify(restoredFirst));
+
+    const scroll = await page.session.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const overview = document.querySelector(".overview");
+        const started = performance.now();
+        const frames = [];
+        let previous = started;
+        for (let index = 0; index < 120; index += 1) {
+          await new Promise(requestAnimationFrame);
+          const now = performance.now();
+          frames.push(now - previous);
+          previous = now;
+          overview.scrollTop = (overview.scrollHeight - overview.clientHeight) *
+            (index / 119);
+        }
+        return {
+          average: frames.reduce((sum, value) => sum + value, 0) / frames.length,
+          max: Math.max(...frames),
+        };
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    assert.ok(scroll.result.value.average <= 34, JSON.stringify(scroll.result.value));
+
+    await installCookie(page, await sessionCookie());
+    const largestTargetAgents =
+      performanceSource === "local" ? Number(largestLocalSession.agents) : 61;
+    const largestReadyStarted = Date.now();
+    await page.session.send("Page.navigate", {
+      url:
+        performanceSource === "local"
+          ? `${baseUrl}/sessions/${encodeURIComponent(largestLocalSession.id)}`
+          : `${baseUrl}/agent-tree-demo?variant=stress`,
+    });
+    const collapsed = await waitForDocument(
+      page.session,
+      `(() => {
+        const collapse = document.querySelector("[data-testid='agent-tree'] .rf-agent.collapse");
+        const nodes = document.querySelectorAll("[data-testid='agent-tree'] .vue-flow__node").length;
+        return collapse ? { label: collapse.textContent.trim(), nodes } : null;
+      })()`,
+      "61-agent collapse node",
+    );
+    const largestReadyMs = Date.now() - largestReadyStarted;
+    assert.ok(largestReadyMs <= 2_500, JSON.stringify({ largestReadyMs }));
+    assert.match(collapsed.label, /子 agent/);
+    const expansion = await page.session.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const target = ${largestTargetAgents};
+        const collapse = document.querySelector("[data-testid='agent-tree'] .rf-agent.collapse");
+        const started = performance.now();
+        collapse.click();
+        while (performance.now() - started < 1000) {
+          const count = document.querySelectorAll("[data-testid='agent-tree'] .vue-flow__node").length;
+          if (count === target) return { count, duration: performance.now() - started };
+          await new Promise(requestAnimationFrame);
+        }
+        return {
+          count: document.querySelectorAll("[data-testid='agent-tree'] .vue-flow__node").length,
+          duration: performance.now() - started,
+        };
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    assert.equal(
+      expansion.result.value.count,
+      largestTargetAgents,
+      JSON.stringify(expansion.result.value),
+    );
+    assert.ok(expansion.result.value.duration <= 350, JSON.stringify(expansion.result.value));
+
+    const longTasks = await page.session.send("Runtime.evaluate", {
+      expression: `window.__perfLongTasks ?? []`,
+      returnByValue: true,
+    });
+    const maxLongTask = Math.max(0, ...longTasks.result.value);
+    assert.ok(maxLongTask <= 200, JSON.stringify({ maxLongTask }));
+    assert.deepEqual(violations, [], violations.join("\n"));
+
+    const browserVersion = await page.session.send("Browser.getVersion");
+    const largestAgents =
+      performanceSource === "local" ? Number(largestLocalSession.agents) : 61;
+    const largestLines =
+      performanceSource === "local" ? Number(largestLocalSession.lines) : 13_492;
+    const report = {
+      source: performanceSource,
+      browser: {
+        deviceScaleFactor: 1,
+        product: browserVersion.product,
+        protocolVersion: browserVersion.protocolVersion,
+        userAgent: browserVersion.userAgent,
+      },
+      largestTree: {
+        agents: largestAgents,
+        lines: largestLines,
+        expandMs: Math.round(expansion.result.value.duration),
+        readyMs: largestReadyMs,
+      },
+      navigation: {
+        cardsReadyMs: readyMs,
+        graphReadyMs: Date.now() - navigationStarted,
+        treeRequestAfterCards: treeRequests[0].at >= cardsReadyAt,
+      },
+      phases: {
+        cardsReady: { at: cardsReadyAt, ms: readyMs },
+        collapseExpand: {
+          at: largestReadyStarted,
+          ms: Math.round(expansion.result.value.duration),
+        },
+        interaction: { at: cardsReadyAt, ms: Math.round(interactionMs) },
+        largestReady: { at: largestReadyStarted, ms: largestReadyMs },
+        scroll: { ms: Number(scroll.result.value.average.toFixed(2)) },
+      },
+      requests: {
+        selectedSessionId,
+        detailCount: detailRequests.filter(
+          (entry) => entry.sessionId === selectedSessionId,
+        ).length,
+        treeCount: treeRequests.filter(
+          (entry) => entry.sessionId === selectedSessionId,
+        ).length,
+      },
+      interactionMs: Math.round(interactionMs),
+      scrollFrameAverageMs: Number(scroll.result.value.average.toFixed(2)),
+      maxLongTaskMs: Number(maxLongTask.toFixed(2)),
+      viewport: { height: 560, width: 1408 },
+    };
+    const artifactDir = process.env.HE_E2E_ARTIFACT_DIR;
+    if (artifactDir) {
+      await mkdir(artifactDir, { recursive: true });
+      await writeFile(
+        path.join(artifactDir, "m3-session-performance.json"),
+        `${JSON.stringify(report, null, 2)}\n`,
+      );
+    }
   } finally {
     await page.close();
   }

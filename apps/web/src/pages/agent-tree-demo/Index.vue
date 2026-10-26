@@ -7,18 +7,30 @@ import {
   demoCoreTree,
   demoNestedTree,
 } from "../../components/agent-tree/fixtures/demo-nested";
+import { demoStressTree } from "../../components/agent-tree/fixtures/demo-stress";
 
 defineOptions({ name: "AgentTreeDemoPage" });
 
 const route = useRoute();
 const isLarge = computed(() => route.query.variant === "large");
-const tree = computed(() => (isLarge.value ? demoNestedTree : demoCoreTree));
+const isStress = computed(() => route.query.variant === "stress");
+const tree = computed(() =>
+  isStress.value
+    ? demoStressTree
+    : isLarge.value
+      ? demoNestedTree
+      : demoCoreTree,
+);
 const expanded = ref<string[]>([]);
 
 watch(
-  isLarge,
-  (large) => {
-    expanded.value = large ? ["agent-a"] : ["main", "agent-a"];
+  [isLarge, isStress],
+  ([large, stress]) => {
+    expanded.value = stress
+      ? []
+      : large
+        ? ["agent-a"]
+        : ["main", "agent-a"];
   },
   { immediate: true },
 );
@@ -41,7 +53,13 @@ function toggleExpanded(agentId: string) {
         <h1>Agent 执行流图</h1>
       </div>
       <span class="scope">
-        开发视觉验收 · {{ isLarge ? "collapse / trunk 大图" : "demo-nested 核心四节点" }}
+        开发视觉验收 · {{
+          isStress
+            ? "61 Agent 性能压测"
+            : isLarge
+              ? "collapse / trunk 大图"
+              : "demo-nested 核心四节点"
+        }}
       </span>
     </header>
     <AgentTree

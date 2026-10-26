@@ -560,6 +560,11 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   assert.match(rootPackage.scripts["contract:check"], /contract\.mjs check/);
   assert.match(rootPackage.scripts["test:integration"], /web-api-proxy/);
   assert.match(rootPackage.scripts["test:e2e"], /run-e2e\.mjs/);
+  assert.match(rootPackage.scripts["performance:report"], /performance-report\.mjs/);
+  assert.match(
+    rootPackage.scripts["test:gates"],
+    /performance-report\.spec\.mjs/,
+  );
   assert.match(rootPackage.scripts["fixtures:check"], /fixtures-check\.mjs/);
   assert.match(rootPackage.scripts["fixtures:seed"], /fixtures-seed\.mjs/);
   assert.match(rootPackage.scripts["data:import:sessions"], /local-sessions\.mjs import/);
@@ -609,6 +614,9 @@ test("test gates execute frontend, backend, integration, and 80% coverage", () =
   }
   assert.match(webStyle, /COLOR_PATTERN/);
   assert.match(bundle, /vendor-vue-flow/);
+  assert.match(bundle, /ENTRY_RAW_MAX_BYTES/);
+  assert.match(bundle, /ENTRY_GZIP_MAX_BYTES/);
+  assert.match(bundle, /VENDOR_RAW_MAX_BYTES/);
   for (const metric of ["branches", "functions", "lines", "statements"]) {
     assert.match(webCoverage, new RegExp(`${metric}: 80`));
   }

@@ -29,6 +29,7 @@ pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
 pnpm test:e2e
+pnpm performance:report [--local]
 pnpm fixtures:check
 pnpm fixtures:seed
 pnpm data:import:sessions
@@ -47,7 +48,7 @@ pnpm contract:check
 | 改动 | 本地跑 |
 |---|---|
 | 仅文档 / Agent Note | `pnpm lint:docs` |
-| 前端代码 | `pnpm lint:web && pnpm typecheck:web && pnpm test:web && pnpm test:integration && pnpm verify:web-style && pnpm build && pnpm verify:bundle` |
+| 前端代码 | `pnpm lint:web && pnpm typecheck:web && pnpm test:web && pnpm test:integration && pnpm test:e2e && pnpm verify:web-style && pnpm build && pnpm verify:bundle` |
 | 后端代码 | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
 | 契约或跨包类型 | `pnpm contract:check && pnpm typecheck && pnpm test:all` |
 | 流程树 | `pnpm verify:flow` |

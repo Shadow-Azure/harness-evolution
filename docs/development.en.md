@@ -29,6 +29,7 @@ pnpm test:db
 pnpm test:db:mysql
 pnpm test:integration
 pnpm test:e2e
+pnpm performance:report [--local]
 pnpm fixtures:check
 pnpm fixtures:seed
 pnpm data:import:sessions
@@ -47,7 +48,7 @@ Choose gates by change surface before committing:
 | Change | Run locally |
 |---|---|
 | Docs / Agent Note only | `pnpm lint:docs` |
-| Web code | `pnpm lint:web && pnpm typecheck:web && pnpm test:web && pnpm test:integration && pnpm verify:web-style && pnpm build && pnpm verify:bundle` |
+| Web code | `pnpm lint:web && pnpm typecheck:web && pnpm test:web && pnpm test:integration && pnpm test:e2e && pnpm verify:web-style && pnpm build && pnpm verify:bundle` |
 | Backend code | `pnpm lint:api && pnpm typecheck:api && pnpm test:api && pnpm test:db && pnpm test:integration` |
 | Contracts or cross-package types | `pnpm contract:check && pnpm typecheck && pnpm test:all` |
 | Flow tree | `pnpm verify:flow` |

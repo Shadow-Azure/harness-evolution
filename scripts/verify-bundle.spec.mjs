@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { describe, it } from "node:test";
 
-import { assertFirstScreenExcludesVueFlow } from "./verify-bundle.mjs";
+import {
+  ENTRY_GZIP_MAX_BYTES,
+  ENTRY_RAW_MAX_BYTES,
+  VENDOR_RAW_MAX_BYTES,
+  assertBundleBudgets,
+  assertFirstScreenExcludesVueFlow,
+} from "./verify-bundle.mjs";
 
 describe("verify-bundle", () => {
   it("requires a dynamic Vue Flow chunk outside the entry", () => {
@@ -68,6 +75,51 @@ describe("verify-bundle", () => {
     assert.throws(
       () => assertFirstScreenExcludesVueFlow(manifest, "import './assets/vendor-vue-flow.js'"),
       /first screen/i
+    );
+  });
+
+  it("enforces entry and vendor size budgets", () => {
+    const manifest = {
+      "index.html": { file: "assets/index.js", isEntry: true, name: "index" },
+      "_vendor-vue.js": { file: "assets/vendor-vue.js", name: "vendor-vue" },
+    };
+    const assets = {
+      "assets/index.js": Buffer.alloc(ENTRY_RAW_MAX_BYTES, "a"),
+      "assets/vendor-vue.js": Buffer.alloc(VENDOR_RAW_MAX_BYTES, "v"),
+    };
+    const measured = assertBundleBudgets(manifest, (file) => assets[file]);
+    assert.equal(measured.entry.raw, ENTRY_RAW_MAX_BYTES);
+    assert.ok(measured.entry.gzip <= ENTRY_GZIP_MAX_BYTES);
+    assert.equal(measured.vendors["_vendor-vue.js"], VENDOR_RAW_MAX_BYTES);
+
+    assert.throws(
+      () =>
+        assertBundleBudgets(manifest, (file) =>
+          file === "assets/index.js"
+            ? Buffer.alloc(ENTRY_RAW_MAX_BYTES + 1, "a")
+            : Buffer.alloc(1, "b"),
+        ),
+      /entry bundle/i,
+    );
+    assert.throws(
+      () =>
+        assertBundleBudgets(manifest, (file) =>
+          file === "assets/vendor-vue.js"
+            ? Buffer.alloc(VENDOR_RAW_MAX_BYTES + 1, "v")
+            : Buffer.alloc(1, "a"),
+        ),
+      /vendor chunk/i,
+    );
+  });
+
+  it("enforces the entry gzip budget independently of raw size", () => {
+    const manifest = {
+      "index.html": { file: "assets/index.js", isEntry: true, name: "index" },
+    };
+    const incompressible = randomBytes(150 * 1024);
+    assert.throws(
+      () => assertBundleBudgets(manifest, () => incompressible),
+      /gzip exceeds/i,
     );
   });
 });
