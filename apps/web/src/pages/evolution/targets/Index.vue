@@ -3,6 +3,8 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
+import { ElMessage } from "element-plus/es/components/message/index";
+import { ElMessageBox } from "element-plus/es/components/message-box/index";
 import { computed, ref } from "vue";
 
 import {
@@ -20,6 +22,7 @@ const auth = useAuthStore();
 const {
   createTarget,
   data,
+  deleteTarget,
   error,
   isPending,
   refetch,
@@ -31,6 +34,7 @@ const canWrite = computed(() => auth.user?.role === "admin");
 const dialogOpen = ref(false);
 const editingTarget = ref<EvolutionTarget | null>(null);
 const formError = ref("");
+const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
 const versionsQuery = useEvolutionTargetVersions(editingTargetId);
@@ -50,9 +54,52 @@ function openEdit(target: EvolutionTarget): void {
   dialogOpen.value = true;
 }
 
-function removeTarget(target: EvolutionTarget): void {
-  void target;
-  // Delete confirmation belongs to the actions task.
+function targetWrite(target: EvolutionTarget): EvolutionTargetWrite {
+  return {
+    objectType: target.objectType,
+    objectName: target.objectName,
+    repoUrl: target.repoUrl,
+    subDir: target.subDir,
+    defaultRef: target.defaultRef,
+    enabled: target.enabled,
+  };
+}
+
+async function removeTarget(target: EvolutionTarget): Promise<void> {
+  operationError.value = "";
+  try {
+    await ElMessageBox.confirm(
+      `删除 ${target.objectName} 的配置？有进行中 run 时不可删除。`,
+      "删除进化对象",
+      {
+        type: "warning",
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        distinguishCancelAndClose: true,
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await deleteTarget(target.id);
+    ElMessage.success("进化对象已删除");
+  } catch (errorValue) {
+    operationError.value =
+      errorValue instanceof ApiError && errorValue.code === "TARGET_IN_USE"
+        ? "该对象有进行中 run，不能删除；请等待运行结束后重试。"
+        : "删除进化对象失败，请稍后重试。";
+  }
+}
+
+async function toggleTarget(target: EvolutionTarget): Promise<void> {
+  operationError.value = "";
+  try {
+    await updateTarget(target.id, targetWrite(target));
+    ElMessage.success(target.enabled ? "进化对象已启用" : "进化对象已停用");
+  } catch {
+    operationError.value = "更新进化对象状态失败，请稍后重试。";
+  }
 }
 
 function targetErrorMessage(errorValue: unknown): string {
@@ -106,6 +153,14 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       </div>
     </header>
 
+    <p
+      v-if="operationError"
+      class="operation-error"
+      role="alert"
+    >
+      {{ operationError }}
+    </p>
+
     <TargetTable
       :can-write="canWrite"
       :error="error"
@@ -115,6 +170,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       @delete="removeTarget"
       @edit="openEdit"
       @retry="refetch"
+      @toggle="toggleTarget"
     />
 
     <TargetFormDialog
@@ -157,6 +213,16 @@ h1 {
   color: var(--text);
   font-size: var(--font-title);
   font-weight: 650;
+}
+
+.operation-error {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--red) 6%, var(--bg-card));
+  color: var(--red);
+  font-size: 11.5px;
 }
 
 .lede {

@@ -72,7 +72,8 @@ describe("TargetTable", () => {
     await wrapper.get(".delete-target").trigger("click");
 
     expect(wrapper.emitted("create")).toHaveLength(1);
-    expect(wrapper.emitted("edit")).toEqual([[target()], [{
+    expect(wrapper.emitted("edit")).toEqual([[target()]]);
+    expect(wrapper.emitted("toggle")).toEqual([[{
       ...target(),
       enabled: false,
     }]]);

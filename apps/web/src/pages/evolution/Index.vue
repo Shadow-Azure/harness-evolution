@@ -3,16 +3,22 @@ import { VueFlow } from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 
 import EmptyState from "../../components/ui/EmptyState.vue";
+import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
 
 defineOptions({ name: "EvolutionPage" });
 </script>
 
 <template>
   <section class="placeholder">
-    <p class="eyebrow">
-      EVOLUTION
-    </p>
-    <h1>自进化</h1>
+    <header class="page-heading">
+      <div>
+        <p class="eyebrow">
+          EVOLUTION
+        </p>
+        <h1>自进化</h1>
+      </div>
+      <TargetConfigEntry />
+    </header>
     <EmptyState
       description="自进化运行将在后续 milestone 接入；Vue Flow 容器已就绪。"
       title="暂无自进化运行"
@@ -34,6 +40,13 @@ defineOptions({ name: "EvolutionPage" });
   display: grid;
   gap: 14px;
   padding: 8px 0;
+}
+
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .eyebrow {

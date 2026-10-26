@@ -1,6 +1,7 @@
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 import { ElMessage } from "element-plus/es/components/message/index";
+import "element-plus/es/components/message-box/style/css";
 import "element-plus/es/components/base/style/css";
 import "element-plus/es/components/message/style/css";
 

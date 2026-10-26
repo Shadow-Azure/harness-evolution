@@ -4,9 +4,18 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import type { EvolutionTarget } from "@harness/contracts";
 import { ElOption, ElSelect } from "element-plus/es/components/select/index";
+import { ElMessageBox } from "element-plus/es/components/message-box/index";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { createAppRouter } from "../../../router";
 import { useAuthStore } from "../../../stores/auth";
@@ -70,6 +79,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
+  vi.restoreAllMocks();
 });
 afterAll(() => server.close());
 
@@ -253,5 +263,111 @@ describe("target configuration page", () => {
       "同类型的对象名称已经配置",
     );
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
+  it("cancels target deletion without sending a request", async () => {
+    let deletes = 0;
+    vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+      http.delete("/api/evolution/targets/:targetId", () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".delete-target").trigger("click");
+    await flushPromises();
+
+    expect(ElMessageBox.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("有进行中 run 时不可删除"),
+      "删除进化对象",
+      expect.any(Object),
+    );
+    expect(deletes).toBe(0);
+  });
+
+  it("deletes a confirmed target and invalidates the list", async () => {
+    let deletes = 0;
+    let reads = 0;
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+    server.use(
+      http.get("/api/evolution/targets", () => {
+        reads += 1;
+        return HttpResponse.json({ items: reads === 1 ? [target] : [] });
+      }),
+      http.delete("/api/evolution/targets/:targetId", () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".delete-target").trigger("click");
+    await flushPromises();
+
+    expect(deletes).toBe(1);
+    expect(reads).toBeGreaterThan(1);
+    expect(wrapper.text()).toContain("暂无进化对象配置");
+  });
+
+  it("keeps TARGET_IN_USE visible and preserves the row", async () => {
+    vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+      http.delete("/api/evolution/targets/:targetId", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "TARGET_IN_USE",
+              message: "target is in use",
+            },
+          },
+          { status: 409 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".delete-target").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain(
+      "该对象有进行中 run，不能删除",
+    );
+    expect(wrapper.text()).toContain("deep-research");
+  });
+
+  it("persists an enabled toggle through the update mutation", async () => {
+    let updates = 0;
+    let submitted: unknown;
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+      http.put("/api/evolution/targets/:targetId", async ({ request }) => {
+        updates += 1;
+        submitted = await request.json();
+        return HttpResponse.json({
+          ...target,
+          ...(submitted as object),
+        });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".toggle-target").trigger("click");
+    await flushPromises();
+
+    expect(updates).toBe(1);
+    expect(submitted).toEqual({
+      objectType: "skill",
+      objectName: "deep-research",
+      repoUrl: "https://example.com/skills.git",
+      subDir: "skills/deep-research",
+      defaultRef: "main",
+      enabled: false,
+    });
   });
 });

@@ -22,6 +22,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   create: [];
   edit: [target: EvolutionTarget];
+  toggle: [target: EvolutionTarget];
   delete: [target: EvolutionTarget];
   retry: [];
 }>();
@@ -29,7 +30,7 @@ const emit = defineEmits<{
 const hasRows = computed(() => props.targets.length > 0);
 
 function toggle(target: EvolutionTarget): void {
-  emit("edit", {
+  emit("toggle", {
     ...target,
     enabled: !target.enabled,
   });
