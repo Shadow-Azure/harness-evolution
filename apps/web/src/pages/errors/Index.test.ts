@@ -238,6 +238,7 @@ describe("error detail page", () => {
     expect(detailId.attributes("aria-label")).toBe(
       "问题 case-err，在新窗口打开问题描述",
     );
+    expect(wrapper.find(".description .field-label").exists()).toBe(false);
     const reportLink = wrapper.get(".description .report-id");
     expect(reportLink.text()).toBe("probe-er");
     expect(reportLink.attributes("title")).toBe("probe-error");
@@ -260,9 +261,12 @@ describe("error detail page", () => {
       "/sessions/root-1/errors?case=case-error&tab=attr",
     );
 
-    expect(wrapper.text()).toContain("是问题 · 错误");
+    expect(wrapper.text()).toContain("是问题-错误");
     expect(wrapper.text()).toContain("The index file was not checked.");
-    expect(wrapper.get(".conclusion").text()).toBe("结论是问题 · 错误");
+    expect(wrapper.get(".conclusion strong").text()).toBe("问题");
+    expect(wrapper.get(".conclusion .state-chip").text()).toBe(
+      "是问题-错误",
+    );
     expect(wrapper.get(".classification").text()).toContain(
       "Explore @ v1.0.0",
     );
@@ -321,7 +325,8 @@ describe("error detail page", () => {
     );
 
     const content = wrapper.get(".attribution").text();
-    expect(wrapper.get(".conclusion").text()).toBe("结论非问题");
+    expect(wrapper.get(".conclusion strong").text()).toBe("非问题");
+    expect(wrapper.get(".conclusion .state-chip").text()).toBe("非问题");
     expect(wrapper.get(".conclusion").text()).not.toContain(
       "Every claim has a source.",
     );

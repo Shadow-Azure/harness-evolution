@@ -36,7 +36,6 @@ const reportId = computed(() =>
         v-if="index !== null"
         class="problem-number"
       >#{{ index }}</span>
-      <span class="field-label">问题 ID</span>
       <a
         class="problem-id"
         :href="badCaseDeepLink(
@@ -130,14 +129,6 @@ const reportId = computed(() =>
   flex-shrink: 0;
   font-family: var(--mono);
   font-weight: 700;
-}
-
-.field-label {
-  color: var(--text-faint);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .problem-number {

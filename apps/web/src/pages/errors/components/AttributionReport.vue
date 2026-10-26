@@ -34,13 +34,13 @@ const issueTone = computed(() => {
   return type === "model" ? "model" : type === "prompt" ? "prompt" : "error";
 });
 
-const issueLabel = computed(() => {
+const issueStatusLabel = computed(() => {
   const type = props.probe?.attributeType;
   return type === "model"
-    ? "是问题 · 模型问题"
+    ? "是问题-模型问题"
     : type === "prompt"
-      ? "是问题 · prompt 缺失提示词"
-      : "是问题 · 错误";
+      ? "是问题-prompt缺失某些提示词"
+      : "是问题-错误";
 });
 
 const issueCategory = computed(() => {
@@ -107,6 +107,7 @@ const analysisHtml = computed(() =>
     >
       <span class="conclusion-label">结论</span>
       <strong>非问题</strong>
+      <span class="state-chip">非问题</span>
     </div>
     <div
       v-else
@@ -114,7 +115,11 @@ const analysisHtml = computed(() =>
       :class="issueTone"
     >
       <span class="conclusion-label">结论</span>
-      <strong>{{ issueLabel }}</strong>
+      <strong>问题</strong>
+      <span
+        class="state-chip"
+        :class="issueTone"
+      >{{ issueStatusLabel }}</span>
     </div>
 
     <div
@@ -218,6 +223,10 @@ const analysisHtml = computed(() =>
   border: 1px solid currentColor;
   border-radius: 8px;
   font-size: 12px;
+}
+
+.conclusion strong {
+  font-size: 14px;
 }
 
 .conclusion.issue,

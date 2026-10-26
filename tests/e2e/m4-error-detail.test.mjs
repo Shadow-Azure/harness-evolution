@@ -425,6 +425,9 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
               borderWidth: style?.borderBottomWidth,
             } : null;
           })(),
+          descriptionLabelCount: document.querySelectorAll(
+            ".description .field-label",
+          ).length,
           selected: document.querySelector(
             ${JSON.stringify(`[data-bad-case-id='${selected.badCaseId}']`)},
           )?.getAttribute("aria-pressed"),
@@ -434,7 +437,8 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     );
     assert.equal(selectedView.findingCards, 1);
     assert.equal(selectedView.selected, "true");
-    assert.match(selectedView.text, /问题 ID/);
+    assert.doesNotMatch(selectedView.text, /问题 ID/);
+    assert.equal(selectedView.descriptionLabelCount, 0);
     assert.deepEqual(selectedView.detailId, {
       text: selected.badCaseId.slice(0, 8),
       href: `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=desc`,
@@ -467,6 +471,16 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         return {
           text: attribution.textContent,
           conclusion: attribution.querySelector(".conclusion")?.textContent,
+          conclusionStrong: (() => {
+            const strong = attribution.querySelector(".conclusion > strong");
+            return strong ? {
+              text: strong.textContent,
+              fontSize: getComputedStyle(strong).fontSize,
+            } : null;
+          })(),
+          conclusionChips: [...attribution.querySelectorAll(
+            ".conclusion .state-chip",
+          )].map((chip) => chip.textContent),
           classification: attribution.querySelector(".classification")?.textContent,
           html: attribution.querySelector(".markdown")?.innerHTML,
           sourceLinks: [...attribution.querySelectorAll(".source-links a")].map(
@@ -500,6 +514,16 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       attribution.conclusion?.includes(selectedProbe.probeDescription),
       false,
     );
+    const issueStatusLabel = {
+      error: "是问题-错误",
+      model: "是问题-模型问题",
+      prompt: "是问题-prompt缺失某些提示词",
+    }[selected.analysis.attributeType];
+    assert.deepEqual(attribution.conclusionStrong, {
+      text: "问题",
+      fontSize: "14px",
+    });
+    assert.deepEqual(attribution.conclusionChips, [issueStatusLabel]);
     assert.equal(
       attribution.classification?.includes(selectedProbe.probeObject),
       true,
