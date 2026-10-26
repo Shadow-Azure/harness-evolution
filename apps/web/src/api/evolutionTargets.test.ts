@@ -72,18 +72,29 @@ describe("evolution target API", () => {
   });
 
   it("encodes target ids for update, delete, and versions", async () => {
-    const seen: string[] = [];
+    const seen: Array<{ method: string; path: string }> = [];
+    let received: unknown;
     server.use(
-      http.put("/api/evolution/targets/:id", ({ params, request }) => {
-        seen.push(`PUT ${params.id} ${request.method}`);
+      http.put("/api/evolution/targets/:id", async ({ params, request }) => {
+        seen.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+        });
+        received = await request.json();
         return HttpResponse.json({ ...target, id: String(params.id) });
       }),
-      http.delete("/api/evolution/targets/:id", ({ params }) => {
-        seen.push(`DELETE ${params.id}`);
+      http.delete("/api/evolution/targets/:id", ({ request }) => {
+        seen.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+        });
         return new HttpResponse(null, { status: 204 });
       }),
-      http.get("/api/evolution/targets/:id/versions", ({ params }) => {
-        seen.push(`GET ${params.id}`);
+      http.get("/api/evolution/targets/:id/versions", ({ request }) => {
+        seen.push({
+          method: request.method,
+          path: new URL(request.url).pathname,
+        });
         return HttpResponse.json({ versions: ["v2.0.0", "v1.9.0"], defaultRef: "main" });
       }),
     );
@@ -97,15 +108,25 @@ describe("evolution target API", () => {
     };
 
     await updateEvolutionTarget("target/with space", body);
+    expect(received).toEqual(body);
     await deleteEvolutionTarget("target/with space");
     await expect(listEvolutionTargetVersions("target/with space")).resolves.toEqual({
       versions: ["v2.0.0", "v1.9.0"],
       defaultRef: "main",
     });
     expect(seen).toEqual([
-      "PUT target/with space PUT",
-      "DELETE target/with space",
-      "GET target/with space",
+      {
+        method: "PUT",
+        path: "/api/evolution/targets/target%2Fwith%20space",
+      },
+      {
+        method: "DELETE",
+        path: "/api/evolution/targets/target%2Fwith%20space",
+      },
+      {
+        method: "GET",
+        path: "/api/evolution/targets/target%2Fwith%20space/versions",
+      },
     ]);
   });
 });

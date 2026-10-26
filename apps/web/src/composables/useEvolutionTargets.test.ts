@@ -120,6 +120,35 @@ describe("useEvolutionTargets", () => {
     });
     expect(client.invalidateQueries).not.toHaveBeenCalled();
   });
+
+  it("does not invalidate after failed update or delete", async () => {
+    server.use(
+      http.put("/api/evolution/targets/:id", () =>
+        HttpResponse.json(
+          { error: { code: "REPO_INVALID", message: "repo invalid", details: {} } },
+          { status: 422 },
+        ),
+      ),
+      http.delete("/api/evolution/targets/:id", () =>
+        HttpResponse.json(
+          { error: { code: "TARGET_IN_USE", message: "target in use", details: {} } },
+          { status: 409 },
+        ),
+      ),
+    );
+
+    await expect(
+      model.updateTarget(target.id, { ...body, enabled: false }),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: "REPO_INVALID",
+    });
+    await expect(model.deleteTarget(target.id)).rejects.toMatchObject({
+      status: 409,
+      code: "TARGET_IN_USE",
+    });
+    expect(client.invalidateQueries).not.toHaveBeenCalled();
+  });
 });
 
 describe("useEvolutionTargetVersions", () => {
