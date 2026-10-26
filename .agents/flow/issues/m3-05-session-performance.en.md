@@ -16,6 +16,7 @@ scope:
   - tests/**
   - fixtures/**
   - package.json
+  - AGENTS.md
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
