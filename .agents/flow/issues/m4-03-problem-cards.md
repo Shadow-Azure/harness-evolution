@@ -14,6 +14,7 @@ scope:
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/e2e/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
