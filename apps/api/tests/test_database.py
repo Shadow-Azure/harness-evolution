@@ -1825,10 +1825,10 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 )
             for index, (session_id, model) in enumerate(
                 [
-                    (session_ids[0], "glm-5.3"),
-                    (session_ids[0], "glm-5.3"),
-                    (session_ids[1], "glm-5.3"),
-                    (session_ids[0], "glm-5.3-flash"),
+                    (session_ids[0], "mysql-m5-model"),
+                    (session_ids[0], "mysql-m5-model"),
+                    (session_ids[1], "mysql-m5-model"),
+                    (session_ids[0], "mysql-m5-model-flash"),
                     (session_ids[0], None),
                     (session_ids[1], "   "),
                 ],
@@ -1851,10 +1851,14 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                     ),
                 )
 
-        assert await repository.list_models() == (
-            ModelUsageRecord(model="glm-5.3", session_count=2, agent_count=3),
-            ModelUsageRecord(model="glm-5.3-flash", session_count=1, agent_count=1),
-        )
+        assert [
+            record
+            for record in await repository.list_models()
+            if record.model.startswith("mysql-m5-model")
+        ] == [
+            ModelUsageRecord(model="mysql-m5-model", session_count=2, agent_count=3),
+            ModelUsageRecord(model="mysql-m5-model-flash", session_count=1, agent_count=1),
+        ]
     finally:
         try:
             await cleanup()
