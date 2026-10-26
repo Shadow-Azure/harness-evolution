@@ -9,14 +9,17 @@ milestone: m4
 depends:
   - m4-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 47
@@ -53,13 +56,10 @@ m4-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## Implementation
 
-
-
-
-
-- 实现 session problems、bad_case、probe 和反查 API
-- 校验 badCaseId/session 归属
-- 未分析返回占位
+- Adds five read-only endpoints for Session problems/probes, problem detail, attribution, and probe detail.
+- Combines Session title, Agents/events, external problems, attribution, and probes in one database snapshot and reuses tree anchor semantics.
+- The optional `sessionId` validates deep-link ownership; mismatch returns `409 BAD_CASE_SESSION_MISMATCH`, absence returns stable 404.
+- Missing attribution returns the `unanalyzed` placeholder; all five display states share the same public `analysis` object.
 
 ## Implementation steps
 
@@ -88,8 +88,11 @@ m4-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ```sh
 pnpm test:api -- tests/m4-02-problem-api
+pnpm test:api
 pnpm test:db
 pnpm contract:check
+pnpm test:web
+pnpm test:e2e
 ```
 
 - API 测试通过且 contract:check 无漂移

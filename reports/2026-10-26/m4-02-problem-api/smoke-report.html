@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M4-02 问题、归因与 Probe API 集成冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #114</p>
+    <h1>M4-02 问题、归因与 Probe API 集成冒烟</h1>
+    <p class="summary">在真实 FastAPI、SQLite 外部三表、Vite 与 Chrome 上验证五类只读 API、单快照、404/409、五态、外部漂移降级和亮色原型壳。</p>
+    <span class="meta">2026-10-26 · macOS · Chrome headless · 127.0.0.1</span>
+    <div class="metrics"><div class="metric"><b>9</b><span>冒烟场景</span></div><div class="metric"><b>2</b><span>失败回归修复</span></div><div class="metric"><b>0</b><span>失败读取 500</span></div><div class="metric"><b>0</b><span>外部写 SQL</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-26 · macOS · Chrome headless · 127.0.0.1</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#47 · M4 problem API</dd></div><div class="fact"><dt>PR</dt><dd>#114</dd></div><div class="fact"><dt>Head</dt><dd>2ab7b20</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + Chrome</dd></div><div class="fact"><dt>Source</dt><dd>Synthetic external fixture</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>7 pass · 2 fixed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>五端点鉴权</td><td><span class="status pass">PASS</span></td><td>五类未认证请求均返回 401。</td><td class="evidence">401 × 5</td></tr><tr><td class="num">02</td><td>Session 问题与 Probe 列表</td><td><span class="status pass">PASS</span></td><td>列表带 sessionTitle、anchor、badCaseAgent 和五态归因；Probe 反向来源正确。</td><td class="evidence">items=2<br>probes=2</td></tr><tr><td class="num">03</td><td>404 与 409</td><td><span class="status pass">PASS</span></td><td>同会话详情 200；跨会话 409；缺失 case/probe 返回各自稳定 404。</td><td class="evidence">409<br>404<br>404</td></tr><tr><td class="num">04</td><td>analysis 形状漂移</td><td><span class="status fixed">FAIL → FIXED</span></td><td>非法 issue result 在列表、详情和分析端点统一降级为 unanalyzed/null，无 500。</td><td class="evidence">before-after.json<br>before 500 → after 200 × 3<br>result=null</td></tr><tr><td class="num">05</td><td>presentation 枚举漂移</td><td><span class="status fixed">FAIL → FIXED</span></td><td>非法 case/object 类型返回可见 degraded 卡，diagnosticCode 稳定，列表与详情一致，锚点 main/-1。</td><td class="evidence">degraded=true<br>before-after.json<br>before detail 500 → after 200<br>main/-1</td></tr><tr><td class="num">06</td><td>只读侧效应</td><td><span class="status pass">PASS</span></td><td>外部三表在读取前后行数与内容指纹完全一致。</td><td class="evidence">fingerprints unchanged<br>3 tables</td></tr><tr><td class="num">07</td><td>亮色原型壳</td><td><span class="status pass">PASS</span></td><td>4 张 Session 卡；页面、顶栏、卡片为原型亮色令牌，顶栏 56px。</td><td class="evidence">body rgb(244,245,247)<br>topbar 56px</td></tr><tr><td class="num">08</td><td>390px 响应式</td><td><span class="status pass">PASS</span></td><td>4 张 Session 卡保留，页面无横向溢出。</td><td class="evidence">scrollWidth&lt;=clientWidth</td></tr><tr><td class="num">09</td><td>控制台与隐私</td><td><span class="status pass">PASS</span></td><td>正常路径无控制台 warning/error；报告不含 token、密码或轨迹正文。</td><td class="evidence">consoleViolations=0</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P1 AI 分析结果形状漂移导致问题 API 500<br>P2 非法展示枚举使问题卡消失且详情报 500</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P1</span><h3>AI 分析结果形状漂移导致问题 API 500</h3><dl><div><dt>实际</dt><dd>列表、详情和分析端点均抛 Pydantic ValidationError。</dd></div><div><dt>修复</dt><dd>公共出口统一降级为 unanalyzed/null。</dd></div><div><dt>回归</dt><dd>真实 SQLite 漂移 fixture 与 HTTP 断言。</dd></div></dl><div class="fixed">已修复 · 2ab7b20</div></article><article class="issueCard"><span class="tag">P2</span><h3>非法展示枚举使问题卡消失且详情报 500</h3><dl><div><dt>实际</dt><dd>列表静默少一条，详情取空数组触发 IndexError。</dd></div><div><dt>修复</dt><dd>返回 degraded 占位、稳定 diagnosticCode 和 main/-1 锚点。</dd></div><div><dt>回归</dt><dd>列表与详情同构断言。</dd></div></dl><div class="fixed">已修复 · 2ab7b20</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>2 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-problem-api-shell.jpg" alt="问题 API 冒烟时的桌面 Session 浏览器"><figcaption><b>1408px 原型壳</b><span>真实数据下 4 张 Session 卡，亮色页面、56px 顶栏和白色卡片保持原型基线。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-problem-api-shell-390.jpg" alt="问题 API 冒烟时的窄屏 Session 浏览器"><figcaption><b>390px 响应式</b><span>窄屏单列布局无横向溢出，问题 API 只读验证不影响现有壳层。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>3 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>问题/Probe API</td><td>真实 HTTP + SQLite fixture</td><td>五端点、404/409、单快照和外部漂移均已验证。</td><td>保留 MySQL marked contract 于 CI。</td></tr><tr><td>错误详情 UI</td><td>不适用</td><td>页面和问题卡属于 m4-04。</td><td>m4-04 继续按原型进行视觉验收。</td></tr><tr><td>原生 Computer Use</td><td>受限</td><td>macOS 锁屏阻止桌面操作，未绕过。</td><td>本轮使用真实 headless Chrome/CDP 证据。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>问题 API 在正常与外部漂移数据下均可安全渲染，未发现未解决产品缺陷。</strong></p><ul><li>两个问题列表/详情 500 缺陷已在现有修复提交中关闭。</li><li>外部读取保持只读，五态和错误契约一致。</li><li>亮色原型壳与 390px 布局无回归。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：真实 FastAPI/SQLite/Vite/headless Chrome、HTTP 状态与脱敏聚合。</p>
+</main>
+</body>
+</html>

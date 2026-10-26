@@ -1,0 +1,45 @@
+{
+  "source": {
+    "before": "PR review at 02924b4",
+    "after": "real HTTP smoke at 2ab7b20"
+  },
+  "analysis_result_drift": {
+    "before": {
+      "session_list_status": 500,
+      "case_detail_status": 500,
+      "error_code": "INTERNAL"
+    },
+    "after": {
+      "session_list_status": 200,
+      "case_detail_status": 200,
+      "analysis_status": 200,
+      "analysis": {
+        "status": "unanalyzed",
+        "result": null
+      }
+    }
+  },
+  "presentation_enum_drift": {
+    "before": {
+      "session_list_status": 200,
+      "session_list_items_delta": -1,
+      "case_detail_status": 500,
+      "error_code": "INTERNAL"
+    },
+    "after": {
+      "session_list_status": 200,
+      "case_detail_status": 200,
+      "card_present": true,
+      "degraded": true,
+      "diagnostic_code": "EXTERNAL_FIELD_INVALID",
+      "anchor": {
+        "agent_id": "10000000-0000-4000-8000-000000000001",
+        "event_index": -1
+      }
+    }
+  },
+  "regression_tests": [
+    "apps/api/tests/m4-02-problem-api/test_problem_api.py::test_analysis_result_drift_degrades_to_unanalyzed",
+    "apps/api/tests/m4-02-problem-api/test_problem_api.py::test_invalid_problem_presentation_returns_degraded_placeholder"
+  ]
+}

@@ -29,6 +29,7 @@ from sqlalchemy.pool import QueuePool
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import BadCaseRepository
+from app.db.crud.problems import ProblemRepository
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.database import SqlAlchemyDatabase
@@ -50,6 +51,7 @@ from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 from app.service.acquisition.replay import replay_pending_payloads
 from app.service.bad_cases.service import BadCaseService
+from app.service.problems.service import ProblemService
 
 
 class FailingHealthDatabase(SqlAlchemyDatabase):
@@ -1089,8 +1091,91 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
         assert tree_snapshot.events == ()
         assert tree_snapshot.bad_cases == ()
         assert counts == {}
+
+        case_id = "mysql-problem-api-case"
+        probe_id = "mysql-problem-api-probe"
+        created_at = datetime(2026, 10, 26, 9, tzinfo=UTC)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(bad_case_analysis).where(
+                    bad_case_analysis.c.bad_case_id == case_id,
+                ),
+            )
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.probe_id == probe_id),
+            )
+            await session.execute(
+                bad_cases.insert().values(
+                    bad_case_id=case_id,
+                    bad_case_session_id=root_id,
+                    bad_case_type="self",
+                    object_name="claude",
+                    object_type="agent",
+                    object_version="mysql-1",
+                    bad_case_agent_id=None,
+                    reason="MySQL problem API",
+                    meta_data={"dialect": "mysql"},
+                    source="mysql-test",
+                    created_at=created_at,
+                    updated_at=created_at,
+                ),
+            )
+            await session.execute(
+                probe_reports.insert().values(
+                    probe_id=probe_id,
+                    session_id=root_id,
+                    probe_type="agent",
+                    probe_object="claude",
+                    object_version="mysql-1",
+                    attribute_type="model",
+                    probe_description="MySQL probe",
+                    probe_analysis="MySQL analysis",
+                    created_at=created_at,
+                    updated_at=created_at,
+                ),
+            )
+            await session.execute(
+                bad_case_analysis.insert().values(
+                    bad_case_id=case_id,
+                    analysis_status="analyzed_issue",
+                    probe_id=probe_id,
+                    analysis_result={"summary": "model issue"},
+                    updated_at=created_at,
+                ),
+            )
+
+        problems = ProblemService(
+            ProblemRepository(database),
+            BadCaseService(BadCaseRepository(database)),
+        )
+        listed = await problems.list_for_session(root_id)
+        detailed = await problems.get_case(case_id, root_id)
+
+        assert [item.bad_case_id for item in listed.items] == [case_id]
+        assert detailed.anchor.agent_id == root_id
+        assert detailed.analysis.display_state == "analyzed_issue_model"
     finally:
-        await database.dispose()
+        try:
+            if "case_id" in locals():
+                async with database.transaction() as session:
+                    await session.execute(
+                        delete(bad_case_analysis).where(
+                            bad_case_analysis.c.bad_case_id == case_id,
+                        ),
+                    )
+                    await session.execute(
+                        delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+                    )
+                    await session.execute(
+                        delete(probe_reports).where(
+                            probe_reports.c.probe_id == probe_id,
+                        ),
+                    )
+        finally:
+            await database.dispose()
 
 
 @pytest.mark.mysql

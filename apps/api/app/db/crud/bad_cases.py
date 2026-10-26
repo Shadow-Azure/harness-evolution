@@ -68,6 +68,7 @@ class ProbeSourceCandidate:
     analysis_status: str
     case_session_id: str | None
     probe_session_id: str | None
+    probe_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -95,6 +95,112 @@
         "title": "AcquisitionStatusResponse",
         "type": "object"
       },
+      "BadCase": {
+        "additionalProperties": false,
+        "description": "Complete public problem card used by list and detail routes.",
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/BadCaseAnalysis"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/BadCaseAnchor"
+          },
+          "badCaseAgent": {
+            "$ref": "#/components/schemas/BadCaseAgent"
+          },
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "diagnosticCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnosticcode"
+          },
+          "metaData": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "sessionTitle": {
+            "title": "Sessiontitle",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "sessionId",
+          "sessionTitle",
+          "badCaseType",
+          "objectName",
+          "objectType",
+          "objectVersion",
+          "anchor",
+          "badCaseAgent",
+          "reason",
+          "metaData",
+          "analysis"
+        ],
+        "title": "BadCase",
+        "type": "object"
+      },
       "BadCaseAgent": {
         "additionalProperties": false,
         "description": "The reporter that originally supplied a problem report.",
@@ -122,6 +228,29 @@
         "title": "BadCaseAgent",
         "type": "object"
       },
+      "BadCaseAnalysis": {
+        "description": "One of the three status-specific public attribution states.",
+        "discriminator": {
+          "mapping": {
+            "analyzed_issue": "#/components/schemas/IssueBadCaseAnalysis",
+            "analyzed_nonissue": "#/components/schemas/NonIssueBadCaseAnalysis",
+            "unanalyzed": "#/components/schemas/UnanalyzedBadCaseAnalysis"
+          },
+          "propertyName": "status"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/UnanalyzedBadCaseAnalysis"
+          },
+          {
+            "$ref": "#/components/schemas/NonIssueBadCaseAnalysis"
+          },
+          {
+            "$ref": "#/components/schemas/IssueBadCaseAnalysis"
+          }
+        ],
+        "title": "BadCaseAnalysis"
+      },
       "BadCaseAnchor": {
         "additionalProperties": false,
         "description": "Stable host Agent and event index for one problem card.",
@@ -141,6 +270,24 @@
           "eventIndex"
         ],
         "title": "BadCaseAnchor",
+        "type": "object"
+      },
+      "BadCaseListResponse": {
+        "additionalProperties": false,
+        "description": "A Session's problems in external creation order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BadCase"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BadCaseListResponse",
         "type": "object"
       },
       "ChangePasswordRequest": {
@@ -288,6 +435,9 @@
           "PASSWORD_CHANGE_REQUIRED",
           "USERNAME_CONFLICT",
           "SESSION_NOT_FOUND",
+          "BAD_CASE_NOT_FOUND",
+          "BAD_CASE_SESSION_MISMATCH",
+          "PROBE_NOT_FOUND",
           "JOB_NOT_FOUND",
           "RUN_BUSY",
           "INTERNAL",
@@ -390,6 +540,80 @@
           "db"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IssueAnalysisResult": {
+        "additionalProperties": false,
+        "description": "Public result shape for an attribution that classifies an issue.",
+        "properties": {
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "IssueAnalysisResult",
+        "type": "object"
+      },
+      "IssueBadCaseAnalysis": {
+        "additionalProperties": false,
+        "description": "An analyzed issue result always carries its public summary.",
+        "properties": {
+          "attributeType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributetype"
+          },
+          "displayState": {
+            "enum": [
+              "analyzed_issue_model",
+              "analyzed_issue_prompt",
+              "analyzed_issue_error"
+            ],
+            "title": "Displaystate",
+            "type": "string"
+          },
+          "probeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probeid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/IssueAnalysisResult"
+          },
+          "status": {
+            "const": "analyzed_issue",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probeId",
+          "attributeType",
+          "displayState",
+          "status",
+          "result"
+        ],
+        "title": "IssueBadCaseAnalysis",
         "type": "object"
       },
       "JobResponse": {
@@ -560,6 +784,207 @@
           "user"
         ],
         "title": "LoginResponse",
+        "type": "object"
+      },
+      "NonIssueAnalysisResult": {
+        "additionalProperties": false,
+        "description": "Public result shape for an attribution that classifies a non-issue.",
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reasoning": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasoning",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reason",
+          "reasoning"
+        ],
+        "title": "NonIssueAnalysisResult",
+        "type": "object"
+      },
+      "NonIssueBadCaseAnalysis": {
+        "additionalProperties": false,
+        "description": "An analyzed non-issue result always carries its explanation.",
+        "properties": {
+          "attributeType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributetype"
+          },
+          "displayState": {
+            "const": "analyzed_nonissue",
+            "title": "Displaystate",
+            "type": "string"
+          },
+          "probeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probeid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/NonIssueAnalysisResult"
+          },
+          "status": {
+            "const": "analyzed_nonissue",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probeId",
+          "attributeType",
+          "displayState",
+          "status",
+          "result"
+        ],
+        "title": "NonIssueBadCaseAnalysis",
+        "type": "object"
+      },
+      "ProbeListResponse": {
+        "additionalProperties": false,
+        "description": "A Session's root-cause reports.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeReport"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ProbeListResponse",
+        "type": "object"
+      },
+      "ProbeReport": {
+        "additionalProperties": false,
+        "description": "One root-cause report with validated reverse source ids.",
+        "properties": {
+          "attributeType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributetype"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "fromBadCases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Frombadcases",
+            "type": "array"
+          },
+          "fromBadCasesCount": {
+            "title": "Frombadcasescount",
+            "type": "integer"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "probeAnalysis": {
+            "title": "Probeanalysis",
+            "type": "string"
+          },
+          "probeDescription": {
+            "title": "Probedescription",
+            "type": "string"
+          },
+          "probeId": {
+            "title": "Probeid",
+            "type": "string"
+          },
+          "probeObject": {
+            "title": "Probeobject",
+            "type": "string"
+          },
+          "probeType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "skill",
+                  "agent"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probetype"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probeId",
+          "sessionId",
+          "probeType",
+          "probeObject",
+          "objectVersion",
+          "attributeType",
+          "probeDescription",
+          "probeAnalysis",
+          "createdAt",
+          "updatedAt",
+          "fromBadCases",
+          "fromBadCasesCount"
+        ],
+        "title": "ProbeReport",
         "type": "object"
       },
       "PublicUser": {
@@ -1285,6 +1710,62 @@
         "title": "TicketRequest",
         "type": "object"
       },
+      "UnanalyzedBadCaseAnalysis": {
+        "additionalProperties": false,
+        "description": "No attribution result exists for this problem.",
+        "properties": {
+          "attributeType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attributetype"
+          },
+          "displayState": {
+            "const": "unanalyzed",
+            "title": "Displaystate",
+            "type": "string"
+          },
+          "probeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probeid"
+          },
+          "result": {
+            "title": "Result",
+            "type": "null"
+          },
+          "status": {
+            "const": "unanalyzed",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probeId",
+          "attributeType",
+          "displayState",
+          "status",
+          "result"
+        ],
+        "title": "UnanalyzedBadCaseAnalysis",
+        "type": "object"
+      },
       "UserListResponse": {
         "additionalProperties": false,
         "description": "Small unpaginated administrator user list.",
@@ -1780,6 +2261,222 @@
         ]
       }
     },
+    "/api/bad-cases/{badCaseId}": {
+      "get": {
+        "description": "Return one problem and optionally enforce deep-link ownership.",
+        "operationId": "get_bad_case_api_bad_cases__badCaseId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "badCaseId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Badcaseid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 36,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sessionid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadCase"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem belongs to another Session"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Bad Case",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/api/bad-cases/{badCaseId}/analysis": {
+      "get": {
+        "description": "Return the five-state attribution view, including no-row placeholder.",
+        "operationId": "get_bad_case_analysis_api_bad_cases__badCaseId__analysis_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "badCaseId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Badcaseid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 36,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sessionid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadCaseAnalysis"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem belongs to another Session"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Bad Case Analysis",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "Consume a one-time ticket and stream replay plus live run notifications.",
@@ -2083,6 +2780,86 @@
         ]
       }
     },
+    "/api/probes/{probeId}": {
+      "get": {
+        "description": "Return one validated root-cause report.",
+        "operationId": "get_probe_api_probes__probeId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "probeId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Probeid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Probe does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Probe",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
     "/api/sessions": {
       "get": {
         "description": "Return the current page of root-session cards.",
@@ -2273,6 +3050,166 @@
         "summary": "Get Session",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/bad-cases": {
+      "get": {
+        "description": "Return one Session's problems in external creation order.",
+        "operationId": "list_session_bad_cases_api_sessions__sessionId__bad_cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Session does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Session Bad Cases",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/api/sessions/{sessionId}/probes": {
+      "get": {
+        "description": "Return every root-cause report owned by one Session.",
+        "operationId": "list_session_probes_api_sessions__sessionId__probes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Sessionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Session does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Session Probes",
+        "tags": [
+          "problems"
         ]
       }
     },

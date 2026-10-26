@@ -162,6 +162,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bad-cases/{badCaseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bad Case
+         * @description Return one problem and optionally enforce deep-link ownership.
+         */
+        get: operations["get_bad_case_api_bad_cases__badCaseId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bad-cases/{badCaseId}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Bad Case Analysis
+         * @description Return the five-state attribution view, including no-row placeholder.
+         */
+        get: operations["get_bad_case_analysis_api_bad_cases__badCaseId__analysis_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -242,6 +282,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/probes/{probeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Probe
+         * @description Return one validated root-cause report.
+         */
+        get: operations["get_probe_api_probes__probeId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions": {
         parameters: {
             query?: never;
@@ -274,6 +334,46 @@ export interface paths {
          * @description Return one session overview card.
          */
         get: operations["get_session_api_sessions__sessionId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{sessionId}/bad-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Session Bad Cases
+         * @description Return one Session's problems in external creation order.
+         */
+        get: operations["list_session_bad_cases_api_sessions__sessionId__bad_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{sessionId}/probes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Session Probes
+         * @description Return every root-cause report owned by one Session.
+         */
+        get: operations["list_session_probes_api_sessions__sessionId__probes_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -363,6 +463,48 @@ export interface components {
             status: "idle" | "queued" | "running" | "completed" | "failed" | "interrupted";
         };
         /**
+         * BadCase
+         * @description Complete public problem card used by list and detail routes.
+         */
+        BadCase: {
+            analysis: components["schemas"]["BadCaseAnalysis"];
+            anchor: components["schemas"]["BadCaseAnchor"];
+            badCaseAgent: components["schemas"]["BadCaseAgent"];
+            /** Badcaseid */
+            badCaseId: string;
+            /**
+             * Badcasetype
+             * @enum {string}
+             */
+            badCaseType: "self" | "discovery";
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /** Diagnosticcode */
+            diagnosticCode?: string | null;
+            /** Metadata */
+            metaData: {
+                [key: string]: unknown;
+            } | null;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent";
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Reason */
+            reason: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Sessiontitle */
+            sessionTitle: string;
+        };
+        /**
          * BadCaseAgent
          * @description The reporter that originally supplied a problem report.
          */
@@ -373,6 +515,11 @@ export interface components {
             sessionId: string;
         };
         /**
+         * BadCaseAnalysis
+         * @description One of the three status-specific public attribution states.
+         */
+        BadCaseAnalysis: components["schemas"]["UnanalyzedBadCaseAnalysis"] | components["schemas"]["NonIssueBadCaseAnalysis"] | components["schemas"]["IssueBadCaseAnalysis"];
+        /**
          * BadCaseAnchor
          * @description Stable host Agent and event index for one problem card.
          */
@@ -381,6 +528,14 @@ export interface components {
             agentId: string;
             /** Eventindex */
             eventIndex: number;
+        };
+        /**
+         * BadCaseListResponse
+         * @description A Session's problems in external creation order.
+         */
+        BadCaseListResponse: {
+            /** Items */
+            items: components["schemas"]["BadCase"][];
         };
         /**
          * ChangePasswordRequest
@@ -447,7 +602,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -488,6 +643,35 @@ export interface components {
             service: "harness-evolution";
             /** Version */
             version: string;
+        };
+        /**
+         * IssueAnalysisResult
+         * @description Public result shape for an attribution that classifies an issue.
+         */
+        IssueAnalysisResult: {
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * IssueBadCaseAnalysis
+         * @description An analyzed issue result always carries its public summary.
+         */
+        IssueBadCaseAnalysis: {
+            /** Attributetype */
+            attributeType: ("model" | "prompt" | "error") | null;
+            /**
+             * Displaystate
+             * @enum {string}
+             */
+            displayState: "analyzed_issue_model" | "analyzed_issue_prompt" | "analyzed_issue_error";
+            /** Probeid */
+            probeId: string | null;
+            result: components["schemas"]["IssueAnalysisResult"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "analyzed_issue";
         };
         /**
          * JobResponse
@@ -546,6 +730,81 @@ export interface components {
             /** Expiresin */
             expiresIn: number;
             user: components["schemas"]["PublicUser"];
+        };
+        /**
+         * NonIssueAnalysisResult
+         * @description Public result shape for an attribution that classifies a non-issue.
+         */
+        NonIssueAnalysisResult: {
+            /** Reason */
+            reason: string;
+            /** Reasoning */
+            reasoning: string[];
+        };
+        /**
+         * NonIssueBadCaseAnalysis
+         * @description An analyzed non-issue result always carries its explanation.
+         */
+        NonIssueBadCaseAnalysis: {
+            /** Attributetype */
+            attributeType: ("model" | "prompt" | "error") | null;
+            /**
+             * Displaystate
+             * @constant
+             */
+            displayState: "analyzed_nonissue";
+            /** Probeid */
+            probeId: string | null;
+            result: components["schemas"]["NonIssueAnalysisResult"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "analyzed_nonissue";
+        };
+        /**
+         * ProbeListResponse
+         * @description A Session's root-cause reports.
+         */
+        ProbeListResponse: {
+            /** Items */
+            items: components["schemas"]["ProbeReport"][];
+        };
+        /**
+         * ProbeReport
+         * @description One root-cause report with validated reverse source ids.
+         */
+        ProbeReport: {
+            /** Attributetype */
+            attributeType: ("model" | "prompt" | "error") | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Frombadcases */
+            fromBadCases: string[];
+            /** Frombadcasescount */
+            fromBadCasesCount: number;
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Probeanalysis */
+            probeAnalysis: string;
+            /** Probedescription */
+            probeDescription: string;
+            /** Probeid */
+            probeId: string;
+            /** Probeobject */
+            probeObject: string;
+            /** Probetype */
+            probeType: ("skill" | "agent") | null;
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
         };
         /**
          * PublicUser
@@ -824,6 +1083,28 @@ export interface components {
             lastEventId: number;
             /** Topics */
             topics: string[];
+        };
+        /**
+         * UnanalyzedBadCaseAnalysis
+         * @description No attribution result exists for this problem.
+         */
+        UnanalyzedBadCaseAnalysis: {
+            /** Attributetype */
+            attributeType: ("model" | "prompt" | "error") | null;
+            /**
+             * Displaystate
+             * @constant
+             */
+            displayState: "unanalyzed";
+            /** Probeid */
+            probeId: string | null;
+            /** Result */
+            result: null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "unanalyzed";
         };
         /**
          * UserListResponse
@@ -1203,6 +1484,144 @@ export interface operations {
             };
         };
     };
+    get_bad_case_api_bad_cases__badCaseId__get: {
+        parameters: {
+            query?: {
+                sessionId?: string | null;
+            };
+            header?: never;
+            path: {
+                badCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadCase"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem belongs to another Session */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_bad_case_analysis_api_bad_cases__badCaseId__analysis_get: {
+        parameters: {
+            query?: {
+                sessionId?: string | null;
+            };
+            header?: never;
+            path: {
+                badCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadCaseAnalysis"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem belongs to another Session */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     event_stream_api_events_get: {
         parameters: {
             query?: {
@@ -1404,6 +1823,64 @@ export interface operations {
             };
         };
     };
+    get_probe_api_probes__probeId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                probeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeReport"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Probe does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_sessions_api_sessions_get: {
         parameters: {
             query?: {
@@ -1474,6 +1951,122 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionListItem"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_session_bad_cases_api_sessions__sessionId__bad_cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadCaseListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_session_probes_api_sessions__sessionId__probes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeListResponse"];
                 };
             };
             /** @description Authentication is required */
