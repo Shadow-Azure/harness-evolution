@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
+import pytest_asyncio
+from pydantic import SecretStr
 
+from app.config import DatabaseDialect, Settings
+from app.db.base import Database
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
     EvolutionTargetRecord,
 )
 from app.errors import AppError, ErrorCode
+from app.main import create_app
 from app.service.evolution.targets import (
     EvolutionTargetService,
     EvolutionTargetWrite,
@@ -22,6 +30,11 @@ from app.third_party_api.git.remote import (
     RepoInvalid,
     SubprocessGitRemote,
 )
+
+TARGET_ADMIN_TEMP_PASSWORD = "admin-target-temp-password"
+TARGET_ADMIN_PASSWORD = "admin-target-password"
+TARGET_MEMBER_TEMP_PASSWORD = "member-target-temp-password"
+TARGET_MEMBER_PASSWORD = "member-target-password"
 
 
 class FakeRepository:
@@ -145,6 +158,176 @@ class FakeGitRemote:
         if self.fail:
             raise RepoInvalid("token=should-not-leak")
         return self.tags
+
+
+@dataclass(frozen=True, slots=True)
+class TargetHttpEnvironment:
+    """Authenticated clients and the fake remote used by one ASGI application."""
+
+    admin: httpx.AsyncClient
+    member: httpx.AsyncClient
+    database: Database
+    remote: FakeGitRemote
+
+
+async def _complete_login(
+    client: httpx.AsyncClient,
+    *,
+    username: str,
+    old_password: str,
+    new_password: str,
+) -> None:
+    """Complete the forced-password-change flow and install a bearer token."""
+    login = await client.post(
+        "/api/auth/login",
+        json={"username": username, "password": old_password},
+    )
+    assert login.status_code == 200
+    changed = await client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {login.json()['accessToken']}"},
+        json={"oldPassword": old_password, "newPassword": new_password},
+    )
+    assert changed.status_code == 204
+    relogin = await client.post(
+        "/api/auth/login",
+        json={"username": username, "password": new_password},
+    )
+    assert relogin.status_code == 200
+    client.headers["Authorization"] = f"Bearer {relogin.json()['accessToken']}"
+
+
+@pytest_asyncio.fixture
+async def target_http(tmp_path: Path) -> AsyncIterator[TargetHttpEnvironment]:
+    """Provide member/admin clients over one application with a fake git remote."""
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        jwt_secret=SecretStr("target-http-signing-secret-with-sufficient-length"),
+        admin_username="admin",
+        admin_password=SecretStr(TARGET_ADMIN_TEMP_PASSWORD),
+    )
+    remote = FakeGitRemote(tags=("v2.0.0", "v1.9.0"))
+    app = create_app(settings, git_remote=remote)
+    transport = httpx.ASGITransport(app=app)
+    admin = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+    member = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+    try:
+        async with app.router.lifespan_context(app):
+            await app.state.identity.create_user(
+                username="member",
+                display_name="Member",
+                password=TARGET_MEMBER_TEMP_PASSWORD,
+                role="member",
+            )
+            await _complete_login(
+                admin,
+                username="admin",
+                old_password=TARGET_ADMIN_TEMP_PASSWORD,
+                new_password=TARGET_ADMIN_PASSWORD,
+            )
+            await _complete_login(
+                member,
+                username="member",
+                old_password=TARGET_MEMBER_TEMP_PASSWORD,
+                new_password=TARGET_MEMBER_PASSWORD,
+            )
+            yield TargetHttpEnvironment(
+                admin=admin,
+                member=member,
+                database=app.state.database,
+                remote=remote,
+            )
+    finally:
+        await member.aclose()
+        await admin.aclose()
+
+
+async def test_target_routes_round_trip_with_camel_case_and_member_reads(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """The real ASGI app exposes CRUD, disabled config rows, and versions."""
+    created = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_write().model_dump(by_alias=True),
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["objectType"] == "skill"
+    assert body["objectName"] == "deep-research"
+    assert body["repoUrl"] == "https://git.example.com/agent-skills.git"
+    assert target_http.remote.validated == [
+        (
+            "https://git.example.com/agent-skills.git",
+            "main",
+        )
+    ]
+
+    listed = await target_http.member.get("/api/evolution/targets")
+    assert listed.status_code == 200
+    assert listed.json()["items"] == [body]
+
+    update_body = _write(enabled=False).model_dump(by_alias=True)
+    update_body["subDir"] = "skills/deep-research-v2"
+    updated = await target_http.admin.put(
+        f"/api/evolution/targets/{body['id']}",
+        json=update_body,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["enabled"] is False
+    assert updated.json()["subDir"] == "skills/deep-research-v2"
+
+    versions = await target_http.member.get(
+        f"/api/evolution/targets/{body['id']}/versions",
+    )
+    assert versions.status_code == 200
+    assert versions.json() == {
+        "versions": ["v1.9.0", "v2.0.0"],
+        "defaultRef": "main",
+    }
+
+    deleted = await target_http.admin.delete(
+        f"/api/evolution/targets/{body['id']}",
+    )
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+
+
+async def test_target_routes_preserve_admin_and_error_envelopes(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Write authorization and stable target errors are enforced at the edge."""
+    denial = await target_http.member.post(
+        "/api/evolution/targets",
+        json=_write().model_dump(by_alias=True),
+    )
+    assert denial.status_code == 403
+    assert denial.json()["error"]["code"] == "FORBIDDEN"
+
+    invalid = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_write(repo_url="http://git.example.com/repo.git").model_dump(
+            by_alias=True,
+        ),
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "REPO_INVALID"
+
+    created = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_write().model_dump(by_alias=True),
+    )
+    duplicate = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_write().model_dump(by_alias=True),
+    )
+    assert created.status_code == 201
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "TARGET_EXISTS"
+
+    missing = await target_http.admin.delete("/api/evolution/targets/missing")
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "TARGET_NOT_FOUND"
 
 
 @pytest.mark.parametrize(

@@ -128,8 +128,8 @@ async def test_target_reads_allow_members_but_writes_require_admin(
     target_api: TargetApiEnvironment,
 ) -> None:
     """Only target mutations require the administrator role."""
-    assert (await target_api.member.get("/api/evolution/targets")).status_code == 404
-    assert (await target_api.admin.get("/api/evolution/targets")).status_code == 404
+    assert (await target_api.member.get("/api/evolution/targets")).status_code == 200
+    assert (await target_api.admin.get("/api/evolution/targets")).status_code == 200
 
     denied = await target_api.member.post("/api/evolution/targets", json={})
     assert denied.status_code == 403
@@ -139,7 +139,7 @@ async def test_target_reads_allow_members_but_writes_require_admin(
         "/api/evolution/targets",
         json={},
     )
-    assert allowed_by_middleware.status_code == 404
+    assert allowed_by_middleware.status_code == 422
 
 
 @pytest.mark.parametrize(
