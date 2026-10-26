@@ -2,7 +2,7 @@
 
 ## 结论
 
-D1-D4 全部成立，均应在 PR #120 修复。D1、D2 属 Important，合并前必须处理；D3、D4 是严格的可见原型偏差，修复成本低，一并在同一 PR 收敛。
+D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，也已在同一 PR 收敛。修复证据基线为 `13333e7`：目标 Vitest 26/26、Web 全量 249 passed/1 skipped（95.77% statements）、真实 Chrome M4 E2E 1/1，并通过 typecheck、lint、样式、契约、build、bundle 与文档门禁。
 
 ## D1 归因信息重复与顺序偏差
 
@@ -93,11 +93,31 @@ D1-D4 全部成立，均应在 PR #120 修复。D1、D2 属 Important，合并�
 
 ## 回归策略
 
-按 TDD 先新增/修改失败测试，再改组件：
+按 TDD 先新增/修改失败测试，再改组件；D1-D7 最终共同覆盖：
 
 - `apps/web/src/utils/badCaseId.test.ts`：短 ID、深链编码和 desc/attr。
 - `apps/web/src/pages/errors/Index.test.ts`：D1 固定顺序与去重、D2 两个新窗口链接、D3 reason 唯一、D4 原型文案。
 - `apps/web/src/components/bad-cases/BadCaseList.test.ts` 或现有问题列表测试：ID 链接独立于选择按钮，点击链接不触发行选择。
+- `apps/web/src/components/agent-tree/AgentTree.test.ts`：内部布局诊断不进入正式 UI。
+- `apps/web/src/app/apiError.test.ts`：页面处理的跨 Session 409 不再重复 toast。
 - `tests/e2e/m4-error-detail.test.mjs`：实际渲染的 ID 为 8 位，链接带正确 href/target/rel，点击卡体仍只更新 URL。
 
-修复后必须复跑 Web 单测、typecheck、lint、错误详情真实 Chrome E2E，并再次执行 Computer Use smoke/reporting。
+最终复跑结果：目标 Vitest 26/26；Web 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 Computer Use smoke/reporting 需以 `13333e7` 重新采集并写入报告。
+
+## D5 compact 问题卡结构与报告入口
+
+**Verdict：修复。**
+
+原型卡片第一行是 `#编号 + 问题 ID + reason`，第二行是状态、上报对象和报告 ID。当前 compact 分支改为两个语义层，并用覆盖整卡的 sibling button 承担选择，链接保持独立、安全的新窗口入口。`BadCaseList.test.ts` 锁定两行归属和 report link，真实 Chrome E2E 锁定实际 DOM 与 tab。
+
+## D6 裸布局诊断泄漏
+
+**Verdict：修复。**
+
+布局算法产生的 `MISSING_PARENT_EVENT` 等 code 是内部降级信号，不属于原型或用户任务。组件保留 `graph.diagnostics` 供布局降级与测试使用，但移除可见 `.diagnostics` 节点；`AgentTree.test.ts` 和 M4 E2E 均断言正式 UI 不含该 code。
+
+## D7 409 重复提示
+
+**Verdict：修复。**
+
+跨 Session 的 `BAD_CASE_SESSION_MISMATCH` 已由页面阻塞错误完整表达。全局 409 presenter 将该 code 标为页面处理，不再弹 toast；其他冲突仍保留原有非阻塞提示。`apiError.test.ts`、`Index.test.ts` 与真实 Chrome E2E 形成三层回归。
