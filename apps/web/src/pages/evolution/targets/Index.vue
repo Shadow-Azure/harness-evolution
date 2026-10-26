@@ -1,31 +1,91 @@
 <script setup lang="ts">
-import type { EvolutionTarget } from "@harness/contracts";
-import { computed } from "vue";
+import type {
+  EvolutionTarget,
+  EvolutionTargetWrite,
+} from "@harness/contracts";
+import { computed, ref } from "vue";
 
-import { useEvolutionTargets } from "../../../composables/useEvolutionTargets";
+import {
+  useEvolutionTargets,
+  useEvolutionTargetVersions,
+} from "../../../composables/useEvolutionTargets";
+import { ApiError } from "../../../api/http";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
+import TargetFormDialog from "./components/TargetFormDialog.vue";
 
 defineOptions({ name: "TargetConfigPage" });
 
 const auth = useAuthStore();
-const { data, error, isPending, refetch } = useEvolutionTargets();
+const {
+  createTarget,
+  data,
+  error,
+  isPending,
+  refetch,
+  updateTarget,
+} = useEvolutionTargets();
 
 const targets = computed(() => data.value?.items ?? []);
 const canWrite = computed(() => auth.user?.role === "admin");
+const dialogOpen = ref(false);
+const editingTarget = ref<EvolutionTarget | null>(null);
+const formError = ref("");
+const submitting = ref(false);
+const editingTargetId = computed(() => editingTarget.value?.id ?? null);
+const versionsQuery = useEvolutionTargetVersions(editingTargetId);
+const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 
 function openCreate(): void {
-  // Creation dialog wiring belongs to the form task.
+  if (!canWrite.value) return;
+  editingTarget.value = null;
+  formError.value = "";
+  dialogOpen.value = true;
 }
 
 function openEdit(target: EvolutionTarget): void {
-  void target;
-  // Edit dialog wiring belongs to the form task.
+  if (!canWrite.value) return;
+  editingTarget.value = target;
+  formError.value = "";
+  dialogOpen.value = true;
 }
 
 function removeTarget(target: EvolutionTarget): void {
   void target;
   // Delete confirmation belongs to the actions task.
+}
+
+function targetErrorMessage(errorValue: unknown): string {
+  if (errorValue instanceof ApiError) {
+    if (errorValue.code === "REPO_INVALID") {
+      return "仓库或 ref 无效，请检查地址、子目录与基线";
+    }
+    if (errorValue.code === "TARGET_EXISTS") {
+      return "同类型的对象名称已经配置";
+    }
+    return errorValue.message || "保存配置失败，请稍后重试";
+  }
+  return errorValue instanceof Error
+    ? errorValue.message
+    : "保存配置失败，请稍后重试";
+}
+
+async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
+  formError.value = "";
+  submitting.value = true;
+  try {
+    if (editingTarget.value) {
+      await updateTarget(editingTarget.value.id, body);
+    } else {
+      await createTarget(body);
+    }
+    dialogOpen.value = false;
+    editingTarget.value = null;
+  } catch (errorValue) {
+    formError.value = targetErrorMessage(errorValue);
+  } finally {
+    submitting.value = false;
+  }
 }
 </script>
 
@@ -55,6 +115,16 @@ function removeTarget(target: EvolutionTarget): void {
       @delete="removeTarget"
       @edit="openEdit"
       @retry="refetch"
+    />
+
+    <TargetFormDialog
+      v-model="dialogOpen"
+      :server-error="formError"
+      :submitting="submitting"
+      :target="editingTarget"
+      :versions="versions"
+      :versions-loading="versionsQuery.isPending.value"
+      @submit="submitTarget"
     />
   </section>
 </template>
