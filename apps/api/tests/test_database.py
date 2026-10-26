@@ -29,6 +29,7 @@ from sqlalchemy.pool import QueuePool
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import BadCaseRepository
+from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
@@ -40,11 +41,20 @@ from app.db.models.domain import (
     agents,
     bad_case_analysis,
     bad_cases,
+    evolution_targets,
     probe_reports,
     session_families,
     source_records,
     trajectory_payloads,
     user_turns,
+)
+from app.db.models.evolution import (
+    ClusterWrite,
+    evolution_finals,
+    evolution_rounds,
+    evolution_runs,
+    probe_cluster_probes,
+    probe_clusters,
 )
 from app.db.models.jobs import job_runs
 from app.db.mysql import MySqlDatabase
@@ -1281,5 +1291,171 @@ async def test_mysql_external_read_models_merge_all_attribution_states() -> None
                 await session.execute(
                     delete(probe_reports).where(probe_reports.c.probe_id == probe_id),
                 )
+        finally:
+            await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_evolution_repository_round_trip() -> None:
+    """The evolution repository preserves cursor, cluster, round, and final state."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url)
+    database = MySqlDatabase(settings)
+    await database.start()
+    await upgrade_database(database)
+    repository = EvolutionRepository(database)
+    run_id = "mysql-m5-repository-run"
+    target_id = "mysql-m5-repository-target"
+    probe_ids = ("mysql-m5-model", "mysql-m5-error")
+    now = datetime(2026, 10, 27, 2, 3, 4, tzinfo=UTC)
+
+    async def cleanup() -> None:
+        async with database.transaction() as session:
+            cluster_ids: list[str] = list(
+                (
+                    await session.execute(
+                        select(probe_clusters.c.probe_cluster_id).where(
+                            probe_clusters.c.run_id == run_id,
+                        ),
+                    )
+                ).scalars(),
+            )
+            if cluster_ids:
+                await session.execute(
+                    delete(probe_cluster_probes).where(
+                        probe_cluster_probes.c.probe_cluster_id.in_(cluster_ids),
+                    ),
+                )
+            await session.execute(
+                delete(evolution_finals).where(evolution_finals.c.run_id == run_id),
+            )
+            await session.execute(
+                delete(evolution_rounds).where(evolution_rounds.c.run_id == run_id),
+            )
+            await session.execute(
+                delete(probe_clusters).where(probe_clusters.c.run_id == run_id),
+            )
+            await session.execute(
+                delete(evolution_runs).where(evolution_runs.c.id == run_id),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.probe_id.in_(probe_ids)),
+            )
+            await session.execute(
+                delete(evolution_targets).where(
+                    evolution_targets.c.id == target_id,
+                ),
+            )
+
+    try:
+        await cleanup()
+        async with database.transaction() as session:
+            await session.execute(
+                insert(evolution_targets).values(
+                    id=target_id,
+                    object_type="skill",
+                    object_name="mysql-evolution",
+                    repo_url="https://example.invalid/mysql-evolution.git",
+                    sub_dir="skills/mysql-evolution",
+                    default_ref="v1",
+                    enabled=True,
+                    created_by=None,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+            for probe_id, attribute_type in zip(
+                probe_ids,
+                ("model", "error"),
+                strict=True,
+            ):
+                await session.execute(
+                    insert(probe_reports).values(
+                        probe_id=probe_id,
+                        session_id="mysql-m5-session",
+                        probe_type="skill",
+                        probe_object="mysql-evolution",
+                        object_version="v1",
+                        attribute_type=attribute_type,
+                        probe_description="MySQL evolution probe",
+                        probe_analysis="MySQL evolution analysis",
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                )
+
+        await repository.create_run(
+            {
+                "id": run_id,
+                "title": "MySQL evolution run",
+                "mode": "full",
+                "engine_key": "full",
+                "eval_config": {"gateway": "mock"},
+                "target_config_id": target_id,
+                "target_type": "skill",
+                "target_name": "mysql-evolution",
+                "target_version": "v1",
+                "repo_url": "https://example.invalid/mysql-evolution.git",
+                "sub_dir": "skills/mysql-evolution",
+                "created_at": now,
+            },
+        )
+        await repository.advance_unit(
+            run_id,
+            expected=0,
+            target=1,
+            cluster_count=1,
+        )
+        await repository.advance_unit(
+            run_id,
+            expected=1,
+            target=2,
+            cluster_count=1,
+        )
+        clusters = await repository.replace_clusters(
+            run_id,
+            (
+                ClusterWrite(
+                    type="model",
+                    description="model cluster",
+                    probes=(probe_ids[0],),
+                ),
+            ),
+        )
+        await repository.insert_rounds(
+            (
+                {
+                    "id": "mysql-m5-round-1",
+                    "run_id": run_id,
+                    "probe_cluster_id": clusters[0].probe_cluster_id,
+                    "seq": 1,
+                    "status": "pending",
+                },
+            ),
+        )
+        final = await repository.write_final(
+            {
+                "run_id": run_id,
+                "best_version": "v1-best",
+                "verdict": True,
+                "best_score": 88.0,
+                "init_score": 80.0,
+                "metrics": [{"name": "score", "value": 88.0}],
+            },
+        )
+        run = await repository.get_run(run_id)
+
+        assert run is not None
+        assert run.progress_unit == 2
+        assert [cluster.impact for cluster in clusters] == [5.0]
+        assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
+        assert final.best_version == "v1-best"
+    finally:
+        try:
+            await cleanup()
         finally:
             await database.dispose()
