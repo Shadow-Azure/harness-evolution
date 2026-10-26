@@ -1,0 +1,140 @@
+{
+  "commit": "0c91e3e",
+  "rows": [
+    {
+      "id": "01",
+      "name": "五种问题状态",
+      "status": "pass",
+      "detail": "真实 SQLite fixture 返回未分析、非问题、模型、prompt、错误五态。",
+      "evidence": [
+        "API displayState 集合断言"
+      ]
+    },
+    {
+      "id": "02",
+      "name": "1408px 错误详情与原图",
+      "status": "pass",
+      "detail": "340px 左栏、亮色背景、两行错误卡及归因报告深链、完整执行流同时可见；正式画布不显示裸诊断 code，且无横向溢出。",
+      "evidence": [
+        "screenshots/01-errors-all-1408.png"
+      ]
+    },
+    {
+      "id": "03",
+      "name": "选中问题过滤执行流",
+      "status": "pass",
+      "detail": "问题卡与画布共享 case 状态；选中后画布只剩一张问题卡，描述中的 reason 仅一次。",
+      "evidence": [
+        "screenshots/02-selected-description.png"
+      ]
+    },
+    {
+      "id": "04",
+      "name": "描述深链刷新恢复",
+      "status": "pass",
+      "detail": "刷新后 case 与 desc 状态保持一致；问题描述页签与过滤执行流均恢复。",
+      "evidence": [
+        "CDP Page.reload + location/query 断言"
+      ]
+    },
+    {
+      "id": "05",
+      "name": "归因顺序与安全深链",
+      "status": "pass",
+      "detail": "结论不重复正文；分类/根因对象只在正文；来源问题新窗口回 desc；Markdown 可见。",
+      "evidence": [
+        "screenshots/03-attribution.png"
+      ]
+    },
+    {
+      "id": "06",
+      "name": "归因深链刷新恢复",
+      "status": "pass",
+      "detail": "刷新后 tab=attr 与当前 case 保持一致，归因页签仍为选中态。",
+      "evidence": [
+        "CDP Page.reload + aria-selected 断言"
+      ]
+    },
+    {
+      "id": "07",
+      "name": "全部错误恢复全图",
+      "status": "pass",
+      "detail": "清除 case/tab 后画布恢复全部问题卡，详情区回到未选择空态。",
+      "evidence": [
+        "URL query 为空 + 问题卡数量断言"
+      ]
+    },
+    {
+      "id": "08",
+      "name": "画布 → 列表双向选择",
+      "status": "pass",
+      "detail": "点击执行流问题卡后 URL 与左栏选中态同步，列表选择进入画布方向已在前一步验证。",
+      "evidence": [
+        "画布 .rf-finding 点击 + aria-pressed 断言"
+      ]
+    },
+    {
+      "id": "09",
+      "name": "全局空态",
+      "status": "pass",
+      "detail": "无 Session 的错误入口显示“请选择会话”，不伪造问题数据。",
+      "evidence": [
+        "screenshots/04-global-empty.png"
+      ]
+    },
+    {
+      "id": "10",
+      "name": "加载态",
+      "status": "pass",
+      "detail": "暂停真实 tree 请求时，执行流面板显示可访问的加载骨架。",
+      "evidence": [
+        "CDP Fetch.requestPaused + role=status 断言"
+      ]
+    },
+    {
+      "id": "11",
+      "name": "错误态",
+      "status": "pass",
+      "detail": "执行流请求失败时显示局部错误与“重试”，其他工作区仍可操作。",
+      "evidence": [
+        "screenshots/05-tree-error.png"
+      ]
+    },
+    {
+      "id": "12",
+      "name": "重试恢复",
+      "status": "pass",
+      "detail": "点击错误态“重试”后真实执行流恢复，无需刷新整页。",
+      "evidence": [
+        "retry 点击 + AgentTree 恢复断言"
+      ]
+    },
+    {
+      "id": "13",
+      "name": "跨 Session 409",
+      "status": "pass",
+      "detail": "错误归属不匹配时只显示页级不可重试中文错误，不渲染侧栏、执行流、详情或重复全局 toast。",
+      "evidence": [
+        "screenshots/06-cross-session-409.png"
+      ]
+    },
+    {
+      "id": "14",
+      "name": "390px 响应式布局",
+      "status": "pass",
+      "detail": "单列工作台无横向溢出，详情与归因仍可访问。",
+      "evidence": [
+        "screenshots/07-mobile-390.png"
+      ]
+    },
+    {
+      "id": "15",
+      "name": "Console / network",
+      "status": "pass",
+      "detail": "除用于验证的预期 409 外，无 warning、error 或未捕获异常。",
+      "evidence": [
+        "console-summary.txt"
+      ]
+    }
+  ]
+}

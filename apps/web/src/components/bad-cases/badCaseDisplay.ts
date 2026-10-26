@@ -6,6 +6,12 @@ export type BadCaseStatePresentation = {
   tone: "neutral" | "green" | "purple" | "orange" | "red";
 };
 
+/** One display-safe key/value pair from external problem metadata. */
+export type BadCaseFact = {
+  key: string;
+  value: string;
+};
+
 const STATE_PRESENTATION: Record<
   BadCase["analysis"]["displayState"],
   BadCaseStatePresentation
@@ -54,12 +60,28 @@ export function badCaseSummary(problem: BadCase): string {
 export function badCaseFacts(
   metadata: Record<string, unknown> | null,
 ): string[] {
+  return badCaseFactEntries(metadata).map(
+    (fact) => `${fact.key}=${fact.value}`,
+  );
+}
+
+/**
+ * Render compact key/value facts from external metadata.
+ * @param metadata Untrusted external metadata object.
+ * @returns Up to three display-safe key/value pairs.
+ */
+export function badCaseFactEntries(
+  metadata: Record<string, unknown> | null,
+): BadCaseFact[] {
   if (!metadata) return [];
   return Object.entries(metadata)
     .slice(0, 3)
     .map(([key, value]) => {
       const text =
         typeof value === "string" ? value : JSON.stringify(value);
-      return `${key}=${text.length > 72 ? `${text.slice(0, 71)}…` : text}`;
+      return {
+        key,
+        value: text.length > 72 ? `${text.slice(0, 71)}…` : text,
+      };
     });
 }

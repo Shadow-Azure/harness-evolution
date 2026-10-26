@@ -196,6 +196,6 @@ describe("App shell", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.path).toBe("/errors");
-    expect(wrapper.text()).toContain("暂无问题");
+    expect(wrapper.text()).toContain("请选择会话");
   });
 });

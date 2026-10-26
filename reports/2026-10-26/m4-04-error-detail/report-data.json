@@ -1,0 +1,303 @@
+{
+  "lang": "zh-CN",
+  "title": "M4-04 错误详情与归因集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #120 · validation on 0c91e3e",
+  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟发现并修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链以及画布泄漏裸布局诊断三项缺陷；最终提交同时移除原型没有的“问题 ID”标签，并把归因结论改成 14px 结论值与状态 chip。15 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、双向联动、深链恢复、加载/错误/重试、归属校验、响应式布局及控制台清洁度均有证据。",
+  "meta": "2026-10-26/27 · macOS · Google Chrome · FastAPI + Vite + SQLite",
+  "metrics": [
+    { "value": "17", "label": "冒烟场景" },
+    { "value": "17", "label": "通过" },
+    { "value": "3", "label": "缺陷已修复" },
+    { "value": "0", "label": "非预期运行时错误" },
+    { "value": "3/3 SUCCESS", "label": "CI" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#49 · M4-04 error detail" },
+    { "label": "PR", "value": "#120" },
+    { "label": "Validation base", "value": "0c91e3e" },
+    { "label": "Evidence patch", "value": "final smoke report on 0c91e3e" },
+    { "label": "CI", "value": "run 40360956818 · build-and-docs / mysql / flow-online all SUCCESS" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
+    { "label": "Database", "value": "临时 SQLite fixture" },
+    { "label": "Evidence", "value": "CDP 集成断言 + 最终代码上的原生 Computer Use 截图" },
+    { "label": "Native capture", "value": "08/09 已按最终两行卡片和无诊断画布重采" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "五种问题状态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 fixture 返回未分析、非问题、模型、prompt、错误五态。",
+        "evidence": ["API displayState 集合断言"]
+      },
+      {
+        "id": "02",
+        "name": "1408px 原型布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "340px 左栏与完整执行流同屏；compact 错误卡按原型显示两行和归因报告深链；正式画布无裸诊断 code，且无横向溢出。",
+        "evidence": ["screenshots/10-before-card-and-diagnostics.png", "screenshots/01-errors-all-1408.png"]
+      },
+      {
+        "id": "03",
+        "name": "选中问题过滤执行流",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "问题卡与画布共享 case 状态；选中后只剩该问题卡，reason 仅显示一次。",
+        "evidence": ["screenshots/02-selected-description.png"]
+      },
+      {
+        "id": "04",
+        "name": "描述深链刷新恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "刷新后 case、desc 页签与过滤执行流均恢复。",
+        "evidence": ["CDP Page.reload + URL/ARIA 断言"]
+      },
+      {
+        "id": "05",
+        "name": "归因顺序与安全深链",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "结论值 14px 并带问题状态 chip；分类和根因对象只出现一次；来源问题安全新窗口回 desc；Markdown 可见。",
+        "evidence": ["screenshots/03-attribution.png"]
+      },
+      {
+        "id": "06",
+        "name": "归因深链刷新恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "刷新后 tab=attr 与当前 case 保持一致，归因页签仍为选中态。",
+        "evidence": ["CDP Page.reload + aria-selected 断言"]
+      },
+      {
+        "id": "07",
+        "name": "全部错误恢复全图",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "清除 case/tab 后画布恢复全部问题卡，详情区回到未选择空态。",
+        "evidence": ["URL query 为空 + 问题卡数量断言"]
+      },
+      {
+        "id": "08",
+        "name": "画布 → 列表双向选择",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击执行流问题卡后 URL 与左栏选中态同步；列表选择方向也已验证。",
+        "evidence": ["画布问题卡点击 + aria-pressed 断言"]
+      },
+      {
+        "id": "09",
+        "name": "全局空态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "无 Session 的错误入口显示“请选择会话”，不伪造问题数据。",
+        "evidence": ["screenshots/04-global-empty.png"]
+      },
+      {
+        "id": "10",
+        "name": "加载态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "暂停真实 tree 请求时，执行流面板显示可访问的加载骨架。",
+        "evidence": ["CDP Fetch.requestPaused + role=status 断言"]
+      },
+      {
+        "id": "11",
+        "name": "错误态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "执行流请求失败时显示局部错误与“重试”，其他工作区仍可操作。",
+        "evidence": ["screenshots/05-tree-error.png"]
+      },
+      {
+        "id": "12",
+        "name": "重试恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击错误态“重试”后真实执行流恢复，无需刷新整页。",
+        "evidence": ["retry 点击 + AgentTree 恢复断言"]
+      },
+      {
+        "id": "13",
+        "name": "跨 Session 409",
+        "status": { "kind": "fixed", "label": "FAIL → FIXED" },
+        "detail": "修复前同时出现两条后端英文 toast；修复后只显示页级中文不可重试错误，不渲染侧栏、执行流、详情或重复全局提示。",
+        "evidence": ["screenshots/06-cross-session-409-before.png", "screenshots/06-cross-session-409.png"]
+      },
+      {
+        "id": "14",
+        "name": "390px 响应式布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "单列工作台无横向溢出，详情与归因仍可访问。",
+        "evidence": ["screenshots/07-mobile-390.png"]
+      },
+      {
+        "id": "15",
+        "name": "Console / network",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "除刻意验证的 409 与 tree 中断外，无 warning、error 或未捕获异常。",
+        "evidence": ["console-summary.txt"]
+      },
+      {
+        "id": "16",
+        "name": "原生 Computer Use · 归因分析",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生 Chrome 完成登录、首次改密和 URL 导航；归因页签、执行流、结论及来源链接均可读。",
+        "evidence": ["screenshots/08-native-computer-use-attribution.jpeg"]
+      },
+      {
+        "id": "17",
+        "name": "原生 Computer Use · 页签切换",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生点击“问题描述”后 URL 与原页面选中态同步，8 位问题 ID、归因报告链接和对象信息可见。",
+        "evidence": ["screenshots/09-native-computer-use-description.jpeg"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "跨 Session 409 重复弹出英文全局 toast",
+      "facts": [
+        { "label": "Actual", "value": "页面正文已显示 BAD_CASE_SESSION_MISMATCH，同时 detail 与 analysis 两个查询各触发一条英文 toast，并在移动端短暂残留。" },
+        { "label": "Expected", "value": "页面级阻塞错误独占展示该冲突，不重复弹全局提示；其他非页面处理的 409 仍保留 toast。" },
+        { "label": "Root cause", "value": "main.ts 的全局 presentConflict 对两个并发 409 查询无差别提示，未区分页面已处理的冲突码。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · TDD + 真实 Chrome 复测" }
+    },
+    {
+      "severity": "P2",
+      "title": "compact 错误卡缺少原型第二行的归因报告 ID",
+      "facts": [
+        { "label": "Actual", "value": "状态 chip 与原因挤在首行，底行只剩对象，已分析问题的 probeId 完全缺失。" },
+        { "label": "Expected", "value": "首行显示序号、问题 ID 和原因；底行显示状态、对象与真实 probe 前八位深链。" },
+        { "label": "Root cause", "value": "错误详情复用的 BadCaseList compact 分支没有输出 analysis.probeId，也没有按原型拆分两行。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · TDD + 真实 Chrome 复测" }
+    },
+    {
+      "severity": "P2",
+      "title": "执行流向用户泄漏裸布局诊断 code",
+      "facts": [
+        { "label": "Actual", "value": "缺少父触发点的数据会在画布左上角显示橙色 MISSING_PARENT_EVENT。" },
+        { "label": "Expected", "value": "诊断仍用于稳定降级和测试，但正式界面只显示合成后的执行流。" },
+        { "label": "Root cause", "value": "AgentTree 直接把 graph.diagnostics 的机器 code 渲染成用户可见覆盖层。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · TDD + 真实 Chrome 复测" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/10-before-card-and-diagnostics.png",
+      "alt": "修复前错误卡缺少报告 ID 且画布显示裸诊断 code",
+      "label": "02a · 原型差异修复前",
+      "caption": "左栏缺少归因报告深链，执行流同时泄漏 MISSING_PARENT_EVENT。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-errors-all-1408.png",
+      "alt": "修复后两行错误卡与无诊断泄漏的执行流",
+      "label": "02b · 原型差异修复后",
+      "caption": "状态、对象与归因报告 ID 回到第二行，画布仅保留执行流内容。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-selected-description.png",
+      "alt": "选中问题后的问题描述页签",
+      "label": "02 · 问题描述",
+      "caption": "选中问题后执行流只保留对应问题卡；描述头部直接呈现问题 ID、原因、报告 ID 和状态，没有多余字段标签。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-attribution.png",
+      "alt": "选中问题的归因分析页签",
+      "label": "03 · 归因分析",
+      "caption": "14px 结论值与状态 chip、分类与根因对象、问题描述、推导和来源问题保持固定顺序。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-global-empty.png",
+      "alt": "未选择 Session 的全局错误入口空态",
+      "label": "04 · 全局空态",
+      "caption": "无 Session 时提示“请选择会话”。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-tree-error.png",
+      "alt": "执行流请求失败后的局部错误态",
+      "label": "05 · 错误态",
+      "caption": "执行流失败只在图面板呈现错误与重试，其他区域保持可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-cross-session-409-before.png",
+      "alt": "修复前跨 Session 409 顶部有两条重复英文 toast",
+      "label": "06a · 修复前",
+      "caption": "页面已有中文阻塞错误，同时又出现两条重复英文全局 toast。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/06-cross-session-409.png",
+      "alt": "修复后跨 Session 409 仅显示页级中文错误",
+      "label": "06b · 修复后",
+      "caption": "冲突仅由页级不可重试错误承载，重复英文 toast 已消失。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-mobile-390.png",
+      "alt": "390px 视口下的错误详情",
+      "label": "07 · 390px",
+      "caption": "页面切换为单列且无横向溢出。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-native-computer-use-attribution.jpeg",
+      "alt": "原生 Google Chrome 中的归因分析页面",
+      "label": "08 · 原生归因",
+      "caption": "Computer Use 在真实 Chrome 中打开 attr 深链，两行错误卡、14px 结论/状态 chip、执行流与归因内容均可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/09-native-computer-use-description.jpeg",
+      "alt": "原生 Google Chrome 中点击问题描述后的页面",
+      "label": "09 · 原生页签切换",
+      "caption": "Computer Use 点击“问题描述”后 URL 与选中态同步；问题 ID、报告 ID 和状态直接呈现，多余“问题 ID”标签已移除。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "错误详情主链路",
+        "coverage": "CDP + 原生 Computer Use",
+        "conclusion": "五态、列表/画布联动、全部错误恢复、双页签刷新与归属校验均通过。",
+        "recommendation": "后续改动继续保留真实 API + 浏览器双层验证。"
+      },
+      {
+        "area": "异步状态",
+        "coverage": "真实 Chrome Fetch 故障注入",
+        "conclusion": "加载、执行流失败和局部重试均被条件断言锁定。",
+        "recommendation": "CI 中继续使用真实请求而非组件桩验证关键三态。"
+      },
+      {
+        "area": "原型与无障碍",
+        "coverage": "原生 CUA + CDP 计算样式/ARIA",
+        "conclusion": "亮色布局、340px 左栏、两行错误卡、问题/报告 ID 深链、14px 结论与状态 chip、页签关系及可访问名称符合原型；布局诊断不进入用户界面。",
+        "recommendation": "设计 token 或页签语义变化时复跑 smoke。"
+      },
+      {
+        "area": "回归门禁",
+        "coverage": "Vitest + 真实 Chrome E2E + CDP 复测",
+        "conclusion": "单元测试锁定页面处理型 409 不弹 toast、compact 报告深链、诊断不外显、无“问题 ID”标签和归因 banner 原型样式；真实 Chrome E2E 与 15/15 CDP 冒烟复测通过。",
+        "recommendation": "以 PR #120 最终 head 的 CI 为准，合并前保持 CI 全绿。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "冒烟通过",
+    "summary": "冒烟发现的重复 toast、错误卡报告 ID 缺失与裸诊断泄漏均已修复并复测，最终 17 个场景全部通过。",
+    "points": [
+      "错误详情的关键结构、状态与交互和原型一致。",
+      "页面已处理的 BAD_CASE_SESSION_MISMATCH 不再重复弹全局 toast，其他 409 提示边界保持不变。",
+      "两行错误卡和真实 probe 深链与原型一致，布局诊断不再进入用户界面。",
+      "深链刷新、跨 Session 409、加载/错误/重试路径均被验证。",
+      "原生 Computer Use 与 CDP 证据相互补充。",
+      "除预期故障注入外，控制台与网络无异常。"
+    ]
+  },
+  "footer": "证据源：原生 Computer Use、Chrome DevTools Protocol、真实 FastAPI/Vite/SQLite 与自动化测试。HTML 由 JSON 渲染生成。"
+}

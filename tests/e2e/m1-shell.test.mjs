@@ -381,7 +381,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       page.session,
       `(() => {
         const active = document.querySelector("nav a.router-link-active");
-        if (location.pathname !== "/errors" || !document.body.textContent.includes("暂无问题")) {
+        if (location.pathname !== "/errors" || !document.body.textContent.includes("请选择会话")) {
           return null;
         }
         return {
@@ -389,7 +389,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
           underline: active ? getComputedStyle(active).borderBottomColor : null,
         };
       })()`,
-      "errors placeholder",
+      "errors entry",
     );
     assert.equal(errorsPage.path, "/errors");
     assert.equal(errorsPage.underline, "rgb(47, 111, 224)");

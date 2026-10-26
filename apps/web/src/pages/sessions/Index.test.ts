@@ -197,6 +197,16 @@ describe("session browser", () => {
     expect(overview.text()).toContain("9");
   });
 
+  it("links the Session overview to its error-detail workspace", async () => {
+    mockSessionApi([session()]);
+    const { wrapper } = await mountPage("/sessions/root-1");
+
+    const detail = wrapper.get("[data-testid='detail-cta']");
+    expect(detail.element.tagName).toBe("A");
+    expect(detail.attributes("href")).toBe("/sessions/root-1/errors");
+    expect(detail.text()).toBe("打开错误详情");
+  });
+
   it("debounces search and persists the final status filter in the URL", async () => {
     const requestedQueries: string[] = [];
     server.use(

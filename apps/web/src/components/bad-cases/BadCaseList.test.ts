@@ -118,9 +118,19 @@ describe("BadCaseList", () => {
     );
     expect(wrapper.get(".state-chip.red").text()).toBe("是问题-错误");
 
-    const firstId = wrapper.get("[data-bad-case-id='case-unanalyzed'] .problem-id");
+    const firstId = wrapper.get(
+      "#problem-row-case-unanalyzed .problem-id",
+    );
     expect(firstId.text()).toBe("case-una");
     expect(firstId.attributes("title")).toBe("case-unanalyzed");
+    expect(firstId.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-unanalyzed&tab=desc",
+    );
+    expect(firstId.attributes("target")).toBe("_blank");
+    expect(firstId.attributes("rel")).toBe("noopener noreferrer");
+    expect(firstId.attributes("aria-label")).toBe(
+      "问题 case-una，在新窗口打开问题描述",
+    );
   });
 
   it("keeps degraded problems visible with an explicit diagnostic label", () => {
@@ -177,6 +187,73 @@ describe("BadCaseList", () => {
     await wrapper.get("[data-bad-case-id='case-error']").trigger("click");
 
     expect(wrapper.emitted("select")).toEqual([["case-error"]]);
+  });
+
+  it("keeps the ID deep link independent from card selection", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates },
+    });
+
+    const idLink = wrapper.get(
+      "#problem-row-case-error .problem-id",
+    );
+    expect(idLink.element.tagName).toBe("A");
+    expect(idLink.text()).toBe("case-err");
+    expect(idLink.attributes("title")).toBe("case-error");
+    expect(idLink.attributes("target")).toBe("_blank");
+    expect(idLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(idLink.attributes("aria-label")).toBe(
+      "问题 case-err，在新窗口打开问题描述",
+    );
+
+    await idLink.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
+
+    await wrapper.get("[data-bad-case-id='case-error']").trigger("click");
+    expect(wrapper.emitted("select")).toEqual([["case-error"]]);
+  });
+
+  it("groups compact card status and target below the reason", () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates, compact: true },
+    });
+
+    const card = wrapper.get("#problem-row-case-error");
+    expect(card.get(".problem-card-main").text()).not.toContain("是问题-错误");
+    expect(card.get(".problem-card-secondary").text()).toContain("是问题-错误");
+    expect(card.get(".problem-card-secondary").text()).toContain(
+      "skill · deep-research",
+    );
+  });
+
+  it("links analyzed issue cards to their attribution report", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates, compact: true },
+    });
+
+    const reportLink = wrapper.get(
+      "#problem-row-case-error .report-id",
+    );
+    expect(reportLink.text()).toBe("probe-er");
+    expect(reportLink.attributes("title")).toBe("probe-error");
+    expect(reportLink.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-error&tab=attr",
+    );
+    expect(reportLink.attributes("target")).toBe("_blank");
+    expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(reportLink.attributes("aria-label")).toBe(
+      "归因报告 probe-er，在新窗口打开归因分析",
+    );
+    expect(reportLink.element.closest("button")).toBeNull();
+    expect(
+      wrapper.find("#problem-row-case-unanalyzed .report-id").exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find("#problem-row-case-nonissue .report-id").exists(),
+    ).toBe(false);
+
+    await reportLink.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
   });
 
   it("scrolls the active row into view when graph selection changes", async () => {

@@ -5,6 +5,8 @@ import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
+import type { SessionTree } from "@harness/contracts";
+
 import { demoNestedTree } from "./fixtures/demo-nested";
 
 const { fitViewMock, setCenterMock } = vi.hoisted(() => ({
@@ -118,6 +120,53 @@ describe("AgentTree", () => {
     expect(wrapper.get('[aria-label="放大"]').attributes("title")).toBe("放大");
     expect(wrapper.get('[aria-label="缩小"]').attributes("title")).toBe("缩小");
     expect(wrapper.get('[aria-label="适应画布"]').attributes("title")).toBe("适应画布");
+  });
+
+  it("keeps layout diagnostics out of the visible user interface", () => {
+    const tree = {
+      sessionId: "missing-parent-event",
+      agents: [
+        {
+          agentId: "main",
+          parentAgentId: null,
+          kind: "main",
+          agentType: null,
+          taskKind: null,
+          spawnDepth: 0,
+          label: "主会话",
+          desc: "主会话",
+          lines: 10,
+          messagesCount: 10,
+          toolUseId: null,
+          skillName: null,
+          teamName: null,
+          events: [],
+        },
+        {
+          agentId: "Agent-without-trigger",
+          parentAgentId: "main",
+          kind: "subagent",
+          agentType: "Explore",
+          taskKind: null,
+          spawnDepth: 1,
+          label: "Explore · 无父事件",
+          desc: "缺少父事件",
+          lines: 2,
+          messagesCount: 2,
+          toolUseId: "missing-trigger",
+          skillName: null,
+          teamName: null,
+          events: [],
+        },
+      ],
+      badCases: [],
+    } satisfies SessionTree;
+    const wrapper = mount(AgentTree, {
+      props: { tree, expanded: ["main"] },
+    });
+
+    expect(wrapper.find(".diagnostics").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("MISSING_PARENT_EVENT");
   });
 
   it("locates a selected Agent through the viewport", () => {
