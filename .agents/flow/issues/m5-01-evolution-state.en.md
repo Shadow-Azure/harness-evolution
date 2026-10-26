@@ -9,7 +9,7 @@ milestone: m5
 depends:
   - m4-04
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/api/alembic/**
