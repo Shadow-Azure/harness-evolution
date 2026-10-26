@@ -9,11 +9,14 @@ milestone: m5
 depends:
   - m5-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -112,4 +115,4 @@ pnpm test:e2e
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- Do not expand beyond the boundaries declared by this Issue.

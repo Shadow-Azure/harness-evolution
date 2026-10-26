@@ -1,0 +1,97 @@
+{
+  "results": [
+    {
+      "id": "01",
+      "name": "1408px 原型页面骨架",
+      "status": "pass",
+      "detail": "页面外框 1080px、标题与说明采用原型层级，无横向溢出。",
+      "evidence": [
+        "screenshots/01-desktop-1408.png"
+      ]
+    },
+    {
+      "id": "02",
+      "name": "720px 新增表单与全视口遮罩",
+      "status": "pass",
+      "detail": "表单 14px 圆角、15px 标题、66vh 滚动体与全视口遮罩均符合原型。",
+      "evidence": [
+        "screenshots/02-modal-1408.png"
+      ]
+    },
+    {
+      "id": "03",
+      "name": "422 表单内收敛",
+      "status": "pass",
+      "detail": "无效仓库只显示表单内中文错误，输入保留，不弹全局 toast。",
+      "evidence": [
+        "screenshots/03-inline-error.png"
+      ]
+    },
+    {
+      "id": "04",
+      "name": "新增成功与语义 chip",
+      "status": "pass",
+      "detail": "真实 API 写入后行出现；kind 使用紫色 chip，enabled 使用绿色 tinted badge。",
+      "evidence": [
+        "screenshots/04-created-row.png"
+      ]
+    },
+    {
+      "id": "05",
+      "name": "800px 中等视口",
+      "status": "pass",
+      "detail": "页面外框 800px、内容区 752px、24px gutter，不再重复缩进。",
+      "evidence": [
+        "screenshots/05-medium-800.png"
+      ]
+    },
+    {
+      "id": "06",
+      "name": "390px 响应式",
+      "status": "pass",
+      "detail": "页面内容区 342px、无页面横向溢出；宽表格在自身容器内横向滚动。",
+      "evidence": [
+        "screenshots/06-mobile-390.png"
+      ]
+    },
+    {
+      "id": "07",
+      "name": "390px 表单",
+      "status": "pass",
+      "detail": "modal 宽 358px、左右 16px，页面本体无横向溢出。",
+      "evidence": [
+        "screenshots/07-modal-390.png"
+      ]
+    },
+    {
+      "id": "08",
+      "name": "成员只读权限",
+      "status": "pass",
+      "detail": "成员可见真实配置行，但没有新增或行操作，390px 仍无页面溢出。",
+      "evidence": [
+        "screenshots/08-member-390.png"
+      ]
+    },
+    {
+      "id": "09",
+      "name": "自进化页齿轮入口",
+      "status": "pass",
+      "detail": "icon-only 齿轮入口可见，390px 下布局不溢出。",
+      "evidence": [
+        "screenshots/09-evolution-entry-390.png"
+      ]
+    },
+    {
+      "id": "10",
+      "name": "Console / network",
+      "status": "pass",
+      "detail": "除刻意验证的 422 响应外，未捕获 warning、error 或未处理异常。",
+      "evidence": [
+        "cdp-evidence.json"
+      ]
+    }
+  ],
+  "violations": [],
+  "baseUrl": "http://127.0.0.1:61463",
+  "apiUrl": "http://127.0.0.1:61462"
+}

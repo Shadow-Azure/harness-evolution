@@ -33,6 +33,30 @@ describe("global API error presentation", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  it("leaves target-in-use deletion feedback to the configuration page", () => {
+    const notify = vi.fn();
+
+    expect(
+      presentConflict(
+        new ApiError(409, "TARGET_IN_USE", "target is in use"),
+        notify,
+      ),
+    ).toBe(false);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("leaves duplicate target feedback to the configuration form", () => {
+    const notify = vi.fn();
+
+    expect(
+      presentConflict(
+        new ApiError(409, "TARGET_EXISTS", "target already exists"),
+        notify,
+      ),
+    ).toBe(false);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it("leaves terminal and unknown failures for page-level states", () => {
     const notify = vi.fn();
 

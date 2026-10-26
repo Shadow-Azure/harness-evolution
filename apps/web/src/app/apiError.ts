@@ -2,6 +2,8 @@ import { ApiError } from "../api/http";
 
 const PAGE_HANDLED_CONFLICT_CODES: ReadonlySet<string> = new Set([
   "BAD_CASE_SESSION_MISMATCH",
+  "TARGET_EXISTS",
+  "TARGET_IN_USE",
 ]);
 
 /**

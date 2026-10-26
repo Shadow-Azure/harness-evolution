@@ -52,6 +52,10 @@ export function createAppRouter() {
         path: "/evolution",
       },
       {
+        component: () => import("../pages/evolution/targets/Index.vue"),
+        path: "/evolution/targets",
+      },
+      {
         component: () => import("../pages/errors/Index.vue"),
         path: "/errors",
       },

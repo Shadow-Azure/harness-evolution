@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M5-03 进化对象配置 GUI 集成冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #126 · validation on 4b21c28</p>
+    <h1>M5-03 进化对象配置 GUI 集成冒烟</h1>
+    <p class="summary">在临时 SQLite、真实 FastAPI/Vite、确定性 GitRemote 与 Google Chrome 上完成进化对象配置页集成验证。严格原型收口覆盖 1080px 页面骨架、720px 表单与全视口遮罩、紫色对象 chip、绿色/灰色状态 badge、422 表单内错误、成员只读、800px 与 390px 响应式，以及原生 Computer Use 的入口和表单检查。12 个场景全部通过，0 个未解决集成缺陷。</p>
+    <span class="meta">2026-10-27 · macOS · Google Chrome · FastAPI + Vite + SQLite</span>
+    <div class="metrics"><div class="metric"><b>12</b><span>冒烟场景</span></div><div class="metric"><b>12</b><span>通过</span></div><div class="metric"><b>4</b><span>原型偏差已修复</span></div><div class="metric"><b>0</b><span>未解决缺陷</span></div><div class="metric"><b>0</b><span>非预期控制台错误</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-27 · macOS · Google Chrome · FastAPI + Vite + SQLite</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#52 · m5-03 target config ui</dd></div><div class="fact"><dt>PR</dt><dd>#126</dd></div><div class="fact"><dt>Validation commit</dt><dd>4b21c28</dd></div><div class="fact"><dt>CI</dt><dd>run 40409345237 · 3/3 green</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + Vite + Google Chrome</dd></div><div class="fact"><dt>Database</dt><dd>临时 SQLite fixture</dd></div><div class="fact"><dt>Git boundary</dt><dd>test-only deterministic GitRemote</dd></div><div class="fact"><dt>Evidence</dt><dd>CDP 计算样式/交互断言 + 原生 Computer Use 截图</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>12 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>1408px 原型页面骨架</td><td><span class="status pass">PASS</span></td><td>页面外框 1080px、内容区 1032px，18px/700 标题与 12px faint 说明对齐原型，无横向溢出。</td><td class="evidence">screenshots/01-desktop-1408.png</td></tr><tr><td class="num">02</td><td>720px 新增表单与遮罩</td><td><span class="status pass">PASS</span></td><td>表单宽 720px、14px 圆角、15px/700 标题，body 为 18px 与 66vh 内部滚动，footer 使用面板底色；遮罩覆盖完整 viewport。</td><td class="evidence">screenshots/02-modal-1408.png</td></tr><tr><td class="num">03</td><td>422 表单内错误</td><td><span class="status pass">PASS</span></td><td>无效仓库仅在打开的表单内显示中文错误，已填输入保留，不出现全局 toast。</td><td class="evidence">screenshots/03-inline-error.png</td></tr><tr><td class="num">04</td><td>新增成功与语义 chip</td><td><span class="status pass">PASS</span></td><td>真实 API 写入后新行出现；kind 使用紫色 mono chip，enabled 使用绿色 tinted badge。</td><td class="evidence">screenshots/04-created-row.png</td></tr><tr><td class="num">05</td><td>800px 中等视口</td><td><span class="status pass">PASS</span></td><td>页面外框 800px、内容区 752px、左右 24px gutter；宽表格留在内部滚动容器中。</td><td class="evidence">screenshots/05-medium-800.png</td></tr><tr><td class="num">06</td><td>390px 配置列表</td><td><span class="status pass">PASS</span></td><td>内容区 342px、页面无横向溢出；表格内部 scrollWidth 大于 clientWidth。</td><td class="evidence">screenshots/06-mobile-390.png</td></tr><tr><td class="num">07</td><td>390px 新增表单</td><td><span class="status pass">PASS</span></td><td>modal 宽 358px、左右各 16px，字段单列排列，页面本体无横向溢出。</td><td class="evidence">screenshots/07-modal-390.png</td></tr><tr><td class="num">08</td><td>成员只读权限</td><td><span class="status pass">PASS</span></td><td>成员在独立真实浏览器会话中看到配置行，但没有新增按钮或行操作。</td><td class="evidence">screenshots/08-member-390.png</td></tr><tr><td class="num">09</td><td>自进化页齿轮入口</td><td><span class="status pass">PASS</span></td><td>icon-only 齿轮入口可访问且可进入配置页；390px 下页面无横向溢出。</td><td class="evidence">screenshots/09-evolution-entry-390.png</td></tr><tr><td class="num">10</td><td>原生 Computer Use · 配置页</td><td><span class="status pass">PASS</span></td><td>原生 Chrome 中登录后从 Evolution 页点击齿轮进入配置页；标题、说明、两行配置、紫色 chip、绿色状态和操作按钮均可读。</td><td class="evidence">screenshots/10-native-targets-desktop.png<br>native-cua-evidence.json</td></tr><tr><td class="num">11</td><td>原生 Computer Use · 新增表单</td><td><span class="status pass">PASS</span></td><td>原生点击“新增配置”后，720px 表单、分区标题、字段、开关和 footer 操作正常呈现。</td><td class="evidence">screenshots/11-native-modal.png</td></tr><tr><td class="num">12</td><td>Console / network</td><td><span class="status pass">PASS</span></td><td>仅刻意验证的 422 响应进入预期日志白名单；管理员和成员两个浏览器会话均无其他 warning、error 或未捕获异常。</td><td class="evidence">cdp-evidence.json</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P2 kind/status chip 与原型语义色不一致<br>P2 配置页宽度与页头层级偏离原型<br>P2 新增表单尺寸、圆角与分区偏离原型<br>P2 页面定位 transform 截断弹窗遮罩</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>kind/status chip 与原型语义色不一致</h3><dl><div><dt>Actual</dt><dd>对象类型使用蓝色文字和普通边框，状态 badge 缺少浅色底。</dd></div><div><dt>Expected</dt><dd>kind chip 使用原型紫色文字、35% 紫边和 9% 紫底；状态使用绿色/灰色 tinted badge。</dd></div><div><dt>Root cause</dt><dd>配置页新建的 chip 样式没有复用原型的语义标记规则。</dd></div></dl><div class="fixed">已修复 · TDD + 真实 Chrome 复测</div></article><article class="issueCard"><span class="tag">P2</span><h3>配置页宽度与页头层级偏离原型</h3><dl><div><dt>Actual</dt><dd>页面缺少 1080px 内容上限，并使用原型没有的 eyebrow 层级；中等视口还会重复叠加 gutter。</dd></div><div><dt>Expected</dt><dd>1408/800/390 三档保持 24px 相对视口 gutter，标题与说明使用 page-head/page-note 层级。</dd></div><div><dt>Root cause</dt><dd>页面嵌套在既有 main 留白中，同时自行创建了未对齐原型的头部和宽度。</dd></div></dl><div class="fixed">已修复 · CDP 三视口回归</div></article><article class="issueCard"><span class="tag">P2</span><h3>新增表单尺寸、圆角与分区偏离原型</h3><dl><div><dt>Actual</dt><dd>表单仅 560px，标题、圆角、padding 和移动端宽度未按原型定义。</dd></div><div><dt>Expected</dt><dd>桌面 720px、14px 圆角、15px/700 标题、66vh 滚动 body；手机宽 358px。</dd></div><div><dt>Root cause</dt><dd>只调整了 Element Plus 默认弹窗宽度，没有覆盖原型 modal 的完整计算值。</dd></div></dl><div class="fixed">已修复 · 组件 + 真实 Chrome 复测</div></article><article class="issueCard"><span class="tag">P2</span><h3>页面定位 transform 截断弹窗遮罩</h3><dl><div><dt>Actual</dt><dd>用于逃逸页面 gutter 的 transform 成为 fixed 后代的包含块，遮罩只覆盖内容容器。</dd></div><div><dt>Expected</dt><dd>弹窗遮罩覆盖完整 viewport，同时页面在 1408/800/390 保持原型尺寸。</dd></div><div><dt>Root cause</dt><dd>页面居中实现选择了会影响 fixed 定位的 transform。</dd></div></dl><div class="fixed">已修复 · overlay rect 回归</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>11 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-desktop-1408.png" alt="1408px 桌面视口下的进化对象配置页"><figcaption><b>01 · 桌面配置页</b><span>1080px 原型容器、紧凑页头、配置表格和语义状态标记。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-modal-1408.png" alt="720px 新增进化对象表单"><figcaption><b>02 · 新增表单</b><span>表单宽 720px，header/body/footer 分区清晰，遮罩覆盖完整视口。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-inline-error.png" alt="无效仓库错误保留在新增表单内"><figcaption><b>03 · 422 表单错误</b><span>后端校验失败保持在表单上下文，输入未丢失，也没有重复 toast。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-created-row.png" alt="新增配置成功后的列表行"><figcaption><b>04 · 新增成功</b><span>真实写入后新行出现，紫色 skill chip 和绿色已启用 badge 与原型一致。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-medium-800.png" alt="800px 视口下的配置页"><figcaption><b>05 · 800px</b><span>外层 800px、内容 752px，保留 24px 视口 gutter，没有重复缩进。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-mobile-390.png" alt="390px 视口下的配置列表"><figcaption><b>06 · 390px 列表</b><span>页面本体不溢出，宽表格在卡片内部滚动。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/07-modal-390.png" alt="390px 视口下的新增表单"><figcaption><b>07 · 390px 表单</b><span>表单收至 358px，字段单列排列，操作 footer 完整可用。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-member-390.png" alt="成员权限下的配置列表"><figcaption><b>08 · 成员只读</b><span>成员可见真实配置，但没有新增按钮或行操作。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/09-evolution-entry-390.png" alt="390px 自进化页的配置入口"><figcaption><b>09 · 齿轮入口</b><span>icon-only 齿轮入口保留可访问名称并可进入配置页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/10-native-targets-desktop.png" alt="原生 Google Chrome 中经齿轮进入的配置页"><figcaption><b>10 · 原生配置页</b><span>原生 Computer Use 经 Evolution 页齿轮进入配置页，真实窗口中的布局与语义标记正常。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/11-native-modal.png" alt="原生 Google Chrome 中的新增配置表单"><figcaption><b>11 · 原生表单</b><span>原生点击新增配置后打开完整表单，字段、开关和 footer 操作均可见。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>原型视觉</td><td>CDP 计算样式 + 原生 Computer Use</td><td>1080px 页面骨架、页头层级、语义 chip/badge、720px modal、14px 圆角和移动端尺寸均被真实计算值锁定。</td><td>原型或共享 token 变化时复跑本报告采集脚本。</td></tr><tr><td>交互与错误</td><td>真实 API + Chrome</td><td>创建、422 输入保留、成员只读、齿轮入口与全视口遮罩均通过。</td><td>后续编辑/停用/删除变更继续使用真实 SQLite 场景。</td></tr><tr><td>响应式</td><td>1408 / 800 / 390</td><td>三档 gutter、内容宽度和页面无溢出被断言；宽表格只在自身容器内滚动。</td><td>新增列时同步更新表格最小宽度和移动端断言。</td></tr><tr><td>回归门禁</td><td>Vitest + 真实 Chrome E2E + CI</td><td>292 个 Web 测试通过（1 跳过），覆盖率 96.17%；PR CI run 40409345237 三项全绿。</td><td>报告提交后的最终 CI 仍需在合并前确认为绿色。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>冒烟通过</small></div>
+    <article class="card conclusion pass"><p><strong>M5-03 在真实栈和原生 Chrome 上通过 12 个场景；已发现的四项原型偏差均在 PR 内修复并有自动化与截图证据。</strong></p><ul><li>当前 UI 的基础 token 和壳层与原型一致，M5-03 的局部视觉漂移已收敛。</li><li>配置页、表单和成员状态在桌面、中等宽度与手机上均无页面横向溢出。</li><li>422 只进入表单，弹窗遮罩覆盖完整视口，成员权限不泄漏写操作。</li><li>后续 M5-04/M5-05 必须继续以同一原型实现运行列表和向导入口。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：原生 Computer Use、Chrome DevTools Protocol、真实 FastAPI/Vite/SQLite、Vitest 与 PR CI。HTML 由 report-data.json 渲染生成。</p>
+</main>
+</body>
+</html>

@@ -30,11 +30,11 @@ Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理�
 
 Session 页用 360px 列表+概览；搜索/状态/排序/选中/证据写 URL。
 
-错误详情由问题列表、过滤执行流和描述/归因双 Tab 组成；状态写 URL，跨 Session 由 409 拒绝。
+进化对象配置成员只读、admin 可写；配置含停用项，向导 catalog 仅启用项，错误归后端。
 
-双面板按 Session 记忆滚动，刷新重置。流图异步加载；`verify:bundle` 守体积，`performance:report` 复测 61-Agent 预算。
+错误详情组合问题列表、执行流和双 Tab；状态写 URL，跨 Session 409。面板按 Session 记忆滚动；流图异步加载，门禁守 bundle 与 61-Agent 性能。
 
-lifespan 顺序为恢复任务、采纳锁、启动调度；手动与定时共用单飞锁，无 pending 不建 job。
+lifespan 先恢复任务、采纳锁、再调度；手动与定时共用单飞锁，无 pending 不建 job。
 
 ## 数据层策略
 

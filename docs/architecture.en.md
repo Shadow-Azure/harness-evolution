@@ -30,9 +30,9 @@ Web restores the session before mounting routes; tokens and users stay in memory
 
 The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
 
-Error details combine a problem sidebar, filtered flow, and description/attribution tabs. State lives in the URL; cross-session ownership returns 409.
+Target configuration is member-readable and admin-writable. Configuration includes disabled rows, while the wizard catalog includes enabled rows only; the backend owns errors.
 
-Both panels remember scroll offsets per Session; reload resets them. Agent flow loads asynchronously; `verify:bundle` guards bytes and `performance:report` repeats the 61-Agent budget.
+Error details combine a problem sidebar, execution flow, and two tabs. State lives in the URL; cross-session ownership returns 409. Panels remember scroll offsets per Session. Agent flow loads asynchronously; gates protect bundle bytes and the 61-Agent performance budget.
 
 The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 

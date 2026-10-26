@@ -9,11 +9,14 @@ milestone: m5
 depends:
   - m5-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -76,4 +79,4 @@ pnpm test:e2e
 
 ## 非目标
 
-- 不做权限分级
+- 不扩大本 Issue 已声明边界
