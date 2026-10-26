@@ -1,21 +1,22 @@
 {
   "lang": "zh-CN",
   "title": "M4-04 错误详情与归因集成冒烟报告",
-  "eyebrow": "Harness Evolution · PR #120 · validation on f02b08a",
-  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟发现并修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链以及画布泄漏裸布局诊断三项缺陷；修复后 15 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、双向联动、深链恢复、加载/错误/重试、归属校验、响应式布局及控制台清洁度均有证据。",
+  "eyebrow": "Harness Evolution · PR #120 · validation on 13333e7",
+  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟发现并修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链以及画布泄漏裸布局诊断三项缺陷；最终提交同时移除原型没有的“问题 ID”标签，并把归因结论改成 14px 结论值与状态 chip。15 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、双向联动、深链恢复、加载/错误/重试、归属校验、响应式布局及控制台清洁度均有证据。",
   "meta": "2026-10-26/27 · macOS · Google Chrome · FastAPI + Vite + SQLite",
   "metrics": [
     { "value": "17", "label": "冒烟场景" },
     { "value": "17", "label": "通过" },
     { "value": "3", "label": "缺陷已修复" },
     { "value": "0", "label": "非预期运行时错误" },
-    { "value": "待 PR", "label": "最终 CI" }
+    { "value": "待本次 push", "label": "CI" }
   ],
   "facts": [
     { "label": "Issue", "value": "#49 · M4-04 error detail" },
     { "label": "PR", "value": "#120" },
-    { "label": "Validation base", "value": "f02b08a" },
-    { "label": "Evidence patch", "value": "validated before commit; code and tests in f02b08a" },
+    { "label": "Validation base", "value": "13333e7" },
+    { "label": "Evidence patch", "value": "final smoke report on 13333e7" },
+    { "label": "CI", "value": "GitHub Actions validates the evidence commit after push" },
     { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
     { "label": "Database", "value": "临时 SQLite fixture" },
     { "label": "Evidence", "value": "CDP 集成断言 + 最终代码上的原生 Computer Use 截图" },
@@ -56,7 +57,7 @@
         "id": "05",
         "name": "归因顺序与安全深链",
         "status": { "kind": "pass", "label": "PASS" },
-        "detail": "结论不重复正文；分类和根因对象只出现一次；来源问题安全新窗口回 desc；Markdown 可见。",
+        "detail": "结论值 14px 并带问题状态 chip；分类和根因对象只出现一次；来源问题安全新窗口回 desc；Markdown 可见。",
         "evidence": ["screenshots/03-attribution.png"]
       },
       {
@@ -196,14 +197,14 @@
       "src": "screenshots/02-selected-description.png",
       "alt": "选中问题后的问题描述页签",
       "label": "02 · 问题描述",
-      "caption": "选中问题后执行流只保留对应问题卡，描述内容与真实 ID 正确。",
+      "caption": "选中问题后执行流只保留对应问题卡；描述头部直接呈现问题 ID、原因、报告 ID 和状态，没有多余字段标签。",
       "variant": "wide"
     },
     {
       "src": "screenshots/03-attribution.png",
       "alt": "选中问题的归因分析页签",
       "label": "03 · 归因分析",
-      "caption": "结论、分类与根因对象、问题描述、推导和来源问题保持固定顺序。",
+      "caption": "14px 结论值与状态 chip、分类与根因对象、问题描述、推导和来源问题保持固定顺序。",
       "variant": "wide"
     },
     {
@@ -245,14 +246,14 @@
       "src": "screenshots/08-native-computer-use-attribution.jpeg",
       "alt": "原生 Google Chrome 中的归因分析页面",
       "label": "08 · 原生归因",
-      "caption": "Computer Use 在真实 Chrome 中打开 attr 深链，执行流与归因内容均可见。",
+      "caption": "Computer Use 在真实 Chrome 中打开 attr 深链，两行错误卡、14px 结论/状态 chip、执行流与归因内容均可见。",
       "variant": "wide"
     },
     {
       "src": "screenshots/09-native-computer-use-description.jpeg",
       "alt": "原生 Google Chrome 中点击问题描述后的页面",
       "label": "09 · 原生页签切换",
-      "caption": "Computer Use 点击“问题描述”后 URL 与选中态同步，真实 ID 链接可见。",
+      "caption": "Computer Use 点击“问题描述”后 URL 与选中态同步；问题 ID、报告 ID 和状态直接呈现，多余“问题 ID”标签已移除。",
       "variant": "wide"
     }
   ],
@@ -274,13 +275,13 @@
       {
         "area": "原型与无障碍",
         "coverage": "原生 CUA + CDP 计算样式/ARIA",
-        "conclusion": "亮色布局、340px 左栏、两行错误卡、问题/报告 ID 深链、页签关系与可访问名称符合原型；布局诊断不进入用户界面。",
+        "conclusion": "亮色布局、340px 左栏、两行错误卡、问题/报告 ID 深链、14px 结论与状态 chip、页签关系及可访问名称符合原型；布局诊断不进入用户界面。",
         "recommendation": "设计 token 或页签语义变化时复跑 smoke。"
       },
       {
         "area": "回归门禁",
         "coverage": "Vitest + 真实 Chrome E2E + CDP 复测",
-        "conclusion": "单元测试锁定页面处理型 409 不弹 toast、compact 报告深链和诊断不外显；真实 Chrome E2E 与 15/15 CDP 冒烟复测通过。",
+        "conclusion": "单元测试锁定页面处理型 409 不弹 toast、compact 报告深链、诊断不外显、无“问题 ID”标签和归因 banner 原型样式；真实 Chrome E2E 与 15/15 CDP 冒烟复测通过。",
         "recommendation": "以 PR #120 最终 head 的 CI 为准，合并前保持 CI 全绿。"
       }
     ]

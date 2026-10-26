@@ -19,6 +19,7 @@ const root = process.cwd();
 const reportDir = path.resolve("reports/2026-10-26/m4-04-error-detail");
 const screenshotDir = path.join(reportDir, "screenshots");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const validationCommit = process.env.SMOKE_COMMIT || "working-tree";
 const runNonce = randomBytes(12).toString("hex");
 const initialPassword = `m4-smoke-${runNonce}-initial`;
 const finalPassword = `m4-smoke-${runNonce}-final`;
@@ -747,7 +748,7 @@ async function main() {
 
   await writeFile(
     path.join(reportDir, "assertions.json"),
-    `${JSON.stringify({ commit: "926201d + evidence patch", rows: results }, null, 2)}\n`,
+    `${JSON.stringify({ commit: validationCommit, rows: results }, null, 2)}\n`,
   );
   await writeFile(
     path.join(reportDir, "console-summary.txt"),
