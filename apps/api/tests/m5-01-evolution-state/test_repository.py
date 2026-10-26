@@ -193,18 +193,20 @@ async def test_cluster_writes_preserve_order_links_and_impact(
             "model",
             "model 类问题 · 第 1 组\uff08占位聚类\uff09",
             ("p-model-1", "p-model-2"),
+            impact=6.0,
         ),
         _cluster(
             "error",
             "error 类问题 · 第 1 组\uff08占位聚类\uff09",
             ("p-error-1",),
+            impact=9.0,
         ),
     )
     written = await repository.replace_clusters(RUN_ID, clusters)
 
     assert [cluster.seq for cluster in written] == [1, 2]
     assert [cluster.probe_cluster_type for cluster in written] == ["model", "error"]
-    assert [cluster.impact for cluster in written] == [5.0, 9.0]
+    assert [cluster.impact for cluster in written] == [6.0, 9.0]
     assert await repository.list_clusters(RUN_ID) == written
 
     async with database.session() as session:
@@ -239,13 +241,20 @@ async def test_cluster_replacement_rolls_back_on_unique_violation(
     await repository.create_run(_run_values())
     original = await repository.replace_clusters(
         RUN_ID,
-        (_cluster("model", "original", ("p-model-1",)),),
+        (_cluster("model", "original", ("p-model-1",), impact=5.0),),
     )
 
     with pytest.raises(IntegrityError):
         await repository.replace_clusters(
             RUN_ID,
-            (_cluster("error", "broken", ("p-error-1", "p-error-1")),),
+            (
+                _cluster(
+                    "error",
+                    "broken",
+                    ("p-error-1", "p-error-1"),
+                    impact=9.0,
+                ),
+            ),
         )
 
     assert await repository.list_clusters(RUN_ID) == original
@@ -260,8 +269,8 @@ async def test_rounds_and_final_are_stable_and_idempotent(
     clusters = await repository.replace_clusters(
         RUN_ID,
         (
-            _cluster("model", "model cluster", ("p-model-1",)),
-            _cluster("error", "error cluster", ("p-error-1",)),
+            _cluster("model", "model cluster", ("p-model-1",), impact=5.0),
+            _cluster("error", "error cluster", ("p-error-1",), impact=9.0),
         ),
     )
     await repository.insert_rounds(
@@ -304,12 +313,15 @@ def _cluster(
     attribute_type: str,
     description: str,
     probes: tuple[str, ...],
+    *,
+    impact: float,
 ) -> ClusterWrite:
     """Build one repository cluster write without importing later service DTOs."""
     return ClusterWrite(
         type=cast(Any, attribute_type),
         description=description,
         probes=probes,
+        impact=impact,
     )
 
 

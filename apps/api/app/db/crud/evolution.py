@@ -28,12 +28,6 @@ from app.service.evolution.state import StageConflict, validate_transition
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
-TYPE_IMPACT: dict[str, float] = {
-    "error": 9.0,
-    "prompt": 7.0,
-    "model": 5.0,
-}
-
 
 class EvolutionRepository:
     """Persist durable evolution state through one database boundary."""
@@ -160,7 +154,7 @@ class EvolutionRepository:
                     "probe_cluster_description": cluster.description,
                     "probe_cluster_type": cluster.type,
                     "confidence": None,
-                    "impact": TYPE_IMPACT[cluster.type],
+                    "impact": cluster.impact,
                     "severity": None,
                     "rank": None,
                     "created_at": now,

@@ -1423,6 +1423,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                     type="model",
                     description="model cluster",
                     probes=(probe_ids[0],),
+                    impact=5.0,
                 ),
             ),
         )

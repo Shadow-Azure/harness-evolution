@@ -354,6 +354,7 @@ class ClusterWrite:
     type: Literal["model", "prompt", "error"]
     description: str
     probes: tuple[str, ...]
+    impact: float
 
 
 def _optional_text(value: object) -> str | None:
