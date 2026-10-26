@@ -517,6 +517,17 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       fontSize: "12px",
     });
 
+    await clientNavigate(
+      page,
+      `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+    );
+    await waitForDocument(
+      page.session,
+      `location.search.includes("tab=attr") &&
+        Boolean(document.querySelector(".description .report-id"))`,
+      "selected attribution before reload",
+    );
+
     const reloadAuth = await loginSession();
     await installCookie(page, reloadAuth.cookie);
     await page.session.send("Page.reload");
