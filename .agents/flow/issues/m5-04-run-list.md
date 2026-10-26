@@ -76,7 +76,7 @@ pnpm contract:check
 
 - `GET /api/evolution/runs` 返回后端分组的 running/history 与固定排序；页面不重新分组或排序
 - 六种状态、阶段文案、百分比、已跑轮次与接纳数均由后端提供，前端不重新计算
-- 卡片展示 target/time/models/六项统计、状态、创建人与时间；400px 以下无页面横向溢出
+- 卡片展示 target/time/models/六项统计、状态、创建人与时间；390px 下无页面横向溢出
 - 加载、读取失败重试、running 空态和 history 空态均有明确界面
 
 ## 门禁与 CI

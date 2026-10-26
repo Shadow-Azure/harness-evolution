@@ -37,3 +37,20 @@ pre {
 a {
   color: var(--blue);
 }
+
+.evolution-page-frame {
+  position: relative;
+  left: max(-24px, calc(50% - 540px));
+  width: min(1080px, calc(100% + 48px));
+  min-width: 0;
+  margin: 0;
+  padding: 0 24px;
+}
+
+@media (max-width: 640px) {
+  .evolution-page-frame {
+    left: -12px;
+    width: calc(100% + 24px);
+    padding: 8px 24px 0;
+  }
+}

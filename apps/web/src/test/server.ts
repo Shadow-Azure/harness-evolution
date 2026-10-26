@@ -6,6 +6,9 @@ import { healthFixtures } from "@harness/contracts";
 export const server = setupServer(
   http.get("/api/health", () => HttpResponse.json(healthFixtures.healthy)),
   http.get("/api/sessions", () => HttpResponse.json({ items: [] })),
+  http.get("/api/evolution/runs", () =>
+    HttpResponse.json({ running: [], history: [] }),
+  ),
   http.get("/api/acquisition/status", () =>
     HttpResponse.json({
       activeJobId: null,

@@ -140,7 +140,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
 
 <template>
   <section
-    class="target-config-page"
+    class="evolution-page-frame target-config-page"
     data-testid="target-config-page"
   >
     <header class="page-intro">
@@ -186,14 +186,9 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
 
 <style scoped>
 .target-config-page {
-  position: relative;
   display: grid;
-  left: max(-24px, calc(50% - 540px));
-  width: min(1080px, calc(100% + 48px));
   min-width: 0;
-  margin: 0;
   gap: 16px;
-  padding: 0 24px;
 }
 
 .page-intro {
@@ -233,11 +228,4 @@ h1 {
   font-size: 11.5px;
 }
 
-@media (max-width: 640px) {
-  .target-config-page {
-    left: -12px;
-    width: calc(100% + 24px);
-    padding: 8px 24px 0;
-  }
-}
 </style>
