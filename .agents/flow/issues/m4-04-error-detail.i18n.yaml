@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m4-04-error-detail.md
-m4-04-error-detail.md: 719b5edbd8c00207dfe983948f70c764bd3ee7f0
-m4-04-error-detail.en.md: d704dbba6d57211cb38b1f3757537b173296b740
+m4-04-error-detail.md: 2fd2fcc25163fd114e0070877b7799f745374d81
+m4-04-error-detail.en.md: 11ebcffbc2fc84784ad16b5f8cf75efcf37c4b41
