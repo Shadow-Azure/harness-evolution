@@ -353,7 +353,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0005"
+        assert result.scalar_one() == "0006"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -492,6 +492,11 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "bad_case_analysis",
             "probe_reports",
             "evolution_targets",
+            "evolution_runs",
+            "probe_clusters",
+            "probe_cluster_probes",
+            "evolution_rounds",
+            "evolution_finals",
             "sync_lock",
         } <= table_names
         assert {
@@ -602,7 +607,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0005"
+        assert result.scalar_one() == "0006"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -741,6 +746,11 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "bad_case_analysis",
             "probe_reports",
             "evolution_targets",
+            "evolution_runs",
+            "probe_clusters",
+            "probe_cluster_probes",
+            "evolution_rounds",
+            "evolution_finals",
             "sync_lock",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
