@@ -276,14 +276,27 @@ async function main() {
 
   const page = await createBrowserPage();
   let pausedTreeRequest;
+  let treeInterceptMode = "pause";
+  let fatalTreePayload;
   const pausedRequests = [];
   const networkRequests = [];
   page.session.on("Network.requestWillBeSent", (params) => {
     networkRequests.push(params.request.url);
   });
-  page.session.on("Fetch.requestPaused", (params) => {
+  page.session.on("Fetch.requestPaused", async (params) => {
     pausedRequests.push(params.request.url);
     if (params.request.url.includes("/tree")) {
+      if (treeInterceptMode === "fatal" && fatalTreePayload) {
+        await page.session.send("Fetch.fulfillRequest", {
+          requestId: params.requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: "content-type", value: "application/json" },
+          ],
+          body: Buffer.from(JSON.stringify(fatalTreePayload)).toString("base64"),
+        });
+        return;
+      }
       pausedTreeRequest = params.requestId;
     }
   });
@@ -293,6 +306,8 @@ async function main() {
       ((entry.url?.includes(`/api/bad-cases/${selected.badCaseId}`) &&
         entry.url?.includes(`sessionId=${otherSession.id}`) &&
         /status of 409/.test(entry.text)) ||
+        (entry.url?.includes("/api/bad-cases/missing-case") &&
+          /status of 404/.test(entry.text)) ||
         (entry.url?.includes(`/api/sessions/${sessionId}/tree`) &&
           /net::ERR_(ABORTED|FAILED)/.test(entry.text))),
   });
@@ -665,6 +680,73 @@ async function main() {
 
     await clientNavigate(
       page,
+      `/sessions/${sessionId}/errors?case=missing-case&tab=desc`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".page-error")
+        ?.textContent.includes("问题不存在或已删除") &&
+        !document.querySelector(".page-error button")`,
+      "missing problem page",
+    );
+    record(
+      "13",
+      "详情 404",
+      "不存在的问题显示页级不可重试错误，不伪造侧栏、执行流或详情。",
+      ["screenshots/08-detail-404.png"],
+    );
+    await screenshot(page, "08-detail-404.png");
+
+    const fatalSession = [...casesBySession.entries()].find(
+      ([id]) => id !== sessionId && id !== loadingSessionId,
+    );
+    assert.ok(fatalSession);
+    const [fatalSessionId, fatalCases] = fatalSession;
+    const fatalCase = fatalCases[0];
+    assert.ok(fatalCase);
+    const fatalTree = await apiJson(
+      `/api/sessions/${encodeURIComponent(fatalSessionId)}/tree`,
+      auth.accessToken,
+    );
+    fatalTreePayload = {
+      ...fatalTree,
+      agents: fatalTree.agents.filter((agent) => agent.kind !== "main"),
+    };
+    treeInterceptMode = "fatal";
+    pausedTreeRequest = undefined;
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: "*://*/api/sessions/*/tree",
+          requestStage: "Request",
+        },
+      ],
+    });
+    await clientNavigate(
+      page,
+      `/sessions/${fatalSessionId}/errors?case=${fatalCase.badCaseId}&tab=desc`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".agent-tree-unavailable")
+        ?.textContent.includes("执行流数据不完整，暂时无法绘制。") &&
+        !document.querySelector(".agent-tree-unavailable")
+          ?.textContent.includes("MISSING_MAIN") &&
+        !document.querySelector("[data-testid='agent-tree'] .vue-flow")`,
+      "fatal layout fallback",
+    );
+    record(
+      "14",
+      "致命布局降级",
+      "tree 缺少 main Agent 时显示友好不可绘制状态，不暴露 MISSING_MAIN 或空白 VueFlow。",
+      ["screenshots/09-fatal-layout.png"],
+    );
+    await screenshot(page, "09-fatal-layout.png");
+    await page.session.send("Fetch.disable");
+    treeInterceptMode = "pause";
+
+    await clientNavigate(
+      page,
       `/sessions/${otherSession.id}/errors?case=${selected.badCaseId}&tab=desc`,
     );
     await waitForDocument(
@@ -681,7 +763,7 @@ async function main() {
     });
     assert.deepEqual(conflictToasts.result.value, []);
     record(
-      "13",
+      "15",
       "跨 Session 409",
       "错误归属不匹配时只显示页级不可重试中文错误，不渲染侧栏、执行流、详情或重复全局 toast。",
       ["screenshots/06-cross-session-409.png"],
@@ -717,7 +799,7 @@ async function main() {
     assert.equal(mobile.scrollWidth, mobile.clientWidth);
     assert.doesNotMatch(mobile.workspaceColumns, /px .*px/);
     record(
-      "14",
+      "16",
       "390px 响应式布局",
       "单列工作台无横向溢出，详情与归因仍可访问。",
       ["screenshots/07-mobile-390.png"],
@@ -734,9 +816,9 @@ async function main() {
     );
     assert.deepEqual(unexpectedViolations, []);
     record(
-      "15",
+      "17",
       "Console / network",
-      "除用于验证的预期 409 外，无 warning、error 或未捕获异常。",
+      "除用于验证的预期 404、409、tree 中断与致命布局响应外，无 warning、error 或未捕获异常。",
       ["console-summary.txt"],
     );
   } finally {
@@ -754,12 +836,14 @@ async function main() {
     path.join(reportDir, "console-summary.txt"),
     [
       "Console/network violations: 0",
+      "Expected missing problem 404 response was allowlisted.",
       "Expected cross-session 409 response was allowlisted.",
       "Expected tree request failure used for loading/error/retry injection was allowlisted.",
+      "Expected missing-main tree response was injected and did not produce runtime errors.",
       "",
     ].join("\n"),
   );
-  console.log(JSON.stringify({ rows: results.length, screenshots: 7 }, null, 2));
+  console.log(JSON.stringify({ rows: results.length, screenshots: 9 }, null, 2));
 }
 
 main()

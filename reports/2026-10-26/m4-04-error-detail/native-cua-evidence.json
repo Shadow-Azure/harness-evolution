@@ -1,6 +1,6 @@
 {
   "browser": "Chrome extension",
-  "validationBase": "0c91e3e",
+  "validationBase": "bd9b9d5",
   "evidencePatch": "PR #120 final smoke report",
   "url": "http://localhost:5173/sessions/10000000-0000-4000-8000-000000000003/errors?case=badcase-synthetic-0003&tab=desc",
   "reportHref": "/sessions/10000000-0000-4000-8000-000000000003/errors?case=badcase-synthetic-0003&tab=attr",
@@ -11,7 +11,7 @@
   "attributionConclusion": "问题",
   "attributionStatus": "是问题-错误",
   "screenshots": {
-    "attribution": "screenshots/08-native-computer-use-attribution.jpeg",
-    "description": "screenshots/09-native-computer-use-description.jpeg"
+    "attribution": "screenshots/10-native-computer-use-attribution.jpeg",
+    "description": "screenshots/11-native-computer-use-description.jpeg"
   }
 }
