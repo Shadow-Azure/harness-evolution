@@ -413,6 +413,93 @@ describe("error detail page", () => {
     expect(wrapper.find("[data-testid='errors-agent-tree']").exists()).toBe(false);
   });
 
+  it("renders a non-retryable page state when the problem no longer exists", async () => {
+    mockApi();
+    server.use(
+      http.get("/api/bad-cases/:caseId", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_NOT_FOUND",
+              message: "missing",
+            },
+          },
+          { status: 404 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      "/sessions/root-1/errors?case=case-error&tab=desc",
+    );
+
+    expect(wrapper.text()).toContain("问题不存在或已删除");
+    expect(wrapper.find(".page-error button").exists()).toBe(false);
+  });
+
+  it("retries a transient detail failure and restores the workspace", async () => {
+    mockApi();
+    let detailAttempts = 0;
+    let analysisAttempts = 0;
+    server.use(
+      http.get("/api/bad-cases/:caseId", () => {
+        detailAttempts += 1;
+        return detailAttempts === 1
+          ? HttpResponse.json(
+              {
+                error: {
+                  code: "BAD_CASE_UNAVAILABLE",
+                  message: "temporarily unavailable",
+                },
+              },
+              { status: 503 },
+            )
+          : HttpResponse.json(issue);
+      }),
+      http.get("/api/bad-cases/:caseId/analysis", () => {
+        analysisAttempts += 1;
+        return analysisAttempts === 1
+          ? HttpResponse.json(
+              {
+                error: {
+                  code: "BAD_CASE_ANALYSIS_UNAVAILABLE",
+                  message: "temporarily unavailable",
+                },
+              },
+              { status: 503 },
+            )
+          : HttpResponse.json(issue.analysis);
+      }),
+    );
+    const { wrapper } = await mountPage(
+      "/sessions/root-1/errors?case=case-error&tab=desc",
+    );
+
+    expect(wrapper.text()).toContain("问题详情读取失败，请重试");
+    await wrapper.get(".page-error button").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find(".page-error").exists()).toBe(false);
+    expect(wrapper.get(".description").text()).toContain("index read failed");
+    expect(detailAttempts).toBe(2);
+    expect(analysisAttempts).toBe(2);
+  });
+
+  it("keeps machine diagnostic codes out of degraded problem details", async () => {
+    const degraded = badCaseFixture({
+      badCaseId: "case-degraded",
+      degraded: true,
+      diagnosticCode: "BAD_CASE_DISPLAY_STATE_UNKNOWN",
+    });
+    mockApi([degraded]);
+    const { wrapper } = await mountPage(
+      "/sessions/root-1/errors?case=case-degraded&tab=desc",
+    );
+
+    const description = wrapper.get(".description").text();
+    expect(description).toContain("外部字段存在漂移，当前以安全占位展示。");
+    expect(description).not.toContain("BAD_CASE_DISPLAY_STATE_UNKNOWN");
+  });
+
   it("shows the unanalyzed placeholder without requesting a probe", async () => {
     const unanalyzed = badCaseFixture({ badCaseId: "case-unanalyzed" });
     mockApi([unanalyzed]);
