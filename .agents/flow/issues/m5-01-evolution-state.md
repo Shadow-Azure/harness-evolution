@@ -14,6 +14,7 @@ scope:
   - apps/api/**
   - apps/api/alembic/**
   - fixtures/**
+  - plans/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
