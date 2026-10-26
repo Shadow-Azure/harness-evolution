@@ -175,6 +175,46 @@ async def reflected_evolution_schema(
     )
 
 
+def assert_evolution_schema(schema: dict[str, EvolutionTableSchema]) -> None:
+    """Assert the cross-dialect evolution columns, indexes, and foreign keys."""
+    assert "progress_unit" in schema["evolution_runs"]["columns"]
+    assert {
+        "ix_evolution_runs_created_at",
+        "ix_evolution_runs_status_next_retry",
+        "ix_evolution_runs_target_config",
+    } <= schema["evolution_runs"]["indexes"]
+    assert (
+        ("target_config_id",),
+        "evolution_targets",
+    ) in schema["evolution_runs"]["foreign_keys"]
+    assert schema["probe_clusters"]["columns"]["impact"]["nullable"] is True
+    assert {
+        "ix_probe_clusters_run",
+        "ix_probe_clusters_run_rank",
+    } <= schema["probe_clusters"]["indexes"]
+    assert (
+        ("run_id",),
+        "evolution_runs",
+    ) in schema["probe_clusters"]["foreign_keys"]
+    assert (
+        ("probe_id",),
+        "probe_reports",
+    ) in schema["probe_cluster_probes"]["foreign_keys"]
+    assert {
+        "ix_evolution_rounds_cluster",
+        "ix_evolution_rounds_run_status",
+        "ix_evolution_rounds_eval_poll",
+    } <= schema["evolution_rounds"]["indexes"]
+    assert (
+        ("probe_cluster_id",),
+        "probe_clusters",
+    ) in schema["evolution_rounds"]["foreign_keys"]
+    assert (
+        ("run_id",),
+        "evolution_runs",
+    ) in schema["evolution_finals"]["foreign_keys"]
+
+
 async def job_recency_index_directions(
     database: Database,
 ) -> list[tuple[str, bool]]:
@@ -527,42 +567,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         assert event_uniques == {("run_id", "seq")}
         async with database.engine.connect() as connection:
             evolution_schema = await reflected_evolution_schema(connection)
-        assert "progress_unit" in evolution_schema["evolution_runs"]["columns"]
-        assert {
-            "ix_evolution_runs_created_at",
-            "ix_evolution_runs_status_next_retry",
-            "ix_evolution_runs_target_config",
-        } <= evolution_schema["evolution_runs"]["indexes"]
-        assert (
-            ("target_config_id",),
-            "evolution_targets",
-        ) in evolution_schema["evolution_runs"]["foreign_keys"]
-        assert evolution_schema["probe_clusters"]["columns"]["impact"]["nullable"] is True
-        assert {
-            "ix_probe_clusters_run",
-            "ix_probe_clusters_run_rank",
-        } <= evolution_schema["probe_clusters"]["indexes"]
-        assert (
-            ("run_id",),
-            "evolution_runs",
-        ) in evolution_schema["probe_clusters"]["foreign_keys"]
-        assert (
-            ("probe_id",),
-            "probe_reports",
-        ) in evolution_schema["probe_cluster_probes"]["foreign_keys"]
-        assert {
-            "ix_evolution_rounds_cluster",
-            "ix_evolution_rounds_run_status",
-            "ix_evolution_rounds_eval_poll",
-        } <= evolution_schema["evolution_rounds"]["indexes"]
-        assert (
-            ("probe_cluster_id",),
-            "probe_clusters",
-        ) in evolution_schema["evolution_rounds"]["foreign_keys"]
-        assert (
-            ("run_id",),
-            "evolution_runs",
-        ) in evolution_schema["evolution_finals"]["foreign_keys"]
+        assert_evolution_schema(evolution_schema)
         async with database.engine.connect() as connection:
             table_names, payload_columns = await connection.run_sync(
                 lambda sync_connection: (
@@ -817,6 +822,9 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        async with database.engine.connect() as connection:
+            evolution_schema = await reflected_evolution_schema(connection)
+        assert_evolution_schema(evolution_schema)
         async with database.engine.connect() as connection:
             table_names, payload_columns = await connection.run_sync(
                 lambda sync_connection: (
