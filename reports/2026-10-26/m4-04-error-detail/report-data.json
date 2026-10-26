@@ -9,14 +9,14 @@
     { "value": "17", "label": "通过" },
     { "value": "3", "label": "缺陷已修复" },
     { "value": "0", "label": "非预期运行时错误" },
-    { "value": "待本次 push", "label": "CI" }
+    { "value": "3/3 SUCCESS", "label": "CI" }
   ],
   "facts": [
     { "label": "Issue", "value": "#49 · M4-04 error detail" },
     { "label": "PR", "value": "#120" },
     { "label": "Validation base", "value": "0c91e3e" },
     { "label": "Evidence patch", "value": "final smoke report on 0c91e3e" },
-    { "label": "CI", "value": "GitHub Actions validates the evidence commit after push" },
+    { "label": "CI", "value": "run 40360956818 · build-and-docs / mysql / flow-online all SUCCESS" },
     { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
     { "label": "Database", "value": "临时 SQLite fixture" },
     { "label": "Evidence", "value": "CDP 集成断言 + 最终代码上的原生 Computer Use 截图" },
