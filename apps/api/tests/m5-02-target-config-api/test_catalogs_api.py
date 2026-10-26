@@ -213,10 +213,13 @@ async def test_catalog_requires_authentication(
     )
     try:
         response = await anonymous.get("/api/catalogs/targets")
+        models_response = await anonymous.get("/api/catalogs/models")
     finally:
         await anonymous.aclose()
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+    assert models_response.status_code == 401
+    assert models_response.json()["error"]["code"] == "AUTH_REQUIRED"
 
 
 async def test_model_catalog_uses_normalized_agents(
