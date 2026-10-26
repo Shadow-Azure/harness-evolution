@@ -23,5 +23,6 @@ describe("TargetConfigEntry", () => {
     expect(link.props("to")).toBe("/evolution/targets");
     expect(wrapper.get("a").attributes("aria-label")).toBe("配置进化对象");
     expect(wrapper.get("a").attributes("title")).toBe("配置进化对象");
+    expect(wrapper.text()).toBe("");
   });
 });

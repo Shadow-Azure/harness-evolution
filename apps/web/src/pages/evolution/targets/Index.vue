@@ -42,6 +42,7 @@ const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 
 function openCreate(): void {
   if (!canWrite.value) return;
+  operationError.value = "";
   editingTarget.value = null;
   formError.value = "";
   dialogOpen.value = true;
@@ -49,6 +50,7 @@ function openCreate(): void {
 
 function openEdit(target: EvolutionTarget): void {
   if (!canWrite.value) return;
+  operationError.value = "";
   editingTarget.value = target;
   formError.value = "";
   dialogOpen.value = true;
