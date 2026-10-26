@@ -6,7 +6,7 @@ Records service boundaries, data flow and storage. Work advances by vertical sli
 
 ## Product boundary
 
-The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, and session queries.
+The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, session queries, and read-only problem attribution queries.
 
 ## Service split
 
@@ -24,13 +24,13 @@ Routes are registered only in `apps/api/app/main.py`; dependency direction is `a
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`. Login is IP-limited, forced password change exposes only required endpoints, and failures share one envelope.
+Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
 
-The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL; statistics and density read `/api/sessions`.
+The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
 
-List and overview remember scroll offsets per Session; reload resets them. Agent flow loads lazily. `verify:bundle` guards entry/vendor bytes, and `performance:report` repeats the synthetic 61-Agent real-browser budget.
+List and overview remember scroll offsets per Session; reload resets them. Agent flow loads asynchronously. `verify:bundle` guards entry/vendor bytes, and `performance:report` repeats the synthetic 61-Agent real-browser budget.
 
 After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before starting the scheduler. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 
@@ -61,6 +61,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
-- Missing: issue HTTP queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
+- Missing: problem-detail pages, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

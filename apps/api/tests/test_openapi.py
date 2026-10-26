@@ -43,6 +43,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/sessions",
         "/api/sessions/{sessionId}",
         "/api/sessions/{sessionId}/tree",
+        "/api/sessions/{sessionId}/bad-cases",
+        "/api/sessions/{sessionId}/probes",
+        "/api/bad-cases/{badCaseId}",
+        "/api/bad-cases/{badCaseId}/analysis",
+        "/api/probes/{probeId}",
         "/api/acquisition/status",
         "/api/acquisition/sync",
         "/api/acquisition/pull",
@@ -69,6 +74,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "SessionAgent",
         "SessionBadCase",
         "SessionTree",
+        "BadCase",
+        "BadCaseListResponse",
+        "BadCaseAnalysis",
+        "ProbeReport",
+        "ProbeListResponse",
         "AcquisitionStatusResponse",
         "SyncStatusError",
         "SyncTriggerResponse",
@@ -98,6 +108,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/sessions", "get"),
         ("/api/sessions/{sessionId}", "get"),
         ("/api/sessions/{sessionId}/tree", "get"),
+        ("/api/sessions/{sessionId}/bad-cases", "get"),
+        ("/api/sessions/{sessionId}/probes", "get"),
+        ("/api/bad-cases/{badCaseId}", "get"),
+        ("/api/bad-cases/{badCaseId}/analysis", "get"),
+        ("/api/probes/{probeId}", "get"),
         ("/api/acquisition/status", "get"),
         ("/api/acquisition/sync", "post"),
     ]
@@ -126,6 +141,47 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         assert validation["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/ErrorResponse"
         }
+    case_parameters = paths["/api/bad-cases/{badCaseId}"]["get"]["parameters"]
+    analysis_parameters = paths["/api/bad-cases/{badCaseId}/analysis"]["get"]["parameters"]
+    assert {parameter["name"] for parameter in case_parameters} == {
+        "badCaseId",
+        "sessionId",
+    }
+    assert {parameter["name"] for parameter in analysis_parameters} == {
+        "badCaseId",
+        "sessionId",
+    }
+    for parameter in [*case_parameters, *analysis_parameters]:
+        if parameter["name"] == "sessionId":
+            assert parameter["schema"]["anyOf"][0]["minLength"] == 1
+    analysis_schema = components["BadCaseAnalysis"]
+    assert analysis_schema["discriminator"] == {
+        "mapping": {
+            "unanalyzed": "#/components/schemas/UnanalyzedBadCaseAnalysis",
+            "analyzed_nonissue": "#/components/schemas/NonIssueBadCaseAnalysis",
+            "analyzed_issue": "#/components/schemas/IssueBadCaseAnalysis",
+        },
+        "propertyName": "status",
+    }
+    assert [item["$ref"] for item in analysis_schema["oneOf"]] == [
+        "#/components/schemas/UnanalyzedBadCaseAnalysis",
+        "#/components/schemas/NonIssueBadCaseAnalysis",
+        "#/components/schemas/IssueBadCaseAnalysis",
+    ]
+    issue_result = components["IssueAnalysisResult"]["properties"]
+    assert set(issue_result) == {"summary"}
+    non_issue_result = components["NonIssueAnalysisResult"]["properties"]
+    assert set(non_issue_result) == {"reason", "reasoning"}
+    assert "409" in paths["/api/bad-cases/{badCaseId}"]["get"]["responses"]
+    assert paths["/api/bad-cases/{badCaseId}"]["get"]["responses"]["409"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}
+    error_codes = components["ErrorCode"]["enum"]
+    assert {
+        "BAD_CASE_NOT_FOUND",
+        "BAD_CASE_SESSION_MISMATCH",
+        "PROBE_NOT_FOUND",
+    } <= set(error_codes)
     assert "/api/sessions/{sessionId}/timeline" not in paths
     trigger_responses = paths["/api/acquisition/sync"]["post"]["responses"]
     assert {"200", "202", "401", "403"} <= set(trigger_responses)

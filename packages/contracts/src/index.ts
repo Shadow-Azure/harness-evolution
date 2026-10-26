@@ -83,6 +83,16 @@ export type BadCaseAnchor = components["schemas"]["BadCaseAnchor"];
 
 /** Reporter that originally supplied a problem report. */
 export type BadCaseAgent = components["schemas"]["BadCaseAgent"];
+/** Complete read-only problem returned by Session and deep-link routes. */
+export type BadCase = components["schemas"]["BadCase"];
+/** Session problem list response. */
+export type BadCaseListResponse = components["schemas"]["BadCaseListResponse"];
+/** Five-state attribution view returned by the analysis route. */
+export type BadCaseAnalysis = components["schemas"]["BadCaseAnalysis"];
+/** Root-cause report with validated reverse source links. */
+export type ProbeReport = components["schemas"]["ProbeReport"];
+/** Session root-cause report list response. */
+export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";

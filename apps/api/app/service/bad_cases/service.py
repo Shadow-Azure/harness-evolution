@@ -128,14 +128,14 @@ class BadCaseService:
     async def list_for_session(self, session_id: str) -> BadCaseListReadModel:
         """Return a session's issues in stable order with merged attribution."""
         snapshot = await self._repository.list_snapshot(session_id)
-        return self._merge_rows(snapshot.cases, snapshot.analyses, snapshot.probes)
+        return self.merge_snapshot(snapshot.cases, snapshot.analyses, snapshot.probes)
 
     async def get_case(self, case_id: str) -> BadCaseReadModel | None:
         """Return one issue by id or ``None`` when the external table has no row."""
         snapshot = await self._repository.get_case_snapshot(case_id)
         if not snapshot.cases:
             return None
-        result = self._merge_rows(
+        result = self.merge_snapshot(
             snapshot.cases,
             snapshot.analyses,
             snapshot.probes,
@@ -153,7 +153,7 @@ class BadCaseService:
             return ProbeReportLookup(model=None, warnings=())
         return self._probe_model(snapshot.probe, snapshot.sources)
 
-    def _merge_rows(
+    def merge_snapshot(
         self,
         rows: tuple[BadCaseRow, ...],
         analysis_rows: tuple[BadCaseAnalysisRow, ...],
@@ -204,6 +204,26 @@ class BadCaseService:
             )
             warnings.extend(model_warnings)
         return BadCaseListReadModel(items=tuple(items), warnings=tuple(warnings))
+
+    def merge_probe_rows(
+        self,
+        probe_rows: tuple[ProbeReportRow, ...],
+        source_rows: tuple[ProbeSourceCandidate, ...],
+    ) -> tuple[ProbeReportReadModel, ...]:
+        """Merge a batched probe set using the same validation as detail reads."""
+        by_probe: dict[str, list[ProbeSourceCandidate]] = {}
+        for source in source_rows:
+            if source.probe_id is not None:
+                by_probe.setdefault(source.probe_id, []).append(source)
+        models: list[ProbeReportReadModel] = []
+        for row in probe_rows:
+            lookup = self._probe_model(
+                row,
+                tuple(by_probe.get(row.probe_id, ())),
+            )
+            if lookup.model is not None:
+                models.append(lookup.model)
+        return tuple(models)
 
     def _case_model(
         self,

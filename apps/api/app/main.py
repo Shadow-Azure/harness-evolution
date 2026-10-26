@@ -13,11 +13,14 @@ from app.api.auth import router as auth_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
+from app.api.problems import router as problems_router
 from app.api.sessions import router as sessions_router
 from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.jobs import JobRepository
+from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
 from app.db.factory import create_database
@@ -28,9 +31,11 @@ from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
 from app.service.acquisition.sync import SyncCoordinator
 from app.service.acquisition.upstream_pull import UpstreamPullService
+from app.service.bad_cases.service import BadCaseService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
+from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
@@ -85,6 +90,10 @@ def create_app(
     )
     jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
+    problems = ProblemService(
+        ProblemRepository(resolved_database),
+        BadCaseService(BadCaseRepository(resolved_database)),
+    )
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
@@ -152,6 +161,7 @@ def create_app(
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.sessions = sessions
+    app.state.problems = problems
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
     app.state.login_rate_limiter = LoginRateLimiter()
@@ -174,6 +184,7 @@ def create_app(
     app.include_router(users_router)
     app.include_router(jobs_router)
     app.include_router(sessions_router)
+    app.include_router(problems_router)
     app.include_router(events_router)
     app.include_router(acquisition_router)
     return app

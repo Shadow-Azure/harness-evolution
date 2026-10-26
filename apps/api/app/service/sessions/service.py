@@ -16,6 +16,7 @@ from app.db.crud.sessions import (
     SessionStatusFilter,
 )
 from app.errors import AppError, ErrorCode
+from app.service.problems.anchor import resolve_problem_anchor
 from app.service.sessions.schemas import (
     AgentKind,
     BadCaseAgent,
@@ -130,15 +131,6 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
     )
 
 
-def _last_skill(events: list[EventRecord], name: str) -> int:
-    """Return the returned-array index of the last same-name skill event."""
-    for index in range(len(events) - 1, -1, -1):
-        event = events[index]
-        if event.kind == "skill" and event.name == name:
-            return index
-    return -1
-
-
 def _bad_case(
     case: BadCaseRecord,
     *,
@@ -147,43 +139,27 @@ def _bad_case(
     main: AgentRecord,
 ) -> SessionBadCase:
     """Resolve one externally-owned problem to its prototype anchor semantics."""
-    reported_agent_id = case.bad_case_agent_id
-    reporter_found = reported_agent_id is None or reported_agent_id in agents_by_id
-    reporter = agents_by_id.get(reported_agent_id or main.id, main)
-    if not reporter_found:
+    anchor = resolve_problem_anchor(
+        bad_case_type=case.bad_case_type,
+        object_name=case.object_name,
+        object_type=case.object_type,
+        bad_case_agent_id=case.bad_case_agent_id,
+        agents_by_id=agents_by_id,
+        events_by_agent=events_by_agent,
+        main=main,
+    )
+    if anchor.warning is not None:
+        message = {
+            "BAD_CASE_AGENT_NOT_FOUND": "bad case reporter Agent was not found",
+            "BAD_CASE_SKILL_ANCHOR_NOT_FOUND": "bad case skill anchor was not found",
+            "BAD_CASE_AGENT_ANCHOR_NOT_FOUND": "bad case Agent anchor was not found",
+        }.get(anchor.warning, "bad case anchor was not found")
         logger.warning(
-            "bad case reporter Agent was not found",
-            extra={"badCaseId": case.bad_case_id, "agentId": reported_agent_id},
-        )
-    reporter_events = events_by_agent.get(reporter.id, [])
-    anchor_agent = reporter
-    event_index = -1
-
-    if case.object_type == "skill" and reporter_found:
-        event_index = _last_skill(reporter_events, case.object_name)
-        if event_index < 0:
-            logger.warning(
-                "bad case skill anchor was not found",
-                extra={"badCaseId": case.bad_case_id, "agentId": reporter.id},
-            )
-    elif case.bad_case_type == "discovery" and reporter.parent_agent_id is not None:
-        parent = agents_by_id.get(reporter.parent_agent_id)
-        if parent is not None and reporter.tool_use_id is not None:
-            anchor_agent = parent
-            for index, event in enumerate(events_by_agent.get(parent.id, [])):
-                if event.kind == "agent" and event.tool_use_id == reporter.tool_use_id:
-                    event_index = index
-                    break
-        if event_index < 0:
-            anchor_agent = main
-            logger.warning(
-                "bad case Agent anchor was not found",
-                extra={"badCaseId": case.bad_case_id, "agentId": reporter.id},
-            )
-    elif case.bad_case_type == "discovery":
-        logger.warning(
-            "bad case discovery Agent has no parent",
-            extra={"badCaseId": case.bad_case_id, "agentId": reporter.id},
+            message,
+            extra={
+                "badCaseId": case.bad_case_id,
+                "agentId": case.bad_case_agent_id,
+            },
         )
 
     return SessionBadCase(
@@ -192,10 +168,13 @@ def _bad_case(
         object_name=case.object_name,
         object_type=cast(Literal["skill", "agent"], case.object_type),
         object_version=case.object_version,
-        anchor=BadCaseAnchor(agent_id=anchor_agent.id, event_index=event_index),
+        anchor=BadCaseAnchor(
+            agent_id=anchor.agent_id,
+            event_index=anchor.event_index,
+        ),
         bad_case_agent=BadCaseAgent(
             session_id=case.bad_case_session_id,
-            agent_id=reported_agent_id,
+            agent_id=case.bad_case_agent_id,
         ),
         reason=case.reason,
     )

@@ -9,14 +9,17 @@ milestone: m4
 depends:
   - m4-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 47
@@ -41,9 +44,10 @@ m4-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实现内容
 
-- 实现 session problems、bad_case、probe 和反查 API
-- 校验 badCaseId/session 归属
-- 未分析返回占位
+- 提供 Session 问题/Probe 列表、问题详情、归因和 Probe 详情五个只读端点。
+- 以单数据库快照组合 Session 标题、Agent/事件、外部问题、归因和 Probe，复用树的锚点语义。
+- 可选 `sessionId` 校验深链归属；跨会话返回 `409 BAD_CASE_SESSION_MISMATCH`，不存在返回稳定 404。
+- 未分析或缺少归因行返回 `unanalyzed` 占位；五态通过同一 `analysis` 对象供前端渲染。
 
 ## 实施步骤
 
@@ -60,8 +64,11 @@ m4-02 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ```sh
 pnpm test:api -- tests/m4-02-problem-api
+pnpm test:api
 pnpm test:db
 pnpm contract:check
+pnpm test:web
+pnpm test:e2e
 ```
 
 - API 测试通过且 contract:check 无漂移

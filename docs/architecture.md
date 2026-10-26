@@ -6,7 +6,7 @@
 
 ## 产品边界
 
-含 fixture、本地导入、归一化、树组装与会话查询。
+含 fixture、本地导入、归一化、树组装、会话查询与只读问题归因查询。
 
 ## 服务划分
 
@@ -24,13 +24,13 @@
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，用户管理、手动 sync 与上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；登录限流，强改密只放行必要端点，错误共用 envelope。
+仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，用户管理、手动 sync 与上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用统一边界。
 
 Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理登录和强改密；并发 401 单飞刷新并各重放一次；退出清 query cache。
 
-Session 页用 360px 列表+概览；搜索/状态/排序/选中/证据写 URL，统计/密度读 `/api/sessions`。
+Session 页用 360px 列表+概览；搜索/状态/排序/选中/证据写 URL。
 
-列表与概览分别记忆每个 Session 的滚动位置；刷新重置。流图按需异步加载。入口与 vendor 体积由 `verify:bundle` 守门，合成 61-Agent 真实浏览器预算由 `performance:report` 复测。
+列表与概览分别记忆每个 Session 的滚动位置；刷新重置。流图异步加载。入口与 vendor 体积由 `verify:bundle` 守门，合成 61-Agent 真实浏览器预算由 `performance:report` 复测。
 
 lifespan 先恢复 JobRunner 并采纳 `sync_lock`，再启动 scheduler；手动与定时共用单飞锁，无 pending 不建 job。
 
@@ -61,6 +61,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、会话查询、sync 调度与状态、上游 mock 契约与 pull、外部问题读模型、亮色壳、fixtures、数据链、E2E/门禁。
-- 未具备：问题 API、自进化执行、真实 run 授权、用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、问题与归因 API、sync 调度与状态、上游 mock 契约与 pull、外部问题读模型、亮色壳、fixtures、数据链、E2E/门禁。
+- 未具备：问题详情页面、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。
