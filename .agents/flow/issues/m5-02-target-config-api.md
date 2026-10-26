@@ -14,6 +14,8 @@ scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
