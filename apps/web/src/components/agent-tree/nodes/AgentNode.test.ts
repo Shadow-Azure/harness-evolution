@@ -6,8 +6,26 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@vue-flow/core", async () => {
   const { defineComponent, h } = await import("vue");
   return {
-    Handle: defineComponent({ setup: () => () => h("div") }),
-    Position: { Bottom: "bottom", Left: "left" },
+    Handle: defineComponent({
+      props: {
+        id: { type: String, default: "" },
+        type: { type: String, default: "" },
+        position: { type: String, default: "" },
+        class: { type: String, default: "" },
+        style: { type: Object, default: () => ({}) },
+      },
+      setup(props) {
+        return () =>
+          h("div", {
+            "data-handle-id": props.id,
+            "data-handle-position": props.position,
+            "data-handle-type": props.type,
+            class: props.class,
+            style: props.style,
+          });
+      },
+    }),
+    Position: { Bottom: "bottom", Left: "left", Right: "right", Top: "top" },
   };
 });
 
@@ -90,5 +108,38 @@ describe("AgentNode", () => {
     });
 
     expect(wrapper.get(".rf-cnode.skill").classes()).not.toContain("evidence");
+  });
+
+  it("renders a top source handle and red stub for each discoverable trigger", () => {
+    const wrapper = mount(AgentNode, {
+      props: {
+        data: {
+          ...data,
+          chain: {
+            items: [
+              {
+                kind: "skill",
+                name: "deep-research",
+                evIdx: 0,
+                line: 20,
+                w: 110,
+              },
+            ],
+            offsets: [55],
+            width: 110,
+          },
+        },
+      },
+    });
+
+    const handle = wrapper.get('[data-handle-id="rep0"]');
+    expect(handle.attributes()).toMatchObject({
+      "data-handle-position": "top",
+      "data-handle-type": "source",
+    });
+    expect(wrapper.findAll(".rf-stub-top")).toHaveLength(1);
+    expect(wrapper.get(".rf-stub-top").attributes("style")).toContain(
+      "left: 66px",
+    );
   });
 });

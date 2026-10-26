@@ -2,6 +2,7 @@
 
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
+import type { BadCase } from "@harness/contracts";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import SessionsPage from "./Index.vue";
 import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
+import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
 import { useAuthStore } from "../../stores/auth";
 
@@ -21,13 +23,23 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
       expanded: { type: Array, default: () => [] },
       activeAgentId: { type: String, default: null },
       activeEventIndex: { type: Number, default: null },
+      activeBadCaseId: { type: String, default: null },
+      problems: { type: Array, default: () => [] },
     },
-    emits: ["node-select", "toggle-expanded"],
-    setup(props, { emit }) {
+    emits: ["badcase-select", "node-select", "toggle-expanded"],
+    setup(props, { emit, expose }) {
+      expose({ locateBadCase: vi.fn().mockResolvedValue(undefined) });
       return () => {
         const tree = props.tree as { agents: unknown[] };
         return h("div", { "data-testid": "agent-tree" }, [
           h("span", `agents:${tree.agents.length}`),
+          h(
+            "span",
+            {
+              "data-testid": "mock-badcase-state",
+            },
+            `badcases:${props.problems.length}:active:${props.activeBadCaseId}`,
+          ),
           h(
             "button",
             {
@@ -35,6 +47,19 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
               onClick: () => emit("node-select", "main"),
             },
             `selected:${props.activeAgentId}:evidence:${props.activeEventIndex}:expanded:${props.expanded.join(",")}`,
+          ),
+          h(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                const first = props.problems[0] as
+                  | { badCaseId: string }
+                  | undefined;
+                if (first) emit("badcase-select", first.badCaseId);
+              },
+            },
+            "select first badcase",
           ),
         ]);
       };
@@ -74,7 +99,10 @@ const session = (overrides: Record<string, unknown> = {}) => ({
 
 const mountedWrappers: VueWrapper[] = [];
 
-function mockSessionApi(items = [session()]) {
+function mockSessionApi(
+  items = [session()],
+  problems: BadCase[] = [],
+) {
   const tree = {
     ...demoCoreTree,
     sessionId: items[0]?.id ?? "root-1",
@@ -90,6 +118,9 @@ function mockSessionApi(items = [session()]) {
     ),
     http.get("/api/sessions/:id/tree", () =>
       HttpResponse.json(tree),
+    ),
+    http.get("/api/sessions/:id/bad-cases", () =>
+      HttpResponse.json({ items: problems }),
     ),
   );
 }
@@ -276,6 +307,143 @@ describe("session browser", () => {
     expect(firstCard.text()).toContain("Fallback title");
   });
 
+  it("keeps list and graph problem selection on the same badCaseId", async () => {
+    const problems = [
+      badCaseFixture({
+        badCaseId: "case-first",
+        reason: "first problem",
+      }),
+      badCaseFixture({
+        badCaseId: "case-second",
+        reason: "second problem",
+        analysis: {
+          probeId: "probe-second",
+          attributeType: "prompt",
+          displayState: "analyzed_issue_prompt",
+          result: { summary: "Second problem summary." },
+          status: "analyzed_issue",
+        },
+      }),
+    ];
+    mockSessionApi([session()], problems);
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-bad-case-id]")).toHaveLength(2);
+    expect(wrapper.get("[data-testid='mock-badcase-state']").text()).toBe(
+      "badcases:2:active:null",
+    );
+
+    await wrapper.get("[data-bad-case-id='case-second']").trigger("click");
+    await flushPromises();
+    expect(wrapper.get("[data-testid='mock-badcase-state']").text()).toBe(
+      "badcases:2:active:case-second",
+    );
+    expect(
+      wrapper.get("[data-bad-case-id='case-second']").attributes(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+
+    await wrapper
+      .findAll("[data-testid='agent-tree'] button")
+      .find((button) => button.text() === "select first badcase")
+      ?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='mock-badcase-state']").text()).toBe(
+      "badcases:2:active:case-first",
+    );
+    expect(
+      wrapper.findAll("[data-bad-case-id]").filter(
+        (row) => row.attributes("aria-pressed") === "true",
+      ),
+    ).toHaveLength(1);
+    expect(
+      wrapper.get("[data-bad-case-id='case-first']").attributes(
+        "aria-pressed",
+      ),
+    ).toBe("true");
+  });
+
+  it("expands collapsed ancestors before locating a selected problem", async () => {
+    const children = Array.from({ length: 9 }, (_, index) => ({
+      agentId: `child-${index + 1}`,
+      kind: "subagent" as const,
+      label: `Child ${index + 1}`,
+      desc: "",
+      parentAgentId: "main",
+      taskKind: null,
+      agentType: "general-purpose",
+      skillName: null,
+      teamName: null,
+      lines: 2,
+      messagesCount: 1,
+      tokensTotal: 0,
+      toolsCount: 0,
+      errorsCount: 0,
+      events: [],
+    }));
+    const foldedTree = {
+      sessionId: "root-1",
+      overview: session(),
+      agents: [
+        {
+          ...demoCoreTree.agents[0],
+          events: children.map((child, index) => ({
+            kind: "agent" as const,
+            line: index + 1,
+            messageOffset: index,
+            name: child.label,
+            desc: child.label,
+            toolUseId: `tool-${index + 1}`,
+          })),
+        },
+        ...children.map((child, index) => ({
+          ...child,
+          toolUseId: `tool-${index + 1}`,
+        })),
+      ],
+      badCases: [
+        {
+          ...demoCoreTree.badCases[0]!,
+          badCaseId: "case-folded",
+          anchor: { agentId: "child-9", eventIndex: -1 },
+        },
+      ],
+    };
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ items: [session()] }),
+      ),
+      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json(foldedTree),
+      ),
+      http.get("/api/sessions/:id/bad-cases", () =>
+        HttpResponse.json({
+          items: [
+            badCaseFixture({
+              badCaseId: "case-folded",
+              anchor: { agentId: "child-9", eventIndex: -1 },
+            }),
+          ],
+        }),
+      ),
+    );
+
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+    await wrapper.get("[data-bad-case-id='case-folded']").trigger("click");
+    await flushPromises();
+
+    const tree = wrapper.get("[data-testid='agent-tree']");
+    expect(tree.text()).toContain("expanded:main");
+    expect(wrapper.get("[data-testid='mock-badcase-state']").text()).toBe(
+      "badcases:1:active:case-folded",
+    );
+  });
+
   it("loads the production tree independently and retries tree failures", async () => {
     const item = session();
     server.use(
@@ -297,6 +465,53 @@ describe("session browser", () => {
     expect(overview.text()).toContain("重试");
     expect(overview.text()).toContain(item.title);
     expect(overview.find("[data-testid='tree-placeholder']").exists()).toBe(false);
+  });
+
+  it("loads problems independently and retries a failed problem request", async () => {
+    const item = session();
+    let problemRequests = 0;
+    server.use(
+      http.get("/api/sessions", () => HttpResponse.json({ items: [item] })),
+      http.get("/api/sessions/:id", () => HttpResponse.json(item)),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json({ ...demoCoreTree, sessionId: item.id }),
+      ),
+      http.get("/api/sessions/:id/bad-cases", () => {
+        problemRequests += 1;
+        if (problemRequests === 1) {
+          return HttpResponse.json(
+            { error: { code: "INTERNAL", message: "offline" } },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json({
+          items: [
+            badCaseFixture({
+              badCaseId: "case-after-retry",
+              sessionId: item.id,
+            }),
+          ],
+        });
+      }),
+    );
+
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='agent-tree']").exists()).toBe(true);
+    expect(wrapper.get("[data-testid='problem-list']").text()).toContain(
+      "问题列表读取失败",
+    );
+    await wrapper
+      .findAll("[data-testid='problem-list'] button")
+      .find((button) => button.text() === "重试")
+      ?.trigger("click");
+    await flushPromises();
+
+    expect(problemRequests).toBe(2);
+    expect(
+      wrapper.find("[data-bad-case-id='case-after-retry']").exists(),
+    ).toBe(true);
   });
 
   it("supports listbox arrow, Home, and End keyboard navigation", async () => {

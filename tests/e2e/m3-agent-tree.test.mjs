@@ -152,26 +152,41 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     const result = await waitForDocument(
       page.session,
       `(() => {
-        const nodes = [...document.querySelectorAll(".vue-flow__node")];
+        const nodes = [...document.querySelectorAll(".rf-agent")];
         const tree = document.querySelector("[data-testid='agent-tree']");
         if (nodes.length !== 4 || !tree) return null;
         const measured = nodes.map((node) => {
-          const box = node.querySelector(".rf-agent");
-          const rect = node.getBoundingClientRect();
+          const rect = node.closest(".vue-flow__node").getBoundingClientRect();
           return {
-            text: (box?.querySelector(".rf-label")?.textContent ?? "").trim(),
-            width: box?.getBoundingClientRect().width ?? 0,
+            text: (node.querySelector(".rf-label")?.textContent ?? "").trim(),
+            width: node.getBoundingClientRect().width,
             y: rect.y,
-            border: box ? getComputedStyle(box).borderTopColor : "",
+            border: getComputedStyle(node).borderTopColor,
           };
         });
+        const edges = [...document.querySelectorAll(".vue-flow__edge")];
         const controls = [...document.querySelectorAll(".vue-flow__controls-button")];
         return {
           nodes: measured,
-          edges: document.querySelectorAll(".vue-flow__edge-path").length,
-          markerEnds: [...document.querySelectorAll(".vue-flow__edge-path")].map(
-            (edge) => edge.getAttribute("marker-end"),
-          ),
+          agentEdges: edges.filter((edge) =>
+            edge.classList.contains("vue-flow__edge-orth"),
+          ).length,
+          problemEdges: edges.filter((edge) =>
+            [...edge.classList].some(
+              (name) =>
+                name === "vue-flow__edge-badcase" ||
+                name === "vue-flow__edge-discovery" ||
+                name === "vue-flow__edge-trigger",
+            ),
+          ).length,
+          markerEnds: [...document.querySelectorAll(
+            ".vue-flow__edge-orth .vue-flow__edge-path",
+          )].map((edge) => edge.getAttribute("marker-end")),
+          problemDashes: [...document.querySelectorAll(
+            ".vue-flow__edge-badcase .vue-flow__edge-path," +
+            ".vue-flow__edge-discovery .vue-flow__edge-path," +
+            ".vue-flow__edge-trigger .vue-flow__edge-path",
+          )].map((edge) => edge.style.strokeDasharray),
           height: tree.getBoundingClientRect().height,
           controls: Boolean(document.querySelector(".vue-flow__controls")),
           controlButtons: controls.map((button) => {
@@ -204,8 +219,14 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     const shortest = [...result.nodes].sort((left, right) => left.width - right.width)[0];
 
     assert.equal(result.nodes.length, 4);
-    assert.equal(result.edges, 3);
+    assert.equal(result.agentEdges, 3);
+    assert.equal(result.problemEdges, 4);
     assert.equal(result.markerEnds.every(Boolean), true, JSON.stringify(result));
+    assert.deepEqual(
+      result.problemDashes,
+      ["4, 3", "4, 3", "4, 3", "4, 3"],
+      JSON.stringify(result),
+    );
     assert.ok(Math.abs(result.height - 720) < 1, JSON.stringify(result));
     assert.equal(result.controls, true);
     assert.ok(result.controlButtons.length >= 3, JSON.stringify(result));
@@ -271,7 +292,7 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     const collapsed = await waitForDocument(
       page.session,
       `(() => {
-        const nodes = [...document.querySelectorAll(".vue-flow__node")];
+        const nodes = [...document.querySelectorAll(".rf-agent")];
         const collapse = document.querySelector(".rf-agent.collapse");
         if (!nodes.length) return null;
         return {
@@ -292,7 +313,7 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
     });
     const expanded = await waitForDocument(
       page.session,
-      `document.querySelectorAll(".vue-flow__node").length === 13`,
+      `document.querySelectorAll(".rf-agent").length === 13`,
       "expanded large demo",
     );
     assert.equal(expanded, true);
@@ -308,7 +329,7 @@ test("m3-agent-tree renders the prototype graph with real Vue Flow geometry", as
       `(() => {
         const tree = document.querySelector("[data-testid='agent-tree']");
         const flow = tree?.querySelector(".vue-flow");
-        const nodes = [...document.querySelectorAll(".vue-flow__node")];
+        const nodes = [...document.querySelectorAll(".rf-agent")];
         if (!tree || !flow || nodes.length !== 13) return null;
         const viewport = flow.getBoundingClientRect();
         const boxes = nodes.map((node) => {

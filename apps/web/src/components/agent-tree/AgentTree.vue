@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SessionTree } from "@harness/contracts";
+import type { BadCase, SessionTree } from "@harness/contracts";
 import {
   VueFlow,
   useVueFlow,
@@ -17,13 +17,19 @@ import {
   nextTick,
   onBeforeUnmount,
   onMounted,
+  provide,
   ref,
   watch,
 } from "vue";
 
 import AgentNode from "./nodes/AgentNode.vue";
+import BadCaseNode from "./nodes/BadCaseNode.vue";
 import CollapseNode from "./nodes/CollapseNode.vue";
+import BadCaseEdge from "./edges/BadCaseEdge.vue";
+import DiscoveryEdge from "./edges/DiscoveryEdge.vue";
 import OrthEdge from "./edges/OrthEdge.vue";
+import TriggerEdge from "./edges/TriggerEdge.vue";
+import { BAD_CASE_SELECT_KEY } from "./interactions";
 import { buildGraph } from "./layout";
 import type { AgentLayoutNode, MeasureText } from "./types";
 
@@ -35,12 +41,16 @@ const props = withDefaults(
     expanded?: string[];
     activeAgentId?: string | null;
     activeEventIndex?: number | null;
+    problems?: BadCase[];
+    activeBadCaseId?: string | null;
     height?: string;
   }>(),
   {
     expanded: () => [],
     activeAgentId: null,
     activeEventIndex: null,
+    problems: () => [],
+    activeBadCaseId: null,
     height: "720px",
   },
 );
@@ -48,14 +58,23 @@ const props = withDefaults(
 const emit = defineEmits<{
   "toggle-expanded": [agentId: string];
   "node-select": [agentId: string];
+  "badcase-select": [badCaseId: string];
 }>();
+
+provide(BAD_CASE_SELECT_KEY, (badCaseId: string) => {
+  emit("badcase-select", badCaseId);
+});
 
 const nodeTypes = markRaw({
   agent: markRaw(AgentNode),
   collapse: markRaw(CollapseNode),
+  badcase: markRaw(BadCaseNode),
 }) as unknown as NodeTypesObject;
 const edgeTypes = markRaw({
   orth: markRaw(OrthEdge),
+  badcase: markRaw(BadCaseEdge),
+  discovery: markRaw(DiscoveryEdge),
+  trigger: markRaw(TriggerEdge),
 }) as unknown as EdgeTypesObject;
 
 const browserMeasure: MeasureText = (text, font) => {
@@ -89,10 +108,11 @@ const graph = computed(() =>
   buildGraph(props.tree, {
     expanded: expandedIds.value,
     measureText: browserMeasure,
+    problemDetails: props.problems,
   }),
 );
-const renderedNodes = computed(() =>
-  graph.value.nodes.map((node) => ({
+const renderedNodes = computed(() => [
+  ...graph.value.nodes.map((node) => ({
     ...node,
     data: {
       ...node.data,
@@ -103,13 +123,32 @@ const renderedNodes = computed(() =>
           : null,
     },
   })),
-);
+  ...graph.value.badCaseNodes.map((node) => ({
+    ...node,
+    data: {
+      ...node.data,
+      active: node.data.badCaseId === props.activeBadCaseId,
+    },
+  })),
+]);
+const renderedEdges = computed(() => [
+  ...graph.value.edges,
+  ...graph.value.badCaseEdges,
+]);
+const topologyKey = computed(() => [
+  ...graph.value.nodes.map((node) => node.id),
+  ...graph.value.badCaseNodes.map((node) => node.id),
+].join("|"));
 const { fitView, getViewport, setCenter, zoomIn, zoomOut } = useVueFlow();
 const treeRoot = ref<HTMLElement | null>(null);
 let fitAnimationFrame: number | undefined;
 let fitRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let fitSequence = 0;
+let locatingBadCaseCount = 0;
+let suppressFitUntil = 0;
+let fitInFlight: Promise<unknown> = Promise.resolve();
 let resizeObserver: ResizeObserver | undefined;
+let fittedTopologyKey = "";
 
 function cancelScheduledFit() {
   fitSequence += 1;
@@ -124,6 +163,12 @@ function cancelScheduledFit() {
 }
 
 function scheduleFitView() {
+  if (
+    locatingBadCaseCount > 0 ||
+    Date.now() < suppressFitUntil
+  ) {
+    return;
+  }
   cancelScheduledFit();
   const sequence = fitSequence;
   const fit = async () => {
@@ -131,7 +176,8 @@ function scheduleFitView() {
     if (sequence !== fitSequence) {
       return;
     }
-    await fitView({ padding: 0.12 });
+    fitInFlight = fitView({ padding: 0.12 });
+    await fitInFlight;
   };
 
   if (typeof requestAnimationFrame === "function") {
@@ -154,8 +200,9 @@ function scheduleFitView() {
 }
 
 watch(
-  () => graph.value.nodes.map((node) => node.id).join("|"),
-  () => {
+  topologyKey,
+  (key) => {
+    fittedTopologyKey = key;
     scheduleFitView();
   },
   { flush: "post" },
@@ -200,14 +247,52 @@ onBeforeUnmount(() => {
 });
 
 function onNodeClick(event: NodeMouseEvent) {
-  const node = event.node as AgentLayoutNode;
+  const node = event.node as AgentLayoutNode | {
+    type: "badcase";
+    data: { badCaseId: string };
+  };
   if (node.type === "collapse") {
-    toggleCollapse(node);
+    toggleCollapse(node as AgentLayoutNode);
+    return;
+  }
+  if (node.type === "badcase") {
+    const badCaseId = node.data.badCaseId;
+    emit("badcase-select", badCaseId);
+    void locateBadCase(badCaseId);
     return;
   }
   if (node.data.agentId) {
     emit("node-select", node.data.agentId);
     locateAgent(node.data.agentId);
+  }
+}
+
+/**
+ * Center the viewport on one rendered problem card.
+ * @param badCaseId Stable problem identifier.
+ * @returns Nothing.
+ */
+async function locateBadCase(badCaseId: string) {
+  const node = graph.value.badCaseNodes.find(
+    (candidate) => candidate.data.badCaseId === badCaseId,
+  );
+  if (!node) return;
+  locatingBadCaseCount += 1;
+  suppressFitUntil = Date.now() + 500;
+  cancelScheduledFit();
+  await fitInFlight;
+  cancelScheduledFit();
+  const zoom = Math.max(getViewport().zoom, 0.85);
+  try {
+    await setCenter(
+      node.position.x + node.data.width / 2,
+      node.position.y + 15,
+      { zoom, duration: 260 },
+    );
+  } finally {
+    locatingBadCaseCount -= 1;
+    suppressFitUntil = Math.max(suppressFitUntil, Date.now() + 500);
+    cancelScheduledFit();
   }
 }
 
@@ -229,7 +314,7 @@ function locateAgent(agentId: string) {
   );
 }
 
-defineExpose({ fitView, locateAgent, zoomIn, zoomOut });
+defineExpose({ fitView, locateAgent, locateBadCase, zoomIn, zoomOut });
 
 function toggleCollapse(node: AgentLayoutNode) {
   const agentId = node.data.parentForCollapse ?? node.data.parentAgentId;
@@ -243,7 +328,14 @@ function toggleCollapse(node: AgentLayoutNode) {
 }
 
 function onNodesInitialized() {
-  scheduleFitView();
+  if (fittedTopologyKey === topologyKey.value) return;
+  fittedTopologyKey = topologyKey.value;
+  const badCaseId = props.activeBadCaseId;
+  if (badCaseId) {
+    void nextTick().then(() => locateBadCase(badCaseId));
+  } else {
+    scheduleFitView();
+  }
 }
 
 </script>
@@ -258,7 +350,7 @@ function onNodesInitialized() {
   >
     <VueFlow
       :nodes="renderedNodes"
-      :edges="graph.edges"
+      :edges="renderedEdges"
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
       :nodes-draggable="false"

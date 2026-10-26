@@ -1,10 +1,12 @@
-import type { SessionAgent, SessionEvent } from "@harness/contracts";
+import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
 import type {
   AgentChain,
   AgentGraphLayout,
   AgentLayoutEdge,
   AgentLayoutNode,
+  BadCaseLayoutEdge,
+  BadCaseLayoutNode,
   BadCaseAnchorDescriptor,
   BadCaseAnchorOptions,
   BranchSegment,
@@ -45,18 +47,31 @@ export const LINE_WIDTH_SCALE = 3.2;
 export const MIN_LINE_BAR_W = 80;
 /** Maximum proportional Agent bar width. */
 export const MAX_LINE_BAR_W = 520;
+/** Minimum problem-card width in the prototype graph. */
+export const BADCASE_CARD_MIN_W = 150;
+/** Maximum problem-card width in the prototype graph. */
+export const BADCASE_CARD_MAX_W = 400;
+/** Problem-card height in the prototype graph. */
+export const BADCASE_CARD_H = 30;
+/** Vertical gap between stacked problem cards. */
+export const BADCASE_CARD_GAP = 6;
 /** Root Agent X coordinate. */
 export const ROOT_X = 60;
 /** Root Agent Y coordinate. */
 export const ROOT_Y = 40;
 /** Shared branch stroke color from the prototype. */
 export const BRANCH_COLOR = "var(--graph-branch)";
+/** Problem-card connector color from the prototype. */
+export const BADCASE_COLOR = "var(--red)";
 /** Trigger pill font used by the injected measurer. */
 export const FONT_PILL =
   '10px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
 /** Agent node label font used by the injected measurer. */
 export const FONT_AGENT_LABEL =
   '11px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+/** Problem-card label font used by the injected measurer. */
+export const FONT_BADCASE =
+  '10.5px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
 /** Mono font used by compressed-message pills. */
 export const FONT_MONO_PILL =
   '10px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
@@ -246,9 +261,9 @@ export function pickFindingSide(input: {
   count: number;
   branchSegments: BranchSegment[];
 }): "left" | "right" {
-  const boxHeight = 22;
-  const gap = 6;
-  const totalHeight = input.count * boxHeight + Math.max(0, input.count - 1) * gap;
+  const totalHeight =
+    input.count * BADCASE_CARD_H +
+    Math.max(0, input.count - 1) * BADCASE_CARD_GAP;
   const centerY = input.y + 28;
   const top = centerY - totalHeight / 2;
   const bottom = centerY + totalHeight / 2;
@@ -262,8 +277,12 @@ export function pickFindingSide(input: {
         segment.y2 > top &&
         segment.y1 < bottom,
     );
-  const rightBlocked = blocked(input.x + input.w + 8, input.x + input.visualW + 346);
-  const leftBlocked = blocked(input.x - 346, input.x - 8);
+  const cardReach = BADCASE_CARD_MAX_W + 46;
+  const rightBlocked = blocked(
+    input.x + input.w + 8,
+    input.x + input.visualW + cardReach,
+  );
+  const leftBlocked = blocked(input.x - cardReach, input.x - 8);
   return rightBlocked && !leftBlocked ? "left" : "right";
 }
 
@@ -275,13 +294,52 @@ export function pickFindingSide(input: {
 export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescriptor[] {
   const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
   const agentById = new Map(input.agents.map((agent) => [agent.agentId, agent]));
-  return [...input.badCases]
-    .sort((left, right) => left.badCaseId.localeCompare(right.badCaseId))
+  const cases = [...input.badCases].sort((left, right) =>
+    left.badCaseId.localeCompare(right.badCaseId),
+  );
+  const selfAgentCounts = new Map<string, number>();
+  for (const badCase of cases) {
+    const host = nodeById.get(badCase.anchor.agentId);
+    const hostAgent = agentById.get(badCase.anchor.agentId);
+    const eventIndex = badCase.anchor.eventIndex;
+    if (
+      !host ||
+      !hostAgent ||
+      eventIndex < 0 ||
+      !hostAgent.events[eventIndex] ||
+      host.data.chain.offsets[eventIndex] === undefined ||
+      badCase.badCaseType === "discovery" ||
+      badCase.objectType === "skill"
+    ) {
+      continue;
+    }
+    const key = badCase.anchor.agentId;
+    selfAgentCounts.set(key, (selfAgentCounts.get(key) ?? 0) + 1);
+  }
+
+  return cases
     .map((badCase) => {
       const host = nodeById.get(badCase.anchor.agentId);
       const hostAgent = agentById.get(badCase.anchor.agentId);
       const eventIndex = badCase.anchor.eventIndex;
-      if (!host || !hostAgent || eventIndex < 0) {
+      if (!host && hostAgent) {
+        return {
+          badCaseId: badCase.badCaseId,
+          hostAgentId: badCase.anchor.agentId,
+          eventIndex: -1,
+          kind: "hidden",
+          side: "right",
+          x: ROOT_X,
+          y: ROOT_Y,
+        };
+      }
+      if (
+        !host ||
+        !hostAgent ||
+        eventIndex < 0 ||
+        !hostAgent.events[eventIndex] ||
+        host.data.chain.offsets[eventIndex] === undefined
+      ) {
         return {
           badCaseId: badCase.badCaseId,
           hostAgentId: badCase.anchor.agentId,
@@ -324,7 +382,8 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
         y: host.position.y,
         w: host.data.w,
         visualW: host.data.visualW,
-        count: 1,
+        count:
+          selfAgentCounts.get(badCase.anchor.agentId) ?? 1,
         branchSegments: input.branchSegments,
       });
       return {
@@ -337,6 +396,220 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
         y: host.position.y + 28,
       };
     });
+}
+
+function badCaseEdgeType(
+  anchor: BadCaseAnchorDescriptor,
+): BadCaseLayoutEdge["type"] {
+  if (anchor.kind === "self-skill") {
+    return "trigger";
+  }
+  if (anchor.kind === "discovery") {
+    return "discovery";
+  }
+  return "badcase";
+}
+
+function badCaseHandles(
+  anchor: BadCaseAnchorDescriptor,
+): Pick<BadCaseLayoutEdge, "sourceHandle" | "targetHandle"> {
+  if (anchor.kind === "self-agent" || anchor.kind === "fallback") {
+    return {
+      sourceHandle:
+        anchor.side === "left" ? "finding-left" : "finding-right",
+      targetHandle: anchor.side === "left" ? "card-right" : "card-left",
+    };
+  }
+  if (anchor.kind === "discovery") {
+    return {
+      sourceHandle: `rep${anchor.eventIndex}`,
+      targetHandle: "card-bottom",
+    };
+  }
+  return {
+    sourceHandle: `h${anchor.eventIndex}`,
+    targetHandle: "card-top",
+  };
+}
+
+/**
+ * Measure a problem card's prototype-clamped single-line width.
+ * @param shortId Display-safe problem identifier.
+ * @param reason Human-readable problem summary.
+ * @param measure Injected text measurement function.
+ * @returns Rounded border-box width.
+ */
+export function badCaseCardWidth(
+  shortId: string,
+  reason: string,
+  measure: MeasureText = defaultMeasure,
+): number {
+  return Math.round(
+    Math.max(
+      BADCASE_CARD_MIN_W,
+      Math.min(
+        BADCASE_CARD_MAX_W,
+        measure(`${shortId} ${reason}`, FONT_BADCASE) + 26,
+      ),
+    ),
+  );
+}
+
+/**
+ * Place problem cards around their backend-provided anchors.
+ * @param anchors Stable anchor descriptors.
+ * @param treeCases Minimal bad cases carried by the Session tree.
+ * @param details Full problem records used for problem presentation.
+ * @param measure Injected text measurement function.
+ * @returns Stable card nodes and their semantic connector edges.
+ */
+export function buildBadCaseOverlay(
+  anchors: BadCaseAnchorDescriptor[],
+  treeCases: BadCaseAnchorOptions["badCases"],
+  details: readonly BadCase[] = [],
+  measure: MeasureText = defaultMeasure,
+): {
+  badCaseNodes: BadCaseLayoutNode[];
+  badCaseEdges: BadCaseLayoutEdge[];
+} {
+  const caseById = new Map(treeCases.map((item) => [item.badCaseId, item]));
+  const detailById = new Map(details.map((item) => [item.badCaseId, item]));
+  const sortedAnchors = [...anchors]
+    .filter((anchor) => anchor.kind !== "hidden")
+    .sort((left, right) => left.badCaseId.localeCompare(right.badCaseId));
+  const nodesById = new Map<string, BadCaseLayoutNode>();
+  const placed: Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+  }> = [];
+
+  const overlaps = (
+    left: { x: number; y: number; width: number },
+    right: { x: number; y: number; width: number },
+  ) =>
+    !(
+      left.x + left.width + BADCASE_CARD_GAP <= right.x ||
+      right.x + right.width + BADCASE_CARD_GAP <= left.x ||
+      left.y + BADCASE_CARD_H + BADCASE_CARD_GAP <= right.y ||
+      right.y + BADCASE_CARD_H + BADCASE_CARD_GAP <= left.y
+    );
+
+  const addNode = (
+    anchor: BadCaseAnchorDescriptor,
+    x: number,
+    y: number,
+  ) => {
+    const item = caseById.get(anchor.badCaseId);
+    const detail = detailById.get(anchor.badCaseId);
+    if (!item) return;
+    const shortId = anchor.badCaseId.slice(0, 8);
+    const reason = detail?.reason ?? item.reason;
+    const width = badCaseCardWidth(shortId, reason, measure);
+    const node: BadCaseLayoutNode = {
+      id: `badcase:${anchor.badCaseId}`,
+      type: "badcase",
+      position: { x, y },
+      data: {
+        badCaseId: anchor.badCaseId,
+        shortId,
+        reason,
+        width,
+        degraded: detail?.degraded ?? false,
+      },
+    };
+    nodesById.set(node.id, node);
+    placed.push({ id: node.id, x, y, width });
+  };
+
+  const sideGroups = new Map<string, BadCaseAnchorDescriptor[]>();
+  const verticalAnchors: BadCaseAnchorDescriptor[] = [];
+  for (const anchor of sortedAnchors) {
+    if (anchor.side !== "left" && anchor.side !== "right") {
+      verticalAnchors.push(anchor);
+      continue;
+    }
+    const key = `${anchor.hostAgentId}|${anchor.side}`;
+    const group = sideGroups.get(key) ?? [];
+    group.push(anchor);
+    sideGroups.set(key, group);
+  }
+
+  for (const group of sideGroups.values()) {
+    group.forEach((anchor, index) => {
+      const item = caseById.get(anchor.badCaseId);
+      if (!item) return;
+      const detail = detailById.get(anchor.badCaseId);
+      const width = badCaseCardWidth(
+        anchor.badCaseId.slice(0, 8),
+        detail?.reason ?? item.reason,
+        measure,
+      );
+      const y =
+        anchor.y -
+        BADCASE_CARD_H / 2 +
+        (index - (group.length - 1) / 2) *
+          (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      const x =
+        anchor.side === "left"
+          ? anchor.x - width - 46
+          : anchor.x + 46;
+      addNode(anchor, x, y);
+    });
+  }
+
+  for (const anchor of verticalAnchors) {
+    const item = caseById.get(anchor.badCaseId);
+    if (!item) continue;
+    const detail = detailById.get(anchor.badCaseId);
+    const width = badCaseCardWidth(
+      anchor.badCaseId.slice(0, 8),
+      detail?.reason ?? item.reason,
+      measure,
+    );
+    const direction = anchor.side === "above" ? -1 : 1;
+    const x = anchor.x - 48;
+    let y =
+      anchor.side === "above"
+        ? anchor.y - 8 - BADCASE_CARD_H
+        : anchor.y + 8;
+    while (
+      placed.some((candidate) =>
+        overlaps(
+          { x, y, width },
+          { x: candidate.x, y: candidate.y, width: candidate.width },
+        ),
+      )
+    ) {
+      y += direction * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+    }
+    addNode(anchor, x, y);
+  }
+
+  const badCaseNodes = [...nodesById.values()].sort((left, right) =>
+    left.data.badCaseId.localeCompare(right.data.badCaseId),
+  );
+  const badCaseEdges = sortedAnchors
+    .filter((anchor) => nodesById.has(`badcase:${anchor.badCaseId}`))
+    .map((anchor): BadCaseLayoutEdge => ({
+      id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
+      source: anchor.hostAgentId,
+      target: `badcase:${anchor.badCaseId}`,
+      ...badCaseHandles(anchor),
+      type: badCaseEdgeType(anchor),
+      data: {
+        badCaseId: anchor.badCaseId,
+        side: anchor.side,
+      },
+      style: {
+        stroke: BADCASE_COLOR,
+        strokeWidth: 1.2,
+        strokeDasharray: "4 3",
+      },
+    }));
+
+  return { badCaseNodes, badCaseEdges };
 }
 
 /**
@@ -386,6 +659,8 @@ export function buildGraph(
     return {
       nodes: [],
       edges: [],
+      badCaseNodes: [],
+      badCaseEdges: [],
       anchors: [],
       diagnostics: sortDiagnostics(diagnostics),
       branchSegments: [],
@@ -402,6 +677,8 @@ export function buildGraph(
     return {
       nodes: [],
       edges: [],
+      badCaseNodes: [],
+      badCaseEdges: [],
       anchors: [],
       diagnostics: sortDiagnostics(diagnostics),
       branchSegments: [],
@@ -710,7 +987,7 @@ export function buildGraph(
     branchSegments,
   });
   for (const badCase of tree.badCases) {
-    if (!nodes.some((node) => node.id === badCase.anchor.agentId)) {
+    if (!agents.some((agent) => agent.agentId === badCase.anchor.agentId)) {
       diagnostics.push({
         code: "MISSING_ANCHOR_AGENT",
         agentId: badCase.anchor.agentId,
@@ -718,10 +995,20 @@ export function buildGraph(
       });
     }
   }
+  const overlay = buildBadCaseOverlay(
+    anchors,
+    tree.badCases,
+    normalizedOptions.problemDetails,
+    measure,
+  );
 
   return {
     nodes,
     edges,
+    badCaseNodes: overlay.badCaseNodes,
+    badCaseEdges: overlay.badCaseEdges.filter((edge) =>
+      nodes.some((node) => node.id === edge.source),
+    ),
     anchors,
     diagnostics: sortDiagnostics(diagnostics),
     branchSegments,
@@ -753,6 +1040,89 @@ export function orthPath(input: {
     `H ${trunk}`,
     `V ${input.targetY - radius}`,
     `Q ${trunk} ${input.targetY} ${trunk + radius} ${input.targetY}`,
+    `H ${input.targetX}`,
+  ].join(" ");
+}
+
+/**
+ * Build the side-to-side connector used by self-Agent problem cards.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function badCasePath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const dy = input.targetY - input.sourceY;
+  if (dy === 0) {
+    return `M ${input.sourceX} ${input.sourceY} H ${input.targetX}`;
+  }
+  const direction = Math.sign(input.targetX - input.sourceX) || 1;
+  const horizontalDistance = Math.abs(input.targetX - input.sourceX);
+  const trunk =
+    input.sourceX +
+    direction * Math.min(24, horizontalDistance / 2);
+  const verticalDirection = Math.sign(dy);
+  const radius = Math.min(
+    7,
+    Math.abs(dy) / 2,
+    Math.abs(trunk - input.sourceX),
+    Math.abs(input.targetX - trunk),
+  );
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `H ${trunk - direction * radius}`,
+    `Q ${trunk} ${input.sourceY} ${trunk} ${input.sourceY + verticalDirection * radius}`,
+    `V ${input.targetY - verticalDirection * radius}`,
+    `Q ${trunk} ${input.targetY} ${trunk + direction * radius} ${input.targetY}`,
+    `H ${input.targetX}`,
+  ].join(" ");
+}
+
+/**
+ * Build a horizontal-then-vertical trigger connector for a skill card.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function triggerPath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const directionX = Math.sign(input.targetX - input.sourceX) || 1;
+  const directionY = Math.sign(input.targetY - input.sourceY) || -1;
+  const radius = Math.min(
+    6,
+    Math.abs(input.targetX - input.sourceX) / 2,
+    Math.abs(input.targetY - input.sourceY) / 2,
+  );
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `H ${input.targetX - directionX * radius}`,
+    `Q ${input.targetX} ${input.sourceY} ${input.targetX} ${input.sourceY + directionY * radius}`,
+    `V ${input.targetY}`,
+  ].join(" ");
+}
+
+/**
+ * Build the discovery connector from a top trigger handle toward its card.
+ * @param input Source and target coordinates.
+ * @returns SVG path data.
+ */
+export function discoveryPath(input: {
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+}): string {
+  const radius = Math.min(7, Math.abs(input.targetY - input.sourceY) / 2);
+  return [
+    `M ${input.sourceX} ${input.sourceY}`,
+    `V ${input.targetY + radius}`,
+    `Q ${input.sourceX} ${input.targetY} ${input.sourceX + radius} ${input.targetY}`,
     `H ${input.targetX}`,
   ].join(" ");
 }

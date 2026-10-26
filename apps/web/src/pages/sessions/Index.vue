@@ -11,6 +11,7 @@ import {
 import { useRoute, useRouter } from "vue-router";
 
 import {
+  useSessionBadCases,
   useSessionList,
   useSessionSummary,
   useSessionTree,
@@ -107,6 +108,9 @@ const summaryQuery = useSessionSummary(
 const treeQuery = useSessionTree(
   computed(() => selectedId.value || null),
 );
+const problemsQuery = useSessionBadCases(
+  computed(() => selectedId.value || null),
+);
 
 const expandedBySession = ref<Record<string, string[]>>({});
 
@@ -125,6 +129,11 @@ const sessionTree = computed(() => treeQuery.data.value ?? null);
 const treeError = computed(() => treeQuery.error.value);
 const isTreePending = computed(
   () => treeQuery.isPending.value && Boolean(selectedId.value),
+);
+const problems = computed(() => problemsQuery.data.value?.items ?? []);
+const problemsError = computed(() => problemsQuery.error.value);
+const isProblemsPending = computed(
+  () => problemsQuery.isPending.value && Boolean(selectedId.value),
 );
 const overviewItem = computed(
   () => summaryQuery.data.value ?? selectedItem.value,
@@ -354,6 +363,34 @@ function restorePanelScroll(sessionId: string) {
   void apply(0);
   void apply(60);
   void apply(220);
+}
+
+function focusBadCase(badCaseId: string) {
+  cancelInitialReset?.();
+  cancelInitialReset = null;
+  scrollRestoreSequence += 1;
+  clearTimeout(scrollRestoreTimer);
+  scrollRestoreTimer = undefined;
+
+  if (!selectedId.value || !sessionTree.value) return;
+  const problem =
+    problems.value.find((item) => item.badCaseId === badCaseId)
+    ?? sessionTree.value.badCases.find(
+      (item) => item.badCaseId === badCaseId,
+    );
+  if (!problem) return;
+  const ancestors = agentAncestors(
+    sessionTree.value.agents,
+    problem.anchor.agentId,
+  );
+  if (ancestors.length === 0) return;
+  const current = expandedBySession.value[selectedId.value] ?? [];
+  const expanded = [...new Set([...current, ...ancestors])];
+  if (expanded.length === current.length) return;
+  expandedBySession.value = {
+    ...expandedBySession.value,
+    [selectedId.value]: expanded,
+  };
 }
 
 watch(
@@ -613,12 +650,17 @@ onBeforeUnmount(() => {
       :expanded-agent-ids="expandedAgentIds"
       :item="overviewItem"
       :loading="isSummaryPending"
+      :problems="problems"
+      :problems-error="problemsError"
+      :problems-loading="isProblemsPending"
       :tree="sessionTree"
       :tree-error="treeError"
       :tree-loading="isTreePending"
       :error="summaryError"
+      @badcase-select="focusBadCase"
       @collapse-all="collapseAllBranches"
       @node-select="selectAgent"
+      @problems-retry="problemsQuery.refetch"
       @retry="summaryQuery.refetch"
       @toggle-expanded="toggleExpanded"
       @tree-retry="treeQuery.refetch"

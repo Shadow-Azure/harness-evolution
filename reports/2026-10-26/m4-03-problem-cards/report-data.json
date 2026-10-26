@@ -1,0 +1,165 @@
+{
+  "title": "M4-03 问题卡集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #116",
+  "summary": "在真实 FastAPI、SQLite、Vite 与 Chrome 环境中验证五态问题卡、四类锚点连线、列表与画布双向定位、折叠宿主展开和响应式布局。",
+  "meta": "2026-10-26 · Chrome headless CDP · 1408×960 / 390×844",
+  "metrics": [
+    { "value": "2/2", "label": "真实 Chrome E2E" },
+    { "value": "5", "label": "问题状态" },
+    { "value": "0", "label": "控制台异常" },
+    { "value": "230", "label": "Web 测试通过" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#48 · m4-03 problem cards" },
+    { "label": "PR", "value": "#116" },
+    { "label": "Commit", "value": "f4eef0f" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome CDP" },
+    { "label": "Evidence mode", "value": "Headless Chrome; native CUA unavailable while macOS session locked" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "五态问题卡",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "四个 fixture Session 合计展示未分析、非问题、模型问题、prompt 缺失和错误五态。",
+        "evidence": ["真实 Chrome E2E", "列表与画布 badCaseId 对齐"]
+      },
+      {
+        "id": "02",
+        "name": "锚点连接语义",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "self+agent、self+skill、discovery 与 fallback 分别生成对应连接线；坏锚点不生成孤儿边。",
+        "evidence": ["布局单测", "E2E 边计数"]
+      },
+      {
+        "id": "03",
+        "name": "同锚点稳定堆叠",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不同 eventIndex 与相同锚点的问题卡均按可见矩形去重堆叠，不重叠。",
+        "evidence": ["layout.test.ts", "BadCaseNode.test.ts"]
+      },
+      {
+        "id": "04",
+        "name": "列表定位画布",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击问题列表行后唯一画布卡居中并高亮。",
+        "evidence": ["screenshots/01-desktop.png", "m4 problem cards E2E"]
+      },
+      {
+        "id": "05",
+        "name": "画布定位列表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击画布问题卡后对应列表行滚动到可视区域并保持唯一 active。",
+        "evidence": ["m4 problem cards E2E"]
+      },
+      {
+        "id": "06",
+        "name": "折叠宿主问题恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "问题宿主位于 9 子 Agent 折叠分支时，选择问题自动展开祖先，问题卡展开并在延迟 fitView 后仍保持居中。",
+        "evidence": ["m4 problem cards reveal a selected problem inside a folded branch"]
+      },
+      {
+        "id": "07",
+        "name": "动态卡宽",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "卡片按文本测量宽度并限制在原型范围，定位使用实际宽度的一半。",
+        "evidence": ["layout.test.ts", "BadCaseNode.test.ts"]
+      },
+      {
+        "id": "08",
+        "name": "独立三态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "问题列表加载、失败、重试和空态不阻塞 Session 概要与执行流。",
+        "evidence": ["Index.test.ts", "BadCaseList.test.ts"]
+      },
+      {
+        "id": "09",
+        "name": "1408px 桌面",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原型亮色壳、360px Session 侧栏、问题卡和列表同屏，无页面横向溢出。",
+        "evidence": ["screenshots/01-desktop.png"]
+      },
+      {
+        "id": "10",
+        "name": "390px 移动布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "问题卡页面进入单列布局，scrollWidth 与 clientWidth 均为 390。",
+        "evidence": ["screenshots/02-mobile.png"]
+      },
+      {
+        "id": "11",
+        "name": "控制台与范围边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "正常路径控制台无 warning/error；未渲染 m4-04 问题详情或归因双 Tab。",
+        "evidence": ["browser violations=[]", "issue 非目标核对"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/00-prototype-reference.png",
+      "alt": "问题卡与执行流原型参考",
+      "label": "原型参考",
+      "caption": "问题卡、红色语义连接、五态列表与执行流联动的视觉基准。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-desktop.png",
+      "alt": "1408px 桌面问题卡页面",
+      "label": "1408px 实现",
+      "caption": "真实数据下问题卡、执行流、问题列表和双向定位同屏呈现。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-mobile.png",
+      "alt": "390px 移动问题卡页面",
+      "label": "390px 实现",
+      "caption": "移动端单列布局，Session 列表与问题概览保持可访问且无横向溢出。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "问题状态",
+        "coverage": "Web 单测 + 真实 Chrome E2E",
+        "conclusion": "五态列表与画布 ID 一致性已验证。",
+        "recommendation": "保持 fixture 五态覆盖。"
+      },
+      {
+        "area": "布局锚点",
+        "coverage": "纯函数 + 浏览器",
+        "conclusion": "四类连线、堆叠、坏锚点和折叠恢复通过。",
+        "recommendation": "后续 m4-04 详情页沿用 badCaseId。"
+      },
+      {
+        "area": "响应式",
+        "coverage": "真实 Chrome 1408/390",
+        "conclusion": "无页面横向溢出，亮色原型视觉保持。",
+        "recommendation": "领域详情页继续使用同一 token。"
+      },
+      {
+        "area": "原生 Computer Use",
+        "coverage": "受 macOS 锁屏阻塞",
+        "conclusion": "使用真实 headless Chrome/CDP，未伪报为原生 CUA。",
+        "recommendation": "解锁后可复跑原生截图。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "当前提交的问题可视化与原型对齐，列表和画布联动、折叠恢复和响应式行为均通过。",
+    "points": [
+      "未发现未解决产品缺陷。",
+      "m4-04 错误详情与归因双 Tab 保持独立边界。",
+      "证据来自真实 API、SQLite、Vite 与 Chrome。"
+    ]
+  },
+  "footer": "证据源：真实 Chrome CDP、自动化断言与原型截图。HTML 由 renderer 生成，不应手改。"
+}

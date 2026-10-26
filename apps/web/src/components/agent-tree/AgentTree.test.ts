@@ -38,7 +38,12 @@ vi.mock("@vue-flow/core", async () => {
       },
     }),
     Handle: defineComponent({ setup: () => () => h("div") }),
-    Position: { Left: "left", Bottom: "bottom" },
+    Position: {
+      Left: "left",
+      Right: "right",
+      Top: "top",
+      Bottom: "bottom",
+    },
     useVueFlow: () => ({
       fitView: fitViewMock,
       getViewport: () => ({ x: 0, y: 0, zoom: 0.7 }),
@@ -76,7 +81,7 @@ describe("AgentTree", () => {
       props: { tree: demoNestedTree, expanded: [] },
     });
     const flow = wrapper.get('[data-testid="vue-flow"]');
-    expect(Number(flow.attributes("data-node-count"))).toBe(2);
+    expect(Number(flow.attributes("data-node-count"))).toBe(4);
 
     wrapper.getComponent({ name: "VueFlow" }).vm.$emit("node-click", {
       node: {
@@ -87,9 +92,13 @@ describe("AgentTree", () => {
     });
     await wrapper.setProps({ expanded: ["main"] });
     expect(wrapper.emitted("toggle-expanded")).toEqual([["main"]]);
-    expect(Number(wrapper.get('[data-testid="vue-flow"]').attributes("data-node-count"))).toBeGreaterThan(
-      2,
-    );
+    expect(
+      Number(
+        wrapper
+          .get('[data-testid="vue-flow"]')
+          .attributes("data-node-count"),
+      ),
+    ).toBeGreaterThan(4);
   });
 
   it("keeps the canvas non-draggable and accessible", () => {
@@ -155,7 +164,10 @@ describe("AgentTree", () => {
     expect(activeNode.data.activeEvidence).toBe(1);
     expect(
       flow.props("nodes")
-        .filter((node: { id: string }) => node.id !== "agent-a")
+        .filter(
+          (node: { id: string; type: string }) =>
+            node.type === "agent" && node.id !== "agent-a",
+        )
         .every(
           (node: { data: { activeEvidence: number | null } }) =>
             node.data.activeEvidence === null,
@@ -177,6 +189,7 @@ describe("AgentTree", () => {
     expect(setCenterMock).not.toHaveBeenCalled();
 
     await wrapper.setProps({ expanded: ["main"] });
+    wrapper.getComponent({ name: "VueFlow" }).vm.$emit("nodes-initialized");
     await nextTick();
     await nextTick();
 
@@ -185,5 +198,150 @@ describe("AgentTree", () => {
       expect.any(Number),
       expect.objectContaining({ zoom: 0.85, duration: 260 }),
     );
+  });
+
+  it("selects a graph problem card without changing Agent selection", async () => {
+    setCenterMock.mockClear();
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: ["main", "agent-a"],
+      },
+    });
+    const flow = wrapper.getComponent({ name: "VueFlow" });
+    const card = flow.props("nodes").find(
+      (node: { type: string }) => node.type === "badcase",
+    );
+    expect(card).toBeDefined();
+
+    flow.vm.$emit("node-click", { node: card });
+    await nextTick();
+
+    expect(wrapper.emitted("badcase-select")).toEqual([
+      [card.data.badCaseId],
+    ]);
+    expect(wrapper.emitted("node-select")).toBeUndefined();
+    expect(setCenterMock).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ zoom: 0.85, duration: 260 }),
+    );
+  });
+
+  it("keeps exactly one graph problem card active for a selected badCaseId", async () => {
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: ["main", "agent-a"],
+        activeBadCaseId: "case-self-agent",
+      },
+    });
+    await nextTick();
+    await nextTick();
+
+    const cards = wrapper
+      .getComponent({ name: "VueFlow" })
+      .props("nodes")
+      .filter((node: { type: string }) => node.type === "badcase");
+    expect(
+      cards.filter(
+        (node: { data: { active?: boolean } }) => node.data.active,
+      ),
+    ).toHaveLength(1);
+    expect(
+      cards.find(
+        (node: {
+          data: { active?: boolean; badCaseId: string };
+        }) => node.data.active,
+      )?.data.badCaseId,
+    ).toBe("case-self-agent");
+  });
+
+  it("locates a selected problem after its collapsed host expands", async () => {
+    setCenterMock.mockClear();
+    const foldedTree = {
+      ...demoNestedTree,
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-folded-host",
+          anchor: { agentId: "agent-extra-1", eventIndex: -1 },
+        },
+      ],
+    };
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: foldedTree,
+        expanded: [],
+        activeBadCaseId: "case-folded-host",
+      },
+    });
+    await nextTick();
+    await nextTick();
+
+    expect(
+      wrapper
+        .getComponent({ name: "VueFlow" })
+        .props("nodes")
+        .some(
+          (node: { type: string; data: { badCaseId?: string } }) =>
+            node.type === "badcase" &&
+            node.data.badCaseId === "case-folded-host",
+        ),
+    ).toBe(false);
+    expect(setCenterMock).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ expanded: ["main"] });
+    await nextTick();
+    await nextTick();
+    await (
+      wrapper.vm as {
+        locateBadCase: (id: string) => Promise<void>;
+      }
+    ).locateBadCase("case-folded-host");
+
+    const card = wrapper
+      .getComponent({ name: "VueFlow" })
+      .props("nodes")
+      .find(
+        (node: { type: string; data: { badCaseId?: string } }) =>
+          node.type === "badcase" &&
+          node.data.badCaseId === "case-folded-host",
+      );
+    expect(card?.data.active).toBe(true);
+    expect(setCenterMock).toHaveBeenCalledWith(
+      card.position.x + card.data.width / 2,
+      card.position.y + 15,
+      expect.objectContaining({ zoom: 0.85, duration: 260 }),
+    );
+  });
+
+  it("cancels delayed topology fitting when locating a problem", async () => {
+    vi.useFakeTimers();
+    try {
+      fitViewMock.mockClear();
+      setCenterMock.mockClear();
+      const wrapper = mount(AgentTree, {
+        props: {
+          tree: demoNestedTree,
+          expanded: [],
+        },
+      });
+
+      await wrapper.setProps({ expanded: ["main", "agent-a"] });
+      await nextTick();
+      await (
+        wrapper.vm as {
+          locateBadCase: (badCaseId: string) => Promise<void>;
+        }
+      ).locateBadCase("case-self-skill");
+      await vi.advanceTimersByTimeAsync(300);
+      await nextTick();
+
+      expect(setCenterMock).toHaveBeenCalled();
+      expect(fitViewMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
