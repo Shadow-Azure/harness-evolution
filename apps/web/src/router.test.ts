@@ -32,6 +32,20 @@ describe("web router", () => {
     expect(component.default.name).toBe("EvolutionPage");
   });
 
+  it("protects and lazily loads the evolution target configuration page", async () => {
+    const router = createAppRouter();
+    const route = router.options.routes.find(
+      (item) => item.path === "/evolution/targets",
+    );
+
+    expect(route?.meta?.public).not.toBe(true);
+    expect(typeof route?.component).toBe("function");
+    const component = await (
+      route?.component as () => Promise<{ default: { name: string } }>
+    )();
+    expect(component.default.name).toBe("TargetConfigPage");
+  });
+
   it("lazily loads the development-only Agent tree visual fixture", async () => {
     const router = createAppRouter();
     const route = router.options.routes.find((item) => item.path === "/agent-tree-demo");
@@ -76,6 +90,15 @@ describe("web router", () => {
 
     expect(router.currentRoute.value.path).toBe("/login");
     expect(router.currentRoute.value.query.redirect).toBe("/sessions/s-1?q=error");
+  });
+
+  it("redirects unauthenticated target configuration to login", async () => {
+    const router = createAppRouter();
+    await router.push("/evolution/targets");
+    await router.isReady();
+
+    expect(router.currentRoute.value.path).toBe("/login");
+    expect(router.currentRoute.value.query.redirect).toBe("/evolution/targets");
   });
 
   it("keeps login public and sends authenticated users to a safe redirect", async () => {
