@@ -84,17 +84,15 @@ async function installCookie(page, cookie) {
   });
 }
 
-async function rotateRefreshCookie(cookie) {
-  const response = await fetch(`${baseUrl}/api/auth/refresh`, {
-    method: "POST",
-    headers: { cookie: `refresh_token=${cookie}` },
+async function browserRefreshCookie(page) {
+  const cookies = await page.session.send("Network.getCookies", {
+    urls: [`${baseUrl}/api/auth`],
   });
-  assert.equal(response.status, 200);
-  const rotated = response.headers
-    .get("set-cookie")
-    ?.match(/refresh_token=([^;]+)/)?.[1];
-  assert.ok(rotated);
-  return rotated;
+  const cookie = cookies.cookies.find(
+    (candidate) => candidate.name === "refresh_token",
+  );
+  assert.ok(cookie, "expected a refresh cookie in the browser");
+  return cookie.value;
 }
 
 before(async () => {
@@ -486,16 +484,8 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       target = candidate.result.value;
     }
     assert.ok(target, "expected a Session Agent with an evidence trigger");
-    const liveCookies = await first.session.send("Network.getCookies", {
-      urls: [`${baseUrl}/api/auth`],
-    });
-    const liveRefreshCookie = liveCookies.cookies.find(
-      (candidate) => candidate.name === "refresh_token",
-    );
-    assert.ok(liveRefreshCookie, "expected the rotated refresh cookie");
-    cookie = await rotateRefreshCookie(liveRefreshCookie.value);
+    cookie = await browserRefreshCookie(first);
     await installCookie(first, cookie);
-
     await first.session.send("Runtime.evaluate", {
       expression: `(() => {
         const button = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
@@ -564,14 +554,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
     assert.equal(active.body, "rgb(244, 245, 247)", JSON.stringify(active));
     assert.equal(active.topbar, "rgb(250, 251, 252)", JSON.stringify(active));
 
-    const deepCookies = await first.session.send("Network.getCookies", {
-      urls: [`${baseUrl}/api/auth`],
-    });
-    const deepRefreshCookie = deepCookies.cookies.find(
-      (candidate) => candidate.name === "refresh_token",
-    );
-    assert.ok(deepRefreshCookie, "expected a refresh cookie on the deep link");
-    cookie = await rotateRefreshCookie(deepRefreshCookie.value);
+    cookie = await browserRefreshCookie(first);
     await installCookie(first, cookie);
     await first.session.send("Page.reload");
     const refreshed = await waitForDocument(
@@ -584,14 +567,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
       "deep link after refresh",
     );
     assert.equal(refreshed, targetAgentId);
-    const refreshedCookies = await first.session.send("Network.getCookies", {
-      urls: [`${baseUrl}/api/auth`],
-    });
-    const refreshedCookie = refreshedCookies.cookies.find(
-      (candidate) => candidate.name === "refresh_token",
-    );
-    assert.ok(refreshedCookie, "expected a refresh cookie after reload");
-    cookie = await rotateRefreshCookie(refreshedCookie.value);
+    cookie = await browserRefreshCookie(first);
 
     const otherAgent = await first.session.send("Runtime.evaluate", {
       expression: `(() => {
