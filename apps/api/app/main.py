@@ -93,7 +93,10 @@ def create_app(
         try:
             await resolved_database.start()
             phase = "migration"
-            await upgrade_database(resolved_database)
+            await upgrade_database(
+                resolved_database,
+                bootstrap_external_tables=False,
+            )
             phase = "identity-seed"
             await identity.seed_admin_if_empty()
             phase = "job-recovery"

@@ -127,15 +127,19 @@ class BadCaseService:
 
     async def list_for_session(self, session_id: str) -> BadCaseListReadModel:
         """Return a session's issues in stable order with merged attribution."""
-        rows = await self._repository.list_by_session(session_id)
-        return await self._merge_rows(rows)
+        snapshot = await self._repository.list_snapshot(session_id)
+        return self._merge_rows(snapshot.cases, snapshot.analyses, snapshot.probes)
 
     async def get_case(self, case_id: str) -> BadCaseReadModel | None:
         """Return one issue by id or ``None`` when the external table has no row."""
-        row = await self._repository.get_case(case_id)
-        if row is None:
+        snapshot = await self._repository.get_case_snapshot(case_id)
+        if not snapshot.cases:
             return None
-        result = await self._merge_rows((row,))
+        result = self._merge_rows(
+            snapshot.cases,
+            snapshot.analyses,
+            snapshot.probes,
+        )
         return result.items[0] if result.items else None
 
     async def get_probe(self, probe_id: str) -> ProbeReportReadModel | None:
@@ -144,13 +148,17 @@ class BadCaseService:
 
     async def get_probe_result(self, probe_id: str) -> ProbeReportLookup:
         """Return one probe and diagnostics, or no model when identity is invalid."""
-        row = await self._repository.get_probe(probe_id)
-        if row is None:
+        snapshot = await self._repository.get_probe_snapshot(probe_id)
+        if snapshot.probe is None:
             return ProbeReportLookup(model=None, warnings=())
-        sources = await self._repository.probe_source_candidates(probe_id)
-        return self._probe_model(row, sources)
+        return self._probe_model(snapshot.probe, snapshot.sources)
 
-    async def _merge_rows(self, rows: tuple[BadCaseRow, ...]) -> BadCaseListReadModel:
+    def _merge_rows(
+        self,
+        rows: tuple[BadCaseRow, ...],
+        analysis_rows: tuple[BadCaseAnalysisRow, ...],
+        probe_rows: tuple[ProbeReportRow, ...],
+    ) -> BadCaseListReadModel:
         """Batch-load attribution and probe rows before assembling each case."""
         cases: list[tuple[BadCaseRow, str, tuple[ExternalReadWarning, ...]]] = []
         warnings: list[ExternalReadWarning] = []
@@ -170,23 +178,8 @@ class BadCaseService:
         if not cases:
             return BadCaseListReadModel(items=(), warnings=tuple(warnings))
 
-        case_ids = tuple(_safe_text(row.bad_case_id) or "" for row, _, _ in cases)
-        analysis_rows = await self._repository.analyses_by_case_ids(case_ids)
         analyses = {row.bad_case_id: row for row in analysis_rows}
-        probe_ids = tuple(
-            sorted(
-                {
-                    probe_id
-                    for analysis_row in analysis_rows
-                    if (probe_id := _safe_text(analysis_row.probe_id)) is not None
-                },
-            ),
-        )
-        probes = {
-            row.probe_id: row
-            for row in await self._repository.probes_by_ids(probe_ids)
-            if _safe_text(row.probe_id) is not None
-        }
+        probes = {row.probe_id: row for row in probe_rows if _safe_text(row.probe_id) is not None}
 
         items: list[BadCaseReadModel] = []
         for row, session_id, row_warnings in cases:
@@ -423,6 +416,23 @@ class BadCaseService:
                     field="attribute_type",
                 ),
             )
+        probe_object = _safe_text(row.probe_object)
+        probe_description = _safe_text(row.probe_description)
+        probe_analysis = _safe_text(row.probe_analysis)
+        for field, value in (
+            ("probe_object", probe_object),
+            ("probe_description", probe_description),
+            ("probe_analysis", probe_analysis),
+        ):
+            if value is None:
+                warnings.append(
+                    _warning(
+                        "EXTERNAL_FIELD_MISSING",
+                        "external probe presentation field is missing",
+                        probe_id=probe_id,
+                        field=field,
+                    ),
+                )
         valid_source_ids: list[str] = []
         invalid_source = False
         for source in sources:
@@ -449,11 +459,11 @@ class BadCaseService:
             probe_id=probe_id or "",
             session_id=session_id or "",
             probe_type=cast(BadCaseObjectType | None, probe_type),
-            probe_object=_safe_text(row.probe_object) or "",
+            probe_object=probe_object or "",
             object_version=_safe_text(row.object_version),
             attribute_type=cast(AttributeType | None, attribute_type),
-            probe_description=_safe_text(row.probe_description) or "",
-            probe_analysis=_safe_text(row.probe_analysis) or "",
+            probe_description=probe_description or "",
+            probe_analysis=probe_analysis or "",
             created_at=row.created_at,
             updated_at=row.updated_at,
             from_bad_cases=source_ids,

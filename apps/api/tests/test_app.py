@@ -246,7 +246,7 @@ async def test_migration_failure_marks_reachable_database_unhealthy(
     """A failed migration cannot be hidden by a successful ping."""
     sensitive_error = "migration failed: mysql+asyncmy://ops:secret@db.internal/private"
 
-    async def fail_upgrade(_database: Database) -> None:
+    async def fail_upgrade(_database: Database, **_kwargs: object) -> None:
         raise RuntimeError(sensitive_error)
 
     monkeypatch.setattr(main_module, "upgrade_database", fail_upgrade)

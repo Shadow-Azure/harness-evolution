@@ -10,7 +10,7 @@ from typing import cast
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import event
+from sqlalchemy import event, text
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -18,13 +18,16 @@ from app.db.crud.bad_cases import (
     BadCaseAnalysisRow,
     BadCaseRepository,
     BadCaseRow,
+    BadCaseSnapshot,
     ProbeReportRow,
+    ProbeSnapshot,
     ProbeSourceCandidate,
 )
 from app.db.crud.fixtures import run_corpus_seed
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.fixture_corpus import load_fixture_corpus
+from app.main import create_app
 from app.service.bad_cases.schemas import ProbeReportLookup
 from app.service.bad_cases.service import BadCaseService
 
@@ -87,9 +90,31 @@ class FakeRepository:
         """Return supplied cases to exercise row-level validation."""
         return self.cases
 
+    async def list_snapshot(self, session_id: str) -> BadCaseSnapshot:
+        """Return all supplied rows as one service-facing snapshot."""
+        return BadCaseSnapshot(
+            cases=self.cases,
+            analyses=self.analyses,
+            probes=self.probes,
+        )
+
     async def get_case(self, case_id: str) -> BadCaseRow | None:
         """Return one supplied case by id."""
         return next((case for case in self.cases if case.bad_case_id == case_id), None)
+
+    async def get_case_snapshot(self, case_id: str) -> BadCaseSnapshot:
+        """Return one supplied case and its related rows as a snapshot."""
+        case = next(
+            (case for case in self.cases if case.bad_case_id == case_id),
+            None,
+        )
+        if case is None:
+            return BadCaseSnapshot(cases=(), analyses=(), probes=())
+        return BadCaseSnapshot(
+            cases=(case,),
+            analyses=tuple(row for row in self.analyses if row.bad_case_id == case_id),
+            probes=self.probes,
+        )
 
     async def analyses_by_case_ids(
         self,
@@ -126,6 +151,18 @@ class FakeRepository:
     ) -> tuple[ProbeSourceCandidate, ...]:
         """Return the supplied reverse probe-to-case candidates."""
         return self.source_candidates
+
+    async def get_probe_snapshot(self, probe_id: str) -> ProbeSnapshot:
+        """Return one supplied probe and its reverse links as a snapshot."""
+        probe = (
+            self.probes[0]
+            if self.force_probe_lookup
+            else next(
+                (probe for probe in self.probes if probe.probe_id == probe_id),
+                None,
+            )
+        )
+        return ProbeSnapshot(probe=probe, sources=self.source_candidates)
 
 
 def row(
@@ -177,17 +214,20 @@ def probe(
     probe_id: object = PROBE_1,
     session_id: object = SESSION_1,
     attribute_type: object = "model",
+    probe_object: object = "Explore",
+    probe_description: object = "description",
+    probe_analysis: object = "analysis",
 ) -> ProbeReportRow:
     """Build one probe row with an optional invalid attribute type."""
     return ProbeReportRow(
         probe_id=cast(str, probe_id),
         session_id=cast(str, session_id),
         probe_type="agent",
-        probe_object="Explore",
+        probe_object=cast(str, probe_object),
         object_version="v1",
         attribute_type=cast(str, attribute_type),
-        probe_description="description",
-        probe_analysis="analysis",
+        probe_description=cast(str, probe_description),
+        probe_analysis=cast(str, probe_analysis),
         created_at=NOW,
         updated_at=NOW,
     )
@@ -518,3 +558,176 @@ async def test_fixture_fifth_state_is_persisted(
     assert result.display_state == "analyzed_issue_model"
     assert result.analysis.probe_id == PROBE_3
     assert result.analysis.attribute_type == "model"
+
+
+async def test_runtime_upgrade_does_not_create_external_tables(
+    tmp_path: Path,
+) -> None:
+    """Application migrations leave externally owned tables to their owner."""
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        db_pool_size=2,
+        db_max_overflow=1,
+        jwt_secret=SecretStr("external-read-model-test-signing-secret"),
+    )
+    database = create_database(settings)
+    await database.start()
+    try:
+        await upgrade_database(database, bootstrap_external_tables=False)
+        async with database.session() as session:
+            names: set[str] = set()
+            rows = (
+                await session.execute(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'"),
+                )
+            ).all()
+            for (name,) in rows:
+                names.add(str(name))
+    finally:
+        await database.dispose()
+
+    assert {"users", "session_families", "job_runs"} <= names
+    assert not {"bad_cases", "bad_case_analysis", "probe_reports"} & names
+
+
+async def test_application_startup_leaves_external_tables_to_their_owner(
+    tmp_path: Path,
+) -> None:
+    """The composed lifespan applies the same runtime-only migration policy."""
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        db_pool_size=2,
+        db_max_overflow=1,
+        jwt_secret=SecretStr("external-read-model-test-signing-secret"),
+        sync_interval_seconds=0,
+    )
+    database = create_database(settings)
+    app = create_app(settings, database=database)
+
+    async with app.router.lifespan_context(app):
+        async with database.session() as session:
+            rows = (
+                await session.execute(
+                    text("SELECT name FROM sqlite_master WHERE type = 'table'"),
+                )
+            ).all()
+        names = {str(name) for (name,) in rows}
+
+    assert {"users", "session_families", "job_runs"} <= names
+    assert not {"bad_cases", "bad_case_analysis", "probe_reports"} & names
+
+
+async def test_external_read_models_use_timezone_aware_shanghai_timestamps(
+    external_database: Database,
+) -> None:
+    """External DATETIME values cross the API boundary with +08:00 timezone."""
+    service = BadCaseService(BadCaseRepository(external_database))
+
+    case = await service.get_case(CASE_1)
+    probe_model = await service.get_probe(PROBE_1)
+
+    assert case is not None
+    assert probe_model is not None
+    case_offset = case.created_at.utcoffset()
+    probe_offset = probe_model.updated_at.utcoffset()
+    assert case_offset is not None
+    assert case_offset.total_seconds() == 8 * 60 * 60
+    assert probe_offset is not None
+    assert probe_offset.total_seconds() == 8 * 60 * 60
+
+
+async def test_empty_probe_presentation_fields_emit_safe_warnings() -> None:
+    """Probe presentation drift remains visible without exposing external text."""
+    service = BadCaseService(
+        FakeRepository(
+            probes=(
+                probe(
+                    probe_object="",
+                    probe_description="",
+                    probe_analysis="",
+                ),
+            ),
+        ),
+    )
+
+    lookup = await service.get_probe_result(PROBE_1)
+
+    assert lookup.model is not None
+    assert lookup.model.probe_object == ""
+    assert lookup.model.probe_description == ""
+    assert lookup.model.probe_analysis == ""
+    assert [
+        (warning.code, warning.field)
+        for warning in lookup.warnings
+        if warning.code == "EXTERNAL_FIELD_MISSING"
+    ] == [
+        ("EXTERNAL_FIELD_MISSING", "probe_object"),
+        ("EXTERNAL_FIELD_MISSING", "probe_description"),
+        ("EXTERNAL_FIELD_MISSING", "probe_analysis"),
+    ]
+
+
+async def test_every_public_repository_path_is_select_only(
+    external_database: Database,
+) -> None:
+    """Every public read path emits SELECT statements and no mutation SQL."""
+    statements: list[str] = []
+
+    def capture(
+        _connection: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: object,
+    ) -> None:
+        statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+    repository = BadCaseRepository(external_database)
+    event.listen(external_database.engine.sync_engine, "before_cursor_execute", capture)
+    try:
+        await repository.list_by_session(SESSION_1)
+        await repository.list_snapshot(SESSION_1)
+        await repository.get_case(CASE_1)
+        await repository.get_case_snapshot(CASE_1)
+        await repository.analyses_by_case_ids((CASE_1,))
+        await repository.get_analysis(CASE_1)
+        await repository.probes_by_ids((PROBE_1,))
+        await repository.get_probe(PROBE_1)
+        await repository.probe_source_candidates(PROBE_1)
+        await repository.get_probe_snapshot(PROBE_1)
+    finally:
+        event.remove(external_database.engine.sync_engine, "before_cursor_execute", capture)
+
+    assert statements
+    assert set(statements) == {"SELECT"}
+
+
+async def test_read_models_use_one_database_session_per_snapshot(
+    external_database: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Case, analysis, and probe rows cannot mix two replay versions."""
+    session_count = 0
+    original_session = external_database.session
+
+    def counted_session() -> object:
+        nonlocal session_count
+        session_count += 1
+        return original_session()
+
+    monkeypatch.setattr(external_database, "session", counted_session)
+    service = BadCaseService(BadCaseRepository(external_database))
+
+    await service.list_for_session(SESSION_1)
+    assert session_count == 1
+
+    session_count = 0
+    await service.get_case(CASE_1)
+    assert session_count == 1
+
+    session_count = 0
+    await service.get_probe_result(PROBE_1)
+    assert session_count == 1
