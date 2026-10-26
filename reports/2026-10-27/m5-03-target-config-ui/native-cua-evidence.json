@@ -1,0 +1,27 @@
+{
+  "validationCommit": "4b21c28",
+  "app": "Google Chrome",
+  "interaction": "Computer Use via @oai/sky",
+  "entryPath": "/evolution -> aria-label 配置进化对象 -> /evolution/targets",
+  "observations": {
+    "pageTitle": "进化对象配置",
+    "pageNote": "配置可被自进化修改的 skill 与 agent；仓库、引用和路径由后端校验。",
+    "tableRows": 2,
+    "kindChip": "紫色 skill chip",
+    "enabledBadge": "绿色 已启用 badge",
+    "createButtonVisible": true,
+    "modalTitle": "新增进化对象",
+    "modalFields": [
+      "对象类型",
+      "对象名称",
+      "仓库地址",
+      "子目录",
+      "基线分支或标签",
+      "启用"
+    ]
+  },
+  "screenshots": {
+    "targets": "screenshots/10-native-targets-desktop.png",
+    "modal": "screenshots/11-native-modal.png"
+  }
+}
