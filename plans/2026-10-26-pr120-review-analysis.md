@@ -2,7 +2,7 @@
 
 ## 结论
 
-D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，也已在同一 PR 收敛。修复证据基线为 `13333e7`：目标 Vitest 26/26、Web 全量 249 passed/1 skipped（95.77% statements）、真实 Chrome M4 E2E 1/1，并通过 typecheck、lint、样式、契约、build、bundle 与文档门禁。
+D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，也已在同一 PR 收敛；`0c91e3e` 再补齐 prompt 分类原文。`13333e7` 已通过 Web 全量 249 passed/1 skipped（95.77% statements）与真实 Chrome M4 E2E 1/1；`0c91e3e` 目标 Vitest 27/27。typecheck、lint、样式、契约、build、bundle 与文档门禁均通过。
 
 ## D1 归因信息重复与顺序偏差
 
@@ -102,7 +102,7 @@ D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，�
 - `apps/web/src/app/apiError.test.ts`：页面处理的跨 Session 409 不再重复 toast。
 - `tests/e2e/m4-error-detail.test.mjs`：实际渲染的 ID 为 8 位，链接带正确 href/target/rel，点击卡体仍只更新 URL。
 
-最终复跑结果：目标 Vitest 26/26；Web 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 Computer Use smoke/reporting 需以 `13333e7` 重新采集并写入报告。
+最终复跑结果：`0c91e3e` 目标 Vitest 27/27；`13333e7` Web 全量 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 Computer Use smoke/reporting 需以最新 head 重新采集并写入报告。
 
 ## D5 compact 问题卡结构与报告入口
 
