@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M5-02 Target Config API 集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #124</p>
+    <h1>M5-02 Target Config API 集成冒烟报告</h1>
+    <p class="summary">在真实 SQLite 迁移、ASGI HTTP、target repository、catalog 聚合和本地 bare git 仓库上验证 M5-02。target 写权限、URL/path/ref 校验、非交互 git 子进程、历史 run 生命周期、catalog 并发限制和契约均通过；本切片没有 GUI，因此原生 Computer Use 明确不适用。</p>
+    <span class="meta">2026-10-27 · macOS · SQLite + ASGI + local bare git + MySQL 8.4 CI</span>
+    <div class="metrics"><div class="metric"><b>11</b><span>冒烟场景</span></div><div class="metric"><b>10</b><span>通过</span></div><div class="metric"><b>1</b><span>不适用（无 GUI）</span></div><div class="metric"><b>53</b><span>M5-02 测试</span></div><div class="metric"><b>3/3</b><span>CI jobs</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-27 · macOS · SQLite + ASGI + local bare git + MySQL 8.4 CI</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#51 · m5-02 target config api</dd></div><div class="fact"><dt>PR</dt><dd>#124</dd></div><div class="fact"><dt>Validation head</dt><dd>93034ba</dd></div><div class="fact"><dt>Branch</dt><dd>codex/m5-02-target-config-api</dd></div><div class="fact"><dt>Database</dt><dd>Temporary SQLite + MySQL 8.4 CI</dd></div><div class="fact"><dt>M5-02 suite</dt><dd>53 passed</dd></div><div class="fact"><dt>CI run</dt><dd>40388647189 · all three jobs SUCCESS</dd></div><div class="fact"><dt>Native Computer Use</dt><dd>Not applicable: no frontend or GUI surface in this slice</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>10 pass · 1 manual</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>Target CRUD + camelCase</td><td><span class="status pass">PASS</span></td><td>真实 ASGI + SQLite 完成 create/list/update/delete；201/200/204 与 camelCase 字段符合契约。</td><td class="evidence">pytest-m5.txt<br>test_targets_api.py</td></tr><tr><td class="num">02</td><td>方法级权限</td><td><span class="status pass">PASS</span></td><td>GET 允许 admin/member；POST/PUT/DELETE 对 member 返回 403；既有 users/acquisition 权限回归通过。</td><td class="evidence">pytest-m5.txt<br>test_auth_scope.py</td></tr><tr><td class="num">03</td><td>URL / subDir / ref 校验</td><td><span class="status pass">PASS</span></td><td>HTTPS/SSH/SCP 受控接受；userinfo、token/query、畸形 IPv6/port、非法 ref 与路径穿越稳定返回 422 REPO_INVALID。</td><td class="evidence">pytest-m5.txt<br>test_targets_api.py</td></tr><tr><td class="num">04</td><td>真实 git 进程</td><td><span class="status pass">PASS</span></td><td>对本地 bare repo 执行真实非交互 git ls-remote，main 可解析且 tags 规范化为 v1.9.0/v2.0.0。</td><td class="evidence">git-smoke.json<br>collect-git-smoke.mjs</td></tr><tr><td class="num">05</td><td>超时进程组清理</td><td><span class="status pass">PASS</span></td><td>git 使用 DEVNULL stdin、关闭终端 prompt、独立 POSIX session；超时取消时 killpg 并 wait 回收。</td><td class="evidence">pytest-m5.txt<br>test_targets_api.py</td></tr><tr><td class="num">06</td><td>Target 生命周期</td><td><span class="status pass">PASS</span></td><td>active run 在同一事务内阻止删除并返回 409；terminal run 允许删除配置，target_config_id 置空且 run 快照保留。</td><td class="evidence">pytest-m5.txt<br>test_database.py<br>migration 0007</td></tr><tr><td class="num">07</td><td>Versions</td><td><span class="status pass">PASS</span></td><td>versions 返回去重排序 tags 和 defaultRef；远端错误收敛为脱敏 422。</td><td class="evidence">pytest-m5.txt<br>test_targets_api.py</td></tr><tr><td class="num">08</td><td>Enabled target catalog</td><td><span class="status pass">PASS</span></td><td>配置列表保留 disabled；catalog 仅返回 enabled，按 skill/agent 分组，多个 enabled target 保序且远端并发不超过 4。</td><td class="evidence">pytest-m5.txt<br>test_catalogs_api.py</td></tr><tr><td class="num">09</td><td>Model catalog</td><td><span class="status pass">PASS</span></td><td>真实 agents 行聚合 distinct session/agent 计数，忽略 null/blank，按 session、agent、model 稳定排序。</td><td class="evidence">pytest-m5.txt<br>test_catalogs_api.py<br>test_database.py</td></tr><tr><td class="num">10</td><td>OpenAPI / SQLite / MySQL</td><td><span class="status pass">PASS</span></td><td>生成契约 current；SQLite 数据库 lane 17 passed；CI MySQL 8.4 执行 migration、schema/FK、repository 和 lifecycle contract。</td><td class="evidence">contract-check.txt<br>pytest-db.txt<br>ci-summary.json</td></tr><tr><td class="num">11</td><td>原生 Computer Use</td><td><span class="status manual">N/A</span></td><td>M5-02 只新增后端 API 和契约，没有前端路由、页面或可交互桌面表面；不生成伪造截图。</td><td class="evidence">后端-only issue 边界<br>ASGI + real git + CI 证据</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>no screenshots</small></div>
+    <div class="shots"><div class="empty">No screenshots were attached.</div></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>Target API / auth</td><td>真实 SQLite ASGI E2E + component tests</td><td>CRUD、方法级权限、错误 envelope 和稳定状态码已验证。</td><td>M5-03 配置页继续复用这些 API/错误契约。</td></tr><tr><td>Remote validation / process safety</td><td>Service tests + local bare git + fake process timeout</td><td>URL/path/ref 校验、argv-only、非交互和进程组回收均有证据。</td><td>真实外部 SSH 远端仍属于部署联调，不放入普通 CI。</td></tr><tr><td>Lifecycle / persistence</td><td>SQLite + MySQL CI + migration reflection</td><td>历史 run 快照与 target 删除、active-run 原子守卫和双库行为已验证。</td><td>后续 run 创建必须继续使用 target 快照。</td></tr><tr><td>Catalogs</td><td>Real normalized agents + concurrent GitRemote double</td><td>enabled 过滤、分组、排序、模型聚合和并发上限通过。</td><td>若真实 catalog 延迟明显，再把并发度配置化。</td></tr><tr><td>GUI / Computer Use</td><td>N/A</td><td>本切片没有用户界面。</td><td>M5-03/M5-05 的 UI issue 执行原生 CUA 与原型视觉对照。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>M5-02 后端配置与 catalog 切片通过真实 HTTP、数据库、git 和 CI 验证；最终冒烟未发现未解决产品缺陷。</strong></p><ul><li>本切片无 GUI，未伪造 Computer Use 证据。</li><li>真实外部网络未在本地使用；本地 bare repo 验证真实 git 进程，MySQL 验证来自 CI。</li><li>M5-03/M5-05 可直接基于当前 target/catalog API 构建 UI 与启动向导。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：真实 SQLite/ASGI、本地 bare git、自动化门禁与 PR CI。HTML 由 renderer 生成，不应手改。</p>
+</main>
+</body>
+</html>
