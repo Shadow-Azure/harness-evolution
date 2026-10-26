@@ -9,10 +9,13 @@ milestone: m3
 depends:
   - m3-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -24,11 +27,7 @@ github:
 
 ## Background
 
-
-
-
-
-m3-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+The Session browser and Agent flow already use real data and interactions, but the selected Agent and evidence position live only in memory. Refresh, new windows, and browser history cannot restore the same view, and there is no stable URL parsing boundary.
 
 ## Goals
 
@@ -36,9 +35,9 @@ m3-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 完成 m3-04 声明的交付边界，并让它可通过下列命令独立验收。
-- 保持 contracts、数据库、前端与既有门禁一致。
-- 失败、空态和重复输入都有明确行为。
+- Treat `/sessions/:sid?agent=&evidence=` as the single source of state.
+- Use explicit page or inline errors for invalid parameters and stale Agents without crossing Sessions.
+- Provide pure parsing and ownership-resolver seams for the later `/errors?case=&tab=` route.
 
 ## Design authority
 
@@ -56,9 +55,10 @@ m3-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-- 定义并实现 sessionId/agentId/证据/tab 参数解析与恢复
-- 非法或跨会话 id 返回 409/页面错误
-- 前进后退不丢状态
+- Strictly parse, canonicalize, and validate `sessionId/agent/evidence/case/tab`.
+- Restore Agent and evidence from the URL, write node selection back to the URL, and preserve the position across refresh, new windows, and back/forward.
+- Clear invalid Agent state with an inline notice; keep the Agent and clear out-of-range evidence.
+- Provide only a bad-case ownership resolver seam; m4-02 drives the real cross-Session 409 from API data.
 
 ## Implementation steps
 
@@ -66,9 +66,9 @@ m3-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 
-1. 写 query parser 和浏览器历史失败测试
-2. 实现守卫与恢复
-3. 验证新窗口打开
+1. Write failing parser, page restoration, history, and new-window tests first.
+2. Implement URL-derived state, post-tree validation, and node write-back.
+3. Verify refresh, new windows, and the 390px prototype shell with real four-Session data.
 
 ## Dependencies and boundary
 
@@ -86,15 +86,16 @@ m3-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 ```sh
-pnpm test:api -- tests/m3-04-session-deep-links
-pnpm test:db
-pnpm test:web
-pnpm test:e2e
+pnpm test:web -- deepLink sessions
+pnpm typecheck:web
+pnpm test:e2e --pattern "deep links survive"
+pnpm build
+pnpm verify:bundle
 ```
 
-- 深链测试通过
-- 刷新/新窗口恢复同一位置
-- 跨 session 409 可见
+- Invalid parser input triggers neither detail nor tree requests.
+- Refresh, new windows, and back/forward restore the Session, Agent, and evidence.
+- A failed current-Session tree does not apply stale deep state; a successful retry restores it.
 
 ## Acceptance
 
@@ -102,7 +103,7 @@ pnpm test:e2e
 
 
 
-- 深链可分享且无串会话
+- Deep links are shareable, Agent/evidence recovery is stable, and resources never leak across Sessions.
 
 ## Gates and CI
 
@@ -110,8 +111,9 @@ pnpm test:e2e
 
 
 
-- query parser 单测、E2E、契约测试
+- Parser unit tests plus real-Chrome E2E and existing typecheck/build/bundle gates.
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- No short-link service.
+- Do not register `/sessions/:sid/errors` or fabricate a bad-case ownership response in m3-04.

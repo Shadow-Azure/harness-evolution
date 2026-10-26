@@ -48,6 +48,10 @@ const props = defineProps({
     type: String as () => string | null,
     default: null,
   },
+  activeEventIndex: {
+    type: Number as () => number | null,
+    default: null,
+  },
 });
 
 const emit = defineEmits<{
@@ -177,6 +181,7 @@ const stats = computed<Array<{
         <template v-else-if="tree">
           <AgentTree
             :active-agent-id="activeAgentId"
+            :active-event-index="activeEventIndex"
             :expanded="expandedAgentIds"
             :tree="tree"
             @node-select="emit('node-select', $event)"

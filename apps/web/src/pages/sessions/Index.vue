@@ -8,6 +8,7 @@ import {
   useSessionSummary,
   useSessionTree,
 } from "../../composables/useSessions";
+import { parseSessionDeepLink } from "../../router/deepLink";
 import SearchBox from "./components/SearchBox.vue";
 import SessionList from "./components/SessionList.vue";
 import SessionOverview from "./components/SessionOverview.vue";
@@ -19,6 +20,8 @@ defineOptions({ name: "SessionsPage" });
 const route = useRoute();
 const router = useRouter();
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
+const deepLinkNotice = ref("");
+let noticeOwnedPath: string | null = null;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let searchRevision = 0;
 
@@ -53,9 +56,26 @@ const filters = computed<SessionFilters>(() => {
   };
 });
 
-const selectedId = computed(() =>
+const rawSessionId = computed(() =>
   typeof route.params.sessionId === "string" ? route.params.sessionId : "",
 );
+const deepLinkResult = computed(() =>
+  rawSessionId.value
+    ? parseSessionDeepLink(
+        rawSessionId.value,
+        route.query as Record<string, unknown>,
+      )
+    : null,
+);
+const deepLinkError = computed(() =>
+  deepLinkResult.value && !deepLinkResult.value.ok
+    ? deepLinkResult.value
+    : null,
+);
+const deepLinkState = computed(() =>
+  deepLinkResult.value?.ok ? deepLinkResult.value.state : null,
+);
+const selectedId = computed(() => deepLinkState.value?.sessionId ?? "");
 const activeStatus = computed<SessionStatusFilter>(() => {
   if (filters.value.status === "all" || filters.value.status === "ok") {
     return filters.value.status;
@@ -72,7 +92,6 @@ const treeQuery = useSessionTree(
 );
 
 const expandedBySession = ref<Record<string, string[]>>({});
-const activeAgentBySession = ref<Record<string, string | null>>({});
 
 const items = computed(() => listQuery.data.value?.items ?? []);
 const selectedItem = computed(
@@ -96,11 +115,47 @@ const overviewItem = computed(
 const expandedAgentIds = computed(
   () => expandedBySession.value[selectedId.value] ?? [],
 );
-const activeAgentId = computed(
-  () => activeAgentBySession.value[selectedId.value] ?? null,
+const requestedAgentId = computed(
+  () => deepLinkState.value?.agentId ?? null,
 );
+const mainAgentId = computed(
+  () =>
+    sessionTree.value?.agents.find((agent) => agent.kind === "main")?.agentId
+    ?? null,
+);
+const activeAgentId = computed(() => {
+  const requested = requestedAgentId.value;
+  if (!requested) {
+    return mainAgentId.value;
+  }
+  if (!sessionTree.value) {
+    return requested;
+  }
+  return sessionTree.value.agents.some((agent) => agent.agentId === requested)
+    ? requested
+    : mainAgentId.value;
+});
+const requestedEventIndex = computed(
+  () => deepLinkState.value?.eventIndex ?? null,
+);
+const activeEventIndex = computed(() => {
+  const agentId = requestedAgentId.value;
+  const eventIndex = requestedEventIndex.value;
+  if (!agentId || eventIndex === null || !sessionTree.value) {
+    return null;
+  }
+  const agent = sessionTree.value.agents.find(
+    (candidate) => candidate.agentId === agentId,
+  );
+  return agent && eventIndex >= 0 && eventIndex < agent.events.length
+    ? eventIndex
+    : null;
+});
 
-function routeWithFilters(overrides: Partial<SessionFilters>) {
+function routeWithFilters(
+  overrides: Partial<SessionFilters>,
+  preserveDeepLink = true,
+) {
   const next: Record<string, string> = {};
   for (const [key, value] of Object.entries({
     q: filters.value.q,
@@ -112,10 +167,39 @@ function routeWithFilters(overrides: Partial<SessionFilters>) {
       next[key] = String(value);
     }
   }
+  if (preserveDeepLink && deepLinkState.value?.agentId) {
+    next.agent = deepLinkState.value.agentId;
+    if (deepLinkState.value.eventIndex !== null) {
+      next.evidence = String(deepLinkState.value.eventIndex);
+    }
+  }
   return next;
 }
 
+function sameStringQuery(
+  current: Record<string, unknown>,
+  next: Record<string, string>,
+) {
+  const currentEntries = Object.entries(current)
+    .map(([key, value]) => [key, typeof value === "string" ? value : null] as const)
+    .sort(([left], [right]) => left.localeCompare(right));
+  const nextEntries = Object.entries(next)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return currentEntries.length === nextEntries.length
+    && currentEntries.every(([key, value], index) =>
+      value !== null
+      && key === nextEntries[index]?.[0]
+      && value === nextEntries[index]?.[1],
+    );
+}
+
+function ownDeepLinkNotice(message: string, targetPath: string, query: Record<string, string>) {
+  deepLinkNotice.value = message;
+  noticeOwnedPath = router.resolve({ path: targetPath, query }).fullPath;
+}
+
 async function updateFilter(overrides: Partial<SessionFilters>) {
+  deepLinkNotice.value = "";
   await router.push({
     path: selectedId.value
       ? `/sessions/${encodeURIComponent(selectedId.value)}`
@@ -144,9 +228,10 @@ function updateSort(value: SessionSort) {
 }
 
 function selectSession(sessionId: string) {
+  deepLinkNotice.value = "";
   void router.push({
     path: `/sessions/${encodeURIComponent(sessionId)}`,
-    query: routeWithFilters({}),
+    query: routeWithFilters({}, false),
   });
 }
 
@@ -171,10 +256,14 @@ function collapseAllBranches() {
 
 function selectAgent(agentId: string) {
   if (!selectedId.value) return;
-  activeAgentBySession.value = {
-    ...activeAgentBySession.value,
-    [selectedId.value]: agentId,
-  };
+  deepLinkNotice.value = "";
+  void router.push({
+    path: `/sessions/${encodeURIComponent(selectedId.value)}`,
+    query: {
+      ...routeWithFilters({}, false),
+      agent: agentId,
+    },
+  });
 }
 
 watch(
@@ -188,9 +277,35 @@ watch(
 );
 
 watch(
-  [items, selectedId, isListSuccess],
-  ([currentItems, currentId, success]) => {
+  () => route.fullPath,
+  (fullPath) => {
+    if (noticeOwnedPath !== null && fullPath !== noticeOwnedPath) {
+      deepLinkNotice.value = "";
+      noticeOwnedPath = null;
+    }
+  },
+);
+
+watch(
+  [deepLinkResult, () => route.query],
+  ([result]) => {
+    if (!result?.ok) return;
+    const next = routeWithFilters({}, false);
+    Object.assign(next, result.canonicalQuery);
+    if (sameStringQuery(route.query, next)) return;
+    void router.replace({
+      path: `/sessions/${encodeURIComponent(result.state.sessionId)}`,
+      query: next,
+    });
+  },
+  { immediate: true, flush: "post" },
+);
+
+watch(
+  [items, selectedId, isListSuccess, deepLinkError],
+  ([currentItems, currentId, success, invalidLink]) => {
     if (!success) return;
+    if (invalidLink) return;
     if (currentItems.length === 0) {
       if (currentId) {
         void router.replace({ path: "/sessions", query: routeWithFilters({}) });
@@ -210,22 +325,61 @@ watch(
 );
 
 watch(
-  [selectedId, () => treeQuery.data.value?.agents],
-  ([currentId, currentAgents]) => {
+  [
+    selectedId,
+    requestedAgentId,
+    requestedEventIndex,
+    () => treeQuery.data.value,
+  ],
+  ([currentId, , , currentTree]) => {
+    const currentAgents = currentTree?.agents;
     if (!currentId || !currentAgents?.length) return;
-    const currentActive = activeAgentBySession.value[currentId];
+    const requested = requestedAgentId.value;
     if (
-      currentActive &&
-      currentAgents.some((agent) => agent.agentId === currentActive)
+      !requested &&
+      currentAgents.some((agent) => agent.kind === "main")
     ) {
       return;
     }
-    const main = currentAgents.find((agent) => agent.kind === "main");
-    if (!main) return;
-    activeAgentBySession.value = {
-      ...activeAgentBySession.value,
-      [currentId]: main.agentId,
-    };
+    if (!requested) return;
+    const agent = currentAgents.find(
+      (candidate) => candidate.agentId === requested,
+    );
+    if (!agent) {
+      const targetPath = `/sessions/${encodeURIComponent(currentId)}`;
+      const targetQuery = routeWithFilters({}, false);
+      ownDeepLinkNotice(
+        "链接中的 Agent 已不存在，已返回主会话。",
+        targetPath,
+        targetQuery,
+      );
+      void router.replace({
+        path: targetPath,
+        query: targetQuery,
+      });
+      return;
+    }
+    if (
+      requestedEventIndex.value !== null &&
+      (requestedEventIndex.value < 0 ||
+        requestedEventIndex.value >= agent.events.length)
+    ) {
+      const targetPath = `/sessions/${encodeURIComponent(currentId)}`;
+      const targetQuery = {
+        ...routeWithFilters({}, false),
+        agent: agent.agentId,
+      };
+      ownDeepLinkNotice(
+        "链接中的证据位置无效，已定位到 Agent。",
+        targetPath,
+        targetQuery,
+      );
+      void router.replace({
+        path: targetPath,
+        query: targetQuery,
+      });
+      return;
+    }
   },
   { immediate: true },
 );
@@ -273,6 +427,14 @@ onBeforeUnmount(() => {
             />
           </div>
         </div>
+        <p
+          v-if="deepLinkError || deepLinkNotice"
+          class="deep-link-notice"
+          data-testid="deep-link-notice"
+          role="alert"
+        >
+          {{ deepLinkError?.message ?? deepLinkNotice }}
+        </p>
       </header>
       <SessionList
         :items="items"
@@ -284,7 +446,9 @@ onBeforeUnmount(() => {
       />
     </aside>
     <SessionOverview
+      v-if="!deepLinkError"
       :active-agent-id="activeAgentId"
+      :active-event-index="activeEventIndex"
       :expanded-agent-ids="expandedAgentIds"
       :item="overviewItem"
       :loading="isSummaryPending"
@@ -298,6 +462,16 @@ onBeforeUnmount(() => {
       @toggle-expanded="toggleExpanded"
       @tree-retry="treeQuery.refetch"
     />
+    <section
+      v-else
+      class="overview"
+      data-testid="deep-link-error"
+    >
+      <div class="deep-link-error">
+        <strong>Session 深链无效</strong>
+        <span>{{ deepLinkError.message }}</span>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -364,6 +538,38 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   color: var(--text-faint);
   font-size: 11px;
+}
+
+.deep-link-notice {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--orange) 32%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--orange) 7%, var(--bg-card));
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.overview {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+
+.deep-link-error {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--state-error-border);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-md);
+  background: var(--state-error-surface);
+  color: var(--text-dim);
+}
+
+.deep-link-error strong {
+  color: var(--state-error-text);
 }
 
 @media (max-width: 860px) {

@@ -28,7 +28,7 @@ Only health, login, refresh, and ticket-authenticated SSE are public; other APIs
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
 
-The session browser uses a 360px list and overview. Search, status, sort, and selection live in the URL; statistics and density bars come from `/api/sessions`.
+The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL; statistics and density read `/api/sessions`.
 
 Agent flow loads lazily.
 

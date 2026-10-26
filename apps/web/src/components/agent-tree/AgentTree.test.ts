@@ -2,6 +2,7 @@
 /* eslint-disable vue/one-component-per-file, vue/require-prop-types */
 
 import { mount } from "@vue/test-utils";
+import { nextTick } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
 import { demoNestedTree } from "./fixtures/demo-nested";
@@ -130,5 +131,35 @@ describe("AgentTree", () => {
       expect.any(Number),
       expect.objectContaining({ zoom: 0.85, duration: 260 }),
     );
+  });
+
+  it("locates and highlights a deep-linked Agent and evidence", async () => {
+    setCenterMock.mockClear();
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: ["main"],
+        activeAgentId: "agent-a",
+        activeEventIndex: 1,
+      },
+    });
+    await nextTick();
+    await nextTick();
+
+    expect(setCenterMock).toHaveBeenCalled();
+    const flow = wrapper.getComponent({ name: "VueFlow" });
+    const activeNode = flow.props("nodes").find(
+      (node: { id: string }) => node.id === "agent-a",
+    );
+    expect(activeNode.data.active).toBe(true);
+    expect(activeNode.data.activeEvidence).toBe(1);
+    expect(
+      flow.props("nodes")
+        .filter((node: { id: string }) => node.id !== "agent-a")
+        .every(
+          (node: { data: { activeEvidence: number | null } }) =>
+            node.data.activeEvidence === null,
+        ),
+    ).toBe(true);
   });
 });
