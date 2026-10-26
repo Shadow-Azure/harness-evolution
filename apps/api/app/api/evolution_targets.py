@@ -87,6 +87,7 @@ async def update_target(
         403: {"model": ErrorResponse, "description": "Administrator role is required"},
         404: {"model": ErrorResponse, "description": "Target does not exist"},
         409: {"model": ErrorResponse, "description": "Target has an active run"},
+        422: {"model": ErrorResponse, "description": "Target id is invalid"},
     },
 )
 async def delete_target(

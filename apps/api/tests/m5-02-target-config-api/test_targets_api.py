@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +13,16 @@ import httpx
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
+from sqlalchemy import insert
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
     EvolutionTargetRecord,
+    EvolutionTargetRepository,
 )
+from app.db.models.evolution import evolution_runs
 from app.errors import AppError, ErrorCode
 from app.main import create_app
 from app.service.evolution.targets import (
@@ -276,6 +280,9 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     assert updated.status_code == 200
     assert updated.json()["enabled"] is False
     assert updated.json()["subDir"] == "skills/deep-research-v2"
+    disabled_list = await target_http.member.get("/api/evolution/targets")
+    assert disabled_list.status_code == 200
+    assert disabled_list.json()["items"][0]["enabled"] is False
 
     versions = await target_http.member.get(
         f"/api/evolution/targets/{body['id']}/versions",
@@ -324,6 +331,40 @@ async def test_target_routes_preserve_admin_and_error_envelopes(
     assert created.status_code == 201
     assert duplicate.status_code == 409
     assert duplicate.json()["error"]["code"] == "TARGET_EXISTS"
+
+    repository = EvolutionTargetRepository(target_http.database)
+    target = await repository.find("skill", "deep-research")
+    assert target is not None
+    async with target_http.database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="target-in-use-run",
+                title="target-in-use",
+                mode="full",
+                engine_key="full",
+                eval_config={},
+                target_config_id=target.id,
+                target_type="skill",
+                target_name=target.object_name,
+                target_version="v1",
+                repo_url=target.repo_url,
+                sub_dir=target.sub_dir,
+                remote_name="origin",
+                push_status="pending",
+                models=[],
+                status="running",
+                retry_attempts=0,
+                eval_status="pending",
+                progress_unit=0,
+                stats={},
+                created_at=datetime.now(UTC),
+            ),
+        )
+    in_use = await target_http.admin.delete(
+        f"/api/evolution/targets/{created.json()['id']}",
+    )
+    assert in_use.status_code == 409
+    assert in_use.json()["error"]["code"] == "TARGET_IN_USE"
 
     missing = await target_http.admin.delete("/api/evolution/targets/missing")
     assert missing.status_code == 404
