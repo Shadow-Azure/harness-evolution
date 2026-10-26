@@ -6,7 +6,7 @@
 kind: milestone
 id: m3
 title: M3 会话浏览与执行流
-status: active
+status: done
 github:
   number: 11
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/11
