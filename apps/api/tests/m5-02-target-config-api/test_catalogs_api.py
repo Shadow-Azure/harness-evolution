@@ -1,5 +1,6 @@
 """Member-readable catalogs backed by target configuration and Agent rows."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from app.db.base import Database
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.models.domain import agents, session_families, source_records
 from app.main import create_app
+from app.service.catalogs import CatalogService
 from app.third_party_api.git.remote import RepoInvalid
 
 CATALOG_ADMIN_TEMP_PASSWORD = "catalog-admin-temp-password"
@@ -46,6 +48,27 @@ class CatalogGitRemote:
         if self.fail:
             raise RepoInvalid("credential=should-not-leak")
         return tuple(sorted(self.tags.get(repo_url, ())))
+
+
+class SlowCatalogGitRemote(CatalogGitRemote):
+    """Track concurrent tag reads for one catalog call."""
+
+    def __init__(self, *, delay_seconds: float = 0.01) -> None:
+        """Start with no active or peak tag reads."""
+        super().__init__()
+        self.delay_seconds = delay_seconds
+        self.active = 0
+        self.max_active = 0
+
+    async def list_tags(self, repo_url: str) -> tuple[str, ...]:
+        """Hold each fake remote read open long enough to observe overlap."""
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(self.delay_seconds)
+            return await super().list_tags(repo_url)
+        finally:
+            self.active -= 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +224,22 @@ async def test_target_catalog_returns_only_enabled_targets_with_tags(
         "https://git.example.com/general-purpose.git",
         "https://git.example.com/deep-research.git",
     }
+
+
+async def test_catalog_limits_remote_concurrency_and_preserves_order(
+    catalog_api: CatalogApiEnvironment,
+) -> None:
+    """Slow remote tag reads are bounded while repository display order is stable."""
+    repository = EvolutionTargetRepository(catalog_api.database)
+    for index in range(6):
+        await repository.insert(_target_values("skill", f"skill-{index}"))
+    remote = SlowCatalogGitRemote()
+    service = CatalogService(repository, remote, max_remote_concurrency=2)
+
+    catalog = await service.targets()
+
+    assert remote.max_active == 2
+    assert [item.name for item in catalog.skill] == [f"skill-{index}" for index in range(6)]
 
 
 async def test_catalog_requires_authentication(

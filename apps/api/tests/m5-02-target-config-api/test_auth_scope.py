@@ -9,12 +9,14 @@ import httpx
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import insert
+from sqlalchemy import insert, select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
+    EvolutionTargetInUse,
     EvolutionTargetRepository,
     ModelUsageRecord,
 )
@@ -281,6 +283,77 @@ async def test_active_run_detection_uses_only_open_states(
         )
 
     assert await repository.has_active_runs(target.id) is expected
+
+
+async def test_delete_is_atomic_and_terminal_history_releases_the_fk(
+    target_api: TargetApiEnvironment,
+) -> None:
+    """The delete transaction owns the active-run guard and history stays intact."""
+    repository = EvolutionTargetRepository(target_api.database)
+    target = await repository.insert(_target_values("skill", "atomic-delete"))
+    now = datetime.now(UTC)
+    async with target_api.database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="atomic-delete-run",
+                title="atomic delete",
+                mode="full",
+                engine_key="full",
+                eval_config={},
+                target_config_id=target.id,
+                target_type="skill",
+                target_name=target.object_name,
+                target_version="v1",
+                repo_url=target.repo_url,
+                sub_dir=target.sub_dir,
+                remote_name="origin",
+                push_status="pending",
+                models=[],
+                status="running",
+                retry_attempts=0,
+                eval_status="pending",
+                progress_unit=0,
+                stats={},
+                created_at=now,
+            ),
+        )
+
+    with pytest.raises(EvolutionTargetInUse):
+        await repository.delete(target.id)
+    assert await repository.get(target.id) is not None
+
+    async with target_api.database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "atomic-delete-run")
+            .values(status="completed", finished_at=now),
+        )
+
+    assert await repository.delete(target.id) is True
+    async with target_api.database.session() as session:
+        target_config_id: str | None = (
+            await session.execute(
+                select(evolution_runs.c.target_config_id).where(
+                    evolution_runs.c.id == "atomic-delete-run",
+                ),
+            )
+        ).scalar_one()
+    assert target_config_id is None
+
+
+async def test_non_unique_integrity_failure_is_not_reported_as_duplicate(
+    target_api: TargetApiEnvironment,
+) -> None:
+    """Unexpected integrity failures remain diagnosable rather than becoming 409."""
+    repository = EvolutionTargetRepository(target_api.database)
+
+    with pytest.raises(IntegrityError):
+        await repository.insert(
+            {
+                **_target_values("skill", "invalid-creator"),
+                "created_by": "missing-user",
+            },
+        )
 
 
 async def test_model_aggregation_uses_agents_table(

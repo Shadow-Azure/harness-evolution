@@ -12,6 +12,7 @@ from pydantic import Field
 
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
+    EvolutionTargetInUse,
     EvolutionTargetRecord,
 )
 from app.errors import AppError, ErrorCode
@@ -258,15 +259,15 @@ class EvolutionTargetService:
 
     async def delete(self, target_id: str) -> None:
         """Delete one unused target."""
-        if await self._repository.get(target_id) is None:
-            raise self._not_found()
-        if await self._repository.has_active_runs(target_id):
+        try:
+            deleted = await self._repository.delete(target_id)
+        except EvolutionTargetInUse:
             raise AppError(
                 status_code=409,
                 code=ErrorCode.TARGET_IN_USE,
                 message="target has an active run",
-            )
-        if not await self._repository.delete(target_id):
+            ) from None
+        if not deleted:
             raise self._not_found()
 
     async def versions(self, target_id: str) -> EvolutionTargetVersions:

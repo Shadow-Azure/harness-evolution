@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`service/evolution/targets.py` 独占对象名、POSIX 子目录、ref 与 HTTPS/SSH/SCP remote 的规范化，保存和版本读取都通过注入的 `GitRemote` 验证。生产 adapter 位于 `third_party_api/git`，只用参数数组调用 `git ls-remote`，超时会终止并回收子进程，所有失败收敛为不含 stderr、凭据或路径的 `REPO_INVALID`。配置列表保留启用和停用对象；只有 catalog 过滤 `enabled=true`。目标写操作按 HTTP 方法与路径要求 admin，读操作只要求登录。模型 catalog 只聚合归一化 `agents.model`，不读取 JSONL payload。
+`service/evolution/targets.py` 独占对象名、POSIX 子目录、ref 与 HTTPS/SSH/SCP remote 的规范化，保存和版本读取都通过注入的 `GitRemote` 验证。生产 adapter 位于 `third_party_api/git`，只用参数数组、非交互 stdin 与禁用 terminal prompt 的方式调用 `git ls-remote`；POSIX 子进程使用独立 session，超时会终止进程组并回收，所有失败收敛为不含 stderr、凭据或路径的 `REPO_INVALID`。配置列表保留启用和停用对象；只有 catalog 过滤 `enabled=true`，并以有界并发读取 tag。目标写操作按 HTTP 方法与路径要求 admin，读操作只要求登录。目标删除与进行中 run 检查在同一行锁事务中完成；历史 run 保留完整 target 快照，target FK 以 `ON DELETE SET NULL` 释放。模型 catalog 只聚合归一化 `agents.model`，不读取 JSONL payload。
 
 ## Alternatives considered
 

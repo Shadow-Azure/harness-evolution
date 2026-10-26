@@ -140,6 +140,7 @@ class EvolutionTableSchema(TypedDict):
     columns: dict[str, Mapping[str, object]]
     indexes: set[str]
     foreign_keys: set[tuple[tuple[str, ...], str]]
+    foreign_key_rules: set[tuple[tuple[str, ...], str, str | None]]
 
 
 async def reflected_evolution_schema(
@@ -164,6 +165,17 @@ async def reflected_evolution_schema(
                         (
                             tuple(str(column) for column in foreign_key["constrained_columns"]),
                             str(foreign_key["referred_table"]),
+                        )
+                        for foreign_key in inspect(sync_connection).get_foreign_keys(table)
+                    },
+                    "foreign_key_rules": {
+                        (
+                            tuple(str(column) for column in foreign_key["constrained_columns"]),
+                            str(foreign_key["referred_table"]),
+                            cast(
+                                str | None,
+                                foreign_key.get("options", {}).get("ondelete"),
+                            ),
                         )
                         for foreign_key in inspect(sync_connection).get_foreign_keys(table)
                     },
@@ -192,6 +204,12 @@ def assert_evolution_schema(schema: dict[str, EvolutionTableSchema]) -> None:
         ("target_config_id",),
         "evolution_targets",
     ) in schema["evolution_runs"]["foreign_keys"]
+    assert schema["evolution_runs"]["columns"]["target_config_id"]["nullable"] is True
+    assert (
+        ("target_config_id",),
+        "evolution_targets",
+        "SET NULL",
+    ) in schema["evolution_runs"]["foreign_key_rules"]
     assert schema["probe_clusters"]["columns"]["impact"]["nullable"] is True
     assert {
         "ix_probe_clusters_run",
@@ -454,7 +472,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0006"
+        assert result.scalar_one() == "0007"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -711,7 +729,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0006"
+        assert result.scalar_one() == "0007"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")

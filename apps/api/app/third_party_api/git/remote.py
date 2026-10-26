@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import signal
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -85,16 +87,29 @@ class SubprocessGitRemote:
     @staticmethod
     async def _run_process(argv: tuple[str, ...]) -> GitProcessResult:
         """Execute git as a child process with an argument array."""
+        environment = dict(os.environ)
+        environment.update(
+            {
+                "GIT_TERMINAL_PROMPT": "0",
+                "GCM_INTERACTIVE": "Never",
+            },
+        )
         process = await asyncio.create_subprocess_exec(
             *argv,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=environment,
+            start_new_session=os.name != "nt",
         )
         try:
             stdout, stderr = await process.communicate()
         except asyncio.CancelledError:
             with suppress(ProcessLookupError):
-                process.kill()
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
             await process.wait()
             raise
         return GitProcessResult(

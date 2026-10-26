@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -13,12 +14,13 @@ import httpx
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
+    EvolutionTargetInUse,
     EvolutionTargetRecord,
     EvolutionTargetRepository,
 )
@@ -106,6 +108,8 @@ class FakeRepository:
 
     async def delete(self, target_id: str) -> bool:
         """Delete and report whether the row existed."""
+        if self.active:
+            raise EvolutionTargetInUse
         return self.rows.pop(target_id, None) is not None
 
     async def has_active_runs(self, target_id: str) -> bool:
@@ -371,6 +375,59 @@ async def test_target_routes_preserve_admin_and_error_envelopes(
     assert missing.json()["error"]["code"] == "TARGET_NOT_FOUND"
 
 
+async def test_target_delete_allows_history_and_clears_only_the_fk(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Terminal runs preserve snapshots while releasing the deleted target FK."""
+    created = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_write().model_dump(by_alias=True),
+    )
+    assert created.status_code == 201
+    target_id = created.json()["id"]
+    async with target_http.database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="target-history-run",
+                title="target-history",
+                mode="full",
+                engine_key="full",
+                eval_config={},
+                target_config_id=target_id,
+                target_type="skill",
+                target_name="deep-research",
+                target_version="v1",
+                repo_url="https://git.example.com/agent-skills.git",
+                sub_dir="skills/deep-research",
+                remote_name="origin",
+                push_status="succeeded",
+                models=[],
+                status="completed",
+                retry_attempts=0,
+                eval_status="completed",
+                progress_unit=5,
+                stats={},
+                created_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+            ),
+        )
+
+    deleted = await target_http.admin.delete(
+        f"/api/evolution/targets/{target_id}",
+    )
+
+    assert deleted.status_code == 204
+    async with target_http.database.session() as session:
+        target_config_id: str | None = (
+            await session.execute(
+                select(evolution_runs.c.target_config_id).where(
+                    evolution_runs.c.id == "target-history-run",
+                ),
+            )
+        ).scalar_one()
+    assert target_config_id is None
+
+
 @pytest.mark.parametrize(
     "repo_url",
     [
@@ -623,6 +680,7 @@ async def test_git_timeout_kills_and_reaps_the_child_process(
         """Child double that only exits when cancellation kills it."""
 
         returncode: int | None = None
+        pid = 12345
         killed = False
         waited = False
 
@@ -656,6 +714,13 @@ async def test_git_timeout_kills_and_reaps_the_child_process(
         "create_subprocess_exec",
         create_process,
     )
+    monkeypatch.setattr(
+        os,
+        "killpg",
+        lambda pid, _signal: (
+            process.kill() if pid == process.pid else pytest.fail(f"unexpected pid {pid}")
+        ),
+    )
     remote = SubprocessGitRemote(timeout_seconds=0.01)
 
     with pytest.raises(RepoInvalid):
@@ -669,5 +734,9 @@ async def test_git_timeout_kills_and_reaps_the_child_process(
         "https://git.example.com/repo.git",
         "main",
     )
+    assert calls[0][1]["stdin"] is asyncio.subprocess.DEVNULL
+    assert calls[0][1]["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    assert calls[0][1]["env"]["GCM_INTERACTIVE"] == "Never"
+    assert calls[0][1]["start_new_session"] is True
     assert process.killed is True
     assert process.waited is True

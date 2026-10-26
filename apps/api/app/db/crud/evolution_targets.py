@@ -43,6 +43,20 @@ class EvolutionTargetConflict(Exception):
     """The object type/name pair is already configured."""
 
 
+class EvolutionTargetInUse(Exception):
+    """The target still has an active evolution run."""
+
+
+def _is_unique_violation(error: IntegrityError) -> bool:
+    """Recognize the one target object-pair uniqueness failure across dialects."""
+    message = str(error.orig).lower()
+    return (
+        "unique constraint failed" in message
+        or "duplicate entry" in message
+        or "uq_evolution_targets_object" in message
+    )
+
+
 def _record(row: RowMapping) -> EvolutionTargetRecord:
     """Translate one target row into an immutable boundary record."""
     return EvolutionTargetRecord(
@@ -135,6 +149,8 @@ class EvolutionTargetRepository:
                     ),
                 )
             except IntegrityError as exc:
+                if not _is_unique_violation(exc):
+                    raise
                 raise EvolutionTargetConflict from exc
         created = await self.get(target_id)
         if created is None:
@@ -166,6 +182,8 @@ class EvolutionTargetRepository:
                     ),
                 )
             except IntegrityError as exc:
+                if not _is_unique_violation(exc):
+                    raise
                 raise EvolutionTargetConflict from exc
         if result.rowcount != 1:
             raise LookupError("evolution target not found")
@@ -175,8 +193,29 @@ class EvolutionTargetRepository:
         return updated
 
     async def delete(self, target_id: str) -> bool:
-        """Delete one target and report whether a row existed."""
+        """Delete an unused target under one row-locked transaction."""
         async with self._database.transaction() as session:
+            locked = (
+                await session.execute(
+                    select(evolution_targets.c.id)
+                    .where(evolution_targets.c.id == target_id)
+                    .with_for_update(),
+                )
+            ).scalar_one_or_none()
+            if locked is None:
+                return False
+            active_count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(evolution_runs)
+                    .where(
+                        evolution_runs.c.target_config_id == target_id,
+                        evolution_runs.c.status.in_(ACTIVE_RUN_STATUSES),
+                    ),
+                )
+            ).scalar_one()
+            if int(active_count) > 0:
+                raise EvolutionTargetInUse
             result = cast(
                 CursorResult[object],
                 await session.execute(

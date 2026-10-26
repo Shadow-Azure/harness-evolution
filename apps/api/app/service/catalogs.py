@@ -50,10 +50,15 @@ class CatalogService:
         self,
         repository: EvolutionTargetRepository,
         git_remote: GitRemote,
+        *,
+        max_remote_concurrency: int = 4,
     ) -> None:
         """Bind the catalog to its configuration store and remote tag reader."""
+        if max_remote_concurrency < 1:
+            raise ValueError("max_remote_concurrency must be positive")
         self._repository = repository
         self._git_remote = git_remote
+        self._remote_slots = asyncio.Semaphore(max_remote_concurrency)
 
     async def targets(self) -> CatalogTargets:
         """Return enabled targets grouped by object type with remote tags."""
@@ -83,7 +88,8 @@ class CatalogService:
     async def _versions(self, repo_url: str) -> list[str]:
         """Resolve sorted unique tags through the sanitized remote boundary."""
         try:
-            tags = await self._git_remote.list_tags(repo_url)
+            async with self._remote_slots:
+                tags = await self._git_remote.list_tags(repo_url)
         except RepoInvalid:
             raise AppError(
                 status_code=422,

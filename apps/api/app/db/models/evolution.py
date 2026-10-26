@@ -40,8 +40,8 @@ evolution_runs = Table(
     Column(
         "target_config_id",
         String(36),
-        ForeignKey("evolution_targets.id"),
-        nullable=False,
+        ForeignKey("evolution_targets.id", ondelete="SET NULL"),
+        nullable=True,
     ),
     Column("target_type", String(16), nullable=False),
     Column("target_name", String(128), nullable=False),
@@ -241,7 +241,7 @@ class EvolutionRunRecord:
     mode: str
     engine_key: str
     eval_config: dict[str, Any]
-    target_config_id: str
+    target_config_id: str | None
     target_type: str
     target_name: str
     target_version: str
@@ -418,7 +418,7 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         mode=_required_text(row["mode"]),
         engine_key=_required_text(row["engine_key"]),
         eval_config=_json_dict(row["eval_config"]),
-        target_config_id=_required_text(row["target_config_id"]),
+        target_config_id=_optional_text(row["target_config_id"]),
         target_type=_required_text(row["target_type"]),
         target_name=_required_text(row["target_name"]),
         target_version=_required_text(row["target_version"]),
