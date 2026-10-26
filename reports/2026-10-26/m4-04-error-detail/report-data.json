@@ -1,26 +1,26 @@
 {
   "lang": "zh-CN",
   "title": "M4-04 错误详情与归因集成冒烟报告",
-  "eyebrow": "Harness Evolution · PR #120 · validation on 0c91e3e",
-  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟发现并修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链以及画布泄漏裸布局诊断三项缺陷；最终提交同时移除原型没有的“问题 ID”标签，并把归因结论改成 14px 结论值与状态 chip。15 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、双向联动、深链恢复、加载/错误/重试、归属校验、响应式布局及控制台清洁度均有证据。",
+  "eyebrow": "Harness Evolution · PR #120 · validation on bd9b9d5",
+  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟与复审推动修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链、画布泄漏裸布局诊断、致命布局空白、页面失败态缺少真实浏览器证据和降级详情泄漏机器码；最终 UI 同时移除“问题 ID”标签、恢复 14px 结论与状态 chip、精确对齐 prompt 文案。17 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、深链恢复、加载/错误/404/重试、归属校验、响应式布局及控制台清洁度均有证据。",
   "meta": "2026-10-26/27 · macOS · Google Chrome · FastAPI + Vite + SQLite",
   "metrics": [
-    { "value": "17", "label": "冒烟场景" },
-    { "value": "17", "label": "通过" },
-    { "value": "3", "label": "缺陷已修复" },
+    { "value": "19", "label": "冒烟场景" },
+    { "value": "19", "label": "通过" },
+    { "value": "6", "label": "缺陷/缺口已收敛" },
     { "value": "0", "label": "非预期运行时错误" },
-    { "value": "3/3 SUCCESS", "label": "CI" }
+    { "value": "待本次 push", "label": "CI" }
   ],
   "facts": [
     { "label": "Issue", "value": "#49 · M4-04 error detail" },
     { "label": "PR", "value": "#120" },
-    { "label": "Validation base", "value": "0c91e3e" },
-    { "label": "Evidence patch", "value": "final smoke report on 0c91e3e" },
-    { "label": "CI", "value": "run 40360956818 · build-and-docs / mysql / flow-online all SUCCESS" },
+    { "label": "Validation base", "value": "bd9b9d5" },
+    { "label": "Evidence patch", "value": "final smoke report on bd9b9d5" },
+    { "label": "CI", "value": "GitHub Actions validates the evidence commit after push" },
     { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
     { "label": "Database", "value": "临时 SQLite fixture" },
     { "label": "Evidence", "value": "CDP 集成断言 + 最终代码上的原生 Computer Use 截图" },
-    { "label": "Native capture", "value": "08/09 已按最终两行卡片和无诊断画布重采" }
+    { "label": "Native capture", "value": "10/11 已按最终 UI、致命布局修复和无机器码降级重采" }
   ],
   "matrix": {
     "columns": ["#", "场景", "结果", "观测", "证据"],
@@ -37,7 +37,7 @@
         "name": "1408px 原型布局",
         "status": { "kind": "pass", "label": "PASS" },
         "detail": "340px 左栏与完整执行流同屏；compact 错误卡按原型显示两行和归因报告深链；正式画布无裸诊断 code，且无横向溢出。",
-        "evidence": ["screenshots/10-before-card-and-diagnostics.png", "screenshots/01-errors-all-1408.png"]
+        "evidence": ["screenshots/12-before-card-and-diagnostics.png", "screenshots/01-errors-all-1408.png"]
       },
       {
         "id": "03",
@@ -111,38 +111,52 @@
       },
       {
         "id": "13",
+        "name": "详情 404",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不存在的问题显示页级不可重试错误，不渲染侧栏、执行流或详情。",
+        "evidence": ["screenshots/08-detail-404.png"]
+      },
+      {
+        "id": "14",
+        "name": "致命布局降级",
+        "status": { "kind": "fixed", "label": "FAIL → FIXED" },
+        "detail": "缺少 main Agent 的 tree 不再留下空白画布；执行流显示可读不可绘制状态，不下发 MISSING_MAIN 机器码。",
+        "evidence": ["screenshots/09-fatal-layout.png"]
+      },
+      {
+        "id": "15",
         "name": "跨 Session 409",
         "status": { "kind": "fixed", "label": "FAIL → FIXED" },
         "detail": "修复前同时出现两条后端英文 toast；修复后只显示页级中文不可重试错误，不渲染侧栏、执行流、详情或重复全局提示。",
         "evidence": ["screenshots/06-cross-session-409-before.png", "screenshots/06-cross-session-409.png"]
       },
       {
-        "id": "14",
+        "id": "16",
         "name": "390px 响应式布局",
         "status": { "kind": "pass", "label": "PASS" },
         "detail": "单列工作台无横向溢出，详情与归因仍可访问。",
         "evidence": ["screenshots/07-mobile-390.png"]
       },
       {
-        "id": "15",
+        "id": "17",
         "name": "Console / network",
         "status": { "kind": "pass", "label": "PASS" },
-        "detail": "除刻意验证的 409 与 tree 中断外，无 warning、error 或未捕获异常。",
+        "detail": "除刻意验证的 404、409、tree 中断与致命布局响应外，无 warning、error 或未捕获异常。",
         "evidence": ["console-summary.txt"]
       },
       {
-        "id": "16",
+        "id": "18",
         "name": "原生 Computer Use · 归因分析",
         "status": { "kind": "pass", "label": "PASS" },
         "detail": "原生 Chrome 完成登录、首次改密和 URL 导航；归因页签、执行流、结论及来源链接均可读。",
-        "evidence": ["screenshots/08-native-computer-use-attribution.jpeg"]
+        "evidence": ["screenshots/10-native-computer-use-attribution.jpeg"]
       },
       {
-        "id": "17",
+        "id": "19",
         "name": "原生 Computer Use · 页签切换",
         "status": { "kind": "pass", "label": "PASS" },
         "detail": "原生点击“问题描述”后 URL 与原页面选中态同步，8 位问题 ID、归因报告链接和对象信息可见。",
-        "evidence": ["screenshots/09-native-computer-use-description.jpeg"]
+        "evidence": ["screenshots/11-native-computer-use-description.jpeg"]
       }
     ]
   },
@@ -176,11 +190,41 @@
         { "label": "Root cause", "value": "AgentTree 直接把 graph.diagnostics 的机器 code 渲染成用户可见覆盖层。" }
       ],
       "state": { "kind": "fixed", "label": "已修复 · TDD + 真实 Chrome 复测" }
+    },
+    {
+      "severity": "P2",
+      "title": "致命布局诊断导致无提示空白画布",
+      "facts": [
+        { "label": "Actual", "value": "MISSING_MAIN、DUPLICATE_MAIN 或 DUPLICATE_AGENT 会返回零节点；隐藏机器码后用户只看到空白。" },
+        { "label": "Expected", "value": "布局无法绘制时显示面向用户的降级说明，仍保留内部 diagnostics 供测试和后续诊断。" },
+        { "label": "Root cause", "value": "AgentTree 移除了裸诊断覆盖层，但没有为零节点布局提供替代状态。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 组件测试 + CDP 故障注入" }
+    },
+    {
+      "severity": "P3",
+      "title": "页面 404、5xx 与重试缺少回归证据",
+      "facts": [
+        { "label": "Actual", "value": "PR 声明页面支持加载、重试和 404，但测试只覆盖 409、tree 错误和局部重试。" },
+        { "label": "Expected", "value": "详情 404 应不可重试；详情/分析 5xx 应显示可重试页面错误并在重试后恢复。" },
+        { "label": "Root cause", "value": "页面级详情失败路径缺少 MSW 与真实 Chrome 场景。" }
+      ],
+      "state": { "kind": "fixed", "label": "已补验 · MSW + 真实 404 场景" }
+    },
+    {
+      "severity": "P3",
+      "title": "降级详情可见机器诊断码",
+      "facts": [
+        { "label": "Actual", "value": "数据降级说明后面拼接 BAD_CASE_DISPLAY_STATE_UNKNOWN 等内部 code。" },
+        { "label": "Expected", "value": "界面只说明外部字段漂移和安全占位，机器诊断码不进入用户文案。" },
+        { "label": "Root cause", "value": "ProblemDescription 直接把 diagnosticCode 插入可见段落。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 组件回归" }
     }
   ],
   "screenshots": [
     {
-      "src": "screenshots/10-before-card-and-diagnostics.png",
+      "src": "screenshots/12-before-card-and-diagnostics.png",
       "alt": "修复前错误卡缺少报告 ID 且画布显示裸诊断 code",
       "label": "02a · 原型差异修复前",
       "caption": "左栏缺少归因报告深链，执行流同时泄漏 MISSING_PARENT_EVENT。",
@@ -243,16 +287,30 @@
       "variant": "wide"
     },
     {
-      "src": "screenshots/08-native-computer-use-attribution.jpeg",
+      "src": "screenshots/08-detail-404.png",
+      "alt": "不存在的问题显示页级不可重试错误",
+      "label": "08 · 详情 404",
+      "caption": "问题不存在时只显示页级错误，不渲染工作区。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/09-fatal-layout.png",
+      "alt": "缺少 main Agent 时显示友好的执行流降级状态",
+      "label": "09 · 致命布局",
+      "caption": "布局无法生成节点时显示“执行流数据不完整，暂时无法绘制。”，不暴露机器码或空白 VueFlow。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/10-native-computer-use-attribution.jpeg",
       "alt": "原生 Google Chrome 中的归因分析页面",
-      "label": "08 · 原生归因",
+      "label": "10 · 原生归因",
       "caption": "Computer Use 在真实 Chrome 中打开 attr 深链，两行错误卡、14px 结论/状态 chip、执行流与归因内容均可见。",
       "variant": "wide"
     },
     {
-      "src": "screenshots/09-native-computer-use-description.jpeg",
+      "src": "screenshots/11-native-computer-use-description.jpeg",
       "alt": "原生 Google Chrome 中点击问题描述后的页面",
-      "label": "09 · 原生页签切换",
+      "label": "11 · 原生页签切换",
       "caption": "Computer Use 点击“问题描述”后 URL 与选中态同步；问题 ID、报告 ID 和状态直接呈现，多余“问题 ID”标签已移除。",
       "variant": "wide"
     }
@@ -263,13 +321,13 @@
       {
         "area": "错误详情主链路",
         "coverage": "CDP + 原生 Computer Use",
-        "conclusion": "五态、列表/画布联动、全部错误恢复、双页签刷新与归属校验均通过。",
+        "conclusion": "五态、列表/画布联动、全部错误恢复、双页签刷新、404 与归属校验均通过。",
         "recommendation": "后续改动继续保留真实 API + 浏览器双层验证。"
       },
       {
         "area": "异步状态",
         "coverage": "真实 Chrome Fetch 故障注入",
-        "conclusion": "加载、执行流失败和局部重试均被条件断言锁定。",
+        "conclusion": "加载、执行流失败、局部重试与缺少 main 的致命布局降级均被条件断言锁定。",
         "recommendation": "CI 中继续使用真实请求而非组件桩验证关键三态。"
       },
       {
@@ -281,7 +339,7 @@
       {
         "area": "回归门禁",
         "coverage": "Vitest + 真实 Chrome E2E + CDP 复测",
-        "conclusion": "单元测试锁定页面处理型 409 不弹 toast、compact 报告深链、诊断不外显、无“问题 ID”标签和归因 banner 原型样式；真实 Chrome E2E 与 15/15 CDP 冒烟复测通过。",
+        "conclusion": "单元测试锁定 404/5xx/重试、页面处理型 409 不弹 toast、compact 报告深链、致命布局降级、诊断不外显、无“问题 ID”标签和归因 banner 原型样式；真实 Chrome E2E 与 17/17 CDP 冒烟复测通过。",
         "recommendation": "以 PR #120 最终 head 的 CI 为准，合并前保持 CI 全绿。"
       }
     ]
@@ -289,12 +347,12 @@
   "conclusion": {
     "kind": "pass",
     "label": "冒烟通过",
-    "summary": "冒烟发现的重复 toast、错误卡报告 ID 缺失与裸诊断泄漏均已修复并复测，最终 17 个场景全部通过。",
+    "summary": "冒烟与复审发现的问题均已修复或补验并复测，最终 19 个场景全部通过。",
     "points": [
       "错误详情的关键结构、状态与交互和原型一致。",
       "页面已处理的 BAD_CASE_SESSION_MISMATCH 不再重复弹全局 toast，其他 409 提示边界保持不变。",
-      "两行错误卡和真实 probe 深链与原型一致，布局诊断不再进入用户界面。",
-      "深链刷新、跨 Session 409、加载/错误/重试路径均被验证。",
+      "两行错误卡和真实 probe 深链与原型一致，布局诊断与降级机器码不再进入用户界面。",
+      "深链刷新、404、跨 Session 409、加载/错误/重试与致命布局降级路径均被验证。",
       "原生 Computer Use 与 CDP 证据相互补充。",
       "除预期故障注入外，控制台与网络无异常。"
     ]

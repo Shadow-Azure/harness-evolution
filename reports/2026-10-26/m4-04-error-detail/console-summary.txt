@@ -1,3 +1,5 @@
 Console/network violations: 0
+Expected missing problem 404 response was allowlisted.
 Expected cross-session 409 response was allowlisted.
 Expected tree request failure used for loading/error/retry injection was allowlisted.
+Expected missing-main tree response was injected and did not produce runtime errors.
