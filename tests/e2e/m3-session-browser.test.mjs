@@ -781,14 +781,9 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
         const notice = document.querySelector("[data-testid='deep-link-notice']");
         const hardError = document.querySelector("[data-testid='deep-link-error']");
         const login = document.querySelector("[data-testid='login-submit']");
-        if (!tree && !notice && !hardError && !login) return null;
-        const selected = document.querySelector(
-          "[data-testid='agent-tree'] .rf-agent[aria-pressed='true']",
-        );
-        const node = selected?.closest(".vue-flow__node");
-        if (!node || node.getAttribute("data-id") !== "child-9") {
+        if (notice || hardError || login) {
           return {
-            agentId: node?.getAttribute("data-id") ?? null,
+            agentId: null,
             collapseNodes: document.querySelectorAll(
               "[data-testid='agent-tree'] .rf-agent.collapse",
             ).length,
@@ -802,17 +797,25 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
             clientWidth: document.documentElement.clientWidth,
           };
         }
+        if (!tree) return null;
+        const selected = document.querySelector(
+          "[data-testid='agent-tree'] .rf-agent[aria-pressed='true']",
+        );
+        const node = selected?.closest(".vue-flow__node");
+        if (!node || node.getAttribute("data-id") !== "child-9") return null;
         const treeBox = tree.getBoundingClientRect();
         const nodeBox = selected.getBoundingClientRect();
+        const visible = nodeBox.right > treeBox.left
+          && nodeBox.left < treeBox.right
+          && nodeBox.bottom > treeBox.top
+          && nodeBox.top < treeBox.bottom;
+        if (!visible) return null;
         return {
           agentId: node.getAttribute("data-id"),
           collapseNodes: document.querySelectorAll(
             "[data-testid='agent-tree'] .rf-agent.collapse",
           ).length,
-          visible: nodeBox.right > treeBox.left
-            && nodeBox.left < treeBox.right
-            && nodeBox.bottom > treeBox.top
-            && nodeBox.top < treeBox.bottom,
+          visible,
           href: location.href,
           scrollWidth: document.documentElement.scrollWidth,
           clientWidth: document.documentElement.clientWidth,
