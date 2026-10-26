@@ -9,7 +9,7 @@ milestone: m4
 depends:
   - m3-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/api/alembic/**
@@ -17,6 +17,9 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
+  - tests/**
 adr: []
 github:
   number: 46
@@ -60,9 +63,12 @@ m4-01 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ```sh
 pnpm test:api -- tests/m4-01-external-read-models
 pnpm test:db
+pnpm test:db:mysql
+pnpm fixtures:check
 ```
 
 - 双方言查询通过
+- 五态 fixture 与真实只读行保持同构
 - 五态与降级路径断言完整
 
 ## 验收标准

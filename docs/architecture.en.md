@@ -61,6 +61,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
-- Missing: issue queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
+- Missing: issue HTTP queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
