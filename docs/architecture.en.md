@@ -2,7 +2,7 @@
 
 English | [中文](architecture.md)
 
-Records service boundaries, data flow and storage. Work advances by vertical slices; rationale lives in `.agents/notes/`.
+Records service boundaries, data flow and storage; slice rationale lives in `.agents/notes/`.
 
 ## Product boundary
 
@@ -26,29 +26,31 @@ Web ──► middleware ──► public endpoints | bearer APIs | ticket-authe
 
 Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
 
-Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change; concurrent 401s share one refresh and each request replays once; logout clears the query cache.
+Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change, concurrent 401s share one refresh, and logout clears the query cache.
 
 The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
 
-Target configuration is member-readable and admin-writable. Configuration includes disabled rows, while the wizard catalog includes enabled rows only; the backend owns errors.
+Target configuration is member-readable and admin-writable; it includes disabled rows, the wizard catalog includes enabled rows only, and the backend owns errors.
 
-Error details combine a problem sidebar, execution flow, and two tabs. State lives in the URL; cross-session ownership returns 409. Panels remember scroll offsets per Session. Agent flow loads asynchronously; gates protect bundle bytes and the 61-Agent performance budget.
+Run lists are backend-grouped with backend-generated display facts.
 
-The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual and timed triggers share the single-flight lock; no pending work creates no job.
+Error details combine a problem sidebar, execution flow and two tabs; selection lives in the URL, cross-session ownership returns 409, panels remember scroll offsets, and asynchronous flow remains subject to bundle and performance gates.
+
+The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed triggers share the single-flight lock, and no pending work creates no job.
 
 ## Data-layer strategy
 
-- Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
+- Production uses MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
-- Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and never concatenates SQL.
+- Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and `Database` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - Evolution: `progress_unit`/`EngineFactory`, admin target writes, git refs/tags, and `agents.model` catalogs.
-- `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
+- `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
-- External problem tables are read-only; their owner or fixture setup creates them.
+- External problem tables are read-only.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract
@@ -64,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, evolution target configuration and catalogs, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
-- Missing: evolution run HTTP/UI, patch/evaluation, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, evolution target configuration and catalogs, evolution run-list API/UI, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
+- Missing: evolution run detail, launch wizard, patch/evaluation, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

@@ -1,0 +1,61 @@
+{
+  "results": [
+    {
+      "id": "01",
+      "name": "空列表",
+      "status": "pass",
+      "detail": "真实空库显示 running/history 两个明确空态，不出现空白页。",
+      "evidence": [
+        "screenshots/01-empty-1408.png"
+      ]
+    },
+    {
+      "id": "02",
+      "name": "桌面运行列表",
+      "status": "pass",
+      "detail": "running 3 张、history 5 张保持后端顺序，八种状态文案、紫色 target chip、青色 model chip、57% 进度与原型一致。",
+      "evidence": [
+        "screenshots/02-desktop-1408.png"
+      ]
+    },
+    {
+      "id": "03",
+      "name": "错误摘要",
+      "status": "pass",
+      "detail": "失败 badge 可键盘聚焦，tooltip 显示脱敏原因；内部 eval/push 阶段码和常驻错误行均不出现。",
+      "evidence": [
+        "screenshots/03-error-tooltip-1408.png"
+      ]
+    },
+    {
+      "id": "04",
+      "name": "390px 响应式",
+      "status": "pass",
+      "detail": "八张运行卡在 390px 下自动换行，页面无横向溢出。",
+      "evidence": [
+        "screenshots/04-mobile-390.png"
+      ]
+    },
+    {
+      "id": "05",
+      "name": "触屏错误摘要",
+      "status": "pass",
+      "detail": "点击失败 badge 后 tooltip 在 390px viewport 内完整显示，页面仍无横向溢出。",
+      "evidence": [
+        "screenshots/05-mobile-tooltip-390.png"
+      ]
+    },
+    {
+      "id": "06",
+      "name": "Console / network",
+      "status": "pass",
+      "detail": "浏览器会话未捕获 warning、error 或未处理异常。",
+      "evidence": [
+        "cdp-evidence.json"
+      ]
+    }
+  ],
+  "violations": [],
+  "baseUrl": "http://127.0.0.1:61481",
+  "apiUrl": "http://127.0.0.1:61480"
+}

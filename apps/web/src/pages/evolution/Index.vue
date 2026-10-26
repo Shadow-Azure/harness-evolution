@@ -1,73 +1,129 @@
 <script setup lang="ts">
-import { VueFlow } from "@vue-flow/core";
-import "@vue-flow/core/dist/style.css";
+import { computed } from "vue";
 
-import EmptyState from "../../components/ui/EmptyState.vue";
+import ErrorState from "../../components/ui/ErrorState.vue";
+import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
+import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
+import RunGroup from "./components/RunGroup.vue";
 import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
 
 defineOptions({ name: "EvolutionPage" });
+
+const { data, error, isPending, refetch } = useEvolutionRuns();
+const running = computed(() => data.value?.running ?? []);
+const history = computed(() => data.value?.history ?? []);
+
+function retry(): void {
+  void refetch();
+}
 </script>
 
 <template>
-  <section class="placeholder">
-    <header class="page-heading">
-      <div>
-        <p class="eyebrow">
-          EVOLUTION
-        </p>
+  <section
+    class="evolution-page-frame run-list-page"
+    data-testid="evolution-run-list"
+  >
+    <header class="page-intro">
+      <div class="page-head">
         <h1>自进化</h1>
+        <div class="page-actions">
+          <TargetConfigEntry />
+          <button
+            class="launch-run"
+            type="button"
+            disabled
+            title="启动向导将在 M5-05 接入"
+          >
+            ＋ 启动自进化
+          </button>
+        </div>
       </div>
-      <TargetConfigEntry />
+      <p class="page-note">
+        基于问题报告对 skill / agent 做「聚类 → 归因 → 按严重程度迭代打 patch → 评测接纳 → 测试集终评」的自动进化。
+      </p>
     </header>
-    <EmptyState
-      description="自进化运行将在后续 milestone 接入；Vue Flow 容器已就绪。"
-      title="暂无自进化运行"
+
+    <LoadingSkeleton
+      v-if="isPending"
+      label="正在读取自进化运行"
+      :rows="4"
     />
-    <div
-      class="canvas"
-      style="height: 320px; width: 100%"
-    >
-      <VueFlow
-        :edges="[]"
-        :nodes="[]"
+    <ErrorState
+      v-else-if="error"
+      code="EVOLUTION_RUNS_UNAVAILABLE"
+      message="自进化运行读取失败，请重试"
+      @retry="retry"
+    />
+    <template v-else>
+      <RunGroup
+        kind="running"
+        :runs="running"
       />
-    </div>
+      <RunGroup
+        kind="history"
+        :runs="history"
+      />
+    </template>
   </section>
 </template>
 
 <style scoped>
-.placeholder {
+.run-list-page {
   display: grid;
   gap: 14px;
-  padding: 8px 0;
 }
 
-.page-heading {
+.page-intro {
+  min-width: 0;
+  margin-bottom: 2px;
+}
+
+.page-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--purple);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  margin-bottom: 6px;
 }
 
 h1 {
   margin: 0;
-  font-size: var(--font-title);
-  font-weight: 650;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
 }
 
-.canvas {
-  height: 320px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-card);
+.page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.launch-run {
+  padding: 6px 14px;
+  border: 1px solid var(--blue);
+  border-radius: 8px;
+  background: var(--blue);
+  color: white;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.launch-run:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.page-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .page-head {
+    align-items: flex-start;
+  }
 }
 </style>

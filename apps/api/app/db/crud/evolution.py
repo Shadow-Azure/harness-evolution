@@ -14,6 +14,7 @@ from app.db.models.evolution import (
     EvolutionFinalRecord,
     EvolutionRoundRecord,
     EvolutionRunRecord,
+    EvolutionRunSummaryRecord,
     ProbeClusterRecord,
     evolution_finals,
     evolution_rounds,
@@ -25,6 +26,7 @@ from app.db.models.evolution import (
     record_from_evolution_run,
     record_from_probe_cluster,
 )
+from app.db.models.users import users
 from app.service.evolution.state import StageConflict, validate_transition
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
@@ -98,6 +100,94 @@ class EvolutionRepository:
                 .one_or_none()
             )
         return record_from_evolution_run(cast(Mapping[str, Any], row)) if row is not None else None
+
+    async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Return every run with batched creator, cluster, round, and final facts."""
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(
+                            evolution_runs,
+                            users.c.display_name.label("created_by_name"),
+                        )
+                        .select_from(
+                            evolution_runs.outerjoin(
+                                users,
+                                users.c.id == evolution_runs.c.created_by,
+                            ),
+                        )
+                        .order_by(
+                            evolution_runs.c.created_at.desc(),
+                            evolution_runs.c.id.desc(),
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            run_ids = [str(row["id"]) for row in rows]
+            if not run_ids:
+                return ()
+            cluster_counts = {
+                str(row["run_id"]): int(row["count"])
+                for row in (
+                    await session.execute(
+                        select(
+                            probe_clusters.c.run_id,
+                            func.count().label("count"),
+                        )
+                        .where(probe_clusters.c.run_id.in_(run_ids))
+                        .group_by(probe_clusters.c.run_id),
+                    )
+                )
+                .mappings()
+                .all()
+            }
+            accepted_counts = {
+                str(row["run_id"]): int(row["count"])
+                for row in (
+                    await session.execute(
+                        select(
+                            evolution_rounds.c.run_id,
+                            func.count().label("count"),
+                        )
+                        .where(
+                            evolution_rounds.c.run_id.in_(run_ids),
+                            evolution_rounds.c.accepted.is_(True),
+                        )
+                        .group_by(evolution_rounds.c.run_id),
+                    )
+                )
+                .mappings()
+                .all()
+            }
+            final_by_run = {
+                str(row["run_id"]): record_from_evolution_final(
+                    cast(Mapping[str, Any], row),
+                )
+                for row in (
+                    await session.execute(
+                        select(evolution_finals).where(
+                            evolution_finals.c.run_id.in_(run_ids),
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            }
+        return tuple(
+            EvolutionRunSummaryRecord(
+                run=record_from_evolution_run(cast(Mapping[str, Any], row)),
+                cluster_count=cluster_counts.get(str(row["id"]), 0),
+                accepted_count=accepted_counts.get(str(row["id"]), 0),
+                final=final_by_run.get(str(row["id"])),
+                created_by_name=str(row["created_by_name"])
+                if row["created_by_name"] is not None
+                else None,
+            )
+            for row in rows
+        )
 
     async def advance_unit(
         self,

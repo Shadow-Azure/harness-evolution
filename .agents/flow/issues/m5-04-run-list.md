@@ -9,12 +9,15 @@ milestone: m5
 depends:
   - m5-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -38,11 +41,11 @@ m5-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - [05 §3.5/§4.10 运行模型](../../../plans/fullstack-design/05-api-design.md)
 - [08 §8 列表](../../../plans/fullstack-design/08-frontend-implementation.md)
-- [02 F10](../../../plans/fullstack-design/README.md)
+- [02 F10](../../../plans/fullstack-design/02-features.md)
 
 ## 实现内容
 
-- 实现 running/history API 与列表 UI，展示阶段、进度、状态、创建人和时间
+- 实现 running/history API 与列表 UI，展示阶段、进度、状态、创建人和时间；创建人放入原型右上 meta 槽，不新增视觉行
 - 支持刷新和空态
 
 ## 实施步骤
@@ -71,7 +74,10 @@ pnpm contract:check
 
 ## 验收标准
 
-- 不从前端推算状态
+- `GET /api/evolution/runs` 返回后端分组的 running/history 与固定排序；页面不重新分组或排序
+- 六种状态、阶段文案、百分比、已跑轮次与接纳数均由后端提供，前端不重新计算
+- 卡片展示 target/time/models/六项统计、状态、创建人与时间；390px 下无页面横向溢出
+- 加载、读取失败重试、running 空态和 history 空态均有明确界面
 
 ## 门禁与 CI
 
@@ -79,4 +85,4 @@ pnpm contract:check
 
 ## 非目标
 
-- 不做运行详情
+- 不做运行详情、启动向导或 SSE

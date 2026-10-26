@@ -94,6 +94,21 @@ export type ProbeReport = components["schemas"]["ProbeReport"];
 /** Session root-cause report list response. */
 export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 
+/** One complete run-list card grouped by backend state. */
+export type EvolutionRunCard = components["schemas"]["EvolutionRunCard"];
+
+/** Running and history groups already ordered by the backend. */
+export type EvolutionRunList = components["schemas"]["EvolutionRunList"];
+
+/** Backend-owned progress, stage copy, rounds, and accepted count. */
+export type EvolutionRunProgress = components["schemas"]["EvolutionRunProgress"];
+
+/** Backend-normalized run statistics and attribution distribution. */
+export type EvolutionRunStats = components["schemas"]["EvolutionRunStats"];
+
+/** Terminal evaluation summary shown for completed runs. */
+export type EvolutionRunFinal = components["schemas"]["EvolutionRunFinal"];
+
 /** Evolution target configuration accepted by create and update. */
 export type EvolutionTargetWrite = components["schemas"]["EvolutionTargetWrite"];
 

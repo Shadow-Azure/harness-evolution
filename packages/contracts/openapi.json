@@ -611,6 +611,374 @@
         "title": "EventTicketResponse",
         "type": "object"
       },
+      "EvolutionRunAttributeStats": {
+        "additionalProperties": false,
+        "description": "Probe counts by externally supplied attribution type.",
+        "properties": {
+          "error": {
+            "default": 0,
+            "title": "Error",
+            "type": "integer"
+          },
+          "model": {
+            "default": 0,
+            "title": "Model",
+            "type": "integer"
+          },
+          "nonIssue": {
+            "default": 0,
+            "title": "Nonissue",
+            "type": "integer"
+          },
+          "prompt": {
+            "default": 0,
+            "title": "Prompt",
+            "type": "integer"
+          }
+        },
+        "title": "EvolutionRunAttributeStats",
+        "type": "object"
+      },
+      "EvolutionRunCard": {
+        "additionalProperties": false,
+        "description": "One complete run-list card contract.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "final": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunFinal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mode": {
+            "enum": [
+              "full",
+              "cluster_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/EvolutionRunProgress"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/EvolutionRunStats"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "running",
+              "blocked",
+              "completed",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EvolutionRunTarget"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/EvolutionRunWindow"
+          }
+        },
+        "required": [
+          "runId",
+          "title",
+          "mode",
+          "target",
+          "window",
+          "models",
+          "createdBy",
+          "createdAt",
+          "status",
+          "error",
+          "stats",
+          "progress",
+          "final"
+        ],
+        "title": "EvolutionRunCard",
+        "type": "object"
+      },
+      "EvolutionRunError": {
+        "additionalProperties": false,
+        "description": "Sanitized terminal or blocked error summary.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "message",
+          "at"
+        ],
+        "title": "EvolutionRunError",
+        "type": "object"
+      },
+      "EvolutionRunFinal": {
+        "additionalProperties": false,
+        "description": "Terminal evaluation summary shown in the history list.",
+        "properties": {
+          "bestScore": {
+            "title": "Bestscore",
+            "type": "number"
+          },
+          "bestVersion": {
+            "title": "Bestversion",
+            "type": "string"
+          },
+          "branchName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchname"
+          },
+          "initScore": {
+            "title": "Initscore",
+            "type": "number"
+          },
+          "pushStatus": {
+            "title": "Pushstatus",
+            "type": "string"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "bestVersion",
+          "branchName",
+          "pushStatus",
+          "verdict",
+          "bestScore",
+          "initScore"
+        ],
+        "title": "EvolutionRunFinal",
+        "type": "object"
+      },
+      "EvolutionRunList": {
+        "additionalProperties": false,
+        "description": "Running and history groups already ordered by the backend.",
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunCard"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "running": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunCard"
+            },
+            "title": "Running",
+            "type": "array"
+          }
+        },
+        "required": [
+          "running",
+          "history"
+        ],
+        "title": "EvolutionRunList",
+        "type": "object"
+      },
+      "EvolutionRunProgress": {
+        "additionalProperties": false,
+        "description": "Backend-owned cursor, percentages, rounds, and stage copy.",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "doneRounds": {
+            "title": "Donerounds",
+            "type": "integer"
+          },
+          "percent": {
+            "title": "Percent",
+            "type": "integer"
+          },
+          "stageLabel": {
+            "title": "Stagelabel",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unit",
+          "total",
+          "percent",
+          "stageLabel",
+          "doneRounds",
+          "accepted"
+        ],
+        "title": "EvolutionRunProgress",
+        "type": "object"
+      },
+      "EvolutionRunStats": {
+        "additionalProperties": false,
+        "description": "Backend-normalized run statistics.",
+        "properties": {
+          "byAttributeType": {
+            "$ref": "#/components/schemas/EvolutionRunAttributeStats"
+          },
+          "clusters": {
+            "default": 0,
+            "title": "Clusters",
+            "type": "integer"
+          },
+          "probes": {
+            "default": 0,
+            "title": "Probes",
+            "type": "integer"
+          },
+          "sessions": {
+            "default": 0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "usedProbes": {
+            "default": 0,
+            "title": "Usedprobes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "byAttributeType"
+        ],
+        "title": "EvolutionRunStats",
+        "type": "object"
+      },
+      "EvolutionRunTarget": {
+        "additionalProperties": false,
+        "description": "Immutable evolution target snapshot shown on one run card.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "version"
+        ],
+        "title": "EvolutionRunTarget",
+        "type": "object"
+      },
+      "EvolutionRunWindow": {
+        "additionalProperties": false,
+        "description": "Session-time window selected when the run was created.",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "title": "EvolutionRunWindow",
+        "type": "object"
+      },
       "EvolutionTarget": {
         "additionalProperties": false,
         "description": "Persisted target returned to clients.",
@@ -3019,6 +3387,53 @@
         "summary": "Issue Ticket",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/evolution/runs": {
+      "get": {
+        "description": "Return backend-ordered running and history groups.",
+        "operationId": "list_runs_api_evolution_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "evolution-runs"
         ]
       }
     },

@@ -113,6 +113,46 @@ async function evaluate(page, expression) {
   return result.result.value;
 }
 
+async function waitForTargetConfigPage(page, label, violations) {
+  try {
+    await waitForDocument(
+      page.session,
+      `document.querySelector("h1")?.textContent === "进化对象配置"`,
+      label,
+    );
+  } catch (error) {
+    const diagnostics = await evaluate(
+      page,
+      `(() => ({
+        url: location.href,
+        body: document.body.textContent?.trim().slice(0, 500) ?? "",
+        hasShell: Boolean(document.querySelector(".shell")),
+        hasLogin: Boolean(document.querySelector("[data-testid='login-submit']")),
+        hasTargetPage: Boolean(document.querySelector(".target-config-page")),
+        errorStates: [...document.querySelectorAll(".error-state")]
+          .map((node) => node.textContent?.trim()),
+      }))()`,
+    ).catch((diagnosticError) => ({
+      diagnosticError:
+        diagnosticError instanceof Error
+          ? diagnosticError.message
+          : String(diagnosticError),
+    }));
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(
+        {
+          diagnostics,
+          violations,
+          apiLogs: apiLogs.slice(-2_000),
+          webLogs: webLogs.slice(-2_000),
+        },
+        null,
+        2,
+      )}`,
+    );
+  }
+}
+
 async function setInput(page, selector, value) {
   const ok = await evaluate(
     page,
@@ -310,19 +350,10 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       deviceScaleFactor: 1,
       mobile: false,
     });
-    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
-    await waitForDocument(
-      page.session,
-      `Boolean(document.querySelector(".shell"))`,
-      "authenticated shell",
-    );
-    await evaluate(page, `history.pushState({}, "", "/evolution/targets");
-      window.dispatchEvent(new PopStateEvent("popstate"));`);
-    await waitForDocument(
-      page.session,
-      `document.querySelector("h1")?.textContent === "进化对象配置"`,
-      "target config page",
-    );
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/evolution/targets`,
+    });
+    await waitForTargetConfigPage(page, "target config page", violations);
     const desktopLayout = await evaluate(
       page,
       `(() => {
@@ -778,11 +809,49 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
 
     await evaluate(page, `history.pushState({}, "", "/evolution");
       window.dispatchEvent(new PopStateEvent("popstate"));`);
-    await waitForDocument(
-      page.session,
-      `document.querySelector(".target-config-entry")
-        ?.getAttribute("aria-label") === "配置进化对象"`,
-      "target config entry",
+    try {
+      await waitForDocument(
+        page.session,
+        `document.querySelector(".target-config-entry")
+          ?.getAttribute("aria-label") === "配置进化对象"`,
+        "target config entry",
+      );
+    } catch (error) {
+      const diagnostics = await evaluate(
+        page,
+        `(() => ({
+          url: location.href,
+          body: document.body.textContent?.trim().slice(0, 500) ?? "",
+          hasShell: Boolean(document.querySelector(".shell")),
+          hasLogin: Boolean(document.querySelector("[data-testid='login-submit']")),
+          hasEntry: Boolean(document.querySelector(".target-config-entry")),
+        }))()`,
+      ).catch((diagnosticError) => ({
+        diagnosticError:
+          diagnosticError instanceof Error
+            ? diagnosticError.message
+            : String(diagnosticError),
+      }));
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(
+          { diagnostics, violations },
+          null,
+          2,
+        )}`,
+      );
+    }
+    await evaluate(
+      page,
+      `document.querySelector(".target-config-entry")?.click()`,
+    );
+    await waitForTargetConfigPage(
+      page,
+      "gear target config navigation",
+      violations,
+    );
+    assert.equal(
+      await evaluate(page, "location.pathname"),
+      "/evolution/targets",
     );
     assert.deepEqual(violations, []);
   } finally {

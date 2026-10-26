@@ -403,8 +403,8 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
         const active = document.querySelector("nav a.router-link-active");
         if (
           location.pathname !== "/evolution" ||
-          !document.body.textContent.includes("暂无自进化运行") ||
-          !document.querySelector(".canvas")
+          !document.querySelector("[data-testid='evolution-run-list']") ||
+          !document.body.textContent.includes("当前没有正在执行的自进化")
         ) {
           return null;
         }
@@ -413,7 +413,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
           underline: active ? getComputedStyle(active).borderBottomColor : null,
         };
       })()`,
-      "evolution placeholder",
+      "evolution run list",
     );
     assert.equal(evolutionPage.path, "/evolution");
     assert.equal(evolutionPage.underline, "rgb(138, 85, 201)");
@@ -455,8 +455,9 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     });
     await waitForDocument(
       page.session,
-      `location.pathname === "/evolution" && Boolean(document.querySelector(".canvas"))`,
-      "return to evolution placeholder",
+      `location.pathname === "/evolution" &&
+        Boolean(document.querySelector("[data-testid='evolution-run-list']"))`,
+      "return to evolution run list",
     );
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
@@ -505,7 +506,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
   }
 });
 
-test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", async () => {
+test("m1-shell opens the direct Evolution run-list URL", async () => {
   const page = await createBrowserPage();
   try {
     const violations = browserViolations(page.session);
@@ -518,55 +519,31 @@ test("m1-shell opens a direct Evolution URL without Vue Flow size warnings", asy
       httpOnly: true,
       sameSite: "Strict",
     });
-    // Reproduce a cold first paint where the scoped .canvas rule arrives late.
-    await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
-      source: `(() => {
-        const removeDelayedCanvasRule = () => {
-          for (const sheet of document.styleSheets) {
-            try {
-              for (let index = sheet.cssRules.length - 1; index >= 0; index -= 1) {
-                const rule = sheet.cssRules[index];
-                if (rule.selectorText?.includes(".canvas")) sheet.deleteRule(index);
-              }
-            } catch {
-              // Only same-origin Vite stylesheets are inspected.
-            }
-          }
-        };
-        removeDelayedCanvasRule();
-        new MutationObserver(removeDelayedCanvasRule).observe(document, {
-          childList: true,
-          characterData: true,
-          subtree: true,
-        });
-        document.addEventListener("DOMContentLoaded", removeDelayedCanvasRule);
-      })()`,
-    });
-
     await page.session.send("Page.navigate", { url: `${baseUrl}/evolution` });
-    const canvas = await waitForDocument(
+    const runList = await waitForDocument(
       page.session,
       `(() => {
-        const canvas = document.querySelector(".canvas");
-        if (!canvas || !document.body.textContent.includes("暂无自进化运行")) return null;
-        const bounds = canvas.getBoundingClientRect();
+        const page = document.querySelector("[data-testid='evolution-run-list']");
+        if (
+          !page ||
+          !page.textContent.includes("当前没有正在执行的自进化") ||
+          !page.textContent.includes("暂无历史记录")
+        ) return null;
+        const bounds = page.getBoundingClientRect();
         return {
           height: bounds.height,
-          inlineHeight: canvas.style.height,
-          inlineWidth: canvas.style.width,
           path: location.pathname,
           width: bounds.width,
+          hasCanvas: Boolean(document.querySelector(".canvas")),
         };
       })()`,
-      "direct evolution canvas",
+      "direct evolution run list",
     );
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    assert.equal(canvas.path, "/evolution");
-    assert.ok(canvas.width > 0, JSON.stringify(canvas));
-    assert.ok(canvas.height > 0, JSON.stringify(canvas));
-    assert.match(canvas.inlineHeight, /\S/, JSON.stringify(canvas));
-    assert.match(canvas.inlineWidth, /\S/, JSON.stringify(canvas));
+    assert.equal(runList.path, "/evolution");
+    assert.ok(runList.width > 0, JSON.stringify(runList));
+    assert.ok(runList.height > 0, JSON.stringify(runList));
+    assert.equal(runList.hasCanvas, false);
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.close();

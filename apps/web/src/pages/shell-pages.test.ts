@@ -1,11 +1,22 @@
 // @vitest-environment jsdom
 
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
+import { http, HttpResponse } from "msw";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { createAppRouter } from "../router";
+import { server } from "../test/server";
 import ErrorsPage from "./errors/Index.vue";
 import EvolutionPage from "./evolution/Index.vue";
 import NotFound from "./NotFound.vue";
@@ -28,6 +39,10 @@ beforeEach(() => {
     },
   );
 });
+
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
 
 async function withRouter(component: Parameters<typeof mount>[0]) {
   const pinia = createPinia();
@@ -61,11 +76,17 @@ describe("M1 shell pages", () => {
     expect(wrapper.text()).toContain("请先从 Sessions 选择一个会话");
   });
 
-  it("keeps the evolution canvas while using the shared empty presentation", async () => {
+  it("renders the backend-owned evolution run list shell", async () => {
+    server.use(
+      http.get("/api/evolution/runs", () =>
+        HttpResponse.json({ running: [], history: [] })),
+    );
     const wrapper = await withRouter(EvolutionPage);
+    await flushPromises();
 
-    expect(wrapper.text()).toContain("暂无自进化运行");
-    expect(wrapper.find(".canvas").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='evolution-run-list']").exists()).toBe(true);
+    expect(wrapper.text()).toContain("当前没有正在执行的自进化");
+    expect(wrapper.find(".canvas").exists()).toBe(false);
   });
 
   it("presents a terminal not-found state with the canonical copy", async () => {

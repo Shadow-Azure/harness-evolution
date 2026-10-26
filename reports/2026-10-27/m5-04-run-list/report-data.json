@@ -1,0 +1,209 @@
+{
+  "lang": "zh-CN",
+  "title": "M5-04 自进化运行列表 GUI 集成冒烟",
+  "eyebrow": "Harness Evolution · PR #128 · validation on d8ce69a",
+  "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成运行列表集成验证。后端分组、排序、阶段文案、百分比、轮次、接纳数、创建人和终评事实在前端只读消费；页面严格复用原型的 1080px 容器、运行分组、卡片、语义 chip/badge、6px 进度条和终评摘要。8 个场景全部通过，包含空态、八种状态文案、键盘/触屏可达错误摘要、390px 和原生 Computer Use。",
+  "meta": "2026-10-27 · macOS · Google Chrome · FastAPI + Vite + SQLite",
+  "metrics": [
+    { "value": "8", "label": "冒烟场景" },
+    { "value": "8", "label": "通过" },
+    { "value": "3", "label": "PR检视缺口已修复" },
+    { "value": "0", "label": "未解决缺陷" },
+    { "value": "0", "label": "非预期控制台错误" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#53 · M5-04 run list" },
+    { "label": "PR", "value": "#128" },
+    { "label": "Validation commit", "value": "d8ce69a" },
+    { "label": "CI", "value": "run 40421127822 · 3/3 green" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
+    { "label": "Database", "value": "临时 SQLite fixture" },
+    { "label": "Data", "value": "running 3 · history 5" },
+    { "label": "Evidence", "value": "CDP 断言/截图 + 原生 Computer Use" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "真实空列表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空库显示 running/history 两个明确空态；保留页头、配置齿轮和 M5-05 前禁用的 Launch。",
+        "evidence": ["screenshots/01-empty-1408.png"]
+      },
+      {
+        "id": "02",
+        "name": "桌面运行列表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "running 3 张、history 5 张保持后端顺序；八种状态、创建人+时间、target/model chips、六项统计和 57% 进度均正确。",
+        "evidence": ["screenshots/02-desktop-1408.png"]
+      },
+      {
+        "id": "03",
+        "name": "错误摘要桌面交互",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "失败 badge 为可聚焦 button；tooltip 显示“评测执行失败：sandbox timeout”，不显示 eval/push 阶段码，也没有常驻错误行。",
+        "evidence": ["screenshots/03-error-tooltip-1408.png"]
+      },
+      {
+        "id": "04",
+        "name": "390px 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "八张卡在 390px 下改为单列，meta/chips/stats 自动换行，页面 scrollWidth 等于 clientWidth。",
+        "evidence": ["screenshots/04-mobile-390.png"]
+      },
+      {
+        "id": "05",
+        "name": "触屏错误摘要",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击失败 badge 后 tooltip 完整落在 390px viewport 内，页面不产生横向溢出。",
+        "evidence": ["screenshots/05-mobile-tooltip-390.png"]
+      },
+      {
+        "id": "06",
+        "name": "原生 Computer Use · 运行列表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生 Chrome 登录后看到 3 个 running 与 5 个 history；状态、进度、创建人、时间、配置齿轮和禁用 Launch 均可访问。",
+        "evidence": ["screenshots/06-native-desktop.png", "native-cua-evidence.json"]
+      },
+      {
+        "id": "07",
+        "name": "原生 Computer Use · 错误摘要",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "原生点击失败 badge 后仅显示脱敏错误摘要；没有机器阶段码或原型外错误行。",
+        "evidence": ["screenshots/07-native-error-tooltip.png"]
+      },
+      {
+        "id": "08",
+        "name": "Console / network",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "管理员真实浏览器会话未捕获 warning、error 或未处理异常。",
+        "evidence": ["cdp-evidence.json"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "错误摘要仅存在于不可聚焦 title",
+      "facts": [
+        { "label": "Actual", "value": "失败/阻塞 badge 是 span，键盘和触屏用户无法可靠查看原因。" },
+        { "label": "Expected", "value": "错误 badge 支持 hover、focus 和点击/触屏，并通过 aria-describedby 关联 tooltip。" },
+        { "label": "Root cause", "value": "首版只把 error.message 放进 title 与 aria-label。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 组件 + 真实 Chrome" }
+    },
+    {
+      "severity": "P2",
+      "title": "completed 且 final 缺失被误判为无收益",
+      "facts": [
+        { "label": "Actual", "value": "final=null 时 badge 曾显示“已完成 · 无收益”。" },
+        { "label": "Expected", "value": "缺失终评应显示中性“已完成 · 终评未知”。" },
+        { "label": "Root cause", "value": "可选 final 被当作 verdict=false 处理。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 状态回归" }
+    },
+    {
+      "severity": "P3",
+      "title": "旧预览截图与最终 UI 漂移",
+      "facts": [
+        { "label": "Actual", "value": "早期 tracked 截图仍显示已经删除的错误行。" },
+        { "label": "Expected", "value": "报告证据必须来自最终 UI，并由官方 renderer 生成。" },
+        { "label": "Root cause", "value": "预览截图早于 review 修复提交。" }
+      ],
+      "state": { "kind": "fixed", "label": "已替换 · 最终 smoke 资产" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/01-empty-1408.png",
+      "alt": "真实空数据库下的自进化运行列表",
+      "label": "01 · 空态",
+      "caption": "running 与 history 均显示明确空态，页头和配置入口保持可用。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-desktop-1408.png",
+      "alt": "1408px 下的自进化运行列表",
+      "label": "02 · 桌面列表",
+      "caption": "后端顺序被原样呈现；运行卡、chips、统计、状态和进度条对齐原型。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-error-tooltip-1408.png",
+      "alt": "桌面上打开失败运行错误摘要",
+      "label": "03 · 错误摘要",
+      "caption": "失败 badge 可交互，tooltip 只显示脱敏错误消息。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-mobile-390.png",
+      "alt": "390px 下的运行列表",
+      "label": "04 · 390px",
+      "caption": "卡片单列排列、内容换行，页面无横向溢出。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-mobile-tooltip-390.png",
+      "alt": "390px 下点击错误 badge 后的摘要",
+      "label": "05 · 触屏摘要",
+      "caption": "tooltip 限制在 viewport 内，触屏点击可达。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-native-desktop.png",
+      "alt": "原生 Google Chrome 中的运行列表",
+      "label": "06 · 原生列表",
+      "caption": "原生 Computer Use 看到 3 张 running 与 5 张 history 的完整页面。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-native-error-tooltip.png",
+      "alt": "原生 Chrome 中打开失败运行摘要",
+      "label": "07 · 原生摘要",
+      "caption": "原生点击失败 badge 后，脱敏原因浮层在卡片内显示。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "后端事实",
+        "coverage": "API + repository + MySQL/SQLite",
+        "conclusion": "分组、排序、阶段、百分比、轮次、接纳、统计、final 和 createdBy 均由后端生成；MySQL CI lane 通过。",
+        "recommendation": "新增 run 字段时继续从 RunCard contract 和 repository 聚合测试开始。"
+      },
+      {
+        "area": "原型视觉",
+        "coverage": "CDP 计算样式 + 原生 CUA",
+        "conclusion": "1080px 页面、分组标题、运行卡、紫/青 chips、状态 badge、6px 进度条和终评摘要均一致。",
+        "recommendation": "原型变化时更新共享 token 和对应 computed-style 断言。"
+      },
+      {
+        "area": "可访问性与响应式",
+        "coverage": "组件 + Chrome 390px",
+        "conclusion": "错误摘要支持 focus/click/touch，tooltip 不越界；页面无横向滚动。",
+        "recommendation": "后续运行详情卡片继续复用相同状态与错误语义。"
+      },
+      {
+        "area": "回归门禁",
+        "coverage": "Vitest + 全量 Chrome E2E + CI",
+        "conclusion": "Web 309 passed / 1 skipped，覆盖率 96.28%；全量 E2E 15/15；CI run 40421127822 三项全绿。",
+        "recommendation": "报告提交后仍需确认最终 CI。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "冒烟通过",
+    "summary": "M5-04 在真实栈和原生 Chrome 上通过 8 个场景；PR 检视发现的错误可达性、终评未知和旧证据问题均已闭环。",
+    "points": [
+      "运行列表已按原型替换占位页，前端不重排或重算后端事实。",
+      "六种状态及 completed no-benefit/final-unknown 变体都有真实浏览器证据。",
+      "错误摘要支持鼠标、键盘和触屏，且不泄漏内部阶段码。",
+      "后续 M5-05 启动向导与 M5-07 运行详情继续沿同一原型和事实边界实现。"
+    ]
+  },
+  "footer": "证据源：原生 Computer Use、Chrome DevTools Protocol、真实 FastAPI/Vite/SQLite、Vitest、MySQL CI lane 与全量浏览器 E2E。HTML 由 report-data.json 渲染生成。"
+}

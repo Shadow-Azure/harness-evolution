@@ -1,0 +1,31 @@
+{
+  "validationCommit": "d8ce69a",
+  "app": "Google Chrome",
+  "interaction": "Computer Use via @oai/sky",
+  "url": "http://127.0.0.1:61481/evolution",
+  "observations": {
+    "runningCount": 3,
+    "historyCount": 5,
+    "statuses": [
+      "准备中",
+      "正在执行",
+      "已阻塞",
+      "✓ 已完成 · 自进化有效",
+      "已完成 · 无收益",
+      "已完成 · 终评未知",
+      "失败",
+      "已中断"
+    ],
+    "progressbarValue": 57,
+    "launchButtonDisabled": true,
+    "launchHelp": "启动向导将在 M5-05 接入",
+    "configEntryLabel": "配置进化对象",
+    "errorTrigger": "失败",
+    "errorTooltip": "评测执行失败：sandbox timeout",
+    "internalStageExposed": false
+  },
+  "screenshots": {
+    "desktop": "screenshots/06-native-desktop.png",
+    "errorTooltip": "screenshots/07-native-error-tooltip.png"
+  }
+}
