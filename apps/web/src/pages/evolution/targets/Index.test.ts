@@ -99,6 +99,21 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("删除");
   });
 
+  it("uses the prototype page hierarchy without an extra eyebrow", async () => {
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+    );
+    const wrapper = await mountPage("admin");
+
+    expect(wrapper.find(".eyebrow").exists()).toBe(false);
+    expect(wrapper.find(".lede").exists()).toBe(false);
+    expect(wrapper.get(".page-head h1").text()).toBe("进化对象配置");
+    expect(wrapper.get(".page-note").text()).toContain(
+      "配置可被自进化修改的 skill 与 agent",
+    );
+  });
+
   it("renders the list for members without write controls", async () => {
     server.use(
       http.get("/api/evolution/targets", () =>

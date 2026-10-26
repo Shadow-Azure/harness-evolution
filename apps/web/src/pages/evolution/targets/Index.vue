@@ -143,16 +143,13 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     class="target-config-page"
     data-testid="target-config-page"
   >
-    <header class="page-heading">
-      <div>
-        <p class="eyebrow">
-          EVOLUTION
-        </p>
+    <header class="page-intro">
+      <div class="page-head">
         <h1>进化对象配置</h1>
-        <p class="lede">
-          配置可被自进化修改的 skill 与 agent；仓库、引用和路径由后端校验。
-        </p>
       </div>
+      <p class="page-note">
+        配置可被自进化修改的 skill 与 agent；仓库、引用和路径由后端校验。
+      </p>
     </header>
 
     <p
@@ -190,31 +187,38 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
 <style scoped>
 .target-config-page {
   display: grid;
+  width: min(1080px, 100%);
   min-width: 0;
+  margin: 0 auto;
   gap: 16px;
-  padding: 8px 0 24px;
+  padding: 0 24px;
 }
 
-.page-heading {
+.page-intro {
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
+.page-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-}
-
-.eyebrow {
-  margin: 0 0 4px;
-  color: var(--purple);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  margin-bottom: 6px;
 }
 
 h1 {
   margin: 0;
   color: var(--text);
-  font-size: var(--font-title);
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.page-note {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .operation-error {
@@ -227,17 +231,9 @@ h1 {
   font-size: 11.5px;
 }
 
-.lede {
-  max-width: 680px;
-  margin: 7px 0 0;
-  color: var(--text-dim);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
 @media (max-width: 640px) {
   .target-config-page {
-    padding-top: 2px;
+    padding: 0;
   }
 }
 </style>

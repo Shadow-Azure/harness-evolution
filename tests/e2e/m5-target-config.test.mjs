@@ -323,6 +323,37 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       `document.querySelector("h1")?.textContent === "进化对象配置"`,
       "target config page",
     );
+    const desktopLayout = await evaluate(
+      page,
+      `(() => {
+        const page = document.querySelector(".target-config-page");
+        const rect = page.getBoundingClientRect();
+        const heading = page.querySelector(".page-head h1");
+        const note = page.querySelector(".page-note");
+        const headingStyle = getComputedStyle(heading);
+        const noteStyle = getComputedStyle(note);
+        return {
+          width: rect.width,
+          center: rect.left + rect.width / 2,
+          viewportCenter: document.documentElement.clientWidth / 2,
+          hasEyebrow: Boolean(page.querySelector(".eyebrow, .lede")),
+          headingFontSize: headingStyle.fontSize,
+          headingFontWeight: headingStyle.fontWeight,
+          noteFontSize: noteStyle.fontSize,
+          noteColor: noteStyle.color,
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(desktopLayout.width - 1080) <= 1, JSON.stringify(desktopLayout));
+    assert.ok(
+      Math.abs(desktopLayout.center - desktopLayout.viewportCenter) <= 1,
+      JSON.stringify(desktopLayout),
+    );
+    assert.equal(desktopLayout.hasEyebrow, false);
+    assert.equal(desktopLayout.headingFontSize, "18px");
+    assert.equal(desktopLayout.headingFontWeight, "700");
+    assert.equal(desktopLayout.noteFontSize, "12px");
+    assert.equal(desktopLayout.noteColor, "rgb(154, 162, 174)");
 
     await evaluate(page, `document.querySelector(".target-create").click()`);
     await waitForDocument(
@@ -330,6 +361,35 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       `Boolean(document.querySelector(".target-form-dialog"))`,
       "create dialog",
     );
+    const dialogLayout = await evaluate(
+      page,
+      `(() => {
+        const root = document.querySelector(".target-form-dialog");
+        const dialog = root.matches(".el-dialog")
+          ? root
+          : root.querySelector(".el-dialog");
+        const rect = dialog.getBoundingClientRect();
+        const head = root.querySelector(".target-dialog-head");
+        const body = root.querySelector(".target-dialog-body");
+        const foot = root.querySelector(".target-dialog-foot");
+        return {
+          width: rect.width,
+          headPadding: getComputedStyle(head).padding,
+          bodyPadding: getComputedStyle(body).padding,
+          footPadding: getComputedStyle(foot).padding,
+          footBackground: getComputedStyle(foot).backgroundColor,
+          hasBodyForm: Boolean(body.querySelector("form")),
+          hasFootActions: Boolean(foot.querySelector(".form-actions")),
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(dialogLayout.width - 720) <= 1, JSON.stringify(dialogLayout));
+    assert.equal(dialogLayout.headPadding, "14px 18px 12px");
+    assert.equal(dialogLayout.bodyPadding, "18px");
+    assert.equal(dialogLayout.footPadding, "14px 18px");
+    assert.equal(dialogLayout.footBackground, "rgb(250, 251, 252)");
+    assert.equal(dialogLayout.hasBodyForm, true);
+    assert.equal(dialogLayout.hasFootActions, true);
     await fillTargetForm(page, {
       name: "m5-e2e-target",
       repoUrl: "https://invalid.example.com/repo.git",
@@ -515,6 +575,44 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         .some((item) => item.textContent.trim() === "m5-e2e-target")`,
       "target deleted",
     );
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await evaluate(page, `document.querySelector(".target-create").click()`);
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector(".target-form-dialog"))`,
+      "mobile target dialog",
+    );
+    const mobileDialog = await evaluate(
+      page,
+      `(() => {
+        const root = document.querySelector(".target-form-dialog");
+        const dialog = root.matches(".el-dialog")
+          ? root
+          : root.querySelector(".el-dialog");
+        const rect = dialog.getBoundingClientRect();
+        return {
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          dialogLeft: rect.left,
+          dialogRight: rect.right,
+          dialogWidth: rect.width,
+        };
+      })()`,
+    );
+    assert.equal(mobileDialog.pageScrollWidth, mobileDialog.pageClientWidth);
+    assert.ok(mobileDialog.dialogWidth <= 362, JSON.stringify(mobileDialog));
+    assert.ok(mobileDialog.dialogLeft >= 0, JSON.stringify(mobileDialog));
+    assert.ok(
+      mobileDialog.dialogRight <= mobileDialog.pageClientWidth,
+      JSON.stringify(mobileDialog),
+    );
+    await clickText(page, ".target-form-dialog button", "取消");
 
     await installCookie(page, memberAuth.cookie);
     await page.session.send("Page.reload");

@@ -2,6 +2,7 @@
 
 import type { EvolutionTarget } from "@harness/contracts";
 import { flushPromises, mount } from "@vue/test-utils";
+import ElDialog from "element-plus/es/components/dialog/index";
 import { ElOption, ElSelect } from "element-plus/es/components/select/index";
 import { describe, expect, it } from "vitest";
 
@@ -64,6 +65,17 @@ async function fillRequired(
 }
 
 describe("TargetFormDialog", () => {
+  it("uses the prototype modal width and head, body, and footer regions", async () => {
+    const wrapper = await mountDialog();
+
+    expect(wrapper.findComponent(ElDialog).props("width")).toBe(
+      "min(720px, calc(100vw - 28px))",
+    );
+    expect(wrapper.find(".target-dialog-head").exists()).toBe(true);
+    expect(wrapper.find(".target-dialog-body form").exists()).toBe(true);
+    expect(wrapper.find(".target-dialog-foot .form-actions").exists()).toBe(true);
+  });
+
   it("submits trimmed create values", async () => {
     const wrapper = await mountDialog();
     await fillRequired(wrapper);

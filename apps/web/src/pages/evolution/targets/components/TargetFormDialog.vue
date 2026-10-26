@@ -102,14 +102,18 @@ watch(
 <template>
   <ElDialog
     class="target-form-dialog"
+    body-class="target-dialog-body"
+    footer-class="target-dialog-foot"
+    header-class="target-dialog-head"
     :model-value="modelValue"
     :show-close="!submitting"
     :teleported="false"
     :title="title"
-    width="min(560px, calc(100vw - 28px))"
+    width="min(720px, calc(100vw - 28px))"
     @close="close"
   >
     <form
+      id="target-form"
       class="target-form"
       @submit.prevent="submit"
     >
@@ -229,7 +233,9 @@ watch(
       >
         {{ serverError }}
       </p>
+    </form>
 
+    <template #footer>
       <footer class="form-actions">
         <ElButton
           :disabled="submitting"
@@ -238,6 +244,7 @@ watch(
           取消
         </ElButton>
         <ElButton
+          form="target-form"
           :loading="submitting"
           native-type="submit"
           type="primary"
@@ -245,11 +252,32 @@ watch(
           {{ target ? "保存修改" : "新增配置" }}
         </ElButton>
       </footer>
-    </form>
+    </template>
   </ElDialog>
 </template>
 
 <style scoped>
+:global(.target-form-dialog .el-dialog) {
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+:global(.target-form-dialog .target-dialog-head) {
+  margin-right: 0;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+:global(.target-form-dialog .target-dialog-body) {
+  padding: 18px;
+}
+
+:global(.target-form-dialog .target-dialog-foot) {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
 .target-form {
   display: grid;
   gap: 12px;
@@ -298,7 +326,6 @@ watch(
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding-top: 4px;
 }
 
 @media (max-width: 640px) {
