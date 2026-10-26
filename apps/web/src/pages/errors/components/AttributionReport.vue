@@ -48,7 +48,7 @@ const issueCategory = computed(() => {
   return type === "model"
     ? "模型问题"
     : type === "prompt"
-      ? "prompt 缺失提示词"
+      ? "prompt缺失某些提示词"
       : "错误";
 });
 

@@ -291,6 +291,49 @@ describe("error detail page", () => {
     );
   });
 
+  it("uses the prototype's exact prompt category and status copy", async () => {
+    const promptIssue = badCaseFixture({
+      badCaseId: "case-prompt",
+      reason: "prompt missed validation",
+      analysis: {
+        status: "analyzed_issue",
+        probeId: "probe-prompt",
+        attributeType: "prompt",
+        displayState: "analyzed_issue_prompt",
+        result: { summary: "The prompt omitted validation." },
+      },
+    });
+    mockApi([promptIssue]);
+    server.use(
+      http.get("/api/probes/:probeId", ({ params }) =>
+        HttpResponse.json({
+          probeId: params.probeId,
+          sessionId: "root-1",
+          probeType: "agent",
+          probeObject: "Explore",
+          objectVersion: "v1.0.0",
+          attributeType: "prompt",
+          probeDescription: "The prompt omitted validation.",
+          probeAnalysis: "The prompt did not request validation.",
+          createdAt: "2026-10-20T08:46:00+08:00",
+          updatedAt: "2026-10-20T08:47:00+08:00",
+          fromBadCases: ["case-prompt"],
+          fromBadCasesCount: 1,
+        }),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      "/sessions/root-1/errors?case=case-prompt&tab=attr",
+    );
+
+    expect(wrapper.get(".conclusion .state-chip").text()).toBe(
+      "是问题-prompt缺失某些提示词",
+    );
+    expect(wrapper.get(".classification .state-chip").text()).toBe(
+      "prompt缺失某些提示词",
+    );
+  });
+
   it("uses accessible tabs with roving focus and control relationships", async () => {
     mockApi();
     const { router, wrapper } = await mountPage(
