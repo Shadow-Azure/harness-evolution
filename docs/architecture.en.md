@@ -30,6 +30,8 @@ Web restores the session before mounting routes; tokens and users stay in memory
 
 The session browser uses a 360px list and overview. Search, status, sort, and selection live in the URL; statistics and density bars come from `/api/sessions`.
 
+Agent flow loads lazily.
+
 After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before starting the scheduler. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 
 ## Data-layer strategy

@@ -7,9 +7,45 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import SessionsPage from "./Index.vue";
+import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { server } from "../../test/server";
 import { useAuthStore } from "../../stores/auth";
+
+vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
+  const { defineComponent, h } = await import("vue");
+  const AgentTree = defineComponent({
+    name: "AgentTree",
+    props: {
+      tree: { type: Object, required: true },
+      expanded: { type: Array, default: () => [] },
+      activeAgentId: { type: String, default: null },
+    },
+    emits: ["node-select", "toggle-expanded"],
+    setup(props, { emit }) {
+      return () => {
+        const tree = props.tree as { agents: unknown[] };
+        return h("div", { "data-testid": "agent-tree" }, [
+          h("span", `agents:${tree.agents.length}`),
+          h(
+            "button",
+            {
+              type: "button",
+              onClick: () => emit("node-select", "main"),
+            },
+            `selected:${props.activeAgentId}`,
+          ),
+        ]);
+      };
+    },
+  });
+  return {
+    __esModule: true,
+    __isKeepAlive: false,
+    __isTeleport: false,
+    default: AgentTree,
+  };
+});
 
 const session = (overrides: Record<string, unknown> = {}) => ({
   id: "root-1",
@@ -36,6 +72,10 @@ const session = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function mockSessionApi(items = [session()]) {
+  const tree = {
+    ...demoCoreTree,
+    sessionId: items[0]?.id ?? "root-1",
+  };
   server.use(
     http.get("/api/sessions", () => HttpResponse.json({ items })),
     http.get("/api/sessions/:id", ({ params }) =>
@@ -44,6 +84,9 @@ function mockSessionApi(items = [session()]) {
           error: { code: "SESSION_NOT_FOUND", message: "missing" },
         },
       ),
+    ),
+    http.get("/api/sessions/:id/tree", () =>
+      HttpResponse.json(tree),
     ),
   );
 }
@@ -100,6 +143,9 @@ describe("session browser", () => {
     server.use(
       http.get("/api/sessions", () => HttpResponse.json({ items: [listed] })),
       http.get("/api/sessions/:id", () => HttpResponse.json(detailed)),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json({ ...demoCoreTree, sessionId: "root-1" }),
+      ),
     );
 
     const { wrapper } = await mountPage("/sessions/root-1");
@@ -119,6 +165,9 @@ describe("session browser", () => {
         return HttpResponse.json({ items: [session()] });
       }),
       http.get("/api/sessions/:id", () => HttpResponse.json(session())),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json({ ...demoCoreTree, sessionId: "root-1" }),
+      ),
     );
     const { router, wrapper } = await mountPage("/sessions");
     await flushPromises();
@@ -210,8 +259,31 @@ describe("session browser", () => {
       status: "problem",
     });
     expect(wrapper.text()).not.toContain("暂无会话");
-    expect(wrapper.find("[data-testid='tree-placeholder']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='agent-tree-container']").exists()).toBe(true);
     expect(firstCard.text()).toContain("Fallback title");
+  });
+
+  it("loads the production tree independently and retries tree failures", async () => {
+    const item = session();
+    server.use(
+      http.get("/api/sessions", () => HttpResponse.json({ items: [item] })),
+      http.get("/api/sessions/:id", () => HttpResponse.json(item)),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json(
+          { error: { code: "SESSION_NOT_FOUND", message: "missing" } },
+          { status: 404 },
+        ),
+      ),
+    );
+
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+
+    const overview = wrapper.get("[data-testid='session-overview']");
+    expect(overview.text()).toContain("执行流读取失败");
+    expect(overview.text()).toContain("重试");
+    expect(overview.text()).toContain(item.title);
+    expect(overview.find("[data-testid='tree-placeholder']").exists()).toBe(false);
   });
 
   it("supports listbox arrow, Home, and End keyboard navigation", async () => {

@@ -3,7 +3,7 @@
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { getSession, listSessions } from "./sessions";
+import { getSession, getSessionTree, listSessions } from "./sessions";
 import { server } from "../test/server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -69,5 +69,24 @@ describe("sessions api", () => {
 
     await getSession("root/with space");
     expect(pathname).toBe("/api/sessions/root%2Fwith%20space");
+  });
+
+  it("URL-encodes the tree request", async () => {
+    let pathname = "";
+    server.use(
+      http.get("/api/sessions/:id/tree", ({ request }) => {
+        pathname = new URL(request.url).pathname;
+        return HttpResponse.json({
+          sessionId: "root/with space",
+          agents: [],
+          badCases: [],
+        });
+      }),
+    );
+
+    const result = await getSessionTree("root/with space");
+
+    expect(pathname).toBe("/api/sessions/root%2Fwith%20space/tree");
+    expect(result.sessionId).toBe("root/with space");
   });
 });

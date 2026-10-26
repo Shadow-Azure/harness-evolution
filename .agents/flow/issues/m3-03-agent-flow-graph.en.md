@@ -9,11 +9,14 @@ milestone: m3
 depends:
   - m3-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
@@ -86,10 +89,11 @@ m3-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 ```sh
-pnpm test:api -- tests/m3-03-agent-flow-graph
-pnpm test:db
-pnpm test:web
-pnpm test:e2e
+pnpm test:web -- sessions agent-tree
+pnpm test:e2e -- m3-session-browser
+pnpm test:e2e -- m3-agent-tree
+pnpm build
+pnpm verify:bundle
 ```
 
 - 4 个本地会话树可浏览

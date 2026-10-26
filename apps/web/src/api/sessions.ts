@@ -1,4 +1,8 @@
-import type { SessionListItem, SessionListResponse } from "@harness/contracts";
+import type {
+  SessionListItem,
+  SessionListResponse,
+  SessionTree,
+} from "@harness/contracts";
 
 import { request } from "./http";
 
@@ -41,5 +45,16 @@ export function listSessions(filters: SessionFilters = {}): Promise<SessionListR
 export function getSession(sessionId: string): Promise<SessionListItem> {
   return request<SessionListItem>(
     `/api/sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+/**
+ * Read the canonical flat Agent tree for one root session.
+ * @param sessionId Root session identifier.
+ * @returns Flat Agent nodes and anchored problem references.
+ */
+export function getSessionTree(sessionId: string): Promise<SessionTree> {
+  return request<SessionTree>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/tree`,
   );
 }

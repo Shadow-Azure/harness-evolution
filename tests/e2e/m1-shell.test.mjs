@@ -297,7 +297,13 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       `(() => {
         const nav = document.querySelector("nav");
         const sync = document.querySelector("[data-testid='sync-status']");
-        if (!nav || !document.querySelector("[data-testid='demo-badge']") || !sync) return null;
+        if (
+          !nav ||
+          !document.querySelector("[data-testid='demo-badge']") ||
+          !sync ||
+          !document.querySelector(".session-browser") ||
+          !document.body.textContent.includes("没有匹配当前筛选的 session")
+        ) return null;
         return {
           path: location.pathname,
           links: [...nav.querySelectorAll("a")].map((link) => link.textContent.trim()),

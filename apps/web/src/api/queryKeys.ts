@@ -8,5 +8,7 @@ export const queryKeys = {
     ["sessions", "list", filters] as const,
   session: (sessionId: string) =>
     ["sessions", "detail", sessionId] as const,
+  sessionTree: (sessionId: string) =>
+    ["sessions", "tree", sessionId] as const,
   acquisitionStatus: ["acquisition", "status"] as const,
 };

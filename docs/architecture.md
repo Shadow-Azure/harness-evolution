@@ -30,6 +30,8 @@ Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理�
 
 Session 浏览器用 360px 列表与概览；搜索、状态、排序、选中写 URL，统计和密度来自 `/api/sessions`。
 
+流图异步。
+
 lifespan 先恢复 JobRunner 并采纳 `sync_lock`，再启动 scheduler；手动与定时共用单飞锁，无 pending 不建 job。
 
 ## 数据层策略

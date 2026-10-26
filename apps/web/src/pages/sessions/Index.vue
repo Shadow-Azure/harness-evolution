@@ -3,7 +3,11 @@ import type { SessionFilters, SessionSort, SessionStatusFilter } from "../../api
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
-import { useSessionList, useSessionSummary } from "../../composables/useSessions";
+import {
+  useSessionList,
+  useSessionSummary,
+  useSessionTree,
+} from "../../composables/useSessions";
 import SearchBox from "./components/SearchBox.vue";
 import SessionList from "./components/SessionList.vue";
 import SessionOverview from "./components/SessionOverview.vue";
@@ -63,6 +67,12 @@ const listQuery = useSessionList(filters);
 const summaryQuery = useSessionSummary(
   computed(() => selectedId.value || null),
 );
+const treeQuery = useSessionTree(
+  computed(() => selectedId.value || null),
+);
+
+const expandedBySession = ref<Record<string, string[]>>({});
+const activeAgentBySession = ref<Record<string, string | null>>({});
 
 const items = computed(() => listQuery.data.value?.items ?? []);
 const selectedItem = computed(
@@ -75,8 +85,19 @@ const isSummaryPending = computed(
   () => summaryQuery.isPending.value && Boolean(selectedId.value),
 );
 const summaryError = computed(() => summaryQuery.error.value);
+const sessionTree = computed(() => treeQuery.data.value ?? null);
+const treeError = computed(() => treeQuery.error.value);
+const isTreePending = computed(
+  () => treeQuery.isPending.value && Boolean(selectedId.value),
+);
 const overviewItem = computed(
   () => summaryQuery.data.value ?? selectedItem.value,
+);
+const expandedAgentIds = computed(
+  () => expandedBySession.value[selectedId.value] ?? [],
+);
+const activeAgentId = computed(
+  () => activeAgentBySession.value[selectedId.value] ?? null,
 );
 
 function routeWithFilters(overrides: Partial<SessionFilters>) {
@@ -129,6 +150,33 @@ function selectSession(sessionId: string) {
   });
 }
 
+function toggleExpanded(agentId: string) {
+  if (!selectedId.value) return;
+  const current = expandedBySession.value[selectedId.value] ?? [];
+  expandedBySession.value = {
+    ...expandedBySession.value,
+    [selectedId.value]: current.includes(agentId)
+      ? current.filter((id) => id !== agentId)
+      : [...current, agentId],
+  };
+}
+
+function collapseAllBranches() {
+  if (!selectedId.value) return;
+  expandedBySession.value = {
+    ...expandedBySession.value,
+    [selectedId.value]: [],
+  };
+}
+
+function selectAgent(agentId: string) {
+  if (!selectedId.value) return;
+  activeAgentBySession.value = {
+    ...activeAgentBySession.value,
+    [selectedId.value]: agentId,
+  };
+}
+
 watch(
   () => route.query.q,
   (value) => {
@@ -157,6 +205,27 @@ watch(
         query: routeWithFilters({}),
       });
     }
+  },
+  { immediate: true },
+);
+
+watch(
+  [selectedId, () => treeQuery.data.value?.agents],
+  ([currentId, currentAgents]) => {
+    if (!currentId || !currentAgents?.length) return;
+    const currentActive = activeAgentBySession.value[currentId];
+    if (
+      currentActive &&
+      currentAgents.some((agent) => agent.agentId === currentActive)
+    ) {
+      return;
+    }
+    const main = currentAgents.find((agent) => agent.kind === "main");
+    if (!main) return;
+    activeAgentBySession.value = {
+      ...activeAgentBySession.value,
+      [currentId]: main.agentId,
+    };
   },
   { immediate: true },
 );
@@ -215,10 +284,19 @@ onBeforeUnmount(() => {
       />
     </aside>
     <SessionOverview
+      :active-agent-id="activeAgentId"
+      :expanded-agent-ids="expandedAgentIds"
       :item="overviewItem"
       :loading="isSummaryPending"
+      :tree="sessionTree"
+      :tree-error="treeError"
+      :tree-loading="isTreePending"
       :error="summaryError"
+      @collapse-all="collapseAllBranches"
+      @node-select="selectAgent"
       @retry="summaryQuery.refetch"
+      @toggle-expanded="toggleExpanded"
+      @tree-retry="treeQuery.refetch"
     />
   </section>
 </template>
