@@ -569,18 +569,20 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
     assert.equal(refreshed, targetAgentId);
     cookie = await browserRefreshCookie(first);
 
-    const otherAgent = await first.session.send("Runtime.evaluate", {
-      expression: `(() => {
+    const otherAgentId = await waitForDocument(
+      first.session,
+      `(() => {
         const selected = document.querySelector("[data-testid='agent-tree'] .rf-agent[aria-pressed='true']");
-        const other = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")]
-          .find((node) => node !== selected);
+        const agents = [...document.querySelectorAll("[data-testid='agent-tree'] .rf-agent")];
+        const other = agents.find((node) => node !== selected);
         const id = other?.closest(".vue-flow__node")?.getAttribute("data-id");
-        other?.click();
-        return id ?? null;
+        if (!id) return null;
+        other.click();
+        return id;
       })()`,
-      returnByValue: true,
-    });
-    assert.ok(otherAgent.result.value);
+      "another renderable Agent",
+    );
+    assert.ok(otherAgentId);
     const selectedOther = await waitForDocument(
       first.session,
       `Boolean(
