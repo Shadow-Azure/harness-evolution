@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { EvolutionRunCard } from "@harness/contracts";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps<{
   run: EvolutionRunCard;
@@ -9,6 +9,8 @@ const props = defineProps<{
 const isActive = computed(() =>
   ["preparing", "running", "blocked"].includes(props.run.status),
 );
+const errorOpen = ref(false);
+const errorTooltipId = computed(() => `run-error-${props.run.runId}`);
 
 const statusLabel = computed(() => {
   switch (props.run.status) {
@@ -70,6 +72,14 @@ const delta = computed(() => {
     positive: value >= 0,
   };
 });
+
+function openError(): void {
+  errorOpen.value = true;
+}
+
+function closeError(): void {
+  errorOpen.value = false;
+}
 </script>
 
 <template>
@@ -81,12 +91,9 @@ const delta = computed(() => {
     <div class="run-title-row">
       <span class="title">{{ run.title }}</span>
       <span
+        v-if="!run.error"
         class="badge"
         :class="statusClass"
-        :title="run.error?.message"
-        :aria-label="run.error
-          ? `${statusLabel}：${run.error.message}`
-          : undefined"
       >
         <span
           v-if="isActive"
@@ -94,6 +101,40 @@ const delta = computed(() => {
           aria-hidden="true"
         />
         {{ statusLabel }}
+      </span>
+      <span
+        v-else
+        class="error-status"
+        @mouseenter="openError"
+        @mouseleave="closeError"
+      >
+        <button
+          class="badge error-trigger"
+          :class="statusClass"
+          type="button"
+          :title="run.error.message"
+          :aria-describedby="errorTooltipId"
+          :aria-expanded="errorOpen ? 'true' : 'false'"
+          @focus="openError"
+          @blur="closeError"
+          @click="openError"
+          @keydown.esc="closeError"
+        >
+          <span
+            v-if="isActive"
+            class="pulse"
+            aria-hidden="true"
+          />
+          {{ statusLabel }}
+        </button>
+        <span
+          :id="errorTooltipId"
+          class="badge-tooltip"
+          :class="{ 'is-open': errorOpen }"
+          role="tooltip"
+        >
+          {{ run.error.message }}
+        </span>
       </span>
       <span class="time">{{ createdMeta }}</span>
     </div>
@@ -234,6 +275,45 @@ const delta = computed(() => {
 .badge.failed {
   color: var(--red);
   background: color-mix(in srgb, var(--red) 11%, transparent);
+}
+
+.error-status {
+  position: relative;
+  display: inline-flex;
+}
+
+.error-trigger {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.badge-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 64px));
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  visibility: hidden;
+  white-space: normal;
+}
+
+.badge-tooltip.is-open {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .pulse {

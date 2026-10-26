@@ -257,6 +257,7 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           "run-failed",
           "run-interrupted",
           "run-completed-no-benefit",
+          "run-completed-unknown",
         ];
         return JSON.stringify(running) === JSON.stringify(expectedRunning) &&
           JSON.stringify(history) === JSON.stringify(expectedHistory)
@@ -266,7 +267,7 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
       "all expected run cards",
     );
     assert.equal(populated.running.length, 3);
-    assert.equal(populated.history.length, 4);
+    assert.equal(populated.history.length, 5);
     const desktop = await evaluate(
       page,
       `(() => {
@@ -315,6 +316,12 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           leaksInternalStage: /(^|\\s)(eval|push) ·/.test(
             document.body.textContent ?? "",
           ),
+          badgeLabels: Object.fromEntries(
+            [...document.querySelectorAll("[data-run-id]")].map((item) => [
+              item.getAttribute("data-run-id"),
+              item.querySelector(".badge")?.textContent.replace(/\s+/g, " ").trim(),
+            ]),
+          ),
         };
       })()`,
     );
@@ -332,6 +339,7 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
       "run-failed",
       "run-interrupted",
       "run-completed-no-benefit",
+      "run-completed-unknown",
     ]);
     assert.equal(desktop.launchDisabled, true);
     assert.equal(desktop.hasCanvas, false);
@@ -347,6 +355,52 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     assert.equal(desktop.interruptedErrorTitle, "推送连接中断");
     assert.equal(desktop.hasVisibleErrorRow, false);
     assert.equal(desktop.leaksInternalStage, false);
+    assert.deepEqual(desktop.badgeLabels, {
+      "run-running": "正在执行",
+      "run-blocked": "已阻塞",
+      "run-preparing": "准备中",
+      "run-completed-effective": "✓ 已完成 · 自进化有效",
+      "run-failed": "失败",
+      "run-interrupted": "已中断",
+      "run-completed-no-benefit": "已完成 · 无收益",
+      "run-completed-unknown": "已完成 · 终评未知",
+    });
+    await evaluate(
+      page,
+      `(() => {
+        document.querySelector("[data-run-id='run-failed'] .badge").click();
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(
+        "[data-run-id='run-failed'] .badge-tooltip",
+      )?.classList.contains("is-open")`,
+      "failed run click tooltip",
+    );
+    const failedTooltip = await evaluate(
+      page,
+      `(() => {
+        const row = document.querySelector("[data-run-id='run-failed']");
+        const trigger = row.querySelector(".badge");
+        const describedBy = trigger.getAttribute("aria-describedby");
+        const tooltip = row.querySelector(".badge-tooltip");
+        return {
+          tag: trigger.tagName,
+          describedBy,
+          tooltipId: tooltip?.id,
+          tooltipText: tooltip?.textContent.trim(),
+          tooltipOpen: tooltip?.classList.contains("is-open"),
+        };
+      })()`,
+    );
+    assert.deepEqual(failedTooltip, {
+      tag: "BUTTON",
+      describedBy: "run-error-run-failed",
+      tooltipId: "run-error-run-failed",
+      tooltipText: "评测执行失败：sandbox timeout",
+      tooltipOpen: true,
+    });
     await page.session.send("DOM.enable");
     await page.session.send("CSS.enable");
     const documentNode = await page.session.send("DOM.getDocument", {
@@ -393,7 +447,42 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     );
     assert.equal(mobile.width, 390);
     assert.equal(mobile.scrollWidth, mobile.clientWidth);
-    assert.equal(mobile.cards, 7);
+    assert.equal(mobile.cards, 8);
+    await evaluate(
+      page,
+      `(() => {
+        document.querySelector("[data-run-id='run-failed'] .badge").click();
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(
+        "[data-run-id='run-failed'] .badge-tooltip",
+      )?.classList.contains("is-open")`,
+      "mobile failed run click tooltip",
+    );
+    const mobileTooltip = await evaluate(
+      page,
+      `(() => {
+        const row = document.querySelector("[data-run-id='run-failed']");
+        const tooltip = row.querySelector(".badge-tooltip");
+        const rect = tooltip.getBoundingClientRect();
+        return {
+          left: rect.left,
+          right: rect.right,
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+          open: tooltip.classList.contains("is-open"),
+        };
+      })()`,
+    );
+    assert.ok(mobileTooltip.left >= 0, JSON.stringify(mobileTooltip));
+    assert.ok(
+      mobileTooltip.right <= mobileTooltip.pageClientWidth,
+      JSON.stringify(mobileTooltip),
+    );
+    assert.equal(mobileTooltip.pageScrollWidth, mobileTooltip.pageClientWidth);
+    assert.equal(mobileTooltip.open, true);
     await screenshot(page, "02-mobile-390.png");
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {

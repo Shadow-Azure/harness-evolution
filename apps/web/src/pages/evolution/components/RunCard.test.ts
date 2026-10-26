@@ -49,6 +49,27 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
 });
 
 describe("RunCard", () => {
+  it("renders the preparing status explicitly", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        run: run({
+          status: "preparing",
+          progress: {
+            unit: 0,
+            total: 7,
+            percent: 0,
+            stageLabel: "第 1/6 步 · 筛选输入中…",
+            doneRounds: 0,
+            accepted: 0,
+          },
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("准备中");
+    expect(wrapper.get(".badge").classes()).toContain("running");
+  });
+
   it("renders prototype metadata and uses backend progress verbatim", () => {
     const wrapper = mount(RunCard, {
       props: { run: run() },
@@ -158,7 +179,7 @@ describe("RunCard", () => {
     expect(wrapper.text()).toContain("终评数据暂不可用");
   });
 
-  it("keeps failed and interrupted error details in the badge tooltip", () => {
+  it("makes failed and interrupted error details available through a focusable tooltip", async () => {
     const failed = mount(RunCard, {
       props: {
         run: run({
@@ -185,12 +206,22 @@ describe("RunCard", () => {
     });
 
     expect(failed.get(".badge").classes()).toContain("failed");
+    expect(failed.get(".badge").element.tagName).toBe("BUTTON");
     expect(failed.get(".badge").attributes("title")).toBe(
       "评测执行失败：sandbox timeout",
     );
-    expect(failed.get(".badge").attributes("aria-label")).toBe(
-      "失败：评测执行失败：sandbox timeout",
+    const failedTooltipId = failed.get(".badge").attributes("aria-describedby");
+    expect(failedTooltipId).toMatch(/^run-error-/);
+    expect(failed.get(".badge-tooltip").attributes("id")).toBe(failedTooltipId);
+    expect(failed.get(".badge-tooltip").attributes("role")).toBe("tooltip");
+    expect(failed.get(".badge-tooltip").classes()).not.toContain("is-open");
+    await failed.get(".badge").trigger("focus");
+    expect(failed.get(".badge-tooltip").classes()).toContain("is-open");
+    expect(failed.get(".badge-tooltip").text()).toBe(
+      "评测执行失败：sandbox timeout",
     );
+    await failed.get(".badge").trigger("blur");
+    expect(failed.get(".badge-tooltip").classes()).not.toContain("is-open");
     expect(failed.find(".final-line").exists()).toBe(false);
     expect(interrupted.get(".badge").classes()).toContain("interrupted");
     expect(interrupted.get(".badge").attributes("title")).toBe(
@@ -203,7 +234,7 @@ describe("RunCard", () => {
     expect(interrupted.text()).not.toContain("push");
   });
 
-  it("marks blocked active runs with the warning state", () => {
+  it("marks blocked active runs with a focusable warning tooltip", async () => {
     const wrapper = mount(RunCard, {
       props: {
         run: run({
@@ -221,8 +252,20 @@ describe("RunCard", () => {
     expect(wrapper.text()).toContain("已阻塞");
     expect(wrapper.find("[role='progressbar']").exists()).toBe(true);
     expect(wrapper.get(".badge").attributes("title")).toBe("评测队列暂停");
+    await wrapper.get(".badge").trigger("click");
+    expect(wrapper.get(".badge-tooltip").classes()).toContain("is-open");
+    expect(wrapper.get(".badge-tooltip").text()).toBe("评测队列暂停");
     expect(wrapper.find(".run-error").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("eval");
+  });
+
+  it("keeps status badges non-interactive when no error is present", () => {
+    const wrapper = mount(RunCard, {
+      props: { run: run() },
+    });
+
+    expect(wrapper.get(".badge").element.tagName).toBe("SPAN");
+    expect(wrapper.find(".badge-tooltip").exists()).toBe(false);
   });
 
   it("does not imply that a run card can be opened before detail exists", () => {

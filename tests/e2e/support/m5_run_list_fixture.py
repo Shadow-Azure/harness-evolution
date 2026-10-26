@@ -88,7 +88,7 @@ def _run(
 
 
 async def main() -> None:
-    """Replace the run tables with seven deterministic status cards."""
+    """Replace the run tables with eight deterministic status cards."""
     settings = Settings()
     database = create_database(settings)
     await database.start()
@@ -160,6 +160,14 @@ async def main() -> None:
                     clusters=2,
                     progress_unit=7,
                 ),
+                _run(
+                    "run-completed-unknown",
+                    "completed",
+                    minutes_ago=420,
+                    created_by=admin_id,
+                    clusters=2,
+                    progress_unit=7,
+                ),
             ]
             await session.execute(insert(evolution_runs), rows)
 
@@ -174,6 +182,7 @@ async def main() -> None:
                     "run-failed": 1,
                     "run-interrupted": 1,
                     "run-completed-no-benefit": 2,
+                    "run-completed-unknown": 2,
                 }[str(run["id"])]
                 for seq in range(1, count + 1):
                     cluster_id = f"{run['id']}-cluster-{seq}"
