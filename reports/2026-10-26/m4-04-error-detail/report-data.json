@@ -1,7 +1,7 @@
 {
   "lang": "zh-CN",
   "title": "M4-04 错误详情与归因集成冒烟报告",
-  "eyebrow": "Harness Evolution · PR #120 · validation on 13333e7",
+  "eyebrow": "Harness Evolution · PR #120 · validation on 0c91e3e",
   "summary": "在临时 SQLite、真实 FastAPI/Vite 与 Google Chrome 上完成错误详情工作台集成验证。冒烟发现并修复跨 Session 409 重复英文 toast、错误卡缺少归因报告深链以及画布泄漏裸布局诊断三项缺陷；最终提交同时移除原型没有的“问题 ID”标签，并把归因结论改成 14px 结论值与状态 chip。15 个 CDP 场景与 2 个原生 Computer Use 场景全部通过，原型结构、双向联动、深链恢复、加载/错误/重试、归属校验、响应式布局及控制台清洁度均有证据。",
   "meta": "2026-10-26/27 · macOS · Google Chrome · FastAPI + Vite + SQLite",
   "metrics": [
@@ -14,8 +14,8 @@
   "facts": [
     { "label": "Issue", "value": "#49 · M4-04 error detail" },
     { "label": "PR", "value": "#120" },
-    { "label": "Validation base", "value": "13333e7" },
-    { "label": "Evidence patch", "value": "final smoke report on 13333e7" },
+    { "label": "Validation base", "value": "0c91e3e" },
+    { "label": "Evidence patch", "value": "final smoke report on 0c91e3e" },
     { "label": "CI", "value": "GitHub Actions validates the evidence commit after push" },
     { "label": "Runtime", "value": "FastAPI + Vite + Google Chrome" },
     { "label": "Database", "value": "临时 SQLite fixture" },
