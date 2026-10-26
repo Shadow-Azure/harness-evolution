@@ -169,6 +169,45 @@ describe("AgentTree", () => {
     expect(wrapper.text()).not.toContain("MISSING_PARENT_EVENT");
   });
 
+  it("shows a friendly fallback when a fatal layout issue leaves no nodes", () => {
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: {
+          sessionId: "missing-main",
+          agents: [
+            {
+              agentId: "orphan",
+              parentAgentId: null,
+              kind: "subagent",
+              agentType: "Explore",
+              taskKind: null,
+              spawnDepth: 1,
+              label: "Explore · orphan",
+              desc: "orphan",
+              lines: 1,
+              messagesCount: 1,
+              toolUseId: "tool-orphan",
+              skillName: null,
+              teamName: null,
+              events: [],
+            },
+          ],
+          badCases: [],
+        } satisfies SessionTree,
+        expanded: [],
+      },
+    });
+
+    expect(wrapper.get(".agent-tree-unavailable").attributes("role")).toBe(
+      "status",
+    );
+    expect(wrapper.get(".agent-tree-unavailable").text()).toBe(
+      "执行流数据不完整，暂时无法绘制。",
+    );
+    expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("MISSING_MAIN");
+  });
+
   it("locates a selected Agent through the viewport", () => {
     setCenterMock.mockClear();
     const wrapper = mount(AgentTree, {

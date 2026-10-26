@@ -1,5 +1,5 @@
 {
-  "commit": "0c91e3e",
+  "commit": "bd9b9d5",
   "rows": [
     {
       "id": "01",
@@ -111,6 +111,24 @@
     },
     {
       "id": "13",
+      "name": "详情 404",
+      "status": "pass",
+      "detail": "不存在的问题显示页级不可重试错误，不伪造侧栏、执行流或详情。",
+      "evidence": [
+        "screenshots/08-detail-404.png"
+      ]
+    },
+    {
+      "id": "14",
+      "name": "致命布局降级",
+      "status": "pass",
+      "detail": "tree 缺少 main Agent 时显示友好不可绘制状态，不暴露 MISSING_MAIN 或空白 VueFlow。",
+      "evidence": [
+        "screenshots/09-fatal-layout.png"
+      ]
+    },
+    {
+      "id": "15",
       "name": "跨 Session 409",
       "status": "pass",
       "detail": "错误归属不匹配时只显示页级不可重试中文错误，不渲染侧栏、执行流、详情或重复全局 toast。",
@@ -119,7 +137,7 @@
       ]
     },
     {
-      "id": "14",
+      "id": "16",
       "name": "390px 响应式布局",
       "status": "pass",
       "detail": "单列工作台无横向溢出，详情与归因仍可访问。",
@@ -128,10 +146,10 @@
       ]
     },
     {
-      "id": "15",
+      "id": "17",
       "name": "Console / network",
       "status": "pass",
-      "detail": "除用于验证的预期 409 外，无 warning、error 或未捕获异常。",
+      "detail": "除用于验证的预期 404、409、tree 中断与致命布局响应外，无 warning、error 或未捕获异常。",
       "evidence": [
         "console-summary.txt"
       ]

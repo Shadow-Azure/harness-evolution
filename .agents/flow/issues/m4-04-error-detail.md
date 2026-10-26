@@ -9,7 +9,7 @@ milestone: m4
 depends:
   - m4-03
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - packages/contracts/**

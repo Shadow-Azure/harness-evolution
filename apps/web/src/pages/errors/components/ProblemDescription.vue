@@ -104,7 +104,6 @@ const reportId = computed(() =>
       class="diagnostic"
     >
       外部字段存在漂移，当前以安全占位展示。
-      <span v-if="problem.diagnosticCode">({{ problem.diagnosticCode }})</span>
     </p>
   </section>
 </template>
