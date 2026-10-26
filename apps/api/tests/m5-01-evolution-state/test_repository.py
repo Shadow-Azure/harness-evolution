@@ -28,6 +28,7 @@ from app.service.evolution.state import StageConflict
 
 NOW = datetime(2026, 10, 27, 1, 2, 3, tzinfo=UTC)
 RUN_ID = "run-m5-01"
+OTHER_RUN_ID = "run-m5-01-other"
 TARGET_ID = "target-m5-01"
 USER_ID = "user-m5-01"
 
@@ -363,6 +364,61 @@ async def test_stale_cluster_replacement_does_not_delete_existing_rounds(
     assert stale.value.target == 1
     assert await repository.list_clusters(RUN_ID) == clusters_before
     assert await repository.list_rounds(RUN_ID) == rounds_before
+
+
+async def test_rounds_require_clusters_from_the_same_run(
+    evolution_repository: tuple[Database, EvolutionRepository],
+) -> None:
+    """Rounds cannot reference missing or other-run clusters."""
+    _, repository = evolution_repository
+    await repository.create_run(_run_values(id=RUN_ID, status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=1,
+    )
+    clusters = await repository.replace_clusters(
+        RUN_ID,
+        (_cluster("model", "own cluster", ("p-model-1",), impact=5.0),),
+    )
+    await _advance_to(repository, target=4, cluster_count=1)
+
+    await repository.create_run(
+        _run_values(
+            id=OTHER_RUN_ID,
+            title="other run",
+            status="running",
+        ),
+    )
+    await repository.advance_unit(
+        OTHER_RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=1,
+    )
+    other_clusters = await repository.replace_clusters(
+        OTHER_RUN_ID,
+        (_cluster("error", "other cluster", ("p-error-1",), impact=9.0),),
+    )
+
+    with pytest.raises(StageConflict) as foreign_cluster:
+        await repository.insert_rounds(
+            (_round("round-foreign", other_clusters[0].probe_cluster_id, 1),),
+        )
+    assert foreign_cluster.value.status_code == 409
+    assert foreign_cluster.value.reason == ("round clusters must belong to the same run")
+    assert await repository.list_rounds(RUN_ID) == ()
+    assert await repository.list_clusters(OTHER_RUN_ID) == other_clusters
+
+    with pytest.raises(StageConflict) as missing_cluster:
+        await repository.insert_rounds(
+            (_round("round-missing", "missing-cluster", 1),),
+        )
+    assert missing_cluster.value.status_code == 409
+    assert missing_cluster.value.reason == ("round clusters must belong to the same run")
+    assert await repository.list_rounds(RUN_ID) == ()
+    assert await repository.list_clusters(RUN_ID) == clusters
 
 
 async def test_rounds_and_final_require_their_exact_cursor(

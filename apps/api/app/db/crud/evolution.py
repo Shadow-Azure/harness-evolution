@@ -261,6 +261,7 @@ class EvolutionRepository:
         if len(run_ids) != 1:
             raise ValueError("rounds must belong to exactly one run")
         run_id = run_ids.pop()
+        cluster_ids = {str(round_["probe_cluster_id"]) for round_ in values}
         async with self._database.transaction() as session:
             await _require_run_stage(
                 session,
@@ -269,6 +270,28 @@ class EvolutionRepository:
                 statuses=("preparing", "running"),
                 reason="round loading requires completed severity ranking",
             )
+            owners = {
+                str(row["probe_cluster_id"]): str(row["run_id"])
+                for row in (
+                    await session.execute(
+                        select(
+                            probe_clusters.c.probe_cluster_id,
+                            probe_clusters.c.run_id,
+                        ).where(
+                            probe_clusters.c.probe_cluster_id.in_(cluster_ids),
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            }
+            if set(owners) != cluster_ids or any(owner != run_id for owner in owners.values()):
+                raise StageConflict(
+                    status_code=409,
+                    current=4,
+                    target=4,
+                    reason="round clusters must belong to the same run",
+                )
             await session.execute(insert(evolution_rounds), values)
 
     async def list_rounds(self, run_id: str) -> tuple[EvolutionRoundRecord, ...]:
