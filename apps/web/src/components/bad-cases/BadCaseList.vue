@@ -114,6 +114,7 @@ defineExpose({ scrollToProblem });
               problem.badCaseId,
               'desc',
             )"
+            :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
             rel="noopener noreferrer"
             target="_blank"
             :title="problem.badCaseId"

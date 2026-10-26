@@ -44,6 +44,7 @@ const reportId = computed(() =>
           problem.badCaseId,
           'desc',
         )"
+        :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
         rel="noopener noreferrer"
         target="_blank"
         :title="problem.badCaseId"
@@ -62,6 +63,7 @@ const reportId = computed(() =>
           problem.badCaseId,
           'attr',
         )"
+        :aria-label="`归因报告 ${shortBadCaseId(reportId)}，在新窗口打开归因分析`"
         rel="noopener noreferrer"
         target="_blank"
         :title="reportId"

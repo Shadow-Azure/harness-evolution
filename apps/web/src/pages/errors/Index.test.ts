@@ -235,6 +235,9 @@ describe("error detail page", () => {
     );
     expect(detailId.attributes("target")).toBe("_blank");
     expect(detailId.attributes("rel")).toBe("noopener noreferrer");
+    expect(detailId.attributes("aria-label")).toBe(
+      "问题 case-err，在新窗口打开问题描述",
+    );
     const reportLink = wrapper.get(".description .report-id");
     expect(reportLink.text()).toBe("probe-er");
     expect(reportLink.attributes("title")).toBe("probe-error");
@@ -243,6 +246,9 @@ describe("error detail page", () => {
     );
     expect(reportLink.attributes("target")).toBe("_blank");
     expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(reportLink.attributes("aria-label")).toBe(
+      "归因报告 probe-er，在新窗口打开归因分析",
+    );
     const firstFact = wrapper.get(".fact-chip");
     expect(firstFact.get(".fact-key").text()).toBe("file");
     expect(firstFact.get(".fact-value").text()).toBe("src/index.ts");
@@ -271,6 +277,9 @@ describe("error detail page", () => {
     );
     expect(sourceLink.attributes("target")).toBe("_blank");
     expect(sourceLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(sourceLink.attributes("aria-label")).toBe(
+      "来源问题 case-err，在新窗口打开问题描述",
+    );
     expect(wrapper.find(".markdown pre").exists()).toBe(true);
     expect(wrapper.get(".markdown a").attributes("target")).toBe("_blank");
     expect(wrapper.get(".markdown a").attributes("rel")).toBe(

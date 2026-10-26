@@ -434,13 +434,20 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
           classification: attribution.querySelector(".classification")?.textContent,
           html: attribution.querySelector(".markdown")?.innerHTML,
           sourceLinks: [...attribution.querySelectorAll(".source-links a")].map(
-            (link) => ({
-              text: link.textContent,
-              href: link.getAttribute("href"),
-              title: link.getAttribute("title"),
-              target: link.getAttribute("target"),
-              rel: link.getAttribute("rel"),
-            }),
+            (link) => {
+              const style = getComputedStyle(link);
+              return {
+                text: link.textContent,
+                href: link.getAttribute("href"),
+                title: link.getAttribute("title"),
+                ariaLabel: link.getAttribute("aria-label"),
+                target: link.getAttribute("target"),
+                rel: link.getAttribute("rel"),
+                textDecoration: style.textDecorationLine,
+                borderStyle: style.borderBottomStyle,
+                borderWidth: style.borderBottomWidth,
+              };
+            },
           ),
         };
       })()`,
@@ -471,8 +478,13 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
           link.text === link.title.slice(0, 8) &&
           link.href ===
             `/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
+          link.ariaLabel ===
+            `来源问题 ${link.title.slice(0, 8)}，在新窗口打开问题描述` &&
           link.target === "_blank" &&
-          link.rel === "noopener noreferrer",
+          link.rel === "noopener noreferrer" &&
+          link.textDecoration === "none" &&
+          link.borderStyle === "dashed" &&
+          link.borderWidth === "1px",
       ),
       true,
     );

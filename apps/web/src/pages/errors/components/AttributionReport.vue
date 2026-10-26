@@ -190,6 +190,7 @@ const analysisHtml = computed(() =>
             v-for="source in probe.fromBadCases"
             :key="source"
             :href="badCaseDeepLink(sessionId, source, 'desc')"
+            :aria-label="`来源问题 ${shortBadCaseId(source)}，在新窗口打开问题描述`"
             rel="noopener noreferrer"
             target="_blank"
             :title="source"
@@ -342,8 +343,14 @@ const analysisHtml = computed(() =>
 
 .source-links a {
   color: var(--blue);
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
   font-family: var(--mono);
   font-size: 11px;
+  text-decoration: none;
+}
+
+.source-links a:hover {
+  border-bottom-style: solid;
 }
 
 .sr-only {

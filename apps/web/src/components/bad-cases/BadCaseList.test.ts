@@ -128,6 +128,9 @@ describe("BadCaseList", () => {
     );
     expect(firstId.attributes("target")).toBe("_blank");
     expect(firstId.attributes("rel")).toBe("noopener noreferrer");
+    expect(firstId.attributes("aria-label")).toBe(
+      "问题 case-una，在新窗口打开问题描述",
+    );
   });
 
   it("keeps degraded problems visible with an explicit diagnostic label", () => {
@@ -199,6 +202,9 @@ describe("BadCaseList", () => {
     expect(idLink.attributes("title")).toBe("case-error");
     expect(idLink.attributes("target")).toBe("_blank");
     expect(idLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(idLink.attributes("aria-label")).toBe(
+      "问题 case-err，在新窗口打开问题描述",
+    );
 
     await idLink.trigger("click");
     expect(wrapper.emitted("select")).toBeUndefined();
