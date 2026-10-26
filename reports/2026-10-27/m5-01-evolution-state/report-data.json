@@ -1,0 +1,167 @@
+{
+  "title": "M5-01 Evolution State 集成冒烟报告",
+  "eyebrow": "Harness Evolution · PR #122 · backend-only",
+  "summary": "在真实 Alembic/SQLite、repository、状态机、确定性聚类与 engine 契约上验证 M5-01。后端切片没有新增 GUI 路由或页面，因此原生 Computer Use 明确标记为不适用；MySQL 8.4、真实 CI 构建与文档门禁已通过。PR 检视发现的跨 run cluster 引用缺口已用失败测试复现并修复。",
+  "meta": "2026-10-27 · Python 3.14 · SQLite · MySQL 8.4 CI",
+  "metrics": [
+    { "value": "12", "label": "冒烟场景" },
+    { "value": "11", "label": "通过" },
+    { "value": "1", "label": "不适用（无 GUI）" },
+    { "value": "1", "label": "检视缺陷已修复" },
+    { "value": "3/3", "label": "CI jobs" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#50 · m5-01 evolution state" },
+    { "label": "PR", "value": "#122" },
+    { "label": "Validation head", "value": "96fc50a" },
+    { "label": "Branch", "value": "codex/m5-01-evolution-state" },
+    { "label": "Database", "value": "Temporary SQLite + MySQL 8.4 CI" },
+    { "label": "Targeted suite", "value": "44 passed / 1 MySQL-only skip" },
+    { "label": "Full API", "value": "366 passed / 9 skipped / 92% coverage" },
+    { "label": "CI run", "value": "40376051908 · all three jobs SUCCESS" },
+    { "label": "Native Computer Use", "value": "Not applicable: no frontend or GUI surface in this slice" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Alembic schema",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 upgrade 到 0006；五张 evolution 表的列、唯一约束、索引、FK、CASCADE 与 nullable impact 可反射。",
+        "evidence": ["pytest-m5.txt", "test-index.txt", "test_schema.py"]
+      },
+      {
+        "id": "02",
+        "name": "六步 unit 游标",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "M=2 时依次覆盖 unit 0 到 7；每步 done/active/pending、clickable 与 4+M+1 终值一致。",
+        "evidence": ["pytest-m5.txt", "test_state.py"]
+      },
+      {
+        "id": "03",
+        "name": "阶段可读性",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "pending step 抛 StepNotReady；preparing 的 input 可读；blocked 不额外推进 cursor；终态不再有 active step。",
+        "evidence": ["pytest-m5.txt", "test_state.py"]
+      },
+      {
+        "id": "04",
+        "name": "非法游标推进",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "负值、越界、停止、回退和多单元跳跃统一返回 StageConflict(409)。",
+        "evidence": ["pytest-m5.txt", "test_state.py"]
+      },
+      {
+        "id": "05",
+        "name": "条件式 cursor 写入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 repository 仅允许 expected cursor 的单步更新；stale 写入返回 409。",
+        "evidence": ["pytest-m5.txt", "test_repository.py"]
+      },
+      {
+        "id": "06",
+        "name": "过期 prepare 不破坏历史",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "severity 完成后重放 cluster replacement 被拒绝，已有 clusters/rounds 未被级联删除。",
+        "evidence": ["pytest-m5.txt", "test_repository.py"]
+      },
+      {
+        "id": "07",
+        "name": "跨 run round 引用",
+        "status": { "kind": "fixed", "label": "FAIL → FIXED" },
+        "detail": "PR 检视发现独立 FK 无法阻止 A run 的 round 引用 B run cluster；事务内批量归属校验现拒绝缺失/外来 cluster 并回滚。",
+        "evidence": ["review-c1cadbb..a430e17.diff", "pytest-m5.txt", "test_repository.py"]
+      },
+      {
+        "id": "08",
+        "name": "确定性占位聚类",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "model→prompt→error、probe_id 排序、(n+1)//2 分半、空组跳过、固定描述与 canonical SHA-256 均稳定。",
+        "evidence": ["pytest-m5.txt", "test_cluster.py"]
+      },
+      {
+        "id": "09",
+        "name": "Engine 能力与工厂",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "ClusterOnly 仅 prepare；Full 五阶段与 KIND_TO_METHOD 完全一致；未知 engine_key/未声明阶段 fail fast；gateway 配置深冻结。",
+        "evidence": ["pytest-m5.txt", "test_engine.py"]
+      },
+      {
+        "id": "10",
+        "name": "API 全量回归",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "全 API 366 passed / 9 skipped，整体覆盖率 92%；无新增失败。",
+        "evidence": ["pytest-api-full.txt"]
+      },
+      {
+        "id": "11",
+        "name": "SQLite / MySQL 双方言",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "本地 SQLite 数据库 lane 17 passed；CI MySQL job 使用真实 MySQL 8.4 执行 migration、schema 反射和 repository round-trip。",
+        "evidence": ["pytest-db.txt", "ci-summary.json"]
+      },
+      {
+        "id": "12",
+        "name": "原生 Computer Use",
+        "status": { "kind": "manual", "label": "N/A" },
+        "detail": "M5-01 不新增前端路由、页面或可交互桌面表面，没有可供 CUA 操作的 GUI；不生成伪造截图。",
+        "evidence": ["后端-only issue 边界", "CI 构建与 API 测试"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P1",
+      "title": "Round 可引用其他 run 的 cluster",
+      "facts": [
+        { "label": "Actual", "value": "独立 FK 只保证 cluster/run 各自存在，不保证二者属于同一 run；cluster 删除会通过 CASCADE 误删外来 round。" },
+        { "label": "Expected", "value": "insert_rounds 在同一事务内批量校验所有 cluster 属于 round.run_id；缺失或跨 run 一律 409 且不写入。" },
+        { "label": "Root cause", "value": "数据库缺少组合外键，repository 未补跨表不变量。" },
+        { "label": "Regression", "value": "跨 run 与不存在 cluster 均有回归；失败后 rounds 为空、其他 run 数据不变。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · 1d1cece" }
+    }
+  ],
+  "screenshots": [],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "Migration / schema",
+        "coverage": "SQLite integration + MySQL CI reflection",
+        "conclusion": "表、索引、唯一约束、FK/CASCADE 与 nullable impact 均验证。",
+        "recommendation": "后续新增 evolution 列时同时扩展共享 reflection helper。"
+      },
+      {
+        "area": "State / repository invariants",
+        "coverage": "45-item targeted suite；44 pass + 1 MySQL-only skipped locally",
+        "conclusion": "状态矩阵、非法推进、stale write、run ownership 与回滚有真实 DB 证据。",
+        "recommendation": "M5-05/M5-09 接入编排时复用这些 guards，不复制 cursor 规则。"
+      },
+      {
+        "area": "Deterministic clustering / engines",
+        "coverage": "Unit + contract tests",
+        "conclusion": "占位算法哈希稳定；engine stages、factory 与 gateway 快照 fail-fast。",
+        "recommendation": "未来真实引擎通过新子类扩展，保持前端/表契约不变。"
+      },
+      {
+        "area": "GUI / Computer Use",
+        "coverage": "N/A",
+        "conclusion": "本切片没有用户界面，原生 CUA 不适用。",
+        "recommendation": "在 M5 UI issue 中再执行 native Computer Use 与视觉原型对照。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "M5-01 后端集成切片和双库门禁通过；检视发现的跨 run 引用缺陷已以 TDD 修复并复测。",
+    "points": [
+      "前端/GUI 不在本 issue 范围，未伪造 Computer Use 证据。",
+      "MySQL 与 repository 的最终证据来自真实 CI run。",
+      "下一阶段由 M5-05 补 cluster-only prepare，M5-09 补 full 迭代编排。"
+    ]
+  },
+  "footer": "证据源：Alembic/SQLite、pytest、GitHub Actions MySQL 8.4 与 PR review 回归；HTML 由官方 renderer 生成。"
+}

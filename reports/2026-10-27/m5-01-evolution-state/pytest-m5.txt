@@ -1,0 +1,87 @@
+
+> harness-evolution@0.1.0 test:api <repo>
+> node scripts/run-api.mjs test -- tests/m5-01-evolution-state
+
+.....................s.......................                            [100%]
+44 passed, 1 skipped in 1.09s
+Name                                           Stmts   Miss Branch BrPart  Cover   Missing
+------------------------------------------------------------------------------------------
+app/__main__.py                                   11     11      2      0     0%   3-27
+app/api/acquisition.py                            55     55      8      0     0%   3-201
+app/api/auth.py                                   45     45      2      0     0%   3-151
+app/api/events.py                                 49     49     12      0     0%   3-160
+app/api/health.py                                 28     28      4      0     0%   3-72
+app/api/jobs.py                                   20     20      0      0     0%   3-74
+app/api/problems.py                               25     25      0      0     0%   3-122
+app/api/security.py                                2      2      0      0     0%   3-5
+app/api/sessions.py                               18     18      0      0     0%   3-86
+app/api/users.py                                  14     14      0      0     0%   3-46
+app/cli.py                                       112    112     30      0     0%   3-271
+app/config.py                                     92     19     18      5    71%   15, 84, 87, 93, 102-112, 117, 122, 127, 132
+app/db/crud/acquisition_replay.py                179    179     34      0     0%   3-732
+app/db/crud/bad_cases.py                         155    155     10      0     0%   3-364
+app/db/crud/evolution.py                         109      5     32      7    91%   85, 136, 198->200, 200->202, 223, 262, 389
+app/db/crud/fixtures.py                          119    119     38      0     0%   3-448
+app/db/crud/jobs.py                               80     80     12      0     0%   3-268
+app/db/crud/local_sessions.py                     57     57     14      0     0%   3-164
+app/db/crud/problems.py                           82     82     14      0     0%   3-286
+app/db/crud/run_events.py                         47     47     10      0     0%   3-136
+app/db/crud/sessions.py                          149    149     18      0     0%   3-384
+app/db/crud/sync.py                               71     71     12      0     0%   3-193
+app/db/crud/sync_errors.py                        26     26      8      0     0%   3-55
+app/db/crud/users.py                              45     29      2      0    34%   18, 22-28, 32-38, 42-43, 49-53, 64-90, 94-96, 109-111
+app/db/database.py                                61     12      8      4    77%   37, 47, 52, 58->60, 66, 88-106
+app/db/factory.py                                  8      1      2      1    80%   13
+app/db/models/evolution.py                        62      4      8      4    89%   369, 385, 392, 399
+app/db/models/jobs.py                             17      3      0      0    82%   110-112
+app/db/models/run_events.py                        3      3      0      0     0%   3-19
+app/db/models/users.py                            16      4      0      0    75%   49, 60-62
+app/db/mysql.py                                   19     11      0      0    42%   17-19, 23-40
+app/db/sqlite.py                                  22      0      2      1    96%   17->19
+app/errors.py                                     84     38      4      0    52%   77-81, 93-96, 105-115, 122-123, 132-186
+app/fixture_corpus.py                            322    322     92      0     0%   3-479
+app/fixtures_seed.py                               2      2      0      0     0%   3-9
+app/main.py                                      123    123      6      0     0%   3-190
+app/middleware/auth.py                            42     42     12      0     0%   3-77
+app/middleware/rate_limit.py                      41     41     12      0     0%   3-70
+app/middleware/request_context.py                 11     11      0      0     0%   3-19
+app/service/acquisition/__init__.py                3      3      0      0     0%   3-27
+app/service/acquisition/agent_tree.py            284    284     86      0     0%   3-725
+app/service/acquisition/local_sessions.py        270    270     72      0     0%   3-488
+app/service/acquisition/normalize.py             282    282     82      0     0%   3-522
+app/service/acquisition/replay.py                119    119     16      0     0%   3-287
+app/service/acquisition/sync.py                  134    134     28      0     0%   3-260
+app/service/acquisition/upstream.py               21     21      4      0     0%   3-60
+app/service/acquisition/upstream_pull.py          73     73     16      0     0%   3-168
+app/service/bad_cases/__init__.py                  2      2      0      0     0%   3-5
+app/service/bad_cases/schemas.py                  66     66      0      0     0%   3-102
+app/service/bad_cases/service.py                 176    176     76      0     0%   3-493
+app/service/events.py                            142    142     54      0     0%   3-277
+app/service/evolution/engine/base.py              25      1      6      1    94%   40
+app/service/evolution/engine/cluster_only.py      11      1      2      1    85%   19
+app/service/evolution/engine/contracts.py         58      3      6      1    94%   74, 97, 101
+app/service/evolution/engine/full.py              23      1      2      1    92%   49
+app/service/evolution/state.py                    66      4     22      4    91%   70, 102, 120, 143
+app/service/identity/principals.py                11     11      2      0     0%   3-32
+app/service/identity/revocations.py               27     27      4      0     0%   3-42
+app/service/identity/schemas.py                   24     24      0      0     0%   3-76
+app/service/identity/service.py                   86     86     24      0     0%   3-176
+app/service/identity/tickets.py                   80     80     18      0     0%   3-129
+app/service/identity/tokens.py                    48     48      4      0     0%   3-131
+app/service/jobs.py                              169    169     46      0     0%   3-340
+app/service/problems/__init__.py                   2      2      0      0     0%   3-5
+app/service/problems/anchor.py                    31     31     18      0     0%   3-69
+app/service/problems/schemas.py                   73     73      6      0     0%   3-168
+app/service/problems/service.py                   88     88     24      0     0%   3-240
+app/service/sessions/__init__.py                   3      3      0      0     0%   3-10
+app/service/sessions/schemas.py                   33     33      0      0     0%   3-108
+app/service/sessions/service.py                   66     66     18      0     0%   3-240
+app/third_party_api/trajectory/__init__.py         3      3      0      0     0%   3-12
+app/third_party_api/trajectory/http.py           118    118     34      0     0%   3-232
+app/third_party_api/trajectory/models.py          71     71     18      0     0%   3-132
+app/third_party_api/trajectory/source.py           9      9      0      0     0%   3-34
+app/utils/time.py                                  9      1      2      1    82%   18
+------------------------------------------------------------------------------------------
+TOTAL                                           5237   4539   1126     31    12%
+
+19 files skipped due to complete coverage.

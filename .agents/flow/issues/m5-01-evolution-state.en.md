@@ -9,11 +9,13 @@ milestone: m5
 depends:
   - m4-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/api/alembic/**
   - fixtures/**
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

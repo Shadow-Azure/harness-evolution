@@ -1,0 +1,114 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.4, pytest-8.4.2, pluggy-1.7.0 -- <repo>/apps/api/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: <repo>/apps/api
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.15.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 45 items
+
+<Dir api>
+  <Package tests>
+    <Dir m5-01-evolution-state>
+      <Module test_cluster.py>
+        Deterministic placeholder clustering contracts.
+        <Function test_simple_cluster_uses_fixed_type_order_and_split_rule>
+          Each non-empty type is sorted, split deterministically, and kept in type order.
+        <Function test_cluster_hash_is_stable_for_equivalent_inputs>
+          Shuffled probes produce the same canonical hash after clustering.
+        <Function test_cluster_hash_changes_when_cluster_semantics_change>
+          Descriptions and probe order participate in the canonical hash.
+        <Function test_empty_input_has_stable_empty_hash>
+          No probes yields no clusters and a deterministic value.
+        <Function test_missing_types_are_skipped>
+          A single populated type still produces one deterministic cluster.
+        <Function test_type_impact_mapping_is_the_fixed_v1_policy>
+          Placeholder impact values are explicit and stable.
+      <Module test_engine.py>
+        Evolution engine stage contracts and factory selection.
+        <Coroutine test_cluster_only_dispatches_prepare_and_rejects_future_stages>
+          Cluster-only exposes prepare and delegates it exactly once.
+        <Coroutine test_full_engine_declares_all_stage_methods>
+          Full dispatch exposes five stages with one callable per stage.
+        <Coroutine test_missing_declared_method_fails_fast>
+          A stage mapping that names a missing method is a configuration defect.
+        <Function test_factory_selects_registered_engines_and_fails_fast>
+          The engine registry is the only selection point.
+        <Function test_gateway_freezes_the_run_eval_config_snapshot>
+          Gateway receives a deeply immutable copy of the creation-time config.
+        <Function test_every_engine_stage_mapping_matches_its_declared_capabilities>
+          No engine declares a stage without a method or vice versa.
+      <Module test_repository.py>
+        Evolution repository cursor, cluster, round, and final contracts.
+        <Coroutine test_run_creation_and_conditional_cursor_updates>
+          A run persists snapshots and advances only from the expected cursor.
+        <Coroutine test_cluster_writes_preserve_order_links_and_impact>
+          Clusters use supplied order, frozen impact, and ordered probe links.
+        <Coroutine test_cluster_replacement_rolls_back_on_unique_violation>
+          A failed replacement leaves the previous cluster snapshot intact.
+        <Coroutine test_rounds_and_final_are_stable_and_idempotent>
+          Rounds retain execution order and a run has one replaceable final row.
+        <Coroutine test_stale_cluster_replacement_does_not_delete_existing_rounds>
+          A repeated prepare cannot rewrite clusters after severity has completed.
+        <Coroutine test_rounds_require_clusters_from_the_same_run>
+          Rounds cannot reference missing or other-run clusters.
+        <Coroutine test_rounds_and_final_require_their_exact_cursor>
+          Rounds wait for severity completion and final waits for every iteration.
+      <Module test_schema.py>
+        Evolution schema and persisted record contracts.
+        <Coroutine test_evolution_schema_is_complete_and_indexed>
+          All five evolution tables expose their durable state columns and constraints.
+        <Function test_record_helpers_copy_json_and_normalize_timestamps>
+          Mutable JSON rows become immutable-ish copies with Shanghai timestamps.
+        <Coroutine test_mysql_evolution_schema_reflects_the_same_contract>
+          The MySQL lane exposes the same five evolution tables and key constraints.
+      <Module test_state.py>
+        Pure unit-cursor rules for the six-step evolution workflow.
+        <Function test_step_states_follow_the_unit_cursor[0-expected0]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[1-expected1]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[2-expected2]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[3-expected3]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[4-expected4]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[5-expected5]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[6-expected6]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_states_follow_the_unit_cursor[7-expected7]>
+          Every step maps directly to the persisted unit cursor.
+        <Function test_step_titles_match_the_public_workflow>
+          Titles stay server-owned so the frontend never invents labels.
+        <Function test_total_units_and_progress_helpers_follow_cluster_count>
+          The final cursor is four fixed steps plus M rounds and final review.
+        <Function test_validate_cursor_rejects_out_of_range_units[-1]>
+          Persisted cursors outside the computed range are conflicts.
+        <Function test_validate_cursor_rejects_out_of_range_units[8]>
+          Persisted cursors outside the computed range are conflicts.
+        <Function test_validate_transition_only_accepts_one_forward_unit[3-3]>
+          Repeated, backward, and multi-unit writes are illegal.
+        <Function test_validate_transition_only_accepts_one_forward_unit[3-2]>
+          Repeated, backward, and multi-unit writes are illegal.
+        <Function test_validate_transition_only_accepts_one_forward_unit[3-5]>
+          Repeated, backward, and multi-unit writes are illegal.
+        <Function test_validate_transition_accepts_the_next_unit>
+          One forward unit is the only valid transition.
+        <Function test_reading_a_pending_step_raises_not_ready>
+          A pending step cannot be fetched before the cursor reaches it.
+        <Function test_input_is_readable_while_preparing>
+          The first step has a preparation state instead of disappearing.
+        <Function test_blocked_run_exposes_the_first_pending_step_without_moving_the_cursor>
+          Blocked is derived from status, not from inventing another cursor.
+        <Function test_terminal_runs_have_no_active_step[completed]>
+          Terminal run states never claim that work is still active.
+        <Function test_terminal_runs_have_no_active_step[failed]>
+          Terminal run states never claim that work is still active.
+        <Function test_terminal_runs_have_no_active_step[interrupted]>
+          Terminal run states never claim that work is still active.
+        <Function test_unknown_step_key_is_not_readable>
+          Only the closed six-step vocabulary is addressable.
+
+========================= 45 tests collected in 0.24s ==========================

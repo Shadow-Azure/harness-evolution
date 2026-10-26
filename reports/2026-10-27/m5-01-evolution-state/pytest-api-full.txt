@@ -1,0 +1,73 @@
+
+> harness-evolution@0.1.0 test:api <repo>
+> node scripts/run-api.mjs test
+
+........................................................................ [ 19%]
+........................................................................ [ 38%]
+........................................................................ [ 57%]
+........................................................................ [ 76%]
+.........s.............................................................. [ 96%]
+...ssssssss....                                                          [100%]
+=============================== warnings summary ===============================
+tests/events/test_sse_api.py::test_ticket_issue_uses_injected_run_topic_authorizer
+tests/events/test_sse_api.py::test_ticket_issue_rejects_multiple_topics
+  <repo>/apps/api/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 23 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/events/test_sse_api.py::test_ticket_issue_uses_injected_run_topic_authorizer
+tests/events/test_sse_api.py::test_ticket_issue_rejects_multiple_topics
+  <repo>/apps/api/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 23 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+366 passed, 9 skipped, 4 warnings in 34.49s
+Name                                           Stmts   Miss Branch BrPart  Cover   Missing
+------------------------------------------------------------------------------------------
+app/__main__.py                                   11     11      2      0     0%   3-27
+app/api/auth.py                                   45      1      2      1    96%   146
+app/api/events.py                                 49      6     12      2    84%   83, 86-87, 98, 105-106
+app/cli.py                                       112     24     30      4    70%   66-76, 97->99, 123-125, 213-214, 233-257, 271
+app/db/crud/acquisition_replay.py                179     12     34      5    91%   283-300, 305-317, 499, 522->524, 546, 617, 619
+app/db/crud/bad_cases.py                         155      4     10      4    95%   233, 244, 269, 335
+app/db/crud/evolution.py                         109      5     32      7    91%   85, 136, 198->200, 200->202, 223, 262, 389
+app/db/crud/jobs.py                               80      5     12      3    91%   84, 147-157, 192, 266->264
+app/db/crud/local_sessions.py                     57      1     14      1    97%   44
+app/db/crud/problems.py                           82      3     14      3    94%   93, 123, 228
+app/db/crud/run_events.py                         47      1     10      1    96%   52
+app/db/crud/sessions.py                          149     17     18      3    87%   108, 219, 304, 343-350, 354-363, 367-374
+app/db/crud/sync.py                               71      7     12      3    88%   91-92, 95, 141, 143, 153-154
+app/db/crud/sync_errors.py                        26      3      8      3    82%   29, 44, 52
+app/db/crud/users.py                              45      1      2      1    96%   89
+app/db/database.py                                61      4      8      4    88%   37, 47, 52, 58->60, 66
+app/db/models/evolution.py                        62      4      8      4    89%   369, 385, 392, 399
+app/db/mysql.py                                   19      4      0      0    79%   34-38
+app/fixture_corpus.py                            322     29     92     27    86%   118, 126, 128, 130, 179, 202, 204, 206, 318, 324-325, 328, 335, 343, 360, 370, 390, 392, 394, 396, 408, 416, 427, 437, 452, 456, 465, 474, 476
+app/main.py                                      123      2      6      1    98%   48, 69
+app/service/acquisition/agent_tree.py            284     16     86     14    92%   188, 243, 247, 351, 381, 396->379, 407-416, 449-450, 459, 503, 518, 520, 525->527, 533, 590-591
+app/service/acquisition/local_sessions.py        270     31     72     19    85%   143-144, 146, 153->155, 157, 165-166, 168, 170, 173-174, 189, 198-199, 213, 242, 250, 276, 285, 288-289, 299, 304, 324, 346, 349, 365, 387, 431-432, 441, 488
+app/service/acquisition/normalize.py             282      5     82      7    97%   160, 241, 257, 315, 342, 448->452, 452->459
+app/service/acquisition/replay.py                119     21     16      2    83%   181, 199-214, 224-240, 278-287
+app/service/acquisition/sync.py                  134     10     28      3    90%   84, 126, 147-156, 235->exit, 239
+app/service/acquisition/upstream.py               21      1      4      1    92%   30
+app/service/acquisition/upstream_pull.py          73      5     16      5    89%   37, 69, 71, 98, 111
+app/service/bad_cases/service.py                 176      6     76      7    95%   137, 188, 216->215, 224->219, 315-323, 422, 431
+app/service/events.py                            142     14     54     13    86%   107, 121, 140, 160->163, 177-178, 187, 195, 197->192, 221, 252, 256, 264, 266, 268-269, 273->275
+app/service/evolution/engine/base.py              25      1      6      1    94%   40
+app/service/evolution/engine/cluster_only.py      11      1      2      1    85%   19
+app/service/evolution/engine/contracts.py         58      3      6      1    94%   74, 97, 101
+app/service/evolution/engine/full.py              23      1      2      1    92%   49
+app/service/evolution/state.py                    66      4     22      4    91%   70, 102, 120, 143
+app/service/identity/service.py                   86      5     24      3    93%   86, 103, 106-107, 114
+app/service/identity/tickets.py                   80      2     18      1    97%   42, 113
+app/service/identity/tokens.py                    48      3      4      1    92%   99-100, 114
+app/service/jobs.py                              169     10     46      6    93%   89, 163, 198->200, 253, 263-264, 278->exit, 287-288, 306-310, 333
+app/service/problems/anchor.py                    31      1     18      4    90%   43->41, 48, 63->69, 64->63
+app/service/problems/schemas.py                   73      2      6      1    96%   78, 120
+app/service/problems/service.py                   88      2     24      2    96%   75, 128
+app/service/sessions/service.py                   66      4     18      3    92%   53, 90, 232-235
+app/third_party_api/trajectory/http.py           118      8     34      5    91%   71, 96, 156, 165, 181, 196-197, 205
+app/third_party_api/trajectory/models.py          71      3     18      3    93%   62, 64, 109
+------------------------------------------------------------------------------------------
+TOTAL                                           5237    303   1126    185    92%
+
+50 files skipped due to complete coverage.

@@ -40,14 +40,15 @@ The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual a
 
 - Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
-- Alembic maintains one dual-dialect tree, using batch mode for SQLite; business code depends on `db/crud/` and never concatenates SQL.
+- Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
+- Evolution state follows `progress_unit`; `EngineFactory` selects by `engine_key`.
 - `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
-- Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
-- External problem tables are read-only; migrations skip them, fixture bootstrap is explicit.
+- Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
+- External problem tables are read-only; their owner or fixture setup creates them.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract
@@ -64,5 +65,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## State and boundaries
 
 - Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
-- Missing: evolution execution, run authorization, and user deactivation UI.
+- Missing: evolution HTTP/UI, target configuration, patch/evaluation, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
