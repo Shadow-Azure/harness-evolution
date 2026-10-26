@@ -237,90 +237,91 @@ def upgrade() -> None:
         "user_turns",
         ["root_session_id", "line_no"],
     )
-    op.create_table(
-        "bad_cases",
-        sa.Column("bad_case_id", sa.String(64), primary_key=True),
-        sa.Column("bad_case_session_id", sa.String(36), nullable=False),
-        sa.Column("bad_case_type", sa.String(16), nullable=False),
-        sa.Column("object_name", sa.String(128), nullable=False),
-        sa.Column("object_type", sa.String(16), nullable=False),
-        sa.Column("object_version", sa.String(64), nullable=True),
-        sa.Column("bad_case_agent_id", sa.String(64), nullable=True),
-        sa.Column("reason", sa.Text(), nullable=False),
-        sa.Column("meta_data", json_type, nullable=True),
-        sa.Column("source", sa.String(64), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index("ix_bad_cases_session", "bad_cases", ["bad_case_session_id"])
-    op.create_index("ix_bad_cases_agent", "bad_cases", ["bad_case_agent_id"])
-    op.create_index(
-        "ix_bad_cases_object",
-        "bad_cases",
-        ["object_type", "object_name", "object_version"],
-    )
-    op.create_table(
-        "probe_reports",
-        sa.Column("probe_id", sa.String(64), primary_key=True),
-        sa.Column("session_id", sa.String(36), nullable=False),
-        sa.Column("probe_type", sa.String(16), nullable=False),
-        sa.Column("probe_object", sa.String(128), nullable=False),
-        sa.Column("object_version", sa.String(64), nullable=True),
-        sa.Column("attribute_type", sa.String(16), nullable=False),
-        sa.Column("probe_description", sa.Text(), nullable=False),
-        sa.Column("probe_analysis", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-    )
-    op.create_index("ix_probe_reports_session", "probe_reports", ["session_id"])
-    op.create_index(
-        "ix_probe_reports_object",
-        "probe_reports",
-        ["probe_type", "probe_object", "object_version"],
-    )
-    op.create_index(
-        "ix_probe_reports_attribute",
-        "probe_reports",
-        ["attribute_type"],
-    )
-    op.create_table(
-        "bad_case_analysis",
-        sa.Column(
-            "id",
-            sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
-            primary_key=True,
-            autoincrement=True,
-        ),
-        sa.Column(
-            "bad_case_id",
-            sa.String(64),
-            sa.ForeignKey("bad_cases.bad_case_id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("analysis_status", sa.String(32), nullable=False),
-        sa.Column(
-            "probe_id",
-            sa.String(64),
-            sa.ForeignKey("probe_reports.probe_id"),
-            nullable=True,
-        ),
-        sa.Column("analysis_result", json_type, nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint(
-            "bad_case_id",
-            name="uq_bad_case_analysis_case",
-        ),
-    )
-    op.create_index(
-        "ix_bad_case_analysis_probe",
-        "bad_case_analysis",
-        ["probe_id"],
-    )
-    op.create_index(
-        "ix_bad_case_analysis_status",
-        "bad_case_analysis",
-        ["analysis_status"],
-    )
+    if op.get_context().config.attributes.get("bootstrap_external_tables", True):
+        op.create_table(
+            "bad_cases",
+            sa.Column("bad_case_id", sa.String(64), primary_key=True),
+            sa.Column("bad_case_session_id", sa.String(36), nullable=False),
+            sa.Column("bad_case_type", sa.String(16), nullable=False),
+            sa.Column("object_name", sa.String(128), nullable=False),
+            sa.Column("object_type", sa.String(16), nullable=False),
+            sa.Column("object_version", sa.String(64), nullable=True),
+            sa.Column("bad_case_agent_id", sa.String(64), nullable=True),
+            sa.Column("reason", sa.Text(), nullable=False),
+            sa.Column("meta_data", json_type, nullable=True),
+            sa.Column("source", sa.String(64), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        )
+        op.create_index("ix_bad_cases_session", "bad_cases", ["bad_case_session_id"])
+        op.create_index("ix_bad_cases_agent", "bad_cases", ["bad_case_agent_id"])
+        op.create_index(
+            "ix_bad_cases_object",
+            "bad_cases",
+            ["object_type", "object_name", "object_version"],
+        )
+        op.create_table(
+            "probe_reports",
+            sa.Column("probe_id", sa.String(64), primary_key=True),
+            sa.Column("session_id", sa.String(36), nullable=False),
+            sa.Column("probe_type", sa.String(16), nullable=False),
+            sa.Column("probe_object", sa.String(128), nullable=False),
+            sa.Column("object_version", sa.String(64), nullable=True),
+            sa.Column("attribute_type", sa.String(16), nullable=False),
+            sa.Column("probe_description", sa.Text(), nullable=False),
+            sa.Column("probe_analysis", sa.Text(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        )
+        op.create_index("ix_probe_reports_session", "probe_reports", ["session_id"])
+        op.create_index(
+            "ix_probe_reports_object",
+            "probe_reports",
+            ["probe_type", "probe_object", "object_version"],
+        )
+        op.create_index(
+            "ix_probe_reports_attribute",
+            "probe_reports",
+            ["attribute_type"],
+        )
+        op.create_table(
+            "bad_case_analysis",
+            sa.Column(
+                "id",
+                sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
+                primary_key=True,
+                autoincrement=True,
+            ),
+            sa.Column(
+                "bad_case_id",
+                sa.String(64),
+                sa.ForeignKey("bad_cases.bad_case_id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column("analysis_status", sa.String(32), nullable=False),
+            sa.Column(
+                "probe_id",
+                sa.String(64),
+                sa.ForeignKey("probe_reports.probe_id"),
+                nullable=True,
+            ),
+            sa.Column("analysis_result", json_type, nullable=True),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.UniqueConstraint(
+                "bad_case_id",
+                name="uq_bad_case_analysis_case",
+            ),
+        )
+        op.create_index(
+            "ix_bad_case_analysis_probe",
+            "bad_case_analysis",
+            ["probe_id"],
+        )
+        op.create_index(
+            "ix_bad_case_analysis_status",
+            "bad_case_analysis",
+            ["analysis_status"],
+        )
     op.create_table(
         "evolution_targets",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -359,9 +360,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop this revision's tables in reverse dependency order."""
     op.drop_table("evolution_targets")
-    op.drop_table("bad_case_analysis")
-    op.drop_table("probe_reports")
-    op.drop_table("bad_cases")
+    if op.get_context().config.attributes.get("bootstrap_external_tables", True):
+        op.drop_table("bad_case_analysis")
+        op.drop_table("probe_reports")
+        op.drop_table("bad_cases")
     op.drop_table("user_turns")
     op.drop_table("agent_events")
     op.drop_table("agents")

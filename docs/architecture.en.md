@@ -45,7 +45,7 @@ After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before 
 - Upstream trace queries use a separate versioned outbound contract. A pull job writes validated raw lines with the `http_api` source before entering the shared replay pipeline. Missing configuration is unavailable, and CI uses only mock transport.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
-- External systems write problems and attribution; this service reads only.
+- External problem tables are read-only; migrations skip them, fixture bootstrap is explicit.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract
@@ -61,6 +61,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
-- Missing: issue queries, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, session list/overview/tree queries, E2E, and contract gates.
+- Missing: issue HTTP queries, evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

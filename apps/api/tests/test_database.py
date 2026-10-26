@@ -28,6 +28,7 @@ from sqlalchemy.pool import QueuePool
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.database import SqlAlchemyDatabase
@@ -36,6 +37,9 @@ from app.db.migrate import upgrade_database
 from app.db.models.domain import (
     agent_events,
     agents,
+    bad_case_analysis,
+    bad_cases,
+    probe_reports,
     session_families,
     source_records,
     trajectory_payloads,
@@ -45,6 +49,7 @@ from app.db.models.jobs import job_runs
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 from app.service.acquisition.replay import replay_pending_payloads
+from app.service.bad_cases.service import BadCaseService
 
 
 class FailingHealthDatabase(SqlAlchemyDatabase):
@@ -1086,3 +1091,100 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
         assert counts == {}
     finally:
         await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_external_read_models_merge_all_attribution_states() -> None:
+    """The read-only issue service shares its five-state semantics with MySQL."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("HE_DB_URL is not configured for MySQL")
+    session_id = "88888888-8888-4888-8888-888888888888"
+    case_id = "mysql-external-case"
+    probe_id = "mysql-external-probe"
+    created_at = datetime(2026, 10, 26, 9, tzinfo=UTC)
+    database = create_database(
+        Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url),
+    )
+    await database.start()
+    try:
+        await upgrade_database(database)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(bad_case_analysis).where(
+                    bad_case_analysis.c.bad_case_id == case_id,
+                ),
+            )
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.probe_id == probe_id),
+            )
+            await session.execute(
+                probe_reports.insert().values(
+                    probe_id=probe_id,
+                    session_id=session_id,
+                    probe_type="agent",
+                    probe_object="Explore",
+                    object_version="v1",
+                    attribute_type="model",
+                    probe_description="MySQL external probe",
+                    probe_analysis="MySQL external analysis",
+                    created_at=created_at,
+                    updated_at=created_at,
+                ),
+            )
+            await session.execute(
+                bad_cases.insert().values(
+                    bad_case_id=case_id,
+                    bad_case_session_id=session_id,
+                    bad_case_type="discovery",
+                    object_name="Explore",
+                    object_type="agent",
+                    object_version="v1",
+                    bad_case_agent_id=None,
+                    reason="MySQL external issue",
+                    meta_data={"dialect": "mysql"},
+                    source="mysql-test",
+                    created_at=created_at,
+                    updated_at=created_at,
+                ),
+            )
+            await session.execute(
+                bad_case_analysis.insert().values(
+                    bad_case_id=case_id,
+                    analysis_status="analyzed_issue",
+                    probe_id=probe_id,
+                    analysis_result={"summary": "model issue"},
+                    updated_at=created_at,
+                ),
+            )
+
+        service = BadCaseService(BadCaseRepository(database))
+        result = await service.get_case(case_id)
+        probe_result = await service.get_probe(probe_id)
+
+        assert result is not None
+        assert result.display_state == "analyzed_issue_model"
+        assert result.meta_data == {"dialect": "mysql"}
+        assert probe_result is not None
+        assert probe_result.from_bad_cases == (case_id,)
+    finally:
+        try:
+            async with database.transaction() as session:
+                await session.execute(
+                    delete(bad_case_analysis).where(
+                        bad_case_analysis.c.bad_case_id == case_id,
+                    ),
+                )
+                await session.execute(
+                    delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+                )
+                await session.execute(
+                    delete(probe_reports).where(probe_reports.c.probe_id == probe_id),
+                )
+        finally:
+            await database.dispose()

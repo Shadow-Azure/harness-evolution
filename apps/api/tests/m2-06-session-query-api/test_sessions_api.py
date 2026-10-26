@@ -217,6 +217,16 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
             "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
             "reason": "合成示例：检查结论缺少目标文件。",  # noqa: RUF001
         },
+        {
+            "badCaseId": "badcase-synthetic-0005",
+            "badCaseType": "discovery",
+            "objectName": "Explore",
+            "objectType": "agent",
+            "objectVersion": "synthetic-1",
+            "anchor": {"agentId": SESSION_1, "eventIndex": 0},
+            "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
+            "reason": "合成示例：推理步骤越过工具边界。",  # noqa: RUF001
+        },
     ]
 
     workflow_tree = await session_query.client.get(

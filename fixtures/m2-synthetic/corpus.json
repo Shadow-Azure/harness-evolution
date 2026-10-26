@@ -352,6 +352,22 @@
       "source": "fixtures",
       "createdAt": "2026-10-23T12:00:30+08:00",
       "updatedAt": "2026-10-23T12:00:30+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0005",
+      "badCaseSessionId": "10000000-0000-4000-8000-000000000001",
+      "badCaseType": "discovery",
+      "objectName": "Explore",
+      "objectType": "agent",
+      "objectVersion": "synthetic-1",
+      "badCaseAgentId": "agent-s1-review-0001",
+      "reason": "合成示例：推理步骤越过工具边界。",
+      "metaData": {
+        "fixture": true
+      },
+      "source": "fixtures",
+      "createdAt": "2026-10-20T09:04:00+08:00",
+      "updatedAt": "2026-10-20T09:04:00+08:00"
     }
   ],
   "probeReports": [
@@ -378,6 +394,18 @@
       "probeAnalysis": "示例推导：检查技能调用参数并确认缺少目标字段。",
       "createdAt": "2026-10-22T11:02:30+08:00",
       "updatedAt": "2026-10-22T11:02:30+08:00"
+    },
+    {
+      "probeId": "probe-synthetic-0003",
+      "sessionId": "10000000-0000-4000-8000-000000000001",
+      "probeType": "agent",
+      "probeObject": "Explore",
+      "objectVersion": "synthetic-1",
+      "attributeType": "model",
+      "probeDescription": "合成归因：模型规划顺序错误。",
+      "probeAnalysis": "示例推导：模型先调用工具后读取前置事实。",
+      "createdAt": "2026-10-20T09:04:30+08:00",
+      "updatedAt": "2026-10-20T09:04:30+08:00"
     }
   ],
   "badCaseAnalyses": [
@@ -414,6 +442,15 @@
       "badCaseId": "badcase-synthetic-0004",
       "analysisStatus": "unanalyzed",
       "updatedAt": "2026-10-23T12:01:00+08:00"
+    },
+    {
+      "badCaseId": "badcase-synthetic-0005",
+      "analysisStatus": "analyzed_issue",
+      "probeId": "probe-synthetic-0003",
+      "analysisResult": {
+        "summary": "模型规划顺序错误"
+      },
+      "updatedAt": "2026-10-20T09:04:30+08:00"
     }
   ],
   "evolutionTargets": [

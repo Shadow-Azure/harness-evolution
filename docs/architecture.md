@@ -45,7 +45,7 @@ lifespan 先恢复 JobRunner 并采纳 `sync_lock`，再启动 scheduler；手�
 - 上游查询使用独立版本化 outbound contract；pull 以 `http_api` 来源先写原始 payload 再共享重放。缺配置不可用，CI 只用 mock。
 - 归一化按 payload 独立解析，消息与内容块只在内存中存在；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
 - 重放按 root 原子执行：先解析/组装，再事务重写并推进 source 游标。
-- 问题和归因由外部系统写入，服务只读。
+- 外部问题三表只读；迁移不建表，fixture 才 bootstrap。
 - 密钥只从环境变量注入，不入仓库或数据库。
 
 ## 共享契约
@@ -61,6 +61,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、会话查询、sync 调度与状态、上游 mock 契约与 pull、亮色壳、fixtures、数据链、E2E/门禁。
-- 未具备：问题查询、自进化执行、真实 run 授权、用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、sync 调度与状态、上游 mock 契约与 pull、外部问题读模型、亮色壳、fixtures、数据链、E2E/门禁。
+- 未具备：问题 API、自进化执行、真实 run 授权、用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

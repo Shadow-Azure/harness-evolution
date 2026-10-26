@@ -18,7 +18,17 @@ def _alembic_config(database: Database) -> Config:
     return config
 
 
-async def upgrade_database(database: Database) -> None:
-    """Upgrade the selected database in a worker thread."""
+async def upgrade_database(
+    database: Database,
+    *,
+    bootstrap_external_tables: bool = True,
+) -> None:
+    """Upgrade the selected database in a worker thread.
+
+    External problem/attribution/probe tables are owned outside this service.
+    Development fixtures may request their bootstrap schema explicitly; the
+    application runtime upgrades only internal tables.
+    """
     config = _alembic_config(database)
+    config.attributes["bootstrap_external_tables"] = bootstrap_external_tables
     await asyncio.to_thread(command.upgrade, config, "head")

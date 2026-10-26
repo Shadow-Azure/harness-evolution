@@ -1,0 +1,144 @@
+{
+  "title": "M4-01 外部只读问题模型集成冒烟",
+  "eyebrow": "Harness Evolution · PR #112",
+  "summary": "在隔离 SQLite 与真实 FastAPI/Vite/Chrome 进程上验证外部三表不随运行时启动创建、fixture 显式 bootstrap 后五态归因可读、所有仓库路径只发 SELECT，以及现有亮色原型壳和 390px 布局无回归。",
+  "meta": "2026-10-26 · macOS · headless Chrome/CDP · commit f6cdb98",
+  "metrics": [
+    { "value": "9", "label": "冒烟场景" },
+    { "value": "9", "label": "通过" },
+    { "value": "0", "label": "外部写 SQL" },
+    { "value": "0", "label": "控制台异常" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#46 · M4 external read models" },
+    { "label": "PR", "value": "#112" },
+    { "label": "Commit", "value": "f6cdb98" },
+    { "label": "Runtime", "value": "FastAPI + SQLite + Vite + Chrome" },
+    { "label": "Evidence", "value": "headless Chrome/CDP; macOS native CUA locked" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "运行时迁移不创建外部表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空库启动 API 后只有内部表，bad_cases、bad_case_analysis、probe_reports 均不存在。",
+        "evidence": ["runtime-summary.json: beforeTables"]
+      },
+      {
+        "id": "02",
+        "name": "fixture 显式 bootstrap",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "执行 fixtures seed 后外部三表出现，行数分别为 5、5、3。",
+        "evidence": ["runtime-summary.json: after.counts"]
+      },
+      {
+        "id": "03",
+        "name": "五种展示态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 fixture 行解析出 unanalyzed、analyzed_nonissue、analyzed_issue_prompt/model/error 五态。",
+        "evidence": ["runtime-summary.json: readModels.states"]
+      },
+      {
+        "id": "04",
+        "name": "第五态 issue-model",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "单条详情稳定返回 analyzed_issue_model / model。",
+        "evidence": ["runtime-summary.json: readModels.case5"]
+      },
+      {
+        "id": "05",
+        "name": "只读 SQL 边界",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "捕获列表、详情、probe 反查全部 15 条 SQL，writeStatements 为空。",
+        "evidence": ["runtime-summary.json: readModels.statements"]
+      },
+      {
+        "id": "06",
+        "name": "Asia/Shanghai 时间",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "所有外部 created_at 的 UTC offset 均为 +08:00（28800 秒）。",
+        "evidence": ["runtime-summary.json: readModels.states"]
+      },
+      {
+        "id": "07",
+        "name": "probe 反向来源",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "probe-synthetic-0001 稳定返回来源 badcase-synthetic-0001，无告警。",
+        "evidence": ["runtime-summary.json: readModels.probe"]
+      },
+      {
+        "id": "08",
+        "name": "亮色原型壳",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "1408px 下 4 个 Session 卡可见，body rgb(244,245,247)、topbar rgb(250,251,252)/56px。",
+        "evidence": ["screenshots/01-external-read-models-shell.jpg", "runtime-summary.json: desktop"]
+      },
+      {
+        "id": "09",
+        "name": "390px 与控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "390px 下 4 卡单列，scrollWidth=clientWidth=390；浏览器 violations 为空。",
+        "evidence": ["screenshots/02-external-read-models-390.jpg", "runtime-summary.json: mobile"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-external-read-models-shell.jpg",
+      "alt": "外部只读模型冒烟后的 Session 亮色工作区",
+      "label": "桌面工作区",
+      "caption": "真实 canonical Session 与亮色原型壳正常；外部问题详情 UI 属于后续 m4 issue。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-external-read-models-390.jpg",
+      "alt": "390px Session 单列布局",
+      "label": "390px",
+      "caption": "移动端无横向溢出，用户入口和 4 个 Session 卡保持可用。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "外部表生命周期",
+        "coverage": "空库真实 API 启动 + fixture CLI",
+        "conclusion": "运行时零外部 DDL，fixture 显式 bootstrap。",
+        "recommendation": "生产部署由外部系统先建三表。"
+      },
+      {
+        "area": "只读 repository/service",
+        "coverage": "真实 SQLite 查询 + SQL 事件捕获",
+        "conclusion": "所有公开读路径仅 SELECT，无写入。",
+        "recommendation": "MySQL CI 继续执行同一契约。"
+      },
+      {
+        "area": "五态与漂移",
+        "coverage": "fixture 五态 + 29 项聚焦测试",
+        "conclusion": "状态映射、时间与反向 probe 来源正常。",
+        "recommendation": "m4-02 接入 HTTP 时沿用相同 read model。"
+      },
+      {
+        "area": "浏览器",
+        "coverage": "真实 Vite + headless Chrome/CDP",
+        "conclusion": "亮色原型壳与 390px 无回归；外部问题 UI 尚未进入本 issue 范围。",
+        "recommendation": "m4-03/m4-04 用原型错误页继续验收。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "外部问题三表在真实进程边界内保持只读，五态 read model 与原型壳均正常，未发现集成缺陷。",
+    "points": [
+      "运行时未创建外部表，fixture bootstrap 明确且可重复。",
+      "真实读路径只发 SELECT，时间统一 +08:00。",
+      "macOS 原生 CUA 因锁屏不可用，浏览器证据使用真实 headless Chrome/CDP 并已明确标注。"
+    ]
+  },
+  "footer": "证据源：隔离 SQLite、真实 FastAPI/Vite、headless Chrome/CDP、SQLAlchemy SQL 捕获。HTML 由 renderer 生成。"
+}

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M4-01 外部只读问题模型集成冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · PR #112</p>
+    <h1>M4-01 外部只读问题模型集成冒烟</h1>
+    <p class="summary">在隔离 SQLite 与真实 FastAPI/Vite/Chrome 进程上验证外部三表不随运行时启动创建、fixture 显式 bootstrap 后五态归因可读、所有仓库路径只发 SELECT，以及现有亮色原型壳和 390px 布局无回归。</p>
+    <span class="meta">2026-10-26 · macOS · headless Chrome/CDP · commit f6cdb98</span>
+    <div class="metrics"><div class="metric"><b>9</b><span>冒烟场景</span></div><div class="metric"><b>9</b><span>通过</span></div><div class="metric"><b>0</b><span>外部写 SQL</span></div><div class="metric"><b>0</b><span>控制台异常</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-26 · macOS · headless Chrome/CDP · commit f6cdb98</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#46 · M4 external read models</dd></div><div class="fact"><dt>PR</dt><dd>#112</dd></div><div class="fact"><dt>Commit</dt><dd>f6cdb98</dd></div><div class="fact"><dt>Runtime</dt><dd>FastAPI + SQLite + Vite + Chrome</dd></div><div class="fact"><dt>Evidence</dt><dd>headless Chrome/CDP; macOS native CUA locked</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>9 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>观测</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>运行时迁移不创建外部表</td><td><span class="status pass">PASS</span></td><td>空库启动 API 后只有内部表，bad_cases、bad_case_analysis、probe_reports 均不存在。</td><td class="evidence">runtime-summary.json: beforeTables</td></tr><tr><td class="num">02</td><td>fixture 显式 bootstrap</td><td><span class="status pass">PASS</span></td><td>执行 fixtures seed 后外部三表出现，行数分别为 5、5、3。</td><td class="evidence">runtime-summary.json: after.counts</td></tr><tr><td class="num">03</td><td>五种展示态</td><td><span class="status pass">PASS</span></td><td>真实 fixture 行解析出 unanalyzed、analyzed_nonissue、analyzed_issue_prompt/model/error 五态。</td><td class="evidence">runtime-summary.json: readModels.states</td></tr><tr><td class="num">04</td><td>第五态 issue-model</td><td><span class="status pass">PASS</span></td><td>单条详情稳定返回 analyzed_issue_model / model。</td><td class="evidence">runtime-summary.json: readModels.case5</td></tr><tr><td class="num">05</td><td>只读 SQL 边界</td><td><span class="status pass">PASS</span></td><td>捕获列表、详情、probe 反查全部 15 条 SQL，writeStatements 为空。</td><td class="evidence">runtime-summary.json: readModels.statements</td></tr><tr><td class="num">06</td><td>Asia/Shanghai 时间</td><td><span class="status pass">PASS</span></td><td>所有外部 created_at 的 UTC offset 均为 +08:00（28800 秒）。</td><td class="evidence">runtime-summary.json: readModels.states</td></tr><tr><td class="num">07</td><td>probe 反向来源</td><td><span class="status pass">PASS</span></td><td>probe-synthetic-0001 稳定返回来源 badcase-synthetic-0001，无告警。</td><td class="evidence">runtime-summary.json: readModels.probe</td></tr><tr><td class="num">08</td><td>亮色原型壳</td><td><span class="status pass">PASS</span></td><td>1408px 下 4 个 Session 卡可见，body rgb(244,245,247)、topbar rgb(250,251,252)/56px。</td><td class="evidence">screenshots/01-external-read-models-shell.jpg<br>runtime-summary.json: desktop</td></tr><tr><td class="num">09</td><td>390px 与控制台</td><td><span class="status pass">PASS</span></td><td>390px 下 4 卡单列，scrollWidth=clientWidth=390；浏览器 violations 为空。</td><td class="evidence">screenshots/02-external-read-models-390.jpg<br>runtime-summary.json: mobile</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>2 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-external-read-models-shell.jpg" alt="外部只读模型冒烟后的 Session 亮色工作区"><figcaption><b>桌面工作区</b><span>真实 canonical Session 与亮色原型壳正常；外部问题详情 UI 属于后续 m4 issue。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-external-read-models-390.jpg" alt="390px Session 单列布局"><figcaption><b>390px</b><span>移动端无横向溢出，用户入口和 4 个 Session 卡保持可用。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>外部表生命周期</td><td>空库真实 API 启动 + fixture CLI</td><td>运行时零外部 DDL，fixture 显式 bootstrap。</td><td>生产部署由外部系统先建三表。</td></tr><tr><td>只读 repository/service</td><td>真实 SQLite 查询 + SQL 事件捕获</td><td>所有公开读路径仅 SELECT，无写入。</td><td>MySQL CI 继续执行同一契约。</td></tr><tr><td>五态与漂移</td><td>fixture 五态 + 29 项聚焦测试</td><td>状态映射、时间与反向 probe 来源正常。</td><td>m4-02 接入 HTTP 时沿用相同 read model。</td></tr><tr><td>浏览器</td><td>真实 Vite + headless Chrome/CDP</td><td>亮色原型壳与 390px 无回归；外部问题 UI 尚未进入本 issue 范围。</td><td>m4-03/m4-04 用原型错误页继续验收。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>外部问题三表在真实进程边界内保持只读，五态 read model 与原型壳均正常，未发现集成缺陷。</strong></p><ul><li>运行时未创建外部表，fixture bootstrap 明确且可重复。</li><li>真实读路径只发 SELECT，时间统一 +08:00。</li><li>macOS 原生 CUA 因锁屏不可用，浏览器证据使用真实 headless Chrome/CDP 并已明确标注。</li></ul></article>
+  </section>
+
+  <p class="foot">证据源：隔离 SQLite、真实 FastAPI/Vite、headless Chrome/CDP、SQLAlchemy SQL 捕获。HTML 由 renderer 生成。</p>
+</main>
+</body>
+</html>
