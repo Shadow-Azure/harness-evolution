@@ -366,6 +366,84 @@ describe("session browser", () => {
     ).toBe("true");
   });
 
+  it("expands collapsed ancestors before locating a selected problem", async () => {
+    const children = Array.from({ length: 9 }, (_, index) => ({
+      agentId: `child-${index + 1}`,
+      kind: "subagent" as const,
+      label: `Child ${index + 1}`,
+      desc: "",
+      parentAgentId: "main",
+      taskKind: null,
+      agentType: "general-purpose",
+      skillName: null,
+      teamName: null,
+      lines: 2,
+      messagesCount: 1,
+      tokensTotal: 0,
+      toolsCount: 0,
+      errorsCount: 0,
+      events: [],
+    }));
+    const foldedTree = {
+      sessionId: "root-1",
+      overview: session(),
+      agents: [
+        {
+          ...demoCoreTree.agents[0],
+          events: children.map((child, index) => ({
+            kind: "agent" as const,
+            line: index + 1,
+            messageOffset: index,
+            name: child.label,
+            desc: child.label,
+            toolUseId: `tool-${index + 1}`,
+          })),
+        },
+        ...children.map((child, index) => ({
+          ...child,
+          toolUseId: `tool-${index + 1}`,
+        })),
+      ],
+      badCases: [
+        {
+          ...demoCoreTree.badCases[0]!,
+          badCaseId: "case-folded",
+          anchor: { agentId: "child-9", eventIndex: -1 },
+        },
+      ],
+    };
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ items: [session()] }),
+      ),
+      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json(foldedTree),
+      ),
+      http.get("/api/sessions/:id/bad-cases", () =>
+        HttpResponse.json({
+          items: [
+            badCaseFixture({
+              badCaseId: "case-folded",
+              anchor: { agentId: "child-9", eventIndex: -1 },
+            }),
+          ],
+        }),
+      ),
+    );
+
+    const { wrapper } = await mountPage("/sessions/root-1");
+    await flushPromises();
+    await wrapper.get("[data-bad-case-id='case-folded']").trigger("click");
+    await flushPromises();
+
+    const tree = wrapper.get("[data-testid='agent-tree']");
+    expect(tree.text()).toContain("expanded:main");
+    expect(wrapper.get("[data-testid='mock-badcase-state']").text()).toBe(
+      "badcases:1:active:case-folded",
+    );
+  });
+
   it("loads the production tree independently and retries tree failures", async () => {
     const item = session();
     server.use(

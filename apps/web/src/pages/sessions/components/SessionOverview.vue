@@ -113,8 +113,9 @@ watch(
 );
 
 async function selectBadCase(badCaseId: string) {
-  emit("badcase-select", badCaseId);
   activeBadCaseId.value = badCaseId;
+  emit("badcase-select", badCaseId);
+  await nextTick();
   await agentTreeRef.value?.locateBadCase(badCaseId);
   await nextTick();
   badCaseListRef.value?.scrollToProblem(badCaseId);

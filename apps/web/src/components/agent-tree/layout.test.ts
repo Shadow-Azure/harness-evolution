@@ -475,8 +475,8 @@ describe("agent-tree graph layout", () => {
     expect(cards).toHaveLength(4);
     expect(cards.get("case-self-skill")).toMatchObject({
       data: {
-        displayState: "analyzed_issue_error",
         shortId: "case-sel",
+        width: expect.any(Number),
       },
     });
     expect(edges.get("case-self-skill")).toMatchObject({
@@ -632,6 +632,207 @@ describe("agent-tree graph layout", () => {
       "case-missing-host",
     ]);
     expect(result.badCaseEdges).toEqual([]);
+  });
+
+  it("hides cards for existing hosts that are temporarily collapsed", () => {
+    const folded: SessionTree = {
+      ...demoNestedTree,
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-collapsed-host",
+          anchor: { agentId: "agent-extra-1", eventIndex: -1 },
+        },
+      ],
+    };
+
+    const collapsed = buildGraph(folded, new Set(), measure);
+
+    expect(collapsed.anchors).toEqual([
+      expect.objectContaining({
+        badCaseId: "case-collapsed-host",
+        hostAgentId: "agent-extra-1",
+        kind: "hidden",
+      }),
+    ]);
+    expect(collapsed.badCaseNodes).toEqual([]);
+    expect(collapsed.badCaseEdges).toEqual([]);
+    expect(collapsed.diagnostics.map((item) => item.code)).not.toContain(
+      "MISSING_ANCHOR_AGENT",
+    );
+
+    const expanded = buildGraph(folded, new Set(["main"]), measure);
+    expect(expanded.badCaseNodes).toHaveLength(1);
+    expect(expanded.badCaseNodes[0]!.position).not.toEqual({
+      x: 106,
+      y: 25,
+    });
+  });
+
+  it("measures card widths from the visible label and clamps them", () => {
+    const anchors = [
+      {
+        badCaseId: "case-short",
+        hostAgentId: "main",
+        eventIndex: 0,
+        kind: "discovery" as const,
+        side: "above" as const,
+        x: 100,
+        y: 100,
+      },
+      {
+        badCaseId: "case-medium",
+        hostAgentId: "main",
+        eventIndex: 1,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 300,
+        y: 100,
+      },
+      {
+        badCaseId: "case-long",
+        hostAgentId: "main",
+        eventIndex: 2,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 600,
+        y: 100,
+      },
+    ];
+    const cases = [
+      { ...demoNestedTree.badCases[0]!, badCaseId: "case-short", reason: "x" },
+      {
+        ...demoNestedTree.badCases[0]!,
+        badCaseId: "case-medium",
+        reason: "a readable medium-length problem summary",
+      },
+      {
+        ...demoNestedTree.badCases[0]!,
+        badCaseId: "case-long",
+        reason: "x".repeat(300),
+      },
+    ];
+
+    const { badCaseNodes } = buildBadCaseOverlay(anchors, cases);
+    const widths = new Map(
+      badCaseNodes.map((node) => [node.data.badCaseId, node.data.width]),
+    );
+
+    expect(widths.get("case-short")).toBe(150);
+    expect(widths.get("case-medium")).toBeGreaterThan(150);
+    expect(widths.get("case-medium")).toBeLessThan(400);
+    expect(widths.get("case-long")).toBe(400);
+  });
+
+  it("moves cards away from nearby anchors until their rectangles no longer overlap", () => {
+    const anchors = [
+      {
+        badCaseId: "case-left",
+        hostAgentId: "agent-a",
+        eventIndex: 0,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 100,
+        y: 100,
+      },
+      {
+        badCaseId: "case-right",
+        hostAgentId: "agent-a",
+        eventIndex: 1,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 216,
+        y: 100,
+      },
+    ];
+    const cases = ["case-left", "case-right"].map((badCaseId) => ({
+      ...demoNestedTree.badCases[0]!,
+      badCaseId,
+      reason: "same host with a long enough reason to overlap horizontally",
+    }));
+
+    const { badCaseNodes } = buildBadCaseOverlay(anchors, cases);
+    const [left, right] = badCaseNodes;
+    const leftRect = {
+      left: left!.position.x,
+      right: left!.position.x + left!.data.width,
+      top: left!.position.y,
+      bottom: left!.position.y + BADCASE_CARD_H,
+    };
+    const rightRect = {
+      left: right!.position.x,
+      right: right!.position.x + right!.data.width,
+      top: right!.position.y,
+      bottom: right!.position.y + BADCASE_CARD_H,
+    };
+
+    expect(
+      leftRect.right <= rightRect.left ||
+        rightRect.right <= leftRect.left ||
+        leftRect.bottom <= rightRect.top ||
+        rightRect.bottom <= leftRect.top,
+    ).toBe(true);
+  });
+
+  it("keeps cross-anchor placement stable when inputs are permuted", () => {
+    const anchors = [
+      {
+        badCaseId: "case-a",
+        hostAgentId: "agent-a",
+        eventIndex: 0,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 100,
+        y: 100,
+      },
+      {
+        badCaseId: "case-b",
+        hostAgentId: "agent-a",
+        eventIndex: 1,
+        kind: "self-skill" as const,
+        side: "below" as const,
+        x: 216,
+        y: 100,
+      },
+    ];
+    const cases = ["case-a", "case-b"].map((badCaseId) => ({
+      ...demoNestedTree.badCases[0]!,
+      badCaseId,
+      reason: "stable placement reason",
+    }));
+
+    const normal = buildBadCaseOverlay(anchors, cases);
+    const permuted = buildBadCaseOverlay(
+      [...anchors].reverse(),
+      [...cases].reverse(),
+    );
+
+    expect(JSON.stringify(permuted)).toBe(JSON.stringify(normal));
+  });
+
+  it("stacks same-host self-agent cards even when their event indices differ", () => {
+    const anchors = [0, 1].map((eventIndex) => ({
+      badCaseId: `case-self-${eventIndex}`,
+      hostAgentId: "agent-a",
+      eventIndex,
+      kind: "self-agent" as const,
+      side: "right" as const,
+      x: 300,
+      y: 100,
+    }));
+    const cases = anchors.map((anchor) => ({
+      ...demoNestedTree.badCases[1]!,
+      badCaseId: anchor.badCaseId,
+    }));
+
+    const { badCaseNodes } = buildBadCaseOverlay(anchors, cases);
+
+    expect(badCaseNodes).toHaveLength(2);
+    expect(
+      Math.abs(
+        badCaseNodes[1]!.position.y - badCaseNodes[0]!.position.y,
+      ),
+    ).toBeGreaterThanOrEqual(BADCASE_CARD_H + BADCASE_CARD_GAP);
   });
 
   it("degrades an out-of-range event anchor to the host fallback handle", () => {

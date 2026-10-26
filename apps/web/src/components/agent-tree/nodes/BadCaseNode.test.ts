@@ -38,7 +38,7 @@ describe("BadCaseNode", () => {
                   badCaseId: "case-select",
                   shortId: "case-sel",
                   reason: "index read failed",
-                  displayState: "analyzed_issue_error",
+                  width: 276,
                   degraded: false,
                   active: false,
                 },
@@ -59,5 +59,31 @@ describe("BadCaseNode", () => {
 
     expect(select).toHaveBeenCalledWith("case-select");
     expect(parentClick).not.toHaveBeenCalled();
+  });
+
+  it("renders structural red cards with the measured layout width", () => {
+    const wrapper = mount(BadCaseNode, {
+      props: {
+        data: {
+          badCaseId: "case-width",
+          shortId: "case-wid",
+          reason: "a long measured problem reason",
+          width: 276,
+          degraded: false,
+          active: false,
+        },
+      },
+      global: {
+        provide: {
+          [BAD_CASE_SELECT_KEY]: vi.fn(),
+        },
+      },
+    });
+
+    const card = wrapper.get(".rf-finding");
+    expect(card.attributes("style")).toContain("width: 276px");
+    expect(card.classes().some((name) => name.startsWith("state-"))).toBe(
+      false,
+    );
   });
 });

@@ -18,7 +18,6 @@ import {
 const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m4-problem-cards-initial-password";
-const replacementPassword = "m4-problem-cards-replacement-password";
 const secret = "m4-problem-cards-signing-secret-with-sufficient-length";
 let api;
 let web;
@@ -26,6 +25,8 @@ let dataDir;
 let baseUrl;
 let apiLogs = "";
 let webLogs = "";
+let currentPassword = initialPassword;
+let passwordRevision = 0;
 
 async function cleanup() {
   await stop(web);
@@ -39,7 +40,7 @@ async function loginCookie() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       username: "admin",
-      password: initialPassword,
+      password: currentPassword,
     }),
   });
   assert.equal(login.status, 200);
@@ -48,6 +49,8 @@ async function loginCookie() {
     .get("set-cookie")
     ?.match(/refresh_token=([^;]+)/)?.[1];
   assert.ok(initialCookie);
+  const nextPassword =
+    `m4-problem-cards-replacement-password-${++passwordRevision}`;
 
   const changed = await fetch(`${baseUrl}/api/auth/change-password`, {
     method: "POST",
@@ -56,8 +59,8 @@ async function loginCookie() {
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      oldPassword: initialPassword,
-      newPassword: replacementPassword,
+      oldPassword: currentPassword,
+      newPassword: nextPassword,
     }),
   });
   assert.equal(changed.status, 204);
@@ -71,6 +74,7 @@ async function loginCookie() {
     .get("set-cookie")
     ?.match(/refresh_token=([^;]+)/)?.[1];
   assert.ok(cookie);
+  currentPassword = nextPassword;
   return cookie;
 }
 
@@ -425,6 +429,245 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
       );
     }
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m4 problem cards reveal a selected problem inside a folded branch", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    await installCookie(page, await loginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const children = Array.from({ length: 9 }, (_, index) => ({
+      agentId: `folded-${index + 1}`,
+      parentAgentId: "main",
+      kind: "subagent",
+      agentType: "general-purpose",
+      taskKind: null,
+      spawnDepth: 1,
+      label: `Folded Agent ${index + 1}`,
+      desc: `Folded Agent ${index + 1}`,
+      lines: 2,
+      messagesCount: 1,
+      toolUseId: `folded-tool-${index + 1}`,
+      skillName: null,
+      teamName: null,
+      events: [],
+    }));
+    const foldedTree = {
+      sessionId,
+      agents: [
+        {
+          agentId: "main",
+          parentAgentId: null,
+          kind: "main",
+          agentType: null,
+          taskKind: null,
+          spawnDepth: 0,
+          label: "主会话",
+          desc: "主会话",
+          lines: 9,
+          messagesCount: 9,
+          toolUseId: null,
+          skillName: null,
+          teamName: null,
+          events: children.map((child, index) => ({
+            kind: "agent",
+            line: index + 1,
+            messageOffset: index,
+            name: child.label,
+            desc: child.desc,
+            toolUseId: child.toolUseId,
+          })),
+        },
+        ...children,
+      ],
+      badCases: [
+        {
+          badCaseId: "case-folded-host",
+          badCaseAgent: { sessionId, agentId: "folded-9" },
+          badCaseType: "self",
+          objectType: "agent",
+          objectName: "Folded Agent 9",
+          objectVersion: null,
+          reason: "folded branch problem",
+          anchor: { agentId: "folded-9", eventIndex: -1 },
+        },
+      ],
+    };
+    const problem = {
+      badCaseId: "case-folded-host",
+      sessionId,
+      sessionTitle: "示例会话一",
+      badCaseType: "self",
+      objectType: "agent",
+      objectName: "Folded Agent 9",
+      objectVersion: null,
+      reason: "folded branch problem",
+      metaData: { source: "e2e" },
+      degraded: false,
+      diagnosticCode: null,
+      anchor: { agentId: "folded-9", eventIndex: -1 },
+      badCaseAgent: { sessionId, agentId: "folded-9" },
+      analysis: {
+        probeId: null,
+        attributeType: null,
+        displayState: "unanalyzed",
+        result: null,
+        status: "unanalyzed",
+      },
+    };
+
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: `*://*/api/sessions/${sessionId}/tree`,
+          requestStage: "Request",
+        },
+        {
+          urlPattern: `*://*/api/sessions/${sessionId}/bad-cases`,
+          requestStage: "Request",
+        },
+      ],
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      const body = event.request.url.endsWith("/tree")
+        ? foldedTree
+        : { items: [problem] };
+      void page.session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: 200,
+        responseHeaders: [
+          { name: "content-type", value: "application/json" },
+        ],
+        body: Buffer.from(JSON.stringify(body)).toString("base64"),
+      });
+    });
+
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/sessions/${sessionId}`,
+    });
+    const beforeSelection = await waitForDocument(
+      page.session,
+      `(() => {
+        const row = document.querySelector(
+          "[data-bad-case-id='case-folded-host']",
+        );
+        const list = document.querySelector("[data-testid='problem-list']");
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        if (!row || !list || !tree) return null;
+        return {
+          cards: tree.querySelectorAll(".rf-finding").length,
+          collapseNodes: tree.querySelectorAll(".rf-agent.collapse").length,
+        };
+      })()`,
+      "folded problem list before selection",
+    );
+    assert.equal(beforeSelection.cards, 0, JSON.stringify(beforeSelection));
+    assert.equal(
+      beforeSelection.collapseNodes,
+      1,
+      JSON.stringify(beforeSelection),
+    );
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.querySelector(
+        "[data-bad-case-id='case-folded-host']",
+      ).click()`,
+    });
+    const afterSelection = await waitForDocument(
+      page.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const row = document.querySelector(
+          "[data-testid='problem-list'] [data-bad-case-id='case-folded-host']",
+        );
+        const card = tree?.querySelector(
+          ".rf-finding[data-bad-case-id='case-folded-host']",
+        );
+        if (!tree || !row || !card) return null;
+        const cardBox = card.getBoundingClientRect();
+        const treeBox = tree.getBoundingClientRect();
+        const visible = cardBox.right > treeBox.left
+          && cardBox.left < treeBox.right
+          && cardBox.bottom > treeBox.top
+          && cardBox.top < treeBox.bottom;
+        if (!visible) return null;
+        return {
+          active: card.getAttribute("aria-pressed"),
+          collapseNodes: tree.querySelectorAll(".rf-agent.collapse").length,
+          visible,
+          edgeCount: tree.querySelectorAll(
+            ".vue-flow__edge-path",
+          ).length,
+        };
+      })()`,
+      "selected folded problem expands",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const centeredResult = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const card = tree?.querySelector(
+          ".rf-finding[data-bad-case-id='case-folded-host']",
+        );
+        if (!tree || !card) return null;
+        const cardBox = card.getBoundingClientRect();
+        const treeBox = tree.getBoundingClientRect();
+        return {
+          dx: Math.abs(
+            cardBox.left + cardBox.width / 2 -
+            (treeBox.left + treeBox.width / 2),
+          ),
+          dy: Math.abs(
+            cardBox.top + cardBox.height / 2 -
+            (treeBox.top + treeBox.height / 2),
+          ),
+          cardBox: {
+            left: cardBox.left,
+            top: cardBox.top,
+            width: cardBox.width,
+            height: cardBox.height,
+          },
+          treeBox: {
+            left: treeBox.left,
+            top: treeBox.top,
+            width: treeBox.width,
+            height: treeBox.height,
+          },
+        };
+      })()`,
+      returnByValue: true,
+    });
+    const centerMetrics = centeredResult.result.value;
+    assert.ok(centerMetrics, "selected folded problem remains visible");
+    assert.ok(
+      centerMetrics.dx <= 8 && centerMetrics.dy <= 8,
+      JSON.stringify(centerMetrics),
+    );
+    assert.deepEqual(
+      {
+        active: afterSelection.active,
+        collapseNodes: afterSelection.collapseNodes,
+        visible: afterSelection.visible,
+      },
+      {
+      active: "true",
+      collapseNodes: 0,
+      visible: true,
+      },
+    );
+    assert.ok(afterSelection.edgeCount >= 10, JSON.stringify(afterSelection));
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+    await page.session.send("Fetch.disable");
   } finally {
     await page.close();
   }

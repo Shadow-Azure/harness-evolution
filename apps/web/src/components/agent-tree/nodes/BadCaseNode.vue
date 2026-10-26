@@ -19,10 +19,11 @@ function onSelect() {
 <template>
   <button
     class="rf-finding"
-    :class="[`state-${data.displayState}`, { active: data.active, degraded: data.degraded }]"
+    :class="{ active: data.active, degraded: data.degraded }"
     :data-bad-case-id="data.badCaseId"
     :aria-label="`问题 ${data.shortId}: ${data.reason}`"
     :aria-pressed="Boolean(data.active)"
+    :style="{ width: `${data.width}px` }"
     :title="`${data.badCaseId} · ${data.reason}`"
     type="button"
     @click.stop="onSelect"
@@ -65,7 +66,6 @@ function onSelect() {
 <style scoped>
 .rf-finding {
   display: flex;
-  width: 230px;
   height: 30px;
   align-items: center;
   gap: 6px;

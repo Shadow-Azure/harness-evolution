@@ -68,15 +68,12 @@ export interface AgentLayoutEdge {
   style: { stroke: string; strokeWidth: number };
 }
 
-/** Five-state attribution displayed by a graph problem card. */
-export type BadCaseDisplayState = BadCase["analysis"]["displayState"];
-
 /** Data rendered by one problem-card node. */
 export interface BadCaseLayoutNodeData {
   badCaseId: string;
   shortId: string;
   reason: string;
-  displayState: BadCaseDisplayState;
+  width: number;
   degraded: boolean;
   active?: boolean;
 }
@@ -139,7 +136,7 @@ export interface BadCaseAnchorDescriptor {
   badCaseId: string;
   hostAgentId: string;
   eventIndex: number;
-  kind: "self-skill" | "self-agent" | "discovery" | "fallback";
+  kind: "self-skill" | "self-agent" | "discovery" | "fallback" | "hidden";
   side: "below" | "above" | "left" | "right";
   x: number;
   y: number;

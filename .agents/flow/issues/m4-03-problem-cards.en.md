@@ -60,8 +60,9 @@ m4-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - Read five-state problem details and render cards against `anchor.agentId + anchor.eventIndex` in the execution-flow graph.
 - Use side, trigger, discovery, and fallback connector semantics for `self + agent`, `self + skill`, `discovery`, and `eventIndex=-1`; an invalid host keeps the card visible without creating an orphan edge.
-- Stack cards sharing an anchor deterministically by `badCaseId`; list the real ID, five-state attribution, summary, reporter, and metadata facts.
-- Share one active `badCaseId` between list and canvas for two-way location and highlighting; scroll the list after canvas location and cancel late initial-scroll resets.
+- Measure cards to 150–400px and avoid overlap across anchors on the same host; a collapsed host does not create a floating card before expansion.
+- List the real ID, five-state attribution, summary, reporter, and metadata facts; keep graph cards structurally red like the prototype.
+- Share one active `badCaseId` between list and canvas for two-way location and highlighting; expand collapsed ancestors first, scroll the list after canvas location, and cancel late initial-scroll resets.
 - Keep problem loading, failure, retry, and empty states independent from summary and tree loading.
 
 ## Implementation steps
@@ -72,7 +73,7 @@ m4-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 1. Write failing tests for five-state cards, anchors, malformed anchors, and two-way selection.
 2. Implement problem cards, semantic connectors, the five-state list, and the independent query.
-3. Cover all five states, desktop/mobile layout, and location recovery with four real fixture Sessions.
+3. Cover all five states, desktop/mobile layout, folded-tree location, and recovery with four real fixture Sessions.
 
 ## Dependencies and boundary
 

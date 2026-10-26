@@ -47,8 +47,10 @@ export const LINE_WIDTH_SCALE = 3.2;
 export const MIN_LINE_BAR_W = 80;
 /** Maximum proportional Agent bar width. */
 export const MAX_LINE_BAR_W = 520;
-/** Problem-card width in the prototype graph. */
-export const BADCASE_CARD_W = 230;
+/** Minimum problem-card width in the prototype graph. */
+export const BADCASE_CARD_MIN_W = 150;
+/** Maximum problem-card width in the prototype graph. */
+export const BADCASE_CARD_MAX_W = 400;
 /** Problem-card height in the prototype graph. */
 export const BADCASE_CARD_H = 30;
 /** Vertical gap between stacked problem cards. */
@@ -67,6 +69,9 @@ export const FONT_PILL =
 /** Agent node label font used by the injected measurer. */
 export const FONT_AGENT_LABEL =
   '11px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+/** Problem-card label font used by the injected measurer. */
+export const FONT_BADCASE =
+  '10.5px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
 /** Mono font used by compressed-message pills. */
 export const FONT_MONO_PILL =
   '10px "SF Mono", ui-monospace, Menlo, Consolas, monospace';
@@ -272,8 +277,12 @@ export function pickFindingSide(input: {
         segment.y2 > top &&
         segment.y1 < bottom,
     );
-  const rightBlocked = blocked(input.x + input.w + 8, input.x + input.visualW + 346);
-  const leftBlocked = blocked(input.x - 346, input.x - 8);
+  const cardReach = BADCASE_CARD_MAX_W + 46;
+  const rightBlocked = blocked(
+    input.x + input.w + 8,
+    input.x + input.visualW + cardReach,
+  );
+  const leftBlocked = blocked(input.x - cardReach, input.x - 8);
   return rightBlocked && !leftBlocked ? "left" : "right";
 }
 
@@ -304,7 +313,7 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
     ) {
       continue;
     }
-    const key = `${badCase.anchor.agentId}|${eventIndex}`;
+    const key = badCase.anchor.agentId;
     selfAgentCounts.set(key, (selfAgentCounts.get(key) ?? 0) + 1);
   }
 
@@ -313,6 +322,17 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
       const host = nodeById.get(badCase.anchor.agentId);
       const hostAgent = agentById.get(badCase.anchor.agentId);
       const eventIndex = badCase.anchor.eventIndex;
+      if (!host && hostAgent) {
+        return {
+          badCaseId: badCase.badCaseId,
+          hostAgentId: badCase.anchor.agentId,
+          eventIndex: -1,
+          kind: "hidden",
+          side: "right",
+          x: ROOT_X,
+          y: ROOT_Y,
+        };
+      }
       if (
         !host ||
         !hostAgent ||
@@ -363,9 +383,7 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
         w: host.data.w,
         visualW: host.data.visualW,
         count:
-          selfAgentCounts.get(
-            `${badCase.anchor.agentId}|${eventIndex}`,
-          ) ?? 1,
+          selfAgentCounts.get(badCase.anchor.agentId) ?? 1,
         branchSegments: input.branchSegments,
       });
       return {
@@ -415,97 +433,182 @@ function badCaseHandles(
 }
 
 /**
+ * Measure a problem card's prototype-clamped single-line width.
+ * @param shortId Display-safe problem identifier.
+ * @param reason Human-readable problem summary.
+ * @param measure Injected text measurement function.
+ * @returns Rounded border-box width.
+ */
+export function badCaseCardWidth(
+  shortId: string,
+  reason: string,
+  measure: MeasureText = defaultMeasure,
+): number {
+  return Math.round(
+    Math.max(
+      BADCASE_CARD_MIN_W,
+      Math.min(
+        BADCASE_CARD_MAX_W,
+        measure(`${shortId} ${reason}`, FONT_BADCASE) + 26,
+      ),
+    ),
+  );
+}
+
+/**
  * Place problem cards around their backend-provided anchors.
  * @param anchors Stable anchor descriptors.
  * @param treeCases Minimal bad cases carried by the Session tree.
- * @param details Full problem records used for five-state presentation.
+ * @param details Full problem records used for problem presentation.
+ * @param measure Injected text measurement function.
  * @returns Stable card nodes and their semantic connector edges.
  */
 export function buildBadCaseOverlay(
   anchors: BadCaseAnchorDescriptor[],
   treeCases: BadCaseAnchorOptions["badCases"],
   details: readonly BadCase[] = [],
+  measure: MeasureText = defaultMeasure,
 ): {
   badCaseNodes: BadCaseLayoutNode[];
   badCaseEdges: BadCaseLayoutEdge[];
 } {
   const caseById = new Map(treeCases.map((item) => [item.badCaseId, item]));
   const detailById = new Map(details.map((item) => [item.badCaseId, item]));
-  const groups = new Map<string, BadCaseAnchorDescriptor[]>();
-  for (const anchor of [...anchors].sort((left, right) =>
-    left.badCaseId.localeCompare(right.badCaseId),
-  )) {
-    const key = [
-      anchor.hostAgentId,
-      anchor.eventIndex,
-      anchor.kind,
-      anchor.side,
-    ].join("|");
-    const group = groups.get(key) ?? [];
+  const sortedAnchors = [...anchors]
+    .filter((anchor) => anchor.kind !== "hidden")
+    .sort((left, right) => left.badCaseId.localeCompare(right.badCaseId));
+  const nodesById = new Map<string, BadCaseLayoutNode>();
+  const placed: Array<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+  }> = [];
+
+  const overlaps = (
+    left: { x: number; y: number; width: number },
+    right: { x: number; y: number; width: number },
+  ) =>
+    !(
+      left.x + left.width + BADCASE_CARD_GAP <= right.x ||
+      right.x + right.width + BADCASE_CARD_GAP <= left.x ||
+      left.y + BADCASE_CARD_H + BADCASE_CARD_GAP <= right.y ||
+      right.y + BADCASE_CARD_H + BADCASE_CARD_GAP <= left.y
+    );
+
+  const addNode = (
+    anchor: BadCaseAnchorDescriptor,
+    x: number,
+    y: number,
+  ) => {
+    const item = caseById.get(anchor.badCaseId);
+    const detail = detailById.get(anchor.badCaseId);
+    if (!item) return;
+    const shortId = anchor.badCaseId.slice(0, 8);
+    const reason = detail?.reason ?? item.reason;
+    const width = badCaseCardWidth(shortId, reason, measure);
+    const node: BadCaseLayoutNode = {
+      id: `badcase:${anchor.badCaseId}`,
+      type: "badcase",
+      position: { x, y },
+      data: {
+        badCaseId: anchor.badCaseId,
+        shortId,
+        reason,
+        width,
+        degraded: detail?.degraded ?? false,
+      },
+    };
+    nodesById.set(node.id, node);
+    placed.push({ id: node.id, x, y, width });
+  };
+
+  const sideGroups = new Map<string, BadCaseAnchorDescriptor[]>();
+  const verticalAnchors: BadCaseAnchorDescriptor[] = [];
+  for (const anchor of sortedAnchors) {
+    if (anchor.side !== "left" && anchor.side !== "right") {
+      verticalAnchors.push(anchor);
+      continue;
+    }
+    const key = `${anchor.hostAgentId}|${anchor.side}`;
+    const group = sideGroups.get(key) ?? [];
     group.push(anchor);
-    groups.set(key, group);
+    sideGroups.set(key, group);
   }
 
-  const badCaseNodes: BadCaseLayoutNode[] = [];
-  const badCaseEdges: BadCaseLayoutEdge[] = [];
-  for (const group of groups.values()) {
+  for (const group of sideGroups.values()) {
     group.forEach((anchor, index) => {
       const item = caseById.get(anchor.badCaseId);
+      if (!item) return;
       const detail = detailById.get(anchor.badCaseId);
-      if (!item) {
-        return;
-      }
-      const count = group.length;
-      let x = anchor.x + 46;
-      let y =
+      const width = badCaseCardWidth(
+        anchor.badCaseId.slice(0, 8),
+        detail?.reason ?? item.reason,
+        measure,
+      );
+      const y =
         anchor.y -
         BADCASE_CARD_H / 2 +
-        (index - (count - 1) / 2) * (BADCASE_CARD_H + BADCASE_CARD_GAP);
-      if (anchor.side === "left") {
-        x = anchor.x - BADCASE_CARD_W - 46;
-      } else if (anchor.side === "below") {
-        x = anchor.x - 48;
-        y = anchor.y + 8 + index * (BADCASE_CARD_H + BADCASE_CARD_GAP);
-      } else if (anchor.side === "above") {
-        x = anchor.x - 48;
-        y =
-          anchor.y -
-          8 -
-          BADCASE_CARD_H -
-          index * (BADCASE_CARD_H + BADCASE_CARD_GAP);
-      }
-      const targetId = `badcase:${anchor.badCaseId}`;
-      badCaseNodes.push({
-        id: targetId,
-        type: "badcase",
-        position: { x, y },
-        data: {
-          badCaseId: anchor.badCaseId,
-          shortId: anchor.badCaseId.slice(0, 8),
-          reason: detail?.reason ?? item.reason,
-          displayState: detail?.analysis.displayState ?? "unanalyzed",
-          degraded: detail?.degraded ?? false,
-        },
-      });
-      const handles = badCaseHandles(anchor);
-      badCaseEdges.push({
-        id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
-        source: anchor.hostAgentId,
-        target: targetId,
-        ...handles,
-        type: badCaseEdgeType(anchor),
-        data: {
-          badCaseId: anchor.badCaseId,
-          side: anchor.side,
-        },
-        style: {
-          stroke: BADCASE_COLOR,
-          strokeWidth: 1.2,
-          strokeDasharray: "4 3",
-        },
-      });
+        (index - (group.length - 1) / 2) *
+          (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      const x =
+        anchor.side === "left"
+          ? anchor.x - width - 46
+          : anchor.x + 46;
+      addNode(anchor, x, y);
     });
   }
+
+  for (const anchor of verticalAnchors) {
+    const item = caseById.get(anchor.badCaseId);
+    if (!item) continue;
+    const detail = detailById.get(anchor.badCaseId);
+    const width = badCaseCardWidth(
+      anchor.badCaseId.slice(0, 8),
+      detail?.reason ?? item.reason,
+      measure,
+    );
+    const direction = anchor.side === "above" ? -1 : 1;
+    const x = anchor.x - 48;
+    let y =
+      anchor.side === "above"
+        ? anchor.y - 8 - BADCASE_CARD_H
+        : anchor.y + 8;
+    while (
+      placed.some((candidate) =>
+        overlaps(
+          { x, y, width },
+          { x: candidate.x, y: candidate.y, width: candidate.width },
+        ),
+      )
+    ) {
+      y += direction * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+    }
+    addNode(anchor, x, y);
+  }
+
+  const badCaseNodes = [...nodesById.values()].sort((left, right) =>
+    left.data.badCaseId.localeCompare(right.data.badCaseId),
+  );
+  const badCaseEdges = sortedAnchors
+    .filter((anchor) => nodesById.has(`badcase:${anchor.badCaseId}`))
+    .map((anchor): BadCaseLayoutEdge => ({
+      id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
+      source: anchor.hostAgentId,
+      target: `badcase:${anchor.badCaseId}`,
+      ...badCaseHandles(anchor),
+      type: badCaseEdgeType(anchor),
+      data: {
+        badCaseId: anchor.badCaseId,
+        side: anchor.side,
+      },
+      style: {
+        stroke: BADCASE_COLOR,
+        strokeWidth: 1.2,
+        strokeDasharray: "4 3",
+      },
+    }));
+
   return { badCaseNodes, badCaseEdges };
 }
 
@@ -884,7 +987,7 @@ export function buildGraph(
     branchSegments,
   });
   for (const badCase of tree.badCases) {
-    if (!nodes.some((node) => node.id === badCase.anchor.agentId)) {
+    if (!agents.some((agent) => agent.agentId === badCase.anchor.agentId)) {
       diagnostics.push({
         code: "MISSING_ANCHOR_AGENT",
         agentId: badCase.anchor.agentId,
@@ -896,6 +999,7 @@ export function buildGraph(
     anchors,
     tree.badCases,
     normalizedOptions.problemDetails,
+    measure,
   );
 
   return {

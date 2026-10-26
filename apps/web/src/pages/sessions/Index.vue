@@ -365,12 +365,32 @@ function restorePanelScroll(sessionId: string) {
   void apply(220);
 }
 
-function focusBadCase() {
+function focusBadCase(badCaseId: string) {
   cancelInitialReset?.();
   cancelInitialReset = null;
   scrollRestoreSequence += 1;
   clearTimeout(scrollRestoreTimer);
   scrollRestoreTimer = undefined;
+
+  if (!selectedId.value || !sessionTree.value) return;
+  const problem =
+    problems.value.find((item) => item.badCaseId === badCaseId)
+    ?? sessionTree.value.badCases.find(
+      (item) => item.badCaseId === badCaseId,
+    );
+  if (!problem) return;
+  const ancestors = agentAncestors(
+    sessionTree.value.agents,
+    problem.anchor.agentId,
+  );
+  if (ancestors.length === 0) return;
+  const current = expandedBySession.value[selectedId.value] ?? [];
+  const expanded = [...new Set([...current, ...ancestors])];
+  if (expanded.length === current.length) return;
+  expandedBySession.value = {
+    ...expandedBySession.value,
+    [selectedId.value]: expanded,
+  };
 }
 
 watch(

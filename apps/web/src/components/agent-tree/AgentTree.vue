@@ -144,6 +144,9 @@ const treeRoot = ref<HTMLElement | null>(null);
 let fitAnimationFrame: number | undefined;
 let fitRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let fitSequence = 0;
+let locatingBadCaseCount = 0;
+let suppressFitUntil = 0;
+let fitInFlight: Promise<unknown> = Promise.resolve();
 let resizeObserver: ResizeObserver | undefined;
 let fittedTopologyKey = "";
 
@@ -160,6 +163,12 @@ function cancelScheduledFit() {
 }
 
 function scheduleFitView() {
+  if (
+    locatingBadCaseCount > 0 ||
+    Date.now() < suppressFitUntil
+  ) {
+    return;
+  }
   cancelScheduledFit();
   const sequence = fitSequence;
   const fit = async () => {
@@ -167,7 +176,8 @@ function scheduleFitView() {
     if (sequence !== fitSequence) {
       return;
     }
-    await fitView({ padding: 0.12 });
+    fitInFlight = fitView({ padding: 0.12 });
+    await fitInFlight;
   };
 
   if (typeof requestAnimationFrame === "function") {
@@ -267,12 +277,23 @@ async function locateBadCase(badCaseId: string) {
     (candidate) => candidate.data.badCaseId === badCaseId,
   );
   if (!node) return;
+  locatingBadCaseCount += 1;
+  suppressFitUntil = Date.now() + 500;
+  cancelScheduledFit();
+  await fitInFlight;
+  cancelScheduledFit();
   const zoom = Math.max(getViewport().zoom, 0.85);
-  await setCenter(
-    node.position.x + 115,
-    node.position.y + 15,
-    { zoom, duration: 260 },
-  );
+  try {
+    await setCenter(
+      node.position.x + node.data.width / 2,
+      node.position.y + 15,
+      { zoom, duration: 260 },
+    );
+  } finally {
+    locatingBadCaseCount -= 1;
+    suppressFitUntil = Math.max(suppressFitUntil, Date.now() + 500);
+    cancelScheduledFit();
+  }
 }
 
 /**
@@ -309,7 +330,12 @@ function toggleCollapse(node: AgentLayoutNode) {
 function onNodesInitialized() {
   if (fittedTopologyKey === topologyKey.value) return;
   fittedTopologyKey = topologyKey.value;
-  scheduleFitView();
+  const badCaseId = props.activeBadCaseId;
+  if (badCaseId) {
+    void nextTick().then(() => locateBadCase(badCaseId));
+  } else {
+    scheduleFitView();
+  }
 }
 
 </script>
