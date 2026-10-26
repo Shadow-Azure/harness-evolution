@@ -74,7 +74,10 @@ pnpm contract:check
 
 ## Acceptance
 
-- The frontend does not derive state.
+- `GET /api/evolution/runs` returns backend-grouped `running`/`history` arrays in a stable order; the page does not regroup or reorder them.
+- All six statuses, stage copy, percentage, completed rounds and accepted counts come from the backend; the frontend does not recompute them.
+- Cards show target, time window, models, six statistics, status, creator and time without horizontal page overflow at 390px.
+- Loading, failed-read retry, running empty state and history empty state all have explicit interfaces.
 
 ## Gates and CI
 
@@ -82,4 +85,4 @@ pnpm contract:check
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- No run detail, launch wizard or SSE.

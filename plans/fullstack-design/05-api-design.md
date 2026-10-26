@@ -255,6 +255,7 @@ erDiagram
   "target": { "type": "skill", "name": "deep-research", "version": "v2.0.0" },
   "window": { "from": "2026-08-20", "to": "2026-09-10" },
   "models": ["glm-5.3", "glm-5.3-flash"],
+  "createdBy": "Administrator",
   "createdAt": "2026-10-19T18:42:00+08:00",
   "status": "running",
   "error": null,
@@ -300,6 +301,7 @@ erDiagram
 ```
 
 - `status` ∈ `preparing|running|blocked|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
+- `createdBy` 是创建人的可空显示名；删除用户后为 `null`。Issue 要求展示创建人，前端把它与 `createdAt` 放在原型右上 meta 槽，不新增视觉行。
 - `byAttributeType.nonIssue` 是命中报告中 `analyzed_nonissue` 的计数；`usedProbes = model + prompt + error`（非问题剔除、未分析不计入），原型"剔除非问题 N 份"与分布条图例直接取该字段。
 - `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 

@@ -181,7 +181,7 @@ async def test_final_error_stats_and_creator_are_projected_for_the_card() -> Non
         stats={
             "sessions": 4,
             "probes": 3,
-            "usedProbes": 2,
+            "usedProbes": 0,
             "clusters": 99,
             "byAttributeType": {"model": 1, "prompt": 1, "error": 0, "nonIssue": 1},
             "unknown": "ignored",

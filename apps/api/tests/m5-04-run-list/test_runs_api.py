@@ -180,3 +180,29 @@ async def test_admin_and_member_read_the_same_grouped_camel_case_payload(
     assert card["stats"]["usedProbes"] == 2
     assert card["stats"]["clusters"] == 2
     assert card["createdBy"] is None
+
+
+async def test_run_list_returns_both_empty_groups_for_an_empty_database(
+    tmp_path: Path,
+) -> None:
+    """The page can render its required empty state before any run exists."""
+    app = create_app(
+        Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            data_dir=tmp_path,
+            jwt_secret=SecretStr("run-list-empty-api-signing-secret"),
+            admin_username="admin",
+            admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
+        ),
+    )
+    transport = httpx.ASGITransport(app=app)
+    admin = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+    try:
+        async with app.router.lifespan_context(app):
+            await _login(admin, "admin", ADMIN_TEMP_PASSWORD, ADMIN_PASSWORD)
+            response = await admin.get("/api/evolution/runs")
+
+        assert response.status_code == 200
+        assert response.json() == {"running": [], "history": []}
+    finally:
+        await admin.aclose()

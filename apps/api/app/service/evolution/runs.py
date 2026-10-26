@@ -146,15 +146,10 @@ def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
             by_type.get("nonIssue", by_type.get("non_issue")),
         ),
     )
-    used_probes = (
-        _non_negative_int(raw.get("usedProbes"))
-        if "usedProbes" in raw
-        else attributes.model + attributes.prompt + attributes.error
-    )
     return EvolutionRunStats(
         sessions=_non_negative_int(raw.get("sessions")),
         probes=_non_negative_int(raw.get("probes")),
-        used_probes=used_probes,
+        used_probes=attributes.model + attributes.prompt + attributes.error,
         clusters=summary.cluster_count,
         by_attribute_type=attributes,
     )

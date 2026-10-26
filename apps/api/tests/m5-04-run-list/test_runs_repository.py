@@ -201,3 +201,12 @@ async def test_list_summaries_batches_counts_final_and_creator(
     assert completed.accepted_count == 1
     assert completed.final is not None
     assert completed.final.best_version == "v2.0.1-best"
+
+
+async def test_list_summaries_returns_empty_tuple_without_runs(
+    run_database: tuple[Database, EvolutionRepository],
+) -> None:
+    """An empty run table bypasses batched dependent queries cleanly."""
+    _, repository = run_database
+
+    assert await repository.list_summaries() == ()
