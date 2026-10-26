@@ -206,6 +206,30 @@ async def test_repository_crud_ordering_and_conflicts(
     )
     assert updated.object_name == "renamed-skill"
     assert updated.enabled is False
+    with pytest.raises(EvolutionTargetConflict):
+        await repository.update(
+            updated.id,
+            {
+                "object_type": "skill",
+                "object_name": "z-disabled",
+                "repo_url": "https://git.example.com/renamed-skill.git",
+                "sub_dir": "skills/renamed-skill",
+                "default_ref": "v2",
+                "enabled": True,
+            },
+        )
+    with pytest.raises(LookupError):
+        await repository.update(
+            "missing-target",
+            {
+                "object_type": "skill",
+                "object_name": "missing-target",
+                "repo_url": "https://git.example.com/missing.git",
+                "sub_dir": "skills/missing",
+                "default_ref": "main",
+                "enabled": True,
+            },
+        )
     assert await repository.delete(disabled.id) is True
     assert await repository.delete(disabled.id) is False
 
