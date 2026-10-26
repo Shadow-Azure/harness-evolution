@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.acquisition import router as acquisition_router
 from app.api.auth import router as auth_router
+from app.api.catalogs import router as catalogs_router
 from app.api.events import router as events_router
 from app.api.evolution_targets import router as evolution_targets_router
 from app.api.health import router as health_router
@@ -34,6 +35,7 @@ from app.middleware.request_context import RequestContextMiddleware
 from app.service.acquisition.sync import SyncCoordinator
 from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
+from app.service.catalogs import CatalogService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
@@ -99,10 +101,10 @@ def create_app(
         ProblemRepository(resolved_database),
         BadCaseService(BadCaseRepository(resolved_database)),
     )
-    evolution_targets = EvolutionTargetService(
-        EvolutionTargetRepository(resolved_database),
-        git_remote or SubprocessGitRemote(),
-    )
+    target_repository = EvolutionTargetRepository(resolved_database)
+    resolved_git_remote = git_remote or SubprocessGitRemote()
+    evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI) -> AsyncIterator[None]:
@@ -172,6 +174,7 @@ def create_app(
     app.state.sessions = sessions
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
+    app.state.catalogs = catalogs
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
     app.state.login_rate_limiter = LoginRateLimiter()
@@ -196,6 +199,7 @@ def create_app(
     app.include_router(sessions_router)
     app.include_router(problems_router)
     app.include_router(evolution_targets_router)
+    app.include_router(catalogs_router)
     app.include_router(events_router)
     app.include_router(acquisition_router)
     return app

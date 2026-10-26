@@ -54,6 +54,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/evolution/targets",
         "/api/evolution/targets/{targetId}",
         "/api/evolution/targets/{targetId}/versions",
+        "/api/catalogs/targets",
+        "/api/catalogs/models",
     }
     assert {
         "HealthResponse",
@@ -89,6 +91,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "EvolutionTargetWrite",
         "EvolutionTargetList",
         "EvolutionTargetVersions",
+        "CatalogTarget",
+        "CatalogTargets",
+        "CatalogModel",
+        "CatalogModels",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -127,6 +133,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/evolution/targets/{targetId}", "put"),
         ("/api/evolution/targets/{targetId}", "delete"),
         ("/api/evolution/targets/{targetId}/versions", "get"),
+        ("/api/catalogs/targets", "get"),
+        ("/api/catalogs/models", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -178,6 +186,12 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert paths["/api/evolution/targets/{targetId}/versions"]["get"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"] == {"$ref": "#/components/schemas/EvolutionTargetVersions"}
+    assert paths["/api/catalogs/targets"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CatalogTargets"}
+    assert paths["/api/catalogs/models"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ] == {"$ref": "#/components/schemas/CatalogModels"}
     case_parameters = paths["/api/bad-cases/{badCaseId}"]["get"]["parameters"]
     analysis_parameters = paths["/api/bad-cases/{badCaseId}/analysis"]["get"]["parameters"]
     assert {parameter["name"] for parameter in case_parameters} == {

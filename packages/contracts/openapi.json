@@ -290,6 +290,118 @@
         "title": "BadCaseListResponse",
         "type": "object"
       },
+      "CatalogModel": {
+        "additionalProperties": false,
+        "description": "One normalized model and its usage across the trace corpus.",
+        "properties": {
+          "agentCount": {
+            "title": "Agentcount",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "sessionCount": {
+            "title": "Sessioncount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "sessionCount",
+          "agentCount"
+        ],
+        "title": "CatalogModel",
+        "type": "object"
+      },
+      "CatalogModels": {
+        "additionalProperties": false,
+        "description": "The complete model catalog.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogModel"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogModels",
+        "type": "object"
+      },
+      "CatalogTarget": {
+        "additionalProperties": false,
+        "description": "One enabled evolution target and its remote versions.",
+        "properties": {
+          "defaultRef": {
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repoUrl": {
+            "title": "Repourl",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "repoUrl",
+          "subDir",
+          "defaultRef",
+          "versions"
+        ],
+        "title": "CatalogTarget",
+        "type": "object"
+      },
+      "CatalogTargets": {
+        "additionalProperties": false,
+        "description": "Enabled targets grouped by the kind selectable in the wizard.",
+        "properties": {
+          "agent": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTarget"
+            },
+            "title": "Agent",
+            "type": "array"
+          },
+          "skill": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogTarget"
+            },
+            "title": "Skill",
+            "type": "array"
+          }
+        },
+        "required": [
+          "skill",
+          "agent"
+        ],
+        "title": "CatalogTargets",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "additionalProperties": false,
         "description": "Owner-supplied current and replacement passwords.",
@@ -2620,6 +2732,110 @@
         "summary": "Get Bad Case Analysis",
         "tags": [
           "problems"
+        ]
+      }
+    },
+    "/api/catalogs/models": {
+      "get": {
+        "description": "Return normalized model usage from the Agent table.",
+        "operationId": "get_model_catalog_api_catalogs_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogModels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Model Catalog",
+        "tags": [
+          "catalogs"
+        ]
+      }
+    },
+    "/api/catalogs/targets": {
+      "get": {
+        "description": "Return enabled evolution targets and their remote versions.",
+        "operationId": "get_target_catalog_api_catalogs_targets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogTargets"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Configured remote is unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Target Catalog",
+        "tags": [
+          "catalogs"
         ]
       }
     },

@@ -202,6 +202,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalogs/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Catalog
+         * @description Return normalized model usage from the Agent table.
+         */
+        get: operations["get_model_catalog_api_catalogs_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalogs/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Target Catalog
+         * @description Return enabled evolution targets and their remote versions.
+         */
+        get: operations["get_target_catalog_api_catalogs_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -604,6 +644,54 @@ export interface components {
         BadCaseListResponse: {
             /** Items */
             items: components["schemas"]["BadCase"][];
+        };
+        /**
+         * CatalogModel
+         * @description One normalized model and its usage across the trace corpus.
+         */
+        CatalogModel: {
+            /** Agentcount */
+            agentCount: number;
+            /** Model */
+            model: string;
+            /** Sessioncount */
+            sessionCount: number;
+        };
+        /**
+         * CatalogModels
+         * @description The complete model catalog.
+         */
+        CatalogModels: {
+            /** Items */
+            items: components["schemas"]["CatalogModel"][];
+        };
+        /**
+         * CatalogTarget
+         * @description One enabled evolution target and its remote versions.
+         */
+        CatalogTarget: {
+            /** Defaultref */
+            defaultRef: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Repourl */
+            repoUrl: string;
+            /** Subdir */
+            subDir: string;
+            /** Versions */
+            versions: string[];
+        };
+        /**
+         * CatalogTargets
+         * @description Enabled targets grouped by the kind selectable in the wizard.
+         */
+        CatalogTargets: {
+            /** Agent */
+            agent: components["schemas"]["CatalogTarget"][];
+            /** Skill */
+            skill: components["schemas"]["CatalogTarget"][];
         };
         /**
          * ChangePasswordRequest
@@ -1748,6 +1836,91 @@ export interface operations {
                 };
             };
             /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_model_catalog_api_catalogs_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogModels"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_target_catalog_api_catalogs_targets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogTargets"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Configured remote is unavailable */
             422: {
                 headers: {
                     [name: string]: unknown;
