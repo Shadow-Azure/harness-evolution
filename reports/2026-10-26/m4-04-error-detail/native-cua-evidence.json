@@ -1,0 +1,14 @@
+{
+  "browser": "Chrome extension",
+  "validationBase": "926201d",
+  "evidencePatch": "PR #120 working tree",
+  "url": "http://127.0.0.1:25173/sessions/10000000-0000-4000-8000-000000000003/errors?case=badcase-synthetic-0003&tab=desc",
+  "reportHref": "/sessions/10000000-0000-4000-8000-000000000003/errors?case=badcase-synthetic-0003&tab=attr",
+  "reportText": "probe-sy",
+  "diagnosticsText": "",
+  "toastCount": 0,
+  "screenshots": {
+    "attribution": "screenshots/08-native-computer-use-attribution.jpeg",
+    "description": "screenshots/09-native-computer-use-description.jpeg"
+  }
+}

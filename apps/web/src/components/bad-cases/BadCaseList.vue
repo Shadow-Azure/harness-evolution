@@ -106,71 +106,125 @@ defineExpose({ scrollToProblem });
           class="problem-row-card"
           :class="{ active: problem.badCaseId === activeBadCaseId }"
         >
-          <span class="problem-no">#{{ index + 1 }}</span>
-          <a
-            class="problem-id"
-            :href="badCaseDeepLink(
-              problem.sessionId,
-              problem.badCaseId,
-              'desc',
-            )"
-            :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
-            rel="noopener noreferrer"
-            target="_blank"
-            :title="problem.badCaseId"
-          >
-            {{ shortBadCaseId(problem.badCaseId) }}
-          </a>
-          <button
-            class="problem-row"
-            :class="{ active: problem.badCaseId === activeBadCaseId }"
-            :data-bad-case-id="problem.badCaseId"
-            :aria-pressed="problem.badCaseId === activeBadCaseId"
-            type="button"
-            @click="emit('select', problem.badCaseId)"
-          >
-            <span class="problem-row-head">
-              <strong>{{ problem.reason }}</strong>
-              <span
-                class="state-chip"
-                :class="badCaseState(problem.analysis.displayState).tone"
-              >
-                {{ badCaseState(problem.analysis.displayState).label }}
-              </span>
-              <span
-                v-if="problem.degraded"
-                class="degraded-chip"
-              >
-                数据降级
-              </span>
-            </span>
-            <span class="compact-row-bottom">
-              <span
-                v-if="compact"
-                class="problem-target"
-              >
-                {{ problem.objectType }} · {{ problem.objectName }}
-              </span>
-            </span>
-            <span
-              v-if="!compact"
-              class="problem-summary"
-            >{{ badCaseSummary(problem) }}</span>
-            <span
-              v-if="!compact"
-              class="problem-meta"
+          <template v-if="compact">
+            <div class="problem-card-content">
+              <div class="problem-card-main">
+                <span class="problem-no">#{{ index + 1 }}</span>
+                <a
+                  class="problem-id"
+                  :href="badCaseDeepLink(
+                    problem.sessionId,
+                    problem.badCaseId,
+                    'desc',
+                  )"
+                  :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  :title="problem.badCaseId"
+                >
+                  {{ shortBadCaseId(problem.badCaseId) }}
+                </a>
+                <strong class="problem-card-title">{{ problem.reason }}</strong>
+              </div>
+              <div class="problem-card-secondary">
+                <span
+                  class="state-chip"
+                  :class="badCaseState(problem.analysis.displayState).tone"
+                >
+                  {{ badCaseState(problem.analysis.displayState).label }}
+                </span>
+                <span
+                  v-if="problem.degraded"
+                  class="degraded-chip"
+                >
+                  数据降级
+                </span>
+                <span class="problem-target">
+                  {{ problem.objectType }} · {{ problem.objectName }}
+                </span>
+                <a
+                  v-if="
+                    problem.analysis.status === 'analyzed_issue' &&
+                      problem.analysis.probeId
+                  "
+                  class="report-id"
+                  :href="badCaseDeepLink(
+                    problem.sessionId,
+                    problem.badCaseId,
+                    'attr',
+                  )"
+                  :aria-label="`归因报告 ${shortBadCaseId(problem.analysis.probeId)}，在新窗口打开归因分析`"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  :title="problem.analysis.probeId"
+                >
+                  {{ shortBadCaseId(problem.analysis.probeId) }}
+                </a>
+              </div>
+            </div>
+            <button
+              class="problem-row"
+              :class="{ active: problem.badCaseId === activeBadCaseId }"
+              :data-bad-case-id="problem.badCaseId"
+              :aria-label="`选择问题 ${shortBadCaseId(problem.badCaseId)}：${problem.reason}`"
+              :aria-pressed="problem.badCaseId === activeBadCaseId"
+              type="button"
+              @click="emit('select', problem.badCaseId)"
+            />
+          </template>
+          <template v-else>
+            <span class="problem-no">#{{ index + 1 }}</span>
+            <a
+              class="problem-id"
+              :href="badCaseDeepLink(
+                problem.sessionId,
+                problem.badCaseId,
+                'desc',
+              )"
+              :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
+              rel="noopener noreferrer"
+              target="_blank"
+              :title="problem.badCaseId"
             >
-              <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
-              <span
-                v-for="fact in badCaseFacts(problem.metaData)"
-                :key="fact"
-                class="fact-chip"
-              >
-                {{ fact }}
+              {{ shortBadCaseId(problem.badCaseId) }}
+            </a>
+            <button
+              class="problem-row"
+              :class="{ active: problem.badCaseId === activeBadCaseId }"
+              :data-bad-case-id="problem.badCaseId"
+              :aria-pressed="problem.badCaseId === activeBadCaseId"
+              type="button"
+              @click="emit('select', problem.badCaseId)"
+            >
+              <span class="problem-row-head">
+                <strong>{{ problem.reason }}</strong>
+                <span
+                  class="state-chip"
+                  :class="badCaseState(problem.analysis.displayState).tone"
+                >
+                  {{ badCaseState(problem.analysis.displayState).label }}
+                </span>
+                <span
+                  v-if="problem.degraded"
+                  class="degraded-chip"
+                >
+                  数据降级
+                </span>
               </span>
-              <span class="locate-copy">定位</span>
-            </span>
-          </button>
+              <span class="problem-summary">{{ badCaseSummary(problem) }}</span>
+              <span class="problem-meta">
+                <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
+                <span
+                  v-for="fact in badCaseFacts(problem.metaData)"
+                  :key="fact"
+                  class="fact-chip"
+                >
+                  {{ fact }}
+                </span>
+                <span class="locate-copy">定位</span>
+              </span>
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -211,6 +265,7 @@ defineExpose({ scrollToProblem });
   grid-template-columns: auto auto minmax(0, 1fr);
   gap: 5px 6px;
   align-items: start;
+  position: relative;
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -246,6 +301,7 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-list.compact .problem-row-card {
+  display: block;
   border-left: 3px solid transparent;
 }
 
@@ -264,6 +320,54 @@ defineExpose({ scrollToProblem });
   outline-color: var(--blue);
 }
 
+.problem-card-content {
+  display: grid;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.problem-card-main,
+.problem-card-secondary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.problem-card-main {
+  align-items: baseline;
+  flex-wrap: nowrap;
+}
+
+.problem-card-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-card-secondary .problem-target {
+  flex: 1;
+}
+
+.problem-list.compact .problem-row {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.problem-card-content a {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+}
+
 .problem-row-card:hover {
   border-color: var(--red);
 }
@@ -280,31 +384,10 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-row-head,
-.compact-row-top,
-.compact-row-bottom,
 .problem-meta {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.compact-row-top {
-  align-items: baseline;
-  flex-wrap: nowrap;
-}
-
-.compact-row-top strong {
-  min-width: 0;
-  overflow: hidden;
-  font-size: 12.5px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.compact-row-bottom {
   gap: 6px;
   flex-wrap: wrap;
 }
@@ -328,7 +411,8 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-no,
-.problem-id {
+.problem-id,
+.report-id {
   flex-shrink: 0;
   font-family: var(--mono);
   font-size: 10px;
@@ -346,6 +430,16 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-id:hover {
+  border-bottom-style: solid;
+}
+
+.report-id {
+  color: var(--purple);
+  border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent);
+  text-decoration: none;
+}
+
+.report-id:hover {
   border-bottom-style: solid;
 }
 

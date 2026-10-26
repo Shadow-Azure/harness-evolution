@@ -411,13 +411,6 @@ function onNodesInitialized() {
         </ControlButton>
       </div>
     </VueFlow>
-    <p
-      v-if="graph.diagnostics.length"
-      class="diagnostics"
-      role="status"
-    >
-      {{ graph.diagnostics.map((item) => item.code).join(" · ") }}
-    </p>
   </section>
 </template>
 
@@ -478,17 +471,4 @@ function onNodesInitialized() {
   stroke-linejoin: round;
 }
 
-.diagnostics {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  margin: 0;
-  padding: 3px 6px;
-  border: 1px solid color-mix(in srgb, var(--orange) 28%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--orange) 8%, var(--bg-card));
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 10px;
-}
 </style>

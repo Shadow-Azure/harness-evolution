@@ -259,6 +259,9 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         const idLinks = [...document.querySelectorAll(
           "[data-testid='problem-list'] .problem-id",
         )];
+        const reportLinks = [...document.querySelectorAll(
+          "[data-testid='problem-list'] .report-id",
+        )];
         const tree = document.querySelector("[data-testid='agent-tree']");
         if (
           !workspace ||
@@ -281,7 +284,17 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
             rel: link.getAttribute("rel"),
             insideButton: Boolean(link.closest("button")),
           })),
+          reportLinks: reportLinks.map((link) => ({
+            text: link.textContent,
+            href: link.getAttribute("href"),
+            title: link.getAttribute("title"),
+            target: link.getAttribute("target"),
+            rel: link.getAttribute("rel"),
+            insideButton: Boolean(link.closest("button")),
+          })),
           findingCards: tree.querySelectorAll(".rf-finding").length,
+          diagnosticsText:
+            tree.querySelector(".diagnostics")?.textContent?.trim() ?? "",
           detailEmpty: document
             .querySelector(".detail-panel")
             ?.textContent.includes("从左侧选择一个错误，查看问题描述与归因分析。"),
@@ -333,7 +346,30 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       ),
       true,
     );
+    const issueCases = sessionCases.filter(
+      (item) => item.analysis.status === "analyzed_issue",
+    );
+    assert.deepEqual(
+      all.reportLinks.map((link) => link.text),
+      issueCases.map((item) => item.analysis.probeId.slice(0, 8)),
+    );
+    assert.deepEqual(
+      all.reportLinks.map((link) => link.title),
+      issueCases.map((item) => item.analysis.probeId),
+    );
+    assert.equal(
+      all.reportLinks.every(
+        (link, index) =>
+          link.href ===
+            `/sessions/${sessionId}/errors?case=${issueCases[index].badCaseId}&tab=attr` &&
+          link.target === "_blank" &&
+          link.rel === "noopener noreferrer" &&
+          !link.insideButton,
+      ),
+      true,
+    );
     assert.equal(all.findingCards, sessionCases.length);
+    assert.equal(all.diagnosticsText, "");
     assert.equal(all.detailEmpty, true);
     assert.equal(all.title, "错误详情");
     assert.equal(all.tabs, 2);
@@ -597,6 +633,12 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       `document.body.textContent.includes("问题不属于当前 Session")`,
       "cross-session mismatch",
     );
+    const conflictPresentation = await page.session.send("Runtime.evaluate", {
+      expression: `[...document.querySelectorAll(".el-message")]
+        .map((message) => message.textContent.trim())`,
+      returnByValue: true,
+    });
+    assert.deepEqual(conflictPresentation.result.value, []);
 
     await clientNavigate(
       page,

@@ -213,6 +213,49 @@ describe("BadCaseList", () => {
     expect(wrapper.emitted("select")).toEqual([["case-error"]]);
   });
 
+  it("groups compact card status and target below the reason", () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates, compact: true },
+    });
+
+    const card = wrapper.get("#problem-row-case-error");
+    expect(card.get(".problem-card-main").text()).not.toContain("是问题-错误");
+    expect(card.get(".problem-card-secondary").text()).toContain("是问题-错误");
+    expect(card.get(".problem-card-secondary").text()).toContain(
+      "skill · deep-research",
+    );
+  });
+
+  it("links analyzed issue cards to their attribution report", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates, compact: true },
+    });
+
+    const reportLink = wrapper.get(
+      "#problem-row-case-error .report-id",
+    );
+    expect(reportLink.text()).toBe("probe-er");
+    expect(reportLink.attributes("title")).toBe("probe-error");
+    expect(reportLink.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-error&tab=attr",
+    );
+    expect(reportLink.attributes("target")).toBe("_blank");
+    expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
+    expect(reportLink.attributes("aria-label")).toBe(
+      "归因报告 probe-er，在新窗口打开归因分析",
+    );
+    expect(reportLink.element.closest("button")).toBeNull();
+    expect(
+      wrapper.find("#problem-row-case-unanalyzed .report-id").exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find("#problem-row-case-nonissue .report-id").exists(),
+    ).toBe(false);
+
+    await reportLink.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
+  });
+
   it("scrolls the active row into view when graph selection changes", async () => {
     const scrollIntoView = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
