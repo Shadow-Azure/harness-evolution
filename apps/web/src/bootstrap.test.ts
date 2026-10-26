@@ -8,6 +8,11 @@ import { bootstrapApp, type BootstrapAppOptions } from "./bootstrap";
 
 describe("application bootstrap", () => {
   it("restores auth and waits for the router before mounting", async () => {
+    Object.defineProperty(history, "scrollRestoration", {
+      configurable: true,
+      value: "auto",
+      writable: true,
+    });
     const calls: string[] = [];
     const pinia = createPinia();
     const queryClient = new QueryClient();
@@ -46,5 +51,6 @@ describe("application bootstrap", () => {
     expect(calls.slice(-3)).toEqual(["tryRefresh", "router.isReady", "mount"]);
     expect(app.use).toHaveBeenCalledTimes(3);
     expect(app.mount).toHaveBeenCalledWith("#app");
+    expect(history.scrollRestoration).toBe("manual");
   });
 });

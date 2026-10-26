@@ -29,6 +29,7 @@ const emit = defineEmits<{
   <div
     :id="`session-option-${item.id}`"
     data-testid="session-card"
+    :data-session-id="item.id"
     :data-selected="selected"
     class="session-card"
     :class="{ selected }"

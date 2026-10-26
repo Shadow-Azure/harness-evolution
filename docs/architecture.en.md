@@ -30,7 +30,7 @@ Web restores the session before mounting routes; tokens and users stay in memory
 
 The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL; statistics and density read `/api/sessions`.
 
-Agent flow loads lazily.
+List and overview remember scroll offsets per Session; reload resets them. Agent flow loads lazily. `verify:bundle` guards entry/vendor bytes, and `performance:report` repeats the synthetic 61-Agent real-browser budget.
 
 After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before starting the scheduler. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 

@@ -1,0 +1,30 @@
+{
+  "source": "fixture",
+  "dataOrigin": "synthetic-fixture",
+  "browser": {
+    "product": "Chrome/155.0.8059.86",
+    "protocolVersion": "1.3",
+    "deviceScaleFactor": 1
+  },
+  "largestTree": {
+    "agents": 61,
+    "lines": 13492,
+    "readyMs": 278,
+    "expandMs": 43
+  },
+  "navigation": {
+    "cardsReadyMs": 700,
+    "treeRequestAfterCards": true
+  },
+  "requests": {
+    "detailCount": 1,
+    "treeCount": 1
+  },
+  "interactionMs": 10,
+  "scrollFrameAverageMs": 16.5,
+  "maxLongTaskMs": 0,
+  "viewport": {
+    "width": 1408,
+    "height": 360
+  }
+}

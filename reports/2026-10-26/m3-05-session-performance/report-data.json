@@ -1,0 +1,195 @@
+{
+  "lang": "zh-CN",
+  "title": "M3-05 Session 性能与原型集成冒烟",
+  "eyebrow": "Harness Evolution · PR #110",
+  "summary": "在真实 FastAPI、SQLite、Vite 与 Chrome 上验证 4 Session 浏览器、390px 响应式、61 Agent 压力图和最大本地树性能。所有场景通过，未发现产品缺陷。",
+  "meta": "2026-10-26 · Chrome 155 · 1408/390 viewport",
+  "metrics": [
+    { "value": "194", "label": "Web tests" },
+    { "value": "10", "label": "Chrome E2E" },
+    { "value": "61", "label": "最大树 Agents" },
+    { "value": "0", "label": "Long tasks" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "#45 · Session performance" },
+    { "label": "PR", "value": "#110" },
+    { "label": "Fix commit", "value": "90c14e8" },
+    { "label": "Runtime", "value": "FastAPI + Vite + Chrome 155" },
+    { "label": "Data", "value": "Synthetic fixture + local import/replay" },
+    { "label": "Budget", "value": "Entry ≤250KB / ≤90KB gzip; vendor ≤400KB" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观测", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "4 Session 原型布局",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 张白色 Session 卡、360px 左栏、8 条红/橙密度条和 720px 执行流区正常。",
+        "evidence": ["screenshots/01-session-browser-desktop.png", "computed body rgb(244,245,247)"]
+      },
+      {
+        "id": "02",
+        "name": "390px Session 响应式",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "列表与概览单列堆叠，页面 scrollWidth=clientWidth=390。",
+        "evidence": ["screenshots/02-session-browser-390.png"]
+      },
+      {
+        "id": "03",
+        "name": "61 Agent 默认折叠",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "13,492 行主会话与 60 个子 Agent 保持折叠，初始只渲染 compact 表示。",
+        "evidence": ["screenshots/03-stress-collapsed.png", "E2E collapse node"]
+      },
+      {
+        "id": "04",
+        "name": "61 Agent 展开",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击折叠节点后 61 个节点全部渲染并 fit 到画布。",
+        "evidence": ["screenshots/04-stress-expanded.png", "E2E 61 nodes"]
+      },
+      {
+        "id": "05",
+        "name": "Workflow 生产树",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "主 Session、Workflow 合成节点和 workflow-subagent 连线与标签正常。",
+        "evidence": ["screenshots/05-workflow-session.png"]
+      },
+      {
+        "id": "06",
+        "name": "列表滚动与 History 恢复",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实交互保存列表 scrollTop=157；切换后返回恢复 157；刷新稳定归零。",
+        "evidence": ["Chrome 交互读数", "m3-session-browser performance E2E"]
+      },
+      {
+        "id": "07",
+        "name": "请求时序与去重",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "4 张卡先出现，随后请求 tree；选中 Session 的 detail/tree 各 1 次。",
+        "evidence": ["performance-fixture.json", "performance-local.json"]
+      },
+      {
+        "id": "08",
+        "name": "fixture 性能预算",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "cards 700ms、最大树 ready 278ms、展开 43ms、交互 10ms、滚动 16.5ms/frame、long task 0ms。",
+        "evidence": ["performance-fixture.json"]
+      },
+      {
+        "id": "09",
+        "name": "local 最大树性能预算",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "cards 923ms、最大树 ready 384ms、展开 31ms、交互 6ms、滚动 16.48ms/frame、long task 0ms。",
+        "evidence": ["performance-local.json"]
+      },
+      {
+        "id": "10",
+        "name": "Bundle 与懒加载",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "入口 39,789B raw / 14,565B gzip；最大 vendor 158,349B；Vue Flow 保持独立动态 chunk。",
+        "evidence": ["pnpm verify:bundle", "build output"]
+      },
+      {
+        "id": "11",
+        "name": "控制台与隐私",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "正常路径 Console warning/error=0；报告及截图仅含合成数据，不含凭据或私有路径。",
+        "evidence": ["Chrome dev logs []", "asset scan"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-session-browser-desktop.png",
+      "alt": "桌面 Session 浏览器和 Agent 执行流",
+      "label": "4 Session 原型布局",
+      "caption": "桌面 1408px：白色卡片、双密度条、360px 侧栏与执行流区域。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-session-browser-390.png",
+      "alt": "390px Session 浏览器",
+      "label": "390px 响应式",
+      "caption": "390px 下列表和概览单列堆叠，无横向溢出。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/03-stress-collapsed.png",
+      "alt": "61 Agent 压力图折叠态",
+      "label": "61 Agent 折叠",
+      "caption": "13,492 行主会话与 60 个子 Agent 默认折叠。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-stress-expanded.png",
+      "alt": "61 Agent 压力图展开态",
+      "label": "61 Agent 展开",
+      "caption": "展开后 61 个节点全部 fit 到画布。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-workflow-session.png",
+      "alt": "Workflow Session 的生产执行流图",
+      "label": "Workflow 树",
+      "caption": "主 Session、Workflow 与 workflow-subagent 的生产树。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-overview-graph.png",
+      "alt": "滚动后的 Session 概览执行流",
+      "label": "概览执行流",
+      "caption": "滚动概览后执行流区域保持可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-session-390.png",
+      "alt": "390px 下选择 Workflow Session",
+      "label": "390px Workflow Session",
+      "caption": "窄屏选择含 Workflow 的 Session 后可继续查看概览。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "性能预算",
+        "coverage": "fixture/local 真实 Chrome + Web E2E",
+        "conclusion": "所有运行时阈值和 bundle 预算通过。",
+        "recommendation": "维持 CI 合成大树与本地按需报告双层验证。"
+      },
+      {
+        "area": "滚动恢复",
+        "coverage": "真实 Chrome + Session E2E",
+        "conclusion": "选择、History 恢复与刷新归零均有正偏移断言。",
+        "recommendation": "后续新增滚动容器时复用同一记忆边界。"
+      },
+      {
+        "area": "懒加载",
+        "coverage": "bundle 门禁 + 请求时序",
+        "conclusion": "Vue Flow 不在首屏同步闭包，tree 请求晚于 Session 卡。",
+        "recommendation": "保持 route-level dynamic import。"
+      },
+      {
+        "area": "原型视觉",
+        "coverage": "Computer Use + computed style",
+        "conclusion": "亮色 Session 浏览器与 1408/390 布局保持原型基线。",
+        "recommendation": "领域页面后续继续按原型实现。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "m3-05 的性能门禁、最大树交互、滚动恢复与原型视觉均通过，没有未解决产品缺陷。",
+    "points": [
+      "fixture 与 local 最大树均远低于运行时预算。",
+      "完整 Chrome E2E 10/10、Web 单元测试 194/194 通过。",
+      "原生 MySQL 由 CI service-container lane 计为权威结果。"
+    ]
+  },
+  "footer": "证据源：真实 Chrome Computer Use、性能 E2E、fixture/local 聚合报告与 bundle 门禁。"
+}

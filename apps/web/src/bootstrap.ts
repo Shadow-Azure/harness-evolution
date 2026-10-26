@@ -23,6 +23,9 @@ export type BootstrapAppOptions = {
  */
 export async function bootstrapApp(options: BootstrapAppOptions): Promise<void> {
   const { app, mountTarget, pinia, queryClient, router } = options;
+  if (typeof history !== "undefined" && "scrollRestoration" in history) {
+    history.scrollRestoration = "manual";
+  }
   app.use(pinia);
   app.use(VueQueryPlugin, { queryClient });
   installAuthRuntime(router, pinia);

@@ -30,7 +30,7 @@ Web 先恢复会话再挂载路由；token 与用户只留内存。守卫处理�
 
 Session 页用 360px 列表+概览；搜索/状态/排序/选中/证据写 URL，统计/密度读 `/api/sessions`。
 
-流图异步。
+列表与概览分别记忆每个 Session 的滚动位置；刷新重置。流图按需异步加载。入口与 vendor 体积由 `verify:bundle` 守门，合成 61-Agent 真实浏览器预算由 `performance:report` 复测。
 
 lifespan 先恢复 JobRunner 并采纳 `sync_lock`，再启动 scheduler；手动与定时共用单飞锁，无 pending 不建 job。
 

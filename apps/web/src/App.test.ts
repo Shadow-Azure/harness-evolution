@@ -62,6 +62,7 @@ async function mountApp() {
       mustChangePassword: false,
     },
   });
+  window.history.replaceState({}, "", "/sessions");
   const router = createAppRouter();
   const wrapper = mount(App, {
     global: {

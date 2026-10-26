@@ -9,15 +9,20 @@ milestone: m3
 depends:
   - m3-04
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - scripts/**
+  - tests/**
   - fixtures/**
+  - package.json
+  - AGENTS.md
   - .github/workflows/ci.yml
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
+  - reports/**
 adr: []
 github:
   number: 45
@@ -47,9 +52,9 @@ m3-05 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 实施步骤
 
-1. 用最大本地树测量 TTI、交互延迟和滚动
-2. 优化组件拆分与缓存
-3. 把体积和首屏依赖检查接入 CI
+1. 建立合成 61-Agent 大树和真实浏览器性能报告
+2. 恢复每个 Session 的列表与概览滚动位置
+3. 把 bundle 体积、懒加载、交互与长任务预算接入 CI
 
 ## 依赖与交付边界
 
@@ -59,14 +64,16 @@ m3-05 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/m3-05-session-performance
-pnpm test:db
-pnpm test:web
-pnpm test:e2e
+pnpm test:web -- session performance agent-tree
+pnpm test:e2e --pattern "performance"
+pnpm performance:report
+pnpm build
+pnpm verify:bundle
 ```
 
-- 本地最大会话滚动不卡死
-- CI verify:bundle/build guard 通过
+- entry 不超过 250KB raw / 90KB gzip，各 vendor 不超过 400KB
+- 61-Agent 合成树展开不超过 350ms，长任务不超过 200ms
+- 列表与概览按 Session 恢复滚动位置，刷新后重置
 
 ## 验收标准
 

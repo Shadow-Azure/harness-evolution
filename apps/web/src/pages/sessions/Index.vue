@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import type { SessionFilters, SessionSort, SessionStatusFilter } from "../../api/sessions";
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import {
@@ -14,16 +21,26 @@ import SessionList from "./components/SessionList.vue";
 import SessionOverview from "./components/SessionOverview.vue";
 import SortSelect from "./components/SortSelect.vue";
 import StatusChips from "./components/StatusChips.vue";
+import { SessionScrollMemory } from "../../utils/sessionScroll";
 
 defineOptions({ name: "SessionsPage" });
 
 const route = useRoute();
 const router = useRouter();
+const pageRoot = ref<HTMLElement | null>(null);
+const scrollMemory = new SessionScrollMemory();
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
 const deepLinkNotice = ref("");
 let noticeOwnedPath: string | null = null;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
+let scrollRestoreTimer: ReturnType<typeof setTimeout> | undefined;
+let scrollRestoreSequence = 0;
 let searchRevision = 0;
+let autoSelectionRevision = 0;
+let listPanel: HTMLElement | null = null;
+let overviewPanel: HTMLElement | null = null;
+let initialResetTimers: ReturnType<typeof setTimeout>[] = [];
+let cancelInitialReset: (() => void) | null = null;
 
 const validStatuses = new Set<SessionStatusFilter>([
   "all",
@@ -282,6 +299,86 @@ function selectAgent(agentId: string) {
   });
 }
 
+function panelScrollTop(selector: string): number {
+  return pageRoot.value?.querySelector<HTMLElement>(selector)?.scrollTop ?? 0;
+}
+
+function savePanelScroll(sessionId: string) {
+  if (!sessionId) return;
+  scrollMemory.save(sessionId, {
+    list: panelScrollTop(".session-list"),
+    overview: panelScrollTop(".overview"),
+  });
+}
+
+function rememberPanelScroll() {
+  if (selectedId.value) savePanelScroll(selectedId.value);
+}
+
+function bindScrollPanels() {
+  const list = pageRoot.value?.querySelector<HTMLElement>(".session-list");
+  const overview = pageRoot.value?.querySelector<HTMLElement>(".overview");
+  if (list !== listPanel) {
+    listPanel?.removeEventListener("scroll", rememberPanelScroll);
+    listPanel = list ?? null;
+    listPanel?.addEventListener("scroll", rememberPanelScroll, { passive: true });
+  }
+  if (overview !== overviewPanel) {
+    overviewPanel?.removeEventListener("scroll", rememberPanelScroll);
+    overviewPanel = overview ?? null;
+    overviewPanel?.addEventListener("scroll", rememberPanelScroll, { passive: true });
+  }
+}
+
+function restorePanelScroll(sessionId: string) {
+  scrollRestoreSequence += 1;
+  const sequence = scrollRestoreSequence;
+  clearTimeout(scrollRestoreTimer);
+  const apply = async (delay: number) => {
+    if (delay > 0) {
+      await new Promise<void>((resolve) => {
+        scrollRestoreTimer = setTimeout(resolve, delay);
+      });
+    }
+    if (sequence !== scrollRestoreSequence || selectedId.value !== sessionId) {
+      return;
+    }
+    await nextTick();
+    bindScrollPanels();
+    const position = scrollMemory.get(sessionId);
+    const list = pageRoot.value?.querySelector<HTMLElement>(".session-list");
+    const overview = pageRoot.value?.querySelector<HTMLElement>(".overview");
+    if (list) list.scrollTop = position.list;
+    if (overview) overview.scrollTop = position.overview;
+  };
+  void apply(0);
+  void apply(60);
+  void apply(220);
+}
+
+watch(
+  selectedId,
+  (next, previous) => {
+    if (
+      previous &&
+      !scrollMemory.has(previous) &&
+      (panelScrollTop(".session-list") > 0 || panelScrollTop(".overview") > 0)
+    ) {
+      savePanelScroll(previous);
+    }
+    if (next) restorePanelScroll(next);
+  },
+  { flush: "pre" },
+);
+
+watch(
+  () => summaryQuery.data.value?.id,
+  (id) => {
+    if (id && id === selectedId.value) restorePanelScroll(id);
+  },
+  { flush: "post" },
+);
+
 watch(
   () => route.query.q,
   (value) => {
@@ -319,12 +416,16 @@ watch(
 
 watch(
   [items, selectedId, isListSuccess, deepLinkError],
-  ([currentItems, currentId, success, invalidLink]) => {
+  async ([currentItems, currentId, success, invalidLink]) => {
+    const revision = ++autoSelectionRevision;
     if (!success) return;
     if (invalidLink) return;
     if (!currentId) {
       const firstId = currentItems[0]?.id;
       if (!firstId) return;
+      await nextTick();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (revision !== autoSelectionRevision || selectedId.value) return;
       void router.replace({
         path: `/sessions/${encodeURIComponent(firstId)}`,
         query: routeWithFilters({}),
@@ -405,7 +506,45 @@ watch(
   { immediate: true },
 );
 
+onMounted(() => {
+  void nextTick().then(() => {
+    bindScrollPanels();
+    if (selectedId.value) restorePanelScroll(selectedId.value);
+    const resetPanels = () => {
+      const list = pageRoot.value?.querySelector<HTMLElement>(".session-list");
+      const overview = pageRoot.value?.querySelector<HTMLElement>(".overview");
+      if (list) list.scrollTop = 0;
+      if (overview) overview.scrollTop = 0;
+    };
+    initialResetTimers = [0, 250, 750].map(
+      (delay) => setTimeout(resetPanels, delay),
+    );
+    const cancel = () => {
+      for (const timer of initialResetTimers) clearTimeout(timer);
+      initialResetTimers = [];
+    };
+    cancelInitialReset = cancel;
+    pageRoot.value?.addEventListener("wheel", cancel, {
+      capture: true,
+      once: true,
+      passive: true,
+    });
+  });
+});
+
 onBeforeUnmount(() => {
+  savePanelScroll(selectedId.value);
+  scrollRestoreSequence += 1;
+  clearTimeout(scrollRestoreTimer);
+  scrollRestoreTimer = undefined;
+  listPanel?.removeEventListener("scroll", rememberPanelScroll);
+  overviewPanel?.removeEventListener("scroll", rememberPanelScroll);
+  listPanel = null;
+  overviewPanel = null;
+  for (const timer of initialResetTimers) clearTimeout(timer);
+  initialResetTimers = [];
+  cancelInitialReset?.();
+  cancelInitialReset = null;
   searchRevision += 1;
   clearTimeout(searchTimer);
   searchTimer = undefined;
@@ -414,6 +553,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section
+    ref="pageRoot"
     class="session-browser"
     :data-selected-id="selectedId"
   >
