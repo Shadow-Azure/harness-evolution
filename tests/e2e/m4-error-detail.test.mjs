@@ -218,6 +218,10 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     (item) => item.analysis.status === "analyzed_issue",
   );
   assert.ok(selected);
+  const selectedProbe = await apiGet(
+    `/api/probes/${encodeURIComponent(selected.analysis.probeId)}`,
+    auth.accessToken,
+  );
   const otherSession = sessions.items.find((item) => item.id !== sessionId);
   assert.ok(otherSession);
 
@@ -252,8 +256,16 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         const rows = [...document.querySelectorAll(
           "[data-testid='problem-list'] [data-bad-case-id]",
         )];
+        const idLinks = [...document.querySelectorAll(
+          "[data-testid='problem-list'] .problem-id",
+        )];
         const tree = document.querySelector("[data-testid='agent-tree']");
-        if (!workspace || !tree || rows.length !== ${sessionCases.length}) return null;
+        if (
+          !workspace ||
+          !tree ||
+          rows.length !== ${sessionCases.length} ||
+          idLinks.length !== ${sessionCases.length}
+        ) return null;
         const heading = document.querySelector(".error-heading h1");
         const main = document.querySelector(".error-main");
         const sidebar = document.querySelector(".error-sidebar");
@@ -261,6 +273,14 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         const empty = document.querySelector(".err-empty");
         return {
           rows: rows.length,
+          idLinks: idLinks.map((link) => ({
+            text: link.textContent,
+            href: link.getAttribute("href"),
+            title: link.getAttribute("title"),
+            target: link.getAttribute("target"),
+            rel: link.getAttribute("rel"),
+            insideButton: Boolean(link.closest("button")),
+          })),
           findingCards: tree.querySelectorAll(".rf-finding").length,
           detailEmpty: document
             .querySelector(".detail-panel")
@@ -294,6 +314,25 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       );
     });
     assert.equal(all.rows, sessionCases.length);
+    assert.deepEqual(
+      all.idLinks.map((link) => link.text),
+      sessionCases.map((item) => item.badCaseId.slice(0, 8)),
+    );
+    assert.deepEqual(
+      all.idLinks.map((link) => link.title),
+      sessionCases.map((item) => item.badCaseId),
+    );
+    assert.equal(
+      all.idLinks.every(
+        (link) =>
+          link.href ===
+            `/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
+          link.target === "_blank" &&
+          link.rel === "noopener noreferrer" &&
+          !link.insideButton,
+      ),
+      true,
+    );
     assert.equal(all.findingCards, sessionCases.length);
     assert.equal(all.detailEmpty, true);
     assert.equal(all.title, "错误详情");
@@ -322,6 +361,34 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         return {
           findingCards: tree.querySelectorAll(".rf-finding").length,
           text: document.body.textContent,
+          detailId: (() => {
+            const link = document.querySelector(".description .problem-id");
+            const style = link ? getComputedStyle(link) : null;
+            return link ? {
+              text: link.textContent,
+              href: link.getAttribute("href"),
+              title: link.getAttribute("title"),
+              target: link.getAttribute("target"),
+              rel: link.getAttribute("rel"),
+              textDecoration: style?.textDecorationLine,
+              borderStyle: style?.borderBottomStyle,
+              borderWidth: style?.borderBottomWidth,
+            } : null;
+          })(),
+          reportLink: (() => {
+            const link = document.querySelector(".description .report-id");
+            const style = link ? getComputedStyle(link) : null;
+            return link ? {
+              text: link.textContent,
+              href: link.getAttribute("href"),
+              title: link.getAttribute("title"),
+              target: link.getAttribute("target"),
+              rel: link.getAttribute("rel"),
+              textDecoration: style?.textDecorationLine,
+              borderStyle: style?.borderBottomStyle,
+              borderWidth: style?.borderBottomWidth,
+            } : null;
+          })(),
           selected: document.querySelector(
             ${JSON.stringify(`[data-bad-case-id='${selected.badCaseId}']`)},
           )?.getAttribute("aria-pressed"),
@@ -332,6 +399,26 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.equal(selectedView.findingCards, 1);
     assert.equal(selectedView.selected, "true");
     assert.match(selectedView.text, /问题 ID/);
+    assert.deepEqual(selectedView.detailId, {
+      text: selected.badCaseId.slice(0, 8),
+      href: `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=desc`,
+      title: selected.badCaseId,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      textDecoration: "none",
+      borderStyle: "dashed",
+      borderWidth: "1px",
+    });
+    assert.deepEqual(selectedView.reportLink, {
+      text: selected.analysis.probeId.slice(0, 8),
+      href: `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      title: selected.analysis.probeId,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      textDecoration: "none",
+      borderStyle: "dashed",
+      borderWidth: "1px",
+    });
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector("#attr-tab").click()`,
@@ -343,7 +430,18 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         if (!attribution || !location.search.includes("tab=attr")) return null;
         return {
           text: attribution.textContent,
+          conclusion: attribution.querySelector(".conclusion")?.textContent,
+          classification: attribution.querySelector(".classification")?.textContent,
           html: attribution.querySelector(".markdown")?.innerHTML,
+          sourceLinks: [...attribution.querySelectorAll(".source-links a")].map(
+            (link) => ({
+              text: link.textContent,
+              href: link.getAttribute("href"),
+              title: link.getAttribute("title"),
+              target: link.getAttribute("target"),
+              rel: link.getAttribute("rel"),
+            }),
+          ),
         };
       })()`,
       "attribution tab",
@@ -351,6 +449,73 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.match(attribution.text, /分析出的问题描述/);
     assert.match(attribution.text, /分析推导过程/);
     assert.match(attribution.html ?? "", /<p>/);
+    assert.equal(
+      attribution.conclusion?.includes(selectedProbe.probeObject),
+      false,
+    );
+    assert.equal(
+      attribution.conclusion?.includes(selectedProbe.probeDescription),
+      false,
+    );
+    assert.equal(
+      attribution.classification?.includes(selectedProbe.probeObject),
+      true,
+    );
+    assert.equal(
+      attribution.sourceLinks.length,
+      selectedProbe.fromBadCases.length,
+    );
+    assert.equal(
+      attribution.sourceLinks.every(
+        (link) =>
+          link.text === link.title.slice(0, 8) &&
+          link.href ===
+            `/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
+          link.target === "_blank" &&
+          link.rel === "noopener noreferrer",
+      ),
+      true,
+    );
+
+    const unanalyzedSession = [...casesBySession.entries()].find(([, items]) =>
+      items.some((item) => item.analysis.status === "unanalyzed"));
+    assert.ok(unanalyzedSession);
+    const [unanalyzedSessionId, unanalyzedCases] = unanalyzedSession;
+    const unanalyzed = unanalyzedCases.find(
+      (item) => item.analysis.status === "unanalyzed",
+    );
+    assert.ok(unanalyzed);
+    await clientNavigate(
+      page,
+      `/sessions/${unanalyzedSessionId}/errors?case=${unanalyzed.badCaseId}&tab=attr`,
+    );
+    const unanalyzedView = await waitForDocument(
+      page.session,
+      `(() => {
+        const note = document.querySelector(".unanalyzed-note");
+        if (!note) return null;
+        const style = getComputedStyle(note);
+        return {
+          text: note.textContent.trim(),
+          borderTopStyle: style.borderTopStyle,
+          borderTopWidth: style.borderTopWidth,
+          backgroundColor: style.backgroundColor,
+          padding: style.padding,
+          textAlign: style.textAlign,
+          fontSize: style.fontSize,
+        };
+      })()`,
+      "unanalyzed presentation",
+    );
+    assert.deepEqual(unanalyzedView, {
+      text: "该错误还没有归因分析，尚不能判断是否为问题。",
+      borderTopStyle: "none",
+      borderTopWidth: "0px",
+      backgroundColor: "rgba(0, 0, 0, 0)",
+      padding: "28px 4px",
+      textAlign: "center",
+      fontSize: "12px",
+    });
 
     const reloadAuth = await loginSession();
     await installCookie(page, reloadAuth.cookie);

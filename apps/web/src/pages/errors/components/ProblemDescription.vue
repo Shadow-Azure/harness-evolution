@@ -3,6 +3,10 @@ import type { BadCase } from "@harness/contracts";
 import { computed } from "vue";
 
 import { badCaseFactEntries, badCaseState } from "../../../components/bad-cases/badCaseDisplay";
+import {
+  badCaseDeepLink,
+  shortBadCaseId,
+} from "../../../utils/badCaseId";
 
 const props = defineProps<{
   problem: BadCase;
@@ -14,6 +18,11 @@ const reporter = computed(() =>
   props.problem.badCaseAgent.agentId
     ? `${props.problem.badCaseType} · ${props.problem.badCaseAgent.agentId}`
     : `${props.problem.badCaseType} · 主 Agent`,
+);
+const reportId = computed(() =>
+  props.problem.analysis.status === "analyzed_issue"
+    ? props.problem.analysis.probeId
+    : null,
 );
 </script>
 
@@ -28,16 +37,37 @@ const reporter = computed(() =>
         class="problem-number"
       >#{{ index }}</span>
       <span class="field-label">问题 ID</span>
-      <span
+      <a
         class="problem-id"
+        :href="badCaseDeepLink(
+          problem.sessionId,
+          problem.badCaseId,
+          'desc',
+        )"
+        rel="noopener noreferrer"
+        target="_blank"
         :title="problem.badCaseId"
       >
-        {{ problem.badCaseId.slice(0, 12) }}
-      </span>
+        {{ shortBadCaseId(problem.badCaseId) }}
+      </a>
       <span
         id="problem-description-title"
         class="problem-title"
       >{{ problem.reason }}</span>
+      <a
+        v-if="reportId"
+        class="report-id"
+        :href="badCaseDeepLink(
+          problem.sessionId,
+          problem.badCaseId,
+          'attr',
+        )"
+        rel="noopener noreferrer"
+        target="_blank"
+        :title="reportId"
+      >
+        {{ shortBadCaseId(reportId) }}
+      </a>
       <span
         class="state-chip"
         :class="badCaseState(problem.analysis.displayState).tone"
@@ -51,9 +81,6 @@ const reporter = computed(() =>
         数据降级
       </span>
     </header>
-    <p class="description-copy">
-      {{ problem.reason }}
-    </p>
     <div v-if="facts.length">
       <div class="facts">
         <span
@@ -96,7 +123,8 @@ const reporter = computed(() =>
 }
 
 .problem-number,
-.problem-id {
+.problem-id,
+.report-id {
   flex-shrink: 0;
   font-family: var(--mono);
   font-weight: 700;
@@ -122,6 +150,23 @@ const reporter = computed(() =>
 .problem-id {
   color: var(--blue);
   font-size: 10.5px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+  text-decoration: none;
+}
+
+.problem-id:hover {
+  border-bottom-style: solid;
+}
+
+.report-id {
+  color: var(--purple);
+  font-size: 10.5px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent);
+  text-decoration: none;
+}
+
+.report-id:hover {
+  border-bottom-style: solid;
 }
 
 .problem-title {
@@ -164,14 +209,6 @@ const reporter = computed(() =>
   background: color-mix(in srgb, var(--orange) 8%, var(--bg-card));
   color: var(--orange);
   font-size: 10px;
-}
-
-.description-copy {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 12.5px;
-  line-height: 1.7;
-  white-space: pre-wrap;
 }
 
 .facts {

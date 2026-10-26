@@ -6,6 +6,10 @@ import EmptyState from "../ui/EmptyState.vue";
 import ErrorState from "../ui/ErrorState.vue";
 import LoadingSkeleton from "../ui/LoadingSkeleton.vue";
 import {
+  badCaseDeepLink,
+  shortBadCaseId,
+} from "../../utils/badCaseId";
+import {
   badCaseFacts,
   badCaseState,
   badCaseSummary,
@@ -98,62 +102,39 @@ defineExpose({ scrollToProblem });
         class="problem-row-item"
         role="listitem"
       >
-        <button
-          class="problem-row"
+        <div
+          class="problem-row-card"
           :class="{ active: problem.badCaseId === activeBadCaseId }"
-          :data-bad-case-id="problem.badCaseId"
-          :aria-pressed="problem.badCaseId === activeBadCaseId"
-          type="button"
-          @click="emit('select', problem.badCaseId)"
         >
-          <span
-            v-if="compact"
-            class="compact-row-top"
+          <span class="problem-no">#{{ index + 1 }}</span>
+          <a
+            class="problem-id"
+            :href="badCaseDeepLink(
+              problem.sessionId,
+              problem.badCaseId,
+              'desc',
+            )"
+            rel="noopener noreferrer"
+            target="_blank"
+            :title="problem.badCaseId"
           >
-            <span class="problem-no">#{{ index + 1 }}</span>
-            <span
-              class="problem-id"
-              :title="problem.badCaseId"
-            >
-              {{ problem.badCaseId.slice(0, 8) }}
-            </span>
-            <strong>{{ problem.reason }}</strong>
-          </span>
-          <span
-            v-else
-            class="problem-row-head"
+            {{ shortBadCaseId(problem.badCaseId) }}
+          </a>
+          <button
+            class="problem-row"
+            :class="{ active: problem.badCaseId === activeBadCaseId }"
+            :data-bad-case-id="problem.badCaseId"
+            :aria-pressed="problem.badCaseId === activeBadCaseId"
+            type="button"
+            @click="emit('select', problem.badCaseId)"
           >
-            <span class="problem-no">#{{ index + 1 }}</span>
-            <span
-              class="problem-id"
-              :title="problem.badCaseId"
-            >
-              {{ problem.badCaseId.slice(0, 8) }}
-            </span>
-            <strong>{{ problem.reason }}</strong>
-            <span
-              class="state-chip"
-              :class="badCaseState(problem.analysis.displayState).tone"
-            >
-              {{ badCaseState(problem.analysis.displayState).label }}
-            </span>
-            <span
-              v-if="problem.degraded"
-              class="degraded-chip"
-            >
-              数据降级
-            </span>
-          </span>
-          <template v-if="compact">
-            <span class="compact-row-bottom">
+            <span class="problem-row-head">
+              <strong>{{ problem.reason }}</strong>
               <span
                 class="state-chip"
                 :class="badCaseState(problem.analysis.displayState).tone"
               >
                 {{ badCaseState(problem.analysis.displayState).label }}
-              </span>
-              <span class="problem-target">
-                {{ problem.objectType }} · {{ problem.objectName }}
               </span>
               <span
                 v-if="problem.degraded"
@@ -162,26 +143,34 @@ defineExpose({ scrollToProblem });
                 数据降级
               </span>
             </span>
-          </template>
-          <span
-            v-else
-            class="problem-summary"
-          >{{ badCaseSummary(problem) }}</span>
-          <span
-            v-if="!compact"
-            class="problem-meta"
-          >
-            <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
-            <span
-              v-for="fact in badCaseFacts(problem.metaData)"
-              :key="fact"
-              class="fact-chip"
-            >
-              {{ fact }}
+            <span class="compact-row-bottom">
+              <span
+                v-if="compact"
+                class="problem-target"
+              >
+                {{ problem.objectType }} · {{ problem.objectName }}
+              </span>
             </span>
-            <span class="locate-copy">定位</span>
-          </span>
-        </button>
+            <span
+              v-if="!compact"
+              class="problem-summary"
+            >{{ badCaseSummary(problem) }}</span>
+            <span
+              v-if="!compact"
+              class="problem-meta"
+            >
+              <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
+              <span
+                v-for="fact in badCaseFacts(problem.metaData)"
+                :key="fact"
+                class="fact-chip"
+              >
+                {{ fact }}
+              </span>
+              <span class="locate-copy">定位</span>
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   </section>
@@ -216,14 +205,27 @@ defineExpose({ scrollToProblem });
   gap: 6px;
 }
 
-.problem-row {
+.problem-row-card {
   display: grid;
-  gap: 5px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 5px 6px;
+  align-items: start;
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-card);
+  color: var(--text);
+}
+
+.problem-row {
+  display: grid;
+  grid-column: 3;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -242,38 +244,36 @@ defineExpose({ scrollToProblem });
   gap: 8px;
 }
 
-.problem-list.compact .problem-row {
-  gap: 5px;
-  padding: 8px 10px;
+.problem-list.compact .problem-row-card {
   border-left: 3px solid transparent;
 }
 
-.problem-list.compact .problem-row:hover {
+.problem-list.compact .problem-row-card:hover {
   border-color: var(--border-strong);
 }
 
-.problem-list.compact .problem-row.active {
+.problem-list.compact .problem-row-card.active {
   border-color: var(--blue);
   border-left-color: var(--blue);
   background: color-mix(in srgb, var(--blue) 7%, var(--bg-card));
   box-shadow: none;
 }
 
-.problem-list.compact .problem-row:focus-visible {
+.problem-list.compact .problem-row-card:has(.problem-row:focus-visible) {
   outline-color: var(--blue);
 }
 
-.problem-row:hover {
+.problem-row-card:hover {
   border-color: var(--red);
 }
 
-.problem-row.active {
+.problem-row-card.active {
   border-color: var(--red);
   background: color-mix(in srgb, var(--red) 5%, var(--bg-card));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 12%, transparent);
 }
 
-.problem-row:focus-visible {
+.problem-row-card:has(.problem-row:focus-visible) {
   outline: 2px solid var(--red);
   outline-offset: 1px;
 }
@@ -329,14 +329,23 @@ defineExpose({ scrollToProblem });
 .problem-no,
 .problem-id {
   flex-shrink: 0;
-  color: var(--red);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 650;
 }
 
+.problem-no {
+  color: var(--red);
+}
+
 .problem-id {
-  color: var(--text-faint);
+  color: var(--blue);
+  border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+  text-decoration: none;
+}
+
+.problem-id:hover {
+  border-bottom-style: solid;
 }
 
 .problem-summary {

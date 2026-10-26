@@ -1,5 +1,7 @@
 import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
+import { shortBadCaseId } from "../../utils/badCaseId";
+
 import type {
   AgentChain,
   AgentGraphLayout,
@@ -504,7 +506,7 @@ export function buildBadCaseOverlay(
     const item = caseById.get(anchor.badCaseId);
     const detail = detailById.get(anchor.badCaseId);
     if (!item) return;
-    const shortId = anchor.badCaseId.slice(0, 8);
+    const shortId = shortBadCaseId(anchor.badCaseId);
     const reason = detail?.reason ?? item.reason;
     const width = badCaseCardWidth(shortId, reason, measure);
     const node: BadCaseLayoutNode = {
@@ -542,7 +544,7 @@ export function buildBadCaseOverlay(
       if (!item) return;
       const detail = detailById.get(anchor.badCaseId);
       const width = badCaseCardWidth(
-        anchor.badCaseId.slice(0, 8),
+        shortBadCaseId(anchor.badCaseId),
         detail?.reason ?? item.reason,
         measure,
       );
@@ -564,7 +566,7 @@ export function buildBadCaseOverlay(
     if (!item) continue;
     const detail = detailById.get(anchor.badCaseId);
     const width = badCaseCardWidth(
-      anchor.badCaseId.slice(0, 8),
+      shortBadCaseId(anchor.badCaseId),
       detail?.reason ?? item.reason,
       measure,
     );

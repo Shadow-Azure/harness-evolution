@@ -224,6 +224,25 @@ describe("error detail page", () => {
       "/sessions/root-1/errors?case=case-error&tab=desc",
     );
     expect(wrapper.text()).toContain("index read failed");
+    expect(
+      wrapper.get(".description").text().match(/index read failed/g),
+    ).toHaveLength(1);
+    const detailId = wrapper.get(".description .problem-id");
+    expect(detailId.text()).toBe("case-err");
+    expect(detailId.attributes("title")).toBe("case-error");
+    expect(detailId.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-error&tab=desc",
+    );
+    expect(detailId.attributes("target")).toBe("_blank");
+    expect(detailId.attributes("rel")).toBe("noopener noreferrer");
+    const reportLink = wrapper.get(".description .report-id");
+    expect(reportLink.text()).toBe("probe-er");
+    expect(reportLink.attributes("title")).toBe("probe-error");
+    expect(reportLink.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-error&tab=attr",
+    );
+    expect(reportLink.attributes("target")).toBe("_blank");
+    expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
     const firstFact = wrapper.get(".fact-chip");
     expect(firstFact.get(".fact-key").text()).toBe("file");
     expect(firstFact.get(".fact-value").text()).toBe("src/index.ts");
@@ -237,7 +256,21 @@ describe("error detail page", () => {
 
     expect(wrapper.text()).toContain("是问题 · 错误");
     expect(wrapper.text()).toContain("The index file was not checked.");
-    expect(wrapper.get(".conclusion").text()).toContain("Explore @ v1.0.0");
+    expect(wrapper.get(".conclusion").text()).toBe("结论是问题 · 错误");
+    expect(wrapper.get(".classification").text()).toContain(
+      "Explore @ v1.0.0",
+    );
+    expect(
+      wrapper.get(".attribution").text().match(/Explore @ v1\.0\.0/g),
+    ).toHaveLength(1);
+    const sourceLink = wrapper.get(".source-links a");
+    expect(sourceLink.text()).toBe("case-err");
+    expect(sourceLink.attributes("title")).toBe("case-error");
+    expect(sourceLink.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-error&tab=desc",
+    );
+    expect(sourceLink.attributes("target")).toBe("_blank");
+    expect(sourceLink.attributes("rel")).toBe("noopener noreferrer");
     expect(wrapper.find(".markdown pre").exists()).toBe(true);
     expect(wrapper.get(".markdown a").attributes("target")).toBe("_blank");
     expect(wrapper.get(".markdown a").attributes("rel")).toBe(
@@ -279,6 +312,13 @@ describe("error detail page", () => {
     );
 
     const content = wrapper.get(".attribution").text();
+    expect(wrapper.get(".conclusion").text()).toBe("结论非问题");
+    expect(wrapper.get(".conclusion").text()).not.toContain(
+      "Every claim has a source.",
+    );
+    expect(
+      content.match(/Every claim has a source\./g),
+    ).toHaveLength(1);
     expect(content.indexOf("非问题的分析原因")).toBeLessThan(
       content.indexOf("分析推导过程"),
     );
@@ -324,7 +364,13 @@ describe("error detail page", () => {
     );
 
     expect(wrapper.text()).toContain("尚未分析");
-    expect(wrapper.text()).toContain("外部归因系统尚未写入结果");
+    expect(wrapper.get(".conclusion").text()).toBe("结论尚未分析未分析");
+    expect(wrapper.get(".unanalyzed-note").text()).toBe(
+      "该错误还没有归因分析，尚不能判断是否为问题。",
+    );
+    expect(wrapper.get(".conclusion").text()).not.toContain(
+      "该错误还没有归因分析",
+    );
   });
 
   it("does not request a probe until the attribution tab is active", async () => {

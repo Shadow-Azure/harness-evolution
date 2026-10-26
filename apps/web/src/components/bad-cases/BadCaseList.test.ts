@@ -118,9 +118,16 @@ describe("BadCaseList", () => {
     );
     expect(wrapper.get(".state-chip.red").text()).toBe("是问题-错误");
 
-    const firstId = wrapper.get("[data-bad-case-id='case-unanalyzed'] .problem-id");
+    const firstId = wrapper.get(
+      "#problem-row-case-unanalyzed .problem-id",
+    );
     expect(firstId.text()).toBe("case-una");
     expect(firstId.attributes("title")).toBe("case-unanalyzed");
+    expect(firstId.attributes("href")).toBe(
+      "/sessions/root-1/errors?case=case-unanalyzed&tab=desc",
+    );
+    expect(firstId.attributes("target")).toBe("_blank");
+    expect(firstId.attributes("rel")).toBe("noopener noreferrer");
   });
 
   it("keeps degraded problems visible with an explicit diagnostic label", () => {
@@ -176,6 +183,27 @@ describe("BadCaseList", () => {
 
     await wrapper.get("[data-bad-case-id='case-error']").trigger("click");
 
+    expect(wrapper.emitted("select")).toEqual([["case-error"]]);
+  });
+
+  it("keeps the ID deep link independent from card selection", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: { problems: fiveStates },
+    });
+
+    const idLink = wrapper.get(
+      "#problem-row-case-error .problem-id",
+    );
+    expect(idLink.element.tagName).toBe("A");
+    expect(idLink.text()).toBe("case-err");
+    expect(idLink.attributes("title")).toBe("case-error");
+    expect(idLink.attributes("target")).toBe("_blank");
+    expect(idLink.attributes("rel")).toBe("noopener noreferrer");
+
+    await idLink.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
+
+    await wrapper.get("[data-bad-case-id='case-error']").trigger("click");
     expect(wrapper.emitted("select")).toEqual([["case-error"]]);
   });
 

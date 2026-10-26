@@ -7,6 +7,10 @@ import { computed } from "vue";
 
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
+import {
+  badCaseDeepLink,
+  shortBadCaseId,
+} from "../../../utils/badCaseId";
 import { renderMarkdown } from "../../../utils/markdown";
 
 const props = defineProps<{
@@ -96,7 +100,6 @@ const analysisHtml = computed(() =>
       <span class="conclusion-label">结论</span>
       <strong>尚未分析</strong>
       <span class="state-chip neutral">未分析</span>
-      <span class="empty-note">外部归因系统尚未写入结果</span>
     </div>
     <div
       v-else-if="analysis.status === 'analyzed_nonissue'"
@@ -104,7 +107,6 @@ const analysisHtml = computed(() =>
     >
       <span class="conclusion-label">结论</span>
       <strong>非问题</strong>
-      <span>{{ analysis.result.reason }}</span>
     </div>
     <div
       v-else
@@ -113,8 +115,13 @@ const analysisHtml = computed(() =>
     >
       <span class="conclusion-label">结论</span>
       <strong>{{ issueLabel }}</strong>
-      <span class="state-chip">{{ issueCategory }}</span>
-      <span class="object-name">{{ rootObject }}</span>
+    </div>
+
+    <div
+      v-if="analysis.status === 'unanalyzed'"
+      class="unanalyzed-note"
+    >
+      该错误还没有归因分析，尚不能判断是否为问题。
     </div>
 
     <template v-if="analysis.status === 'analyzed_nonissue'">
@@ -179,16 +186,16 @@ const analysisHtml = computed(() =>
           来源问题
         </div>
         <div class="source-links">
-          <RouterLink
+          <a
             v-for="source in probe.fromBadCases"
             :key="source"
-            :to="{
-              path: `/sessions/${encodeURIComponent(sessionId)}/errors`,
-              query: { case: source, tab: 'desc' },
-            }"
+            :href="badCaseDeepLink(sessionId, source, 'desc')"
+            rel="noopener noreferrer"
+            target="_blank"
+            :title="source"
           >
-            {{ source.slice(0, 12) }}
-          </RouterLink>
+            {{ shortBadCaseId(source) }}
+          </a>
         </div>
       </div>
     </template>
@@ -225,11 +232,6 @@ const analysisHtml = computed(() =>
   font-size: 10px;
   font-weight: 400;
   text-transform: none;
-}
-
-.conclusion .empty-note {
-  margin-left: 4px;
-  color: var(--text-faint);
 }
 
 .conclusion.model,
@@ -271,6 +273,13 @@ const analysisHtml = computed(() =>
 .classification {
   display: grid;
   gap: 5px;
+}
+
+.unanalyzed-note {
+  padding: 28px 4px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
 }
 
 .attr-row {
