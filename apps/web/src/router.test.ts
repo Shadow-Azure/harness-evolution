@@ -55,6 +55,20 @@ describe("web router", () => {
     expect(component.default.name).toBe("ErrorsPage");
   });
 
+  it("protects and lazily loads the Session error-detail route", async () => {
+    const router = createAppRouter();
+    const route = router.options.routes.find(
+      (item) => item.path === "/sessions/:sessionId/errors",
+    );
+
+    expect(route?.meta?.public).not.toBe(true);
+    expect(typeof route?.component).toBe("function");
+    const component = await (
+      route?.component as () => Promise<{ default: { name: string } }>
+    )();
+    expect(component.default.name).toBe("ErrorsPage");
+  });
+
   it("redirects unauthenticated protected routes to login with the original path", async () => {
     const router = createAppRouter();
     await router.push("/sessions/s-1?q=error");

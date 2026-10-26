@@ -24,6 +24,11 @@ export function createAppRouter() {
         meta: { authLayout: true },
       },
       {
+        path: "/sessions/:sessionId/errors",
+        component: () => import("../pages/errors/Index.vue"),
+        meta: { workspace: true },
+      },
+      {
         path: "/sessions",
         component: SessionsPage,
         meta: { workspace: true },

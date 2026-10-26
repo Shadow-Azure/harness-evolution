@@ -9,11 +9,15 @@ milestone: m4
 depends:
   - m4-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
+  - tests/**
+  - pnpm-lock.yaml
+  - plans/**
+  - reports/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

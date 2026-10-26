@@ -57,8 +57,8 @@ describe("M1 shell pages", () => {
   it("explains that the top-level errors entry arrives later", async () => {
     const wrapper = await withRouter(ErrorsPage);
 
-    expect(wrapper.text()).toContain("暂无问题");
-    expect(wrapper.text()).toContain("问题归属将在后续 milestone 接入");
+    expect(wrapper.text()).toContain("请选择会话");
+    expect(wrapper.text()).toContain("请先从 Sessions 选择一个会话");
   });
 
   it("keeps the evolution canvas while using the shared empty presentation", async () => {

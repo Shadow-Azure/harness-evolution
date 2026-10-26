@@ -194,15 +194,13 @@ const stats = computed<Array<{
           </div>
         </div>
         <div class="section-actions">
-          <button
+          <RouterLink
             class="detail-cta"
             data-testid="detail-cta"
-            type="button"
-            title="错误详情将在后续 milestone 提供"
-            disabled
+            :to="`/sessions/${encodeURIComponent(item.id)}/errors`"
           >
             打开错误详情
-          </button>
+          </RouterLink>
         </div>
       </header>
 
@@ -407,11 +405,12 @@ const stats = computed<Array<{
   color: var(--blue);
   font: inherit;
   font-size: 11.5px;
+  text-decoration: none;
 }
 
-.detail-cta:disabled {
-  cursor: not-allowed;
-  opacity: .55;
+.detail-cta:hover {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 14%, var(--bg-card));
 }
 
 .tree-panel {

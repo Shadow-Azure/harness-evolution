@@ -17,11 +17,15 @@ const props = withDefaults(
     activeBadCaseId?: string | null;
     loading?: boolean;
     error?: Error | null;
+    compact?: boolean;
+    showHeader?: boolean;
   }>(),
   {
     activeBadCaseId: null,
     loading: false,
     error: null,
+    compact: false,
+    showHeader: true,
   },
 );
 
@@ -54,10 +58,15 @@ defineExpose({ scrollToProblem });
 <template>
   <section
     class="problem-list"
+    :class="{ compact }"
     data-testid="problem-list"
-    aria-labelledby="problem-list-title"
+    :aria-label="showHeader ? undefined : '问题列表'"
+    :aria-labelledby="showHeader ? 'problem-list-title' : undefined"
   >
-    <header class="problem-list-head">
+    <header
+      v-if="showHeader"
+      class="problem-list-head"
+    >
       <strong id="problem-list-title">问题</strong>
       <span>{{ count }} 条</span>
     </header>
@@ -97,7 +106,23 @@ defineExpose({ scrollToProblem });
           type="button"
           @click="emit('select', problem.badCaseId)"
         >
-          <span class="problem-row-head">
+          <span
+            v-if="compact"
+            class="compact-row-top"
+          >
+            <span class="problem-no">#{{ index + 1 }}</span>
+            <span
+              class="problem-id"
+              :title="problem.badCaseId"
+            >
+              {{ problem.badCaseId.slice(0, 8) }}
+            </span>
+            <strong>{{ problem.reason }}</strong>
+          </span>
+          <span
+            v-else
+            class="problem-row-head"
+          >
             <span class="problem-no">#{{ index + 1 }}</span>
             <span
               class="problem-id"
@@ -119,8 +144,33 @@ defineExpose({ scrollToProblem });
               数据降级
             </span>
           </span>
-          <span class="problem-summary">{{ badCaseSummary(problem) }}</span>
-          <span class="problem-meta">
+          <template v-if="compact">
+            <span class="compact-row-bottom">
+              <span
+                class="state-chip"
+                :class="badCaseState(problem.analysis.displayState).tone"
+              >
+                {{ badCaseState(problem.analysis.displayState).label }}
+              </span>
+              <span class="problem-target">
+                {{ problem.objectType }} · {{ problem.objectName }}
+              </span>
+              <span
+                v-if="problem.degraded"
+                class="degraded-chip"
+              >
+                数据降级
+              </span>
+            </span>
+          </template>
+          <span
+            v-else
+            class="problem-summary"
+          >{{ badCaseSummary(problem) }}</span>
+          <span
+            v-if="!compact"
+            class="problem-meta"
+          >
             <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
             <span
               v-for="fact in badCaseFacts(problem.metaData)"
@@ -180,6 +230,39 @@ defineExpose({ scrollToProblem });
   text-align: left;
 }
 
+.problem-list.compact {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.problem-list.compact .problem-rows {
+  gap: 8px;
+}
+
+.problem-list.compact .problem-row {
+  gap: 5px;
+  padding: 8px 10px;
+  border-left: 3px solid transparent;
+}
+
+.problem-list.compact .problem-row:hover {
+  border-color: var(--border-strong);
+}
+
+.problem-list.compact .problem-row.active {
+  border-color: var(--blue);
+  border-left-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 7%, var(--bg-card));
+  box-shadow: none;
+}
+
+.problem-list.compact .problem-row:focus-visible {
+  outline-color: var(--blue);
+}
+
 .problem-row:hover {
   border-color: var(--red);
 }
@@ -196,12 +279,42 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-row-head,
+.compact-row-top,
+.compact-row-bottom,
 .problem-meta {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.compact-row-top {
+  align-items: baseline;
+  flex-wrap: nowrap;
+}
+
+.compact-row-top strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-row-bottom {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.problem-target {
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .problem-row-head strong {

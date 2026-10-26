@@ -6,7 +6,7 @@ Records service boundaries, data flow and storage. Work advances by vertical sli
 
 ## Product boundary
 
-The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, session queries, and read-only problem attribution queries.
+The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, session queries, read-only problem attribution queries, and error-detail browsing.
 
 ## Service split
 
@@ -30,19 +30,21 @@ Web restores the session before mounting routes; tokens and users stay in memory
 
 The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
 
-List and overview remember scroll offsets per Session; reload resets them. Agent flow loads asynchronously. `verify:bundle` guards entry/vendor bytes, and `performance:report` repeats the synthetic 61-Agent real-browser budget.
+Error details combine a problem sidebar, filtered flow, and description/attribution tabs. State lives in the URL; cross-session ownership returns 409.
 
-After migrations, the lifespan recovers JobRunner and adopts `sync_lock` before starting the scheduler. Manual and timed triggers share the single-flight lock; no pending work creates no job.
+Both panels remember scroll offsets per Session; reload resets them. Agent flow loads asynchronously; `verify:bundle` guards bytes and `performance:report` repeats the 61-Agent budget.
+
+The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual and timed triggers share the single-flight lock; no pending work creates no job.
 
 ## Data-layer strategy
 
 - Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
-- Alembic maintains one dual-dialect migration tree with batch mode for SQLite changes; business code depends on `db/crud/` repositories and never concatenates SQL directly.
+- Alembic maintains one dual-dialect tree, using batch mode for SQLite; business code depends on `db/crud/` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - `sync_lock` is the single-flight source across trigger sources with a 30-minute TTL. Job and lock are created in one transaction; a terminal job finalizes abnormal `sync_runs` before releasing its matching lock. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
-- Upstream trace queries use a separate versioned outbound contract. A pull job writes validated raw lines with the `http_api` source before entering the shared replay pipeline. Missing configuration is unavailable, and CI uses only mock transport.
+- Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble first, then transactionally rewrite and advance source cursors.
 - External problem tables are read-only; migrations skip them, fixture bootstrap is explicit.
@@ -61,6 +63,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
-- Missing: problem-detail pages, evolution execution, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
+- Missing: evolution execution, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
