@@ -1,0 +1,154 @@
+{
+  "beforeTables": [
+    "agent_events",
+    "agents",
+    "alembic_version",
+    "evolution_run_events",
+    "evolution_targets",
+    "job_runs",
+    "session_families",
+    "source_records",
+    "sync_lock",
+    "sync_runs",
+    "trajectory_payloads",
+    "user_turns",
+    "users"
+  ],
+  "after": {
+    "tables": [
+      "agent_events",
+      "agents",
+      "alembic_version",
+      "bad_case_analysis",
+      "bad_cases",
+      "evolution_run_events",
+      "evolution_targets",
+      "job_runs",
+      "probe_reports",
+      "session_families",
+      "source_records",
+      "sync_lock",
+      "sync_runs",
+      "trajectory_payloads",
+      "user_turns",
+      "users"
+    ],
+    "counts": {
+      "bad_cases": 5,
+      "bad_case_analysis": 5,
+      "probe_reports": 3
+    }
+  },
+  "readModels": {
+    "states": [
+      {
+        "sessionId": "10000000-0000-4000-8000-000000000001",
+        "cases": [
+          {
+            "badCaseId": "badcase-synthetic-0001",
+            "displayState": "analyzed_issue_prompt",
+            "status": "analyzed_issue",
+            "attributeType": "prompt",
+            "warnings": [],
+            "createdOffsetSeconds": 28800
+          },
+          {
+            "badCaseId": "badcase-synthetic-0005",
+            "displayState": "analyzed_issue_model",
+            "status": "analyzed_issue",
+            "attributeType": "model",
+            "warnings": [],
+            "createdOffsetSeconds": 28800
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "sessionId": "10000000-0000-4000-8000-000000000002",
+        "cases": [
+          {
+            "badCaseId": "badcase-synthetic-0002",
+            "displayState": "analyzed_nonissue",
+            "status": "analyzed_nonissue",
+            "attributeType": null,
+            "warnings": [],
+            "createdOffsetSeconds": 28800
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "sessionId": "10000000-0000-4000-8000-000000000003",
+        "cases": [
+          {
+            "badCaseId": "badcase-synthetic-0003",
+            "displayState": "analyzed_issue_error",
+            "status": "analyzed_issue",
+            "attributeType": "error",
+            "warnings": [],
+            "createdOffsetSeconds": 28800
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "sessionId": "10000000-0000-4000-8000-000000000004",
+        "cases": [
+          {
+            "badCaseId": "badcase-synthetic-0004",
+            "displayState": "unanalyzed",
+            "status": "unanalyzed",
+            "attributeType": null,
+            "warnings": [],
+            "createdOffsetSeconds": 28800
+          }
+        ],
+        "warnings": []
+      }
+    ],
+    "case5": {
+      "displayState": "analyzed_issue_model",
+      "attributeType": "model"
+    },
+    "probe": {
+      "probeId": "probe-synthetic-0001",
+      "fromBadCases": [
+        "badcase-synthetic-0001"
+      ],
+      "warnings": []
+    },
+    "statements": [
+      "SELECT bad_cases.bad_case_id, bad_cases.bad_case_session_id, bad_cases.bad_case_type, bad_cases.object_name, bad_cases.object_type, bad_cases.object_version, bad_cases.bad_case_agent_id, bad_cases.reason, bad_cases.meta_data, bad_cases.source, bad_cases.created_at, bad_cases.updated_at \nFROM bad_cases \nWHERE bad_cases.bad_case_session_id = ? ORDER BY bad_cases.created_at, bad_cases.bad_case_id",
+      "SELECT bad_case_analysis.id, bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_case_analysis.probe_id, bad_case_analysis.analysis_result, bad_case_analysis.updated_at \nFROM bad_case_analysis \nWHERE bad_case_analysis.bad_case_id IN (?, ?) ORDER BY bad_case_analysis.bad_case_id",
+      "SELECT probe_reports.probe_id, probe_reports.session_id, probe_reports.probe_type, probe_reports.probe_object, probe_reports.object_version, probe_reports.attribute_type, probe_reports.probe_description, probe_reports.probe_analysis, probe_reports.created_at, probe_reports.updated_at \nFROM probe_reports \nWHERE probe_reports.probe_id IN (?, ?) ORDER BY probe_reports.probe_id",
+      "SELECT bad_cases.bad_case_id, bad_cases.bad_case_session_id, bad_cases.bad_case_type, bad_cases.object_name, bad_cases.object_type, bad_cases.object_version, bad_cases.bad_case_agent_id, bad_cases.reason, bad_cases.meta_data, bad_cases.source, bad_cases.created_at, bad_cases.updated_at \nFROM bad_cases \nWHERE bad_cases.bad_case_session_id = ? ORDER BY bad_cases.created_at, bad_cases.bad_case_id",
+      "SELECT bad_case_analysis.id, bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_case_analysis.probe_id, bad_case_analysis.analysis_result, bad_case_analysis.updated_at \nFROM bad_case_analysis \nWHERE bad_case_analysis.bad_case_id IN (?) ORDER BY bad_case_analysis.bad_case_id",
+      "SELECT bad_cases.bad_case_id, bad_cases.bad_case_session_id, bad_cases.bad_case_type, bad_cases.object_name, bad_cases.object_type, bad_cases.object_version, bad_cases.bad_case_agent_id, bad_cases.reason, bad_cases.meta_data, bad_cases.source, bad_cases.created_at, bad_cases.updated_at \nFROM bad_cases \nWHERE bad_cases.bad_case_session_id = ? ORDER BY bad_cases.created_at, bad_cases.bad_case_id",
+      "SELECT bad_case_analysis.id, bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_case_analysis.probe_id, bad_case_analysis.analysis_result, bad_case_analysis.updated_at \nFROM bad_case_analysis \nWHERE bad_case_analysis.bad_case_id IN (?) ORDER BY bad_case_analysis.bad_case_id",
+      "SELECT probe_reports.probe_id, probe_reports.session_id, probe_reports.probe_type, probe_reports.probe_object, probe_reports.object_version, probe_reports.attribute_type, probe_reports.probe_description, probe_reports.probe_analysis, probe_reports.created_at, probe_reports.updated_at \nFROM probe_reports \nWHERE probe_reports.probe_id IN (?) ORDER BY probe_reports.probe_id",
+      "SELECT bad_cases.bad_case_id, bad_cases.bad_case_session_id, bad_cases.bad_case_type, bad_cases.object_name, bad_cases.object_type, bad_cases.object_version, bad_cases.bad_case_agent_id, bad_cases.reason, bad_cases.meta_data, bad_cases.source, bad_cases.created_at, bad_cases.updated_at \nFROM bad_cases \nWHERE bad_cases.bad_case_session_id = ? ORDER BY bad_cases.created_at, bad_cases.bad_case_id",
+      "SELECT bad_case_analysis.id, bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_case_analysis.probe_id, bad_case_analysis.analysis_result, bad_case_analysis.updated_at \nFROM bad_case_analysis \nWHERE bad_case_analysis.bad_case_id IN (?) ORDER BY bad_case_analysis.bad_case_id",
+      "SELECT bad_cases.bad_case_id, bad_cases.bad_case_session_id, bad_cases.bad_case_type, bad_cases.object_name, bad_cases.object_type, bad_cases.object_version, bad_cases.bad_case_agent_id, bad_cases.reason, bad_cases.meta_data, bad_cases.source, bad_cases.created_at, bad_cases.updated_at \nFROM bad_cases \nWHERE bad_cases.bad_case_id = ?",
+      "SELECT bad_case_analysis.id, bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_case_analysis.probe_id, bad_case_analysis.analysis_result, bad_case_analysis.updated_at \nFROM bad_case_analysis \nWHERE bad_case_analysis.bad_case_id IN (?) ORDER BY bad_case_analysis.bad_case_id",
+      "SELECT probe_reports.probe_id, probe_reports.session_id, probe_reports.probe_type, probe_reports.probe_object, probe_reports.object_version, probe_reports.attribute_type, probe_reports.probe_description, probe_reports.probe_analysis, probe_reports.created_at, probe_reports.updated_at \nFROM probe_reports \nWHERE probe_reports.probe_id IN (?) ORDER BY probe_reports.probe_id",
+      "SELECT probe_reports.probe_id, probe_reports.session_id, probe_reports.probe_type, probe_reports.probe_object, probe_reports.object_version, probe_reports.attribute_type, probe_reports.probe_description, probe_reports.probe_analysis, probe_reports.created_at, probe_reports.updated_at \nFROM probe_reports \nWHERE probe_reports.probe_id = ?",
+      "SELECT bad_case_analysis.bad_case_id, bad_case_analysis.analysis_status, bad_cases.bad_case_session_id, probe_reports.session_id \nFROM bad_case_analysis LEFT OUTER JOIN bad_cases ON bad_cases.bad_case_id = bad_case_analysis.bad_case_id LEFT OUTER JOIN probe_reports ON probe_reports.probe_id = bad_case_analysis.probe_id \nWHERE bad_case_analysis.probe_id = ? ORDER BY bad_case_analysis.bad_case_id"
+    ],
+    "writeStatements": []
+  },
+  "desktop": {
+    "cards": 4,
+    "body": "rgb(244, 245, 247)",
+    "topbar": "rgb(250, 251, 252)",
+    "topbarHeight": 56,
+    "card": "color(srgb 0.934745 0.954823 0.990274)",
+    "path": "/sessions/10000000-0000-4000-8000-000000000004"
+  },
+  "mobile": {
+    "scrollWidth": 390,
+    "clientWidth": 390,
+    "cards": 4
+  },
+  "violations": [],
+  "viteLogs": "12:07:42 PM [vite] (client) Forced re-optimization of dependencies\n\n  VITE v7.3.7  ready in 311 ms\n\n  ➜  Local:   http://127.0.0.1:57584/\n"
+}
