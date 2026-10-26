@@ -1493,6 +1493,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                 "target_version": "v1",
                 "repo_url": "https://example.invalid/mysql-evolution.git",
                 "sub_dir": "skills/mysql-evolution",
+                "status": "running",
                 "created_at": now,
             },
         )
@@ -1500,12 +1501,6 @@ async def test_mysql_evolution_repository_round_trip() -> None:
             run_id,
             expected=0,
             target=1,
-            cluster_count=1,
-        )
-        await repository.advance_unit(
-            run_id,
-            expected=1,
-            target=2,
             cluster_count=1,
         )
         clusters = await repository.replace_clusters(
@@ -1519,6 +1514,24 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                 ),
             ),
         )
+        await repository.advance_unit(
+            run_id,
+            expected=1,
+            target=2,
+            cluster_count=1,
+        )
+        await repository.advance_unit(
+            run_id,
+            expected=2,
+            target=3,
+            cluster_count=1,
+        )
+        await repository.advance_unit(
+            run_id,
+            expected=3,
+            target=4,
+            cluster_count=1,
+        )
         await repository.insert_rounds(
             (
                 {
@@ -1529,6 +1542,12 @@ async def test_mysql_evolution_repository_round_trip() -> None:
                     "status": "pending",
                 },
             ),
+        )
+        await repository.advance_unit(
+            run_id,
+            expected=4,
+            target=5,
+            cluster_count=1,
         )
         final = await repository.write_final(
             {
@@ -1543,7 +1562,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         run = await repository.get_run(run_id)
 
         assert run is not None
-        assert run.progress_unit == 2
+        assert run.progress_unit == 5
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"
