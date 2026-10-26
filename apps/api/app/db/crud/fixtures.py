@@ -75,6 +75,21 @@ _INSERT_ONLY_COLUMNS: dict[Table, frozenset[str]] = {
 }
 
 
+async def ensure_fixture_external_tables(database: Database) -> None:
+    """Create development-only external tables when the application migrated first."""
+    tables = (bad_cases, probe_reports, bad_case_analysis)
+
+    def create(sync_connection: object) -> None:
+        bad_cases.metadata.create_all(
+            sync_connection,  # type: ignore[arg-type]
+            tables=tables,
+            checkfirst=True,
+        )
+
+    async with database.engine.begin() as connection:
+        await connection.run_sync(create)
+
+
 def _comparable(value: object) -> object:
     """Normalize dialect datetime reflection for deterministic comparisons."""
     if isinstance(value, datetime):
@@ -426,7 +441,8 @@ async def run_corpus_seed(settings: Settings, corpus: FixtureCorpus) -> CorpusSe
     database = create_database(settings)
     await database.start()
     try:
-        await upgrade_database(database)
+        await upgrade_database(database, bootstrap_external_tables=False)
+        await ensure_fixture_external_tables(database)
         return await _seed_corpus(database, corpus)
     finally:
         await database.dispose()

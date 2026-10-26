@@ -619,6 +619,37 @@ async def test_application_startup_leaves_external_tables_to_their_owner(
     assert not {"bad_cases", "bad_case_analysis", "probe_reports"} & names
 
 
+async def test_fixture_bootstrap_repairs_external_tables_after_runtime_upgrade(
+    tmp_path: Path,
+) -> None:
+    """Fixture bootstrap creates external tables even when revision 0004 ran first."""
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        db_pool_size=2,
+        db_max_overflow=1,
+        jwt_secret=SecretStr("external-read-model-test-signing-secret"),
+    )
+    database = create_database(settings)
+    await database.start()
+    try:
+        await upgrade_database(database, bootstrap_external_tables=False)
+    finally:
+        await database.dispose()
+
+    corpus = load_fixture_corpus(ROOT / "fixtures" / "m2-synthetic" / "corpus.json")
+    result = await run_corpus_seed(settings, corpus)
+
+    assert result.inserted > 0
+    database = create_database(settings)
+    await database.start()
+    try:
+        service = BadCaseService(BadCaseRepository(database))
+        assert await service.get_case(CASE_1) is not None
+    finally:
+        await database.dispose()
+
+
 async def test_external_read_models_use_timezone_aware_shanghai_timestamps(
     external_database: Database,
 ) -> None:
