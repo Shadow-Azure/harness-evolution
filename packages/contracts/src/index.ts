@@ -94,6 +94,31 @@ export type ProbeReport = components["schemas"]["ProbeReport"];
 /** Session root-cause report list response. */
 export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 
+/** Evolution target configuration accepted by create and update. */
+export type EvolutionTargetWrite = components["schemas"]["EvolutionTargetWrite"];
+
+/** Persisted evolution target configuration. */
+export type EvolutionTarget = components["schemas"]["EvolutionTarget"];
+
+/** Complete evolution target configuration list. */
+export type EvolutionTargetList = components["schemas"]["EvolutionTargetList"];
+
+/** Remote versions and default reference for one target. */
+export type EvolutionTargetVersions =
+  components["schemas"]["EvolutionTargetVersions"];
+
+/** One enabled target exposed to the wizard catalog. */
+export type CatalogTarget = components["schemas"]["CatalogTarget"];
+
+/** Enabled evolution targets grouped by object type. */
+export type CatalogTargets = components["schemas"]["CatalogTargets"];
+
+/** One normalized model and its usage counts. */
+export type CatalogModel = components["schemas"]["CatalogModel"];
+
+/** Normalized model catalog. */
+export type CatalogModels = components["schemas"]["CatalogModels"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

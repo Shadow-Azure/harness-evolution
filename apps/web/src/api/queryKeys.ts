@@ -19,4 +19,10 @@ export const queryKeys = {
   probe: (probeId: string) =>
     ["probe", probeId] as const,
   acquisitionStatus: ["acquisition", "status"] as const,
+  evolutionTargets: ["evolution", "targets"] as const,
+  evolutionTargetVersions: (targetId: string) =>
+    ["evolution", "targets", targetId, "versions"] as const,
+  catalogs: ["catalogs"] as const,
+  targetCatalog: ["catalogs", "targets"] as const,
+  modelCatalog: ["catalogs", "models"] as const,
 };
