@@ -16,7 +16,20 @@ _MCP_ALLOWED_PATHS = {
     "/api/auth/logout",
     "/api/auth/me",
 }
-_ADMIN_API_PATHS = {"/api/users", "/api/acquisition/sync", "/api/acquisition/pull"}
+_ADMIN_ROUTE_RULES = (
+    (frozenset({"GET", "POST"}), "/api/users"),
+    (frozenset({"POST"}), "/api/acquisition/sync"),
+    (frozenset({"POST"}), "/api/acquisition/pull"),
+    (frozenset({"POST", "PUT", "DELETE"}), "/api/evolution/targets"),
+)
+
+
+def _requires_admin(method: str, path: str) -> bool:
+    """Return whether this method/path pair requires the administrator role."""
+    return any(
+        method in methods and (path == prefix or path.startswith(f"{prefix}/"))
+        for methods, prefix in _ADMIN_ROUTE_RULES
+    )
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -48,11 +61,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 code=ErrorCode.MUST_CHANGE_PASSWORD,
                 message="password change is required",
             )
-        is_admin_path = any(
-            path == admin_path or path.startswith(f"{admin_path}/")
-            for admin_path in _ADMIN_API_PATHS
-        )
-        if principal.role != "admin" and is_admin_path:
+        if principal.role != "admin" and _requires_admin(request.method, path):
             return error_response(
                 status_code=HTTPStatus.FORBIDDEN,
                 code=ErrorCode.FORBIDDEN,
