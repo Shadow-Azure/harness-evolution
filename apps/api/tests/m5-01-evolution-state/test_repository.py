@@ -186,7 +186,13 @@ async def test_cluster_writes_preserve_order_links_and_impact(
 ) -> None:
     """Clusters use supplied order, frozen impact, and ordered probe links."""
     database, repository = evolution_repository
-    await repository.create_run(_run_values())
+    await repository.create_run(_run_values(status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=2,
+    )
 
     clusters = (
         _cluster(
@@ -238,7 +244,13 @@ async def test_cluster_replacement_rolls_back_on_unique_violation(
 ) -> None:
     """A failed replacement leaves the previous cluster snapshot intact."""
     _, repository = evolution_repository
-    await repository.create_run(_run_values())
+    await repository.create_run(_run_values(status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=2,
+    )
     original = await repository.replace_clusters(
         RUN_ID,
         (_cluster("model", "original", ("p-model-1",), impact=5.0),),
@@ -265,7 +277,13 @@ async def test_rounds_and_final_are_stable_and_idempotent(
 ) -> None:
     """Rounds retain execution order and a run has one replaceable final row."""
     _, repository = evolution_repository
-    await repository.create_run(_run_values())
+    await repository.create_run(_run_values(status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=2,
+    )
     clusters = await repository.replace_clusters(
         RUN_ID,
         (
@@ -273,12 +291,14 @@ async def test_rounds_and_final_are_stable_and_idempotent(
             _cluster("error", "error cluster", ("p-error-1",), impact=9.0),
         ),
     )
+    await _advance_to(repository, target=4, cluster_count=2)
     await repository.insert_rounds(
         (
             _round("round-2", clusters[1].probe_cluster_id, 2),
             _round("round-1", clusters[0].probe_cluster_id, 1),
         ),
     )
+    await _advance_to(repository, target=6, cluster_count=2)
 
     rounds = await repository.list_rounds(RUN_ID)
     assert [round_.seq for round_ in rounds] == [1, 2]
@@ -309,6 +329,100 @@ async def test_rounds_and_final_are_stable_and_idempotent(
     assert second.best_version == "v2.0.2"
 
 
+async def test_stale_cluster_replacement_does_not_delete_existing_rounds(
+    evolution_repository: tuple[Database, EvolutionRepository],
+) -> None:
+    """A repeated prepare cannot rewrite clusters after severity has completed."""
+    _, repository = evolution_repository
+    await repository.create_run(_run_values(status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=1,
+    )
+    clusters = await repository.replace_clusters(
+        RUN_ID,
+        (_cluster("model", "original", ("p-model-1",), impact=5.0),),
+    )
+    await _advance_to(repository, target=4, cluster_count=1)
+    await repository.insert_rounds(
+        (_round("round-1", clusters[0].probe_cluster_id, 1),),
+    )
+    rounds_before = await repository.list_rounds(RUN_ID)
+    clusters_before = await repository.list_clusters(RUN_ID)
+
+    with pytest.raises(StageConflict) as stale:
+        await repository.replace_clusters(
+            RUN_ID,
+            (_cluster("error", "stale", ("p-error-1",), impact=9.0),),
+        )
+
+    assert stale.value.status_code == 409
+    assert stale.value.current == 4
+    assert stale.value.target == 1
+    assert await repository.list_clusters(RUN_ID) == clusters_before
+    assert await repository.list_rounds(RUN_ID) == rounds_before
+
+
+async def test_rounds_and_final_require_their_exact_cursor(
+    evolution_repository: tuple[Database, EvolutionRepository],
+) -> None:
+    """Rounds wait for severity completion and final waits for every iteration."""
+    _, repository = evolution_repository
+    await repository.create_run(_run_values(status="running"))
+    await repository.advance_unit(
+        RUN_ID,
+        expected=0,
+        target=1,
+        cluster_count=1,
+    )
+    clusters = await repository.replace_clusters(
+        RUN_ID,
+        (_cluster("model", "model", ("p-model-1",), impact=5.0),),
+    )
+    await _advance_to(repository, target=3, cluster_count=1)
+
+    with pytest.raises(StageConflict) as early_round:
+        await repository.insert_rounds(
+            (_round("round-early", clusters[0].probe_cluster_id, 1),),
+        )
+    assert early_round.value.current == 3
+    assert early_round.value.target == 4
+    assert await repository.list_rounds(RUN_ID) == ()
+
+    await _advance_to(repository, target=4, cluster_count=1)
+    await repository.insert_rounds(
+        (_round("round-1", clusters[0].probe_cluster_id, 1),),
+    )
+    with pytest.raises(StageConflict) as early_final:
+        await repository.write_final(
+            {
+                "run_id": RUN_ID,
+                "best_version": "v2.0.1",
+                "verdict": True,
+                "best_score": 88.9,
+                "init_score": 84.3,
+                "metrics": [],
+            },
+        )
+    assert early_final.value.current == 4
+    assert early_final.value.target == 5
+
+    await _advance_to(repository, target=5, cluster_count=1)
+    written = await repository.write_final(
+        {
+            "run_id": RUN_ID,
+            "best_version": "v2.0.1",
+            "verdict": True,
+            "best_score": 88.9,
+            "init_score": 84.3,
+            "metrics": [],
+        },
+    )
+    assert written.run_id == RUN_ID
+
+
 def _cluster(
     attribute_type: str,
     description: str,
@@ -334,3 +448,21 @@ def _round(round_id: str, cluster_id: str, seq: int) -> Mapping[str, Any]:
         "seq": seq,
         "status": "pending",
     }
+
+
+async def _advance_to(
+    repository: EvolutionRepository,
+    *,
+    target: int,
+    cluster_count: int,
+) -> None:
+    """Advance one unit at a time to the requested cursor."""
+    run = await repository.get_run(RUN_ID)
+    assert run is not None
+    for expected in range(run.progress_unit, target):
+        await repository.advance_unit(
+            RUN_ID,
+            expected=expected,
+            target=expected + 1,
+            cluster_count=cluster_count,
+        )

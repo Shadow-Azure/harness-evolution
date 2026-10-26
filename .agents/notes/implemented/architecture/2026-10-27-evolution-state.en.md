@@ -18,4 +18,4 @@ Duplicating cursor formulas in the job runner or API would drift; copying cluste
 
 ## Consequences
 
-Later M5 slices add target APIs, run APIs, concrete stage orchestration, and UI through the same repository, state functions, and engine public surface. New executors register another `engine_key` and declare their stages without changing tables, frontend contracts, or the engine chosen by historical runs. Unknown engines and invalid stages fail explicitly instead of degrading silently.
+Later M5 slices add target APIs, run APIs, concrete stage orchestration, and UI through the same repository, state functions, and engine public surface. M5-01 owns only the engine capability, factory, and gateway contracts; M5-05 adds cluster-only prepare orchestration, and M5-09 adds the full prepare template and iteration stages. New executors register another `engine_key` and declare their stages without changing tables, frontend contracts, or the engine chosen by historical runs. Unknown engines and invalid stages fail explicitly instead of degrading silently.

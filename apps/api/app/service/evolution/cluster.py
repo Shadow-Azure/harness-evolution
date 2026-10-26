@@ -2,8 +2,9 @@
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 
 ClusterType = Literal["model", "prompt", "error"]
@@ -26,7 +27,9 @@ class ClusterDraft:
     probes: tuple[str, ...]
 
 
-TYPE_IMPACT: dict[str, int] = {"error": 9, "prompt": 7, "model": 5}
+TYPE_IMPACT: Mapping[str, int] = MappingProxyType(
+    {"error": 9, "prompt": 7, "model": 5},
+)
 
 
 def simple_cluster(probes: Sequence[ProbeForCluster]) -> tuple[ClusterDraft, ...]:

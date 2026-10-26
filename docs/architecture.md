@@ -48,7 +48,7 @@ lifespan 顺序为恢复任务、采纳锁、启动调度；手动与定时共�
 - 上游使用版本化 outbound contract；pull 以 `http_api` 先写 payload 再共享重放。CI 只用 mock。
 - 归一化按 payload 独立解析，消息与内容块只在内存中存在；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
 - 重放按 root 原子执行：先组装，再事务重写并推进 source 游标。
-- 外部问题表只读；fixture 才 bootstrap。
+- 外部问题表只读；所有者或 fixture 建。
 - 密钥只从环境变量注入，不入仓库或数据库。
 
 ## 共享契约

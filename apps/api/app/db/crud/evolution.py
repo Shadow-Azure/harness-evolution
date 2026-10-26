@@ -4,8 +4,9 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import Any, cast
 
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.models.evolution import (
@@ -169,14 +170,14 @@ class EvolutionRepository:
             )
 
         async with self._database.transaction() as session:
-            run_exists = (
-                await session.execute(
-                    select(evolution_runs.c.id).where(evolution_runs.c.id == run_id),
-                )
-            ).scalar_one_or_none()
-            if run_exists is None:
-                raise LookupError("evolution run not found")
-            existing_ids = list(
+            await _require_run_stage(
+                session,
+                run_id,
+                expected=1,
+                statuses=("preparing", "running"),
+                reason="cluster writes require the cluster stage",
+            )
+            existing_ids: list[str] = list(
                 (
                     await session.execute(
                         select(probe_clusters.c.probe_cluster_id).where(
@@ -256,7 +257,18 @@ class EvolutionRepository:
                     "commit_message": round_.get("commit_message"),
                 },
             )
+        run_ids = {str(round_["run_id"]) for round_ in values}
+        if len(run_ids) != 1:
+            raise ValueError("rounds must belong to exactly one run")
+        run_id = run_ids.pop()
         async with self._database.transaction() as session:
+            await _require_run_stage(
+                session,
+                run_id,
+                expected=4,
+                statuses=("preparing", "running"),
+                reason="round loading requires completed severity ranking",
+            )
             await session.execute(insert(evolution_rounds), values)
 
     async def list_rounds(self, run_id: str) -> tuple[EvolutionRoundRecord, ...]:
@@ -286,6 +298,24 @@ class EvolutionRepository:
             "metrics": deepcopy(values["metrics"]),
         }
         async with self._database.transaction() as session:
+            current, status = await _run_cursor(session, run_id)
+            cluster_count = int(
+                (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(probe_clusters)
+                        .where(probe_clusters.c.run_id == run_id),
+                    )
+                ).scalar_one(),
+            )
+            expected = 4 + cluster_count
+            if current != expected or status != "running":
+                raise StageConflict(
+                    status_code=409,
+                    current=current,
+                    target=expected,
+                    reason="final writes require all iterations to finish",
+                )
             existing = (
                 await session.execute(
                     select(evolution_finals.c.run_id).where(
@@ -316,3 +346,41 @@ class EvolutionRepository:
                 .one()
             )
         return record_from_evolution_final(cast(Mapping[str, Any], row))
+
+
+async def _run_cursor(session: AsyncSession, run_id: str) -> tuple[int, str]:
+    """Return the persisted cursor and status or fail for a missing run."""
+    row = (
+        (
+            await session.execute(
+                select(
+                    evolution_runs.c.progress_unit,
+                    evolution_runs.c.status,
+                ).where(evolution_runs.c.id == run_id),
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise LookupError("evolution run not found")
+    return int(row["progress_unit"]), str(row["status"])
+
+
+async def _require_run_stage(
+    session: AsyncSession,
+    run_id: str,
+    *,
+    expected: int,
+    statuses: tuple[str, ...],
+    reason: str,
+) -> None:
+    """Reject a stage-owned write unless the run remains in its expected state."""
+    current, status = await _run_cursor(session, run_id)
+    if current != expected or status not in statuses:
+        raise StageConflict(
+            status_code=409,
+            current=current,
+            target=expected,
+            reason=reason,
+        )

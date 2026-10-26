@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-后续 M5 切片通过同一个 repository、状态函数与引擎公开面添加目标 API、run API、真实阶段编排和 UI。新增执行器只需注册新的 `engine_key` 并声明阶段；现有表、前端契约与历史 run 选择不变。未注册引擎或错误阶段在启动路径显式失败，而不是静默退化。
+后续 M5 切片通过同一个 repository、状态函数与引擎公开面添加目标 API、run API、真实阶段编排和 UI。M5-01 只拥有引擎能力、工厂与 gateway 契约；M5-05 补齐 cluster-only prepare 的具体编排，M5-09 补齐 full prepare 模板及迭代阶段。新增执行器只需注册新的 `engine_key` 并声明阶段；现有表、前端契约与历史 run 选择不变。未注册引擎或错误阶段在启动路径显式失败，而不是静默退化。

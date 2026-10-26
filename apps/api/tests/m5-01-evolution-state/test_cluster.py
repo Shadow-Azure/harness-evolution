@@ -1,5 +1,9 @@
 """Deterministic placeholder clustering contracts."""
 
+from typing import cast
+
+import pytest
+
 from app.service.evolution.cluster import (
     TYPE_IMPACT,
     ClusterDraft,
@@ -87,9 +91,23 @@ def test_cluster_hash_changes_when_cluster_semantics_change() -> None:
 def test_empty_input_has_stable_empty_hash() -> None:
     """No probes yields no clusters and a deterministic value."""
     assert simple_cluster(()) == ()
-    assert cluster_hash(()) == cluster_hash(())
+    assert cluster_hash(()) == ("4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945")
+
+
+def test_missing_types_are_skipped() -> None:
+    """A single populated type still produces one deterministic cluster."""
+    assert simple_cluster((ProbeForCluster("p-model-1", "model"),)) == (
+        ClusterDraft(
+            type="model",
+            description="model 类问题 · 第 1 组（占位聚类）",  # noqa: RUF001
+            probes=("p-model-1",),
+        ),
+    )
 
 
 def test_type_impact_mapping_is_the_fixed_v1_policy() -> None:
     """Placeholder impact values are explicit and stable."""
     assert TYPE_IMPACT == {"error": 9, "prompt": 7, "model": 5}
+    mutable_view = cast(dict[str, int], TYPE_IMPACT)
+    with pytest.raises(TypeError):
+        mutable_view["error"] = 10

@@ -45,18 +45,23 @@ class StepNotReady(LookupError):
         self.progress_unit = progress_unit
 
 
-@dataclass(frozen=True, slots=True)
 class StageConflict(ValueError):
     """Raised when a cursor read or transition violates the workflow."""
 
-    status_code: int
-    current: int
-    target: int
-    reason: str
-
-    def __post_init__(self) -> None:
-        """Keep normal exception string behavior for logs and handlers."""
-        ValueError.__init__(self, self.reason)
+    def __init__(
+        self,
+        *,
+        status_code: int,
+        current: int,
+        target: int,
+        reason: str,
+    ) -> None:
+        """Keep normal exception traceback behavior for async rollback paths."""
+        super().__init__(reason)
+        self.status_code = status_code
+        self.current = current
+        self.target = target
+        self.reason = reason
 
 
 def total_units(cluster_count: int) -> int:

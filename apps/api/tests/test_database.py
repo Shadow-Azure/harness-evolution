@@ -7,7 +7,7 @@ import os
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 import pytest
 import pytest_asyncio
@@ -127,6 +127,52 @@ async def reflected_event_schema(
         ),
     )
     return columns, indexes, uniques
+
+
+class EvolutionTableSchema(TypedDict):
+    """Reflected evolution table details used by the MySQL CI lane."""
+
+    columns: dict[str, Mapping[str, object]]
+    indexes: set[str]
+    foreign_keys: set[tuple[tuple[str, ...], str]]
+
+
+async def reflected_evolution_schema(
+    connection: AsyncConnection,
+) -> dict[str, EvolutionTableSchema]:
+    """Inspect the five service-owned evolution tables through the real dialect."""
+    return cast(
+        dict[str, EvolutionTableSchema],
+        await connection.run_sync(
+            lambda sync_connection: {
+                table: {
+                    "columns": {
+                        str(column["name"]): column
+                        for column in inspect(sync_connection).get_columns(table)
+                    },
+                    "indexes": {
+                        str(index["name"])
+                        for index in inspect(sync_connection).get_indexes(table)
+                        if index["name"] is not None
+                    },
+                    "foreign_keys": {
+                        (
+                            tuple(str(column) for column in foreign_key["constrained_columns"]),
+                            str(foreign_key["referred_table"]),
+                        )
+                        for foreign_key in inspect(sync_connection).get_foreign_keys(table)
+                    },
+                }
+                for table in (
+                    "evolution_runs",
+                    "probe_clusters",
+                    "probe_cluster_probes",
+                    "evolution_rounds",
+                    "evolution_finals",
+                )
+            },
+        ),
+    )
 
 
 async def job_recency_index_directions(
@@ -479,6 +525,44 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        async with database.engine.connect() as connection:
+            evolution_schema = await reflected_evolution_schema(connection)
+        assert "progress_unit" in evolution_schema["evolution_runs"]["columns"]
+        assert {
+            "ix_evolution_runs_created_at",
+            "ix_evolution_runs_status_next_retry",
+            "ix_evolution_runs_target_config",
+        } <= evolution_schema["evolution_runs"]["indexes"]
+        assert (
+            ("target_config_id",),
+            "evolution_targets",
+        ) in evolution_schema["evolution_runs"]["foreign_keys"]
+        assert evolution_schema["probe_clusters"]["columns"]["impact"]["nullable"] is True
+        assert {
+            "ix_probe_clusters_run",
+            "ix_probe_clusters_run_rank",
+        } <= evolution_schema["probe_clusters"]["indexes"]
+        assert (
+            ("run_id",),
+            "evolution_runs",
+        ) in evolution_schema["probe_clusters"]["foreign_keys"]
+        assert (
+            ("probe_id",),
+            "probe_reports",
+        ) in evolution_schema["probe_cluster_probes"]["foreign_keys"]
+        assert {
+            "ix_evolution_rounds_cluster",
+            "ix_evolution_rounds_run_status",
+            "ix_evolution_rounds_eval_poll",
+        } <= evolution_schema["evolution_rounds"]["indexes"]
+        assert (
+            ("probe_cluster_id",),
+            "probe_clusters",
+        ) in evolution_schema["evolution_rounds"]["foreign_keys"]
+        assert (
+            ("run_id",),
+            "evolution_runs",
+        ) in evolution_schema["evolution_finals"]["foreign_keys"]
         async with database.engine.connect() as connection:
             table_names, payload_columns = await connection.run_sync(
                 lambda sync_connection: (

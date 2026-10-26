@@ -48,7 +48,7 @@ The lifespan recovers jobs, adopts `sync_lock`, then starts scheduling. Manual a
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
-- External problem tables are read-only; only fixture bootstrap creates them.
+- External problem tables are read-only; their owner or fixture setup creates them.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract
