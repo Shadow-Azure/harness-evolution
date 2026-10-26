@@ -5,8 +5,11 @@
 import { spawn } from "node:child_process";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+// Node ≥18.20/20.12/22 refuses to spawn .cmd shims without a shell
+// (CVE-2024-27980 hardening), so Windows must go through cmd.exe.
+const spawnOptions = { stdio: "inherit", shell: process.platform === "win32" };
 const processes = ["dev:api", "dev:web"].map((script) =>
-  spawn(pnpm, [script], { stdio: "inherit" }),
+  spawn(pnpm, [script], spawnOptions),
 );
 
 let stopping = false;
