@@ -47,6 +47,10 @@ async def reflected_schema(
             lambda sync: {
                 table: {
                     "columns": {column["name"] for column in inspect(sync).get_columns(table)},
+                    "nullable": {
+                        column["name"]: column["nullable"]
+                        for column in inspect(sync).get_columns(table)
+                    },
                     "indexes": {
                         index["name"]
                         for index in inspect(sync).get_indexes(table)
@@ -64,6 +68,11 @@ async def reflected_schema(
                             tuple(foreign_key["referred_columns"]),
                         )
                         for foreign_key in inspect(sync).get_foreign_keys(table)
+                    },
+                    "foreign_key_options": {
+                        foreign_key["name"]: foreign_key["options"].get("ondelete")
+                        for foreign_key in inspect(sync).get_foreign_keys(table)
+                        if foreign_key["name"] is not None
                     },
                 }
                 for table in EVOLUTION_TABLES
@@ -147,10 +156,17 @@ async def test_evolution_schema_is_complete_and_indexed(
         "created_at",
     }
     assert "uq_probe_clusters_run_seq" in reflected["probe_clusters"]["uniques"]
+    assert reflected["probe_clusters"]["nullable"]["impact"] is True
     assert reflected["probe_clusters"]["indexes"] >= {
         "ix_probe_clusters_run",
         "ix_probe_clusters_run_rank",
     }
+    assert (
+        ("run_id",),
+        "evolution_runs",
+        ("id",),
+    ) in reflected["probe_clusters"]["foreign_keys"]
+    assert reflected["probe_clusters"]["foreign_key_options"]["fk_probe_clusters_run"] == "CASCADE"
 
     assert reflected["probe_cluster_probes"]["columns"] == {
         "id",
@@ -159,6 +175,24 @@ async def test_evolution_schema_is_complete_and_indexed(
     }
     assert "uq_probe_cluster_probes_pair" in reflected["probe_cluster_probes"]["uniques"]
     assert "ix_probe_cluster_probes_probe" in reflected["probe_cluster_probes"]["indexes"]
+    assert (
+        ("probe_cluster_id",),
+        "probe_clusters",
+        ("probe_cluster_id",),
+    ) in reflected["probe_cluster_probes"]["foreign_keys"]
+    assert (
+        ("probe_id",),
+        "probe_reports",
+        ("probe_id",),
+    ) in reflected["probe_cluster_probes"]["foreign_keys"]
+    assert (
+        reflected["probe_cluster_probes"]["foreign_key_options"]["fk_probe_cluster_probes_cluster"]
+        == "CASCADE"
+    )
+    assert (
+        reflected["probe_cluster_probes"]["foreign_key_options"]["fk_probe_cluster_probes_probe"]
+        is None
+    )
 
     assert reflected["evolution_rounds"]["columns"] >= {
         "id",
@@ -198,6 +232,23 @@ async def test_evolution_schema_is_complete_and_indexed(
         "ix_evolution_rounds_run_status",
         "ix_evolution_rounds_eval_poll",
     }
+    assert (
+        ("run_id",),
+        "evolution_runs",
+        ("id",),
+    ) in reflected["evolution_rounds"]["foreign_keys"]
+    assert (
+        ("probe_cluster_id",),
+        "probe_clusters",
+        ("probe_cluster_id",),
+    ) in reflected["evolution_rounds"]["foreign_keys"]
+    assert (
+        reflected["evolution_rounds"]["foreign_key_options"]["fk_evolution_rounds_run"] == "CASCADE"
+    )
+    assert (
+        reflected["evolution_rounds"]["foreign_key_options"]["fk_evolution_rounds_cluster"]
+        == "CASCADE"
+    )
 
     assert reflected["evolution_finals"]["columns"] == {
         "run_id",
@@ -207,17 +258,31 @@ async def test_evolution_schema_is_complete_and_indexed(
         "init_score",
         "metrics",
     }
+    assert (
+        ("run_id",),
+        "evolution_runs",
+        ("id",),
+    ) in reflected["evolution_finals"]["foreign_keys"]
+    assert (
+        reflected["evolution_finals"]["foreign_key_options"]["fk_evolution_finals_run"] == "CASCADE"
+    )
 
 
 def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
     """Mutable JSON rows become immutable-ish copies with Shanghai timestamps."""
     from app.db.models.evolution import (
         EvolutionFinalRecord,
+        EvolutionRoundRecord,
         EvolutionRunRecord,
+        ProbeClusterLinkRecord,
+        ProbeClusterRecord,
         evolution_finals,
         evolution_runs,
         record_from_evolution_final,
+        record_from_evolution_round,
         record_from_evolution_run,
+        record_from_probe_cluster,
+        record_from_probe_cluster_link,
     )
 
     created_at = datetime(2026, 10, 27, 1, 2, 3)
@@ -282,6 +347,87 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
     assert isinstance(final, EvolutionFinalRecord)
     assert final.metrics == [{"name": "score", "value": 88.9}]
     assert evolution_finals.c.run_id.primary_key is True
+
+    cluster = record_from_probe_cluster(
+        {
+            "probe_cluster_id": "cluster-1",
+            "run_id": "run-1",
+            "seq": 1,
+            "probe_cluster_description": "model 类问题 · 第 1 组（占位聚类）",  # noqa: RUF001
+            "probe_cluster_type": "model",
+            "confidence": None,
+            "impact": None,
+            "severity": None,
+            "rank": None,
+            "created_at": created_at,
+        },
+    )
+    assert isinstance(cluster, ProbeClusterRecord)
+    assert cluster.impact is None
+    assert cluster.confidence is None
+    assert cluster.severity is None
+    assert cluster.rank is None
+    cluster_offset = cluster.created_at.utcoffset()
+    assert cluster_offset is not None
+    assert cluster_offset.total_seconds() == 8 * 60 * 60
+
+    link = record_from_probe_cluster_link(
+        {
+            "id": 7,
+            "probe_cluster_id": "cluster-1",
+            "probe_id": "probe-1",
+        },
+    )
+    assert isinstance(link, ProbeClusterLinkRecord)
+    assert link == ProbeClusterLinkRecord(
+        id=7,
+        probe_cluster_id="cluster-1",
+        probe_id="probe-1",
+    )
+
+    round_ = record_from_evolution_round(
+        {
+            "id": "round-1",
+            "run_id": "run-1",
+            "probe_cluster_id": "cluster-1",
+            "seq": 1,
+            "status": "pending",
+            "started_at": created_at,
+            "finished_at": None,
+            "duration_ms": None,
+            "error_message": None,
+            "patch": {"source": "fixture"},
+            "candidate_ref": None,
+            "candidate_commit": None,
+            "candidate_message": None,
+            "push_status": "pending",
+            "push_attempts": 0,
+            "pushed_at": None,
+            "push_error": None,
+            "eval_external_id": None,
+            "eval_status": "pending",
+            "eval_attempts": 0,
+            "eval_next_poll_at": None,
+            "eval_started_at": None,
+            "eval_finished_at": None,
+            "eval_current": None,
+            "eval_candidate": None,
+            "eval_result": {"scores": [88.9, 84.3]},
+            "eval_error": None,
+            "accepted": False,
+            "commit_hash": None,
+            "commit_message": None,
+        },
+    )
+    assert isinstance(round_, EvolutionRoundRecord)
+    assert round_.patch == {"source": "fixture"}
+    assert round_.eval_result == {"scores": [88.9, 84.3]}
+    assert round_.started_at is not None
+    round_offset = round_.started_at.utcoffset()
+    assert round_offset is not None
+    assert round_offset.total_seconds() == 8 * 60 * 60
+    assert round_.duration_ms is None
+    assert round_.accepted is False
 
 
 @pytest.mark.mysql

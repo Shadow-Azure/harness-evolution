@@ -118,7 +118,7 @@ probe_clusters = Table(
     Column("probe_cluster_description", Text, nullable=False),
     Column("probe_cluster_type", String(16), nullable=False),
     Column("confidence", Float, nullable=True),
-    Column("impact", Float, nullable=False),
+    Column("impact", Float, nullable=True),
     Column("severity", Float, nullable=True),
     Column("rank", Integer, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
@@ -283,7 +283,7 @@ class ProbeClusterRecord:
     probe_cluster_description: str
     probe_cluster_type: Literal["model", "prompt", "error"]
     confidence: float | None
-    impact: float
+    impact: float | None
     severity: float | None
     rank: int | None
     created_at: datetime
@@ -462,7 +462,7 @@ def record_from_probe_cluster(row: Mapping[str, Any]) -> ProbeClusterRecord:
             _required_text(row["probe_cluster_type"]),
         ),
         confidence=float(row["confidence"]) if row["confidence"] is not None else None,
-        impact=float(row["impact"]),
+        impact=float(row["impact"]) if row["impact"] is not None else None,
         severity=float(row["severity"]) if row["severity"] is not None else None,
         rank=int(row["rank"]) if row["rank"] is not None else None,
         created_at=_timestamp(row["created_at"]),

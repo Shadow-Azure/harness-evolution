@@ -133,7 +133,7 @@ def upgrade() -> None:
         sa.Column("probe_cluster_description", sa.Text(), nullable=False),
         sa.Column("probe_cluster_type", sa.String(length=16), nullable=False),
         sa.Column("confidence", sa.Float(), nullable=True),
-        sa.Column("impact", sa.Float(), nullable=False),
+        sa.Column("impact", sa.Float(), nullable=True),
         sa.Column("severity", sa.Float(), nullable=True),
         sa.Column("rank", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
