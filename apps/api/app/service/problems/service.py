@@ -133,34 +133,65 @@ class ProblemService:
         events = _events_by_agent(snapshot.events)
         result: list[BadCase] = []
         for item in items:
-            if item.bad_case_type is None or item.object_type is None:
+            degraded = item.bad_case_type is None or item.object_type is None
+            diagnostic_code: str | None = None
+            if degraded:
+                diagnostic_code = next(
+                    (
+                        warning.code
+                        for warning in item.warnings
+                        if warning.field in {"bad_case_type", "object_type"}
+                    ),
+                    "EXTERNAL_FIELD_INVALID",
+                )
                 logger.warning(
                     "public problem has invalid external presentation fields",
                     extra={"bad_case_id": item.bad_case_id},
                 )
-                continue
-            anchor = resolve_problem_anchor(
-                bad_case_type=item.bad_case_type,
-                object_name=item.object_name,
-                object_type=item.object_type,
-                bad_case_agent_id=item.bad_case_agent_id,
-                agents_by_id=agents_by_id,
-                events_by_agent=events,
-                main=mains[0],
-            )
+                anchor = resolve_problem_anchor(
+                    bad_case_type=None,
+                    object_name=item.object_name,
+                    object_type=None,
+                    bad_case_agent_id=None,
+                    agents_by_id=agents_by_id,
+                    events_by_agent=events,
+                    main=mains[0],
+                )
+            else:
+                anchor = resolve_problem_anchor(
+                    bad_case_type=item.bad_case_type,
+                    object_name=item.object_name,
+                    object_type=item.object_type,
+                    bad_case_agent_id=item.bad_case_agent_id,
+                    agents_by_id=agents_by_id,
+                    events_by_agent=events,
+                    main=mains[0],
+                )
             if anchor.warning is not None:
                 logger.warning(
                     anchor.warning,
                     extra={"bad_case_id": item.bad_case_id},
                 )
+            analysis_status = item.analysis.status
+            analysis_probe_id = item.analysis.probe_id
+            analysis_attribute_type = item.analysis.attribute_type
+            analysis_display_state = item.analysis.display_state
+            analysis_result = (
+                dict(item.analysis.result) if item.analysis.result is not None else None
+            )
+            if analysis_status != "unanalyzed" and analysis_result is None:
+                analysis_status = "unanalyzed"
+                analysis_probe_id = None
+                analysis_attribute_type = None
+                analysis_display_state = "unanalyzed"
             result.append(
                 BadCase(
                     bad_case_id=item.bad_case_id,
                     session_id=item.session_id,
                     session_title=snapshot.session.title,
-                    bad_case_type=item.bad_case_type,
+                    bad_case_type=item.bad_case_type or "self",
                     object_name=item.object_name,
-                    object_type=item.object_type,
+                    object_type=item.object_type or "agent",
                     object_version=item.object_version,
                     anchor=BadCaseAnchor(
                         agent_id=anchor.agent_id,
@@ -173,14 +204,14 @@ class ProblemService:
                     reason=item.reason,
                     meta_data=dict(item.meta_data) if item.meta_data is not None else None,
                     analysis=build_bad_case_analysis(
-                        status=item.analysis.status,
-                        probe_id=item.analysis.probe_id,
-                        attribute_type=item.analysis.attribute_type,
-                        display_state=item.analysis.display_state,
-                        result=(
-                            dict(item.analysis.result) if item.analysis.result is not None else None
-                        ),
+                        status=analysis_status,
+                        probe_id=analysis_probe_id,
+                        attribute_type=analysis_attribute_type,
+                        display_state=analysis_display_state,
+                        result=analysis_result,
                     ),
+                    degraded=degraded,
+                    diagnostic_code=diagnostic_code,
                 ),
             )
         return result

@@ -477,6 +477,13 @@ export interface components {
              * @enum {string}
              */
             badCaseType: "self" | "discovery";
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /** Diagnosticcode */
+            diagnosticCode?: string | null;
             /** Metadata */
             metaData: {
                 [key: string]: unknown;

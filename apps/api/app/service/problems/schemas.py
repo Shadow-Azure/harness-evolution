@@ -135,6 +135,8 @@ class BadCase(IdentityModel):
     reason: str
     meta_data: dict[str, Any] | None
     analysis: BadCaseAnalysis
+    degraded: bool = False
+    diagnostic_code: str | None = None
 
 
 class BadCaseListResponse(IdentityModel):

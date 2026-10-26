@@ -8,10 +8,12 @@ from typing import Any
 import httpx
 import pytest_asyncio
 from pydantic import SecretStr
+from sqlalchemy import update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.fixtures import run_corpus_seed
+from app.db.models.domain import bad_case_analysis, bad_cases
 from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
 
@@ -134,6 +136,8 @@ async def test_session_problem_list_has_full_public_shape_and_anchor(
             "displayState": "analyzed_issue_prompt",
             "result": {"summary": "提示缺少输出约束"},
         },
+        "degraded": False,
+        "diagnosticCode": None,
     }
     assert items[1]["anchor"] == {"agentId": SESSION_1, "eventIndex": 0}
     assert items[1]["badCaseAgent"]["agentId"] == "agent-s1-review-0001"
@@ -335,3 +339,71 @@ async def test_problem_snapshot_is_requested_once_per_session_list(
 
     assert response.status_code == 200
     assert calls == 1
+
+
+async def test_analysis_result_drift_degrades_to_unanalyzed(
+    problem_api: Any,
+) -> None:
+    """Malformed external result shapes remain renderable as unanalyzed."""
+    async with problem_api.database.transaction() as session:
+        await session.execute(
+            update(bad_case_analysis)
+            .where(bad_case_analysis.c.bad_case_id == CASE_1)
+            .values(analysis_result={"not_summary": "drifted"}),
+        )
+
+    listed = await problem_api.client.get(
+        f"/api/sessions/{SESSION_1}/bad-cases",
+        headers=problem_api.authorization,
+    )
+    detail = await problem_api.client.get(
+        f"/api/bad-cases/{CASE_1}",
+        headers=problem_api.authorization,
+    )
+    analysis = await problem_api.client.get(
+        f"/api/bad-cases/{CASE_1}/analysis",
+        headers=problem_api.authorization,
+    )
+
+    assert listed.status_code == 200
+    listed_case = next(item for item in listed.json()["items"] if item["badCaseId"] == CASE_1)
+    assert listed_case["analysis"] == {
+        "status": "unanalyzed",
+        "probeId": None,
+        "attributeType": None,
+        "displayState": "unanalyzed",
+        "result": None,
+    }
+    assert detail.status_code == 200
+    assert detail.json()["analysis"] == listed_case["analysis"]
+    assert analysis.status_code == 200
+    assert analysis.json() == listed_case["analysis"]
+
+
+async def test_invalid_problem_presentation_returns_degraded_placeholder(
+    problem_api: Any,
+) -> None:
+    """Presentation enum drift stays visible and never turns detail into 500."""
+    async with problem_api.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == CASE_1)
+            .values(bad_case_type="unknown", object_type="unknown"),
+        )
+
+    listed = await problem_api.client.get(
+        f"/api/sessions/{SESSION_1}/bad-cases",
+        headers=problem_api.authorization,
+    )
+    detail = await problem_api.client.get(
+        f"/api/bad-cases/{CASE_1}",
+        headers=problem_api.authorization,
+    )
+
+    assert listed.status_code == 200
+    listed_case = next(item for item in listed.json()["items"] if item["badCaseId"] == CASE_1)
+    assert listed_case["degraded"] is True
+    assert listed_case["diagnosticCode"] == "EXTERNAL_FIELD_INVALID"
+    assert listed_case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1}
+    assert detail.status_code == 200
+    assert detail.json() == listed_case

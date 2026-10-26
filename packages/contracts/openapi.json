@@ -120,6 +120,22 @@
             "title": "Badcasetype",
             "type": "string"
           },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "diagnosticCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnosticcode"
+          },
           "metaData": {
             "anyOf": [
               {
