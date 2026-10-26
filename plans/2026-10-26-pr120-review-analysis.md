@@ -102,7 +102,7 @@ D1-D4 全部成立并已修复。后续 smoke 与原型复核又发现 D5-D7，�
 - `apps/web/src/app/apiError.test.ts`：页面处理的跨 Session 409 不再重复 toast。
 - `tests/e2e/m4-error-detail.test.mjs`：实际渲染的 ID 为 8 位，链接带正确 href/target/rel，点击卡体仍只更新 URL。
 
-最终复跑结果：`0c91e3e` 目标 Vitest 27/27；`13333e7` Web 全量 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 Computer Use smoke/reporting 需以最新 head 重新采集并写入报告。
+最终复跑结果：`0c91e3e` 目标 Vitest 27/27；`13333e7` Web 全量 249 passed/1 skipped；真实 Chrome M4 E2E 1/1；API 322 passed/7 skipped；SQLite 17 passed；integration 6/6；typecheck、lint、style、contract、gates、docs、build、bundle 全绿。最终 `0c91e3e` smoke/reporting 已完成 15/15 CDP 与 2/2 原生 Computer Use 场景，证据提交为 `597e3ea`，控制台无非预期错误。
 
 ## D5 compact 问题卡结构与报告入口
 
