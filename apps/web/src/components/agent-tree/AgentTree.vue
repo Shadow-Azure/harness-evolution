@@ -162,7 +162,11 @@ watch(
 );
 
 watch(
-  [() => props.activeAgentId, () => props.activeEventIndex],
+  [
+    () => props.activeAgentId,
+    () => props.activeEventIndex,
+    () => graph.value.nodes.map((node) => node.id).join("|"),
+  ],
   async ([agentId]) => {
     if (!agentId) return;
     await nextTick();

@@ -91,10 +91,14 @@ describe("session deep links", () => {
 
   it("parses formal error route case and tab state", () => {
     expect(
-      parseSessionDeepLink("root-1", {
-        case: "case-1",
-        tab: "attr",
-      }),
+      parseSessionDeepLink(
+        "root-1",
+        {
+          case: "case-1",
+          tab: "attr",
+        },
+        "error",
+      ),
     ).toMatchObject({
       ok: true,
       state: {
@@ -110,17 +114,21 @@ describe("session deep links", () => {
 
   it("defaults an unknown tab to description and drops tab without case", () => {
     expect(
-      parseSessionDeepLink("root-1", {
-        case: "case-1",
-        tab: "unknown",
-      }),
+      parseSessionDeepLink(
+        "root-1",
+        {
+          case: "case-1",
+          tab: "unknown",
+        },
+        "error",
+      ),
     ).toMatchObject({
       ok: true,
       state: { badCaseId: "case-1", tab: "desc" },
       canonicalQuery: { case: "case-1" },
     });
     expect(
-      parseSessionDeepLink("root-1", { tab: "attr" }),
+      parseSessionDeepLink("root-1", { tab: "attr" }, "error"),
     ).toMatchObject({
       ok: true,
       state: { badCaseId: null, tab: "desc" },
@@ -134,10 +142,34 @@ describe("session deep links", () => {
     [{ case: "case-1", tab: ["desc", "attr"] }, "tab"],
     [{ case: "\u001fbad" }, "case"],
   ])("rejects invalid error deep link %#", (query, field) => {
-    expect(parseSessionDeepLink("root-1", query)).toMatchObject({
+    expect(parseSessionDeepLink("root-1", query, "error")).toMatchObject({
       ok: false,
       code: "DEEP_LINK_INVALID",
       field,
+    });
+  });
+
+  it("strips error-only query values from a normal Session deep link", () => {
+    expect(
+      parseSessionDeepLink("root-1", {
+        agent: "agent-1",
+        case: "case-1",
+        tab: "attr",
+      }),
+    ).toMatchObject({
+      ok: true,
+      state: {
+        badCaseId: null,
+        tab: "desc",
+      },
+      canonicalQuery: { agent: "agent-1" },
+    });
+  });
+
+  it("does not decode an already-decoded path parameter a second time", () => {
+    expect(parseSessionDeepLink("a%41b", {})).toMatchObject({
+      ok: false,
+      field: "sessionId",
     });
   });
 });

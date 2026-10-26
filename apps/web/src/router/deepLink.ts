@@ -11,6 +11,8 @@ export interface SessionDeepLinkState {
 }
 
 type DeepLinkQuery = Record<string, unknown>;
+/** Route surface that owns the query contract. */
+export type DeepLinkSurface = "session" | "error";
 
 /** Canonical parsed Session deep state or a stable validation failure. */
 export type SessionDeepLinkParseResult =
@@ -77,21 +79,16 @@ function queryString(
     : { ok: false };
 }
 
-function decodeSessionId(value: string): string | null {
-  try {
-    const decoded = decodeURIComponent(value);
-    if (
-      !decoded ||
-      decoded.length > SESSION_ID_MAX ||
-      hasControlCharacter(decoded) ||
-      !SAFE_ID.test(decoded)
-    ) {
-      return null;
-    }
-    return decoded;
-  } catch {
+function validateSessionId(value: string): string | null {
+  if (
+    !value ||
+    value.length > SESSION_ID_MAX ||
+    hasControlCharacter(value) ||
+    !SAFE_ID.test(value)
+  ) {
     return null;
   }
+  return value;
 }
 
 function validQueryId(
@@ -109,15 +106,17 @@ function validQueryId(
 
 /**
  * Parse and canonicalize Session deep-link state.
- * @param rawSessionId Session id taken from the path segment.
+ * @param rawSessionId Session id taken from the already-decoded Vue Router path segment.
  * @param query Router query values.
+ * @param surface Route surface that owns the query contract.
  * @returns Canonical state or a stable validation error.
  */
 export function parseSessionDeepLink(
   rawSessionId: string,
   query: DeepLinkQuery,
+  surface: DeepLinkSurface = "session",
 ): SessionDeepLinkParseResult {
-  const sessionId = decodeSessionId(rawSessionId);
+  const sessionId = validateSessionId(rawSessionId);
   if (!sessionId) {
     return invalid("sessionId", "Session 深链无效");
   }
@@ -145,18 +144,28 @@ export function parseSessionDeepLink(
     return invalid("evidence", "证据位置必须同时指定 Agent");
   }
 
-  const caseValue = queryString(query, "case");
-  if (
-    !caseValue.ok ||
-    (caseValue.value !== null &&
-      !validQueryId(caseValue.value, BAD_CASE_ID_MAX))
-  ) {
-    return invalid("case", "链接中的问题无效");
-  }
+  let caseValue: { ok: true; value: string | null } | { ok: false } = {
+    ok: true,
+    value: null,
+  };
+  let tabValue: { ok: true; value: string | null } | { ok: false } = {
+    ok: true,
+    value: null,
+  };
+  if (surface === "error") {
+    caseValue = queryString(query, "case");
+    if (
+      !caseValue.ok ||
+      (caseValue.value !== null &&
+        !validQueryId(caseValue.value, BAD_CASE_ID_MAX))
+    ) {
+      return invalid("case", "链接中的问题无效");
+    }
 
-  const tabValue = queryString(query, "tab");
-  if (!tabValue.ok) {
-    return invalid("tab", "链接中的详情页签无效");
+    tabValue = queryString(query, "tab");
+    if (!tabValue.ok) {
+      return invalid("tab", "链接中的详情页签无效");
+    }
   }
   const tab: DeepLinkTab =
     caseValue.value !== null && tabValue.value === "attr" ? "attr" : "desc";

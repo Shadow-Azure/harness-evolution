@@ -34,7 +34,7 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
               type: "button",
               onClick: () => emit("node-select", "main"),
             },
-            `selected:${props.activeAgentId}:evidence:${props.activeEventIndex}`,
+            `selected:${props.activeAgentId}:evidence:${props.activeEventIndex}:expanded:${props.expanded.join(",")}`,
           ),
         ]);
       };
@@ -379,7 +379,7 @@ describe("session browser", () => {
   it("canonicalizes accepted deep-link query values", async () => {
     mockSessionApi([session()]);
     const { router } = await mountPage(
-      "/sessions/root-1?agent=agent-a&evidence=01&tab=attr",
+      "/sessions/root-1?agent=agent-a&evidence=01&case=case-1&tab=attr",
     );
     await flushPromises();
 
@@ -387,6 +387,93 @@ describe("session browser", () => {
       agent: "agent-a",
       evidence: "1",
     });
+  });
+
+  it("expands collapsed ancestors before restoring a deep-linked Agent", async () => {
+    const children = Array.from({ length: 9 }, (_, index) => ({
+      agentId: `child-${index + 1}`,
+      kind: "subagent" as const,
+      label: `Child ${index + 1}`,
+      desc: "",
+      parentAgentId: "main",
+      taskKind: null,
+      agentType: "general-purpose",
+      skillName: null,
+      teamName: null,
+      lines: 2,
+      messagesCount: 1,
+      tokensTotal: 0,
+      toolsCount: 0,
+      errorsCount: 0,
+      events: [],
+    }));
+    const foldedTree = {
+      sessionId: "root-1",
+      overview: session(),
+      agents: [
+        {
+          ...demoCoreTree.agents[0],
+          events: children.map((child, index) => ({
+            kind: "agent" as const,
+            line: index + 1,
+            messageOffset: index,
+            name: child.label,
+            desc: child.label,
+            toolUseId: `tool-${index + 1}`,
+          })),
+        },
+        ...children.map((child, index) => ({
+          ...child,
+          toolUseId: `tool-${index + 1}`,
+        })),
+      ],
+      badCases: [],
+    };
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ items: [session()] }),
+      ),
+      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json(foldedTree),
+      ),
+    );
+
+    const { wrapper } = await mountPage(
+      "/sessions/root-1?agent=child-9",
+    );
+    await flushPromises();
+
+    const tree = wrapper.get("[data-testid='agent-tree']").text();
+    expect(tree).toContain("expanded:main");
+    expect(tree).toContain("selected:child-9");
+  });
+
+  it("keeps an explicit Session isolated when filters exclude it", async () => {
+    const other = session({ id: "root-2", title: "Other" });
+    server.use(
+      http.get("/api/sessions", () =>
+        HttpResponse.json({ items: [other] }),
+      ),
+      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
+      http.get("/api/sessions/:id/tree", () =>
+        HttpResponse.json(demoCoreTree),
+      ),
+    );
+
+    const { router, wrapper } = await mountPage(
+      "/sessions/root-1?q=filtered&agent=agent-a&evidence=1",
+    );
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+    expect(router.currentRoute.value.query.agent).toBe("agent-a");
+    expect(wrapper.get("[data-testid='agent-tree']").text()).toContain(
+      "selected:agent-a:evidence:1",
+    );
+    expect(wrapper.get(".session-browser").attributes("data-selected-id")).toBe(
+      "root-1",
+    );
   });
 
   it("writes Agent selection to the URL and clears stale evidence", async () => {
@@ -483,6 +570,31 @@ describe("session browser", () => {
       "Session 深链无效",
     );
     expect(wrapper.text()).not.toContain("从左侧选择一个 Session");
+  });
+
+  it("does not decode an encoded Session path a second time", async () => {
+    const detailRequests: string[] = [];
+    const treeRequests: string[] = [];
+    server.use(
+      http.get("/api/sessions", () => HttpResponse.json({ items: [session()] })),
+      http.get("/api/sessions/:id", ({ params }) => {
+        detailRequests.push(String(params.id));
+        return HttpResponse.json(session());
+      }),
+      http.get("/api/sessions/:id/tree", ({ params }) => {
+        treeRequests.push(String(params.id));
+        return HttpResponse.json(demoCoreTree);
+      }),
+    );
+
+    const { wrapper } = await mountPage("/sessions/a%2541b");
+    await flushPromises();
+
+    expect(detailRequests).toEqual([]);
+    expect(treeRequests).toEqual([]);
+    expect(wrapper.get("[data-testid='deep-link-notice']").text()).toContain(
+      "Session 深链无效",
+    );
   });
 
   it("restores URL state and keeps the active card tied to the route", async () => {

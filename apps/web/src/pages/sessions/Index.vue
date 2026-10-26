@@ -254,6 +254,22 @@ function collapseAllBranches() {
   };
 }
 
+function agentAncestors(
+  agents: NonNullable<typeof sessionTree.value>["agents"],
+  targetAgentId: string,
+): string[] {
+  const byId = new Map(agents.map((agent) => [agent.agentId, agent]));
+  const ancestors: string[] = [];
+  const seen = new Set<string>([targetAgentId]);
+  let parentId = byId.get(targetAgentId)?.parentAgentId ?? null;
+  while (parentId && !seen.has(parentId)) {
+    ancestors.push(parentId);
+    seen.add(parentId);
+    parentId = byId.get(parentId)?.parentAgentId ?? null;
+  }
+  return ancestors;
+}
+
 function selectAgent(agentId: string) {
   if (!selectedId.value) return;
   deepLinkNotice.value = "";
@@ -306,13 +322,7 @@ watch(
   ([currentItems, currentId, success, invalidLink]) => {
     if (!success) return;
     if (invalidLink) return;
-    if (currentItems.length === 0) {
-      if (currentId) {
-        void router.replace({ path: "/sessions", query: routeWithFilters({}) });
-      }
-      return;
-    }
-    if (!currentId || !currentItems.some((item) => item.id === currentId)) {
+    if (!currentId) {
       const firstId = currentItems[0]?.id;
       if (!firstId) return;
       void router.replace({
@@ -358,6 +368,17 @@ watch(
         query: targetQuery,
       });
       return;
+    }
+    const requiredExpanded = agentAncestors(currentAgents, agent.agentId);
+    const currentExpanded = expandedBySession.value[currentId] ?? [];
+    const missingExpanded = requiredExpanded.filter(
+      (agentId) => !currentExpanded.includes(agentId),
+    );
+    if (missingExpanded.length > 0) {
+      expandedBySession.value = {
+        ...expandedBySession.value,
+        [currentId]: [...currentExpanded, ...missingExpanded],
+      };
     }
     if (
       requestedEventIndex.value !== null &&

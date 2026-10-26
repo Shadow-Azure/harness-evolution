@@ -162,4 +162,28 @@ describe("AgentTree", () => {
         ),
     ).toBe(true);
   });
+
+  it("locates a deep-linked Agent after its collapsed ancestors expand", async () => {
+    setCenterMock.mockClear();
+    const wrapper = mount(AgentTree, {
+      props: {
+        tree: demoNestedTree,
+        expanded: [],
+        activeAgentId: "agent-a",
+      },
+    });
+    await nextTick();
+    await nextTick();
+    expect(setCenterMock).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ expanded: ["main"] });
+    await nextTick();
+    await nextTick();
+
+    expect(setCenterMock).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.objectContaining({ zoom: 0.85, duration: 260 }),
+    );
+  });
 });

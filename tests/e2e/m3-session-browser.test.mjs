@@ -682,3 +682,153 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
     await first.close();
   }
 });
+
+test("m3 folded Agent deep links expand ancestors before locating", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session);
+    const cookie = await loginCookie();
+    await installCookie(page, cookie);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    const sessionPath = await waitForDocument(
+      page.session,
+      `location.pathname.startsWith("/sessions/") &&
+        document.querySelectorAll("[data-testid='session-card']").length >= 1
+        ? location.pathname
+        : null`,
+      "initial Session selection",
+    );
+    const sessionId = decodeURIComponent(sessionPath.split("/").at(-1));
+    const foldedTree = {
+      sessionId,
+      agents: [
+        {
+          agentId: "main",
+          parentAgentId: null,
+          kind: "main",
+          agentType: null,
+          taskKind: null,
+          spawnDepth: 0,
+          label: "主会话",
+          desc: "主会话",
+          lines: 10,
+          messagesCount: 9,
+          toolUseId: null,
+          skillName: null,
+          teamName: null,
+          events: Array.from({ length: 9 }, (_, index) => ({
+            kind: "agent",
+            line: index + 1,
+            messageOffset: index,
+            name: `Agent ${index + 1}`,
+            desc: `子任务 ${index + 1}`,
+            toolUseId: `tool-${index + 1}`,
+          })),
+        },
+        ...Array.from({ length: 9 }, (_, index) => ({
+          agentId: `child-${index + 1}`,
+          parentAgentId: "main",
+          kind: "subagent",
+          agentType: "general-purpose",
+          taskKind: null,
+          spawnDepth: 1,
+          label: `general-purpose · 子任务 ${index + 1}`,
+          desc: `子任务 ${index + 1}`,
+          lines: 2,
+          messagesCount: 1,
+          toolUseId: `tool-${index + 1}`,
+          skillName: null,
+          teamName: null,
+          events: [],
+        })),
+      ],
+      badCases: [],
+    };
+
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: "*://*/api/sessions/*/tree",
+          requestStage: "Request",
+        },
+      ],
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      void page.session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: 200,
+        responseHeaders: [
+          { name: "content-type", value: "application/json" },
+        ],
+        body: Buffer.from(JSON.stringify(foldedTree)).toString("base64"),
+      });
+    });
+
+    await installCookie(page, await sessionCookie());
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/sessions/${encodeURIComponent(sessionId)}?agent=child-9`,
+    });
+    const restored = await waitForDocument(
+      page.session,
+      `(() => {
+        const tree = document.querySelector("[data-testid='agent-tree']");
+        const notice = document.querySelector("[data-testid='deep-link-notice']");
+        const hardError = document.querySelector("[data-testid='deep-link-error']");
+        const login = document.querySelector("[data-testid='login-submit']");
+        if (!tree && !notice && !hardError && !login) return null;
+        const selected = document.querySelector(
+          "[data-testid='agent-tree'] .rf-agent[aria-pressed='true']",
+        );
+        const node = selected?.closest(".vue-flow__node");
+        if (!node || node.getAttribute("data-id") !== "child-9") {
+          return {
+            agentId: node?.getAttribute("data-id") ?? null,
+            collapseNodes: document.querySelectorAll(
+              "[data-testid='agent-tree'] .rf-agent.collapse",
+            ).length,
+            notice: notice?.textContent ?? null,
+            hardError: hardError?.textContent ?? null,
+            login: Boolean(login),
+            body: document.body.textContent?.slice(0, 500) ?? null,
+            href: location.href,
+            treeText: tree?.textContent?.slice(0, 500) ?? null,
+            scrollWidth: document.documentElement.scrollWidth,
+            clientWidth: document.documentElement.clientWidth,
+          };
+        }
+        const treeBox = tree.getBoundingClientRect();
+        const nodeBox = selected.getBoundingClientRect();
+        return {
+          agentId: node.getAttribute("data-id"),
+          collapseNodes: document.querySelectorAll(
+            "[data-testid='agent-tree'] .rf-agent.collapse",
+          ).length,
+          visible: nodeBox.right > treeBox.left
+            && nodeBox.left < treeBox.right
+            && nodeBox.bottom > treeBox.top
+            && nodeBox.top < treeBox.bottom,
+          href: location.href,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+      "folded deep-linked Agent expansion",
+    );
+
+    assert.equal(restored.agentId, "child-9", JSON.stringify(restored));
+    assert.equal(restored.collapseNodes, 0, JSON.stringify(restored));
+    assert.equal(restored.visible, true, JSON.stringify(restored));
+    assert.match(restored.href, /agent=child-9/);
+    assert.ok(restored.scrollWidth <= restored.clientWidth, JSON.stringify(restored));
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+    await page.session.send("Fetch.disable");
+  } finally {
+    await page.close();
+  }
+});
