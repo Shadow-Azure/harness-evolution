@@ -109,7 +109,7 @@ watch(
     :show-close="!submitting"
     :teleported="false"
     :title="title"
-    width="min(720px, calc(100vw - 28px))"
+    width="min(720px, calc(100vw - 32px))"
     @close="close"
   >
     <form
@@ -257,23 +257,30 @@ watch(
 </template>
 
 <style scoped>
-:global(.target-form-dialog .el-dialog) {
+:global(.el-dialog.target-form-dialog) {
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
 :global(.target-form-dialog .target-dialog-head) {
   margin-right: 0;
-  padding: 14px 18px 12px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border);
+}
+
+:global(.target-form-dialog .target-dialog-head .el-dialog__title) {
+  font-size: 15px;
+  font-weight: 700;
 }
 
 :global(.target-form-dialog .target-dialog-body) {
   padding: 18px;
+  max-height: 66vh;
+  overflow-y: auto;
 }
 
 :global(.target-form-dialog .target-dialog-foot) {
-  padding: 14px 18px;
+  padding: 13px 18px;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
 }

@@ -328,14 +328,25 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       `(() => {
         const page = document.querySelector(".target-config-page");
         const rect = page.getBoundingClientRect();
+        const style = getComputedStyle(page);
         const heading = page.querySelector(".page-head h1");
         const note = page.querySelector(".page-note");
         const headingStyle = getComputedStyle(heading);
         const noteStyle = getComputedStyle(note);
         return {
           width: rect.width,
+          contentWidth:
+            rect.width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight),
+          paddingLeft: Number.parseFloat(style.paddingLeft),
+          paddingRight: Number.parseFloat(style.paddingRight),
+          left: rect.left,
+          right: rect.right,
           center: rect.left + rect.width / 2,
           viewportCenter: document.documentElement.clientWidth / 2,
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
           hasEyebrow: Boolean(page.querySelector(".eyebrow, .lede")),
           headingFontSize: headingStyle.fontSize,
           headingFontWeight: headingStyle.fontWeight,
@@ -345,6 +356,9 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       })()`,
     );
     assert.ok(Math.abs(desktopLayout.width - 1080) <= 1, JSON.stringify(desktopLayout));
+    assert.ok(Math.abs(desktopLayout.contentWidth - 1032) <= 1, JSON.stringify(desktopLayout));
+    assert.equal(desktopLayout.paddingLeft, 24);
+    assert.equal(desktopLayout.paddingRight, 24);
     assert.ok(
       Math.abs(desktopLayout.center - desktopLayout.viewportCenter) <= 1,
       JSON.stringify(desktopLayout),
@@ -354,6 +368,45 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     assert.equal(desktopLayout.headingFontWeight, "700");
     assert.equal(desktopLayout.noteFontSize, "12px");
     assert.equal(desktopLayout.noteColor, "rgb(154, 162, 174)");
+    assert.equal(desktopLayout.pageScrollWidth, desktopLayout.pageClientWidth);
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 800,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const mediumLayout = await evaluate(
+      page,
+      `(() => {
+        const page = document.querySelector(".target-config-page");
+        const rect = page.getBoundingClientRect();
+        const style = getComputedStyle(page);
+        return {
+          width: rect.width,
+          contentWidth:
+            rect.width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight),
+          paddingLeft: Number.parseFloat(style.paddingLeft),
+          paddingRight: Number.parseFloat(style.paddingRight),
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(mediumLayout.width - 800) <= 1, JSON.stringify(mediumLayout));
+    assert.ok(Math.abs(mediumLayout.contentWidth - 752) <= 1, JSON.stringify(mediumLayout));
+    assert.equal(mediumLayout.paddingLeft, 24);
+    assert.equal(mediumLayout.paddingRight, 24);
+    assert.equal(mediumLayout.pageScrollWidth, mediumLayout.pageClientWidth);
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
 
     await evaluate(page, `document.querySelector(".target-create").click()`);
     await waitForDocument(
@@ -372,22 +425,39 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         const head = root.querySelector(".target-dialog-head");
         const body = root.querySelector(".target-dialog-body");
         const foot = root.querySelector(".target-dialog-foot");
+        const title = root.querySelector(".target-dialog-head .el-dialog__title");
+        const bodyStyle = getComputedStyle(body);
+        const titleStyle = getComputedStyle(title);
         return {
           width: rect.width,
+          radius: getComputedStyle(dialog).borderRadius,
           headPadding: getComputedStyle(head).padding,
           bodyPadding: getComputedStyle(body).padding,
+          bodyMaxHeight: Number.parseFloat(bodyStyle.maxHeight),
+          bodyOverflowY: bodyStyle.overflowY,
           footPadding: getComputedStyle(foot).padding,
           footBackground: getComputedStyle(foot).backgroundColor,
+          titleFontSize: titleStyle.fontSize,
+          titleFontWeight: titleStyle.fontWeight,
+          viewportHeight: window.innerHeight,
           hasBodyForm: Boolean(body.querySelector("form")),
           hasFootActions: Boolean(foot.querySelector(".form-actions")),
         };
       })()`,
     );
     assert.ok(Math.abs(dialogLayout.width - 720) <= 1, JSON.stringify(dialogLayout));
-    assert.equal(dialogLayout.headPadding, "14px 18px 12px");
+    assert.equal(dialogLayout.radius, "14px", JSON.stringify(dialogLayout));
+    assert.equal(dialogLayout.headPadding, "14px 18px", JSON.stringify(dialogLayout));
     assert.equal(dialogLayout.bodyPadding, "18px");
-    assert.equal(dialogLayout.footPadding, "14px 18px");
+    assert.ok(
+      Math.abs(dialogLayout.bodyMaxHeight - dialogLayout.viewportHeight * 0.66) <= 1,
+      JSON.stringify(dialogLayout),
+    );
+    assert.equal(dialogLayout.bodyOverflowY, "auto");
+    assert.equal(dialogLayout.footPadding, "13px 18px");
     assert.equal(dialogLayout.footBackground, "rgb(250, 251, 252)");
+    assert.equal(dialogLayout.titleFontSize, "15px");
+    assert.equal(dialogLayout.titleFontWeight, "700");
     assert.equal(dialogLayout.hasBodyForm, true);
     assert.equal(dialogLayout.hasFootActions, true);
     await fillTargetForm(page, {
@@ -582,6 +652,34 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       deviceScaleFactor: 1,
       mobile: true,
     });
+    const compactLayout = await evaluate(
+      page,
+      `(() => {
+        const page = document.querySelector(".target-config-page");
+        const rect = page.getBoundingClientRect();
+        const style = getComputedStyle(page);
+        return {
+          width: rect.width,
+          contentWidth:
+            rect.width -
+            Number.parseFloat(style.paddingLeft) -
+            Number.parseFloat(style.paddingRight),
+          paddingLeft: Number.parseFloat(style.paddingLeft),
+          paddingRight: Number.parseFloat(style.paddingRight),
+          left: rect.left,
+          right: rect.right,
+          pageScrollWidth: document.documentElement.scrollWidth,
+          pageClientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+    );
+    assert.ok(Math.abs(compactLayout.width - 390) <= 1, JSON.stringify(compactLayout));
+    assert.ok(Math.abs(compactLayout.contentWidth - 342) <= 1, JSON.stringify(compactLayout));
+    assert.equal(compactLayout.paddingLeft, 24);
+    assert.equal(compactLayout.paddingRight, 24);
+    assert.ok(Math.abs(compactLayout.left) <= 1, JSON.stringify(compactLayout));
+    assert.ok(Math.abs(compactLayout.right - 390) <= 1, JSON.stringify(compactLayout));
+    assert.equal(compactLayout.pageScrollWidth, compactLayout.pageClientWidth);
     await evaluate(page, `document.querySelector(".target-create").click()`);
     await waitForDocument(
       page.session,
@@ -606,12 +704,9 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       })()`,
     );
     assert.equal(mobileDialog.pageScrollWidth, mobileDialog.pageClientWidth);
-    assert.ok(mobileDialog.dialogWidth <= 362, JSON.stringify(mobileDialog));
-    assert.ok(mobileDialog.dialogLeft >= 0, JSON.stringify(mobileDialog));
-    assert.ok(
-      mobileDialog.dialogRight <= mobileDialog.pageClientWidth,
-      JSON.stringify(mobileDialog),
-    );
+    assert.ok(Math.abs(mobileDialog.dialogWidth - 358) <= 1, JSON.stringify(mobileDialog));
+    assert.ok(Math.abs(mobileDialog.dialogLeft - 16) <= 1, JSON.stringify(mobileDialog));
+    assert.ok(Math.abs(mobileDialog.dialogRight - 374) <= 1, JSON.stringify(mobileDialog));
     await clickText(page, ".target-form-dialog button", "取消");
 
     await installCookie(page, memberAuth.cookie);
