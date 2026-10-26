@@ -28,6 +28,10 @@ const emit = defineEmits<{
 }>();
 
 const hasRows = computed(() => props.targets.length > 0);
+const emptyDescription = computed(() => props.canWrite
+  ? "新增一个 skill 或 agent，启动向导才会显示候选对象。"
+  : "当前暂无配置，请联系管理员添加或启用对象。",
+);
 
 function toggle(target: EvolutionTarget): void {
   emit("toggle", {
@@ -72,7 +76,7 @@ function toggle(target: EvolutionTarget): void {
     />
     <EmptyState
       v-else-if="!hasRows"
-      description="新增一个 skill 或 agent，启动向导才会显示候选对象。"
+      :description="emptyDescription"
       title="暂无进化对象配置"
     />
     <div
@@ -242,23 +246,30 @@ function toggle(target: EvolutionTarget): void {
 .state-chip {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
-  border: 1px solid var(--border-strong);
   border-radius: 999px;
   white-space: nowrap;
 }
 
 .kind-chip {
-  color: var(--blue);
+  padding: 1px 9px;
+  border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent);
+  background: color-mix(in srgb, var(--purple) 9%, transparent);
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 10.5px;
 }
 
 .state-chip {
+  padding: 2px 10px;
+  background: color-mix(in srgb, var(--text-faint) 22%, transparent);
   color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .state-chip.enabled {
+  background: color-mix(in srgb, var(--green) 13%, transparent);
   color: var(--green);
-  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
 }
 
 .object-name {

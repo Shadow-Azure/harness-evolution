@@ -57,6 +57,29 @@ describe("TargetTable", () => {
     expect(wrapper.find(".row-actions").exists()).toBe(false);
   });
 
+  it("guides members to an administrator when the collection is empty", () => {
+    const wrapper = mount(TargetTable, {
+      props: {
+        targets: [],
+        canWrite: false,
+      },
+    });
+
+    expect(wrapper.text()).toContain("当前暂无配置，请联系管理员添加或启用对象");
+    expect(wrapper.text()).not.toContain("新增一个 skill 或 agent");
+  });
+
+  it("guides admins to create the first target when the collection is empty", () => {
+    const wrapper = mount(TargetTable, {
+      props: {
+        targets: [],
+        canWrite: true,
+      },
+    });
+
+    expect(wrapper.text()).toContain("新增一个 skill 或 agent");
+  });
+
   it("exposes create, edit, toggle, and delete actions to admins", async () => {
     const wrapper = mount(TargetTable, {
       props: {

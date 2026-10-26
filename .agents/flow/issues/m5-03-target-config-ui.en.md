@@ -115,4 +115,4 @@ pnpm test:e2e
 
 ## Non-goals
 
-- No scope creep beyond the listed non-goals and acceptance.
+- Do not expand beyond the boundaries declared by this Issue.

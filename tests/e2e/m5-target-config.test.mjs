@@ -377,6 +377,25 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         .some((item) => item.textContent.trim() === "m5-e2e-target")`,
       "created target row",
     );
+    const enabledChipStyles = await evaluate(
+      page,
+      `(() => {
+        const row = [...document.querySelectorAll(".target-table tbody tr")]
+          .find((item) => item.textContent.includes("m5-e2e-target"));
+        const kind = getComputedStyle(row.querySelector(".kind-chip"));
+        const state = getComputedStyle(row.querySelector(".state-chip"));
+        return {
+          kindColor: kind.color,
+          kindBackground: kind.backgroundColor,
+          stateColor: state.color,
+          stateBackground: state.backgroundColor,
+        };
+      })()`,
+    );
+    assert.equal(enabledChipStyles.kindColor, "rgb(138, 85, 201)");
+    assert.notEqual(enabledChipStyles.kindBackground, "rgba(0, 0, 0, 0)");
+    assert.equal(enabledChipStyles.stateColor, "rgb(31, 157, 107)");
+    assert.notEqual(enabledChipStyles.stateBackground, "rgba(0, 0, 0, 0)");
 
     const createdRows = await apiJson("/api/evolution/targets", admin.accessToken);
     const created = createdRows.items.find((item) => item.objectName === "m5-e2e-target");
@@ -424,6 +443,20 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       })()`,
       "disabled target row",
     );
+    const disabledChipStyles = await evaluate(
+      page,
+      `(() => {
+        const row = [...document.querySelectorAll(".target-table tbody tr")]
+          .find((item) => item.textContent.includes("m5-e2e-target"));
+        const state = getComputedStyle(row.querySelector(".state-chip"));
+        return {
+          color: state.color,
+          background: state.backgroundColor,
+        };
+      })()`,
+    );
+    assert.equal(disabledChipStyles.color, "rgb(154, 162, 174)");
+    assert.notEqual(disabledChipStyles.background, "rgba(0, 0, 0, 0)");
     const catalog = await apiJson("/api/catalogs/targets", admin.accessToken);
     assert.equal(
       [...catalog.skill, ...catalog.agent].some((item) => item.id === created.id),
@@ -507,15 +540,23 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       `({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
-        tableScrollable: (() => {
+        tableScrollWidth: (() => {
           const scroller = document.querySelector(".target-table-scroll");
-          return scroller ? scroller.scrollWidth >= scroller.clientWidth : false;
+          return scroller?.scrollWidth ?? 0;
+        })(),
+        tableClientWidth: (() => {
+          const scroller = document.querySelector(".target-table-scroll");
+          return scroller?.clientWidth ?? 0;
         })(),
       })`,
       "target config mobile layout",
     );
     assert.equal(mobile.scrollWidth, mobile.clientWidth);
-    assert.equal(mobile.tableScrollable, true);
+    assert.ok(mobile.tableClientWidth > 0, JSON.stringify(mobile));
+    assert.ok(
+      mobile.tableScrollWidth > mobile.tableClientWidth,
+      JSON.stringify(mobile),
+    );
 
     await evaluate(page, `history.pushState({}, "", "/evolution");
       window.dispatchEvent(new PopStateEvent("popstate"));`);

@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`/evolution/targets` 使用原型导出的浅色 token、紧凑排版、卡片与状态色，不引入第二套视觉语言；新增表单沿用原型表单的留白、边框与主操作层级。配置列表返回启用和停用项，向导 catalog 只返回启用项。页面按当前用户角色隐藏写操作：成员可读，admin 可新增、编辑、启停和删除。仓库、ref 与子目录的有效性只由后端 `GitRemote` 判定；`REPO_INVALID` 保留在打开的表单内并保留输入，`TARGET_IN_USE` 保留在列表上下文中。每次写入成功统一失效 `["evolution","targets"]` 与 `["catalogs"]`，让配置页和后续向导共享同一刷新边界。
+`/evolution/targets` 使用原型导出的浅色 token、紧凑排版、卡片与状态色，不引入第二套视觉语言；新增表单沿用原型表单的留白、边框与主操作层级。配置列表返回启用和停用项，向导 catalog 只返回启用项。页面按当前用户角色隐藏写操作：成员可读，admin 可新增、编辑、启停和删除。后端的 target service 校验 repo/ref/subDir 的语法与路径规则，`GitRemote` 校验远端可达性与 ref 可用性；`REPO_INVALID` 保留在打开的表单内并保留输入，`TARGET_IN_USE` 保留在列表上下文中。每次写入成功统一失效 `["evolution","targets"]` 与 `["catalogs"]`，让配置页和后续向导共享同一刷新边界。`/evolution` 页头的齿轮入口用于本 Issue 的可发现性；M5-05 接入向导后，最终入口位于名称选择器右侧。
 
 ## Alternatives considered
 
