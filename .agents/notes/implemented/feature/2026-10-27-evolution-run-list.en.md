@@ -10,7 +10,7 @@ The evolution home must show active and historical runs with stage, progress, it
 
 ## Decision
 
-`GET /api/evolution/runs` reads runs, creators, actual cluster counts, accepted-iteration counts, and finals in one batched snapshot. It returns `running` and `history` groups ordered by `created_at DESC, id DESC`; `preparing`, `running`, and `blocked` are active, while terminal states are historical. The backend owns `progress.total`, `percent`, `stageLabel`, `doneRounds`, `accepted`, and normalized stats. The frontend maps display values without recalculating them. RunCard adds nullable `createdBy` beyond the API-design fields and places it in the prototype's upper-right time slot without adding a visual row.
+`GET /api/evolution/runs` reads runs, creators, actual cluster counts, accepted-iteration counts, and finals in one batched snapshot. It returns `running` and `history` groups ordered by `created_at DESC, id DESC`; `preparing`, `running`, and `blocked` are active, while terminal states are historical. The backend owns `progress.total`, `percent`, `stageLabel`, `doneRounds`, `accepted`, and normalized stats. The frontend maps display values without recalculating them. RunCard adds nullable `createdBy` beyond the API-design fields and places it in the prototype's upper-right time slot without adding a visual row. A completed run without a final displays "final unknown" and cannot be inferred as no benefit; internal error-stage codes remain hidden, with the sanitized message exposed only in the badge tooltip and accessible name.
 
 ## Alternatives considered
 

@@ -2,7 +2,7 @@
 
 English | [中文](architecture.md)
 
-Records service boundaries, data flow and storage. Work advances by vertical slices; rationale lives in `.agents/notes/`.
+Records service boundaries, data flow and storage; slice rationale lives in `.agents/notes/`.
 
 ## Product boundary
 
@@ -26,23 +26,23 @@ Web ──► middleware ──► public endpoints | bearer APIs | ticket-authe
 
 Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
 
-Web restores the session; tokens and users stay in memory. Guards handle login and forced password change, concurrent 401s share one refresh, and logout clears the cache.
+Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change, concurrent 401s share one refresh, and logout clears the query cache.
 
 The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
 
-Target configuration is member-readable and admin-writable. Configuration includes disabled rows, while the wizard catalog includes enabled rows only; the backend owns errors.
+Target configuration is member-readable and admin-writable; it includes disabled rows, the wizard catalog includes enabled rows only, and the backend owns errors.
 
 Run lists are backend-grouped with backend-generated display facts.
 
-Error details combine a problem sidebar, execution flow, and two tabs. Selection lives in the URL; cross-session ownership returns 409. Panels remember scroll offsets, and asynchronous flow rendering remains subject to bundle and performance gates.
+Error details combine a problem sidebar, execution flow and two tabs; selection lives in the URL, cross-session ownership returns 409, panels remember scroll offsets, and asynchronous flow remains subject to bundle and performance gates.
 
-The lifespan recovers jobs, adopts `sync_lock`, then schedules; manual and timed triggers share the single-flight lock.
+The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed triggers share the single-flight lock, and no pending work creates no job.
 
 ## Data-layer strategy
 
-- Production targets MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
+- Production uses MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
-- Alembic maintains one dual-dialect tree; business code depends on `db/crud/`.
+- Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and `Database` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
 - Evolution: `progress_unit`/`EngineFactory`, admin target writes, git refs/tags, and `agents.model` catalogs.
 - `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.

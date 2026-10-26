@@ -142,7 +142,23 @@ describe("RunCard", () => {
     expect(wrapper.get(".final-line").text()).toContain("+0.0");
   });
 
-  it("keeps failed and interrupted error details in a tooltip summary", () => {
+  it("keeps a completed run with no final neutral instead of claiming no benefit", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        run: run({
+          status: "completed",
+          final: null,
+        }),
+      },
+    });
+
+    expect(wrapper.get(".badge").text()).toBe("已完成 · 终评未知");
+    expect(wrapper.get(".badge").classes()).toContain("done-pending");
+    expect(wrapper.text()).not.toContain("无收益");
+    expect(wrapper.text()).toContain("终评数据暂不可用");
+  });
+
+  it("keeps failed and interrupted error details in the badge tooltip", () => {
     const failed = mount(RunCard, {
       props: {
         run: run({
@@ -169,17 +185,22 @@ describe("RunCard", () => {
     });
 
     expect(failed.get(".badge").classes()).toContain("failed");
-    expect(failed.get(".run-error").attributes("title")).toBe(
+    expect(failed.get(".badge").attributes("title")).toBe(
       "评测执行失败：sandbox timeout",
+    );
+    expect(failed.get(".badge").attributes("aria-label")).toBe(
+      "失败：评测执行失败：sandbox timeout",
     );
     expect(failed.find(".final-line").exists()).toBe(false);
     expect(interrupted.get(".badge").classes()).toContain("interrupted");
-    expect(interrupted.get(".run-error").attributes("title")).toBe(
+    expect(interrupted.get(".badge").attributes("title")).toBe(
       "推送连接中断",
     );
     expect(interrupted.find(".final-line").exists()).toBe(false);
-    expect(failed.get(".run-error").classes()).toContain("failed");
-    expect(interrupted.get(".run-error").classes()).toContain("interrupted");
+    expect(failed.find(".run-error").exists()).toBe(false);
+    expect(interrupted.find(".run-error").exists()).toBe(false);
+    expect(failed.text()).not.toContain("eval");
+    expect(interrupted.text()).not.toContain("push");
   });
 
   it("marks blocked active runs with the warning state", () => {
@@ -199,6 +220,17 @@ describe("RunCard", () => {
     expect(wrapper.get(".badge").classes()).toContain("blocked");
     expect(wrapper.text()).toContain("已阻塞");
     expect(wrapper.find("[role='progressbar']").exists()).toBe(true);
-    expect(wrapper.get(".run-error").classes()).toContain("blocked");
+    expect(wrapper.get(".badge").attributes("title")).toBe("评测队列暂停");
+    expect(wrapper.find(".run-error").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("eval");
+  });
+
+  it("does not imply that a run card can be opened before detail exists", () => {
+    const wrapper = mount(RunCard, {
+      props: { run: run() },
+    });
+
+    expect(wrapper.get(".run-card").attributes("role")).toBeUndefined();
+    expect(wrapper.get(".run-card").attributes("tabindex")).toBeUndefined();
   });
 });

@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`GET /api/evolution/runs` 在一个快照中批量读取 run、创建人、真实 cluster 数、已接纳轮次数和 final，并按 `created_at DESC, id DESC` 排序后返回 `running` 与 `history`。`preparing`、`running`、`blocked` 属于 running，三个终态属于 history。服务端生成 `progress.total`、`percent`、`stageLabel`、`doneRounds`、`accepted` 与规范化 stats；前端只映射显示，不重新计算。RunCard 在 API 设计字段之外增加可空 `createdBy`，前端将它放在原型右上时间槽内，避免新增视觉行。
+`GET /api/evolution/runs` 在一个快照中批量读取 run、创建人、真实 cluster 数、已接纳轮次数和 final，并按 `created_at DESC, id DESC` 排序后返回 `running` 与 `history`。`preparing`、`running`、`blocked` 属于 running，三个终态属于 history。服务端生成 `progress.total`、`percent`、`stageLabel`、`doneRounds`、`accepted` 与规范化 stats；前端只映射显示，不重新计算。RunCard 在 API 设计字段之外增加可空 `createdBy`，前端将它放在原型右上时间槽内，避免新增视觉行。completed 但缺 final 的 run 显示“终评未知”，不能推断为无收益；错误阶段码留在内部，界面只在状态 badge 的 tooltip 与可访问名称中展示脱敏消息。
 
 ## Alternatives considered
 

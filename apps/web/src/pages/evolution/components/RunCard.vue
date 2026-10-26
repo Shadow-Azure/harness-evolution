@@ -19,7 +19,8 @@ const statusLabel = computed(() => {
     case "blocked":
       return "已阻塞";
     case "completed":
-      return props.run.final?.verdict
+      if (props.run.final === null) return "已完成 · 终评未知";
+      return props.run.final.verdict
         ? "✓ 已完成 · 自进化有效"
         : "已完成 · 无收益";
     case "failed":
@@ -33,6 +34,7 @@ const statusLabel = computed(() => {
 
 const statusClass = computed(() => {
   if (props.run.status === "completed") {
+    if (props.run.final === null) return "done-pending";
     return props.run.final?.verdict ? "done-ok" : "done-no";
   }
   if (props.run.status === "blocked") return "blocked";
@@ -82,6 +84,9 @@ const delta = computed(() => {
         class="badge"
         :class="statusClass"
         :title="run.error?.message"
+        :aria-label="run.error
+          ? `${statusLabel}：${run.error.message}`
+          : undefined"
       >
         <span
           v-if="isActive"
@@ -160,15 +165,6 @@ const delta = computed(() => {
     >
       终评数据暂不可用
     </div>
-
-    <p
-      v-if="run.error"
-      class="run-error"
-      :class="run.status"
-      :title="run.error.message"
-    >
-      {{ run.error.stage }} · {{ run.error.message }}
-    </p>
   </article>
 </template>
 
@@ -180,11 +176,6 @@ const delta = computed(() => {
   border-radius: 12px;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
-  transition: border-color 0.12s;
-}
-
-.run-card:hover {
-  border-color: var(--blue);
 }
 
 .run-title-row {
@@ -228,7 +219,8 @@ const delta = computed(() => {
   background: color-mix(in srgb, var(--green) 13%, transparent);
 }
 
-.badge.done-no {
+.badge.done-no,
+.badge.done-pending {
   color: var(--text-dim);
   background: color-mix(in srgb, var(--text-faint) 22%, transparent);
 }
@@ -368,24 +360,6 @@ const delta = computed(() => {
 .accepted-copy,
 .unavailable {
   color: var(--text-faint);
-}
-
-.run-error {
-  margin: 9px 0 0;
-  overflow: hidden;
-  color: var(--state-error-text);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.run-error.blocked,
-.run-error.interrupted {
-  color: var(--orange);
-}
-
-.run-error.failed {
-  color: var(--red);
 }
 
 @keyframes pulse {

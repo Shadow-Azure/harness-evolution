@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -25,6 +25,7 @@ const secret = "m5-run-list-signing-secret-with-sufficient-length";
 let api;
 let web;
 let dataDir;
+let screenshotDir;
 let baseUrl;
 let apiLogs = "";
 let webLogs = "";
@@ -33,6 +34,7 @@ async function cleanup() {
   await stop(web);
   await stop(api);
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (screenshotDir) await rm(screenshotDir, { recursive: true, force: true });
 }
 
 async function loginCookie() {
@@ -138,19 +140,14 @@ async function screenshot(page, filename) {
     fromSurface: true,
     captureBeyondViewport: false,
   });
-  await (await import("node:fs/promises")).writeFile(
-    path.join(
-      root,
-      "reports/2026-10-27/m5-04-run-list/screenshots",
-      filename,
-    ),
-    data,
-    "base64",
-  );
+  await writeFile(path.join(screenshotDir, filename), data, "base64");
 }
 
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m5-run-list-e2e-"));
+  screenshotDir = await mkdtemp(
+    path.join(tmpdir(), "harness-m5-run-list-screenshots-"),
+  );
   const env = {
     ...process.env,
     HE_ADMIN_PASSWORD: initialPassword,
@@ -224,10 +221,6 @@ before(async () => {
 after(cleanup);
 
 test("m5 run list consumes backend groups and matches the prototype", async () => {
-  await (await import("node:fs/promises")).mkdir(
-    path.join(root, "reports/2026-10-27/m5-04-run-list/screenshots"),
-    { recursive: true },
-  );
   const page = await createBrowserPage();
   const violations = browserViolations(page.session);
   try {
@@ -249,12 +242,31 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     await seedRuns();
     await installCookie(page, await currentLoginCookie());
     await page.session.send("Page.navigate", { url: `${baseUrl}/evolution` });
-    await waitForDocument(
+    const populated = await waitForDocument(
       page.session,
-      `Boolean(document.querySelector("[data-testid='evolution-run-list']"))`,
-      "reloaded run list page",
+      `(() => {
+        const running = [...document.querySelectorAll(
+          ".run-group-running [data-run-id]",
+        )].map((item) => item.getAttribute("data-run-id"));
+        const history = [...document.querySelectorAll(
+          ".run-group-history [data-run-id]",
+        )].map((item) => item.getAttribute("data-run-id"));
+        const expectedRunning = ["run-running", "run-blocked", "run-preparing"];
+        const expectedHistory = [
+          "run-completed-effective",
+          "run-failed",
+          "run-interrupted",
+          "run-completed-no-benefit",
+        ];
+        return JSON.stringify(running) === JSON.stringify(expectedRunning) &&
+          JSON.stringify(history) === JSON.stringify(expectedHistory)
+          ? { running, history }
+          : null;
+      })()`,
+      "all expected run cards",
     );
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(populated.running.length, 3);
+    assert.equal(populated.history.length, 4);
     const desktop = await evaluate(
       page,
       `(() => {
@@ -293,19 +305,16 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           progressNow: progress?.getAttribute("aria-valuenow"),
           progressWidth: progress?.querySelector(".fill")?.style.width,
           firstMeta: firstCard?.querySelector(".time")?.textContent.trim(),
-          errorTitle: history
+          failedErrorTitle: history
             .find((item) => item.getAttribute("data-run-id") === "run-failed")
-            ?.querySelector(".run-error")?.getAttribute("title"),
-          failedErrorColor: getComputedStyle(
-            history
-              .find((item) => item.getAttribute("data-run-id") === "run-failed")
-              ?.querySelector(".run-error"),
-          ).color,
-          interruptedErrorColor: getComputedStyle(
-            history
-              .find((item) => item.getAttribute("data-run-id") === "run-interrupted")
-              ?.querySelector(".run-error"),
-          ).color,
+            ?.querySelector(".badge")?.getAttribute("title"),
+          interruptedErrorTitle: history
+            .find((item) => item.getAttribute("data-run-id") === "run-interrupted")
+            ?.querySelector(".badge")?.getAttribute("title"),
+          hasVisibleErrorRow: Boolean(document.querySelector(".run-error")),
+          leaksInternalStage: /(^|\\s)(eval|push) ·/.test(
+            document.body.textContent ?? "",
+          ),
         };
       })()`,
     );
@@ -334,9 +343,31 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     assert.equal(desktop.progressNow, "57");
     assert.equal(desktop.progressWidth, "57%");
     assert.match(desktop.firstMeta, /^Administrator · /);
-    assert.equal(desktop.errorTitle, "评测执行失败：sandbox timeout");
-    assert.equal(desktop.failedErrorColor, "rgb(214, 60, 60)");
-    assert.equal(desktop.interruptedErrorColor, "rgb(217, 123, 28)");
+    assert.equal(desktop.failedErrorTitle, "评测执行失败：sandbox timeout");
+    assert.equal(desktop.interruptedErrorTitle, "推送连接中断");
+    assert.equal(desktop.hasVisibleErrorRow, false);
+    assert.equal(desktop.leaksInternalStage, false);
+    await page.session.send("DOM.enable");
+    await page.session.send("CSS.enable");
+    const documentNode = await page.session.send("DOM.getDocument", {
+      depth: -1,
+    });
+    const firstCardNode = await page.session.send("DOM.querySelector", {
+      nodeId: documentNode.root.nodeId,
+      selector: ".run-group-running [data-run-id]",
+    });
+    assert.ok(firstCardNode.nodeId);
+    await page.session.send("CSS.forcePseudoState", {
+      nodeId: firstCardNode.nodeId,
+      forcedPseudoClasses: ["hover"],
+    });
+    const hoverBorder = await evaluate(
+      page,
+      `getComputedStyle(
+        document.querySelector(".run-group-running [data-run-id]"),
+      ).borderTopColor`,
+    );
+    assert.notEqual(hoverBorder, "rgb(47, 111, 224)");
     await screenshot(page, "01-desktop-1408.png");
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
