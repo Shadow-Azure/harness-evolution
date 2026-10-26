@@ -286,12 +286,20 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
     )
 
     created_at = datetime(2026, 10, 27, 1, 2, 3)
+    eval_config_source: dict[str, Any] = {
+        "gateway": "mock",
+        "nested": {"timeout": 30},
+    }
+    stats_source: dict[str, Any] = {
+        "sessions": 4,
+        "byAttributeType": {"error": 2},
+    }
     values: Mapping[str, Any] = {
         "id": "run-1",
         "title": "prototype run",
         "mode": "full",
         "engine_key": "full",
-        "eval_config": {"gateway": "mock"},
+        "eval_config": eval_config_source,
         "target_config_id": "target-1",
         "target_type": "skill",
         "target_name": "deep-research",
@@ -319,7 +327,7 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
         "error_message": None,
         "error_at": None,
         "progress_unit": 0,
-        "stats": {"sessions": 4},
+        "stats": stats_source,
         "created_by": None,
         "created_at": created_at,
         "finished_at": None,
@@ -327,13 +335,20 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
     run = record_from_evolution_run(values)
 
     assert isinstance(run, EvolutionRunRecord)
-    assert run.eval_config == {"gateway": "mock"}
-    assert run.stats == {"sessions": 4}
+    assert run.eval_config == {"gateway": "mock", "nested": {"timeout": 30}}
+    assert run.stats == {"sessions": 4, "byAttributeType": {"error": 2}}
+    eval_config_source["nested"]["timeout"] = 1
+    stats_source["byAttributeType"]["error"] = 9
+    assert run.eval_config["nested"] == {"timeout": 30}
+    assert run.stats["byAttributeType"] == {"error": 2}
     offset = run.created_at.utcoffset()
     assert offset is not None
     assert offset.total_seconds() == 8 * 60 * 60
     assert evolution_runs.c.progress_unit.name == "progress_unit"
 
+    final_metrics: list[dict[str, Any]] = [
+        {"name": "score", "value": 88.9, "nested": {"rank": 1}},
+    ]
     final = record_from_evolution_final(
         {
             "run_id": "run-1",
@@ -341,11 +356,15 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
             "verdict": True,
             "best_score": 88.9,
             "init_score": 84.3,
-            "metrics": [{"name": "score", "value": 88.9}],
+            "metrics": final_metrics,
         },
     )
     assert isinstance(final, EvolutionFinalRecord)
-    assert final.metrics == [{"name": "score", "value": 88.9}]
+    assert final.metrics == [
+        {"name": "score", "value": 88.9, "nested": {"rank": 1}},
+    ]
+    final_metrics[0]["nested"]["rank"] = 2
+    assert final.metrics[0]["nested"] == {"rank": 1}
     assert evolution_finals.c.run_id.primary_key is True
 
     cluster = record_from_probe_cluster(
@@ -385,6 +404,14 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
         probe_id="probe-1",
     )
 
+    patch_source: dict[str, Any] = {
+        "source": "fixture",
+        "nested": {"file": ["a.py"]},
+    }
+    eval_result_source: dict[str, Any] = {
+        "scores": [88.9, 84.3],
+        "nested": {"passed": True},
+    }
     round_ = record_from_evolution_round(
         {
             "id": "round-1",
@@ -396,7 +423,7 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
             "finished_at": None,
             "duration_ms": None,
             "error_message": None,
-            "patch": {"source": "fixture"},
+            "patch": patch_source,
             "candidate_ref": None,
             "candidate_commit": None,
             "candidate_message": None,
@@ -412,7 +439,7 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
             "eval_finished_at": None,
             "eval_current": None,
             "eval_candidate": None,
-            "eval_result": {"scores": [88.9, 84.3]},
+            "eval_result": eval_result_source,
             "eval_error": None,
             "accepted": False,
             "commit_hash": None,
@@ -420,8 +447,19 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
         },
     )
     assert isinstance(round_, EvolutionRoundRecord)
-    assert round_.patch == {"source": "fixture"}
-    assert round_.eval_result == {"scores": [88.9, 84.3]}
+    assert round_.patch == {"source": "fixture", "nested": {"file": ["a.py"]}}
+    assert round_.eval_result == {
+        "scores": [88.9, 84.3],
+        "nested": {"passed": True},
+    }
+    patch_source["nested"]["file"].append("b.py")
+    eval_result_source["scores"].append(70.0)
+    eval_result_source["nested"]["passed"] = False
+    assert round_.patch["nested"] == {"file": ["a.py"]}
+    assert round_.eval_result == {
+        "scores": [88.9, 84.3],
+        "nested": {"passed": True},
+    }
     assert round_.started_at is not None
     round_offset = round_.started_at.utcoffset()
     assert round_offset is not None

@@ -1,6 +1,7 @@
 """Dialect-neutral persistence tables and records for the evolution loop."""
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Literal, cast
@@ -369,26 +370,26 @@ def _required_text(value: object) -> str:
 
 def _json_dict(value: object) -> dict[str, Any]:
     """Copy one JSON object and degrade absent data to an empty object."""
-    return dict(value) if isinstance(value, Mapping) else {}
+    return deepcopy(dict(value)) if isinstance(value, Mapping) else {}
 
 
 def _optional_json_dict(value: object) -> dict[str, Any] | None:
     """Copy an optional JSON object without accepting arbitrary scalar values."""
-    return dict(value) if isinstance(value, Mapping) else None
+    return deepcopy(dict(value)) if isinstance(value, Mapping) else None
 
 
 def _json_strings(value: object) -> list[str]:
     """Copy a JSON string array and reject malformed scalar rows."""
     if not isinstance(value, (list, tuple)):
         return []
-    return [item for item in value if isinstance(item, str)]
+    return deepcopy([item for item in value if isinstance(item, str)])
 
 
 def _json_dicts(value: object) -> list[dict[str, Any]]:
     """Copy a JSON object array and reject malformed scalar rows."""
     if not isinstance(value, (list, tuple)):
         return []
-    return [dict(item) for item in value if isinstance(item, Mapping)]
+    return [deepcopy(dict(item)) for item in value if isinstance(item, Mapping)]
 
 
 def _timestamp(value: object) -> datetime:
