@@ -6,10 +6,14 @@ from fastapi import APIRouter, Request, Security, status
 
 from app.api.evolution_launch import LAUNCH_RESPONSES
 from app.api.security import BEARER_AUTH
-from app.errors import ErrorResponse
+from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.probe_query import ProbeQueryRequest, RunAccepted
-from app.service.evolution.runs import EvolutionRunList, EvolutionRunService
+from app.service.evolution.runs import (
+    EvolutionRunDetail,
+    EvolutionRunList,
+    EvolutionRunService,
+)
 from app.service.evolution.stages import (
     EvolutionStageService,
     EvolutionStepAttribution,
@@ -65,6 +69,27 @@ STEP_RESPONSES: dict[int | str, dict[str, Any]] = {
 async def list_runs(request: Request) -> EvolutionRunList:
     """Return backend-ordered running and history groups."""
     return await runs_from(request).list()
+
+
+@router.get(
+    "/{run_id}",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Password change is required"},
+        404: {"model": ErrorResponse, "description": "Run is unknown"},
+    },
+)
+async def read_run(run_id: str, request: Request) -> EvolutionRunDetail:
+    """Return one run shell with workspace and backend-owned step states."""
+    detail = await runs_from(request).detail(run_id)
+    if detail is None:
+        raise AppError(
+            status_code=404,
+            code=ErrorCode.RUN_NOT_FOUND,
+            message="evolution run not found",
+        )
+    return detail
 
 
 @router.post(

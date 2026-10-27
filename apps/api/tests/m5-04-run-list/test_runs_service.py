@@ -94,6 +94,10 @@ class FakeRunStore:
         """Return the preordered summaries."""
         return self.rows
 
+    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
+        """Return one preordered summary by run id."""
+        return next((row for row in self.rows if row.run.id == run_id), None)
+
 
 async def test_run_list_groups_by_status_without_reordering_repository_rows() -> None:
     """Working states stay in running and terminal states stay in history."""

@@ -9,6 +9,10 @@ const props = defineProps<{
   runs: EvolutionRunCard[];
 }>();
 
+const emit = defineEmits<{
+  open: [path: string];
+}>();
+
 const title = computed(() => props.kind === "running"
   ? `正在执行（${props.runs.length}）`
   : `历史记录（${props.runs.length}）`);
@@ -36,6 +40,7 @@ const title = computed(() => props.kind === "running"
         v-for="run in runs"
         :key="run.runId"
         :run="run"
+        @open="emit('open', $event)"
       />
     </div>
     <p

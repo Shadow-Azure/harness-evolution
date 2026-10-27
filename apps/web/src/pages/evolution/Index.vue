@@ -39,6 +39,15 @@ async function onLaunched(
     mode === "full" ? `/evolution/runs/${runId}` : `/evolution/cluster/${runId}`,
   );
 }
+
+/**
+ * Open one run detail while preserving backend-provided run identity.
+ * @param path Backend-mode-specific detail path.
+ * @returns A navigation promise after the route changes.
+ */
+async function openRun(path: string): Promise<void> {
+  await router.push(path);
+}
 </script>
 
 <template>
@@ -81,10 +90,12 @@ async function onLaunched(
       <RunGroup
         kind="running"
         :runs="running"
+        @open="openRun"
       />
       <RunGroup
         kind="history"
         :runs="history"
+        @open="openRun"
       />
     </template>
   </section>

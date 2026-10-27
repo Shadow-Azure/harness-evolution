@@ -41,6 +41,18 @@ from app.service.identity.schemas import IdentityModel
 StepKey = Literal["input", "clusters", "attribution", "severity", "iteration", "final"]
 StepStatus = Literal["done", "active", "pending"]
 ClusterType = Literal["model", "prompt", "error"]
+RoundStatus = Literal[
+    "pending",
+    "patching",
+    "pushing",
+    "evaluating",
+    "deciding",
+    "accepted",
+    "rejected",
+    "failed",
+]
+RoundPushStatus = Literal["pending", "pushing", "succeeded", "failed"]
+RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeout"]
 _CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error")
 
 
@@ -145,7 +157,7 @@ class StepRoundPatch(IdentityModel):
 class StepRoundPush(IdentityModel):
     """Candidate push outcome stored on the round."""
 
-    status: str
+    status: RoundPushStatus
     attempts: int
     error: str | None
 
@@ -153,7 +165,7 @@ class StepRoundPush(IdentityModel):
 class StepRoundEval(IdentityModel):
     """External evaluation state stored on the round."""
 
-    status: str
+    status: RoundEvalStatus
     current: float | None
     candidate: float | None
     next_poll_at: datetime | None = None
@@ -177,7 +189,7 @@ class StepRound(IdentityModel):
     confidence: float | None
     severity: float | None
     probes: list[ProbePreviewItem]
-    status: str
+    status: RoundStatus
     candidate: StepCandidate | None
     patch: StepRoundPatch | None
     push: StepRoundPush
@@ -710,7 +722,7 @@ class EvolutionStageService:
             confidence=cluster.confidence if cluster else None,
             severity=cluster.severity if cluster else None,
             probes=self._probe_items(probe_ids, grouped),
-            status=round_.status,
+            status=cast(RoundStatus, round_.status),
             candidate=(
                 StepCandidate(
                     ref=round_.candidate_ref or "",
@@ -722,12 +734,12 @@ class EvolutionStageService:
             ),
             patch=StepRoundPatch.model_validate(patch) if isinstance(patch, dict) else None,
             push=StepRoundPush(
-                status=round_.push_status,
+                status=cast(RoundPushStatus, round_.push_status),
                 attempts=round_.push_attempts,
                 error=round_.push_error,
             ),
             eval=StepRoundEval(
-                status=round_.eval_status,
+                status=cast(RoundEvalStatus, round_.eval_status),
                 current=round_.eval_current,
                 candidate=round_.eval_candidate,
                 next_poll_at=round_.eval_next_poll_at,

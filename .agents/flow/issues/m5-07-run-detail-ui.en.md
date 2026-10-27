@@ -10,14 +10,18 @@ depends:
   - m5-04
   - m5-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - apps/api/**
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/**
+  - plans/fullstack-design/**
   - .agents/flow/**
   - .agents/notes/**
+  - tests/e2e/**
 adr: []
 github:
   number: 56
@@ -79,6 +83,9 @@ m5-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - 依赖：m5-04, m5-06
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- run-detail 读模型补齐六步状态、workspace、blocked/retry/eval 上下文，使前端直接消费后端状态；E2E fixture 覆盖 running/blocked/completed。
+- 设计文档面仅允许修正与 HTML 原型冲突的六步标题口径，不扩张功能范围或放宽验收标准。
+- `plans/` is limited to this PR's structured review record and does not change product-design facts.
 
 ## Verification
 

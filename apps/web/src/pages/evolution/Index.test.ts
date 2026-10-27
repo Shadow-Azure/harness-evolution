@@ -12,13 +12,17 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 
 import { createAppRouter } from "../../router";
+import { useAuthStore } from "../../stores/auth";
 import { server } from "../../test/server";
 import EvolutionPage from "./Index.vue";
+import RunGroup from "./components/RunGroup.vue";
 
 const wrappers: VueWrapper[] = [];
+let activeRouter: ReturnType<typeof createAppRouter>;
 
 const run = (
   runId: string,
@@ -65,7 +69,19 @@ const run = (
 async function mountPage() {
   const pinia = createPinia();
   setActivePinia(pinia);
+  useAuthStore().setSession({
+    accessToken: "access",
+    expiresIn: 1_800,
+    user: {
+      id: "user-1",
+      username: "admin",
+      displayName: "Administrator",
+      role: "admin",
+      mustChangePassword: false,
+    },
+  });
   const router = createAppRouter();
+  activeRouter = router;
   await router.push("/evolution");
   await router.isReady();
   const wrapper = mount(EvolutionPage, {
@@ -174,6 +190,26 @@ describe("evolution run list page", () => {
     ).toEqual(["failed-new", "completed-old"]);
     expect(wrapper.text()).toContain("正在执行（2）");
     expect(wrapper.text()).toContain("历史记录（2）");
+  });
+
+  it("opens an existing run card at its detail route", async () => {
+    server.use(
+      http.get("/api/evolution/runs", () =>
+        HttpResponse.json({
+          running: [run("running-new", "running", "2026-10-27T10:00:00+08:00")],
+          history: [],
+        })),
+    );
+    const wrapper = await mountPage();
+    const push = vi.spyOn(activeRouter, "push").mockResolvedValue(undefined);
+
+    wrapper.findComponent(RunGroup).vm.$emit(
+      "open",
+      "/evolution/runs/running-new",
+    );
+    await flushPromises();
+
+    expect(push).toHaveBeenCalledWith("/evolution/runs/running-new");
   });
 
   it("retries a failed read without replacing the header", async () => {

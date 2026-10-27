@@ -268,12 +268,46 @@ describe("RunCard", () => {
     expect(wrapper.find(".badge-tooltip").exists()).toBe(false);
   });
 
-  it("does not imply that a run card can be opened before detail exists", () => {
+  it("opens the run detail with pointer and keyboard semantics", async () => {
     const wrapper = mount(RunCard, {
       props: { run: run() },
     });
 
-    expect(wrapper.get(".run-card").attributes("role")).toBeUndefined();
-    expect(wrapper.get(".run-card").attributes("tabindex")).toBeUndefined();
+    expect(wrapper.get(".run-card-link").attributes("href")).toBe(
+      "/evolution/runs/run-1",
+    );
+    expect(wrapper.get(".run-card-link").attributes("aria-label")).toBe(
+      "查看运行 deep-research v2.0.0 自进化",
+    );
+    await wrapper.get(".run-card-link").trigger("click");
+    expect(wrapper.emitted("open")).toEqual([["/evolution/runs/run-1"]]);
+  });
+
+  it("routes cluster-only cards to the dedicated preview page", () => {
+    const wrapper = mount(RunCard, {
+      props: { run: run({ mode: "cluster_only" }) },
+    });
+
+    expect(wrapper.get(".run-card-link").attributes("href")).toBe(
+      "/evolution/cluster/run-1",
+    );
+  });
+
+  it("keeps the error tooltip button from opening the detail", async () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        run: run({
+          status: "blocked",
+          error: {
+            stage: "eval",
+            message: "评测队列暂停",
+            at: "2026-10-19T19:00:00+08:00",
+          },
+        }),
+      },
+    });
+
+    await wrapper.get(".error-trigger").trigger("click");
+    expect(wrapper.emitted("open")).toBeUndefined();
   });
 });

@@ -6,6 +6,10 @@ const props = defineProps<{
   run: EvolutionRunCard;
 }>();
 
+const emit = defineEmits<{
+  open: [path: string];
+}>();
+
 const isActive = computed(() =>
   ["preparing", "running", "blocked"].includes(props.run.status),
 );
@@ -56,6 +60,12 @@ const targetLabel = computed(() =>
   `${props.run.target.type}:${props.run.target.name}@${props.run.target.version}`,
 );
 
+const detailPath = computed(() =>
+  props.run.mode === "cluster_only"
+    ? `/evolution/cluster/${props.run.runId}`
+    : `/evolution/runs/${props.run.runId}`,
+);
+
 const windowLabel = computed(() => {
   const { from, to } = props.run.window;
   if (from && to) return `${from} ~ ${to}`;
@@ -80,6 +90,7 @@ function openError(): void {
 function closeError(): void {
   errorOpen.value = false;
 }
+
 </script>
 
 <template>
@@ -88,6 +99,12 @@ function closeError(): void {
     :class="`status-${run.status}`"
     :data-run-id="run.runId"
   >
+    <a
+      class="run-card-link"
+      :href="detailPath"
+      :aria-label="`查看运行 ${run.title}`"
+      @click.prevent="emit('open', detailPath)"
+    />
     <div class="run-title-row">
       <span class="title">{{ run.title }}</span>
       <span
@@ -105,6 +122,8 @@ function closeError(): void {
       <span
         v-else
         class="error-status"
+        @click.stop
+        @keydown.stop
         @mouseenter="openError"
         @mouseleave="closeError"
       >
@@ -211,12 +230,43 @@ function closeError(): void {
 
 <style scoped>
 .run-card {
+  position: relative;
   min-width: 0;
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.run-card:hover,
+.run-card:has(.run-card-link:focus-visible) {
+  border-color: var(--blue);
+}
+
+.run-card-link {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: 12px;
+}
+
+.run-card-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.run-card > :not(.run-card-link) {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.error-status,
+.error-trigger {
+  pointer-events: auto;
 }
 
 .run-title-row {

@@ -1,4 +1,7 @@
 import type {
+  EvolutionStep,
+  EvolutionStepKey,
+  EvolutionRunDetail,
   EvolutionRunList,
   ProbeQueryRequest,
   ProbeQueryResult,
@@ -13,6 +16,32 @@ import { request } from "./http";
  */
 export function listEvolutionRuns(): Promise<EvolutionRunList> {
   return request<EvolutionRunList>("/api/evolution/runs");
+}
+
+/**
+ * Read one run detail shell with workspace and backend-owned step states.
+ * @param runId Evolution run identifier.
+ * @returns The complete run detail contract.
+ */
+export function getEvolutionRunDetail(runId: string): Promise<EvolutionRunDetail> {
+  return request<EvolutionRunDetail>(
+    `/api/evolution/runs/${encodeURIComponent(runId)}`,
+  );
+}
+
+/**
+ * Read one reached step projection for an evolution run.
+ * @param runId Evolution run identifier.
+ * @param key Stable step key selected in the detail route.
+ * @returns The key-discriminated step payload.
+ */
+export function getEvolutionRunStep(
+  runId: string,
+  key: EvolutionStepKey,
+): Promise<EvolutionStep> {
+  return request<EvolutionStep>(
+    `/api/evolution/runs/${encodeURIComponent(runId)}/steps/${key}`,
+  );
 }
 
 const LAUNCH_STATUSES = [200, 202] as const;

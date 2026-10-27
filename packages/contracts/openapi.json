@@ -777,6 +777,176 @@
         "title": "EvolutionRunCard",
         "type": "object"
       },
+      "EvolutionRunDetail": {
+        "additionalProperties": false,
+        "description": "Complete shell consumed by the six-step run-detail page.",
+        "properties": {
+          "blockedStage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "patch",
+                  "push",
+                  "eval"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blockedstage"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdby"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evalStatus": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "completed",
+              "failed",
+              "timeout"
+            ],
+            "title": "Evalstatus",
+            "type": "string"
+          },
+          "final": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunFinal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastEventSeq": {
+            "title": "Lasteventseq",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "full",
+              "cluster_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "nextRetryAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextretryat"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/EvolutionRunProgress"
+          },
+          "retryAttempts": {
+            "title": "Retryattempts",
+            "type": "integer"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/EvolutionRunStats"
+          },
+          "status": {
+            "enum": [
+              "preparing",
+              "running",
+              "blocked",
+              "completed",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EvolutionRunTarget"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/EvolutionRunWindow"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/EvolutionRunWorkspace"
+          }
+        },
+        "required": [
+          "runId",
+          "title",
+          "mode",
+          "target",
+          "window",
+          "models",
+          "createdBy",
+          "createdAt",
+          "status",
+          "error",
+          "stats",
+          "progress",
+          "final",
+          "blockedStage",
+          "retryAttempts",
+          "nextRetryAt",
+          "evalStatus",
+          "workspace",
+          "lastEventSeq",
+          "steps"
+        ],
+        "title": "EvolutionRunDetail",
+        "type": "object"
+      },
       "EvolutionRunError": {
         "additionalProperties": false,
         "description": "Sanitized terminal or blocked error summary.",
@@ -831,6 +1001,13 @@
             "type": "number"
           },
           "pushStatus": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed",
+              "skipped"
+            ],
             "title": "Pushstatus",
             "type": "string"
           },
@@ -950,6 +1127,65 @@
         "title": "EvolutionRunStats",
         "type": "object"
       },
+      "EvolutionRunStep": {
+        "additionalProperties": false,
+        "description": "One backend-owned stepper node with lazy-load eligibility.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "enum": [
+              "input",
+              "clusters",
+              "attribution",
+              "severity",
+              "iteration",
+              "final"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "key",
+          "title",
+          "status",
+          "clickable"
+        ],
+        "title": "EvolutionRunStep",
+        "type": "object"
+      },
       "EvolutionRunTarget": {
         "additionalProperties": false,
         "description": "Immutable evolution target snapshot shown on one run card.",
@@ -1009,6 +1245,128 @@
           }
         },
         "title": "EvolutionRunWindow",
+        "type": "object"
+      },
+      "EvolutionRunWorkspace": {
+        "additionalProperties": false,
+        "description": "Repository and worktree state shown by the run detail.",
+        "properties": {
+          "baseCommit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basecommit"
+          },
+          "baseRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseref"
+          },
+          "branchName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchname"
+          },
+          "pushError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pusherror"
+          },
+          "pushStatus": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed",
+              "skipped"
+            ],
+            "title": "Pushstatus",
+            "type": "string"
+          },
+          "pushedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pushedat"
+          },
+          "remote": {
+            "title": "Remote",
+            "type": "string"
+          },
+          "repoPath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repopath"
+          },
+          "repoUrl": {
+            "title": "Repourl",
+            "type": "string"
+          },
+          "subDir": {
+            "title": "Subdir",
+            "type": "string"
+          },
+          "workspacePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspacepath"
+          }
+        },
+        "required": [
+          "repoUrl",
+          "subDir",
+          "repoPath",
+          "baseRef",
+          "baseCommit",
+          "branchName",
+          "workspacePath",
+          "remote",
+          "pushStatus",
+          "pushedAt",
+          "pushError"
+        ],
+        "title": "EvolutionRunWorkspace",
         "type": "object"
       },
       "EvolutionStepAttribution": {
@@ -3527,6 +3885,16 @@
             "title": "Severity"
           },
           "status": {
+            "enum": [
+              "pending",
+              "patching",
+              "pushing",
+              "evaluating",
+              "deciding",
+              "accepted",
+              "rejected",
+              "failed"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -3602,6 +3970,13 @@
             "title": "Nextpollat"
           },
           "status": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "completed",
+              "failed",
+              "timeout"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -3657,6 +4032,12 @@
             "title": "Error"
           },
           "status": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -5216,6 +5597,84 @@
           }
         ],
         "summary": "Create Run",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}": {
+      "get": {
+        "description": "Return one run shell with workspace and backend-owned step states.",
+        "operationId": "read_run_api_evolution_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Run",
         "tags": [
           "evolution-runs"
         ]

@@ -346,6 +346,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Run
+         * @description Return one run shell with workspace and backend-owned step states.
+         */
+        get: operations["read_run_api_evolution_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/runs/{run_id}/steps/attribution": {
         parameters: {
             query?: never;
@@ -1050,6 +1070,57 @@ export interface components {
             window: components["schemas"]["EvolutionRunWindow"];
         };
         /**
+         * EvolutionRunDetail
+         * @description Complete shell consumed by the six-step run-detail page.
+         */
+        EvolutionRunDetail: {
+            /** Blockedstage */
+            blockedStage: ("patch" | "push" | "eval") | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string | null;
+            error: components["schemas"]["EvolutionRunError"] | null;
+            /**
+             * Evalstatus
+             * @enum {string}
+             */
+            evalStatus: "pending" | "evaluating" | "completed" | "failed" | "timeout";
+            final: components["schemas"]["EvolutionRunFinal"] | null;
+            /** Lasteventseq */
+            lastEventSeq: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "full" | "cluster_only";
+            /** Models */
+            models: string[];
+            /** Nextretryat */
+            nextRetryAt: string | null;
+            progress: components["schemas"]["EvolutionRunProgress"];
+            /** Retryattempts */
+            retryAttempts: number;
+            /** Runid */
+            runId: string;
+            stats: components["schemas"]["EvolutionRunStats"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "preparing" | "running" | "blocked" | "completed" | "failed" | "interrupted";
+            /** Steps */
+            steps: components["schemas"]["EvolutionRunStep"][];
+            target: components["schemas"]["EvolutionRunTarget"];
+            /** Title */
+            title: string;
+            window: components["schemas"]["EvolutionRunWindow"];
+            workspace: components["schemas"]["EvolutionRunWorkspace"];
+        };
+        /**
          * EvolutionRunError
          * @description Sanitized terminal or blocked error summary.
          */
@@ -1077,8 +1148,11 @@ export interface components {
             branchName: string | null;
             /** Initscore */
             initScore: number;
-            /** Pushstatus */
-            pushStatus: string;
+            /**
+             * Pushstatus
+             * @enum {string}
+             */
+            pushStatus: "pending" | "pushing" | "succeeded" | "failed" | "skipped";
             /** Verdict */
             verdict: boolean;
         };
@@ -1138,6 +1212,30 @@ export interface components {
             usedProbes: number;
         };
         /**
+         * EvolutionRunStep
+         * @description One backend-owned stepper node with lazy-load eligibility.
+         */
+        EvolutionRunStep: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "input" | "clusters" | "attribution" | "severity" | "iteration" | "final";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
          * EvolutionRunTarget
          * @description Immutable evolution target snapshot shown on one run card.
          */
@@ -1161,6 +1259,37 @@ export interface components {
             from?: string | null;
             /** To */
             to?: string | null;
+        };
+        /**
+         * EvolutionRunWorkspace
+         * @description Repository and worktree state shown by the run detail.
+         */
+        EvolutionRunWorkspace: {
+            /** Basecommit */
+            baseCommit: string | null;
+            /** Baseref */
+            baseRef: string | null;
+            /** Branchname */
+            branchName: string | null;
+            /** Pusherror */
+            pushError: string | null;
+            /**
+             * Pushstatus
+             * @enum {string}
+             */
+            pushStatus: "pending" | "pushing" | "succeeded" | "failed" | "skipped";
+            /** Pushedat */
+            pushedAt: string | null;
+            /** Remote */
+            remote: string;
+            /** Repopath */
+            repoPath: string | null;
+            /** Repourl */
+            repoUrl: string;
+            /** Subdir */
+            subDir: string;
+            /** Workspacepath */
+            workspacePath: string | null;
         };
         /**
          * EvolutionStepAttribution
@@ -2149,8 +2278,11 @@ export interface components {
             roundId: string;
             /** Severity */
             severity: number | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "failed";
             /** Title */
             title: string;
             /**
@@ -2170,8 +2302,11 @@ export interface components {
             current: number | null;
             /** Nextpollat */
             nextPollAt?: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "evaluating" | "completed" | "failed" | "timeout";
         };
         /**
          * StepRoundPatch
@@ -2192,8 +2327,11 @@ export interface components {
             attempts: number;
             /** Error */
             error: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "pushing" | "succeeded" | "failed";
         };
         /**
          * StepSeverityPayload
@@ -3216,6 +3354,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_run_api_evolution_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionRunDetail"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
