@@ -1,0 +1,30 @@
+{
+  "run": {
+    "id": "evo-20261023-03",
+    "targetType": "skill",
+    "targetName": "deep-research",
+    "targetVersion": "v2.0.0",
+    "windowFrom": "2026-08-20",
+    "windowTo": "2026-09-10",
+    "models": ["glm-5.3"],
+    "status": "running",
+    "progressUnit": 4
+  },
+  "clusters": [
+    {
+      "probeClusterId": "C1",
+      "seq": 1,
+      "description": "检索索引读取失败",
+      "type": "error",
+      "confidence": 0.82,
+      "impact": 9,
+      "severity": 7.4,
+      "rank": 1
+    }
+  ],
+  "clusterProbes": [
+    { "probeClusterId": "C1", "probeIds": ["pr-050b-03"] }
+  ],
+  "rounds": [],
+  "final": null
+}

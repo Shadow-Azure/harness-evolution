@@ -346,6 +346,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs/{run_id}/steps/attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Attribution Step
+         * @description Return the backend-owned attribution projection of one run.
+         */
+        get: operations["read_attribution_step_api_evolution_runs__run_id__steps_attribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/clusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Clusters Step
+         * @description Return the backend-owned problem-cluster projection of one run.
+         */
+        get: operations["read_clusters_step_api_evolution_runs__run_id__steps_clusters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/final": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Final Step
+         * @description Return the backend-owned final evaluation projection of one run.
+         */
+        get: operations["read_final_step_api_evolution_runs__run_id__steps_final_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/input": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Input Step
+         * @description Return the backend-owned filter-input projection of one run.
+         */
+        get: operations["read_input_step_api_evolution_runs__run_id__steps_input_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/iteration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Iteration Step
+         * @description Return the backend-owned iteration projection of one run.
+         */
+        get: operations["read_iteration_step_api_evolution_runs__run_id__steps_iteration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/severity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Severity Step
+         * @description Return the backend-owned severity ranking projection of one run.
+         */
+        get: operations["read_severity_step_api_evolution_runs__run_id__steps_severity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/targets": {
         parameters: {
             query?: never;
@@ -848,7 +968,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "REPO_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "REPO_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -1041,6 +1161,162 @@ export interface components {
             from?: string | null;
             /** To */
             to?: string | null;
+        };
+        /**
+         * EvolutionStepAttribution
+         * @description Step 2 response: key-discriminated attribution projection.
+         */
+        EvolutionStepAttribution: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default attribution
+             * @constant
+             */
+            key: "attribution";
+            payload: components["schemas"]["StepAttributionPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepClusters
+         * @description Step 1 response: key-discriminated cluster projection.
+         */
+        EvolutionStepClusters: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default clusters
+             * @constant
+             */
+            key: "clusters";
+            payload: components["schemas"]["StepClustersPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepFinal
+         * @description Step 5 response: key-discriminated final projection.
+         */
+        EvolutionStepFinal: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default final
+             * @constant
+             */
+            key: "final";
+            payload: components["schemas"]["StepFinalPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepInput
+         * @description Step 0 response: key-discriminated input projection.
+         */
+        EvolutionStepInput: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default input
+             * @constant
+             */
+            key: "input";
+            payload: components["schemas"]["StepInputPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepIteration
+         * @description Step 4 response: key-discriminated iteration projection.
+         */
+        EvolutionStepIteration: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default iteration
+             * @constant
+             */
+            key: "iteration";
+            payload: components["schemas"]["StepIterationPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepSeverity
+         * @description Step 3 response: key-discriminated severity projection.
+         */
+        EvolutionStepSeverity: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default severity
+             * @constant
+             */
+            key: "severity";
+            payload: components["schemas"]["StepSeverityPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
         };
         /**
          * EvolutionTarget
@@ -1648,6 +1924,308 @@ export interface components {
             badCases: components["schemas"]["SessionBadCase"][];
             /** Sessionid */
             sessionId: string;
+        };
+        /**
+         * StepAttributionItem
+         * @description One probe attribution entry with its cluster-level confidence.
+         */
+        StepAttributionItem: {
+            /** Analysis */
+            analysis: string;
+            /**
+             * Attributetype
+             * @enum {string}
+             */
+            attributeType: "model" | "prompt" | "error";
+            /** Clusterid */
+            clusterId: string;
+            /** Confidence */
+            confidence: number | null;
+            /** Description */
+            description: string;
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Probeid */
+            probeId: string;
+            /** Probeobject */
+            probeObject: string;
+        };
+        /**
+         * StepAttributionPayload
+         * @description Per-probe attribution entries of step 2.
+         */
+        StepAttributionPayload: {
+            /** Items */
+            items: components["schemas"]["StepAttributionItem"][];
+        };
+        /**
+         * StepCandidate
+         * @description Pushed candidate ref backing one evaluation round.
+         */
+        StepCandidate: {
+            /** Commit */
+            commit: string;
+            /** Message */
+            message: string;
+            /** Ref */
+            ref: string;
+        };
+        /**
+         * StepCluster
+         * @description One persisted cluster with its probe rows and stored scores.
+         */
+        StepCluster: {
+            /** Confidence */
+            confidence: number | null;
+            /** Description */
+            description: string;
+            /** Probeclusterid */
+            probeClusterId: string;
+            /** Probecount */
+            probeCount: number;
+            /** Probes */
+            probes: components["schemas"]["ProbePreviewItem"][];
+            /** Severity */
+            severity: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "model" | "prompt" | "error";
+        };
+        /**
+         * StepClustersPayload
+         * @description Cluster list of step 1 in creation order.
+         */
+        StepClustersPayload: {
+            /** Clusters */
+            clusters: components["schemas"]["StepCluster"][];
+        };
+        /**
+         * StepCondition
+         * @description Filter condition snapshotted when the run was admitted.
+         */
+        StepCondition: {
+            /** From */
+            from?: string | null;
+            /** Models */
+            models: string[];
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent";
+            /** Targetversion */
+            targetVersion: string;
+            /** To */
+            to?: string | null;
+        };
+        /**
+         * StepFinalChange
+         * @description One accepted round inside the terminal modification list.
+         */
+        StepFinalChange: {
+            /** Clusterid */
+            clusterId: string;
+            /** Commit */
+            commit: string;
+            /** Reportcount */
+            reportCount: number;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "model" | "prompt" | "error";
+        };
+        /**
+         * StepFinalCommit
+         * @description Amended run-branch commit produced when a round was accepted.
+         */
+        StepFinalCommit: {
+            /** Hash */
+            hash: string;
+            /** Message */
+            message: string;
+        };
+        /**
+         * StepFinalPayload
+         * @description Terminal evaluation verdict with metrics and accepted changes.
+         */
+        StepFinalPayload: {
+            /** Bestscore */
+            bestScore: number;
+            /** Bestversion */
+            bestVersion: string;
+            /** Changes */
+            changes: components["schemas"]["StepFinalChange"][];
+            /** Initscore */
+            initScore: number;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            }[];
+            /** Verdict */
+            verdict: boolean;
+        };
+        /**
+         * StepInputPayload
+         * @description Filter condition, hit statistics, and probe rows of step 0.
+         */
+        StepInputPayload: {
+            condition: components["schemas"]["StepCondition"];
+            hits: components["schemas"]["ProbeHitSummary"];
+            /** Rows */
+            rows: components["schemas"]["StepInputRow"][];
+        };
+        /**
+         * StepInputRow
+         * @description Shared ProbeRow plus the owning cluster for the input table.
+         */
+        StepInputRow: {
+            /**
+             * Attributetype
+             * @enum {string}
+             */
+            attributeType: "model" | "prompt" | "error";
+            /** Clusterid */
+            clusterId?: string | null;
+            /** Description */
+            description: string;
+            /** Model */
+            model: string | null;
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Probeid */
+            probeId: string;
+            /** Probeobject */
+            probeObject: string;
+            /** Probetype */
+            probeType: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Sessiontitle */
+            sessionTitle: string | null;
+            /** Sourcebadcaseids */
+            sourceBadCaseIds: string[];
+        };
+        /**
+         * StepIterationPayload
+         * @description Rounds of step 4 in sequence order.
+         */
+        StepIterationPayload: {
+            /** Rounds */
+            rounds: components["schemas"]["StepRound"][];
+        };
+        /**
+         * StepRound
+         * @description One execution round rendered by the iteration step.
+         */
+        StepRound: {
+            /** Accepted */
+            accepted: boolean;
+            candidate: components["schemas"]["StepCandidate"] | null;
+            /** Clusterid */
+            clusterId: string;
+            /** Confidence */
+            confidence: number | null;
+            eval: components["schemas"]["StepRoundEval"];
+            finalCommit?: components["schemas"]["StepFinalCommit"] | null;
+            patch: components["schemas"]["StepRoundPatch"] | null;
+            /** Probecount */
+            probeCount: number;
+            /** Probes */
+            probes: components["schemas"]["ProbePreviewItem"][];
+            push: components["schemas"]["StepRoundPush"];
+            /** Roundid */
+            roundId: string;
+            /** Severity */
+            severity: number | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "model" | "prompt" | "error";
+        };
+        /**
+         * StepRoundEval
+         * @description External evaluation state stored on the round.
+         */
+        StepRoundEval: {
+            /** Candidate */
+            candidate: number | null;
+            /** Current */
+            current: number | null;
+            /** Nextpollat */
+            nextPollAt?: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * StepRoundPatch
+         * @description Placeholder patch preview stored with the round.
+         */
+        StepRoundPatch: {
+            /** File */
+            file: string;
+            /** Lines */
+            lines: string[];
+        };
+        /**
+         * StepRoundPush
+         * @description Candidate push outcome stored on the round.
+         */
+        StepRoundPush: {
+            /** Attempts */
+            attempts: number;
+            /** Error */
+            error: string | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * StepSeverityPayload
+         * @description Severity rows of step 3 ordered by stored severity.
+         */
+        StepSeverityPayload: {
+            /** Rows */
+            rows: components["schemas"]["StepSeverityRow"][];
+        };
+        /**
+         * StepSeverityRow
+         * @description One ranked cluster row backed by persisted severity columns.
+         */
+        StepSeverityRow: {
+            /** Clusterid */
+            clusterId: string;
+            /** Confidence */
+            confidence: number | null;
+            /** Impact */
+            impact: number | null;
+            /** Probecount */
+            probeCount: number;
+            /** Rank */
+            rank: number | null;
+            /** Reportcount */
+            reportCount: number;
+            /** Severity */
+            severity: number | null;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "model" | "prompt" | "error";
         };
         /**
          * SyncStatusError
@@ -2635,6 +3213,354 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_attribution_step_api_evolution_runs__run_id__steps_attribution_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepAttribution"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_clusters_step_api_evolution_runs__run_id__steps_clusters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepClusters"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_final_step_api_evolution_runs__run_id__steps_final_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepFinal"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_input_step_api_evolution_runs__run_id__steps_input_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepInput"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_iteration_step_api_evolution_runs__run_id__steps_iteration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepIteration"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_severity_step_api_evolution_runs__run_id__steps_severity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepSeverity"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

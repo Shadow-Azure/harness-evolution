@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import sys
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -100,13 +101,13 @@ class SubprocessGitRemote:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=environment,
-            start_new_session=os.name != "nt",
+            start_new_session=sys.platform != "win32",
         )
         try:
             stdout, stderr = await process.communicate()
         except asyncio.CancelledError:
             with suppress(ProcessLookupError):
-                if os.name == "nt":
+                if sys.platform == "win32":
                     process.kill()
                 else:
                     os.killpg(process.pid, signal.SIGKILL)

@@ -45,6 +45,7 @@ from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.prepare import handle_evolution_prepare
 from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.runs import EvolutionRunService
+from app.service.evolution.stages import EvolutionStageService
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -115,6 +116,7 @@ def create_app(
     evolution_repository = EvolutionRepository(resolved_database)
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository)
+    evolution_stages = EvolutionStageService(evolution_repository, probe_query_repository)
     evolution_launch = EvolutionLaunchService(
         target_repository,
         probe_query_repository,
@@ -194,6 +196,7 @@ def create_app(
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
     app.state.evolution_runs = evolution_runs
+    app.state.evolution_stages = evolution_stages
     app.state.evolution_launch = evolution_launch
     app.state.probe_query = probe_query
     app.state.catalogs = catalogs

@@ -15,8 +15,9 @@ async def handle_evolution_prepare(job: JobRunRecord) -> Mapping[str, Any]:
     """Acknowledge a prepare job without advancing the run.
 
     The real prepare orchestration (workspace clone, ref validation, probe
-    filtering, and clustering) is provided by m5-06. This placeholder only lets
-    the queued job terminate successfully while the run stays `preparing`.
+    filtering, and clustering) arrives with the engine slices m5-09-m5-11.
+    This placeholder only lets the queued job terminate successfully while the
+    run stays `preparing`.
 
     Args:
         job: Claimed durable job row carrying the admitted run id.
@@ -31,5 +32,5 @@ async def handle_evolution_prepare(job: JobRunRecord) -> Mapping[str, Any]:
     return {
         "placeholder": True,
         "runId": job.ref_id,
-        "note": "real prepare orchestration is provided by m5-06",
+        "note": "real prepare orchestration lands with the engine slices m5-09-m5-11",
     }

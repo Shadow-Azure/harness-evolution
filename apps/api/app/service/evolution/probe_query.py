@@ -189,8 +189,15 @@ def _attribute_of(row: ProbeHitRow) -> Literal["model", "prompt", "error"] | Non
     return None
 
 
-def _item_of(rows: list[ProbeHitRow]) -> ProbePreviewItem | None:
-    """Render one hit probe with its distinct linked bad cases."""
+def probe_row_of(rows: list[ProbeHitRow]) -> ProbePreviewItem | None:
+    """Render one hit probe with its distinct linked bad cases.
+
+    Args:
+        rows: Joined hit rows of a single probe in repository order.
+
+    Returns:
+        The shared ProbeRow DTO, or None when the attribute type is foreign.
+    """
     first = rows[0]
     attribute = _attribute_of(first)
     if attribute is None:
@@ -252,7 +259,7 @@ class ProbeQueryService:
         items: list[ProbePreviewItem] = []
         distribution = AttributeStats()
         for group in grouped.values():
-            item = _item_of(group)
+            item = probe_row_of(group)
             if item is None:
                 continue
             items.append(item)
