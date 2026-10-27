@@ -2,6 +2,8 @@ import type {
   EvolutionStep,
   EvolutionStepKey,
   EvolutionRunDetail,
+  EvolutionRunEventLevel,
+  EvolutionRunEventPage,
   EvolutionRunList,
   ProbeQueryRequest,
   ProbeQueryResult,
@@ -26,6 +28,32 @@ export function listEvolutionRuns(): Promise<EvolutionRunList> {
 export function getEvolutionRunDetail(runId: string): Promise<EvolutionRunDetail> {
   return request<EvolutionRunDetail>(
     `/api/evolution/runs/${encodeURIComponent(runId)}`,
+  );
+}
+
+/** Optional cursor, page size, and severity filter for execution-log replay. */
+export interface EvolutionRunEventQuery {
+  afterSeq?: number;
+  limit?: number;
+  level?: EvolutionRunEventLevel;
+}
+
+/**
+ * Read one stable page of durable evolution events.
+ * @param runId Evolution run identifier.
+ * @param query Cursor, page size, and optional level filter.
+ * @returns The ordered event page and continuation cursor.
+ */
+export function listEvolutionRunEvents(
+  runId: string,
+  query: EvolutionRunEventQuery = {},
+): Promise<EvolutionRunEventPage> {
+  const parameters = new URLSearchParams();
+  parameters.set("afterSeq", String(query.afterSeq ?? 0));
+  parameters.set("limit", String(query.limit ?? 100));
+  if (query.level) parameters.set("level", query.level);
+  return request<EvolutionRunEventPage>(
+    `/api/evolution/runs/${encodeURIComponent(runId)}/events?${parameters.toString()}`,
   );
 }
 

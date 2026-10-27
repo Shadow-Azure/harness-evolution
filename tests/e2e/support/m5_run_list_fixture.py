@@ -25,6 +25,7 @@ from app.db.models.evolution import (
     probe_cluster_probes,
     probe_clusters,
 )
+from app.db.models.run_events import evolution_run_events
 from app.db.models.users import users
 
 CREATED_BASE = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)
@@ -557,6 +558,97 @@ async def main() -> None:
                     },
                 ],
             )
+            event_rows: list[dict[str, Any]] = []
+            for seq in range(1, 106):
+                is_error = seq == 75
+                event_rows.append(
+                    {
+                        "run_id": "run-running",
+                        "seq": seq,
+                        "event_type": "eval_failed" if is_error else "eval_polled",
+                        "level": "error" if is_error else "info",
+                        "stage": "eval",
+                        "step_index": 4,
+                        "cluster_id": "run-running-cluster-1",
+                        "evolution_round_id": "round-running-1",
+                        "job_id": "job-running",
+                        "message": (
+                            "评测轮询失败"
+                            if is_error
+                            else f"评测轮询第 {seq} 次"
+                        ),
+                        "payload": {"durationMs": seq},
+                        "error_type": "EvalError" if is_error else None,
+                        "error_message": (
+                            "评测队列暂时不可用"
+                            if is_error
+                            else None
+                        ),
+                        "error_detail": (
+                            "token=<redacted>\n"
+                            "Authorization: Bearer <redacted>"
+                            if is_error
+                            else None
+                        ),
+                        "created_at": CREATED_BASE + timedelta(seconds=seq),
+                    },
+                )
+            event_rows.extend(
+                [
+                    {
+                        "run_id": "run-blocked",
+                        "seq": 1,
+                        "event_type": "run_blocked",
+                        "level": "warn",
+                        "stage": "eval",
+                        "step_index": 4,
+                        "cluster_id": "run-blocked-cluster-1",
+                        "evolution_round_id": "round-blocked-1",
+                        "job_id": "job-blocked",
+                        "message": "评测队列暂停",
+                        "payload": None,
+                        "error_type": "EvalUnavailable",
+                        "error_message": "评测队列暂停",
+                        "error_detail": "retry token=<redacted>",
+                        "created_at": CREATED_BASE,
+                    },
+                    {
+                        "run_id": "run-failed",
+                        "seq": 1,
+                        "event_type": "run_failed",
+                        "level": "error",
+                        "stage": "eval",
+                        "step_index": 4,
+                        "cluster_id": None,
+                        "evolution_round_id": None,
+                        "job_id": "job-failed",
+                        "message": "评测执行失败",
+                        "payload": None,
+                        "error_type": "TimeoutError",
+                        "error_message": "sandbox timeout",
+                        "error_detail": "sandbox token=<redacted>",
+                        "created_at": CREATED_BASE,
+                    },
+                    {
+                        "run_id": "run-interrupted",
+                        "seq": 1,
+                        "event_type": "run_interrupted",
+                        "level": "error",
+                        "stage": "push",
+                        "step_index": 4,
+                        "cluster_id": None,
+                        "evolution_round_id": None,
+                        "job_id": "job-interrupted",
+                        "message": "推送连接中断",
+                        "payload": None,
+                        "error_type": "ProcessInterrupted",
+                        "error_message": "推送连接中断",
+                        "error_detail": None,
+                        "created_at": CREATED_BASE,
+                    },
+                ],
+            )
+            await session.execute(insert(evolution_run_events), event_rows)
     finally:
         await database.dispose()
 

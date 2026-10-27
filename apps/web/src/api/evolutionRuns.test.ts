@@ -4,7 +4,11 @@ import type { EvolutionRunList } from "@harness/contracts";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { getEvolutionRunStep, listEvolutionRuns } from "./evolutionRuns";
+import {
+  getEvolutionRunStep,
+  listEvolutionRunEvents,
+  listEvolutionRuns,
+} from "./evolutionRuns";
 import { server } from "../test/server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -53,5 +57,28 @@ describe("evolution run API", () => {
 
     expect(response.key).toBe("iteration");
     expect(path).toBe("/api/evolution/runs/run%20with%20spaces/steps/iteration");
+  });
+
+  it("reads execution events with the documented cursor and level filter", async () => {
+    let query = "";
+    server.use(
+      http.get("/api/evolution/runs/:runId/events", ({ request }) => {
+        query = new URL(request.url).search;
+        return HttpResponse.json({
+          items: [],
+          nextSeq: 12,
+          hasMore: false,
+        });
+      }),
+    );
+
+    const response = await listEvolutionRunEvents("run events", {
+      afterSeq: 12,
+      limit: 50,
+      level: "warn",
+    });
+
+    expect(response.nextSeq).toBe(12);
+    expect(query).toBe("?afterSeq=12&limit=50&level=warn");
   });
 });
