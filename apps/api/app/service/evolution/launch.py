@@ -129,9 +129,7 @@ class EvolutionLaunchService:
             AppError: With `NO_PROBES_MATCHED` when the hit count is zero.
         """
         rows = await self._probe_repository.list_hit_rows(query)
-        if not any(
-            row.probe_id is not None and row.analysis_status == "analyzed_issue" for row in rows
-        ):
+        if not rows:
             raise AppError(
                 status_code=409,
                 code=ErrorCode.NO_PROBES_MATCHED,

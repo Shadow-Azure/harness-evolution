@@ -19,27 +19,26 @@ from app.db.models.domain import (
 )
 from app.utils.time import as_shanghai
 
-_CASE_SESSION = session_families.alias("case_session")
 _CASE_AGENT = agents.alias("case_agent")
 
 
 @dataclass(frozen=True, slots=True)
 class ProbeHitRow:
-    """One matched bad case with optional probe and session facts."""
+    """One matched probe with its linked bad case and session facts."""
 
     bad_case_id: str
-    analysis_status: str | None
-    probe_id: str | None
-    probe_session_id: str | None
-    probe_type: str | None
-    probe_object: str | None
+    analysis_status: str
+    probe_id: str
+    probe_session_id: str
+    probe_type: str
+    probe_object: str
     object_version: str | None
-    attribute_type: str | None
-    probe_description: str | None
+    attribute_type: str
+    probe_description: str
     session_title: str | None
     case_agent_model: str | None
     session_model: str | None
-    session_started_at: datetime | None
+    probe_started_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +54,7 @@ class ProbeHitQuery:
 
 
 class ProbeQueryRepository:
-    """Query external issue-side tables for launch-wizard hit previews."""
+    """Query probe reports as the root-cause source for wizard previews."""
 
     def __init__(self, database: Database) -> None:
         """Bind this read-only repository to the application database."""
@@ -90,20 +89,21 @@ class ProbeQueryRepository:
         return {session_id: frozenset(values) for session_id, values in models.items()}
 
     async def list_hit_rows(self, query: ProbeHitQuery) -> tuple[ProbeHitRow, ...]:
-        """Return every bad case reported for one object pair with probe facts.
+        """Return every probe reported for one object pair with linked case facts.
 
         Args:
             query: Normalized wizard condition with a resolved target version.
 
         Returns:
-            Hit rows ordered by case creation time and id, already narrowed by
-            the session-time window and selected model chips.
+            Hit rows starting from `probe_reports`, ordered by probe session
+            start and probe id, already narrowed by the probe session-time
+            window and selected model chips.
         """
         statement = (
             select(
                 bad_cases.c.bad_case_id,
                 bad_case_analysis.c.analysis_status,
-                bad_case_analysis.c.probe_id,
+                probe_reports.c.probe_id,
                 probe_reports.c.session_id.label("probe_session_id"),
                 probe_reports.c.probe_type,
                 probe_reports.c.probe_object,
@@ -114,50 +114,42 @@ class ProbeQueryRepository:
                 session_families.c.started_at.label("probe_started_at"),
                 session_families.c.model.label("session_model"),
                 _CASE_AGENT.c.model.label("case_agent_model"),
-                _CASE_SESSION.c.started_at.label("case_started_at"),
             )
-            .select_from(bad_cases)
-            .outerjoin(
+            .select_from(probe_reports)
+            .join(
                 bad_case_analysis,
-                bad_case_analysis.c.bad_case_id == bad_cases.c.bad_case_id,
+                bad_case_analysis.c.probe_id == probe_reports.c.probe_id,
             )
-            .outerjoin(
-                probe_reports,
-                probe_reports.c.probe_id == bad_case_analysis.c.probe_id,
+            .join(
+                bad_cases,
+                bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
             )
             .outerjoin(
                 session_families,
                 session_families.c.id == probe_reports.c.session_id,
             )
             .outerjoin(
-                _CASE_SESSION,
-                _CASE_SESSION.c.id == bad_cases.c.bad_case_session_id,
-            )
-            .outerjoin(
                 _CASE_AGENT,
                 _CASE_AGENT.c.id == bad_cases.c.bad_case_agent_id,
             )
             .where(
-                bad_cases.c.object_type == query.target_type,
-                bad_cases.c.object_name == query.target_name,
-                bad_cases.c.object_version == query.target_version,
+                probe_reports.c.probe_object == query.target_name,
+                probe_reports.c.object_version == query.target_version,
+                probe_reports.c.probe_type == query.target_type,
             )
-            .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id)
+            .order_by(session_families.c.started_at, probe_reports.c.probe_id)
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         hits = [_row_hit(cast(Mapping[str, Any], row)) for row in rows]
-        hits = [hit for hit in hits if _in_window(hit.session_started_at, query)]
+        hits = [hit for hit in hits if _in_window(hit.probe_started_at, query)]
         if query.models:
             tree_models = await self.session_models(
-                tuple(sorted({hit.probe_session_id or "" for hit in hits if hit.probe_session_id})),
+                tuple(sorted({hit.probe_session_id for hit in hits})),
             )
             selected = frozenset(query.models)
             hits = [
-                hit
-                for hit in hits
-                if hit.probe_session_id is None
-                or tree_models.get(hit.probe_session_id, frozenset()) & selected
+                hit for hit in hits if tree_models.get(hit.probe_session_id, frozenset()) & selected
             ]
         return tuple(hits)
 
@@ -166,18 +158,18 @@ def _row_hit(row: Mapping[str, Any]) -> ProbeHitRow:
     """Convert one joined hit mapping into the boundary DTO."""
     return ProbeHitRow(
         bad_case_id=str(row["bad_case_id"]),
-        analysis_status=_text(row["analysis_status"]),
-        probe_id=_text(row["probe_id"]),
-        probe_session_id=_text(row["probe_session_id"]),
-        probe_type=_text(row["probe_type"]),
-        probe_object=_text(row["probe_object"]),
+        analysis_status=str(row["analysis_status"]),
+        probe_id=str(row["probe_id"]),
+        probe_session_id=str(row["probe_session_id"]),
+        probe_type=str(row["probe_type"]),
+        probe_object=str(row["probe_object"]),
         object_version=_text(row["object_version"]),
-        attribute_type=_text(row["attribute_type"]),
-        probe_description=_text(row["probe_description"]),
+        attribute_type=str(row["attribute_type"]),
+        probe_description=str(row["probe_description"]),
         session_title=_text(row["session_title"]),
         case_agent_model=_text(row["case_agent_model"]),
         session_model=_text(row["session_model"]),
-        session_started_at=_time(row["probe_started_at"] or row["case_started_at"]),
+        probe_started_at=_time(row["probe_started_at"]),
     )
 
 
@@ -192,7 +184,7 @@ def _time(value: object) -> datetime | None:
 
 
 def _in_window(moment: datetime | None, query: ProbeHitQuery) -> bool:
-    """Return whether one session moment falls inside the selected window."""
+    """Return whether one probe session moment falls inside the selected window."""
     if moment is None:
         return query.window_from is None and query.window_to is None
     day = moment.date()
