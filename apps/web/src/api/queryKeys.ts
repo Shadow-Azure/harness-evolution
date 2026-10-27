@@ -20,6 +20,10 @@ export const queryKeys = {
     ["probe", probeId] as const,
   acquisitionStatus: ["acquisition", "status"] as const,
   evolutionRuns: ["evolution", "runs"] as const,
+  evolutionRun: (runId: string) =>
+    ["evolution", "runs", runId] as const,
+  evolutionRunStep: (runId: string, stepKey: string) =>
+    ["evolution", "runs", runId, "steps", stepKey] as const,
   evolutionTargets: ["evolution", "targets"] as const,
   evolutionTargetVersions: (targetId: string) =>
     ["evolution", "targets", targetId, "versions"] as const,

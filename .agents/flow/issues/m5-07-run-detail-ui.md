@@ -10,8 +10,9 @@ depends:
   - m5-04
   - m5-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - apps/api/**
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
@@ -55,6 +56,7 @@ m5-07 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - 依赖：m5-04, m5-06
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- run-detail 读模型补齐六步状态、workspace、blocked/retry/eval 上下文，使前端直接消费后端状态。
 
 ## 独立验证
 

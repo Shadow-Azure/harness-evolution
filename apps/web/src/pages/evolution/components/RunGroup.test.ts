@@ -66,6 +66,18 @@ describe("RunGroup", () => {
     expect(wrapper.findAll(".run-card")).toHaveLength(2);
   });
 
+  it("forwards a card open intent to the page", async () => {
+    const wrapper = mount(RunGroup, {
+      props: {
+        kind: "running",
+        runs: [card],
+      },
+    });
+
+    await wrapper.get(".run-card-link").trigger("click");
+    expect(wrapper.emitted("open")).toEqual([["/evolution/runs/run-1"]]);
+  });
+
   it("renders the history count without an active pulse", () => {
     const wrapper = mount(RunGroup, {
       props: {

@@ -10,7 +10,7 @@ from typing import Literal, Protocol, cast
 from pydantic import Field
 
 from app.db.models.evolution import EvolutionRunSummaryRecord
-from app.service.evolution.state import total_units, validate_cursor
+from app.service.evolution.state import step_states, total_units, validate_cursor
 from app.service.identity.schemas import IdentityModel
 
 EvolutionRunStatus = Literal[
@@ -112,6 +112,52 @@ class EvolutionRunCard(IdentityModel):
     final: EvolutionRunFinal | None
 
 
+class EvolutionRunWorkspace(IdentityModel):
+    """Repository and worktree state shown by the run detail."""
+
+    repo_url: str
+    sub_dir: str
+    repo_path: str | None
+    base_ref: str | None
+    base_commit: str | None
+    branch_name: str | None
+    workspace_path: str | None
+    remote: str
+    push_status: str
+    pushed_at: datetime | None
+    push_error: str | None
+
+
+class EvolutionRunStep(IdentityModel):
+    """One backend-owned stepper node with lazy-load eligibility."""
+
+    index: int
+    key: Literal[
+        "input",
+        "clusters",
+        "attribution",
+        "severity",
+        "iteration",
+        "final",
+    ]
+    title: str
+    status: Literal["done", "active", "pending"]
+    clickable: bool
+    detail: str | None = None
+
+
+class EvolutionRunDetail(EvolutionRunCard):
+    """Complete shell consumed by the six-step run-detail page."""
+
+    blocked_stage: str | None
+    retry_attempts: int
+    next_retry_at: datetime | None
+    eval_status: str
+    workspace: EvolutionRunWorkspace
+    last_event_seq: int
+    steps: list[EvolutionRunStep]
+
+
 class EvolutionRunList(IdentityModel):
     """Running and history groups already ordered by the backend."""
 
@@ -124,6 +170,9 @@ class EvolutionRunStore(Protocol):
 
     async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
         """Return all runs with batched list facts."""
+
+    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
+        """Return one run with its batched list facts."""
 
 
 def _non_negative_int(value: object) -> int:
@@ -241,6 +290,48 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
     )
 
 
+def _detail_steps(
+    summary: EvolutionRunSummaryRecord,
+) -> list[EvolutionRunStep]:
+    """Project the shared cursor state machine into stepper nodes."""
+    run = summary.run
+    states = step_states(
+        run.progress_unit,
+        summary.cluster_count,
+        run.status,
+    )
+    steps: list[EvolutionRunStep] = []
+    for state in states:
+        detail = None
+        if state.key == "iteration" and state.status == "active" and summary.cluster_count > 0:
+            round_number = min(
+                max(run.progress_unit - 3, 1),
+                summary.cluster_count,
+            )
+            detail = f"第 {round_number}/{summary.cluster_count} 轮"
+        steps.append(
+            EvolutionRunStep(
+                index=state.index,
+                key=cast(
+                    Literal[
+                        "input",
+                        "clusters",
+                        "attribution",
+                        "severity",
+                        "iteration",
+                        "final",
+                    ],
+                    state.key,
+                ),
+                title=state.title,
+                status=state.status,
+                clickable=state.clickable,
+                detail=detail,
+            ),
+        )
+    return steps
+
+
 class EvolutionRunService:
     """Project repository summaries into backend-grouped run cards."""
 
@@ -254,4 +345,34 @@ class EvolutionRunService:
         return EvolutionRunList(
             running=[card for card in cards if card.status in _RUNNING_STATUSES],
             history=[card for card in cards if card.status not in _RUNNING_STATUSES],
+        )
+
+    async def detail(self, run_id: str) -> EvolutionRunDetail | None:
+        """Return one run shell with workspace and backend-owned step states."""
+        summary = await self._store.get_summary(run_id)
+        if summary is None:
+            return None
+        card = _card(summary)
+        run = summary.run
+        return EvolutionRunDetail(
+            **card.model_dump(),
+            blocked_stage=run.blocked_stage,
+            retry_attempts=run.retry_attempts,
+            next_retry_at=run.next_retry_at,
+            eval_status=run.eval_status,
+            workspace=EvolutionRunWorkspace(
+                repo_url=run.repo_url,
+                sub_dir=run.sub_dir,
+                repo_path=run.repo_path,
+                base_ref=run.base_ref,
+                base_commit=run.base_commit,
+                branch_name=run.branch_name,
+                workspace_path=run.workspace_path,
+                remote=run.remote_name,
+                push_status=run.push_status,
+                pushed_at=run.pushed_at,
+                push_error=run.push_error,
+            ),
+            last_event_seq=0,
+            steps=_detail_steps(summary),
         )

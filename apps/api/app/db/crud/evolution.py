@@ -105,29 +105,38 @@ class EvolutionRepository:
 
     async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
         """Return every run with batched creator, cluster, round, and final facts."""
+        return await self._summaries()
+
+    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
+        """Return one run with batched creator, cluster, round, and final facts."""
+        summaries = await self._summaries(run_id)
+        return summaries[0] if summaries else None
+
+    async def _summaries(
+        self,
+        run_id: str | None = None,
+    ) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Load summary facts for every run or one requested run."""
         async with self._database.session() as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(
-                            evolution_runs,
-                            users.c.display_name.label("created_by_name"),
-                        )
-                        .select_from(
-                            evolution_runs.outerjoin(
-                                users,
-                                users.c.id == evolution_runs.c.created_by,
-                            ),
-                        )
-                        .order_by(
-                            evolution_runs.c.created_at.desc(),
-                            evolution_runs.c.id.desc(),
-                        ),
-                    )
+            statement = (
+                select(
+                    evolution_runs,
+                    users.c.display_name.label("created_by_name"),
                 )
-                .mappings()
-                .all()
+                .select_from(
+                    evolution_runs.outerjoin(
+                        users,
+                        users.c.id == evolution_runs.c.created_by,
+                    ),
+                )
+                .order_by(
+                    evolution_runs.c.created_at.desc(),
+                    evolution_runs.c.id.desc(),
+                )
             )
+            if run_id is not None:
+                statement = statement.where(evolution_runs.c.id == run_id)
+            rows = (await session.execute(statement)).mappings().all()
             run_ids = [str(row["id"]) for row in rows]
             if not run_ids:
                 return ()

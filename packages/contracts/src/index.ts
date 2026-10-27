@@ -100,6 +100,16 @@ export type EvolutionRunCard = components["schemas"]["EvolutionRunCard"];
 /** Running and history groups already ordered by the backend. */
 export type EvolutionRunList = components["schemas"]["EvolutionRunList"];
 
+/** Complete run detail shell with workspace and backend-owned step states. */
+export type EvolutionRunDetail = components["schemas"]["EvolutionRunDetail"];
+
+/** Repository and worktree state rendered on the run detail. */
+export type EvolutionRunWorkspace =
+  components["schemas"]["EvolutionRunWorkspace"];
+
+/** One backend-owned stepper node from the run detail shell. */
+export type EvolutionRunStep = components["schemas"]["EvolutionRunStep"];
+
 /** Backend-owned progress, stage copy, rounds, and accepted count. */
 export type EvolutionRunProgress = components["schemas"]["EvolutionRunProgress"];
 
@@ -167,6 +177,21 @@ export type EvolutionStepIteration = components["schemas"]["EvolutionStepIterati
 /** Backend-owned terminal evaluation projection of one evolution run. */
 export type EvolutionStepFinal = components["schemas"]["EvolutionStepFinal"];
 
+/** One key-discriminated response from the six evolution-step endpoints. */
+export type EvolutionStep =
+  | EvolutionStepInput
+  | EvolutionStepClusters
+  | EvolutionStepAttribution
+  | EvolutionStepSeverity
+  | EvolutionStepIteration
+  | EvolutionStepFinal;
+
+/** Stable semantic key shared by one evolution-step route and payload. */
+export type EvolutionStepKey = EvolutionStep["key"];
+
+/** Backend-owned status for one step in the evolution stepper. */
+export type EvolutionStepStatus = EvolutionStep["status"];
+
 /** Filter condition snapshotted when an evolution run was admitted. */
 export type StepCondition = components["schemas"]["StepCondition"];
 
@@ -184,6 +209,21 @@ export type StepSeverityRow = components["schemas"]["StepSeverityRow"];
 
 /** One execution round rendered by the iteration step. */
 export type StepRound = components["schemas"]["StepRound"];
+
+/** Pushed candidate ref and commit backing one iteration round. */
+export type StepCandidate = components["schemas"]["StepCandidate"];
+
+/** Placeholder or generated patch preview stored with one round. */
+export type StepRoundPatch = components["schemas"]["StepRoundPatch"];
+
+/** Candidate push outcome stored with one round. */
+export type StepRoundPush = components["schemas"]["StepRoundPush"];
+
+/** External evaluation state stored with one round. */
+export type StepRoundEval = components["schemas"]["StepRoundEval"];
+
+/** Amended run-branch commit recorded after accepting a candidate. */
+export type StepFinalCommit = components["schemas"]["StepFinalCommit"];
 
 /** One accepted round inside the terminal modification list. */
 export type StepFinalChange = components["schemas"]["StepFinalChange"];

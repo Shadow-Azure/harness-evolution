@@ -200,6 +200,74 @@ async def main() -> None:
                             "created_at": CREATED_BASE,
                         },
                     )
+                    if run["id"] == "run-running" and seq == 1:
+                        round_rows.append(
+                            {
+                                "id": "round-running-1",
+                                "run_id": run["id"],
+                                "probe_cluster_id": cluster_id,
+                                "seq": 1,
+                                "status": "evaluating",
+                                "started_at": CREATED_BASE,
+                                "patch": {
+                                    "file": "SKILL.md",
+                                    "lines": [
+                                        "@@ -1 +1 @@",
+                                        "- 读取索引",
+                                        "+ 读取索引前校验快照字段",
+                                    ],
+                                },
+                                "candidate_ref": (
+                                    "evo/run-running/candidate/r1"
+                                ),
+                                "candidate_commit": (
+                                    "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12"
+                                ),
+                                "candidate_message": (
+                                    "evolve(deep-research): 校验快照字段"
+                                ),
+                                "push_status": "succeeded",
+                                "push_attempts": 1,
+                                "pushed_at": CREATED_BASE,
+                                "eval_status": "evaluating",
+                                "eval_attempts": 1,
+                                "eval_current": 84.6,
+                                "eval_candidate": None,
+                                "accepted": False,
+                            },
+                        )
+                    if run["id"] == "run-blocked" and seq == 1:
+                        round_rows.append(
+                            {
+                                "id": "round-blocked-1",
+                                "run_id": run["id"],
+                                "probe_cluster_id": cluster_id,
+                                "seq": 1,
+                                "status": "blocked",
+                                "started_at": CREATED_BASE,
+                                "error_message": "评测队列暂停",
+                                "patch": {
+                                    "file": "SKILL.md",
+                                    "lines": ["+ 读取索引前校验快照字段"],
+                                },
+                                "candidate_ref": (
+                                    "evo/run-blocked/candidate/r1"
+                                ),
+                                "candidate_commit": (
+                                    "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34"
+                                ),
+                                "candidate_message": (
+                                    "evolve(deep-research): 校验快照字段"
+                                ),
+                                "push_status": "succeeded",
+                                "push_attempts": 1,
+                                "eval_status": "failed",
+                                "eval_attempts": 1,
+                                "eval_current": 84.6,
+                                "eval_error": "评测队列暂停",
+                                "accepted": False,
+                            },
+                        )
                     if run["id"] == "run-completed-effective" and seq == 1:
                         round_rows.append(
                             {
@@ -208,12 +276,71 @@ async def main() -> None:
                                 "probe_cluster_id": cluster_id,
                                 "seq": 1,
                                 "status": "accepted",
+                                "patch": {
+                                    "file": "SKILL.md",
+                                    "lines": ["+ 读取索引前校验快照字段"],
+                                },
+                                "candidate_ref": (
+                                    "evo/run-completed-effective/candidate/r1"
+                                ),
+                                "candidate_commit": (
+                                    "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12"
+                                ),
+                                "candidate_message": (
+                                    "evolve(deep-research): 校验快照字段"
+                                ),
+                                "push_status": "succeeded",
+                                "push_attempts": 1,
+                                "eval_status": "completed",
+                                "eval_attempts": 1,
+                                "eval_current": 84.3,
+                                "eval_candidate": 88.9,
                                 "accepted": True,
+                                "commit_hash": (
+                                    "ef56ab12cd34ef56ab12cd34ef56ab12cd34ef56"
+                                ),
+                                "commit_message": (
+                                    "evolve(deep-research): 校验快照字段"
+                                ),
                             },
                         )
             await session.execute(insert(probe_clusters), cluster_rows)
             if round_rows:
-                await session.execute(insert(evolution_rounds), round_rows)
+                round_defaults: dict[str, Any] = {
+                    "started_at": None,
+                    "finished_at": None,
+                    "duration_ms": None,
+                    "error_message": None,
+                    "patch": None,
+                    "candidate_ref": None,
+                    "candidate_commit": None,
+                    "candidate_message": None,
+                    "push_status": "pending",
+                    "push_attempts": 0,
+                    "pushed_at": None,
+                    "push_error": None,
+                    "eval_external_id": None,
+                    "eval_status": "pending",
+                    "eval_attempts": 0,
+                    "eval_next_poll_at": None,
+                    "eval_started_at": None,
+                    "eval_finished_at": None,
+                    "eval_current": None,
+                    "eval_candidate": None,
+                    "eval_result": None,
+                    "eval_error": None,
+                    "accepted": False,
+                    "commit_hash": None,
+                    "commit_message": None,
+                }
+                normalized_rounds = [
+                    {**round_defaults, **row}
+                    for row in round_rows
+                ]
+                await session.execute(
+                    insert(evolution_rounds),
+                    normalized_rounds,
+                )
             await session.execute(
                 insert(evolution_finals),
                 [
@@ -223,7 +350,15 @@ async def main() -> None:
                         "verdict": True,
                         "best_score": 88.9,
                         "init_score": 84.3,
-                        "metrics": [],
+                        "metrics": [
+                            {
+                                "name": "任务完成率",
+                                "init": 78,
+                                "best": 84,
+                                "delta": 6,
+                                "unit": "%",
+                            },
+                        ],
                     },
                     {
                         "run_id": "run-completed-no-benefit",

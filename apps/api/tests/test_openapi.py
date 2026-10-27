@@ -52,6 +52,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/acquisition/sync",
         "/api/acquisition/pull",
         "/api/evolution/runs",
+        "/api/evolution/runs/{run_id}",
         "/api/evolution/runs/{run_id}/steps/input",
         "/api/evolution/runs/{run_id}/steps/clusters",
         "/api/evolution/runs/{run_id}/steps/attribution",

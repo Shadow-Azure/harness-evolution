@@ -66,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, evolution target configuration and catalogs, evolution run-list API/UI, launch wizard and probe-hit preview API, six-step read-only step API (backend-owned status/clickable), light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
-- Missing: evolution run detail page, prepare orchestration and patch/evaluation, run authorization, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session list/overview/tree queries, problem and attribution APIs, error-detail pages, sync scheduling/status, upstream mock contract and pull, read-only external issue models, evolution target configuration and catalogs, evolution run-list and run-detail API/UI (six-step state, workspace, blocked/retry/eval context), launch wizard and probe-hit preview API, six-step read-only step API (backend-owned status/clickable), light prototype shell, fixtures/seed, local import, Agent-tree assembly, idempotent replay, E2E, and contract gates.
+- Missing: prepare orchestration and patch/evaluation, run authorization, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

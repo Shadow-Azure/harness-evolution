@@ -4,7 +4,7 @@ import type { EvolutionRunList } from "@harness/contracts";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { listEvolutionRuns } from "./evolutionRuns";
+import { getEvolutionRunStep, listEvolutionRuns } from "./evolutionRuns";
 import { server } from "../test/server";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -31,5 +31,27 @@ describe("evolution run API", () => {
     await expect(listEvolutionRuns()).resolves.toEqual(response);
     expect(method).toBe("GET");
     expect(path).toBe("/api/evolution/runs");
+  });
+
+  it("reads one run step from the key-specific endpoint", async () => {
+    let path = "";
+    server.use(
+      http.get("/api/evolution/runs/:runId/steps/:step", ({ request }) => {
+        path = new URL(request.url).pathname;
+        return HttpResponse.json({
+          key: "iteration",
+          index: 4,
+          title: "迭代优化",
+          status: "active",
+          clickable: true,
+          payload: { rounds: [] },
+        });
+      }),
+    );
+
+    const response = await getEvolutionRunStep("run with spaces", "iteration");
+
+    expect(response.key).toBe("iteration");
+    expect(path).toBe("/api/evolution/runs/run%20with%20spaces/steps/iteration");
   });
 });
