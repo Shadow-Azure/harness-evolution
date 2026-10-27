@@ -155,23 +155,25 @@ class EvolutionRepository:
         stage: str,
         message: str,
         next_retry_at: datetime | None = None,
+        retry_attempts: int | None = None,
     ) -> None:
         """Persist a retryable blocked state and its next-attempt facts."""
         now = now_shanghai()
+        values: dict[str, object] = {
+            "status": "blocked",
+            "blocked_stage": stage,
+            "eval_status": "failed" if stage == "eval" else "pending",
+            "error_stage": stage,
+            "error_message": message,
+            "error_at": now,
+            "next_retry_at": next_retry_at,
+            "finished_at": None,
+        }
+        if retry_attempts is not None:
+            values["retry_attempts"] = retry_attempts
         async with self._database.transaction() as session:
             await session.execute(
-                update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
-                .values(
-                    status="blocked",
-                    blocked_stage=stage,
-                    eval_status="failed" if stage == "eval" else "pending",
-                    error_stage=stage,
-                    error_message=message,
-                    error_at=now,
-                    next_retry_at=next_retry_at,
-                    finished_at=None,
-                ),
+                update(evolution_runs).where(evolution_runs.c.id == run_id).values(**values),
             )
 
     async def mark_resumed(self, run_id: str) -> None:

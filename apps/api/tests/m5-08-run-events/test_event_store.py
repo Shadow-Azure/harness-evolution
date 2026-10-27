@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest_asyncio
 from sqlalchemy import delete, func, insert, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -197,3 +198,41 @@ async def test_history_survives_database_reopen(tmp_path: Path) -> None:
         "run_created",
         "prepare_started",
     ]
+
+
+async def test_append_retries_after_sequence_collision(
+    event_database: Database,
+) -> None:
+    """A collided allocation retries with the next sequence instead of duplicating."""
+
+    class CollidingStore(SqlRunEventStore):
+        """Force the first two allocations to choose the same sequence."""
+
+        def __init__(self, database: Database) -> None:
+            super().__init__(database)
+            self._allocations = 0
+
+        async def _next_sequence(self, session: AsyncSession, run_id: str) -> int:
+            self._allocations += 1
+            if self._allocations <= 2:
+                return 1
+            return await super()._next_sequence(session, run_id)
+
+    store = CollidingStore(event_database)
+    first = await store.append(
+        run_id="run-events",
+        event_type="run_created",
+        level="info",
+        stage="prepare",
+        message="created",
+    )
+    second = await store.append(
+        run_id="run-events",
+        event_type="prepare_started",
+        level="info",
+        stage="prepare",
+        message="preparing",
+    )
+
+    assert [first.seq, second.seq] == [1, 2]
+    assert store._allocations == 3

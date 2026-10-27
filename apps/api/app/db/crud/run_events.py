@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func, insert, inspect, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.models.run_events import (
@@ -15,6 +16,7 @@ from app.db.models.run_events import (
     evolution_run_events,
 )
 from app.service.events import ReplayEvent, RunEventReplayResult
+from app.utils.redaction import sanitize_message
 from app.utils.time import as_shanghai, now_shanghai
 
 
@@ -118,14 +120,7 @@ class SqlRunEventStore:
             try:
                 created_at = now_shanghai()
                 async with self._database.transaction() as session:
-                    latest = (
-                        await session.execute(
-                            select(func.max(evolution_run_events.c.seq)).where(
-                                evolution_run_events.c.run_id == run_id,
-                            ),
-                        )
-                    ).scalar_one()
-                    sequence = int(latest or 0) + 1
+                    sequence = await self._next_sequence(session, run_id)
                     values = {
                         "run_id": run_id,
                         "seq": sequence,
@@ -149,6 +144,17 @@ class SqlRunEventStore:
                 if attempt == 4:
                     raise
         raise RuntimeError("unreachable event append retry state")
+
+    async def _next_sequence(self, session: AsyncSession, run_id: str) -> int:
+        """Allocate the next run-local sequence inside the append transaction."""
+        latest = (
+            await session.execute(
+                select(func.max(evolution_run_events.c.seq)).where(
+                    evolution_run_events.c.run_id == run_id,
+                ),
+            )
+        ).scalar_one()
+        return int(latest or 0) + 1
 
     async def read_page(
         self,
@@ -211,15 +217,16 @@ class SqlRunEventStore:
         """Persist one run interruption and return its monotonic run sequence."""
         if not await self._has_table():
             return None
+        safe_message = sanitize_message(message, limit=2_000)
         event = await self.append(
             run_id=run_id,
             event_type="run_interrupted",
             level="error",
             stage=stage,
             job_id=job_id,
-            message=message,
+            message=safe_message,
             error_type="ProcessInterrupted",
-            error_message=message,
+            error_message=safe_message,
         )
         return event.seq
 

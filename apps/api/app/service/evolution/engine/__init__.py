@@ -7,6 +7,8 @@ from app.service.evolution.engine.contracts import (
     EngineDeps,
     EvalGateway,
     EvalGatewayConfig,
+    EvolutionBlockedStage,
+    RunBlocked,
 )
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.engine.full import FullEvolutionEngine
@@ -18,6 +20,8 @@ __all__ = [
     "EngineFactory",
     "EvalGateway",
     "EvalGatewayConfig",
+    "EvolutionBlockedStage",
     "EvolutionEngine",
     "FullEvolutionEngine",
+    "RunBlocked",
 ]

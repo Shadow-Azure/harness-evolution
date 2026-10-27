@@ -191,6 +191,7 @@ class EvolutionRunStateWriter(Protocol):
         stage: str,
         message: str,
         next_retry_at: datetime | None = None,
+        retry_attempts: int | None = None,
     ) -> None:
         """Persist retryable blocked facts."""
 
@@ -271,10 +272,12 @@ class EvolutionRunEventService:
             error_detail=sanitize_detail(resolved_detail),
         )
         event = _public_event(record)
+        notification = event.model_dump(mode="json", by_alias=True)
+        notification["runId"] = run_id
         self._bus.publish(
             f"run:{run_id}",
             "run.event",
-            event.model_dump(mode="json", by_alias=True),
+            notification,
             event_id=event.seq,
         )
         return event
@@ -334,6 +337,17 @@ class EvolutionRunEventService:
             stage=stage,
             message=sanitize_message(str(error), limit=2_000),
         )
+        self._bus.publish(
+            f"run:{run_id}",
+            "run.failed",
+            {
+                "runId": run_id,
+                "stage": stage,
+                "message": event.message,
+                "eventSeq": event.seq,
+            },
+            event_id=event.seq,
+        )
         return event.seq
 
     async def record_interrupted(
@@ -347,6 +361,7 @@ class EvolutionRunEventService:
         """Persist one interruption and update the run's terminal state."""
         if stage not in EVOLUTION_RUN_EVENT_STAGES:
             raise ValueError(f"unknown evolution event stage: {stage}")
+        safe_message = sanitize_message(message, limit=2_000)
         event = await self.record(
             run_id,
             "run_interrupted",
@@ -355,9 +370,9 @@ class EvolutionRunEventService:
             message=message,
             job_id=job_id,
             error_type="ProcessInterrupted",
-            error_message=message,
+            error_message=safe_message,
         )
-        await self._runs.mark_interrupted(run_id, stage=stage, message=message)
+        await self._runs.mark_interrupted(run_id, stage=stage, message=safe_message)
         return event.seq
 
     async def record_blocked(
@@ -369,6 +384,7 @@ class EvolutionRunEventService:
         message: str,
         job_id: str | None = None,
         next_retry_at: datetime | None = None,
+        retry_attempts: int | None = None,
         error: BaseException | None = None,
     ) -> int:
         """Persist one retryable failure and enter blocked state."""
@@ -389,6 +405,29 @@ class EvolutionRunEventService:
             stage=resolved_blocked_stage,
             message=sanitize_message(message, limit=2_000),
             next_retry_at=next_retry_at,
+            retry_attempts=retry_attempts,
+        )
+        run = await self._runs.get_run(run_id)
+        self._bus.publish(
+            f"run:{run_id}",
+            "run.blocked",
+            {
+                "runId": run_id,
+                "stage": event.stage,
+                "blockedStage": resolved_blocked_stage,
+                "retryAttempts": (
+                    run.retry_attempts
+                    if run is not None
+                    else (retry_attempts if retry_attempts is not None else 0)
+                ),
+                "nextRetryAt": (
+                    run.next_retry_at.isoformat()
+                    if run is not None and run.next_retry_at is not None
+                    else None
+                ),
+                "message": event.message,
+            },
+            event_id=event.seq,
         )
         return event.seq
 
@@ -409,6 +448,17 @@ class EvolutionRunEventService:
             job_id=job_id,
         )
         await self._runs.mark_resumed(run_id)
+        run = await self._runs.get_run(run_id)
+        self._bus.publish(
+            f"run:{run_id}",
+            "run.resumed",
+            {
+                "runId": run_id,
+                "stage": stage,
+                "retryAttempts": run.retry_attempts if run is not None else 0,
+            },
+            event_id=event.seq,
+        )
         return event.seq
 
 

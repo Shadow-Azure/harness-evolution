@@ -6,39 +6,69 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-_SECRET_PATTERN = re.compile(
-    r"(?i)\b(password|passwd|token|secret|authorization|api[_-]?key)\b"
-    r"\s*[:=]\s*(?:bearer\s+)?\S+",
+_CREDENTIAL_KEY_PATTERN = (
+    r"(?:HE_[A-Z0-9_]+|"
+    r"(?:[A-Za-z0-9]+[_-])*(?:"
+    r"password(?:[_-]?hash)?|passwd|token|secret(?:[_-]?key)?|"
+    r"authorization|api[_-]?key|credential|private[_-]?key))"
+)
+_AUTHORIZATION_VALUE_PATTERN = re.compile(
+    r"(?i)\b(authorization\s*[:=]\s*)(?:bearer|basic)\s+[a-z0-9._~+/=-]+",
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+")
-_ENV_SECRET_PATTERN = re.compile(
-    r"\b([A-Z][A-Z0-9_]*(?:PASSWORD|TOKEN|SECRET|KEY|AUTH|CREDENTIAL)[A-Z0-9_]*)"
-    r"=([^\s]+)",
+_URL_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)(\b[a-z][a-z0-9+.-]*://[^/\s:@]+:)([^@\s/]+)(@)",
+)
+_QUOTED_SECRET_PATTERN = re.compile(
+    rf'(?i)(["\'](?:{_CREDENTIAL_KEY_PATTERN})["\']\s*:\s*)(["\'])[^"\']*\2',
+)
+_SECRET_PATTERN = re.compile(
+    rf"(?i)\b({_CREDENTIAL_KEY_PATTERN})\b(\s*[:=]\s*)"
+    r"(?:bearer\s+|basic\s+)?(?:[\"'][^\"']*[\"']|[^\s,;}\]]+)",
 )
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
 _DETAIL_CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+")
 _SENSITIVE_KEY_SUFFIXES = (
+    "password",
+    "passwordhash",
+    "passwd",
+    "token",
+    "secret",
+    "secretkey",
+    "authorization",
+    "apikey",
+    "privatekey",
+    "credential",
+)
+_SENSITIVE_KEY_PREFIXES = (
     "password",
     "passwd",
     "token",
     "secret",
     "authorization",
     "apikey",
+    "privatekey",
     "credential",
 )
 
 
 def redact_text(value: str) -> str:
     """Remove inline credentials and bearer values from free-form text."""
-    redacted = _SECRET_PATTERN.sub(r"\1=<redacted>", value)
-    redacted = _ENV_SECRET_PATTERN.sub(r"\1=<redacted>", redacted)
+    redacted = _AUTHORIZATION_VALUE_PATTERN.sub(r"\1<redacted>", value)
+    redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1<redacted>\3", redacted)
+    redacted = _QUOTED_SECRET_PATTERN.sub(r"\1\2<redacted>\2", redacted)
+    redacted = _SECRET_PATTERN.sub(r"\1\2<redacted>", redacted)
     return _BEARER_PATTERN.sub("Bearer <redacted>", redacted)
 
 
 def is_sensitive_key(key: str) -> bool:
     """Recognize credential keys across snake_case and camelCase payloads."""
     normalized = re.sub(r"[^a-z0-9]", "", key.lower())
-    return normalized.endswith(_SENSITIVE_KEY_SUFFIXES)
+    return (
+        key.upper().startswith("HE_")
+        or normalized.startswith(_SENSITIVE_KEY_PREFIXES)
+        or normalized.endswith(_SENSITIVE_KEY_SUFFIXES)
+    )
 
 
 def sanitize_value(value: Any) -> Any:

@@ -163,7 +163,7 @@ async function refreshLog(): Promise<void> {
       <span
         v-else-if="items.length"
         class="end-copy"
-      >已到最早记录</span>
+      >已加载全部记录</span>
       <span
         v-if="!autoScroll"
         class="paused-copy"

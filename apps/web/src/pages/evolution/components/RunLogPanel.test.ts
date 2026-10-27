@@ -122,6 +122,8 @@ describe("RunLogPanel", () => {
     await wrapper.get("[data-testid='load-more-events']").trigger("click");
     await flushPromises();
     expect(wrapper.findAll("[data-event-seq]")).toHaveLength(2);
+    expect(wrapper.text()).toContain("已加载全部记录");
+    expect(wrapper.text()).not.toContain("已到最早记录");
 
     const errorFilter = wrapper
       .findAll(".filters button")

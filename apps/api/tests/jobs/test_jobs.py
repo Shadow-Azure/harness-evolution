@@ -2,7 +2,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
 import httpx
 import pytest
@@ -15,6 +15,7 @@ from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.main import create_app
 from app.service.events import EventBus
+from app.service.evolution.engine.contracts import EvolutionBlockedStage, RunBlocked
 from app.service.identity.tokens import TokenService
 from app.service.jobs import JobRunner
 
@@ -270,6 +271,84 @@ async def test_evolution_failure_is_written_to_durable_run_history(
     assert recorder.calls == [
         ("run-failed", "step", "任务执行失败", "RuntimeError"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("blocked_stage", "event_stage"),
+    [("patch", "candidate"), ("push", "push"), ("eval", "eval")],
+)
+async def test_evolution_blocked_is_not_written_as_run_failure(
+    job_environment: JobEnvironment,
+    blocked_stage: str,
+    event_stage: str,
+) -> None:
+    """Retryable external failures cross the job boundary as run_blocked."""
+    _, repository, bus, _ = job_environment
+
+    class RecordingRunEvents:
+        """Capture blocked and failed boundary calls separately."""
+
+        blocked: ClassVar[list[tuple[str, str, str, int]]] = []
+        failed: ClassVar[list[str]] = []
+
+        async def record_interrupted(
+            self,
+            *,
+            run_id: str,
+            stage: str,
+            message: str,
+            job_id: str,
+        ) -> int:
+            """Keep the recorder protocol complete without using this path."""
+            del run_id, stage, message, job_id
+            return 1
+
+        async def record_blocked(
+            self,
+            run_id: str,
+            *,
+            stage: str,
+            blocked_stage: str,
+            message: str,
+            job_id: str,
+            next_retry_at: object,
+            retry_attempts: int,
+            error: BaseException,
+        ) -> int:
+            """Record the retryable stage boundary."""
+            del message, job_id, next_retry_at, error
+            self.blocked.append((run_id, stage, blocked_stage, retry_attempts))
+            return 11
+
+        async def record_failed(self, *_args: object, **_kwargs: object) -> int:
+            """Fail the test if a blocked error is reclassified."""
+            self.failed.append("called")
+            return 12
+
+    recorder = RecordingRunEvents()
+    runner = JobRunner(repository, bus, run_events=recorder)
+
+    async def block(_job: JobRunRecord) -> None:
+        raise RunBlocked(
+            f"{blocked_stage} timed out",
+            stage=cast(EvolutionBlockedStage, blocked_stage),
+            retry_attempts=1,
+        )
+
+    runner.register_handler("evolution_advance", block)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="evolution_advance",
+        payload={},
+        ref_id="run-blocked",
+        created_by=None,
+    )
+    terminal = await runner.wait(submitted.id)
+
+    assert terminal.status == "failed"
+    assert terminal.error == f"{blocked_stage} timed out"
+    assert recorder.blocked == [("run-blocked", event_stage, blocked_stage, 1)]
+    assert recorder.failed == []
 
 
 async def test_progress_is_persisted_and_published_to_the_run_topic(

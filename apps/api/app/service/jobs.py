@@ -11,6 +11,7 @@ from app.db.crud.jobs import JobRepository
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.events import EventBus, RunEventRecorder
+from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.ids import new_id
 from app.utils.redaction import sanitize_job_error, sanitize_job_payload
 
@@ -33,6 +34,11 @@ _KIND_TO_STAGE = {
     "evolution_apply": "apply",
     "evolution_finalize": "final",
     "evolution_retry": "step",
+}
+_BLOCKED_STAGE_TO_EVENT_STAGE = {
+    "patch": "candidate",
+    "push": "push",
+    "eval": "eval",
 }
 
 
@@ -231,11 +237,45 @@ class JobRunner:
                         extra={"job_id": job.id, "kind": job.kind},
                     )
                 raise
+            except RunBlocked as exc:
+                error = sanitize_job_error(str(exc))
+                await self.repository.fail(job.id, error)
+                record_blocked = getattr(self._run_events, "record_blocked", None)
+                event_stage = _BLOCKED_STAGE_TO_EVENT_STAGE[exc.stage]
+                if callable(record_blocked) and job.ref_id:
+                    try:
+                        await record_blocked(
+                            job.ref_id,
+                            stage=event_stage,
+                            blocked_stage=exc.stage,
+                            message=str(exc),
+                            job_id=job.id,
+                            next_retry_at=exc.next_retry_at,
+                            retry_attempts=exc.retry_attempts,
+                            error=exc,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "failed to persist blocked run event",
+                            extra={
+                                "job_id": job.id,
+                                "kind": job.kind,
+                                "run_id": job.ref_id,
+                            },
+                        )
+                logger.warning(
+                    "job execution blocked",
+                    extra={
+                        "job_id": job.id,
+                        "kind": job.kind,
+                        "stage": exc.stage,
+                    },
+                )
             except Exception as exc:
                 error = sanitize_job_error(str(exc))
                 await self.repository.fail(job.id, error)
                 record_failed = getattr(self._run_events, "record_failed", None)
-                stage = _KIND_TO_STAGE.get(job.kind)
+                stage = _failure_event_stage(job, exc)
                 if callable(record_failed) and job.ref_id and stage is not None:
                     try:
                         await record_failed(
@@ -324,3 +364,22 @@ class JobRunner:
             self._tasks.pop(job_id, None)
 
         task.add_done_callback(forget_task)
+
+
+def _failure_event_stage(job: JobRunRecord, error: BaseException) -> str | None:
+    """Prefer an exception's concrete stage over the coarse job-kind fallback."""
+    declared = getattr(error, "stage", None)
+    if isinstance(declared, str) and declared in _BLOCKED_STAGE_TO_EVENT_STAGE:
+        return _BLOCKED_STAGE_TO_EVENT_STAGE[declared]
+    if isinstance(declared, str) and declared in {
+        "prepare",
+        "cluster",
+        "step",
+        "candidate",
+        "push",
+        "eval",
+        "apply",
+        "final",
+    }:
+        return declared
+    return _KIND_TO_STAGE.get(job.kind)

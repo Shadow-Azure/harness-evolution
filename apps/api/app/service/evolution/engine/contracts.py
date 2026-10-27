@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from app.db.models.evolution import (
     ClusterWrite,
@@ -19,6 +20,27 @@ from app.service.evolution.events import EvolutionRunEventService
 
 class ConfigError(RuntimeError):
     """Raised when an engine selection or stage capability is invalid."""
+
+
+EvolutionBlockedStage = Literal["patch", "push", "eval"]
+
+
+class RunBlocked(RuntimeError):
+    """A retryable evolution failure that must leave the run blocked."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: EvolutionBlockedStage,
+        next_retry_at: datetime | None = None,
+        retry_attempts: int = 0,
+    ) -> None:
+        """Carry the safe reason and retry facts across the job boundary."""
+        super().__init__(message)
+        self.stage = stage
+        self.next_retry_at = next_retry_at
+        self.retry_attempts = retry_attempts
 
 
 class ProbeReader(Protocol):
