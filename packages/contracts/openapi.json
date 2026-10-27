@@ -3224,15 +3224,29 @@
       },
       "StepFinalPayload": {
         "additionalProperties": false,
-        "description": "Terminal evaluation verdict with metrics and accepted changes.",
+        "description": "Terminal evaluation verdict with metrics and accepted changes.\n\nThe four verdict fields stay null until `evolution_finals` has a row, so an\nactive final step cannot be mistaken for a failing verdict.",
         "properties": {
           "bestScore": {
-            "title": "Bestscore",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestscore"
           },
           "bestVersion": {
-            "title": "Bestversion",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestversion"
           },
           "changes": {
             "items": {
@@ -3242,8 +3256,15 @@
             "type": "array"
           },
           "initScore": {
-            "title": "Initscore",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initscore"
           },
           "metrics": {
             "items": {
@@ -3254,8 +3275,15 @@
             "type": "array"
           },
           "verdict": {
-            "title": "Verdict",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
           }
         },
         "required": [

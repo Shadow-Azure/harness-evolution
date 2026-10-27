@@ -331,6 +331,8 @@ erDiagram
 - 示例：`confidence=0.82, impact=9, reportCount=1 → severity=7.4`；`reportCount=3 → 8.9`（封顶 10）。
 - `attribution.items[]` 仍按 probe 展开，`confidence` 取所属簇的值（同一簇内相同）；归因结果不包含 `verdict`。
 - 端点未到达时返回 `404 STEP_NOT_READY`；`input` 在 `preparing` 时返回准备态，不返回 404。
+- `final` 在 `active` 且终评尚未写入（`evolution_finals` 无行）时 `verdict/bestVersion/bestScore/initScore` 为 `null`、`metrics` 为 `[]`，`changes` 仍按已接纳轮次给出；消费方按 `status` 渲染，不把 `null` 解读为终评失败。
+- 第 0 步 `hits` 按该 run 已落簇的 probe（`probe_cluster_probes`）计数、不按条件重查；`preparing` 时为零值。
 - 六个端点共享同一 run 的权限和 readiness；服务端只复用同一个 `build_step_payload`，不复制业务逻辑。
 
 共享 `ProbeRow`（`steps/input` 的 `rows[]`、`steps/clusters` 与 `steps/iteration` 的 `probes[]`、向导 `probes/query` 的 `items[]` 同构）：

@@ -2056,22 +2056,25 @@ export interface components {
         /**
          * StepFinalPayload
          * @description Terminal evaluation verdict with metrics and accepted changes.
+         *
+         *     The four verdict fields stay null until `evolution_finals` has a row, so an
+         *     active final step cannot be mistaken for a failing verdict.
          */
         StepFinalPayload: {
             /** Bestscore */
-            bestScore: number;
+            bestScore: number | null;
             /** Bestversion */
-            bestVersion: string;
+            bestVersion: string | null;
             /** Changes */
             changes: components["schemas"]["StepFinalChange"][];
             /** Initscore */
-            initScore: number;
+            initScore: number | null;
             /** Metrics */
             metrics: {
                 [key: string]: unknown;
             }[];
             /** Verdict */
-            verdict: boolean;
+            verdict: boolean | null;
         };
         /**
          * StepInputPayload

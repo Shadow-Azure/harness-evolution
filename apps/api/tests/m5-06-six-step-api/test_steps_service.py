@@ -204,6 +204,24 @@ async def test_cluster_only_run_serves_null_scores_and_locks_later_steps(
         _expect_app_error(raised, status_code=404, code="STEP_NOT_READY", key=key)
 
 
+async def test_cluster_only_running_run_locks_later_steps_before_it_terminates(
+    stage_service: tuple[Database, EvolutionStageService],
+) -> None:
+    """A running cluster-only run already 404s the four later steps (05 §4.12)."""
+    database, service = stage_service
+    await _seed_clustered(database, progress_unit=2, status="running", mode="cluster_only")
+
+    clusters = await service.step(RUN_ID, "clusters")
+
+    assert isinstance(clusters, EvolutionStepClusters)
+    assert clusters.status == "done"
+
+    for key in ("attribution", "severity", "iteration", "final"):
+        with pytest.raises(AppError) as raised:
+            await service.step(RUN_ID, key)
+        _expect_app_error(raised, status_code=404, code="STEP_NOT_READY", key=key)
+
+
 async def test_blocked_run_keeps_cursor_steps_readable(
     stage_service: tuple[Database, EvolutionStageService],
 ) -> None:
@@ -326,6 +344,32 @@ async def test_final_changes_only_include_accepted_rounds(
     assert isinstance(step, EvolutionStepFinal)
     assert step.payload.verdict is False
     assert step.payload.changes == []
+
+
+async def test_active_final_without_a_terminal_row_returns_null_verdict(
+    stage_service: tuple[Database, EvolutionStageService],
+) -> None:
+    """A running run at unit 4+M serves the final step without fake zero values."""
+    database, service = stage_service
+    data = load_fixture("final-active")
+    run_id = data["run"]["id"]
+    await seed_fixture(database, data)
+
+    step = await service.step(run_id, "final")
+
+    assert isinstance(step, EvolutionStepFinal)
+    assert step.status == "active"
+    assert step.clickable is True
+    assert step.detail is None
+    assert step.payload.verdict is None
+    assert step.payload.best_version is None
+    assert step.payload.best_score is None
+    assert step.payload.init_score is None
+    assert step.payload.metrics == []
+    assert [change.commit for change in step.payload.changes] == [
+        "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34",
+    ]
+    assert step.model_dump(mode="json", by_alias=True) == load_snapshot("final-active")
 
 
 async def test_step_reads_are_repeatable_without_writes(

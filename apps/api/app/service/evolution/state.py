@@ -22,6 +22,7 @@ STEP_TITLES: tuple[str, ...] = (
 _WORKING_STATUSES = frozenset({"preparing", "running", "blocked"})
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted"})
 _VALID_RUN_STATUSES = _WORKING_STATUSES | _TERMINAL_STATUSES
+_CLUSTER_ONLY_HIDDEN = frozenset({"attribution", "severity", "iteration", "final"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,9 +172,24 @@ def ensure_step_readable(
     cluster_count: int,
     run_status: str,
     key: str,
+    mode: str = "full",
 ) -> None:
-    """Raise unless the requested step is done or active."""
+    """Raise unless the requested step is readable for this run.
+
+    Cluster-only runs never run attribution, ranking, iteration, or a terminal
+    evaluation, so 05 §4.12 fixes those four steps at 404 regardless of the
+    cursor or the transient run status. The cursor state machine stays mode-free.
+
+    Args:
+        progress_unit: Persisted unit cursor behind the six step states.
+        cluster_count: Number of clusters behind the run's cursor range.
+        run_status: Persisted run status feeding the active-step rule.
+        key: Requested step key inside the closed six-key vocabulary.
+        mode: Persisted run mode; `cluster_only` hides the four later steps.
+    """
     if key not in STEP_KEYS:
+        raise StepNotReady(key, progress_unit)
+    if mode == "cluster_only" and key in _CLUSTER_ONLY_HIDDEN:
         raise StepNotReady(key, progress_unit)
     state = step_states(progress_unit, cluster_count, run_status)[STEP_KEYS.index(key)]
     if state.status == "pending":

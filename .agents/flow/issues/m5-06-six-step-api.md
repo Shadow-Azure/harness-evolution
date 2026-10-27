@@ -15,6 +15,7 @@ scope:
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

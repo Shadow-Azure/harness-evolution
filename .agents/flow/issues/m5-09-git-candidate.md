@@ -43,6 +43,7 @@ m5-09 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - 实现临时 workspace、clone tag/ref、run 分支、candidate commit/ref、push 重试、接纳 amend+ff、拒绝删 ref
 - 绝不 reset run 分支
+- 接通 `evolution_prepare` 真实编排（workspace/ref 校验、筛选、聚类、状态推进）与引擎注册表校验（`engine_key` → 422 `ENGINE_INVALID`）
 
 ## 实施步骤
 

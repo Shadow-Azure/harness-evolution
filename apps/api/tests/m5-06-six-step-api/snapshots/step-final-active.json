@@ -1,0 +1,24 @@
+{
+  "key": "final",
+  "index": 5,
+  "title": "测试集终评",
+  "status": "active",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "verdict": null,
+    "bestVersion": null,
+    "bestScore": null,
+    "initScore": null,
+    "metrics": [],
+    "changes": [
+      {
+        "commit": "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34",
+        "clusterId": "C1",
+        "title": "检索索引读取失败",
+        "type": "error",
+        "reportCount": 1
+      }
+    ]
+  }
+}

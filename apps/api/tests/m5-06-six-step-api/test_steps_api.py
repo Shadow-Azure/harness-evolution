@@ -205,6 +205,50 @@ async def test_cluster_only_run_locks_steps_after_clustering(
         assert response.json()["error"]["code"] == "STEP_NOT_READY"
 
 
+async def test_cluster_only_running_run_locks_steps_after_clustering(
+    steps_api: httpx.AsyncClient,
+) -> None:
+    """A still-running cluster-only run 404s the later four steps over HTTP."""
+    database = await _database(steps_api)
+    data = load_fixture("input")
+    data = {**data, "run": {**data["run"], "mode": "cluster_only"}}
+    await seed_fixture(database, data)
+
+    clusters = await steps_api.get(_step_url(data["run"]["id"], "clusters"))
+    assert clusters.status_code == 200
+    assert clusters.json()["status"] == "done"
+
+    for key in ("attribution", "severity", "iteration", "final"):
+        response = await steps_api.get(_step_url(data["run"]["id"], key))
+        assert response.status_code == 404
+        body = response.json()
+        assert body["error"]["code"] == "STEP_NOT_READY"
+        assert body["error"]["details"] == {"key": key}
+
+
+async def test_active_final_without_a_terminal_row_returns_null_verdict(
+    steps_api: httpx.AsyncClient,
+) -> None:
+    """A running run at unit 4+M exposes the final step with null verdict fields."""
+    database = await _database(steps_api)
+    data = load_fixture("final-active")
+    await seed_fixture(database, data)
+
+    response = await steps_api.get(_step_url(data["run"]["id"], "final"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "active"
+    assert body["detail"] is None
+    for field in ("verdict", "bestVersion", "bestScore", "initScore"):
+        assert body["payload"][field] is None
+    assert body["payload"]["metrics"] == []
+    assert [change["commit"] for change in body["payload"]["changes"]] == [
+        "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34",
+    ]
+    assert body == load_snapshot("final-active")
+
+
 async def test_blocked_run_reads_iteration_and_locks_final(
     steps_api: httpx.AsyncClient,
 ) -> None:

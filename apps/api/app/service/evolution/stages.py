@@ -203,12 +203,16 @@ class StepFinalChange(IdentityModel):
 
 
 class StepFinalPayload(IdentityModel):
-    """Terminal evaluation verdict with metrics and accepted changes."""
+    """Terminal evaluation verdict with metrics and accepted changes.
 
-    verdict: bool
-    best_version: str
-    best_score: float
-    init_score: float
+    The four verdict fields stay null until `evolution_finals` has a row, so an
+    active final step cannot be mistaken for a failing verdict.
+    """
+
+    verdict: bool | None
+    best_version: str | None
+    best_score: float | None
+    init_score: float | None
     metrics: list[dict[str, Any]]
     changes: list[StepFinalChange]
 
@@ -295,7 +299,8 @@ class EvolutionStageService:
 
         Raises:
             AppError: With `RUN_NOT_FOUND` for an unknown run and
-                `STEP_NOT_READY` when the step has not been reached.
+                `STEP_NOT_READY` when the step has not been reached or the run
+                mode hides it (cluster_only keeps only the first two steps).
         """
         run = await self._runs.get_run(run_id)
         if run is None:
@@ -306,7 +311,7 @@ class EvolutionStageService:
             )
         clusters = await self._runs.list_clusters(run_id)
         try:
-            ensure_step_readable(run.progress_unit, len(clusters), run.status, key)
+            ensure_step_readable(run.progress_unit, len(clusters), run.status, key, run.mode)
         except StepNotReady as exc:
             raise AppError(
                 status_code=404,
@@ -747,6 +752,9 @@ class EvolutionStageService:
     ) -> EvolutionStepFinal:
         """Assemble the terminal evaluation of step 5.
 
+        The verdict fields are null while `evolution_finals` has no row; the
+        accepted changes stay visible so the active step still shows progress.
+
         Args:
             run: Persisted run row behind the step shell.
             clusters: The run's clusters carrying titles and types for changes.
@@ -781,24 +789,13 @@ class EvolutionStageService:
             for round_ in rounds
             if round_.accepted and round_.commit_hash is not None
         ]
-        payload = (
-            StepFinalPayload(
-                verdict=final.verdict,
-                best_version=final.best_version,
-                best_score=final.best_score,
-                init_score=final.init_score,
-                metrics=final.metrics,
-                changes=changes,
-            )
-            if final is not None
-            else StepFinalPayload(
-                verdict=False,
-                best_version="",
-                best_score=0.0,
-                init_score=0.0,
-                metrics=[],
-                changes=changes,
-            )
+        payload = StepFinalPayload(
+            verdict=final.verdict if final is not None else None,
+            best_version=final.best_version if final is not None else None,
+            best_score=final.best_score if final is not None else None,
+            init_score=final.init_score if final is not None else None,
+            metrics=final.metrics if final is not None else [],
+            changes=changes,
         )
         return EvolutionStepFinal(
             **self._shell(run, len(clusters), "final"),
