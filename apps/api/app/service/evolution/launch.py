@@ -13,7 +13,7 @@ from app.service.evolution.probe_query import (
     RunAccepted,
     normalized_query,
 )
-from app.service.jobs import JobRunner
+from app.service.jobs import JobRunner, sanitize_job_payload
 
 
 class LaunchTargetRecord(Protocol):
@@ -108,7 +108,9 @@ class EvolutionLaunchService:
             )
         query = normalized_query(body, default_version=config.default_ref)
         await self._require_hits(query)
-        run = await self._runs.create_run(self._run_values(body, query, config))
+        run = await self._runs.create_run(
+            self._run_values(body, query, config, created_by=created_by),
+        )
         job = await self._jobs.submit(
             kind="evolution_prepare",
             payload={"runId": run.id, "query": _query_payload(body, query.target_version)},
@@ -141,6 +143,8 @@ class EvolutionLaunchService:
         body: ProbeQueryRequest,
         query: ProbeHitQuery,
         config: LaunchTargetRecord,
+        *,
+        created_by: str | None,
     ) -> Mapping[str, Any]:
         """Build the immutable run snapshot inserted before enqueueing.
 
@@ -148,6 +152,7 @@ class EvolutionLaunchService:
             body: Original wizard condition including engine selection.
             query: Normalized condition with the resolved version.
             config: Enabled target configuration backing the launch.
+            created_by: Authenticated principal that started the run.
 
         Returns:
             Column values for one `preparing` run row.
@@ -156,7 +161,7 @@ class EvolutionLaunchService:
             "title": f"{query.target_name} {query.target_version} 自进化",
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
-            "eval_config": body.eval or {},
+            "eval_config": _snapshot_eval(body.eval),
             "target_config_id": config.id,
             "target_type": query.target_type,
             "target_name": query.target_name,
@@ -168,7 +173,23 @@ class EvolutionLaunchService:
             "window_to": query.window_to,
             "models": list(query.models),
             "status": "preparing",
+            "created_by": created_by,
         }
+
+
+def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Redact credential fields from eval config before the run snapshot is durable.
+
+    Args:
+        eval_config: Credential-bearing eval selection from the wizard body.
+
+    Returns:
+        The snapshot dictionary with the same redaction applied to job payloads.
+    """
+    sanitized = sanitize_job_payload(dict(eval_config or {}))
+    if not isinstance(sanitized, dict):
+        return {}
+    return {str(key): value for key, value in sanitized.items()}
 
 
 def _query_payload(body: ProbeQueryRequest, resolved_version: str) -> dict[str, Any]:

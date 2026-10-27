@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-10-27-launch-wizard-admission.md
-2026-10-27-launch-wizard-admission.md: 4e7695385c49bacc444ffc28ec1da1c174e97e27
-2026-10-27-launch-wizard-admission.en.md: 30cb43a1320d535ccdbc63daa441b4fb4b9ede7a
+2026-10-27-launch-wizard-admission.md: 40ef98fceddd61a4819a860b6bbb16242f18ffb9
+2026-10-27-launch-wizard-admission.en.md: aca19f55cda71585dfb79c39e593c54b01f61355

@@ -1,5 +1,6 @@
 """Launch wizard API contract: probe preview, run creation, cluster previews."""
 
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -424,6 +425,9 @@ async def test_start_run_accepts_and_snapshots_query(
     launch_api: httpx.AsyncClient,
 ) -> None:
     """A valid launch returns 202 with identifiers and traceable snapshots."""
+    me = await launch_api.get("/api/auth/me")
+    assert me.status_code == 200
+    creator_id = me.json()["id"]
     response = await launch_api.post(
         "/api/evolution/runs",
         json=_query_body(mode="full"),
@@ -455,6 +459,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert str(row["window_from"]) == "2026-08-01"
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []
+    assert row["created_by"] == creator_id
 
     run_card = await launch_api.get("/api/evolution/runs")
     assert [card["runId"] for card in run_card.json()["running"]] == [body["runId"]]
@@ -462,6 +467,52 @@ async def test_start_run_accepts_and_snapshots_query(
     assert card["mode"] == "full"
     assert card["status"] == "preparing"
     assert card["window"] == {"from": "2026-08-01", "to": "2026-09-30"}
+    assert card["createdBy"]
+
+
+async def test_start_run_redacts_eval_secrets_before_snapshot(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Eval credential fields are redacted before the run snapshot becomes durable."""
+    response = await launch_api.post(
+        "/api/evolution/runs",
+        json=_query_body(
+            mode="full",
+            eval={
+                "apiKey": "sk-live-abc123",
+                "provider": "x",
+                "nested": {
+                    "token": "nested-token-123",
+                    "options": {"api_key": "sk-nested-456"},
+                },
+            },
+        ),
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    async with _app_of(launch_api).state.database.session() as session:
+        row = (
+            (
+                await session.execute(
+                    select(evolution_runs).where(evolution_runs.c.id == body["runId"]),
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["eval_config"] == {
+        "apiKey": "<redacted>",
+        "provider": "x",
+        "nested": {
+            "token": "<redacted>",
+            "options": {"api_key": "<redacted>"},
+        },
+    }
+    serialized = json.dumps(row["eval_config"])
+    assert "sk-live-abc123" not in serialized
+    assert "nested-token-123" not in serialized
+    assert "sk-nested-456" not in serialized
 
 
 async def test_cluster_preview_creates_cluster_only_run(
