@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m5-06-six-step-api.md
-m5-06-six-step-api.md: c8a818971692bfb275f4254e637c823db27b264c
-m5-06-six-step-api.en.md: d2134fe0e3adca9bc3ea8ce273ea0fe196d184e9
+m5-06-six-step-api.md: fcc867845d92ad199e6ac115115f7f3ae48a0ffb
+m5-06-six-step-api.en.md: b3363379c473282f0bea34aa592386d2f727b54b
