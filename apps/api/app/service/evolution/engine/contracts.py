@@ -14,6 +14,7 @@ from app.db.models.evolution import (
     ProbeClusterRecord,
 )
 from app.db.models.jobs import JobRunRecord
+from app.service.evolution.events import EvolutionRunEventService
 
 
 class ConfigError(RuntimeError):
@@ -140,6 +141,7 @@ class EngineDeps:
         default_factory=lambda: MappingProxyType({}),
     )
     gateway_factory: GatewayFactory = default_gateway_factory
+    events: EvolutionRunEventService | None = None
 
     def __post_init__(self) -> None:
         """Freeze the stage-handler mapping so later caller mutation cannot drift."""

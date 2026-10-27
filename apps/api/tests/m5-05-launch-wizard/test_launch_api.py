@@ -363,6 +363,27 @@ async def test_launch_endpoints_require_authentication(
     assert cluster.status_code == 401
 
 
+async def test_launch_records_creation_and_prepare_start_events(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Run admission and its queued prepare job leave durable replay history."""
+    accepted = await launch_api.post("/api/evolution/runs", json=_query_body())
+    assert accepted.status_code == 202
+    app = _app_of(launch_api)
+    await app.state.jobs.wait(accepted.json()["jobId"])
+
+    events = await launch_api.get(
+        f"/api/evolution/runs/{accepted.json()['runId']}/events",
+    )
+
+    assert events.status_code == 200
+    assert [item["eventType"] for item in events.json()["items"]] == [
+        "run_created",
+        "prepare_started",
+    ]
+    assert events.json()["hasMore"] is False
+
+
 async def test_probe_query_returns_hit_statistics_and_rows(
     launch_api: httpx.AsyncClient,
 ) -> None:

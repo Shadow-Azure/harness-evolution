@@ -12,7 +12,10 @@ from app.db.base import Database
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.db.models.evolution import evolution_runs
 from app.db.models.run_events import EVOLUTION_RUN_EVENT_METADATA, evolution_run_events
+
+RUN_CREATED_AT = datetime(2026, 10, 25, 9, 59, tzinfo=UTC)
 
 
 @pytest_asyncio.fixture
@@ -25,6 +28,47 @@ async def event_database(tmp_path: Path) -> AsyncIterator[Database]:
     await upgrade_database(database)
     async with database.engine.begin() as connection:
         await connection.run_sync(EVOLUTION_RUN_EVENT_METADATA.create_all)
+    async with database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="r1",
+                title="event fixture",
+                mode="full",
+                engine_key="full",
+                eval_config={},
+                target_config_id=None,
+                target_type="skill",
+                target_name="deep-research",
+                target_version="v2.0.0",
+                repo_url="https://example.invalid/skills.git",
+                sub_dir="skills/deep-research",
+                repo_path=None,
+                base_ref="v2.0.0",
+                base_commit=None,
+                branch_name="evo/r1",
+                workspace_path=None,
+                remote_name="origin",
+                push_status="pending",
+                pushed_at=None,
+                push_error=None,
+                window_from=None,
+                window_to=None,
+                models=[],
+                status="running",
+                blocked_stage=None,
+                retry_attempts=0,
+                next_retry_at=None,
+                eval_status="pending",
+                error_stage=None,
+                error_message=None,
+                error_at=None,
+                progress_unit=0,
+                stats={},
+                created_by=None,
+                created_at=RUN_CREATED_AT,
+                finished_at=None,
+            ),
+        )
     try:
         yield database
     finally:

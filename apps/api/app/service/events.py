@@ -62,7 +62,7 @@ class RunEventRecorder(Protocol):
         stage: str,
         message: str,
         job_id: str,
-    ) -> int | None:
+    ) -> int:
         """Persist one interruption event and return its run sequence, if supported."""
 
 

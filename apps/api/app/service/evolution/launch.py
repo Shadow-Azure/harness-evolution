@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitQuery, ProbeQueryRepository
 from app.errors import AppError, ErrorCode
+from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
     RunAccepted,
@@ -65,12 +66,14 @@ class EvolutionLaunchService:
         probe_repository: ProbeQueryRepository,
         runs: EvolutionRepository,
         jobs: JobRunner,
+        events: EvolutionRunEventService | None = None,
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
         self._probe_repository = probe_repository
         self._runs = runs
         self._jobs = jobs
+        self._events = events
 
     async def request_run(
         self,
@@ -111,6 +114,20 @@ class EvolutionLaunchService:
         run = await self._runs.create_run(
             self._run_values(body, query, config, created_by=created_by),
         )
+        if self._events is not None:
+            await self._events.record(
+                run.id,
+                "run_created",
+                level="info",
+                stage="prepare",
+                message="运行已创建",
+                payload={
+                    "mode": run.mode,
+                    "targetType": run.target_type,
+                    "targetName": run.target_name,
+                    "targetVersion": run.target_version,
+                },
+            )
         job = await self._jobs.submit(
             kind="evolution_prepare",
             payload={"runId": run.id, "query": _query_payload(body, query.target_version)},

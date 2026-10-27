@@ -366,6 +366,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Run Events
+         * @description Return one stable, authenticated page of durable run events.
+         */
+        get: operations["read_run_events_api_evolution_runs__run_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/runs/{run_id}/steps/attribution": {
         parameters: {
             query?: never;
@@ -1134,6 +1154,73 @@ export interface components {
             message: string;
             /** Stage */
             stage: string;
+        };
+        /**
+         * EvolutionRunEvent
+         * @description One complete event object shared by REST and SSE.
+         */
+        EvolutionRunEvent: {
+            /** Clusterid */
+            clusterId: string | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            error: components["schemas"]["EvolutionRunEventError"] | null;
+            /**
+             * Eventtype
+             * @enum {string}
+             */
+            eventType: "run_created" | "prepare_started" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
+            /** Jobid */
+            jobId: string | null;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "info" | "warn" | "error";
+            /** Message */
+            message: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            } | null;
+            /** Roundid */
+            roundId: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "prepare" | "cluster" | "step" | "candidate" | "push" | "eval" | "apply" | "final";
+            /** Stepindex */
+            stepIndex: number | null;
+        };
+        /**
+         * EvolutionRunEventError
+         * @description Sanitized error detail attached to one persisted run event.
+         */
+        EvolutionRunEventError: {
+            /** Detail */
+            detail: string | null;
+            /** Message */
+            message: string | null;
+            /** Type */
+            type: string | null;
+        };
+        /**
+         * EvolutionRunEventPage
+         * @description One stable run-event page for REST replay and UI pagination.
+         */
+        EvolutionRunEventPage: {
+            /** Hasmore */
+            hasMore: boolean;
+            /** Items */
+            items: components["schemas"]["EvolutionRunEvent"][];
+            /** Nextseq */
+            nextSeq: number;
         };
         /**
          * EvolutionRunFinal
@@ -3376,6 +3463,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvolutionRunDetail"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_run_events_api_evolution_runs__run_id__events_get: {
+        parameters: {
+            query?: {
+                afterSeq?: number;
+                limit?: number;
+                level?: ("info" | "warn" | "error") | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionRunEventPage"];
                 };
             };
             /** @description Authentication is required */

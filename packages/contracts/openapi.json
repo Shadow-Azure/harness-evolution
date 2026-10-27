@@ -973,6 +973,233 @@
         "title": "EvolutionRunError",
         "type": "object"
       },
+      "EvolutionRunEvent": {
+        "additionalProperties": false,
+        "description": "One complete event object shared by REST and SSE.",
+        "properties": {
+          "clusterId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clusterid"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunEventError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eventType": {
+            "enum": [
+              "run_created",
+              "prepare_started",
+              "workspace_prepared",
+              "clusters_created",
+              "step_advanced",
+              "run_blocked",
+              "run_resumed",
+              "final_completed",
+              "run_failed",
+              "run_interrupted",
+              "candidate_committed",
+              "candidate_pushed",
+              "eval_submitted",
+              "eval_polled",
+              "eval_completed",
+              "eval_failed",
+              "eval_timeout",
+              "cluster_accepted",
+              "cluster_rejected",
+              "push_started",
+              "push_retry_scheduled",
+              "push_succeeded",
+              "push_failed"
+            ],
+            "title": "Eventtype",
+            "type": "string"
+          },
+          "jobId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobid"
+          },
+          "level": {
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "roundId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roundid"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "prepare",
+              "cluster",
+              "step",
+              "candidate",
+              "push",
+              "eval",
+              "apply",
+              "final"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "stepIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stepindex"
+          }
+        },
+        "required": [
+          "seq",
+          "eventType",
+          "level",
+          "stage",
+          "stepIndex",
+          "clusterId",
+          "roundId",
+          "jobId",
+          "message",
+          "createdAt",
+          "payload",
+          "error"
+        ],
+        "title": "EvolutionRunEvent",
+        "type": "object"
+      },
+      "EvolutionRunEventError": {
+        "additionalProperties": false,
+        "description": "Sanitized error detail attached to one persisted run event.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "type",
+          "message",
+          "detail"
+        ],
+        "title": "EvolutionRunEventError",
+        "type": "object"
+      },
+      "EvolutionRunEventPage": {
+        "additionalProperties": false,
+        "description": "One stable run-event page for REST replay and UI pagination.",
+        "properties": {
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvolutionRunEvent"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "nextSeq": {
+            "title": "Nextseq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "nextSeq",
+          "hasMore"
+        ],
+        "title": "EvolutionRunEventPage",
+        "type": "object"
+      },
       "EvolutionRunFinal": {
         "additionalProperties": false,
         "description": "Terminal evaluation summary shown in the history list.",
@@ -5675,6 +5902,128 @@
           }
         ],
         "summary": "Read Run",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/events": {
+      "get": {
+        "description": "Return one stable, authenticated page of durable run events.",
+        "operationId": "read_run_events_api_evolution_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "afterSeq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Afterseq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "info",
+                    "warn",
+                    "error"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRunEventPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Run Events",
         "tags": [
           "evolution-runs"
         ]

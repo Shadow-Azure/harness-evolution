@@ -1,12 +1,17 @@
 """Authenticated evolution run list, launch, and six-step step endpoints."""
 
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Request, Security, status
+from fastapi import APIRouter, Query, Request, Security, status
 
 from app.api.evolution_launch import LAUNCH_RESPONSES
 from app.api.security import BEARER_AUTH
 from app.errors import AppError, ErrorCode, ErrorResponse
+from app.service.evolution.events import (
+    EvolutionRunEventLevel,
+    EvolutionRunEventPage,
+    EvolutionRunEventService,
+)
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.probe_query import ProbeQueryRequest, RunAccepted
 from app.service.evolution.runs import (
@@ -41,6 +46,11 @@ def launch_from(request: Request) -> EvolutionLaunchService:
 def stages_from(request: Request) -> EvolutionStageService:
     """Return the application-scoped six-step stage service."""
     return cast(EvolutionStageService, request.app.state.evolution_stages)
+
+
+def events_from(request: Request) -> EvolutionRunEventService:
+    """Return the application-scoped evolution event service."""
+    return cast(EvolutionRunEventService, request.app.state.evolution_events)
 
 
 def _principal_id(request: Request) -> str | None:
@@ -90,6 +100,31 @@ async def read_run(run_id: str, request: Request) -> EvolutionRunDetail:
             message="evolution run not found",
         )
     return detail
+
+
+@router.get(
+    "/{run_id}/events",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Password change is required"},
+        404: {"model": ErrorResponse, "description": "Run is unknown"},
+    },
+)
+async def read_run_events(
+    run_id: str,
+    request: Request,
+    after_seq: Annotated[int, Query(alias="afterSeq", ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    level: Annotated[EvolutionRunEventLevel | None, Query()] = None,
+) -> EvolutionRunEventPage:
+    """Return one stable, authenticated page of durable run events."""
+    return await events_from(request).list(
+        run_id,
+        after_seq=after_seq,
+        limit=limit,
+        level=level,
+    )
 
 
 @router.post(

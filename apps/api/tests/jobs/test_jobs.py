@@ -213,6 +213,65 @@ async def test_failure_is_bounded_and_redacts_secret_material(
     assert "payload-secret" not in completed.error
 
 
+async def test_evolution_failure_is_written_to_durable_run_history(
+    job_environment: JobEnvironment,
+) -> None:
+    """Uncaught evolution-stage failures cross the job boundary as run_failed."""
+    _, repository, bus, _ = job_environment
+
+    class RecordingRunEvents:
+        """Capture terminal failure writes requested by the runner."""
+
+        calls: ClassVar[list[tuple[str, str, str, str]]] = []
+
+        async def record_interrupted(
+            self,
+            *,
+            run_id: str,
+            stage: str,
+            message: str,
+            job_id: str,
+        ) -> int:
+            """Keep the recorder protocol complete without using this path."""
+            del run_id, stage, message
+            return int(job_id == "") or 1
+
+        async def record_failed(
+            self,
+            run_id: str,
+            *,
+            stage: str,
+            message: str,
+            job_id: str,
+            error: BaseException,
+            error_detail: str | None = None,
+        ) -> int:
+            """Record the stage failure and its actual exception."""
+            del error_detail
+            self.calls.append((run_id, stage, message, type(error).__name__))
+            return 9
+
+    recorder = RecordingRunEvents()
+    runner = JobRunner(repository, bus, run_events=recorder)
+
+    async def fail(_job: JobRunRecord) -> None:
+        raise RuntimeError("candidate generation failed")
+
+    runner.register_handler("evolution_advance", fail)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="evolution_advance",
+        payload={},
+        ref_id="run-failed",
+        created_by=None,
+    )
+    await runner.wait(submitted.id)
+
+    assert recorder.calls == [
+        ("run-failed", "step", "任务执行失败", "RuntimeError"),
+    ]
+
+
 async def test_progress_is_persisted_and_published_to_the_run_topic(
     job_environment: JobEnvironment,
 ) -> None:

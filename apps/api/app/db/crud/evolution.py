@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
+from datetime import datetime
 from typing import Any, cast
 
 from sqlalchemy import delete, func, insert, select, update
@@ -102,6 +103,92 @@ class EvolutionRepository:
                 .one_or_none()
             )
         return record_from_evolution_run(cast(Mapping[str, Any], row)) if row is not None else None
+
+    async def mark_failed(
+        self,
+        run_id: str,
+        *,
+        stage: str,
+        message: str,
+    ) -> None:
+        """Persist one terminal failure while retaining its user-safe reason."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="failed",
+                    error_stage=stage,
+                    error_message=message,
+                    error_at=now,
+                    finished_at=now,
+                ),
+            )
+
+    async def mark_interrupted(
+        self,
+        run_id: str,
+        *,
+        stage: str,
+        message: str,
+    ) -> None:
+        """Persist one interrupted terminal state."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="interrupted",
+                    error_stage=stage,
+                    error_message=message,
+                    error_at=now,
+                    finished_at=now,
+                ),
+            )
+
+    async def mark_blocked(
+        self,
+        run_id: str,
+        *,
+        stage: str,
+        message: str,
+        next_retry_at: datetime | None = None,
+    ) -> None:
+        """Persist a retryable blocked state and its next-attempt facts."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="blocked",
+                    blocked_stage=stage,
+                    eval_status="failed" if stage == "eval" else "pending",
+                    error_stage=stage,
+                    error_message=message,
+                    error_at=now,
+                    next_retry_at=next_retry_at,
+                    finished_at=None,
+                ),
+            )
+
+    async def mark_resumed(self, run_id: str) -> None:
+        """Clear a prior blocked state when retry execution begins."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="running",
+                    blocked_stage=None,
+                    error_stage=None,
+                    error_message=None,
+                    error_at=None,
+                    next_retry_at=None,
+                ),
+            )
 
     async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
         """Return every run with batched creator, cluster, round, and final facts."""

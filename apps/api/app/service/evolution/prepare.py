@@ -7,11 +7,16 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.db.models.jobs import JobRunRecord
+from app.service.evolution.events import EvolutionRunEventService
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_evolution_prepare(job: JobRunRecord) -> Mapping[str, Any]:
+async def handle_evolution_prepare(
+    job: JobRunRecord,
+    *,
+    events: EvolutionRunEventService | None = None,
+) -> Mapping[str, Any]:
     """Acknowledge a prepare job without advancing the run.
 
     The real prepare orchestration (workspace clone, ref validation, probe
@@ -29,6 +34,15 @@ async def handle_evolution_prepare(job: JobRunRecord) -> Mapping[str, Any]:
         "evolution prepare placeholder completed",
         extra={"job_id": job.id, "run_id": job.ref_id},
     )
+    if events is not None and job.ref_id is not None:
+        await events.record(
+            job.ref_id,
+            "prepare_started",
+            level="info",
+            stage="prepare",
+            job_id=job.id,
+            message="准备阶段已启动",
+        )
     return {
         "placeholder": True,
         "runId": job.ref_id,
