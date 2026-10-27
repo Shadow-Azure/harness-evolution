@@ -24,6 +24,7 @@ function isTerminal(round: StepRound): boolean {
   return (
     round.status === "accepted" ||
     round.status === "rejected" ||
+    round.status === "skipped" ||
     round.status === "failed"
   );
 }
@@ -57,6 +58,9 @@ function statusLabel(round: StepRound): string {
   if (round.push.status === "failed") {
     return "推送失败";
   }
+  if (round.push.status === "skipped") {
+    return "本地候选（未推送）";
+  }
   if (round.eval.status === "timeout") {
     return "评测超时";
   }
@@ -76,6 +80,8 @@ function statusLabel(round: StepRound): string {
       return `已接纳 ${deltaLabel(round)}`;
     case "rejected":
       return `未接纳 ${deltaLabel(round)}`;
+    case "skipped":
+      return "本地候选（未推送）";
     case "failed":
       return "失败";
     default:
@@ -114,6 +120,7 @@ function candidateLabel(round: StepRound): string {
   if (round.status === "patching") return "candidate 生成中";
   if (round.push.status === "succeeded") return "candidate 已 push · ref / commit";
   if (round.push.status === "failed") return "candidate push 失败 · ref / commit";
+  if (round.push.status === "skipped") return "candidate 已生成 · 未推送 · ref / commit";
   return "candidate ref / commit";
 }
 
@@ -124,6 +131,7 @@ function pushLabel(status: string): string {
       pushing: "推送中",
       succeeded: "推送成功",
       failed: "推送失败",
+      skipped: "已跳过（本地模式）",
     }[status] ?? status
   );
 }

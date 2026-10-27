@@ -288,6 +288,10 @@ async def test_candidate_accept_and_reject_preserve_run_branch_history(
     assert first.candidate_ref is not None
     assert first.candidate_commit is not None
     assert _remote_tag(repo_url, first.candidate_ref) == first.candidate_commit
+    published_run = await repository.get_run(run.id)
+    assert published_run is not None
+    assert published_run.push_status == "succeeded"
+    assert published_run.pushed_at is not None
 
     async with database.transaction() as session:
         await session.execute(
@@ -384,6 +388,68 @@ async def test_transient_candidate_push_failure_blocks_after_three_attempts(
     assert current is not None
     assert current.status == "blocked"
     assert current.blocked_stage == "push"
+    assert current.push_status == "failed"
+    assert current.push_error is not None
+
+
+async def test_disabled_push_persists_skipped_without_remote_or_evaluation(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """Local-only mode keeps the candidate local and never claims remote success."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "local-repos",
+        workspaces_root=tmp_path / "local-workspaces",
+        push_enabled=False,
+    )
+    local_prepare = EvolutionPrepareService(
+        repository,
+        prepare._probes,
+        manager,
+    )
+    await local_prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+
+    class Events:
+        def __init__(self) -> None:
+            self.types: list[str] = []
+
+        async def record(self, _run_id: str, event_type: str, **_kwargs: object) -> None:
+            self.types.append(event_type)
+
+    events = Events()
+    service = EvolutionCandidateService(
+        repository,
+        manager,
+        events=events,  # type: ignore[arg-type]
+    )
+
+    published = await service.publish(run, rounds[0], _trace(clusters[1]))
+
+    assert published.status == "skipped"
+    assert published.push_status == "skipped"
+    assert published.eval_status == "pending"
+    assert published.finished_at is not None
+    assert events.types[-1] == "candidate_committed"
+    assert "push_started" not in events.types
+    assert "push_succeeded" not in events.types
+    assert "push_failed" not in events.types
+    persisted_run = await repository.get_run(run.id)
+    assert persisted_run is not None
+    assert persisted_run.push_status == "skipped"
+    assert persisted_run.pushed_at is None
+    assert _remote_tag(repo_url, published.candidate_ref or "") is None
+    assert _remote_branch(repo_url, run.branch_name or "") is None
+
+    repeated = await service.publish(persisted_run, published, _trace(clusters[1]))
+    assert repeated.id == published.id
+    assert repeated.status == "skipped"
+    assert events.types.count("candidate_committed") == 1
 
 
 async def test_prepare_resumes_from_each_persisted_checkpoint(

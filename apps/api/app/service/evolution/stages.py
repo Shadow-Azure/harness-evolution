@@ -49,9 +49,10 @@ RoundStatus = Literal[
     "deciding",
     "accepted",
     "rejected",
+    "skipped",
     "failed",
 ]
-RoundPushStatus = Literal["pending", "pushing", "succeeded", "failed"]
+RoundPushStatus = Literal["pending", "pushing", "succeeded", "skipped", "failed"]
 RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeout"]
 _CLUSTER_TYPES: tuple[str, ...] = ("model", "prompt", "error")
 

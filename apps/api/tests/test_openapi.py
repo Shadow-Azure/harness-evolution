@@ -255,12 +255,14 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "deciding",
         "accepted",
         "rejected",
+        "skipped",
         "failed",
     ]
     assert components["StepRoundPush"]["properties"]["status"]["enum"] == [
         "pending",
         "pushing",
         "succeeded",
+        "skipped",
         "failed",
     ]
     assert components["StepRoundEval"]["properties"]["status"]["enum"] == [

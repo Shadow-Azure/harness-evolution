@@ -1,7 +1,11 @@
 import type { EvolutionRunStep } from "@harness/contracts";
 import { describe, expect, it } from "vitest";
 
-import { defaultRunStepKey, resolveRunStepKey } from "./runDetail";
+import {
+  defaultRunStepKey,
+  resolveRunStepKey,
+  workspacePushStatusLabel,
+} from "./runDetail";
 
 function steps(
   statuses: Array<"done" | "active" | "pending">,
@@ -65,5 +69,10 @@ describe("run detail step projection", () => {
     expect(defaultRunStepKey(completed)).toBe("final");
     expect(defaultRunStepKey(preparing)).toBe("input");
     expect(resolveRunStepKey("final", preparing)).toBe("input");
+  });
+
+  it("labels local-only push status without claiming remote success", () => {
+    expect(workspacePushStatusLabel("skipped")).toBe("已跳过（本地模式）");
+    expect(workspacePushStatusLabel("succeeded")).toBe("推送成功");
   });
 });

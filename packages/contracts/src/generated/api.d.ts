@@ -2369,7 +2369,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "failed";
+            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "skipped" | "failed";
             /** Title */
             title: string;
             /**
@@ -2418,7 +2418,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "pending" | "pushing" | "succeeded" | "failed";
+            status: "pending" | "pushing" | "succeeded" | "skipped" | "failed";
         };
         /**
          * StepSeverityPayload

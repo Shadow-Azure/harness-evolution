@@ -481,15 +481,15 @@ erDiagram
 | `run_id` | `VARCHAR(36)` FK | — |
 | `probe_cluster_id` | `VARCHAR(64)` FK | 该轮针对的簇 |
 | `seq` | `INTEGER` | 第几轮 |
-| `status` | `VARCHAR(16)` | `pending` 排队未开始 / `patching` 生成并应用 patch、commit candidate / `pushing` 推送 candidate ref / `evaluating` 等待评测 / `deciding` 根据评测结果接纳或拒绝 / `accepted` 已接纳 / `rejected` 已拒绝 / `failed` 不可恢复失败 |
+| `status` | `VARCHAR(16)` | `pending` 排队未开始 / `patching` 生成并应用 patch、commit candidate / `pushing` 推送 candidate ref / `evaluating` 等待评测 / `deciding` 根据评测结果接纳或拒绝 / `accepted` 已接纳 / `rejected` 已拒绝 / `skipped` 本地模式保留候选但跳过远端推送与评测 / `failed` 不可恢复失败 |
 | `started_at` / `finished_at` | DATETIME NULL | 进入 `patching` 时写开始时间；终态时写结束时间 |
 | `duration_ms` | `INTEGER` NULL | 耗时（毫秒） |
 | `error_message` | `TEXT` NULL | 本轮失败原因（脱敏）；`status=failed` 时非空 |
 | `patch` | JSON | `{file, lines[]}`（占位内容，真实落盘） |
-| `candidate_ref` | `VARCHAR(255)` | 本轮评测用的远端临时 tag/ref，如 `evo/.../candidate/r1`；与同名 run 分支分处 tag/head 命名空间以避免 Git ref 前缀冲突 |
+| `candidate_ref` | `VARCHAR(255)` | 本轮 candidate 的逻辑 ref，如 `evo/.../candidate/r1`；远端发布模式同时存在对应临时 tag，本地模式只保留该追踪名与本地 commit；与同名 run 分支分处 tag/head 命名空间以避免 Git ref 前缀冲突 |
 | `candidate_commit` | `CHAR(40)` NULL | candidate commit SHA（评测对象） |
 | `candidate_message` | `TEXT` NULL | candidate commit message |
-| `push_status` | `VARCHAR(16)` | `pending` / `pushing` / `succeeded` / `failed` |
+| `push_status` | `VARCHAR(16)` | `pending` / `pushing` / `succeeded` / `skipped` / `failed` |
 | `push_attempts` | `INTEGER` | 本轮 push 已尝试次数（含立即重试与退避） |
 | `pushed_at` / `push_error` | DATETIME NULL / TEXT NULL | 最近成功时间 / 脱敏失败原因 |
 | `eval_external_id` | `VARCHAR(128)` NULL | 评测平台返回的 evalId |

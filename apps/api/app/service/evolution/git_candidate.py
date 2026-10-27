@@ -196,7 +196,7 @@ class EvolutionCandidateService:
         job_id: str | None = None,
     ) -> EvolutionRoundRecord:
         """Create, commit, and push one candidate with bounded immediate retries."""
-        if round_.status in {"evaluating", "deciding", "accepted", "rejected"}:
+        if round_.status in {"evaluating", "deciding", "accepted", "rejected", "skipped"}:
             return round_
         prepared = _prepared_workspace(run)
         current = await self._runs.mark_round_patching(
@@ -245,6 +245,12 @@ class EvolutionCandidateService:
             payload={"files": [patch.file], "patchHash": f"sha256:{patch.sha256}"},
         )
 
+        if not self._workspaces.push_enabled:
+            return await self._runs.mark_round_and_run_push_skipped(
+                run.id,
+                current.id,
+            )
+
         attempt_counter = 0
 
         async def attempt_push() -> None:
@@ -286,6 +292,7 @@ class EvolutionCandidateService:
             )
         except GitOperationError as exc:
             await self._runs.mark_round_push_failed(
+                run.id,
                 current.id,
                 attempts=attempt_counter,
                 error=sanitize_message(str(exc), limit=2_000),
@@ -316,6 +323,7 @@ class EvolutionCandidateService:
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
+            run.id,
             current.id,
             pushed_at=self._now(),
             attempts=attempts,

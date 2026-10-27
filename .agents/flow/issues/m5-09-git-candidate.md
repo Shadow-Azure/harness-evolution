@@ -12,6 +12,7 @@ priority: P0
 status: in-progress
 scope:
   - apps/api/**
+  - apps/web/**
   - packages/contracts/**
   - plans/*.md
   - plans/fullstack-design/**

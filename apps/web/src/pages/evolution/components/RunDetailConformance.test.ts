@@ -316,6 +316,36 @@ describe("run detail conformance", () => {
     expect(wrapper.text()).not.toContain("尚未执行");
   });
 
+  it("renders local-only candidates as skipped instead of remote push success", () => {
+    const wrapper = mount(StepIterations, {
+      props: {
+        step: iterationStep([
+          round({
+            status: "skipped",
+            candidate: {
+              ref: "evo/run/candidate/r1",
+              commit: "abcdef1234567890",
+              message: "candidate",
+            },
+            push: { status: "skipped", attempts: 0, error: null },
+            eval: {
+              status: "pending",
+              current: null,
+              candidate: null,
+              nextPollAt: null,
+            },
+          }),
+        ]),
+      },
+    });
+
+    expect(wrapper.text()).toContain("本地候选（未推送）");
+    expect(wrapper.text()).toContain("已跳过（本地模式）");
+    expect(wrapper.text()).toContain("candidate 已生成 · 未推送");
+    expect(wrapper.text()).not.toContain("candidate 已 push");
+    expect(wrapper.text()).not.toContain("推送成功");
+  });
+
   it("renders an explicit empty state when no iteration round exists", () => {
     const wrapper = mount(StepIterations, {
       props: { step: iterationStep([]) },

@@ -112,6 +112,11 @@ class GitWorkspaceManager:
 
     supports_candidate_lifecycle = True
 
+    @property
+    def push_enabled(self) -> bool:
+        """Return whether composition permits remote Git mutations."""
+        return self._push_enabled
+
     _RUN_BRANCH = re.compile(r"^evo/\d{8}-.+$")
     _TRANSIENT_MARKERS = (
         "could not resolve host",

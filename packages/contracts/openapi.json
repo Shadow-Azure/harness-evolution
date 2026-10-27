@@ -4121,6 +4121,7 @@
               "deciding",
               "accepted",
               "rejected",
+              "skipped",
               "failed"
             ],
             "title": "Status",
@@ -4264,6 +4265,7 @@
               "pending",
               "pushing",
               "succeeded",
+              "skipped",
               "failed"
             ],
             "title": "Status",

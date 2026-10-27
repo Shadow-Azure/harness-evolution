@@ -29,3 +29,25 @@ export function resolveRunStepKey(
   const match = steps.find((step) => step.key === candidate);
   return match?.clickable ? match.key : defaultRunStepKey(steps);
 }
+
+/**
+ * Render one run-level push status without misrepresenting local-only runs.
+ * @param status Backend run push status.
+ * @returns Human-readable status label.
+ */
+export function workspacePushStatusLabel(status: string): string {
+  switch (status) {
+    case "pending":
+      return "待推送";
+    case "pushing":
+      return "推送中";
+    case "succeeded":
+      return "推送成功";
+    case "failed":
+      return "推送失败";
+    case "skipped":
+      return "已跳过（本地模式）";
+    default:
+      return status;
+  }
+}

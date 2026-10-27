@@ -170,6 +170,14 @@ class EvolutionRepository:
             "next_retry_at": next_retry_at,
             "finished_at": None,
         }
+        if stage == "push":
+            values.update(
+                {
+                    "push_status": "failed",
+                    "pushed_at": None,
+                    "push_error": message,
+                },
+            )
         if retry_attempts is not None:
             values["retry_attempts"] = retry_attempts
         async with self._database.transaction() as session:
@@ -797,46 +805,134 @@ class EvolutionRepository:
 
     async def mark_round_push_succeeded(
         self,
+        run_id: str,
         round_id: str,
         *,
         pushed_at: datetime,
         attempts: int,
     ) -> EvolutionRoundRecord:
-        """Persist one successful candidate publication."""
+        """Persist a successful candidate and aggregate run push atomically."""
         async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_rounds)
-                .where(
-                    evolution_rounds.c.id == round_id,
-                    evolution_rounds.c.status == "pushing",
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "pushing",
+                    )
+                    .values(
+                        push_status="succeeded",
+                        push_attempts=attempts,
+                        pushed_at=pushed_at,
+                        push_error=None,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round push cannot succeed",
                 )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
                 .values(
                     push_status="succeeded",
-                    push_attempts=attempts,
                     pushed_at=pushed_at,
                     push_error=None,
                 ),
             )
         return await self._required_round(round_id)
 
+    async def mark_round_and_run_push_skipped(
+        self,
+        run_id: str,
+        round_id: str,
+    ) -> EvolutionRoundRecord:
+        """Atomically persist a local-only candidate and run publication state."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status.in_(("patching", "pushing")),
+                        evolution_rounds.c.candidate_ref.is_not(None),
+                    )
+                    .values(
+                        status="skipped",
+                        push_status="skipped",
+                        push_attempts=0,
+                        pushed_at=None,
+                        push_error=None,
+                        eval_status="pending",
+                        finished_at=now_shanghai(),
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round cannot be marked as a skipped push",
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    push_status="skipped",
+                    pushed_at=None,
+                    push_error=None,
+                ),
+            )
+        return await self._required_round(round_id, expected_status="skipped")
+
     async def mark_round_push_failed(
         self,
+        run_id: str,
         round_id: str,
         *,
         attempts: int,
         error: str,
     ) -> EvolutionRoundRecord:
-        """Persist a blocked candidate publication while retaining its ref."""
+        """Persist round and aggregate run failure while retaining the candidate."""
         async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_rounds)
-                .where(
-                    evolution_rounds.c.id == round_id,
-                    evolution_rounds.c.status == "pushing",
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "pushing",
+                    )
+                    .values(
+                        push_status="failed",
+                        push_attempts=attempts,
+                        push_error=error,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round push cannot fail",
                 )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
                 .values(
                     push_status="failed",
-                    push_attempts=attempts,
+                    pushed_at=None,
                     push_error=error,
                 ),
             )
