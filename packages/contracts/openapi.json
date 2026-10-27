@@ -95,6 +95,34 @@
         "title": "AcquisitionStatusResponse",
         "type": "object"
       },
+      "AttributeStats": {
+        "additionalProperties": false,
+        "description": "Probe counts by attribution type shown in the wizard distribution bar.",
+        "properties": {
+          "error": {
+            "default": 0,
+            "title": "Error",
+            "type": "integer"
+          },
+          "model": {
+            "default": 0,
+            "title": "Model",
+            "type": "integer"
+          },
+          "nonIssue": {
+            "default": 0,
+            "title": "Nonissue",
+            "type": "integer"
+          },
+          "prompt": {
+            "default": 0,
+            "title": "Prompt",
+            "type": "integer"
+          }
+        },
+        "title": "AttributeStats",
+        "type": "object"
+      },
       "BadCase": {
         "additionalProperties": false,
         "description": "Complete public problem card used by list and detail routes.",
@@ -556,6 +584,8 @@
           "TARGET_EXISTS",
           "TARGET_NOT_FOUND",
           "TARGET_IN_USE",
+          "TARGET_NOT_CONFIGURED",
+          "NO_PROBES_MATCHED",
           "INTERNAL",
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
@@ -1490,6 +1520,50 @@
         "title": "NonIssueBadCaseAnalysis",
         "type": "object"
       },
+      "ProbeHitSummary": {
+        "additionalProperties": false,
+        "description": "Hit statistics shown by wizard step 2 before the probe table.",
+        "properties": {
+          "analyzed": {
+            "title": "Analyzed",
+            "type": "integer"
+          },
+          "badCases": {
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "byAttributeType": {
+            "$ref": "#/components/schemas/AttributeStats"
+          },
+          "probes": {
+            "title": "Probes",
+            "type": "integer"
+          },
+          "sessions": {
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "unanalyzed": {
+            "title": "Unanalyzed",
+            "type": "integer"
+          },
+          "usedProbes": {
+            "title": "Usedprobes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sessions",
+          "badCases",
+          "analyzed",
+          "unanalyzed",
+          "probes",
+          "usedProbes",
+          "byAttributeType"
+        ],
+        "title": "ProbeHitSummary",
+        "type": "object"
+      },
       "ProbeListResponse": {
         "additionalProperties": false,
         "description": "A Session's root-cause reports.",
@@ -1506,6 +1580,247 @@
           "items"
         ],
         "title": "ProbeListResponse",
+        "type": "object"
+      },
+      "ProbePreviewItem": {
+        "additionalProperties": false,
+        "description": "One analyzed probe row rendered by wizard step 2.",
+        "properties": {
+          "attributeType": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Attributetype",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "probeId": {
+            "title": "Probeid",
+            "type": "string"
+          },
+          "probeObject": {
+            "title": "Probeobject",
+            "type": "string"
+          },
+          "probeType": {
+            "title": "Probetype",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "sessionTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessiontitle"
+          },
+          "sourceBadCaseIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sourcebadcaseids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "probeId",
+          "sessionId",
+          "sessionTitle",
+          "model",
+          "probeType",
+          "probeObject",
+          "objectVersion",
+          "attributeType",
+          "description",
+          "sourceBadCaseIds"
+        ],
+        "title": "ProbePreviewItem",
+        "type": "object"
+      },
+      "ProbeQueryRequest": {
+        "additionalProperties": false,
+        "description": "Wizard filter condition shared by preview and launch endpoints.",
+        "properties": {
+          "engineKey": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enginekey"
+          },
+          "eval": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eval"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "mode": {
+            "default": "full",
+            "enum": [
+              "full",
+              "cluster_only"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 8,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "targetName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetversion"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName"
+        ],
+        "title": "ProbeQueryRequest",
+        "type": "object"
+      },
+      "ProbeQueryResult": {
+        "additionalProperties": false,
+        "description": "Complete preview payload for wizard step 2.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProbePreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProbeHitSummary"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "ProbeQueryResult",
         "type": "object"
       },
       "ProbeReport": {
@@ -1758,6 +2073,32 @@
           "expiresIn"
         ],
         "title": "RefreshResponse",
+        "type": "object"
+      },
+      "RunAccepted": {
+        "additionalProperties": false,
+        "description": "Asynchronous acceptance returned by both launch endpoints.",
+        "properties": {
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "status": {
+            "const": "preparing",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "jobId",
+          "status"
+        ],
+        "title": "RunAccepted",
         "type": "object"
       },
       "ServicePhase": {
@@ -3390,6 +3731,160 @@
         ]
       }
     },
+    "/api/evolution/cluster-previews": {
+      "post": {
+        "description": "Admit a cluster-only preview run without workspace or evaluation.",
+        "operationId": "create_cluster_preview_api_evolution_cluster_previews_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Cluster-only run accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target unconfigured or no probe hits"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Launch condition is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Cluster Preview",
+        "tags": [
+          "evolution-launch"
+        ]
+      }
+    },
+    "/api/evolution/probes/query": {
+      "post": {
+        "description": "Return hit statistics and the first probe page for wizard step 2.",
+        "operationId": "query_probe_hits_api_evolution_probes_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeQueryResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target unconfigured or no probe hits"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Launch condition is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Query Probe Hits",
+        "tags": [
+          "evolution-launch"
+        ]
+      }
+    },
     "/api/evolution/runs": {
       "get": {
         "description": "Return backend-ordered running and history groups.",
@@ -3432,6 +3927,81 @@
           }
         ],
         "summary": "List Runs",
+        "tags": [
+          "evolution-runs"
+        ]
+      },
+      "post": {
+        "description": "Admit one full evolution run after synchronous validation.",
+        "operationId": "create_run_api_evolution_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Full run accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target unconfigured or no probe hits"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Launch condition is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Run",
         "tags": [
           "evolution-runs"
         ]

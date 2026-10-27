@@ -12,6 +12,7 @@ from app.api.acquisition import router as acquisition_router
 from app.api.auth import router as auth_router
 from app.api.catalogs import router as catalogs_router
 from app.api.events import router as events_router
+from app.api.evolution_launch import preview_router, probe_router
 from app.api.evolution_runs import router as evolution_runs_router
 from app.api.evolution_targets import router as evolution_targets_router
 from app.api.health import router as health_router
@@ -25,6 +26,7 @@ from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
+from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
@@ -39,6 +41,8 @@ from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
+from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
@@ -107,7 +111,16 @@ def create_app(
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
-    evolution_runs = EvolutionRunService(EvolutionRepository(resolved_database))
+    evolution_repository = EvolutionRepository(resolved_database)
+    probe_query_repository = ProbeQueryRepository(resolved_database)
+    evolution_runs = EvolutionRunService(evolution_repository)
+    evolution_launch = EvolutionLaunchService(
+        target_repository,
+        probe_query_repository,
+        evolution_repository,
+        jobs,
+    )
+    probe_query = ProbeQueryService(probe_query_repository)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -179,6 +192,8 @@ def create_app(
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
     app.state.evolution_runs = evolution_runs
+    app.state.evolution_launch = evolution_launch
+    app.state.probe_query = probe_query
     app.state.catalogs = catalogs
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
@@ -204,6 +219,8 @@ def create_app(
     app.include_router(sessions_router)
     app.include_router(problems_router)
     app.include_router(evolution_runs_router)
+    app.include_router(probe_router)
+    app.include_router(preview_router)
     app.include_router(evolution_targets_router)
     app.include_router(catalogs_router)
     app.include_router(events_router)

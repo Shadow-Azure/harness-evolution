@@ -282,6 +282,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/cluster-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Cluster Preview
+         * @description Admit a cluster-only preview run without workspace or evaluation.
+         */
+        post: operations["create_cluster_preview_api_evolution_cluster_previews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/probes/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Probe Hits
+         * @description Return hit statistics and the first probe page for wizard step 2.
+         */
+        post: operations["query_probe_hits_api_evolution_probes_query_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/runs": {
         parameters: {
             query?: never;
@@ -295,7 +335,11 @@ export interface paths {
          */
         get: operations["list_runs_api_evolution_runs_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Run
+         * @description Admit one full evolution run after synchronous validation.
+         */
+        post: operations["create_run_api_evolution_runs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -591,6 +635,32 @@ export interface components {
             status: "idle" | "queued" | "running" | "completed" | "failed" | "interrupted";
         };
         /**
+         * AttributeStats
+         * @description Probe counts by attribution type shown in the wizard distribution bar.
+         */
+        AttributeStats: {
+            /**
+             * Error
+             * @default 0
+             */
+            error: number;
+            /**
+             * Model
+             * @default 0
+             */
+            model: number;
+            /**
+             * Nonissue
+             * @default 0
+             */
+            nonIssue: number;
+            /**
+             * Prompt
+             * @default 0
+             */
+            prompt: number;
+        };
+        /**
          * BadCase
          * @description Complete public problem card used by list and detail routes.
          */
@@ -778,7 +848,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "REPO_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_BUSY" | "REPO_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -1181,12 +1251,118 @@ export interface components {
             status: "analyzed_nonissue";
         };
         /**
+         * ProbeHitSummary
+         * @description Hit statistics shown by wizard step 2 before the probe table.
+         */
+        ProbeHitSummary: {
+            /** Analyzed */
+            analyzed: number;
+            /** Badcases */
+            badCases: number;
+            byAttributeType: components["schemas"]["AttributeStats"];
+            /** Probes */
+            probes: number;
+            /** Sessions */
+            sessions: number;
+            /** Unanalyzed */
+            unanalyzed: number;
+            /** Usedprobes */
+            usedProbes: number;
+        };
+        /**
          * ProbeListResponse
          * @description A Session's root-cause reports.
          */
         ProbeListResponse: {
             /** Items */
             items: components["schemas"]["ProbeReport"][];
+        };
+        /**
+         * ProbePreviewItem
+         * @description One analyzed probe row rendered by wizard step 2.
+         */
+        ProbePreviewItem: {
+            /**
+             * Attributetype
+             * @enum {string}
+             */
+            attributeType: "model" | "prompt" | "error";
+            /** Description */
+            description: string;
+            /** Model */
+            model: string | null;
+            /** Objectversion */
+            objectVersion: string | null;
+            /** Probeid */
+            probeId: string;
+            /** Probeobject */
+            probeObject: string;
+            /** Probetype */
+            probeType: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Sessiontitle */
+            sessionTitle: string | null;
+            /** Sourcebadcaseids */
+            sourceBadCaseIds: string[];
+        };
+        /**
+         * ProbeQueryRequest
+         * @description Wizard filter condition shared by preview and launch endpoints.
+         */
+        ProbeQueryRequest: {
+            /** Enginekey */
+            engineKey?: string | null;
+            /** Eval */
+            eval?: {
+                [key: string]: unknown;
+            } | null;
+            /** From */
+            from?: string | null;
+            /**
+             * Mode
+             * @default full
+             * @enum {string}
+             */
+            mode: "full" | "cluster_only";
+            /** Models */
+            models?: string[];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pagesize
+             * @default 8
+             */
+            pageSize: number;
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent";
+            /** Targetversion */
+            targetVersion?: string | null;
+            /** To */
+            to?: string | null;
+        };
+        /**
+         * ProbeQueryResult
+         * @description Complete preview payload for wizard step 2.
+         */
+        ProbeQueryResult: {
+            /** Items */
+            items: components["schemas"]["ProbePreviewItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            summary: components["schemas"]["ProbeHitSummary"];
+            /** Total */
+            total: number;
         };
         /**
          * ProbeReport
@@ -1292,6 +1468,21 @@ export interface components {
             accessToken: string;
             /** Expiresin */
             expiresIn: number;
+        };
+        /**
+         * RunAccepted
+         * @description Asynchronous acceptance returned by both launch endpoints.
+         */
+        RunAccepted: {
+            /** Jobid */
+            jobId: string;
+            /** Runid */
+            runId: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "preparing";
         };
         /**
          * ServicePhase
@@ -2230,6 +2421,126 @@ export interface operations {
             };
         };
     };
+    create_cluster_preview_api_evolution_cluster_previews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Cluster-only run accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target unconfigured or no probe hits */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Launch condition is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    query_probe_hits_api_evolution_probes_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeQueryResult"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target unconfigured or no probe hits */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Launch condition is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_runs_api_evolution_runs_get: {
         parameters: {
             query?: never;
@@ -2259,6 +2570,66 @@ export interface operations {
             };
             /** @description Password change is required */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_run_api_evolution_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProbeQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Full run accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccepted"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target unconfigured or no probe hits */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Launch condition is invalid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
