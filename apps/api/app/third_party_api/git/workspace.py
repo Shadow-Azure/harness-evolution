@@ -216,7 +216,7 @@ class GitWorkspaceManager:
                     failure="existing local run branch could not be resumed",
                 )
 
-        self.validate_for_push(
+        await self.validate_for_push(
             PreparedWorkspace(
                 repo_path=repo_path,
                 path=workspace_path,
@@ -226,17 +226,6 @@ class GitWorkspaceManager:
             ),
             run,
         )
-        cleanliness = await self._git_checked(
-            workspace_path,
-            ("git", "status", "--porcelain"),
-            stage="workspace",
-            failure="workspace status check failed",
-        )
-        if cleanliness.stdout.strip():
-            raise GitOperationError(
-                "workspace is not clean after preparation",
-                stage="workspace",
-            )
         if self._push_enabled:
             await self._push_run_branch(workspace_path, branch)
         return PreparedWorkspace(
@@ -529,18 +518,28 @@ class GitWorkspaceManager:
                 return commit
         return None
 
-    def validate_for_push(
+    async def validate_for_push(
         self,
         prepared: PreparedWorkspace,
         run: EvolutionRunRecord,
+        *,
+        expected_run_id: str | None = None,
+        require_trailer: bool = False,
     ) -> None:
-        """Reject unsafe branch names and invalid baseline snapshots."""
+        """Validate the complete run-branch snapshot before publication."""
         if not self._RUN_BRANCH.fullmatch(prepared.branch) or prepared.branch in {"main", "master"}:
             raise GitOperationError("run branch name is unsafe", stage="workspace")
         if not re.fullmatch(r"[0-9a-f]{40}", prepared.base_commit):
             raise GitOperationError("base commit is invalid", stage="reference")
         if prepared.branch != f"evo/{run.created_at:%Y%m%d}-{run.id}":
             raise GitOperationError("run branch does not match the run", stage="workspace")
+        await self._validate_publication_state(
+            prepared.path,
+            branch=prepared.branch,
+            base_commit=prepared.base_commit,
+            expected_run_id=expected_run_id,
+            require_trailer=require_trailer,
+        )
 
     def cleanup_workspaces(
         self,
@@ -578,26 +577,13 @@ class GitWorkspaceManager:
         require_trailer: bool = False,
     ) -> None:
         """Publish only a fast-forward run branch and never force it."""
-        if not self._RUN_BRANCH.fullmatch(branch) or branch in {"main", "master"}:
-            raise GitOperationError("run branch name is unsafe", stage="workspace")
-        current_branch = await self._git_checked(
+        await self._validate_publication_state(
             workspace_path,
-            ("git", "branch", "--show-current"),
-            stage="workspace",
-            failure="current branch could not be resolved",
+            branch=branch,
+            base_commit=base_commit,
+            expected_run_id=expected_run_id,
+            require_trailer=require_trailer,
         )
-        if current_branch.stdout.strip() != branch:
-            raise GitOperationError("run branch is not selected", stage="workspace")
-        await self._require_clean(workspace_path)
-        if base_commit is not None:
-            await self._require_ancestry(workspace_path, base_commit)
-        if require_trailer and expected_run_id is not None:
-            message = await self._commit_message(workspace_path, "HEAD")
-            if not _has_trailer(message, "Harness-Run-Id", expected_run_id):
-                raise GitOperationError(
-                    "run branch commit is missing the Harness-Run-Id trailer",
-                    stage="workspace",
-                )
         if not self._push_enabled:
             return
         remote_commit = await self.remote_ref_commit(workspace_path, "origin", branch)
@@ -724,36 +710,69 @@ class GitWorkspaceManager:
 
     async def _validate_candidate(self, candidate: CandidateWorkspace) -> None:
         """Validate the exact local commit immediately before candidate publication."""
-        await self._require_clean(candidate.workspace_path)
-        current_branch = await self._git_checked(
+        await self._validate_publication_state(
             candidate.workspace_path,
+            branch=candidate.local_branch,
+            base_commit=candidate.base_commit,
+            expected_commit=candidate.commit,
+            expected_run_id=candidate.run_id,
+            require_trailer=True,
+        )
+
+    async def _validate_publication_state(
+        self,
+        workspace_path: Path,
+        *,
+        branch: str,
+        base_commit: str | None = None,
+        expected_commit: str | None = None,
+        expected_run_id: str | None = None,
+        require_trailer: bool = False,
+    ) -> None:
+        """Validate one exact branch/commit snapshot through a shared push boundary."""
+        candidate_branch = re.fullmatch(r"harness-candidate/[0-9a-f]{16}", branch)
+        if not self._RUN_BRANCH.fullmatch(branch) and candidate_branch is None:
+            raise GitOperationError("publication branch name is unsafe", stage="workspace")
+        current_branch = await self._git_checked(
+            workspace_path,
             ("git", "branch", "--show-current"),
             stage="workspace",
-            failure="candidate branch could not be resolved",
+            failure="publication branch could not be resolved",
         )
-        if current_branch.stdout.strip() != candidate.local_branch:
-            raise GitOperationError("candidate branch is not selected", stage="workspace")
-        head = await self._git_checked(
-            candidate.workspace_path,
-            ("git", "rev-parse", "HEAD"),
-            stage="workspace",
-            failure="candidate commit could not be resolved",
-        )
-        if head.stdout.strip() != candidate.commit:
-            raise GitOperationError(
-                "candidate commit changed before publication", stage="workspace"
-            )
-        await self._require_ancestry(
-            candidate.workspace_path,
-            candidate.base_commit,
-            commit=candidate.commit,
-        )
-        message = await self._commit_message(candidate.workspace_path, candidate.commit)
-        if not _has_trailer(message, "Harness-Run-Id", candidate.run_id):
-            raise GitOperationError(
-                "candidate commit is missing the Harness-Run-Id trailer",
+        if current_branch.stdout.strip() != branch:
+            raise GitOperationError("publication branch is not selected", stage="workspace")
+        await self._require_clean(workspace_path)
+        commit = expected_commit or "HEAD"
+        if expected_commit is not None:
+            head = await self._git_checked(
+                workspace_path,
+                ("git", "rev-parse", "HEAD"),
                 stage="workspace",
+                failure="publication commit could not be resolved",
             )
+            if head.stdout.strip() != expected_commit:
+                raise GitOperationError(
+                    "publication commit changed before push",
+                    stage="workspace",
+                )
+        if base_commit is not None:
+            await self._require_ancestry(
+                workspace_path,
+                base_commit,
+                commit=commit,
+            )
+        if require_trailer:
+            if expected_run_id is None:
+                raise GitOperationError(
+                    "publication run id is required for trailer validation",
+                    stage="workspace",
+                )
+            message = await self._commit_message(workspace_path, commit)
+            if not _has_trailer(message, "Harness-Run-Id", expected_run_id):
+                raise GitOperationError(
+                    "publication commit is missing the Harness-Run-Id trailer",
+                    stage="workspace",
+                )
 
     async def _require_ancestry(
         self,

@@ -478,13 +478,17 @@ async def test_candidate_publication_rejects_dirty_missing_trailer_and_divergent
         "-m",
         "rogue\n\nHarness-Run-Id: run-m5-09",
     )
-    from app.third_party_api.git.workspace import CandidateWorkspace
+    from app.third_party_api.git.workspace import CandidateWorkspace, candidate_local_branch
+
+    candidate_ref = f"{prepared.branch}/candidate/r1"
+    local_branch = candidate_local_branch(candidate_ref)
+    _git(prepared.path, "branch", "-m", local_branch)
 
     rogue = CandidateWorkspace(
         workspace_path=prepared.path,
         run_branch=prepared.branch,
-        local_branch="rogue",
-        ref=f"{prepared.branch}/candidate/r1",
+        local_branch=local_branch,
+        ref=candidate_ref,
         commit=_git(prepared.path, "rev-parse", "HEAD"),
         message="rogue\n\nHarness-Run-Id: run-m5-09",
         run_id="run-m5-09",
@@ -492,6 +496,51 @@ async def test_candidate_publication_rejects_dirty_missing_trailer_and_divergent
     )
     with pytest.raises(GitOperationError, match=r"ancestry|descend|base"):
         await manager.push_candidate(rogue, expected_remote_commit=None)
+
+
+async def test_publication_validator_checks_clean_ancestry_and_trailer(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """The named push boundary rejects every unsafe snapshot before publication."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+
+    (prepared.path / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    with pytest.raises(GitOperationError, match="clean"):
+        await manager.validate_for_push(prepared, run)
+    (prepared.path / "dirty.txt").unlink()
+
+    with pytest.raises(GitOperationError, match="Harness-Run-Id"):
+        await manager.validate_for_push(
+            prepared,
+            run,
+            expected_run_id=run.id,
+            require_trailer=True,
+        )
+
+    _git(prepared.path, "switch", "--orphan", "divergent")
+    (prepared.path / "divergent.txt").write_text("divergent\n", encoding="utf-8")
+    _git(prepared.path, "add", "divergent.txt")
+    _git(
+        prepared.path,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "divergent\n\nHarness-Run-Id: run-m5-09",
+    )
+    _git(prepared.path, "branch", "-f", prepared.branch, "divergent")
+    _git(prepared.path, "switch", prepared.branch)
+    with pytest.raises(GitOperationError, match=r"ancestry|descend|base"):
+        await manager.validate_for_push(prepared, run)
 
 
 async def test_reject_returns_cleanup_warning_only_for_candidate_deletion_failure(

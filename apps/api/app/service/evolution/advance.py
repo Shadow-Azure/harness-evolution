@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from datetime import datetime
 from typing import Any, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
@@ -69,13 +70,38 @@ class EvolutionAdvanceService:
                 "reason": "run is not ready for candidate advancement",
             }
         rounds = await self._runs.list_rounds(run.id)
-        target = next((round_ for round_ in rounds if round_.status == "pending"), None)
+        target = None
+        for round_ in rounds:
+            if round_.status in {"accepted", "rejected"}:
+                continue
+            if round_.status != "pending":
+                return {
+                    "runId": run.id,
+                    "roundId": round_.id,
+                    "status": run.status,
+                    "published": False,
+                    "reason": f"earlier round is {round_.status}",
+                }
+            target = round_
+            break
         if target is None:
             return {
                 "runId": run.id,
                 "status": run.status,
                 "published": False,
                 "reason": "no pending round",
+            }
+        claimed = await self._runs.claim_round_for_advance(
+            target.id,
+            started_at=datetime.now().astimezone(),
+        )
+        if not claimed:
+            return {
+                "runId": run.id,
+                "roundId": target.id,
+                "status": run.status,
+                "published": False,
+                "reason": "pending round was already claimed",
             }
         cluster = next(
             (

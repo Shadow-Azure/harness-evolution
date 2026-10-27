@@ -16,7 +16,7 @@ Git 操作只通过 argv 进程边界执行，禁用 terminal prompt，所有诊
 
 Git 的 ref 命名空间不允许 `evo/{date}-{run}` 同时作为 `refs/heads` 分支和其更长路径的前缀。因此设计要求的可见 candidate ref 保持在 `evo/{date}-{run}/candidate/rN`，实际存储于 `refs/tags`；本地工作分支使用哈希化名称。这样接受时仍可对 candidate 执行精确 `--force-with-lease`，随后切回 run 分支、只允许 fast-forward、非 force 推送并删除 candidate tag；拒绝时只删除 candidate tag/本地临时分支，run 分支和已接纳轮次不变。accepted/rejected 是吸收态，相反方向或再次改写返回 stage conflict。
 
-prepare handler 结束后，组合根通过 terminal lifecycle 自动排队 `evolution_advance`，由生产 handler 从真实持久轮次发布第一轮 candidate；该 hook 仍先释放既有 sync job 锁，并执行保留活动 run 的 workspace 清理。prepare 的 0–4 cursor 每个 checkpoint 都可恢复，轮次插入和最终 `running` 标记在重试时不会重复候选或覆盖已接纳分支。
+prepare handler 结束后，组合根通过 terminal lifecycle 自动排队 `evolution_advance`，由生产 handler 从真实持久轮次发布第一轮 candidate；持久层用条件更新原子 claim 一个 pending 轮次，前序轮次仍为 patching/pushing/evaluating/deciding/failed 时后续 pending 轮次不会越序，accepted/rejected 后才解锁下一轮，并发或重复 advance 也只允许一次发布。该 hook 仍先释放既有 sync job 锁，并执行保留活动 run 的 workspace 清理。prepare 的 0–4 cursor 每个 checkpoint 都可恢复，轮次插入和最终 `running` 标记在重试时不会重复候选或覆盖已接纳分支。
 
 ## Alternatives considered
 

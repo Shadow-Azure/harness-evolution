@@ -717,6 +717,31 @@ class EvolutionRepository:
             )
         return round_
 
+    async def claim_round_for_advance(
+        self,
+        round_id: str,
+        *,
+        started_at: datetime,
+    ) -> bool:
+        """Atomically claim one untouched round for sequential candidate work."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "pending",
+                    )
+                    .values(
+                        status="patching",
+                        started_at=started_at,
+                        error_message=None,
+                    ),
+                ),
+            )
+        return result.rowcount == 1
+
     async def mark_round_candidate(
         self,
         round_id: str,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -683,6 +684,174 @@ async def test_advance_service_publishes_real_candidate_and_lifecycle_queues_it(
             "createdBy": None,
         },
     ]
+
+
+async def test_advance_waits_for_an_earlier_round_to_finish(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """A later pending round must not overtake the round already under evaluation."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    candidates = EvolutionCandidateService(repository, manager)
+    first = await candidates.publish(run, rounds[0], _trace(clusters[1]))
+    assert first.status == "evaluating"
+    advance = EvolutionAdvanceService(
+        repository,
+        candidates,
+        ProbeQueryRepository(_database),
+    )
+
+    result = await advance.handle(
+        replace(
+            _job("run-m5-09-prepare"),
+            id="job-advance",
+            kind="evolution_advance",
+            payload={"runId": run.id},
+        ),
+    )
+
+    assert result["published"] is False
+    refreshed = await repository.list_rounds(run.id)
+    assert [round_.status for round_ in refreshed] == ["evaluating", "pending"]
+    assert refreshed[1].candidate_ref is None
+
+
+async def test_duplicate_advance_calls_publish_only_the_first_round(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """Sequential duplicate jobs consume one round and leave the next pending."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    candidates = EvolutionCandidateService(repository, manager)
+    advance = EvolutionAdvanceService(
+        repository,
+        candidates,
+        ProbeQueryRepository(_database),
+    )
+    job = replace(
+        _job("run-m5-09-prepare"),
+        id="job-advance",
+        kind="evolution_advance",
+        payload={"runId": "run-m5-09-prepare"},
+    )
+
+    first = await advance.handle(job)
+    duplicate = await advance.handle(job)
+
+    assert first["published"] is True
+    assert duplicate["published"] is False
+    rounds = await repository.list_rounds("run-m5-09-prepare")
+    assert [round_.status for round_ in rounds] == ["evaluating", "pending"]
+    assert rounds[1].candidate_ref is None
+
+
+async def test_concurrent_advance_claims_only_one_pending_round(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """Atomic round claiming prevents duplicate publication under concurrent jobs."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    candidates = EvolutionCandidateService(repository, manager)
+    advance = EvolutionAdvanceService(
+        repository,
+        candidates,
+        ProbeQueryRepository(_database),
+    )
+    job = replace(
+        _job("run-m5-09-prepare"),
+        id="job-advance",
+        kind="evolution_advance",
+        payload={"runId": "run-m5-09-prepare"},
+    )
+
+    results = await asyncio.gather(advance.handle(job), advance.handle(job))
+
+    assert sum(bool(result["published"]) for result in results) == 1
+    rounds = await repository.list_rounds("run-m5-09-prepare")
+    assert [round_.status for round_ in rounds] == ["evaluating", "pending"]
+    assert rounds[1].candidate_ref is None
+
+
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+async def test_advance_publishes_next_round_after_prior_round_is_terminal(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+    decision: str,
+) -> None:
+    """Accepted and rejected rounds both unlock the next sequential round."""
+    database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    candidates = EvolutionCandidateService(repository, manager)
+    first = await candidates.publish(run, rounds[0], _trace(clusters[1]))
+    async with database.transaction() as session:
+        await session.execute(
+            sql_update(evolution_rounds)
+            .where(evolution_rounds.c.id == first.id)
+            .values(eval_status="completed"),
+        )
+    fresh = await repository.get_round(first.id)
+    assert fresh is not None
+    if decision == "accept":
+        terminal = await candidates.accept(
+            run,
+            fresh,
+            _trace(clusters[1]),
+            current_score=80.0,
+            candidate_score=85.0,
+            reason="candidate wins",
+        )
+    else:
+        terminal = await candidates.reject(run, fresh, reason="candidate loses")
+    assert terminal.status == decision + "ed"
+    advance = EvolutionAdvanceService(
+        repository,
+        candidates,
+        ProbeQueryRepository(database),
+    )
+
+    result = await advance.handle(
+        replace(
+            _job("run-m5-09-prepare"),
+            id="job-advance",
+            kind="evolution_advance",
+            payload={"runId": run.id},
+        ),
+    )
+
+    assert result["published"] is True
+    refreshed = await repository.list_rounds(run.id)
+    assert [round_.status for round_ in refreshed] == [terminal.status, "evaluating"]
 
 
 async def test_composition_root_registers_candidate_advance_handler(
