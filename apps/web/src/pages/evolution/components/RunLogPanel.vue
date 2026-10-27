@@ -33,6 +33,7 @@ const {
   hasMore,
   isPending,
   error,
+  appendError,
   refresh,
   loadMore,
 } = useEvolutionRunEventLog(
@@ -131,7 +132,7 @@ async function refreshLog(): Promise<void> {
         :rows="3"
       />
       <ErrorState
-        v-else-if="error"
+        v-else-if="error && items.length === 0"
         code="EVOLUTION_RUN_EVENTS_UNAVAILABLE"
         message="执行日志读取失败，请重试"
         @retry="refreshLog"
@@ -151,6 +152,34 @@ async function refreshLog(): Promise<void> {
     </div>
 
     <footer class="log-footer">
+      <div
+        v-if="appendError"
+        class="append-error"
+        data-testid="append-error"
+      >
+        <span>后续日志加载失败</span>
+        <button
+          type="button"
+          data-testid="retry-load-more"
+          :disabled="isPending"
+          @click="loadMore"
+        >
+          重试
+        </button>
+      </div>
+      <div
+        v-else-if="error && items.length"
+        class="append-error"
+      >
+        <span>日志刷新失败，已保留现有记录</span>
+        <button
+          type="button"
+          :disabled="isPending"
+          @click="refreshLog"
+        >
+          重试
+        </button>
+      </div>
       <button
         v-if="hasMore"
         type="button"
@@ -274,6 +303,19 @@ async function refreshLog(): Promise<void> {
 .paused-copy {
   margin-left: auto;
   color: var(--orange);
+}
+
+.append-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  color: var(--red);
+  font-size: 11px;
+}
+
+.append-error span {
+  flex: 1;
 }
 
 @media (max-width: 720px) {

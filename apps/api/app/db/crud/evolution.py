@@ -185,6 +185,7 @@ class EvolutionRepository:
                 .values(
                     status="running",
                     blocked_stage=None,
+                    eval_status="pending",
                     error_stage=None,
                     error_message=None,
                     error_at=None,

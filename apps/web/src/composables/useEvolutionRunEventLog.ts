@@ -39,13 +39,25 @@ export function useEvolutionRunEventLog(
   const hasMore = ref(false);
   const isPending = ref(false);
   const error = ref<unknown>(null);
+  const appendError = ref<unknown>(null);
   let requestGeneration = 0;
+  let snapshotKey = "";
+
+  function resetSnapshot(): void {
+    items.value = [];
+    nextSeq.value = 0;
+    hasMore.value = false;
+    isPending.value = false;
+    error.value = null;
+    appendError.value = null;
+  }
 
   async function refresh(): Promise<void> {
     if (!toValue(enabled) || !toValue(runId)) return;
     const generation = ++requestGeneration;
     isPending.value = true;
     error.value = null;
+    appendError.value = null;
     try {
       const page = await listEvolutionRunEvents(toValue(runId), {
         afterSeq: 0,
@@ -67,7 +79,7 @@ export function useEvolutionRunEventLog(
     if (!toValue(enabled) || !hasMore.value || isPending.value) return;
     const generation = requestGeneration;
     isPending.value = true;
-    error.value = null;
+    appendError.value = null;
     try {
       const page = await listEvolutionRunEvents(toValue(runId), {
         afterSeq: nextSeq.value,
@@ -79,7 +91,7 @@ export function useEvolutionRunEventLog(
       nextSeq.value = page.hasMore ? page.nextSeq : Math.max(nextSeq.value, page.nextSeq);
       hasMore.value = page.hasMore;
     } catch (caught) {
-      if (generation === requestGeneration) error.value = caught;
+      if (generation === requestGeneration) appendError.value = caught;
     } finally {
       if (generation === requestGeneration) isPending.value = false;
     }
@@ -87,7 +99,13 @@ export function useEvolutionRunEventLog(
 
   watch(
     [() => toValue(runId), () => toValue(level), () => toValue(enabled)],
-    ([currentRun, , visible]) => {
+    ([currentRun, currentLevel, visible]) => {
+      const nextSnapshotKey = `${currentRun ?? ""}\0${currentLevel ?? ""}`;
+      if (nextSnapshotKey !== snapshotKey) {
+        snapshotKey = nextSnapshotKey;
+        requestGeneration += 1;
+        resetSnapshot();
+      }
       if (visible && currentRun) void refresh();
     },
     { immediate: true },
@@ -99,6 +117,7 @@ export function useEvolutionRunEventLog(
     hasMore: computed(() => hasMore.value),
     isPending: computed(() => isPending.value),
     error: computed(() => error.value),
+    appendError: computed(() => appendError.value),
     refresh,
     loadMore,
   };

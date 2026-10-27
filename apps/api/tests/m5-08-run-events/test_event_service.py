@@ -116,7 +116,18 @@ async def test_record_redacts_secrets_and_publishes_sanitized_event(
                 "HE_DATABASE_URL=postgres://alice:env-secret@db/app "
                 "password_hash=hash-secret secret_key=key-secret "
                 "Authorization: Basic dXNlcjpwYXNz "
-                "https://alice:url-secret@example.com/repo.git"
+                "https://alice:url-secret@example.com/repo.git "
+                "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE "
+                "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY "
+                "sk-proj-live-secret "
+                "ghp_1234567890abcdefghijklmnopqrstuvwxyz "
+                "AWS Secret Access Key: spaced-aws-service-secret "
+                "API key: spaced-api-service-secret "
+                "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvciJ9"
+                ".c2lnbmF0dXJlLXZhbHVl "
+                "-----BEGIN PRIVATE KEY-----\n"
+                "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ\n"
+                "-----END PRIVATE KEY-----"
             ),
             payload={
                 "commit": "abc",
@@ -126,6 +137,9 @@ async def test_record_redacts_secrets_and_publishes_sanitized_event(
                 "url": "https://alice:payload-url-secret@example.com/repo.git",
                 "document": '{"password_hash":"json-hash-secret"}',
                 "client_secret": "client-secret",
+                "AWS_ACCESS_KEY_ID": "ASIAIOSFODNN7EXAMPLE",
+                "AWS_SECRET_ACCESS_KEY": "payload-aws-secret",
+                "note": "provider sk-proj-payload-secret ghp_payload1234567890abcdef",
             },
             error=RuntimeError(
                 "Authorization: Bearer detail-secret "
@@ -152,7 +166,7 @@ async def test_record_redacts_secrets_and_publishes_sanitized_event(
             .one()
         )
 
-    serialized = str(dict(row)) + str(notification.data)
+    serialized = str(dict(row)) + str(event.model_dump(mode="json")) + str(notification.data)
     assert "message-secret" not in serialized
     assert "header-secret" not in serialized
     assert "payload-secret" not in serialized
@@ -170,6 +184,18 @@ async def test_record_redacts_secrets_and_publishes_sanitized_event(
     assert "detail-key-secret" not in serialized
     assert "ZGV0YWlsOnNlY3JldA==" not in serialized
     assert "detail-url-secret" not in serialized
+    assert "AKIAIOSFODNN7EXAMPLE" not in serialized
+    assert "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" not in serialized
+    assert "sk-proj-live-secret" not in serialized
+    assert "ghp_1234567890abcdefghijklmnopqrstuvwxyz" not in serialized
+    assert "spaced-aws-service-secret" not in serialized
+    assert "spaced-api-service-secret" not in serialized
+    assert "eyJhbGciOiJIUzI1NiJ9" not in serialized
+    assert "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQ" not in serialized
+    assert "ASIAIOSFODNN7EXAMPLE" not in serialized
+    assert "payload-aws-secret" not in serialized
+    assert "sk-proj-payload-secret" not in serialized
+    assert "ghp_payload1234567890abcdef" not in serialized
     assert "<redacted>" in serialized
     assert event.error is not None
     assert event.error.detail is not None
@@ -194,7 +220,11 @@ async def test_interrupted_run_state_and_event_share_full_redaction(
             message=(
                 "HE_DATABASE_URL=postgres://alice:interrupted-env@db/app "
                 "password_hash=interrupted-hash secret_key=interrupted-key "
-                "Authorization: Basic aW50ZXJydXB0ZWQ6c2VjcmV0"
+                "Authorization: Basic aW50ZXJydXB0ZWQ6c2VjcmV0 "
+                "AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE "
+                "AWS_SECRET_ACCESS_KEY=interrupted-aws-secret "
+                "sk-proj-interrupted-openai-secret "
+                "Password Hash: interrupted-spaced-secret"
             ),
             job_id="job-interrupted",
         )
@@ -223,6 +253,10 @@ async def test_interrupted_run_state_and_event_share_full_redaction(
         "interrupted-hash",
         "interrupted-key",
         "aW50ZXJydXB0ZWQ6c2VjcmV0",
+        "ASIAIOSFODNN7EXAMPLE",
+        "interrupted-aws-secret",
+        "sk-proj-interrupted-openai-secret",
+        "interrupted-spaced-secret",
     ):
         assert secret not in serialized
 
@@ -348,6 +382,39 @@ async def test_blocked_and_resumed_events_keep_patch_stage_distinct(
         "stage": "candidate",
         "retryAttempts": 2,
     }
+
+
+async def test_eval_block_resume_restores_pending_evaluation_state(
+    service_environment: tuple[Database, EvolutionRunEventService, EventBus],
+) -> None:
+    """A resumed evaluation is no longer presented as failed."""
+    database, service, _ = service_environment
+    repository = EvolutionRepository(database)
+
+    await service.record_blocked(
+        "run-live",
+        stage="eval",
+        blocked_stage="eval",
+        message="evaluation timed out",
+        job_id="job-eval-1",
+        retry_attempts=1,
+        error=RuntimeError("evaluation timed out"),
+    )
+    blocked = await repository.get_run("run-live")
+    await service.record_resumed(
+        "run-live",
+        stage="eval",
+        job_id="job-eval-2",
+    )
+    resumed = await repository.get_run("run-live")
+
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.eval_status == "failed"
+    assert resumed is not None
+    assert resumed.status == "running"
+    assert resumed.blocked_stage is None
+    assert resumed.eval_status == "pending"
 
 
 async def test_job_runner_records_retryable_failure_as_blocked(

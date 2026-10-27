@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
 import type { EvolutionRunEvent } from "@harness/contracts";
-import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import {
+  flushPromises,
+  mount,
+  type VueWrapper,
+} from "@vue/test-utils";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -62,10 +66,10 @@ function page(
   return { items, nextSeq, hasMore };
 }
 
-async function mountPanel() {
+async function mountPanel(runId = "run-events") {
   const wrapper = mount(RunLogPanel, {
     props: {
-      runId: "run-events",
+      runId,
       steps: availableSteps,
     },
   });
@@ -134,6 +138,115 @@ describe("RunLogPanel", () => {
 
     expect(queries.at(-1)?.get("level")).toBe("error");
     expect(wrapper.text()).toContain("event 2");
+  });
+
+  it("clears the previous run immediately while the next run is pending", async () => {
+    let resolveNext!: (response: Response) => void;
+    server.use(
+      http.get("/api/evolution/runs/run-a/events", () =>
+        HttpResponse.json(page([event(1, { message: "run-a event" })]))),
+      http.get(
+        "/api/evolution/runs/run-b/events",
+        () => new Promise<Response>((resolve) => {
+          resolveNext = resolve;
+        }),
+      ),
+    );
+    const wrapper = await mountPanel("run-a");
+    expect(wrapper.text()).toContain("run-a event");
+
+    await wrapper.setProps({ runId: "run-b" });
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-event-seq]")).toHaveLength(0);
+    expect(wrapper.text()).toContain("正在读取执行日志");
+
+    resolveNext(
+      HttpResponse.json(page([event(2, { message: "run-b event" })])),
+    );
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("run-b event");
+    expect(wrapper.text()).not.toContain("run-a event");
+  });
+
+  it("clears the previous filter immediately while the next page is pending", async () => {
+    let resolveFiltered!: (response: Response) => void;
+    server.use(
+      http.get("/api/evolution/runs/run-events/events", ({ request }) => {
+        const level = new URL(request.url).searchParams.get("level");
+        if (level === "error") {
+          return new Promise<Response>((resolve) => {
+            resolveFiltered = resolve;
+          });
+        }
+        return HttpResponse.json(
+          page([event(1, { message: "all-level event" })]),
+        );
+      }),
+    );
+    const wrapper = await mountPanel();
+    expect(wrapper.text()).toContain("all-level event");
+
+    const errorFilter = wrapper
+      .findAll(".filters button")
+      .find((button) => button.text() === "错误");
+    await errorFilter!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-event-seq]")).toHaveLength(0);
+    expect(wrapper.text()).toContain("正在读取执行日志");
+
+    resolveFiltered(
+      HttpResponse.json(
+        page([
+          event(2, {
+            level: "error",
+            message: "error-only event",
+          }),
+        ]),
+      ),
+    );
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("error-only event");
+    expect(wrapper.text()).not.toContain("all-level event");
+  });
+
+  it("keeps loaded events when a later page fails and retries inline", async () => {
+    let appendAttempts = 0;
+    server.use(
+      http.get("/api/evolution/runs/run-events/events", ({ request }) => {
+        const afterSeq = new URL(request.url).searchParams.get("afterSeq");
+        if (afterSeq === "0") {
+          return HttpResponse.json(page([event(1)], 1, true));
+        }
+        appendAttempts += 1;
+        return appendAttempts === 1
+          ? HttpResponse.json(
+              { error: { code: "INTERNAL", message: "append failed" } },
+              { status: 500 },
+            )
+          : HttpResponse.json(
+              page([event(1), event(2)], 2, false),
+            );
+      }),
+    );
+    const wrapper = await mountPanel();
+
+    await wrapper.get("[data-testid='load-more-events']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("event 1");
+    expect(wrapper.text()).toContain("后续日志加载失败");
+    expect(wrapper.text()).not.toContain("执行日志读取失败，请重试");
+
+    await wrapper.get("[data-testid='retry-load-more']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll("[data-event-seq]")).toHaveLength(2);
+    expect(wrapper.text()).toContain("event 2");
+    expect(wrapper.text()).not.toContain("后续日志加载失败");
   });
 
   it("keeps redacted error details collapsed until requested and copies them", async () => {
