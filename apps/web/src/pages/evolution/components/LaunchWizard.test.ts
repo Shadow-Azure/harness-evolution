@@ -31,7 +31,7 @@ const preview: ProbeQueryResult = {
     sessions: 2,
     badCases: 3,
     analyzed: 2,
-    unanalyzed: 1,
+    unanalyzed: 0,
     probes: 2,
     usedProbes: 2,
     byAttributeType: { model: 0, prompt: 1, error: 1, nonIssue: 0 },
@@ -132,8 +132,63 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     expect(wrapper.get(".wz-condstrip").text()).toContain("skill:deep-research@v2.0.0");
     expect(wrapper.get(".wz-stats").text()).toContain("「是问题」进入聚类");
+    expect(wrapper.get(".wz-stats").text()).toContain("0未分析");
     expect(wrapper.get("table.rep").text()).toContain("prob…0001");
-    expect(wrapper.text()).toContain("等待外部归因");
+
+    const legend = wrapper.get(".wz-legend").text();
+    expect(legend).toContain("是问题-错误");
+    expect(legend).toContain("是问题-prompt缺失某些提示词");
+    expect(legend).not.toContain("非问题");
+    expect(legend).not.toContain("是问题-模型问题");
+    expect(wrapper.find(".wz-waiting-note").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("等待外部归因");
+  });
+
+  it("renders only nonzero attribution types in the distribution and legend", async () => {
+    useCatalogHandlers();
+    const errorOnly: ProbeQueryResult = {
+      ...preview,
+      summary: {
+        ...preview.summary,
+        byAttributeType: { model: 0, prompt: 0, error: 1, nonIssue: 0 },
+      },
+    };
+    server.use(
+      http.post("/api/evolution/probes/query", () => HttpResponse.json(errorOnly)),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+    await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const legend = wrapper.get(".wz-legend").text();
+    expect(legend).toContain("是问题-错误");
+    expect(legend).not.toContain("非问题");
+    expect(legend).not.toContain("模型问题");
+    expect(legend).not.toContain("prompt");
+    expect(wrapper.get(".wz-typebar").findAll("span")).toHaveLength(1);
+    expect(wrapper.get(".wz-stats").text()).toContain("0未分析");
+  });
+
+  it("exposes dialog semantics and closes on Escape", async () => {
+    useCatalogHandlers();
+    const wrapper = await mountWizard();
+
+    const dialog = wrapper.get("[data-testid='launch-wizard']");
+    expect(dialog.attributes("role")).toBe("dialog");
+    expect(dialog.attributes("aria-modal")).toBe("true");
+    const labelledBy = dialog.attributes("aria-labelledby") ?? "";
+    expect(labelledBy).not.toBe("");
+    expect(wrapper.get(`#${labelledBy}`).text()).toBe("启动自进化");
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(wrapper.emitted("close")).toHaveLength(1);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+    expect(wrapper.emitted("close")).toHaveLength(1);
   });
 
   it("selects the target defaultRef version as soon as versions load", async () => {
