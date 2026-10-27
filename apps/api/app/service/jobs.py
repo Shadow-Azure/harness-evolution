@@ -277,14 +277,20 @@ class JobRunner:
                 record_failed = getattr(self._run_events, "record_failed", None)
                 stage = _failure_event_stage(job, exc)
                 if callable(record_failed) and job.ref_id and stage is not None:
+                    declared_stage = getattr(exc, "stage", None)
                     try:
+                        failure_args = {
+                            "run_id": job.ref_id,
+                            "stage": stage,
+                            "message": "任务执行失败",
+                            "job_id": job.id,
+                            "error": exc,
+                            "error_detail": traceback.format_exc(),
+                        }
+                        if isinstance(declared_stage, str) and declared_stage:
+                            failure_args["error_stage"] = declared_stage
                         await record_failed(
-                            job.ref_id,
-                            stage=stage,
-                            message="任务执行失败",
-                            job_id=job.id,
-                            error=exc,
-                            error_detail=traceback.format_exc(),
+                            **failure_args,
                         )
                     except Exception:
                         logger.exception(
@@ -382,4 +388,6 @@ def _failure_event_stage(job: JobRunRecord, error: BaseException) -> str | None:
         "final",
     }:
         return declared
+    if declared in {"patch", "commit"}:
+        return "candidate"
     return _KIND_TO_STAGE.get(job.kind)

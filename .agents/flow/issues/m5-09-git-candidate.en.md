@@ -9,9 +9,13 @@ milestone: m5
 depends:
   - m5-08
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
+  - apps/web/**
+  - packages/contracts/**
+  - plans/*.md
+  - plans/fullstack-design/**
   - scripts/**
   - fixtures/**
   - docs/**
@@ -58,6 +62,7 @@ m5-09 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 
 - 实现临时 workspace、clone tag/ref、run 分支、candidate commit/ref、push 重试、接纳 amend+ff、拒绝删 ref
+- 同步修正 candidate 可见 ref 的存储事实：run 分支在 `refs/heads`，同名 candidate 路径存 `refs/tags`，避免 Git ref 前缀冲突
 - 绝不 reset run 分支
 - 接通 `evolution_prepare` 真实编排（workspace/ref 校验、筛选、聚类、状态推进）与引擎注册表校验（`engine_key` → 422 `ENGINE_INVALID`）
 

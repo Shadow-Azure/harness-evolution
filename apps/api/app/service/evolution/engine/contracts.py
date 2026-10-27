@@ -33,12 +33,14 @@ class RunBlocked(RuntimeError):
         message: str,
         *,
         stage: EvolutionBlockedStage,
+        error_stage: str | None = None,
         next_retry_at: datetime | None = None,
         retry_attempts: int = 0,
     ) -> None:
         """Carry the safe reason and retry facts across the job boundary."""
         super().__init__(message)
         self.stage = stage
+        self.error_stage = error_stage or stage
         self.next_retry_at = next_retry_at
         self.retry_attempts = retry_attempts
 

@@ -190,6 +190,7 @@ class EvolutionRunStateWriter(Protocol):
         *,
         stage: str,
         message: str,
+        error_stage: str | None = None,
         next_retry_at: datetime | None = None,
         retry_attempts: int | None = None,
     ) -> None:
@@ -316,6 +317,7 @@ class EvolutionRunEventService:
         run_id: str,
         *,
         stage: EvolutionRunEventStage,
+        error_stage: str | None = None,
         message: str,
         job_id: str,
         error: BaseException,
@@ -334,7 +336,7 @@ class EvolutionRunEventService:
         )
         await self._runs.mark_failed(
             run_id,
-            stage=stage,
+            stage=error_stage or stage,
             message=sanitize_message(str(error), limit=2_000),
         )
         self._bus.publish(
@@ -391,6 +393,14 @@ class EvolutionRunEventService:
         resolved_blocked_stage = blocked_stage or (stage if stage in {"push", "eval"} else None)
         if resolved_blocked_stage is None:
             raise ValueError("blocked events require patch, push, or eval stage")
+        declared_error_stage = getattr(error, "error_stage", None)
+        if not isinstance(declared_error_stage, str) or not declared_error_stage:
+            declared_error_stage = getattr(error, "stage", None)
+        resolved_error_stage = (
+            declared_error_stage
+            if isinstance(declared_error_stage, str) and declared_error_stage
+            else stage
+        )
         event = await self.record(
             run_id,
             "run_blocked",
@@ -404,6 +414,7 @@ class EvolutionRunEventService:
             run_id,
             stage=resolved_blocked_stage,
             message=sanitize_message(message, limit=2_000),
+            error_stage=resolved_error_stage,
             next_retry_at=next_retry_at,
             retry_attempts=retry_attempts,
         )

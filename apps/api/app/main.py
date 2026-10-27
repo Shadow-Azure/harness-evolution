@@ -3,7 +3,7 @@
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI
@@ -43,12 +43,18 @@ from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus
+from app.service.evolution.advance import EvolutionAdvanceService, EvolutionJobLifecycle
 from app.service.evolution.events import (
     EvolutionRunEventService,
     EvolutionRunTopicAuthorizer,
 )
+from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
-from app.service.evolution.prepare import handle_evolution_prepare
+from app.service.evolution.prepare import (
+    EvolutionPrepareService,
+    RepositoryProbeReader,
+    WorkspacePreparer,
+)
 from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.stages import EvolutionStageService
@@ -58,6 +64,7 @@ from app.service.jobs import JobRunner
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
+from app.third_party_api.git.workspace import GitWorkspaceManager
 from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
 
@@ -74,6 +81,7 @@ def create_app(
     database: Database | None = None,
     trajectory_source: TrajectorySource | None = None,
     git_remote: GitRemote | None = None,
+    git_workspaces: WorkspacePreparer | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -136,15 +144,54 @@ def create_app(
         evolution_events,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
+    default_workspace_manager = GitWorkspaceManager(
+        repos_root=resolved_settings.data_dir / "repos",
+        workspaces_root=resolved_settings.data_dir / "workspaces",
+        push_enabled=resolved_settings.git_push,
+    )
+    workspace_manager = git_workspaces or default_workspace_manager
+    candidate_workspace_manager = cast(GitWorkspaceManager, workspace_manager)
+    lifecycle_workspace_manager = cast(Any, workspace_manager)
+    prepare_service = EvolutionPrepareService(
+        evolution_repository,
+        RepositoryProbeReader(probe_query_repository),
+        workspace_manager,
+        evolution_events,
+    )
+    evolution_candidates = EvolutionCandidateService(
+        evolution_repository,
+        candidate_workspace_manager,
+        events=evolution_events,
+        web_base_url=resolved_settings.web_base_url,
+    )
+    evolution_advance = EvolutionAdvanceService(
+        evolution_repository,
+        evolution_candidates,
+        probe_query_repository,
+    )
+    evolution_lifecycle = EvolutionJobLifecycle(
+        evolution_repository,
+        jobs,
+        lifecycle_workspace_manager,
+        before_terminal=sync.release_terminal_job,
+        schedule_candidate_advance=getattr(
+            workspace_manager,
+            "supports_candidate_lifecycle",
+            False,
+        ),
+    )
+    jobs.set_terminal_hook(evolution_lifecycle.on_terminal)
 
     async def prepare_handler(job: JobRunRecord) -> Mapping[str, Any]:
-        """Bind the durable event recorder to the prepare placeholder."""
-        return await handle_evolution_prepare(
-            job,
-            events=evolution_events,
-        )
+        """Run the real prepare workflow for one admitted run."""
+        return await prepare_service.handle(job)
+
+    async def advance_handler(job: JobRunRecord) -> Mapping[str, Any]:
+        """Publish the first pending round through the real candidate boundary."""
+        return await evolution_advance.handle(job)
 
     jobs.register_handler("evolution_prepare", prepare_handler)
+    jobs.register_handler("evolution_advance", advance_handler)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -218,6 +265,10 @@ def create_app(
     app.state.evolution_targets = evolution_targets
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
+    app.state.evolution_candidates = evolution_candidates
+    app.state.evolution_advance = evolution_advance
+    app.state.evolution_lifecycle = evolution_lifecycle
+    app.state.git_workspaces = workspace_manager
     app.state.evolution_launch = evolution_launch
     app.state.probe_query = probe_query
     app.state.catalogs = catalogs

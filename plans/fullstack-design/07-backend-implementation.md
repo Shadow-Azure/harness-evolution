@@ -633,7 +633,7 @@ async def advance_one_round(self, job):
     ws = Workspace(run.workspace_path)
     await evolution_rounds.mark_patching(round.id, started_at=now())
     candidate_ref = f'{run.branch_name}/candidate/r{round.seq}'
-    ws.create_candidate(run.branch_name, candidate_ref)   # 从已接纳基线拉临时分支
+    ws.create_candidate(run.branch_name, candidate_ref)   # 从已接纳基线拉临时本地分支，远端落 refs/tags
 
     patch = await self.make_patch(run, round)             # 钩子：V1 占位 → 真实 LLM/规则
     ws.apply(patch)
@@ -799,6 +799,7 @@ def decision_sentence(result, accepted: bool) -> str:      # V1：把分数比�
 - 接纳时 run 分支 **只 fast-forward，不 force-push**；candidate ref 上才允许 `--force-with-lease`。
 - 拒绝时删除 candidate ref，切回 run 分支；run 分支 HEAD 不变，不 reset 之前已接纳轮次。
 - patch 阶段失败（生成 / 落盘 / commit）：可重试错误走 `block_run(stage='patch')`，run `blocked`、本轮停在 `patching`；不可恢复错误把本轮置 `failed`、run 置 `failed`（`error_stage` 按子步骤记 `patch` / `commit`）。重试从 `patching` 重新生成 patch，不进入 push/eval。
+- `HE_GIT_PUSH=false` 时 candidate 仍真实落盘并 commit，但本轮以 `status=skipped`、`push_status=skipped` 停住，run 的 `push_status` 同样为 `skipped`；不调用远端 push，也不进入评测。
 - candidate 删除失败不阻塞流程：记 warn 日志，并把 `cleanupError` 写进 `cluster_accepted` / `cluster_rejected` 事件的 `payload`（事件类型严格以 [06 §5.7](06-database-design.md) 枚举为准，不新增 event_type），后续 `clean-candidates` 清理。
 - 若 accept 阶段 push candidate/run 分支失败：走同一 `block_run` + `RunBlocked`，run 进入 `blocked`，保留 candidate ref 和评测结果；`/retry` 从 apply 继续，不重新评测。
 - 因此 `apply_round` 内所有 push 也必须包在 `try/except GitPushError` 中，不能落入 JobRunner 的通用 `run_failed` 分支。
@@ -929,7 +930,7 @@ Harness-Decision-Rule: external-verdict
 - **拒绝不改写**：rejected 轮次保留 candidate message（随后删除 candidate ref），拒绝理由进 `cluster_rejected` 事件 payload。
 - `Harness-Evaluated-Commit` 记录评测时的 candidate commit（amend 后 hash 会变，但代码内容相同）。
 - 每个 candidate 一次 commit；拒绝不产生合并提交，接纳只做 amend + fast-forward。
-- 分支命名：run 分支 `evo/{YYYYMMDD}-{run_id}`；candidate ref `evo/{YYYYMMDD}-{run_id}/candidate/r{n}`。
+- 分支命名：run 分支在 `refs/heads` 使用 `evo/{YYYYMMDD}-{run_id}`；candidate ref 保持 `evo/{YYYYMMDD}-{run_id}/candidate/r{n}` 的可见名并存入 `refs/tags`，因为 Git 不允许同名 branch 与更长 branch 前缀并存；本地临时分支使用哈希名。
 - push 校验：run 分支匹配 `^evo/\d{8}-.+$`、不是 `main/master`、父提交链包含 `base_commit`、工作区干净、提交带 `Harness-Run-Id`。
 - 远端已有同名 candidate ref：`--force-with-lease` 只允许覆盖自己的旧值；run 分支不 force。
 - 崩溃恢复：按 `evolution_rounds.status` / `eval_external_id` / `next_poll_at` 恢复；`patching` 从重新生成 patch 开始（先清理本轮 workspace 脏改动），`pushing` 从 push 继续，`evaluating` 不重复提交评测，`deciding` 从 apply 继续。

@@ -10,7 +10,7 @@ import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
-import { resolveRunStepKey } from "./runDetail";
+import { resolveRunStepKey, workspacePushStatusLabel } from "./runDetail";
 
 defineOptions({ name: "EvolutionRunDetailPage" });
 
@@ -486,7 +486,7 @@ function clearMissingClusterFocus(): void {
                 推送状态
               </div>
               <div class="v mono">
-                {{ run.workspace.pushStatus }}
+                {{ workspacePushStatusLabel(run.workspace.pushStatus) }}
               </div>
             </div>
             <div class="kv">

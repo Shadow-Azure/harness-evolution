@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.probe_query import ProbeHitQuery, ProbeQueryRepository
 from app.errors import AppError, ErrorCode
+from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
@@ -101,6 +102,14 @@ class EvolutionLaunchService:
                 status_code=422,
                 code=ErrorCode.VALIDATION_INVALID,
                 message="launch mode does not match the endpoint",
+            )
+        engine_key = body.engine_key or body.mode
+        if not EngineFactory.is_registered(engine_key):
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.ENGINE_INVALID,
+                message="evolution engine is not registered",
+                details={"engineKey": engine_key},
             )
         config = await self._targets.find(body.target_type, body.target_name)
         if config is None or not config.enabled:

@@ -384,6 +384,31 @@ async def test_blocked_and_resumed_events_keep_patch_stage_distinct(
     }
 
 
+async def test_blocked_event_persists_original_error_stage(
+    service_environment: tuple[Database, EvolutionRunEventService, EventBus],
+) -> None:
+    """Patch blocking preserves commit as the concrete recovery stage."""
+    database, service, _ = service_environment
+    repository = EvolutionRepository(database)
+
+    await service.record_blocked(
+        "run-live",
+        stage="candidate",
+        blocked_stage="patch",
+        message="commit timed out",
+        error=RunBlocked(
+            "commit timed out",
+            stage="patch",
+            error_stage="commit",
+        ),
+    )
+
+    run = await repository.get_run("run-live")
+    assert run is not None
+    assert run.blocked_stage == "patch"
+    assert run.error_stage == "commit"
+
+
 async def test_eval_block_resume_restores_pending_evaluation_state(
     service_environment: tuple[Database, EvolutionRunEventService, EventBus],
 ) -> None:

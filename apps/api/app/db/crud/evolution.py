@@ -154,6 +154,7 @@ class EvolutionRepository:
         *,
         stage: str,
         message: str,
+        error_stage: str | None = None,
         next_retry_at: datetime | None = None,
         retry_attempts: int | None = None,
     ) -> None:
@@ -163,12 +164,20 @@ class EvolutionRepository:
             "status": "blocked",
             "blocked_stage": stage,
             "eval_status": "failed" if stage == "eval" else "pending",
-            "error_stage": stage,
+            "error_stage": error_stage or stage,
             "error_message": message,
             "error_at": now,
             "next_retry_at": next_retry_at,
             "finished_at": None,
         }
+        if stage == "push":
+            values.update(
+                {
+                    "push_status": "failed",
+                    "pushed_at": None,
+                    "push_error": message,
+                },
+            )
         if retry_attempts is not None:
             values["retry_attempts"] = retry_attempts
         async with self._database.transaction() as session:
@@ -191,6 +200,143 @@ class EvolutionRepository:
                     error_at=None,
                     next_retry_at=None,
                 ),
+            )
+
+    async def mark_prepared(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        progress_unit: int,
+        repo_path: str | None,
+        base_ref: str | None,
+        base_commit: str | None,
+        branch_name: str | None,
+        workspace_path: str | None,
+        stats: Mapping[str, Any],
+    ) -> EvolutionRunRecord:
+        """Persist the immutable workspace snapshot and prepared run status."""
+        if status not in {"running", "completed"}:
+            raise ValueError("prepared runs must be running or completed")
+        if progress_unit != 4:
+            raise ValueError("prepared runs must finish the severity step")
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_runs)
+                    .where(
+                        evolution_runs.c.id == run_id,
+                        evolution_runs.c.status.in_(("preparing", "running")),
+                    )
+                    .values(
+                        status=status,
+                        progress_unit=progress_unit,
+                        repo_path=repo_path,
+                        base_ref=base_ref,
+                        base_commit=base_commit,
+                        branch_name=branch_name,
+                        workspace_path=workspace_path,
+                        stats=deepcopy(dict(stats)),
+                        finished_at=now if status == "completed" else None,
+                    ),
+                ),
+            )
+        if result.rowcount != 1:
+            current = await self.get_run(run_id)
+            if current is None:
+                raise LookupError("evolution run not found")
+            if current.progress_unit == progress_unit and current.status == status:
+                return current
+            raise StageConflict(
+                status_code=409,
+                current=current.progress_unit,
+                target=progress_unit,
+                reason="run cannot be marked prepared from its current state",
+            )
+        prepared = await self.get_run(run_id)
+        if prepared is None:
+            raise LookupError("evolution run not found")
+        return prepared
+
+    async def write_cluster_confidence(
+        self,
+        run_id: str,
+        values: Mapping[str, float],
+    ) -> None:
+        """Write attribution confidence and advance exactly one cursor unit."""
+        await self._write_cluster_step(
+            run_id,
+            expected=2,
+            target=3,
+            values={
+                cluster_id: {"confidence": confidence} for cluster_id, confidence in values.items()
+            },
+        )
+
+    async def write_cluster_severity(
+        self,
+        run_id: str,
+        values: Mapping[str, tuple[float, int]],
+    ) -> None:
+        """Write severity/rank and advance exactly one cursor unit."""
+        await self._write_cluster_step(
+            run_id,
+            expected=3,
+            target=4,
+            values={
+                cluster_id: {"severity": severity, "rank": rank}
+                for cluster_id, (severity, rank) in values.items()
+            },
+        )
+
+    async def _write_cluster_step(
+        self,
+        run_id: str,
+        *,
+        expected: int,
+        target: int,
+        values: Mapping[str, Mapping[str, float | int]],
+    ) -> None:
+        """Update one cluster step and its cursor in the same transaction."""
+        async with self._database.transaction() as session:
+            cluster_ids: list[str] = list(
+                (
+                    await session.execute(
+                        select(probe_clusters.c.probe_cluster_id).where(
+                            probe_clusters.c.run_id == run_id,
+                        ),
+                    )
+                ).scalars(),
+            )
+            if set(cluster_ids) != set(values):
+                raise StageConflict(
+                    status_code=409,
+                    current=expected,
+                    target=target,
+                    reason="cluster writes must cover the complete run",
+                )
+            cluster_count = len(cluster_ids)
+            current, status = await _run_cursor(session, run_id)
+            if current != expected or status not in {"preparing", "running", "blocked"}:
+                raise StageConflict(
+                    status_code=409,
+                    current=current,
+                    target=target,
+                    reason="cluster step is not ready",
+                )
+            validate_transition(expected, target, cluster_count)
+            for cluster_id, cluster_values in values.items():
+                await session.execute(
+                    update(probe_clusters)
+                    .where(probe_clusters.c.probe_cluster_id == cluster_id)
+                    .values(**cluster_values),
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(progress_unit=target),
             )
 
     async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
@@ -539,6 +685,425 @@ class EvolutionRepository:
                 .all()
             )
         return tuple(record_from_evolution_round(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def get_round(self, round_id: str) -> EvolutionRoundRecord | None:
+        """Return one round by stable identifier."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(evolution_rounds).where(evolution_rounds.c.id == round_id),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return record_from_evolution_round(cast(Mapping[str, Any], row)) if row else None
+
+    async def mark_round_patching(
+        self,
+        round_id: str,
+        *,
+        started_at: datetime,
+    ) -> EvolutionRoundRecord:
+        """Enter patching or resume the same unfinished round."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(
+                    evolution_rounds.c.id == round_id,
+                    evolution_rounds.c.status.in_(("pending", "patching")),
+                )
+                .values(status="patching", started_at=started_at, error_message=None),
+            )
+        round_ = await self.get_round(round_id)
+        if round_ is None or round_.status != "patching":
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="round cannot enter patching",
+            )
+        return round_
+
+    async def claim_round_for_advance(
+        self,
+        round_id: str,
+        *,
+        started_at: datetime,
+    ) -> bool:
+        """Atomically claim one untouched round for sequential candidate work."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "pending",
+                    )
+                    .values(
+                        status="patching",
+                        started_at=started_at,
+                        error_message=None,
+                    ),
+                ),
+            )
+        return result.rowcount == 1
+
+    async def mark_round_candidate(
+        self,
+        round_id: str,
+        *,
+        candidate_ref: str,
+        candidate_commit: str,
+        candidate_message: str,
+        patch: Mapping[str, Any],
+    ) -> EvolutionRoundRecord:
+        """Persist the committed and real on-disk candidate snapshot."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(
+                    evolution_rounds.c.id == round_id,
+                    evolution_rounds.c.status == "patching",
+                )
+                .values(
+                    candidate_ref=candidate_ref,
+                    candidate_commit=candidate_commit,
+                    candidate_message=candidate_message,
+                    patch=deepcopy(dict(patch)),
+                    push_status="pending",
+                    push_error=None,
+                ),
+            )
+        return await self._required_round(round_id)
+
+    async def mark_round_pushing(
+        self,
+        round_id: str,
+        *,
+        attempt: int,
+    ) -> EvolutionRoundRecord:
+        """Enter pushing and record the next attempt count."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(
+                    evolution_rounds.c.id == round_id,
+                    evolution_rounds.c.status.in_(("patching", "pushing")),
+                    evolution_rounds.c.candidate_ref.is_not(None),
+                )
+                .values(
+                    status="pushing",
+                    push_status="pushing",
+                    push_attempts=attempt,
+                    push_error=None,
+                ),
+            )
+        return await self._required_round(round_id)
+
+    async def mark_round_push_succeeded(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        pushed_at: datetime,
+        attempts: int,
+    ) -> EvolutionRoundRecord:
+        """Persist a successful candidate and aggregate run push atomically."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "pushing",
+                    )
+                    .values(
+                        push_status="succeeded",
+                        push_attempts=attempts,
+                        pushed_at=pushed_at,
+                        push_error=None,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round push cannot succeed",
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    push_status="succeeded",
+                    pushed_at=pushed_at,
+                    push_error=None,
+                ),
+            )
+        return await self._required_round(round_id)
+
+    async def mark_round_and_run_push_skipped(
+        self,
+        run_id: str,
+        round_id: str,
+    ) -> EvolutionRoundRecord:
+        """Atomically persist a local-only candidate and run publication state."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status.in_(("patching", "pushing")),
+                        evolution_rounds.c.candidate_ref.is_not(None),
+                    )
+                    .values(
+                        status="skipped",
+                        push_status="skipped",
+                        push_attempts=0,
+                        pushed_at=None,
+                        push_error=None,
+                        eval_status="pending",
+                        finished_at=now_shanghai(),
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round cannot be marked as a skipped push",
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    push_status="skipped",
+                    pushed_at=None,
+                    push_error=None,
+                ),
+            )
+        return await self._required_round(round_id, expected_status="skipped")
+
+    async def mark_round_push_failed(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        attempts: int,
+        error: str,
+    ) -> EvolutionRoundRecord:
+        """Persist round and aggregate run failure while retaining the candidate."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "pushing",
+                    )
+                    .values(
+                        push_status="failed",
+                        push_attempts=attempts,
+                        push_error=error,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round push cannot fail",
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    push_status="failed",
+                    pushed_at=None,
+                    push_error=error,
+                ),
+            )
+        return await self._required_round(round_id)
+
+    async def mark_round_evaluating(self, round_id: str) -> EvolutionRoundRecord:
+        """Move a published candidate into evaluation without resubmitting it."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(
+                    evolution_rounds.c.id == round_id,
+                    evolution_rounds.c.status == "pushing",
+                    evolution_rounds.c.push_status == "succeeded",
+                )
+                .values(status="evaluating", eval_status="pending"),
+            )
+        return await self._required_round(round_id)
+
+    async def mark_round_deciding(self, round_id: str) -> EvolutionRoundRecord:
+        """Enter the apply phase without resubmitting an already evaluated candidate."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status.in_(("evaluating", "deciding")),
+                        evolution_rounds.c.eval_status == "completed",
+                    )
+                    .values(status="deciding"),
+                ),
+            )
+        if result.rowcount != 1:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="round cannot enter deciding",
+            )
+        return await self._required_round(round_id, expected_status="deciding")
+
+    async def accept_round(
+        self,
+        round_id: str,
+        *,
+        final_commit: str,
+        final_message: str,
+        finished_at: datetime,
+    ) -> EvolutionRoundRecord:
+        """Persist one accepted amended commit and successful run push."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "deciding",
+                    )
+                    .values(
+                        status="accepted",
+                        accepted=True,
+                        commit_hash=final_commit,
+                        commit_message=final_message,
+                        finished_at=finished_at,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="only deciding rounds can be accepted",
+                )
+            run_id: str = (
+                await session.execute(
+                    select(evolution_rounds.c.run_id).where(evolution_rounds.c.id == round_id),
+                )
+            ).scalar_one()
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(push_status="succeeded", pushed_at=finished_at, push_error=None),
+            )
+        return await self._required_round(round_id)
+
+    async def reject_round(
+        self,
+        round_id: str,
+        *,
+        finished_at: datetime,
+    ) -> EvolutionRoundRecord:
+        """Persist one rejected round while keeping the run branch untouched."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "deciding",
+                    )
+                    .values(
+                        status="rejected",
+                        accepted=False,
+                        finished_at=finished_at,
+                        commit_hash=None,
+                        commit_message=None,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="only deciding rounds can be rejected",
+                )
+        return await self._required_round(round_id, expected_status="rejected")
+
+    async def complete_run(
+        self,
+        run_id: str,
+        *,
+        finished_at: datetime,
+        stats: Mapping[str, Any] | None = None,
+    ) -> EvolutionRunRecord:
+        """Mark the run complete only after its run branch has been published."""
+        values: dict[str, Any] = {
+            "status": "completed",
+            "push_status": "succeeded",
+            "pushed_at": finished_at,
+            "finished_at": finished_at,
+            "blocked_stage": None,
+            "next_retry_at": None,
+            "error_stage": None,
+            "error_message": None,
+            "error_at": None,
+        }
+        if stats is not None:
+            values["stats"] = deepcopy(dict(stats))
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs).where(evolution_runs.c.id == run_id).values(**values),
+            )
+        completed = await self.get_run(run_id)
+        if completed is None:
+            raise LookupError("evolution run not found")
+        return completed
+
+    async def _required_round(
+        self,
+        round_id: str,
+        *,
+        expected_status: str | None = None,
+    ) -> EvolutionRoundRecord:
+        """Return one round or fail fast when a write targeted a missing row."""
+        round_ = await self.get_round(round_id)
+        if round_ is None:
+            raise LookupError("evolution round not found")
+        if expected_status is not None and round_.status != expected_status:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason=f"round is {round_.status}, not {expected_status}",
+            )
+        return round_
 
     async def write_final(self, values: Mapping[str, Any]) -> EvolutionFinalRecord:
         """Insert or replace a run's single final-evaluation row."""
