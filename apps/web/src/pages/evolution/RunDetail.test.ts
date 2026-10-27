@@ -594,10 +594,10 @@ describe("evolution run detail page", () => {
             rounds: [
               {
                 ...iterationStep.payload.rounds[0],
-                status: "blocked",
+                status: "evaluating",
                 candidate: null,
                 patch: null,
-                push: { status: "pending", attempts: 0, error: null },
+                push: { status: "succeeded", attempts: 1, error: null },
                 eval: {
                   status: "failed",
                   current: 84.6,

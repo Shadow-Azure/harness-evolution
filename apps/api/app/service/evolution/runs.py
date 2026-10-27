@@ -36,14 +36,9 @@ EvolutionRunEvalStatus = Literal[
     "timeout",
 ]
 EvolutionRunBlockedStage = Literal[
-    "prepare",
-    "clone",
-    "cluster",
     "patch",
     "push",
     "eval",
-    "commit",
-    "deciding",
 ]
 _RUNNING_STATUSES = frozenset({"preparing", "running", "blocked"})
 _RUN_STAGE_LABELS = (

@@ -16,7 +16,7 @@ Status: implemented
 - 当 run 在第一步完成前失败或中断时，六个节点全部不可读；页面直接显示“该步骤尚未到达 / 运行在第 1 步完成前已终止”，不把禁用查询误判成永久加载。
 - 目标输入与 workspace 使用同一后端快照：分支、base ref/commit、仓库、子目录、workspace/repo 路径、push/eval 状态和 blocked 错误都来自 run 记录；页面提供明确空态、加载态、失败重试和 `RUN_NOT_FOUND` 无重试态。
 - 六步组件直接渲染 05 §3.6 的结构化 payload：筛选行按 probe ID 合并重复输入，聚类与迭代卡展开后复用同一张六列来源问题表，报告 ID 指向归因 tab、来源问题 ID 指向问题描述 tab；归因分析用禁用 raw HTML 的 Markdown 渲染，严重程度按后端顺序展示。
-- 迭代卡以 round status 为闭集映射生成 patch、推送、评测、决策、接纳、拒绝、阻塞和失败文案，deciding 不算终态；评测结论由 accepted 决定，不根据分数高低宣称 candidate 已提升。终评同时展示最终 push 状态与时间，workspace 分支名可点击复制。
+- 迭代卡以 round status 与 push/eval failure substatus 的闭集映射生成 patch、推送、评测、决策、接纳、拒绝和失败文案，并用 run-level blocked stage 标明 patch/push/eval 的阻塞位置；round status 不包含 blocked，deciding 不算终态。评测结论由 accepted 决定，不根据分数高低宣称 candidate 已提升。终评同时展示最终 push 状态与时间，workspace 分支名可点击复制。
 - `lastEventSeq` 当前为 0，事件表与分页/SSE 的消费由 m5-08 接管；blocked 的自动重试动作由 m5-11 接管，详情页只呈现当前恢复上下文，不提供人工 advance。
 
 ## Alternatives considered
@@ -30,6 +30,6 @@ Status: implemented
 
 - 运行详情页和视觉/E2E 只依赖一个详情壳加一个 step 请求，刷新、深链和未到达禁用共享同一契约。
 - `GET /runs/{rid}` 与 step 端点共同依赖 `step_states`；未来 cursor 规则变更必须同时覆盖详情和六步测试。
-- Round/push/eval 与 blocked stage 使用共享契约闭集；新增状态时必须同步 API Literal、生成契约、前端状态测试和原型文案。
+- Round/push/eval 与 blocked stage 使用共享契约闭集：blocked stage 只允许 patch/push/eval，round status 只允许执行态和终态；新增状态时必须同步 API Literal、生成契约、前端状态测试和原型文案。
 - m5-08 可在同一 detail 契约回填真实 `lastEventSeq`，m5-11 可在 blocked banner 接恢复动作，无需前端重算步骤状态。
 - fixture 为每个 cluster 写入 session、bad case、probe 与关联行，并让 run/round/workspace 的 push/eval 状态相互一致；completed、running/evaluating、blocked、无效 cluster 深链和 390px 布局都由 E2E/组件测试覆盖。

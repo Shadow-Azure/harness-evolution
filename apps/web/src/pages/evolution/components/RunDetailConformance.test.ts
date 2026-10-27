@@ -181,7 +181,6 @@ describe("run detail conformance", () => {
     ["deciding", "决策中"],
     ["accepted", "已接纳"],
     ["rejected", "未接纳"],
-    ["blocked", "已阻塞"],
     ["failed", "失败"],
   ])("maps round status %s to %s", (status, label) => {
     const wrapper = mount(StepIterations, {
@@ -218,6 +217,56 @@ describe("run detail conformance", () => {
 
     expect(wrapper.text()).toContain(label);
   });
+
+  it.each([
+    [
+      "push",
+      "pushing",
+      { status: "failed" as const, attempts: 1, error: "远端拒绝" },
+      { status: "pending" as const, current: 84.6, candidate: null, nextPollAt: null },
+      "推送失败",
+      "failed",
+    ],
+    [
+      "eval",
+      "evaluating",
+      { status: "succeeded" as const, attempts: 1, error: null },
+      { status: "failed" as const, current: 84.6, candidate: null, nextPollAt: null },
+      "评测失败",
+      "blocked",
+    ],
+    [
+      "patch",
+      "patching",
+      { status: "pending" as const, attempts: 0, error: null },
+      { status: "pending" as const, current: 84.6, candidate: null, nextPollAt: null },
+      "patch 已阻塞",
+      "blocked",
+    ],
+  ])(
+    "uses run blocked stage %s before pending intermediate labels",
+    (_stage, status, push, evaluation, label, className) => {
+      const wrapper = mount(StepIterations, {
+        props: {
+          step: iterationStep([
+            round({
+              status: status as StepRound["status"],
+              push,
+              eval: evaluation,
+            }),
+          ]),
+          blockedStage: _stage === "patch" ? _stage : null,
+        },
+        global: { stubs: { RouterLink: RouterLinkStub } },
+      });
+
+      const badge = wrapper.get(".badge");
+      expect(badge.text()).toBe(label);
+      expect(badge.classes()).toContain(className);
+      expect(badge.text()).not.toBe("推送中");
+      expect(badge.text()).not.toBe("评测中");
+    },
+  );
 
   it("explains that patching has not created a candidate ref yet", () => {
     const wrapper = mount(StepIterations, {

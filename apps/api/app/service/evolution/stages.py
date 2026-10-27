@@ -50,7 +50,6 @@ RoundStatus = Literal[
     "accepted",
     "rejected",
     "failed",
-    "blocked",
 ]
 RoundPushStatus = Literal["pending", "pushing", "succeeded", "failed"]
 RoundEvalStatus = Literal["pending", "evaluating", "completed", "failed", "timeout"]

@@ -785,14 +785,9 @@
             "anyOf": [
               {
                 "enum": [
-                  "prepare",
-                  "clone",
-                  "cluster",
                   "patch",
                   "push",
-                  "eval",
-                  "commit",
-                  "deciding"
+                  "eval"
                 ],
                 "type": "string"
               },
@@ -3898,8 +3893,7 @@
               "deciding",
               "accepted",
               "rejected",
-              "failed",
-              "blocked"
+              "failed"
             ],
             "title": "Status",
             "type": "string"

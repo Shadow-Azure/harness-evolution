@@ -215,6 +215,14 @@ describe("evolution step content", () => {
     expect(wrapper.text()).toContain("probe-1");
     expect(wrapper.text()).toContain("case-1");
     expect(wrapper.text()).toContain("最终 1 份");
+    expect(wrapper.findAll("thead th").map((heading) => heading.text())).toEqual([
+      "报告 ID",
+      "来源问题 ID",
+      "问题现象",
+      "模型",
+      "归因类型",
+      "归属簇",
+    ]);
   });
 
   it("expands a cluster to reveal its source probes", async () => {

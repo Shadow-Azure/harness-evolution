@@ -33,9 +33,14 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
           <th>报告 ID</th>
           <th>来源问题 ID</th>
           <th>问题现象</th>
-          <th>{{ showCluster ? "归属簇" : "来源 session" }}</th>
+          <th v-if="!showCluster">
+            来源 session
+          </th>
           <th>模型</th>
           <th>归因类型</th>
+          <th v-if="showCluster">
+            归属簇
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -55,13 +60,7 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
           </td>
           <td>{{ probe.description }}</td>
           <td
-            v-if="showCluster"
-            class="mono"
-          >
-            {{ clusterOfProbe?.[probe.probeId] ?? "—" }}
-          </td>
-          <td
-            v-else
+            v-if="!showCluster"
             class="mono source-cell"
             :title="probe.sessionId"
           >
@@ -75,6 +74,12 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
               class="type-chip"
               :class="`type-${probe.attributeType}`"
             >{{ typeLabel(probe.attributeType) }}</span>
+          </td>
+          <td
+            v-if="showCluster"
+            class="mono"
+          >
+            {{ clusterOfProbe?.[probe.probeId] ?? "—" }}
           </td>
         </tr>
       </tbody>

@@ -1075,7 +1075,7 @@ export interface components {
          */
         EvolutionRunDetail: {
             /** Blockedstage */
-            blockedStage: ("prepare" | "clone" | "cluster" | "patch" | "push" | "eval" | "commit" | "deciding") | null;
+            blockedStage: ("patch" | "push" | "eval") | null;
             /**
              * Createdat
              * Format: date-time
@@ -2282,7 +2282,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "failed" | "blocked";
+            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "failed";
             /** Title */
             title: string;
             /**

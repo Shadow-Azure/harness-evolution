@@ -8,6 +8,7 @@ import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
   step: EvolutionStepIteration;
+  blockedStage?: string | null;
 }>();
 
 const rounds = computed(() => props.step.payload.rounds);
@@ -23,8 +24,7 @@ function isTerminal(round: StepRound): boolean {
   return (
     round.status === "accepted" ||
     round.status === "rejected" ||
-    round.status === "failed" ||
-    round.status === "blocked"
+    round.status === "failed"
   );
 }
 
@@ -51,6 +51,18 @@ function deltaLabel(round: StepRound): string {
 }
 
 function statusLabel(round: StepRound): string {
+  if (props.blockedStage === "patch" && round.status === "patching") {
+    return "patch 已阻塞";
+  }
+  if (round.push.status === "failed") {
+    return "推送失败";
+  }
+  if (round.eval.status === "timeout") {
+    return "评测超时";
+  }
+  if (round.eval.status === "failed") {
+    return "评测失败";
+  }
   switch (round.status) {
     case "patching":
       return "生成 patch 中";
@@ -64,14 +76,9 @@ function statusLabel(round: StepRound): string {
       return `已接纳 ${deltaLabel(round)}`;
     case "rejected":
       return `未接纳 ${deltaLabel(round)}`;
-    case "blocked":
-      return "已阻塞";
     case "failed":
       return "失败";
     default:
-      if (round.push.status === "failed") return "推送失败";
-      if (round.eval.status === "failed") return "评测失败";
-      if (round.eval.status === "timeout") return "评测超时";
       return "待执行";
   }
 }
@@ -84,7 +91,7 @@ function statusClass(round: StepRound): string {
   }
   if (
     ["failed", "timeout"].includes(round.eval.status) ||
-    round.status === "blocked"
+    props.blockedStage === "patch"
   ) {
     return "blocked";
   }

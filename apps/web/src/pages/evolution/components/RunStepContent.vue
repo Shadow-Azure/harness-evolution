@@ -63,6 +63,7 @@ defineEmits<{
   <StepIterations
     v-else-if="step?.key === 'iteration'"
     :step="step"
+    :blocked-stage="run.blockedStage"
   />
   <StepFinal
     v-else-if="step?.key === 'final'"

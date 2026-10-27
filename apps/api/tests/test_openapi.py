@@ -7,8 +7,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+from pydantic import TypeAdapter, ValidationError
+
 from app.config import DatabaseDialect, Settings
 from app.main import create_app
+from app.service.evolution.runs import EvolutionRunBlockedStage
+from app.service.evolution.stages import RoundStatus
 
 ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT = ROOT / "packages" / "contracts" / "openapi.json"
@@ -230,14 +235,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "timeout",
     ]
     assert detail_schema["properties"]["blockedStage"]["anyOf"][0]["enum"] == [
-        "prepare",
-        "clone",
-        "cluster",
         "patch",
         "push",
         "eval",
-        "commit",
-        "deciding",
     ]
     assert components["EvolutionRunWorkspace"]["properties"]["pushStatus"]["enum"] == [
         "pending",
@@ -255,7 +255,6 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "accepted",
         "rejected",
         "failed",
-        "blocked",
     ]
     assert components["StepRoundPush"]["properties"]["status"]["enum"] == [
         "pending",
@@ -347,6 +346,20 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert trigger_responses["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/SyncTriggerResponse"
     }
+
+
+def test_evolution_status_aliases_reject_non_design_states() -> None:
+    """Runtime validation rejects stages and round states absent from the design."""
+    blocked_stage = TypeAdapter(EvolutionRunBlockedStage)
+    round_status = TypeAdapter(RoundStatus)
+
+    assert blocked_stage.validate_python("patch") == "patch"
+    assert round_status.validate_python("evaluating") == "evaluating"
+
+    with pytest.raises(ValidationError):
+        blocked_stage.validate_python("prepare")
+    with pytest.raises(ValidationError):
+        round_status.validate_python("blocked")
 
 
 def test_checked_in_openapi_snapshot_is_current() -> None:

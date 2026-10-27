@@ -396,7 +396,7 @@ async def main() -> None:
                                 "run_id": run["id"],
                                 "probe_cluster_id": cluster_id,
                                 "seq": 1,
-                                "status": "blocked",
+                                "status": "evaluating",
                                 "started_at": CREATED_BASE,
                                 "error_message": "评测队列暂停",
                                 "patch": {
