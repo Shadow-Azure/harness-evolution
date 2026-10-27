@@ -302,7 +302,7 @@ erDiagram
 
 - `status` ∈ `preparing|running|blocked|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
 - `createdBy` 是创建人的可空显示名；删除用户后为 `null`。Issue 要求展示创建人，前端把它与 `createdAt` 放在原型右上 meta 槽，不新增视觉行。
-- `byAttributeType.nonIssue` 是命中报告中 `analyzed_nonissue` 的计数；`usedProbes = model + prompt + error`（非问题剔除、未分析不计入），原型"剔除非问题 N 份"与分布条图例直接取该字段。
+- `byAttributeType.nonIssue` 在自进化口径下恒为 0：`analyzed_nonissue` 没有 probe，无法归属任何 target；`usedProbes = model + prompt + error`（非问题剔除、未分析不计入），原型"剔除非问题 N 份"与分布条图例直接取该字段。
 - `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
@@ -736,14 +736,16 @@ erDiagram
 }
 ```
 
-- `badCases` 是命中的问题报告数；`analyzed` / `unanalyzed` 是 `bad_cases.analysis_status` 的计数。
-- **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；前端展示未分析数量，提示等待外部归因。
+- 命中以 `probe_reports` 为准：按 `probe_object @ object_version`（并匹配 `probe_type`）选 probe，再经 `bad_case_analysis.probe_id` 反查 bad case、按 `probe_reports.session_id` 反查 session。
+- `badCases` 是命中 probe 关联的去重问题数；`analyzed` 是其中 `analyzed_issue` 的去重问题数；`unanalyzed` 恒为 0——未分析报告没有 probe，不参与自进化命中，界面保留该统计格显示 0。
+- `sessions` 是命中 probe 的去重 session 数。
+- **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；自进化环节不感知未分析报告。
 - `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_agent_id` → `agents.model` 解析，缺失时回退主 agent 模型。
-- `items[]` 即 §3.6 的 `ProbeRow`；命中 probe 数为 0 时返回 `409 NO_PROBES_MATCHED`（与启动 run 同一校验口径），前端停在 Step1 提示调整条件；存在未分析报告不视为错误，正常 `200` 并在 `summary.unanalyzed` 计数。
+- `items[]` 即 §3.6 的 `ProbeRow`；命中 probe 数为 0 时返回 `409 NO_PROBES_MATCHED`（与启动 run 同一校验口径），前端停在 Step1 提示调整条件。
 
-- `from/to` 按 **session 启动时间**过滤。
-- `models[]` 匹配 **该 Agent 会话树内任一 agent 的模型**（`agents.model`），不是只看主 agent；没有模型时按“全部模型”处理。
-- 命中的 probe 必然属于该 target（`probeObject @ objectVersion`），所以 `usedProbes = probes`。
+- `from/to` 按 **probe 所属 session 的启动时间**过滤。
+- `models[]` 匹配 **该 probe 所属 Agent 会话树内任一 agent 的模型**（`agents.model`），不是只看主 agent；没有模型时按“全部模型”处理。
+- `usedProbes = probes`（命中的 probe 必然已归因为 `analyzed_issue`）。
 
 ### 4.10 自进化运行（异步任务）
 

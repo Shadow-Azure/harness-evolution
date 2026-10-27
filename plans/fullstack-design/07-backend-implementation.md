@@ -397,6 +397,7 @@ async def request_run(q: ProbeQuery, mode: str = "full") -> RunAccepted:
 ```
 
 - `POST /runs` 返回 `202 {runId, jobId, status:"preparing"}`；前端立即跳详情，不等 clone。
+- 向导预览（`/probes/query`）与两个启动端点共用同一条件归一化：`target_version` 缺省取 `cfg.default_ref`、窗口倒挂 422、target 未配置 409、0 命中 409；命中只读查询从 `probe_reports` 出发（`probe_object @ object_version`），未分析报告没有 probe，不参与命中。
 - **两个创建期快照决定运行期行为**：`engine_key`（用哪个执行引擎，§5.4）与 `eval_config`（评测怎么接，§5.7）都在建行时落定，运行期不再读请求方或全局配置的当前值——与 `repo_url` / `sub_dir` 的快照语义一致（[06 §5.2](06-database-design.md)）。
 - 仓库不可用/ref 不存在 → prepare 阶段失败；run 置 `failed`，`error_stage=clone`，用户在详情页看到原因。
 - 工作区目录 `data/workspaces/{run_id}`，run 结束不自动删（便于复现）；清理策略见 §6。
