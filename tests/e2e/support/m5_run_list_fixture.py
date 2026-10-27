@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, insert, select
 from app.config import Settings
 from app.db.factory import create_database
 from app.db.models.domain import (
+    agents,
     bad_case_analysis,
     bad_cases,
     probe_reports,
@@ -142,6 +143,9 @@ async def main() -> None:
                 delete(probe_reports).where(probe_reports.c.probe_id.in_(probe_ids)),
             )
             await session.execute(
+                delete(agents).where(agents.c.root_session_id.in_(session_ids)),
+            )
+            await session.execute(
                 delete(session_families).where(session_families.c.id.in_(session_ids)),
             )
             await session.execute(
@@ -225,6 +229,7 @@ async def main() -> None:
             cluster_probe_rows: list[dict[str, Any]] = []
             round_rows: list[dict[str, Any]] = []
             session_rows: list[dict[str, Any]] = []
+            agent_rows: list[dict[str, Any]] = []
             source_rows: list[dict[str, Any]] = []
             probe_rows: list[dict[str, Any]] = []
             case_rows: list[dict[str, Any]] = []
@@ -298,7 +303,7 @@ async def main() -> None:
                             "started_at": CREATED_BASE,
                             "ended_at": CREATED_BASE,
                             "duration_seconds": 1,
-                            "status": "completed",
+                            "status": "partial",
                             "skill_names": ["deep-research"],
                             "user_turns_count": 1,
                             "messages_count": 1,
@@ -310,6 +315,24 @@ async def main() -> None:
                             "main_record_id": next_source_id,
                             "imported_at": CREATED_BASE,
                             "updated_at": CREATED_BASE,
+                        },
+                    )
+                    agent_rows.append(
+                        {
+                            "id": session_id,
+                            "root_session_id": session_id,
+                            "parent_agent_id": None,
+                            "kind": "main",
+                            "model": "glm-5.3",
+                            "spawn_depth": 0,
+                            "transcript_record_id": next_source_id,
+                            "lines": 1,
+                            "messages_count": 1,
+                            "tokens_total": 1,
+                            "tools_count": 0,
+                            "errors_count": 1,
+                            "meta": None,
+                            "sort_key": 0.0,
                         },
                     )
                     case_rows.append(
@@ -459,6 +482,7 @@ async def main() -> None:
                         )
             await session.execute(insert(source_records), source_rows)
             await session.execute(insert(session_families), session_rows)
+            await session.execute(insert(agents), agent_rows)
             await session.execute(insert(bad_cases), case_rows)
             await session.execute(insert(probe_reports), probe_rows)
             await session.execute(insert(bad_case_analysis), analysis_rows)

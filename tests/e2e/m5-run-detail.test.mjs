@@ -299,6 +299,11 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
           highlighted: target.className,
           text: target.textContent,
           sourceRows: target.querySelectorAll("tbody tr").length,
+          sourceLinks: [...target.querySelectorAll("tbody tr a")].map((link) => ({
+            href: link.href,
+            target: link.target,
+            rel: link.rel,
+          })),
         };
       })()`,
       "cluster deep link highlight",
@@ -310,6 +315,89 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     assert.match(clusterDeepLink.text, /来源运行 1/);
     assert.match(clusterDeepLink.text, /glm-5\.3/);
     assert.equal(clusterDeepLink.sourceRows, 1);
+    assert.equal(clusterDeepLink.sourceLinks.length, 2);
+    assert.deepEqual(
+      clusterDeepLink.sourceLinks.map(({ target, rel }) => ({ target, rel })),
+      [
+        { target: "_blank", rel: "noopener noreferrer" },
+        { target: "_blank", rel: "noopener noreferrer" },
+      ],
+    );
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", {
+      url: clusterDeepLink.sourceLinks[0].href,
+    });
+    let sourceAttr;
+    try {
+      sourceAttr = await waitForDocument(
+        page.session,
+        `(() => {
+          if (
+            location.pathname !== "/sessions/session-run-running-1/errors" ||
+            !location.search.includes("case=case-run-running-1") ||
+            !location.search.includes("tab=attr")
+          ) return null;
+          const text = document.body.textContent;
+          if (!text.includes("第 1 条来源缺少快照校验")) return null;
+          return {
+            unavailable: text.includes("BAD_CASE_UNAVAILABLE"),
+            attrSelected:
+              document.querySelector("#attr-tab")?.getAttribute("aria-selected"),
+            text,
+          };
+        })()`,
+        "source report deep link",
+      );
+    } catch (error) {
+      const debug = await evaluate(
+        page,
+        `({
+          url: location.href,
+          body: document.body.textContent,
+          html: document.body.innerHTML.slice(0, 3000),
+        })`,
+      );
+      throw new Error(`${error.message}\n${JSON.stringify(debug)}\nAPI:\n${apiLogs}`);
+    }
+    assert.equal(sourceAttr.unavailable, false);
+    assert.equal(sourceAttr.attrSelected, "true");
+    assert.match(sourceAttr.text, /确认问题/);
+    assert.match(sourceAttr.text, /第 1 条来源缺少快照校验/);
+
+    await installCookie(page, await currentLoginCookie());
+    await page.session.send("Page.navigate", {
+      url: clusterDeepLink.sourceLinks[1].href,
+    });
+    let sourceDesc;
+    try {
+      sourceDesc = await waitForDocument(
+        page.session,
+        `(() => {
+          if (!location.search.includes("tab=desc")) return null;
+          const text = document.body.textContent;
+          if (!text.includes("检索索引读取失败（来源 1）")) return null;
+          return {
+            unavailable: text.includes("BAD_CASE_UNAVAILABLE"),
+            descSelected:
+              document.querySelector("#desc-tab")?.getAttribute("aria-selected"),
+          };
+        })()`,
+        "source problem deep link",
+      );
+    } catch (error) {
+      const debug = await evaluate(
+        page,
+        `({
+          url: location.href,
+          body: document.body.textContent,
+          html: document.body.innerHTML.slice(0, 3000),
+        })`,
+      );
+      throw new Error(`${error.message}\n${JSON.stringify(debug)}\nAPI:\n${apiLogs}`);
+    }
+    assert.equal(sourceDesc.unavailable, false);
+    assert.equal(sourceDesc.descSelected, "true");
 
     await installCookie(page, await currentLoginCookie());
     await page.session.send("Page.navigate", {
