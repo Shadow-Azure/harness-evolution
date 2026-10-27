@@ -20,6 +20,7 @@ scope:
   - .agents/flow/**
   - .agents/notes/**
   - tests/**
+  - plans/**
 adr: []
 github:
   number: 54
