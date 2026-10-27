@@ -1,0 +1,35 @@
+{
+  "key": "clusters",
+  "index": 1,
+  "title": "问题聚类",
+  "status": "done",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "clusters": [
+      {
+        "probeClusterId": "C1",
+        "title": "检索索引读取失败",
+        "description": "检索索引读取失败",
+        "type": "error",
+        "probeCount": 1,
+        "confidence": 0.82,
+        "severity": 7.4,
+        "probes": [
+          {
+            "probeId": "pr-050b-03",
+            "sessionId": "050b81ba-0000-4000-8000-0000000000c3",
+            "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
+            "model": "glm-5.3",
+            "probeType": "skill",
+            "probeObject": "deep-research",
+            "objectVersion": "v2.0.0",
+            "attributeType": "error",
+            "description": "检索索引读取失败",
+            "sourceBadCaseIds": ["bc-050b-03"]
+          }
+        ]
+      }
+    ]
+  }
+}

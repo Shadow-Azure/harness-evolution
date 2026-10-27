@@ -1,0 +1,23 @@
+{
+  "key": "severity",
+  "index": 3,
+  "title": "严重程度排序",
+  "status": "done",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "rows": [
+      {
+        "rank": 1,
+        "clusterId": "C1",
+        "title": "检索索引读取失败",
+        "type": "error",
+        "probeCount": 1,
+        "reportCount": 1,
+        "confidence": 0.82,
+        "impact": 9,
+        "severity": 7.4
+      }
+    ]
+  }
+}

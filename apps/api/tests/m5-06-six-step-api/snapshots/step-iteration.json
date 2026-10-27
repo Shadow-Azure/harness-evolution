@@ -1,0 +1,49 @@
+{
+  "key": "iteration",
+  "index": 4,
+  "title": "迭代优化",
+  "status": "active",
+  "clickable": true,
+  "detail": "第 1/1 轮",
+  "payload": {
+    "rounds": [
+      {
+        "roundId": "r-01",
+        "clusterId": "C1",
+        "title": "检索索引读取失败",
+        "type": "error",
+        "probeCount": 1,
+        "confidence": 0.82,
+        "severity": 7.4,
+        "probes": [
+          {
+            "probeId": "pr-050b-03",
+            "sessionId": "050b81ba-0000-4000-8000-0000000000c3",
+            "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
+            "model": "glm-5.3",
+            "probeType": "skill",
+            "probeObject": "deep-research",
+            "objectVersion": "v2.0.0",
+            "attributeType": "error",
+            "description": "检索索引读取失败",
+            "sourceBadCaseIds": ["bc-050b-03"]
+          }
+        ],
+        "status": "accepted",
+        "candidate": {
+          "ref": "evo/20261023-evo-20261023-01/candidate/r1",
+          "commit": "ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12",
+          "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更"
+        },
+        "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
+        "push": { "status": "succeeded", "attempts": 1, "error": null },
+        "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
+        "accepted": true,
+        "finalCommit": {
+          "hash": "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34",
+          "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取"
+        }
+      }
+    ]
+  }
+}

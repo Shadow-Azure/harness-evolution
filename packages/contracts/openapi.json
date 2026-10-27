@@ -579,6 +579,8 @@
           "BAD_CASE_SESSION_MISMATCH",
           "PROBE_NOT_FOUND",
           "JOB_NOT_FOUND",
+          "RUN_NOT_FOUND",
+          "STEP_NOT_READY",
           "RUN_BUSY",
           "REPO_INVALID",
           "TARGET_EXISTS",
@@ -1007,6 +1009,342 @@
           }
         },
         "title": "EvolutionRunWindow",
+        "type": "object"
+      },
+      "EvolutionStepAttribution": {
+        "additionalProperties": false,
+        "description": "Step 2 response: key-discriminated attribution projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "attribution",
+            "default": "attribution",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepAttributionPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepAttribution",
+        "type": "object"
+      },
+      "EvolutionStepClusters": {
+        "additionalProperties": false,
+        "description": "Step 1 response: key-discriminated cluster projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "clusters",
+            "default": "clusters",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepClustersPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepClusters",
+        "type": "object"
+      },
+      "EvolutionStepFinal": {
+        "additionalProperties": false,
+        "description": "Step 5 response: key-discriminated final projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "final",
+            "default": "final",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepFinalPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepFinal",
+        "type": "object"
+      },
+      "EvolutionStepInput": {
+        "additionalProperties": false,
+        "description": "Step 0 response: key-discriminated input projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "input",
+            "default": "input",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepInputPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepInput",
+        "type": "object"
+      },
+      "EvolutionStepIteration": {
+        "additionalProperties": false,
+        "description": "Step 4 response: key-discriminated iteration projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "iteration",
+            "default": "iteration",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepIterationPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepIteration",
+        "type": "object"
+      },
+      "EvolutionStepSeverity": {
+        "additionalProperties": false,
+        "description": "Step 3 response: key-discriminated severity projection.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "severity",
+            "default": "severity",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepSeverityPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepSeverity",
         "type": "object"
       },
       "EvolutionTarget": {
@@ -2561,6 +2899,882 @@
         "title": "SessionTree",
         "type": "object"
       },
+      "StepAttributionItem": {
+        "additionalProperties": false,
+        "description": "One probe attribution entry with its cluster-level confidence.",
+        "properties": {
+          "analysis": {
+            "title": "Analysis",
+            "type": "string"
+          },
+          "attributeType": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Attributetype",
+            "type": "string"
+          },
+          "clusterId": {
+            "title": "Clusterid",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "probeId": {
+            "title": "Probeid",
+            "type": "string"
+          },
+          "probeObject": {
+            "title": "Probeobject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "clusterId",
+          "probeId",
+          "probeObject",
+          "objectVersion",
+          "attributeType",
+          "description",
+          "analysis",
+          "confidence"
+        ],
+        "title": "StepAttributionItem",
+        "type": "object"
+      },
+      "StepAttributionPayload": {
+        "additionalProperties": false,
+        "description": "Per-probe attribution entries of step 2.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/StepAttributionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "StepAttributionPayload",
+        "type": "object"
+      },
+      "StepCandidate": {
+        "additionalProperties": false,
+        "description": "Pushed candidate ref backing one evaluation round.",
+        "properties": {
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "ref": {
+            "title": "Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "commit",
+          "message"
+        ],
+        "title": "StepCandidate",
+        "type": "object"
+      },
+      "StepCluster": {
+        "additionalProperties": false,
+        "description": "One persisted cluster with its probe rows and stored scores.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "probeClusterId": {
+            "title": "Probeclusterid",
+            "type": "string"
+          },
+          "probeCount": {
+            "title": "Probecount",
+            "type": "integer"
+          },
+          "probes": {
+            "items": {
+              "$ref": "#/components/schemas/ProbePreviewItem"
+            },
+            "title": "Probes",
+            "type": "array"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "probeClusterId",
+          "title",
+          "description",
+          "type",
+          "probeCount",
+          "confidence",
+          "severity",
+          "probes"
+        ],
+        "title": "StepCluster",
+        "type": "object"
+      },
+      "StepClustersPayload": {
+        "additionalProperties": false,
+        "description": "Cluster list of step 1 in creation order.",
+        "properties": {
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/StepCluster"
+            },
+            "title": "Clusters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "clusters"
+        ],
+        "title": "StepClustersPayload",
+        "type": "object"
+      },
+      "StepCondition": {
+        "additionalProperties": false,
+        "description": "Filter condition snapshotted when the run was admitted.",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "targetName": {
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "title": "Targetversion",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName",
+          "targetVersion",
+          "models"
+        ],
+        "title": "StepCondition",
+        "type": "object"
+      },
+      "StepFinalChange": {
+        "additionalProperties": false,
+        "description": "One accepted round inside the terminal modification list.",
+        "properties": {
+          "clusterId": {
+            "title": "Clusterid",
+            "type": "string"
+          },
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "reportCount": {
+            "title": "Reportcount",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit",
+          "clusterId",
+          "title",
+          "type",
+          "reportCount"
+        ],
+        "title": "StepFinalChange",
+        "type": "object"
+      },
+      "StepFinalCommit": {
+        "additionalProperties": false,
+        "description": "Amended run-branch commit produced when a round was accepted.",
+        "properties": {
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hash",
+          "message"
+        ],
+        "title": "StepFinalCommit",
+        "type": "object"
+      },
+      "StepFinalPayload": {
+        "additionalProperties": false,
+        "description": "Terminal evaluation verdict with metrics and accepted changes.\n\nThe four verdict fields stay null until `evolution_finals` has a row, so an\nactive final step cannot be mistaken for a failing verdict.",
+        "properties": {
+          "bestScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestscore"
+          },
+          "bestVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bestversion"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/StepFinalChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "initScore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initscore"
+          },
+          "metrics": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "bestVersion",
+          "bestScore",
+          "initScore",
+          "metrics",
+          "changes"
+        ],
+        "title": "StepFinalPayload",
+        "type": "object"
+      },
+      "StepInputPayload": {
+        "additionalProperties": false,
+        "description": "Filter condition, hit statistics, and probe rows of step 0.",
+        "properties": {
+          "condition": {
+            "$ref": "#/components/schemas/StepCondition"
+          },
+          "hits": {
+            "$ref": "#/components/schemas/ProbeHitSummary"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StepInputRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "condition",
+          "hits",
+          "rows"
+        ],
+        "title": "StepInputPayload",
+        "type": "object"
+      },
+      "StepInputRow": {
+        "additionalProperties": false,
+        "description": "Shared ProbeRow plus the owning cluster for the input table.",
+        "properties": {
+          "attributeType": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Attributetype",
+            "type": "string"
+          },
+          "clusterId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clusterid"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "probeId": {
+            "title": "Probeid",
+            "type": "string"
+          },
+          "probeObject": {
+            "title": "Probeobject",
+            "type": "string"
+          },
+          "probeType": {
+            "title": "Probetype",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "sessionTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessiontitle"
+          },
+          "sourceBadCaseIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sourcebadcaseids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "probeId",
+          "sessionId",
+          "sessionTitle",
+          "model",
+          "probeType",
+          "probeObject",
+          "objectVersion",
+          "attributeType",
+          "description",
+          "sourceBadCaseIds"
+        ],
+        "title": "StepInputRow",
+        "type": "object"
+      },
+      "StepIterationPayload": {
+        "additionalProperties": false,
+        "description": "Rounds of step 4 in sequence order.",
+        "properties": {
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/StepRound"
+            },
+            "title": "Rounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rounds"
+        ],
+        "title": "StepIterationPayload",
+        "type": "object"
+      },
+      "StepRound": {
+        "additionalProperties": false,
+        "description": "One execution round rendered by the iteration step.",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepCandidate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clusterId": {
+            "title": "Clusterid",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "eval": {
+            "$ref": "#/components/schemas/StepRoundEval"
+          },
+          "finalCommit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepFinalCommit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "patch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StepRoundPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "probeCount": {
+            "title": "Probecount",
+            "type": "integer"
+          },
+          "probes": {
+            "items": {
+              "$ref": "#/components/schemas/ProbePreviewItem"
+            },
+            "title": "Probes",
+            "type": "array"
+          },
+          "push": {
+            "$ref": "#/components/schemas/StepRoundPush"
+          },
+          "roundId": {
+            "title": "Roundid",
+            "type": "string"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "roundId",
+          "clusterId",
+          "title",
+          "type",
+          "probeCount",
+          "confidence",
+          "severity",
+          "probes",
+          "status",
+          "candidate",
+          "patch",
+          "push",
+          "eval",
+          "accepted"
+        ],
+        "title": "StepRound",
+        "type": "object"
+      },
+      "StepRoundEval": {
+        "additionalProperties": false,
+        "description": "External evaluation state stored on the round.",
+        "properties": {
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "nextPollAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextpollat"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "current",
+          "candidate"
+        ],
+        "title": "StepRoundEval",
+        "type": "object"
+      },
+      "StepRoundPatch": {
+        "additionalProperties": false,
+        "description": "Placeholder patch preview stored with the round.",
+        "properties": {
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file",
+          "lines"
+        ],
+        "title": "StepRoundPatch",
+        "type": "object"
+      },
+      "StepRoundPush": {
+        "additionalProperties": false,
+        "description": "Candidate push outcome stored on the round.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "attempts",
+          "error"
+        ],
+        "title": "StepRoundPush",
+        "type": "object"
+      },
+      "StepSeverityPayload": {
+        "additionalProperties": false,
+        "description": "Severity rows of step 3 ordered by stored severity.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StepSeverityRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "StepSeverityPayload",
+        "type": "object"
+      },
+      "StepSeverityRow": {
+        "additionalProperties": false,
+        "description": "One ranked cluster row backed by persisted severity columns.",
+        "properties": {
+          "clusterId": {
+            "title": "Clusterid",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact"
+          },
+          "probeCount": {
+            "title": "Probecount",
+            "type": "integer"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "reportCount": {
+            "title": "Reportcount",
+            "type": "integer"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "clusterId",
+          "title",
+          "type",
+          "probeCount",
+          "reportCount",
+          "confidence",
+          "impact",
+          "severity"
+        ],
+        "title": "StepSeverityRow",
+        "type": "object"
+      },
       "SyncStatusError": {
         "additionalProperties": false,
         "description": "Sanitized issue summary retained from the latest replay batch.",
@@ -4002,6 +5216,474 @@
           }
         ],
         "summary": "Create Run",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/attribution": {
+      "get": {
+        "description": "Return the backend-owned attribution projection of one run.",
+        "operationId": "read_attribution_step_api_evolution_runs__run_id__steps_attribution_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepAttribution"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Attribution Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/clusters": {
+      "get": {
+        "description": "Return the backend-owned problem-cluster projection of one run.",
+        "operationId": "read_clusters_step_api_evolution_runs__run_id__steps_clusters_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepClusters"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Clusters Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/final": {
+      "get": {
+        "description": "Return the backend-owned final evaluation projection of one run.",
+        "operationId": "read_final_step_api_evolution_runs__run_id__steps_final_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepFinal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Final Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/input": {
+      "get": {
+        "description": "Return the backend-owned filter-input projection of one run.",
+        "operationId": "read_input_step_api_evolution_runs__run_id__steps_input_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Input Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/iteration": {
+      "get": {
+        "description": "Return the backend-owned iteration projection of one run.",
+        "operationId": "read_iteration_step_api_evolution_runs__run_id__steps_iteration_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepIteration"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Iteration Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/severity": {
+      "get": {
+        "description": "Return the backend-owned severity ranking projection of one run.",
+        "operationId": "read_severity_step_api_evolution_runs__run_id__steps_severity_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepSeverity"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Severity Step",
         "tags": [
           "evolution-runs"
         ]

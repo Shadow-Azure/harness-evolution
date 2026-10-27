@@ -1,0 +1,27 @@
+{
+  "key": "final",
+  "index": 5,
+  "title": "测试集终评",
+  "status": "done",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "verdict": true,
+    "bestVersion": "v2.0.0-best",
+    "bestScore": 88.9,
+    "initScore": 84.3,
+    "metrics": [
+      { "name": "任务完成率", "init": 78.0, "best": 84.0, "delta": 6.0, "unit": "%" },
+      { "name": "平均耗时", "init": 42.0, "best": 36.0, "delta": -6.0, "unit": "s" }
+    ],
+    "changes": [
+      {
+        "commit": "cd34ab12ef56cd34ab12ef56cd34ab12ef56cd34",
+        "clusterId": "C1",
+        "title": "检索索引读取失败",
+        "type": "error",
+        "reportCount": 1
+      }
+    ]
+  }
+}

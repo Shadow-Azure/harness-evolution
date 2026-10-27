@@ -15,6 +15,7 @@ from app.db.models.evolution import (
     EvolutionRoundRecord,
     EvolutionRunRecord,
     EvolutionRunSummaryRecord,
+    ProbeClusterLinkRecord,
     ProbeClusterRecord,
     evolution_finals,
     evolution_rounds,
@@ -25,6 +26,7 @@ from app.db.models.evolution import (
     record_from_evolution_round,
     record_from_evolution_run,
     record_from_probe_cluster,
+    record_from_probe_cluster_link,
 )
 from app.db.models.users import users
 from app.service.evolution.state import StageConflict, validate_transition
@@ -306,6 +308,45 @@ class EvolutionRepository:
                 .all()
             )
         return tuple(record_from_probe_cluster(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def list_cluster_probes(self, run_id: str) -> tuple[ProbeClusterLinkRecord, ...]:
+        """Return one run's cluster-to-probe links in cluster sequence order."""
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(probe_cluster_probes)
+                        .select_from(
+                            probe_cluster_probes.join(
+                                probe_clusters,
+                                probe_clusters.c.probe_cluster_id
+                                == probe_cluster_probes.c.probe_cluster_id,
+                            ),
+                        )
+                        .where(probe_clusters.c.run_id == run_id)
+                        .order_by(probe_clusters.c.seq, probe_cluster_probes.c.id),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_probe_cluster_link(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def get_final(self, run_id: str) -> EvolutionFinalRecord | None:
+        """Return one run's terminal evaluation row when present."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(evolution_finals).where(evolution_finals.c.run_id == run_id),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return (
+            record_from_evolution_final(cast(Mapping[str, Any], row)) if row is not None else None
+        )
 
     async def insert_rounds(self, rounds: Sequence[Mapping[str, Any]]) -> None:
         """Insert the pending execution rounds for one prepared run."""

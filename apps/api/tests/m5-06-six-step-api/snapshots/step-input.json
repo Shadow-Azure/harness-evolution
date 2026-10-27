@@ -1,0 +1,42 @@
+{
+  "key": "input",
+  "index": 0,
+  "title": "筛选输入",
+  "status": "done",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "condition": {
+      "targetType": "skill",
+      "targetName": "deep-research",
+      "targetVersion": "v2.0.0",
+      "from": "2026-08-20",
+      "to": "2026-09-10",
+      "models": ["glm-5.3"]
+    },
+    "hits": {
+      "sessions": 1,
+      "badCases": 1,
+      "analyzed": 1,
+      "unanalyzed": 0,
+      "probes": 1,
+      "usedProbes": 1,
+      "byAttributeType": { "model": 0, "prompt": 0, "error": 1, "nonIssue": 0 }
+    },
+    "rows": [
+      {
+        "probeId": "pr-050b-03",
+        "sessionId": "050b81ba-0000-4000-8000-0000000000c3",
+        "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
+        "model": "glm-5.3",
+        "probeType": "skill",
+        "probeObject": "deep-research",
+        "objectVersion": "v2.0.0",
+        "attributeType": "error",
+        "description": "检索索引读取失败",
+        "sourceBadCaseIds": ["bc-050b-03"],
+        "clusterId": "C1"
+      }
+    ]
+  }
+}

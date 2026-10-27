@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, cast
@@ -21,6 +21,8 @@ from app.utils.time import as_shanghai
 
 _CASE_AGENT = agents.alias("case_agent")
 
+_ATTRIBUTE_TYPES: tuple[str, ...] = ("model", "prompt", "error")
+
 
 @dataclass(frozen=True, slots=True)
 class ProbeHitRow:
@@ -35,6 +37,7 @@ class ProbeHitRow:
     object_version: str | None
     attribute_type: str
     probe_description: str
+    probe_analysis: str
     session_title: str | None
     case_agent_model: str | None
     session_model: str | None
@@ -88,18 +91,9 @@ class ProbeQueryRepository:
             models.setdefault(str(root_session_id), set()).add(str(model))
         return {session_id: frozenset(values) for session_id, values in models.items()}
 
-    async def list_hit_rows(self, query: ProbeHitQuery) -> tuple[ProbeHitRow, ...]:
-        """Return every probe reported for one object pair with linked case facts.
-
-        Args:
-            query: Normalized wizard condition with a resolved target version.
-
-        Returns:
-            Hit rows starting from `probe_reports`, ordered by probe session
-            start and probe id, already narrowed by the probe session-time
-            window and selected model chips.
-        """
-        statement = (
+    def _hit_selection(self) -> Any:
+        """Return the shared probe/case/session selection without filters."""
+        return (
             select(
                 bad_cases.c.bad_case_id,
                 bad_case_analysis.c.analysis_status,
@@ -110,6 +104,7 @@ class ProbeQueryRepository:
                 probe_reports.c.object_version,
                 probe_reports.c.attribute_type,
                 probe_reports.c.probe_description,
+                probe_reports.c.probe_analysis,
                 session_families.c.title.label("session_title"),
                 session_families.c.started_at.label("probe_started_at"),
                 session_families.c.model.label("session_model"),
@@ -132,6 +127,44 @@ class ProbeQueryRepository:
                 _CASE_AGENT,
                 _CASE_AGENT.c.id == bad_cases.c.bad_case_agent_id,
             )
+        )
+
+    async def list_rows_by_ids(
+        self,
+        probe_ids: Sequence[str],
+    ) -> tuple[ProbeHitRow, ...]:
+        """Return joined probe rows for explicit identifiers without hit filtering.
+
+        Args:
+            probe_ids: Probe identifiers selected by a run's cluster links.
+
+        Returns:
+            Hit rows in probe-id order carrying case, session, and model facts.
+        """
+        if not probe_ids:
+            return ()
+        statement = (
+            self._hit_selection()
+            .where(probe_reports.c.probe_id.in_(probe_ids))
+            .order_by(probe_reports.c.probe_id)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return tuple(_row_hit(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def list_hit_rows(self, query: ProbeHitQuery) -> tuple[ProbeHitRow, ...]:
+        """Return every probe reported for one object pair with linked case facts.
+
+        Args:
+            query: Normalized wizard condition with a resolved target version.
+
+        Returns:
+            Hit rows starting from `probe_reports`, ordered by probe session
+            start and probe id, already narrowed by the probe session-time
+            window and selected model chips.
+        """
+        statement = (
+            self._hit_selection()
             .where(
                 probe_reports.c.probe_object == query.target_name,
                 probe_reports.c.object_version == query.target_version,
@@ -166,6 +199,7 @@ def _row_hit(row: Mapping[str, Any]) -> ProbeHitRow:
         object_version=_text(row["object_version"]),
         attribute_type=str(row["attribute_type"]),
         probe_description=str(row["probe_description"]),
+        probe_analysis=str(row["probe_analysis"]),
         session_title=_text(row["session_title"]),
         case_agent_model=_text(row["case_agent_model"]),
         session_model=_text(row["session_model"]),

@@ -598,7 +598,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert job.result == {
         "placeholder": True,
         "runId": body["runId"],
-        "note": "real prepare orchestration is provided by m5-06",
+        "note": "real prepare orchestration lands with the engine slices m5-09-m5-11",
     }
 
     async with _app_of(launch_api).state.database.session() as session:

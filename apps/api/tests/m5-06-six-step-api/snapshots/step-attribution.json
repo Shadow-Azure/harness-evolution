@@ -1,0 +1,22 @@
+{
+  "key": "attribution",
+  "index": 2,
+  "title": "归因确认",
+  "status": "done",
+  "clickable": true,
+  "detail": null,
+  "payload": {
+    "items": [
+      {
+        "clusterId": "C1",
+        "probeId": "pr-050b-03",
+        "probeObject": "deep-research",
+        "objectVersion": "v2.0.0",
+        "attributeType": "error",
+        "description": "检索索引读取失败",
+        "analysis": "在对象逻辑中复现并确认索引未校验",
+        "confidence": 0.82
+      }
+    ]
+  }
+}

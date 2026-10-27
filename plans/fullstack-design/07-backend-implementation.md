@@ -951,7 +951,8 @@ Harness-Decision-Rule: external-verdict
 | 4 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + `probe_clusters` + `probe_reports`（`ProbeRow`） |
 | 5 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
 
-- 六个端点：`GET /runs/{rid}/steps/{input|clusters|attribution|severity|iteration|final}`；共享 `build_step_payload(run, key)`，只按 key 组装对应 DTO。
+- 六个端点：`GET /runs/{rid}/steps/{input|clusters|attribution|severity|iteration|final}`；共享 `build_step_payload(run, clusters, key)`，只按 key 组装对应 DTO。
+- 第 0 步 `hits` 按该 run 已落簇的 probe（`probe_cluster_probes`）计数，不按查询条件重查；`preparing` 时为零值——读路径只读已落库事实、可审计、不重跑筛选查询。
 - `confidence` 是簇级：第 2 步一个簇一个值；`impact` 是建簇时的 type 固定映射；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`。三个值都落 `probe_clusters`，`build_step_payload` 不重新计算。
 
 ```python

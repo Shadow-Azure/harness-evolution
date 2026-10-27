@@ -52,6 +52,12 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/acquisition/sync",
         "/api/acquisition/pull",
         "/api/evolution/runs",
+        "/api/evolution/runs/{run_id}/steps/input",
+        "/api/evolution/runs/{run_id}/steps/clusters",
+        "/api/evolution/runs/{run_id}/steps/attribution",
+        "/api/evolution/runs/{run_id}/steps/severity",
+        "/api/evolution/runs/{run_id}/steps/iteration",
+        "/api/evolution/runs/{run_id}/steps/final",
         "/api/evolution/probes/query",
         "/api/evolution/cluster-previews",
         "/api/evolution/targets",
@@ -99,6 +105,12 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "EvolutionRunAttributeStats",
         "EvolutionRunProgress",
         "EvolutionRunFinal",
+        "EvolutionStepInput",
+        "EvolutionStepClusters",
+        "EvolutionStepAttribution",
+        "EvolutionStepSeverity",
+        "EvolutionStepIteration",
+        "EvolutionStepFinal",
         "EvolutionTarget",
         "EvolutionTargetWrite",
         "EvolutionTargetList",
@@ -142,6 +154,12 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/acquisition/sync", "post"),
         ("/api/evolution/runs", "get"),
         ("/api/evolution/runs", "post"),
+        ("/api/evolution/runs/{run_id}/steps/input", "get"),
+        ("/api/evolution/runs/{run_id}/steps/clusters", "get"),
+        ("/api/evolution/runs/{run_id}/steps/attribution", "get"),
+        ("/api/evolution/runs/{run_id}/steps/severity", "get"),
+        ("/api/evolution/runs/{run_id}/steps/iteration", "get"),
+        ("/api/evolution/runs/{run_id}/steps/final", "get"),
         ("/api/evolution/probes/query", "post"),
         ("/api/evolution/cluster-previews", "post"),
         ("/api/evolution/targets", "get"),
@@ -181,6 +199,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert paths["/api/evolution/runs"]["get"]["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/EvolutionRunList"}
+    step_not_ready = paths["/api/evolution/runs/{run_id}/steps/input"]["get"]["responses"]["404"]
+    assert step_not_ready["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
     run_card = components["EvolutionRunCard"]
     assert set(run_card["properties"]) == {
         "runId",

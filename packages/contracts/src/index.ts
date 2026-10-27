@@ -149,6 +149,45 @@ export type ProbeQueryResult = components["schemas"]["ProbeQueryResult"];
 /** Asynchronous launch acceptance returned by run and preview endpoints. */
 export type RunAccepted = components["schemas"]["RunAccepted"];
 
+/** Backend-owned filter-input projection of one evolution run. */
+export type EvolutionStepInput = components["schemas"]["EvolutionStepInput"];
+
+/** Backend-owned problem-cluster projection of one evolution run. */
+export type EvolutionStepClusters = components["schemas"]["EvolutionStepClusters"];
+
+/** Backend-owned attribution projection of one evolution run. */
+export type EvolutionStepAttribution = components["schemas"]["EvolutionStepAttribution"];
+
+/** Backend-owned severity ranking projection of one evolution run. */
+export type EvolutionStepSeverity = components["schemas"]["EvolutionStepSeverity"];
+
+/** Backend-owned iteration projection of one evolution run. */
+export type EvolutionStepIteration = components["schemas"]["EvolutionStepIteration"];
+
+/** Backend-owned terminal evaluation projection of one evolution run. */
+export type EvolutionStepFinal = components["schemas"]["EvolutionStepFinal"];
+
+/** Filter condition snapshotted when an evolution run was admitted. */
+export type StepCondition = components["schemas"]["StepCondition"];
+
+/** Shared ProbeRow plus the owning cluster for the input table. */
+export type StepInputRow = components["schemas"]["StepInputRow"];
+
+/** One persisted cluster with its probe rows and stored scores. */
+export type StepCluster = components["schemas"]["StepCluster"];
+
+/** One probe attribution entry with its cluster-level confidence. */
+export type StepAttributionItem = components["schemas"]["StepAttributionItem"];
+
+/** One ranked cluster row backed by persisted severity columns. */
+export type StepSeverityRow = components["schemas"]["StepSeverityRow"];
+
+/** One execution round rendered by the iteration step. */
+export type StepRound = components["schemas"]["StepRound"];
+
+/** One accepted round inside the terminal modification list. */
+export type StepFinalChange = components["schemas"]["StepFinalChange"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 
