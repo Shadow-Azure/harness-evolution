@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     upstream_retry_attempts: int = Field(default=3, ge=0, le=3)
     upstream_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
     upstream_max_pages: int = Field(default=100, gt=0, le=1_000)
+    git_push_enabled: bool = False
+    web_base_url: str | None = None
     admin_username: str | None = None
     admin_password: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
@@ -109,6 +111,22 @@ class Settings(BaseSettings):
             raise ValueError("HE_UPSTREAM_BASE_URL must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("HE_UPSTREAM_BASE_URL must not contain query or fragment")
+        return normalized
+
+    @field_validator("web_base_url")
+    @classmethod
+    def validate_web_base_url(cls, value: str | None) -> str | None:
+        """Allow only credential-free HTTP(S) links in generated commit messages."""
+        if value is None or not value.strip():
+            return None
+        normalized = value.rstrip("/")
+        parsed = urlsplit(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("HE_WEB_BASE_URL must be an absolute HTTP(S) URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("HE_WEB_BASE_URL must not contain credentials")
+        if parsed.query or parsed.fragment:
+            raise ValueError("HE_WEB_BASE_URL must not contain query or fragment")
         return normalized
 
     @property

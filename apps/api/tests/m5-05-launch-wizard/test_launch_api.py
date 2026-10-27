@@ -24,6 +24,7 @@ from app.db.models.domain import (
 )
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
+from app.third_party_api.git.workspace import PreparedWorkspace
 
 ADMIN_TEMP_PASSWORD = "launch-wizard-admin-temp-password"
 ADMIN_PASSWORD = "launch-wizard-admin-password"
@@ -289,6 +290,28 @@ async def _seed_hits(app: Any) -> None:
         )
 
 
+class _FakeWorkspacePreparer:
+    """Return deterministic local workspace facts without network access."""
+
+    def __init__(self, root: Path) -> None:
+        """Bind one temporary data root."""
+        self._root = root
+
+    async def prepare(self, run: Any) -> PreparedWorkspace:
+        """Create directory placeholders matching the real workspace contract."""
+        repo_path = self._root / "repos" / str(run.target_config_id)
+        workspace = self._root / "workspaces" / run.id
+        workspace.mkdir(parents=True, exist_ok=True)
+        repo_path.mkdir(parents=True, exist_ok=True)
+        return PreparedWorkspace(
+            repo_path=repo_path,
+            path=workspace,
+            ref=run.target_version,
+            base_commit="a" * 40,
+            branch=f"evo/{run.created_at:%Y%m%d}-{run.id}",
+        )
+
+
 @pytest_asyncio.fixture
 async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
     """Provide an authenticated admin client over a migrated, seeded app."""
@@ -300,6 +323,7 @@ async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
         ),
+        git_workspaces=_FakeWorkspacePreparer(tmp_path),
     )
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
@@ -380,6 +404,10 @@ async def test_launch_records_creation_and_prepare_start_events(
     assert [item["eventType"] for item in events.json()["items"]] == [
         "run_created",
         "prepare_started",
+        "workspace_prepared",
+        "clusters_created",
+        "step_advanced",
+        "step_advanced",
     ]
     assert events.json()["hasMore"] is False
 
@@ -616,11 +644,9 @@ async def test_start_run_accepts_and_snapshots_query(
     job = await _app_of(launch_api).state.jobs.wait(body["jobId"])
     assert job.status == "completed"
     assert job.error is None
-    assert job.result == {
-        "placeholder": True,
-        "runId": body["runId"],
-        "note": "real prepare orchestration lands with the engine slices m5-09-m5-11",
-    }
+    assert job.result["runId"] == body["runId"]
+    assert job.result["status"] == "running"
+    assert job.result["progressUnit"] == 4
 
     async with _app_of(launch_api).state.database.session() as session:
         row = (
@@ -634,7 +660,10 @@ async def test_start_run_accepts_and_snapshots_query(
         )
     assert row["mode"] == "full"
     assert row["engine_key"] == "full"
-    assert row["status"] == "preparing"
+    assert row["status"] == "running"
+    assert row["branch_name"].startswith("evo/")
+    assert row["base_commit"] == "a" * 40
+    assert row["progress_unit"] == 4
     assert row["target_config_id"] == "target-enabled"
     assert row["target_name"] == "deep-research"
     assert row["target_version"] == "v2.0.0"
@@ -649,7 +678,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert [card["runId"] for card in run_card.json()["running"]] == [body["runId"]]
     card = run_card.json()["running"][0]
     assert card["mode"] == "full"
-    assert card["status"] == "preparing"
+    assert card["status"] == "running"
     assert card["window"] == {"from": "2026-08-01", "to": "2026-09-30"}
     assert card["createdBy"]
 
@@ -741,4 +770,22 @@ async def test_cluster_preview_creates_cluster_only_run(
         )
     assert row["mode"] == "cluster_only"
     assert row["engine_key"] == "cluster_only"
-    assert row["status"] == "preparing"
+    assert row["status"] == "completed"
+    assert row["workspace_path"] is None
+    assert row["branch_name"] is None
+
+
+async def test_launch_rejects_unregistered_engine_before_writes(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Unknown engine keys fail synchronously with the stable ENGINE_INVALID code."""
+    response = await launch_api.post(
+        "/api/evolution/runs",
+        json=_query_body(mode="full", engineKey="unknown-engine"),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "ENGINE_INVALID"
+    runs = await launch_api.get("/api/evolution/runs")
+    assert runs.json()["running"] == []
+    assert runs.json()["history"] == []

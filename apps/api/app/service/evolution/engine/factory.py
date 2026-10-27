@@ -18,6 +18,11 @@ class EngineFactory:
     }
 
     @classmethod
+    def is_registered(cls, engine_key: str) -> bool:
+        """Return whether one engine key is explicitly registered."""
+        return engine_key in cls._REGISTRY
+
+    @classmethod
     def for_run(
         cls,
         run: EvolutionRunRecord,
