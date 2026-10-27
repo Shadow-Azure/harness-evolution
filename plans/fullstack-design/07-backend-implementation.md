@@ -633,7 +633,7 @@ async def advance_one_round(self, job):
     ws = Workspace(run.workspace_path)
     await evolution_rounds.mark_patching(round.id, started_at=now())
     candidate_ref = f'{run.branch_name}/candidate/r{round.seq}'
-    ws.create_candidate(run.branch_name, candidate_ref)   # 从已接纳基线拉临时分支
+    ws.create_candidate(run.branch_name, candidate_ref)   # 从已接纳基线拉临时本地分支，远端落 refs/tags
 
     patch = await self.make_patch(run, round)             # 钩子：V1 占位 → 真实 LLM/规则
     ws.apply(patch)
@@ -929,7 +929,7 @@ Harness-Decision-Rule: external-verdict
 - **拒绝不改写**：rejected 轮次保留 candidate message（随后删除 candidate ref），拒绝理由进 `cluster_rejected` 事件 payload。
 - `Harness-Evaluated-Commit` 记录评测时的 candidate commit（amend 后 hash 会变，但代码内容相同）。
 - 每个 candidate 一次 commit；拒绝不产生合并提交，接纳只做 amend + fast-forward。
-- 分支命名：run 分支 `evo/{YYYYMMDD}-{run_id}`；candidate ref `evo/{YYYYMMDD}-{run_id}/candidate/r{n}`。
+- 分支命名：run 分支在 `refs/heads` 使用 `evo/{YYYYMMDD}-{run_id}`；candidate ref 保持 `evo/{YYYYMMDD}-{run_id}/candidate/r{n}` 的可见名并存入 `refs/tags`，因为 Git 不允许同名 branch 与更长 branch 前缀并存；本地临时分支使用哈希名。
 - push 校验：run 分支匹配 `^evo/\d{8}-.+$`、不是 `main/master`、父提交链包含 `base_commit`、工作区干净、提交带 `Harness-Run-Id`。
 - 远端已有同名 candidate ref：`--force-with-lease` 只允许覆盖自己的旧值；run 分支不 force。
 - 崩溃恢复：按 `evolution_rounds.status` / `eval_external_id` / `next_poll_at` 恢复；`patching` 从重新生成 patch 开始（先清理本轮 workspace 脏改动），`pushing` 从 push 继续，`evaluating` 不重复提交评测，`deciding` 从 apply 继续。

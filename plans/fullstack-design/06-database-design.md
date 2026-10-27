@@ -486,7 +486,7 @@ erDiagram
 | `duration_ms` | `INTEGER` NULL | 耗时（毫秒） |
 | `error_message` | `TEXT` NULL | 本轮失败原因（脱敏）；`status=failed` 时非空 |
 | `patch` | JSON | `{file, lines[]}`（占位内容，真实落盘） |
-| `candidate_ref` | `VARCHAR(255)` | 本轮评测用的远端临时分支，如 `evo/.../candidate/r1` |
+| `candidate_ref` | `VARCHAR(255)` | 本轮评测用的远端临时 tag/ref，如 `evo/.../candidate/r1`；与同名 run 分支分处 tag/head 命名空间以避免 Git ref 前缀冲突 |
 | `candidate_commit` | `CHAR(40)` NULL | candidate commit SHA（评测对象） |
 | `candidate_message` | `TEXT` NULL | candidate commit message |
 | `push_status` | `VARCHAR(16)` | `pending` / `pushing` / `succeeded` / `failed` |
