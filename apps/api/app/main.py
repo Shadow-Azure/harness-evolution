@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Any, cast
 
 import httpx
@@ -44,6 +45,16 @@ from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus
 from app.service.evolution.advance import EvolutionAdvanceService, EvolutionJobLifecycle
+from app.service.evolution.apply_final import (
+    EvolutionApplyService,
+    EvolutionFinalizeService,
+)
+from app.service.evolution.engine.contracts import EngineDeps
+from app.service.evolution.engine.factory import EngineFactory
+from app.service.evolution.eval_poller import (
+    EvolutionEvalPoller,
+    EvolutionEvalSubmitter,
+)
 from app.service.evolution.events import (
     EvolutionRunEventService,
     EvolutionRunTopicAuthorizer,
@@ -164,10 +175,49 @@ def create_app(
         events=evolution_events,
         web_base_url=resolved_settings.web_base_url,
     )
+
+    def gateway_for_run(run: Any) -> Any:
+        """Resolve a gateway through the run's registered engine and frozen config."""
+        engine = EngineFactory.for_run(
+            run,
+            EngineDeps(
+                reads=cast(Any, RepositoryProbeReader(probe_query_repository)),
+                writes=evolution_repository,
+                events=evolution_events,
+            ),
+        )
+        return engine.gateway()
+
+    evolution_eval_submitter = EvolutionEvalSubmitter(
+        evolution_repository,
+        gateway_for_run,
+        events=evolution_events,
+        poll_interval=timedelta(seconds=resolved_settings.eval_poll_seconds),
+    )
     evolution_advance = EvolutionAdvanceService(
         evolution_repository,
         evolution_candidates,
         probe_query_repository,
+        evolution_eval_submitter,
+    )
+    evolution_apply = EvolutionApplyService(
+        evolution_repository,
+        evolution_candidates,
+        probe_query_repository,
+    )
+    evolution_finalize = EvolutionFinalizeService(
+        evolution_repository,
+        candidate_workspace_manager,
+        events=evolution_events,
+    )
+    evolution_eval_poller = EvolutionEvalPoller(
+        evolution_repository,
+        gateway_for_run,
+        jobs,
+        events=evolution_events,
+        scan_interval=timedelta(seconds=resolved_settings.eval_scan_seconds),
+        poll_interval=timedelta(seconds=resolved_settings.eval_poll_seconds),
+        timeout=timedelta(seconds=resolved_settings.eval_timeout_seconds),
     )
     evolution_lifecycle = EvolutionJobLifecycle(
         evolution_repository,
@@ -190,8 +240,18 @@ def create_app(
         """Publish the first pending round through the real candidate boundary."""
         return await evolution_advance.handle(job)
 
+    async def apply_handler(job: JobRunRecord) -> Mapping[str, Any]:
+        """Apply one completed placeholder evaluation."""
+        return await evolution_apply.handle(job)
+
+    async def finalize_handler(job: JobRunRecord) -> Mapping[str, Any]:
+        """Persist and publish the placeholder terminal evaluation."""
+        return await evolution_finalize.handle(job)
+
     jobs.register_handler("evolution_prepare", prepare_handler)
     jobs.register_handler("evolution_advance", advance_handler)
+    jobs.register_handler("evolution_apply", apply_handler)
+    jobs.register_handler("evolution_finalize", finalize_handler)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -213,6 +273,8 @@ def create_app(
             await sync.start_scheduler()
             phase = "job-dispatch"
             await jobs.start_queued()
+            phase = "eval-poller"
+            evolution_eval_poller.start()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -227,19 +289,22 @@ def create_app(
             yield
         finally:
             try:
-                await sync.stop_scheduler()
+                await evolution_eval_poller.stop()
             finally:
                 try:
-                    await jobs.close()
+                    await sync.stop_scheduler()
                 finally:
                     try:
-                        if resolved_source is not None:
-                            await resolved_source.close()
+                        await jobs.close()
                     finally:
                         try:
-                            await event_bus.close()
+                            if resolved_source is not None:
+                                await resolved_source.close()
                         finally:
-                            await resolved_database.dispose()
+                            try:
+                                await event_bus.close()
+                            finally:
+                                await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None
@@ -267,6 +332,9 @@ def create_app(
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates
     app.state.evolution_advance = evolution_advance
+    app.state.evolution_apply = evolution_apply
+    app.state.evolution_finalize = evolution_finalize
+    app.state.evolution_eval_poller = evolution_eval_poller
     app.state.evolution_lifecycle = evolution_lifecycle
     app.state.git_workspaces = workspace_manager
     app.state.evolution_launch = evolution_launch

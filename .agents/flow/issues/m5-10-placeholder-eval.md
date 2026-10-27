@@ -9,15 +9,17 @@ milestone: m5
 depends:
   - m5-09
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/2026-10-28-pr143-review.md
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-10-28-placeholder-evaluation-loop.md
 github:
   number: 59
   url: https://github.com/Shadow-Azure/harness-evolution/issues/59

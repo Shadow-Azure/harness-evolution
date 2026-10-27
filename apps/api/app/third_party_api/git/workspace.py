@@ -648,6 +648,29 @@ class GitWorkspaceManager:
             require_trailer=require_trailer,
         )
 
+    async def publish_run_branch(
+        self,
+        prepared: PreparedWorkspace,
+        run: EvolutionRunRecord,
+        *,
+        expected_run_id: str | None = None,
+        require_trailer: bool = False,
+    ) -> None:
+        """Validate and publish only the fast-forward run branch."""
+        await self.validate_for_push(
+            prepared,
+            run,
+            expected_run_id=expected_run_id or run.id,
+            require_trailer=require_trailer,
+        )
+        await self._push_run_branch(
+            prepared.path,
+            prepared.branch,
+            expected_run_id=expected_run_id or run.id,
+            base_commit=prepared.base_commit,
+            require_trailer=require_trailer,
+        )
+
     def cleanup_workspaces(
         self,
         *,
