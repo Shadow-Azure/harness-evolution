@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[English](2026-10-27-launch-wizard-admission.md) | English
+English | [中文](2026-10-27-launch-wizard-admission.md)
 
 ## Problem
 
