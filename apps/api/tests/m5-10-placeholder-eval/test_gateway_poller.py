@@ -368,6 +368,86 @@ async def test_completed_eval_followup_recovers_after_submit_failure(
     assert [job.kind for job in jobs.jobs] == ["evolution_apply"]
 
 
+async def _persist_completed_eval(
+    database: Database,
+    *,
+    run_status: str,
+) -> None:
+    """Persist one completed result while placing its run in the requested state."""
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-eval")
+            .values(status=run_status),
+        )
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-eval")
+            .values(
+                eval_status="completed",
+                eval_next_poll_at=None,
+                eval_finished_at=NOW,
+                eval_result={
+                    "currentScore": 80.0,
+                    "candidateScore": 90.0,
+                    "externalVerdict": "accept",
+                    "metrics": [],
+                },
+                eval_current=80.0,
+                eval_candidate=90.0,
+            ),
+        )
+
+
+@pytest.mark.parametrize("run_status", ["failed", "blocked", "completed"])
+async def test_completed_eval_on_inactive_run_never_schedules_apply(
+    eval_state: tuple[Database, EvolutionRepository],
+    run_status: str,
+) -> None:
+    """Only a running full run may turn a completed evaluation into apply work."""
+    database, repository = eval_state
+    await _persist_completed_eval(database, run_status=run_status)
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: FakeEvalGateway(EvalGatewayConfig.from_mapping({})),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+
+    assert await poller.run_once() == 0
+    assert await poller.run_once() == 0
+    assert jobs.jobs == []
+
+
+async def test_resumed_blocked_eval_schedules_apply_exactly_once(
+    eval_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """An explicit resume makes a durable completed evaluation schedulable once."""
+    database, repository = eval_state
+    await _persist_completed_eval(database, run_status="blocked")
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: FakeEvalGateway(EvalGatewayConfig.from_mapping({})),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+
+    assert await poller.run_once() == 0
+    await repository.mark_resumed("run-eval")
+    assert await poller.run_once() == 1
+    assert [job.kind for job in jobs.jobs] == ["evolution_apply"]
+    assert await poller.run_once() == 0
+    assert [job.kind for job in jobs.jobs] == ["evolution_apply"]
+
+
 async def test_malformed_gateway_status_blocks_instead_of_poisoning_scan(
     eval_state: tuple[Database, EvolutionRepository],
 ) -> None:

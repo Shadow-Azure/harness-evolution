@@ -1073,10 +1073,16 @@ class EvolutionRepository:
                 (
                     await session.execute(
                         select(evolution_rounds)
+                        .join(
+                            evolution_runs,
+                            evolution_runs.c.id == evolution_rounds.c.run_id,
+                        )
                         .where(
                             evolution_rounds.c.status == "evaluating",
                             evolution_rounds.c.eval_status == "completed",
                             evolution_rounds.c.eval_result.is_not(None),
+                            evolution_runs.c.mode == "full",
+                            evolution_runs.c.status == "running",
                         )
                         .order_by(
                             evolution_rounds.c.eval_finished_at,
