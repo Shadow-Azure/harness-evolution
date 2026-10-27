@@ -229,6 +229,51 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
       "wizard modal",
     );
 
+    const dialogSemantics = await evaluate(
+      page,
+      `(() => {
+        const dialog = document.querySelector("[data-testid='launch-wizard']");
+        const titleId = dialog.getAttribute("aria-labelledby") ?? "";
+        return {
+          role: dialog.getAttribute("role"),
+          modal: dialog.getAttribute("aria-modal"),
+          title: titleId
+            ? (document.getElementById(titleId)?.textContent ?? "").trim()
+            : "",
+        };
+      })()`,
+    );
+    assert.equal(dialogSemantics.role, "dialog");
+    assert.equal(dialogSemantics.modal, "true");
+    assert.equal(dialogSemantics.title, "启动自进化");
+
+    await page.session.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "Escape",
+      code: "Escape",
+      windowsVirtualKeyCode: 27,
+    });
+    await page.session.send("Input.dispatchKeyEvent", {
+      type: "keyUp",
+      key: "Escape",
+      code: "Escape",
+      windowsVirtualKeyCode: 27,
+    });
+    await waitForDocument(
+      page.session,
+      `!document.querySelector("[data-testid='launch-wizard']")`,
+      "wizard closed by Escape",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='open-launch-wizard']").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='launch-wizard']"))`,
+      "wizard reopened",
+    );
+
     await waitForDocument(
       page.session,
       `[...document.querySelectorAll("[data-testid='wizard-target'] option")]

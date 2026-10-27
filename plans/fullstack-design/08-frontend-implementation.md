@@ -484,7 +484,8 @@ GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 
 
 - 条件摘要条（chip 形式）+ 「修改条件」。
 - 统计：sessions / badCases / analyzed / unanalyzed / probes / usedProbes / 按 `attributeType` 的分布条 + 图例。
-- 未分析报告只计数、不进入 probe 表；显示“等待外部归因”提示，不提供触发分析按钮。
+- 未分析报告不参与命中：自进化按 probe 根因对象选取，没有 probe 的报告不进入统计与列表；界面保留「未分析」统计格并固定显示 0。
+- 分布条与图例按实际命中的属性类型渲染，没有命中的类型不出现（原型的数据驱动行为）。
 - probe 表：6 列（probe ID / 归属会话 / 模型 / 根因对象@版本 / 属性类型 / 来源 bad_case）；ID 显示截短 + tooltip，点击新窗口打开对应问题详情。
 - 分页：每页 8 条。
 - 两个出口：

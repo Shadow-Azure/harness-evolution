@@ -42,6 +42,7 @@ from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus, ShapeRunTopicAuthorizer
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.prepare import handle_evolution_prepare
 from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.targets import EvolutionTargetService
@@ -120,7 +121,8 @@ def create_app(
         evolution_repository,
         jobs,
     )
-    probe_query = ProbeQueryService(probe_query_repository)
+    probe_query = ProbeQueryService(probe_query_repository, target_repository)
+    jobs.register_handler("evolution_prepare", handle_evolution_prepare)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager

@@ -10,9 +10,10 @@ m5-05 启动向导需要在不引入第二套设计的前提下落地 05 §4.9/�
 
 ## Decision
 
-- 命中口径统一为"该对象 pair 的 `analyzed_issue` 报告"：`badCases` 按 `bad_cases.object_*` 匹配计数，`probes`/`items` 只来自 analysis 关联的 probe；未分析报告只进 `unanalyzed` 计数并提示等待外部归因，零命中统一 `409 NO_PROBES_MATCHED`。
-- `POST /api/evolution/probes/query`、`POST /api/evolution/runs`、`POST /api/evolution/cluster-previews` 共用 `ProbeQueryRequest` 与同一套校验；启动时目标快照（repo_url/sub_dir/default_ref）、窗口、模型、engine_key（默认 = mode）与脱敏后的 eval 配置在建行时落库，保证启动参数可追溯；eval 里疑似凭据的字段与 job payload 走同一条脱敏规则（复用 `sanitize_job_payload`），不落明文密钥。
-- 创建成功只落一行 `status=preparing` 的 `evolution_runs` 并入队 `evolution_prepare`；本切片不注册 prepare 执行 handler，作业提交后立即以 `no handler registered for job kind evolution_prepare` 失败，因此每次启动都会留下一条 failed 作业，而 run 停在 preparing。prepare handler 与 cluster_only 聚类结果留待 m5-06，cluster_only 由此天然只可能出现 preparing 状态。
+- 命中口径以 `probe_reports` 为唯一起点，不按上报对象 `bad_cases.object_*` 匹配：按 `probe_object @ object_version`（并匹配 `probe_type`）选 probe，再经 `bad_case_analysis.probe_id` 反查 bad case、按 `probe_reports.session_id` 反查 session；上报对象与根因对象不一致时，只按根因对象命中。
+- 统计与分页按 probe 口径：`sessions` 是命中去重 session，`badCases` 是 probe 反查的去重问题，`analyzed` 是其中 `analyzed_issue` 的去重问题，`probes`/`usedProbes` 是去重 probe 数；`byAttributeType` 取 `probe_reports.attribute_type`，`unanalyzed`/`nonIssue` 保留字段但恒 0，未分析与非问题不进入 `items` 也不影响 409 判定；`from/to` 按 probe 所属 session 启动时间，`models[]` 按该 session 树内任一 agent 模型。
+- `POST /api/evolution/probes/query`、`POST /api/evolution/runs`、`POST /api/evolution/cluster-previews` 共用 `ProbeQueryRequest` 与同一套归一化：三者都先查 target 配置，preview 与 launch 都用 `default_ref` 兜底缺省版本，target 缺失或禁用统一 `409 TARGET_NOT_CONFIGURED`；启动时目标快照（repo_url/sub_dir/default_ref）、窗口、模型、engine_key（默认 = mode）与脱敏后的 eval 配置在建行时落库，eval 里疑似凭据的字段与 job payload 走同一条脱敏规则（复用 `sanitize_job_payload`），不落明文密钥。
+- 创建成功只落一行 `status=preparing` 的 `evolution_runs` 并入队 `evolution_prepare`；本切片注册显式占位 handler，让作业正常 `completed` 并在 result/日志标注占位，run 保持 `preparing`；真实 prepare 编排（workspace clone、ref 校验、筛选、聚类）由 m5-06 提供。
 - `engineKey` 本切片不做引擎注册表校验，任意值原样落库；`422 ENGINE_INVALID`（engineKey 未注册或 eval 非法）由 m5-06 的引擎注册表提供。
 - 前端向导按原型两步实现：只列出已配置且启用的对象、下一步执行预览、第二步渲染统计/分布条/probe 表并提供「仅聚类」与「启动自进化」两个出口；启动后分别跳 `/evolution/runs/:rid` 与 `/evolution/cluster/:rid` 的准备态落地页，完整详情页留给 m5-07。
 
@@ -24,6 +25,7 @@ m5-05 启动向导需要在不引入第二套设计的前提下落地 05 §4.9/�
 
 ## Consequences
 
-- `NO_PROBES_MATCHED` / `TARGET_NOT_CONFIGURED` 成为前后端共享的错误码，向导第一步必须把 409 展示为"调整条件"而不是失败页。
-- 在 prepare handler 接线前，任何 run 都不会离开 preparing；运行列表会持续显示"准备中"，同时每次启动都会留下一条 failed 的 `evolution_prepare` 作业（错误串 `no handler registered for job kind evolution_prepare`），m5-06 的首个任务需处理这批存量。这是预期占位而非缺陷。
+- 命中数、分布与 items 与上报对象解耦：选 target 时看到的就是该根因对象的 probe；上报对象与根因对象不一致的历史数据不会串台，未分析与非问题在向导中固定显示 0 且不参与 0 命中判定。
+- preview 与 launch 的条件归一化与错误语义一致：省略 `targetVersion` 时两者都按 `defaultRef` 解析，target 未配置或禁用时预览也返回 409；`NO_PROBES_MATCHED` / `TARGET_NOT_CONFIGURED` 成为前后端共享的错误码，向导第一步必须把 409 展示为"调整条件"而不是失败页。
+- 202 之后不再产生必然 failed 的 `evolution_prepare` 作业：作业正常 `completed`、在 result 与日志中标记占位，run 停在 `preparing` 等待 m5-06 的真实 prepare；在 m5-06 接入前，运行列表会持续显示"准备中"。
 - 落地页以运行列表接口取单条数据，`GET /runs/{rid}` 独立端点与 SSE 订阅在 m5-07/05 §4.10 收口时需要替换这一实现。

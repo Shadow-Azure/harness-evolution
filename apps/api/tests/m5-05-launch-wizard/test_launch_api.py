@@ -30,9 +30,16 @@ ADMIN_PASSWORD = "launch-wizard-admin-password"
 NOW = datetime(2026, 10, 26, 8, 0, tzinfo=UTC)
 SESSION_S1 = "10000000-0000-4000-8000-0000000000a1"
 SESSION_S2 = "10000000-0000-4000-8000-0000000000a2"
+SESSION_S3 = "10000000-0000-4000-8000-0000000000a3"
 
 
-def _session_values(session_id: str, title: str, started: datetime) -> dict[str, Any]:
+def _session_values(
+    session_id: str,
+    title: str,
+    started: datetime,
+    *,
+    model: str = "glm-5.3",
+) -> dict[str, Any]:
     """Build one minimal session-family row joined by the probe query."""
     return {
         "id": session_id,
@@ -41,8 +48,8 @@ def _session_values(session_id: str, title: str, started: datetime) -> dict[str,
         "search_text": title,
         "repo_name": "example/repo",
         "project_path": "/repo",
-        "model": "glm-5.3",
-        "models": ["glm-5.3"],
+        "model": model,
+        "models": [model],
         "started_at": started,
         "ended_at": started,
         "duration_seconds": 1,
@@ -61,21 +68,47 @@ def _session_values(session_id: str, title: str, started: datetime) -> dict[str,
     }
 
 
+def _agent_values(
+    agent_id: str,
+    session_id: str,
+    model: str,
+    *,
+    kind: str = "main",
+    spawn_depth: int = 0,
+) -> dict[str, Any]:
+    """Build one agent row inside a session tree."""
+    return {
+        "id": agent_id,
+        "root_session_id": session_id,
+        "kind": kind,
+        "model": model,
+        "spawn_depth": spawn_depth,
+        "lines": 1,
+        "messages_count": 1,
+        "tokens_total": 1,
+        "tools_count": 0,
+        "errors_count": 0,
+        "sort_key": 0.0,
+    }
+
+
 def _case_values(
     case_id: str,
     session_id: str,
     *,
+    object_name: str = "deep-research",
     version: str = "v2.0.0",
+    agent_id: str | None = None,
 ) -> dict[str, Any]:
-    """Build one bad-case row reported against the wizard target."""
+    """Build one bad case row for the reported object."""
     return {
         "bad_case_id": case_id,
         "bad_case_session_id": session_id,
         "bad_case_type": "self",
-        "object_name": "deep-research",
+        "object_name": object_name,
         "object_type": "skill",
         "object_version": version,
-        "bad_case_agent_id": None,
+        "bad_case_agent_id": agent_id,
         "reason": f"reason {case_id}",
         "meta_data": {},
         "source": "fixtures",
@@ -89,14 +122,15 @@ def _probe_values(
     session_id: str,
     attribute_type: str,
     *,
+    object_name: str = "deep-research",
     version: str = "v2.0.0",
 ) -> dict[str, Any]:
-    """Build one probe report owned by the wizard target."""
+    """Build one probe report owned by the root-cause target."""
     return {
         "probe_id": probe_id,
         "session_id": session_id,
         "probe_type": "skill",
-        "probe_object": "deep-research",
+        "probe_object": object_name,
         "object_version": version,
         "attribute_type": attribute_type,
         "probe_description": f"description {probe_id}",
@@ -106,8 +140,23 @@ def _probe_values(
     }
 
 
+def _analysis_values(
+    case_id: str,
+    status: str,
+    probe_id: str | None,
+) -> dict[str, Any]:
+    """Build one attribution row linking a bad case to an optional probe."""
+    return {
+        "bad_case_id": case_id,
+        "analysis_status": status,
+        "probe_id": probe_id,
+        "analysis_result": {"summary": "s"} if status == "analyzed_issue" else None,
+        "updated_at": NOW,
+    }
+
+
 async def _seed_hits(app: Any) -> None:
-    """Insert two analyzed hits, one unanalyzed case, and one foreign target."""
+    """Insert divergent reported objects, probe root causes, and foreign targets."""
     await ensure_fixture_external_tables(app.state.database)
     async with app.state.database.transaction() as session:
         await session.execute(
@@ -133,38 +182,39 @@ async def _seed_hits(app: Any) -> None:
                     SESSION_S2,
                     "研究 session 二",
                     datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+                    model="glm-5.3-flash",
+                ),
+                _session_values(
+                    SESSION_S3,
+                    "研究 session 三",
+                    datetime(2026, 9, 20, 9, 0, tzinfo=UTC),
                 ),
             ],
         )
         await session.execute(
             insert(agents),
             [
-                {
-                    "id": f"agent-{session_id}",
-                    "root_session_id": session_id,
-                    "kind": "main",
-                    "model": model,
-                    "spawn_depth": 0,
-                    "lines": 1,
-                    "messages_count": 1,
-                    "tokens_total": 1,
-                    "tools_count": 0,
-                    "errors_count": 0,
-                    "sort_key": 0.0,
-                }
-                for session_id, model in (
-                    (SESSION_S1, "glm-5.3"),
-                    (SESSION_S2, "glm-5.3-flash"),
-                )
+                _agent_values(f"agent-{SESSION_S1}", SESSION_S1, "glm-5.3"),
+                _agent_values(f"agent-{SESSION_S2}", SESSION_S2, "glm-5.3-flash"),
+                _agent_values(
+                    "agent-case", SESSION_S2, "glm-5.3-case", kind="agent", spawn_depth=1
+                ),
             ],
         )
         await session.execute(
             insert(bad_cases),
             [
                 _case_values("case-1", SESSION_S1),
-                _case_values("case-2", SESSION_S2),
+                _case_values("case-2", SESSION_S2, agent_id="agent-case"),
                 _case_values("case-3", SESSION_S1),
                 _case_values("case-4", SESSION_S2, version="v1.0.0"),
+                _case_values("case-window", SESSION_S3, object_name="reported-object"),
+                _case_values(
+                    "case-unanalyzed", SESSION_S2, object_name="web-search", version="v1.0.0"
+                ),
+                _case_values(
+                    "case-nonissue", SESSION_S2, object_name="web-search", version="v1.0.0"
+                ),
             ],
         )
         await session.execute(
@@ -172,40 +222,20 @@ async def _seed_hits(app: Any) -> None:
             [
                 _probe_values("probe-1", SESSION_S1, "error"),
                 _probe_values("probe-2", SESSION_S2, "prompt"),
+                _probe_values("probe-window", SESSION_S1, "model"),
                 _probe_values("probe-4", SESSION_S2, "error", version="v1.0.0"),
             ],
         )
         await session.execute(
             insert(bad_case_analysis),
             [
-                {
-                    "bad_case_id": "case-1",
-                    "analysis_status": "analyzed_issue",
-                    "probe_id": "probe-1",
-                    "analysis_result": {"summary": "s"},
-                    "updated_at": NOW,
-                },
-                {
-                    "bad_case_id": "case-2",
-                    "analysis_status": "analyzed_issue",
-                    "probe_id": "probe-2",
-                    "analysis_result": {"summary": "s"},
-                    "updated_at": NOW,
-                },
-                {
-                    "bad_case_id": "case-3",
-                    "analysis_status": "unanalyzed",
-                    "probe_id": None,
-                    "analysis_result": None,
-                    "updated_at": NOW,
-                },
-                {
-                    "bad_case_id": "case-4",
-                    "analysis_status": "analyzed_issue",
-                    "probe_id": "probe-4",
-                    "analysis_result": {"summary": "s"},
-                    "updated_at": NOW,
-                },
+                _analysis_values("case-1", "analyzed_issue", "probe-1"),
+                _analysis_values("case-2", "analyzed_issue", "probe-2"),
+                _analysis_values("case-3", "unanalyzed", None),
+                _analysis_values("case-4", "analyzed_issue", "probe-4"),
+                _analysis_values("case-window", "analyzed_issue", "probe-window"),
+                _analysis_values("case-unanalyzed", "unanalyzed", None),
+                _analysis_values("case-nonissue", "analyzed_nonissue", None),
             ],
         )
         await session.execute(
@@ -218,6 +248,28 @@ async def _seed_hits(app: Any) -> None:
                     "repo_url": "https://git.example.com/agent-skills.git",
                     "sub_dir": "skills/deep-research",
                     "default_ref": "v2.0.0",
+                    "enabled": True,
+                    "created_at": NOW,
+                    "updated_at": NOW,
+                },
+                {
+                    "id": "target-reported",
+                    "object_type": "skill",
+                    "object_name": "reported-object",
+                    "repo_url": "https://git.example.com/agent-skills.git",
+                    "sub_dir": "skills/reported-object",
+                    "default_ref": "v2.0.0",
+                    "enabled": True,
+                    "created_at": NOW,
+                    "updated_at": NOW,
+                },
+                {
+                    "id": "target-web-search",
+                    "object_type": "skill",
+                    "object_name": "web-search",
+                    "repo_url": "https://git.example.com/agent-skills.git",
+                    "sub_dir": "skills/web-search",
+                    "default_ref": "v1.0.0",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -314,7 +366,7 @@ async def test_launch_endpoints_require_authentication(
 async def test_probe_query_returns_hit_statistics_and_rows(
     launch_api: httpx.AsyncClient,
 ) -> None:
-    """The preview reports case/analysis/probe statistics and paged probe rows."""
+    """Preview statistics and one row per probe come from the root-cause object."""
     response = await launch_api.post("/api/evolution/probes/query", json=_query_body())
 
     assert response.status_code == 200
@@ -322,16 +374,20 @@ async def test_probe_query_returns_hit_statistics_and_rows(
     assert body["summary"] == {
         "sessions": 2,
         "badCases": 3,
-        "analyzed": 2,
-        "unanalyzed": 1,
-        "probes": 2,
-        "usedProbes": 2,
-        "byAttributeType": {"model": 0, "prompt": 1, "error": 1, "nonIssue": 0},
+        "analyzed": 3,
+        "unanalyzed": 0,
+        "probes": 3,
+        "usedProbes": 3,
+        "byAttributeType": {"model": 1, "prompt": 1, "error": 1, "nonIssue": 0},
     }
-    assert body["total"] == 2
+    assert body["total"] == 3
     assert body["page"] == 1
     assert body["pageSize"] == 8
-    assert [item["probeId"] for item in body["items"]] == ["probe-1", "probe-2"]
+    assert [item["probeId"] for item in body["items"]] == [
+        "probe-1",
+        "probe-window",
+        "probe-2",
+    ]
     first = body["items"][0]
     assert first["sessionId"] == SESSION_S1
     assert first["sessionTitle"] == "研究 session 一"
@@ -340,34 +396,126 @@ async def test_probe_query_returns_hit_statistics_and_rows(
     assert first["attributeType"] == "error"
     assert first["description"] == "description probe-1"
     assert first["sourceBadCaseIds"] == ["case-1"]
+    assert first["model"] == "glm-5.3"
+    assert body["items"][2]["model"] == "glm-5.3-case"
+    assert body["items"][2]["sourceBadCaseIds"] == ["case-2"]
 
 
 async def test_probe_query_applies_window_models_and_paging(
     launch_api: httpx.AsyncClient,
 ) -> None:
-    """Time window, model chips, and pagination narrow the preview."""
-    windowed = await launch_api.post(
+    """Time window, model chips, and pagination narrow the probe-ranked preview."""
+    september = await launch_api.post(
         "/api/evolution/probes/query",
         json=_query_body(**{"from": "2026-09-01", "to": "2026-09-30"}),
     )
-    assert windowed.status_code == 200
-    assert windowed.json()["summary"]["probes"] == 1
-    assert [item["probeId"] for item in windowed.json()["items"]] == ["probe-2"]
+    assert september.status_code == 200
+    assert september.json()["summary"]["probes"] == 1
+    assert [item["probeId"] for item in september.json()["items"]] == ["probe-2"]
+
+    august = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(**{"from": "2026-08-01", "to": "2026-08-31"}),
+    )
+    assert august.status_code == 200
+    assert [item["probeId"] for item in august.json()["items"]] == [
+        "probe-1",
+        "probe-window",
+    ]
 
     modeled = await launch_api.post(
         "/api/evolution/probes/query",
         json=_query_body(models=["glm-5.3"]),
     )
     assert modeled.status_code == 200
-    assert [item["probeId"] for item in modeled.json()["items"]] == ["probe-1"]
+    assert [item["probeId"] for item in modeled.json()["items"]] == [
+        "probe-1",
+        "probe-window",
+    ]
+
+    tree_modeled = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(models=["glm-5.3-case"]),
+    )
+    assert tree_modeled.status_code == 200
+    assert [item["probeId"] for item in tree_modeled.json()["items"]] == ["probe-2"]
 
     paged = await launch_api.post(
         "/api/evolution/probes/query",
         json=_query_body(pageSize=1, page=2),
     )
     assert paged.status_code == 200
-    assert paged.json()["total"] == 2
-    assert [item["probeId"] for item in paged.json()["items"]] == ["probe-2"]
+    assert paged.json()["total"] == 3
+    assert [item["probeId"] for item in paged.json()["items"]] == ["probe-window"]
+
+
+async def test_probe_query_matches_root_cause_not_reported_object(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """A case reported against object A is found through its probe's object B."""
+    root_cause = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetName="deep-research"),
+    )
+    assert root_cause.status_code == 200
+    window_item = next(
+        item for item in root_cause.json()["items"] if item["probeId"] == "probe-window"
+    )
+    assert window_item["probeObject"] == "deep-research"
+    assert window_item["sourceBadCaseIds"] == ["case-window"]
+
+    reported = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetName="reported-object"),
+    )
+    assert reported.status_code == 409
+    assert reported.json()["error"]["code"] == "NO_PROBES_MATCHED"
+
+
+async def test_probe_query_ignores_unanalyzed_reports(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Unanalyzed and non-issue reports never count as a probe hit."""
+    preview = await launch_api.post("/api/evolution/probes/query", json=_query_body())
+    assert preview.status_code == 200
+    summary = preview.json()["summary"]
+    assert summary["unanalyzed"] == 0
+    assert summary["badCases"] == 3
+    assert summary["byAttributeType"]["nonIssue"] == 0
+
+    only_unanalyzed = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetName="web-search", targetVersion="v1.0.0"),
+    )
+    assert only_unanalyzed.status_code == 409
+    assert only_unanalyzed.json()["error"]["code"] == "NO_PROBES_MATCHED"
+
+
+async def test_probe_query_uses_default_ref_and_requires_configured_target(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Preview resolves the configured defaultRef and rejects missing targets."""
+    defaulted = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetVersion=None),
+    )
+    assert defaulted.status_code == 200
+    assert defaulted.json()["total"] == 3
+    assert {item["objectVersion"] for item in defaulted.json()["items"]} == {"v2.0.0"}
+
+    unknown = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetName="unknown-skill"),
+    )
+    assert unknown.status_code == 409
+    assert unknown.json()["error"]["code"] == "TARGET_NOT_CONFIGURED"
+
+    disabled = await launch_api.post(
+        "/api/evolution/probes/query",
+        json=_query_body(targetName="code-review", targetVersion="v1.0.0"),
+    )
+    assert disabled.status_code == 409
+    assert disabled.json()["error"]["code"] == "TARGET_NOT_CONFIGURED"
 
 
 async def test_probe_query_without_matches_conflicts(launch_api: httpx.AsyncClient) -> None:
@@ -387,7 +535,7 @@ async def test_start_run_rejects_unconfigured_or_disabled_target(
     """Launches fail fast when the object has no enabled configuration."""
     unknown = await launch_api.post(
         "/api/evolution/runs",
-        json=_query_body(targetName="web-search"),
+        json=_query_body(targetName="unknown-skill"),
     )
     disabled = await launch_api.post(
         "/api/evolution/runs",
@@ -412,11 +560,17 @@ async def test_start_run_rejects_window_and_empty_hits(
         "/api/evolution/runs",
         json=_query_body(targetVersion="v9.9.9"),
     )
+    reported_only = await launch_api.post(
+        "/api/evolution/runs",
+        json=_query_body(targetName="reported-object"),
+    )
 
     assert inverted.status_code == 422
     assert inverted.json()["error"]["code"] == "VALIDATION_INVALID"
     assert empty.status_code == 409
     assert empty.json()["error"]["code"] == "NO_PROBES_MATCHED"
+    assert reported_only.status_code == 409
+    assert reported_only.json()["error"]["code"] == "NO_PROBES_MATCHED"
     runs = await launch_api.get("/api/evolution/runs")
     assert runs.json()["running"] == []
 
@@ -424,7 +578,7 @@ async def test_start_run_rejects_window_and_empty_hits(
 async def test_start_run_accepts_and_snapshots_query(
     launch_api: httpx.AsyncClient,
 ) -> None:
-    """A valid launch returns 202 with identifiers and traceable snapshots."""
+    """A valid launch returns 202, completes prepare, and keeps the run preparing."""
     me = await launch_api.get("/api/auth/me")
     assert me.status_code == 200
     creator_id = me.json()["id"]
@@ -437,6 +591,15 @@ async def test_start_run_accepts_and_snapshots_query(
     body = response.json()
     assert body["status"] == "preparing"
     assert body["runId"] and body["jobId"]
+
+    job = await _app_of(launch_api).state.jobs.wait(body["jobId"])
+    assert job.status == "completed"
+    assert job.error is None
+    assert job.result == {
+        "placeholder": True,
+        "runId": body["runId"],
+        "note": "real prepare orchestration is provided by m5-06",
+    }
 
     async with _app_of(launch_api).state.database.session() as session:
         row = (
@@ -540,6 +703,10 @@ async def test_cluster_preview_creates_cluster_only_run(
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "preparing"
+
+    job = await _app_of(launch_api).state.jobs.wait(body["jobId"])
+    assert job.status == "completed"
+    assert job.error is None
 
     async with _app_of(launch_api).state.database.session() as session:
         row = (

@@ -12,6 +12,12 @@ from app.db.crud.probe_query import ProbeHitQuery, ProbeHitRow, ProbeQueryReposi
 from app.errors import AppError, ErrorCode
 from app.service.identity.schemas import IdentityModel
 
+_ATTRIBUTE_TYPES: tuple[Literal["model", "prompt", "error"], ...] = (
+    "model",
+    "prompt",
+    "error",
+)
+
 
 class AttributeStats(IdentityModel):
     """Probe counts by attribution type shown in the wizard distribution bar."""
@@ -98,13 +104,33 @@ class RunAccepted(IdentityModel):
 class TargetConfigRecord(Protocol):
     """Minimal enabled-target facts consumed from configuration storage."""
 
-    id: str
-    object_type: str
-    object_name: str
-    default_ref: str
-    repo_url: str
-    sub_dir: str
-    enabled: bool
+    @property
+    def id(self) -> str:
+        """Return the configured target id."""
+
+    @property
+    def object_type(self) -> str:
+        """Return the configured object type."""
+
+    @property
+    def object_name(self) -> str:
+        """Return the configured object name."""
+
+    @property
+    def default_ref(self) -> str:
+        """Return the configured default reference."""
+
+    @property
+    def repo_url(self) -> str:
+        """Return the configured git remote."""
+
+    @property
+    def sub_dir(self) -> str:
+        """Return the configured repository sub directory."""
+
+    @property
+    def enabled(self) -> bool:
+        """Return whether the target accepts launches."""
 
 
 class TargetConfigStore(Protocol):
@@ -156,93 +182,85 @@ def normalized_query(
     )
 
 
-def _attribute_of(row: ProbeHitRow) -> Literal["model", "prompt", "error", "non_issue"] | None:
-    """Map one hit row to its distribution key, ignoring foreign values."""
-    if row.analysis_status == "analyzed_nonissue":
-        return "non_issue"
-    if row.analysis_status != "analyzed_issue" or row.probe_id is None:
-        return None
-    if row.attribute_type in ("model", "prompt", "error"):
-        return row.attribute_type  # type: ignore[return-value]
+def _attribute_of(row: ProbeHitRow) -> Literal["model", "prompt", "error"] | None:
+    """Map one probe row to its distribution key, ignoring foreign values."""
+    if row.attribute_type in _ATTRIBUTE_TYPES:
+        return row.attribute_type
     return None
 
 
 def _item_of(rows: list[ProbeHitRow]) -> ProbePreviewItem | None:
-    """Merge one probe's hit rows into a single preview item."""
-    probes = [row for row in rows if row.probe_id is not None]
-    if not probes:
-        return None
-    first = probes[0]
+    """Render one hit probe with its distinct linked bad cases."""
+    first = rows[0]
     attribute = _attribute_of(first)
-    if attribute is None or attribute == "non_issue":
+    if attribute is None:
         return None
+    source_bad_case_ids = list(dict.fromkeys(row.bad_case_id for row in rows))
     return ProbePreviewItem(
-        probe_id=first.probe_id or "",
-        session_id=first.probe_session_id or first.bad_case_id,
+        probe_id=first.probe_id,
+        session_id=first.probe_session_id,
         session_title=first.session_title,
         model=first.case_agent_model or first.session_model,
-        probe_type=first.probe_type or "",
-        probe_object=first.probe_object or "",
+        probe_type=first.probe_type,
+        probe_object=first.probe_object,
         object_version=first.object_version,
         attribute_type=attribute,
-        description=first.probe_description or "",
-        source_bad_case_ids=[row.bad_case_id for row in rows if row.probe_id is not None],
+        description=first.probe_description,
+        source_bad_case_ids=source_bad_case_ids,
     )
 
 
 class ProbeQueryService:
     """Project the wizard condition into hit statistics and probe rows."""
 
-    def __init__(self, repository: ProbeQueryRepository) -> None:
-        """Bind the service to its read-only hit repository."""
-        self._repository = repository
-
-    async def preview(
+    def __init__(
         self,
-        body: ProbeQueryRequest,
-        *,
-        default_version: str | None = None,
-    ) -> ProbeQueryResult:
-        """Return hit statistics plus one page of analyzed probe rows.
+        repository: ProbeQueryRepository,
+        targets: TargetConfigStore,
+    ) -> None:
+        """Bind the service to its read repository and target configuration."""
+        self._repository = repository
+        self._targets = targets
+
+    async def preview(self, body: ProbeQueryRequest) -> ProbeQueryResult:
+        """Return hit statistics plus one page of matched probe rows.
 
         Args:
             body: Validated wizard condition.
-            default_version: Version used when the request carries none.
 
         Returns:
             Backend-computed summary, paged items, and paging echo.
 
         Raises:
-            AppError: With `NO_PROBES_MATCHED` when no analyzed probe hits.
+            AppError: With `TARGET_NOT_CONFIGURED` when the target is missing or
+                disabled, and `NO_PROBES_MATCHED` when the probe count is zero.
         """
-        query = normalized_query(body, default_version=default_version)
+        config = await self._targets.find(body.target_type, body.target_name)
+        if config is None or not config.enabled:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.TARGET_NOT_CONFIGURED,
+                message="target is not configured or enabled",
+            )
+        query = normalized_query(body, default_version=config.default_ref)
         rows = await self._repository.list_hit_rows(query)
 
         grouped: OrderedDict[str, list[ProbeHitRow]] = OrderedDict()
         for row in rows:
-            grouped.setdefault(row.probe_id or row.bad_case_id, []).append(row)
+            grouped.setdefault(row.probe_id, []).append(row)
 
         items: list[ProbePreviewItem] = []
         distribution = AttributeStats()
-        analyzed = 0
-        unanalyzed = 0
         for group in grouped.values():
-            for row in group:
-                if row.analysis_status == "unanalyzed" or row.analysis_status is None:
-                    unanalyzed += 1
-                elif row.analysis_status.startswith("analyzed"):
-                    analyzed += 1
-                attribute = _attribute_of(row)
-                if attribute is not None:
-                    setattr(distribution, attribute, getattr(distribution, attribute) + 1)
             item = _item_of(group)
-            if item is not None:
-                items.append(item)
-        sessions = {
-            row.probe_session_id
-            for row in rows
-            if row.probe_id is not None and row.probe_session_id is not None
-        }
+            if item is None:
+                continue
+            items.append(item)
+            setattr(
+                distribution,
+                item.attribute_type,
+                getattr(distribution, item.attribute_type) + 1,
+            )
 
         probes = len(items)
         if probes == 0:
@@ -251,14 +269,17 @@ class ProbeQueryService:
                 code=ErrorCode.NO_PROBES_MATCHED,
                 message="no analyzed probe matches the wizard condition",
             )
-        total = len(items)
+        bad_cases = {row.bad_case_id for row in rows}
+        analyzed = {row.bad_case_id for row in rows if row.analysis_status == "analyzed_issue"}
+        sessions = {row.probe_session_id for row in rows}
+        total = probes
         start = (body.page - 1) * body.page_size
         return ProbeQueryResult(
             summary=ProbeHitSummary(
                 sessions=len(sessions),
-                bad_cases=len({row.bad_case_id for row in rows}),
-                analyzed=analyzed,
-                unanalyzed=unanalyzed,
+                bad_cases=len(bad_cases),
+                analyzed=len(analyzed),
+                unanalyzed=0,
                 probes=probes,
                 used_probes=probes,
                 by_attribute_type=distribution,

@@ -65,15 +65,15 @@
 | ID | 功能 | 原型出处 | 真实性 | 依赖接口 | 依赖表 | 前端落点 |
 |---|---|---|---|---|---|---|
 | F10 | 运行列表：进行中（脉冲+进度条+阶段文案）/ 历史两组；卡片含根因对象 chip、时间窗、模型 chips、probe/簇统计、best vs 初始、已接纳数 | [自进化页](../14-15-ui-prototype/harness-evolution.html) | 真实（编排）+ 占位 patch/评测 | `GET /api/evolution/runs` | `evolution_runs`、`probe_clusters` | `pages/evolution/RunList.vue` |
-| F11 | 启动向导：两步 Modal（根因对象/版本/时间段/模型 → 命中统计（session/报告/已分析/未分析）+ 属性分布 + 分页 probe 表（含模型列）），对象/版本/模型全部由后端接口加载，出口「仅聚类」「启动自进化」均返回 `202` 后跳转显示 preparing | 同上 | 真实（probe 查询）+ 占位聚类 | `GET /api/catalogs/targets`、`GET /api/evolution/targets/{id}/versions`、`GET /api/catalogs/models`、`POST /api/evolution/probes/query`、`POST /api/evolution/cluster-previews`、`POST /api/evolution/runs` | `evolution_targets`、`agents`、`session_families`、`probe_reports`、`evolution_runs` | `pages/evolution/LaunchWizard.vue` |
-| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（session/报告/已分析/未分析、时间窗、模型）、聚类列表（簇内 probe）、一键转完整自进化 | 同上 | 真实（占位聚类算法） | `POST /api/evolution/cluster-previews`、`GET /api/evolution/runs/{rid}/steps/clusters` | `probe_clusters`、`probe_cluster_probes` | `pages/evolution/ClusterPreview.vue` |
-| F13 | 运行详情：`preparing/running/blocked` 状态、目标与输入 panel（已分析/未分析、最终用于进化的问题数、属性分布条、分支/base commit、eval/push 状态）、6 步 stepper、第 5 步自动逐轮 candidate → push → 评测 → 接纳/拒绝 → 下一轮、第 6 步终评；blocked 时按阶段重试 | 同上 | 编排/聚类/patch/commit/push 真实；评测走外部 gateway（V1 可 fake）；终评占位 | `GET /api/evolution/runs/{rid}`、`GET .../steps/{input / clusters / attribution / severity / iteration / final}`、`POST .../retry` | `evolution_targets/runs/evolution_rounds/finals`、`probe_clusters/probe_cluster_probes` | `pages/evolution/RunDetail.vue` + `pages/evolution/components/*` |
+| F11 | 启动向导：两步 Modal（根因对象/版本/时间段/模型 → 命中统计（session/报告/已分析/未分析，命中由 probe 反查、未分析不参与）+ 属性分布 + 分页 probe 表（含模型列）），对象/版本/模型全部由后端接口加载，出口「仅聚类」「启动自进化」均返回 `202` 后跳转显示 preparing | 同上 | 真实（probe 查询）+ 占位聚类 | `GET /api/catalogs/targets`、`GET /api/evolution/targets/{id}/versions`、`GET /api/catalogs/models`、`POST /api/evolution/probes/query`、`POST /api/evolution/cluster-previews`、`POST /api/evolution/runs` | `evolution_targets`、`agents`、`session_families`、`probe_reports`、`evolution_runs` | `pages/evolution/LaunchWizard.vue` |
+| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（session/报告/已分析/未分析，按 probe 口径）、聚类列表（簇内 probe）、一键转完整自进化 | 同上 | 真实（占位聚类算法） | `POST /api/evolution/cluster-previews`、`GET /api/evolution/runs/{rid}/steps/clusters` | `probe_clusters`、`probe_cluster_probes` | `pages/evolution/ClusterPreview.vue` |
+| F13 | 运行详情：`preparing/running/blocked` 状态、目标与输入 panel（已分析/未分析按 probe 口径、最终用于进化的问题数、属性分布条、分支/base commit、eval/push 状态）、6 步 stepper、第 5 步自动逐轮 candidate → push → 评测 → 接纳/拒绝 → 下一轮、第 6 步终评；blocked 时按阶段重试 | 同上 | 编排/聚类/patch/commit/push 真实；评测走外部 gateway（V1 可 fake）；终评占位 | `GET /api/evolution/runs/{rid}`、`GET .../steps/{input / clusters / attribution / severity / iteration / final}`、`POST .../retry` | `evolution_targets/runs/evolution_rounds/finals`、`probe_clusters/probe_cluster_probes` | `pages/evolution/RunDetail.vue` + `pages/evolution/components/*` |
 | F19 | 进化对象配置页：列表/新增/编辑/删除；字段 objectType/objectName/repoUrl/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 | 新增（2026-10-23） | 真实 | `GET/POST/PUT/DELETE /api/evolution/targets`、`GET .../{id}/versions` | `evolution_targets` | `pages/evolution/targets/*` |
 | F20 | 执行日志与异常：准备/候选/push/eval/接纳/拒绝/下一轮/阻塞/重试事件，失败与中断记录、错误详情、增量拉取 | 新增（2026-10-23） | 真实 | `GET /api/evolution/runs/{rid}/events`、SSE `run.event/run.blocked/run.failed/run.interrupted` | `evolution_run_events`、`evolution_runs.error_*` | `pages/evolution/components/RunLogPanel.vue` |
 
 > F11 不读前端常量：对象/版本来自 `evolution_targets` + 仓库 tag，模型来自归一化后的 `agents.model`；三者都通过后端接口加载。
 >
-> 原型 Step2 文案提到“未分析报告会先补归因再进入聚类”；当前设计不提供触发分析端点，未分析只计数、不进入 probe 表，归因由外部系统完成。若要求自动补归因，需要另加分析任务，不在 V1。
+> 原型 Step2 文案提到“未分析报告会先补归因再进入聚类”；当前设计不提供触发分析端点，且自进化命中只认 probe（`probe_object @ object_version`）：未分析报告没有 probe，既不计数也不进 probe 表，归因由外部系统完成。若要求自动补归因，需要另加分析任务，不在 V1。
 
 ### 2.3 横切能力
 

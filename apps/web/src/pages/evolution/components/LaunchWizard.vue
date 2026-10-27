@@ -5,7 +5,7 @@ import type {
   ProbeQueryResult,
 } from "@harness/contracts";
 import { useQuery } from "@tanstack/vue-query";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import {
@@ -56,6 +56,33 @@ const previewError = ref("");
 const launching = ref(false);
 const launchError = ref("");
 const page = ref(1);
+
+const WIZARD_TITLE_ID = "launch-wizard-title";
+const closeButton = ref<HTMLButtonElement | null>(null);
+let triggerElement: HTMLElement | null = null;
+
+/** Treat Escape like the overlay click so the dialog can be dismissed from the keyboard. */
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Escape") {
+    return;
+  }
+  event.preventDefault();
+  emit("close");
+}
+
+onMounted(() => {
+  triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  window.addEventListener("keydown", handleKeydown);
+  closeButton.value?.focus();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleKeydown);
+  if (triggerElement?.isConnected) {
+    triggerElement.focus();
+  }
+  triggerElement = null;
+});
 
 const catalogs = useQuery({ queryKey: queryKeys.targetCatalog, queryFn: getTargetCatalog });
 const models = useQuery({ queryKey: queryKeys.modelCatalog, queryFn: getModelCatalog });
@@ -241,12 +268,14 @@ function goTargetConfig(): void {
 
 const distribution = computed(() => {
   const stats = preview.value?.summary.byAttributeType;
-  return (Object.keys(ATTRIBUTE_LABELS) as AttributeKey[]).map((key) => ({
-    key,
-    label: ATTRIBUTE_LABELS[key],
-    color: ATTRIBUTE_COLORS[key],
-    count: stats ? stats[key] : 0,
-  }));
+  return (Object.keys(ATTRIBUTE_LABELS) as AttributeKey[])
+    .map((key) => ({
+      key,
+      label: ATTRIBUTE_LABELS[key],
+      color: ATTRIBUTE_COLORS[key],
+      count: stats ? stats[key] : 0,
+    }))
+    .filter((entry) => entry.count > 0);
 });
 const distributionTotal = computed(() =>
   distribution.value.reduce((sum, entry) => sum + entry.count, 0),
@@ -263,12 +292,18 @@ const versionPlaceholder = computed(() =>
   <div
     class="evov"
     data-testid="launch-wizard"
+    role="dialog"
+    aria-modal="true"
+    :aria-labelledby="WIZARD_TITLE_ID"
     @click.self="emit('close')"
   >
     <div class="modal">
       <div class="modal-head">
-        <h2>启动自进化</h2>
+        <h2 :id="WIZARD_TITLE_ID">
+          启动自进化
+        </h2>
         <button
+          ref="closeButton"
           class="x"
           type="button"
           aria-label="关闭向导"
@@ -325,7 +360,10 @@ const versionPlaceholder = computed(() =>
                 }"
               />
             </div>
-            <div class="wz-legend">
+            <div
+              v-if="distribution.length"
+              class="wz-legend"
+            >
               <span
                 v-for="entry in distribution"
                 :key="entry.key"
@@ -337,59 +375,55 @@ const versionPlaceholder = computed(() =>
                 <b>{{ entry.count }}</b>
               </span>
             </div>
-            <p
-              v-if="preview.summary.unanalyzed > 0"
-              class="wz-waiting-note"
-            >
-              有 {{ preview.summary.unanalyzed }} 份未分析报告正在等待外部归因；归因完成后会自动进入命中列表。
-            </p>
-            <table class="rep">
-              <thead>
-                <tr>
-                  <th>报告 ID</th>
-                  <th>归属会话</th>
-                  <th>模型</th>
-                  <th>根因对象@版本</th>
-                  <th>归因</th>
-                  <th>来源问题</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="item in preview.items"
-                  :key="item.probeId"
-                >
-                  <td class="id">
-                    <button
-                      class="linklike"
-                      type="button"
-                      :title="item.probeId"
-                      @click="openSourceCase(item)"
-                    >
-                      {{ shortId(item.probeId) }}
-                    </button>
-                  </td>
-                  <td :title="item.sessionTitle ?? item.sessionId">
-                    {{ item.sessionTitle ?? shortId(item.sessionId) }}
-                  </td>
-                  <td class="mono model-cell">
-                    {{ item.model ?? "—" }}
-                  </td>
-                  <td class="mono">
-                    {{ item.probeObject }}@{{ item.objectVersion ?? "—" }}
-                  </td>
-                  <td>
-                    <span
-                      class="type-chip"
-                      :style="{ color: ATTRIBUTE_COLORS[item.attributeType] }"
-                    >{{ ATTRIBUTE_LABELS[item.attributeType] }}</span>
-                  </td>
-                  <td class="mono">
-                    {{ item.sourceBadCaseIds.map(shortId).join(", ") }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="rep-scroll">
+              <table class="rep">
+                <thead>
+                  <tr>
+                    <th>报告 ID</th>
+                    <th>归属会话</th>
+                    <th>模型</th>
+                    <th>根因对象@版本</th>
+                    <th>归因</th>
+                    <th>来源问题</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="item in preview.items"
+                    :key="item.probeId"
+                  >
+                    <td class="id">
+                      <button
+                        class="linklike"
+                        type="button"
+                        :title="item.probeId"
+                        @click="openSourceCase(item)"
+                      >
+                        {{ shortId(item.probeId) }}
+                      </button>
+                    </td>
+                    <td :title="item.sessionTitle ?? item.sessionId">
+                      {{ item.sessionTitle ?? shortId(item.sessionId) }}
+                    </td>
+                    <td class="mono model-cell">
+                      {{ item.model ?? "—" }}
+                    </td>
+                    <td class="mono">
+                      {{ item.probeObject }}@{{ item.objectVersion ?? "—" }}
+                    </td>
+                    <td>
+                      <span
+                        class="type-chip"
+                        :style="{ color: ATTRIBUTE_COLORS[item.attributeType] }"
+                      >{{ ATTRIBUTE_LABELS[item.attributeType] }}</span>
+                    </td>
+                    <td class="mono">
+                      {{ item.sourceBadCaseIds.map(shortId).join(", ") }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
             <div class="pager">
               <button
                 class="btn"
@@ -682,6 +716,7 @@ const versionPlaceholder = computed(() =>
   background: var(--bg-card);
   color: var(--text-dim);
   padding: 6px 14px;
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -927,17 +962,17 @@ input.inp:focus {
   vertical-align: -1px;
 }
 
-.wz-waiting-note {
-  margin: 4px 0 0;
-  font-size: 11.5px;
-  color: var(--orange);
+.rep-scroll {
+  margin-top: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 table.rep {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 12px;
-  margin-top: 10px;
 }
 
 table.rep th,
@@ -945,6 +980,7 @@ table.rep td {
   text-align: left;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 table.rep th {
@@ -1006,8 +1042,25 @@ table.rep td.id {
 }
 
 @media (max-width: 640px) {
+  .evov {
+    padding: 16px 12px;
+  }
+
   .modal-body {
     max-height: none;
+    padding: 14px;
+  }
+
+  .modal-foot {
+    flex-wrap: wrap;
+  }
+
+  .wz-stats {
+    gap: 10px 16px;
+  }
+
+  .match-summary {
+    padding: 10px 12px;
   }
 }
 </style>
