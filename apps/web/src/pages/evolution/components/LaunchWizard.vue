@@ -553,7 +553,7 @@ const versionPlaceholder = computed(() =>
 .evov {
   position: fixed;
   inset: 0;
-  background: rgba(25, 32, 44, 0.42);
+  background: var(--overlay-scrim);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -567,7 +567,7 @@ const versionPlaceholder = computed(() =>
   max-width: 100%;
   background: var(--bg-card);
   border-radius: 14px;
-  box-shadow: 0 18px 60px rgba(20, 30, 50, 0.25);
+  box-shadow: var(--shadow-modal);
   overflow: hidden;
 }
 
@@ -621,7 +621,7 @@ const versionPlaceholder = computed(() =>
 }
 
 .btn:hover {
-  border-color: #c4cbd6;
+  border-color: var(--border-strong);
   color: var(--text);
 }
 
