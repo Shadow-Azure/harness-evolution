@@ -17,6 +17,7 @@ scope:
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/2026-10-28-pr139-review.md
   - .agents/flow/**
   - .agents/notes/**
   - tests/e2e/**
@@ -58,6 +59,7 @@ m5-08 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - 依赖：m5-01, m5-07
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- 检视文档仅允许落 `plans/2026-10-28-pr139-review.md`，不通过扩大整个 `plans/**` 形成长期空白授权。
 
 ## 独立验证
 
