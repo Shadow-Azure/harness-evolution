@@ -43,6 +43,7 @@ from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus
+from app.service.evolution.advance import EvolutionAdvanceService, EvolutionJobLifecycle
 from app.service.evolution.events import (
     EvolutionRunEventService,
     EvolutionRunTopicAuthorizer,
@@ -166,12 +167,29 @@ def create_app(
         events=evolution_events,
         web_base_url=resolved_settings.web_base_url,
     )
+    evolution_advance = EvolutionAdvanceService(
+        evolution_repository,
+        evolution_candidates,
+        probe_query_repository,
+    )
+    evolution_lifecycle = EvolutionJobLifecycle(
+        evolution_repository,
+        jobs,
+        default_workspace_manager,
+        before_terminal=sync.release_terminal_job,
+    )
+    jobs.set_terminal_hook(evolution_lifecycle.on_terminal)
 
     async def prepare_handler(job: JobRunRecord) -> Mapping[str, Any]:
         """Run the real prepare workflow for one admitted run."""
         return await prepare_service.handle(job)
 
+    async def advance_handler(job: JobRunRecord) -> Mapping[str, Any]:
+        """Publish the first pending round through the real candidate boundary."""
+        return await evolution_advance.handle(job)
+
     jobs.register_handler("evolution_prepare", prepare_handler)
+    jobs.register_handler("evolution_advance", advance_handler)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -246,6 +264,7 @@ def create_app(
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates
+    app.state.evolution_advance = evolution_advance
     app.state.evolution_launch = evolution_launch
     app.state.probe_query = probe_query
     app.state.catalogs = catalogs

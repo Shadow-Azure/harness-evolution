@@ -833,16 +833,26 @@ class EvolutionRepository:
     async def mark_round_deciding(self, round_id: str) -> EvolutionRoundRecord:
         """Enter the apply phase without resubmitting an already evaluated candidate."""
         async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_rounds)
-                .where(
-                    evolution_rounds.c.id == round_id,
-                    evolution_rounds.c.status.in_(("evaluating", "deciding")),
-                    evolution_rounds.c.eval_status == "completed",
-                )
-                .values(status="deciding"),
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status.in_(("evaluating", "deciding")),
+                        evolution_rounds.c.eval_status == "completed",
+                    )
+                    .values(status="deciding"),
+                ),
             )
-        return await self._required_round(round_id)
+        if result.rowcount != 1:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="round cannot enter deciding",
+            )
+        return await self._required_round(round_id, expected_status="deciding")
 
     async def accept_round(
         self,
@@ -854,20 +864,30 @@ class EvolutionRepository:
     ) -> EvolutionRoundRecord:
         """Persist one accepted amended commit and successful run push."""
         async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_rounds)
-                .where(
-                    evolution_rounds.c.id == round_id,
-                    evolution_rounds.c.status.in_(("deciding", "accepted", "rejected")),
-                )
-                .values(
-                    status="accepted",
-                    accepted=True,
-                    commit_hash=final_commit,
-                    commit_message=final_message,
-                    finished_at=finished_at,
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "deciding",
+                    )
+                    .values(
+                        status="accepted",
+                        accepted=True,
+                        commit_hash=final_commit,
+                        commit_message=final_message,
+                        finished_at=finished_at,
+                    ),
                 ),
             )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="only deciding rounds can be accepted",
+                )
             run_id: str = (
                 await session.execute(
                     select(evolution_rounds.c.run_id).where(evolution_rounds.c.id == round_id),
@@ -888,21 +908,31 @@ class EvolutionRepository:
     ) -> EvolutionRoundRecord:
         """Persist one rejected round while keeping the run branch untouched."""
         async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_rounds)
-                .where(
-                    evolution_rounds.c.id == round_id,
-                    evolution_rounds.c.status.in_(("deciding", "accepted", "rejected")),
-                )
-                .values(
-                    status="rejected",
-                    accepted=False,
-                    finished_at=finished_at,
-                    commit_hash=None,
-                    commit_message=None,
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "deciding",
+                    )
+                    .values(
+                        status="rejected",
+                        accepted=False,
+                        finished_at=finished_at,
+                        commit_hash=None,
+                        commit_message=None,
+                    ),
                 ),
             )
-        return await self._required_round(round_id)
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="only deciding rounds can be rejected",
+                )
+        return await self._required_round(round_id, expected_status="rejected")
 
     async def complete_run(
         self,
@@ -934,11 +964,23 @@ class EvolutionRepository:
             raise LookupError("evolution run not found")
         return completed
 
-    async def _required_round(self, round_id: str) -> EvolutionRoundRecord:
+    async def _required_round(
+        self,
+        round_id: str,
+        *,
+        expected_status: str | None = None,
+    ) -> EvolutionRoundRecord:
         """Return one round or fail fast when a write targeted a missing row."""
         round_ = await self.get_round(round_id)
         if round_ is None:
             raise LookupError("evolution round not found")
+        if expected_status is not None and round_.status != expected_status:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason=f"round is {round_.status}, not {expected_status}",
+            )
         return round_
 
     async def write_final(self, values: Mapping[str, Any]) -> EvolutionFinalRecord:

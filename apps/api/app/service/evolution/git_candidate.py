@@ -18,10 +18,12 @@ from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.events import (
+    EvolutionRunEventLevel,
     EvolutionRunEventService,
     EvolutionRunEventStage,
     EvolutionRunEventType,
 )
+from app.service.evolution.state import StageConflict
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
     GitOperationError,
@@ -201,6 +203,7 @@ class EvolutionCandidateService:
             candidate_ref=candidate_ref,
             patch=patch,
             message=message,
+            expected_run_id=run.id,
         )
         current = await self._runs.mark_round_candidate(
             current.id,
@@ -264,6 +267,20 @@ class EvolutionCandidateService:
                 attempts=attempt_counter,
                 error=sanitize_message(str(exc), limit=2_000),
             )
+            await self._record(
+                run.id,
+                "push_failed",
+                stage="push",
+                message="候选推送失败",
+                round_id=current.id,
+                job_id=job_id,
+                level="error",
+                payload={
+                    "attempts": attempt_counter,
+                    "ref": current.candidate_ref,
+                },
+                error=exc,
+            )
             await self._runs.mark_blocked(
                 run.id,
                 stage="push",
@@ -313,6 +330,13 @@ class EvolutionCandidateService:
         """Amend accepted metadata, fast-forward the run branch, and persist it."""
         if round_.status == "accepted":
             return round_
+        if round_.status not in {"evaluating", "deciding"}:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="accepted rounds must be decided from the deciding state",
+            )
         if round_.candidate_ref is None or round_.candidate_commit is None:
             raise ValueError("accepted rounds require a pushed candidate")
         evaluated_commit = round_.candidate_commit
@@ -325,6 +349,8 @@ class EvolutionCandidateService:
             ref=deciding.candidate_ref or "",
             commit=evaluated_commit,
             message=deciding.candidate_message or "",
+            run_id=run.id,
+            base_commit=prepared.base_commit,
         )
         patch_hash = _patch_hash(deciding)
         message = build_accepted_message(
@@ -381,6 +407,13 @@ class EvolutionCandidateService:
         """Delete rejected candidate refs and retain the run branch unchanged."""
         if round_.status == "rejected":
             return round_
+        if round_.status not in {"evaluating", "deciding"}:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="rejected rounds must be decided from the deciding state",
+            )
         if round_.candidate_ref is None or round_.candidate_commit is None:
             raise ValueError("rejected rounds require a pushed candidate")
         deciding = await self._runs.mark_round_deciding(round_.id)
@@ -392,15 +425,13 @@ class EvolutionCandidateService:
             ref=deciding.candidate_ref or "",
             commit=deciding.candidate_commit or "",
             message=deciding.candidate_message or "",
+            run_id=run.id,
+            base_commit=prepared.base_commit,
         )
-        cleanup_error: str | None = None
-        try:
-            await self._workspaces.reject_candidate(
-                candidate,
-                run_branch=prepared.branch,
-            )
-        except GitOperationError as exc:
-            cleanup_error = sanitize_message(str(exc), limit=500)
+        cleanup_error = await self._workspaces.reject_candidate(
+            candidate,
+            run_branch=prepared.branch,
+        )
         rejected = await self._runs.reject_round(
             deciding.id,
             finished_at=self._now(),
@@ -426,7 +457,9 @@ class EvolutionCandidateService:
         round_id: str,
         job_id: str | None,
         cluster_id: str | None = None,
+        level: EvolutionRunEventLevel = "info",
         payload: Mapping[str, object] | None = None,
+        error: BaseException | None = None,
     ) -> None:
         """Record a best-effort event without masking the git transaction."""
         if self._events is None:
@@ -435,13 +468,14 @@ class EvolutionCandidateService:
             await self._events.record(
                 run_id,
                 event_type,
-                level="info",
+                level=level,
                 stage=stage,
                 cluster_id=cluster_id,
                 round_id=round_id,
                 job_id=job_id,
                 message=message,
                 payload=payload,
+                error=error,
             )
         except Exception:
             logger.exception(

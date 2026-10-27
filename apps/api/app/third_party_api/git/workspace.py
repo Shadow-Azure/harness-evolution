@@ -92,6 +92,8 @@ class CandidateWorkspace:
     ref: str
     commit: str
     message: str
+    run_id: str
+    base_commit: str
 
 
 class GitWorkspaceManager:
@@ -134,21 +136,7 @@ class GitWorkspaceManager:
         ref = run.target_version
         branch = f"evo/{run.created_at:%Y%m%d}-{run.id}"
 
-        if not repo_path.exists():
-            await self._git_checked(
-                None,
-                ("git", "clone", "--mirror", "--no-hardlinks", "--", run.repo_url, str(repo_path)),
-                stage="clone",
-                failure="repository cache clone failed",
-            )
-        else:
-            await self._git_checked(
-                repo_path,
-                ("git", "remote", "update", "--prune"),
-                stage="clone",
-                failure="repository cache refresh failed",
-                retryable=True,
-            )
+        await self._ensure_mirror(repo_path, run.repo_url)
 
         resolved_ref = await self._git_checked(
             repo_path,
@@ -267,6 +255,7 @@ class GitWorkspaceManager:
         candidate_ref: str,
         patch: Patch,
         message: str,
+        expected_run_id: str | None = None,
     ) -> CandidateWorkspace:
         """Create one candidate commit from the clean, current run branch."""
         await self._require_clean(prepared.path)
@@ -278,6 +267,13 @@ class GitWorkspaceManager:
         )
         if not re.fullmatch(rf"{re.escape(run_branch)}/candidate/r[1-9]\d*", candidate_ref):
             raise GitOperationError("candidate ref does not match the run", stage="workspace")
+        run_id = expected_run_id or _required_trailer(message, "Harness-Run-Id")
+        if not _has_trailer(message, "Harness-Run-Id", run_id):
+            raise GitOperationError(
+                "candidate commit is missing the Harness-Run-Id trailer",
+                stage="workspace",
+            )
+        await self._require_ancestry(prepared.path, prepared.base_commit)
         local_branch = candidate_local_branch(candidate_ref)
         existing_candidate = await self._optional_ref(
             prepared.path,
@@ -333,6 +329,8 @@ class GitWorkspaceManager:
             ref=candidate_ref,
             commit=commit,
             message=message,
+            run_id=run_id,
+            base_commit=prepared.base_commit,
         )
 
     async def push_candidate(
@@ -342,6 +340,9 @@ class GitWorkspaceManager:
         expected_remote_commit: str | None,
     ) -> None:
         """Push an initial candidate or replace its own prior commit with a lease."""
+        await self._validate_candidate(candidate)
+        if not self._push_enabled:
+            return
         remote = await self.remote_tag_commit(
             candidate.workspace_path,
             "origin",
@@ -384,6 +385,7 @@ class GitWorkspaceManager:
         message: str,
     ) -> CandidateWorkspace:
         """Amend accepted metadata, publish the candidate, and fast-forward run."""
+        await self._validate_candidate(candidate)
         await self._git_checked(
             candidate.workspace_path,
             (
@@ -415,6 +417,8 @@ class GitWorkspaceManager:
             ref=candidate.ref,
             commit=final_commit,
             message=message,
+            run_id=candidate.run_id,
+            base_commit=candidate.base_commit,
         )
         await self.push_candidate(
             final_candidate,
@@ -432,7 +436,13 @@ class GitWorkspaceManager:
             stage="workspace",
             failure="run branch is not a fast-forward",
         )
-        await self._push_run_branch(candidate.workspace_path, run_branch)
+        await self._push_run_branch(
+            candidate.workspace_path,
+            run_branch,
+            expected_run_id=candidate.run_id,
+            base_commit=candidate.base_commit,
+            require_trailer=True,
+        )
         await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
         await self._git_checked(
             candidate.workspace_path,
@@ -447,7 +457,7 @@ class GitWorkspaceManager:
         candidate: CandidateWorkspace,
         *,
         run_branch: str,
-    ) -> None:
+    ) -> str | None:
         """Delete rejected candidate refs without changing the run branch."""
         await self._git_checked(
             candidate.workspace_path,
@@ -455,13 +465,21 @@ class GitWorkspaceManager:
             stage="workspace",
             failure="run branch could not be selected after rejection",
         )
-        await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
-        await self._git_checked(
-            candidate.workspace_path,
-            ("git", "branch", "-D", candidate.local_branch),
-            stage="workspace",
-            failure="rejected local candidate branch could not be removed",
-        )
+        cleanup_errors: list[str] = []
+        try:
+            await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
+        except GitOperationError as exc:
+            cleanup_errors.append(str(exc))
+        try:
+            await self._git_checked(
+                candidate.workspace_path,
+                ("git", "branch", "-D", candidate.local_branch),
+                stage="workspace",
+                failure="rejected local candidate branch could not be removed",
+            )
+        except GitOperationError as exc:
+            cleanup_errors.append(str(exc))
+        return "; ".join(dict.fromkeys(cleanup_errors)) or None
 
     async def remote_ref_commit(
         self,
@@ -550,8 +568,38 @@ class GitWorkspaceManager:
             shutil.rmtree(path)
         return tuple(removable)
 
-    async def _push_run_branch(self, workspace_path: Path, branch: str) -> None:
+    async def _push_run_branch(
+        self,
+        workspace_path: Path,
+        branch: str,
+        *,
+        expected_run_id: str | None = None,
+        base_commit: str | None = None,
+        require_trailer: bool = False,
+    ) -> None:
         """Publish only a fast-forward run branch and never force it."""
+        if not self._RUN_BRANCH.fullmatch(branch) or branch in {"main", "master"}:
+            raise GitOperationError("run branch name is unsafe", stage="workspace")
+        current_branch = await self._git_checked(
+            workspace_path,
+            ("git", "branch", "--show-current"),
+            stage="workspace",
+            failure="current branch could not be resolved",
+        )
+        if current_branch.stdout.strip() != branch:
+            raise GitOperationError("run branch is not selected", stage="workspace")
+        await self._require_clean(workspace_path)
+        if base_commit is not None:
+            await self._require_ancestry(workspace_path, base_commit)
+        if require_trailer and expected_run_id is not None:
+            message = await self._commit_message(workspace_path, "HEAD")
+            if not _has_trailer(message, "Harness-Run-Id", expected_run_id):
+                raise GitOperationError(
+                    "run branch commit is missing the Harness-Run-Id trailer",
+                    stage="workspace",
+                )
+        if not self._push_enabled:
+            return
         remote_commit = await self.remote_ref_commit(workspace_path, "origin", branch)
         head = (
             await self._git_checked(
@@ -579,6 +627,8 @@ class GitWorkspaceManager:
 
     async def _delete_remote_tag(self, workspace_path: Path, ref: str) -> None:
         """Delete a transient candidate tag, treating absence as success."""
+        if not self._push_enabled:
+            return
         if await self.remote_tag_commit(workspace_path, "origin", ref) is None:
             return
         await self._push_checked(
@@ -626,6 +676,114 @@ class GitWorkspaceManager:
         )
         if result.stdout.strip():
             raise GitOperationError("workspace is not clean", stage="workspace")
+
+    async def _ensure_mirror(self, repo_path: Path, repo_url: str) -> None:
+        """Create or refresh a cache only when it still points at the run's repository."""
+        if repo_path.exists():  # noqa: ASYNC240
+            current = await self._git(
+                repo_path,
+                ("git", "remote", "get-url", "origin"),
+                stage="clone",
+            )
+            if current.returncode != 0 or current.stdout.strip() != repo_url:
+                try:
+                    repo_path.resolve().relative_to(self.repos_root.resolve())  # noqa: ASYNC240
+                except ValueError:
+                    raise GitOperationError(
+                        "repository cache escaped its configured root",
+                        stage="clone",
+                    ) from None
+                shutil.rmtree(repo_path)
+        if not repo_path.exists():  # noqa: ASYNC240
+            try:
+                await self._git_checked(
+                    None,
+                    (
+                        "git",
+                        "clone",
+                        "--mirror",
+                        "--no-hardlinks",
+                        "--",
+                        repo_url,
+                        str(repo_path),
+                    ),
+                    stage="clone",
+                    failure="repository cache clone failed",
+                )
+            except Exception:
+                shutil.rmtree(repo_path, ignore_errors=True)
+                raise
+            return
+        await self._git_checked(
+            repo_path,
+            ("git", "remote", "update", "--prune"),
+            stage="clone",
+            failure="repository cache refresh failed",
+            retryable=True,
+        )
+
+    async def _validate_candidate(self, candidate: CandidateWorkspace) -> None:
+        """Validate the exact local commit immediately before candidate publication."""
+        await self._require_clean(candidate.workspace_path)
+        current_branch = await self._git_checked(
+            candidate.workspace_path,
+            ("git", "branch", "--show-current"),
+            stage="workspace",
+            failure="candidate branch could not be resolved",
+        )
+        if current_branch.stdout.strip() != candidate.local_branch:
+            raise GitOperationError("candidate branch is not selected", stage="workspace")
+        head = await self._git_checked(
+            candidate.workspace_path,
+            ("git", "rev-parse", "HEAD"),
+            stage="workspace",
+            failure="candidate commit could not be resolved",
+        )
+        if head.stdout.strip() != candidate.commit:
+            raise GitOperationError(
+                "candidate commit changed before publication", stage="workspace"
+            )
+        await self._require_ancestry(
+            candidate.workspace_path,
+            candidate.base_commit,
+            commit=candidate.commit,
+        )
+        message = await self._commit_message(candidate.workspace_path, candidate.commit)
+        if not _has_trailer(message, "Harness-Run-Id", candidate.run_id):
+            raise GitOperationError(
+                "candidate commit is missing the Harness-Run-Id trailer",
+                stage="workspace",
+            )
+
+    async def _require_ancestry(
+        self,
+        workspace_path: Path,
+        base_commit: str,
+        *,
+        commit: str = "HEAD",
+    ) -> None:
+        """Require the publication commit to descend from the frozen base."""
+        result = await self._git(
+            workspace_path,
+            ("git", "merge-base", "--is-ancestor", base_commit, commit),
+            stage="workspace",
+        )
+        if result.returncode != 0:
+            raise GitOperationError(
+                "bounded commit does not share the frozen base ancestry",
+                stage="workspace",
+            )
+
+    async def _commit_message(self, workspace_path: Path, commit: str) -> str:
+        """Read one local commit subject/body for trailer validation."""
+        return (
+            await self._git_checked(
+                workspace_path,
+                ("git", "log", "-1", "--format=%B", commit),
+                stage="workspace",
+                failure="commit message could not be read",
+            )
+        ).stdout
 
     async def _optional_ref(self, cwd: Path, argv: tuple[str, ...]) -> str | None:
         """Return a ref only when it resolves, without treating absence as failure."""
@@ -735,6 +893,30 @@ async def retry_push(
                 await on_retry(attempt, exc)
             await sleep(interval_seconds)
     raise AssertionError("push retry loop exhausted without a result")
+
+
+def _required_trailer(message: str, name: str) -> str:
+    """Return one required trailer value or reject an untraceable commit."""
+    prefix = f"{name}: "
+    for line in reversed(message.splitlines()):
+        if line.startswith(prefix):
+            value = line[len(prefix) :].strip()
+            if value:
+                return value
+    raise GitOperationError(
+        f"candidate commit is missing the {name} trailer",
+        stage="workspace",
+    )
+
+
+def _has_trailer(message: str, name: str, expected: str) -> bool:
+    """Return whether one commit message contains the exact required trailer."""
+    prefix = f"{name}: "
+    return any(
+        line[len(prefix) :].strip() == expected
+        for line in message.splitlines()
+        if line.startswith(prefix)
+    )
 
 
 async def _run_process(

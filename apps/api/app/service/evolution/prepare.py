@@ -140,13 +140,6 @@ class EvolutionPrepareService:
                 "reused": True,
             }
 
-        await self._record(
-            run.id,
-            "prepare_started",
-            stage="prepare",
-            message="准备阶段已启动",
-            job_id=job.id,
-        )
         query = _query_from_payload(job.payload, run)
         probes = await self._probes.list_matching(query)
         if not probes:
@@ -166,12 +159,20 @@ class EvolutionPrepareService:
             ),
         )
         cluster_count = len(drafts)
-        await self._runs.advance_unit(
-            run.id,
-            expected=0,
-            target=1,
-            cluster_count=cluster_count,
-        )
+        if run.progress_unit == 0:
+            await self._record(
+                run.id,
+                "prepare_started",
+                stage="prepare",
+                message="准备阶段已启动",
+                job_id=job.id,
+            )
+            await self._runs.advance_unit(
+                run.id,
+                expected=0,
+                target=1,
+                cluster_count=cluster_count,
+            )
 
         workspace = None
         if run.mode == "full":
@@ -197,91 +198,112 @@ class EvolutionPrepareService:
                 },
             )
 
-        clusters = await self._runs.replace_clusters(
-            run.id,
-            tuple(
-                ClusterWrite(
-                    type=draft.type,
-                    description=draft.description,
-                    probes=draft.probes,
-                    impact=float(TYPE_IMPACT[draft.type]),
-                )
-                for draft in drafts
-            ),
-        )
+        if run.progress_unit <= 1:
+            clusters = await self._runs.replace_clusters(
+                run.id,
+                tuple(
+                    ClusterWrite(
+                        type=draft.type,
+                        description=draft.description,
+                        probes=draft.probes,
+                        impact=float(TYPE_IMPACT[draft.type]),
+                    )
+                    for draft in drafts
+                ),
+            )
+        else:
+            clusters = await self._runs.list_clusters(run.id)
         cluster_probes = {
             cluster.probe_cluster_id: drafts[index].probes for index, cluster in enumerate(clusters)
         }
-        await self._runs.advance_unit(
-            run.id,
-            expected=1,
-            target=2,
-            cluster_count=cluster_count,
-        )
-        await self._record(
-            run.id,
-            "clusters_created",
-            stage="cluster",
-            step_index=1,
-            message=f"聚类完成：{len(clusters)} 个簇",  # noqa: RUF001
-            job_id=job.id,
-            payload={"clusters": len(clusters)},
-        )
+        if run.progress_unit <= 1:
+            await self._runs.advance_unit(
+                run.id,
+                expected=1,
+                target=2,
+                cluster_count=cluster_count,
+            )
+            await self._record(
+                run.id,
+                "clusters_created",
+                stage="cluster",
+                step_index=1,
+                message=f"聚类完成：{len(clusters)} 个簇",  # noqa: RUF001
+                job_id=job.id,
+                payload={"clusters": len(clusters)},
+            )
 
         probe_by_id = {probe.probe_id: probe for probe in probes}
-        confidence_values = {
-            cluster.probe_cluster_id: _placeholder_confidence(
-                cluster_probes[cluster.probe_cluster_id],
+        if run.progress_unit <= 2:
+            confidence_values = {
+                cluster.probe_cluster_id: _placeholder_confidence(
+                    cluster_probes[cluster.probe_cluster_id],
+                    probe_by_id,
+                )
+                for cluster in clusters
+            }
+            await self._runs.write_cluster_confidence(run.id, confidence_values)
+            await self._record(
+                run.id,
+                "step_advanced",
+                stage="cluster",
+                step_index=2,
+                message="归因置信度已落库",
+                job_id=job.id,
+            )
+        else:
+            confidence_values = {
+                cluster.probe_cluster_id: cluster.confidence or 0.0 for cluster in clusters
+            }
+
+        if run.progress_unit <= 3:
+            severity_values = _severity_values(
+                clusters,
+                confidence_values,
+                cluster_probes,
                 probe_by_id,
             )
-            for cluster in clusters
-        }
-        await self._runs.write_cluster_confidence(run.id, confidence_values)
-        await self._record(
-            run.id,
-            "step_advanced",
-            stage="cluster",
-            step_index=2,
-            message="归因置信度已落库",
-            job_id=job.id,
-        )
-
-        severity_values = _severity_values(
-            clusters,
-            confidence_values,
-            cluster_probes,
-            probe_by_id,
-        )
-        await self._runs.write_cluster_severity(run.id, severity_values)
-        await self._record(
-            run.id,
-            "step_advanced",
-            stage="cluster",
-            step_index=3,
-            message="严重程度排序已落库",
-            job_id=job.id,
-        )
+            await self._runs.write_cluster_severity(run.id, severity_values)
+            await self._record(
+                run.id,
+                "step_advanced",
+                stage="cluster",
+                step_index=3,
+                message="严重程度排序已落库",
+                job_id=job.id,
+            )
+            clusters = await self._runs.list_clusters(run.id)
+        else:
+            clusters = await self._runs.list_clusters(run.id)
 
         if run.mode == "full":
             ordered = sorted(
                 clusters,
                 key=lambda cluster: (
-                    severity_values[cluster.probe_cluster_id][1],
+                    cluster.rank or 0,
                     cluster.seq,
                 ),
             )
-            await self._runs.insert_rounds(
-                tuple(
-                    {
-                        "id": new_id(),
-                        "run_id": run.id,
-                        "probe_cluster_id": cluster.probe_cluster_id,
-                        "seq": seq,
-                        "status": "pending",
-                    }
-                    for seq, cluster in enumerate(ordered, start=1)
-                ),
-            )
+            existing_rounds = await self._runs.list_rounds(run.id)
+            if not existing_rounds:
+                await self._runs.insert_rounds(
+                    tuple(
+                        {
+                            "id": new_id(),
+                            "run_id": run.id,
+                            "probe_cluster_id": cluster.probe_cluster_id,
+                            "seq": seq,
+                            "status": "pending",
+                        }
+                        for seq, cluster in enumerate(ordered, start=1)
+                    ),
+                )
+            elif len(existing_rounds) != len(ordered):
+                raise AppError(
+                    status_code=409,
+                    code=ErrorCode.VALIDATION_INVALID,
+                    message="prepared run has an incomplete round snapshot",
+                )
 
         prepared = await self._runs.mark_prepared(
             run.id,
@@ -308,7 +330,9 @@ class EvolutionPrepareService:
             return False
         if run.mode == "cluster_only":
             return run.status == "completed"
-        return run.status == "running" and bool(await self._runs.list_rounds(run.id))
+        if run.status == "preparing":
+            return False
+        return bool(await self._runs.list_rounds(run.id))
 
     async def _record(
         self,

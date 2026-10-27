@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -21,18 +22,26 @@ from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.db.models.evolution import (
+    EvolutionRunRecord,
     ProbeClusterRecord,
     evolution_rounds,
     evolution_runs,
 )
 from app.db.models.jobs import JobRunRecord
+from app.main import create_app
+from app.service.evolution.advance import EvolutionAdvanceService, EvolutionJobLifecycle
 from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.git_candidate import (
     CandidateTrace,
     EvolutionCandidateService,
 )
 from app.service.evolution.prepare import EvolutionPrepareService, RepositoryProbeReader
-from app.third_party_api.git.workspace import GitOperationError, GitWorkspaceManager
+from app.service.evolution.state import StageConflict
+from app.third_party_api.git.workspace import (
+    GitOperationError,
+    GitWorkspaceManager,
+    PreparedWorkspace,
+)
 
 NOW = datetime(2026, 10, 28, 10, 0, tzinfo=UTC)
 
@@ -374,6 +383,325 @@ async def test_transient_candidate_push_failure_blocks_after_three_attempts(
     assert current is not None
     assert current.status == "blocked"
     assert current.blocked_stage == "push"
+
+
+async def test_prepare_resumes_from_each_persisted_checkpoint(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A crash after advance to unit 1 must replay the remaining work, not conflict."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    original_prepare = prepare._workspaces.prepare
+    failed = False
+
+    async def fail_first(run: EvolutionRunRecord) -> PreparedWorkspace:
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise GitOperationError("workspace unavailable", stage="workspace")
+        return await original_prepare(run)
+
+    monkeypatch.setattr(prepare._workspaces, "prepare", fail_first)
+    with pytest.raises(GitOperationError):
+        await prepare.handle(_job("run-m5-09-prepare"))
+    checkpoint = await repository.get_run("run-m5-09-prepare")
+    assert checkpoint is not None
+    assert checkpoint.progress_unit == 1
+
+    resumed = await prepare.handle(_job("run-m5-09-prepare"))
+
+    assert resumed["status"] == "running"
+    rounds = await repository.list_rounds("run-m5-09-prepare")
+    assert len(rounds) == 2
+
+
+@pytest.mark.parametrize(
+    ("method_name", "checkpoint"),
+    (
+        ("write_cluster_confidence", 2),
+        ("write_cluster_severity", 3),
+        ("mark_prepared", 4),
+    ),
+)
+async def test_prepare_resumes_after_failure_at_later_checkpoints(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    method_name: str,
+    checkpoint: int,
+) -> None:
+    """Every persisted prepare checkpoint can replay without duplicate candidate work."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    original = getattr(repository, method_name)
+
+    async def fail_once(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("injected checkpoint failure")
+
+    monkeypatch.setattr(repository, method_name, fail_once)
+    with pytest.raises(RuntimeError, match="injected"):
+        await prepare.handle(_job("run-m5-09-prepare"))
+    persisted = await repository.get_run("run-m5-09-prepare")
+    assert persisted is not None
+    assert persisted.progress_unit == checkpoint
+
+    monkeypatch.setattr(repository, method_name, original)
+    result = await prepare.handle(_job("run-m5-09-prepare"))
+
+    assert result["status"] == "running"
+    assert len(await repository.list_rounds("run-m5-09-prepare")) == 2
+
+
+async def test_terminal_round_states_are_absorbing_and_opposite_actions_conflict(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """Accepted/rejected rounds cannot be rewritten by stale opposite-direction jobs."""
+    database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    service = EvolutionCandidateService(repository, manager)
+    first = await service.publish(run, rounds[0], _trace(clusters[1]))
+    async with database.transaction() as session:
+        await session.execute(
+            sql_update(evolution_rounds)
+            .where(evolution_rounds.c.id == first.id)
+            .values(eval_status="completed"),
+        )
+    fresh = await repository.get_round(first.id)
+    assert fresh is not None
+    accepted = await service.accept(
+        run,
+        fresh,
+        _trace(clusters[1]),
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+    )
+
+    duplicate = await service.accept(
+        run,
+        accepted,
+        _trace(clusters[1]),
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+    )
+    assert duplicate.status == "accepted"
+    with pytest.raises(StageConflict):
+        await service.reject(run, accepted, reason="stale reject")
+    with pytest.raises(StageConflict):
+        await repository.reject_round(accepted.id, finished_at=NOW)
+    with pytest.raises(StageConflict):
+        await repository.accept_round(
+            accepted.id,
+            final_commit="a" * 40,
+            final_message="stale",
+            finished_at=NOW,
+        )
+
+    rejected_round = await repository.get_round(rounds[0].id)
+    assert rejected_round is not None
+    assert rejected_round.status == "accepted"
+
+    second = await service.publish(run, rounds[1], _trace(clusters[0]))
+    async with database.transaction() as session:
+        await session.execute(
+            sql_update(evolution_rounds)
+            .where(evolution_rounds.c.id == second.id)
+            .values(eval_status="completed"),
+        )
+    second_fresh = await repository.get_round(second.id)
+    assert second_fresh is not None
+    rejected = await service.reject(run, second_fresh, reason="not better")
+    with pytest.raises(StageConflict):
+        await service.accept(
+            run,
+            rejected,
+            _trace(clusters[0]),
+            current_score=80.0,
+            candidate_score=81.0,
+            reason="stale accept",
+        )
+
+
+async def test_candidate_push_failure_records_durable_push_failed_event(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A blocked push persists the precise push_failed event before the job boundary."""
+    _database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+
+    async def fail_push(*_args: object, **_kwargs: object) -> None:
+        raise GitOperationError("denied", stage="push", retryable=False)
+
+    monkeypatch.setattr(manager, "push_candidate", fail_push)
+
+    class Events:
+        def __init__(self) -> None:
+            self.types: list[str] = []
+
+        async def record(self, _run_id: str, event_type: str, **_kwargs: object) -> None:
+            self.types.append(event_type)
+
+    events = Events()
+    service = EvolutionCandidateService(repository, manager, events=events)  # type: ignore[arg-type]
+    with pytest.raises(RunBlocked):
+        await service.publish(run, rounds[0], _trace(clusters[1]))
+
+    assert events.types[-1] == "push_failed"
+
+
+async def test_reject_propagates_run_branch_restore_failure(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure to restore the run branch cannot be reported as a rejected success."""
+    database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    run = await repository.get_run("run-m5-09-prepare")
+    assert run is not None
+    rounds = await repository.list_rounds(run.id)
+    clusters = await repository.list_clusters(run.id)
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    service = EvolutionCandidateService(repository, manager)
+    current = await service.publish(run, rounds[0], _trace(clusters[1]))
+    async with database.transaction() as session:
+        await session.execute(
+            sql_update(evolution_rounds)
+            .where(evolution_rounds.c.id == current.id)
+            .values(eval_status="completed"),
+        )
+    fresh = await repository.get_round(current.id)
+    assert fresh is not None
+
+    async def fail_switch(*_args: object, **_kwargs: object) -> str:
+        raise GitOperationError("cannot switch", stage="workspace")
+
+    monkeypatch.setattr(manager, "reject_candidate", fail_switch)
+    with pytest.raises(GitOperationError, match="cannot switch"):
+        await service.reject(run, fresh, reason="reject")
+    persisted = await repository.get_round(current.id)
+    assert persisted is not None
+    assert persisted.status != "rejected"
+
+
+async def test_advance_service_publishes_real_candidate_and_lifecycle_queues_it(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """A completed prepare is reachable from the production candidate stage boundary."""
+    database, repository, prepare, repo_url, base_commit = prepare_state
+    await repository.create_run(_run_values(repo_url, base_commit))
+    await prepare.handle(_job("run-m5-09-prepare"))
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    candidate_service = EvolutionCandidateService(repository, manager)
+    advance = EvolutionAdvanceService(
+        repository,
+        candidate_service,
+        ProbeQueryRepository(database),
+    )
+    advance_job = replace(
+        _job("run-m5-09-prepare"),
+        id="job-advance",
+        kind="evolution_advance",
+        payload={"runId": "run-m5-09-prepare"},
+    )
+
+    result = await advance.handle(advance_job)
+
+    assert result["published"] is True
+    rounds = await repository.list_rounds("run-m5-09-prepare")
+    assert rounds[0].status == "evaluating"
+    assert rounds[0].candidate_ref is not None
+    assert _remote_tag(repo_url, rounds[0].candidate_ref) == rounds[0].candidate_commit
+
+    class Jobs:
+        def __init__(self) -> None:
+            self.submitted: list[dict[str, object]] = []
+
+        async def submit(
+            self,
+            *,
+            kind: str,
+            payload: object,
+            ref_id: str | None,
+            created_by: str | None,
+        ) -> object:
+            self.submitted.append(
+                {
+                    "kind": kind,
+                    "payload": payload,
+                    "refId": ref_id,
+                    "createdBy": created_by,
+                },
+            )
+            return object()
+
+    jobs = Jobs()
+    lifecycle = EvolutionJobLifecycle(repository, jobs, manager)
+    await lifecycle.on_terminal(
+        replace(
+            _job("run-m5-09-prepare"),
+            status="completed",
+            finished_at=NOW,
+        ),
+    )
+
+    assert jobs.submitted == [
+        {
+            "kind": "evolution_advance",
+            "payload": {"runId": "run-m5-09-prepare"},
+            "refId": "run-m5-09-prepare",
+            "createdBy": None,
+        },
+    ]
+
+
+async def test_composition_root_registers_candidate_advance_handler(
+    prepare_state: tuple[Database, EvolutionRepository, EvolutionPrepareService, str, str],
+    tmp_path: Path,
+) -> None:
+    """The real app, rather than tests alone, owns the advance job handler."""
+    database, _repository, _prepare, _repo_url, _base_commit = prepare_state
+    app = create_app(
+        Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            data_dir=tmp_path / "composition",
+            jwt_secret=SecretStr("m5-09-composition-test-secret"),
+        ),
+        database=database,
+    )
+
+    assert app.state.evolution_advance is not None
+    assert "evolution_advance" in app.state.jobs._handlers
 
 
 def _trace(cluster: ProbeClusterRecord) -> CandidateTrace:
