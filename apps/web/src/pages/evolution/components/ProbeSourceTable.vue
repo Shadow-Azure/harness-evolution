@@ -1,19 +1,13 @@
 <script setup lang="ts">
 import type { ProbePreviewItem } from "@harness/contracts";
 
+import { badCaseDeepLink, shortBadCaseId } from "../../../utils/badCaseId";
+
 defineProps<{
   rows: ProbePreviewItem[];
   showCluster?: boolean;
   clusterOfProbe?: Record<string, string | null>;
 }>();
-
-function href(probe: ProbePreviewItem, tab: "attr" | "desc"): string {
-  const query = new URLSearchParams({
-    case: probe.sourceBadCaseIds[0] ?? "",
-    tab,
-  });
-  return `/sessions/${encodeURIComponent(probe.sessionId)}/errors?${query}`;
-}
 
 function typeLabel(type: ProbePreviewItem["attributeType"]): string {
   if (type === "prompt") return "prompt";
@@ -49,14 +43,42 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
           :key="probe.probeId"
         >
           <td class="id">
-            <RouterLink :to="href(probe, 'attr')">
-              {{ probe.probeId }}
-            </RouterLink>
+            <a
+              v-if="probe.sourceBadCaseIds[0]"
+              :href="
+                badCaseDeepLink(
+                  probe.sessionId,
+                  probe.sourceBadCaseIds[0],
+                  'attr',
+                )
+              "
+              :aria-label="`归因报告 ${shortBadCaseId(probe.probeId)}，在新窗口打开归因分析`"
+              rel="noopener noreferrer"
+              target="_blank"
+              :title="probe.probeId"
+            >
+              {{ shortBadCaseId(probe.probeId) }}
+            </a>
+            <span v-else>—</span>
           </td>
           <td class="id">
-            <RouterLink :to="href(probe, 'desc')">
-              {{ probe.sourceBadCaseIds[0] ?? "—" }}
-            </RouterLink>
+            <a
+              v-if="probe.sourceBadCaseIds[0]"
+              :href="
+                badCaseDeepLink(
+                  probe.sessionId,
+                  probe.sourceBadCaseIds[0],
+                  'desc',
+                )
+              "
+              :aria-label="`来源问题 ${shortBadCaseId(probe.sourceBadCaseIds[0])}，在新窗口打开问题描述`"
+              rel="noopener noreferrer"
+              target="_blank"
+              :title="probe.sourceBadCaseIds[0]"
+            >
+              {{ shortBadCaseId(probe.sourceBadCaseIds[0]) }}
+            </a>
+            <span v-else>—</span>
           </td>
           <td>{{ probe.description }}</td>
           <td

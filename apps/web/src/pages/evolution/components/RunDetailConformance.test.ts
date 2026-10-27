@@ -16,6 +16,7 @@ import StepAttribution from "./StepAttribution.vue";
 import StepClusters from "./StepClusters.vue";
 import StepFinal from "./StepFinal.vue";
 import StepIterations from "./StepIterations.vue";
+import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const RouterLinkStub = {
   props: ["to"],
@@ -119,6 +120,43 @@ function iterationStep(rounds: StepRound[]): EvolutionStepIteration {
 }
 
 describe("run detail conformance", () => {
+  it("opens source report and problem IDs in safe new-window deep links", () => {
+    const fullProbeId = "11111111-1111-4111-8111-111111111111";
+    const fullBadCaseId = "22222222-2222-4222-8222-222222222222";
+    const wrapper = mount(ProbeSourceTable, {
+      props: {
+        rows: [
+          {
+            ...probe,
+            probeId: fullProbeId,
+            sourceBadCaseIds: [fullBadCaseId],
+          },
+        ],
+        showCluster: false,
+      },
+    });
+
+    const links = wrapper.findAll("a");
+    expect(links).toHaveLength(2);
+    expect(links.map((link) => link.text())).toEqual(["11111111", "22222222"]);
+
+    for (const link of links) {
+      expect(link.attributes("target")).toBe("_blank");
+      expect(link.attributes("rel")).toBe("noopener noreferrer");
+    }
+
+    expect(links[0]?.attributes()).toMatchObject({
+      href: `/sessions/session-1/errors?case=${fullBadCaseId}&tab=attr`,
+      title: fullProbeId,
+      "aria-label": "归因报告 11111111，在新窗口打开归因分析",
+    });
+    expect(links[1]?.attributes()).toMatchObject({
+      href: `/sessions/session-1/errors?case=${fullBadCaseId}&tab=desc`,
+      title: fullBadCaseId,
+      "aria-label": "来源问题 22222222，在新窗口打开问题描述",
+    });
+  });
+
   it("renders the prototype source-problem table with report and issue deep links", async () => {
     const clusters = mount(StepClusters, {
       props: { step: clusterStep, focusCluster: "C1" },
@@ -141,10 +179,10 @@ describe("run detail conformance", () => {
     expect(clusters.text()).toContain("错误");
 
     const links = clusters.findAll("a");
-    expect(links.some((link) => link.attributes("data-to")?.includes("attr"))).toBe(
+    expect(links.some((link) => link.attributes("href")?.includes("attr"))).toBe(
       true,
     );
-    expect(links.some((link) => link.attributes("data-to")?.includes("desc"))).toBe(
+    expect(links.some((link) => link.attributes("href")?.includes("desc"))).toBe(
       true,
     );
 
@@ -340,6 +378,41 @@ describe("run detail conformance", () => {
       },
     });
     expect(timeout.text()).toContain("评测超时");
+  });
+
+  it("labels the evaluated candidate commit on an accepted round", () => {
+    const evaluatedCommit = "abcdef1234567890";
+    const finalCommit = "fedcba0987654321";
+    const wrapper = mount(StepIterations, {
+      props: {
+        step: iterationStep([
+          round({
+            status: "accepted",
+            candidate: {
+              ref: "refs/candidate",
+              commit: evaluatedCommit,
+              message: "candidate",
+            },
+            push: { status: "succeeded", attempts: 1, error: null },
+            eval: {
+              status: "completed",
+              current: 84.6,
+              candidate: 85.1,
+              nextPollAt: null,
+            },
+            accepted: true,
+            finalCommit: {
+              hash: finalCommit,
+              message: "accepted candidate",
+            },
+          }),
+        ]),
+      },
+    });
+
+    expect(wrapper.text()).toContain("Harness-Evaluated-Commit");
+    expect(wrapper.text()).toContain(evaluatedCommit.slice(0, 12));
+    expect(wrapper.text()).toContain(finalCommit.slice(0, 12));
   });
 
   it("colors added, deleted, hunk and context diff lines", () => {

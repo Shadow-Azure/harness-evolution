@@ -241,6 +241,14 @@ function pushLabel(status: string): string {
           <p class="cb-label">
             已接纳 · amend 后的 run 分支 commit
           </p>
+          <div
+            v-if="round.candidate"
+            class="evaluated-commit"
+            :title="round.candidate.commit"
+          >
+            <span class="commit-label">Harness-Evaluated-Commit</span>
+            <span class="hash">{{ round.candidate.commit.slice(0, 12) }}</span>
+          </div>
           <div class="commit">
             <span class="hash">{{ round.finalCommit.hash.slice(0, 12) }}</span>
             <span>{{ round.finalCommit.message }}</span>
@@ -486,6 +494,23 @@ function pushLabel(status: string): string {
   gap: 6px;
   border-color: color-mix(in srgb, var(--green) 35%, transparent);
   background: color-mix(in srgb, var(--green) 6%, transparent);
+}
+
+.evaluated-commit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  padding: 6px 9px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.commit-label {
+  color: var(--text-faint);
 }
 
 .hash {
