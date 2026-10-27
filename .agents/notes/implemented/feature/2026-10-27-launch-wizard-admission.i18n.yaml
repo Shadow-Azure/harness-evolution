@@ -2,4 +2,4 @@
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-10-27-launch-wizard-admission.md
 2026-10-27-launch-wizard-admission.md: 4e7695385c49bacc444ffc28ec1da1c174e97e27
-2026-10-27-launch-wizard-admission.en.md: c7e55af8d10f54ceb84175bd7a793d781cf1ed7e
+2026-10-27-launch-wizard-admission.en.md: 30cb43a1320d535ccdbc63daa441b4fb4b9ede7a
