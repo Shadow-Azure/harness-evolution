@@ -701,3 +701,59 @@ async def test_finalize_push_failure_preserves_final_and_blocks(
     assert run.status == "blocked"
     assert run.blocked_stage == "push"
     assert "s3cr3t" not in (run.error_message or "")
+
+
+async def test_finalize_write_failure_is_recoverable(
+    state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A transient final write blocks recoverably and succeeds on retry."""
+    _database, repository = state
+    await CandidateDouble(repository).accept(
+        await repository.get_run("run-apply"),  # type: ignore[arg-type]
+        await repository.get_round("round-apply"),  # type: ignore[arg-type]
+        CandidateTrace("cluster-apply", "placeholder failure", (), (), "analysis"),
+        current_score=80,
+        candidate_score=90,
+        reason="accepted",
+    )
+
+    class FlakyRepository:
+        def __init__(self) -> None:
+            self.fail = True
+
+        async def write_final(self, values: Mapping[str, Any]) -> Any:
+            if self.fail:
+                raise RuntimeError("transient final write failure")
+            return await repository.write_final(values)
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(repository, name)
+
+    flaky = FlakyRepository()
+    service = EvolutionFinalizeService(
+        cast(Any, flaky),
+        WorkspaceDouble(),  # type: ignore[arg-type]
+        events=None,
+        now=lambda: NOW,
+    )
+
+    with pytest.raises(RunBlocked) as raised:
+        await service.handle(_job("evolution_finalize"))
+
+    blocked = await repository.get_run("run-apply")
+    assert raised.value.stage == "push"
+    assert raised.value.error_stage == "final"
+    assert blocked is not None
+    assert blocked.status == "blocked"
+    assert blocked.error_stage == "final"
+    assert await repository.get_final("run-apply") is None
+
+    flaky.fail = False
+    await repository.mark_resumed("run-apply")
+    result = await service.handle(_job("evolution_finalize"))
+
+    completed = await repository.get_run("run-apply")
+    assert result["finalized"] is True
+    assert completed is not None
+    assert completed.status == "completed"
+    assert await repository.get_final("run-apply") is not None

@@ -189,9 +189,9 @@ class EvalResult:
     metrics: tuple[Mapping[str, FrozenValue], ...] = ()
 
     def __post_init__(self) -> None:
-        """Reject non-finite scores before they can become persisted JSON."""
-        if not math.isfinite(self.current_score) or not math.isfinite(self.candidate_score):
-            raise ValueError("evaluation scores must be finite")
+        """Reject malformed scores before they can become persisted JSON."""
+        _strict_score(self.current_score)
+        _strict_score(self.candidate_score)
 
     def to_payload(self) -> dict[str, Any]:
         """Serialize the result into the round's stable JSON representation."""
@@ -209,13 +209,8 @@ class EvalResult:
         candidate = payload.get("candidateScore")
         verdict = payload.get("externalVerdict")
         metrics = payload.get("metrics", ())
-        if (
-            isinstance(current, bool)
-            or isinstance(candidate, bool)
-            or not isinstance(current, (int, float))
-            or not isinstance(candidate, (int, float))
-        ):
-            raise ValueError("persisted evaluation scores are invalid")
+        current_score = _strict_score(current, persisted=True)
+        candidate_score = _strict_score(candidate, persisted=True)
         if verdict not in {"accept", "reject"}:
             raise ValueError("persisted external verdict is invalid")
         if not isinstance(metrics, (list, tuple)):
@@ -228,8 +223,8 @@ class EvalResult:
                 cast(Mapping[str, FrozenValue], freeze_json(metric)),
             )
         return cls(
-            current_score=float(current),
-            candidate_score=float(candidate),
+            current_score=current_score,
+            candidate_score=candidate_score,
             external_verdict=verdict,
             metrics=tuple(frozen_metrics),
         )
@@ -266,8 +261,8 @@ class FakeEvalGateway:
         candidate = self.config.get("candidateScore", 85.0)
         verdict = self.config.get("verdict", "accept")
         metrics = self.config.get("metrics", ())
-        if not isinstance(current, (int, float)) or not isinstance(candidate, (int, float)):
-            raise ValueError("fake evaluation scores must be numbers")
+        current_score = _strict_score(current)
+        candidate_score = _strict_score(candidate)
         if verdict not in {"accept", "reject"}:
             raise ValueError("fake evaluation verdict must be accept or reject")
         if not isinstance(metrics, tuple) or any(
@@ -275,8 +270,8 @@ class FakeEvalGateway:
         ):
             raise ValueError("fake evaluation metrics must be objects")
         return EvalResult(
-            current_score=float(current),
-            candidate_score=float(candidate),
+            current_score=current_score,
+            candidate_score=candidate_score,
             external_verdict=cast(EvalVerdict, verdict),
             metrics=tuple(cast(Mapping[str, FrozenValue], metric) for metric in metrics),
         )
@@ -313,6 +308,17 @@ def _thaw_json(value: FrozenValue) -> Any:
     if isinstance(value, tuple):
         return [_thaw_json(item) for item in value]
     return value
+
+
+def _strict_score(value: object, *, persisted: bool = False) -> float:
+    """Validate one score from construction, a gateway result, or persisted JSON."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        source = "persisted evaluation scores" if persisted else "evaluation scores"
+        raise ValueError(f"{source} must be numeric")
+    if not math.isfinite(value):
+        source = "persisted evaluation scores" if persisted else "evaluation scores"
+        raise ValueError(f"{source} must be finite")
+    return float(value)
 
 
 @dataclass(frozen=True, slots=True)

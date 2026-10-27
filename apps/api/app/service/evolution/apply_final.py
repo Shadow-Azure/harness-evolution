@@ -202,8 +202,22 @@ class EvolutionFinalizeService:
                 "finalized": False,
                 "reason": "rounds are still active",
             }
-        final = await self._runs.write_final(_final_values(run, rounds))
-        prepared = _prepared_workspace(run)
+        try:
+            final = await self._runs.write_final(_final_values(run, rounds))
+            prepared = _prepared_workspace(run)
+        except Exception as exc:
+            message = sanitize_message(str(exc), limit=2_000)
+            await self._runs.mark_blocked(
+                run.id,
+                stage="push",
+                message=message,
+                error_stage="final",
+            )
+            raise RunBlocked(
+                message,
+                stage="push",
+                error_stage="final",
+            ) from None
         try:
             await self._workspaces.publish_run_branch(
                 prepared,

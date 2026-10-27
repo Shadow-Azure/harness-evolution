@@ -15,6 +15,7 @@ scope:
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/2026-10-28-pr143-review.md
   - .agents/flow/**
   - .agents/notes/**
 adr:

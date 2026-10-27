@@ -20,7 +20,7 @@ Git candidate 发布后，轮次只停在 `evaluating/pending`。服务没有可
 
 `EvolutionApplyService` 只消费持久化 completed result，用 external verdict 复用真实 accept/reject candidate 边界。accepted/rejected 都是吸收态，重复 apply 不会再次改写 candidate 或 run 分支。accept/reject 在同一事务推进 run `progress_unit`，因此最后一个轮次结束后 cursor 恰好到达终评前序。
 
-`EvolutionApplyService` 严格服从 external verdict，但决策文案按真实分差描述“高于/低于/等于”；因此外部 verdict 接纳一个分数下降的候选时，final 的布尔 verdict 仍表示“是否存在分数组提升的已接纳轮次”，不会反过来改写 external verdict。terminal lifecycle 在 prepare、advance、apply 成功后查询持久轮次：存在活动轮次时不排队；存在 pending 时排队下一轮 advance；全部轮次 accepted/rejected/skipped 时只排队一个 finalize。`EvolutionFinalizeService` 从各轮结果生成占位 final row，再校验并只 fast-forward 发布 run 分支，最后把 run 置为 completed；final 或最终 push 失败时保留 final 与轮次事实并进入 blocked，不会伪造 completed。`HE_GIT_PUSH=false` 时仍完成本地终态，但 push status 为 skipped。
+`EvolutionApplyService` 严格服从 external verdict，但决策文案按真实分差描述“高于/低于/等于”；因此外部 verdict 接纳一个分数下降的候选时，final 的布尔 verdict 仍表示“是否存在分数组提升的已接纳轮次”，不会反过来改写 external verdict。terminal lifecycle 在 prepare、advance、apply 成功后查询持久轮次：存在活动轮次时不排队；存在 pending 时排队下一轮 advance；全部轮次 accepted/rejected/skipped 时只排队一个 finalize。`EvolutionFinalizeService` 从各轮结果生成占位 final row，再校验并只 fast-forward 发布 run 分支，最后把 run 置为 completed；final 写入、workspace 重建或最终 push 失败时保留已有终评与轮次事实并进入可重试 blocked，不伪造 completed。`HE_GIT_PUSH=false` 时仍完成本地终态，但 push status 为 skipped。
 
 ## Alternatives considered
 
