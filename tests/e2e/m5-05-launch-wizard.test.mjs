@@ -279,10 +279,24 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
         );
         version.value = option.value;
         version.dispatchEvent(new Event("change", { bubbles: true }));
-        document.querySelector("[data-testid='wizard-from']").value = "2026-10-01";
-        document.querySelector("[data-testid='wizard-to']").value = "2026-10-31";
+        const setDate = (testId, value) => {
+          const input = document.querySelector("[data-testid='" + testId + "']");
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+        setDate("wizard-from", "2026-10-01");
+        setDate("wizard-to", "2026-10-31");
       })()`,
     );
+    const windowInputs = await evaluate(
+      page,
+      `(() => ({
+        from: document.querySelector("[data-testid='wizard-from']").value,
+        to: document.querySelector("[data-testid='wizard-to']").value,
+      }))()`,
+    );
+    assert.deepEqual(windowInputs, { from: "2026-10-01", to: "2026-10-31" });
     await evaluate(
       page,
       `document.querySelector("[data-testid='wizard-next']").click()`,
@@ -302,7 +316,10 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
       }))()`,
     );
     assert.ok(step2.strip.includes("skill:synthetic-review@synthetic-1"));
-    assert.ok(step2.table.includes("probe-sy"));
+    assert.ok(step2.strip.includes("2026-10-01"));
+    assert.ok(step2.strip.includes("2026-10-31"));
+    assert.ok(step2.table.includes("prob…0002"));
+    assert.ok(step2.table.includes("badc…0003"));
     assert.ok(step2.table.includes("是问题-错误"));
     assert.ok(step2.footer.includes("启动问题聚类分析"));
 
@@ -324,11 +341,15 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
         path: location.pathname,
         banner: document.querySelector(".banner")?.textContent ?? "",
         status: document.querySelector("[data-testid='cluster-status']")?.textContent ?? "",
+        info: document.querySelector(".info-panel")?.textContent ?? "",
       }))()`,
     );
     assert.ok(landing.path.startsWith("/evolution/cluster/"));
     assert.ok(landing.banner.includes("仅聚类分析"));
     assert.ok(landing.status.includes("准备中"));
+    assert.ok(landing.info.includes("2026-10-01"));
+    assert.ok(landing.info.includes("2026-10-31"));
+    assert.ok(!landing.info.includes("— ~ —"));
     await screenshot(page, "02-cluster-preparing.png");
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);

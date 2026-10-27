@@ -5,7 +5,7 @@ import type {
   ProbeQueryResult,
 } from "@harness/contracts";
 import { useQuery } from "@tanstack/vue-query";
-import { computed, reactive, ref } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import {
@@ -25,6 +25,9 @@ const emit = defineEmits<{
 type AttributeKey = "model" | "prompt" | "error" | "nonIssue";
 
 const WIZARD_PAGE_SIZE = 8;
+const SHORT_ID_HEAD = 4;
+const SHORT_ID_TAIL = 4;
+const SHORT_ID_MIN_LENGTH = SHORT_ID_HEAD + SHORT_ID_TAIL + 1;
 const ATTRIBUTE_LABELS: Record<AttributeKey, string> = {
   model: "是问题-模型问题",
   prompt: "是问题-prompt缺失某些提示词",
@@ -44,6 +47,7 @@ const step = ref<1 | 2>(1);
 const targetType = ref<"skill" | "agent">("skill");
 const targetId = ref<string | null>(null);
 const targetVersion = ref("");
+const versionPinned = ref(false);
 const windowFrom = ref("");
 const windowTo = ref("");
 const selectedModels = reactive(new Set<string>());
@@ -70,6 +74,43 @@ const versionOptions = computed(() => {
   return selectedTarget.value?.versions ?? [];
 });
 
+/**
+ * Pick the default version for one option list.
+ * @param options Versions currently offered by the remote query or catalog fallback.
+ * @returns The remote `defaultRef` when present, otherwise the first option.
+ */
+function defaultVersion(options: string[]): string {
+  const remoteDefault = versions.data.value?.defaultRef;
+  if (remoteDefault && options.includes(remoteDefault)) {
+    return remoteDefault;
+  }
+  return options[0] ?? "";
+}
+
+watch(
+  versionOptions,
+  (options) => {
+    if (versionPinned.value && options.includes(targetVersion.value)) {
+      return;
+    }
+    targetVersion.value = defaultVersion(options);
+  },
+  { immediate: true },
+);
+
+const versionError = computed(() => {
+  const error = versions.error.value;
+  if (!error) {
+    return "";
+  }
+  return error instanceof Error ? error.message : String(error);
+});
+
+/** Retry the failed remote version list without leaving step 1. */
+function retryVersions(): void {
+  void versions.refetch();
+}
+
 /** Reset the cascading name and version selections when the type changes. */
 function selectType(next: "skill" | "agent"): void {
   if (targetType.value === next) {
@@ -78,6 +119,7 @@ function selectType(next: "skill" | "agent"): void {
   targetType.value = next;
   targetId.value = catalogs.data.value?.[next][0]?.id ?? null;
   targetVersion.value = "";
+  versionPinned.value = false;
   resetPreview();
 }
 
@@ -85,6 +127,7 @@ function selectType(next: "skill" | "agent"): void {
 function selectTargetId(id: string): void {
   targetId.value = id || null;
   targetVersion.value = "";
+  versionPinned.value = false;
   resetPreview();
 }
 
@@ -182,8 +225,12 @@ function openSourceCase(item: ProbePreviewItem): void {
   );
 }
 
+/** Keep both ends of an id so rows from the same family stay distinguishable. */
 function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  if (id.length < SHORT_ID_MIN_LENGTH) {
+    return id;
+  }
+  return `${id.slice(0, SHORT_ID_HEAD)}…${id.slice(-SHORT_ID_TAIL)}`;
 }
 
 /** Close the wizard and open the target configuration page. */
@@ -428,6 +475,7 @@ const versionPlaceholder = computed(() =>
                 v-model="targetVersion"
                 class="inp"
                 data-testid="wizard-version"
+                @change="versionPinned = true"
               >
                 <option
                   value=""
@@ -444,6 +492,22 @@ const versionPlaceholder = computed(() =>
                 </option>
               </select>
             </div>
+            <p
+              v-if="versions.isError.value"
+              class="wizard-error"
+              data-testid="wizard-version-error"
+              role="alert"
+            >
+              版本列表读取失败<span v-if="versionError">：{{ versionError }}</span>。
+              <button
+                class="linklike"
+                type="button"
+                data-testid="wizard-version-retry"
+                @click="retryVersions"
+              >
+                重试
+              </button>
+            </p>
             <p class="f-note">
               未配置的进化对象不会出现在列表中；点击齿轮前往配置页。
             </p>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ProbeQueryResult } from "@harness/contracts";
+import type { ProbePreviewItem, ProbeQueryResult } from "@harness/contracts";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
@@ -13,6 +13,19 @@ import LaunchWizard from "./LaunchWizard.vue";
 
 const wrappers: VueWrapper[] = [];
 
+const probeItem: ProbePreviewItem = {
+  probeId: "probe-synthetic-0001",
+  sessionId: "session-1",
+  sessionTitle: "研究 session",
+  model: "glm-5.3",
+  probeType: "skill",
+  probeObject: "deep-research",
+  objectVersion: "v2.0.0",
+  attributeType: "error",
+  description: "检索索引读取失败",
+  sourceBadCaseIds: ["case-1"],
+};
+
 const preview: ProbeQueryResult = {
   summary: {
     sessions: 2,
@@ -23,20 +36,7 @@ const preview: ProbeQueryResult = {
     usedProbes: 2,
     byAttributeType: { model: 0, prompt: 1, error: 1, nonIssue: 0 },
   },
-  items: [
-    {
-      probeId: "probe-synthetic-0001",
-      sessionId: "session-1",
-      sessionTitle: "研究 session",
-      model: "glm-5.3",
-      probeType: "skill",
-      probeObject: "deep-research",
-      objectVersion: "v2.0.0",
-      attributeType: "error",
-      description: "检索索引读取失败",
-      sourceBadCaseIds: ["case-1"],
-    },
-  ],
+  items: [probeItem],
   total: 1,
   page: 1,
   pageSize: 8,
@@ -132,8 +132,135 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     expect(wrapper.get(".wz-condstrip").text()).toContain("skill:deep-research@v2.0.0");
     expect(wrapper.get(".wz-stats").text()).toContain("「是问题」进入聚类");
-    expect(wrapper.get("table.rep").text()).toContain("probe-s".slice(0, 8));
+    expect(wrapper.get("table.rep").text()).toContain("prob…0001");
     expect(wrapper.text()).toContain("等待外部归因");
+  });
+
+  it("selects the target defaultRef version as soon as versions load", async () => {
+    useCatalogHandlers();
+    server.use(
+      http.get("/api/catalogs/targets", () =>
+        HttpResponse.json({
+          skill: [
+            {
+              id: "tgt-1",
+              name: "deep-research",
+              repoUrl: "https://git.example.com/skills.git",
+              subDir: "skills/deep-research",
+              defaultRef: "v1.9.0",
+              versions: ["v1.9.0"],
+            },
+          ],
+          agent: [],
+        })),
+      http.get("/api/evolution/targets/tgt-1/versions", () =>
+        HttpResponse.json({
+          versions: ["v1.9.0", "v2.0.0"],
+          defaultRef: "v2.0.0",
+        })),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+
+    expect(wrapper.get<HTMLSelectElement>("[data-testid='wizard-version']").element.value).toBe(
+      "v2.0.0",
+    );
+    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeUndefined();
+  });
+
+  it("shows a retryable error when the version list fails and recovers after retry", async () => {
+    useCatalogHandlers();
+    let attempts = 0;
+    server.use(
+      http.get("/api/catalogs/targets", () =>
+        HttpResponse.json({
+          skill: [
+            {
+              id: "tgt-1",
+              name: "deep-research",
+              repoUrl: "https://git.example.com/skills.git",
+              subDir: "skills/deep-research",
+              defaultRef: "v2.0.0",
+              versions: [],
+            },
+          ],
+          agent: [],
+        })),
+      http.get("/api/evolution/targets/tgt-1/versions", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(
+              {
+                error: {
+                  code: "REPO_INVALID",
+                  message: "repository is not available",
+                  details: {},
+                },
+              },
+              { status: 422 },
+            )
+          : HttpResponse.json({
+              versions: ["v2.0.0"],
+              defaultRef: "v2.0.0",
+            });
+      }),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+      "版本列表读取失败",
+    );
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+      "repository is not available",
+    );
+    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeDefined();
+
+    await wrapper.get("[data-testid='wizard-version-retry']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-version-error']").exists()).toBe(false);
+    expect(wrapper.get<HTMLSelectElement>("[data-testid='wizard-version']").element.value).toBe(
+      "v2.0.0",
+    );
+    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeUndefined();
+  });
+
+  it("keeps different source problems distinguishable in the probe table", async () => {
+    useCatalogHandlers();
+    const twoSourcePreview: ProbeQueryResult = {
+      ...preview,
+      total: 2,
+      items: [
+        {
+          ...probeItem,
+          sourceBadCaseIds: ["badcase-synthetic-0001"],
+        },
+        {
+          ...probeItem,
+          probeId: "probe-synthetic-0002",
+          sourceBadCaseIds: ["badcase-synthetic-0002"],
+        },
+      ],
+    };
+    server.use(
+      http.post("/api/evolution/probes/query", () => HttpResponse.json(twoSourcePreview)),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const sourceCells = wrapper
+      .findAll("table.rep tbody tr")
+      .map((row) => row.findAll("td")[5]?.text() ?? "");
+    expect(sourceCells).toEqual(["badc…0001", "badc…0002"]);
   });
 
   it("conflicts when no probe matches and stays on step 1", async () => {
