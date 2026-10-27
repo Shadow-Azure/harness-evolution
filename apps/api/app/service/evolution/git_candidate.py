@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
+from typing import NoReturn
 from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
@@ -23,6 +24,7 @@ from app.service.evolution.events import (
     EvolutionRunEventStage,
     EvolutionRunEventType,
 )
+from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.state import StageConflict
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
@@ -146,6 +148,20 @@ def extract_trailer(message: str, name: str) -> str | None:
     return None
 
 
+def _candidate_created_at(
+    round_: EvolutionRoundRecord,
+    fallback: datetime,
+) -> datetime:
+    """Reuse the evaluated candidate timestamp so accepted retries rebuild identically."""
+    raw = extract_trailer(round_.candidate_message or "", "Harness-Created-At")
+    if raw is None:
+        return fallback
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return fallback
+
+
 class EvolutionCandidateService:
     """Publish, accept, and reject one durable candidate round."""
 
@@ -197,14 +213,21 @@ class EvolutionCandidateService:
             created_at=self._now(),
             web_base_url=self._web_base_url,
         )
-        candidate = await self._workspaces.create_candidate(
-            prepared,
-            run_branch=prepared.branch,
-            candidate_ref=candidate_ref,
-            patch=patch,
-            message=message,
-            expected_run_id=run.id,
-        )
+        try:
+            candidate = await self._workspaces.create_candidate(
+                prepared,
+                run_branch=prepared.branch,
+                candidate_ref=candidate_ref,
+                patch=patch,
+                message=message,
+                expected_run_id=run.id,
+            )
+        except GitOperationError as exc:
+            await self._handle_git_failure(
+                run.id,
+                exc,
+                job_id=job_id,
+            )
         current = await self._runs.mark_round_candidate(
             current.id,
             candidate_ref=candidate.ref,
@@ -358,7 +381,7 @@ class EvolutionCandidateService:
             round_seq=deciding.seq,
             trace=_with_patch_file(trace, _patch_file(deciding)),
             patch_sha256=patch_hash,
-            created_at=self._now(),
+            created_at=_candidate_created_at(deciding, self._now()),
             evaluated_commit=evaluated_commit,
             current_score=current_score,
             candidate_score=candidate_score,
@@ -372,12 +395,11 @@ class EvolutionCandidateService:
                 message=message,
             )
         except GitOperationError as exc:
-            await self._runs.mark_blocked(
+            await self._handle_git_failure(
                 run.id,
-                stage="push",
-                message=sanitize_message(str(exc), limit=2_000),
+                exc,
+                job_id=job_id,
             )
-            raise RunBlocked("accepted candidate publication failed", stage="push") from None
         accepted = await self._runs.accept_round(
             deciding.id,
             final_commit=final.commit,
@@ -392,7 +414,11 @@ class EvolutionCandidateService:
             cluster_id=trace.cluster_id,
             round_id=accepted.id,
             job_id=job_id,
-            payload={"reason": reason, "finalCommit": final.commit},
+            payload={
+                "reason": reason,
+                "finalCommit": final.commit,
+                "cleanupError": final.cleanup_error,
+            },
         )
         return accepted
 
@@ -482,6 +508,31 @@ class EvolutionCandidateService:
                 "failed to record candidate event",
                 extra={"run_id": run_id, "event_type": event_type},
             )
+
+    async def _handle_git_failure(
+        self,
+        run_id: str,
+        error: GitOperationError,
+        *,
+        job_id: str | None,
+    ) -> NoReturn:
+        """Apply the shared Git disposition and raise only when it is retryable."""
+        disposition = classify_git_failure(error)
+        if disposition.action != "blocked" or disposition.blocked_stage is None:
+            raise error from None
+        message = sanitize_message(str(error), limit=2_000)
+        await self._runs.mark_blocked(
+            run_id,
+            stage=disposition.blocked_stage,
+            message=message,
+            error_stage=disposition.error_stage,
+        )
+        del job_id
+        raise RunBlocked(
+            message,
+            stage=disposition.blocked_stage,
+            error_stage=disposition.error_stage,
+        ) from None
 
 
 def _message_sections(

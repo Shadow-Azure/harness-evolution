@@ -6,6 +6,7 @@ import logging
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
@@ -16,7 +17,6 @@ from app.service.evolution.git_candidate import (
     CandidateTrace,
     EvolutionCandidateService,
 )
-from app.third_party_api.git.workspace import GitWorkspaceManager
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,20 @@ class ProbeSourceReader(Protocol):
 
     async def list_rows_by_ids(self, probe_ids: Sequence[str]) -> tuple[ProbeHitRow, ...]:
         """Return complete source rows for selected probe identifiers."""
+
+
+class WorkspaceLifecycleManager(Protocol):
+    """Workspace operations used for retention and candidate scheduling."""
+
+    supports_candidate_lifecycle: bool
+
+    def cleanup_workspaces(
+        self,
+        *,
+        active_run_ids: set[str],
+        keep: int = 20,
+    ) -> tuple[Path, ...]:
+        """Delete only inactive workspaces beyond the retention window."""
 
 
 class EvolutionAdvanceService:
@@ -141,10 +155,11 @@ class EvolutionJobLifecycle:
         self,
         runs: EvolutionRepository,
         jobs: JobSubmitter,
-        workspaces: GitWorkspaceManager,
+        workspaces: WorkspaceLifecycleManager,
         *,
         before_terminal: Callable[[JobRunRecord], Awaitable[None]] | None = None,
         keep_workspaces: int = 20,
+        schedule_candidate_advance: bool = True,
     ) -> None:
         """Bind durable run state, job scheduling, cleanup, and prior hooks."""
         self._runs = runs
@@ -152,12 +167,18 @@ class EvolutionJobLifecycle:
         self._workspaces = workspaces
         self._before_terminal = before_terminal
         self._keep_workspaces = keep_workspaces
+        self._schedule_candidate_advance = schedule_candidate_advance
 
     async def on_terminal(self, job: JobRunRecord) -> None:
         """Schedule the next real stage and enforce the workspace retention policy."""
         if self._before_terminal is not None:
             await self._before_terminal(job)
-        if job.kind == "evolution_prepare" and job.status == "completed" and job.ref_id:
+        if (
+            self._schedule_candidate_advance
+            and job.kind == "evolution_prepare"
+            and job.status == "completed"
+            and job.ref_id
+        ):
             run = await self._runs.get_run(job.ref_id)
             if run is not None and run.mode == "full" and run.status == "running":
                 await self._jobs.submit(

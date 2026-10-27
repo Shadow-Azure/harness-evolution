@@ -13,6 +13,7 @@ status: in-progress
 scope:
   - apps/api/**
   - packages/contracts/**
+  - plans/*.md
   - plans/fullstack-design/**
   - scripts/**
   - fixtures/**

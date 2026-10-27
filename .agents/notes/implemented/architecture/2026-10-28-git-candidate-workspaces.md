@@ -14,7 +14,11 @@ Status: implemented
 
 Git 操作只通过 argv 进程边界执行，禁用 terminal prompt，所有诊断先脱敏再进入日志/事件。cache 是 `data/repos/{target_id}` 的 mirror，run workspace 是 `data/workspaces/{run_id}`；mirror 的 origin 与 run 当前 `repo_url` 不一致时整体重建，避免把旧仓库对象发布到新远端。sub dir、ref、base commit、run 分支、clean state、父链和 trailer 在每次发布前校验；`HE_GIT_PUSH=false` 时所有远端写入统一跳过，仅保留本地生命周期。candidate 内容由确定性占位 patch 真实落盘并 commit，message 固定包含问题、分析、改动、追溯和 `Harness-Run-Id` 等 trailer；推送最多立即重试三次、间隔五秒，失败同时持久 `push_failed` 与 `blocked(push)` 并保留 candidate。
 
+`HE_GIT_PUSH` 是唯一公开的远端写入开关，组合根把同一个 workspace 实例传给 prepare、candidate 和 retention；只提供 prepare 的测试注入显式关闭后续 candidate 调度，不会回退到默认真实 manager。Git 超时或任务取消时先终止并回收整个子进程组，再返回可重试错误，避免旧 push 与下一次重试重叠。Git 失败通过统一分类器落到状态机：任何 push 失败进入 `blocked(push)`，可重试 patch/commit 进入 `blocked(patch)`，永久 patch/commit 进入 failed，并在持久状态中保留 `patch`/`commit` 原始 error stage。
+
 Git 的 ref 命名空间不允许 `evo/{date}-{run}` 同时作为 `refs/heads` 分支和其更长路径的前缀。因此设计要求的可见 candidate ref 保持在 `evo/{date}-{run}/candidate/rN`，实际存储于 `refs/tags`；本地工作分支使用哈希化名称。这样接受时仍可对 candidate 执行精确 `--force-with-lease`，随后切回 run 分支、只允许 fast-forward、非 force 推送并删除 candidate tag；拒绝时只删除 candidate tag/本地临时分支，run 分支和已接纳轮次不变。accepted/rejected 是吸收态，相反方向或再次改写返回 stage conflict。
+
+接纳本身也是可重放状态机：首次尝试从 evaluated commit amend；失败后只复用已验证同一 tree、`Harness-Evaluated-Commit`、`Harness-Run-Id` 和 accepted verdict 的本地/run 分支提交，已存在的远端 candidate 与 run 分支步骤视为幂等成功。run 分支发布成功后，远端/本地 candidate 删除都只是 best-effort；失败写入 `cluster_accepted.payload.cleanupError`，不会把已落地的接纳改成 blocked。只有 reject 切回 run 分支失败仍阻断。
 
 prepare handler 结束后，组合根通过 terminal lifecycle 自动排队 `evolution_advance`，由生产 handler 从真实持久轮次发布第一轮 candidate；持久层用条件更新原子 claim 一个 pending 轮次，前序轮次仍为 patching/pushing/evaluating/deciding/failed 时后续 pending 轮次不会越序，accepted/rejected 后才解锁下一轮，并发或重复 advance 也只允许一次发布。该 hook 仍先释放既有 sync job 锁，并执行保留活动 run 的 workspace 清理。prepare 的 0–4 cursor 每个 checkpoint 都可恢复，轮次插入和最终 `running` 标记在重试时不会重复候选或覆盖已接纳分支。
 

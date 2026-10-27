@@ -3,7 +3,7 @@
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import FastAPI
@@ -147,14 +147,11 @@ def create_app(
     default_workspace_manager = GitWorkspaceManager(
         repos_root=resolved_settings.data_dir / "repos",
         workspaces_root=resolved_settings.data_dir / "workspaces",
-        push_enabled=resolved_settings.git_push_enabled,
+        push_enabled=resolved_settings.git_push,
     )
     workspace_manager = git_workspaces or default_workspace_manager
-    candidate_workspace_manager = (
-        git_workspaces
-        if isinstance(git_workspaces, GitWorkspaceManager)
-        else default_workspace_manager
-    )
+    candidate_workspace_manager = cast(GitWorkspaceManager, workspace_manager)
+    lifecycle_workspace_manager = cast(Any, workspace_manager)
     prepare_service = EvolutionPrepareService(
         evolution_repository,
         RepositoryProbeReader(probe_query_repository),
@@ -175,8 +172,13 @@ def create_app(
     evolution_lifecycle = EvolutionJobLifecycle(
         evolution_repository,
         jobs,
-        default_workspace_manager,
+        lifecycle_workspace_manager,
         before_terminal=sync.release_terminal_job,
+        schedule_candidate_advance=getattr(
+            workspace_manager,
+            "supports_candidate_lifecycle",
+            False,
+        ),
     )
     jobs.set_terminal_hook(evolution_lifecycle.on_terminal)
 
@@ -265,6 +267,8 @@ def create_app(
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates
     app.state.evolution_advance = evolution_advance
+    app.state.evolution_lifecycle = evolution_lifecycle
+    app.state.git_workspaces = workspace_manager
     app.state.evolution_launch = evolution_launch
     app.state.probe_query = probe_query
     app.state.catalogs = catalogs

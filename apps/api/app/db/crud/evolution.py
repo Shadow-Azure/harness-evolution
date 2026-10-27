@@ -154,6 +154,7 @@ class EvolutionRepository:
         *,
         stage: str,
         message: str,
+        error_stage: str | None = None,
         next_retry_at: datetime | None = None,
         retry_attempts: int | None = None,
     ) -> None:
@@ -163,7 +164,7 @@ class EvolutionRepository:
             "status": "blocked",
             "blocked_stage": stage,
             "eval_status": "failed" if stage == "eval" else "pending",
-            "error_stage": stage,
+            "error_stage": error_stage or stage,
             "error_message": message,
             "error_at": now,
             "next_retry_at": next_retry_at,

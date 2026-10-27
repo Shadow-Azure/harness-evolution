@@ -18,6 +18,7 @@ from app.service.events import EventBus
 from app.service.evolution.engine.contracts import EvolutionBlockedStage, RunBlocked
 from app.service.identity.tokens import TokenService
 from app.service.jobs import JobRunner
+from app.third_party_api.git.workspace import GitOperationError
 
 JobEnvironment = tuple[Database, JobRepository, EventBus, JobRunner]
 
@@ -349,6 +350,107 @@ async def test_evolution_blocked_is_not_written_as_run_failure(
     assert terminal.error == f"{blocked_stage} timed out"
     assert recorder.blocked == [("run-blocked", event_stage, blocked_stage, 1)]
     assert recorder.failed == []
+
+
+async def test_evolution_blocked_preserves_original_commit_error_stage(
+    job_environment: JobEnvironment,
+) -> None:
+    """A job blocked at patch retains commit as the concrete error stage."""
+    _, repository, bus, _ = job_environment
+
+    class RecordingRunEvents:
+        def __init__(self) -> None:
+            self.error_stage: str | None = None
+
+        async def record_interrupted(self, **_kwargs: object) -> int:
+            return 1
+
+        async def record_blocked(
+            self,
+            _run_id: str,
+            *,
+            blocked_stage: str,
+            error: BaseException,
+            **_kwargs: object,
+        ) -> int:
+            assert blocked_stage == "patch"
+            self.error_stage = cast(str, getattr(error, "error_stage", None))
+            return 11
+
+        async def record_failed(self, **_kwargs: object) -> int:
+            raise AssertionError("blocked jobs must not record failure")
+
+    recorder = RecordingRunEvents()
+    runner = JobRunner(repository, bus, run_events=recorder)
+
+    async def block(_job: JobRunRecord) -> None:
+        raise RunBlocked(
+            "commit timed out",
+            stage="patch",
+            error_stage="commit",
+            retry_attempts=1,
+        )
+
+    runner.register_handler("evolution_advance", block)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="evolution_advance",
+        payload={},
+        ref_id="run-commit-blocked",
+        created_by=None,
+    )
+    terminal = await runner.wait(submitted.id)
+
+    assert terminal.status == "failed"
+    assert recorder.error_stage == "commit"
+
+
+async def test_evolution_git_commit_failure_preserves_concrete_stage(
+    job_environment: JobEnvironment,
+) -> None:
+    """A permanent commit failure is recorded at candidate/commit, never generic step."""
+    _, repository, bus, _ = job_environment
+
+    class RecordingRunEvents:
+        """Capture the generic failed boundary and its concrete event stage."""
+
+        def __init__(self) -> None:
+            self.failed: list[tuple[str, str, str | None]] = []
+
+        async def record_interrupted(self, **_kwargs: object) -> int:
+            """Keep the recorder protocol complete."""
+            return 1
+
+        async def record_failed(
+            self,
+            run_id: str,
+            *,
+            stage: str,
+            error_stage: str | None = None,
+            **_kwargs: object,
+        ) -> int:
+            """Record the concrete failure stage."""
+            self.failed.append((run_id, stage, error_stage))
+            return 12
+
+    recorder = RecordingRunEvents()
+    runner = JobRunner(repository, bus, run_events=recorder)
+
+    async def fail_commit(_job: JobRunRecord) -> None:
+        raise GitOperationError("commit denied", stage="commit", retryable=False)
+
+    runner.register_handler("evolution_advance", fail_commit)
+    await runner.start()
+    submitted = await runner.submit(
+        kind="evolution_advance",
+        payload={},
+        ref_id="run-commit-failed",
+        created_by=None,
+    )
+    terminal = await runner.wait(submitted.id)
+
+    assert terminal.status == "failed"
+    assert recorder.failed == [("run-commit-failed", "candidate", "commit")]
 
 
 async def test_progress_is_persisted_and_published_to_the_run_topic(

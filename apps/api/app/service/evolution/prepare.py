@@ -29,6 +29,7 @@ from app.service.evolution.events import (
     EvolutionRunEventStage,
     EvolutionRunEventType,
 )
+from app.service.evolution.git_failures import classify_git_failure
 from app.third_party_api.git.workspace import (
     GitOperationError,
     PreparedWorkspace,
@@ -179,11 +180,18 @@ class EvolutionPrepareService:
             try:
                 workspace = await self._workspaces.prepare(run)
             except GitOperationError as exc:
-                if exc.stage == "push" and exc.retryable:
-                    await self._record_blocked(run.id, job.id, exc)
+                disposition = classify_git_failure(exc)
+                if disposition.action == "blocked" and disposition.blocked_stage is not None:
+                    await self._mark_blocked(
+                        run.id,
+                        exc,
+                        blocked_stage=disposition.blocked_stage,
+                        event_stage=disposition.error_stage,
+                    )
                     raise RunBlocked(
                         "run branch publication failed",
-                        stage="push",
+                        stage=disposition.blocked_stage,
+                        error_stage=disposition.error_stage,
                     ) from None
                 raise
             await self._record(
@@ -365,28 +373,20 @@ class EvolutionPrepareService:
                 extra={"run_id": run_id, "event_type": event_type},
             )
 
-    async def _record_blocked(
+    async def _mark_blocked(
         self,
         run_id: str,
-        job_id: str,
         error: GitOperationError,
+        *,
+        blocked_stage: str,
+        event_stage: str,
     ) -> None:
-        """Persist the retryable push block through the shared event boundary."""
-        record_blocked = getattr(self._events, "record_blocked", None)
-        if callable(record_blocked):
-            await record_blocked(
-                run_id,
-                stage="push",
-                blocked_stage="push",
-                message="run branch publication failed",
-                job_id=job_id,
-                error=error,
-            )
-            return
+        """Persist retryable state once; JobRunner owns the blocked event."""
         await self._runs.mark_blocked(
             run_id,
-            stage="push",
+            stage=blocked_stage,
             message=sanitize_message(str(error), limit=2_000),
+            error_stage=event_stage,
         )
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -9,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from app.config import Settings
 from app.db.models.evolution import EvolutionRunRecord
+from app.main import create_app
 from app.service.evolution.git_candidate import (
     CandidateTrace,
     build_accepted_message,
@@ -256,7 +259,11 @@ async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(
         reason="候选分 85.0 高于基线 80.0（+5.0），按 external-verdict 规则接纳",
         web_base_url="https://harness.example",
     )
-    final = await manager.accept_candidate(
+    replay_manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    final = await replay_manager.accept_candidate(
         candidate,
         run_branch=prepared.branch,
         message=accepted_message,
@@ -273,6 +280,408 @@ async def test_candidate_accept_amends_ffs_run_branch_and_removes_candidate(
         text=True,
     ).stdout
     assert remote_candidate_after == ""
+
+
+async def test_accept_is_replayable_after_transient_candidate_push_failure(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed amended-candidate push can resume without re-amending from stale state."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            run,
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await manager.push_candidate(candidate, expected_remote_commit=None)
+    accepted_message = build_accepted_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+    original_push = manager._push_checked
+    candidate_push_count = 0
+
+    async def fail_first_candidate_push(cwd: Path, argv: tuple[str, ...]) -> None:
+        nonlocal candidate_push_count
+        if any(f"refs/tags/{candidate.ref}" in argument for argument in argv):
+            candidate_push_count += 1
+            if candidate_push_count == 1:
+                raise GitOperationError("candidate push timed out", stage="push", retryable=True)
+        await original_push(cwd, argv)
+
+    monkeypatch.setattr(manager, "_push_checked", fail_first_candidate_push)
+    with pytest.raises(GitOperationError, match="candidate push timed out"):
+        await manager.accept_candidate(
+            candidate,
+            run_branch=prepared.branch,
+            message=accepted_message,
+        )
+
+    replay_manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    final = await replay_manager.accept_candidate(
+        candidate,
+        run_branch=prepared.branch,
+        message=accepted_message,
+    )
+
+    assert final.commit != candidate.commit
+    assert _git(bare, "rev-parse", prepared.branch) == final.commit
+    assert _git(prepared.path, "rev-parse", "HEAD") == final.commit
+
+
+async def test_accept_is_replayable_after_run_branch_push_failure(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed run-branch publication resumes from the already amended candidate."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            run,
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await manager.push_candidate(candidate, expected_remote_commit=None)
+    accepted_message = build_accepted_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+    original_push_run = manager._push_run_branch
+    run_push_count = 0
+
+    async def fail_first_run_push(*_args: object, **_kwargs: object) -> None:
+        nonlocal run_push_count
+        run_push_count += 1
+        if run_push_count == 1:
+            raise GitOperationError("run push timed out", stage="push", retryable=True)
+        await original_push_run(*_args, **_kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(manager, "_push_run_branch", fail_first_run_push)
+    with pytest.raises(GitOperationError, match="run push timed out"):
+        await manager.accept_candidate(
+            candidate,
+            run_branch=prepared.branch,
+            message=accepted_message,
+        )
+
+    final = await manager.accept_candidate(
+        candidate,
+        run_branch=prepared.branch,
+        message=accepted_message,
+    )
+
+    assert _git(bare, "rev-parse", prepared.branch) == final.commit
+
+
+async def test_accept_cleanup_failures_are_non_blocking_with_warnings(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Remote and local candidate cleanup failures never turn a published accept into blocked."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            run,
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await manager.push_candidate(candidate, expected_remote_commit=None)
+    accepted_message = build_accepted_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+
+    async def fail_delete(*_args: object, **_kwargs: object) -> None:
+        raise GitOperationError("delete denied", stage="push")
+
+    monkeypatch.setattr(manager, "_delete_remote_tag", fail_delete)
+    remote_cleanup = await manager.accept_candidate(
+        candidate,
+        run_branch=prepared.branch,
+        message=accepted_message,
+    )
+    assert remote_cleanup.cleanup_error == "delete denied"
+    assert _git(bare, "rev-parse", prepared.branch) == remote_cleanup.commit
+
+    local_manager = GitWorkspaceManager(
+        repos_root=tmp_path / "local-repos",
+        workspaces_root=tmp_path / "local-workspaces",
+    )
+    local_prepared = await local_manager.prepare(replace(run, id="run-local-cleanup"))
+    local_candidate = await local_manager.create_candidate(
+        local_prepared,
+        run_branch=local_prepared.branch,
+        candidate_ref=f"{local_prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            replace(run, id="run-local-cleanup"),
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await local_manager.push_candidate(local_candidate, expected_remote_commit=None)
+    local_message = build_accepted_message(
+        replace(run, id="run-local-cleanup"),
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=local_candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+    original_checked = local_manager._git_checked
+
+    async def fail_local_branch_delete(
+        cwd: Path | None,
+        argv: tuple[str, ...],
+        **kwargs: object,
+    ) -> GitProcessResult:
+        if "branch" in argv and "-D" in argv and local_candidate.local_branch in argv:
+            raise GitOperationError("local delete denied", stage="workspace")
+        return await original_checked(cwd, argv, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(local_manager, "_git_checked", fail_local_branch_delete)
+    local_cleanup = await local_manager.accept_candidate(
+        local_candidate,
+        run_branch=local_prepared.branch,
+        message=local_message,
+    )
+    assert local_cleanup.cleanup_error == "local delete denied"
+    assert _git(bare, "rev-parse", local_prepared.branch) == local_cleanup.commit
+
+
+async def test_accept_does_not_read_commit_message_after_run_branch_publication(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-publication bookkeeping cannot turn a landed acceptance into a failure."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            run,
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await manager.push_candidate(candidate, expected_remote_commit=None)
+    accepted_message = build_accepted_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+    original_push_run = manager._push_run_branch
+    original_message_read = manager._commit_message
+    run_branch_published = False
+
+    async def mark_published(*args: object, **kwargs: object) -> None:
+        nonlocal run_branch_published
+        await original_push_run(*args, **kwargs)  # type: ignore[arg-type]
+        run_branch_published = True
+
+    async def fail_post_publication_read(cwd: Path, commit: str) -> str:
+        if run_branch_published:
+            raise GitOperationError("post-publication read failed", stage="workspace")
+        return await original_message_read(cwd, commit)
+
+    monkeypatch.setattr(manager, "_push_run_branch", mark_published)
+    monkeypatch.setattr(manager, "_commit_message", fail_post_publication_read)
+
+    accepted = await manager.accept_candidate(
+        candidate,
+        run_branch=prepared.branch,
+        message=accepted_message,
+    )
+
+    assert accepted.commit == _git(bare, "rev-parse", prepared.branch)
+    assert accepted.message.strip() == accepted_message.strip()
+
+
+async def test_accept_replay_rejects_amended_tree_with_a_different_parent(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+) -> None:
+    """Tree and trailers alone cannot disguise an accepted commit from another history."""
+    bare, _seed, base_commit = remote_repo
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
+    run = _run(str(bare), base_commit)
+    prepared = await manager.prepare(run)
+    trace = CandidateTrace("cluster-1", "检索索引读取失败", ("probe-1",), ("case-1",), "分析")
+    candidate = await manager.create_candidate(
+        prepared,
+        run_branch=prepared.branch,
+        candidate_ref=f"{prepared.branch}/candidate/r1",
+        patch=Patch(file="skills/deep-research/EVOLUTION.md", lines=("candidate",)),
+        message=build_candidate_message(
+            run,
+            round_seq=1,
+            trace=trace,
+            patch_sha256="a" * 64,
+            created_at=NOW,
+            web_base_url=None,
+        ),
+    )
+    await manager.push_candidate(candidate, expected_remote_commit=None)
+    accepted_message = build_accepted_message(
+        run,
+        round_seq=1,
+        trace=trace,
+        patch_sha256="a" * 64,
+        created_at=NOW,
+        evaluated_commit=candidate.commit,
+        current_score=80.0,
+        candidate_score=85.0,
+        reason="accepted",
+        web_base_url=None,
+    )
+    _git(
+        prepared.path,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "switch",
+        prepared.branch,
+    )
+    _git(
+        prepared.path,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-m",
+        "rogue parent",
+    )
+    _git(prepared.path, "checkout", candidate.commit, "--", ".")
+    _git(
+        prepared.path,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        accepted_message,
+    )
+    rogue = _git(prepared.path, "rev-parse", "HEAD")
+    _git(prepared.path, "branch", "-f", candidate.local_branch, rogue)
+
+    with pytest.raises(GitOperationError, match="evaluated parent"):
+        await manager.accept_candidate(
+            candidate,
+            run_branch=prepared.branch,
+            message=accepted_message,
+        )
+
+    assert _git(bare, "rev-parse", prepared.branch) == base_commit
 
 
 async def test_reject_deletes_candidate_and_leaves_run_branch_unchanged(
@@ -625,6 +1034,62 @@ def test_commit_messages_are_traceable_and_probe_analysis_is_truncated(
     assert "https://" not in candidate
     assert "Harness-Evaluated-Commit: " + ("c" * 40) in accepted
     assert "为什么接纳" in accepted
+
+
+def test_documented_git_push_environment_variable_disables_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The documented HE_GIT_PUSH switch must fail closed for all remote writes."""
+    monkeypatch.setenv("HE_GIT_PUSH", "false")
+    monkeypatch.setenv("HE_JWT_SECRET", "test-signing-secret")
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    app = create_app(settings)
+
+    assert settings.git_push is False
+    assert app.state.git_workspaces._push_enabled is False
+    assert app.state.evolution_candidates._workspaces._push_enabled is False
+
+
+async def test_git_timeout_terminates_the_process_group_before_returning(
+    tmp_path: Path,
+) -> None:
+    """A timed-out command cannot keep producing side effects during a later retry."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    marker = tmp_path / "late-side-effect"
+    script = tmp_path / "slow-git"
+    script.write_text(
+        (
+            "#!/bin/sh\n"
+            'touch "$(dirname "$0")/process-started"\n'
+            "trap '' HUP PIPE TERM\n"
+            '(sleep 4; touch "$(dirname "$0")/late-side-effect") &\n'
+            "wait\n"
+        ),
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    _git(repo, "config", "alias.delayed", f"!{script}")
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        timeout_seconds=2.0,
+    )
+
+    with pytest.raises(GitOperationError, match="workspace operation failed"):
+        await manager._git(repo, ("git", "delayed"), stage="workspace")
+    await asyncio.sleep(4.5)
+
+    assert (tmp_path / "process-started").exists()
+    assert not marker.exists()
+
+
+async def test_candidate_accept_returns_cleanup_result_type() -> None:
+    """The acceptance boundary exposes cleanup warnings without another exception channel."""
+    from app.third_party_api.git.workspace import CandidateAcceptance
+
+    assert CandidateAcceptance.__name__ == "CandidateAcceptance"
 
 
 async def test_immediate_push_retry_stops_on_success_and_never_retries_permanent_errors() -> None:

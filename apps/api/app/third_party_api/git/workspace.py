@@ -7,8 +7,10 @@ import hashlib
 import os
 import re
 import shutil
+import signal
 import sys
 from collections.abc import Awaitable, Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -96,8 +98,19 @@ class CandidateWorkspace:
     base_commit: str
 
 
+@dataclass(frozen=True, slots=True)
+class CandidateAcceptance:
+    """Published accepted commit plus non-blocking candidate cleanup warnings."""
+
+    commit: str
+    message: str
+    cleanup_error: str | None = None
+
+
 class GitWorkspaceManager:
     """Own repository caches, isolated workspaces, and candidate refs."""
+
+    supports_candidate_lifecycle = True
 
     _RUN_BRANCH = re.compile(r"^evo/\d{8}-.+$")
     _TRANSIENT_MARKERS = (
@@ -337,14 +350,14 @@ class GitWorkspaceManager:
             "origin",
             candidate.ref,
         )
+        if remote == candidate.commit:
+            return
         if expected_remote_commit is None:
             if remote is not None and remote != candidate.commit:
                 raise GitOperationError(
                     "candidate reference already exists",
                     stage="push",
                 )
-            if remote == candidate.commit:
-                return
             args: tuple[str, ...] = (
                 "git",
                 "push",
@@ -372,47 +385,123 @@ class GitWorkspaceManager:
         *,
         run_branch: str,
         message: str,
-    ) -> CandidateWorkspace:
-        """Amend accepted metadata, publish the candidate, and fast-forward run."""
-        await self._validate_candidate(candidate)
-        await self._git_checked(
+    ) -> CandidateAcceptance:
+        """Idempotently amend and publish acceptance, then clean up best effort."""
+        local_candidate = await self._optional_ref(
             candidate.workspace_path,
-            (
-                "git",
-                "-c",
-                "user.name=Harness Evolution",
-                "-c",
-                "user.email=harness-evolution@localhost",
-                "commit",
-                "--amend",
-                "-m",
-                message,
-            ),
-            stage="commit",
-            failure="accepted candidate amend failed",
+            ("git", "rev-parse", "--verify", f"refs/heads/{candidate.local_branch}"),
         )
-        final_commit = (
+        current_branch = (
             await self._git_checked(
                 candidate.workspace_path,
-                ("git", "rev-parse", "HEAD"),
-                stage="commit",
-                failure="accepted candidate commit could not be resolved",
+                ("git", "branch", "--show-current"),
+                stage="workspace",
+                failure="workspace branch could not be resolved",
             )
         ).stdout.strip()
-        final_candidate = CandidateWorkspace(
-            workspace_path=candidate.workspace_path,
-            run_branch=run_branch,
-            local_branch=candidate.local_branch,
-            ref=candidate.ref,
-            commit=final_commit,
-            message=message,
-            run_id=candidate.run_id,
-            base_commit=candidate.base_commit,
-        )
-        await self.push_candidate(
-            final_candidate,
-            expected_remote_commit=candidate.commit,
-        )
+
+        if local_candidate is not None:
+            if current_branch != candidate.local_branch:
+                await self._git_checked(
+                    candidate.workspace_path,
+                    ("git", "switch", candidate.local_branch),
+                    stage="workspace",
+                    failure="candidate branch could not be selected for acceptance",
+                )
+            head = (
+                await self._git_checked(
+                    candidate.workspace_path,
+                    ("git", "rev-parse", "HEAD"),
+                    stage="commit",
+                    failure="accepted candidate commit could not be resolved",
+                )
+            ).stdout.strip()
+            if head == candidate.commit:
+                await self._validate_candidate(candidate)
+                final_message = message
+                await self._git_checked(
+                    candidate.workspace_path,
+                    (
+                        "git",
+                        "-c",
+                        "user.name=Harness Evolution",
+                        "-c",
+                        "user.email=harness-evolution@localhost",
+                        "commit",
+                        "--amend",
+                        "-m",
+                        message,
+                    ),
+                    stage="commit",
+                    failure="accepted candidate amend failed",
+                )
+                head = (
+                    await self._git_checked(
+                        candidate.workspace_path,
+                        ("git", "rev-parse", "HEAD"),
+                        stage="commit",
+                        failure="accepted candidate commit could not be resolved",
+                    )
+                ).stdout.strip()
+            else:
+                await self._validate_accepted_replay(
+                    candidate.workspace_path,
+                    evaluated_commit=candidate.commit,
+                    accepted_commit=head,
+                    run_id=candidate.run_id,
+                    base_commit=candidate.base_commit,
+                )
+                final_message = await self._commit_message(
+                    candidate.workspace_path,
+                    head,
+                )
+            final_commit = head
+            final_candidate = CandidateWorkspace(
+                workspace_path=candidate.workspace_path,
+                run_branch=run_branch,
+                local_branch=candidate.local_branch,
+                ref=candidate.ref,
+                commit=final_commit,
+                message=message,
+                run_id=candidate.run_id,
+                base_commit=candidate.base_commit,
+            )
+            remote_commit = await self.remote_tag_commit(
+                candidate.workspace_path,
+                "origin",
+                candidate.ref,
+            )
+            if remote_commit not in {None, candidate.commit, final_commit}:
+                raise GitOperationError(
+                    "candidate reference lease no longer matches",
+                    stage="push",
+                )
+            await self.push_candidate(
+                final_candidate,
+                expected_remote_commit=candidate.commit if remote_commit is not None else None,
+            )
+        else:
+            run_commit = (
+                await self._git_checked(
+                    candidate.workspace_path,
+                    ("git", "rev-parse", f"refs/heads/{run_branch}"),
+                    stage="workspace",
+                    failure="accepted run branch could not be resolved",
+                )
+            ).stdout.strip()
+            await self._validate_accepted_replay(
+                candidate.workspace_path,
+                evaluated_commit=candidate.commit,
+                accepted_commit=run_commit,
+                run_id=candidate.run_id,
+                base_commit=candidate.base_commit,
+            )
+            final_commit = run_commit
+            final_message = await self._commit_message(
+                candidate.workspace_path,
+                run_commit,
+            )
+
         await self._git_checked(
             candidate.workspace_path,
             ("git", "switch", run_branch),
@@ -432,14 +521,27 @@ class GitWorkspaceManager:
             base_commit=candidate.base_commit,
             require_trailer=True,
         )
-        await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
-        await self._git_checked(
-            candidate.workspace_path,
-            ("git", "branch", "-D", candidate.local_branch),
-            stage="workspace",
-            failure="accepted local candidate branch could not be removed",
+
+        cleanup_errors: list[str] = []
+        try:
+            await self._delete_remote_tag(candidate.workspace_path, candidate.ref)
+        except GitOperationError as exc:
+            cleanup_errors.append(str(exc))
+        if local_candidate is not None:
+            try:
+                await self._git_checked(
+                    candidate.workspace_path,
+                    ("git", "branch", "-D", candidate.local_branch),
+                    stage="workspace",
+                    failure="accepted local candidate branch could not be removed",
+                )
+            except GitOperationError as exc:
+                cleanup_errors.append(str(exc))
+        return CandidateAcceptance(
+            commit=final_commit,
+            message=final_message,
+            cleanup_error="; ".join(dict.fromkeys(cleanup_errors)) or None,
         )
-        return final_candidate
 
     async def reject_candidate(
         self,
@@ -719,6 +821,81 @@ class GitWorkspaceManager:
             require_trailer=True,
         )
 
+    async def _validate_accepted_replay(
+        self,
+        workspace_path: Path,
+        *,
+        evaluated_commit: str,
+        accepted_commit: str,
+        run_id: str,
+        base_commit: str,
+    ) -> None:
+        """Reuse only the deterministic accepted amend produced by an earlier attempt."""
+        await self._require_clean(workspace_path)
+        await self._require_ancestry(
+            workspace_path,
+            base_commit,
+            commit=accepted_commit,
+        )
+        evaluated_tree = (
+            await self._git_checked(
+                workspace_path,
+                ("git", "rev-parse", f"{evaluated_commit}^{{tree}}"),
+                stage="workspace",
+                failure="evaluated commit tree could not be resolved",
+            )
+        ).stdout.strip()
+        accepted_tree = (
+            await self._git_checked(
+                workspace_path,
+                ("git", "rev-parse", f"{accepted_commit}^{{tree}}"),
+                stage="workspace",
+                failure="accepted commit tree could not be resolved",
+            )
+        ).stdout.strip()
+        if accepted_tree != evaluated_tree:
+            raise GitOperationError(
+                "accepted replay changed the evaluated tree",
+                stage="commit",
+            )
+        evaluated_parent = (
+            await self._git_checked(
+                workspace_path,
+                ("git", "rev-parse", f"{evaluated_commit}^"),
+                stage="commit",
+                failure="evaluated commit parent could not be resolved",
+            )
+        ).stdout.strip()
+        accepted_parent = (
+            await self._git_checked(
+                workspace_path,
+                ("git", "rev-parse", f"{accepted_commit}^"),
+                stage="commit",
+                failure="accepted commit parent could not be resolved",
+            )
+        ).stdout.strip()
+        if accepted_parent != evaluated_parent:
+            raise GitOperationError(
+                "accepted replay does not descend directly from the evaluated parent",
+                stage="commit",
+            )
+        message = await self._commit_message(workspace_path, accepted_commit)
+        if not _has_trailer(message, "Harness-Run-Id", run_id):
+            raise GitOperationError(
+                "accepted replay is missing the Harness-Run-Id trailer",
+                stage="commit",
+            )
+        if not _has_trailer(message, "Harness-Evaluated-Commit", evaluated_commit):
+            raise GitOperationError(
+                "accepted replay does not reference the evaluated commit",
+                stage="commit",
+            )
+        if not any(line.startswith("Harness-Verdict: accepted ") for line in message.splitlines()):
+            raise GitOperationError(
+                "accepted replay is missing the accepted verdict",
+                stage="commit",
+            )
+
     async def _validate_publication_state(
         self,
         workspace_path: Path,
@@ -959,12 +1136,47 @@ async def _run_process(
         env=environment,
         start_new_session=sys.platform != "win32",
     )
-    stdout, stderr = await process.communicate()
+    try:
+        stdout, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        await _terminate_process_group(process)
+        raise
     return GitProcessResult(
         returncode=process.returncode or 0,
         stdout=stdout.decode(errors="replace"),
         stderr=stderr.decode(errors="replace"),
     )
+
+
+async def _terminate_process_group(process: asyncio.subprocess.Process) -> None:
+    """Terminate, escalate, and reap a timed-out Git process and its children."""
+    if sys.platform == "win32":
+        if process.returncode is not None:
+            return
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            return
+    else:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+    if process.returncode is None:
+        with suppress(TimeoutError):
+            await asyncio.wait_for(process.wait(), timeout=0.5)
+    else:
+        await asyncio.sleep(0.5)
+    try:
+        if sys.platform == "win32":
+            if process.returncode is None:
+                process.kill()
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    if process.returncode is None:
+        await process.wait()
 
 
 def _safe_component(value: str) -> str:

@@ -293,6 +293,8 @@ async def _seed_hits(app: Any) -> None:
 class _FakeWorkspacePreparer:
     """Return deterministic local workspace facts without network access."""
 
+    supports_candidate_lifecycle = False
+
     def __init__(self, root: Path) -> None:
         """Bind one temporary data root."""
         self._root = root
@@ -310,6 +312,16 @@ class _FakeWorkspacePreparer:
             base_commit="a" * 40,
             branch=f"evo/{run.created_at:%Y%m%d}-{run.id}",
         )
+
+    def cleanup_workspaces(
+        self,
+        *,
+        active_run_ids: set[str],
+        keep: int = 20,
+    ) -> tuple[Path, ...]:
+        """Keep prepare-only tests free of background candidate cleanup."""
+        del active_run_ids, keep
+        return ()
 
 
 @pytest_asyncio.fixture
