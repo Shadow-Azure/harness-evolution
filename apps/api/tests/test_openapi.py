@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -351,11 +351,13 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
 
 def test_evolution_status_aliases_reject_non_design_states() -> None:
     """Runtime validation rejects stages and round states absent from the design."""
-    blocked_stage: TypeAdapter[EvolutionRunBlockedStage] = TypeAdapter(
-        EvolutionRunBlockedStage,  # type: ignore[arg-type]
+    blocked_stage = cast(
+        TypeAdapter[EvolutionRunBlockedStage],
+        TypeAdapter(cast(Any, EvolutionRunBlockedStage)),
     )
-    round_status: TypeAdapter[RoundStatus] = TypeAdapter(
-        RoundStatus,  # type: ignore[arg-type]
+    round_status = cast(
+        TypeAdapter[RoundStatus],
+        TypeAdapter(cast(Any, RoundStatus)),
     )
 
     assert blocked_stage.validate_python("patch") == "patch"
