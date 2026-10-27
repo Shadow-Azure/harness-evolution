@@ -296,7 +296,7 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           runningIds: running.map((item) => item.getAttribute("data-run-id")),
           historyIds: history.map((item) => item.getAttribute("data-run-id")),
           heading: page.querySelector("h1")?.textContent.trim(),
-          launchDisabled: page.querySelector(".launch-run")?.disabled,
+          launchEntry: page.querySelector(".launch-run[data-testid='open-launch-wizard']")?.textContent.replace(/\s+/g, " ").trim(),
           hasCanvas: Boolean(page.querySelector(".canvas")),
           cardPadding: cardStyle?.padding,
           cardRadius: cardStyle?.borderRadius,
@@ -341,7 +341,7 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
       "run-completed-no-benefit",
       "run-completed-unknown",
     ]);
-    assert.equal(desktop.launchDisabled, true);
+    assert.equal(desktop.launchEntry, "＋ 启动自进化");
     assert.equal(desktop.hasCanvas, false);
     assert.equal(desktop.cardPadding, "14px 16px");
     assert.equal(desktop.cardRadius, "12px");
