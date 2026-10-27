@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from app.db.models.evolution import (
     ClusterWrite,
@@ -133,12 +134,158 @@ class EvalGateway(Protocol):
     def config(self) -> EvalGatewayConfig:
         """Expose the frozen gateway configuration."""
 
+    async def submit(self, request: EvalRequest) -> EvalSubmission:
+        """Submit one immutable candidate for external evaluation."""
+
+    async def get_status(self, eval_id: str) -> EvalStatus:
+        """Return the external evaluation's current lifecycle state."""
+
+    async def get_result(self, eval_id: str) -> EvalResult:
+        """Return normalized scores and an external verdict."""
+
+
+EvalStatusValue = Literal["queued", "running", "completed", "failed", "timeout"]
+EvalVerdict = Literal["accept", "reject"]
+
 
 @dataclass(frozen=True, slots=True)
-class DefaultEvalGateway:
-    """Inert gateway carrying configuration until the real integration lands."""
+class EvalRequest:
+    """Stable internal request passed to every evaluation implementation."""
+
+    run_id: str
+    evolution_round_id: str
+    repo_url: str
+    ref: str
+    commit: str
+    target_type: str
+    target_name: str
+    target_version: str
+    cluster_id: str
+    idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class EvalSubmission:
+    """External evaluation identifier returned after submission."""
+
+    eval_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class EvalStatus:
+    """One external evaluation status and optional safe message."""
+
+    status: EvalStatusValue
+    message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EvalResult:
+    """Normalized evaluation result consumed by the placeholder decision rule."""
+
+    current_score: float
+    candidate_score: float
+    external_verdict: EvalVerdict
+    metrics: tuple[Mapping[str, FrozenValue], ...] = ()
+
+    def __post_init__(self) -> None:
+        """Reject non-finite scores before they can become persisted JSON."""
+        if not math.isfinite(self.current_score) or not math.isfinite(self.candidate_score):
+            raise ValueError("evaluation scores must be finite")
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialize the result into the round's stable JSON representation."""
+        return {
+            "currentScore": self.current_score,
+            "candidateScore": self.candidate_score,
+            "externalVerdict": self.external_verdict,
+            "metrics": [_thaw_json(metric) for metric in self.metrics],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any]) -> EvalResult:
+        """Read a persisted result and reject malformed external data."""
+        current = payload.get("currentScore")
+        candidate = payload.get("candidateScore")
+        verdict = payload.get("externalVerdict")
+        metrics = payload.get("metrics", ())
+        if not isinstance(current, (int, float)) or not isinstance(candidate, (int, float)):
+            raise ValueError("persisted evaluation scores are invalid")
+        if verdict not in {"accept", "reject"}:
+            raise ValueError("persisted external verdict is invalid")
+        if not isinstance(metrics, (list, tuple)):
+            raise ValueError("persisted evaluation metrics are invalid")
+        if any(not isinstance(metric, Mapping) for metric in metrics):
+            raise ValueError("persisted evaluation metrics must contain objects")
+        frozen_metrics: list[Mapping[str, FrozenValue]] = []
+        for metric in metrics:
+            frozen_metrics.append(
+                cast(Mapping[str, FrozenValue], freeze_json(metric)),
+            )
+        return cls(
+            current_score=float(current),
+            candidate_score=float(candidate),
+            external_verdict=verdict,
+            metrics=tuple(frozen_metrics),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FakeEvalGateway:
+    """Deterministic V1 gateway that needs no external service or memory state."""
 
     config: EvalGatewayConfig
+
+    async def submit(self, request: EvalRequest) -> EvalSubmission:
+        """Return a stable identifier derived from the durable round identity."""
+        return EvalSubmission(
+            eval_id=f"fake:{request.run_id}:{request.evolution_round_id}:{request.commit}",
+        )
+
+    async def get_status(self, eval_id: str) -> EvalStatus:
+        """Return the configured placeholder lifecycle state."""
+        self._require_eval_id(eval_id)
+        configured = self.config.get("status", "completed")
+        if configured not in {"queued", "running", "completed", "failed", "timeout"}:
+            raise ValueError("fake evaluation status is invalid")
+        message = self.config.get("message")
+        return EvalStatus(
+            status=cast(EvalStatusValue, configured),
+            message=str(message) if message is not None else None,
+        )
+
+    async def get_result(self, eval_id: str) -> EvalResult:
+        """Return configured normalized scores without retaining process state."""
+        self._require_eval_id(eval_id)
+        current = self.config.get("currentScore", 80.0)
+        candidate = self.config.get("candidateScore", 85.0)
+        verdict = self.config.get("verdict", "accept")
+        metrics = self.config.get("metrics", ())
+        if not isinstance(current, (int, float)) or not isinstance(candidate, (int, float)):
+            raise ValueError("fake evaluation scores must be numbers")
+        if verdict not in {"accept", "reject"}:
+            raise ValueError("fake evaluation verdict must be accept or reject")
+        if not isinstance(metrics, tuple) or any(
+            not isinstance(metric, Mapping) for metric in metrics
+        ):
+            raise ValueError("fake evaluation metrics must be objects")
+        return EvalResult(
+            current_score=float(current),
+            candidate_score=float(candidate),
+            external_verdict=cast(EvalVerdict, verdict),
+            metrics=tuple(cast(Mapping[str, FrozenValue], metric) for metric in metrics),
+        )
+
+    @staticmethod
+    def _require_eval_id(eval_id: str) -> None:
+        """Reject blank/foreign identifiers before producing a misleading result."""
+        if not eval_id.startswith("fake:") or len(eval_id.split(":")) < 4:
+            raise ValueError("fake evaluation id is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class DefaultEvalGateway(FakeEvalGateway):
+    """Backward-compatible name for the deterministic V1 gateway."""
 
 
 type GatewayFactory = Callable[[EvalGatewayConfig], EvalGateway]
@@ -150,8 +297,17 @@ type ClusterPrepare = Callable[
 
 
 def default_gateway_factory(config: EvalGatewayConfig) -> EvalGateway:
-    """Build the inert gateway used before real evaluation configuration exists."""
-    return DefaultEvalGateway(config=config)
+    """Build the deterministic gateway used by the V1 evolution loop."""
+    return FakeEvalGateway(config=config)
+
+
+def _thaw_json(value: FrozenValue) -> Any:
+    """Convert immutable frozen config values back to JSON-compatible data."""
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
 
 
 @dataclass(frozen=True, slots=True)

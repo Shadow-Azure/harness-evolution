@@ -883,6 +883,24 @@ class EvolutionRepository:
                     target=1,
                     reason="round cannot be marked as a skipped push",
                 )
+            progress_result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_runs)
+                    .where(
+                        evolution_runs.c.id == run_id,
+                        evolution_runs.c.status == "running",
+                    )
+                    .values(progress_unit=evolution_runs.c.progress_unit + 1),
+                ),
+            )
+            if progress_result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="skipped round cannot advance the run cursor",
+                )
             await session.execute(
                 update(evolution_runs)
                 .where(evolution_runs.c.id == run_id)
@@ -952,6 +970,215 @@ class EvolutionRepository:
             )
         return await self._required_round(round_id)
 
+    async def mark_eval_submitted(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        external_id: str,
+        started_at: datetime,
+        next_poll_at: datetime,
+    ) -> EvolutionRoundRecord:
+        """Persist the external evaluation identity and first durable poll deadline."""
+        if not external_id.strip():
+            raise ValueError("external evaluation id must not be blank")
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "evaluating",
+                        evolution_rounds.c.eval_external_id.is_(None),
+                    )
+                    .values(
+                        eval_external_id=external_id,
+                        eval_status="evaluating",
+                        eval_attempts=evolution_rounds.c.eval_attempts + 1,
+                        eval_next_poll_at=next_poll_at,
+                        eval_started_at=started_at,
+                        eval_finished_at=None,
+                        eval_result=None,
+                        eval_error=None,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                changed = False
+            else:
+                changed = True
+                await session.execute(
+                    update(evolution_runs)
+                    .where(evolution_runs.c.id == run_id)
+                    .values(eval_status="evaluating"),
+                )
+        if not changed:
+            current = await self.get_round(round_id)
+            if current is not None and current.eval_external_id == external_id:
+                return current
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="round cannot enter external evaluation",
+            )
+        return await self._required_round(round_id)
+
+    async def list_eval_due(
+        self,
+        now: datetime,
+        *,
+        limit: int = 100,
+    ) -> tuple[EvolutionRoundRecord, ...]:
+        """Return due, actively evaluated rounds in stable creation order."""
+        if limit < 1:
+            raise ValueError("evaluation scan limit must be positive")
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_rounds)
+                        .where(
+                            evolution_rounds.c.status == "evaluating",
+                            evolution_rounds.c.eval_status == "evaluating",
+                            evolution_rounds.c.eval_external_id.is_not(None),
+                            evolution_rounds.c.eval_next_poll_at.is_not(None),
+                            evolution_rounds.c.eval_next_poll_at <= now,
+                        )
+                        .order_by(
+                            evolution_rounds.c.eval_next_poll_at,
+                            evolution_rounds.c.run_id,
+                            evolution_rounds.c.seq,
+                        )
+                        .limit(limit),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_round(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def mark_eval_waiting(
+        self,
+        round_id: str,
+        *,
+        next_poll_at: datetime,
+    ) -> EvolutionRoundRecord:
+        """Defer the next poll without changing a queued/running evaluation."""
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.status == "evaluating",
+                        evolution_rounds.c.eval_status == "evaluating",
+                        evolution_rounds.c.eval_external_id.is_not(None),
+                    )
+                    .values(eval_next_poll_at=next_poll_at),
+                ),
+            )
+        if result.rowcount != 1:
+            raise StageConflict(
+                status_code=409,
+                current=0,
+                target=1,
+                reason="evaluation is not waiting for a poll",
+            )
+        return await self._required_round(round_id)
+
+    async def save_eval_result(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        result: Mapping[str, Any],
+        finished_at: datetime,
+    ) -> bool:
+        """Persist one normalized result exactly once and clear its poll deadline."""
+        async with self._database.transaction() as session:
+            changed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "evaluating",
+                        evolution_rounds.c.eval_status == "evaluating",
+                        evolution_rounds.c.eval_external_id.is_not(None),
+                        evolution_rounds.c.eval_result.is_(None),
+                    )
+                    .values(
+                        eval_status="completed",
+                        eval_next_poll_at=None,
+                        eval_finished_at=finished_at,
+                        eval_result=deepcopy(dict(result)),
+                        eval_error=None,
+                    ),
+                ),
+            )
+            if changed.rowcount != 1:
+                return False
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(eval_status="completed"),
+            )
+        return True
+
+    async def mark_eval_failed(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        status: str,
+        error: str,
+        finished_at: datetime,
+    ) -> bool:
+        """Persist one terminal external failure and block the aggregate run."""
+        if status not in {"failed", "timeout"}:
+            raise ValueError("evaluation terminal status must be failed or timeout")
+        async with self._database.transaction() as session:
+            changed = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "evaluating",
+                        evolution_rounds.c.eval_status.in_(("pending", "evaluating")),
+                    )
+                    .values(
+                        eval_status=status,
+                        eval_next_poll_at=None,
+                        eval_finished_at=finished_at,
+                        eval_error=error,
+                    ),
+                ),
+            )
+            if changed.rowcount != 1:
+                return False
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="blocked",
+                    blocked_stage="eval",
+                    eval_status="failed",
+                    error_stage="eval",
+                    error_message=error,
+                    error_at=finished_at,
+                    next_retry_at=None,
+                    finished_at=None,
+                ),
+            )
+        return True
+
     async def mark_round_deciding(self, round_id: str) -> EvolutionRoundRecord:
         """Enter the apply phase without resubmitting an already evaluated candidate."""
         async with self._database.transaction() as session:
@@ -1018,7 +1245,12 @@ class EvolutionRepository:
             await session.execute(
                 update(evolution_runs)
                 .where(evolution_runs.c.id == run_id)
-                .values(push_status="succeeded", pushed_at=finished_at, push_error=None),
+                .values(
+                    push_status="succeeded",
+                    pushed_at=finished_at,
+                    push_error=None,
+                    progress_unit=evolution_runs.c.progress_unit + 1,
+                ),
             )
         return await self._required_round(round_id)
 
@@ -1054,6 +1286,16 @@ class EvolutionRepository:
                     target=1,
                     reason="only deciding rounds can be rejected",
                 )
+            run_id: str = (
+                await session.execute(
+                    select(evolution_rounds.c.run_id).where(evolution_rounds.c.id == round_id),
+                )
+            ).scalar_one()
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(progress_unit=evolution_runs.c.progress_unit + 1),
+            )
         return await self._required_round(round_id, expected_status="rejected")
 
     async def complete_run(
@@ -1061,13 +1303,16 @@ class EvolutionRepository:
         run_id: str,
         *,
         finished_at: datetime,
+        push_status: str = "succeeded",
         stats: Mapping[str, Any] | None = None,
     ) -> EvolutionRunRecord:
         """Mark the run complete only after its run branch has been published."""
+        if push_status not in {"succeeded", "skipped"}:
+            raise ValueError("completed run requires succeeded or skipped push state")
         values: dict[str, Any] = {
             "status": "completed",
-            "push_status": "succeeded",
-            "pushed_at": finished_at,
+            "push_status": push_status,
+            "pushed_at": finished_at if push_status == "succeeded" else None,
             "finished_at": finished_at,
             "blocked_stage": None,
             "next_retry_at": None,

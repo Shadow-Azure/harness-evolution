@@ -942,31 +942,8 @@ async def test_advance_service_publishes_real_candidate_and_lifecycle_queues_it(
     """A completed prepare is reachable from the production candidate stage boundary."""
     database, repository, prepare, repo_url, base_commit = prepare_state
     await repository.create_run(_run_values(repo_url, base_commit))
-    await prepare.handle(_job("run-m5-09-prepare"))
-    manager = GitWorkspaceManager(
-        repos_root=tmp_path / "repos",
-        workspaces_root=tmp_path / "workspaces",
-    )
-    candidate_service = EvolutionCandidateService(repository, manager)
-    advance = EvolutionAdvanceService(
-        repository,
-        candidate_service,
-        ProbeQueryRepository(database),
-    )
-    advance_job = replace(
-        _job("run-m5-09-prepare"),
-        id="job-advance",
-        kind="evolution_advance",
-        payload={"runId": "run-m5-09-prepare"},
-    )
-
-    result = await advance.handle(advance_job)
-
-    assert result["published"] is True
-    rounds = await repository.list_rounds("run-m5-09-prepare")
-    assert rounds[0].status == "evaluating"
-    assert rounds[0].candidate_ref is not None
-    assert _remote_tag(repo_url, rounds[0].candidate_ref) == rounds[0].candidate_commit
+    prepare_job = _job("run-m5-09-prepare")
+    await prepare.handle(prepare_job)
 
     class Jobs:
         def __init__(self) -> None:
@@ -990,16 +967,15 @@ async def test_advance_service_publishes_real_candidate_and_lifecycle_queues_it(
             )
             return object()
 
+    manager = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+    )
     jobs = Jobs()
     lifecycle = EvolutionJobLifecycle(repository, jobs, manager)
     await lifecycle.on_terminal(
-        replace(
-            _job("run-m5-09-prepare"),
-            status="completed",
-            finished_at=NOW,
-        ),
+        replace(prepare_job, status="completed", finished_at=NOW),
     )
-
     assert jobs.submitted == [
         {
             "kind": "evolution_advance",
@@ -1008,6 +984,38 @@ async def test_advance_service_publishes_real_candidate_and_lifecycle_queues_it(
             "createdBy": None,
         },
     ]
+
+    candidate_service = EvolutionCandidateService(repository, manager)
+    advance = EvolutionAdvanceService(
+        repository,
+        candidate_service,
+        ProbeQueryRepository(database),
+    )
+    advance_job = replace(
+        _job("run-m5-09-prepare"),
+        id="job-advance",
+        kind="evolution_advance",
+        payload={"runId": "run-m5-09-prepare"},
+    )
+
+    result = await advance.handle(advance_job)
+
+    assert result["published"] is True
+    rounds = await repository.list_rounds("run-m5-09-prepare")
+    assert rounds[0].status == "evaluating"
+    assert rounds[0].candidate_ref is not None
+    assert _remote_tag(repo_url, rounds[0].candidate_ref) == rounds[0].candidate_commit
+
+    jobs.submitted.clear()
+    await lifecycle.on_terminal(
+        replace(
+            prepare_job,
+            status="completed",
+            finished_at=NOW,
+        ),
+    )
+
+    assert jobs.submitted == []
 
 
 async def test_advance_waits_for_an_earlier_round_to_finish(

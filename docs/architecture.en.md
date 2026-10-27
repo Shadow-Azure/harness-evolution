@@ -44,7 +44,7 @@ The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed t
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and `Database` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
-- Evolution: `progress_unit`/`EngineFactory`, admin target writes, git refs/tags, and `agents.model` catalogs.
+- Evolution: `progress_unit`/`EngineFactory`, admin targets, git refs/tags, and `agents.model`.
 - `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
@@ -66,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, workspace, blocked/retry/eval, real lastEventSeq), real prepare/Git candidates, launch/preview APIs, read-only step APIs, fixtures, data chains, E2E, and contract gates.
-- Missing: evaluation, real patches, automatic recovery, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, workspace, blocked/retry/eval, real lastEventSeq), real prepare/Git candidates, placeholder evaluation closure, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
+- Missing: real evaluation, real patches, automatic recovery, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

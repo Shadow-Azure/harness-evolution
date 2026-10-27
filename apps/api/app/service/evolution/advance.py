@@ -42,6 +42,17 @@ class ProbeSourceReader(Protocol):
         """Return complete source rows for selected probe identifiers."""
 
 
+class EvalSubmitter(Protocol):
+    """Submit one published candidate to its frozen external gateway."""
+
+    async def submit(
+        self,
+        run: Any,
+        round_: Any,
+    ) -> Any:
+        """Persist the external evaluation id and first poll deadline."""
+
+
 class WorkspaceLifecycleManager(Protocol):
     """Workspace operations used for retention and candidate scheduling."""
 
@@ -64,11 +75,13 @@ class EvolutionAdvanceService:
         runs: EvolutionRepository,
         candidates: EvolutionCandidateService,
         probes: ProbeSourceReader,
+        eval_submitter: EvalSubmitter | None = None,
     ) -> None:
         """Bind durable rounds, candidate publication, and source evidence."""
         self._runs = runs
         self._candidates = candidates
         self._probes = probes
+        self._eval_submitter = eval_submitter
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
         """Publish exactly one pending round and leave evaluation to m5-10."""
@@ -136,9 +149,20 @@ class EvolutionAdvanceService:
         current = await self._candidates.publish(
             run,
             target,
-            _trace(cluster.probe_cluster_id, cluster.probe_cluster_description, links, rows),
+            build_candidate_trace(
+                cluster.probe_cluster_id,
+                cluster.probe_cluster_description,
+                links,
+                rows,
+            ),
             job_id=job.id,
         )
+        if (
+            self._eval_submitter is not None
+            and current.status == "evaluating"
+            and current.eval_external_id is None
+        ):
+            current = await self._eval_submitter.submit(run, current)
         return {
             "runId": run.id,
             "roundId": current.id,
@@ -175,18 +199,32 @@ class EvolutionJobLifecycle:
             await self._before_terminal(job)
         if (
             self._schedule_candidate_advance
-            and job.kind == "evolution_prepare"
+            and job.kind in {"evolution_prepare", "evolution_advance", "evolution_apply"}
             and job.status == "completed"
             and job.ref_id
         ):
             run = await self._runs.get_run(job.ref_id)
             if run is not None and run.mode == "full" and run.status == "running":
-                await self._jobs.submit(
-                    kind="evolution_advance",
-                    payload={"runId": run.id},
-                    ref_id=run.id,
-                    created_by=job.created_by,
-                )
+                rounds = await self._runs.list_rounds(run.id)
+                active = {
+                    "patching",
+                    "pushing",
+                    "evaluating",
+                    "deciding",
+                    "failed",
+                }
+                if not any(round_.status in active for round_ in rounds):
+                    pending = next(
+                        (round_ for round_ in rounds if round_.status == "pending"),
+                        None,
+                    )
+                    kind = "evolution_advance" if pending is not None else "evolution_finalize"
+                    await self._jobs.submit(
+                        kind=kind,
+                        payload={"runId": run.id},
+                        ref_id=run.id,
+                        created_by=job.created_by,
+                    )
         try:
             summaries = await self._runs.list_summaries()
             active = {
@@ -202,7 +240,7 @@ class EvolutionJobLifecycle:
             logger.exception("workspace retention failed", extra={"job_id": job.id})
 
 
-def _trace(
+def build_candidate_trace(
     cluster_id: str,
     title: str,
     probe_ids: Sequence[str],
@@ -240,4 +278,5 @@ def _trace(
 __all__ = [
     "EvolutionAdvanceService",
     "EvolutionJobLifecycle",
+    "build_candidate_trace",
 ]

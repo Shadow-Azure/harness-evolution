@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     upstream_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
     upstream_max_pages: int = Field(default=100, gt=0, le=1_000)
     git_push: bool = True
+    eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
+    eval_poll_seconds: int = Field(default=300, gt=0)
+    eval_timeout_seconds: int = Field(default=7_200, gt=0)
     web_base_url: str | None = None
     admin_username: str | None = None
     admin_password: SecretStr | None = None
