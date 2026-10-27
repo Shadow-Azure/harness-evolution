@@ -46,7 +46,7 @@ def test_step_titles_match_the_public_workflow() -> None:
     assert [step.title for step in step_states(0, 2, "running")] == [
         "筛选输入",
         "问题聚类",
-        "归因确认",
+        "LLM 归因置信度",
         "严重程度排序",
         "迭代优化",
         "测试集终评",

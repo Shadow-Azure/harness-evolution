@@ -82,7 +82,7 @@
 | 详情：6 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
 | 第 1 步：probe 筛选表（含归属簇） | F13 | [05 §3.6](05-api-design.md)（step 0） |
 | 第 2 步：聚类卡 + 簇内 probe 列表 | F13 | [05 §3.6](05-api-design.md)（step 1） |
-| 第 3 步：归因确认（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
+| 第 3 步：LLM 归因置信度（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
 | 第 4 步：严重程度排序表（顺序/类型/probe 数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3） |
 | 第 5 步：迭代卡（patch → push → eval → 决策：接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.6](07-backend-implementation.md) |
 | 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |

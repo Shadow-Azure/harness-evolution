@@ -4,6 +4,8 @@ import { computed } from "vue";
 
 const props = defineProps<{
   evaluation: StepRoundEval;
+  accepted?: boolean;
+  roundStatus?: string;
 }>();
 
 const normalizedMax = computed(() => {
@@ -20,6 +22,30 @@ const improved = computed(
     props.evaluation.current !== null &&
     props.evaluation.candidate >= props.evaluation.current,
 );
+const outcome = computed(() => {
+  switch (props.evaluation.status) {
+    case "pending":
+      return "等待评测启动";
+    case "evaluating":
+      return "评测中，等待 candidate 得分";
+    case "failed":
+      return "评测失败，未产生可比较得分";
+    case "timeout":
+      return "评测超时，未产生可比较得分";
+    default:
+      break;
+  }
+  if (props.roundStatus === "deciding") {
+    return "评测完成，正在决定是否接纳";
+  }
+  if (props.accepted === true) {
+    return "有收益，candidate 已提升为 current";
+  }
+  if (props.accepted === false) {
+    return "评测完成但未接纳，current 保持不变";
+  }
+  return "评测完成，等待接纳结果";
+});
 
 function widthFor(value: number | null): string {
   if (value === null || normalizedMax.value <= 0) return "0%";
@@ -55,11 +81,7 @@ function score(value: number | null): string {
       <span class="val">{{ score(evaluation.candidate) }}</span>
     </div>
     <div class="eval-note">
-      {{ evaluation.status === "evaluating"
-        ? "评测中，等待 candidate 得分"
-        : improved
-          ? "评测有收益，candidate 已提升为 current"
-          : "评测无收益，current 保持不变" }}
+      {{ outcome }}
     </div>
   </div>
 </template>

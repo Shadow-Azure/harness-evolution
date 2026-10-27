@@ -101,7 +101,7 @@ const clustersStep = {
 const attributionStep = {
   key: "attribution",
   index: 2,
-  title: "归因确认",
+  title: "LLM 归因置信度",
   status: "done",
   clickable: true,
   payload: {

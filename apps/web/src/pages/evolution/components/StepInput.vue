@@ -2,9 +2,10 @@
 import type {
   EvolutionStepInput,
   StepCondition,
-  StepInputRow,
 } from "@harness/contracts";
 import { computed } from "vue";
+
+import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
   step: EvolutionStepInput;
@@ -38,31 +39,11 @@ const analyzed = computed(() =>
   distribution.value.reduce((total, item) => total + item.value, 0),
 );
 
-function typeLabel(type: StepInputRow["attributeType"]): string {
-  if (type === "prompt") return "prompt";
-  if (type === "model") return "模型";
-  return "错误";
-}
-
-function typeClass(type: StepInputRow["attributeType"]): string {
-  return `type-${type}`;
-}
-
-function reportHref(row: StepInputRow): string {
-  const query = new URLSearchParams({
-    case: row.sourceBadCaseIds[0] ?? "",
-    tab: "attr",
-  });
-  return `/sessions/${encodeURIComponent(row.sessionId)}/errors?${query}`;
-}
-
-function issueHref(row: StepInputRow): string {
-  const query = new URLSearchParams({
-    case: row.sourceBadCaseIds[0] ?? "",
-    tab: "desc",
-  });
-  return `/sessions/${encodeURIComponent(row.sessionId)}/errors?${query}`;
-}
+const clusterOfProbe = computed<Record<string, string | null>>(() =>
+  Object.fromEntries(
+    uniqueRows.value.map((row) => [row.probeId, row.clusterId ?? null]),
+  ),
+);
 </script>
 
 <template>
@@ -102,53 +83,12 @@ function issueHref(row: StepInputRow): string {
     >
       检测到 {{ duplicateCount }} 条重复 probe 输入，已按 probe ID 合并展示。
     </p>
-    <div
+    <ProbeSourceTable
       v-if="uniqueRows.length"
-      class="table-scroll"
-    >
-      <table class="rep">
-        <thead>
-          <tr>
-            <th>报告 ID</th>
-            <th>来源问题 ID</th>
-            <th>问题现象</th>
-            <th>模型</th>
-            <th>归因类型</th>
-            <th>归属簇</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in uniqueRows"
-            :key="row.probeId"
-          >
-            <td class="id">
-              <RouterLink :to="reportHref(row)">
-                {{ row.probeId }}
-              </RouterLink>
-            </td>
-            <td class="id">
-              <RouterLink :to="issueHref(row)">
-                {{ row.sourceBadCaseIds[0] ?? "—" }}
-              </RouterLink>
-            </td>
-            <td>{{ row.description }}</td>
-            <td class="mono model-cell">
-              {{ row.model ?? "—" }}
-            </td>
-            <td>
-              <span
-                class="type-chip"
-                :class="typeClass(row.attributeType)"
-              >{{ typeLabel(row.attributeType) }}</span>
-            </td>
-            <td class="mono">
-              {{ row.clusterId ?? "—" }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      :rows="uniqueRows"
+      show-cluster
+      :cluster-of-probe="clusterOfProbe"
+    />
     <p
       v-else
       class="waiting"

@@ -4,11 +4,23 @@ import type {
   EvolutionStepAttribution,
   StepAttributionItem,
 } from "@harness/contracts";
+import { computed } from "vue";
 
-defineProps<{
+import { renderMarkdown } from "../../../utils/markdown";
+
+const props = defineProps<{
   step: EvolutionStepAttribution;
   run: EvolutionRunCard;
 }>();
+
+const analysisHtml = computed(() =>
+  Object.fromEntries(
+    props.step.payload.items.map((item) => [
+      item.probeId,
+      renderMarkdown(item.analysis),
+    ]),
+  ),
+);
 
 function typeLabel(type: StepAttributionItem["attributeType"]): string {
   return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
@@ -51,9 +63,12 @@ function typeLabel(type: StepAttributionItem["attributeType"]): string {
       <p class="attr-line">
         <b>{{ item.description }}</b>
       </p>
-      <p class="analysis">
-        {{ item.analysis }}
-      </p>
+      <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
+      <div
+        class="analysis markdown"
+        v-html="analysisHtml[item.probeId]"
+      />
+      <!-- eslint-enable vue/no-v-html -->
     </div>
     <p
       v-if="step.payload.items.length === 0"
@@ -188,8 +203,20 @@ function typeLabel(type: StepAttributionItem["attributeType"]): string {
   padding: 8px 10px;
   border-radius: 7px;
   background: var(--bg-panel);
-  font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
+}
+
+.analysis :deep(pre) {
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.analysis :deep(a) {
+  color: var(--blue);
 }
 
 .waiting {

@@ -6,14 +6,22 @@ import asyncio
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, func, insert, select
 
 from app.config import Settings
 from app.db.factory import create_database
+from app.db.models.domain import (
+    bad_case_analysis,
+    bad_cases,
+    probe_reports,
+    session_families,
+    source_records,
+)
 from app.db.models.evolution import (
     evolution_finals,
     evolution_rounds,
     evolution_runs,
+    probe_cluster_probes,
     probe_clusters,
 )
 from app.db.models.users import users
@@ -34,6 +42,13 @@ def _run(
 ) -> dict[str, Any]:
     """Build one complete run row with deterministic snapshots."""
     created_at = CREATED_BASE - timedelta(minutes=minutes_ago)
+    eval_status = {
+        "running": "evaluating",
+        "blocked": "failed",
+        "completed": "completed",
+        "failed": "failed",
+    }.get(status, "pending")
+    push_status = "succeeded" if clusters else "pending"
     return {
         "id": run_id,
         "title": f"{run_id} 自进化",
@@ -52,8 +67,8 @@ def _run(
         "branch_name": f"evo/{run_id}",
         "workspace_path": None,
         "remote_name": "origin",
-        "push_status": "succeeded",
-        "pushed_at": created_at,
+        "push_status": push_status,
+        "pushed_at": created_at if clusters else None,
         "push_error": None,
         "window_from": date(2026, 8, 20),
         "window_to": date(2026, 9, 10),
@@ -62,7 +77,7 @@ def _run(
         "blocked_stage": "eval" if status == "blocked" else None,
         "retry_attempts": 0,
         "next_retry_at": None,
-        "eval_status": "pending",
+        "eval_status": eval_status,
         "error_stage": error[0] if error else None,
         "error_message": error[1] if error else None,
         "error_at": created_at if error else None,
@@ -70,13 +85,13 @@ def _run(
         "stats": {
             "sessions": 128,
             "probes": 46,
-            "usedProbes": 999,
-            "clusters": 999,
+            "usedProbes": clusters,
+            "clusters": clusters,
             "byAttributeType": {
-                "model": 12,
-                "prompt": 8,
-                "error": 8,
-                "nonIssue": 18,
+                "model": 0,
+                "prompt": 0,
+                "error": clusters,
+                "nonIssue": 46 - clusters,
             },
         },
         "created_by": created_by,
@@ -99,6 +114,41 @@ async def main() -> None:
                     select(users.c.id).where(users.c.username == "admin"),
                 )
             ).scalar_one()
+            fixture_ids = [
+                f"{run_id}-{seq}"
+                for run_id in (
+                    "run-running",
+                    "run-blocked",
+                    "run-completed-effective",
+                    "run-failed",
+                    "run-interrupted",
+                    "run-completed-no-benefit",
+                    "run-completed-unknown",
+                )
+                for seq in (1, 2)
+            ]
+            session_ids = [f"session-{suffix}" for suffix in fixture_ids]
+            probe_ids = [f"probe-{suffix}" for suffix in fixture_ids]
+            case_ids = [f"case-{suffix}" for suffix in fixture_ids]
+            await session.execute(
+                delete(bad_case_analysis).where(
+                    bad_case_analysis.c.bad_case_id.in_(case_ids),
+                ),
+            )
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id.in_(case_ids)),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.probe_id.in_(probe_ids)),
+            )
+            await session.execute(
+                delete(session_families).where(session_families.c.id.in_(session_ids)),
+            )
+            await session.execute(
+                delete(source_records).where(
+                    source_records.c.root_session_id.in_(session_ids),
+                ),
+            )
             await session.execute(delete(evolution_runs))
             rows = [
                 _run(
@@ -172,7 +222,20 @@ async def main() -> None:
             await session.execute(insert(evolution_runs), rows)
 
             cluster_rows: list[dict[str, Any]] = []
+            cluster_probe_rows: list[dict[str, Any]] = []
             round_rows: list[dict[str, Any]] = []
+            session_rows: list[dict[str, Any]] = []
+            source_rows: list[dict[str, Any]] = []
+            probe_rows: list[dict[str, Any]] = []
+            case_rows: list[dict[str, Any]] = []
+            analysis_rows: list[dict[str, Any]] = []
+            next_source_id = int(
+                (
+                    await session.execute(
+                        select(func.coalesce(func.max(source_records.c.id), 0)),
+                    )
+                ).scalar_one(),
+            )
             for run in rows:
                 count = {
                     "run-running": 2,
@@ -185,6 +248,11 @@ async def main() -> None:
                     "run-completed-unknown": 2,
                 }[str(run["id"])]
                 for seq in range(1, count + 1):
+                    suffix = f"{run['id']}-{seq}"
+                    session_id = f"session-{suffix}"
+                    probe_id = f"probe-{suffix}"
+                    case_id = f"case-{suffix}"
+                    next_source_id += 1
                     cluster_id = f"{run['id']}-cluster-{seq}"
                     cluster_rows.append(
                         {
@@ -198,6 +266,91 @@ async def main() -> None:
                             "severity": 7.4,
                             "rank": seq,
                             "created_at": CREATED_BASE,
+                        },
+                    )
+                    cluster_probe_rows.append(
+                        {
+                            "probe_cluster_id": cluster_id,
+                            "probe_id": probe_id,
+                        },
+                    )
+                    source_rows.append(
+                        {
+                            "id": next_source_id,
+                            "root_session_id": session_id,
+                            "agent_id": session_id,
+                            "kind": "main",
+                            "source_type": "synthetic",
+                            "line_count": 1,
+                            "received_at": CREATED_BASE,
+                        },
+                    )
+                    session_rows.append(
+                        {
+                            "id": session_id,
+                            "short_title": f"来源运行 {seq}",
+                            "title": f"来源运行 {seq}",
+                            "search_text": f"来源运行 {seq}",
+                            "repo_name": "example/repo",
+                            "project_path": "/workspace/example",
+                            "model": "glm-5.3",
+                            "models": ["glm-5.3"],
+                            "started_at": CREATED_BASE,
+                            "ended_at": CREATED_BASE,
+                            "duration_seconds": 1,
+                            "status": "completed",
+                            "skill_names": ["deep-research"],
+                            "user_turns_count": 1,
+                            "messages_count": 1,
+                            "tools_count": 0,
+                            "errors_count": 1,
+                            "agents_count": 1,
+                            "tokens_total": 1,
+                            "source_type": "synthetic",
+                            "main_record_id": next_source_id,
+                            "imported_at": CREATED_BASE,
+                            "updated_at": CREATED_BASE,
+                        },
+                    )
+                    case_rows.append(
+                        {
+                            "bad_case_id": case_id,
+                            "bad_case_session_id": session_id,
+                            "bad_case_type": "discovery",
+                            "object_name": "deep-research",
+                            "object_type": "skill",
+                            "object_version": "v2.0.0",
+                            "reason": f"检索索引读取失败（来源 {seq}）",
+                            "meta_data": {},
+                            "source": "fixtures",
+                            "created_at": CREATED_BASE,
+                            "updated_at": CREATED_BASE,
+                        },
+                    )
+                    probe_rows.append(
+                        {
+                            "probe_id": probe_id,
+                            "session_id": session_id,
+                            "probe_type": "skill",
+                            "probe_object": "deep-research",
+                            "object_version": "v2.0.0",
+                            "attribute_type": "error",
+                            "probe_description": f"检索索引读取失败（来源 {seq}）",
+                            "probe_analysis": (
+                                "**确认问题**\n\n"
+                                f"- 第 {seq} 条来源缺少快照校验"
+                            ),
+                            "created_at": CREATED_BASE,
+                            "updated_at": CREATED_BASE,
+                        },
+                    )
+                    analysis_rows.append(
+                        {
+                            "bad_case_id": case_id,
+                            "analysis_status": "analyzed_issue",
+                            "probe_id": probe_id,
+                            "analysis_result": {"summary": "索引读取缺少校验"},
+                            "updated_at": CREATED_BASE,
                         },
                     )
                     if run["id"] == "run-running" and seq == 1:
@@ -304,7 +457,17 @@ async def main() -> None:
                                 ),
                             },
                         )
+            await session.execute(insert(source_records), source_rows)
+            await session.execute(insert(session_families), session_rows)
+            await session.execute(insert(bad_cases), case_rows)
+            await session.execute(insert(probe_reports), probe_rows)
+            await session.execute(insert(bad_case_analysis), analysis_rows)
             await session.execute(insert(probe_clusters), cluster_rows)
+            if cluster_probe_rows:
+                await session.execute(
+                    insert(probe_cluster_probes),
+                    cluster_probe_rows,
+                )
             if round_rows:
                 round_defaults: dict[str, Any] = {
                     "started_at": None,

@@ -2,22 +2,21 @@
 import type { EvolutionStepClusters, StepCluster } from "@harness/contracts";
 import { computed, nextTick, ref, watch } from "vue";
 
+import ProbeSourceTable from "./ProbeSourceTable.vue";
+
 const props = defineProps<{
   step: EvolutionStepClusters;
   focusCluster?: string;
 }>();
+const emit = defineEmits<{
+  "missing-focus": [];
+}>();
 
 const expanded = ref<Set<string>>(new Set());
 const highlighted = ref<string | null>(null);
+const missingNotice = ref(false);
 
 const clusters = computed(() => props.step.payload.clusters);
-const missingFocus = computed(
-  () =>
-    Boolean(props.focusCluster) &&
-    !clusters.value.some(
-      (cluster) => cluster.probeClusterId === props.focusCluster,
-    ),
-);
 
 function toggle(clusterId: string): void {
   const next = new Set(expanded.value);
@@ -30,19 +29,21 @@ function typeLabel(type: StepCluster["type"]): string {
   return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
 }
 
-function sessionHref(probe: StepCluster["probes"][number]): string {
-  const query = new URLSearchParams({
-    case: probe.sourceBadCaseIds[0] ?? "",
-    tab: "desc",
-  });
-  return `/sessions/${encodeURIComponent(probe.sessionId)}/errors?${query}`;
-}
-
 watch(
   () => [props.focusCluster, clusters.value] as const,
   async ([clusterId]) => {
     highlighted.value = null;
     if (!clusterId) return;
+    const exists = clusters.value.some(
+      (cluster) => cluster.probeClusterId === clusterId,
+    );
+    if (!exists) {
+      missingNotice.value = true;
+      emit("missing-focus");
+      return;
+    }
+    missingNotice.value = false;
+    expanded.value = new Set([...expanded.value, clusterId]);
     await nextTick();
     highlighted.value = clusterId;
     const target = document.getElementById(`cluster-${clusterId}`);
@@ -62,7 +63,7 @@ watch(
       </span>
     </h3>
     <p
-      v-if="missingFocus"
+      v-if="missingNotice"
       class="missing-focus"
       role="status"
     >
@@ -106,22 +107,7 @@ watch(
         <p class="cb-label">
           来源问题（{{ cluster.probes.length }} 条 · 来自同一归因类型）
         </p>
-        <div class="report-chips">
-          <RouterLink
-            v-for="probe in cluster.probes"
-            :key="probe.probeId"
-            class="report-chip"
-            :to="sessionHref(probe)"
-          >
-            {{ probe.probeId }} · {{ probe.description }}
-          </RouterLink>
-        </div>
-        <p
-          v-if="cluster.probes.length === 0"
-          class="empty-copy"
-        >
-          该簇暂无 probe 明细。
-        </p>
+        <ProbeSourceTable :rows="cluster.probes" />
       </div>
     </div>
     <p

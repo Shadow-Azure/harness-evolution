@@ -1,0 +1,175 @@
+<script setup lang="ts">
+import type { ProbePreviewItem } from "@harness/contracts";
+
+defineProps<{
+  rows: ProbePreviewItem[];
+  showCluster?: boolean;
+  clusterOfProbe?: Record<string, string | null>;
+}>();
+
+function href(probe: ProbePreviewItem, tab: "attr" | "desc"): string {
+  const query = new URLSearchParams({
+    case: probe.sourceBadCaseIds[0] ?? "",
+    tab,
+  });
+  return `/sessions/${encodeURIComponent(probe.sessionId)}/errors?${query}`;
+}
+
+function typeLabel(type: ProbePreviewItem["attributeType"]): string {
+  if (type === "prompt") return "prompt";
+  if (type === "model") return "模型";
+  return "错误";
+}
+</script>
+
+<template>
+  <div
+    v-if="rows.length"
+    class="table-scroll"
+  >
+    <table class="probe-rep">
+      <thead>
+        <tr>
+          <th>报告 ID</th>
+          <th>来源问题 ID</th>
+          <th>问题现象</th>
+          <th>{{ showCluster ? "归属簇" : "来源 session" }}</th>
+          <th>模型</th>
+          <th>归因类型</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="probe in rows"
+          :key="probe.probeId"
+        >
+          <td class="id">
+            <RouterLink :to="href(probe, 'attr')">
+              {{ probe.probeId }}
+            </RouterLink>
+          </td>
+          <td class="id">
+            <RouterLink :to="href(probe, 'desc')">
+              {{ probe.sourceBadCaseIds[0] ?? "—" }}
+            </RouterLink>
+          </td>
+          <td>{{ probe.description }}</td>
+          <td
+            v-if="showCluster"
+            class="mono"
+          >
+            {{ clusterOfProbe?.[probe.probeId] ?? "—" }}
+          </td>
+          <td
+            v-else
+            class="mono source-cell"
+            :title="probe.sessionId"
+          >
+            {{ probe.sessionTitle ?? probe.sessionId }}
+          </td>
+          <td class="mono model-cell">
+            {{ probe.model ?? "—" }}
+          </td>
+          <td>
+            <span
+              class="type-chip"
+              :class="`type-${probe.attributeType}`"
+            >{{ typeLabel(probe.attributeType) }}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p
+    v-else
+    class="empty-copy"
+  >
+    无关联问题报告。
+  </p>
+</template>
+
+<style scoped>
+.table-scroll {
+  overflow-x: auto;
+}
+
+.probe-rep {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.probe-rep th {
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.probe-rep td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+  vertical-align: top;
+}
+
+.probe-rep tr:last-child td {
+  border-bottom: 0;
+}
+
+.probe-rep a {
+  color: var(--blue);
+  font-family: var(--mono);
+  text-decoration: none;
+}
+
+.probe-rep a:hover {
+  text-decoration: underline;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.source-cell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-cell {
+  color: var(--cyan);
+  white-space: nowrap;
+}
+
+.type-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.type-error {
+  color: var(--red);
+}
+
+.type-prompt {
+  color: var(--orange);
+}
+
+.type-model {
+  color: var(--purple);
+}
+
+.empty-copy {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+</style>

@@ -221,6 +221,55 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "final",
     }
     assert components["EvolutionRunWindow"]["properties"]["from"]["anyOf"][0]["format"] == ("date")
+    detail_schema = components["EvolutionRunDetail"]
+    assert detail_schema["properties"]["evalStatus"]["enum"] == [
+        "pending",
+        "evaluating",
+        "completed",
+        "failed",
+        "timeout",
+    ]
+    assert detail_schema["properties"]["blockedStage"]["anyOf"][0]["enum"] == [
+        "prepare",
+        "clone",
+        "cluster",
+        "patch",
+        "push",
+        "eval",
+        "commit",
+        "deciding",
+    ]
+    assert components["EvolutionRunWorkspace"]["properties"]["pushStatus"]["enum"] == [
+        "pending",
+        "pushing",
+        "succeeded",
+        "failed",
+        "skipped",
+    ]
+    assert components["StepRound"]["properties"]["status"]["enum"] == [
+        "pending",
+        "patching",
+        "pushing",
+        "evaluating",
+        "deciding",
+        "accepted",
+        "rejected",
+        "failed",
+        "blocked",
+    ]
+    assert components["StepRoundPush"]["properties"]["status"]["enum"] == [
+        "pending",
+        "pushing",
+        "succeeded",
+        "failed",
+    ]
+    assert components["StepRoundEval"]["properties"]["status"]["enum"] == [
+        "pending",
+        "evaluating",
+        "completed",
+        "failed",
+        "timeout",
+    ]
     assert target_collection["get"]["responses"]["200"]["content"]["application/json"][
         "schema"
     ] == {"$ref": "#/components/schemas/EvolutionTargetList"}

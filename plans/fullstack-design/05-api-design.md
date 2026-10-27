@@ -293,7 +293,7 @@ erDiagram
 "steps": [
   { "index": 0, "key": "input", "title": "筛选输入", "status": "done" },
   { "index": 1, "key": "clusters", "title": "问题聚类", "status": "done" },
-  { "index": 2, "key": "attribution", "title": "归因确认", "status": "done" },
+  { "index": 2, "key": "attribution", "title": "LLM 归因置信度", "status": "done" },
   { "index": 3, "key": "severity", "title": "严重程度排序", "status": "done" },
   { "index": 4, "key": "iteration", "title": "迭代优化", "status": "active", "detail": "第 3/5 轮" },
   { "index": 5, "key": "final", "title": "测试集终评", "status": "pending" }
@@ -315,7 +315,7 @@ erDiagram
 |---|---|---|---|
 | 0 筛选输入 | `input` | `GET /evolution/runs/{rid}/steps/input` | `condition`、`hits`（sessions/probes/usedProbes/byAttributeType 含 nonIssue）、`rows[]`（`ProbeRow` + `clusterId`） |
 | 1 问题聚类 | `clusters` | `GET /evolution/runs/{rid}/steps/clusters` | `clusters[]`：`probeClusterId/title/description/type/probeCount/confidence/severity/probes[]`（`ProbeRow`；confidence/severity 未算完时为 `null`） |
-| 2 归因确认 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence（confidence 取所属簇的值） |
+| 2 LLM 归因置信度 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence（confidence 取所属簇的值） |
 | 3 严重程度排序 | `severity` | `GET /evolution/runs/{rid}/steps/severity` | `rows[]`：rank/clusterId/title/type/probeCount/reportCount/confidence/impact/severity（按落库 severity 降序） |
 | 4 迭代优化 | `iteration` | `GET /evolution/runs/{rid}/steps/iteration` | `rounds[]`：clusterId/title/type/probeCount/confidence/severity/probes[]（`ProbeRow`）/status/candidate/push/eval/accepted/finalCommit |
 | 5 测试集终评 | `final` | `GET /evolution/runs/{rid}/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]`（结构化修改点） |
@@ -392,7 +392,7 @@ erDiagram
 
 ```json
 {
-  "key": "attribution", "index": 2, "title": "归因确认", "status": "done",
+  "key": "attribution", "index": 2, "title": "LLM 归因置信度", "status": "done",
   "payload": {
     "items": [
       { "clusterId": "C1", "probeId": "pr-050b-03", "probeObject": "deep-research",

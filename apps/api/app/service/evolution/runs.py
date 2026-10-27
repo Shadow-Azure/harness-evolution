@@ -21,6 +21,30 @@ EvolutionRunStatus = Literal[
     "failed",
     "interrupted",
 ]
+EvolutionRunPushStatus = Literal[
+    "pending",
+    "pushing",
+    "succeeded",
+    "failed",
+    "skipped",
+]
+EvolutionRunEvalStatus = Literal[
+    "pending",
+    "evaluating",
+    "completed",
+    "failed",
+    "timeout",
+]
+EvolutionRunBlockedStage = Literal[
+    "prepare",
+    "clone",
+    "cluster",
+    "patch",
+    "push",
+    "eval",
+    "commit",
+    "deciding",
+]
 _RUNNING_STATUSES = frozenset({"preparing", "running", "blocked"})
 _RUN_STAGE_LABELS = (
     "第 1/6 步 · 筛选输入中…",
@@ -88,7 +112,7 @@ class EvolutionRunFinal(IdentityModel):
 
     best_version: str
     branch_name: str | None
-    push_status: str
+    push_status: EvolutionRunPushStatus
     verdict: bool
     best_score: float
     init_score: float
@@ -123,7 +147,7 @@ class EvolutionRunWorkspace(IdentityModel):
     branch_name: str | None
     workspace_path: str | None
     remote: str
-    push_status: str
+    push_status: EvolutionRunPushStatus
     pushed_at: datetime | None
     push_error: str | None
 
@@ -149,10 +173,10 @@ class EvolutionRunStep(IdentityModel):
 class EvolutionRunDetail(EvolutionRunCard):
     """Complete shell consumed by the six-step run-detail page."""
 
-    blocked_stage: str | None
+    blocked_stage: EvolutionRunBlockedStage | None
     retry_attempts: int
     next_retry_at: datetime | None
-    eval_status: str
+    eval_status: EvolutionRunEvalStatus
     workspace: EvolutionRunWorkspace
     last_event_seq: int
     steps: list[EvolutionRunStep]
@@ -247,7 +271,7 @@ def _final(summary: EvolutionRunSummaryRecord) -> EvolutionRunFinal | None:
     return EvolutionRunFinal(
         best_version=final.best_version,
         branch_name=summary.run.branch_name,
-        push_status=summary.run.push_status,
+        push_status=cast(EvolutionRunPushStatus, summary.run.push_status),
         verdict=final.verdict,
         best_score=final.best_score,
         init_score=final.init_score,
@@ -356,10 +380,13 @@ class EvolutionRunService:
         run = summary.run
         return EvolutionRunDetail(
             **card.model_dump(),
-            blocked_stage=run.blocked_stage,
+            blocked_stage=cast(
+                EvolutionRunBlockedStage | None,
+                run.blocked_stage,
+            ),
             retry_attempts=run.retry_attempts,
             next_retry_at=run.next_retry_at,
-            eval_status=run.eval_status,
+            eval_status=cast(EvolutionRunEvalStatus, run.eval_status),
             workspace=EvolutionRunWorkspace(
                 repo_url=run.repo_url,
                 sub_dir=run.sub_dir,
@@ -369,7 +396,7 @@ class EvolutionRunService:
                 branch_name=run.branch_name,
                 workspace_path=run.workspace_path,
                 remote=run.remote_name,
-                push_status=run.push_status,
+                push_status=cast(EvolutionRunPushStatus, run.push_status),
                 pushed_at=run.pushed_at,
                 push_error=run.push_error,
             ),

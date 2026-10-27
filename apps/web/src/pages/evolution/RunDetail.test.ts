@@ -153,7 +153,7 @@ function detailSteps(
   const steps = [
     ["input", "筛选输入"],
     ["clusters", "问题聚类"],
-    ["attribution", "归因确认"],
+    ["attribution", "LLM 归因置信度"],
     ["severity", "严重程度排序"],
     ["iteration", "迭代优化"],
     ["final", "测试集终评"],
@@ -252,6 +252,67 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("evolution run detail page", () => {
+  it("shows an unreached explanation when a failed run stops before step 1", async () => {
+    const requested: string[] = [];
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "failed",
+              error: {
+                stage: "prepare",
+                message: "仓库 clone 失败",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+              progress: {
+                unit: 0,
+                total: 6,
+                percent: 0,
+                stageLabel: "准备运行",
+                doneRounds: 0,
+                accepted: 0,
+              },
+            }),
+            ["pending", "pending", "pending", "pending", "pending", "pending"],
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", ({ params }) => {
+        requested.push(String(params.step));
+        return HttpResponse.json(inputStep);
+      }),
+    );
+    const wrapper = await mountPage();
+
+    expect(requested).toEqual([]);
+    expect(wrapper.text()).not.toContain("正在读取当前步骤");
+    expect(wrapper.text()).toContain("该步骤尚未到达");
+    expect(wrapper.text()).toContain("运行在第 1 步完成前已终止");
+  });
+
+  it("copies the run branch name from a keyboard-accessible control", async () => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => writes.push(value) },
+    });
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(detail())),
+      http.get("/api/evolution/runs/evo-full-1/steps/input", () =>
+        HttpResponse.json(inputStep)),
+    );
+    const wrapper = await mountPage();
+
+    const button = wrapper.get("[data-testid='copy-branch']");
+    expect(button.element.tagName).toBe("BUTTON");
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(writes).toEqual(["evo/evo-full-1"]);
+    expect(button.text()).toContain("已复制");
+  });
+
   it("renders the preparing input step and keeps later steps disabled", async () => {
     server.use(
       http.get("/api/evolution/runs/:runId", () =>
@@ -376,6 +437,49 @@ describe("evolution run detail page", () => {
       "step",
     );
     expect(wrapper.text()).toContain("M=1 类");
+  });
+
+  it("removes a missing cluster deep-link while retaining the notice", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "completed" }),
+            ["done", "done", "done", "done", "done", "done"],
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json({
+          key: "clusters",
+          index: 1,
+          title: "问题聚类",
+          status: "done",
+          clickable: true,
+          payload: {
+            clusters: [
+              {
+                probeClusterId: "C1",
+                title: "检索索引读取失败",
+                description: "读取越界",
+                type: "error",
+                probeCount: 1,
+                confidence: 0.82,
+                severity: 7.4,
+                probes: [],
+              },
+            ],
+          },
+        })),
+    );
+    const wrapper = await mountPage(
+      "evo-full-1",
+      "?step=clusters&cluster=missing",
+    );
+
+    expect(wrapper.vm.$route.fullPath).toBe(
+      "/evolution/runs/evo-full-1?step=clusters",
+    );
+    expect(wrapper.text()).toContain("目标簇已不存在");
   });
 
   it("loads a completed run's final verdict by default", async () => {

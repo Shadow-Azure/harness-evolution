@@ -5,6 +5,8 @@ import { computed } from "vue";
 const props = defineProps<{
   step: EvolutionStepFinal;
   targetVersion: string;
+  pushStatus?: string;
+  pushedAt?: string | null;
 }>();
 
 type Metric = {
@@ -52,6 +54,25 @@ function typeLabel(type: string): string {
   if (type === "model") return "模型";
   return "错误";
 }
+
+const pushLabel = computed(() => {
+  switch (props.pushStatus) {
+    case "succeeded":
+      return "最终 push 成功";
+    case "pushing":
+      return "最终 push 进行中";
+    case "failed":
+      return "最终 push 失败";
+    case "skipped":
+      return "最终 push 已跳过";
+    default:
+      return "最终 push 待执行";
+  }
+});
+
+const pushedAtLabel = computed(() =>
+  props.pushedAt ? props.pushedAt.replace("T", " ").slice(0, 16) : "尚未推送",
+);
 </script>
 
 <template>
@@ -74,6 +95,7 @@ function typeLabel(type: string): string {
             （{{ deltaLabel(step.payload.bestScore - step.payload.initScore) }}）
           </template>
         </span>
+        <span class="final-push mono">{{ pushLabel }} · {{ pushedAtLabel }}</span>
       </div>
 
       <section class="cb-sec">
@@ -216,6 +238,12 @@ function typeLabel(type: string): string {
 .desc {
   color: var(--text-dim);
   font-size: 12px;
+}
+
+.final-push {
+  width: 100%;
+  color: var(--text-faint);
+  font-size: 11px;
 }
 
 .mono,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { StepCondition } from "@harness/contracts";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { type LocationQueryRaw, useRoute, useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
@@ -32,6 +32,7 @@ const selectedStep = computed(
 const focusCluster = computed(() =>
   typeof route.query.cluster === "string" ? route.query.cluster : undefined,
 );
+const branchCopied = ref(false);
 
 const {
   data: stepData,
@@ -150,6 +151,24 @@ function retryRun(): void {
 
 function retryStep(): void {
   void refetchStep();
+}
+
+async function copyBranch(): Promise<void> {
+  const branch = run.value?.workspace.branchName;
+  if (!branch) return;
+  try {
+    await navigator.clipboard.writeText(branch);
+    branchCopied.value = true;
+  } catch {
+    branchCopied.value = false;
+  }
+}
+
+function clearMissingClusterFocus(): void {
+  if (!("cluster" in route.query)) return;
+  const query: LocationQueryRaw = { ...route.query };
+  delete query.cluster;
+  void router.replace({ query });
 }
 </script>
 
@@ -343,8 +362,22 @@ function retryStep(): void {
             <div class="k">
               run 分支
             </div>
-            <div class="v mono">
-              {{ run.workspace.branchName ?? "尚未创建" }}
+            <div class="v">
+              <button
+                v-if="run.workspace.branchName"
+                class="branch-copy mono"
+                type="button"
+                data-testid="copy-branch"
+                :title="`点击复制分支名 ${run.workspace.branchName}`"
+                @click="copyBranch"
+              >
+                {{ run.workspace.branchName }}
+                <span aria-live="polite">{{ branchCopied ? " · 已复制" : " · 复制" }}</span>
+              </button>
+              <span
+                v-else
+                class="muted"
+              >尚未创建</span>
             </div>
           </div>
           <div class="kv">
@@ -378,6 +411,14 @@ function retryStep(): void {
             </div>
             <div class="v mono">
               {{ run.workspace.pushStatus }}
+            </div>
+          </div>
+          <div class="kv">
+            <div class="k">
+              推送时间
+            </div>
+            <div class="v mono">
+              {{ run.workspace.pushedAt?.replace("T", " ").slice(0, 16) ?? "尚未推送" }}
             </div>
           </div>
           <div class="kv">
@@ -447,8 +488,10 @@ function retryStep(): void {
         :run="run"
         :step="stepData"
         :condition="condition"
-        :is-pending="stepPending"
+        :is-pending="selectedStep?.clickable === true && stepPending"
+        :is-unreached="selectedStep?.clickable !== true"
         :focus-cluster="focusCluster"
+        @missing-cluster-focus="clearMissingClusterFocus"
       />
     </template>
   </section>
@@ -606,6 +649,26 @@ function retryStep(): void {
 
 .workspace-path {
   word-break: break-all;
+}
+
+.branch-copy {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.branch-copy:hover,
+.branch-copy:focus-visible {
+  color: var(--blue);
+}
+
+.branch-copy span {
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .workspace-paths {

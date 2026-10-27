@@ -1075,7 +1075,7 @@ export interface components {
          */
         EvolutionRunDetail: {
             /** Blockedstage */
-            blockedStage: string | null;
+            blockedStage: ("prepare" | "clone" | "cluster" | "patch" | "push" | "eval" | "commit" | "deciding") | null;
             /**
              * Createdat
              * Format: date-time
@@ -1084,8 +1084,11 @@ export interface components {
             /** Createdby */
             createdBy: string | null;
             error: components["schemas"]["EvolutionRunError"] | null;
-            /** Evalstatus */
-            evalStatus: string;
+            /**
+             * Evalstatus
+             * @enum {string}
+             */
+            evalStatus: "pending" | "evaluating" | "completed" | "failed" | "timeout";
             final: components["schemas"]["EvolutionRunFinal"] | null;
             /** Lasteventseq */
             lastEventSeq: number;
@@ -1145,8 +1148,11 @@ export interface components {
             branchName: string | null;
             /** Initscore */
             initScore: number;
-            /** Pushstatus */
-            pushStatus: string;
+            /**
+             * Pushstatus
+             * @enum {string}
+             */
+            pushStatus: "pending" | "pushing" | "succeeded" | "failed" | "skipped";
             /** Verdict */
             verdict: boolean;
         };
@@ -1267,8 +1273,11 @@ export interface components {
             branchName: string | null;
             /** Pusherror */
             pushError: string | null;
-            /** Pushstatus */
-            pushStatus: string;
+            /**
+             * Pushstatus
+             * @enum {string}
+             */
+            pushStatus: "pending" | "pushing" | "succeeded" | "failed" | "skipped";
             /** Pushedat */
             pushedAt: string | null;
             /** Remote */
@@ -2269,8 +2278,11 @@ export interface components {
             roundId: string;
             /** Severity */
             severity: number | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "failed" | "blocked";
             /** Title */
             title: string;
             /**
@@ -2290,8 +2302,11 @@ export interface components {
             current: number | null;
             /** Nextpollat */
             nextPollAt?: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "evaluating" | "completed" | "failed" | "timeout";
         };
         /**
          * StepRoundPatch
@@ -2312,8 +2327,11 @@ export interface components {
             attempts: number;
             /** Error */
             error: string | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "pushing" | "succeeded" | "failed";
         };
         /**
          * StepSeverityPayload

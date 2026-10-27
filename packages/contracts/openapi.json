@@ -784,6 +784,16 @@
           "blockedStage": {
             "anyOf": [
               {
+                "enum": [
+                  "prepare",
+                  "clone",
+                  "cluster",
+                  "patch",
+                  "push",
+                  "eval",
+                  "commit",
+                  "deciding"
+                ],
                 "type": "string"
               },
               {
@@ -819,6 +829,13 @@
             ]
           },
           "evalStatus": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "completed",
+              "failed",
+              "timeout"
+            ],
             "title": "Evalstatus",
             "type": "string"
           },
@@ -989,6 +1006,13 @@
             "type": "number"
           },
           "pushStatus": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed",
+              "skipped"
+            ],
             "title": "Pushstatus",
             "type": "string"
           },
@@ -1277,6 +1301,13 @@
             "title": "Pusherror"
           },
           "pushStatus": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed",
+              "skipped"
+            ],
             "title": "Pushstatus",
             "type": "string"
           },
@@ -3859,6 +3890,17 @@
             "title": "Severity"
           },
           "status": {
+            "enum": [
+              "pending",
+              "patching",
+              "pushing",
+              "evaluating",
+              "deciding",
+              "accepted",
+              "rejected",
+              "failed",
+              "blocked"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -3934,6 +3976,13 @@
             "title": "Nextpollat"
           },
           "status": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "completed",
+              "failed",
+              "timeout"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -3989,6 +4038,12 @@
             "title": "Error"
           },
           "status": {
+            "enum": [
+              "pending",
+              "pushing",
+              "succeeded",
+              "failed"
+            ],
             "title": "Status",
             "type": "string"
           }

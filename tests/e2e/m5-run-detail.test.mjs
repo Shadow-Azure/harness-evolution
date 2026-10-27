@@ -269,6 +269,7 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     assert.match(running.text, /candidate 已 push/);
     assert.match(running.text, /评测中/);
     assert.match(running.text, /cluster 1/);
+    assert.match(running.text, /最终用于进化的问题数\s*2/);
     assert.equal(running.overflow, 0);
 
     await evaluate(
@@ -293,12 +294,22 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
         if (!location.search.includes("cluster=run-running-cluster-1")) return null;
         const target = document.querySelector("#cluster-run-running-cluster-1");
         if (!target?.classList.contains("highlighted")) return null;
-        return { href: location.href, highlighted: target.className };
+        return {
+          href: location.href,
+          highlighted: target.className,
+          text: target.textContent,
+          sourceRows: target.querySelectorAll("tbody tr").length,
+        };
       })()`,
       "cluster deep link highlight",
     );
     assert.match(clusterDeepLink.href, /step=clusters/);
     assert.match(clusterDeepLink.highlighted, /highlighted/);
+    assert.match(clusterDeepLink.text, /报告 ID/);
+    assert.match(clusterDeepLink.text, /来源问题 ID/);
+    assert.match(clusterDeepLink.text, /来源运行 1/);
+    assert.match(clusterDeepLink.text, /glm-5\.3/);
+    assert.equal(clusterDeepLink.sourceRows, 1);
 
     await installCookie(page, await currentLoginCookie());
     await page.session.send("Page.navigate", {
@@ -331,6 +342,7 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     assert.match(blocked.banner, /评测队列暂停/);
     assert.equal(blocked.current, "iteration");
     assert.match(blocked.body, /评测失败/);
+    assert.match(blocked.body, /评测状态\s*failed/);
     await screenshot(page, "02-blocked.png");
 
     await installCookie(page, await currentLoginCookie());
@@ -352,6 +364,8 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     );
     assert.equal(completed.current, "final");
     assert.match(completed.text, /ef56ab12cd34/);
+    assert.match(completed.text, /来源 1 份报告/);
+    assert.match(completed.text, /最终 push 成功/);
     await screenshot(page, "03-completed-final.png");
 
     await installCookie(page, await currentLoginCookie());

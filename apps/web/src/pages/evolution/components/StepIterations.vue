@@ -4,6 +4,7 @@ import { computed, ref } from "vue";
 
 import DiffView from "./DiffView.vue";
 import EvalCompare from "./EvalCompare.vue";
+import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
   step: EvolutionStepIteration;
@@ -22,10 +23,8 @@ function isTerminal(round: StepRound): boolean {
   return (
     round.status === "accepted" ||
     round.status === "rejected" ||
-    round.accepted ||
-    round.eval.status === "completed" ||
-    round.eval.status === "failed" ||
-    round.eval.status === "timeout"
+    round.status === "failed" ||
+    round.status === "blocked"
   );
 }
 
@@ -52,21 +51,41 @@ function deltaLabel(round: StepRound): string {
 }
 
 function statusLabel(round: StepRound): string {
-  if (round.accepted) return `已接纳 ${deltaLabel(round)}`;
-  if (round.status === "rejected") return `未接纳 ${deltaLabel(round)}`;
-  if (round.eval.status === "failed") return "评测失败";
-  if (round.eval.status === "timeout") return "评测超时";
-  if (round.status === "blocked") return "已阻塞";
-  if (round.eval.status === "evaluating") return "评测中";
-  if (round.push.status === "running") return "推送中";
-  if (round.candidate) return "candidate 已 push";
-  return "待执行";
+  switch (round.status) {
+    case "patching":
+      return "生成 patch 中";
+    case "pushing":
+      return "推送中";
+    case "evaluating":
+      return "评测中";
+    case "deciding":
+      return "决策中";
+    case "accepted":
+      return `已接纳 ${deltaLabel(round)}`;
+    case "rejected":
+      return `未接纳 ${deltaLabel(round)}`;
+    case "blocked":
+      return "已阻塞";
+    case "failed":
+      return "失败";
+    default:
+      if (round.push.status === "failed") return "推送失败";
+      if (round.eval.status === "failed") return "评测失败";
+      if (round.eval.status === "timeout") return "评测超时";
+      return "待执行";
+  }
 }
 
 function statusClass(round: StepRound): string {
-  if (round.accepted) return "accepted";
+  if (round.status === "accepted") return "accepted";
   if (round.status === "rejected") return "rejected";
-  if (["failed", "timeout"].includes(round.eval.status) || round.status === "blocked") {
+  if (round.status === "failed" || round.push.status === "failed") {
+    return "failed";
+  }
+  if (
+    ["failed", "timeout"].includes(round.eval.status) ||
+    round.status === "blocked"
+  ) {
     return "blocked";
   }
   if (!isTerminal(round)) return "running";
@@ -74,8 +93,32 @@ function statusClass(round: StepRound): string {
 }
 
 function candidateText(round: StepRound): string {
-  if (!round.candidate) return "尚未生成 candidate";
-  return `${round.candidate.ref} · ${round.candidate.commit.slice(0, 12)}`;
+  if (round.candidate) {
+    return `${round.candidate.ref} · ${round.candidate.commit.slice(0, 12)}`;
+  }
+  if (round.status === "patching") {
+    return "正在生成并应用 patch，候选 ref 尚未创建";
+  }
+  if (round.status === "failed") return "本轮失败，未生成 candidate";
+  return "尚未生成 candidate";
+}
+
+function candidateLabel(round: StepRound): string {
+  if (round.status === "patching") return "candidate 生成中";
+  if (round.push.status === "succeeded") return "candidate 已 push · ref / commit";
+  if (round.push.status === "failed") return "candidate push 失败 · ref / commit";
+  return "candidate ref / commit";
+}
+
+function pushLabel(status: string): string {
+  return (
+    {
+      pending: "待推送",
+      pushing: "推送中",
+      succeeded: "推送成功",
+      failed: "推送失败",
+    }[status] ?? status
+  );
 }
 </script>
 
@@ -126,28 +169,9 @@ function candidateText(round: StepRound): string {
       >
         <section class="cb-sec">
           <p class="cb-label">
-            来源问题（{{ round.probes.length }} 条 · 由归因结论聚类而来）
+            来源问题报告（{{ round.probes.length }} 份 · 由归因结论聚类而来）
           </p>
-          <div class="report-chips">
-            <RouterLink
-              v-for="probe in round.probes"
-              :key="probe.probeId"
-              class="report-chip"
-              :to="{
-                path: `/sessions/${probe.sessionId}/errors`,
-                query: {
-                  case: probe.sourceBadCaseIds[0] ?? '',
-                  tab: 'attr',
-                },
-              }"
-            >
-              {{ probe.probeId }}
-            </RouterLink>
-            <span
-              v-if="round.probes.length === 0"
-              class="muted"
-            >暂无 probe 明细</span>
-          </div>
+          <ProbeSourceTable :rows="round.probes" />
         </section>
 
         <section
@@ -162,7 +186,7 @@ function candidateText(round: StepRound): string {
 
         <section class="cb-sec">
           <p class="cb-label">
-            {{ round.candidate ? "candidate 已 push · ref / commit" : "candidate ref / commit" }}
+            {{ candidateLabel(round) }}
           </p>
           <div
             class="candidate"
@@ -177,7 +201,7 @@ function candidateText(round: StepRound): string {
             推送状态
           </p>
           <p class="phase-line">
-            <b>{{ round.push.status }}</b>
+            <b>{{ pushLabel(round.push.status) }}</b>
             · 尝试 {{ round.push.attempts }} 次
             <span
               v-if="round.push.error"
@@ -190,7 +214,11 @@ function candidateText(round: StepRound): string {
           <p class="cb-label">
             评测对比
           </p>
-          <EvalCompare :evaluation="round.eval" />
+          <EvalCompare
+            :evaluation="round.eval"
+            :accepted="round.status === 'accepted'"
+            :round-status="round.status"
+          />
           <p
             v-if="round.eval.nextPollAt"
             class="muted"
@@ -200,7 +228,7 @@ function candidateText(round: StepRound): string {
         </section>
 
         <section
-          v-if="round.accepted && round.finalCommit"
+          v-if="round.status === 'accepted' && round.finalCommit"
           class="cb-sec"
         >
           <p class="cb-label">
@@ -349,6 +377,11 @@ function candidateText(round: StepRound): string {
 .badge.blocked {
   background: color-mix(in srgb, var(--orange) 12%, transparent);
   color: var(--orange);
+}
+
+.badge.failed {
+  background: color-mix(in srgb, var(--red) 11%, transparent);
+  color: var(--red);
 }
 
 .badge.pending {
