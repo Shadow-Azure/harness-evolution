@@ -19,6 +19,8 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - tests/e2e/**
+  - tests/integration/**
 adr:
   - ../../notes/implemented/architecture/2026-10-28-evolution-run-events.md
 github:
