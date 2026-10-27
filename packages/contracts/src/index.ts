@@ -134,6 +134,21 @@ export type CatalogModel = components["schemas"]["CatalogModel"];
 /** Normalized model catalog. */
 export type CatalogModels = components["schemas"]["CatalogModels"];
 
+/** Wizard filter condition shared by probe preview and launch endpoints. */
+export type ProbeQueryRequest = components["schemas"]["ProbeQueryRequest"];
+
+/** Hit statistics shown by wizard step 2. */
+export type ProbeHitSummary = components["schemas"]["ProbeHitSummary"];
+
+/** One analyzed probe row rendered by wizard step 2. */
+export type ProbePreviewItem = components["schemas"]["ProbePreviewItem"];
+
+/** Complete probe preview payload for wizard step 2. */
+export type ProbeQueryResult = components["schemas"]["ProbeQueryResult"];
+
+/** Asynchronous launch acceptance returned by run and preview endpoints. */
+export type RunAccepted = components["schemas"]["RunAccepted"];
+
 /** FastAPI 真实 health 响应 fixture；前端类型测试不使用手写样例。 */
 export { healthFixtures } from "./generated/health-fixtures.js";
 

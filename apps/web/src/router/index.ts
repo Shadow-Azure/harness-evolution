@@ -52,6 +52,14 @@ export function createAppRouter() {
         path: "/evolution",
       },
       {
+        component: () => import("../pages/evolution/RunDetail.vue"),
+        path: "/evolution/runs/:runId",
+      },
+      {
+        component: () => import("../pages/evolution/ClusterPreview.vue"),
+        path: "/evolution/cluster/:runId",
+      },
+      {
         component: () => import("../pages/evolution/targets/Index.vue"),
         path: "/evolution/targets",
       },

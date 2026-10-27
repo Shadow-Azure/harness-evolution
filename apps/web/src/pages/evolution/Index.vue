@@ -1,20 +1,43 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { useQueryClient } from "@tanstack/vue-query";
+import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
+import { queryKeys } from "../../api/queryKeys";
 import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
+import LaunchWizard from "./components/LaunchWizard.vue";
 import RunGroup from "./components/RunGroup.vue";
 import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
 
 defineOptions({ name: "EvolutionPage" });
 
+const router = useRouter();
+const queryClient = useQueryClient();
 const { data, error, isPending, refetch } = useEvolutionRuns();
+const wizardOpen = ref(false);
 const running = computed(() => data.value?.running ?? []);
 const history = computed(() => data.value?.history ?? []);
 
 function retry(): void {
   void refetch();
+}
+
+/**
+ * Leave the wizard open-free and follow the accepted run to its detail page.
+ * @param mode Launched run mode.
+ * @param runId Accepted run identifier.
+ */
+async function onLaunched(
+  mode: "full" | "cluster_only",
+  runId: string,
+): Promise<void> {
+  wizardOpen.value = false;
+  await queryClient.invalidateQueries({ queryKey: queryKeys.evolutionRuns });
+  await router.push(
+    mode === "full" ? `/evolution/runs/${runId}` : `/evolution/cluster/${runId}`,
+  );
 }
 </script>
 
@@ -31,8 +54,8 @@ function retry(): void {
           <button
             class="launch-run"
             type="button"
-            disabled
-            title="启动向导将在 M5-05 接入"
+            data-testid="open-launch-wizard"
+            @click="wizardOpen = true"
           >
             ＋ 启动自进化
           </button>
@@ -65,6 +88,12 @@ function retry(): void {
       />
     </template>
   </section>
+
+  <LaunchWizard
+    v-if="wizardOpen"
+    @close="wizardOpen = false"
+    @launched="onLaunched"
+  />
 </template>
 
 <style scoped>

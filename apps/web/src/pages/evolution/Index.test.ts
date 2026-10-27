@@ -127,11 +127,25 @@ describe("evolution run list page", () => {
     );
     expect(wrapper.text()).toContain("当前没有正在执行的自进化");
     expect(wrapper.text()).toContain("暂无历史记录");
-    const launch = wrapper.get(".launch-run");
-    expect(launch.attributes("disabled")).toBeDefined();
-    expect(launch.attributes("title")).toContain("M5-05");
     expect(wrapper.find(".target-config-entry").exists()).toBe(true);
     expect(wrapper.find(".canvas").exists()).toBe(false);
+  });
+
+  it("opens the launch wizard from the header action", async () => {
+    server.use(
+      http.get("/api/evolution/runs", () =>
+        HttpResponse.json({ running: [], history: [] })),
+      http.get("/api/catalogs/targets", () =>
+        HttpResponse.json({ skill: [], agent: [] })),
+      http.get("/api/catalogs/models", () => HttpResponse.json({ items: [] })),
+    );
+    const wrapper = await mountPage();
+
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
+    await wrapper.get("[data-testid='open-launch-wizard']").trigger("click");
+
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(true);
+    expect(wrapper.get(".wz-steps").text()).toContain("① 设置筛选条件");
   });
 
   it("preserves backend group grouping and ordering", async () => {

@@ -10,7 +10,7 @@ depends:
   - m5-02
   - m5-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
@@ -19,6 +19,8 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - tests/**
+  - plans/**
 adr: []
 github:
   number: 54
