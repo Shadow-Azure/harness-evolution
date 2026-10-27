@@ -6,6 +6,7 @@ import pytest
 
 from app.errors import AppError
 from app.main import create_app
+from app.service.events import ShapeRunTopicAuthorizer
 from app.service.identity.tickets import TicketStore
 from app.service.identity.tokens import TokenService
 from tests.identity.helpers import change_admin_password, identity_settings, login
@@ -121,6 +122,7 @@ async def test_event_ticket_is_bound_to_run_topics_and_single_use(tmp_path: Path
         admin_password="initial-password",
     )
     app = create_app(settings)
+    app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
     from httpx import ASGITransport, AsyncClient
 
     transport = ASGITransport(app=app)
@@ -176,6 +178,7 @@ async def test_event_ticket_is_bound_to_the_issuing_user(tmp_path: Path) -> None
         admin_password="initial-password",
     )
     app = create_app(settings)
+    app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
     from httpx import ASGITransport, AsyncClient
 
     transport = ASGITransport(app=app)

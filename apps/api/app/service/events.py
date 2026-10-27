@@ -62,7 +62,7 @@ class RunEventRecorder(Protocol):
         stage: str,
         message: str,
         job_id: str,
-    ) -> int | None:
+    ) -> int:
         """Persist one interruption event and return its run sequence, if supported."""
 
 
@@ -268,9 +268,13 @@ async def stream_events(
                 yield item
                 continue
             previous = highest_event.get(item.topic, cursor)
-            if item.event_id is not None and item.event_id <= previous:
+            if (
+                item.event == "run.event"
+                and item.event_id is not None
+                and item.event_id <= previous
+            ):
                 continue
-            if item.event_id is not None:
+            if item.event == "run.event" and item.event_id is not None:
                 highest_event[item.topic] = item.event_id
             yield item
     finally:

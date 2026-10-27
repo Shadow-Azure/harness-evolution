@@ -1,10 +1,15 @@
-"""Read-only projection of the evolution event history owned by m5-08."""
+"""Durable evolution event history and pagination records."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Column,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     MetaData,
@@ -25,7 +30,12 @@ evolution_run_events = Table(
         primary_key=True,
         autoincrement=True,
     ),
-    Column("run_id", String(36), nullable=False),
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("evolution_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     Column("seq", Integer, nullable=False),
     Column("event_type", String(48), nullable=False),
     Column("level", String(8), nullable=False),
@@ -50,3 +60,32 @@ evolution_run_events = Table(
     Index("ix_evolution_run_events_level", "level"),
     Index("ix_evolution_run_events_cluster_id", "cluster_id"),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RunEventRecord:
+    """One persisted event mapped into a database-neutral boundary record."""
+
+    run_id: str
+    seq: int
+    event_type: str
+    level: str
+    stage: str
+    step_index: int | None
+    cluster_id: str | None
+    round_id: str | None
+    job_id: str | None
+    message: str
+    payload: dict[str, Any] | None
+    error_type: str | None
+    error_message: str | None
+    error_detail: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class RunEventPageRecord:
+    """One stable event page plus whether another matching row exists."""
+
+    items: tuple[RunEventRecord, ...]
+    has_more: bool

@@ -194,6 +194,13 @@ class EvolutionRunStore(Protocol):
         """Return one run with its batched list facts."""
 
 
+class EvolutionRunEventSeqReader(Protocol):
+    """Read the persisted event high-water mark for one run shell."""
+
+    async def max_seq(self, run_id: str) -> int:
+        """Return the latest durable event sequence."""
+
+
 def _non_negative_int(value: object) -> int:
     """Return one optional non-negative integer without coercing booleans."""
     if isinstance(value, bool) or not isinstance(value, int):
@@ -354,9 +361,14 @@ def _detail_steps(
 class EvolutionRunService:
     """Project repository summaries into backend-grouped run cards."""
 
-    def __init__(self, store: EvolutionRunStore) -> None:
+    def __init__(
+        self,
+        store: EvolutionRunStore,
+        events: EvolutionRunEventSeqReader | None = None,
+    ) -> None:
         """Bind the service to its run summary store."""
         self._store = store
+        self._events = events
 
     async def list(self) -> EvolutionRunList:
         """Return repository-ordered running and history groups."""
@@ -373,6 +385,7 @@ class EvolutionRunService:
             return None
         card = _card(summary)
         run = summary.run
+        last_event_seq = await self._events.max_seq(run_id) if self._events is not None else 0
         return EvolutionRunDetail(
             **card.model_dump(),
             blocked_stage=cast(
@@ -395,6 +408,6 @@ class EvolutionRunService:
                 pushed_at=run.pushed_at,
                 push_error=run.push_error,
             ),
-            last_event_seq=0,
+            last_event_seq=last_event_seq,
             steps=_detail_steps(summary),
         )

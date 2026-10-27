@@ -111,9 +111,14 @@ def assert_true_server_default(column: Mapping[str, object]) -> None:
 
 async def reflected_event_schema(
     connection: AsyncConnection,
-) -> tuple[set[str], set[str], set[tuple[str, ...]]]:
+) -> tuple[
+    set[str],
+    set[str],
+    set[tuple[str, ...]],
+    set[tuple[tuple[str, ...], str, str | None]],
+]:
     """Inspect the shared event projection through a real dialect connection."""
-    columns, indexes, uniques = await connection.run_sync(
+    columns, indexes, uniques, foreign_keys = await connection.run_sync(
         lambda sync_connection: (
             {
                 column["name"]
@@ -130,9 +135,22 @@ async def reflected_event_schema(
                     "evolution_run_events",
                 )
             },
+            {
+                (
+                    tuple(str(column) for column in foreign_key["constrained_columns"]),
+                    str(foreign_key["referred_table"]),
+                    cast(
+                        str | None,
+                        foreign_key.get("options", {}).get("ondelete"),
+                    ),
+                )
+                for foreign_key in inspect(sync_connection).get_foreign_keys(
+                    "evolution_run_events",
+                )
+            },
         ),
     )
-    return columns, indexes, uniques
+    return columns, indexes, uniques, foreign_keys
 
 
 class EvolutionTableSchema(TypedDict):
@@ -473,7 +491,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0007"
+        assert result.scalar_one() == "0008"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -563,7 +581,12 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             if foreign_key["name"] is not None
         } == {"fk_sync_lock_job_runs"}
         async with database.engine.connect() as connection:
-            event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
+            (
+                event_columns,
+                event_indexes,
+                event_uniques,
+                event_foreign_keys,
+            ) = await reflected_event_schema(connection)
         assert event_columns == {
             "id",
             "run_id",
@@ -589,6 +612,11 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        assert (
+            ("run_id",),
+            "evolution_runs",
+            "CASCADE",
+        ) in event_foreign_keys
         async with database.engine.connect() as connection:
             evolution_schema = await reflected_evolution_schema(connection)
         assert_evolution_schema(evolution_schema)
@@ -730,7 +758,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0007"
+        assert result.scalar_one() == "0008"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -820,7 +848,12 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             if foreign_key["name"] is not None
         } == {"fk_sync_lock_job_runs"}
         async with database.engine.connect() as connection:
-            event_columns, event_indexes, event_uniques = await reflected_event_schema(connection)
+            (
+                event_columns,
+                event_indexes,
+                event_uniques,
+                event_foreign_keys,
+            ) = await reflected_event_schema(connection)
         assert event_columns == {
             "id",
             "run_id",
@@ -846,6 +879,11 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_evolution_run_events_cluster_id",
         }
         assert event_uniques == {("run_id", "seq")}
+        assert (
+            ("run_id",),
+            "evolution_runs",
+            "CASCADE",
+        ) in event_foreign_keys
         async with database.engine.connect() as connection:
             evolution_schema = await reflected_evolution_schema(connection)
         assert_evolution_schema(evolution_schema)

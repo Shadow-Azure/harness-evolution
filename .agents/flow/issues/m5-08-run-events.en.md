@@ -10,16 +10,20 @@ depends:
   - m5-01
   - m5-07
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
   - packages/contracts/**
   - fixtures/**
   - docs/**
+  - plans/2026-10-28-pr139-review.md
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+  - tests/e2e/**
+  - tests/integration/**
+adr:
+  - ../../notes/implemented/architecture/2026-10-28-evolution-run-events.md
 github:
   number: 57
   url: https://github.com/Shadow-Azure/harness-evolution/issues/57
@@ -79,6 +83,7 @@ m5-08 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 - 依赖：m5-01, m5-07
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
+- 检视文档仅允许落 `plans/2026-10-28-pr139-review.md`，不通过扩大整个 `plans/**` 形成长期空白授权。
 
 ## Verification
 

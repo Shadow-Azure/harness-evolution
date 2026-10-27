@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StepCondition } from "@harness/contracts";
+import type { EvolutionStepKey, StepCondition } from "@harness/contracts";
 import { computed, ref } from "vue";
 import { type LocationQueryRaw, useRoute, useRouter } from "vue-router";
 
@@ -9,6 +9,7 @@ import { useEvolutionRunDetail } from "../../composables/useEvolutionRunDetail";
 import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
+import RunLogPanel from "./components/RunLogPanel.vue";
 import { resolveRunStepKey } from "./runDetail";
 
 defineOptions({ name: "EvolutionRunDetailPage" });
@@ -33,6 +34,9 @@ const focusCluster = computed(() =>
   typeof route.query.cluster === "string" ? route.query.cluster : undefined,
 );
 const branchCopied = ref(false);
+const activeTab = computed<"steps" | "logs">(() =>
+  route.query.tab === "logs" ? "logs" : "steps",
+);
 
 const {
   data: stepData,
@@ -139,10 +143,34 @@ function selectStep(key: typeof selectedKey.value): void {
   const step = steps.value.find((candidate) => candidate.key === key);
   if (!step?.clickable) return;
   const query: LocationQueryRaw = { ...route.query, step: key };
+  delete query.tab;
   if (key !== "clusters") delete query.cluster;
   void router.replace({
     query,
   });
+}
+
+function openTab(tab: "steps" | "logs"): void {
+  const query: LocationQueryRaw = { ...route.query };
+  if (tab === "logs") query.tab = "logs";
+  else delete query.tab;
+  void router.replace({ query });
+}
+
+function selectEventStep(key: EvolutionStepKey): void {
+  selectStep(key);
+}
+
+function focusEventCluster(clusterId: string): void {
+  const clusterStep = steps.value.find((step) => step.key === "clusters");
+  if (!clusterStep?.clickable) return;
+  const query: LocationQueryRaw = {
+    ...route.query,
+    step: "clusters",
+    cluster: clusterId,
+  };
+  delete query.tab;
+  void router.replace({ query });
 }
 
 function retryRun(): void {
@@ -230,6 +258,14 @@ function clearMissingClusterFocus(): void {
           class="mono muted"
         >{{ run.error.at }}</span>
         <span class="retry-copy">自动恢复能力由后续运行恢复切片提供。</span>
+        <button
+          type="button"
+          class="log-jump"
+          data-testid="open-error-log"
+          @click="openTab('logs')"
+        >
+          查看执行日志
+        </button>
       </div>
       <div
         v-else-if="run.error"
@@ -239,259 +275,307 @@ function clearMissingClusterFocus(): void {
         <b>{{ run.error.stage }}</b>
         <span>{{ run.error.message }}</span>
         <span class="mono muted">{{ run.error.at }}</span>
+        <button
+          type="button"
+          class="log-jump"
+          data-testid="open-error-log"
+          @click="openTab('logs')"
+        >
+          查看执行日志
+        </button>
       </div>
-
-      <article class="card panel info-panel">
-        <h2 class="sec-title">
-          目标与输入
-          <span class="sub">筛选条件命中的问题报告即本次进化的输入</span>
-        </h2>
-        <div class="kv-grid">
-          <div class="kv">
-            <div class="k">
-              进化对象
-            </div>
-            <div class="v">
-              <span class="chip kind">{{ run.target.type }}:{{ run.target.name }}</span>
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              版本
-            </div>
-            <div class="v mono">
-              {{ run.target.version }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              时间段（session 启动）
-            </div>
-            <div class="v mono">
-              {{ windowLabel }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              模型（多选）
-            </div>
-            <div class="v">
-              <span
-                v-for="model in run.models"
-                :key="model"
-                class="chip model"
-              >{{ model }}</span>
-              <span
-                v-if="run.models.length === 0"
-                class="muted"
-              >全部模型</span>
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              时间段内 session 数
-            </div>
-            <div class="v big">
-              {{ run.stats.sessions }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              问题报告数
-            </div>
-            <div class="v big">
-              {{ run.stats.probes }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              已分析 / 未分析
-            </div>
-            <div class="v big">
-              {{ analyzedCount }}
-              <span class="muted">/ {{ unanalyzedCount }}</span>
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              最终用于进化的问题数
-            </div>
-            <div class="v big accent">
-              {{ run.stats.usedProbes }}
-            </div>
-          </div>
-        </div>
-        <p class="cb-label">
-          已分析问题的归因类型分布（{{ analyzedCount }} 份）
-        </p>
-        <div
-          class="typebar"
-          aria-label="归因类型分布"
-        >
-          <span
-            v-for="item in distribution"
-            :key="item.key"
-            :style="{
-              width: `${analyzedCount ? (item.value / analyzedCount) * 100 : 0}%`,
-              background: item.color,
-            }"
-          />
-        </div>
-        <div class="legend">
-          <span
-            v-for="item in distribution"
-            :key="item.key"
-          >
-            <span
-              class="dot"
-              :style="{ background: item.color }"
-            />
-            {{ item.label }} <b>{{ item.value }}</b>
-          </span>
-          <span class="muted">＝ 用于进化的 {{ run.stats.usedProbes }}（非问题剔除）</span>
-        </div>
-      </article>
-
-      <article class="card panel workspace-panel">
-        <h2 class="sec-title">
-          工作区
-          <span class="sub">候选 commit 与 run 分支在这里推进，不提供人工推进入口</span>
-        </h2>
-        <div class="workspace-grid">
-          <div class="kv">
-            <div class="k">
-              run 分支
-            </div>
-            <div class="v">
-              <button
-                v-if="run.workspace.branchName"
-                class="branch-copy mono"
-                type="button"
-                data-testid="copy-branch"
-                :title="`点击复制分支名 ${run.workspace.branchName}`"
-                @click="copyBranch"
-              >
-                {{ run.workspace.branchName }}
-                <span aria-live="polite">{{ branchCopied ? " · 已复制" : " · 复制" }}</span>
-              </button>
-              <span
-                v-else
-                class="muted"
-              >尚未创建</span>
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              基线 ref / commit
-            </div>
-            <div class="v mono">
-              {{ run.workspace.baseRef ?? "—" }} /
-              {{ run.workspace.baseCommit?.slice(0, 12) ?? "—" }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              仓库
-            </div>
-            <div class="v mono workspace-path">
-              {{ run.workspace.repoUrl }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              子目录
-            </div>
-            <div class="v mono">
-              {{ run.workspace.subDir }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              推送状态
-            </div>
-            <div class="v mono">
-              {{ run.workspace.pushStatus }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              推送时间
-            </div>
-            <div class="v mono">
-              {{ run.workspace.pushedAt?.replace("T", " ").slice(0, 16) ?? "尚未推送" }}
-            </div>
-          </div>
-          <div class="kv">
-            <div class="k">
-              评测状态
-            </div>
-            <div class="v mono">
-              {{ run.evalStatus }}
-            </div>
-          </div>
-        </div>
-        <p
-          v-if="run.workspace.pushError"
-          class="workspace-error"
-        >
-          推送错误：{{ run.workspace.pushError }}
-        </p>
-        <details
-          v-if="run.workspace.workspacePath || run.workspace.repoPath"
-          class="workspace-paths"
-        >
-          <summary>查看本地路径</summary>
-          <p class="mono">
-            workspace: {{ run.workspace.workspacePath ?? "—" }}<br>
-            repo: {{ run.workspace.repoPath ?? "—" }}
-          </p>
-        </details>
-      </article>
-
-      <article class="card panel">
-        <h2 class="sec-title">
-          流程进度
-          <span class="sub">
-            当前查看：第 {{ (selectedStep?.index ?? 0) + 1 }} 步 ·
-            {{ selectedStep?.title ?? "筛选输入" }}
-          </span>
-        </h2>
-        <RunStepper
-          :steps="steps"
-          :selected="selectedKey"
-          @select="selectStep"
-        />
-      </article>
 
       <div
-        v-if="run.status === 'preparing'"
-        class="preparing-copy"
+        class="detail-tabs"
+        role="tablist"
+        aria-label="运行详情视图"
       >
-        <span class="pulse" />
-        已受理，正在准备筛选与聚类。此步骤完成前后续节点保持禁用。
+        <button
+          type="button"
+          role="tab"
+          data-testid="steps-tab"
+          :aria-selected="activeTab === 'steps'"
+          :class="{ active: activeTab === 'steps' }"
+          @click="openTab('steps')"
+        >
+          六步详情
+        </button>
+        <button
+          type="button"
+          role="tab"
+          data-testid="logs-tab"
+          :aria-selected="activeTab === 'logs'"
+          :class="{ active: activeTab === 'logs' }"
+          @click="openTab('logs')"
+        >
+          执行日志
+          <span
+            v-if="run.lastEventSeq"
+            class="tab-count mono"
+          >≤ {{ run.lastEventSeq }}</span>
+        </button>
       </div>
 
-      <ErrorState
-        v-if="stepError && stepErrorCode !== 'STEP_NOT_READY'"
-        code="EVOLUTION_RUN_STEP_UNAVAILABLE"
-        message="当前步骤读取失败，请重试"
-        @retry="retryStep"
-      />
-      <p
-        v-else-if="stepErrorCode === 'STEP_NOT_READY'"
-        class="pending-copy"
-      >
-        该步骤尚未到达。
-      </p>
-      <RunStepContent
+      <template v-if="activeTab === 'steps'">
+        <article class="card panel info-panel">
+          <h2 class="sec-title">
+            目标与输入
+            <span class="sub">筛选条件命中的问题报告即本次进化的输入</span>
+          </h2>
+          <div class="kv-grid">
+            <div class="kv">
+              <div class="k">
+                进化对象
+              </div>
+              <div class="v">
+                <span class="chip kind">{{ run.target.type }}:{{ run.target.name }}</span>
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                版本
+              </div>
+              <div class="v mono">
+                {{ run.target.version }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                时间段（session 启动）
+              </div>
+              <div class="v mono">
+                {{ windowLabel }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                模型（多选）
+              </div>
+              <div class="v">
+                <span
+                  v-for="model in run.models"
+                  :key="model"
+                  class="chip model"
+                >{{ model }}</span>
+                <span
+                  v-if="run.models.length === 0"
+                  class="muted"
+                >全部模型</span>
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                时间段内 session 数
+              </div>
+              <div class="v big">
+                {{ run.stats.sessions }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                问题报告数
+              </div>
+              <div class="v big">
+                {{ run.stats.probes }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                已分析 / 未分析
+              </div>
+              <div class="v big">
+                {{ analyzedCount }}
+                <span class="muted">/ {{ unanalyzedCount }}</span>
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                最终用于进化的问题数
+              </div>
+              <div class="v big accent">
+                {{ run.stats.usedProbes }}
+              </div>
+            </div>
+          </div>
+          <p class="cb-label">
+            已分析问题的归因类型分布（{{ analyzedCount }} 份）
+          </p>
+          <div
+            class="typebar"
+            aria-label="归因类型分布"
+          >
+            <span
+              v-for="item in distribution"
+              :key="item.key"
+              :style="{
+                width: `${analyzedCount ? (item.value / analyzedCount) * 100 : 0}%`,
+                background: item.color,
+              }"
+            />
+          </div>
+          <div class="legend">
+            <span
+              v-for="item in distribution"
+              :key="item.key"
+            >
+              <span
+                class="dot"
+                :style="{ background: item.color }"
+              />
+              {{ item.label }} <b>{{ item.value }}</b>
+            </span>
+            <span class="muted">＝ 用于进化的 {{ run.stats.usedProbes }}（非问题剔除）</span>
+          </div>
+        </article>
+
+        <article class="card panel workspace-panel">
+          <h2 class="sec-title">
+            工作区
+            <span class="sub">候选 commit 与 run 分支在这里推进，不提供人工推进入口</span>
+          </h2>
+          <div class="workspace-grid">
+            <div class="kv">
+              <div class="k">
+                run 分支
+              </div>
+              <div class="v">
+                <button
+                  v-if="run.workspace.branchName"
+                  class="branch-copy mono"
+                  type="button"
+                  data-testid="copy-branch"
+                  :title="`点击复制分支名 ${run.workspace.branchName}`"
+                  @click="copyBranch"
+                >
+                  {{ run.workspace.branchName }}
+                  <span aria-live="polite">{{ branchCopied ? " · 已复制" : " · 复制" }}</span>
+                </button>
+                <span
+                  v-else
+                  class="muted"
+                >尚未创建</span>
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                基线 ref / commit
+              </div>
+              <div class="v mono">
+                {{ run.workspace.baseRef ?? "—" }} /
+                {{ run.workspace.baseCommit?.slice(0, 12) ?? "—" }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                仓库
+              </div>
+              <div class="v mono workspace-path">
+                {{ run.workspace.repoUrl }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                子目录
+              </div>
+              <div class="v mono">
+                {{ run.workspace.subDir }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                推送状态
+              </div>
+              <div class="v mono">
+                {{ run.workspace.pushStatus }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                推送时间
+              </div>
+              <div class="v mono">
+                {{ run.workspace.pushedAt?.replace("T", " ").slice(0, 16) ?? "尚未推送" }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                评测状态
+              </div>
+              <div class="v mono">
+                {{ run.evalStatus }}
+              </div>
+            </div>
+          </div>
+          <p
+            v-if="run.workspace.pushError"
+            class="workspace-error"
+          >
+            推送错误：{{ run.workspace.pushError }}
+          </p>
+          <details
+            v-if="run.workspace.workspacePath || run.workspace.repoPath"
+            class="workspace-paths"
+          >
+            <summary>查看本地路径</summary>
+            <p class="mono">
+              workspace: {{ run.workspace.workspacePath ?? "—" }}<br>
+              repo: {{ run.workspace.repoPath ?? "—" }}
+            </p>
+          </details>
+        </article>
+
+        <article class="card panel">
+          <h2 class="sec-title">
+            流程进度
+            <span class="sub">
+              当前查看：第 {{ (selectedStep?.index ?? 0) + 1 }} 步 ·
+              {{ selectedStep?.title ?? "筛选输入" }}
+            </span>
+          </h2>
+          <RunStepper
+            :steps="steps"
+            :selected="selectedKey"
+            @select="selectStep"
+          />
+        </article>
+
+        <div
+          v-if="run.status === 'preparing'"
+          class="preparing-copy"
+        >
+          <span class="pulse" />
+          已受理，正在准备筛选与聚类。此步骤完成前后续节点保持禁用。
+        </div>
+
+        <ErrorState
+          v-if="stepError && stepErrorCode !== 'STEP_NOT_READY'"
+          code="EVOLUTION_RUN_STEP_UNAVAILABLE"
+          message="当前步骤读取失败，请重试"
+          @retry="retryStep"
+        />
+        <p
+          v-else-if="stepErrorCode === 'STEP_NOT_READY'"
+          class="pending-copy"
+        >
+          该步骤尚未到达。
+        </p>
+        <RunStepContent
+          v-else
+          :run="run"
+          :step="stepData"
+          :condition="condition"
+          :is-pending="selectedStep?.clickable === true && stepPending"
+          :is-unreached="selectedStep?.clickable !== true"
+          :focus-cluster="focusCluster"
+          @missing-cluster-focus="clearMissingClusterFocus"
+        />
+      </template>
+      <RunLogPanel
         v-else
-        :run="run"
-        :step="stepData"
-        :condition="condition"
-        :is-pending="selectedStep?.clickable === true && stepPending"
-        :is-unreached="selectedStep?.clickable !== true"
-        :focus-cluster="focusCluster"
-        @missing-cluster-focus="clearMissingClusterFocus"
+        :run-id="run.runId"
+        :steps="steps"
+        @select-step="selectEventStep"
+        @focus-cluster="focusEventCluster"
       />
     </template>
   </section>
@@ -593,6 +677,49 @@ function clearMissingClusterFocus(): void {
   border: 1px solid color-mix(in srgb, var(--red) 38%, transparent);
   background: color-mix(in srgb, var(--red) 7%, transparent);
   color: var(--text-dim);
+}
+
+.log-jump {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--red);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.detail-tabs {
+  display: flex;
+  gap: 3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.detail-tabs button.active {
+  border-bottom-color: var(--blue);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.tab-count {
+  color: var(--text-faint);
+  font-size: 10px;
 }
 
 .blocked-title {

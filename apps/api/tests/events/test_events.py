@@ -1,5 +1,6 @@
 """Event bus backpressure, replay handoff, heartbeat, and cleanup."""
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -152,6 +153,44 @@ async def test_stream_replays_then_switches_to_live_without_duplicates() -> None
         assert second.event_id == 3
         assert third.event_id == 4
         assert third.event == "run.progress"
+    finally:
+        await stream.aclose()
+        await bus.close()
+
+
+async def test_stream_delivers_status_notification_after_same_sequence_event() -> None:
+    """A status notification is not suppressed by the event row with the same seq."""
+    bus = EventBus(queue_capacity=10)
+    replay = StaticReplay(RunEventReplayResult())
+    stream = stream_events(
+        bus=bus,
+        replay=replay,
+        topics=("run:r1",),
+        cursor=0,
+        heartbeat_seconds=60,
+        replay_limit=100,
+    )
+    try:
+        first_event = asyncio.create_task(anext(stream))
+        await asyncio.sleep(0)
+        bus.publish(
+            "run:r1",
+            "run.event",
+            {"runId": "r1", "seq": 1, "eventType": "run_failed"},
+            event_id=1,
+        )
+        bus.publish(
+            "run:r1",
+            "run.failed",
+            {"runId": "r1", "eventSeq": 1},
+            event_id=1,
+        )
+
+        first = await asyncio.wait_for(first_event, timeout=1)
+        second = await asyncio.wait_for(anext(stream), timeout=1)
+
+        assert (first.event, first.event_id) == ("run.event", 1)
+        assert (second.event, second.event_id) == ("run.failed", 1)
     finally:
         await stream.aclose()
         await bus.close()

@@ -103,6 +103,20 @@ export type EvolutionRunList = components["schemas"]["EvolutionRunList"];
 /** Complete run detail shell with workspace and backend-owned step states. */
 export type EvolutionRunDetail = components["schemas"]["EvolutionRunDetail"];
 
+/** One durable execution-log event shared by REST replay and SSE. */
+export type EvolutionRunEvent = components["schemas"]["EvolutionRunEvent"];
+
+/** Sanitized error attached to one execution-log event. */
+export type EvolutionRunEventError =
+  components["schemas"]["EvolutionRunEventError"];
+
+/** One stable page of durable execution-log events. */
+export type EvolutionRunEventPage =
+  components["schemas"]["EvolutionRunEventPage"];
+
+/** Durable event severity used by the execution-log filter. */
+export type EvolutionRunEventLevel = EvolutionRunEvent["level"];
+
 /** Repository and worktree state rendered on the run detail. */
 export type EvolutionRunWorkspace =
   components["schemas"]["EvolutionRunWorkspace"];

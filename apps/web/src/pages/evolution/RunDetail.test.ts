@@ -671,4 +671,73 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("运行不存在或已被删除");
     expect(wrapper.find(".error-state button").exists()).toBe(false);
   });
+
+  it("opens durable execution history from the error banner", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json({
+          ...detail(
+            run({
+              status: "failed",
+              error: {
+                stage: "prepare",
+                message: "仓库 clone 失败",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+            }),
+            ["pending", "pending", "pending", "pending", "pending", "pending"],
+          ),
+          lastEventSeq: 2,
+        })),
+      http.get("/api/evolution/runs/:runId/events", () =>
+        HttpResponse.json({
+          items: [
+            {
+              seq: 1,
+              eventType: "run_created",
+              level: "info",
+              stage: "prepare",
+              stepIndex: null,
+              clusterId: null,
+              roundId: null,
+              jobId: null,
+              message: "运行已创建",
+              createdAt: "2026-10-27T12:00:00+08:00",
+              payload: null,
+              error: null,
+            },
+            {
+              seq: 2,
+              eventType: "run_failed",
+              level: "error",
+              stage: "prepare",
+              stepIndex: null,
+              clusterId: null,
+              roundId: null,
+              jobId: "job-1",
+              message: "准备失败",
+              createdAt: "2026-10-27T12:00:01+08:00",
+              payload: null,
+              error: {
+                type: "GitError",
+                message: "clone failed",
+                detail: "token=<redacted>",
+              },
+            },
+          ],
+          nextSeq: 2,
+          hasMore: false,
+        })),
+    );
+    const wrapper = await mountPage();
+
+    await wrapper.get("[data-testid='open-error-log']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.vm.$route.query.tab).toBe("logs");
+    expect(wrapper.get("[data-testid='run-log-panel']").text()).toContain(
+      "准备失败",
+    );
+    expect(wrapper.text()).toContain("clone failed");
+  });
 });

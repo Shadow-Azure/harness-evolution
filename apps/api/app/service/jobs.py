@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-import re
+import traceback
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -11,9 +11,18 @@ from app.db.crud.jobs import JobRepository
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.events import EventBus, RunEventRecorder
+from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.ids import new_id
+from app.utils.redaction import sanitize_job_error, sanitize_job_payload
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "JobRunner",
+    "JobSubmission",
+    "sanitize_job_error",
+    "sanitize_job_payload",
+]
 
 JobHandler = Callable[[JobRunRecord], Awaitable[Mapping[str, Any] | None]]
 TerminalHook = Callable[[JobRunRecord], Awaitable[None]]
@@ -26,49 +35,11 @@ _KIND_TO_STAGE = {
     "evolution_finalize": "final",
     "evolution_retry": "step",
 }
-_SECRET_PATTERN = re.compile(
-    r"(?i)\b(password|passwd|token|secret|authorization|api[_-]?key)\b"
-    r"\s*[:=]\s*(?:bearer\s+)?\S+",
-)
-_BEARER_PATTERN = re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]+")
-_CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
-_SENSITIVE_KEY_SUFFIXES = ("password", "passwd", "token", "secret", "authorization", "apikey")
-
-
-def _redact_text(value: str) -> str:
-    """Remove inline credentials from one free-form string."""
-    redacted = _SECRET_PATTERN.sub(r"\1=<redacted>", value)
-    return _BEARER_PATTERN.sub("Bearer <redacted>", redacted)
-
-
-def _is_sensitive_key(key: str) -> bool:
-    """Recognize credential keys across snake_case and camelCase payloads."""
-    normalized = re.sub(r"[^a-z0-9]", "", key.lower())
-    return normalized.endswith(_SENSITIVE_KEY_SUFFIXES)
-
-
-def sanitize_job_payload(value: Any) -> Any:
-    """Recursively redact credential fields before a payload becomes durable."""
-    if isinstance(value, Mapping):
-        return {
-            str(key): ("<redacted>" if _is_sensitive_key(str(key)) else sanitize_job_payload(item))
-            for key, item in value.items()
-        }
-    if isinstance(value, (list, tuple, set)):
-        return [sanitize_job_payload(item) for item in value]
-    if isinstance(value, str):
-        return _redact_text(value)
-    return value
-
-
-def sanitize_job_error(message: str, *, limit: int = 2_000) -> str:
-    """Redact credentials, collapse controls, and bound persisted failure text."""
-    compact = " ".join(message.splitlines()).strip()
-    if not compact:
-        return "job failed"
-    redacted = _redact_text(compact)
-    redacted = _CONTROL_PATTERN.sub(" ", redacted)
-    return redacted[:limit]
+_BLOCKED_STAGE_TO_EVENT_STAGE = {
+    "patch": "candidate",
+    "push": "push",
+    "eval": "eval",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,9 +237,64 @@ class JobRunner:
                         extra={"job_id": job.id, "kind": job.kind},
                     )
                 raise
+            except RunBlocked as exc:
+                error = sanitize_job_error(str(exc))
+                await self.repository.fail(job.id, error)
+                record_blocked = getattr(self._run_events, "record_blocked", None)
+                event_stage = _BLOCKED_STAGE_TO_EVENT_STAGE[exc.stage]
+                if callable(record_blocked) and job.ref_id:
+                    try:
+                        await record_blocked(
+                            job.ref_id,
+                            stage=event_stage,
+                            blocked_stage=exc.stage,
+                            message=str(exc),
+                            job_id=job.id,
+                            next_retry_at=exc.next_retry_at,
+                            retry_attempts=exc.retry_attempts,
+                            error=exc,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "failed to persist blocked run event",
+                            extra={
+                                "job_id": job.id,
+                                "kind": job.kind,
+                                "run_id": job.ref_id,
+                            },
+                        )
+                logger.warning(
+                    "job execution blocked",
+                    extra={
+                        "job_id": job.id,
+                        "kind": job.kind,
+                        "stage": exc.stage,
+                    },
+                )
             except Exception as exc:
                 error = sanitize_job_error(str(exc))
                 await self.repository.fail(job.id, error)
+                record_failed = getattr(self._run_events, "record_failed", None)
+                stage = _failure_event_stage(job, exc)
+                if callable(record_failed) and job.ref_id and stage is not None:
+                    try:
+                        await record_failed(
+                            job.ref_id,
+                            stage=stage,
+                            message="任务执行失败",
+                            job_id=job.id,
+                            error=exc,
+                            error_detail=traceback.format_exc(),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "failed to persist run failure event",
+                            extra={
+                                "job_id": job.id,
+                                "kind": job.kind,
+                                "run_id": job.ref_id,
+                            },
+                        )
                 logger.error(
                     "job execution failed",
                     extra={"job_id": job.id, "kind": job.kind, "error_type": type(exc).__name__},
@@ -338,3 +364,22 @@ class JobRunner:
             self._tasks.pop(job_id, None)
 
         task.add_done_callback(forget_task)
+
+
+def _failure_event_stage(job: JobRunRecord, error: BaseException) -> str | None:
+    """Prefer an exception's concrete stage over the coarse job-kind fallback."""
+    declared = getattr(error, "stage", None)
+    if isinstance(declared, str) and declared in _BLOCKED_STAGE_TO_EVENT_STAGE:
+        return _BLOCKED_STAGE_TO_EVENT_STAGE[declared]
+    if isinstance(declared, str) and declared in {
+        "prepare",
+        "cluster",
+        "step",
+        "candidate",
+        "push",
+        "eval",
+        "apply",
+        "final",
+    }:
+        return declared
+    return _KIND_TO_STAGE.get(job.kind)

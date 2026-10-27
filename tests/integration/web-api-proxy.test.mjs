@@ -17,12 +17,40 @@ import {
 
 const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const python = path.join(root, "apps/api/.venv/bin/python");
 let api;
 let web;
 let webBaseUrl;
 let apiLogs = "";
 let webLogs = "";
 let dataDir;
+
+async function seedActiveRun(runId) {
+  const child = spawn(
+    python,
+    [
+      path.join(root, "tests/integration/support/seed_active_run.py"),
+      runId,
+    ],
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        HE_DATA_DIR: dataDir,
+        HE_DB_DIALECT: "sqlite",
+        HE_JWT_SECRET: "integration-signing-secret-with-sufficient-length",
+        PYTHONPATH: path.join(root, "apps/api"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let output = "";
+  capture(child, (chunk) => {
+    output += chunk;
+  });
+  const code = await new Promise((resolve) => child.once("exit", resolve));
+  assert.equal(code, 0, output);
+}
 
 async function integrationAdmin() {
   for (const password of [
@@ -221,6 +249,7 @@ test("job lookup and one-time SSE ticket work through the real proxy", async () 
   assert.equal(missing.status, 404);
   assert.equal((await missing.json()).error.code, "JOB_NOT_FOUND");
 
+  await seedActiveRun("integration-smoke");
   const issued = await fetch(`${webBaseUrl}/api/events/ticket`, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },

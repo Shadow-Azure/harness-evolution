@@ -1,8 +1,9 @@
 """FastAPI application composition root."""
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -32,6 +33,7 @@ from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
+from app.db.models.jobs import JobRunRecord
 from app.errors import register_exception_handlers
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
@@ -40,7 +42,11 @@ from app.service.acquisition.sync import SyncCoordinator
 from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
-from app.service.events import EventBus, ShapeRunTopicAuthorizer
+from app.service.events import EventBus
+from app.service.evolution.events import (
+    EvolutionRunEventService,
+    EvolutionRunTopicAuthorizer,
+)
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.prepare import handle_evolution_prepare
 from app.service.evolution.probe_query import ProbeQueryService
@@ -75,8 +81,14 @@ def create_app(
     identity = IdentityService(resolved_settings, resolved_database)
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
     run_event_store = SqlRunEventStore(resolved_database)
+    evolution_repository = EvolutionRepository(resolved_database)
+    evolution_events = EvolutionRunEventService(
+        run_event_store,
+        evolution_repository,
+        event_bus,
+    )
     job_repository = JobRepository(resolved_database)
-    jobs = JobRunner(job_repository, event_bus, run_event_store)
+    jobs = JobRunner(job_repository, event_bus, evolution_events)
     upstream_client: httpx.AsyncClient | None = None
     resolved_source = trajectory_source
     if resolved_source is None and resolved_settings.upstream_configured:
@@ -113,18 +125,26 @@ def create_app(
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
-    evolution_repository = EvolutionRepository(resolved_database)
     probe_query_repository = ProbeQueryRepository(resolved_database)
-    evolution_runs = EvolutionRunService(evolution_repository)
+    evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     evolution_stages = EvolutionStageService(evolution_repository, probe_query_repository)
     evolution_launch = EvolutionLaunchService(
         target_repository,
         probe_query_repository,
         evolution_repository,
         jobs,
+        evolution_events,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
-    jobs.register_handler("evolution_prepare", handle_evolution_prepare)
+
+    async def prepare_handler(job: JobRunRecord) -> Mapping[str, Any]:
+        """Bind the durable event recorder to the prepare placeholder."""
+        return await handle_evolution_prepare(
+            job,
+            events=evolution_events,
+        )
+
+    jobs.register_handler("evolution_prepare", prepare_handler)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -192,6 +212,7 @@ def create_app(
     app.state.sync = sync
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
+    app.state.evolution_events = evolution_events
     app.state.sessions = sessions
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
@@ -201,7 +222,9 @@ def create_app(
     app.state.probe_query = probe_query
     app.state.catalogs = catalogs
     app.state.run_event_replay = run_event_store
-    app.state.run_topic_authorizer = ShapeRunTopicAuthorizer()
+    app.state.run_topic_authorizer = EvolutionRunTopicAuthorizer(
+        evolution_repository,
+    )
     app.state.login_rate_limiter = LoginRateLimiter()
     app.state.database_start_error = None
 
