@@ -12,6 +12,7 @@ from typing import Any, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.errors import AppError, ErrorCode
 from app.service.evolution.engine.contracts import EvalGateway, EvalRequest, RunBlocked
 from app.service.evolution.events import EvolutionRunEventService
 from app.utils.redaction import sanitize_message, sanitize_value
@@ -239,11 +240,73 @@ class EvolutionEvalPoller:
         """Process one durable due batch and return the number of acted-on rounds."""
         current = self._now()
         due = await self._runs.list_eval_due(current, limit=self._batch_size)
-        processed = 0
+        acted_on: set[tuple[str, str, str | None]] = set()
         for round_ in due:
-            if await self._poll_round(round_, current):
-                processed += 1
-        return processed
+            try:
+                if await self._poll_round(round_, current):
+                    acted_on.add(("round", round_.id, None))
+            except Exception as exc:
+                logger.exception(
+                    "evaluation round poll failed",
+                    extra={"round_id": round_.id, "run_id": round_.run_id},
+                )
+                run = await self._runs.get_run(round_.run_id)
+                if run is not None:
+                    try:
+                        await self._fail(
+                            run,
+                            round_,
+                            status="failed",
+                            message=f"evaluation poll failed: {exc}",
+                            current=current,
+                            error=exc,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "failed to isolate malformed evaluation round",
+                            extra={"round_id": round_.id, "run_id": round_.run_id},
+                        )
+
+        for round_ in await self._runs.list_eval_followups(limit=self._batch_size):
+            run = await self._runs.get_run(round_.run_id)
+            if run is None:
+                continue
+            if await self._ensure_followup(
+                run_id=run.id,
+                kind="evolution_apply",
+                payload={"evolutionRoundId": round_.id},
+                created_by=None,
+            ):
+                acted_on.add(("round", round_.id, None))
+
+        for run in await self._runs.list_running_full_runs(limit=self._batch_size):
+            rounds = await self._runs.list_rounds(run.id)
+            if not rounds:
+                continue
+            active = {
+                "patching",
+                "pushing",
+                "evaluating",
+                "deciding",
+                "failed",
+            }
+            if any(round_.status in active for round_ in rounds):
+                continue
+            pending = any(round_.status == "pending" for round_ in rounds)
+            terminal = all(
+                round_.status in {"accepted", "rejected", "skipped"} for round_ in rounds
+            )
+            if not pending and not terminal:
+                continue
+            kind = "evolution_advance" if pending else "evolution_finalize"
+            if await self._ensure_followup(
+                run_id=run.id,
+                kind=kind,
+                payload={"runId": run.id},
+                created_by=run.created_by,
+            ):
+                acted_on.add(("run", run.id, kind))
+        return len(acted_on)
 
     async def _poll_round(
         self,
@@ -273,6 +336,8 @@ class EvolutionEvalPoller:
             status = await self._gateway_for_run(run).get_status(
                 round_.eval_external_id,
             )
+            if status.status not in {"queued", "running", "completed", "failed", "timeout"}:
+                raise ValueError(f"unknown evaluation status: {status.status}")
         except Exception as exc:
             await self._fail(
                 run,
@@ -339,12 +404,6 @@ class EvolutionEvalPoller:
                     **result_payload,
                 },
             )
-            await self._jobs.submit(
-                kind="evolution_apply",
-                payload={"evolutionRoundId": round_.id},
-                ref_id=run.id,
-                created_by=None,
-            )
             return True
         await self._fail(
             run,
@@ -395,6 +454,38 @@ class EvolutionEvalPoller:
                 retry_attempts=0,
                 error=error,
             )
+
+    async def _ensure_followup(
+        self,
+        *,
+        run_id: str,
+        kind: str,
+        payload: Mapping[str, Any],
+        created_by: str | None,
+    ) -> bool:
+        """Create a missing durable follow-up while tolerating an already-active stage."""
+        try:
+            await self._jobs.submit(
+                kind=kind,
+                payload=payload,
+                ref_id=run_id,
+                created_by=created_by,
+            )
+            return True
+        except AppError as exc:
+            if exc.code == ErrorCode.RUN_BUSY:
+                return False
+            logger.exception(
+                "failed to create evaluation follow-up job",
+                extra={"run_id": run_id, "kind": kind},
+            )
+            return False
+        except Exception:
+            logger.exception(
+                "failed to create evaluation follow-up job",
+                extra={"run_id": run_id, "kind": kind},
+            )
+            return False
 
     async def _record(
         self,

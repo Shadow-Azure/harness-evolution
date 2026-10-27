@@ -209,7 +209,12 @@ class EvalResult:
         candidate = payload.get("candidateScore")
         verdict = payload.get("externalVerdict")
         metrics = payload.get("metrics", ())
-        if not isinstance(current, (int, float)) or not isinstance(candidate, (int, float)):
+        if (
+            isinstance(current, bool)
+            or isinstance(candidate, bool)
+            or not isinstance(current, (int, float))
+            or not isinstance(candidate, (int, float))
+        ):
             raise ValueError("persisted evaluation scores are invalid")
         if verdict not in {"accept", "reject"}:
             raise ValueError("persisted external verdict is invalid")

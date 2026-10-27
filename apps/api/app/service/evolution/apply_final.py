@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
@@ -279,9 +280,14 @@ class EvolutionFinalizeService:
 
 def decision_sentence(result: EvalResult, *, accepted: bool) -> str:
     """Translate the placeholder score comparison into one human-readable rule."""
-    relation = "高于" if accepted else "未高于"
-    verdict = "接纳" if accepted else "拒绝"
     delta = result.candidate_score - result.current_score
+    if math.isclose(delta, 0.0):
+        relation = "等于"
+    elif delta > 0:
+        relation = "高于"
+    else:
+        relation = "低于"
+    verdict = "接纳" if accepted else "拒绝"
     return (
         f"候选分 {result.candidate_score:.1f} {relation}基线 "
         f"{result.current_score:.1f}（{delta:+.1f}），"

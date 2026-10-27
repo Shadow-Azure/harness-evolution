@@ -1060,6 +1060,63 @@ class EvolutionRepository:
             )
         return tuple(record_from_evolution_round(cast(Mapping[str, Any], row)) for row in rows)
 
+    async def list_eval_followups(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[EvolutionRoundRecord, ...]:
+        """Return completed evaluations whose apply job still needs durable creation."""
+        if limit < 1:
+            raise ValueError("evaluation follow-up limit must be positive")
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_rounds)
+                        .where(
+                            evolution_rounds.c.status == "evaluating",
+                            evolution_rounds.c.eval_status == "completed",
+                            evolution_rounds.c.eval_result.is_not(None),
+                        )
+                        .order_by(
+                            evolution_rounds.c.eval_finished_at,
+                            evolution_rounds.c.run_id,
+                            evolution_rounds.c.seq,
+                        )
+                        .limit(limit),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_round(cast(Mapping[str, Any], row)) for row in rows)
+
+    async def list_running_full_runs(
+        self,
+        *,
+        limit: int = 100,
+    ) -> tuple[EvolutionRunRecord, ...]:
+        """Return running full-mode runs for terminal follow-up recovery scans."""
+        if limit < 1:
+            raise ValueError("run follow-up limit must be positive")
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_runs)
+                        .where(
+                            evolution_runs.c.mode == "full",
+                            evolution_runs.c.status == "running",
+                        )
+                        .order_by(evolution_runs.c.created_at, evolution_runs.c.id)
+                        .limit(limit),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
+
     async def mark_eval_waiting(
         self,
         round_id: str,
@@ -1098,7 +1155,16 @@ class EvolutionRepository:
         result: Mapping[str, Any],
         finished_at: datetime,
     ) -> bool:
-        """Persist one normalized result exactly once and clear its poll deadline."""
+        """Persist one normalized result exactly once with its UI score projection."""
+        current_score = result.get("currentScore")
+        candidate_score = result.get("candidateScore")
+        if (
+            isinstance(current_score, bool)
+            or isinstance(candidate_score, bool)
+            or not isinstance(current_score, (int, float))
+            or not isinstance(candidate_score, (int, float))
+        ):
+            raise ValueError("evaluation result scores are invalid")
         async with self._database.transaction() as session:
             changed = cast(
                 CursorResult[Any],
@@ -1117,6 +1183,8 @@ class EvolutionRepository:
                         eval_next_poll_at=None,
                         eval_finished_at=finished_at,
                         eval_result=deepcopy(dict(result)),
+                        eval_current=float(current_score),
+                        eval_candidate=float(candidate_score),
                         eval_error=None,
                     ),
                 ),

@@ -27,13 +27,15 @@ from app.db.models.evolution import (
     probe_clusters,
 )
 from app.db.models.jobs import JobRunRecord
+from app.errors import AppError, ErrorCode
 from app.service.evolution.advance import EvolutionJobLifecycle
 from app.service.evolution.apply_final import (
     EvolutionApplyService,
     EvolutionFinalizeService,
+    decision_sentence,
 )
-from app.service.evolution.engine.contracts import EvalGatewayConfig, RunBlocked
-from app.service.evolution.eval_poller import EvolutionEvalSubmitter
+from app.service.evolution.engine.contracts import EvalGatewayConfig, EvalResult, RunBlocked
+from app.service.evolution.eval_poller import EvolutionEvalPoller, EvolutionEvalSubmitter
 from app.service.evolution.git_candidate import CandidateTrace
 from app.third_party_api.git.workspace import GitOperationError, PreparedWorkspace
 
@@ -55,6 +57,7 @@ class JobCapture:
     """Job scheduler double used by lifecycle assertions."""
 
     items: list[CapturedSubmission] = field(default_factory=list)
+    failures_remaining: int = 0
 
     async def submit(
         self,
@@ -65,6 +68,15 @@ class JobCapture:
         created_by: str | None,
     ) -> CapturedSubmission:
         """Capture one scheduling call."""
+        if self.failures_remaining:
+            self.failures_remaining -= 1
+            raise RuntimeError("simulated terminal follow-up submission failure")
+        if any(item.kind == kind and item.ref_id == ref_id for item in self.items):
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.RUN_BUSY,
+                message="another stage job is already active for this run",
+            )
         item = CapturedSubmission(kind, dict(payload), ref_id, created_by)
         self.items.append(item)
         return item
@@ -553,6 +565,97 @@ async def test_lifecycle_advances_a_pending_round_before_finalizing(
         )
     await lifecycle.on_terminal(terminal_job)
     assert [item.kind for item in jobs.items] == ["evolution_finalize"]
+
+
+async def test_terminal_followup_recovers_when_lifecycle_submit_fails(
+    state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A terminal decision remains recoverable even if its next job was never enqueued."""
+    database, repository = state
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-apply")
+            .values(status="accepted", accepted=True, finished_at=NOW),
+        )
+        await session.execute(
+            update(evolution_runs)
+            .where(evolution_runs.c.id == "run-apply")
+            .values(progress_unit=5),
+        )
+    jobs = JobCapture(failures_remaining=1)
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: (_ for _ in ()).throw(AssertionError("gateway must not run")),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+    )
+
+    assert await poller.run_once() == 0
+    assert jobs.items == []
+    assert await poller.run_once() == 1
+    assert [item.kind for item in jobs.items] == ["evolution_finalize"]
+
+
+def test_decision_text_uses_numeric_score_direction() -> None:
+    """External verdict stays authoritative without making the score prose lie."""
+    accepted_lower = EvalResult(
+        current_score=90.0,
+        candidate_score=80.0,
+        external_verdict="accept",
+    )
+    rejected_higher = EvalResult(
+        current_score=80.0,
+        candidate_score=90.0,
+        external_verdict="reject",
+    )
+
+    assert "低于基线" in decision_sentence(accepted_lower, accepted=True)
+    assert "高于基线" in decision_sentence(rejected_higher, accepted=False)
+
+
+async def test_accepted_lower_score_is_not_reported_as_a_final_improvement(
+    state: tuple[Database, EvolutionRepository],
+) -> None:
+    """An authoritative accept may lower the score, so final verdict must stay false."""
+    database, repository = state
+    async with database.transaction() as session:
+        await session.execute(
+            update(evolution_rounds)
+            .where(evolution_rounds.c.id == "round-apply")
+            .values(
+                eval_current=90.0,
+                eval_candidate=80.0,
+                eval_result={
+                    "currentScore": 90.0,
+                    "candidateScore": 80.0,
+                    "externalVerdict": "accept",
+                    "metrics": [],
+                },
+            ),
+        )
+    await CandidateDouble(repository).accept(
+        await repository.get_run("run-apply"),  # type: ignore[arg-type]
+        await repository.get_round("round-apply"),  # type: ignore[arg-type]
+        CandidateTrace("cluster-apply", "placeholder failure", (), (), "analysis"),
+        current_score=90,
+        candidate_score=80,
+        reason="accepted by external verdict",
+    )
+    service = EvolutionFinalizeService(
+        repository,
+        WorkspaceDouble(),  # type: ignore[arg-type]
+        events=None,
+        now=lambda: NOW,
+    )
+
+    await service.handle(_job("evolution_finalize"))
+
+    final = await repository.get_final("run-apply")
+    assert final is not None
+    assert final.verdict is False
+    assert final.best_score == 90.0
 
 
 async def test_finalize_push_failure_preserves_final_and_blocks(

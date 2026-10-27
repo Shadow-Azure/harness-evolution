@@ -24,6 +24,7 @@ from app.db.models.evolution import (
     evolution_runs,
     probe_clusters,
 )
+from app.errors import AppError, ErrorCode
 from app.service.evolution.engine.contracts import (
     EvalGateway,
     EvalGatewayConfig,
@@ -35,6 +36,7 @@ from app.service.evolution.engine.contracts import (
 )
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.eval_poller import EvolutionEvalPoller
+from app.service.evolution.stages import EvolutionStageService
 
 NOW = datetime(2026, 10, 28, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
 
@@ -54,6 +56,7 @@ class JobCapture:
     """Minimal JobRunner seam used to assert exact follow-up scheduling."""
 
     jobs: list[SubmittedJob] = field(default_factory=list)
+    failures_remaining: int = 0
 
     async def submit(
         self,
@@ -64,6 +67,15 @@ class JobCapture:
         created_by: str | None,
     ) -> SubmittedJob:
         """Capture one durable job submission."""
+        if self.failures_remaining:
+            self.failures_remaining -= 1
+            raise RuntimeError("simulated follow-up submission failure")
+        if any(job.kind == kind and job.ref_id == ref_id for job in self.jobs):
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.RUN_BUSY,
+                message="another stage job is already active for this run",
+            )
         job = SubmittedJob(
             kind=kind,
             payload=dict(payload),
@@ -206,6 +218,19 @@ def test_eval_result_rejects_malformed_metrics() -> None:
         )
 
 
+def test_eval_result_rejects_boolean_scores() -> None:
+    """Booleans are JSON scalars but never valid numeric evaluation scores."""
+    with pytest.raises(ValueError, match="scores"):
+        EvalResult.from_payload(
+            {
+                "currentScore": True,
+                "candidateScore": 90,
+                "externalVerdict": "accept",
+                "metrics": [],
+            },
+        )
+
+
 async def test_poller_skips_not_due_and_restarts_queued_poll(
     eval_state: tuple[Database, EvolutionRepository],
 ) -> None:
@@ -272,6 +297,8 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
     assert round_ is not None
     assert round_.status == "evaluating"
     assert round_.eval_status == "completed"
+    assert round_.eval_current == 80.0
+    assert round_.eval_candidate == 90.0
     assert round_.eval_result == {
         "currentScore": 80.0,
         "candidateScore": 90.0,
@@ -283,8 +310,200 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
     assert jobs.jobs[0].ref_id == "run-eval"
     assert jobs.jobs[0].payload["evolutionRoundId"] == "round-eval"
 
+    class EmptyProbes:
+        async def list_rows_by_ids(self, probe_ids: tuple[str, ...]) -> tuple[object, ...]:
+            del probe_ids
+            return ()
+
+    run = await repository.get_run("run-eval")
+    clusters = await repository.list_clusters("run-eval")
+    assert run is not None
+    step = await EvolutionStageService(
+        repository,
+        cast(Any, EmptyProbes()),
+    ).build_step_payload(run, clusters, "iteration")
+    assert step.key == "iteration"
+    assert step.payload.rounds[0].eval.current == 80.0
+    assert step.payload.rounds[0].eval.candidate == 90.0
+
     assert await poller.run_once() == 0
     assert [job.kind for job in jobs.jobs] == ["evolution_apply"]
+
+
+async def test_completed_eval_followup_recovers_after_submit_failure(
+    eval_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """A completed result remains a durable apply marker until a job exists."""
+    database, repository = eval_state
+    gateway = FakeEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {
+                "status": "completed",
+                "currentScore": 80,
+                "candidateScore": 90,
+                "verdict": "accept",
+            },
+        ),
+    )
+    jobs = JobCapture(failures_remaining=1)
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda _run: gateway,
+        jobs,
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+
+    assert await poller.run_once() == 1
+    round_ = await repository.get_round("round-eval")
+    assert round_ is not None
+    assert round_.eval_status == "completed"
+    assert jobs.jobs == []
+
+    await database.dispose()
+    await database.start()
+    assert await poller.run_once() == 1
+    assert [job.kind for job in jobs.jobs] == ["evolution_apply"]
+
+
+async def test_malformed_gateway_status_blocks_instead_of_poisoning_scan(
+    eval_state: tuple[Database, EvolutionRepository],
+) -> None:
+    """An unknown external status becomes one blocked eval, not a hot error loop."""
+    _database, repository = eval_state
+
+    class UnknownStatusGateway:
+        config = EvalGatewayConfig.from_mapping({})
+
+        async def get_status(self, eval_id: str) -> EvalStatus:
+            del eval_id
+            return EvalStatus(status=cast(Any, "mystery"))
+
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        cast(Any, lambda _run: UnknownStatusGateway()),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+
+    assert await poller.run_once() == 1
+    round_ = await repository.get_round("round-eval")
+    run = await repository.get_run("run-eval")
+    assert round_ is not None and run is not None
+    assert round_.eval_status == "failed"
+    assert run.status == "blocked"
+    assert await poller.run_once() == 0
+
+
+async def test_malformed_evaluation_does_not_starve_later_due_run(
+    eval_state: tuple[Database, EvolutionRepository],
+    tmp_path: Path,
+) -> None:
+    """One malformed external status does not abort a batch with a healthy later run."""
+    database, repository = eval_state
+    await repository.create_run(
+        {
+            "id": "run-healthy",
+            "title": "healthy eval",
+            "mode": "full",
+            "engine_key": "full",
+            "eval_config": {},
+            "target_config_id": None,
+            "target_type": "skill",
+            "target_name": "deep-research",
+            "target_version": "v2.0.0",
+            "repo_url": "https://example.invalid/healthy.git",
+            "sub_dir": "skills/deep-research",
+            "base_ref": "v2.0.0",
+            "base_commit": "d" * 40,
+            "branch_name": "evo/20261028-run-healthy",
+            "repo_path": str(tmp_path / "repo-healthy"),
+            "workspace_path": str(tmp_path / "workspace-healthy"),
+            "status": "running",
+            "progress_unit": 4,
+            "stats": {},
+            "created_by": None,
+            "created_at": NOW + timedelta(seconds=1),
+        },
+    )
+    async with database.transaction() as session:
+        await session.execute(
+            insert(probe_clusters).values(
+                probe_cluster_id="cluster-healthy",
+                run_id="run-healthy",
+                seq=1,
+                probe_cluster_description="healthy issue",
+                probe_cluster_type="error",
+                confidence=0.8,
+                impact=0.8,
+                severity=0.8,
+                rank=1,
+                created_at=NOW,
+            ),
+        )
+        await session.execute(
+            insert(evolution_rounds).values(
+                id="round-healthy",
+                run_id="run-healthy",
+                probe_cluster_id="cluster-healthy",
+                seq=1,
+                status="evaluating",
+                candidate_ref="evo/20261028-run-healthy/candidate/r1",
+                candidate_commit="e" * 40,
+                candidate_message="candidate",
+                push_status="succeeded",
+                eval_external_id="fake:run-healthy:round-healthy:" + "e" * 40,
+                eval_status="evaluating",
+                eval_attempts=1,
+                eval_next_poll_at=NOW,
+                eval_started_at=NOW - timedelta(minutes=1),
+            ),
+        )
+
+    class MixedStatusGateway:
+        config = EvalGatewayConfig.from_mapping({})
+
+        def __init__(self, run_id: str) -> None:
+            self._run_id = run_id
+
+        async def get_status(self, eval_id: str) -> EvalStatus:
+            del eval_id
+            if self._run_id == "run-eval":
+                return EvalStatus(status=cast(Any, "mystery"))
+            return EvalStatus(status="completed")
+
+        async def get_result(self, eval_id: str) -> EvalResult:
+            del eval_id
+            return EvalResult(
+                current_score=70.0,
+                candidate_score=75.0,
+                external_verdict="accept",
+            )
+
+    jobs = JobCapture()
+    poller = EvolutionEvalPoller(
+        repository,
+        lambda run: cast(Any, MixedStatusGateway(run.id)),
+        jobs,
+        events=None,
+        now=lambda: NOW,
+        poll_interval=timedelta(minutes=5),
+        timeout=timedelta(hours=2),
+    )
+
+    assert await poller.run_once() == 2
+    bad = await repository.get_round("round-eval")
+    healthy = await repository.get_round("round-healthy")
+    assert bad is not None and healthy is not None
+    assert bad.eval_status == "failed"
+    assert healthy.eval_status == "completed"
+    assert [job.payload["evolutionRoundId"] for job in jobs.jobs] == ["round-healthy"]
 
 
 async def test_poller_timeout_wins_even_when_gateway_still_reports_running(
