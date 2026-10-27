@@ -10,7 +10,7 @@ depends:
   - m5-01
   - m5-07
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
@@ -19,7 +19,8 @@ scope:
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-10-28-evolution-run-events.md
 github:
   number: 57
   url: https://github.com/Shadow-Azure/harness-evolution/issues/57
