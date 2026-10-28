@@ -64,7 +64,7 @@ export function createAppRouter() {
         path: "/evolution/targets",
       },
       {
-        component: () => import("../pages/errors/Index.vue"),
+        redirect: "/sessions",
         path: "/errors",
       },
       {

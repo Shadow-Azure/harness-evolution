@@ -286,22 +286,6 @@ function toggleExpanded(agentId: string) {
 
 <template>
   <section
-    v-if="!rawSessionId"
-    class="errors-index"
-  >
-    <header>
-      <p class="eyebrow">
-        Errors
-      </p>
-      <h1>问题与归因</h1>
-    </header>
-    <EmptyState
-      description="请先从 Sessions 选择一个会话，再查看该会话的问题描述与归因分析。"
-      title="请选择会话"
-    />
-  </section>
-  <section
-    v-else
     class="errors-workspace"
     data-testid="errors-workspace"
   >
@@ -489,34 +473,6 @@ function toggleExpanded(agentId: string) {
 </template>
 
 <style scoped>
-.errors-index {
-  display: grid;
-  gap: 14px;
-  width: min(1080px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 28px 0;
-}
-
-.errors-index header {
-  display: grid;
-  gap: 8px;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--blue);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.errors-index h1 {
-  margin: 0;
-  font-size: var(--font-title);
-  font-weight: 650;
-}
-
 .errors-workspace {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);

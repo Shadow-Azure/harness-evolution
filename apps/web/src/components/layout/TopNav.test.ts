@@ -62,7 +62,7 @@ describe("top navigation user area", () => {
     });
   });
 
-  it("renders all M1 destinations and the optional demo badge", async () => {
+  it("renders the prototype two-entry navigation and the optional demo badge", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     useAuthStore().setSession({
@@ -77,7 +77,7 @@ describe("top navigation user area", () => {
       },
     });
     const router = createAppRouter();
-    await router.push("/errors");
+    await router.push("/sessions");
     await router.isReady();
 
     const wrapper = mount(TopNav, {
@@ -87,12 +87,45 @@ describe("top navigation user area", () => {
       },
     });
 
-    expect(wrapper.find("nav").text()).toContain("Sessions");
-    expect(wrapper.find("nav").text()).toContain("Errors");
-    expect(wrapper.find("nav").text()).toContain("Evolution");
+    expect(wrapper.findAll("nav .tn-item")).toHaveLength(2);
+    expect(wrapper.find("nav").text()).toContain("Session 错误查看");
+    expect(wrapper.find("nav").text()).toContain("自进化");
+    expect(wrapper.find("nav").text()).not.toContain("Errors");
     expect(wrapper.get("[data-testid='demo-badge']").text()).toContain("演示数据");
-    expect(wrapper.get("nav a.router-link-active").text()).toBe("Errors");
     expect(wrapper.get(".brand").text()).toContain("Harness Evolution");
+  });
+
+  it("keeps the prototype active state across session sub-routes", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions/root-1/errors");
+    await router.isReady();
+
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+
+    const items = wrapper.findAll("nav .tn-item");
+    expect(items).toHaveLength(2);
+    expect(wrapper.get("#tn-sessions").classes("active")).toBe(true);
+    expect(wrapper.get("#tn-sessions").text()).toContain("Session 错误查看");
+    expect(wrapper.get("#tn-evo").classes("active")).toBe(false);
+    expect(wrapper.findAll("nav .tn-item.active")).toHaveLength(1);
+    expect(wrapper.get(".tn-note").text()).toContain("点击 ID 跨页溯源");
   });
 
   it("keeps the compact brand and demo state accessible", async () => {

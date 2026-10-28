@@ -58,15 +58,12 @@ describe("web router", () => {
     expect(component.default.name).toBe("AgentTreeDemoPage");
   });
 
-  it("protects and lazily loads the top-level errors placeholder", async () => {
+  it("retires the top-level errors route with a redirect to sessions", () => {
     const router = createAppRouter();
     const errorsRoute = router.options.routes.find((route) => route.path === "/errors");
 
-    expect(errorsRoute?.meta?.public).not.toBe(true);
-    const loader = errorsRoute?.component;
-    expect(typeof loader).toBe("function");
-    const component = await (loader as () => Promise<{ default: { name: string } }>)();
-    expect(component.default.name).toBe("ErrorsPage");
+    expect(errorsRoute?.redirect).toBe("/sessions");
+    expect(errorsRoute?.component).toBeUndefined();
   });
 
   it("protects and lazily loads the Session error-detail route", async () => {

@@ -64,9 +64,13 @@ describe("prototype visual system", () => {
     expect(wrapper.get(".brand").text()).toContain("Harness Evolution");
     expect(wrapper.text()).not.toContain("Harness Lens");
     expect(wrapper.text()).not.toContain("Vue shell");
-    expect(wrapper.findAll("nav .tn-item")).toHaveLength(3);
-    expect(wrapper.get("nav .tn-item.router-link-active").text()).toBe("Evolution");
+    expect(wrapper.findAll("nav .tn-item")).toHaveLength(2);
+    expect(wrapper.text()).toContain("Session 错误查看");
+    expect(wrapper.text()).toContain("会话轨迹与归因");
+    expect(wrapper.text()).toContain("点击 ID 跨页溯源");
+    expect(wrapper.text()).not.toContain("Errors");
+    expect(wrapper.get("nav .tn-item.active").text()).toContain("自进化");
     expect(TopNavSource).toContain("border-bottom-color: var(--blue)");
-    expect(TopNavSource).toContain(".tn-item#tn-evo.router-link-active");
+    expect(TopNavSource).toContain(".tn-item#tn-evo.active");
   });
 });
