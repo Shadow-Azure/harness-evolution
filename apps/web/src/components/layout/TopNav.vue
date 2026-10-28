@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useQuery, useQueryClient } from "@tanstack/vue-query";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 import { computed, onBeforeUnmount, ref } from "vue";
 
 import {
@@ -26,9 +26,16 @@ const props = defineProps({
 const { data: user } = useCurrentUser();
 const { isLoading, refetch: logoutUser } = useLogout();
 const queryClient = useQueryClient();
+const route = useRoute();
 const isProcessing = ref(false);
 const actionError = ref("");
 let disposed = false;
+
+const activeSection = computed(() => {
+  if (route.path.startsWith("/sessions")) return "sessions";
+  if (route.path.startsWith("/evolution")) return "evo";
+  return "";
+});
 
 const { data: acquisition } = useQuery({
   queryKey: queryKeys.acquisitionStatus,
@@ -140,25 +147,22 @@ onBeforeUnmount(() => {
       <RouterLink
         id="tn-sessions"
         class="tn-item"
+        :class="{ active: activeSection === 'sessions' }"
         to="/sessions"
       >
-        Sessions
-      </RouterLink>
-      <RouterLink
-        id="tn-errors"
-        class="tn-item"
-        to="/errors"
-      >
-        Errors
+        Session 错误查看<span class="tn-sub">会话轨迹与归因</span>
       </RouterLink>
       <RouterLink
         id="tn-evo"
         class="tn-item"
+        :class="{ active: activeSection === 'evo' }"
         to="/evolution"
       >
-        Evolution
+        自进化<span class="tn-sub">报告驱动的迭代优化</span>
       </RouterLink>
     </nav>
+
+    <span class="tn-note">问题与报告 ID 已串联 · 点击 ID 跨页溯源</span>
 
     <div class="actions">
       <div
@@ -283,16 +287,31 @@ onBeforeUnmount(() => {
   text-decoration: none;
 }
 
+.tn-sub {
+  margin-left: 8px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.tn-note {
+  align-self: center;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .tn-item:hover {
   color: var(--text);
 }
 
-.tn-item.router-link-active {
+.tn-item.active {
   color: var(--text);
   border-bottom-color: var(--blue);
 }
 
-.tn-item#tn-evo.router-link-active {
+.tn-item#tn-evo.active {
   border-bottom-color: var(--purple);
 }
 
@@ -301,7 +320,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   min-width: 0;
-  margin-left: auto;
+  margin-left: 12px;
 }
 
 .demo-badge {
@@ -415,6 +434,15 @@ onBeforeUnmount(() => {
 @media (max-width: 1100px) {
   .brand-copy small {
     display: none;
+  }
+
+  .tn-sub,
+  .tn-note {
+    display: none;
+  }
+
+  .actions {
+    margin-left: auto;
   }
 
   .sync-status {

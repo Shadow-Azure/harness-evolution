@@ -17,7 +17,7 @@ import {
 
 import { createAppRouter } from "../router";
 import { server } from "../test/server";
-import ErrorsPage from "./errors/Index.vue";
+import { useAuthStore } from "../stores/auth";
 import EvolutionPage from "./evolution/Index.vue";
 import NotFound from "./NotFound.vue";
 import SessionsPage from "./sessions/Index.vue";
@@ -69,11 +69,25 @@ describe("M1 shell pages", () => {
     expect(wrapper.find("[data-testid='session-card']").exists()).toBe(false);
   });
 
-  it("explains that the top-level errors entry arrives later", async () => {
-    const wrapper = await withRouter(ErrorsPage);
+  it("retires the top-level errors entry into the sessions view", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/errors");
+    await router.isReady();
 
-    expect(wrapper.text()).toContain("请选择会话");
-    expect(wrapper.text()).toContain("请先从 Sessions 选择一个会话");
+    expect(router.currentRoute.value.path).toBe("/sessions");
   });
 
   it("renders the backend-owned evolution run list shell", async () => {

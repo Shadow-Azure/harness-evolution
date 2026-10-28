@@ -92,9 +92,9 @@ describe("App shell", () => {
     const { router, wrapper } = await mountApp();
 
     expect(router.currentRoute.value.path).toBe("/sessions");
-    expect(wrapper.find("nav").text()).toContain("Sessions");
-    expect(wrapper.find("nav").text()).toContain("Errors");
-    expect(wrapper.find("nav").text()).toContain("Evolution");
+    expect(wrapper.find("nav").text()).toContain("Session 错误查看");
+    expect(wrapper.find("nav").text()).toContain("自进化");
+    expect(wrapper.find("nav").text()).not.toContain("Errors");
     expect(wrapper.text()).toContain("Session 浏览器");
     expect(wrapper.text()).not.toContain("API 已连接");
     expect(wrapper.find("[data-testid='demo-badge']").exists()).toBe(false);
@@ -189,13 +189,13 @@ describe("App shell", () => {
     expect(wrapper.find("[data-testid='demo-badge']").exists()).toBe(false);
   });
 
-  it("reaches the authenticated errors placeholder", async () => {
+  it("retires the top-level errors route into the sessions view", async () => {
     const { router, wrapper } = await mountApp();
 
     await router.push("/errors");
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/errors");
-    expect(wrapper.text()).toContain("请选择会话");
+    expect(router.currentRoute.value.path).toBe("/sessions");
+    expect(wrapper.text()).not.toContain("请选择会话");
   });
 });
