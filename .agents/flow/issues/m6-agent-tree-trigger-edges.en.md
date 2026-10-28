@@ -8,7 +8,7 @@ id: m6-08
 milestone: m6
 depends: []
 priority: P1
-status: in-progress
+status: done
 scope:
   - plans/14-15-ui-prototype/**
   - plans/fullstack-design/**
