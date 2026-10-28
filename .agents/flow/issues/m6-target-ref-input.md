@@ -9,7 +9,7 @@ milestone: m6
 depends:
   - m5-03
 priority: P1
-status: ready
+status: in-progress
 scope:
   - apps/web/**
   - apps/api/**
@@ -20,7 +20,8 @@ scope:
   - reports/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/feature/2026-10-27-target-config-ui.md
 github:
   number: 153
   url: https://github.com/Shadow-Azure/harness-evolution/issues/153

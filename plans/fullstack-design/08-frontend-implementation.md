@@ -510,13 +510,14 @@ Index.vue
     ├── objectName
     ├── repoUrl（git 远端地址，https/ssh；不写 token）
     ├── subDir（相对仓库根，如 skills/deep-research）
-    ├── defaultRef（基线分支或 tag，如 main / v2.0.0）
+    ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议）
     └── enabled 开关
 ```
 
 - 写操作仅 admin 可见；成员只读。
 - 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，表单展示错误。
-- 版本下拉来自该仓库的 tag；`defaultRef` 作为默认基线。
+- `defaultRef` 的输入文本就是表单值；失焦或直接提交不得清空。已保存对象可展示其仓库 tag 建议，选择 tag 只是可选快捷路径。
+- 新增态没有 target id，不请求版本建议，也不显示版本加载；编辑态只在版本请求实际进行时显示加载。建议获取失败或为空时仍可直接输入并保存。
 - 删除前提示"有进行中 run 时不可删除"（后端 409 `TARGET_IN_USE`）。
 - 保存成功失效 `["evolution","targets"]` 前缀，向导候选刷新。
 

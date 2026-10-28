@@ -2,8 +2,8 @@
 
 import type { EvolutionTarget } from "@harness/contracts";
 import { flushPromises, mount } from "@vue/test-utils";
+import { ElAutocomplete } from "element-plus/es/components/autocomplete/index";
 import ElDialog from "element-plus/es/components/dialog/index";
-import { ElOption, ElSelect } from "element-plus/es/components/select/index";
 import { describe, expect, it } from "vitest";
 
 import { elementPlusComponents } from "../../../../test/setup";
@@ -57,10 +57,9 @@ async function fillRequired(
   await wrapper.get('input[name="subDir"]').setValue(
     values.subDir ?? "  skills/deep-research  ",
   );
-  wrapper.findComponent(ElSelect).vm.$emit(
-    "update:modelValue",
-    values.defaultRef ?? "  main  ",
-  );
+  await wrapper
+    .get('input[name="defaultRef"]')
+    .setValue(values.defaultRef ?? "  main  ");
   await flushPromises();
 }
 
@@ -94,6 +93,30 @@ describe("TargetFormDialog", () => {
     ]]);
   });
 
+  it("keeps directly typed baseline text after blur and submit", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper, {
+      defaultRef: "  feature/direct-submit  ",
+    });
+
+    const input = wrapper.get('input[name="defaultRef"]');
+    expect((input.element as HTMLInputElement).value).toBe(
+      "  feature/direct-submit  ",
+    );
+
+    await input.trigger("blur");
+    expect((input.element as HTMLInputElement).value).toBe(
+      "  feature/direct-submit  ",
+    );
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      defaultRef: "feature/direct-submit",
+    });
+  });
+
   it("shows inline required errors and does not submit empty fields", async () => {
     const wrapper = await mountDialog();
     await wrapper.get("form").trigger("submit");
@@ -122,7 +145,7 @@ describe("TargetFormDialog", () => {
     ).toBe("https://example.com/entered.git");
   });
 
-  it("prefills edits, exposes remote versions and submits disabled state", async () => {
+  it("prefills edits, exposes remote suggestions and submits disabled state", async () => {
     const wrapper = await mountDialog({
       target,
       versions: ["main", "v1.9.0", "v2.0.0"],
@@ -131,16 +154,27 @@ describe("TargetFormDialog", () => {
     expect(
       (wrapper.get('input[name="objectName"]').element as HTMLInputElement).value,
     ).toBe("deep-research");
-    const select = wrapper.findComponent(ElSelect);
-    expect(select.props("modelValue")).toBe("main");
-    expect(select.props("filterable")).toBe(true);
-    expect(select.props("allowCreate")).toBe(true);
-    expect(select.props("defaultFirstOption")).toBe(true);
     expect(
-      wrapper
-        .findAllComponents(ElOption)
-        .map((option) => option.props("value")),
-    ).toEqual(["main", "v1.9.0", "v2.0.0"]);
+      (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
+    ).toBe("main");
+    const autocomplete = wrapper.findComponent(ElAutocomplete);
+    const suggestions = await new Promise<Array<{ value: string }>>(
+      (resolve) => {
+        (
+          autocomplete.vm.$props as {
+            fetchSuggestions: (
+              query: string,
+              callback: (items: Array<{ value: string }>) => void,
+            ) => void;
+          }
+        ).fetchSuggestions("", resolve);
+      },
+    );
+    expect(suggestions.map(({ value }) => value)).toEqual([
+      "main",
+      "v1.9.0",
+      "v2.0.0",
+    ]);
     expect(wrapper.get(".el-switch").classes()).toContain("is-checked");
 
     await wrapper.get(".el-switch").trigger("click");
@@ -151,6 +185,36 @@ describe("TargetFormDialog", () => {
       objectName: "deep-research",
       enabled: false,
     });
+  });
+
+  it("keeps tag suggestions available when the saved baseline is a branch", async () => {
+    const wrapper = await mountDialog({
+      target: {
+        ...target,
+        defaultRef: "feature/manual-direct",
+      },
+      versions: ["v1.9.0", "v2.0.0"],
+    });
+
+    const autocomplete = wrapper.findComponent(ElAutocomplete);
+    const suggestions = await new Promise<Array<{ value: string }>>(
+      (resolve) => {
+        (
+          autocomplete.vm.$props as {
+            fetchSuggestions: (
+              query: string,
+              callback: (items: Array<{ value: string }>) => void,
+            ) => void;
+          }
+        ).fetchSuggestions("feature/manual-direct", resolve);
+      },
+    );
+
+    expect(suggestions.map(({ value }) => value)).toEqual([
+      "feature/manual-direct",
+      "v1.9.0",
+      "v2.0.0",
+    ]);
   });
 
   it("resets stale values and errors when reopened for create", async () => {
@@ -168,5 +232,50 @@ describe("TargetFormDialog", () => {
       (wrapper.get('input[name="objectName"]').element as HTMLInputElement).value,
     ).toBe("");
     expect(wrapper.find("[role='alert']").exists()).toBe(false);
+  });
+
+  it("only shows remote loading for an editable target", async () => {
+    const createWrapper = await mountDialog({
+      target: null,
+      versionsLoading: true,
+    });
+    expect(createWrapper.text()).not.toContain("正在读取仓库版本");
+
+    const editWrapper = await mountDialog({
+      target,
+      versionsLoading: true,
+    });
+    expect(editWrapper.text()).toContain("正在读取仓库版本");
+  });
+
+  it("allows direct input when version suggestions fail", async () => {
+    const wrapper = await mountDialog({
+      target,
+      versionsError: true,
+    });
+
+    expect(wrapper.text()).toContain("暂时无法获取标签建议，可直接输入");
+    await wrapper
+      .get('input[name="defaultRef"]')
+      .setValue("feature/offline-fallback");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      defaultRef: "feature/offline-fallback",
+    });
+  });
+
+  it("marks tag suggestions as saved-config data when the draft repo changes", async () => {
+    const wrapper = await mountDialog({
+      target,
+      versions: ["v2.0.0"],
+    });
+
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/changed.git");
+
+    expect(wrapper.text()).toContain("标签建议来自已保存配置");
   });
 });

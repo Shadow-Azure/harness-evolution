@@ -1,4 +1,5 @@
 import { config } from "@vue/test-utils";
+import ElAutocomplete from "element-plus/es/components/autocomplete/index";
 import ElButton from "element-plus/es/components/button/index";
 import ElDialog from "element-plus/es/components/dialog/index";
 import { ElForm, ElFormItem } from "element-plus/es/components/form/index";
@@ -16,6 +17,7 @@ import { beforeEach } from "vitest";
 
 /** Element Plus controls mounted explicitly by tests that bypass Vite component transforms. */
 export const elementPlusComponents = {
+  ElAutocomplete,
   ElButton,
   ElDialog,
   ElForm,
