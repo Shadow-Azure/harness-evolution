@@ -4,7 +4,7 @@ English | [中文](m6-agent-tree-trigger-edges.md)
 
 ```yaml flow
 kind: issue
-id: m6-06
+id: m6-08
 milestone: m6
 depends: []
 priority: P1
