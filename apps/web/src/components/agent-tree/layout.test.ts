@@ -156,6 +156,52 @@ describe("agent-tree graph layout", () => {
     expect(result.branchSegments).toHaveLength(3);
   });
 
+  it("routes a child branch outside a self-skill card sharing its trigger", () => {
+    const tree: SessionTree = {
+      sessionId: "shared-trigger",
+      agents: [
+        agent({
+          events: [
+            {
+              kind: "skill",
+              line: 10,
+              messageOffset: 10,
+              name: "deep-research",
+              desc: "deep-research",
+              toolUseId: "skill-a",
+            },
+          ],
+        }),
+        agent({
+          agentId: "child",
+          parentAgentId: "main",
+          kind: "subagent",
+          label: "child",
+          toolUseId: "unknown-child-tool",
+        }),
+      ],
+      badCases: [
+        badCaseFixture({
+          badCaseId: "case-shared-trigger",
+          sessionId: "shared-trigger",
+          badCaseAgent: { sessionId: "shared-trigger", agentId: "main" },
+          anchor: { agentId: "main", eventIndex: 0 },
+        }),
+      ],
+    };
+
+    const result = buildGraph(tree, new Set(["main"]), measure);
+    const childEdge = result.edges.find((edge) => edge.target === "child")!;
+    const card = result.badCaseNodes.find(
+      (node) => node.data.badCaseId === "case-shared-trigger",
+    )!;
+    const trunkX = childEdge.data.trunkX;
+    const cardLeft = card.position.x;
+    const cardRight = card.position.x + card.data.width;
+
+    expect(trunkX > cardLeft && trunkX < cardRight).toBe(false);
+  });
+
   it("groups only trigger X positions within 24 pixels", () => {
     expect(
       clusterByX([100, 120, 157], (value) => value).map((cluster) => cluster),

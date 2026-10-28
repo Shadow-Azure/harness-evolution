@@ -10,7 +10,7 @@ Agent 执行流图中，触发 pill 与目标之间的视觉线由节点内常�
 
 ## Decision
 
-布局阶段把真实 Agent 边和问题卡首边的 `h{eventIndex}` / `rep{eventIndex}` 汇总为 `triggerConnections`。Agent 节点只为被占用的方向创建精确位于 pill 上沿或下沿的 handle；不再渲染 stub。edge 层位于节点背景之上，但保持 pointer events 关闭。问题卡以 pill 的 x 坐标居中，同一 pill 的后续卡片沿同一列堆叠，并从上一张卡片的同向 handle 串联到下一张。
+布局阶段把真实 Agent 边和问题卡首边的 `h{eventIndex}` / `rep{eventIndex}` 汇总为 `triggerConnections`。Agent 节点只为被占用的方向创建精确位于 pill 上沿或下沿的 handle；不再渲染 stub。edge 层位于节点背景之上，但保持 pointer events 关闭。问题卡以 pill 的 x 坐标居中，同一 pill 的后续卡片沿同一列堆叠，并从上一张卡片的同向 handle 串联到下一张。问题卡与子 Agent 共享触发点时，子分支 trunk 在卡片左右两侧中选择路径更短的一侧，并在卡片外留出 12px 间距，保证两个目标都可追溯到原 pill。
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Agent 执行流图中，触发 pill 与目标之间的视觉线由节点内常�
 
 ## Consequences
 
-触发点是否连线完全由布局数据决定，新增连接类型必须在布局阶段占用对应 handle。问题卡纵向堆叠会增加画布高度，但能保持每个 pill 独立成列。Vue Flow edge 覆盖节点背景后，若未来新增节点内装饰层，需要继续遵守 edge 不接收指针事件与节点内容可交互的边界。
+触发点是否连线完全由布局数据决定，新增连接类型必须在布局阶段占用对应 handle。问题卡纵向堆叠会增加画布高度，但能保持每个 pill 独立成列；trunk 避让会让共享触发点的子分支在卡片侧面产生额外水平折线。Vue Flow edge 覆盖节点背景后，若未来新增节点内装饰层，需要继续遵守 edge 不接收指针事件与节点内容可交互的边界。

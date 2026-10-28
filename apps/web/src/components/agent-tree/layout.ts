@@ -1043,6 +1043,62 @@ export function buildGraph(
     normalizedOptions.problemDetails,
     measure,
   );
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const cardClearance = 12;
+  const hitsCard = (x: number, card: BadCaseLayoutNode) =>
+    x > card.position.x && x < card.position.x + card.data.width;
+  for (const edge of edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (source?.type !== "agent" || !target) {
+      continue;
+    }
+    const corridor = overlay.badCaseNodes.filter(
+      (card) =>
+        card.position.y + BADCASE_CARD_H > source.position.y + 53 &&
+        card.position.y < target.position.y,
+    );
+    const blockers = corridor.filter((card) =>
+      hitsCard(edge.data.trunkX, card),
+    );
+    if (blockers.length === 0) {
+      continue;
+    }
+
+    let right =
+      Math.max(
+        ...blockers.map(
+          (card) => card.position.x + card.data.width,
+        ),
+      ) + cardClearance;
+    while (corridor.some((card) => hitsCard(right, card))) {
+      right += cardClearance;
+    }
+    let left =
+      Math.min(...blockers.map((card) => card.position.x)) - cardClearance;
+    while (left >= 0 && corridor.some((card) => hitsCard(left, card))) {
+      left -= cardClearance;
+    }
+    const sourceX =
+      source.position.x +
+      BOX_PAD +
+      BOX_EDGE +
+      (source.data.chain.offsets[Number(edge.sourceHandle.slice(1))] ?? 0);
+    const targetX = target.position.x;
+    const rightCost =
+      Math.abs(sourceX - right) + Math.abs(targetX - right);
+    const leftCost =
+      left < 0
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(sourceX - left) + Math.abs(targetX - left);
+    edge.data.trunkX = rightCost <= leftCost ? right : left;
+    const segment = branchSegments.find(
+      (item) => item.source === edge.source && item.target === edge.target,
+    );
+    if (segment) {
+      segment.x = edge.data.trunkX;
+    }
+  }
   const triggerConnectionsByAgent = new Map<
     string,
     Record<number, TriggerConnection>

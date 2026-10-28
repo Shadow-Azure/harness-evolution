@@ -10,7 +10,7 @@ The Agent execution graph represented each connection between a trigger pill and
 
 ## Decision
 
-The layout aggregates actual Agent edges and first problem-card edges by their `h{eventIndex}` / `rep{eventIndex}` handles into `triggerConnections`. Agent nodes create handles only for occupied directions, positioned precisely at the pill's upper or lower boundary, and no longer render stubs. The edge layer sits above node backgrounds while pointer events remain disabled. Problem cards are centered on the pill's x coordinate; additional cards for the same pill stack along one column and chain from the preceding card's handle in the same direction.
+The layout aggregates actual Agent edges and first problem-card edges by their `h{eventIndex}` / `rep{eventIndex}` handles into `triggerConnections`. Agent nodes create handles only for occupied directions, positioned precisely at the pill's upper or lower boundary, and no longer render stubs. The edge layer sits above node backgrounds while pointer events remain disabled. Problem cards are centered on the pill's x coordinate; additional cards for the same pill stack along one column and chain from the preceding card's handle in the same direction. When a problem card and child Agent share a trigger, the child branch trunk takes the shorter of the card's two horizontal sides and leaves 12px of clearance outside the card so both targets remain traceable to the original pill.
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Keeping the stubs and rendering them only when an edge exists would remove dangl
 
 ## Consequences
 
-Trigger connectivity is now determined entirely by layout data, so every new connection type must occupy the relevant handle during layout. Vertical card stacking can increase graph height, while each pill keeps an independent column. Because edges now render above node backgrounds, future node decorations must preserve pointer-event isolation so interactive node content remains usable.
+Trigger connectivity is now determined entirely by layout data, so every new connection type must occupy the relevant handle during layout. Vertical card stacking can increase graph height, while each pill keeps an independent column; trunk avoidance adds a horizontal detour beside a card when a child branch shares its trigger. Because edges now render above node backgrounds, future node decorations must preserve pointer-event isolation so interactive node content remains usable.
