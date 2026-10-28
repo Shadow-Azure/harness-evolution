@@ -12,6 +12,7 @@ status: in-progress
 scope:
   - plans/14-15-ui-prototype/**
   - plans/fullstack-design/**
+  - plans/2026-10-28-pr152-review.md
   - apps/web/src/components/agent-tree/**
   - .agents/flow/**
   - .agents/notes/**
