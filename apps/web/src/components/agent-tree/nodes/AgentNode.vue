@@ -2,31 +2,36 @@
 import { Handle, Position } from "@vue-flow/core";
 import { computed } from "vue";
 
-import { BOX_EDGE, BOX_PAD } from "../layout";
+import {
+  BOX_EDGE,
+  BOX_PAD,
+  TRIGGER_HANDLE_BOTTOM,
+  TRIGGER_HANDLE_TOP,
+} from "../layout";
 import type { AgentLayoutNodeData } from "../types";
 
 const props = defineProps<{
   data: AgentLayoutNodeData;
 }>();
 
+const handles = computed(() =>
+  Object.entries(props.data.triggerConnections ?? {})
+    .sort(([left], [right]) => Number(left) - Number(right))
+    .map(([eventIndex, connection]) => ({
+      eventIndex: Number(eventIndex),
+      left:
+        BOX_PAD +
+        BOX_EDGE +
+        (props.data.chain.offsets[Number(eventIndex)] ?? 0),
+      above: Boolean(connection.above),
+      below: Boolean(connection.below),
+    })),
+);
 const sourceHandles = computed(() =>
-  props.data.chain.items.flatMap((item) => {
-    if (item.kind === "gap") {
-      return [];
-    }
-    return [
-      {
-        id: `h${item.evIdx}`,
-        left: BOX_PAD + BOX_EDGE + (props.data.chain.offsets[item.evIdx] ?? 0),
-      },
-    ];
-  }),
+  handles.value.filter((handle) => handle.below),
 );
 const discoveryHandles = computed(() =>
-  sourceHandles.value.map((handle) => ({
-    ...handle,
-    id: `rep${handle.id.slice(1)}`,
-  })),
+  handles.value.filter((handle) => handle.above),
 );
 </script>
 
@@ -109,33 +114,36 @@ const discoveryHandles = computed(() =>
     />
     <Handle
       v-for="handle in sourceHandles"
-      :id="handle.id"
-      :key="handle.id"
+      :id="`h${handle.eventIndex}`"
+      :key="`h${handle.eventIndex}`"
       type="source"
       :position="Position.Bottom"
       class="hidden-handle"
-      :style="{ left: `${handle.left}px` }"
+      :style="{
+        left: `${handle.left}px`,
+        top: `${TRIGGER_HANDLE_BOTTOM}px`,
+        bottom: 'auto',
+        width: '1px',
+        height: '1px',
+        minWidth: '1px',
+        minHeight: '1px',
+      }"
     />
     <Handle
       v-for="handle in discoveryHandles"
-      :id="handle.id"
-      :key="handle.id"
+      :id="`rep${handle.eventIndex}`"
+      :key="`rep${handle.eventIndex}`"
       type="source"
       :position="Position.Top"
       class="hidden-handle"
-      :style="{ left: `${handle.left}px` }"
-    />
-    <span
-      v-for="handle in sourceHandles"
-      :key="`stub-${handle.id}`"
-      class="rf-stub"
-      :style="{ left: `${handle.left}px` }"
-    />
-    <span
-      v-for="handle in discoveryHandles"
-      :key="`stub-top-${handle.id}`"
-      class="rf-stub-top"
-      :style="{ left: `${handle.left}px` }"
+      :style="{
+        left: `${handle.left}px`,
+        top: `${TRIGGER_HANDLE_TOP}px`,
+        width: '1px',
+        height: '1px',
+        minWidth: '1px',
+        minHeight: '1px',
+      }"
     />
   </button>
 </template>
@@ -274,22 +282,6 @@ const discoveryHandles = computed(() =>
   margin-top: 3px;
   color: var(--text-faint);
   font-size: 10px;
-}
-
-.rf-stub {
-  position: absolute;
-  bottom: 0;
-  width: 1px;
-  height: 27px;
-  background: var(--graph-branch);
-}
-
-.rf-stub-top {
-  position: absolute;
-  top: 0;
-  width: 1px;
-  height: 31px;
-  background: var(--red);
 }
 
 .hidden-handle {

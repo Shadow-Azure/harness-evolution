@@ -440,6 +440,15 @@ function onNodesInitialized() {
   height: 100%;
 }
 
+.agent-tree :deep(.vue-flow__edges) {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.agent-tree :deep(.vue-flow__nodes) {
+  z-index: 1;
+}
+
 .agent-tree :deep(.vue-flow__edge-path) {
   stroke: var(--graph-branch);
 }

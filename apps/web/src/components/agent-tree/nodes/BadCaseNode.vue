@@ -60,6 +60,18 @@ function onSelect() {
       :position="Position.Bottom"
       class="hidden-handle"
     />
+    <Handle
+      id="card-stack-top"
+      type="source"
+      :position="Position.Top"
+      class="hidden-handle"
+    />
+    <Handle
+      id="card-stack-bottom"
+      type="source"
+      :position="Position.Bottom"
+      class="hidden-handle"
+    />
   </button>
 </template>
 

@@ -208,7 +208,7 @@ App.vue
 | 组件 | 对应原型 | 备注 |
 |---|---|---|
 | `agent-tree/AgentTree.vue` | React 岛 `<App sid findingsBudget>` | Vue Flow 画布容器，负责挂载、fitView、筛选 |
-| `agent-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 触发桩（下/上引线） |
+| `agent-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 按真实边占用生成的 pill 上下锚点 |
 | `agent-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（badCaseId 截短 + reason 短标签） |
 | `agent-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
 | `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
@@ -251,7 +251,7 @@ App.vue
                                       └──────────────────────────┘
 ```
 
-**验收方式**：先迁移 `demo-nested` 最小树（design.md §8 的嵌套示例），验证"问题归属、子 agent 内触发、折叠组、连线不穿兄弟分支"四件事，再切真实会话数据。
+**验收方式**：先迁移 `demo-nested` 最小树（design.md §8 的嵌套示例），验证"问题归属、子 agent 内触发、折叠组、连线从 pill 锚点直达且不穿兄弟分支"四件事，再切真实会话数据。
 
 ## 9. 样式体系
 

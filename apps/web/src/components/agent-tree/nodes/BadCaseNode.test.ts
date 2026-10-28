@@ -11,7 +11,17 @@ vi.mock("@vue-flow/core", async () => {
   const { defineComponent: defineMockComponent } = await import("vue");
   return {
     Handle: defineMockComponent({
-      setup: () => () => h("span"),
+      props: {
+        id: { type: String, default: "" },
+        type: { type: String, default: "" },
+        position: { type: String, default: "" },
+      },
+      setup: (props) => () =>
+        h("span", {
+          "data-handle-id": props.id,
+          "data-handle-position": props.position,
+          "data-handle-type": props.type,
+        }),
     }),
     Position: {
       Left: "left",
@@ -85,5 +95,34 @@ describe("BadCaseNode", () => {
     expect(card.classes().some((name) => name.startsWith("state-"))).toBe(
       false,
     );
+  });
+
+  it("exposes source handles for vertical error-card stacking", () => {
+    const wrapper = mount(BadCaseNode, {
+      props: {
+        data: {
+          badCaseId: "case-stack",
+          shortId: "case-sta",
+          reason: "stacked problem",
+          width: 180,
+          degraded: false,
+          active: false,
+        },
+      },
+      global: {
+        provide: {
+          [BAD_CASE_SELECT_KEY]: vi.fn(),
+        },
+      },
+    });
+
+    expect(wrapper.get('[data-handle-id="card-stack-top"]').attributes()).toMatchObject({
+      "data-handle-position": "top",
+      "data-handle-type": "source",
+    });
+    expect(wrapper.get('[data-handle-id="card-stack-bottom"]').attributes()).toMatchObject({
+      "data-handle-position": "bottom",
+      "data-handle-type": "source",
+    });
   });
 });

@@ -17,6 +17,7 @@ import type {
   LayoutDiagnostic,
   LayoutTree,
   MeasureText,
+  TriggerConnection,
 } from "./types";
 
 /** Gap between adjacent pill nodes. */
@@ -33,6 +34,10 @@ export const BOX_PAD = 10;
 export const BOX_EDGE = 1;
 /** Estimated Agent node height from the prototype. */
 export const AGENT_BOX_H = 80;
+/** Trigger-pill top anchor used by upward edges. */
+export const TRIGGER_HANDLE_TOP = 31;
+/** Trigger-pill bottom anchor used by downward edges. */
+export const TRIGGER_HANDLE_BOTTOM = 53;
 /** Vertical distance between Agent rows. */
 export const ROW_STEP = 124;
 /** Base indentation for each child row. */
@@ -486,6 +491,14 @@ export function buildBadCaseOverlay(
     y: number;
     width: number;
   }> = [];
+  const stackedSourceById = new Map<
+    string,
+    {
+      source: string;
+      sourceHandle: string;
+      targetHandle: string;
+    }
+  >();
 
   const overlaps = (
     left: { x: number; y: number; width: number },
@@ -502,10 +515,10 @@ export function buildBadCaseOverlay(
     anchor: BadCaseAnchorDescriptor,
     x: number,
     y: number,
-  ) => {
+  ): BadCaseLayoutNode | null => {
     const item = caseById.get(anchor.badCaseId);
     const detail = detailById.get(anchor.badCaseId);
-    if (!item) return;
+    if (!item) return null;
     const shortId = shortBadCaseId(anchor.badCaseId);
     const reason = detail?.reason ?? item.reason;
     const width = badCaseCardWidth(shortId, reason, measure);
@@ -523,13 +536,17 @@ export function buildBadCaseOverlay(
     };
     nodesById.set(node.id, node);
     placed.push({ id: node.id, x, y, width });
+    return node;
   };
 
   const sideGroups = new Map<string, BadCaseAnchorDescriptor[]>();
-  const verticalAnchors: BadCaseAnchorDescriptor[] = [];
+  const verticalGroups = new Map<string, BadCaseAnchorDescriptor[]>();
   for (const anchor of sortedAnchors) {
     if (anchor.side !== "left" && anchor.side !== "right") {
-      verticalAnchors.push(anchor);
+      const key = `${anchor.hostAgentId}|${anchor.eventIndex}|${anchor.side}`;
+      const group = verticalGroups.get(key) ?? [];
+      group.push(anchor);
+      verticalGroups.set(key, group);
       continue;
     }
     const key = `${anchor.hostAgentId}|${anchor.side}`;
@@ -561,32 +578,47 @@ export function buildBadCaseOverlay(
     });
   }
 
-  for (const anchor of verticalAnchors) {
-    const item = caseById.get(anchor.badCaseId);
-    if (!item) continue;
-    const detail = detailById.get(anchor.badCaseId);
-    const width = badCaseCardWidth(
-      shortBadCaseId(anchor.badCaseId),
-      detail?.reason ?? item.reason,
-      measure,
-    );
-    const direction = anchor.side === "above" ? -1 : 1;
-    const x = anchor.x - 48;
-    let y =
-      anchor.side === "above"
-        ? anchor.y - 8 - BADCASE_CARD_H
-        : anchor.y + 8;
-    while (
-      placed.some((candidate) =>
-        overlaps(
-          { x, y, width },
-          { x: candidate.x, y: candidate.y, width: candidate.width },
-        ),
-      )
-    ) {
-      y += direction * (BADCASE_CARD_H + BADCASE_CARD_GAP);
-    }
-    addNode(anchor, x, y);
+  for (const group of verticalGroups.values()) {
+    const direction = group[0]!.side === "above" ? -1 : 1;
+    let previous: BadCaseLayoutNode | null = null;
+    group.forEach((anchor, index) => {
+      const item = caseById.get(anchor.badCaseId);
+      if (!item) return;
+      const detail = detailById.get(anchor.badCaseId);
+      const width = badCaseCardWidth(
+        shortBadCaseId(anchor.badCaseId),
+        detail?.reason ?? item.reason,
+        measure,
+      );
+      const x = Math.max(8, anchor.x - width / 2);
+      const baseY =
+        anchor.side === "above"
+          ? anchor.y - 8 - BADCASE_CARD_H
+          : anchor.y + 8;
+      let y = baseY + direction * index * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      while (
+        placed.some((candidate) =>
+          overlaps(
+            { x, y, width },
+            { x: candidate.x, y: candidate.y, width: candidate.width },
+          ),
+        )
+      ) {
+        y += direction * (BADCASE_CARD_H + BADCASE_CARD_GAP);
+      }
+      const node = addNode(anchor, x, y);
+      if (!node) return;
+      if (previous) {
+        stackedSourceById.set(anchor.badCaseId, {
+          source: previous.id,
+          sourceHandle:
+            anchor.side === "above" ? "card-stack-top" : "card-stack-bottom",
+          targetHandle:
+            anchor.side === "above" ? "card-bottom" : "card-top",
+        });
+      }
+      previous = node;
+    });
   }
 
   const badCaseNodes = [...nodesById.values()].sort((left, right) =>
@@ -594,22 +626,30 @@ export function buildBadCaseOverlay(
   );
   const badCaseEdges = sortedAnchors
     .filter((anchor) => nodesById.has(`badcase:${anchor.badCaseId}`))
-    .map((anchor): BadCaseLayoutEdge => ({
-      id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
-      source: anchor.hostAgentId,
-      target: `badcase:${anchor.badCaseId}`,
-      ...badCaseHandles(anchor),
-      type: badCaseEdgeType(anchor),
-      data: {
-        badCaseId: anchor.badCaseId,
-        side: anchor.side,
-      },
-      style: {
-        stroke: BADCASE_COLOR,
-        strokeWidth: 1.2,
-        strokeDasharray: "4 3",
-      },
-    }));
+    .map((anchor): BadCaseLayoutEdge => {
+      const stacked = stackedSourceById.get(anchor.badCaseId);
+      return {
+        id: `e-${anchor.hostAgentId}-${anchor.eventIndex}-${anchor.badCaseId}`,
+        source: stacked?.source ?? anchor.hostAgentId,
+        target: `badcase:${anchor.badCaseId}`,
+        ...(stacked
+          ? {
+              sourceHandle: stacked.sourceHandle,
+              targetHandle: stacked.targetHandle,
+            }
+          : badCaseHandles(anchor)),
+        type: badCaseEdgeType(anchor),
+        data: {
+          badCaseId: anchor.badCaseId,
+          side: anchor.side,
+        },
+        style: {
+          stroke: BADCASE_COLOR,
+          strokeWidth: 1.2,
+          strokeDasharray: "4 3",
+        },
+      };
+    });
 
   return { badCaseNodes, badCaseEdges };
 }
@@ -1003,13 +1043,103 @@ export function buildGraph(
     normalizedOptions.problemDetails,
     measure,
   );
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const cardClearance = 12;
+  const hitsCard = (x: number, card: BadCaseLayoutNode) =>
+    x > card.position.x && x < card.position.x + card.data.width;
+  for (const edge of edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (source?.type !== "agent" || !target) {
+      continue;
+    }
+    const corridor = overlay.badCaseNodes.filter(
+      (card) =>
+        card.position.y + BADCASE_CARD_H > source.position.y + 53 &&
+        card.position.y < target.position.y,
+    );
+    const blockers = corridor.filter((card) =>
+      hitsCard(edge.data.trunkX, card),
+    );
+    if (blockers.length === 0) {
+      continue;
+    }
+
+    let right =
+      Math.max(
+        ...blockers.map(
+          (card) => card.position.x + card.data.width,
+        ),
+      ) + cardClearance;
+    while (corridor.some((card) => hitsCard(right, card))) {
+      right += cardClearance;
+    }
+    let left =
+      Math.min(...blockers.map((card) => card.position.x)) - cardClearance;
+    while (left >= 0 && corridor.some((card) => hitsCard(left, card))) {
+      left -= cardClearance;
+    }
+    const sourceX =
+      source.position.x +
+      BOX_PAD +
+      BOX_EDGE +
+      (source.data.chain.offsets[Number(edge.sourceHandle.slice(1))] ?? 0);
+    const targetX = target.position.x;
+    const rightCost =
+      Math.abs(sourceX - right) + Math.abs(targetX - right);
+    const leftCost =
+      left < 0
+        ? Number.POSITIVE_INFINITY
+        : Math.abs(sourceX - left) + Math.abs(targetX - left);
+    edge.data.trunkX = rightCost <= leftCost ? right : left;
+    const segment = branchSegments.find(
+      (item) => item.source === edge.source && item.target === edge.target,
+    );
+    if (segment) {
+      segment.x = edge.data.trunkX;
+    }
+  }
+  const triggerConnectionsByAgent = new Map<
+    string,
+    Record<number, TriggerConnection>
+  >();
+  for (const edge of [...edges, ...overlay.badCaseEdges]) {
+    if (!nodes.some((node) => node.id === edge.source)) {
+      continue;
+    }
+    const below = /^h(\d+)$/.exec(edge.sourceHandle);
+    const above = /^rep(\d+)$/.exec(edge.sourceHandle);
+    const match = below ?? above;
+    if (!match) {
+      continue;
+    }
+    const eventIndex = Number(match[1]);
+    const connections =
+      triggerConnectionsByAgent.get(edge.source) ?? {};
+    const current = connections[eventIndex] ?? {};
+    connections[eventIndex] = {
+      ...current,
+      ...(below ? { below: true } : { above: true }),
+    };
+    triggerConnectionsByAgent.set(edge.source, connections);
+  }
+  for (const node of nodes) {
+    const triggerConnections = triggerConnectionsByAgent.get(node.id);
+    if (triggerConnections) {
+      node.data.triggerConnections = triggerConnections;
+    }
+  }
+  const renderedNodeIds = new Set([
+    ...nodes.map((node) => node.id),
+    ...overlay.badCaseNodes.map((node) => node.id),
+  ]);
 
   return {
     nodes,
     edges,
     badCaseNodes: overlay.badCaseNodes,
     badCaseEdges: overlay.badCaseEdges.filter((edge) =>
-      nodes.some((node) => node.id === edge.source),
+      renderedNodeIds.has(edge.source),
     ),
     anchors,
     diagnostics: sortDiagnostics(diagnostics),
@@ -1120,6 +1250,9 @@ export function discoveryPath(input: {
   targetX: number;
   targetY: number;
 }): string {
+  if (input.sourceX === input.targetX) {
+    return `M ${input.sourceX} ${input.sourceY} V ${input.targetY}`;
+  }
   const radius = Math.min(7, Math.abs(input.targetY - input.sourceY) / 2);
   return [
     `M ${input.sourceX} ${input.sourceY}`,
