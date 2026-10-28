@@ -5,13 +5,55 @@ import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { http, HttpResponse } from "msw";
 import { createPinia, setActivePinia } from "pinia";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import { server } from "../../test/server";
 import RunDetail from "./RunDetail.vue";
 
 const wrappers: VueWrapper[] = [];
+
+/** Minimal EventSource double that records listeners and allows manual frames. */
+class TestEventSource {
+  static instances: TestEventSource[] = [];
+
+  readonly listeners = new Map<string, Array<(event: Event) => void>>();
+  onerror: ((event: Event) => void) | null = null;
+  closed = false;
+
+  constructor(readonly url: string) {
+    TestEventSource.instances.push(this);
+  }
+
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+  ): void {
+    const listenerFn =
+      typeof listener === "function"
+        ? listener
+        : (event: Event) => listener.handleEvent(event);
+    const bucket = this.listeners.get(type) ?? [];
+    bucket.push(listenerFn);
+    this.listeners.set(type, bucket);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emit(type: string, data: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ data: JSON.stringify(data) } as MessageEvent);
+    }
+  }
+
+  static latest(): TestEventSource {
+    const latest = this.instances.at(-1);
+    if (!latest) throw new Error("no EventSource was opened");
+    return latest;
+  }
+}
 
 const emptyHits = {
   sessions: 0,
@@ -171,6 +213,14 @@ function detailSteps(
   }));
 }
 
+/** Blocked-state facts that live directly on the detail shell. */
+interface DetailOverrides {
+  blockedStage?: "patch" | "push" | "eval" | null;
+  retryAttempts?: number;
+  nextRetryAt?: string | null;
+  evalStatus?: "pending" | "evaluating" | "completed" | "failed" | "timeout";
+}
+
 function detail(
   card = run(),
   statuses: Array<"done" | "active" | "pending"> = [
@@ -181,6 +231,7 @@ function detail(
     "pending",
     "pending",
   ],
+  overrides: DetailOverrides = {},
 ) {
   return {
     ...card,
@@ -203,6 +254,7 @@ function detail(
     },
     lastEventSeq: 0,
     steps: detailSteps(statuses),
+    ...overrides,
   };
 }
 
@@ -244,12 +296,19 @@ async function mountPage(runId = "evo-full-1", query = "") {
   return wrapper;
 }
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => {
+  vi.stubGlobal("EventSource", TestEventSource);
+  server.listen({ onUnhandledRequest: "error" });
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
+  TestEventSource.instances = [];
 });
-afterAll(() => server.close());
+afterAll(() => {
+  server.close();
+  vi.unstubAllGlobals();
+});
 
 describe("evolution run detail page", () => {
   it("shows an unreached explanation when a failed run stops before step 1", async () => {
@@ -550,7 +609,8 @@ describe("evolution run detail page", () => {
     );
   });
 
-  it("keeps blocked context visible above the selected step", async () => {
+  it("shows blocked facts, the next retry time, and a manual retry action", async () => {
+    const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
     server.use(
       http.get("/api/evolution/runs/:runId", () =>
         HttpResponse.json(
@@ -584,6 +644,11 @@ describe("evolution run detail page", () => {
               },
             }),
             ["done", "done", "done", "done", "active", "pending"],
+            {
+              blockedStage: "eval",
+              retryAttempts: 1,
+              nextRetryAt,
+            },
           ),
         )),
       http.get("/api/evolution/runs/:runId/steps/:step", () =>
@@ -610,17 +675,229 @@ describe("evolution run detail page", () => {
         })),
     );
     const wrapper = await mountPage();
+    const banner = wrapper.get("[data-testid='blocked-banner']");
 
-    expect(wrapper.get("[data-testid='blocked-banner']").text()).toContain(
-      "评测执行失败：sandbox timeout",
+    expect(banner.text()).toContain("评测执行失败：sandbox timeout");
+    expect(banner.text()).toContain("评测（eval）");
+    expect(banner.text()).toContain("自动重试 1 次");
+    expect(wrapper.get("[data-testid='next-retry-at']").text()).toContain(
+      "2026-10-27 12:05:00",
     );
-    expect(wrapper.get("[data-testid='blocked-banner']").text()).toContain(
-      "eval",
-    );
-    expect(wrapper.get("[data-testid='blocked-banner']").text()).toContain(
-      "自动重试 1 次",
-    );
+    expect(wrapper.get("[data-testid='run-retry']").text()).toBe("重试");
     expect(wrapper.text()).toContain("评测失败");
+    expect(wrapper.text()).toContain("查看执行日志");
+  });
+
+  it("submits a manual retry, disables the button, and refetches the run", async () => {
+    const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
+    let detailCalls = 0;
+    let retryCalls = 0;
+    let releaseRetry: () => void = () => undefined;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    server.use(
+      http.get("/api/evolution/runs/:runId", () => {
+        detailCalls += 1;
+        return HttpResponse.json(
+          detail(
+            run({
+              status: "blocked",
+              error: {
+                stage: "eval",
+                message: "评测执行失败：sandbox timeout",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+            }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "eval", retryAttempts: 1, nextRetryAt },
+          ),
+        );
+      }),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", async () => {
+        retryCalls += 1;
+        await retryGate;
+        return HttpResponse.json(
+          { jobId: "job-retry-1", reused: false },
+          { status: 202 },
+        );
+      }),
+    );
+    const wrapper = await mountPage();
+    const button = wrapper.get("[data-testid='run-retry']");
+
+    await button.trigger("click");
+    await flushPromises();
+
+    expect(retryCalls).toBe(1);
+    expect(button.attributes("disabled")).toBeDefined();
+
+    releaseRetry();
+    await vi.waitFor(() => expect(detailCalls).toBe(2));
+
+    expect(button.attributes("disabled")).toBeDefined();
+    expect(wrapper.get("[data-testid='retry-accepted']").text()).toContain(
+      "重试任务已受理",
+    );
+  });
+
+  it("shows an inline error when the run is no longer retryable", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "blocked",
+              error: {
+                stage: "push",
+                message: "push failed",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+            }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "push" },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "RUN_NOT_RETRYABLE",
+              message: "run is not blocked",
+            },
+          },
+          { status: 409 },
+        )),
+    );
+    const wrapper = await mountPage();
+
+    await wrapper.get("[data-testid='run-retry']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='retry-error']").text()).toContain(
+      "当前不可重试",
+    );
+    expect(
+      wrapper.get("[data-testid='run-retry']").attributes("disabled"),
+    ).toBeUndefined();
+  });
+
+  it("reports a missing run when the retry endpoint returns 404", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "blocked" }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "eval" },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "RUN_NOT_FOUND",
+              message: "evolution run not found",
+            },
+          },
+          { status: 404 },
+        )),
+    );
+    const wrapper = await mountPage();
+
+    await wrapper.get("[data-testid='run-retry']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='retry-error']").text()).toContain(
+      "运行不存在或已被删除",
+    );
+  });
+
+  it("explains an interrupted run without offering a retry", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "interrupted",
+              error: {
+                stage: "eval",
+                message: "进程重启，任务被中断",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+            }),
+            ["pending", "pending", "pending", "pending", "pending", "pending"],
+          ),
+        )),
+    );
+    const wrapper = await mountPage();
+
+    expect(wrapper.get("[data-testid='interrupted-banner']").text()).toContain(
+      "任务被中断，可查看最后事件",
+    );
+    expect(wrapper.find("[data-testid='run-retry']").exists()).toBe(false);
+  });
+
+  it("appends live SSE events to the execution log", async () => {
+    const existingEvent = {
+      seq: 1,
+      eventType: "run_created",
+      level: "info",
+      stage: "prepare",
+      stepIndex: null,
+      clusterId: null,
+      roundId: null,
+      jobId: null,
+      message: "已有事件",
+      createdAt: "2026-10-27T12:00:00+08:00",
+      payload: null,
+      error: null,
+    };
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "done", "done", "active", "pending"],
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.get("/api/evolution/runs/:runId/events", () =>
+        HttpResponse.json({
+          items: [existingEvent],
+          nextSeq: 1,
+          hasMore: false,
+        })),
+    );
+    const wrapper = await mountPage("evo-full-1", "?tab=logs");
+
+    expect(wrapper.get("[data-testid='run-log-panel']").text()).toContain(
+      "已有事件",
+    );
+
+    TestEventSource.latest().emit("run.event", {
+      ...existingEvent,
+      seq: 2,
+      eventType: "eval_completed",
+      level: "warn",
+      stage: "eval",
+      message: "SSE 新事件",
+    });
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='run-log-panel']").text()).toContain(
+      "SSE 新事件",
+    );
+    expect(wrapper.get("[data-testid='run-log-panel']").text()).toContain(
+      "2 条",
+    );
   });
 
   it("shows a retryable error when the run list request fails", async () => {

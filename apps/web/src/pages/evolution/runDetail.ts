@@ -31,6 +31,21 @@ export function resolveRunStepKey(
 }
 
 /**
+ * Format one backend timestamp in the viewer's local time.
+ * @param value ISO-8601 timestamp returned by the backend.
+ * @returns `YYYY-MM-DD HH:mm:ss` in local time, or the input when unparsable.
+ */
+export function formatLocalDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(" ");
+}
+
+/**
  * Render one run-level push status without misrepresenting local-only runs.
  * @param status Backend run push status.
  * @returns Human-readable status label.

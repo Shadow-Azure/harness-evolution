@@ -1,21 +1,38 @@
 <script setup lang="ts">
-import type { EvolutionStepKey, StepCondition } from "@harness/contracts";
-import { computed, ref } from "vue";
+import type {
+  EvolutionRunEvent,
+  EvolutionStepKey,
+  StepCondition,
+} from "@harness/contracts";
+import { useQueryClient } from "@tanstack/vue-query";
+import { computed, ref, watch } from "vue";
 import { type LocationQueryRaw, useRoute, useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
-import { useEvolutionRunDetail } from "../../composables/useEvolutionRunDetail";
+import { retryEvolutionRun } from "../../api/evolutionRuns";
+import { queryKeys } from "../../api/queryKeys";
+import { mergeRunEvents } from "../../composables/useEvolutionRunEventLog";
+import {
+  runDetailRefetchInterval,
+  useEvolutionRunDetail,
+} from "../../composables/useEvolutionRunDetail";
 import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
+import { useRunEvents } from "../../composables/useRunEvents";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
-import { resolveRunStepKey, workspacePushStatusLabel } from "./runDetail";
+import {
+  formatLocalDateTime,
+  resolveRunStepKey,
+  workspacePushStatusLabel,
+} from "./runDetail";
 
 defineOptions({ name: "EvolutionRunDetailPage" });
 
 const route = useRoute();
 const router = useRouter();
+const queryClient = useQueryClient();
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -23,7 +40,45 @@ const {
   error: runError,
   isPending: runPending,
   refetch: refetchRun,
-} = useEvolutionRunDetail(runId);
+} = useEvolutionRunDetail(runId, {
+  refetchInterval: runDetailRefetchInterval,
+});
+
+const isActive = computed(
+  () => run.value?.status === "preparing" || run.value?.status === "running",
+);
+const loadedSeq = ref(0);
+const liveEvents = ref<EvolutionRunEvent[]>([]);
+const logResetToken = ref(0);
+const isRetrying = ref(false);
+const retryAccepted = ref(false);
+const retryError = ref("");
+
+function appendLiveEvent(event: EvolutionRunEvent): void {
+  liveEvents.value = mergeRunEvents(liveEvents.value, [event]);
+}
+
+function acceptLoadedSeq(seq: number): void {
+  if (seq > loadedSeq.value) loadedSeq.value = seq;
+}
+
+function resetRunSnapshot(): void {
+  liveEvents.value = [];
+  logResetToken.value += 1;
+  void refetchRun();
+}
+
+useRunEvents(runId, loadedSeq, isActive, {
+  onEvent: appendLiveEvent,
+  onReset: resetRunSnapshot,
+});
+
+watch(
+  () => run.value?.status,
+  (status) => {
+    if (status !== "blocked") retryAccepted.value = false;
+  },
+);
 
 const steps = computed(() => run.value?.steps ?? []);
 const selectedKey = computed(() => resolveRunStepKey(route.query.step, steps.value));
@@ -78,6 +133,19 @@ const statusClass = computed(() => {
   if (status === "blocked" || status === "interrupted") return "blocked";
   if (status === "failed") return "failed";
   return "running";
+});
+
+const blockedStageLabel = computed(() => {
+  switch (run.value?.blockedStage ?? run.value?.error?.stage) {
+    case "patch":
+      return "补丁生成（patch）";
+    case "push":
+      return "推送（push）";
+    case "eval":
+      return "评测（eval）";
+    default:
+      return "未知阶段";
+  }
 });
 
 const windowLabel = computed(() => {
@@ -177,6 +245,37 @@ function retryRun(): void {
   void refetchRun();
 }
 
+function retryErrorMessage(error: unknown): string {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+  if (code === "RUN_NOT_RETRYABLE") {
+    return "运行状态已变化，当前不可重试，请稍后刷新。";
+  }
+  if (code === "RUN_NOT_FOUND") {
+    return "运行不存在或已被删除。";
+  }
+  return "重试请求失败，请稍后再试。";
+}
+
+async function retryBlockedRun(): Promise<void> {
+  if (isRetrying.value || retryAccepted.value) return;
+  isRetrying.value = true;
+  retryError.value = "";
+  try {
+    await retryEvolutionRun(runId.value);
+    retryAccepted.value = true;
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.evolutionRun(runId.value),
+    });
+  } catch (caught) {
+    retryError.value = retryErrorMessage(caught);
+  } finally {
+    isRetrying.value = false;
+  }
+}
+
 function retryStep(): void {
   void refetchStep();
 }
@@ -246,18 +345,58 @@ function clearMissingClusterFocus(): void {
         data-testid="blocked-banner"
         role="alert"
       >
-        <span class="blocked-title">运行在 {{ run.blockedStage ?? run.error?.stage ?? "未知阶段" }} 阻塞</span>
+        <span class="blocked-title">运行在{{ blockedStageLabel }}阶段阻塞</span>
         <span>{{ run.error?.message ?? "错误详情暂不可用" }}</span>
         <span class="mono muted">自动重试 {{ run.retryAttempts }} 次</span>
         <span
           v-if="run.nextRetryAt"
+          class="retry-copy mono muted"
+          data-testid="next-retry-at"
+        >等待自动重试 · {{ formatLocalDateTime(run.nextRetryAt) }}</span>
+        <span
+          v-else-if="run.retryAttempts >= 3"
           class="mono muted"
-        >下次重试 {{ run.nextRetryAt }}</span>
+        >自动重试次数已用尽</span>
         <span
           v-if="run.error"
           class="mono muted"
-        >{{ run.error.at }}</span>
-        <span class="retry-copy">自动恢复能力由后续运行恢复切片提供。</span>
+        >{{ formatLocalDateTime(run.error.at) }}</span>
+        <button
+          type="button"
+          class="retry-run"
+          data-testid="run-retry"
+          :disabled="isRetrying || retryAccepted"
+          @click="retryBlockedRun"
+        >
+          {{ isRetrying ? "提交中…" : retryAccepted ? "已提交重试" : "重试" }}
+        </button>
+        <span
+          v-if="retryAccepted"
+          class="retry-note"
+          data-testid="retry-accepted"
+        >重试任务已受理，等待运行推进。</span>
+        <span
+          v-if="retryError"
+          class="retry-error"
+          data-testid="retry-error"
+        >{{ retryError }}</span>
+        <button
+          type="button"
+          class="log-jump"
+          data-testid="open-error-log"
+          @click="openTab('logs')"
+        >
+          查看执行日志
+        </button>
+      </div>
+      <div
+        v-else-if="run.status === 'interrupted'"
+        class="interrupted-banner"
+        data-testid="interrupted-banner"
+        role="status"
+      >
+        <span class="blocked-title">任务被中断，可查看最后事件</span>
+        <span v-if="run.error">{{ run.error.message }}</span>
         <button
           type="button"
           class="log-jump"
@@ -574,6 +713,9 @@ function clearMissingClusterFocus(): void {
         v-else
         :run-id="run.runId"
         :steps="steps"
+        :live-events="liveEvents"
+        :reset-token="logResetToken"
+        @loaded-seq="acceptLoadedSeq"
         @select-step="selectEventStep"
         @focus-cluster="focusEventCluster"
       />
@@ -657,6 +799,7 @@ function clearMissingClusterFocus(): void {
 }
 
 .blocked-banner,
+.interrupted-banner,
 .error-banner {
   display: flex;
   align-items: center;
@@ -670,6 +813,12 @@ function clearMissingClusterFocus(): void {
 .blocked-banner {
   border: 1px solid color-mix(in srgb, var(--orange) 42%, transparent);
   background: color-mix(in srgb, var(--orange) 8%, transparent);
+  color: var(--text-dim);
+}
+
+.interrupted-banner {
+  border: 1px solid color-mix(in srgb, var(--orange) 30%, transparent);
+  background: color-mix(in srgb, var(--orange) 6%, transparent);
   color: var(--text-dim);
 }
 
@@ -689,6 +838,33 @@ function clearMissingClusterFocus(): void {
   font: inherit;
   font-size: 11px;
   cursor: pointer;
+}
+
+.retry-run {
+  padding: 3px 12px;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  color: var(--orange);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry-run:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.retry-note {
+  color: var(--green);
+  font-size: 11px;
+}
+
+.retry-error {
+  color: var(--red);
+  font-size: 11.5px;
 }
 
 .detail-tabs {

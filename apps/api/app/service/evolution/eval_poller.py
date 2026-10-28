@@ -63,6 +63,8 @@ class EvolutionEvalSubmitter:
         self,
         run: EvolutionRunRecord,
         round_: EvolutionRoundRecord,
+        *,
+        previous_external_id: str | None = None,
     ) -> EvolutionRoundRecord:
         """Submit once, preserving an existing external id across restart."""
         if round_.eval_external_id is not None:
@@ -124,17 +126,20 @@ class EvolutionEvalSubmitter:
             started_at=current,
             next_poll_at=current + self._poll_interval,
         )
+        payload: dict[str, Any] = {
+            "externalId": submission.eval_id,
+            "ref": round_.candidate_ref,
+            "commit": round_.candidate_commit,
+        }
+        if previous_external_id is not None:
+            payload["previousExternalId"] = previous_external_id
         await self._record(
             run.id,
             "eval_submitted",
             level="info",
             message=f"已提交评测 {submission.eval_id}",
             round_id=round_.id,
-            payload={
-                "externalId": submission.eval_id,
-                "ref": round_.candidate_ref,
-                "commit": round_.candidate_commit,
-            },
+            payload=payload,
         )
         return submitted
 

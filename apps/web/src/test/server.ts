@@ -9,6 +9,13 @@ export const server = setupServer(
   http.get("/api/evolution/runs", () =>
     HttpResponse.json({ running: [], history: [] }),
   ),
+  http.post("/api/events/ticket", () =>
+    HttpResponse.json({
+      ticket: "test-ticket",
+      expiresIn: 60,
+      topics: [],
+    }),
+  ),
   http.get("/api/acquisition/status", () =>
     HttpResponse.json({
       activeJobId: null,

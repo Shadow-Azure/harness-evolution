@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
     eval_timeout_seconds: int = Field(default=7_200, gt=0)
+    blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
     admin_username: str | None = None
     admin_password: SecretStr | None = None

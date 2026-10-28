@@ -49,6 +49,7 @@ from app.service.evolution.apply_final import (
     EvolutionApplyService,
     EvolutionFinalizeService,
 )
+from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.eval_poller import (
@@ -67,6 +68,7 @@ from app.service.evolution.prepare import (
     WorkspacePreparer,
 )
 from app.service.evolution.probe_query import ProbeQueryService
+from app.service.evolution.retry import EvolutionRetryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.stages import EvolutionStageService
 from app.service.evolution.targets import EvolutionTargetService
@@ -231,6 +233,23 @@ def create_app(
         ),
     )
     jobs.set_terminal_hook(evolution_lifecycle.on_terminal)
+    evolution_retry = EvolutionRetryService(
+        evolution_repository,
+        evolution_candidates,
+        jobs,
+        apply=evolution_apply,
+        finalize=evolution_finalize,
+        advance=evolution_advance,
+        prepare=prepare_service,
+        eval_submitter=evolution_eval_submitter,
+        probes=probe_query_repository,
+        events=evolution_events,
+    )
+    evolution_blocked_sweeper = EvolutionBlockedSweeper(
+        evolution_repository,
+        jobs,
+        scan_interval_seconds=resolved_settings.blocked_sweep_seconds,
+    )
 
     async def prepare_handler(job: JobRunRecord) -> Mapping[str, Any]:
         """Run the real prepare workflow for one admitted run."""
@@ -252,6 +271,7 @@ def create_app(
     jobs.register_handler("evolution_advance", advance_handler)
     jobs.register_handler("evolution_apply", apply_handler)
     jobs.register_handler("evolution_finalize", finalize_handler)
+    jobs.register_handler("evolution_retry", evolution_retry.handle)
     catalogs = CatalogService(target_repository, resolved_git_remote)
 
     @asynccontextmanager
@@ -275,6 +295,8 @@ def create_app(
             await jobs.start_queued()
             phase = "eval-poller"
             evolution_eval_poller.start()
+            phase = "blocked-sweeper"
+            evolution_blocked_sweeper.start()
         except Exception as exc:
             logger.error(
                 "database initialization failed",
@@ -289,22 +311,25 @@ def create_app(
             yield
         finally:
             try:
-                await evolution_eval_poller.stop()
+                await evolution_blocked_sweeper.stop()
             finally:
                 try:
-                    await sync.stop_scheduler()
+                    await evolution_eval_poller.stop()
                 finally:
                     try:
-                        await jobs.close()
+                        await sync.stop_scheduler()
                     finally:
                         try:
-                            if resolved_source is not None:
-                                await resolved_source.close()
+                            await jobs.close()
                         finally:
                             try:
-                                await event_bus.close()
+                                if resolved_source is not None:
+                                    await resolved_source.close()
                             finally:
-                                await resolved_database.dispose()
+                                try:
+                                    await event_bus.close()
+                                finally:
+                                    await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None
@@ -334,6 +359,8 @@ def create_app(
     app.state.evolution_advance = evolution_advance
     app.state.evolution_apply = evolution_apply
     app.state.evolution_finalize = evolution_finalize
+    app.state.evolution_retry = evolution_retry
+    app.state.blocked_sweeper = evolution_blocked_sweeper
     app.state.evolution_eval_poller = evolution_eval_poller
     app.state.evolution_lifecycle = evolution_lifecycle
     app.state.git_workspaces = workspace_manager

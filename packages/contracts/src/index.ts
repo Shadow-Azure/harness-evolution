@@ -103,6 +103,10 @@ export type EvolutionRunList = components["schemas"]["EvolutionRunList"];
 /** Complete run detail shell with workspace and backend-owned step states. */
 export type EvolutionRunDetail = components["schemas"]["EvolutionRunDetail"];
 
+/** Accepted manual retry for one blocked full run. */
+export type EvolutionRetryAccepted =
+  components["schemas"]["EvolutionRetryAccepted"];
+
 /** One durable execution-log event shared by REST replay and SSE. */
 export type EvolutionRunEvent = components["schemas"]["EvolutionRunEvent"];
 

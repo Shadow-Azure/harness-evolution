@@ -66,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## 状态与边界
 
-- 已具备：双库 API、鉴权、任务/SSE、会话查询、问题/归因 API、错误详情、sync 调度、上游 pull、外部问题模型、目标配置/目录 API、自进化运行列表/详情与事件日志（六步、workspace、blocked/retry/eval、真实 lastEventSeq）、prepare/Git candidate、占位评测闭环、启动/预览与六步只读 API、fixtures、数据链、E2E/门禁。
-- 未具备：真实评测、真实 patch、自动恢复与用户停用界面。
+- 已具备：双库 API、鉴权、任务/SSE、会话查询、问题/归因 API、错误详情、sync 调度、上游 pull、外部问题模型、目标配置/目录 API、自进化运行列表/详情与事件日志（六步、workspace、blocked/retry/eval、真实 lastEventSeq）、prepare/Git candidate、占位评测闭环与自动恢复、启动/预览与六步只读 API、fixtures、数据链、E2E/门禁。
+- 未具备：真实评测、真实 patch 与用户停用界面。
 - 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。

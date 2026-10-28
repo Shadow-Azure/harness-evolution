@@ -28,4 +28,4 @@ Git candidate 发布后，轮次只停在 `evaluating/pending`。服务没有可
 
 ## Consequences
 
-占位 run 现在可从 prepare 自动推进到每轮 candidate、push、evaluation、apply，再到下一轮和终评；刷新或重启不会重复提交已有 eval id，也不会因扫描重复排队 apply。评测分数和 patch 仍是占位事实，真实外部评测、真实 patch 与评分口径不在本切片。自动退避、blocked sweeper、崩溃任务恢复和实时 SSE 重连仍由 m5-11 负责。
+占位 run 现在可从 prepare 自动推进到每轮 candidate、push、evaluation、apply，再到下一轮和终评；刷新或重启不会重复提交已有 eval id，也不会因扫描重复排队 apply。评测分数和 patch 仍是占位事实，真实外部评测、真实 patch 与评分口径不在本切片。自动退避、blocked sweeper、崩溃任务恢复和实时 SSE 重连已由 m5-11 交付，见[自进化阻塞恢复](2026-10-28-evolution-recovery.md)。
