@@ -3,7 +3,7 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -42,6 +42,7 @@ const form = reactive<EvolutionTargetWrite>({
   enabled: true,
 });
 const errors = reactive<FormErrors>({});
+const versionAutocomplete = ref<{ focus: () => void } | null>(null);
 
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
@@ -100,8 +101,14 @@ function fetchVersionSuggestions(
   );
 }
 
-function clearDefaultRefError(): void {
-  if (form.defaultRef.trim()) delete errors.defaultRef;
+function updateDefaultRef(value: string | number): void {
+  const normalized = String(value);
+  form.defaultRef = normalized;
+  if (normalized.trim()) delete errors.defaultRef;
+}
+
+function openVersionSuggestions(): void {
+  versionAutocomplete.value?.focus();
 }
 
 function submit(): void {
@@ -215,19 +222,34 @@ watch(
 
           <ElFormItem label="基线分支或标签">
             <ElAutocomplete
-              v-model="form.defaultRef"
+              ref="versionAutocomplete"
               autocomplete="off"
               class="target-version-select"
               data-testid="target-version-select"
               :debounce="0"
               :fetch-suggestions="fetchVersionSuggestions"
+              :model-value="form.defaultRef"
               name="defaultRef"
               placeholder="main / v2.0.0"
               show-arrow
               trigger-on-focus
-              @input="clearDefaultRefError"
-              @select="clearDefaultRefError"
-            />
+              @update:model-value="updateDefaultRef"
+            >
+              <template #suffix>
+                <button
+                  aria-label="展开标签建议"
+                  class="version-suggestion-toggle"
+                  type="button"
+                  @click.stop="openVersionSuggestions"
+                  @mousedown.prevent
+                >
+                  <span
+                    aria-hidden="true"
+                    class="version-suggestion-toggle-chevron"
+                  />
+                </button>
+              </template>
+            </ElAutocomplete>
             <p class="field-help">
               {{ versionHelp }}
             </p>
@@ -349,6 +371,33 @@ watch(
   gap: 8px;
   color: var(--text-dim);
   font-size: 11.5px;
+}
+
+.version-suggestion-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.version-suggestion-toggle:hover {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+
+.version-suggestion-toggle-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
 }
 
 .form-actions {

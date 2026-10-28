@@ -217,6 +217,61 @@ describe("TargetFormDialog", () => {
     ]);
   });
 
+  it("opens suggestions from the visible toggle and selects an option", async () => {
+    const wrapper = await mountDialog({
+      target,
+      versions: ["v1.9.0", "v2.0.0"],
+    });
+
+    const toggle = wrapper.get('button[aria-label="展开标签建议"]');
+    await toggle.trigger("mousedown");
+    await toggle.trigger("click");
+    await flushPromises();
+
+    const options = Array.from(
+      document.body.querySelectorAll<HTMLElement>('[role="option"]'),
+    );
+    const option = options.find((item) => item.textContent === "v2.0.0");
+    expect(option).toBeDefined();
+    option?.click();
+    await flushPromises();
+
+    expect(
+      (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
+    ).toBe("v2.0.0");
+  });
+
+  it("selects a focused suggestion with the keyboard", async () => {
+    const wrapper = await mountDialog({
+      target,
+      versions: ["v1.9.0", "v2.0.0"],
+    });
+    const input = wrapper.get('input[name="defaultRef"]');
+
+    const toggle = wrapper.get('button[aria-label="展开标签建议"]');
+    await toggle.trigger("mousedown");
+    await toggle.trigger("click");
+    await flushPromises();
+    await input.trigger("keydown", { key: "ArrowDown" });
+    await input.trigger("keydown", { key: "ArrowDown" });
+    await input.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+
+    expect((input.element as HTMLInputElement).value).toBe("v1.9.0");
+  });
+
+  it("clears a stale baseline error as soon as one valid character is typed", async () => {
+    const wrapper = await mountDialog();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.text()).toContain("请填写基线分支或标签");
+
+    await wrapper.get('input[name="defaultRef"]').setValue("f");
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("请填写基线分支或标签");
+  });
+
   it("resets stale values and errors when reopened for create", async () => {
     const wrapper = await mountDialog({
       target,
