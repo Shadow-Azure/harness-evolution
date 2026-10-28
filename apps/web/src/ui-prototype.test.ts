@@ -64,9 +64,12 @@ describe("prototype visual system", () => {
     expect(wrapper.get(".brand").text()).toContain("Harness Evolution");
     expect(wrapper.text()).not.toContain("Harness Lens");
     expect(wrapper.text()).not.toContain("Vue shell");
-    expect(wrapper.findAll("nav .tn-item")).toHaveLength(2);
-    expect(wrapper.text()).toContain("Session 错误查看");
-    expect(wrapper.text()).toContain("会话轨迹与归因");
+    const items = wrapper.findAll("nav .tn-item");
+    expect(items).toHaveLength(2);
+    expect(items.map((item) => item.text())).toEqual([
+      "Session 错误查看会话轨迹与归因",
+      "自进化报告驱动的迭代优化",
+    ]);
     expect(wrapper.text()).toContain("点击 ID 跨页溯源");
     expect(wrapper.text()).not.toContain("Errors");
     expect(wrapper.get("nav .tn-item.active").text()).toContain("自进化");

@@ -150,8 +150,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeSection === 'sessions' }"
         to="/sessions"
       >
-        Session 错误查看
-        <span class="tn-sub">会话轨迹与归因</span>
+        Session 错误查看<span class="tn-sub">会话轨迹与归因</span>
       </RouterLink>
       <RouterLink
         id="tn-evo"
@@ -159,8 +158,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeSection === 'evo' }"
         to="/evolution"
       >
-        自进化
-        <span class="tn-sub">报告驱动的迭代优化</span>
+        自进化<span class="tn-sub">报告驱动的迭代优化</span>
       </RouterLink>
     </nav>
 
