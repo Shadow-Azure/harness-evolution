@@ -37,6 +37,7 @@ class RunBlocked(RuntimeError):
         error_stage: str | None = None,
         next_retry_at: datetime | None = None,
         retry_attempts: int = 0,
+        retryable: bool = True,
     ) -> None:
         """Carry the safe reason and retry facts across the job boundary."""
         super().__init__(message)
@@ -44,6 +45,7 @@ class RunBlocked(RuntimeError):
         self.error_stage = error_stage or stage
         self.next_retry_at = next_retry_at
         self.retry_attempts = retry_attempts
+        self.retryable = retryable
 
 
 class ProbeReader(Protocol):

@@ -9,15 +9,19 @@ milestone: m5
 depends:
   - m5-10
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
+  - packages/contracts/**
   - fixtures/**
+  - tests/e2e/**
+  - plans/2026-10-28-pr*-review.md
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-10-28-evolution-recovery.md
 github:
   number: 60
   url: https://github.com/Shadow-Azure/harness-evolution/issues/60

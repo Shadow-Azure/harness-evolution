@@ -107,8 +107,9 @@ class CandidateDouble:
         candidate_score: float,
         reason: str,
         job_id: str | None = None,
+        retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
-        del run, trace, current_score, candidate_score, job_id
+        del run, trace, current_score, candidate_score, job_id, retry_attempts
         self.calls.append(reason)
         await self._runs.mark_round_deciding(round_.id)
         return await self._runs.accept_round(

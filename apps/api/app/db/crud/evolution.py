@@ -5,7 +5,7 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, null, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -201,6 +201,72 @@ class EvolutionRepository:
                     next_retry_at=None,
                 ),
             )
+
+    async def increment_retry_attempts(self, run_id: str) -> EvolutionRunRecord:
+        """Count one already-started automatic retry before it executes."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status == "blocked",
+                )
+                .values(retry_attempts=evolution_runs.c.retry_attempts + 1),
+            )
+        run = await self.get_run(run_id)
+        if run is None:
+            raise LookupError("evolution run not found")
+        return run
+
+    async def reset_manual_retry(self, run_id: str) -> EvolutionRunRecord:
+        """Restart the backoff ladder for one human-requested retry."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(retry_attempts=0, next_retry_at=None),
+            )
+        run = await self.get_run(run_id)
+        if run is None:
+            raise LookupError("evolution run not found")
+        return run
+
+    async def list_blocked_due(
+        self,
+        now: datetime,
+        *,
+        max_attempts: int,
+        limit: int = 100,
+    ) -> tuple[EvolutionRunRecord, ...]:
+        """Return push-blocked runs whose automatic backoff deadline has passed."""
+        if limit < 1:
+            raise ValueError("blocked scan limit must be positive")
+        if max_attempts < 1:
+            raise ValueError("blocked scan attempt ceiling must be positive")
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(evolution_runs)
+                        .where(
+                            evolution_runs.c.status == "blocked",
+                            evolution_runs.c.blocked_stage == "push",
+                            evolution_runs.c.next_retry_at.is_not(None),
+                            evolution_runs.c.next_retry_at <= now,
+                            evolution_runs.c.retry_attempts < max_attempts,
+                        )
+                        .order_by(
+                            evolution_runs.c.next_retry_at,
+                            evolution_runs.c.created_at,
+                            evolution_runs.c.id,
+                        )
+                        .limit(limit),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
 
     async def mark_prepared(
         self,
@@ -610,7 +676,7 @@ class EvolutionRepository:
                     "finished_at": round_.get("finished_at"),
                     "duration_ms": round_.get("duration_ms"),
                     "error_message": round_.get("error_message"),
-                    "patch": deepcopy(round_.get("patch")),
+                    "patch": _nullable_json(round_.get("patch")),
                     "candidate_ref": round_.get("candidate_ref"),
                     "candidate_commit": round_.get("candidate_commit"),
                     "candidate_message": round_.get("candidate_message"),
@@ -626,7 +692,7 @@ class EvolutionRepository:
                     "eval_finished_at": round_.get("eval_finished_at"),
                     "eval_current": round_.get("eval_current"),
                     "eval_candidate": round_.get("eval_candidate"),
-                    "eval_result": deepcopy(round_.get("eval_result")),
+                    "eval_result": _nullable_json(round_.get("eval_result")),
                     "eval_error": round_.get("eval_error"),
                     "accepted": round_.get("accepted", False),
                     "commit_hash": round_.get("commit_hash"),
@@ -1000,7 +1066,7 @@ class EvolutionRepository:
                         eval_next_poll_at=next_poll_at,
                         eval_started_at=started_at,
                         eval_finished_at=None,
-                        eval_result=None,
+                        eval_result=null(),
                         eval_error=None,
                     ),
                 ),
@@ -1259,6 +1325,34 @@ class EvolutionRepository:
             )
         return True
 
+    async def reset_round_for_eval_retry(
+        self,
+        run_id: str,
+        round_id: str,
+    ) -> EvolutionRoundRecord:
+        """Clear one failed external evaluation so it can be submitted again."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_rounds)
+                .where(
+                    evolution_rounds.c.id == round_id,
+                    evolution_rounds.c.run_id == run_id,
+                    evolution_rounds.c.status == "evaluating",
+                    evolution_rounds.c.push_status == "succeeded",
+                )
+                .values(
+                    status="evaluating",
+                    eval_status="pending",
+                    eval_external_id=None,
+                    eval_next_poll_at=None,
+                    eval_started_at=None,
+                    eval_finished_at=None,
+                    eval_result=null(),
+                    eval_error=None,
+                ),
+            )
+        return await self._required_round(round_id, expected_status="evaluating")
+
     async def mark_round_deciding(self, round_id: str) -> EvolutionRoundRecord:
         """Enter the apply phase without resubmitting an already evaluated candidate."""
         async with self._database.transaction() as session:
@@ -1489,6 +1583,11 @@ class EvolutionRepository:
                 .one()
             )
         return record_from_evolution_final(cast(Mapping[str, Any], row))
+
+
+def _nullable_json(value: Any) -> Any:
+    """Persist an absent JSON value as SQL NULL so null predicates match."""
+    return null() if value is None else deepcopy(value)
 
 
 async def _run_cursor(session: AsyncSession, run_id: str) -> tuple[int, str]:

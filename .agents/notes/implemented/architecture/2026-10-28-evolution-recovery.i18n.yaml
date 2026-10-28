@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-28-evolution-recovery.md
+2026-10-28-evolution-recovery.md: 2c1bb69348df92a542e2786c9beb1cb81be2fd85
+2026-10-28-evolution-recovery.en.md: f4d6f565a60d70d7da3d71d8f220b61fec178ec2

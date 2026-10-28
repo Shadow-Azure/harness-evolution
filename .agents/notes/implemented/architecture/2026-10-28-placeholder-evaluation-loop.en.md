@@ -28,4 +28,4 @@ Sleeping inside a JobRunner handler occupies the single worker and loses timers 
 
 ## Consequences
 
-A placeholder run now advances automatically from prepare through each candidate, push, evaluation, apply, next turn, and final evaluation. Refresh and restart neither resubmit an existing eval id nor queue duplicate applies. Scores and patches remain placeholders; real external evaluation and patch quality are outside this slice. Automatic backoff, blocked sweeper, crashed-job recovery, and live SSE reconnect remain owned by m5-11.
+A placeholder run now advances automatically from prepare through each candidate, push, evaluation, apply, next turn, and final evaluation. Refresh and restart neither resubmit an existing eval id nor queue duplicate applies. Scores and patches remain placeholders; real external evaluation and patch quality are outside this slice. Automatic backoff, blocked sweeper, crashed-job recovery, and live SSE reconnect are delivered by m5-11; see [Evolution recovery from blocked runs](2026-10-28-evolution-recovery.en.md).

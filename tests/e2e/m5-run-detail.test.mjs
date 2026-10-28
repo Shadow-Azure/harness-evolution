@@ -417,6 +417,8 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
             current: document.querySelector("[aria-current='step']")?.getAttribute("data-step-key"),
             badge: document.querySelector("[data-round-id='round-blocked-1'] .badge")?.textContent ?? "",
             badgeClass: document.querySelector("[data-round-id='round-blocked-1'] .badge")?.className ?? "",
+            retry: document.querySelector("[data-testid='run-retry']")?.textContent?.trim() ?? "",
+            retryDisabled: document.querySelector("[data-testid='run-retry']")?.disabled ?? null,
             body: text,
           };
         })()`,
@@ -434,6 +436,8 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     assert.equal(blocked.current, "iteration");
     assert.equal(blocked.badge.trim(), "评测失败");
     assert.match(blocked.badgeClass, /\bblocked\b/);
+    assert.equal(blocked.retry, "重试");
+    assert.equal(blocked.retryDisabled, false);
     assert.match(blocked.body, /评测失败/);
     assert.match(blocked.body, /评测状态\s*failed/);
     await screenshot(page, "02-blocked.png");

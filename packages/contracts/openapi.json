@@ -582,6 +582,7 @@
           "RUN_NOT_FOUND",
           "STEP_NOT_READY",
           "RUN_BUSY",
+          "RUN_NOT_RETRYABLE",
           "REPO_INVALID",
           "ENGINE_INVALID",
           "TARGET_EXISTS",
@@ -642,6 +643,26 @@
           "topics"
         ],
         "title": "EventTicketResponse",
+        "type": "object"
+      },
+      "EvolutionRetryAccepted": {
+        "additionalProperties": false,
+        "description": "Asynchronous acceptance of one manual blocked-run retry.",
+        "properties": {
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          },
+          "reused": {
+            "title": "Reused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "jobId",
+          "reused"
+        ],
+        "title": "EvolutionRetryAccepted",
         "type": "object"
       },
       "EvolutionRunAttributeStats": {
@@ -6027,6 +6048,94 @@
           }
         ],
         "summary": "Read Run Events",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/retry": {
+      "post": {
+        "description": "Admit one manual retry for a blocked full run.",
+        "operationId": "retry_run_api_evolution_runs__run_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionRetryAccepted"
+                }
+              }
+            },
+            "description": "Blocked-run retry accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is not blocked or another stage job is active"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Run",
         "tags": [
           "evolution-runs"
         ]

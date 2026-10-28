@@ -66,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, workspace, blocked/retry/eval, real lastEventSeq), real prepare/Git candidates, placeholder evaluation closure, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
-- Missing: real evaluation, real patches, automatic recovery, and user deactivation UI.
+- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, workspace, blocked/retry/eval, real lastEventSeq), real prepare/Git candidates, placeholder evaluation closure and automatic recovery, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
+- Missing: real evaluation, real patches, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

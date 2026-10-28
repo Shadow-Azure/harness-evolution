@@ -15,6 +15,7 @@ from app.db.crud.probe_query import ProbeHitRow
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.db.models.jobs import JobRunRecord
 from app.service.evolution.advance import build_candidate_trace
+from app.service.evolution.backoff import next_retry_at
 from app.service.evolution.engine.contracts import EvalResult, RunBlocked
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.git_candidate import (
@@ -103,6 +104,7 @@ class EvolutionApplyService:
                 candidate_score=result.candidate_score,
                 reason=reason,
                 job_id=job.id,
+                retry_attempts=_job_retry_attempts(job),
             )
         else:
             decided = await self._candidates.reject(
@@ -202,6 +204,7 @@ class EvolutionFinalizeService:
                 "finalized": False,
                 "reason": "rounds are still active",
             }
+        retry_attempts = _job_retry_attempts(job)
         try:
             final = await self._runs.write_final(_final_values(run, rounds))
             prepared = _prepared_workspace(run)
@@ -212,11 +215,16 @@ class EvolutionFinalizeService:
                 stage="push",
                 message=message,
                 error_stage="final",
+                next_retry_at=None,
+                retry_attempts=retry_attempts,
             )
             raise RunBlocked(
                 message,
                 stage="push",
                 error_stage="final",
+                next_retry_at=None,
+                retry_attempts=retry_attempts,
+                retryable=False,
             ) from None
         try:
             await self._workspaces.publish_run_branch(
@@ -228,16 +236,22 @@ class EvolutionFinalizeService:
         except GitOperationError as exc:
             disposition = classify_git_failure(exc)
             message = sanitize_message(str(exc), limit=2_000)
+            retry_at = next_retry_at(self._now(), retry_attempts) if exc.retryable else None
             await self._runs.mark_blocked(
                 run.id,
                 stage="push",
                 message=message,
                 error_stage=disposition.error_stage,
+                next_retry_at=retry_at,
+                retry_attempts=retry_attempts,
             )
             raise RunBlocked(
                 message,
                 stage="push",
                 error_stage=disposition.error_stage,
+                next_retry_at=retry_at,
+                retry_attempts=retry_attempts,
+                retryable=exc.retryable,
             ) from None
         push_status = "succeeded" if self._workspaces.push_enabled else "skipped"
         completed = await self._runs.complete_run(
@@ -290,6 +304,14 @@ class EvolutionFinalizeService:
                 "failed to record final completion event",
                 extra={"run_id": run_id},
             )
+
+
+def _job_retry_attempts(job: JobRunRecord) -> int:
+    """Read the retry counter a recovery job carries into finalization."""
+    raw = job.payload.get("retryAttempts")
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        return 0
+    return raw
 
 
 def decision_sentence(result: EvalResult, *, accepted: bool) -> str:

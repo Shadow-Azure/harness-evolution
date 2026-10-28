@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
+from app.service.evolution.backoff import next_retry_at
 from app.service.evolution.engine.contracts import RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
@@ -311,15 +312,20 @@ class EvolutionCandidateService:
                 },
                 error=exc,
             )
+            retry_at = next_retry_at(self._now(), 0) if exc.retryable else None
             await self._runs.mark_blocked(
                 run.id,
                 stage="push",
                 message="candidate push failed",
+                next_retry_at=retry_at,
+                retry_attempts=0,
             )
             raise RunBlocked(
                 "candidate push failed",
                 stage="push",
+                next_retry_at=retry_at,
                 retry_attempts=0,
+                retryable=exc.retryable,
             ) from None
 
         pushed = await self._runs.mark_round_push_succeeded(
@@ -347,6 +353,99 @@ class EvolutionCandidateService:
         )
         return await self._runs.mark_round_evaluating(pushed.id)
 
+    async def repush_existing(
+        self,
+        run: EvolutionRunRecord,
+        round_: EvolutionRoundRecord,
+        *,
+        job_id: str | None = None,
+        retry_attempts: int = 0,
+    ) -> EvolutionRoundRecord:
+        """Push one already-committed candidate exactly once and re-enter evaluation."""
+        if (
+            round_.candidate_ref is None
+            or round_.candidate_commit is None
+            or not round_.candidate_message
+        ):
+            raise ValueError("candidate push retry requires a persisted candidate")
+        if not self._workspaces.push_enabled:
+            raise ValueError("push-disabled runs cannot resume a candidate push")
+        prepared = _prepared_workspace(run)
+        candidate = CandidateWorkspace(
+            workspace_path=prepared.path,
+            run_branch=prepared.branch,
+            local_branch=candidate_local_branch(round_.candidate_ref),
+            ref=round_.candidate_ref,
+            commit=round_.candidate_commit,
+            message=round_.candidate_message,
+            run_id=run.id,
+            base_commit=prepared.base_commit,
+        )
+        attempt = round_.push_attempts + 1
+        pushing = await self._runs.mark_round_pushing(round_.id, attempt=attempt)
+        await self._record(
+            run.id,
+            "push_started",
+            stage="push",
+            message=f"候选推送第 {attempt} 次",
+            round_id=pushing.id,
+            job_id=job_id,
+            payload={"attempt": attempt},
+        )
+        try:
+            await self._workspaces.push_candidate(
+                candidate,
+                expected_remote_commit=None,
+            )
+        except GitOperationError as exc:
+            await self._runs.mark_round_push_failed(
+                run.id,
+                pushing.id,
+                attempts=attempt,
+                error=sanitize_message(str(exc), limit=2_000),
+            )
+            await self._record(
+                run.id,
+                "push_failed",
+                stage="push",
+                message="候选推送失败",
+                round_id=pushing.id,
+                job_id=job_id,
+                level="error",
+                payload={"attempts": attempt, "ref": pushing.candidate_ref},
+                error=exc,
+            )
+            await self._handle_git_failure(
+                run.id,
+                exc,
+                job_id=job_id,
+                retry_attempts=retry_attempts,
+            )
+        pushed = await self._runs.mark_round_push_succeeded(
+            run.id,
+            pushing.id,
+            pushed_at=self._now(),
+            attempts=attempt,
+        )
+        await self._record(
+            run.id,
+            "candidate_pushed",
+            stage="push",
+            message="候选已推送，等待评测",
+            round_id=pushed.id,
+            job_id=job_id,
+            payload={"ref": pushed.candidate_ref, "attempts": attempt},
+        )
+        await self._record(
+            run.id,
+            "push_succeeded",
+            stage="push",
+            message="候选推送成功",
+            round_id=pushed.id,
+            job_id=job_id,
+        )
+        return await self._runs.mark_round_evaluating(pushed.id)
+
     async def accept(
         self,
         run: EvolutionRunRecord,
@@ -357,6 +456,7 @@ class EvolutionCandidateService:
         candidate_score: float,
         reason: str,
         job_id: str | None = None,
+        retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
         """Amend accepted metadata, fast-forward the run branch, and persist it."""
         if round_.status == "accepted":
@@ -407,6 +507,7 @@ class EvolutionCandidateService:
                 run.id,
                 exc,
                 job_id=job_id,
+                retry_attempts=retry_attempts,
             )
         accepted = await self._runs.accept_round(
             deciding.id,
@@ -523,23 +624,34 @@ class EvolutionCandidateService:
         error: GitOperationError,
         *,
         job_id: str | None,
+        retry_attempts: int = 0,
     ) -> NoReturn:
         """Apply the shared Git disposition and raise only when it is retryable."""
         disposition = classify_git_failure(error)
         if disposition.action != "blocked" or disposition.blocked_stage is None:
             raise error from None
         message = sanitize_message(str(error), limit=2_000)
+        retry_at = (
+            next_retry_at(self._now(), retry_attempts)
+            if disposition.blocked_stage == "push" and error.retryable
+            else None
+        )
         await self._runs.mark_blocked(
             run_id,
             stage=disposition.blocked_stage,
             message=message,
             error_stage=disposition.error_stage,
+            next_retry_at=retry_at,
+            retry_attempts=retry_attempts,
         )
         del job_id
         raise RunBlocked(
             message,
             stage=disposition.blocked_stage,
             error_stage=disposition.error_stage,
+            next_retry_at=retry_at,
+            retry_attempts=retry_attempts,
+            retryable=error.retryable,
         ) from None
 
 

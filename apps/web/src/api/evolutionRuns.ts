@@ -1,4 +1,5 @@
 import type {
+  EvolutionRetryAccepted,
   EvolutionStep,
   EvolutionStepKey,
   EvolutionRunDetail,
@@ -86,6 +87,31 @@ export function queryProbeHits(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Accepted manual retry for one blocked run.
+ *
+ * Kept as a re-export so callers can import the generated contract from this
+ * API module without duplicating its shape.
+ */
+export type { EvolutionRetryAccepted };
+
+const RETRY_STATUSES = [202] as const;
+
+/**
+ * Request one manual retry for a blocked evolution run.
+ * @param runId Evolution run identifier.
+ * @returns The accepted retry job and whether an active job was reused.
+ */
+export function retryEvolutionRun(
+  runId: string,
+): Promise<EvolutionRetryAccepted> {
+  return request<EvolutionRetryAccepted>(
+    `/api/evolution/runs/${encodeURIComponent(runId)}/retry`,
+    { method: "POST" },
+    { acceptedStatuses: RETRY_STATUSES },
+  );
 }
 
 /**

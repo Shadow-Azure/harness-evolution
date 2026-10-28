@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  EvolutionRunEvent,
   EvolutionRunEventLevel,
   EvolutionRunStep,
   EvolutionStepKey,
@@ -9,17 +10,23 @@ import { computed, nextTick, ref, watch } from "vue";
 import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
-import { useEvolutionRunEventLog } from "../../../composables/useEvolutionRunEventLog";
+import {
+  mergeRunEvents,
+  useEvolutionRunEventLog,
+} from "../../../composables/useEvolutionRunEventLog";
 import EventList from "./EventList.vue";
 
 const props = defineProps<{
   runId: string;
   steps: EvolutionRunStep[];
+  liveEvents?: EvolutionRunEvent[];
+  resetToken?: number;
 }>();
 
 const emit = defineEmits<{
   "select-step": [key: EvolutionStepKey];
   "focus-cluster": [clusterId: string];
+  "loaded-seq": [seq: number];
 }>();
 
 type FilterValue = EvolutionRunEventLevel | undefined;
@@ -30,6 +37,7 @@ const scroller = ref<HTMLElement | null>(null);
 const visible = ref(true);
 const {
   items,
+  nextSeq,
   hasMore,
   isPending,
   error,
@@ -42,6 +50,13 @@ const {
   visible,
 );
 
+const displayedEvents = computed(() => {
+  const merged = mergeRunEvents(items.value, props.liveEvents ?? []);
+  return filter.value
+    ? merged.filter((event) => event.level === filter.value)
+    : merged;
+});
+
 const filterOptions: Array<{ label: string; value: FilterValue }> = [
   { label: "全部", value: undefined },
   { label: "错误", value: "error" },
@@ -49,7 +64,21 @@ const filterOptions: Array<{ label: string; value: FilterValue }> = [
 ];
 
 const isEmpty = computed(
-  () => !isPending.value && !error.value && items.value.length === 0,
+  () => !isPending.value && !error.value && displayedEvents.value.length === 0,
+);
+
+watch(
+  () => nextSeq.value,
+  (seq) => emit("loaded-seq", seq),
+  { immediate: true },
+);
+
+watch(
+  () => props.resetToken,
+  () => {
+    autoScroll.value = true;
+    void refresh();
+  },
 );
 
 function chooseFilter(value: FilterValue): void {
@@ -64,7 +93,7 @@ function onScroll(): void {
 }
 
 watch(
-  () => items.value.length,
+  () => displayedEvents.value.length,
   async (next, previous) => {
     if (!autoScroll.value || next <= previous) return;
     await nextTick();
@@ -117,7 +146,7 @@ async function refreshLog(): Promise<void> {
         刷新
       </button>
       <span class="spacer" />
-      <span class="count mono">{{ items.length }} 条</span>
+      <span class="count mono">{{ displayedEvents.length }} 条</span>
     </header>
 
     <div
@@ -127,12 +156,12 @@ async function refreshLog(): Promise<void> {
       @scroll.passive="onScroll"
     >
       <LoadingSkeleton
-        v-if="isPending && items.length === 0"
+        v-if="isPending && displayedEvents.length === 0"
         label="正在读取执行日志"
         :rows="3"
       />
       <ErrorState
-        v-else-if="error && items.length === 0"
+        v-else-if="error && displayedEvents.length === 0"
         code="EVOLUTION_RUN_EVENTS_UNAVAILABLE"
         message="执行日志读取失败，请重试"
         @retry="refreshLog"
@@ -144,7 +173,7 @@ async function refreshLog(): Promise<void> {
       />
       <EventList
         v-else
-        :events="items"
+        :events="displayedEvents"
         :steps="steps"
         @select-step="emit('select-step', $event)"
         @focus-cluster="emit('focus-cluster', $event)"

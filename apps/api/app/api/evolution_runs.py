@@ -14,6 +14,10 @@ from app.service.evolution.events import (
 )
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.probe_query import ProbeQueryRequest, RunAccepted
+from app.service.evolution.retry import (
+    EvolutionRetryAccepted,
+    EvolutionRetryService,
+)
 from app.service.evolution.runs import (
     EvolutionRunDetail,
     EvolutionRunList,
@@ -51,6 +55,11 @@ def stages_from(request: Request) -> EvolutionStageService:
 def events_from(request: Request) -> EvolutionRunEventService:
     """Return the application-scoped evolution event service."""
     return cast(EvolutionRunEventService, request.app.state.evolution_events)
+
+
+def retry_from(request: Request) -> EvolutionRetryService:
+    """Return the application-scoped blocked-run retry service."""
+    return cast(EvolutionRetryService, request.app.state.evolution_retry)
 
 
 def _principal_id(request: Request) -> str | None:
@@ -144,6 +153,32 @@ async def create_run(
     return await launch_from(request).request_run(
         body,
         expected_mode="full",
+        created_by=_principal_id(request),
+    )
+
+
+@router.post(
+    "/{run_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: LAUNCH_RESPONSES[401],
+        403: LAUNCH_RESPONSES[403],
+        404: {"model": ErrorResponse, "description": "Run is unknown"},
+        409: {
+            "model": ErrorResponse,
+            "description": "Run is not blocked or another stage job is active",
+        },
+        202: {
+            "model": EvolutionRetryAccepted,
+            "description": "Blocked-run retry accepted",
+        },
+    },
+)
+async def retry_run(run_id: str, request: Request) -> EvolutionRetryAccepted:
+    """Admit one manual retry for a blocked full run."""
+    return await retry_from(request).request_retry(
+        run_id,
         created_by=_principal_id(request),
     )
 
