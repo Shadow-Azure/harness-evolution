@@ -272,7 +272,7 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
   }
 });
 
-test("m1-shell exposes three destinations, demo state, and clean responsive rendering", async () => {
+test("m1-shell exposes the prototype two-entry nav, demo state, and clean responsive rendering", async () => {
   const page = await createBrowserPage();
   try {
     const violations = browserViolations(page.session);
@@ -316,7 +316,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
           topbarHeight: document.querySelector(".topbar").getBoundingClientRect().height,
           emptyBackground: getComputedStyle(document.querySelector(".sidebar")).backgroundColor,
           activeUnderline: getComputedStyle(
-            document.querySelector("nav a.router-link-active"),
+            document.querySelector("nav a.tn-item.active"),
           ).borderBottomColor,
           brand: document.querySelector(".brand").textContent.trim(),
           scrollWidth: document.documentElement.scrollWidth,
@@ -326,7 +326,7 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
       "authenticated M1 shell",
     );
     assert.equal(initial.path, "/sessions");
-    assert.deepEqual(initial.links, ["Sessions", "Errors", "Evolution"]);
+    assert.deepEqual(initial.links, ["Session 错误查看会话轨迹与归因", "自进化报告驱动的迭代优化"]);
     assert.equal(initial.badge, "演示数据");
     assert.equal(initial.pending, "待处理 0");
     assert.match(initial.pendingDetail, /已处理/);
@@ -375,32 +375,12 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     assert.deepEqual(idleSync, { action: "立即处理", pending: "待处理 0" });
 
     await page.session.send("Runtime.evaluate", {
-      expression: `document.querySelector('nav a[href="/errors"]').click()`,
-    });
-    const errorsPage = await waitForDocument(
-      page.session,
-      `(() => {
-        const active = document.querySelector("nav a.router-link-active");
-        if (location.pathname !== "/errors" || !document.body.textContent.includes("请选择会话")) {
-          return null;
-        }
-        return {
-          path: location.pathname,
-          underline: active ? getComputedStyle(active).borderBottomColor : null,
-        };
-      })()`,
-      "errors entry",
-    );
-    assert.equal(errorsPage.path, "/errors");
-    assert.equal(errorsPage.underline, "rgb(47, 111, 224)");
-
-    await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector('nav a[href="/evolution"]').click()`,
     });
     const evolutionPage = await waitForDocument(
       page.session,
       `(() => {
-        const active = document.querySelector("nav a.router-link-active");
+        const active = document.querySelector("nav a.tn-item.active");
         if (
           location.pathname !== "/evolution" ||
           !document.querySelector("[data-testid='evolution-run-list']") ||
@@ -417,6 +397,33 @@ test("m1-shell exposes three destinations, demo state, and clean responsive rend
     );
     assert.equal(evolutionPage.path, "/evolution");
     assert.equal(evolutionPage.underline, "rgb(138, 85, 201)");
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        window.history.pushState({}, "", "/errors");
+        window.dispatchEvent(new PopStateEvent("popstate", {
+          state: window.history.state,
+        }));
+      })()`,
+    });
+    const retiredErrors = await waitForDocument(
+      page.session,
+      `(() => {
+        const active = document.querySelector("nav a.tn-item.active");
+        if (
+          location.pathname !== "/sessions" ||
+          !document.querySelector(".session-browser") ||
+          !active
+        ) return null;
+        return {
+          path: location.pathname,
+          underline: getComputedStyle(active).borderBottomColor,
+        };
+      })()`,
+      "retired errors redirect",
+    );
+    assert.equal(retiredErrors.path, "/sessions");
+    assert.equal(retiredErrors.underline, "rgb(47, 111, 224)");
 
     await page.session.send("Runtime.evaluate", {
       expression: `(() => {
