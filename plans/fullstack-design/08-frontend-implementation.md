@@ -264,6 +264,7 @@ agent-tree/
   2. **`discovery`（发现前置步骤问题）**：卡挂在发现者的触发点正上方（`DiscoveryEdge`）。发现者是 skill 时触发点在 A 内；发现者是 subagent A 时，触发点是**父节点 P 中调用 A 的 Agent 药丸**，`anchor.agentId = P`，不等于 `badCaseAgent.agentId`。
   3. 无锚点（`anchor.eventIndex = -1`）：挂在 `anchor.agentId` 节点右侧，避免卡片漂浮。
 - 前端只用 `anchor` 定位，不用 `badCaseAgent` 反推宿主；`badCaseAgent` 用于展示"谁上报"。
+- 同一触发点有多张问题卡时保持 pill 的 x 中心成列：`self-skill` 向下串联，`discovery` 向上串联；第一张由 pill 的上/下锚点连接，后续卡由上一张卡的同向锚点继续连接。
 
 ```ts
 // layout.ts 关键签名
@@ -292,7 +293,7 @@ export function badCaseAnchors(cases: BadCase[], tree: SessionTree): BadCaseAnch
 
 - `fitView` 必须等节点测量完成后执行（原型 `FitTree` 的教训）：监听 `onNodesInitialized` 再调 `fitView({ padding: 0.12 })`。
 - 定位问题（从问题列表点击）→ `setCenter(node.x + w/2, node.y + h/2, { zoom: max(current, 0.85), duration: 260 })`，并给目标 bad_case 节点加 `active` class（红色描边）。
-- 节点内部需要多个 Handle（`h{i}` 源、`ht{i}` 目标、`rep{i}`、`in`、`in-left`、`caseout`）——Vue Flow 的 `<Handle>` 支持 `id` 与 `position`，写法与 React 版逐行对应。
+- 节点只为真实边占用的方向创建 Handle：`h{i}` 从 pill 下沿连接子 Agent 或 `self-skill` 卡，`rep{i}` 从 pill 上沿连接 `discovery` 卡，另有 `in`、`finding-left/right` 与问题卡的上下/堆叠锚点；不再用 Agent 节点内的 stub 补画连接。
 - 画布内问题列表用 `<Teleport to="#bad-case-list">`（原型用 `createPortal`）。
 - 折叠节点点击 → 更新 `expanded` Set → 重新 `buildGraph`（纯函数重算，节点数少，不需要增量更新）。
 

@@ -110,7 +110,53 @@ describe("AgentNode", () => {
     expect(wrapper.get(".rf-cnode.skill").classes()).not.toContain("evidence");
   });
 
-  it("renders a top source handle and red stub for each discoverable trigger", () => {
+  it("renders handles only for trigger pills with real connections", () => {
+    const wrapper = mount(AgentNode, {
+      props: {
+        data: {
+          ...data,
+          chain: {
+            items: [
+              {
+                kind: "skill",
+                name: "deep-research",
+                evIdx: 0,
+                line: 20,
+                w: 110,
+              },
+            ],
+            offsets: [55],
+            width: 110,
+          },
+          triggerConnections: {
+            0: {
+              above: true,
+              below: true,
+            },
+          },
+        } as AgentLayoutNodeData,
+      },
+    });
+
+    expect(wrapper.get('[data-handle-id="rep0"]').attributes()).toMatchObject({
+      "data-handle-position": "top",
+      "data-handle-type": "source",
+    });
+    expect(wrapper.get('[data-handle-id="rep0"]').attributes("style")).toContain(
+      "top: 31px",
+    );
+    expect(wrapper.get('[data-handle-id="h0"]').attributes()).toMatchObject({
+      "data-handle-position": "bottom",
+      "data-handle-type": "source",
+    });
+    expect(wrapper.get('[data-handle-id="h0"]').attributes("style")).toContain(
+      "top: 53px",
+    );
+    expect(wrapper.find(".rf-stub").exists()).toBe(false);
+    expect(wrapper.find(".rf-stub-top").exists()).toBe(false);
+  });
+
+  it("does not create trigger handles for pills without connections", () => {
     const wrapper = mount(AgentNode, {
       props: {
         data: {
@@ -132,14 +178,7 @@ describe("AgentNode", () => {
       },
     });
 
-    const handle = wrapper.get('[data-handle-id="rep0"]');
-    expect(handle.attributes()).toMatchObject({
-      "data-handle-position": "top",
-      "data-handle-type": "source",
-    });
-    expect(wrapper.findAll(".rf-stub-top")).toHaveLength(1);
-    expect(wrapper.get(".rf-stub-top").attributes("style")).toContain(
-      "left: 66px",
-    );
+    expect(wrapper.find('[data-handle-id="rep0"]').exists()).toBe(false);
+    expect(wrapper.find('[data-handle-id="h0"]').exists()).toBe(false);
   });
 });

@@ -31,6 +31,12 @@ export interface AgentChain {
   width: number;
 }
 
+/** Trigger-pill handle occupancy derived from rendered graph edges. */
+export interface TriggerConnection {
+  above?: boolean;
+  below?: boolean;
+}
+
 /** Data attached to one Agent or collapse layout node. */
 export interface AgentLayoutNodeData {
   label: string;
@@ -46,6 +52,7 @@ export interface AgentLayoutNodeData {
   parentForCollapse?: string;
   active?: boolean;
   activeEvidence?: number | null;
+  triggerConnections?: Record<number, TriggerConnection>;
 }
 
 /** DOM-independent Vue Flow-compatible node. */

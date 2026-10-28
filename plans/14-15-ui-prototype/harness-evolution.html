@@ -124,7 +124,10 @@
   .rf-agent.group { border: 1px dashed var(--text-faint); border-radius: 8px; padding: 8px 10px; text-align: center; font-size: 11px; color: var(--text-dim); cursor: pointer; background: var(--bg-card); }
   .rf-chain { position: relative; display: flex; align-items: center; height: 22px; }
   .rf-link { width: 10px; height: 2px; border-radius: 1px; background: #c8cfd9; flex-shrink: 0; }
-  .rf-stub { position: absolute; width: 1.5px; transform: translateX(-50%); pointer-events: none; }
+  /* 触发点到子节点 / 问题卡使用真实 edge；edge 层需盖过 Agent 节点底色，
+     否则 pill 到节点边框这一段会被节点背景遮住。 */
+  .rf-canvas .react-flow__edges { z-index: 2; pointer-events: none; }
+  .rf-canvas .react-flow__nodes { z-index: 1; }
   .rf-cnode { display: inline-flex; align-items: center; gap: 4px; height: 20px; box-sizing: border-box; padding: 0 9px; border-radius: 999px; font-size: 10px; line-height: 1; white-space: nowrap; flex-shrink: 0; }
   .rf-cnode.gap { font-family: var(--mono); color: var(--text-faint); background: var(--bg-inset); border: 1px dashed var(--border); }
   .rf-cnode.skill { color: var(--cyan); background: #fff; border: 1px solid color-mix(in srgb, var(--cyan) 55%, transparent); }
@@ -263,6 +266,8 @@
   .err-flow-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 650; color: var(--text-dim); }
   .err-flow-head .note { margin-left: auto; font-size: 10.5px; color: var(--text-faint); font-weight: 400; }
   .err-flow-canvas { height: 413px; } /* 原 620px 的 2/3 */
+  .err-flow-canvas .react-flow__edges { z-index: 2; pointer-events: none; }
+  .err-flow-canvas .react-flow__nodes { z-index: 1; }
   .err-detail { margin-top: 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.06); overflow: hidden; }
   .err-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 14px; gap: 4px; }
   .err-tab { font: inherit; font-size: 12.5px; color: var(--text-dim); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 12px 9px; cursor: pointer; }
@@ -1434,28 +1439,39 @@ function buildGraph(sid, expanded, findingsBudget) {
     });
   }
 
-  /* skill 的问题卡：直接放在所属 agent 框下方、与对应 skill 触发药丸纵向对齐（左缘对齐触发点中心），
-     连线从卡片右侧向上接到该 skill 触发节点的正下方；同排重叠时向下堆叠 */
+  /* skill 的问题卡：直接放在所属 agent 框下方、与对应 skill 触发药丸中心对齐。
+     同一触发点的错误卡纵向串成列：skill → 第一张 → 后续卡片。 */
   function addSkillFindingsLeft(nodeId, nodeX, nodeY, entries, chain) {
-    let prevRight = -Infinity;
-    let y = nodeY + AGENT_BOX_H + 10;
+    const placed = [];
+    const nextYByAnchor = new Map();
+    const tailByAnchor = new Map();
     entries.forEach((en, i) => {
       const item = en.item;
       const text = `#${item.no} ${item.label}`;
       const w = Math.max(170, Math.min(400, 26 + textW(text)));
-      const x = Math.max(8, nodeX + BOX_PAD + BOX_EDGE + (chain?.offsets?.[en.evIdx] ?? 0) - 13);
-      if (x < prevRight + 12) y += BOX_H + GAP;
-      prevRight = x + w;
+      const anchorX = nodeX + BOX_PAD + BOX_EDGE + (chain?.offsets?.[en.evIdx] ?? 0);
+      const x = Math.max(8, anchorX - w / 2);
+      let y = nextYByAnchor.get(en.evIdx) ?? nodeY + AGENT_BOX_H + 10;
+      // Different skills keep their own vertical columns. If adjacent columns
+      // overlap horizontally, move only the colliding card down one row.
+      placed.forEach(p => {
+        if (x < p.right + 12 && x + w > p.left - 12) y = Math.max(y, p.y + BOX_H + GAP);
+      });
+      nextYByAnchor.set(en.evIdx, y + BOX_H + GAP);
+      placed.push({ left: x, right: x + w, y });
       const fid = `find-${nodeId}-sk${i}`;
       findingsOut.push({ ...item, nodeId: fid, side: "below" });
       nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w, no: item.no } });
+      const tail = tailByAnchor.get(en.evIdx);
       edges.push({
         id: "ef-" + fid,
-        source: fid, sourceHandle: "out",
-        target: nodeId, targetHandle: "ht" + en.evIdx,
+        source: tail?.id ?? nodeId,
+        sourceHandle: tail?.handle ?? ("h" + en.evIdx),
+        target: fid, targetHandle: "top",
         type: "trige",
         style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
       });
+      tailByAnchor.set(en.evIdx, { id: fid, handle: "stack-out" });
     });
   }
 
@@ -1525,7 +1541,7 @@ function buildGraph(sid, expanded, findingsBudget) {
       const text = `#${item.no} ${item.label}`;
       const w = Math.max(170, Math.min(560, 26 + textW(text)));
       const trigX = 60 + BOX_PAD + BOX_EDGE + (mainChain.offsets[m.id] ?? 0);
-      const x = Math.max(8, trigX - 13);
+      const x = Math.max(8, trigX - w / 2);
       const y = 8;
       const fid = "rep-main-0";
       findingsOut.push({ ...item, nodeId: fid, side: "reported" });
@@ -1533,7 +1549,7 @@ function buildGraph(sid, expanded, findingsBudget) {
       edges.push({
         id: "er-" + fid,
         source: "main", sourceHandle: "rep" + m.id,
-        target: fid, targetHandle: "in",
+        target: fid, targetHandle: "bottom",
         type: "reported",
         style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
       });
@@ -1568,7 +1584,9 @@ function buildGraph(sid, expanded, findingsBudget) {
   };
   edges.forEach(e => {
     const h = /^h(\d+)$/.exec(e.sourceHandle || "");
-    if (h && e.type === "orth") markStub(e.source, Number(h[1]), { source: true });
+    if (h && (e.type === "orth" || e.type === "trige")) {
+      markStub(e.source, Number(h[1]), { source: true });
+    }
     const ht = /^ht(\d+)$/.exec(e.targetHandle || "");
     if (ht && e.type === "trige") markStub(e.target, Number(ht[1]), { target: true, color: RED });
     const r = /^rep(\d+)$/.exec(e.sourceHandle || "");
@@ -1615,20 +1633,18 @@ function AgentNode({ data }) {
       </div>
       <div className="rf-lines">${data.lines} 行</div>
       ${down.map((s, i) => html`
-        <span key=${"sd" + i} className="rf-stub" style=${{ left: cx(s.idx), top: "53px", bottom: 0, background: s.color }}></span>
         ${s.source ? html`
           <${Handle} key=${"hs" + i} id=${"h" + s.idx} type="source" position=${Position.Bottom}
-            style=${anchor(cx(s.idx), "100%")} />
+            style=${anchor(cx(s.idx), "53px")} />
         ` : null}
         ${s.target ? html`
           <${Handle} key=${"ht" + i} id=${"ht" + s.idx} type="target" position=${Position.Bottom}
-            style=${anchor(cx(s.idx), "100%")} />
+            style=${anchor(cx(s.idx), "53px")} />
         ` : null}
       `)}
       ${up.map((s, i) => html`
-        <span key=${"su" + i} className="rf-stub" style=${{ left: cx(s.idx), top: 0, height: "31px", background: s.color }}></span>
         <${Handle} key=${"hu" + i} id=${"rep" + s.idx} type="source" position=${Position.Top}
-          style=${anchor(cx(s.idx), 0)} />
+          style=${anchor(cx(s.idx), "31px")} />
       `)}
       <${Handle} type="target" position=${Position.Left} id="in"
         style=${{ left: 0, top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
@@ -1660,19 +1676,14 @@ function FindingEdge({ id, sourceX, sourceY, targetX, targetY, data, style }) {
   return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
 }
 
-/* 问题卡 ← skill 触发节点：从触发点垂直向下，再向左直到问题框右侧（L 形） */
+/* 问题卡与 skill 触发节点纵向对齐，使用竖直边直接接到卡片上 / 下边。 */
 function TriggerEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
-  const dirX = Math.sign(targetX - sourceX) || 1;
-  const dirY = Math.sign(targetY - sourceY) || -1;
-  const r = Math.min(6, Math.abs(targetX - sourceX) / 2, Math.abs(targetY - sourceY) / 2);
-  const d = `M ${sourceX} ${sourceY} H ${targetX - dirX * r} ` +
-    `Q ${targetX} ${sourceY} ${targetX} ${sourceY + dirY * r} V ${targetY}`;
+  const d = `M ${sourceX} ${sourceY} V ${targetY}`;
   return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
 }
 
 function ReportEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
-  const r = Math.min(7, Math.abs(targetY - sourceY) / 2);
-  const d = `M ${sourceX} ${sourceY} V ${targetY + r} Q ${sourceX} ${targetY} ${sourceX + r} ${targetY} H ${targetX}`;
+  const d = `M ${sourceX} ${sourceY} V ${targetY}`;
   return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
 }
 
@@ -1693,6 +1704,12 @@ function FindingNode({ data }) {
   return html`
     <div className=${"rf-finding" + (data.active ? " active" : "")} style=${{ width: (data.w || 200) + "px" }} title=${data.text}>
       ${data.text}
+      <${Handle} type="target" position=${Position.Top} id="top"
+        style=${{ top: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
+      <${Handle} type="target" position=${Position.Bottom} id="bottom"
+        style=${{ bottom: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
+      <${Handle} type="source" position=${Position.Bottom} id="stack-out"
+        style=${{ bottom: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
       <${Handle} type="target" position=${Position.Left} id="in"
         style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
       <${Handle} type="source" position=${Position.Right} id="out"
