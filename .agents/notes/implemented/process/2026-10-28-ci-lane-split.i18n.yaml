@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/process/2026-10-28-ci-lane-split.md
+2026-10-28-ci-lane-split.md: 9932429d2c8a147a4f76bf0a0379c65832788e10
+2026-10-28-ci-lane-split.en.md: 2abfd39116d9d5f7b0c7bad85ea3f4b118b452ff
