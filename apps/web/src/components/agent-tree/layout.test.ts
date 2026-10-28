@@ -1049,5 +1049,13 @@ describe("problem-card edge paths", () => {
         targetY: 20,
       }),
     ).toBe("M 100 100 V 27 Q 100 20 107 20 H 220");
+    expect(
+      discoveryPath({
+        sourceX: 100,
+        sourceY: 100,
+        targetX: 100,
+        targetY: 20,
+      }),
+    ).toBe("M 100 100 V 20");
   });
 });

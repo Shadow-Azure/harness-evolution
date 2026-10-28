@@ -1194,6 +1194,9 @@ export function discoveryPath(input: {
   targetX: number;
   targetY: number;
 }): string {
+  if (input.sourceX === input.targetX) {
+    return `M ${input.sourceX} ${input.sourceY} V ${input.targetY}`;
+  }
   const radius = Math.min(7, Math.abs(input.targetY - input.sourceY) / 2);
   return [
     `M ${input.sourceX} ${input.sourceY}`,

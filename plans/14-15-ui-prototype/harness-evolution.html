@@ -1530,30 +1530,44 @@ function buildGraph(sid, expanded, findingsBudget) {
     }
   });
 
-  // 主会话的「上报型」问题：直接挂在触发它的 skill / subagent 触发药丸的正上方，纵向对齐
+  // 主会话的「上报型」问题：直接挂在触发它的 skill / subagent 触发药丸的正上方，纵向对齐。
+  // 同一触发点有多张 discovery 卡时向上串成一列；近卡接 pill，远卡接上一张卡。
   if (budget > 0) {
     const m = mainMarks
       .filter(x => x.kind === "skill" || x.kind === "agent" || x.kind === "workflow")
       .sort((a, b) => (a.line || 0) - (b.line || 0))[0];
     if (m) {
       const finder = m.kind === "skill" ? (m.name || "skill") : (m.desc || "subagent");
-      const item = makeFinding(reportedDef(m, finder, sid));
-      const text = `#${item.no} ${item.label}`;
-      const w = Math.max(170, Math.min(560, 26 + textW(text)));
+      const items = [makeFinding(reportedDef(m, finder, sid))];
+      if (budget > 1) {
+        items.push(makeFinding({
+          ...reportedDef(m, finder, sid),
+          title: "输出缺少来源校验",
+          label: `${finder} skill发现前置步骤存在问题：输出缺少来源校验`,
+        }));
+      }
       const trigX = 60 + BOX_PAD + BOX_EDGE + (mainChain.offsets[m.id] ?? 0);
-      const x = Math.max(8, trigX - w / 2);
-      const y = 8;
-      const fid = "rep-main-0";
-      findingsOut.push({ ...item, nodeId: fid, side: "reported" });
-      nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w, no: item.no } });
-      edges.push({
-        id: "er-" + fid,
-        source: "main", sourceHandle: "rep" + m.id,
-        target: fid, targetHandle: "bottom",
-        type: "reported",
-        style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+      let previous = null;
+      items.forEach((item, i) => {
+        const text = `#${item.no} ${item.label}`;
+        const w = Math.max(170, Math.min(560, 26 + textW(text)));
+        const x = Math.max(8, trigX - w / 2);
+        const y = 8 - i * (BOX_H + GAP);
+        const fid = `rep-main-${i}`;
+        findingsOut.push({ ...item, nodeId: fid, side: "reported" });
+        nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w, no: item.no } });
+        edges.push({
+          id: "er-" + fid,
+          source: previous?.id ?? "main",
+          sourceHandle: previous?.handle ?? ("rep" + m.id),
+          target: fid,
+          targetHandle: "bottom",
+          type: "reported",
+          style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+        });
+        previous = { id: fid, handle: "stack-top" };
+        budget--;
       });
-      budget--;
     }
   }
 
@@ -1710,6 +1724,8 @@ function FindingNode({ data }) {
         style=${{ bottom: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
       <${Handle} type="source" position=${Position.Bottom} id="stack-out"
         style=${{ bottom: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
+      <${Handle} type="source" position=${Position.Top} id="stack-top"
+        style=${{ top: 0, left: "50%", width: 1, height: 1, opacity: 0 }} />
       <${Handle} type="target" position=${Position.Left} id="in"
         style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
       <${Handle} type="source" position=${Position.Right} id="out"
