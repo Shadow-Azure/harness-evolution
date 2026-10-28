@@ -49,6 +49,23 @@ const isActive = computed(
   () => run.value?.status === "preparing" || run.value?.status === "running",
 );
 const loadedSeq = ref(0);
+/**
+ * Seed the SSE cursor once from the run snapshot's high-water mark.
+ *
+ * The log panel paginates from REST; replaying the whole durable history into
+ * `liveEvents` would bypass that pagination. The snapshot seq lets the ticket
+ * replay only the gap between the snapshot and the live stream.
+ */
+let cursorSeeded = false;
+watch(
+  () => run.value?.lastEventSeq,
+  (seq) => {
+    if (cursorSeeded || run.value === undefined) return;
+    cursorSeeded = true;
+    if (seq !== undefined && seq > loadedSeq.value) loadedSeq.value = seq;
+  },
+  { immediate: true },
+);
 const liveEvents = ref<EvolutionRunEvent[]>([]);
 const logResetToken = ref(0);
 const isRetrying = ref(false);

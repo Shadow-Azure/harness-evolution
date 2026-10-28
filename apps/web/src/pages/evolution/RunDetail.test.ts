@@ -221,6 +221,7 @@ interface DetailOverrides {
   retryAttempts?: number;
   nextRetryAt?: string | null;
   evalStatus?: "pending" | "evaluating" | "completed" | "failed" | "timeout";
+  lastEventSeq?: number;
 }
 
 function detail(
@@ -995,6 +996,34 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-testid='run-log-panel']").text()).toContain(
       "2 条",
     );
+  });
+
+  it("seeds the SSE cursor from the run snapshot high-water mark", async () => {
+    let lastEventId = -1;
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { lastEventSeq: 105 },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/events/ticket", async ({ request }) => {
+        const body = (await request.json()) as { lastEventId?: number };
+        lastEventId = body.lastEventId ?? -1;
+        return HttpResponse.json({
+          ticket: "snapshot-ticket",
+          expiresIn: 60,
+          topics: ["run:evo-full-1"],
+        });
+      }),
+    );
+    await mountPage();
+
+    await vi.waitFor(() => expect(lastEventId).toBe(105));
   });
 
   it("shows a retryable error when the run list request fails", async () => {
