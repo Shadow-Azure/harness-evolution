@@ -6,7 +6,7 @@
 kind: milestone
 id: m5
 title: M5 自进化闭环
-status: active
+status: done
 github:
   number: 13
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/13
