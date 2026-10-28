@@ -3,7 +3,7 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -11,12 +11,14 @@ const props = withDefaults(
     target: EvolutionTarget | null;
     versions?: string[];
     versionsLoading?: boolean;
+    versionsError?: boolean;
     submitting?: boolean;
     serverError?: string;
   }>(),
   {
     versions: () => [],
     versionsLoading: false,
+    versionsError: false,
     submitting: false,
     serverError: "",
   },
@@ -40,13 +42,34 @@ const form = reactive<EvolutionTargetWrite>({
   enabled: true,
 });
 const errors = reactive<FormErrors>({});
+const versionAutocomplete = ref<{ focus: () => void } | null>(null);
 
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
   const values = new Set(props.versions);
   if (props.target?.defaultRef) values.add(props.target.defaultRef);
-  if (form.defaultRef.trim()) values.add(form.defaultRef.trim());
   return [...values].sort((left, right) => left.localeCompare(right));
+});
+const targetRepoChanged = computed(
+  () =>
+    Boolean(props.target) &&
+    form.repoUrl.trim() !== props.target?.repoUrl.trim(),
+);
+const versionHelp = computed(() => {
+  if (!props.target) {
+    return "可直接输入分支或 tag；保存后可基于已保存仓库选择标签。";
+  }
+  if (targetRepoChanged.value) {
+    return "标签建议来自已保存配置；仓库地址保存后会重新读取。";
+  }
+  if (props.versionsLoading) return "正在读取仓库版本…";
+  if (props.versionsError) {
+    return "暂时无法获取标签建议，可直接输入分支或 tag。";
+  }
+  if (props.versions.length) {
+    return "可从仓库标签中选择，也可直接输入分支或 tag。";
+  }
+  return "可直接输入分支或 tag。";
 });
 
 function resetForm(): void {
@@ -67,6 +90,25 @@ function clearErrors(): void {
 
 function close(): void {
   emit("update:modelValue", false);
+}
+
+function fetchVersionSuggestions(
+  _query: string,
+  callback: (suggestions: Array<{ value: string }>) => void,
+): void {
+  callback(
+    versionOptions.value.map((value) => ({ value })),
+  );
+}
+
+function updateDefaultRef(value: string | number): void {
+  const normalized = String(value);
+  form.defaultRef = normalized;
+  if (normalized.trim()) delete errors.defaultRef;
+}
+
+function openVersionSuggestions(): void {
+  versionAutocomplete.value?.focus();
 }
 
 function submit(): void {
@@ -179,35 +221,37 @@ watch(
           </ElFormItem>
 
           <ElFormItem label="基线分支或标签">
-            <ElSelect
-              v-model="form.defaultRef"
-              allow-create
+            <ElAutocomplete
+              ref="versionAutocomplete"
+              autocomplete="off"
               class="target-version-select"
               data-testid="target-version-select"
-              default-first-option
-              filterable
-              :loading="versionsLoading"
+              :debounce="0"
+              :fetch-suggestions="fetchVersionSuggestions"
+              :model-value="form.defaultRef"
               name="defaultRef"
               placeholder="main / v2.0.0"
+              show-arrow
+              trigger-on-focus
+              @update:model-value="updateDefaultRef"
             >
-              <ElOption
-                v-for="version in versionOptions"
-                :key="version"
-                :label="version"
-                :value="version"
-              />
-            </ElSelect>
-            <p
-              v-if="versionsLoading"
-              class="field-help"
-            >
-              正在读取仓库版本…
-            </p>
-            <p
-              v-else-if="versions.length"
-              class="field-help"
-            >
-              可从仓库标签中选择，也可保留分支名。
+              <template #suffix>
+                <button
+                  aria-label="展开标签建议"
+                  class="version-suggestion-toggle"
+                  type="button"
+                  @click.stop="openVersionSuggestions"
+                  @mousedown.prevent
+                >
+                  <span
+                    aria-hidden="true"
+                    class="version-suggestion-toggle-chevron"
+                  />
+                </button>
+              </template>
+            </ElAutocomplete>
+            <p class="field-help">
+              {{ versionHelp }}
             </p>
             <p
               v-if="errors.defaultRef"
@@ -327,6 +371,33 @@ watch(
   gap: 8px;
   color: var(--text-dim);
   font-size: 11.5px;
+}
+
+.version-suggestion-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.version-suggestion-toggle:hover {
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+
+.version-suggestion-toggle-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
 }
 
 .form-actions {

@@ -390,6 +390,20 @@
 .evo-app .btn:disabled { opacity: .45; cursor: not-allowed; }
   .evo-app .btn.accent { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 9%, var(--bg-card)); font-weight: 600; }
   .evo-app .btn.accent:hover { background: color-mix(in srgb, var(--blue) 15%, var(--bg-card)); border-color: var(--blue); color: var(--blue); }
+  .evo-app .page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.evo-app .targets-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 11px; overflow: hidden; box-shadow: 0 1px 3px rgba(30,40,60,.06); }
+.evo-app table.targets { width: 100%; border-collapse: collapse; font-size: 12px; }
+.evo-app table.targets th, .evo-app table.targets td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.evo-app table.targets tr:last-child td { border-bottom: none; }
+.evo-app table.targets th { color: var(--text-faint); font-size: 10.5px; font-weight: 650; background: var(--bg-panel); white-space: nowrap; }
+.evo-app table.targets td.actions { text-align: right; white-space: nowrap; }
+.evo-app .target-name { font-weight: 650; }
+.evo-app .target-repo, .evo-app .target-ref { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); word-break: break-all; }
+.evo-app .target-dir { color: var(--text-dim); }
+.evo-app .enabled-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.evo-app .enabled-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+.evo-app .enabled-pill.off { color: var(--text-faint); }
+.evo-app .enabled-pill.off::before { background: var(--text-faint); }
 .evo-app .chip {
     display: inline-block; font-size: 11px; color: var(--text-dim);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px;
@@ -541,6 +555,40 @@
 .evo-app .f-row { margin-bottom: 14px; }
 .evo-app .f-label { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-bottom: 6px; }
 .evo-app .f-label .req { color: var(--red); }
+.evo-app .target-form-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 0 14px; }
+.evo-app .target-form-grid .span-2 { grid-column: 1 / -1; }
+.evo-app .target-form-grid .inp { width: 100%; }
+.evo-app .target-form-grid .seg { width: fit-content; }
+.evo-app .target-form-grid .seg button { min-width: 74px; }
+.evo-app .ref-combo { position: relative; }
+.evo-app .ref-control { display: flex; align-items: center; min-height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
+.evo-app .ref-control:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent); }
+.evo-app .ref-control input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 12.5px; color: var(--text); padding: 6px 4px 6px 10px; }
+.evo-app .ref-toggle { display: grid; place-items: center; width: 30px; align-self: stretch; border: none; border-left: 1px solid var(--border); background: transparent; color: var(--text-faint); cursor: pointer; font-size: 12px; }
+.evo-app .ref-toggle:hover { color: var(--blue); }
+.evo-app .ref-menu { display: none; position: absolute; z-index: 5; top: calc(100% + 5px); left: 0; right: 0; padding: 4px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 28px rgba(20,30,50,.16); max-height: 170px; overflow-y: auto; }
+.evo-app .ref-menu.open { display: block; }
+.evo-app .ref-option { display: flex; width: 100%; align-items: center; border: none; border-radius: 6px; background: transparent; color: var(--text-dim); font: inherit; font-family: var(--mono); font-size: 11.5px; padding: 7px 9px; text-align: left; cursor: pointer; }
+.evo-app .ref-option:hover, .evo-app .ref-option.current { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); }
+.evo-app .ref-menu-state { padding: 9px; color: var(--text-faint); font-size: 11px; line-height: 1.55; }
+.evo-app .field-note { margin-top: 6px; font-size: 11px; color: var(--text-faint); line-height: 1.55; }
+.evo-app .field-note.warn { color: var(--orange); }
+.evo-app .kind-options { display: flex; align-items: center; gap: 16px; min-height: 32px; }
+.evo-app .kind-choice { display: inline-flex; align-items: center; gap: 7px; border: 0; padding: 0; background: transparent; color: var(--text-dim); font: inherit; font-size: 13px; cursor: pointer; }
+.evo-app .kind-choice::before { content: ""; width: 14px; height: 14px; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); }
+.evo-app .kind-choice.active { color: var(--text); }
+.evo-app .kind-choice.active::before { border-color: var(--blue); background: radial-gradient(circle, var(--blue) 0 3px, var(--bg-card) 3.5px); }
+.evo-app .proto-switch { position: relative; display: inline-flex; width: 40px; height: 20px; flex: none; }
+.evo-app .proto-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.evo-app .proto-switch-track { width: 40px; height: 20px; border-radius: 999px; background: var(--border); transition: background .15s ease; }
+.evo-app .proto-switch-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,60,.18); transition: transform .15s ease; }
+.evo-app .proto-switch input:checked + .proto-switch-track { background: var(--blue); }
+.evo-app .proto-switch input:checked + .proto-switch-track::after { transform: translateX(20px); }
+.evo-app .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 11.5px; }
+.evo-app .form-error { margin: 0 0 12px; padding: 8px 10px; border-radius: 8px; color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--bg-card)); border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border)); font-size: 12px; }
+.evo-app .target-loading { display: inline-flex; align-items: center; gap: 6px; color: var(--blue); font-size: 11px; }
+.evo-app .target-loading::before { content: ""; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--blue) 35%, transparent); border-top-color: var(--blue); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .evo-app .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .evo-app .seg button { font: inherit; font-size: 12.5px; padding: 6px 16px; border: none; background: var(--bg-card); color: var(--text-dim); cursor: pointer; }
 .evo-app .seg button.active { background: var(--blue); color: #fff; font-weight: 600; }
@@ -2558,11 +2606,18 @@ const roundActive = (run, i) => run.progress === 4 + i;
 let expanded = new Set();
 let lastSelection = null;
 let clusterOnlyData = null;
+let targetConfigs = [
+  { id: 'target-deep-research', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.0.0', enabled: true, tags: ['v2.0.0', 'v1.9.0', 'v1.8.2'] },
+  { id: 'target-code-review', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'feature/review-rules', enabled: true, tags: ['v1.4.0', 'v1.3.1'] },
+  { id: 'target-explore', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'main', enabled: false, tags: [], tagsUnavailable: true },
+];
+let targetDialog = null;
 
 function route(){
   const h = location.hash || '#/runs';
   if (h.startsWith('#/run/')) renderDetail(h.slice(6));
   else if (h === '#/cluster') renderClusterOnly();
+  else if (h === '#/targets') renderTargets();
   else renderRunList();
 }
 window.addEventListener('hashchange', route);
@@ -2624,7 +2679,10 @@ function renderRunList(){
     <div class="page-head">
       <h1>自进化</h1>
       <span class="spacer"></span>
-      <button class="btn primary" data-action="launch">＋ 启动自进化</button>
+      <div class="page-actions">
+        <a class="btn" href="#/targets">进化对象配置</a>
+        <button class="btn primary" data-action="launch">＋ 启动自进化</button>
+      </div>
     </div>
     <p class="page-note">基于问题报告对 skill / agent 做「聚类 → 归因 → 按严重程度迭代打 patch → 评测接纳 → 测试集终评」的自动进化。全部数据为打桩样例。</p>
     <div class="group-label"><span class="pulse"></span>正在执行（${running.length}）</div>
@@ -2632,6 +2690,219 @@ function renderRunList(){
     <div class="group-label">历史记录（${history.length}）</div>
     <div class="run-list">${history.map(runCard).join('')}</div>
   </div>`;
+}
+
+/* ════════════════════════ 进化对象配置页 ════════════════════════ */
+function renderTargets(){
+  const rows = targetConfigs.map(target => `<tr>
+    <td><span class="chip kind">${esc(target.kind)}</span><div class="target-name">${esc(target.objectName)}</div></td>
+    <td><div class="target-repo">${esc(target.repoUrl)}</div><div class="target-dir">${esc(target.subDir)}</div></td>
+    <td><div class="target-ref">${esc(target.defaultRef)}</div></td>
+    <td><span class="enabled-pill ${target.enabled ? '' : 'off'}">${target.enabled ? '已启用' : '已停用'}</span></td>
+    <td class="actions"><button class="btn sm" data-action="target-edit" data-id="${target.id}">编辑</button></td>
+  </tr>`).join('');
+  $app.innerHTML = `<div class="wrap">
+    <a class="back" href="#/runs">← 返回自进化列表</a>
+    <div class="page-head" style="margin-top:8px">
+      <h1>进化对象配置</h1>
+      <span class="spacer"></span>
+      <button class="btn primary" data-action="target-create">＋ 新增配置</button>
+    </div>
+    <p class="page-note">配置 skill / agent 的仓库、子目录与基线。基线可直接填写分支或 tag；tag 建议来自已保存配置的仓库。</p>
+    <div class="targets-panel">
+      <table class="targets">
+        <thead><tr><th>对象</th><th>仓库 / 子目录</th><th>基线</th><th>状态</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="waiting">暂无配置</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+  renderTargetDialog();
+}
+
+function openTargetDialog(target){
+  const isEdit = !!target;
+  targetDialog = {
+    mode: isEdit ? 'edit' : 'create',
+    id: target?.id || 'target-' + Date.now().toString(36),
+    savedRepoUrl: target?.repoUrl || '',
+    tags: target?.tags || [],
+    versionsLoading: isEdit,
+    tagsFailed: false,
+    refOpen: false,
+    error: '',
+    form: {
+      kind: target?.kind || 'skill',
+      objectName: target?.objectName || '',
+      repoUrl: target?.repoUrl || '',
+      subDir: target?.subDir || '',
+      defaultRef: target?.defaultRef || '',
+      enabled: target?.enabled ?? true,
+    },
+  };
+  renderTargetDialog();
+  if (isEdit) {
+    const dialogId = targetDialog.id;
+    window.setTimeout(() => {
+      if (!targetDialog || targetDialog.id !== dialogId) return;
+      targetDialog.versionsLoading = false;
+      targetDialog.tagsFailed = !!target?.tagsUnavailable;
+      renderTargetDialog();
+    }, 350);
+  }
+}
+
+function targetRepoChanged(){
+  return targetDialog?.mode === 'edit' &&
+    targetDialog.form.repoUrl.trim() !== targetDialog.savedRepoUrl.trim();
+}
+
+function targetRefNote(){
+  if (targetDialog.mode === 'create') {
+    return '当前可直接填写分支或 tag；保存后可基于该仓库读取 tag 建议。';
+  }
+  if (targetRepoChanged()) {
+    return '当前 tag 建议来自已保存配置的仓库；新仓库地址保存后才会重新读取。';
+  }
+  if (targetDialog.versionsLoading) {
+    return '<span class="target-loading">正在读取已保存配置的 tag…</span>';
+  }
+  if (targetDialog.tagsFailed) {
+    return '暂时无法获取标签建议，可直接填写分支或标签。';
+  }
+  return 'tag 建议来自已保存配置的仓库；当前基线即使不在列表中也可直接保存。';
+}
+
+function targetRefOptions(){
+  return [...new Set([
+    targetDialog.form.defaultRef,
+    ...targetDialog.tags,
+  ].filter(Boolean))].sort((left, right) => left.localeCompare(right));
+}
+
+function targetRefMenuHTML(){
+  if (targetDialog.versionsLoading) {
+    return '<div class="ref-menu-state"><span class="target-loading">正在读取仓库标签…</span></div>';
+  }
+  if (targetDialog.tagsFailed) {
+    return '<div class="ref-menu-state">暂时无法获取标签建议，可直接输入分支或 tag。</div>';
+  }
+  const refs = targetRefOptions();
+  if (!refs.length) {
+    return `<div class="ref-menu-state">${targetDialog.mode === 'create' ? '可直接输入分支或 tag；保存后可获取标签建议。' : '暂无标签建议，可直接输入。'}</div>`;
+  }
+  return refs.map(ref => `<button type="button" class="ref-option ${ref === targetDialog.form.defaultRef ? 'current' : ''}" data-action="target-pick-ref" data-ref="${esc(ref)}">${esc(ref)}</button>`).join('');
+}
+
+function viewTargetRefMenu(open){
+  if (!targetDialog) return;
+  targetDialog.refOpen = open;
+  const menu = document.getElementById('target-ref-menu');
+  const input = document.getElementById('target-default-ref');
+  menu?.classList.toggle('open', open);
+  input?.setAttribute('aria-expanded', String(open));
+}
+
+function renderTargetDialog(){
+  if (!targetDialog) {
+    $modal.innerHTML = '';
+    return;
+  }
+  const f = targetDialog.form;
+  const refNote = targetRefNote();
+  $modal.innerHTML = `<div class="evov" data-action="target-close-bg">
+    <div class="modal">
+      <div class="modal-head"><h2>${targetDialog.mode === 'create' ? '新增进化对象' : '编辑进化对象'}</h2><button class="x" data-action="target-close">✕</button></div>
+      <div class="modal-body">
+        ${targetDialog.error ? `<div class="form-error">${esc(targetDialog.error)}</div>` : ''}
+        <div class="target-form-grid">
+          <div class="f-row">
+            <div class="f-label">对象类型</div>
+            <div class="kind-options">
+              <button type="button" class="kind-choice ${f.kind === 'skill' ? 'active' : ''}" data-action="target-kind" data-kind="skill">Skill</button>
+              <button type="button" class="kind-choice ${f.kind === 'agent' ? 'active' : ''}" data-action="target-kind" data-kind="agent">Agent</button>
+            </div>
+          </div>
+          <div class="f-row">
+            <div class="f-label">对象名称</div>
+            <input class="inp" id="target-object-name" data-target-field="objectName" value="${esc(f.objectName)}" placeholder="如 deep-research">
+          </div>
+          <div class="f-row span-2">
+            <div class="f-label">仓库地址</div>
+            <input class="inp" id="target-repo-url" data-target-field="repoUrl" value="${esc(f.repoUrl)}" placeholder="https://… 或 git@…">
+          </div>
+          <div class="f-row">
+            <div class="f-label">子目录</div>
+            <input class="inp" id="target-sub-dir" data-target-field="subDir" value="${esc(f.subDir)}" placeholder="如 skills/deep-research">
+          </div>
+          <div class="f-row">
+            <div class="f-label">基线分支或标签</div>
+            <div class="ref-combo">
+              <div class="ref-control">
+                <input id="target-default-ref" data-target-field="defaultRef" value="${esc(f.defaultRef)}" placeholder="main / v2.0.0" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="${targetDialog.refOpen}" aria-controls="target-ref-menu">
+                <button type="button" class="ref-toggle" data-action="target-ref-toggle" aria-label="展开基线建议">⌄</button>
+              </div>
+              <div class="ref-menu ${targetDialog.refOpen ? 'open' : ''}" id="target-ref-menu" role="listbox">${targetRefMenuHTML()}</div>
+            </div>
+            <div class="field-note ${targetRepoChanged() ? 'warn' : ''}" id="target-ref-note">${refNote}</div>
+          </div>
+          <div class="f-row span-2">
+            <div class="f-label">启用</div>
+            <div class="switch-row">
+              <label class="proto-switch">
+                <input type="checkbox" id="target-enabled" data-target-field="enabled" ${f.enabled ? 'checked' : ''}>
+                <span class="proto-switch-track"></span>
+              </label>
+              <span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-action="target-close">取消</button>
+        <button class="btn primary" data-action="target-save">${targetDialog.mode === 'create' ? '新增配置' : '保存配置'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function syncTargetForm(){
+  if (!targetDialog) return;
+  const f = targetDialog.form;
+  f.objectName = document.getElementById('target-object-name')?.value || '';
+  f.repoUrl = document.getElementById('target-repo-url')?.value || '';
+  f.subDir = document.getElementById('target-sub-dir')?.value || '';
+  f.defaultRef = document.getElementById('target-default-ref')?.value || '';
+  f.enabled = !!document.getElementById('target-enabled')?.checked;
+}
+
+function saveTargetConfig(){
+  syncTargetForm();
+  const f = targetDialog.form;
+  if (!f.objectName.trim()) return showTargetError('请填写对象名称。');
+  if (!f.repoUrl.trim()) return showTargetError('请填写仓库地址。');
+  if (!f.subDir.trim()) return showTargetError('请填写子目录。');
+  if (!f.defaultRef.trim()) return showTargetError('请填写基线分支或标签。');
+  const saved = {
+    id: targetDialog.id,
+    kind: f.kind,
+    objectName: f.objectName.trim(),
+    repoUrl: f.repoUrl.trim(),
+    subDir: f.subDir.trim(),
+    defaultRef: f.defaultRef.trim(),
+    enabled: f.enabled,
+    tags: [...targetDialog.tags],
+    tagsUnavailable: targetDialog.tagsFailed,
+  };
+  const existing = targetConfigs.findIndex(t => t.id === saved.id);
+  if (existing >= 0) targetConfigs[existing] = saved;
+  else targetConfigs.push(saved);
+  targetDialog = null;
+  renderTargets();
+}
+
+function showTargetError(message){
+  targetDialog.error = message;
+  renderTargetDialog();
 }
 
 /* ════════════════════════ 详情页 ════════════════════════ */
@@ -3103,6 +3374,23 @@ document.addEventListener('click', e => {
   else if (a === 'wz-next') { wz.page = (wz.page || 1) + 1; renderWizard(); }
   else if (a === 'wz-cluster') { syncWzInputs(); buildClusterOnly(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/cluster'; }
   else if (a === 'wz-start') { syncWzInputs(); const run = startRun(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/run/' + run.id; }
+  else if (a === 'target-create') openTargetDialog(null);
+  else if (a === 'target-edit') openTargetDialog(targetConfigs.find(t => t.id === el.dataset.id));
+  else if (a === 'target-close') { targetDialog = null; renderTargetDialog(); }
+  else if (a === 'target-close-bg') { if (e.target === el) { targetDialog = null; renderTargetDialog(); } }
+  else if (a === 'target-kind') { syncTargetForm(); targetDialog.form.kind = el.dataset.kind; renderTargetDialog(); }
+  else if (a === 'target-ref-toggle') {
+    syncTargetForm();
+    viewTargetRefMenu(!targetDialog.refOpen);
+  }
+  else if (a === 'target-pick-ref') {
+    syncTargetForm();
+    targetDialog.form.defaultRef = el.dataset.ref;
+    targetDialog.error = '';
+    targetDialog.refOpen = false;
+    renderTargetDialog();
+  }
+  else if (a === 'target-save') saveTargetConfig();
   else if (a === 'launch-from-cluster') {
     // 从仅聚类结果直接启动：复用当前选择
     if (clusterOnlyData) {
@@ -3117,6 +3405,45 @@ document.addEventListener('change', e => {
   else if (e.target.id === 'wz-version') { wz.version = e.target.value; wz.queried = false; }
   else if (e.target.id === 'wz-from') { wz.from = e.target.value; wz.queried = false; }
   else if (e.target.id === 'wz-to') { wz.to = e.target.value; wz.queried = false; }
+});
+document.addEventListener('change', e => {
+  if (!targetDialog || !e.target.dataset.targetField) return;
+  const key = e.target.dataset.targetField;
+  targetDialog.form[key] = key === 'enabled' ? e.target.checked : e.target.value;
+  if (key === 'enabled') renderTargetDialog();
+});
+document.addEventListener('input', e => {
+  if (!targetDialog || !e.target.dataset.targetField) return;
+  const key = e.target.dataset.targetField;
+  targetDialog.form[key] = key === 'enabled' ? e.target.checked : e.target.value;
+  if (key === 'defaultRef') {
+    viewTargetRefMenu(true);
+    const query = e.target.value.trim().toLocaleLowerCase();
+    document.querySelectorAll('#target-ref-menu .ref-option').forEach(option => {
+      option.hidden = !!query && !option.dataset.ref.toLocaleLowerCase().includes(query);
+    });
+  }
+  if (key === 'repoUrl') {
+    const changed = targetRepoChanged();
+    const note = document.getElementById('target-ref-note');
+    if (note) {
+      note.classList.toggle('warn', changed);
+      note.innerHTML = targetRefNote();
+    }
+  }
+});
+document.addEventListener('keydown', e => {
+  if (!targetDialog || e.target.id !== 'target-default-ref' || e.key !== 'Enter') return;
+  e.preventDefault();
+  viewTargetRefMenu(false);
+});
+document.addEventListener('focusin', e => {
+  if (!targetDialog || e.target.id !== 'target-default-ref') return;
+  viewTargetRefMenu(true);
+});
+document.addEventListener('click', e => {
+  if (!targetDialog?.refOpen || e.target.closest('.ref-combo')) return;
+  viewTargetRefMenu(false);
 });
 function syncWzInputs(){
   const g = id => document.getElementById(id);

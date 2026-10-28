@@ -1,0 +1,179 @@
+{
+  "title": "Issue 153 真实 UI 集成冒烟",
+  "eyebrow": "COMPUTER USE SMOKE",
+  "summary": "最终 PR head 上完成进化对象配置页的真实 Chrome + API 集成验证。手填基线可直接保存、下拉建议可用、建议失败不阻塞、新增态无伪加载，异常提交保留全部输入。",
+  "meta": "2026-10-29 · macOS · Chrome · SQLite fixture",
+  "metrics": [
+    { "value": "12", "label": "冒烟场景" },
+    { "value": "12", "label": "PASS" },
+    { "value": "0", "label": "FAIL" },
+    { "value": "0", "label": "WARN" }
+  ],
+  "facts": [
+    { "label": "PR", "value": "#158" },
+    { "label": "Head commit", "value": "afe11ad" },
+    { "label": "页面", "value": "/evolution/targets" },
+    { "label": "后端", "value": "确定性 GitRemote + 临时 SQLite" },
+    { "label": "浏览器", "value": "Google Chrome / Computer Use" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "实际断言", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "打开配置页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "管理员登录后进入进化对象配置，列表与新增入口可见。",
+        "evidence": ["screenshots/01-target-page.jpeg"]
+      },
+      {
+        "id": "02",
+        "name": "新增浮窗初始态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "无 target id 时不显示版本 loading；基线字段可直接输入并提供展开按钮。",
+        "evidence": ["screenshots/02-create-initial.jpeg"]
+      },
+      {
+        "id": "03",
+        "name": "手填后失焦",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "输入 feature/smoke-direct 后点击其他字段，基线值保持不变。",
+        "evidence": ["screenshots/03-filled-before-submit.jpeg"]
+      },
+      {
+        "id": "04",
+        "name": "手填后直接提交",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "不按 Enter、不选建议，直接点击新增；对象成功加入列表且基线保持正确。",
+        "evidence": ["screenshots/04-direct-submit-saved.jpeg"]
+      },
+      {
+        "id": "05",
+        "name": "展开 tag 建议",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "编辑已保存对象并点击右侧展开按钮，显示当前 ref、v1.9.0 与 v2.0.0。",
+        "evidence": ["screenshots/05-tag-dropdown.jpeg"]
+      },
+      {
+        "id": "06",
+        "name": "鼠标选择建议",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "点击 v1.9.0 后输入框回填并关闭建议层。",
+        "evidence": ["screenshots/06-click-tag-selected.jpeg"]
+      },
+      {
+        "id": "07",
+        "name": "键盘选择建议",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实浏览器中执行 ArrowDown、ArrowDown、Enter 后，输入框从当前分支变为 v1.9.0。",
+        "evidence": ["screenshots/05-tag-dropdown.jpeg"]
+      },
+      {
+        "id": "08",
+        "name": "仓库草稿变化提示",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "修改 repoUrl 后提示明确说明建议来自已保存配置，保存后才重新读取。",
+        "evidence": ["screenshots/07-repo-change-note.jpeg"]
+      },
+      {
+        "id": "09",
+        "name": "建议获取失败回退",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "无效仓库的 tag 请求失败后显示可直接输入提示，输入框保持可编辑。",
+        "evidence": ["screenshots/08-fetch-fallback.jpeg"]
+      },
+      {
+        "id": "10",
+        "name": "422 后保留输入",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "无效仓库/REF 保存返回错误，浮窗保持打开且全部字段和手填基线保留。",
+        "evidence": ["screenshots/09-422-preserved.jpeg"]
+      },
+      {
+        "id": "11",
+        "name": "单字符清除旧错误",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空表单提交后输入一个字符，基线的请填写错误立即消失。",
+        "evidence": ["screenshots/10-single-char-clears-error.jpeg"]
+      },
+      {
+        "id": "12",
+        "name": "可访问性与最终直接提交",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "标签、展开按钮与启用开关均有可读语义；最终再次手填并直接新增成功。",
+        "evidence": ["screenshots/11-direct-submit-saved.jpeg"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/02-create-initial.jpeg",
+      "alt": "新增进化对象初始态",
+      "label": "02 · 新增态",
+      "caption": "无 target id 时不存在版本加载，基线字段可直接输入并带展开按钮。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-tag-dropdown.jpeg",
+      "alt": "编辑态 tag 建议展开",
+      "label": "05 · 建议列表",
+      "caption": "当前分支不在 tag 列表中时仍保留，同时显示已保存仓库的 tag。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/08-fetch-fallback.jpeg",
+      "alt": "建议获取失败仍可手填",
+      "label": "09 · 失败回退",
+      "caption": "tag 建议获取失败不阻塞手填与保存。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/09-422-preserved.jpeg",
+      "alt": "保存失败后保留输入",
+      "label": "10 · 422",
+      "caption": "仓库或 ref 无效时浮窗保持打开，基线输入未丢失。",
+      "variant": "issue"
+    },
+    {
+      "src": "screenshots/11-direct-submit-saved.jpeg",
+      "alt": "手填后直接提交成功",
+      "label": "12 · 最终结果",
+      "caption": "无需 Enter 或选择下拉项，直接新增后列表保留手填值。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "自动覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "基线受控值与失焦",
+        "coverage": "组件单测 + E2E",
+        "conclusion": "直接输入、失焦和提交均有自动化覆盖。",
+        "recommendation": "保留真实浏览器冒烟作为版本验收。"
+      },
+      {
+        "area": "建议展开、鼠标和键盘选择",
+        "coverage": "组件单测 + 本轮真实 UI",
+        "conclusion": "三种路径均可用。",
+        "recommendation": "后续可把键盘路径加入浏览器 E2E。"
+      },
+      {
+        "area": "loading、失败与 422",
+        "coverage": "组件/页面单测 + E2E + 本轮真实 UI",
+        "conclusion": "无伪 loading，失败不阻塞，错误后输入保留。",
+        "recommendation": "维持临时 fixture 隔离。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "集成冒烟通过",
+    "summary": "12 个场景全部通过，未发现需要提交新检视意见或进入修复循环的缺陷。",
+    "points": [
+      "测试使用确定性 GitRemote 与临时 SQLite，未访问外部生产仓库。",
+      "API/Web 与测试标签页已关闭，临时数据已清理。"
+    ]
+  },
+  "footer": "Issue #153 · PR #158 · head afe11ad"
+}

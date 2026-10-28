@@ -3,7 +3,7 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import type { EvolutionTarget } from "@harness/contracts";
-import { ElOption, ElSelect } from "element-plus/es/components/select/index";
+import { ElAutocomplete } from "element-plus/es/components/autocomplete/index";
 import { ElMessageBox } from "element-plus/es/components/message-box/index";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
@@ -173,7 +173,7 @@ describe("target configuration page", () => {
     await wrapper
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
-    wrapper.findComponent(ElSelect).vm.$emit("update:modelValue", "main");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -214,7 +214,7 @@ describe("target configuration page", () => {
     await wrapper
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
-    wrapper.findComponent(ElSelect).vm.$emit("update:modelValue", "main");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -242,12 +242,47 @@ describe("target configuration page", () => {
     await wrapper.get(".edit-target").trigger("click");
     await flushPromises();
 
-    expect(wrapper.findComponent(ElSelect).props("modelValue")).toBe("main");
     expect(
-      wrapper
-        .findAllComponents(ElOption)
-        .map((option) => option.props("value")),
-    ).toEqual(["main", "v1.9.0", "v2.0.0"]);
+      (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
+    ).toBe("main");
+    const autocomplete = wrapper.findComponent(ElAutocomplete);
+    const suggestions = await new Promise<Array<{ value: string }>>(
+      (resolve) => {
+        (
+          autocomplete.vm.$props as {
+            fetchSuggestions: (
+              query: string,
+              callback: (items: Array<{ value: string }>) => void,
+            ) => void;
+          }
+        ).fetchSuggestions("", resolve);
+      },
+    );
+    expect(suggestions.map(({ value }) => value)).toEqual([
+      "main",
+      "v1.9.0",
+      "v2.0.0",
+    ]);
+  });
+
+  it("does not request or show version loading in create mode", async () => {
+    let versionRequests = 0;
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [] })),
+      http.get("/api/evolution/targets/:targetId/versions", () => {
+        versionRequests += 1;
+        return HttpResponse.json({ versions: [], defaultRef: "" });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await flushPromises();
+
+    expect(versionRequests).toBe(0);
+    expect(wrapper.text()).not.toContain("正在读取仓库版本");
+    expect(wrapper.text()).toContain("可直接输入分支或 tag");
   });
 
   it("maps TARGET_EXISTS into the open edit form", async () => {

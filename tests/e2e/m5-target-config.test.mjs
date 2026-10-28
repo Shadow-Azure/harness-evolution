@@ -191,33 +191,7 @@ async function fillTargetForm(page, values) {
   await setInput(page, "input[name='objectName']", values.name);
   await setInput(page, "input[name='repoUrl']", values.repoUrl);
   await setInput(page, "input[name='subDir']", values.subDir);
-  await evaluate(
-    page,
-    `document.querySelector("[data-testid='target-version-select']").click()`,
-  );
-  await waitForDocument(
-    page.session,
-    `Boolean(document.querySelector(".target-version-select input"))`,
-    "version select input",
-  );
-  await evaluate(
-    page,
-    `document.querySelector(".target-version-select input").focus()`,
-  );
-  await page.session.send("Input.insertText", { text: values.defaultRef });
-  await waitForDocument(
-    page.session,
-    `[...document.querySelectorAll(".el-select-dropdown__item")]
-      .some((item) => item.textContent.trim() === ${JSON.stringify(values.defaultRef)})`,
-    "created version option",
-  );
-  await clickText(page, ".el-select-dropdown__item", values.defaultRef);
-  await waitForDocument(
-    page.session,
-    `[...document.querySelectorAll(".target-version-select .el-select__selected-item")]
-      .some((item) => item.textContent.trim() === ${JSON.stringify(values.defaultRef)})`,
-    "committed version select value",
-  );
+  await setInput(page, "input[name='defaultRef']", values.defaultRef);
 }
 
 async function runTool(action, value) {
@@ -516,6 +490,13 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     );
     assert.equal(dialogLayout.hasBodyForm, true);
     assert.equal(dialogLayout.hasFootActions, true);
+    assert.doesNotMatch(
+      await evaluate(
+        page,
+        `document.querySelector(".target-form-dialog").textContent`,
+      ),
+      /正在读取仓库版本/,
+    );
     await fillTargetForm(page, {
       name: "m5-e2e-target",
       repoUrl: "https://invalid.example.com/repo.git",

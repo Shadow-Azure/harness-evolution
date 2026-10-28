@@ -8,6 +8,7 @@ import { defineConfig } from "vitest/config";
 const apiProxyUrl = process.env.HE_API_PROXY_URL ?? "http://127.0.0.1:8787";
 const webPort = Number(process.env.HE_WEB_PORT ?? 5173);
 const elementPlusDirectories: Readonly<Record<string, string>> = {
+  ElAutocomplete: "autocomplete",
   ElButton: "button",
   ElDialog: "dialog",
   ElForm: "form",

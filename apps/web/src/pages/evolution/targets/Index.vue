@@ -39,6 +39,12 @@ const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
 const versionsQuery = useEvolutionTargetVersions(editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
+const versionsLoading = computed(
+  () => Boolean(editingTargetId.value) && versionsQuery.isFetching.value,
+);
+const versionsError = computed(
+  () => Boolean(editingTargetId.value) && versionsQuery.isError.value,
+);
 
 function openCreate(): void {
   if (!canWrite.value) return;
@@ -178,7 +184,8 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       :submitting="submitting"
       :target="editingTarget"
       :versions="versions"
-      :versions-loading="versionsQuery.isPending.value"
+      :versions-error="versionsError"
+      :versions-loading="versionsLoading"
       @submit="submitTarget"
     />
   </section>
