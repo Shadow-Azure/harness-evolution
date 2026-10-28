@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type {
+  EvolutionRunDetail,
   EvolutionRunEvent,
   EvolutionStepKey,
   StepCondition,
 } from "@harness/contracts";
 import { useQueryClient } from "@tanstack/vue-query";
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { type LocationQueryRaw, useRoute, useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
@@ -53,6 +54,46 @@ const logResetToken = ref(0);
 const isRetrying = ref(false);
 const retryAccepted = ref(false);
 const retryError = ref("");
+/** Blocked facts captured when a retry was accepted. */
+const retryAcceptedFacts = ref<{ errorAt: string; nextRetryAt: string }>({
+  errorAt: "",
+  nextRetryAt: "",
+});
+let retryAcceptedTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Accepted retries expire on their own so a fast failure never freezes the button. */
+const RETRY_ACCEPTED_FALLBACK_MS = 10_000;
+
+function currentBlockedFacts(): { errorAt: string; nextRetryAt: string } {
+  const snapshot = queryClient.getQueryData<EvolutionRunDetail>(
+    queryKeys.evolutionRun(runId.value),
+  );
+  return {
+    errorAt: snapshot?.error?.at ?? "",
+    nextRetryAt: snapshot?.nextRetryAt ?? "",
+  };
+}
+
+function stopRetryAcceptedTimer(): void {
+  if (retryAcceptedTimer !== null) {
+    clearTimeout(retryAcceptedTimer);
+    retryAcceptedTimer = null;
+  }
+}
+
+function forgetRetryAccepted(): void {
+  stopRetryAcceptedTimer();
+  retryAccepted.value = false;
+}
+
+function markRetryAccepted(): void {
+  stopRetryAcceptedTimer();
+  retryAcceptedFacts.value = currentBlockedFacts();
+  retryAccepted.value = true;
+  retryAcceptedTimer = setTimeout(forgetRetryAccepted, RETRY_ACCEPTED_FALLBACK_MS);
+}
+
+onUnmounted(stopRetryAcceptedTimer);
 
 function appendLiveEvent(event: EvolutionRunEvent): void {
   liveEvents.value = mergeRunEvents(liveEvents.value, [event]);
@@ -74,9 +115,17 @@ useRunEvents(runId, loadedSeq, isActive, {
 });
 
 watch(
-  () => run.value?.status,
-  (status) => {
-    if (status !== "blocked") retryAccepted.value = false;
+  () => [run.value?.status ?? "", run.value?.error?.at ?? "", run.value?.nextRetryAt ?? ""] as const,
+  ([status, errorAt, nextRetryAt]) => {
+    if (status !== "blocked") {
+      forgetRetryAccepted();
+      return;
+    }
+    if (!retryAccepted.value) return;
+    const accepted = retryAcceptedFacts.value;
+    if (accepted.errorAt !== errorAt || accepted.nextRetryAt !== nextRetryAt) {
+      forgetRetryAccepted();
+    }
   },
 );
 
@@ -138,11 +187,11 @@ const statusClass = computed(() => {
 const blockedStageLabel = computed(() => {
   switch (run.value?.blockedStage ?? run.value?.error?.stage) {
     case "patch":
-      return "补丁生成（patch）";
+      return "补丁生成（patch）阶段";
     case "push":
-      return "推送（push）";
+      return "推送（push）阶段";
     case "eval":
-      return "评测（eval）";
+      return "评测（eval）阶段";
     default:
       return "未知阶段";
   }
@@ -263,16 +312,18 @@ async function retryBlockedRun(): Promise<void> {
   if (isRetrying.value || retryAccepted.value) return;
   isRetrying.value = true;
   retryError.value = "";
+  let accepted = false;
   try {
     await retryEvolutionRun(runId.value);
-    retryAccepted.value = true;
+    accepted = true;
     await queryClient.invalidateQueries({
       queryKey: queryKeys.evolutionRun(runId.value),
     });
   } catch (caught) {
-    retryError.value = retryErrorMessage(caught);
+    if (!accepted) retryError.value = retryErrorMessage(caught);
   } finally {
     isRetrying.value = false;
+    if (accepted) markRetryAccepted();
   }
 }
 
@@ -345,7 +396,7 @@ function clearMissingClusterFocus(): void {
         data-testid="blocked-banner"
         role="alert"
       >
-        <span class="blocked-title">运行在{{ blockedStageLabel }}阶段阻塞</span>
+        <span class="blocked-title">运行在{{ blockedStageLabel }}阻塞</span>
         <span>{{ run.error?.message ?? "错误详情暂不可用" }}</span>
         <span class="mono muted">自动重试 {{ run.retryAttempts }} 次</span>
         <span

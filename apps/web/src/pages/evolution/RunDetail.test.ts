@@ -8,10 +8,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
+import { queryKeys } from "../../api/queryKeys";
 import { server } from "../../test/server";
 import RunDetail from "./RunDetail.vue";
 
 const wrappers: VueWrapper[] = [];
+let activeQueryClient: QueryClient | null = null;
 
 /** Minimal EventSource double that records listeners and allows manual frames. */
 class TestEventSource {
@@ -275,17 +277,14 @@ async function mountPage(runId = "evo-full-1", query = "") {
   });
   await router.push(`/evolution/runs/${runId}${query}`);
   await router.isReady();
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { gcTime: 0, retry: false } },
+  });
+  activeQueryClient = queryClient;
   const wrapper = mount(RunDetail, {
     global: {
       plugins: [
-        [
-          VueQueryPlugin,
-          {
-            queryClient: new QueryClient({
-              defaultOptions: { queries: { gcTime: 0, retry: false } },
-            }),
-          },
-        ],
+        [VueQueryPlugin, { queryClient }],
         pinia,
         router,
       ],
@@ -678,7 +677,7 @@ describe("evolution run detail page", () => {
     const banner = wrapper.get("[data-testid='blocked-banner']");
 
     expect(banner.text()).toContain("评测执行失败：sandbox timeout");
-    expect(banner.text()).toContain("评测（eval）");
+    expect(banner.text()).toContain("运行在评测（eval）阶段阻塞");
     expect(banner.text()).toContain("自动重试 1 次");
     expect(wrapper.get("[data-testid='next-retry-at']").text()).toContain(
       "2026-10-27 12:05:00",
@@ -736,11 +735,109 @@ describe("evolution run detail page", () => {
 
     releaseRetry();
     await vi.waitFor(() => expect(detailCalls).toBe(2));
+    await flushPromises();
 
     expect(button.attributes("disabled")).toBeDefined();
     expect(wrapper.get("[data-testid='retry-accepted']").text()).toContain(
       "重试任务已受理",
     );
+  });
+
+  it("restores the retry button when an accepted retry never advances the run", async () => {
+    const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "blocked",
+              error: {
+                stage: "eval",
+                message: "评测执行失败：sandbox timeout",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+            }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "eval", retryAttempts: 1, nextRetryAt },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", () =>
+        HttpResponse.json(
+          { jobId: "job-retry-1", reused: false },
+          { status: 202 },
+        )),
+    );
+    const wrapper = await mountPage();
+    const button = wrapper.get("[data-testid='run-retry']");
+
+    vi.useFakeTimers();
+    try {
+      await button.trigger("click");
+      await vi.waitFor(() => expect(button.text()).toBe("已提交重试"));
+      expect(button.attributes("disabled")).toBeDefined();
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      await flushPromises();
+
+      expect(button.text()).toBe("重试");
+      expect(button.attributes("disabled")).toBeUndefined();
+      expect(wrapper.find("[data-testid='retry-accepted']").exists()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the accepted retry when a new blocked snapshot shows different facts", async () => {
+    const errorAt = "2026-10-27T12:00:00+08:00";
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "blocked",
+              error: {
+                stage: "eval",
+                message: "评测执行失败：sandbox timeout",
+                at: errorAt,
+              },
+            }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "eval", retryAttempts: 1, nextRetryAt: null },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", () =>
+        HttpResponse.json(
+          { jobId: "job-retry-1", reused: false },
+          { status: 202 },
+        )),
+    );
+    const wrapper = await mountPage();
+    const button = wrapper.get("[data-testid='run-retry']");
+
+    await button.trigger("click");
+    await vi.waitFor(() => expect(button.text()).toBe("已提交重试"));
+
+    const refreshed = detail(
+      run({
+        status: "blocked",
+        error: {
+          stage: "eval",
+          message: "评测执行失败：sandbox timeout",
+          at: "2026-10-27T12:02:00+08:00",
+        },
+      }),
+      ["done", "done", "done", "done", "active", "pending"],
+      { blockedStage: "eval", retryAttempts: 2, nextRetryAt: null },
+    );
+    activeQueryClient?.setQueryData(queryKeys.evolutionRun("evo-full-1"), refreshed);
+
+    await vi.waitFor(() => expect(button.text()).toBe("重试"));
+    expect(button.attributes("disabled")).toBeUndefined();
+    expect(wrapper.find("[data-testid='retry-accepted']").exists()).toBe(false);
   });
 
   it("shows an inline error when the run is no longer retryable", async () => {

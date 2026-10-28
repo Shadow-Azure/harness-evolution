@@ -456,6 +456,7 @@ class EvolutionCandidateService:
         candidate_score: float,
         reason: str,
         job_id: str | None = None,
+        retry_attempts: int = 0,
     ) -> EvolutionRoundRecord:
         """Amend accepted metadata, fast-forward the run branch, and persist it."""
         if round_.status == "accepted":
@@ -506,6 +507,7 @@ class EvolutionCandidateService:
                 run.id,
                 exc,
                 job_id=job_id,
+                retry_attempts=retry_attempts,
             )
         accepted = await self._runs.accept_round(
             deciding.id,

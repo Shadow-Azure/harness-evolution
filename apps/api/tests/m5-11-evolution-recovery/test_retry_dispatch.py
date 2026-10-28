@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -28,6 +28,7 @@ from app.db.models.evolution import (
 )
 from app.db.models.jobs import JobRunRecord
 from app.service.events import EventBus
+from app.service.evolution.apply_final import EvolutionApplyService
 from app.service.evolution.engine.contracts import (
     EvalGatewayConfig,
     FakeEvalGateway,
@@ -176,6 +177,25 @@ class FailingPushWorkspace(WorkspaceDouble):
             "remote transport failed",
             stage="push",
             retryable=self.retryable,
+        )
+
+
+class FailingAcceptWorkspace(WorkspaceDouble):
+    """Fail the accepted-candidate fast-forward with a transient push error."""
+
+    async def accept_candidate(
+        self,
+        candidate: CandidateWorkspace,
+        *,
+        run_branch: str,
+        message: str,
+    ) -> NoReturn:
+        """Fail the run-branch fast-forward exactly like a transient remote error."""
+        del candidate, run_branch, message
+        raise GitOperationError(
+            "remote transport failed",
+            stage="push",
+            retryable=True,
         )
 
 
@@ -329,6 +349,32 @@ def _retry_job(*, automatic: bool, job_id: str = "job-retry") -> JobRunRecord:
         external_job_id=None,
         attempt=1,
         payload={"runId": RUN_ID, "automatic": automatic},
+        result=None,
+        error=None,
+        created_by="user-1",
+        created_at=NOW,
+        started_at=NOW,
+        finished_at=None,
+        updated_at=NOW,
+    )
+
+
+def _apply_job(*, retry_attempts: int) -> JobRunRecord:
+    """Build one durable apply job that carries the recovery retry counter."""
+    return JobRunRecord(
+        id="job-apply",
+        kind="evolution_apply",
+        ref_id=RUN_ID,
+        status="running",
+        progress=0,
+        executor="local",
+        external_job_id=None,
+        attempt=1,
+        payload={
+            "runId": RUN_ID,
+            "evolutionRoundId": ROUND_ID,
+            "retryAttempts": retry_attempts,
+        },
         result=None,
         error=None,
         created_by="user-1",
@@ -683,3 +729,92 @@ async def test_manual_request_resets_backoff_and_queues_once(state: State) -> No
     assert run.retry_attempts == 0
     assert run.next_retry_at is None
     assert state.jobs.items[0].payload == {"runId": RUN_ID, "automatic": False}
+
+
+async def test_resume_is_durable_before_the_stage_is_dispatched(state: State) -> None:
+    """run.resumed and the cleared blocked flag exist before the delegated stage runs."""
+    await _create_run(state.repository)
+    await _seed_cluster_and_round(
+        state,
+        round_status="evaluating",
+        push_status="succeeded",
+        eval_status="completed",
+        eval_result={
+            "currentScore": 80.0,
+            "candidateScore": 90.0,
+            "externalVerdict": "accept",
+            "metrics": [],
+        },
+    )
+    observed: list[tuple[str, str | None, int]] = []
+
+    class ResumeObservingStage:
+        """Record the durable resume facts visible at dispatch entry."""
+
+        async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
+            """Read the run and event log before the stage does any work."""
+            del job
+            run = await state.repository.get_run(RUN_ID)
+            page = await state.events.list(RUN_ID, after_seq=0, limit=100, level=None)
+            resumed = [item for item in page.items if item.event_type == "run_resumed"]
+            observed.append(
+                (
+                    run.status if run is not None else "missing",
+                    run.blocked_stage if run is not None else None,
+                    len(resumed),
+                ),
+            )
+            return {"stage": "apply"}
+
+    result = await _service(state, apply=ResumeObservingStage()).handle(
+        _retry_job(automatic=False),
+    )
+
+    assert result["resumed"] is True
+    assert observed == [("running", None, 1)]
+
+
+async def test_apply_accept_keeps_the_recovery_retry_ladder(state: State) -> None:
+    """An accept-path push failure blocks with the carried attempts, not a reset ladder."""
+    await _create_run(
+        state.repository,
+        status="running",
+        blocked_stage=None,
+        retry_attempts=2,
+        push_status="succeeded",
+    )
+    await _seed_cluster_and_round(
+        state,
+        round_status="evaluating",
+        push_status="succeeded",
+        eval_status="completed",
+        eval_result={
+            "currentScore": 80.0,
+            "candidateScore": 90.0,
+            "externalVerdict": "accept",
+            "metrics": [],
+        },
+    )
+    candidates = EvolutionCandidateService(
+        state.repository,
+        FailingAcceptWorkspace(),  # type: ignore[arg-type]
+        now=lambda: NOW,
+    )
+    apply_service = EvolutionApplyService(
+        state.repository,
+        candidates,
+        EmptyProbeReader(),
+        now=lambda: NOW,
+    )
+
+    with pytest.raises(RunBlocked) as raised:
+        await apply_service.handle(_apply_job(retry_attempts=2))
+
+    assert raised.value.stage == "push"
+    assert raised.value.retry_attempts == 2
+    assert raised.value.next_retry_at == NOW + timedelta(minutes=15)
+    run = await state.repository.get_run(RUN_ID)
+    assert run is not None
+    assert run.status == "blocked"
+    assert run.retry_attempts == 2
+    assert run.next_retry_at == NOW + timedelta(minutes=15)

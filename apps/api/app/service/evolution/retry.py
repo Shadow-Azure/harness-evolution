@@ -110,7 +110,6 @@ class EvolutionRetryService:
         apply: StageHandler | None = None,
         finalize: StageHandler | None = None,
         advance: StageHandler | None = None,
-        prepare: StageHandler | None = None,
         eval_submitter: EvalResubmitter | None = None,
         probes: ProbeSourceReader | None = None,
         events: EvolutionRunEventService | None = None,
@@ -123,7 +122,6 @@ class EvolutionRetryService:
         self._apply_service = apply
         self._finalize_service = finalize
         self._advance_service = advance
-        self._prepare_service = prepare
         self._eval_submitter = eval_submitter
         self._probes = probes
         self._events = events

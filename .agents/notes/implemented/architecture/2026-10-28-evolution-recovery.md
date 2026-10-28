@@ -26,4 +26,4 @@ eval 与 patch 的阻塞不进入自动退避，只接受 `POST /runs/{rid}/retr
 
 ## Consequences
 
-push 的自动退避与手动重试已交付：瞬时故障能让 blocked run 自行恢复，永久故障则稳定停住等人处理。真实 patch 与真实评测仍是占位，恢复层只保证已有持久事实被正确续接，不判断外部系统为何失败。sweeper 是进程内循环，多实例部署时需要单飞，V1 以单进程为前提；跨实例抢占要等 JobRunner 支持 `SKIP LOCKED` 之后再补。占位闭环本身的决策见[占位评测与自动逐轮闭环](2026-10-28-placeholder-evaluation-loop.md)。
+push 的自动退避与手动重试已交付：瞬时故障能让 blocked run 自行恢复，永久故障则稳定停住等人处理。JSON 列上的 Python `None` 曾被写成 JSON `null`，使 `eval_result IS NULL` 守卫失效、已完成的轮次永远停在 evaluating；新写入改为落 SQL NULL，历史行由 `0009` 迁移在升级时回填。真实 patch 与真实评测仍是占位，恢复层只保证已有持久事实被正确续接，不判断外部系统为何失败。sweeper 是进程内循环，多实例部署时需要单飞，V1 以单进程为前提；跨实例抢占要等 JobRunner 支持 `SKIP LOCKED` 之后再补。占位闭环本身的决策见[占位评测与自动逐轮闭环](2026-10-28-placeholder-evaluation-loop.md)。

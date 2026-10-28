@@ -8,6 +8,7 @@ monotonic run-event history. No network and no API process are involved.
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import datetime, timedelta
@@ -17,8 +18,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import pytest_asyncio
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from pydantic import SecretStr
-from sqlalchemy import insert
+from sqlalchemy import insert, text
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -233,6 +236,45 @@ def _job(
     )
 
 
+def _load_backfill_migration() -> Any:
+    """Load the 0009 revision module straight from its file."""
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "0009_eval_result_null_backfill.py"
+    )
+    spec = importlib.util.spec_from_file_location("m5_11_eval_result_null_backfill", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load migration at {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def _run_eval_result_backfill(database: Database) -> None:
+    """Apply the real 0009 upgrade to an already-migrated database."""
+    migration = _load_backfill_migration()
+
+    def apply(sync_connection: Any) -> None:
+        context = MigrationContext.configure(sync_connection)
+        with Operations.context(context):
+            migration.upgrade()
+
+    async with database.engine.begin() as connection:
+        await connection.run_sync(apply)
+
+
+async def _eval_result_is_null(database: Database, round_id: str) -> bool:
+    """Return whether one round's evaluation result is SQL NULL, not the JSON text."""
+    async with database.session() as session:
+        result = await session.execute(
+            text("SELECT eval_result IS NULL FROM evolution_rounds WHERE id = :round_id"),
+            {"round_id": round_id},
+        )
+    return bool(result.scalar_one())
+
+
 async def _prepare_full_run(
     database: Database,
     repository: EvolutionRepository,
@@ -389,6 +431,9 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert run.progress_unit == 4
     assert run.workspace_path is not None
     assert run.branch_name == BRANCH
+    # A round inserted without an evaluation result must be SQL NULL, not JSON null.
+    assert await _eval_result_is_null(database, ROUND_ACCEPT) is True
+    assert await _eval_result_is_null(database, ROUND_REJECT) is True
 
     clock = NOW
 
@@ -516,6 +561,24 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert run_after_accept.progress_unit == 5
     assert _remote_tag(bare, published.candidate_ref) == ""
 
+    # Replaying apply on the already-decided round must not accept or push twice.
+    replayed = await apply_service.handle(
+        _job(
+            "evolution_apply",
+            job_id="job-apply-1-replay",
+            run_id=RUN_ID,
+            payload={"evolutionRoundId": ROUND_ACCEPT},
+        ),
+    )
+    assert replayed["applied"] is False
+    assert replayed["status"] == "accepted"
+    replayed_round = await repository.get_round(ROUND_ACCEPT)
+    replayed_run = await repository.get_run(RUN_ID)
+    assert replayed_round is not None and replayed_run is not None
+    assert replayed_round.commit_hash == accepted_round.commit_hash
+    assert replayed_run.progress_unit == 5
+    assert _remote_tag(bare, published.candidate_ref) == ""
+
     # Round 2: publish, evaluate, reject through real git.
     round_reject = await repository.get_round(ROUND_REJECT)
     assert round_reject is not None
@@ -604,3 +667,46 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert len(final_events) == 1
     assert final_events[0].payload is not None
     assert final_events[0].payload["pushStatus"] == "succeeded"
+
+
+async def test_eval_result_null_backfill_rewrites_legacy_json_text(
+    tmp_path: Path,
+    remote_repo: tuple[Path, Path, str],
+    database: Database,
+) -> None:
+    """The 0009 upgrade turns a historical JSON 'null' result into SQL NULL only."""
+    bare, _seed, base_commit = remote_repo
+    repository = EvolutionRepository(database)
+    workspaces = GitWorkspaceManager(
+        repos_root=tmp_path / "repos",
+        workspaces_root=tmp_path / "workspaces",
+        push_enabled=True,
+    )
+    await _prepare_full_run(
+        database,
+        repository,
+        workspaces,
+        repo_url=str(bare),
+        base_commit=base_commit,
+    )
+    async with database.transaction() as session:
+        await session.execute(
+            text("UPDATE evolution_rounds SET eval_result = 'null' WHERE id = :round_id"),
+            {"round_id": ROUND_ACCEPT},
+        )
+        await session.execute(
+            text("UPDATE evolution_rounds SET eval_result = :payload WHERE id = :round_id"),
+            {
+                "payload": '{"currentScore": 80.0, "candidateScore": 90.0}',
+                "round_id": ROUND_REJECT,
+            },
+        )
+    assert await _eval_result_is_null(database, ROUND_ACCEPT) is False
+
+    await _run_eval_result_backfill(database)
+
+    assert await _eval_result_is_null(database, ROUND_ACCEPT) is True
+    assert await _eval_result_is_null(database, ROUND_REJECT) is False
+    kept = await repository.get_round(ROUND_REJECT)
+    assert kept is not None
+    assert kept.eval_result == {"currentScore": 80.0, "candidateScore": 90.0}

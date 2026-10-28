@@ -104,6 +104,7 @@ class EvolutionApplyService:
                 candidate_score=result.candidate_score,
                 reason=reason,
                 job_id=job.id,
+                retry_attempts=_job_retry_attempts(job),
             )
         else:
             decided = await self._candidates.reject(

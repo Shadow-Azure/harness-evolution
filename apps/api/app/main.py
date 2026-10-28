@@ -240,7 +240,6 @@ def create_app(
         apply=evolution_apply,
         finalize=evolution_finalize,
         advance=evolution_advance,
-        prepare=prepare_service,
         eval_submitter=evolution_eval_submitter,
         probes=probe_query_repository,
         events=evolution_events,
