@@ -8,7 +8,7 @@ id: m6-05
 milestone: m6
 depends: []
 priority: P1
-status: in-progress
+status: done
 scope:
   - scripts/dev.mjs
   - apps/api/pyproject.toml
