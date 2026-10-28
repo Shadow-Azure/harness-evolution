@@ -247,6 +247,15 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       `Boolean(document.querySelector(".shell"))`,
       "authenticated shell",
     );
+    // SessionsPage auto-selects the first session with a delayed
+    // router.replace; if that fires after the pushState below it would cancel
+    // the in-flight errors navigation and land back on /sessions/:sid. Wait
+    // for the auto-selection to settle before crossing routes.
+    await waitForDocument(
+      page.session,
+      `/^\\/sessions\\/[0-9a-f-]{36}$/.test(location.pathname)`,
+      "session auto-selection settled",
+    );
     await clientNavigate(page, `/sessions/${sessionId}/errors`);
 
     const all = await waitForDocument(
