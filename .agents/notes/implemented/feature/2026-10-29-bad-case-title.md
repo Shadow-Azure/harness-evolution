@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`bad_cases` 增加 `title VARCHAR(255) NOT NULL` 短标题列，作为外部上报的必填字段，渲染为错误详情页标题行、问题列表卡与执行流图问题卡的主文本。`bad_cases.reason` 改名为 `bad_cases.bad_case_description`（`TEXT NOT NULL`），语义仍是描述正文，渲染在详情页正文块；改名的理由是表内列名统一带 `bad_case_` 前缀，与 `probe_reports.probe_description` / `probe_analysis` 的命名一致。改名只发生在存储层：公开 DTO 字段仍是 `BadCase` / `SessionBadCase` 的 `title` 与 `reason`，`reason` 由 `bad_case_description` 列映射而来，契约与前端不随列名变化。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（06 §1.2）仍是权威路径，回填只覆盖未重灌的存量库。读时仍缺 `title` 的行降级为派生标题（取描述首句）并标记 `degraded`。
+`bad_cases` 增加 `title VARCHAR(255) NOT NULL` 短标题列，作为外部上报的必填字段，渲染为错误详情页标题行、问题列表卡与执行流图问题卡的主文本。`bad_cases.reason` 改名为 `bad_cases.bad_case_description`（`TEXT NOT NULL`），语义仍是描述正文，渲染在详情页正文块；改名的理由是表内列名统一带 `bad_case_` 前缀，与 `probe_reports.probe_description` / `probe_analysis` 的命名一致。改名只发生在存储层：公开 DTO 字段仍是 `BadCase` / `SessionBadCase` 的 `title` 与 `reason`，`reason` 由 `bad_case_description` 列映射而来，契约与前端不随列名变化。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（06 §1.2）仍是权威路径，回填只覆盖未重灌的存量库。读时仍缺 `title` 的行降级为派生标题（取描述首句）；`degraded` 标记只落在 `BadCase` DTO 上，`SessionBadCase`（执行流图问题卡）只派生标题、不承载该标记。
 
 ## Alternatives considered
 
