@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
-#   pnpm run record:i18n -- D:\2026\harness-evolution\.agents\flow\issues\m6-wizard-config-link.md
-m6-wizard-config-link.md: f91ec0520a1c8fc988176c28716adf27189bac0f
-m6-wizard-config-link.en.md: dbe3a1b0b6a715c4abf7b7861f3da43e5d93d0f0
+#   pnpm run record:i18n -- .agents/flow/issues/m6-wizard-config-link.md
+m6-wizard-config-link.md: 7e0cf496c55e46ee82a0f84aa865f447e5d2529b
+m6-wizard-config-link.en.md: 4b2a7585eb702dd86390b3e0b2c04f094b13287e
