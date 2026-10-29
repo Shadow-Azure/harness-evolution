@@ -150,6 +150,7 @@ erDiagram
       "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
       "anchor": { "agentId": "a000f718c770a5b36", "eventIndex": 0 },
       "badCaseAgent": { "sessionId": "cb819c5b-...", "agentId": "a000f718c770a5b36" },
+      "title": "检索索引读取失败",
       "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败"
     },
     {
@@ -157,6 +158,7 @@ erDiagram
       "objectName": "general-purpose", "objectType": "agent", "objectVersion": null,
       "anchor": { "agentId": "cb819c5b-...", "eventIndex": 2 },
       "badCaseAgent": { "sessionId": "cb819c5b-...", "agentId": "a000f718c770a5b36" },
+      "title": "工具层检索结果未去重",
       "reason": "subagent发现前置步骤存在问题：工具层检索结果未去重"
     }
   ]
@@ -203,6 +205,7 @@ erDiagram
   "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
   "anchor": { "agentId": "050b81ba-...", "eventIndex": 0 },
   "badCaseAgent": { "sessionId": "050b81ba-...", "agentId": null },
+  "title": "检索索引读取失败",
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
   "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" }
@@ -212,6 +215,7 @@ erDiagram
 - `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看 `probe`。
 - `badCaseAgent` 记录**上报/发现问题的 agent**：`sessionId` 是根会话，`agentId` 主 agent 为 `null`、子 agent 为真实 `agentId`。它是锚点计算的输入，不一定是卡片宿主；`discovery + agent` 时 `anchor.agentId` 会解析到父节点。
 - 上报契约：`badCaseAgent.agentId` 指向的 agent 必须包含 `objectName` 的触发记录；skill 型问题只在该 agent 的 `agent_events` 里查找，找不到时 `anchor.eventIndex=-1`。
+- `title` 是外部上报必填的短标题：问题列表卡、执行流图问题卡与详情页标题行的主文本；`reason` 是描述正文，渲染在详情页正文块。
 - `anchor` 是后端算出的挂载点：`anchor.agentId` 是宿主节点（可能是上报人的父节点），`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
 - `analysis.attributeType`：仅 `analyzed_issue` 非空（冗余自 `probe.attributeType`），问题列表/错误页左栏据此一次渲染 5 种展示态，无需逐条取 probe；`unanalyzed` / `analyzed_nonissue` 为 `null`。
@@ -608,6 +612,7 @@ erDiagram
       "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
       "anchor": { "agentId": "050b81ba-...", "eventIndex": 0 },
       "badCaseAgent": { "sessionId": "050b81ba-...", "agentId": null },
+      "title": "检索索引读取失败",
       "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
       "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" } }
   ]
@@ -631,6 +636,7 @@ erDiagram
   "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
   "anchor": { "agentId": "050b81ba-...", "eventIndex": 0 },
   "badCaseAgent": { "sessionId": "050b81ba-...", "agentId": null },
+  "title": "检索索引读取失败",
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
   "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" }
@@ -852,7 +858,7 @@ POST /runs（同步校验）
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存和创建 run 前都校验。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
-- 配置页入口在向导 Step1 选择器右侧的齿轮图标（[08 §9.2](08-frontend-implementation.md)）。
+- 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
 
 ### 4.12 仅聚类预览
 
@@ -1037,6 +1043,7 @@ FastAPI /api/openapi.json
 | `SESSIONS[].short/title/repo/clock/ts/dur/model/userTurns/messages/tools/errors/agents/findings/skills/tok/status` | `SessionListItem` 同名语义 | `findings` → `stats.badCases`；`clock/ts` → `startedAt`；`tok` → `stats.tokens` |
 | `TREE[sid].main/subs` | `SessionTree.agents[]` | 改为扁平列表；`id/agentType/desc/toolUseId/lines/events` 一一对应，新增 `agentId/parentAgentId/taskKind/spawnDepth/messagesCount`，事件新增 `messageOffset` |
 | `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel`；挂载位置改为 `anchor {agentId,eventIndex}` |
+| `TREE[sid].findings[].title / detail` | `SessionTree.badCases[].title / reason` | 短标题与描述正文两级文本；原型 `detail` 语义由 `reason` 承载 |
 | `ERROR_META[title].status` | `BadCase.analysis.status` | `unanalyzed / analyzed_nonissue / analyzed_issue`（5 种展示值） |
 | `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` + `analysis.result` | `probe_description / probe_analysis(Markdown) / attribute_type` 对应"问题描述/推导过程/分类"；非问题的 `{reason, reasoning[]}` 在 `analysis.result` |
 | `REPORTS[]` | `ProbeReport` | 原"问题报告"= 归因报告；`reportId` → `probeId`，`issueId` → `badCaseId` |

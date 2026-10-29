@@ -117,6 +117,24 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeDefined();
   });
 
+  it("links the hint line to the target config page without a gear button", async () => {
+    useCatalogHandlers();
+    const wrapper = await mountWizard();
+
+    expect(wrapper.find(".gear").exists()).toBe(false);
+    const configLink = wrapper.get("[data-testid='wizard-target-config-link']");
+    expect(configLink.text()).toBe("配置页");
+    const note = wrapper.get(".f-note").text();
+    expect(note).toContain("未配置的进化对象不会出现在列表中");
+    expect(note).toContain("前往");
+
+    await configLink.trigger("click");
+    await flushPromises();
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    const router = wrapper.vm.$.appContext.config.globalProperties.$router;
+    expect(router.currentRoute.value.path).toBe("/evolution/targets");
+  });
+
   it("queries hits on the next step and shows the prototype statistics frame", async () => {
     useCatalogHandlers();
     server.use(

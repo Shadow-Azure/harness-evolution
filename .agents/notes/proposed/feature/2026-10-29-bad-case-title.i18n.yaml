@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- D:/2026/he-worktree-m6-12-bad-case-title/.agents/notes/proposed/feature/2026-10-29-bad-case-title.md
+2026-10-29-bad-case-title.md: 8a1649d03a0b355426cf4663232402154326f4bc
+2026-10-29-bad-case-title.en.md: df562729637571bdd3bcd4918efd05b4c3cbb676

@@ -613,6 +613,9 @@
 .evo-app table.rep td.id { font-family: var(--mono); color: var(--blue); }
 .evo-app .wz-steps { display: flex; gap: 8px; font-size: 11.5px; color: var(--text-faint); margin-bottom: 16px; }
 .evo-app .wz-steps .on { color: var(--blue); font-weight: 600; }
+.evo-app .wz-note { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); line-height: 1.55; }
+.evo-app .wz-note .cfg-link { border: none; background: none; padding: 0; font: inherit; color: var(--blue); text-decoration: underline solid; text-underline-offset: 2px; cursor: pointer; }
+.evo-app .wz-note .cfg-link:hover { color: color-mix(in srgb, var(--blue) 72%, #000); text-decoration-thickness: 2px; }
 /* 仅聚类页 banner */
   .evo-app .banner { border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); border-radius: 10px; padding: 11px 14px; font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .evo-app .banner .spacer { flex: 1; }</style>
@@ -3296,6 +3299,7 @@ function renderWizard(){
             <span style="color:var(--text-faint);font-size:12px">版本</span>
             <select class="inp" id="wz-version">${vers.map(v => `<option ${v === wz.version ? 'selected' : ''}>${v}</option>`).join('')}</select>
           </div>
+          <div class="wz-note">未配置的进化对象不会出现在列表中；点击<button type="button" class="cfg-link" data-action="wz-target-config">配置页</button>前往。</div>
         </div>
         <div class="f-row"><div class="f-label">时间段（session 启动时间） <span class="req">*</span></div>
           <div class="f-inline"><input class="inp" type="date" id="wz-from" value="${wz.from}"> <span style="color:var(--text-faint)">~</span> <input class="inp" type="date" id="wz-to" value="${wz.to}"></div>
@@ -3372,6 +3376,7 @@ document.addEventListener('click', e => {
   else if (a === 'wz-back') { wz.step = 1; renderWizard(); }
   else if (a === 'wz-prev') { wz.page = Math.max(1, (wz.page || 1) - 1); renderWizard(); }
   else if (a === 'wz-next') { wz.page = (wz.page || 1) + 1; renderWizard(); }
+  else if (a === 'wz-target-config') { $modal.innerHTML = ''; location.hash = '#/targets'; }
   else if (a === 'wz-cluster') { syncWzInputs(); buildClusterOnly(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/cluster'; }
   else if (a === 'wz-start') { syncWzInputs(); const run = startRun(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/run/' + run.id; }
   else if (a === 'target-create') openTargetDialog(null);
