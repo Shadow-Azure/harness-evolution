@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Issue #161 向导校验与空命中 GUI Smoke</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">INTEGRATION SMOKE</p>
+    <h1>Issue #161 向导校验与空命中 GUI Smoke</h1>
+    <p class="summary">在临时 SQLite fixture 环境中，通过 Chrome 真实操作 PR #170 对应提交，验证向导 Step1 的恒可点按钮、控件级校验、区间倒挂反馈、正常命中、真实 409 空命中与恢复查询。未发现需要修复的产品缺陷。</p>
+    <span class="meta">2026-10-30 · macOS · Google Chrome · PR #170 · commit ece5f26</span>
+    <div class="metrics"><div class="metric"><b>7</b><span>Smoke scenarios</span></div><div class="metric"><b>6</b><span>Automated GUI pass</span></div><div class="metric"><b>1</b><span>Manual observation</span></div><div class="metric"><b>0</b><span>Defects found</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-30 · macOS · Google Chrome · PR #170 · commit ece5f26</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Repository</dt><dd>harness-evolution</dd></div><div class="fact"><dt>Branch</dt><dd>feat/161-wizard-validation-empty-state</dd></div><div class="fact"><dt>Commit</dt><dd>ece5f26a6349ee17e651f5fbe8845b517bcbf6e2</dd></div><div class="fact"><dt>Pull Request</dt><dd>#170</dd></div><div class="fact"><dt>Issue</dt><dd>#161</dd></div><div class="fact"><dt>Environment</dt><dd>Temporary SQLite data directory; deterministic E2E API; Vite Web</dd></div><div class="fact"><dt>Fixture</dt><dd>m2 synthetic corpus, 2026-10-20 through 2026-10-23</dd></div><div class="fact"><dt>Credentials</dt><dd>&lt;redacted&gt;</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>6 pass · 1 manual</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>Scenario</th><th>Result</th><th>Detail</th><th>Evidence</th></tr></thead><tbody><tr><td class="num">01</td><td>空表单点击下一步</td><td><span class="status pass">PASS</span></td><td>按钮无禁用态；对象、版本、开始时间和结束时间分别标红，红字位于对应控件正下方；页面停留在 Step1，未出现查询错误提示。</td><td class="evidence">screenshots/01-empty-form-errors.jpg</td></tr><tr><td class="num">02</td><td>修改单个缺失字段</td><td><span class="status pass">PASS</span></td><td>完成开始日期后，仅开始时间错误消失，结束时间错误保留。对象选择会按产品设计级联默认版本，因此未把该级联用作单字段清错样本。</td><td class="evidence">screenshots/02-start-date-clears-only-own-error.jpg</td></tr><tr><td class="num">03</td><td>时间区间倒挂</td><td><span class="status pass">PASS</span></td><td>开始 2026-10-20、结束 2026-10-19 时，两个日期框标红，且各自下方显示“起始时间不能晚于结束时间”。</td><td class="evidence">screenshots/03-inverted-range-errors.jpg</td></tr><tr><td class="num">04</td><td>Fixture 覆盖范围命中</td><td><span class="status pass">PASS</span></td><td>2026-10-20 至 2026-10-23 查询进入 Step2，保留条件摘要，显示 1 hit、1 problem report，并启用两个启动出口。</td><td class="evidence">screenshots/04-normal-range-hits.jpg</td></tr><tr><td class="num">05</td><td>Fixture 外真实 409 空命中</td><td><span class="status pass">PASS</span></td><td>2026-11-01 至 2026-11-02 触发真实 NO_PROBES_MATCHED；进入 Step2 空态，标题与调整条件引导正确，聚类和自进化出口禁用。</td><td class="evidence">screenshots/05-real-empty-state.jpg</td></tr><tr><td class="num">06</td><td>空态后恢复命中</td><td><span class="status pass">PASS</span></td><td>通过条件摘要条中的“← 修改条件”返回，改回 2026-10-20 至 2026-10-23 后重新查询，Step2 恢复同一命中结果。</td><td class="evidence">screenshots/06-recovered-hits.jpg</td></tr><tr><td class="num">07</td><td>控制台与布局观察</td><td><span class="status manual">MANUAL</span></td><td>Chrome DevTools 未附加到既有浏览器会话；全程未出现错误遮罩、明显布局破坏或渲染异常。Vite/API 会话无错误输出。</td><td class="evidence">screenshots/06-recovered-hits.jpg</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>6 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-empty-form-errors.jpg" alt="空表单校验错误"><figcaption><b>01 · Empty form</b><span>四个必填控件分别获得红框和控件正下方的红色提示。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-start-date-clears-only-own-error.jpg" alt="开始日期清错"><figcaption><b>02 · Single field clear</b><span>开始日期补齐后，自身错误消失，结束时间错误保留。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-inverted-range-errors.jpg" alt="时间区间倒挂"><figcaption><b>03 · Inverted range</b><span>起止日期倒挂时，两个日期框都获得同一倒挂提示。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-normal-range-hits.jpg" alt="正常范围命中"><figcaption><b>04 · Hits</b><span>Fixture 覆盖范围进入 Step2，并显示可启动的命中结果。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-real-empty-state.jpg" alt="真实 409 空态"><figcaption><b>05 · Empty state</b><span>Fixture 外范围进入空态，两个启动出口禁用。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-recovered-hits.jpg" alt="恢复命中"><figcaption><b>06 · Recovered hits</b><span>返回 Step1 改回正常范围后，命中结果恢复。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>3 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>Area</th><th>Coverage</th><th>Conclusion</th><th>Recommendation</th></tr></thead><tbody><tr><td>Step1 validation</td><td>UT + E2E + GUI</td><td>Unit and browser E2E already cover field errors, clearing, and no query behavior.</td><td>Keep GUI smoke for milestone verification.</td></tr><tr><td>Empty-hit mapping</td><td>UT + E2E + GUI</td><td>Real 409 NO_PROBES_MATCHED mapping and disabled exits verified end to end.</td><td>Keep regression coverage.</td></tr><tr><td>Browser console</td><td>Manual GUI</td><td>DevTools was not attached to the existing Chrome session.</td><td>Use E2E browser violation collection for deterministic console checks.</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>No product defects found</small></div>
+    <article class="card conclusion pass"><p><strong>PR #170 的目标行为在真实浏览器 smoke 中全部通过；本次无需新增检视意见或修复提交。</strong></p><ul><li>No repository code changes were required by this smoke.</li><li>Temporary API/Web processes should be stopped after report delivery.</li><li>Report artifacts can be delivered separately if desired.</li></ul></article>
+  </section>
+
+  <p class="foot">Generated from real Chrome interaction evidence; no generated HTML was hand-edited.</p>
+</main>
+</body>
+</html>

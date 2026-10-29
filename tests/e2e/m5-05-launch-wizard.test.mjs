@@ -201,9 +201,14 @@ before(async () => {
 
 after(cleanup);
 
-test("m5 launch wizard starts a cluster-only run and lands on its preview", async () => {
+test("m5-05 launch wizard starts a cluster-only run and lands on its preview", async () => {
   const page = await createBrowserPage();
-  const violations = browserViolations(page.session);
+  const violations = browserViolations(page.session, {
+    isExpectedLogEntry: (entry) =>
+      entry.source === "network" &&
+      entry.url?.endsWith("/api/evolution/probes/query") &&
+      /status of 409/.test(entry.text),
+  });
   try {
     await installCookie(page, await loginCookie());
     await page.session.send("Emulation.setDeviceMetricsOverride", {
@@ -281,6 +286,42 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
       "configured target options",
     );
 
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='wizard-next']").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `["wizard-target-error", "wizard-version-error", "wizard-from-error", "wizard-to-error"]
+        .every((id) => document.getElementById(id)?.classList.contains("field-error")) &&
+        [...document.querySelectorAll("[data-testid='wizard-target'], [data-testid='wizard-version'], [data-testid='wizard-from'], [data-testid='wizard-to']")]
+          .every((control) => control.getAttribute("aria-invalid") === "true")`,
+      "field-level validation errors",
+    );
+    const validation = await evaluate(
+      page,
+      `(() => ({
+        next: document.querySelector("[data-testid='wizard-next']").disabled,
+        stats: Boolean(document.querySelector(".wz-stats")),
+        target: document.getElementById("wizard-target-error")?.textContent,
+        version: document.getElementById("wizard-version-error")?.textContent,
+        from: document.getElementById("wizard-from-error")?.textContent,
+        to: document.getElementById("wizard-to-error")?.textContent,
+      }))()`,
+    );
+    assert.equal(validation.next, false);
+    assert.equal(validation.stats, false);
+    assert.deepEqual(
+      [
+        validation.target?.trim(),
+        validation.version?.trim(),
+        validation.from,
+        validation.to,
+      ],
+      ["请选择进化对象", "请选择版本", "请选择开始时间", "请选择结束时间"],
+    );
+    await screenshot(page, "00-wizard-field-errors.png");
+
     const step1 = await evaluate(
       page,
       `(() => {
@@ -331,17 +372,32 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
           input.dispatchEvent(new Event("change", { bubbles: true }));
         };
         setDate("wizard-from", "2026-10-01");
+        setDate("wizard-to", "2026-09-30");
+      })()`,
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='wizard-next']").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.getElementById("wizard-from-error")?.textContent === "起始时间不能晚于结束时间" &&
+        document.getElementById("wizard-to-error")?.textContent === "起始时间不能晚于结束时间" &&
+        !document.querySelector(".wz-stats")`,
+      "reversed window validation",
+    );
+    await evaluate(
+      page,
+      `(() => {
+        const setDate = (testId, value) => {
+          const input = document.querySelector("[data-testid='" + testId + "']");
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        };
         setDate("wizard-to", "2026-10-31");
       })()`,
     );
-    const windowInputs = await evaluate(
-      page,
-      `(() => ({
-        from: document.querySelector("[data-testid='wizard-from']").value,
-        to: document.querySelector("[data-testid='wizard-to']").value,
-      }))()`,
-    );
-    assert.deepEqual(windowInputs, { from: "2026-10-01", to: "2026-10-31" });
     await evaluate(
       page,
       `document.querySelector("[data-testid='wizard-next']").click()`,
@@ -371,6 +427,80 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
     await screenshot(page, "01-wizard-step2.png");
     await evaluate(
       page,
+      `([...document.querySelectorAll(".wz-condstrip button")]
+        .find((button) => button.textContent.includes("修改条件")) ?? document.querySelector(".wz-condstrip button"))
+        .click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='wizard-from']"))`,
+      "wizard returned to step 1",
+    );
+    await evaluate(
+      page,
+      `(() => {
+        const setDate = (testId, value) => {
+          const input = document.querySelector("[data-testid='" + testId + "']");
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+        setDate("wizard-from", "2026-01-01");
+        setDate("wizard-to", "2026-01-31");
+        document.querySelector("[data-testid='wizard-next']").click();
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='wizard-empty']")) &&
+        document.querySelector("[data-testid='wizard-empty']").textContent.includes("未找到匹配的问题报告")`,
+      "zero-match empty state",
+    );
+    const emptyState = await evaluate(
+      page,
+      `(() => ({
+        strip: document.querySelector(".wz-condstrip")?.textContent ?? "",
+        cluster: document.querySelector("[data-testid='wizard-cluster']").disabled,
+        start: document.querySelector("[data-testid='wizard-start']").disabled,
+      }))()`,
+    );
+    assert.ok(emptyState.strip.includes("2026-01-01"));
+    assert.equal(emptyState.cluster, true);
+    assert.equal(emptyState.start, true);
+    await screenshot(page, "02-wizard-empty-state.png");
+    await evaluate(
+      page,
+      `([...document.querySelectorAll(".wz-condstrip button")]
+        .find((button) => button.textContent.includes("修改条件")) ?? document.querySelector(".wz-condstrip button"))
+        .click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='wizard-from']"))`,
+      "wizard returned from empty state",
+    );
+    await evaluate(
+      page,
+      `(() => {
+        const setDate = (testId, value) => {
+          const input = document.querySelector("[data-testid='" + testId + "']");
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+        setDate("wizard-from", "2026-10-01");
+        setDate("wizard-to", "2026-10-31");
+        document.querySelector("[data-testid='wizard-next']").click();
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector(".wz-stats")) &&
+        document.body.textContent.includes("「是问题」进入聚类")`,
+      "hit statistics restored",
+    );
+    await evaluate(
+      page,
       `document.querySelector("[data-testid='wizard-cluster']").click()`,
     );
     await waitForDocument(
@@ -395,7 +525,7 @@ test("m5 launch wizard starts a cluster-only run and lands on its preview", asyn
     assert.ok(landing.info.includes("2026-10-01"));
     assert.ok(landing.info.includes("2026-10-31"));
     assert.ok(!landing.info.includes("— ~ —"));
-    await screenshot(page, "02-cluster-preparing.png");
+    await screenshot(page, "03-cluster-preparing.png");
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {

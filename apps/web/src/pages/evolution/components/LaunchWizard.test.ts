@@ -114,7 +114,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
       .findAll("option")
       .map((option) => option.text());
     expect(options).toEqual(["选择对象", "deep-research"]);
-    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeDefined();
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeUndefined();
   });
 
   it("links the hint line to the target config page without a gear button", async () => {
@@ -145,6 +147,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
 
@@ -179,6 +183,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
 
@@ -240,7 +246,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.get<HTMLSelectElement>("[data-testid='wizard-version']").element.value).toBe(
       "v2.0.0",
     );
-    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeUndefined();
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeUndefined();
   });
 
   it("shows a retryable error when the version list fails and recovers after retry", async () => {
@@ -285,22 +293,35 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
 
-    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+    expect(wrapper.get("[data-testid='wizard-version-load-error']").text()).toContain(
       "版本列表读取失败",
     );
-    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+    expect(wrapper.get("[data-testid='wizard-version-load-error']").text()).toContain(
       "repository is not available",
     );
-    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeDefined();
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeUndefined();
+
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll("[data-testid='wizard-version-error']")).toHaveLength(1);
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toBe("请选择版本");
+    expect(wrapper.get("[data-testid='wizard-version-load-error']").text()).toContain(
+      "版本列表读取失败",
+    );
 
     await wrapper.get("[data-testid='wizard-version-retry']").trigger("click");
     await flushPromises();
 
     expect(wrapper.find("[data-testid='wizard-version-error']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-version-load-error']").exists()).toBe(false);
     expect(wrapper.get<HTMLSelectElement>("[data-testid='wizard-version']").element.value).toBe(
       "v2.0.0",
     );
-    expect(wrapper.get("[data-testid='wizard-next']").attributes("disabled")).toBeUndefined();
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeUndefined();
   });
 
   it("keeps different source problems distinguishable in the probe table", async () => {
@@ -327,6 +348,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
 
@@ -336,7 +359,74 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(sourceCells).toEqual(["badc…0001", "badc…0002"]);
   });
 
-  it("conflicts when no probe matches and stays on step 1", async () => {
+  it("always offers next and shows field errors directly under empty controls", async () => {
+    useCatalogHandlers();
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.post("/api/evolution/probes/query", async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json(preview);
+      }),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const next = wrapper.get("[data-testid='wizard-next']");
+    expect(next.attributes("disabled")).toBeUndefined();
+    for (const testId of ["wizard-target", "wizard-version", "wizard-from", "wizard-to"]) {
+      const control = wrapper.get<HTMLSelectElement | HTMLInputElement>(
+        `[data-testid='${testId}']`,
+      );
+      expect(control.classes()).toContain("input-error");
+      expect(control.attributes("aria-invalid")).toBe("true");
+      const error = control.element.nextElementSibling;
+      expect(error?.classList.contains("field-error")).toBe(true);
+    }
+    expect(wrapper.get("[data-testid='wizard-target-error']").text()).toBe(
+      "请选择进化对象",
+    );
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toBe(
+      "请选择版本",
+    );
+    expect(wrapper.get("[data-testid='wizard-from-error']").text()).toBe(
+      "请选择开始时间",
+    );
+    expect(wrapper.get("[data-testid='wizard-to-error']").text()).toBe(
+      "请选择结束时间",
+    );
+    expect(bodies).toEqual([]);
+    expect(wrapper.find(".wz-stats").exists()).toBe(false);
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wizard-target-error']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-version-error']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-from-error']").exists()).toBe(true);
+
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    expect(wrapper.find("[data-testid='wizard-from-error']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-to-error']").exists()).toBe(true);
+    expect(bodies).toEqual([]);
+
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-31");
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(bodies).toEqual([]);
+    expect(wrapper.find("[data-testid='wizard-target-error']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-version-error']").exists()).toBe(false);
+    expect(wrapper.get("[data-testid='wizard-from-error']").text()).toBe(
+      "起始时间不能晚于结束时间",
+    );
+    expect(wrapper.get("[data-testid='wizard-to-error']").text()).toBe(
+      "起始时间不能晚于结束时间",
+    );
+  });
+
+  it("maps no matching probes to a disabled step 2 empty state", async () => {
     useCatalogHandlers();
     server.use(
       http.post("/api/evolution/probes/query", () =>
@@ -351,11 +441,17 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find("[data-testid='wizard-cluster']").exists()).toBe(false);
-    expect(wrapper.find(".wizard-error").exists()).toBe(true);
+    expect(wrapper.get(".wz-condstrip").text()).toContain("skill:deep-research@v2.0.0");
+    expect(wrapper.get("[data-testid='wizard-empty']").text()).toContain(
+      "未找到匹配的问题报告",
+    );
+    expect(wrapper.get("[data-testid='wizard-cluster']").attributes("disabled")).toBe("");
+    expect(wrapper.get("[data-testid='wizard-start']").attributes("disabled")).toBe("");
   });
 
   it("launches a cluster-only run and reports the accepted run id", async () => {
@@ -377,6 +473,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-cluster']").trigger("click");
@@ -402,6 +500,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
     await wrapper.get("[data-testid='wizard-next']").trigger("click");
     await flushPromises();
     await wrapper.get("[data-testid='wizard-start']").trigger("click");

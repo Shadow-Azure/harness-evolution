@@ -1,0 +1,104 @@
+{
+  "title": "Issue #161 向导校验与空命中 GUI Smoke",
+  "eyebrow": "INTEGRATION SMOKE",
+  "summary": "在临时 SQLite fixture 环境中，通过 Chrome 真实操作 PR #170 对应提交，验证向导 Step1 的恒可点按钮、控件级校验、区间倒挂反馈、正常命中、真实 409 空命中与恢复查询。未发现需要修复的产品缺陷。",
+  "meta": "2026-10-30 · macOS · Google Chrome · PR #170 · commit ece5f26",
+  "metrics": [
+    { "value": "7", "label": "Smoke scenarios" },
+    { "value": "6", "label": "Automated GUI pass" },
+    { "value": "1", "label": "Manual observation" },
+    { "value": "0", "label": "Defects found" }
+  ],
+  "facts": [
+    { "label": "Repository", "value": "harness-evolution" },
+    { "label": "Branch", "value": "feat/161-wizard-validation-empty-state" },
+    { "label": "Commit", "value": "ece5f26a6349ee17e651f5fbe8845b517bcbf6e2" },
+    { "label": "Pull Request", "value": "#170" },
+    { "label": "Issue", "value": "#161" },
+    { "label": "Environment", "value": "Temporary SQLite data directory; deterministic E2E API; Vite Web" },
+    { "label": "Fixture", "value": "m2 synthetic corpus, 2026-10-20 through 2026-10-23" },
+    { "label": "Credentials", "value": "<redacted>" }
+  ],
+  "matrix": {
+    "columns": ["#", "Scenario", "Result", "Detail", "Evidence"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "空表单点击下一步",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "按钮无禁用态；对象、版本、开始时间和结束时间分别标红，红字位于对应控件正下方；页面停留在 Step1，未出现查询错误提示。",
+        "evidence": ["screenshots/01-empty-form-errors.jpg"]
+      },
+      {
+        "id": "02",
+        "name": "修改单个缺失字段",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "完成开始日期后，仅开始时间错误消失，结束时间错误保留。对象选择会按产品设计级联默认版本，因此未把该级联用作单字段清错样本。",
+        "evidence": ["screenshots/02-start-date-clears-only-own-error.jpg"]
+      },
+      {
+        "id": "03",
+        "name": "时间区间倒挂",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "开始 2026-10-20、结束 2026-10-19 时，两个日期框标红，且各自下方显示“起始时间不能晚于结束时间”。",
+        "evidence": ["screenshots/03-inverted-range-errors.jpg"]
+      },
+      {
+        "id": "04",
+        "name": "Fixture 覆盖范围命中",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "2026-10-20 至 2026-10-23 查询进入 Step2，保留条件摘要，显示 1 hit、1 problem report，并启用两个启动出口。",
+        "evidence": ["screenshots/04-normal-range-hits.jpg"]
+      },
+      {
+        "id": "05",
+        "name": "Fixture 外真实 409 空命中",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "2026-11-01 至 2026-11-02 触发真实 NO_PROBES_MATCHED；进入 Step2 空态，标题与调整条件引导正确，聚类和自进化出口禁用。",
+        "evidence": ["screenshots/05-real-empty-state.jpg"]
+      },
+      {
+        "id": "06",
+        "name": "空态后恢复命中",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "通过条件摘要条中的“← 修改条件”返回，改回 2026-10-20 至 2026-10-23 后重新查询，Step2 恢复同一命中结果。",
+        "evidence": ["screenshots/06-recovered-hits.jpg"]
+      },
+      {
+        "id": "07",
+        "name": "控制台与布局观察",
+        "status": { "kind": "manual", "label": "MANUAL" },
+        "detail": "Chrome DevTools 未附加到既有浏览器会话；全程未出现错误遮罩、明显布局破坏或渲染异常。Vite/API 会话无错误输出。",
+        "evidence": ["screenshots/06-recovered-hits.jpg"]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    { "src": "screenshots/01-empty-form-errors.jpg", "alt": "空表单校验错误", "label": "01 · Empty form", "caption": "四个必填控件分别获得红框和控件正下方的红色提示。", "variant": "wide" },
+    { "src": "screenshots/02-start-date-clears-only-own-error.jpg", "alt": "开始日期清错", "label": "02 · Single field clear", "caption": "开始日期补齐后，自身错误消失，结束时间错误保留。", "variant": "wide" },
+    { "src": "screenshots/03-inverted-range-errors.jpg", "alt": "时间区间倒挂", "label": "03 · Inverted range", "caption": "起止日期倒挂时，两个日期框都获得同一倒挂提示。", "variant": "wide" },
+    { "src": "screenshots/04-normal-range-hits.jpg", "alt": "正常范围命中", "label": "04 · Hits", "caption": "Fixture 覆盖范围进入 Step2，并显示可启动的命中结果。", "variant": "wide" },
+    { "src": "screenshots/05-real-empty-state.jpg", "alt": "真实 409 空态", "label": "05 · Empty state", "caption": "Fixture 外范围进入空态，两个启动出口禁用。", "variant": "wide" },
+    { "src": "screenshots/06-recovered-hits.jpg", "alt": "恢复命中", "label": "06 · Recovered hits", "caption": "返回 Step1 改回正常范围后，命中结果恢复。", "variant": "wide" }
+  ],
+  "coverage": {
+    "columns": ["Area", "Coverage", "Conclusion", "Recommendation"],
+    "rows": [
+      { "area": "Step1 validation", "coverage": "UT + E2E + GUI", "conclusion": "Unit and browser E2E already cover field errors, clearing, and no query behavior.", "recommendation": "Keep GUI smoke for milestone verification." },
+      { "area": "Empty-hit mapping", "coverage": "UT + E2E + GUI", "conclusion": "Real 409 NO_PROBES_MATCHED mapping and disabled exits verified end to end.", "recommendation": "Keep regression coverage." },
+      { "area": "Browser console", "coverage": "Manual GUI", "conclusion": "DevTools was not attached to the existing Chrome session.", "recommendation": "Use E2E browser violation collection for deterministic console checks." }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "No product defects found",
+    "summary": "PR #170 的目标行为在真实浏览器 smoke 中全部通过；本次无需新增检视意见或修复提交。",
+    "points": [
+      "No repository code changes were required by this smoke.",
+      "Temporary API/Web processes should be stopped after report delivery.",
+      "Report artifacts can be delivered separately if desired."
+    ]
+  },
+  "footer": "Generated from real Chrome interaction evidence; no generated HTML was hand-edited."
+}

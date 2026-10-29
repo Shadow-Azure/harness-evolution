@@ -9,13 +9,14 @@ milestone: m6
 depends:
   - m5-05
 priority: P1
-status: ready
+status: in-progress
 scope:
   - apps/web/**
   - tests/**
   - plans/**
   - .agents/flow/**
   - .agents/notes/**
+  - reports/**
 adr: []
 github:
   number: 161
@@ -43,7 +44,7 @@ Wizard step 1 of 「启动自进化」 concentrates all validation into the disa
 
 - `runQuery()` silently `return`s on `!selectedTarget || windowInvalid()` with no per-field feedback channel; the button's disabled state is the only validation expression.
 - The prototype `harness-evolution.html` never had a disabled `wz-query` button; the app diverged when it added one.
-- The frontend treats `409 NO_PROBES_MATCHED` like any other error and dumps it into `previewError`, never translating it into a "result is empty" business empty state; the current wording of `05-api-design.md §4.9` ("the frontend stays on step 1") cements that behavior too.
+- The frontend treats `409 NO_PROBES_MATCHED` like any other error and dumps it into `previewError`, failing to honor the "result is empty" business empty-state mapping specified by `05-api-design.md §4.9`.
 
 ### Suggestion
 
@@ -60,9 +61,9 @@ Wizard step 1 of 「启动自进化」 concentrates all validation into the disa
 ## Design authority
 
 - [plans/fullstack-design/08-frontend-implementation.md §9.1](../../../plans/fullstack-design/08-frontend-implementation.md): the state machine gates the Step1→Step2 transition on "validation passes".
-- [plans/fullstack-design/08-frontend-implementation.md §9.2](../../../plans/fullstack-design/08-frontend-implementation.md): step 1 form and the "Next" behavior (currently "backend 409 on no match"; this issue changes that behavior).
+- [plans/fullstack-design/08-frontend-implementation.md §9.2](../../../plans/fullstack-design/08-frontend-implementation.md): step 1 form and the "Next" behavior (click-time field validation; `409 NO_PROBES_MATCHED` maps to the Step2 empty state).
 - [plans/fullstack-design/08-frontend-implementation.md §9.3](../../../plans/fullstack-design/08-frontend-implementation.md): step 2 hit confirmation and the two exits.
-- [plans/fullstack-design/05-api-design.md §4.9](../../../plans/fullstack-design/05-api-design.md): the `409 NO_PROBES_MATCHED` contract and the current "frontend stays on step 1" wording (updated by this issue).
+- [plans/fullstack-design/05-api-design.md §4.9](../../../plans/fullstack-design/05-api-design.md): the `409 NO_PROBES_MATCHED` contract and the frontend empty-state mapping.
 - [plans/fullstack-design/09-review-guide.md](../../../plans/fullstack-design/09-review-guide.md): the wizard step1→step2 review mapping rows.
 - [plans/14-15-ui-prototype/harness-evolution.html](../../../plans/14-15-ui-prototype/harness-evolution.html): the wizard prototype; its `wz-query` button has no disabled state.
 - On conflicts, the linked sections and the `plans/14-15-ui-prototype/harness-evolution.html` prototype win.
