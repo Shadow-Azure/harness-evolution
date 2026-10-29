@@ -95,7 +95,7 @@ github:
 pnpm --filter @harness/web test -- LaunchWizard
 pnpm typecheck:web
 pnpm lint:web
-pnpm test:e2e --pattern m5-target-config
+pnpm test:e2e --pattern "target config"
 pnpm verify:flow
 pnpm lint:docs
 pnpm verify:web-style
@@ -116,7 +116,7 @@ pnpm verify:bundle
 
 - `pnpm test:web`
 - `pnpm typecheck:web` / `pnpm lint:web`
-- `pnpm test:e2e --pattern m5-target-config`
+- `pnpm test:e2e --pattern "target config"`
 - `pnpm verify:flow` / `pnpm lint:docs` / `pnpm verify:docs`
 - `pnpm verify:web-style` / `pnpm verify:bundle`
 
