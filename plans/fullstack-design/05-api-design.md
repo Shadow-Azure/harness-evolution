@@ -852,7 +852,7 @@ POST /runs（同步校验）
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存和创建 run 前都校验。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
-- 配置页入口在向导 Step1 选择器右侧的齿轮图标（[08 §9.2](08-frontend-implementation.md)）。
+- 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
 
 ### 4.12 仅聚类预览
 
