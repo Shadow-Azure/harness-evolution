@@ -743,7 +743,7 @@ erDiagram
 - `sessions` 是命中 probe 的去重 session 数。
 - **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；自进化环节不感知未分析报告。
 - `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_agent_id` → `agents.model` 解析，缺失时回退主 agent 模型。
-- `items[]` 即 §3.6 的 `ProbeRow`；命中 probe 数为 0 时返回 `409 NO_PROBES_MATCHED`（与启动 run 同一校验口径），前端停在 Step1 提示调整条件。
+- `items[]` 即 §3.6 的 `ProbeRow`；命中 probe 数为 0 时返回 `409 NO_PROBES_MATCHED`（与启动 run 同一校验口径），向导把该 409 映射为空结果：进入 Step2 渲染未命中空态并禁用两个出口，其余错误仍停在 Step1 提示。
 
 - `from/to` 按 **probe 所属 session 的启动时间**过滤。
 - `models[]` 匹配 **该 probe 所属 Agent 会话树内任一 agent 的模型**（`agents.model`），不是只看主 agent；没有模型时按“全部模型”处理。

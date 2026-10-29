@@ -70,6 +70,8 @@
 | 向导 step1：选择器右侧齿轮 → 进化对象配置页 | F19 | [05 §4.11](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) · [08 §9.5](08-frontend-implementation.md) |
 | 配置页：列表/新增/编辑/删除，repoUrl/subDir/defaultRef/enabled | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) |
 | 向导 step1 → step2：查询命中 | F11 | [05 §4.9](05-api-design.md) |
+| 向导 step1：下一步恒可点 + 必填字段级校验（标红 + 框下提示） | F11 | [08 §9.2](08-frontend-implementation.md) |
+| 向导 step2：零命中空态（出口禁用） | F11 | [05 §4.9](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 向导 step2：条件摘要 + 修改条件 | F11 | [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：3 项统计 + 属性分布条 + 图例 | F11 | [05 §4.9](05-api-design.md)（`summary/byAttributeType`） |
 | 向导 step2：probe 表（probe ID/会话/根因对象/属性/来源 bad_case） | F11 | [05 §4.9](05-api-design.md)（`items`） |
