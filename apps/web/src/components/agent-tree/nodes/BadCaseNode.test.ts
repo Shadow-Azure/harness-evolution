@@ -110,6 +110,30 @@ describe("BadCaseNode", () => {
     );
   });
 
+  it("marks a derived problem title with the degraded chip", () => {
+    const wrapper = mount(BadCaseNode, {
+      props: {
+        data: {
+          badCaseId: "case-degraded",
+          shortId: "case-deg",
+          title: "derived title",
+          width: 200,
+          degraded: true,
+          active: false,
+        },
+      },
+      global: {
+        provide: {
+          [BAD_CASE_SELECT_KEY]: vi.fn(),
+        },
+      },
+    });
+
+    expect(wrapper.get(".rf-finding").classes()).toContain("degraded");
+    expect(wrapper.get(".finding-degraded").text()).toBe("降级");
+    expect(wrapper.get(".finding-title").text()).toBe("derived title");
+  });
+
   it("exposes source handles for vertical error-card stacking", () => {
     const wrapper = mount(BadCaseNode, {
       props: {

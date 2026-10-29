@@ -137,7 +137,8 @@ class ProblemService:
                 warning.code == "EXTERNAL_FIELD_MISSING" and warning.field == "title"
                 for warning in item.warnings
             )
-            degraded = item.bad_case_type is None or item.object_type is None or title_degraded
+            identity_degraded = item.bad_case_type is None or item.object_type is None
+            degraded = identity_degraded or title_degraded
             diagnostic_code: str | None = None
             if degraded:
                 diagnostic_code = next(
@@ -152,6 +153,9 @@ class ProblemService:
                     "public problem has invalid external presentation fields",
                     extra={"bad_case_id": item.bad_case_id},
                 )
+            # Only broken identity fields fall back to the main-node placeholder
+            # anchor; a derived title must keep the real reporter anchor.
+            if identity_degraded:
                 anchor = resolve_problem_anchor(
                     bad_case_type=None,
                     object_name=item.object_name,

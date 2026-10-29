@@ -877,6 +877,35 @@ describe("agent-tree graph layout", () => {
     );
   });
 
+  it("propagates the degraded flag from the full problem record", () => {
+    const anchor = {
+      badCaseId: "case-degraded-source",
+      hostAgentId: "main",
+      eventIndex: 0,
+      kind: "discovery" as const,
+      side: "above" as const,
+      x: 100,
+      y: 100,
+    };
+    const treeCase = {
+      ...demoNestedTree.badCases[0]!,
+      badCaseId: "case-degraded-source",
+      title: "tree title",
+    };
+    const detail = badCaseFixture({
+      ...treeCase,
+      title: "derived title",
+      degraded: true,
+    });
+
+    const fromTree = buildBadCaseOverlay([anchor], [treeCase]);
+    const fromDetail = buildBadCaseOverlay([anchor], [treeCase], [detail]);
+
+    expect(fromTree.badCaseNodes[0]!.data.degraded).toBe(false);
+    expect(fromDetail.badCaseNodes[0]!.data.degraded).toBe(true);
+    expect(fromDetail.badCaseNodes[0]!.data.title).toBe("derived title");
+  });
+
   it("moves cards away from nearby anchors until their rectangles no longer overlap", () => {
     const anchors = [
       {

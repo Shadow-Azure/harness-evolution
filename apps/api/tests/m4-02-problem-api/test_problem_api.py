@@ -433,5 +433,8 @@ async def test_blank_title_is_derived_and_reported_as_degraded(
     assert listed_case["title"] == "合成示例：检查结论缺少目标文件。"  # noqa: RUF001
     assert listed_case["degraded"] is True
     assert listed_case["diagnosticCode"] == "EXTERNAL_FIELD_MISSING"
+    # A derived title must not fall back to the main-node placeholder anchor:
+    # the reporter anchor stays identical to the tree read model.
+    assert listed_case["anchor"] == {"agentId": "agent-s1-review-0001", "eventIndex": -1}
     assert detail.status_code == 200
     assert detail.json() == listed_case
