@@ -330,7 +330,8 @@ erDiagram
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
 | `bad_case_agent_id` | `VARCHAR(64)` | NULL | 上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`；它是锚点计算的起点，不一定是卡片宿主（`discovery + agent` 锚到父节点，见 §7.4） |
-| `reason` | `TEXT` | NOT NULL | 原型文案（直接展示） |
+| `title` | `VARCHAR(255)` | NOT NULL | 短标题（外部上报必填；问题列表卡、执行流图问题卡与详情页标题行的主文本） |
+| `reason` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示） |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
