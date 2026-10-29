@@ -495,15 +495,6 @@ const versionPlaceholder = computed(() =>
                   {{ target.name }}
                 </option>
               </select>
-              <button
-                class="gear"
-                type="button"
-                title="配置进化对象"
-                aria-label="配置进化对象"
-                @click="goTargetConfig"
-              >
-                ⚙
-              </button>
               <span class="f-hint">版本</span>
               <select
                 v-model="targetVersion"
@@ -543,7 +534,12 @@ const versionPlaceholder = computed(() =>
               </button>
             </p>
             <p class="f-note">
-              未配置的进化对象不会出现在列表中；点击齿轮前往配置页。
+              未配置的进化对象不会出现在列表中；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                class="cfg-link"
+                type="button"
+                data-testid="wizard-target-config-link"
+                @click="goTargetConfig"
+              >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->前往。
             </p>
           </div>
           <div class="f-row">
@@ -859,17 +855,25 @@ input.inp:focus {
   border-color: var(--blue);
 }
 
-.gear {
+.cfg-link {
   font: inherit;
-  font-size: 13px;
+  color: var(--blue);
   cursor: pointer;
-  color: var(--text-faint);
   border: none;
   background: none;
+  padding: 0;
+  text-decoration: underline solid;
+  text-underline-offset: 2px;
 }
 
-.gear:hover {
-  color: var(--blue);
+.cfg-link:hover {
+  color: var(--blue-deep);
+  text-decoration-thickness: 2px;
+}
+
+.cfg-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .pick {

@@ -476,7 +476,7 @@ GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 
 - 对象类型分段控件（skill/agent）→ 切换后名称与版本级联重置（原型行为）。
 - 名称：`useTargets()` 提供**已配置且启用**的对象；未配置的对象不出现。
 - 版本：`useTargetVersions(targetId)` 从配置仓库的 tag 列表拉取；默认选中 `defaultRef` 对应项。
-- **配置入口**：名称选择器右侧一个齿轮图标，点击跳 `/evolution/targets`（配置页）；返回后失效 `["catalogs"]` 与 `["evolution","targets"]`，向导候选刷新。
+- **配置入口**：提示文案内的「配置页」内联链接（实线下划线按钮），点击跳 `/evolution/targets`（配置页）；返回后失效语义不变，向导候选刷新。
 - 时间段：两个 `el-date-picker`，校验 `from <= to`。
 - 模型多选：`useModels()` 提供的 chips，可全不选（= 全部模型）；chip 可显示 `model` 与 `sessionCount`。
 - 「下一步」：调 `useProbeQuery().mutate(condition)`（`POST /evolution/probes/query`），成功进 Step2；无匹配时后端 409 `NO_PROBES_MATCHED`。
@@ -691,5 +691,5 @@ Agent 执行流图全量 + 问题卡
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
 - 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有 `preparing/running` 的 run 页面才申请 SSE 票据，重连重新取票，完成/阻塞/离开即关闭。
 - **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate ref、切回 run 分支（不 reset 已接纳轮次）。patch 内容与评分是占位，但 commit/amend/fast-forward/push 都是真的。UI 需明示"占位 patch / 占位评测"。
-- 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 的齿轮图标。
+- 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 提示文案内的「配置页」链接。
 - 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。

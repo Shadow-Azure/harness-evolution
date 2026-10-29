@@ -17,7 +17,12 @@ import {
 
 const root = process.cwd();
 const apiDir = path.join(root, "apps/api");
-const python = path.join(apiDir, ".venv", "bin", "python");
+const python = path.join(
+  apiDir,
+  ".venv",
+  process.platform === "win32" ? "Scripts" : "bin",
+  process.platform === "win32" ? "python.exe" : "python",
+);
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m5-target-ui-initial-password";
 const replacementPassword = "m5-target-ui-final-password";
@@ -35,7 +40,16 @@ let webLogs = "";
 async function cleanup() {
   await stop(web);
   await stop(api);
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (dataDir) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(dataDir, { recursive: true, force: true });
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
 }
 
 async function apiJson(pathname, token, options = {}) {
@@ -230,6 +244,7 @@ before(async () => {
   const seed = spawn(pnpm, ["fixtures:seed"], {
     cwd: root,
     env,
+    shell: process.platform === "win32",
     stdio: ["ignore", "pipe", "pipe"],
   });
   let seedLogs = "";
@@ -278,6 +293,7 @@ before(async () => {
     {
       cwd: root,
       env: { ...process.env, HE_API_PROXY_URL: apiUrl },
+      shell: process.platform === "win32",
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -821,13 +837,26 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
         )}`,
       );
     }
+    assert.equal(
+      await evaluate(page, `Boolean(document.querySelector(".target-config-entry"))`),
+      true,
+    );
     await evaluate(
       page,
-      `document.querySelector(".target-config-entry")?.click()`,
+      `document.querySelector("[data-testid='open-launch-wizard']")?.click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector("[data-testid='wizard-target-config-link']"))`,
+      "wizard hint link",
+    );
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='wizard-target-config-link']")?.click()`,
     );
     await waitForTargetConfigPage(
       page,
-      "gear target config navigation",
+      "wizard hint link target config navigation",
       violations,
     );
     assert.equal(

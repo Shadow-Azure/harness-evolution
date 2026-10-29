@@ -76,7 +76,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D10 | 租户模型（2026-10-22） | **单组织共享**：登录即可见全部数据 | 核心表只记 `created_by`，不做行级隔离；后续如需隔离再加 `owner_id` 过滤 |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
 | D12 | 轨迹来源（2026-10-24 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时（默认 60s）+ 单飞锁读取并归一化，admin 可手动立即处理，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；手动 sync 复用运行中的任务；幂等靠 `(root_session_id, agent_id)` + hash + `parser_version` |
-| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导选择器右侧齿轮 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；模型清单来自归一化后的 `agents.model` |
+| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导提示文案内的「配置页」链接 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；模型清单来自归一化后的 `agents.model` |
 | D14 | 自进化 git 流程（2026-10-23） | **candidate commit → push 临时 candidate ref → 评测 → 接纳 amend + fast-forward run 分支 / 拒绝删 candidate；push 是评测前置条件** | run 分支只含已接纳 commit，评测用 `.../candidate/r{n}`；push 失败 run 进入 blocked，3 次立即 + 1/5/15min 退避，`/retry` 恢复 |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
 

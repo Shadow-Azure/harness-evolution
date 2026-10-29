@@ -9,6 +9,7 @@
   --text-dim: #5a6372;
   --text-faint: #9aa2ae;
   --blue: #2f6fe0;
+  --blue-deep: color-mix(in srgb, var(--blue) 72%, #000);
   --green: #1f9d6b;
   --orange: #d97b1c;
   --red: #d63c3c;
