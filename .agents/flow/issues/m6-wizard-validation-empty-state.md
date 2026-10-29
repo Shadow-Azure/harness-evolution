@@ -43,7 +43,7 @@ github:
 
 - `runQuery()` 只在 `!selectedTarget || windowInvalid()` 时静默 `return`，没有字段级反馈通道；按钮禁用是唯一的校验表达。
 - 原型 `harness-evolution.html` 的 `wz-query` 按钮本无 disabled 态，应用侧自行加入禁用偏离了原型约定。
-- 前端把 `409 NO_PROBES_MATCHED` 与其他错误一视同仁地塞进 `previewError`，没有把它翻译成"结果为空"的业务空态；`05-api-design.md §4.9` 现行文字（"前端停在 Step1 提示调整条件"）也固化了这一行为。
+- 前端把 `409 NO_PROBES_MATCHED` 与其他错误一视同仁地塞进 `previewError`，没有兑现 `05-api-design.md §4.9` 规定的"结果为空"业务空态映射。
 
 ### 建议
 
@@ -60,9 +60,9 @@ github:
 ## 设计依据
 
 - [plans/fullstack-design/08-frontend-implementation.md §9.1](../../../plans/fullstack-design/08-frontend-implementation.md)：状态机 Step1→Step2 以"条件校验通过"为迁移条件。
-- [plans/fullstack-design/08-frontend-implementation.md §9.2](../../../plans/fullstack-design/08-frontend-implementation.md)：Step1 表单与「下一步」行为（现为"无匹配时后端 409"，本 issue 修改该行为）。
+- [plans/fullstack-design/08-frontend-implementation.md §9.2](../../../plans/fullstack-design/08-frontend-implementation.md)：Step1 表单与「下一步」行为（点击时字段级校验；`409 NO_PROBES_MATCHED` 映射到 Step2 空态）。
 - [plans/fullstack-design/08-frontend-implementation.md §9.3](../../../plans/fullstack-design/08-frontend-implementation.md)：Step2 命中确认与两个出口。
-- [plans/fullstack-design/05-api-design.md §4.9](../../../plans/fullstack-design/05-api-design.md)：`409 NO_PROBES_MATCHED` 的口径与"前端停在 Step1"的现行表述（本 issue 同步修改）。
+- [plans/fullstack-design/05-api-design.md §4.9](../../../plans/fullstack-design/05-api-design.md)：`409 NO_PROBES_MATCHED` 的口径与前端空态映射。
 - [plans/fullstack-design/09-review-guide.md](../../../plans/fullstack-design/09-review-guide.md)：向导 step1→step2 检视对照行。
 - [plans/14-15-ui-prototype/harness-evolution.html](../../../plans/14-15-ui-prototype/harness-evolution.html)：向导原型，`wz-query` 按钮无 disabled 态。
 - 实现冲突时以链接章节与 `plans/14-15-ui-prototype/harness-evolution.html` 原型为准。
