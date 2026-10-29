@@ -8,7 +8,7 @@ id: m6-12
 milestone: m6
 depends: []
 priority: P1
-status: ready
+status: done
 scope:
   - packages/contracts/**
   - apps/api/**
