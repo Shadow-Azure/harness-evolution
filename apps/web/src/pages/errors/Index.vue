@@ -135,7 +135,7 @@ const flowNote = computed(() => {
     return `全部错误 · ${problems.value.length} 个`;
   }
   const prefix = selectedIndex.value ? `#${selectedIndex.value} · ` : "";
-  return `仅显示 ${prefix}${selectedProblem.value.reason}`;
+  return `仅显示 ${prefix}${selectedProblem.value.title}`;
 });
 const fallbackObject = computed(() => {
   const problem = selectedProblem.value;

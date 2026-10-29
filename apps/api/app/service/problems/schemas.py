@@ -121,7 +121,11 @@ def build_bad_case_analysis(
 
 
 class BadCase(IdentityModel):
-    """Complete public problem card used by list and detail routes."""
+    """Complete public problem card used by list and detail routes.
+
+    ``title`` is the short display title and ``reason`` the description body;
+    ``reason`` maps from the ``bad_cases.bad_case_description`` column.
+    """
 
     bad_case_id: str
     session_id: str
@@ -132,6 +136,7 @@ class BadCase(IdentityModel):
     object_version: str | None
     anchor: BadCaseAnchor
     bad_case_agent: BadCaseAgent
+    title: str
     reason: str
     meta_data: dict[str, Any] | None
     analysis: BadCaseAnalysis

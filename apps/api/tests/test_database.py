@@ -1,5 +1,6 @@
 """Database lifecycle, migration, and cross-dialect repository contracts."""
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -11,6 +12,7 @@ from typing import TypedDict, cast
 
 import pytest
 import pytest_asyncio
+from alembic.config import Config
 from sqlalchemy import (
     Column,
     Integer,
@@ -26,6 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.pool import QueuePool
 
+from alembic import command
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import BadCaseRepository
@@ -92,6 +95,14 @@ def sqlite_settings(tmp_path: Path) -> Settings:
         db_pool_size=2,
         db_max_overflow=1,
     )
+
+
+def alembic_config(database: Database) -> Config:
+    """Build an Alembic config for explicit revision-path migration tests."""
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", database.url.replace("%", "%%"))
+    config.attributes["configure_logger"] = False
+    return config
 
 
 def normalized_server_default(column: Mapping[str, object]) -> str | None:
@@ -491,7 +502,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0009"
+        assert result.scalar_one() == "0010"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -657,6 +668,153 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "content_hash",
             "line_count",
         } <= payload_columns
+        async with database.engine.connect() as connection:
+            bad_case_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("bad_cases")
+            )
+        bad_case_by_name = {column["name"]: column for column in bad_case_columns}
+        assert bad_case_by_name["title"]["nullable"] is False
+        assert bad_case_by_name["bad_case_description"]["nullable"] is False
+        assert "reason" not in bad_case_by_name
+    finally:
+        await database.dispose()
+
+
+async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) -> None:
+    """Revision 0010 renames the description column and backfills short titles."""
+    database = create_database(sqlite_settings(tmp_path))
+    await database.start()
+    try:
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0009")
+        created_at = datetime(2026, 10, 28, 9, tzinfo=UTC)
+        short_description = "旧问题描述：首句。第二句。"  # noqa: RUF001
+        long_description = "长" * 300
+        async with database.transaction() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO bad_cases ("
+                    "bad_case_id, bad_case_session_id, bad_case_type, object_name, "
+                    "object_type, object_version, bad_case_agent_id, reason, meta_data, "
+                    "source, created_at, updated_at"
+                    ") VALUES ("
+                    ":case_id, :session_id, 'self', 'Explore', 'agent', NULL, NULL, "
+                    ":reason, NULL, 'fixtures', :created_at, :created_at"
+                    ")",
+                ),
+                [
+                    {
+                        "case_id": "legacy-short",
+                        "session_id": "10000000-0000-4000-8000-000000000001",
+                        "reason": short_description,
+                        "created_at": created_at,
+                    },
+                    {
+                        "case_id": "legacy-long",
+                        "session_id": "10000000-0000-4000-8000-000000000001",
+                        "reason": long_description,
+                        "created_at": created_at,
+                    },
+                ],
+            )
+
+        await upgrade_database(database)
+
+        async with database.engine.connect() as connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("bad_cases")
+            )
+        by_name = {column["name"]: column for column in columns}
+        assert by_name["title"]["nullable"] is False
+        assert by_name["bad_case_description"]["nullable"] is False
+        assert "reason" not in by_name
+        async with database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT bad_case_id, title, bad_case_description "
+                            "FROM bad_cases ORDER BY bad_case_id"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            revision = str(
+                (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one(),
+            )
+        assert revision == "0010"
+        assert [dict(row) for row in rows] == [
+            {
+                "bad_case_id": "legacy-long",
+                "title": long_description[:255],
+                "bad_case_description": long_description,
+            },
+            {
+                "bad_case_id": "legacy-short",
+                "title": short_description,
+                "bad_case_description": short_description,
+            },
+        ]
+    finally:
+        await database.dispose()
+
+
+async def test_bad_case_title_migration_downgrade_restores_column_names(
+    tmp_path: Path,
+) -> None:
+    """Downgrade drops only the short title and preserves the description body."""
+    database = create_database(sqlite_settings(tmp_path))
+    await database.start()
+    try:
+        await upgrade_database(database)
+        created_at = datetime(2026, 10, 28, 9, tzinfo=UTC)
+        async with database.transaction() as session:
+            await session.execute(
+                bad_cases.insert().values(
+                    bad_case_id="downgrade-case",
+                    bad_case_session_id="10000000-0000-4000-8000-000000000001",
+                    bad_case_type="self",
+                    object_name="Explore",
+                    object_type="agent",
+                    object_version=None,
+                    bad_case_agent_id=None,
+                    title="降级前的短标题",
+                    bad_case_description="降级后仍保留的描述正文",
+                    meta_data=None,
+                    source="fixtures",
+                    created_at=created_at,
+                    updated_at=created_at,
+                ),
+            )
+
+        await asyncio.to_thread(command.downgrade, alembic_config(database), "0009")
+
+        async with database.engine.connect() as connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("bad_cases")
+            )
+        by_name = {column["name"]: column for column in columns}
+        assert "title" not in by_name
+        assert "bad_case_description" not in by_name
+        assert by_name["reason"]["nullable"] is False
+        async with database.session() as session:
+            reason = str(
+                (
+                    await session.execute(
+                        text("SELECT reason FROM bad_cases WHERE bad_case_id = 'downgrade-case'"),
+                    )
+                ).scalar_one(),
+            )
+            revision = str(
+                (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one(),
+            )
+        assert revision == "0009"
+        assert reason == "降级后仍保留的描述正文"
     finally:
         await database.dispose()
 
@@ -758,7 +916,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0009"
+        assert result.scalar_one() == "0010"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -918,6 +1076,14 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "sync_lock",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
+        async with database.engine.connect() as connection:
+            bad_case_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("bad_cases")
+            )
+        bad_case_by_name = {column["name"]: column for column in bad_case_columns}
+        assert bad_case_by_name["title"]["nullable"] is False
+        assert bad_case_by_name["bad_case_description"]["nullable"] is False
+        assert "reason" not in bad_case_by_name
     finally:
         await database.dispose()
 
@@ -1290,7 +1456,8 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
                     object_type="agent",
                     object_version="mysql-1",
                     bad_case_agent_id=None,
-                    reason="MySQL problem API",
+                    title="MySQL problem API",
+                    bad_case_description="MySQL problem API",
                     meta_data={"dialect": "mysql"},
                     source="mysql-test",
                     created_at=created_at,
@@ -1405,7 +1572,8 @@ async def test_mysql_external_read_models_merge_all_attribution_states() -> None
                     object_type="agent",
                     object_version="v1",
                     bad_case_agent_id=None,
-                    reason="MySQL external issue",
+                    title="MySQL external issue",
+                    bad_case_description="MySQL external issue",
                     meta_data={"dialect": "mysql"},
                     source="mysql-test",
                     created_at=created_at,

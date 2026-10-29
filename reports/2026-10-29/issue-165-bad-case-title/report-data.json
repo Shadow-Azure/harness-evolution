@@ -1,0 +1,200 @@
+{
+  "title": "issue #165 冒烟测试：bad_cases 短标题 + 描述正文",
+  "eyebrow": "Harness Evolution · 错误详情页",
+  "summary": "在真实前后端（FastAPI + Vite + SQLite 临时数据目录）上验证 bad_cases 短标题 title 与描述正文 reason 的两级渲染：错误详情页标题行显示短标题、正文块显示完整描述；问题列表卡与执行流图问题卡主文本为短标题；未分析 / 非问题 / 是问题三种状态与 390px 窄屏均通过，浏览器 console 无异常。",
+  "meta": "2026-10-29 · 分支 feat/165-bad-case-title · 工作区未提交版本 · Windows 11 / Chrome 155 / Node 22.19 / Python 3.12",
+  "metrics": [
+    { "value": "9", "label": "冒烟断言场景" },
+    { "value": "3", "label": "归因状态覆盖" },
+    { "value": "2", "label": "视口宽度（1408 / 390）" },
+    { "value": "0", "label": "console 异常" }
+  ],
+  "facts": [
+    { "label": "Issue", "value": "Shadow-Azure/harness-evolution#165" },
+    { "label": "分支 / 基线", "value": "feat/165-bad-case-title ← main@f37010d" },
+    { "label": "后端", "value": "FastAPI + SQLite（临时 HE_DATA_DIR，fixtures m2-synthetic 演示数据）" },
+    { "label": "前端", "value": "Vite dev server + Vue 3，1408×960 与 390×844" },
+    { "label": "数据形态", "value": "seed 后在临时库把 3 条问题的描述改成真实长描述（不改仓库文件）" },
+    { "label": "证据脚本", "value": "reports/2026-10-29/issue-165-bad-case-title/collect-before.mjs / collect-smoke.mjs" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "API 契约：bad-cases 与 session tree 带 title",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "三个演示会话共 4 条问题，items[].title 与 tree.badCases[].title 均非空；reason 仍是完整描述正文。",
+        "evidence": ["assertions.json"]
+      },
+      {
+        "id": "02",
+        "name": "错误详情 · 是问题（analyzed_issue / prompt）",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "标题行 =「检查结论缺少目标文件」，正文块 = 长描述全文，二级文本不重复。",
+        "evidence": ["05-after-error-detail-issue.png"]
+      },
+      {
+        "id": "03",
+        "name": "错误详情 · 非问题（analyzed_nonissue）",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "标题行 =「工作流未汇总检查项」，正文块 = 长描述全文。",
+        "evidence": ["06-after-error-detail-nonissue.png"]
+      },
+      {
+        "id": "04",
+        "name": "错误详情 · 未分析（unanalyzed）",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "标题行 =「最小会话信息不足」，正文块 = 长描述全文；未分析态不再只有占位文案。",
+        "evidence": ["07-after-error-detail-unanalyzed.png"]
+      },
+      {
+        "id": "05",
+        "name": "问题列表卡主文本为短标题",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "左栏卡片标题来自 title；长描述不再进入卡片主文本。",
+        "evidence": ["08-after-problem-list.png"]
+      },
+      {
+        "id": "06",
+        "name": "执行流图问题卡主文本为短标题",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "图上卡片文本 =「检查结论缺少目标文件」，卡片宽度仍在 150–400px 钳制内。",
+        "evidence": ["09-after-graph-card.png"]
+      },
+      {
+        "id": "07",
+        "name": "执行流说明行使用短标题",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "「仅显示 #1 · 检查结论缺少目标文件」；修复前同一位置是整段长描述。",
+        "evidence": ["05-after-error-detail-issue.png"]
+      },
+      {
+        "id": "08",
+        "name": "390px 窄屏两级文本同时可见",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "详情面板滚入视口后标题行与正文块同时可见，无横向溢出。",
+        "evidence": ["10-after-390.png"]
+      },
+      {
+        "id": "09",
+        "name": "浏览器 console 无 error / warning",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "整轮冒烟（含页面刷新、三态切换、窄屏切换）无 console error、无未捕获异常。",
+        "evidence": ["assertions.json"]
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "src": "screenshots/01-prototype-error-detail.png",
+      "alt": "原型错误详情页",
+      "label": "原型基准 · 整页",
+      "caption": "原型 FindingDescription：标题行「重复加载」+ 正文块完整描述 + 事实 chips。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-prototype-ed-panel.png",
+      "alt": "原型问题描述面板特写",
+      "label": "原型基准 · 面板",
+      "caption": "`.ed-title` 15px/650 与 `.ed-detail` 12.5px/1.7/--text-dim 的二级文本层级。",
+      "variant": "normal"
+    },
+    {
+      "src": "screenshots/03-current-error-detail.png",
+      "alt": "修复前错误详情页",
+      "label": "修复前 · 详情页",
+      "caption": "修复前（main@f37010d）：整段长描述被当作标题，问题描述 tab 没有正文块，执行流说明行同样重复长文本。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-current-problem-list.png",
+      "alt": "修复前问题列表",
+      "label": "修复前 · 列表",
+      "caption": "修复前左栏卡片主文本是整段长描述。",
+      "variant": "normal"
+    },
+    {
+      "src": "screenshots/05-after-error-detail-issue.png",
+      "alt": "修复后错误详情页（是问题）",
+      "label": "修复后 · 是问题",
+      "caption": "标题行短标题 + 正文块完整描述；列表卡、图上问题卡与执行流说明行都改用短标题。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-after-error-detail-nonissue.png",
+      "alt": "修复后错误详情页（非问题）",
+      "label": "修复后 · 非问题",
+      "caption": "analyzed_nonissue：同样的两级渲染，状态 chip 与非问题原因互不影响。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/07-after-error-detail-unanalyzed.png",
+      "alt": "修复后错误详情页（未分析）",
+      "label": "修复后 · 未分析",
+      "caption": "unanalyzed：标题行仍是短标题，正文块仍是完整描述。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/08-after-problem-list.png",
+      "alt": "修复后问题列表",
+      "label": "修复后 · 列表",
+      "caption": "左栏卡片标题为短标题，描述只在详情正文块出现。",
+      "variant": "normal"
+    },
+    {
+      "src": "screenshots/09-after-graph-card.png",
+      "alt": "修复后执行流问题卡",
+      "label": "修复后 · 图上问题卡",
+      "caption": "图上问题卡主文本为短标题，宽度按 `${shortId} ${title}` 测量并保持 150–400px 钳制。",
+      "variant": "normal"
+    },
+    {
+      "src": "screenshots/10-after-390.png",
+      "alt": "修复后 390px 窄屏",
+      "label": "修复后 · 390px",
+      "caption": "窄屏下标题行与正文块同时可见，无横向溢出。",
+      "variant": "normal"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "自动化覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "DB 迁移 0010（reason→bad_case_description、title 回填、NOT NULL）",
+        "coverage": "pytest test_database.py -k bad_case_title（SQLite 真实迁移链 + downgrade）",
+        "conclusion": "升级/降级均按设计执行，存量行回填非空标题。",
+        "recommendation": "MySQL 8 lane 由 CI 执行（本机无 3306 实例）。"
+      },
+      {
+        "area": "契约与读模型（title/degraded/派生标题）",
+        "coverage": "pytest m4-01 / m4-02 / m2-06 / test_openapi；契约 contract:check",
+        "conclusion": "BadCase 与 SessionBadCase 均 required title；缺 title 时用描述首句派生并标记 degraded。",
+        "recommendation": "保持契约再生的 CI 门禁。"
+      },
+      {
+        "area": "Web 两级渲染与卡片主文本",
+        "coverage": "vitest ProblemDescription / Index / BadCaseList / BadCaseNode / layout",
+        "conclusion": "三种归因状态、degraded、卡宽钳制都有确定性断言。",
+        "recommendation": "保留本冒烟作为真实浏览器回归证据。"
+      },
+      {
+        "area": "窄屏与 console",
+        "coverage": "真实 Chrome 1408 / 390 冒烟",
+        "conclusion": "两级文本在窄屏同时可见，console 干净。",
+        "recommendation": "后续改错误详情页布局时重跑 collect-smoke.mjs。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "全部冒烟场景通过",
+    "summary": "issue #165 的两级文本在真实前后端与三种归因状态下成立；列表卡、执行流图问题卡、执行流说明行均以短标题为主文本；窄屏与 console 无异常。",
+    "points": [
+      "Windows 本地脚本门禁（verify:docs / verify:flow / lint:docs）因 #163（m6-11）的 import.meta.url 守卫在 Windows 下假绿，本次改用脚本库直跑 + CI 全量校验，见 PR 说明。",
+      "本机无 MySQL 8 实例，mysql lane 未在本地执行；由 CI 的 mysql job 覆盖。",
+      "e2e 浏览器套件未纳入本次冒烟，真实浏览器证据由本报告与 collect-smoke.mjs 承担。"
+    ]
+  },
+  "footer": "生成方式：node reports/2026-10-29/issue-165-bad-case-title/collect-smoke.mjs → report-data.json → .agents/skills/computer-use-smoke-reporting/scripts/render-smoke-report.mjs。截图与断言来自同一次冒烟运行。"
+}

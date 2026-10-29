@@ -215,6 +215,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
             "objectVersion": "synthetic-1",
             "anchor": {"agentId": AGENT_1, "eventIndex": -1},
             "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
+            "title": "检查结论缺少目标文件",
             "reason": "合成示例：检查结论缺少目标文件。",  # noqa: RUF001
         },
         {
@@ -225,6 +226,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
             "objectVersion": "synthetic-1",
             "anchor": {"agentId": SESSION_1, "eventIndex": 0},
             "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
+            "title": "推理步骤越过工具边界",
             "reason": "合成示例：推理步骤越过工具边界。",  # noqa: RUF001
         },
     ]
@@ -349,6 +351,26 @@ async def test_tree_warns_when_reporter_agent_is_unknown(
     assert case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1}
     assert case["badCaseAgent"]["agentId"] == "missing-reporter"
     assert "bad case reporter Agent was not found" in caplog.text
+
+
+async def test_tree_derives_a_display_title_when_the_external_title_is_blank(
+    session_query: Any,
+) -> None:
+    """The tree read model has no degraded flag, so it exposes the derived title."""
+    async with session_query.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == "badcase-synthetic-0001")
+            .values(title=""),
+        )
+
+    response = await session_query.client.get(
+        f"/api/sessions/{SESSION_1}/tree",
+        headers=session_query.authorization,
+    )
+
+    case = response.json()["badCases"][0]
+    assert case["title"] == "合成示例：检查结论缺少目标文件。"  # noqa: RUF001
 
 
 async def test_tree_unknown_skill_reporter_does_not_borrow_main_trigger(

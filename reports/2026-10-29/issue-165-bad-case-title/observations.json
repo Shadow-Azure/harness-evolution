@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-10-29T10:37:20.030Z",
+  "beforeRev": "f37010d",
+  "longReason": "子任务「检索工具层四项+综述」在读取前置步骤的检索索引时抛出 ENOENT：data/index.json 不存在，错误被上层 catch 静默吞掉，导致该轮 5 条结论没有来源，汇总阶段无法回溯每条结论的出处。",
+  "prototype": {
+    "url": "file:///D:/2026/harness-evolution/plans/14-15-ui-prototype/harness-evolution.html?page=session&view=errors&sid=050b81ba-9621-4992-84fe-106ae46eb36b&issue=I-050b-01&dtab=desc",
+    "selectors": {
+      "panel": ".err-detail",
+      "title": ".err-detail .ed-head .ed-title",
+      "detail": ".err-detail .ed-detail"
+    },
+    "levels": {
+      "cards": 4,
+      "activeCardTitle": "重复加载",
+      "panel": {
+        "top": 598.53125,
+        "bottom": 901.90625,
+        "width": 1028
+      },
+      "title": {
+        "text": "重复加载",
+        "fontSize": "15px",
+        "fontWeight": "650",
+        "top": 654.90625,
+        "bottom": 678.15625
+      },
+      "detail": {
+        "text": "同一份检索模板在 3 个步骤中重复加载，未命中缓存，额外产生 2 次工具调用。",
+        "fontSize": "12.5px",
+        "fontWeight": "400",
+        "color": "rgb(90, 99, 114)",
+        "top": 687.15625,
+        "bottom": 708.40625
+      },
+      "mainScrollTop": 0,
+      "documentScrollTop": 0
+    },
+    "viewport": {
+      "innerWidth": 1408,
+      "innerHeight": 960,
+      "panelTop": 598.53125,
+      "panelBottom": 901.90625,
+      "visible": true
+    },
+    "panelClip": {
+      "x": 360,
+      "y": 599,
+      "width": 1028,
+      "height": 303,
+      "scale": 2
+    },
+    "consoleViolations": []
+  },
+  "current": {
+    "selectors": {
+      "workspace": "[data-testid='errors-workspace']",
+      "problemList": ".error-sidebar",
+      "panel": ".detail-panel",
+      "title": ".description #problem-description-title.problem-title"
+    },
+    "fixtureReasonWasShort": "fixtures reason 原为短句；本脚本在临时库把该条 reason 覆盖为长描述以呈现真实数据形态",
+    "url": "http://127.0.0.1:53536/sessions/10000000-0000-4000-8000-000000000001/errors?case=badcase-synthetic-0001&tab=desc",
+    "sessionId": "10000000-0000-4000-8000-000000000001",
+    "badCaseId": "badcase-synthetic-0001",
+    "sessionTitle": "示例会话一：主会话与评审子任务",
+    "heading": {
+      "text": "子任务「检索工具层四项+综述」在读取前置步骤的检索索引时抛出 ENOENT：data/index.json 不存在，错误被上层 catch 静默吞掉，导致该轮 5 条结论没有来源，汇总阶段无法回溯每条结论的出处。",
+      "fontSize": "15px",
+      "fontWeight": "650",
+      "lineHeight": "23.25px",
+      "lines": 2,
+      "width": 990,
+      "height": 46.5
+    },
+    "headingText": "子任务「检索工具层四项+综述」在读取前置步骤的检索索引时抛出 ENOENT：data/index.json 不存在，错误被上层 catch 静默吞掉，导致该轮 5 条结论没有来源，汇总阶段无法回溯每条结论的出处。",
+    "bodyText": null,
+    "reasonOccurrencesInDescription": 1,
+    "listRows": 2,
+    "sidebarClip": {
+      "x": 0,
+      "y": 56,
+      "width": 340,
+      "height": 904,
+      "scale": 2
+    },
+    "consoleViolations": []
+  }
+}

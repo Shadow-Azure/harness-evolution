@@ -42,22 +42,23 @@ describe("bad-case display", () => {
   });
 
   it("uses the non-issue reason and an explicit unanalyzed message", () => {
-    expect(
-      badCaseSummary(
-        badCaseFixture({
-          analysis: {
-            probeId: "probe-2",
-            attributeType: null,
-            displayState: "analyzed_nonissue",
-            result: {
-              reason: "The output was traceable.",
-              reasoning: ["Every claim had a source."],
-            },
-            status: "analyzed_nonissue",
-          },
-        }),
-      ),
-    ).toBe("The output was traceable.");
+    const nonissue = badCaseFixture({
+      title: "响应可追溯",
+      reason: "traceable response body rendered by the description panel",
+      analysis: {
+        probeId: "probe-2",
+        attributeType: null,
+        displayState: "analyzed_nonissue",
+        result: {
+          reason: "The output was traceable.",
+          reasoning: ["Every claim had a source."],
+        },
+        status: "analyzed_nonissue",
+      },
+    });
+
+    expect(badCaseSummary(nonissue)).toBe("The output was traceable.");
+    expect(badCaseSummary(nonissue)).not.toBe(nonissue.title);
     expect(badCaseSummary(badCaseFixture())).toBe("尚未完成归因分析");
   });
 

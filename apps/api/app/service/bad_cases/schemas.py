@@ -44,7 +44,11 @@ class BadCaseAnalysisReadModel:
 
 @dataclass(frozen=True, slots=True)
 class BadCaseReadModel:
-    """One issue with its validated external attribution state."""
+    """One issue with its validated external attribution state.
+
+    ``reason`` is the public DTO field for the description body; it is read from
+    the ``bad_cases.bad_case_description`` column.
+    """
 
     bad_case_id: str
     session_id: str
@@ -53,6 +57,7 @@ class BadCaseReadModel:
     object_type: BadCaseObjectType | None
     object_version: str | None
     bad_case_agent_id: str | None
+    title: str
     reason: str
     meta_data: Mapping[str, object] | None
     source: str | None

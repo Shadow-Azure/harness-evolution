@@ -16,6 +16,7 @@ from app.db.crud.sessions import (
     SessionStatusFilter,
 )
 from app.errors import AppError, ErrorCode
+from app.service.bad_cases.title import derive_title
 from app.service.problems.anchor import resolve_problem_anchor
 from app.service.sessions.schemas import (
     AgentKind,
@@ -139,6 +140,7 @@ def _bad_case(
     main: AgentRecord,
 ) -> SessionBadCase:
     """Resolve one externally-owned problem to its prototype anchor semantics."""
+    title, _ = derive_title(case.title, case.reason)
     anchor = resolve_problem_anchor(
         bad_case_type=case.bad_case_type,
         object_name=case.object_name,
@@ -176,6 +178,7 @@ def _bad_case(
             session_id=case.bad_case_session_id,
             agent_id=case.bad_case_agent_id,
         ),
+        title=title,
         reason=case.reason,
     )
 

@@ -30,6 +30,7 @@ from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
 from app.service.bad_cases.schemas import ProbeReportLookup
 from app.service.bad_cases.service import BadCaseService
+from app.service.bad_cases.title import UNNAMED_TITLE
 
 ROOT = Path(__file__).resolve().parents[4]
 SESSION_1 = "10000000-0000-4000-8000-000000000001"
@@ -173,6 +174,7 @@ def row(
     object_type: object = "agent",
     object_version: object = "v1",
     meta_data: object = None,
+    title: object = "problem title",
     reason: object = "problem",
 ) -> BadCaseRow:
     """Build one external row while retaining intentionally malformed fields."""
@@ -184,6 +186,7 @@ def row(
         object_type=cast(str, object_type),
         object_version=cast(str | None, object_version),
         bad_case_agent_id=None,
+        title=cast(str, title),
         reason=cast(str, reason),
         meta_data=meta_data,
         source="external-test",
@@ -252,6 +255,10 @@ async def test_seeded_rows_expose_all_five_display_states(
     assert [item.display_state for item in second.items] == ["analyzed_nonissue"]
     assert [item.display_state for item in third.items] == ["analyzed_issue_error"]
     assert [item.display_state for item in fourth.items] == ["unanalyzed"]
+    assert [item.title for item in first.items] == [
+        "检查结论缺少目标文件",
+        "推理步骤越过工具边界",
+    ]
     assert first.warnings == ()
 
 
@@ -364,6 +371,49 @@ async def test_null_and_unknown_non_identity_fields_remain_readable() -> None:
         "EXTERNAL_FIELD_INVALID",
         "EXTERNAL_FIELD_MISSING",
     }
+
+
+@pytest.mark.parametrize(
+    ("title", "reason", "expected"),
+    [
+        (None, "第一句。第二句。", "第一句。"),
+        ("   ", "只有一句没有标点", "只有一句没有标点"),
+        ("", "First sentence. Second.", "First sentence."),
+        (None, None, UNNAMED_TITLE),
+        (None, "   ", UNNAMED_TITLE),
+        (None, "长" * 300, "长" * 255),
+    ],
+)
+async def test_blank_or_missing_title_is_derived_from_the_description(
+    title: object,
+    reason: object,
+    expected: str,
+) -> None:
+    """A missing short title falls back to the description's first sentence."""
+    service = BadCaseService(
+        FakeRepository(cases=(row(title=title, reason=reason),)),
+    )
+
+    result = await service.get_case(CASE_1)
+
+    assert result is not None
+    assert result.title == expected
+    assert [
+        (warning.code, warning.field) for warning in result.warnings if warning.field == "title"
+    ] == [("EXTERNAL_FIELD_MISSING", "title")]
+
+
+async def test_external_title_is_trimmed_and_preserved_without_a_warning() -> None:
+    """A usable external title is authoritative and is not reported as drift."""
+    service = BadCaseService(
+        FakeRepository(cases=(row(title="  检索索引读取失败  "),)),
+    )
+
+    result = await service.get_case(CASE_1)
+
+    assert result is not None
+    assert result.title == "检索索引读取失败"
+    assert not [warning for warning in result.warnings if warning.field == "title"]
 
 
 async def test_session_list_is_stably_ordered_and_uses_one_query_per_model(

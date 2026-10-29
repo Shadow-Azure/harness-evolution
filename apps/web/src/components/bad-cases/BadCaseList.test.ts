@@ -31,7 +31,8 @@ afterEach(() => {
 const fiveStates = [
   badCaseFixture({
     badCaseId: "case-unanalyzed",
-    reason: "pending attribution",
+    title: "待归因",
+    reason: "pending attribution: 这一条问题还没有完成归因分析。",
     analysis: {
       probeId: null,
       attributeType: null,
@@ -42,7 +43,8 @@ const fiveStates = [
   }),
   badCaseFixture({
     badCaseId: "case-nonissue",
-    reason: "traceable response",
+    title: "响应可追溯",
+    reason: "traceable response: 每条结论都能回指到来源。",
     analysis: {
       probeId: "probe-nonissue",
       attributeType: null,
@@ -56,7 +58,8 @@ const fiveStates = [
   }),
   badCaseFixture({
     badCaseId: "case-model",
-    reason: "model over-scanned",
+    title: "模型超预算",
+    reason: "model over-scanned: 模型在检索阶段超出了扫描预算。",
     analysis: {
       probeId: "probe-model",
       attributeType: "model",
@@ -67,7 +70,8 @@ const fiveStates = [
   }),
   badCaseFixture({
     badCaseId: "case-prompt",
-    reason: "prompt missed validation",
+    title: "prompt 缺少校验",
+    reason: "prompt missed validation: prompt 没有要求校验输出结构。",
     analysis: {
       probeId: "probe-prompt",
       attributeType: "prompt",
@@ -78,7 +82,8 @@ const fiveStates = [
   }),
   badCaseFixture({
     badCaseId: "case-error",
-    reason: "index read failed",
+    title: "索引读取失败",
+    reason: "index read failed: 读取检索索引时抛出 ENOENT。",
     metaData: {
       file: "apps/server/src/search/index.ts",
       line: 142,
@@ -117,6 +122,21 @@ describe("BadCaseList", () => {
       "是问题-prompt缺失某些提示词",
     );
     expect(wrapper.get(".state-chip.red").text()).toBe("是问题-错误");
+
+    const unanalyzedTitle = wrapper.get(
+      "#problem-row-case-unanalyzed .problem-row-head strong",
+    );
+    expect(unanalyzedTitle.text()).toBe("待归因");
+    expect(unanalyzedTitle.text()).not.toContain("pending attribution");
+    expect(
+      wrapper.get("#problem-row-case-unanalyzed .problem-summary").text(),
+    ).toBe("尚未完成归因分析");
+    expect(
+      wrapper.get("#problem-row-case-error .problem-row-head strong").text(),
+    ).toBe("索引读取失败");
+    expect(
+      wrapper.get("#problem-row-case-error .problem-summary").text(),
+    ).toBe("The index file was missing.");
 
     const firstId = wrapper.get(
       "#problem-row-case-unanalyzed .problem-id",
@@ -213,16 +233,22 @@ describe("BadCaseList", () => {
     expect(wrapper.emitted("select")).toEqual([["case-error"]]);
   });
 
-  it("groups compact card status and target below the reason", () => {
+  it("groups compact card status and target below the title", () => {
     const wrapper = mount(BadCaseList, {
       props: { problems: fiveStates, compact: true },
     });
 
     const card = wrapper.get("#problem-row-case-error");
+    const cardTitle = card.get(".problem-card-title");
+    expect(cardTitle.text()).toBe("索引读取失败");
+    expect(cardTitle.text()).not.toContain("ENOENT");
     expect(card.get(".problem-card-main").text()).not.toContain("是问题-错误");
     expect(card.get(".problem-card-secondary").text()).toContain("是问题-错误");
     expect(card.get(".problem-card-secondary").text()).toContain(
       "skill · deep-research",
+    );
+    expect(card.get(".problem-row").attributes("aria-label")).toBe(
+      "选择问题 case-err：索引读取失败",
     );
   });
 

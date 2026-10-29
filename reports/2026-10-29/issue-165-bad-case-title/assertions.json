@@ -1,0 +1,134 @@
+{
+  "generatedAt": "2026-10-29T11:02:14.723Z",
+  "api": [
+    {
+      "sessionId": "10000000-0000-4000-8000-000000000001",
+      "items": [
+        {
+          "badCaseId": "badcase-synthetic-0001",
+          "title": "检查结论缺少目标文件",
+          "analysis": "analyzed_issue"
+        },
+        {
+          "badCaseId": "badcase-synthetic-0005",
+          "title": "推理步骤越过工具边界",
+          "analysis": "analyzed_issue"
+        }
+      ]
+    },
+    {
+      "sessionId": "10000000-0000-4000-8000-000000000002",
+      "items": [
+        {
+          "badCaseId": "badcase-synthetic-0002",
+          "title": "工作流未汇总检查项",
+          "analysis": "analyzed_nonissue"
+        }
+      ]
+    },
+    {
+      "sessionId": "10000000-0000-4000-8000-000000000004",
+      "items": [
+        {
+          "badCaseId": "badcase-synthetic-0004",
+          "title": "最小会话信息不足",
+          "analysis": "unanalyzed"
+        }
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "API",
+      "name": "API 契约：bad-cases 与 session tree 都带 title",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "三个会话共 4 条问题，title 均非空；tree.badCases 同样带 title。",
+      "evidence": []
+    },
+    {
+      "id": "是问题（analyzed_issue，prompt）",
+      "name": "错误详情 · 是问题（analyzed_issue，prompt）",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "标题行=\"检查结论缺少目标文件\"；正文块=\"子任务「检索工具层四项+综述」在读取前置步骤的检索索引时抛出 ENOENT：da\"…；列表卡=\"检查结论缺少目标文件\"",
+      "evidence": [
+        "05-after-error-detail-issue.png"
+      ]
+    },
+    {
+      "id": "非问题（analyzed_nonissue）",
+      "name": "错误详情 · 非问题（analyzed_nonissue）",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "标题行=\"工作流未汇总检查项\"；正文块=\"review-workflow 串行执行三个检查子任务，但汇总节点只读取了最后一\"…；列表卡=\"工作流未汇总检查项\"",
+      "evidence": [
+        "06-after-error-detail-nonissue.png"
+      ]
+    },
+    {
+      "id": "未分析（unanalyzed）",
+      "name": "错误详情 · 未分析（unanalyzed）",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "标题行=\"最小会话信息不足\"；正文块=\"最小会话只包含一轮用户输入与一条 agent 回复，缺少工具调用与子 agent\"…；列表卡=\"最小会话信息不足\"",
+      "evidence": [
+        "07-after-error-detail-unanalyzed.png"
+      ]
+    },
+    {
+      "id": "LIST",
+      "name": "问题列表卡以短标题为主文本",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "左栏卡片标题来自 title，描述不再进入卡片主文本。",
+      "evidence": [
+        "08-after-problem-list.png"
+      ]
+    },
+    {
+      "id": "GRAPH",
+      "name": "执行流问题卡以短标题为主文本",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "图上卡片文本=\"检查结论缺少目标文件\"。",
+      "evidence": [
+        "09-after-graph-card.png"
+      ]
+    },
+    {
+      "id": "NARROW",
+      "name": "390px 窄屏详情页仍为两级文本",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "标题行与正文块同时可见，无横向溢出。",
+      "evidence": [
+        "10-after-390.png"
+      ]
+    },
+    {
+      "id": "CONSOLE",
+      "name": "浏览器 console 无 error/warning",
+      "status": {
+        "kind": "pass",
+        "label": "PASS"
+      },
+      "detail": "全程无 console error、exception 或 warning。",
+      "evidence": []
+    }
+  ]
+}

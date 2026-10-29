@@ -47,7 +47,7 @@ describe("BadCaseNode", () => {
                 data: {
                   badCaseId: "case-select",
                   shortId: "case-sel",
-                  reason: "index read failed",
+                  title: "index read failed",
                   width: 276,
                   degraded: false,
                   active: false,
@@ -67,6 +67,13 @@ describe("BadCaseNode", () => {
 
     await wrapper.get(".rf-finding").trigger("click");
 
+    const card = wrapper.get(".rf-finding");
+    expect(card.attributes("aria-label")).toBe(
+      "问题 case-sel: index read failed",
+    );
+    expect(card.attributes("title")).toBe("case-select · index read failed");
+    expect(card.get(".finding-title").text()).toBe("index read failed");
+    expect(wrapper.find(".finding-reason").exists()).toBe(false);
     expect(select).toHaveBeenCalledWith("case-select");
     expect(parentClick).not.toHaveBeenCalled();
   });
@@ -77,7 +84,7 @@ describe("BadCaseNode", () => {
         data: {
           badCaseId: "case-width",
           shortId: "case-wid",
-          reason: "a long measured problem reason",
+          title: "a long measured problem title",
           width: 276,
           degraded: false,
           active: false,
@@ -92,6 +99,12 @@ describe("BadCaseNode", () => {
 
     const card = wrapper.get(".rf-finding");
     expect(card.attributes("style")).toContain("width: 276px");
+    expect(card.get(".finding-title").text()).toBe(
+      "a long measured problem title",
+    );
+    expect(card.attributes("title")).toBe(
+      "case-width · a long measured problem title",
+    );
     expect(card.classes().some((name) => name.startsWith("state-"))).toBe(
       false,
     );
@@ -103,7 +116,7 @@ describe("BadCaseNode", () => {
         data: {
           badCaseId: "case-stack",
           shortId: "case-sta",
-          reason: "stacked problem",
+          title: "stacked problem",
           width: 180,
           degraded: false,
           active: false,

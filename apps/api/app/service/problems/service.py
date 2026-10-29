@@ -133,14 +133,18 @@ class ProblemService:
         events = _events_by_agent(snapshot.events)
         result: list[BadCase] = []
         for item in items:
-            degraded = item.bad_case_type is None or item.object_type is None
+            title_degraded = any(
+                warning.code == "EXTERNAL_FIELD_MISSING" and warning.field == "title"
+                for warning in item.warnings
+            )
+            degraded = item.bad_case_type is None or item.object_type is None or title_degraded
             diagnostic_code: str | None = None
             if degraded:
                 diagnostic_code = next(
                     (
                         warning.code
                         for warning in item.warnings
-                        if warning.field in {"bad_case_type", "object_type"}
+                        if warning.field in {"bad_case_type", "object_type", "title"}
                     ),
                     "EXTERNAL_FIELD_INVALID",
                 )
@@ -201,6 +205,7 @@ class ProblemService:
                         session_id=item.session_id,
                         agent_id=item.bad_case_agent_id,
                     ),
+                    title=item.title,
                     reason=item.reason,
                     meta_data=dict(item.meta_data) if item.meta_data is not None else None,
                     analysis=build_bad_case_analysis(

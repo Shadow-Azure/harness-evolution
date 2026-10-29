@@ -331,12 +331,14 @@ erDiagram
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
 | `bad_case_agent_id` | `VARCHAR(64)` | NULL | 上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`；它是锚点计算的起点，不一定是卡片宿主（`discovery + agent` 锚到父节点，见 §7.4） |
 | `title` | `VARCHAR(255)` | NOT NULL | 短标题（外部上报必填；问题列表卡、执行流图问题卡与详情页标题行的主文本） |
-| `reason` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示） |
+| `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示）；对外 DTO 字段名是 `reason` |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
 索引：`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`。
+
+> 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因在 `probe_reports`。
 > `bad_case_session_id` 是根会话 id；`bad_case_agent_id` 是上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`。它记录的是“谁上报/发现”，不是“根因在谁”，也**不等于卡片宿主**：`self + agent` 挂 A 本身；`discovery + agent` 挂 A 的父节点 P 中调用 A 的 Agent 触发点；`skill` 型挂 A 中该 skill 的最后一次触发（`self` 卡片在药丸下方，`discovery` 在上方）。

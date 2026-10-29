@@ -73,7 +73,8 @@ async def _seed_clustered_run(
                     "object_type": "agent",
                     "object_version": None,
                     "bad_case_agent_id": None,
-                    "reason": "subagent发现前置步骤存在问题：工具层检索结果未去重",  # noqa: RUF001
+                    "title": "工具层检索结果未去重",
+                    "bad_case_description": "subagent发现前置步骤存在问题：工具层检索结果未去重",  # noqa: RUF001
                     "meta_data": {},
                     "source": "fixtures",
                     "created_at": NOW,

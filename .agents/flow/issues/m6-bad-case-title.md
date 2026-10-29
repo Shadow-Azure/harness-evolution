@@ -19,7 +19,7 @@ scope:
   - .agents/flow/**
   - .agents/notes/**
 adr:
-  - ../../notes/proposed/feature/2026-10-29-bad-case-title.md
+  - ../../notes/implemented/feature/2026-10-29-bad-case-title.md
 github:
   number: 165
   url: https://github.com/Shadow-Azure/harness-evolution/issues/165
