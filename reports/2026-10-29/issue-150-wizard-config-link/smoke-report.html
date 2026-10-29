@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Issue 150 向导配置入口冒烟</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">COMPUTER USE SMOKE</p>
+    <h1>Issue 150 向导配置入口冒烟</h1>
+    <p class="summary">feat/150-wizard-gear-link head 上完成 /evolution 启动向导与配置入口的真实 Chromium 冒烟：登录进入运行列表、打开向导、第一步无齿轮按钮、提示行「配置页」链接的文案/基线样式/键盘焦点/hover 反馈/点击跳转、返回重开、页头齿轮保留与齿轮往返导航，10 个场景全部通过。已知环境事实（fixture 假域名导致 catalog 422、对象下拉恒为空、版本下拉停留「读取版本…」）如实记录，不影响本轮判定。</p>
+    <span class="meta">2026-10-29 · Windows · Chromium(headless) · 本地 SQLite fixture</span>
+    <div class="metrics"><div class="metric"><b>10</b><span>冒烟场景</span></div><div class="metric"><b>10</b><span>PASS</span></div><div class="metric"><b>0</b><span>WARN</span></div><div class="metric"><b>0</b><span>FAIL</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-29 · Windows · Chromium(headless) · 本地 SQLite fixture</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>PR</dt><dd>#160</dd></div><div class="fact"><dt>Head commit</dt><dd>ec0c96c</dd></div><div class="fact"><dt>页面</dt><dd>/evolution 启动向导 + /evolution/targets</dd></div><div class="fact"><dt>后端</dt><dd>127.0.0.1:8787 · 本地 SQLite fixture（/api/health db ok）</dd></div><div class="fact"><dt>浏览器</dt><dd>Chromium 1200 headless · 1680x1050 @2x</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>10 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>实际断言</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>登录并进入 /evolution</td><td><span class="status pass">PASS</span></td><td>admin 登录后落在 /evolution，运行列表空态文案「当前没有正在执行的自进化」真实可见（正在执行 0、暂无历史记录）。</td><td class="evidence">screenshots/01-login.png</td></tr><tr><td class="num">02</td><td>打开启动向导</td><td><span class="status pass">PASS</span></td><td>点击「＋ 启动自进化」后弹窗标题「启动自进化」渲染，步骤条「① 设置筛选条件」带 on 高亮且「② 确认查询结果并启动」未高亮。</td><td class="evidence">screenshots/02-wizard-open.png</td></tr><tr><td class="num">03</td><td>第一步无齿轮按钮</td><td><span class="status pass">PASS</span></td><td>document.querySelector(&#39;.evolution-modal .gear&#39;) 为 null；实际弹窗容器探测为 .evov .modal，其内 .gear 元素数 0、含 ⚙ 的按钮数 0（弹窗按钮仅 ✕ / skill / agent / 配置页 / 下一步）。</td><td class="evidence">screenshots/03-step1-no-gear.png</td></tr><tr><td class="num">04</td><td>提示行链接视觉</td><td><span class="status pass">PASS</span></td><td>提示行整句「未配置的进化对象不会出现在列表中；点击配置页前往。」完整；「配置页」computed style color=rgb(47, 111, 224)（--blue）、textDecorationLine=underline、textDecorationStyle=solid。</td><td class="evidence">screenshots/04-link-visual.png</td></tr><tr><td class="num">05</td><td>键盘可达 :focus-visible</td><td><span class="status pass">PASS</span></td><td>Tab×5 真实键盘导航到达「配置页」，:focus-visible 生效：outlineStyle=solid、outlineWidth=2px、outlineColor=rgb(47, 111, 224)，非 none。</td><td class="evidence">screenshots/05-link-focus.png</td></tr><tr><td class="num">06</td><td>hover 反馈</td><td><span class="status pass">PASS</span></td><td>page.hover 后 computed color 变为 color(srgb 0.1327 0.3134 0.6325)（≈rgb(34, 80, 161)，即 --blue-deep 的 color-mix 加深色，非原 #2f6fe0），textDecorationThickness 变为 2px。</td><td class="evidence">screenshots/06-link-hover.png</td></tr><tr><td class="num">07</td><td>点击跳转</td><td><span class="status pass">PASS</span></td><td>点击「配置页」后向导弹窗 .evov detached，URL 变为 /evolution/targets，配置页 h1「进化对象配置」可见，跳转窗口内新增 console error 数 0。</td><td class="evidence">screenshots/07-targets-page.png</td></tr><tr><td class="num">08</td><td>返回重开</td><td><span class="status pass">PASS</span></td><td>history back 回 /evolution 后重开向导：弹窗重新渲染、标题与提示行整句完整；对象下拉仅「选择对象」禁用占位、版本下拉停留「读取版本…」——catalog 422 空列表为已知环境事实，不影响本场景判定。</td><td class="evidence">screenshots/08-wizard-reopen.png</td></tr><tr><td class="num">09</td><td>页头齿轮仍在（non-goal）</td><td><span class="status pass">PASS</span></td><td>/evolution 页头 .target-config-entry 存在且 aria-label=配置进化对象（RouterLink 指向 /evolution/targets）。</td><td class="evidence">screenshots/09-header-gear.png</td></tr><tr><td class="num">10</td><td>配置页 ↔ /evolution 页头齿轮往返</td><td><span class="status pass">PASS</span></td><td>关闭向导后执行 齿轮→配置页→返回→齿轮→配置页 一次往返：无报错弹窗（.evov 不存在、无可见 role=alert），往返窗口内新增 console error 0；全程仅既知 catalog 422 网络日志。</td><td class="evidence">screenshots/10-roundtrip.png</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P3 fixture 假域名导致向导对象下拉恒为空（已知环境事实，非缺陷）<br>P4 登录前 /api/auth/refresh 探测产生 1 条 401 console 日志</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P3</span><h3>fixture 假域名导致向导对象下拉恒为空（已知环境事实，非缺陷）</h3><dl><div><dt>Actual</dt><dd>GET /api/catalogs/targets 返回 422；向导对象下拉仅「选择对象」禁用占位，版本下拉停留「读取版本…」。</dd></div><div><dt>Expected</dt><dd>fixtures 的 target repoUrl 为保留假域名 example.invalid，catalog 校验失败属预期；下拉在真实可解析仓库下才出项。</dd></div><div><dt>影响</dt><dd>不阻塞本轮任何场景断言；向导第一步其余控件（类型段、时间段、模型多选）均可交互。</dd></div></dl><div class="fixed">已知环境事实 · 如实记录</div></article><article class="issueCard"><span class="tag">P4</span><h3>登录前 /api/auth/refresh 探测产生 1 条 401 console 日志</h3><dl><div><dt>Actual</dt><dd>未登录冷启动时 auth refresh 探测 401，浏览器记录 1 条网络 error 日志；登录成功后不再出现。</dd></div><div><dt>Expected</dt><dd>无 token 时的既有探测行为，与本 PR 无关。</dd></div><div><dt>影响</dt><dd>场景 07/10 的窗口内均无新增 error，判定不受影响。</dd></div></dl><div class="fixed">既有行为 · 观察记录</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>6 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/02-wizard-open.png" alt="启动向导弹窗第一步"><figcaption><b>02 · 向导打开</b><span>弹窗标题「启动自进化」，步骤条「① 设置筛选条件」高亮，第一步无齿轮按钮。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/04-link-visual.png" alt="提示行链接基线视觉"><figcaption><b>04 · 基线样式</b><span>整句完整，「配置页」为 --blue 下划线 solid 链接（rgb(47, 111, 224)）。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/05-link-focus.png" alt="键盘聚焦后的链接"><figcaption><b>05 · 键盘焦点</b><span>Tab×5 到达链接，:focus-visible 显示 2px 蓝色 outline。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="screenshots/06-link-hover.png" alt="hover 后的链接"><figcaption><b>06 · hover</b><span>hover 后颜色加深（--blue-deep color-mix）且下划线加粗为 2px。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/07-targets-page.png" alt="点击配置页后的配置页"><figcaption><b>07 · 跳转落点</b><span>向导关闭，URL /evolution/targets，h1「进化对象配置」。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/08-wizard-reopen.png" alt="返回后重开的向导"><figcaption><b>08 · 重开向导</b><span>弹窗重新渲染、提示行链接在；对象下拉仅「选择对象」占位（catalog 422 已知事实）。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>3 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>自动覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>向导提示行链接（文案/样式/键盘/hover/跳转）</td><td>组件单测 + 本轮真实浏览器</td><td>五类断言在真实 Chromium 中全部通过。</td><td>保留真实浏览器冒烟作为视觉/交互验收。</td></tr><tr><td>第一步去齿轮（回归守卫）</td><td>组件单测 + 本轮真实浏览器</td><td>真实 DOM 探测确认弹窗内无齿轮入口。</td><td>可把容器类名探测脚本并入 E2E 断言。</td></tr><tr><td>页头齿轮与往返导航</td><td>本轮真实浏览器</td><td>齿轮仍在、往返无报错弹窗与新增 console error。</td><td>后续可补 history 往返的浏览器 E2E。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>冒烟通过</small></div>
+    <article class="card conclusion pass"><p><strong>10 个场景全部 PASS：向导第一步无齿轮、提示行「配置页」链接的样式/键盘可达/hover/跳转与页头齿轮往返全部符合预期，未发现需修复的缺陷。</strong></p><ul><li>catalog 422 空下拉、版本「读取版本…」与登录前 401 探测为已知环境/既有行为，已如实记录且不影响判定。</li><li>向导打开时遮罩会挡住页头齿轮（模态预期行为），往返场景先以 ✕ 关闭向导再执行。</li><li>密码仅运行时从 apps/api/.env 读取并经环境变量传入脚本，未写入任何持久文件或报告。</li></ul></article>
+  </section>
+
+  <p class="foot">Issue #150 · PR #160 · head ec0c96c</p>
+</main>
+</body>
+</html>
