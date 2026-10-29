@@ -1,6 +1,6 @@
 # Agent Note: Click-time wizard validation and the 409 empty-hit mapping
 
-Status: proposed
+Status: implemented
 
 English | [中文](2026-10-29-wizard-step1-validation.md)
 
@@ -18,4 +18,4 @@ Backend returning `200` with an empty result was rejected: the cross-stack contr
 
 ## Consequences
 
-`NO_PROBES_MATCHED` stops being a pure error code and becomes an "empty-hit signal" the frontend actually consumes; the code string enters a de-facto frontend contract (already in the OpenAPI `ErrorCode` enum, but the frontend now branches on it). Any other surface calling `probes/query` must decide independently whether to reuse the same mapping. Disabling both exits in the empty state is redundant defense — the backend launch would refuse anyway — but it spares users a doomed click. Once the fix lands, this Note moves to implemented and stays in sync with the implementation.
+`NO_PROBES_MATCHED` stops being a pure error code and becomes an "empty-hit signal" the frontend actually consumes; the code string enters a de-facto frontend contract (already in the OpenAPI `ErrorCode` enum, but the frontend now branches on it). Any other surface calling `probes/query` must decide independently whether to reuse the same mapping. Disabling both exits in the empty state is redundant defense — the backend launch would refuse anyway — but it spares users a doomed click. This Note is now synchronized with the implementation.

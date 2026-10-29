@@ -1,6 +1,6 @@
 # Agent Note: 向导下一步的点击校验与 409 空命中映射
 
-Status: proposed
+Status: implemented
 
 [English](2026-10-29-wizard-step1-validation.en.md) | 中文
 
@@ -18,4 +18,4 @@ Status: proposed
 
 ## Consequences
 
-`NO_PROBES_MATCHED` 从纯错误码变成前端实际消费的"空命中信号"，错误码字符串进入事实上的前端契约（已在 openapi `ErrorCode` 枚举内，但前端从此依赖它做分支）；其他调用 `probes/query` 的界面若存在，需要自行决定是否复用同一映射。空态下两个出口被禁用是冗余防御——后端 launch 本会拒绝，但禁用让用户不必点了一次才碰壁。修复落地后本 Note 转 implemented 并随实现保持同步。
+`NO_PROBES_MATCHED` 从纯错误码变成前端实际消费的"空命中信号"，错误码字符串进入事实上的前端契约（已在 openapi `ErrorCode` 枚举内，但前端从此依赖它做分支）；其他调用 `probes/query` 的界面若存在，需要自行决定是否复用同一映射。空态下两个出口被禁用是冗余防御——后端 launch 本会拒绝，但禁用让用户不必点了一次才碰壁。本 Note 已随实现同步。

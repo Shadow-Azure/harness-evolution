@@ -616,6 +616,19 @@
 .evo-app .wz-note { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); line-height: 1.55; }
 .evo-app .wz-note .cfg-link { border: none; background: none; padding: 0; font: inherit; color: var(--blue); text-decoration: underline solid; text-underline-offset: 2px; cursor: pointer; }
 .evo-app .wz-note .cfg-link:hover { color: color-mix(in srgb, var(--blue) 72%, #000); text-decoration-thickness: 2px; }
+.evo-app .inp.input-error { border-color: var(--red); }
+.evo-app .inp.input-error:focus { border-color: var(--red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 14%, transparent); }
+.evo-app .field-error { margin-top: 4px; color: var(--red); font-size: 12px; line-height: 1.45; }
+.evo-app .wz-controls { align-items: flex-start; }
+.evo-app .wz-field { display: flex; flex-direction: column; align-items: flex-start; min-width: 130px; }
+.evo-app .wz-field .inp { width: 100%; }
+.evo-app .wz-inline-label { padding-top: 8px; color: var(--text-faint); font-size: 12px; }
+.evo-app .wz-demo { display: flex; align-items: center; gap: 9px; margin-top: 14px; padding: 9px 11px; border: 1px dashed color-mix(in srgb, var(--blue) 36%, transparent); border-radius: 8px; color: var(--text-dim); font-size: 11.5px; background: color-mix(in srgb, var(--blue) 4%, transparent); }
+.evo-app .wz-demo b { color: var(--text); font-weight: 600; }
+.evo-app .wz-empty { display: grid; place-items: center; min-height: 218px; padding: 24px 18px; border: 1px dashed color-mix(in srgb, var(--border) 72%, var(--text-faint)); border-radius: 10px; text-align: center; background: color-mix(in srgb, var(--bg-panel) 58%, transparent); }
+.evo-app .wz-empty-icon { display: grid; place-items: center; width: 38px; height: 38px; margin-bottom: 10px; border-radius: 50%; color: var(--text-faint); background: var(--bg-panel); border: 1px solid var(--border); font-size: 17px; }
+.evo-app .wz-empty h3 { margin: 0; color: var(--text); font-size: 15px; }
+.evo-app .wz-empty p { max-width: 390px; margin: 7px 0 14px; color: var(--text-faint); font-size: 12px; line-height: 1.65; }
 /* 仅聚类页 banner */
   .evo-app .banner { border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); border-radius: 10px; padding: 11px 14px; font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .evo-app .banner .spacer { flex: 1; }</style>
@@ -3200,7 +3213,7 @@ const PHENOMENA = ['检索结果反序列化失败', '输出缺少来源引用',
 
 let wz = null;
 function openWizard(){
-  wz = { step: 1, kind: 'skill', name: 'deep-research', version: 'v2.0.0', from: '2026-08-20', to: '2026-09-10', models: new Set(MODELS.slice(0, 3)), queried: false, page: 1 };
+  wz = { step: 1, kind: 'skill', name: '', version: '', from: '', to: '', models: new Set(MODELS.slice(0, 3)), queried: false, emptyDemo: false, page: 1 };
   renderWizard();
 }
 function wzMatch(){
@@ -3272,10 +3285,13 @@ function wzReportListHTML(){
 function renderWizard(){
   const names = OBJECTS[wz.kind];
   const vers = VERSIONS[wz.name] || ['v1.0.0'];
-  if (!names.includes(wz.name)) wz.name = names[0];
-  if (!vers.includes(wz.version)) wz.version = vers[0];
+  wz.errors = wz.errors || { name: false, version: false, from: false, to: false };
+  if (wz.name && !names.includes(wz.name)) wz.name = names[0];
+  if (wz.version && !vers.includes(wz.version)) wz.version = vers[0];
   const m = wz.queried ? wzMatch() : null;
-  const isStep2 = wz.step === 2 && !!m;
+  const isStep2 = wz.step === 2 && (!!wz.emptyDemo || !!m);
+  const inputState = field => wz.errors[field] ? ' class="inp input-error" aria-invalid="true"' : ' class="inp"';
+  const errorHTML = (field, text) => wz.errors[field] ? `<div class="field-error" id="wz-${field}-error">${text}</div>` : '';
   $modal.innerHTML = `<div class="evov" data-action="close-wizard-bg">
     <div class="modal">
       <div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="close-wizard">✕</button></div>
@@ -3288,37 +3304,94 @@ function renderWizard(){
           ${[...wz.models].map(x => `<span class="chip model">${esc(x)}</span>`).join('')}
           <button class="btn sm" data-action="wz-back" style="margin-left:auto">← 修改条件</button>
         </div>
-        ${wzReportListHTML()}` : `
+        ${wz.emptyDemo ? `
+        <div class="wz-empty">
+          <div>
+            <div class="wz-empty-icon">∅</div>
+            <h3>未找到匹配的问题报告</h3>
+            <p>当前条件下没有可纳入分析的问题报告。请调整进化对象、版本、时间段或模型筛选条件后重新查询。</p>
+            <button class="btn" data-action="wz-back">← 修改条件</button>
+          </div>
+        </div>` : wzReportListHTML()}` : `
         <div class="f-row"><div class="f-label">进化对象 <span class="req">*</span></div>
-          <div class="f-inline">
+          <div class="f-inline wz-controls">
             <div class="seg">
               <button class="${wz.kind === 'skill' ? 'active' : ''}" data-action="wz-kind" data-v="skill">skill</button>
               <button class="${wz.kind === 'agent' ? 'active' : ''}" data-action="wz-kind" data-v="agent">agent</button>
             </div>
-            <select class="inp" id="wz-name">${names.map(n => `<option ${n === wz.name ? 'selected' : ''}>${n}</option>`).join('')}</select>
-            <span style="color:var(--text-faint);font-size:12px">版本</span>
-            <select class="inp" id="wz-version">${vers.map(v => `<option ${v === wz.version ? 'selected' : ''}>${v}</option>`).join('')}</select>
+            <div class="wz-field">
+              <select${inputState('name')} id="wz-name" aria-describedby="wz-name-error"><option value="" ${wz.name ? '' : 'selected'}>选择对象</option>${names.map(n => `<option ${n === wz.name ? 'selected' : ''}>${n}</option>`).join('')}</select>
+              ${errorHTML('name', '请选择进化对象')}
+            </div>
+            <span class="wz-inline-label">版本</span>
+            <div class="wz-field">
+              <select${inputState('version')} id="wz-version" aria-describedby="wz-version-error"><option value="" ${wz.version ? '' : 'selected'}>版本</option>${vers.map(v => `<option ${v === wz.version ? 'selected' : ''}>${v}</option>`).join('')}</select>
+              ${errorHTML('version', '请选择版本')}
+            </div>
           </div>
           <div class="wz-note">未配置的进化对象不会出现在列表中；点击<button type="button" class="cfg-link" data-action="wz-target-config">配置页</button>前往。</div>
         </div>
         <div class="f-row"><div class="f-label">时间段（session 启动时间） <span class="req">*</span></div>
-          <div class="f-inline"><input class="inp" type="date" id="wz-from" value="${wz.from}"> <span style="color:var(--text-faint)">~</span> <input class="inp" type="date" id="wz-to" value="${wz.to}"></div>
+          <div class="f-inline wz-controls">
+            <div class="wz-field">
+              <input${inputState('from')} type="date" id="wz-from" aria-describedby="wz-from-error" value="${wz.from}">
+              ${errorHTML('from', !wz.from ? '请选择开始时间' : '起始时间不能晚于结束时间')}
+            </div>
+            <span class="wz-inline-label">~</span>
+            <div class="wz-field">
+              <input${inputState('to')} type="date" id="wz-to" aria-describedby="wz-to-error" value="${wz.to}">
+              ${errorHTML('to', !wz.to ? '请选择结束时间' : '起始时间不能晚于结束时间')}
+            </div>
+          </div>
         </div>
         <div class="f-row"><div class="f-label">模型（多选，只纳入这些模型跑出的报告）</div>
           <div class="pick">${MODELS.map(x => `<span class="opt ${wz.models.has(x) ? 'on' : ''}" data-action="wz-model" data-v="${x}">${x}</span>`).join('')}</div>
         </div>
+        <label class="wz-demo"><input type="checkbox" id="wz-empty-demo" ${wz.emptyDemo ? 'checked' : ''}> <span><b>演示：零命中空态</b> · 勾选后点击下一步，进入第二步空态</span></label>
         <div style="font-size:11.5px;color:var(--text-faint)">确认条件后点「下一步」执行查询并核对命中的问题报告。</div>`}
       </div>
       <div class="modal-foot">
         ${isStep2 ? `
         <button class="btn" data-action="wz-back">← 上一步</button>
-        <button class="btn accent" data-action="wz-cluster">启动问题聚类分析</button>
-        <button class="btn primary" data-action="wz-start">启动自进化 →</button>` : `
+        <button class="btn accent" data-action="wz-cluster"${wz.emptyDemo ? ' disabled' : ''}>启动问题聚类分析</button>
+        <button class="btn primary" data-action="wz-start"${wz.emptyDemo ? ' disabled' : ''}>启动自进化 →</button>` : `
         <button class="btn primary" data-action="wz-query">下一步：查询匹配报告 →</button>`}
       </div>
     </div>
   </div>`;
 }
+function clearWzError(field){
+  if (!wz?.errors || !wz.errors[field]) return;
+  wz.errors[field] = false;
+  const input = document.getElementById('wz-' + field);
+  if (input) {
+    input.classList.remove('input-error');
+    input.removeAttribute('aria-invalid');
+  }
+  const error = document.getElementById('wz-' + field + '-error');
+  if (error) error.hidden = true;
+}
+
+function validateWzForm(){
+  syncWzInputs();
+  const rangeInvalid = !!wz.from && !!wz.to && wz.from > wz.to;
+  wz.errors = {
+    name: !wz.name,
+    version: !wz.version,
+    from: !wz.from || rangeInvalid,
+    to: !wz.to || rangeInvalid,
+  };
+  const invalid = Object.values(wz.errors).some(Boolean);
+  if (invalid) {
+    wz.queried = false;
+    wz.emptyDemo = false;
+    wz.step = 1;
+    wz.page = 1;
+    renderWizard();
+  }
+  return !invalid;
+}
+
 function wzSelection(){ return { kind: wz.kind, name: wz.name, version: wz.version, from: wz.from, to: wz.to, models: [...wz.models] }; }
 
 function templateClusters(kind){
@@ -3370,9 +3443,9 @@ document.addEventListener('click', e => {
   else if (a === 'launch') openWizard();
   else if (a === 'close-wizard') { $modal.innerHTML = ''; }
   else if (a === 'close-wizard-bg') { if (e.target === el) $modal.innerHTML = ''; }
-  else if (a === 'wz-kind') { wz.kind = el.dataset.v; wz.name = OBJECTS[wz.kind][0]; wz.version = VERSIONS[wz.name][0]; wz.queried = false; renderWizard(); }
+  else if (a === 'wz-kind') { wz.kind = el.dataset.v; wz.name = OBJECTS[wz.kind][0]; wz.version = VERSIONS[wz.name][0]; wz.queried = false; wz.errors = { name: false, version: false, from: false, to: false }; renderWizard(); }
   else if (a === 'wz-model') { const v = el.dataset.v; wz.models.has(v) ? wz.models.delete(v) : wz.models.add(v); wz.queried = false; renderWizard(); }
-  else if (a === 'wz-query') { syncWzInputs(); wz.queried = true; wz.step = 2; wz.page = 1; renderWizard(); }
+  else if (a === 'wz-query') { if (!validateWzForm()) return; wz.emptyDemo = !!document.getElementById('wz-empty-demo')?.checked; wz.queried = !wz.emptyDemo; wz.step = 2; wz.page = 1; renderWizard(); }
   else if (a === 'wz-back') { wz.step = 1; renderWizard(); }
   else if (a === 'wz-prev') { wz.page = Math.max(1, (wz.page || 1) - 1); renderWizard(); }
   else if (a === 'wz-next') { wz.page = (wz.page || 1) + 1; renderWizard(); }
@@ -3406,10 +3479,17 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   if (!wz) return;
-  if (e.target.id === 'wz-name') { wz.name = e.target.value; wz.version = (VERSIONS[wz.name] || ['v1.0.0'])[0]; wz.queried = false; renderWizard(); }
-  else if (e.target.id === 'wz-version') { wz.version = e.target.value; wz.queried = false; }
-  else if (e.target.id === 'wz-from') { wz.from = e.target.value; wz.queried = false; }
-  else if (e.target.id === 'wz-to') { wz.to = e.target.value; wz.queried = false; }
+  if (e.target.id === 'wz-name') { wz.name = e.target.value; wz.version = (VERSIONS[wz.name] || ['v1.0.0'])[0]; wz.queried = false; clearWzError('name'); clearWzError('version'); renderWizard(); }
+  else if (e.target.id === 'wz-version') { wz.version = e.target.value; wz.queried = false; clearWzError('version'); }
+  else if (e.target.id === 'wz-from') { wz.from = e.target.value; wz.queried = false; clearWzError('from'); }
+  else if (e.target.id === 'wz-to') { wz.to = e.target.value; wz.queried = false; clearWzError('to'); }
+});
+document.addEventListener('input', e => {
+  if (!wz) return;
+  if (e.target.id === 'wz-from') { wz.from = e.target.value; clearWzError('from'); }
+  else if (e.target.id === 'wz-to') { wz.to = e.target.value; clearWzError('to'); }
+  else if (e.target.id === 'wz-name') clearWzError('name');
+  else if (e.target.id === 'wz-version') clearWzError('version');
 });
 document.addEventListener('change', e => {
   if (!targetDialog || !e.target.dataset.targetField) return;

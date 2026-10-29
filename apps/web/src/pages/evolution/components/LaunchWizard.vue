@@ -13,6 +13,7 @@ import {
   startClusterPreview,
   startEvolutionRun,
 } from "../../../api/evolutionRuns";
+import { ApiError } from "../../../api/http";
 import { getModelCatalog, getTargetCatalog } from "../../../api/catalogs";
 import { queryKeys } from "../../../api/queryKeys";
 import { useEvolutionTargetVersions } from "../../../composables/useEvolutionTargets";
@@ -52,10 +53,17 @@ const windowFrom = ref("");
 const windowTo = ref("");
 const selectedModels = reactive(new Set<string>());
 const preview = ref<ProbeQueryResult | null>(null);
+const emptyResult = ref(false);
 const previewError = ref("");
 const launching = ref(false);
 const launchError = ref("");
 const page = ref(1);
+const fieldErrors = reactive({
+  target: false,
+  version: false,
+  from: false,
+  to: false,
+});
 
 const WIZARD_TITLE_ID = "launch-wizard-title";
 const closeButton = ref<HTMLButtonElement | null>(null);
@@ -125,6 +133,19 @@ watch(
   { immediate: true },
 );
 
+watch(targetId, () => {
+  fieldErrors.target = false;
+});
+watch(targetVersion, () => {
+  fieldErrors.version = false;
+});
+watch(windowFrom, () => {
+  fieldErrors.from = false;
+});
+watch(windowTo, () => {
+  fieldErrors.to = false;
+});
+
 const versionError = computed(() => {
   const error = versions.error.value;
   if (!error) {
@@ -171,6 +192,7 @@ function toggleModel(model: string): void {
 function resetPreview(): void {
   step.value = 1;
   preview.value = null;
+  emptyResult.value = false;
   previewError.value = "";
   page.value = 1;
 }
@@ -193,18 +215,43 @@ function windowInvalid(): boolean {
   return Boolean(windowFrom.value && windowTo.value && windowFrom.value > windowTo.value);
 }
 
+/** Show every failed requirement beside its own control before querying. */
+function validateCondition(): boolean {
+  const rangeInvalid = windowInvalid();
+  fieldErrors.target = !selectedTarget.value;
+  fieldErrors.version = !targetVersion.value;
+  fieldErrors.from = !windowFrom.value || rangeInvalid;
+  fieldErrors.to = !windowTo.value || rangeInvalid;
+  return !fieldErrors.target && !fieldErrors.version && !fieldErrors.from && !fieldErrors.to;
+}
+
 /** Run the probe preview and advance to step 2 when hits exist. */
 async function runQuery(): Promise<void> {
-  if (!selectedTarget.value || windowInvalid()) {
+  if (!validateCondition()) {
+    preview.value = null;
+    emptyResult.value = false;
+    previewError.value = "";
+    page.value = 1;
+    step.value = 1;
     return;
   }
   previewError.value = "";
   page.value = 1;
   try {
     preview.value = await queryProbeHits(condition());
+    emptyResult.value = false;
     step.value = 2;
   } catch (error) {
+    if (error instanceof ApiError && error.status === 409 && error.code === "NO_PROBES_MATCHED") {
+      preview.value = null;
+      emptyResult.value = true;
+      previewError.value = "";
+      page.value = 1;
+      step.value = 2;
+      return;
+    }
     preview.value = null;
+    emptyResult.value = false;
     previewError.value = error instanceof Error ? error.message : String(error);
   }
 }
@@ -223,7 +270,7 @@ async function changePage(next: number): Promise<void> {
 }
 
 async function launch(mode: "full" | "cluster_only"): Promise<void> {
-  if (!selectedTarget.value || launching.value) {
+  if (!selectedTarget.value || emptyResult.value || launching.value) {
     return;
   }
   launching.value = true;
@@ -319,9 +366,9 @@ const versionPlaceholder = computed(() =>
           <span :class="{ on: step === 2 }">② 确认查询结果并启动</span>
         </div>
 
-        <template v-if="step === 2 && preview">
+        <template v-if="step === 2 && (preview || emptyResult)">
           <div class="wz-condstrip">
-            <span class="chip kind">{{ targetType }}:{{ preview.items[0]?.probeObject ?? selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
+            <span class="chip kind">{{ targetType }}:{{ preview?.items[0]?.probeObject ?? selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
             <span
               v-if="windowFrom || windowTo"
               class="chip mono"
@@ -339,7 +386,10 @@ const versionPlaceholder = computed(() =>
               ← 修改条件
             </button>
           </div>
-          <div class="match-summary">
+          <div
+            v-if="preview"
+            class="match-summary"
+          >
             <div class="wz-stats">
               <span class="st"><b>{{ preview.summary.sessions }}</b><span>命中 session</span></span>
               <span class="st"><b>{{ preview.summary.badCases }}</b><span>问题报告</span></span>
@@ -451,6 +501,22 @@ const versionPlaceholder = computed(() =>
           >
             {{ launchError }}
           </p>
+          <div
+            v-else-if="emptyResult"
+            class="wz-empty"
+            data-testid="wizard-empty"
+          >
+            <div>
+              <div
+                aria-hidden="true"
+                class="wz-empty-icon"
+              >
+                ∅
+              </div>
+              <h3>未找到匹配的问题报告</h3>
+              <p>当前条件下没有可纳入分析的问题报告。请调整进化对象、版本、时间段或模型筛选条件后重新查询。</p>
+            </div>
+          </div>
         </template>
 
         <template v-else>
@@ -475,52 +541,75 @@ const versionPlaceholder = computed(() =>
                   agent
                 </button>
               </div>
-              <select
-                class="inp"
-                data-testid="wizard-target"
-                :value="targetId ?? ''"
-                @change="selectTargetId(($event.target as HTMLSelectElement).value)"
-              >
-                <option
-                  value=""
-                  disabled
+              <div class="wz-field">
+                <select
+                  class="inp"
+                  :class="{ 'input-error': fieldErrors.target }"
+                  data-testid="wizard-target"
+                  :value="targetId ?? ''"
+                  :aria-invalid="fieldErrors.target ? 'true' : undefined"
+                  aria-describedby="wizard-target-error"
+                  @change="selectTargetId(($event.target as HTMLSelectElement).value)"
                 >
-                  {{ catalogs.isPending.value ? "读取对象…" : "选择对象" }}
-                </option>
-                <option
-                  v-for="target in catalogTargets"
-                  :key="target.id"
-                  :value="target.id"
+                  <option value="">
+                    {{ catalogs.isPending.value ? "读取对象…" : "选择对象" }}
+                  </option>
+                  <option
+                    v-for="target in catalogTargets"
+                    :key="target.id"
+                    :value="target.id"
+                  >
+                    {{ target.name }}
+                  </option>
+                </select>
+                <p
+                  v-if="fieldErrors.target"
+                  id="wizard-target-error"
+                  data-testid="wizard-target-error"
+                  class="field-error"
+                  role="alert"
                 >
-                  {{ target.name }}
-                </option>
-              </select>
+                  请选择进化对象
+                </p>
+              </div>
               <span class="f-hint">版本</span>
-              <select
-                v-model="targetVersion"
-                class="inp"
-                data-testid="wizard-version"
-                @change="versionPinned = true"
-              >
-                <option
-                  value=""
-                  disabled
+              <div class="wz-field">
+                <select
+                  v-model="targetVersion"
+                  class="inp"
+                  :class="{ 'input-error': fieldErrors.version }"
+                  data-testid="wizard-version"
+                  :aria-invalid="fieldErrors.version ? 'true' : undefined"
+                  aria-describedby="wizard-version-error"
+                  @change="versionPinned = true"
                 >
-                  {{ versionPlaceholder }}
-                </option>
-                <option
-                  v-for="version in versionOptions"
-                  :key="version"
-                  :value="version"
+                  <option value="">
+                    {{ versionPlaceholder }}
+                  </option>
+                  <option
+                    v-for="version in versionOptions"
+                    :key="version"
+                    :value="version"
+                  >
+                    {{ version }}
+                  </option>
+                </select>
+                <p
+                  v-if="fieldErrors.version"
+                  id="wizard-version-error"
+                  data-testid="wizard-version-error"
+                  class="field-error"
+                  role="alert"
                 >
-                  {{ version }}
-                </option>
-              </select>
+                  请选择版本
+                </p>
+              </div>
             </div>
             <p
               v-if="versions.isError.value"
+              id="wizard-version-load-error"
               class="wizard-error"
-              data-testid="wizard-version-error"
+              data-testid="wizard-version-load-error"
               role="alert"
             >
               版本列表读取失败<span v-if="versionError">：{{ versionError }}</span>。
@@ -546,28 +635,49 @@ const versionPlaceholder = computed(() =>
             <div class="f-label">
               时间段（session 启动时间） <span class="req">*</span>
             </div>
-            <div class="f-inline">
-              <input
-                v-model="windowFrom"
-                class="inp"
-                type="date"
-                data-testid="wizard-from"
-              >
-              <span class="f-hint">~</span>
-              <input
-                v-model="windowTo"
-                class="inp"
-                type="date"
-                data-testid="wizard-to"
-              >
+            <div class="f-inline wz-controls">
+              <div class="wz-field">
+                <input
+                  v-model="windowFrom"
+                  class="inp"
+                  :class="{ 'input-error': fieldErrors.from }"
+                  type="date"
+                  data-testid="wizard-from"
+                  :aria-invalid="fieldErrors.from ? 'true' : undefined"
+                  aria-describedby="wizard-from-error"
+                >
+                <p
+                  v-if="fieldErrors.from"
+                  id="wizard-from-error"
+                  data-testid="wizard-from-error"
+                  class="field-error"
+                  role="alert"
+                >
+                  {{ windowFrom ? "起始时间不能晚于结束时间" : "请选择开始时间" }}
+                </p>
+              </div>
+              <span class="wz-inline-label">~</span>
+              <div class="wz-field">
+                <input
+                  v-model="windowTo"
+                  class="inp"
+                  :class="{ 'input-error': fieldErrors.to }"
+                  type="date"
+                  data-testid="wizard-to"
+                  :aria-invalid="fieldErrors.to ? 'true' : undefined"
+                  aria-describedby="wizard-to-error"
+                >
+                <p
+                  v-if="fieldErrors.to"
+                  id="wizard-to-error"
+                  data-testid="wizard-to-error"
+                  class="field-error"
+                  role="alert"
+                >
+                  {{ windowTo ? "起始时间不能晚于结束时间" : "请选择结束时间" }}
+                </p>
+              </div>
             </div>
-            <p
-              v-if="windowInvalid()"
-              class="wizard-error"
-              role="alert"
-            >
-              起始时间不能晚于结束时间
-            </p>
           </div>
           <div class="f-row">
             <div class="f-label">
@@ -600,7 +710,7 @@ const versionPlaceholder = computed(() =>
         </template>
       </div>
       <div class="modal-foot">
-        <template v-if="step === 2 && preview">
+        <template v-if="step === 2 && (preview || emptyResult)">
           <button
             class="btn"
             type="button"
@@ -612,7 +722,7 @@ const versionPlaceholder = computed(() =>
             class="btn accent"
             type="button"
             data-testid="wizard-cluster"
-            :disabled="launching"
+            :disabled="launching || emptyResult"
             @click="launch('cluster_only')"
           >
             启动问题聚类分析
@@ -621,7 +731,7 @@ const versionPlaceholder = computed(() =>
             class="btn primary"
             type="button"
             data-testid="wizard-start"
-            :disabled="launching"
+            :disabled="launching || emptyResult"
             @click="launch('full')"
           >
             启动自进化 →
@@ -632,7 +742,6 @@ const versionPlaceholder = computed(() =>
             class="btn primary"
             type="button"
             data-testid="wizard-next"
-            :disabled="!selectedTarget || !targetVersion || windowInvalid()"
             @click="runQuery"
           >
             下一步：查询匹配报告 →
@@ -804,6 +913,27 @@ const versionPlaceholder = computed(() =>
   flex-wrap: wrap;
 }
 
+.wz-controls {
+  align-items: flex-start;
+}
+
+.wz-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 130px;
+}
+
+.wz-field .inp {
+  width: 100%;
+}
+
+.wz-inline-label {
+  padding-top: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
 .f-hint,
 .f-note {
   color: var(--text-faint);
@@ -853,6 +983,22 @@ input.inp {
 select.inp:focus,
 input.inp:focus {
   border-color: var(--blue);
+}
+
+.input-error {
+  border-color: var(--red);
+}
+
+.input-error:focus {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.field-error {
+  margin: 4px 0 0;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .cfg-link {
@@ -1043,6 +1189,44 @@ table.rep td.id {
   margin: 10px 0 0;
   color: var(--red);
   font-size: 12px;
+}
+
+.wz-empty {
+  display: grid;
+  place-items: center;
+  min-height: 218px;
+  padding: 24px 18px;
+  border: 1px dashed color-mix(in srgb, var(--border) 72%, var(--text-faint));
+  border-radius: 10px;
+  text-align: center;
+  background: color-mix(in srgb, var(--bg-panel) 58%, transparent);
+}
+
+.wz-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  color: var(--text-faint);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  font-size: 17px;
+}
+
+.wz-empty h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.wz-empty p {
+  max-width: 390px;
+  margin: 7px 0 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 @media (max-width: 640px) {
