@@ -13,6 +13,7 @@ scope:
   - packages/contracts/**
   - apps/api/**
   - apps/web/**
+  - tests/e2e/**
   - fixtures/**
   - reports/**
   - plans/fullstack-design/**

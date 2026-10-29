@@ -33,10 +33,14 @@ def upgrade() -> None:
         return
 
     with op.batch_alter_table("bad_cases") as batch_op:
+        # MySQL 的 CHANGE COLUMN 不带 NULL/NOT NULL 时会把列改成可空，所以改名时
+        # 显式带上 existing_nullable / nullable，SQLite batch 重建表同样受益。
         batch_op.alter_column(
             "reason",
             new_column_name="bad_case_description",
             existing_type=sa.Text(),
+            existing_nullable=False,
+            nullable=False,
         )
     with op.batch_alter_table("bad_cases") as batch_op:
         batch_op.add_column(sa.Column("title", sa.String(255), nullable=True))
@@ -67,4 +71,6 @@ def downgrade() -> None:
             "bad_case_description",
             new_column_name="reason",
             existing_type=sa.Text(),
+            existing_nullable=False,
+            nullable=False,
         )
