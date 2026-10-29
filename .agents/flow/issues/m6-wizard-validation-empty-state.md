@@ -16,6 +16,7 @@ scope:
   - plans/**
   - .agents/flow/**
   - .agents/notes/**
+  - reports/**
 adr: []
 github:
   number: 161
