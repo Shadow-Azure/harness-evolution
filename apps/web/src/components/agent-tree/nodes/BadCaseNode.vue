@@ -21,15 +21,15 @@ function onSelect() {
     class="rf-finding"
     :class="{ active: data.active, degraded: data.degraded }"
     :data-bad-case-id="data.badCaseId"
-    :aria-label="`问题 ${data.shortId}: ${data.reason}`"
+    :aria-label="`问题 ${data.shortId}: ${data.title}`"
     :aria-pressed="Boolean(data.active)"
     :style="{ width: `${data.width}px` }"
-    :title="`${data.badCaseId} · ${data.reason}`"
+    :title="`${data.badCaseId} · ${data.title}`"
     type="button"
     @click.stop="onSelect"
   >
     <span class="finding-id">{{ data.shortId }}</span>
-    <span class="finding-reason">{{ data.reason }}</span>
+    <span class="finding-title">{{ data.title }}</span>
     <span
       v-if="data.degraded"
       class="finding-degraded"
@@ -111,7 +111,7 @@ function onSelect() {
   font-weight: 650;
 }
 
-.finding-reason {
+.finding-title {
   min-width: 0;
   overflow: hidden;
   font-size: 10.5px;

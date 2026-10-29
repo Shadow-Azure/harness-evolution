@@ -843,6 +843,9 @@ export interface components {
         /**
          * BadCase
          * @description Complete public problem card used by list and detail routes.
+         *
+         *     ``title`` is the short display title and ``reason`` the description body;
+         *     ``reason`` maps from the ``bad_cases.bad_case_description`` column.
          */
         BadCase: {
             analysis: components["schemas"]["BadCaseAnalysis"];
@@ -881,6 +884,8 @@ export interface components {
             sessionId: string;
             /** Sessiontitle */
             sessionTitle: string;
+            /** Title */
+            title: string;
         };
         /**
          * BadCaseAgent
@@ -2052,6 +2057,9 @@ export interface components {
         /**
          * SessionBadCase
          * @description One read-only problem connected to the execution tree.
+         *
+         *     ``title`` is the short display title and ``reason`` the description body;
+         *     ``reason`` maps from the ``bad_cases.bad_case_description`` column.
          */
         SessionBadCase: {
             anchor: components["schemas"]["BadCaseAnchor"];
@@ -2074,6 +2082,8 @@ export interface components {
             objectVersion: string | null;
             /** Reason */
             reason: string;
+            /** Title */
+            title: string;
         };
         /**
          * SessionEvent

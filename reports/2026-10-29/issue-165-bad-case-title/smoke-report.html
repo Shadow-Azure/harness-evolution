@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>issue #165 冒烟测试：bad_cases 短标题 + 描述正文</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · 错误详情页</p>
+    <h1>issue #165 冒烟测试：bad_cases 短标题 + 描述正文</h1>
+    <p class="summary">在真实前后端（FastAPI + Vite + SQLite 临时数据目录）上验证 bad_cases 短标题 title 与描述正文 reason 的两级渲染：错误详情页标题行显示短标题、正文块显示完整描述；问题列表卡与执行流图问题卡主文本为短标题；未分析 / 非问题 / 是问题三种状态与 390px 窄屏均通过，浏览器 console 无异常。</p>
+    <span class="meta">2026-10-29 · 分支 feat/165-bad-case-title · 工作区未提交版本 · Windows 11 / Chrome 155 / Node 22.19 / Python 3.12</span>
+    <div class="metrics"><div class="metric"><b>9</b><span>冒烟断言场景</span></div><div class="metric"><b>3</b><span>归因状态覆盖</span></div><div class="metric"><b>2</b><span>视口宽度（1408 / 390）</span></div><div class="metric"><b>0</b><span>console 异常</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-29 · 分支 feat/165-bad-case-title · 工作区未提交版本 · Windows 11 / Chrome 155 / Node 22.19 / Python 3.12</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>Shadow-Azure/harness-evolution#165</dd></div><div class="fact"><dt>分支 / 基线</dt><dd>feat/165-bad-case-title ← main@f37010d</dd></div><div class="fact"><dt>后端</dt><dd>FastAPI + SQLite（临时 HE_DATA_DIR，fixtures m2-synthetic 演示数据）</dd></div><div class="fact"><dt>前端</dt><dd>Vite dev server + Vue 3，1408×960 与 390×844</dd></div><div class="fact"><dt>数据形态</dt><dd>seed 后在临时库把 3 条问题的描述改成真实长描述（不改仓库文件）</dd></div><div class="fact"><dt>证据脚本</dt><dd>reports/2026-10-29/issue-165-bad-case-title/collect-before.mjs / collect-smoke.mjs</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>9 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>API 契约：bad-cases 与 session tree 带 title</td><td><span class="status pass">PASS</span></td><td>三个演示会话共 4 条问题，items[].title 与 tree.badCases[].title 均非空；reason 仍是完整描述正文。</td><td class="evidence">assertions.json</td></tr><tr><td class="num">02</td><td>错误详情 · 是问题（analyzed_issue / prompt）</td><td><span class="status pass">PASS</span></td><td>标题行 =「检查结论缺少目标文件」，正文块 = 长描述全文，二级文本不重复。</td><td class="evidence">05-after-error-detail-issue.png</td></tr><tr><td class="num">03</td><td>错误详情 · 非问题（analyzed_nonissue）</td><td><span class="status pass">PASS</span></td><td>标题行 =「工作流未汇总检查项」，正文块 = 长描述全文。</td><td class="evidence">06-after-error-detail-nonissue.png</td></tr><tr><td class="num">04</td><td>错误详情 · 未分析（unanalyzed）</td><td><span class="status pass">PASS</span></td><td>标题行 =「最小会话信息不足」，正文块 = 长描述全文；未分析态不再只有占位文案。</td><td class="evidence">07-after-error-detail-unanalyzed.png</td></tr><tr><td class="num">05</td><td>问题列表卡主文本为短标题</td><td><span class="status pass">PASS</span></td><td>左栏卡片标题来自 title；长描述不再进入卡片主文本。</td><td class="evidence">08-after-problem-list.png</td></tr><tr><td class="num">06</td><td>执行流图问题卡主文本为短标题</td><td><span class="status pass">PASS</span></td><td>图上卡片文本 =「检查结论缺少目标文件」，卡片宽度仍在 150–400px 钳制内。</td><td class="evidence">09-after-graph-card.png</td></tr><tr><td class="num">07</td><td>执行流说明行使用短标题</td><td><span class="status pass">PASS</span></td><td>「仅显示 #1 · 检查结论缺少目标文件」；修复前同一位置是整段长描述。</td><td class="evidence">05-after-error-detail-issue.png</td></tr><tr><td class="num">08</td><td>390px 窄屏两级文本同时可见</td><td><span class="status pass">PASS</span></td><td>详情面板滚入视口后标题行与正文块同时可见，无横向溢出。</td><td class="evidence">10-after-390.png</td></tr><tr><td class="num">09</td><td>浏览器 console 无 error / warning</td><td><span class="status pass">PASS</span></td><td>整轮冒烟（含页面刷新、三态切换、窄屏切换）无 console error、无未捕获异常。</td><td class="evidence">assertions.json</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>10 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-prototype-error-detail.png" alt="原型错误详情页"><figcaption><b>原型基准 · 整页</b><span>原型 FindingDescription：标题行「重复加载」+ 正文块完整描述 + 事实 chips。</span></figcaption></figure><figure class=""><img loading="lazy" src="screenshots/02-prototype-ed-panel.png" alt="原型问题描述面板特写"><figcaption><b>原型基准 · 面板</b><span>`.ed-title` 15px/650 与 `.ed-detail` 12.5px/1.7/--text-dim 的二级文本层级。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-current-error-detail.png" alt="修复前错误详情页"><figcaption><b>修复前 · 详情页</b><span>修复前（main@f37010d）：整段长描述被当作标题，问题描述 tab 没有正文块，执行流说明行同样重复长文本。</span></figcaption></figure><figure class=""><img loading="lazy" src="screenshots/04-current-problem-list.png" alt="修复前问题列表"><figcaption><b>修复前 · 列表</b><span>修复前左栏卡片主文本是整段长描述。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-after-error-detail-issue.png" alt="修复后错误详情页（是问题）"><figcaption><b>修复后 · 是问题</b><span>标题行短标题 + 正文块完整描述；列表卡、图上问题卡与执行流说明行都改用短标题。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-after-error-detail-nonissue.png" alt="修复后错误详情页（非问题）"><figcaption><b>修复后 · 非问题</b><span>analyzed_nonissue：同样的两级渲染，状态 chip 与非问题原因互不影响。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/07-after-error-detail-unanalyzed.png" alt="修复后错误详情页（未分析）"><figcaption><b>修复后 · 未分析</b><span>unanalyzed：标题行仍是短标题，正文块仍是完整描述。</span></figcaption></figure><figure class=""><img loading="lazy" src="screenshots/08-after-problem-list.png" alt="修复后问题列表"><figcaption><b>修复后 · 列表</b><span>左栏卡片标题为短标题，描述只在详情正文块出现。</span></figcaption></figure><figure class=""><img loading="lazy" src="screenshots/09-after-graph-card.png" alt="修复后执行流问题卡"><figcaption><b>修复后 · 图上问题卡</b><span>图上问题卡主文本为短标题，宽度按 `${shortId} ${title}` 测量并保持 150–400px 钳制。</span></figcaption></figure><figure class=""><img loading="lazy" src="screenshots/10-after-390.png" alt="修复后 390px 窄屏"><figcaption><b>修复后 · 390px</b><span>窄屏下标题行与正文块同时可见，无横向溢出。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>范围</th><th>自动化覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>DB 迁移 0010（reason→bad_case_description、title 回填、NOT NULL）</td><td>pytest test_database.py -k bad_case_title（SQLite 真实迁移链 + downgrade）</td><td>升级/降级均按设计执行，存量行回填非空标题。</td><td>MySQL 8 lane 由 CI 执行（本机无 3306 实例）。</td></tr><tr><td>契约与读模型（title/degraded/派生标题）</td><td>pytest m4-01 / m4-02 / m2-06 / test_openapi；契约 contract:check</td><td>BadCase 与 SessionBadCase 均 required title；缺 title 时用描述首句派生并标记 degraded。</td><td>保持契约再生的 CI 门禁。</td></tr><tr><td>Web 两级渲染与卡片主文本</td><td>vitest ProblemDescription / Index / BadCaseList / BadCaseNode / layout</td><td>三种归因状态、degraded、卡宽钳制都有确定性断言。</td><td>保留本冒烟作为真实浏览器回归证据。</td></tr><tr><td>窄屏与 console</td><td>真实 Chrome 1408 / 390 冒烟</td><td>两级文本在窄屏同时可见，console 干净。</td><td>后续改错误详情页布局时重跑 collect-smoke.mjs。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>全部冒烟场景通过</small></div>
+    <article class="card conclusion pass"><p><strong>issue #165 的两级文本在真实前后端与三种归因状态下成立；列表卡、执行流图问题卡、执行流说明行均以短标题为主文本；窄屏与 console 无异常。</strong></p><ul><li>Windows 本地脚本门禁（verify:docs / verify:flow / lint:docs）因 #163（m6-11）的 import.meta.url 守卫在 Windows 下假绿，本次改用脚本库直跑 + CI 全量校验，见 PR 说明。</li><li>本机无 MySQL 8 实例，mysql lane 未在本地执行；由 CI 的 mysql job 覆盖。</li><li>e2e 浏览器套件未纳入本次冒烟，真实浏览器证据由本报告与 collect-smoke.mjs 承担。</li></ul></article>
+  </section>
+
+  <p class="foot">生成方式：node reports/2026-10-29/issue-165-bad-case-title/collect-smoke.mjs → report-data.json → .agents/skills/computer-use-smoke-reporting/scripts/render-smoke-report.mjs。截图与断言来自同一次冒烟运行。</p>
+</main>
+</body>
+</html>

@@ -141,11 +141,20 @@ class BadCaseFixture(FixtureModel):
     object_type: Literal["skill", "agent"]
     object_version: str | None = Field(default=None, max_length=64)
     bad_case_agent_id: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=2_000)
     meta_data: dict[str, object] | None = None
     source: str | None = Field(default=None, max_length=64)
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        """Require a non-blank short title for every demo problem card."""
+        if not value.strip():
+            raise ValueError("title must not be blank")
+        return value
 
 
 class ProbeFixture(FixtureModel):

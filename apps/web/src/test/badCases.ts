@@ -18,7 +18,9 @@ export function badCaseFixture(
     objectVersion: "1.0.0",
     anchor: { agentId: "agent-a", eventIndex: 0 },
     badCaseAgent: { sessionId: "root-1", agentId: "agent-a" },
-    reason: "skill output lacks provenance",
+    title: "缺少来源标注",
+    reason:
+      "skill 输出没有标注来源，汇总阶段无法回溯每条结论的出处。",
     metaData: null,
     degraded: false,
     diagnosticCode: null,

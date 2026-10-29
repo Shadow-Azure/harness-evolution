@@ -442,13 +442,13 @@ function badCaseHandles(
 /**
  * Measure a problem card's prototype-clamped single-line width.
  * @param shortId Display-safe problem identifier.
- * @param reason Human-readable problem summary.
+ * @param title Human-readable problem title.
  * @param measure Injected text measurement function.
  * @returns Rounded border-box width.
  */
 export function badCaseCardWidth(
   shortId: string,
-  reason: string,
+  title: string,
   measure: MeasureText = defaultMeasure,
 ): number {
   return Math.round(
@@ -456,7 +456,7 @@ export function badCaseCardWidth(
       BADCASE_CARD_MIN_W,
       Math.min(
         BADCASE_CARD_MAX_W,
-        measure(`${shortId} ${reason}`, FONT_BADCASE) + 26,
+        measure(`${shortId} ${title}`, FONT_BADCASE) + 26,
       ),
     ),
   );
@@ -520,8 +520,8 @@ export function buildBadCaseOverlay(
     const detail = detailById.get(anchor.badCaseId);
     if (!item) return null;
     const shortId = shortBadCaseId(anchor.badCaseId);
-    const reason = detail?.reason ?? item.reason;
-    const width = badCaseCardWidth(shortId, reason, measure);
+    const title = detail?.title ?? item.title;
+    const width = badCaseCardWidth(shortId, title, measure);
     const node: BadCaseLayoutNode = {
       id: `badcase:${anchor.badCaseId}`,
       type: "badcase",
@@ -529,7 +529,7 @@ export function buildBadCaseOverlay(
       data: {
         badCaseId: anchor.badCaseId,
         shortId,
-        reason,
+        title,
         width,
         degraded: detail?.degraded ?? false,
       },
@@ -562,7 +562,7 @@ export function buildBadCaseOverlay(
       const detail = detailById.get(anchor.badCaseId);
       const width = badCaseCardWidth(
         shortBadCaseId(anchor.badCaseId),
-        detail?.reason ?? item.reason,
+        detail?.title ?? item.title,
         measure,
       );
       const y =
@@ -587,7 +587,7 @@ export function buildBadCaseOverlay(
       const detail = detailById.get(anchor.badCaseId);
       const width = badCaseCardWidth(
         shortBadCaseId(anchor.badCaseId),
-        detail?.reason ?? item.reason,
+        detail?.title ?? item.title,
         measure,
       );
       const x = Math.max(8, anchor.x - width / 2);

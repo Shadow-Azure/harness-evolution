@@ -13,13 +13,14 @@ scope:
   - packages/contracts/**
   - apps/api/**
   - apps/web/**
+  - tests/e2e/**
   - fixtures/**
   - reports/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr:
-  - ../../notes/proposed/feature/2026-10-29-bad-case-title.md
+  - ../../notes/implemented/feature/2026-10-29-bad-case-title.md
 github:
   number: 165
   url: https://github.com/Shadow-Azure/harness-evolution/issues/165
@@ -46,7 +47,7 @@ github:
 
 ## 实现内容
 
-- `bad_cases` 增加 `title VARCHAR(255) NOT NULL`：`apps/api/app/db/models/domain.py` 同步列，alembic 新增迁移；存量行按 [06 §1.2](../../../plans/fullstack-design/06-database-design.md) 由上游重灌，或一次性回填（取 `reason` 首句截断）。
+- `bad_cases` 增加 `title VARCHAR(255) NOT NULL`：`apps/api/app/db/models/domain.py` 同步列，alembic 新增迁移；存量行按 [06 §1.2](../../../plans/fullstack-design/06-database-design.md) 由上游重灌，或一次性回填（取 `reason` 前 255 字符）。
 - `packages/contracts` 的 BadCase / SessionBadCase schema 增加 `title`，`pnpm contract:generate` 再生 `openapi.json` 与生成类型。
 - API 装配层透出 `title`：repository 读取、service 读模型、路由响应；字段缺失的降级展示沿用现有 `degraded` 机制。
 - Web：错误详情页标题行渲染 `title` 并新增正文块渲染 `reason`；问题列表卡（`BadCaseList.vue`）与执行流图问题卡（`BadCaseNode.vue`、`layout.ts` 卡宽测量）主文本改用 `title`。

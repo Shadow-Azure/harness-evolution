@@ -27,6 +27,7 @@ from app.service.bad_cases.schemas import (
     ProbeReportLookup,
     ProbeReportReadModel,
 )
+from app.service.bad_cases.title import derive_title
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,7 @@ class BadCaseService:
             ("skill", "agent"),
         )
         object_name = _safe_text(row.object_name)
+        title, title_derived = derive_title(row.title, row.reason)
         reason = _safe_text(row.reason)
         meta_data = _safe_mapping(row.meta_data)
         if bad_case_type is None:
@@ -259,6 +261,14 @@ class BadCaseService:
                 "external issue object type is invalid",
                 bad_case_id=row.bad_case_id,
                 field="object_type",
+            )
+            mutable_warnings.append(warning)
+        if title_derived:
+            warning = _warning(
+                "EXTERNAL_FIELD_MISSING",
+                "external issue title is missing",
+                bad_case_id=row.bad_case_id,
+                field="title",
             )
             mutable_warnings.append(warning)
         if object_name is None or reason is None:
@@ -285,6 +295,7 @@ class BadCaseService:
             object_type=object_type,
             object_version=_safe_text(row.object_version),
             bad_case_agent_id=_safe_text(row.bad_case_agent_id),
+            title=title,
             reason=reason or "",
             meta_data=meta_data,
             source=_safe_text(row.source),

@@ -321,11 +321,13 @@ describe("session browser", () => {
     const problems = [
       badCaseFixture({
         badCaseId: "case-first",
-        reason: "first problem",
+        title: "首个问题",
+        reason: "first problem: 用于验证列表与图上的选中联动。",
       }),
       badCaseFixture({
         badCaseId: "case-second",
-        reason: "second problem",
+        title: "第二个问题",
+        reason: "second problem: 用于验证选中状态的同步。",
         analysis: {
           probeId: "probe-second",
           attributeType: "prompt",

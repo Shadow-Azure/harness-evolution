@@ -298,6 +298,7 @@
       "objectType": "agent",
       "objectVersion": "synthetic-1",
       "badCaseAgentId": "agent-s1-review-0001",
+      "title": "检查结论缺少目标文件",
       "reason": "合成示例：检查结论缺少目标文件。",
       "metaData": {
         "fixture": true
@@ -314,6 +315,7 @@
       "objectType": "agent",
       "objectVersion": "synthetic-1",
       "badCaseAgentId": "agent-s2-worker-0001",
+      "title": "工作流未汇总检查项",
       "reason": "合成示例：工作流未汇总检查项。",
       "metaData": {
         "fixture": true
@@ -330,6 +332,7 @@
       "objectType": "skill",
       "objectVersion": "synthetic-1",
       "badCaseAgentId": null,
+      "title": "技能输出格式不稳定",
       "reason": "合成示例：技能输出格式不稳定。",
       "metaData": {
         "fixture": true
@@ -345,6 +348,7 @@
       "objectName": "claude",
       "objectType": "agent",
       "badCaseAgentId": null,
+      "title": "最小会话信息不足",
       "reason": "合成示例：最小会话信息不足。",
       "metaData": {
         "fixture": true
@@ -361,6 +365,7 @@
       "objectType": "agent",
       "objectVersion": "synthetic-1",
       "badCaseAgentId": "agent-s1-review-0001",
+      "title": "推理步骤越过工具边界",
       "reason": "合成示例：推理步骤越过工具边界。",
       "metaData": {
         "fixture": true

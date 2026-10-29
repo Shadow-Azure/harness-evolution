@@ -399,13 +399,13 @@ Index.vue
 
 ```text
 Index.vue（grid: 340px 1fr）
-├── ErrorSidebar.vue（错误列表：全部错误 + bad_case 卡）
-└── ErrorMain.vue
-    ├── ErrorHeader.vue（meta + 动作）
-    ├── ErrorFlow.vue（Vue Flow，复用 AgentTree 的布局与节点，仅过滤 bad_case 节点）
-    └── ErrorTabs.vue
-        ├── BadCaseDescription.vue（问题描述 tab：reason + metaData）
-        └── ProbeReport.vue（归因 tab：probe 结论与推导）
+├── components/ErrorSidebar.vue（错误列表：全部错误 + bad_case 卡；卡牌复用 components/bad-cases/BadCaseList.vue）
+└── main.error-main
+    ├── header.error-head（meta + 返回 Session）
+    ├── section.flow-panel（Vue Flow，复用 components/agent-tree/AgentTree.vue，仅过滤 bad_case 节点）
+    └── section.detail-panel
+        ├── components/ProblemDescription.vue（问题描述 tab：title 短标题作标题行 + reason 描述正文作正文块 + metaData）
+        └── components/AttributionReport.vue（归因 tab：probe 结论与推导）
 ```
 
 数据：页面初始化 `useSessionBadCases(sid)` 拿全部 bad_case（含 `analysis.status/attributeType/probeId`，左栏 5 态 chip 不再逐条取 probe）；选中后 `useBadCase(badCaseId)` + `useBadCaseAnalysis(badCaseId)`，归因 tab 再 `useProbe(probeId)` 取详情。

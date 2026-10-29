@@ -188,7 +188,9 @@ export const demoNestedTree = {
       objectType: "skill",
       objectName: "deep-research",
       objectVersion: "1.0.0",
-      reason: "skill output lacks provenance",
+      title: "缺少来源标注",
+      reason:
+        "skill 输出没有标注来源，汇总阶段无法回溯每条结论的出处。",
       anchor: { agentId: "agent-a", eventIndex: 0 },
     },
     {
@@ -198,7 +200,9 @@ export const demoNestedTree = {
       objectType: "agent",
       objectName: "子任务 C",
       objectVersion: null,
-      reason: "task exceeded its duration budget",
+      title: "任务超出时长预算",
+      reason:
+        "子任务执行时间超过时长预算，被上层中止后未产出结果。",
       anchor: { agentId: "agent-a", eventIndex: 1 },
     },
     {
@@ -208,7 +212,9 @@ export const demoNestedTree = {
       objectType: "skill",
       objectName: "deep-research",
       objectVersion: "1.0.0",
-      reason: "finder inspected the preceding step",
+      title: "发现者未复验前置步骤",
+      reason:
+        "发现者回看了前一个步骤，但未在生产路径上复验该问题。",
       anchor: { agentId: "main", eventIndex: 0 },
     },
     {
@@ -218,7 +224,9 @@ export const demoNestedTree = {
       objectType: "agent",
       objectName: "主会话",
       objectVersion: null,
-      reason: "no stable trigger",
+      title: "触发点无法定位",
+      reason:
+        "上报缺少可定位的触发点，问题卡回退到宿主节点右侧。",
       anchor: { agentId: "main", eventIndex: -1 },
     },
   ],

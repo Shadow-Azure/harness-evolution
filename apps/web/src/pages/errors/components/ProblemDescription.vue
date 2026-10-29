@@ -53,7 +53,7 @@ const reportId = computed(() =>
       <span
         id="problem-description-title"
         class="problem-title"
-      >{{ problem.reason }}</span>
+      >{{ problem.title }}</span>
       <a
         v-if="reportId"
         class="report-id"
@@ -82,7 +82,16 @@ const reportId = computed(() =>
         数据降级
       </span>
     </header>
-    <div v-if="facts.length">
+    <div
+      class="problem-detail"
+      data-testid="problem-detail"
+    >
+      {{ problem.reason }}
+    </div>
+    <div
+      v-if="facts.length"
+      class="facts-block"
+    >
       <div class="facts">
         <span
           v-for="fact in facts"
@@ -111,15 +120,22 @@ const reportId = computed(() =>
 <style scoped>
 .description {
   display: grid;
-  gap: 9px;
+  gap: 0;
   padding: 14px 18px 18px;
 }
 
 .problem-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   flex-wrap: wrap;
+}
+
+.problem-detail {
+  margin-top: 9px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  line-height: 1.7;
 }
 
 .problem-number,
@@ -203,6 +219,10 @@ const reportId = computed(() =>
   font-size: 10px;
 }
 
+.facts-block {
+  margin-top: 6px;
+}
+
 .facts {
   display: flex;
   gap: 5px;
@@ -236,12 +256,13 @@ const reportId = computed(() =>
 }
 
 .diagnostic {
-  margin: 0;
+  margin: 8px 0 0;
   color: var(--orange);
   font-size: 11.5px;
 }
 
 .association {
+  margin-top: 8px;
   color: var(--text-faint);
   font-size: 11px;
   line-height: 1.6;

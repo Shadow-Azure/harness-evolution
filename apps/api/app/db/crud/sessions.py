@@ -80,7 +80,11 @@ class EventRecord:
 
 @dataclass(frozen=True, slots=True)
 class BadCaseRecord:
-    """One read-only externally owned problem report."""
+    """One read-only externally owned problem report.
+
+    ``reason`` maps the renamed ``bad_case_description`` column; the public DTO
+    keeps the shorter ``reason`` field name.
+    """
 
     bad_case_id: str
     bad_case_session_id: str
@@ -89,6 +93,7 @@ class BadCaseRecord:
     object_type: str
     object_version: str | None
     bad_case_agent_id: str | None
+    title: str
     reason: str
 
 
@@ -180,7 +185,10 @@ def _bad_case_record(row: Any) -> BadCaseRecord:
         bad_case_agent_id=(
             str(row["bad_case_agent_id"]) if row["bad_case_agent_id"] is not None else None
         ),
-        reason=str(row["reason"]),
+        title=str(row["title"]) if row["title"] is not None else "",
+        reason=(
+            str(row["bad_case_description"]) if row["bad_case_description"] is not None else ""
+        ),
     )
 
 

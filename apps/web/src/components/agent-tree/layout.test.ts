@@ -15,6 +15,7 @@ import {
   MIN_STEP,
   ROW_STEP,
   badCaseAnchors,
+  badCaseCardWidth,
   badCasePath,
   buildBadCaseOverlay,
   buildGraph,
@@ -522,6 +523,7 @@ describe("agent-tree graph layout", () => {
     expect(cards.get("case-self-skill")).toMatchObject({
       data: {
         shortId: "case-sel",
+        title: demoNestedTree.badCases[0]!.title,
         width: expect.any(Number),
       },
     });
@@ -812,16 +814,23 @@ describe("agent-tree graph layout", () => {
       },
     ];
     const cases = [
-      { ...demoNestedTree.badCases[0]!, badCaseId: "case-short", reason: "x" },
+      {
+        ...demoNestedTree.badCases[0]!,
+        badCaseId: "case-short",
+        title: "x",
+        reason: "a much longer description body that must not drive the card width",
+      },
       {
         ...demoNestedTree.badCases[0]!,
         badCaseId: "case-medium",
-        reason: "a readable medium-length problem summary",
+        title: "a readable medium-length problem title",
+        reason: "a much longer description body that must not drive the card width",
       },
       {
         ...demoNestedTree.badCases[0]!,
         badCaseId: "case-long",
-        reason: "x".repeat(300),
+        title: "x".repeat(300),
+        reason: "a much longer description body that must not drive the card width",
       },
     ];
 
@@ -834,6 +843,67 @@ describe("agent-tree graph layout", () => {
     expect(widths.get("case-medium")).toBeGreaterThan(150);
     expect(widths.get("case-medium")).toBeLessThan(400);
     expect(widths.get("case-long")).toBe(400);
+  });
+
+  it("prefers the problem detail title over the tree title and measures it", () => {
+    const anchor = {
+      badCaseId: "case-title-source",
+      hostAgentId: "main",
+      eventIndex: 0,
+      kind: "discovery" as const,
+      side: "above" as const,
+      x: 100,
+      y: 100,
+    };
+    const treeCase = {
+      ...demoNestedTree.badCases[0]!,
+      badCaseId: "case-title-source",
+      title: "tree title",
+    };
+    const detail = badCaseFixture({
+      ...treeCase,
+      title: "detail title from the full record",
+    });
+
+    const fromTree = buildBadCaseOverlay([anchor], [treeCase]);
+    const fromDetail = buildBadCaseOverlay([anchor], [treeCase], [detail]);
+
+    expect(fromTree.badCaseNodes[0]!.data.title).toBe("tree title");
+    expect(fromDetail.badCaseNodes[0]!.data.title).toBe(
+      "detail title from the full record",
+    );
+    expect(fromDetail.badCaseNodes[0]!.data.width).toBe(
+      badCaseCardWidth("case-tit", "detail title from the full record"),
+    );
+  });
+
+  it("propagates the degraded flag from the full problem record", () => {
+    const anchor = {
+      badCaseId: "case-degraded-source",
+      hostAgentId: "main",
+      eventIndex: 0,
+      kind: "discovery" as const,
+      side: "above" as const,
+      x: 100,
+      y: 100,
+    };
+    const treeCase = {
+      ...demoNestedTree.badCases[0]!,
+      badCaseId: "case-degraded-source",
+      title: "tree title",
+    };
+    const detail = badCaseFixture({
+      ...treeCase,
+      title: "derived title",
+      degraded: true,
+    });
+
+    const fromTree = buildBadCaseOverlay([anchor], [treeCase]);
+    const fromDetail = buildBadCaseOverlay([anchor], [treeCase], [detail]);
+
+    expect(fromTree.badCaseNodes[0]!.data.degraded).toBe(false);
+    expect(fromDetail.badCaseNodes[0]!.data.degraded).toBe(true);
+    expect(fromDetail.badCaseNodes[0]!.data.title).toBe("derived title");
   });
 
   it("moves cards away from nearby anchors until their rectangles no longer overlap", () => {
@@ -860,7 +930,7 @@ describe("agent-tree graph layout", () => {
     const cases = ["case-left", "case-right"].map((badCaseId) => ({
       ...demoNestedTree.badCases[0]!,
       badCaseId,
-      reason: "same host with a long enough reason to overlap horizontally",
+      title: "same host with a long enough title to overlap horizontally",
     }));
 
     const { badCaseNodes } = buildBadCaseOverlay(anchors, cases);
@@ -910,7 +980,7 @@ describe("agent-tree graph layout", () => {
     const cases = ["case-a", "case-b"].map((badCaseId) => ({
       ...demoNestedTree.badCases[0]!,
       badCaseId,
-      reason: "stable placement reason",
+      title: "stable placement title",
     }));
 
     const normal = buildBadCaseOverlay(anchors, cases);

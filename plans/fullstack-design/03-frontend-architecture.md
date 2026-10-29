@@ -209,11 +209,11 @@ App.vue
 |---|---|---|
 | `agent-tree/AgentTree.vue` | React 岛 `<App sid findingsBudget>` | Vue Flow 画布容器，负责挂载、fitView、筛选 |
 | `agent-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 按真实边占用生成的 pill 上下锚点 |
-| `agent-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（badCaseId 截短 + reason 短标签） |
+| `agent-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（主文本 `title` 短标题 + badCaseId 截短） |
 | `agent-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
 | `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
-| `bad-cases/BadCaseCard.vue` | `.finding-item` | 列表卡（reason/状态/事实/上报对象） |
-| `bad-cases/ProbeReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
+| `bad-cases/BadCaseList.vue` | `.finding-item` | 列表卡（主文本 `title` 短标题；`reason` 描述正文用于详情面板；状态/事实/上报对象） |
+| `pages/errors/components/AttributionReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
 | `pages/evolution/components/Stepper.vue` | `stepperHTML` | 6 步进度，可点击已到达节点 |
 | `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片 |
 | `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 两步 Modal |

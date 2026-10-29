@@ -13,13 +13,14 @@ scope:
   - packages/contracts/**
   - apps/api/**
   - apps/web/**
+  - tests/e2e/**
   - fixtures/**
   - reports/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr:
-  - ../../notes/proposed/feature/2026-10-29-bad-case-title.md
+  - ../../notes/implemented/feature/2026-10-29-bad-case-title.md
 github:
   number: 165
   url: https://github.com/Shadow-Azure/harness-evolution/issues/165
@@ -46,7 +47,7 @@ The prototype error-detail page renders every problem as two text levels: a shor
 
 ## Implementation
 
-- Add `title VARCHAR(255) NOT NULL` to `bad_cases`: sync the column in `apps/api/app/db/models/domain.py` and add an alembic migration; existing rows are re-imported by the upstream system per [06 §1.2](../../../plans/fullstack-design/06-database-design.md) or backfilled once (first sentence of `reason`, truncated).
+- Add `title VARCHAR(255) NOT NULL` to `bad_cases`: sync the column in `apps/api/app/db/models/domain.py` and add an alembic migration; existing rows are re-imported by the upstream system per [06 §1.2](../../../plans/fullstack-design/06-database-design.md) or backfilled once (first 255 characters of `reason`).
 - Add `title` to the BadCase / SessionBadCase schemas in `packages/contracts` and regenerate `openapi.json` plus generated types with `pnpm contract:generate`.
 - Expose `title` through the API assembly: repository reads, service read models, and route responses; degraded display keeps using the existing `degraded` mechanism.
 - Web: render `title` as the heading plus a new body block for `reason` on the error-detail page; switch the problem list card (`BadCaseList.vue`) and the graph problem card (`BadCaseNode.vue`, card-width measuring in `layout.ts`) to `title` as primary text.

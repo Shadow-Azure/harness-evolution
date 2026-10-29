@@ -97,7 +97,8 @@ def _case_row(entry: dict[str, Any]) -> dict[str, Any]:
         "object_type": entry.get("objectType", "skill"),
         "object_version": entry.get("objectVersion"),
         "bad_case_agent_id": entry.get("badCaseAgentId"),
-        "reason": entry["reason"],
+        "title": entry["title"],
+        "bad_case_description": entry["reason"],
         "meta_data": {},
         "source": "fixtures",
         "created_at": NOW,
@@ -288,6 +289,7 @@ async def seed_external_corpus(database: Database) -> None:
                         "badCaseType": "discovery",
                         "objectName": "deep-research",
                         "objectVersion": "v2.0.0",
+                        "title": "检索索引读取失败",
                         "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",  # noqa: RUF001
                     },
                 ),

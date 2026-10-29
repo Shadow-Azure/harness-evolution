@@ -127,6 +127,7 @@ async def test_session_problem_list_has_full_public_shape_and_anchor(
             "sessionId": SESSION_1,
             "agentId": "agent-s1-review-0001",
         },
+        "title": "检查结论缺少目标文件",
         "reason": "合成示例：检查结论缺少目标文件。",  # noqa: RUF001
         "metaData": {"fixture": True},
         "analysis": {
@@ -405,5 +406,35 @@ async def test_invalid_problem_presentation_returns_degraded_placeholder(
     assert listed_case["degraded"] is True
     assert listed_case["diagnosticCode"] == "EXTERNAL_FIELD_INVALID"
     assert listed_case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1}
+    assert detail.status_code == 200
+    assert detail.json() == listed_case
+
+
+async def test_blank_title_is_derived_and_reported_as_degraded(
+    problem_api: Any,
+) -> None:
+    """A blank external title derives from the body and stays diagnosable."""
+    async with problem_api.database.transaction() as session:
+        await session.execute(
+            update(bad_cases).where(bad_cases.c.bad_case_id == CASE_1).values(title="   "),
+        )
+
+    listed = await problem_api.client.get(
+        f"/api/sessions/{SESSION_1}/bad-cases",
+        headers=problem_api.authorization,
+    )
+    detail = await problem_api.client.get(
+        f"/api/bad-cases/{CASE_1}",
+        headers=problem_api.authorization,
+    )
+
+    assert listed.status_code == 200
+    listed_case = next(item for item in listed.json()["items"] if item["badCaseId"] == CASE_1)
+    assert listed_case["title"] == "合成示例：检查结论缺少目标文件。"  # noqa: RUF001
+    assert listed_case["degraded"] is True
+    assert listed_case["diagnosticCode"] == "EXTERNAL_FIELD_MISSING"
+    # A derived title must not fall back to the main-node placeholder anchor:
+    # the reporter anchor stays identical to the tree read model.
+    assert listed_case["anchor"] == {"agentId": "agent-s1-review-0001", "eventIndex": -1}
     assert detail.status_code == 200
     assert detail.json() == listed_case

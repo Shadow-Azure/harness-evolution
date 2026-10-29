@@ -56,7 +56,7 @@
 | F3 | Session 列表：搜索（标题/仓库）、状态 chips（全部/完成/有失败）、排序（最新/用户轮次/消息/子 agent）、卡片密度条（失败/百消息、问题/百消息） | [浏览器页](../14-15-ui-prototype/harness-evolution.html) | 真实 | `GET /api/sessions` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionList.vue` |
 | F4 | 会话概览：标题、meta、状态徽章、9 项统计条、CTA（打开错误详情） | 同上 | 真实 | `GET /api/sessions/{sid}` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionOverview.vue` |
 | F5 | Agent 执行流图：主会话/子 agent/workflow/forked skill 节点、节点链（skill/subagent/workflow 触发 + ×N message 间隔）、问题卡（`self` / `discovery` 两类锚定）、折叠组 | 同上 | **真实**：结构来自轨迹表，问题卡来自外部 `bad_cases` | `GET /api/sessions/{sid}/tree` | `agents`、`agent_events`、`bad_cases` | `components/agent-tree/*` |
-| F6 | 会话内问题列表：bad_case 列表（reason 文案、状态、上报对象、metaData 事实）、定位联动、`badCaseId` 深链 | 同上 | 真实（外部写入，只读） | `GET /api/sessions/{sid}/bad-cases` | `bad_cases`、`bad_case_analysis` | `components/bad-cases/BadCaseList.vue` |
+| F6 | 会话内问题列表：bad_case 列表（title 短标题、reason 描述正文、状态、上报对象、metaData 事实）、定位联动、`badCaseId` 深链 | 同上 | 真实（外部写入，只读） | `GET /api/sessions/{sid}/bad-cases` | `bad_cases`、`bad_case_analysis` | `components/bad-cases/BadCaseList.vue` |
 | ~~F7~~ | ~~时间线：用户轮次分组、类型过滤、消息卡、展开/折叠~~ **已裁撤（2026-10-22）：完整时间线由外部平台承担**；本服务只保留 `user_turns` 作为用户输入锚点（prompt + 行号/message 偏移），供未来执行流展示；消息/内容块不落库 | — | — | —（不提供读接口） | `user_turns`（内部） | — |
 | F8 | 错误详情与归因：左栏 bad_case 卡（5 种展示状态）、执行流按问题过滤、问题描述/归因分析双 Tab、结论横幅、根因对象、推导过程（Markdown）、非问题原因 | 同上 | 真实（`bad_cases` + 外部归因 `probe_reports`，只读） | `GET /api/bad-cases/{badCaseId}`、`/analysis`、`GET /api/probes/{probeId}` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `pages/errors/*` |
 
@@ -94,7 +94,7 @@
 |---|---|---|---|
 | 会话列表/会话概览/Agent 会话树结构 | `SESSIONS` / `TREE` 常量 | 读 `trajectory_payloads` → 归一化业务表；上游 pull 同管线 | 外部脚本写 payload；本服务归一化 |
 | Agent 执行流图上的问题卡 | `SESSIONS.findings` + 生成逻辑 | 外部 `bad_cases`（只读） | 上游上报/归因系统 |
-| 问题的文案与事实 | `lastDefs` / `skillDef` / `reportedDef` 模板 | `bad_cases.reason` + `meta_data` | 同上 |
+| 问题的文案与事实 | `lastDefs` / `skillDef` / `reportedDef` 模板 | `bad_cases.title` + `bad_cases.bad_case_description` + `meta_data` | 同上 |
 | 归因结论/分类/根因对象/推导 | `ERROR_META` | 外部 `probe_reports` + `bad_case_analysis`（只读） | 上游归因系统 |
 | 问题报告（R-） | `REPORTS` 常量 | **取消**：probe 即归因报告 | — |
 | 自进化 runs / 簇 / patch / eval / commit / final | `RUNS` / `PATCH` 常量 | runs 与簇由本服务写；patch/eval/final 为占位 | 后续接真实执行器 |

@@ -124,7 +124,7 @@ defineExpose({ scrollToProblem });
                 >
                   {{ shortBadCaseId(problem.badCaseId) }}
                 </a>
-                <strong class="problem-card-title">{{ problem.reason }}</strong>
+                <strong class="problem-card-title">{{ problem.title }}</strong>
               </div>
               <div class="problem-card-secondary">
                 <span
@@ -166,7 +166,7 @@ defineExpose({ scrollToProblem });
               class="problem-row"
               :class="{ active: problem.badCaseId === activeBadCaseId }"
               :data-bad-case-id="problem.badCaseId"
-              :aria-label="`选择问题 ${shortBadCaseId(problem.badCaseId)}：${problem.reason}`"
+              :aria-label="`选择问题 ${shortBadCaseId(problem.badCaseId)}：${problem.title}`"
               :aria-pressed="problem.badCaseId === activeBadCaseId"
               type="button"
               @click="emit('select', problem.badCaseId)"
@@ -197,7 +197,7 @@ defineExpose({ scrollToProblem });
               @click="emit('select', problem.badCaseId)"
             >
               <span class="problem-row-head">
-                <strong>{{ problem.reason }}</strong>
+                <strong>{{ problem.title }}</strong>
                 <span
                   class="state-chip"
                   :class="badCaseState(problem.analysis.displayState).tone"

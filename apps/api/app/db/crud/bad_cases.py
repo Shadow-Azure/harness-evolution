@@ -17,7 +17,11 @@ from app.utils.time import as_shanghai
 
 @dataclass(frozen=True, slots=True)
 class BadCaseRow:
-    """One externally owned issue row at the database boundary."""
+    """One externally owned issue row at the database boundary.
+
+    ``reason`` maps the renamed ``bad_case_description`` column; the public DTO
+    keeps the shorter ``reason`` field name.
+    """
 
     bad_case_id: str
     bad_case_session_id: str
@@ -26,6 +30,7 @@ class BadCaseRow:
     object_type: str
     object_version: str | None
     bad_case_agent_id: str | None
+    title: str
     reason: str
     meta_data: object | None
     source: str | None
@@ -146,7 +151,8 @@ def _row_bad_case(mapping: RowMapping) -> BadCaseRow:
         object_type=mapping["object_type"],
         object_version=_text(mapping["object_version"]),
         bad_case_agent_id=_text(mapping["bad_case_agent_id"]),
-        reason=mapping["reason"],
+        title=mapping["title"],
+        reason=mapping["bad_case_description"],
         meta_data=mapping["meta_data"],
         source=_text(mapping["source"]),
         created_at=as_shanghai(mapping["created_at"]),

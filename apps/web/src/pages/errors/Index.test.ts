@@ -58,9 +58,16 @@ const issueAnalysis = {
   result: { summary: "The index file was missing." },
 };
 
+const nonIssueTitle = "响应可追溯";
+const nonIssueReason = "traceable response: 每条结论都能回指到来源。";
+const issueTitle = "索引读取失败";
+const issueReason =
+  "index read failed: 读取检索索引时抛出 ENOENT，该轮结论没有来源。";
+
 const nonIssue = badCaseFixture({
   badCaseId: "case-nonissue",
-  reason: "traceable response",
+  title: nonIssueTitle,
+  reason: nonIssueReason,
   analysis: {
     status: "analyzed_nonissue",
     probeId: "probe-nonissue",
@@ -75,7 +82,8 @@ const nonIssue = badCaseFixture({
 
 const issue = badCaseFixture({
   badCaseId: "case-error",
-  reason: "index read failed",
+  title: issueTitle,
+  reason: issueReason,
   objectType: "agent",
   objectName: "Explore",
   metaData: { file: "src/index.ts", line: 42, error: "ENOENT" },
@@ -223,10 +231,17 @@ describe("error detail page", () => {
     expect(router.currentRoute.value.fullPath).toBe(
       "/sessions/root-1/errors?case=case-error&tab=desc",
     );
-    expect(wrapper.text()).toContain("index read failed");
+    expect(wrapper.text()).toContain(issueTitle);
+    expect(wrapper.get(".description .problem-title").text()).toBe(issueTitle);
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      issueReason,
+    );
     expect(
       wrapper.get(".description").text().match(/index read failed/g),
     ).toHaveLength(1);
+    expect(wrapper.get(".flow-head span").text()).toBe(
+      `仅显示 #2 · ${issueTitle}`,
+    );
     const detailId = wrapper.get(".description .problem-id");
     expect(detailId.text()).toBe("case-err");
     expect(detailId.attributes("title")).toBe("case-error");
@@ -294,7 +309,8 @@ describe("error detail page", () => {
   it("uses the prototype's exact prompt category and status copy", async () => {
     const promptIssue = badCaseFixture({
       badCaseId: "case-prompt",
-      reason: "prompt missed validation",
+      title: "prompt 缺少校验",
+      reason: "prompt missed validation: prompt 没有要求校验输出结构。",
       analysis: {
         status: "analyzed_issue",
         probeId: "probe-prompt",
@@ -331,6 +347,12 @@ describe("error detail page", () => {
     );
     expect(wrapper.get(".classification .state-chip").text()).toBe(
       "prompt缺失某些提示词",
+    );
+    expect(wrapper.get(".description .problem-title").text()).toBe(
+      "prompt 缺少校验",
+    );
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      "prompt missed validation: prompt 没有要求校验输出结构。",
     );
   });
 
@@ -370,6 +392,12 @@ describe("error detail page", () => {
     const content = wrapper.get(".attribution").text();
     expect(wrapper.get(".conclusion strong").text()).toBe("非问题");
     expect(wrapper.get(".conclusion .state-chip").text()).toBe("非问题");
+    expect(wrapper.get(".description .problem-title").text()).toBe(
+      nonIssueTitle,
+    );
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      nonIssueReason,
+    );
     expect(wrapper.get(".conclusion").text()).not.toContain(
       "Every claim has a source.",
     );
@@ -479,7 +507,10 @@ describe("error detail page", () => {
     await flushPromises();
 
     expect(wrapper.find(".page-error").exists()).toBe(false);
-    expect(wrapper.get(".description").text()).toContain("index read failed");
+    expect(wrapper.get(".description .problem-title").text()).toBe(issueTitle);
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      issueReason,
+    );
     expect(detailAttempts).toBe(2);
     expect(analysisAttempts).toBe(2);
   });
@@ -498,15 +529,33 @@ describe("error detail page", () => {
     const description = wrapper.get(".description").text();
     expect(description).toContain("外部字段存在漂移，当前以安全占位展示。");
     expect(description).not.toContain("BAD_CASE_DISPLAY_STATE_UNKNOWN");
+    expect(wrapper.get(".description .problem-title").text()).toBe(
+      degraded.title,
+    );
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      degraded.reason,
+    );
+    expect(wrapper.get(".description .degraded-chip").text()).toBe("数据降级");
   });
 
   it("shows the unanalyzed placeholder without requesting a probe", async () => {
-    const unanalyzed = badCaseFixture({ badCaseId: "case-unanalyzed" });
+    const unanalyzed = badCaseFixture({
+      badCaseId: "case-unanalyzed",
+      title: "尚未归因",
+      reason:
+        "这一条问题还没有完成归因分析，描述正文仍然完整保留。",
+    });
     mockApi([unanalyzed]);
     const { wrapper } = await mountPage(
       "/sessions/root-1/errors?case=case-unanalyzed&tab=attr",
     );
 
+    expect(wrapper.get(".description .problem-title").text()).toBe(
+      "尚未归因",
+    );
+    expect(wrapper.get(".description .problem-detail").text()).toBe(
+      "这一条问题还没有完成归因分析，描述正文仍然完整保留。",
+    );
     expect(wrapper.text()).toContain("尚未分析");
     expect(wrapper.get(".conclusion").text()).toBe("结论尚未分析未分析");
     expect(wrapper.get(".unanalyzed-note").text()).toBe(

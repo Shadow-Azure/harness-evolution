@@ -93,7 +93,11 @@ class BadCaseAgent(IdentityModel):
 
 
 class SessionBadCase(IdentityModel):
-    """One read-only problem connected to the execution tree."""
+    """One read-only problem connected to the execution tree.
+
+    ``title`` is the short display title and ``reason`` the description body;
+    ``reason`` maps from the ``bad_cases.bad_case_description`` column.
+    """
 
     bad_case_id: str
     bad_case_type: Literal["self", "discovery"]
@@ -102,6 +106,7 @@ class SessionBadCase(IdentityModel):
     object_version: str | None
     anchor: BadCaseAnchor
     bad_case_agent: BadCaseAgent
+    title: str
     reason: str
 
 

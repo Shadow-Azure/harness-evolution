@@ -79,7 +79,7 @@ export interface AgentLayoutEdge {
 export interface BadCaseLayoutNodeData {
   badCaseId: string;
   shortId: string;
-  reason: string;
+  title: string;
   width: number;
   degraded: boolean;
   active?: boolean;
