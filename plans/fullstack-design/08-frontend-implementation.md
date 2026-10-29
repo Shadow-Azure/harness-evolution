@@ -477,13 +477,14 @@ GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 
 - 名称：`useTargets()` 提供**已配置且启用**的对象；未配置的对象不出现。
 - 版本：`useTargetVersions(targetId)` 从配置仓库的 tag 列表拉取；默认选中 `defaultRef` 对应项。
 - **配置入口**：提示文案内的「配置页」内联链接（实线下划线按钮），点击跳 `/evolution/targets`（配置页）；返回后失效语义不变，向导候选刷新。
-- 时间段：两个 `el-date-picker`，校验 `from <= to`。
+- 时间段：两个 `el-date-picker`，必填，校验 `from <= to`。
 - 模型多选：`useModels()` 提供的 chips，可全不选（= 全部模型）；chip 可显示 `model` 与 `sessionCount`。
-- 「下一步」：调 `useProbeQuery().mutate(condition)`（`POST /evolution/probes/query`），成功进 Step2；无匹配时后端 409 `NO_PROBES_MATCHED`。
+- 「下一步」：按钮恒可点，点击时做字段级必填校验——对象/版本/时间段缺失时对应输入框标红（`aria-invalid`）并在框下显示红色提示，修正后即时清除，不通过则不发请求；通过后调 `useProbeQuery().mutate(condition)`（`POST /evolution/probes/query`）进 Step2；零命中（`409 NO_PROBES_MATCHED`）同样进 Step2 渲染未命中空态并禁用两个出口，其余错误停在 Step1 提示。
 
 ### 9.3 Step2 命中确认
 
 - 条件摘要条（chip 形式）+ 「修改条件」。
+- 零命中空态：显示"未找到匹配的问题报告"与调整条件引导，两个出口按钮禁用（`409 NO_PROBES_MATCHED` 映射，见 §9.2）。
 - 统计：sessions / badCases / analyzed / unanalyzed / probes / usedProbes / 按 `attributeType` 的分布条 + 图例。
 - 未分析报告不参与命中：自进化按 probe 根因对象选取，没有 probe 的报告不进入统计与列表；界面保留「未分析」统计格并固定显示 0。
 - 分布条与图例按实际命中的属性类型渲染，没有命中的类型不出现（原型的数据驱动行为）。
