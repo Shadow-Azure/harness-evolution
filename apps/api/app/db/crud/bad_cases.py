@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,6 +83,17 @@ class BadCaseSnapshot:
     cases: tuple[BadCaseRow, ...]
     analyses: tuple[BadCaseAnalysisRow, ...]
     probes: tuple[ProbeReportRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisProgress:
+    """Aggregate attribution progress over all external bad cases."""
+
+    total: int
+    analyzed: int
+    pending: int
+    issue: int
+    non_issue: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +240,43 @@ class BadCaseRepository:
         async with self._database.session() as session:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_bad_case(row) if row is not None else None
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Aggregate attribution states without materializing new columns."""
+        async with self._database.session() as session:
+            total = int(
+                (
+                    await session.execute(
+                        select(func.count()).select_from(bad_cases),
+                    )
+                ).scalar_one(),
+            )
+            rows = (
+                await session.execute(
+                    select(bad_case_analysis.c.analysis_status, func.count())
+                    .select_from(
+                        bad_case_analysis.join(
+                            bad_cases,
+                            bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
+                        ),
+                    )
+                    .group_by(bad_case_analysis.c.analysis_status),
+                )
+            ).all()
+        counts: dict[str, int] = {}
+        for status, count in rows:
+            if isinstance(count, int):
+                counts[str(status)] = count
+        issue = counts.get("analyzed_issue", 0)
+        non_issue = counts.get("analyzed_nonissue", 0)
+        analyzed = min(issue + non_issue, total)
+        return AnalysisProgress(
+            total=total,
+            analyzed=analyzed,
+            pending=max(total - analyzed, 0),
+            issue=issue,
+            non_issue=non_issue,
+        )
 
     async def get_case_snapshot(self, case_id: str) -> BadCaseSnapshot:
         """Read one case and related rows in one database session."""

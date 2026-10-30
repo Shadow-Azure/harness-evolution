@@ -49,14 +49,17 @@ async def test_upgrade_creates_catalog_sync_table(tmp_path: Path) -> None:
                             "bad_case_catalog_sync",
                         )
                     },
-                    inspect(sync_connection)
-                    .get_pk_constraint("bad_case_catalog_sync")["constrained_columns"],
+                    inspect(sync_connection).get_pk_constraint("bad_case_catalog_sync")[
+                        "constrained_columns"
+                    ],
                 ),
             )
         async with database.session() as session:
-            revision = (
-                await session.execute(text("SELECT version_num FROM alembic_version"))
-            ).scalar_one()
+            revision: str = str(
+                (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one(),
+            )
 
         assert exists is True
         assert columns == EXPECTED_COLUMNS

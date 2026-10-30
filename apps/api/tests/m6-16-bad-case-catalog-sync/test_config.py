@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -11,7 +12,7 @@ from app.config import DatabaseDialect, Settings
 from app.errors import ErrorCode
 
 
-def _settings(**overrides: object) -> Settings:
+def _settings(**overrides: Any) -> Settings:
     return Settings(
         db_dialect=DatabaseDialect.SQLITE,
         data_dir=Path("."),
@@ -76,7 +77,4 @@ def test_catalog_sync_error_codes_are_stable() -> None:
     assert ErrorCode.BAD_CASE_QUERY_TIMEOUT.value == "BAD_CASE_QUERY_TIMEOUT"
     assert ErrorCode.BAD_CASE_QUERY_REQUEST_FAILED.value == "BAD_CASE_QUERY_REQUEST_FAILED"
     assert ErrorCode.BAD_CASE_CATALOG_SYNC_FAILED.value == "BAD_CASE_CATALOG_SYNC_FAILED"
-    assert (
-        ErrorCode.BAD_CASE_CATALOG_SYNC_INTERRUPTED.value
-        == "BAD_CASE_CATALOG_SYNC_INTERRUPTED"
-    )
+    assert ErrorCode.BAD_CASE_CATALOG_SYNC_INTERRUPTED.value == "BAD_CASE_CATALOG_SYNC_INTERRUPTED"
