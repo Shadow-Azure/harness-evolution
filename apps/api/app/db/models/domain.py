@@ -299,6 +299,24 @@ bad_case_analysis = Table(
 )
 
 
+bad_case_root_sync = Table(
+    "bad_case_root_sync",
+    DOMAIN_METADATA,
+    Column("root_session_id", String(36), primary_key=True),
+    Column("status", String(16), nullable=False),
+    Column("attempts", Integer, nullable=False),
+    Column("last_error", Text, nullable=True),
+    Column("agent_count", Integer, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=True),
+    Column("synced_at", DateTime(timezone=True), nullable=True),
+    Column("next_retry_at", DateTime(timezone=True), nullable=True),
+    Column("lease_owner", String(128), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index("ix_bad_case_root_sync_status_retry", "status", "next_retry_at"),
+)
+
+
 evolution_targets = Table(
     "evolution_targets",
     DOMAIN_METADATA,
