@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,9 +12,12 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.db.base import Database
 from app.db.models.domain import bad_case_catalog_sync, bad_cases
+
+logger = logging.getLogger(__name__)
 
 STATE_ID = "bad_cases"
 
@@ -267,15 +271,23 @@ class BadCaseCatalogSyncRepository:
         )
 
     async def count_bad_cases(self) -> int:
-        """Return the current local bad-case row count."""
-        async with self._database.session() as session:
-            return int(
-                (
-                    await session.execute(
-                        select(func.count()).select_from(bad_cases),
-                    )
-                ).scalar_one(),
-            )
+        """Return the current local bad-case row count, or zero when unprovisioned."""
+        try:
+            async with self._database.session() as session:
+                return int(
+                    (
+                        await session.execute(
+                            select(func.count()).select_from(bad_cases),
+                        )
+                    ).scalar_one(),
+                )
+        except (OperationalError, ProgrammingError) as exc:
+            if "bad_cases" in str(exc).lower():
+                logger.warning(
+                    "bad_cases is not provisioned; reporting zero catalog rows",
+                )
+                return 0
+            raise
 
     def _upsert_statement(self, values: list[dict[str, Any]]) -> Any:
         if self._database.dialect == "mysql":

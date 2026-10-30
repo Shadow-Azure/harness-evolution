@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.utils.time import as_shanghai
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,26 +250,40 @@ class BadCaseRepository:
 
     async def analysis_progress(self) -> AnalysisProgress:
         """Aggregate attribution states without materializing new columns."""
-        async with self._database.session() as session:
-            total = int(
-                (
-                    await session.execute(
-                        select(func.count()).select_from(bad_cases),
-                    )
-                ).scalar_one(),
-            )
-            rows = (
-                await session.execute(
-                    select(bad_case_analysis.c.analysis_status, func.count())
-                    .select_from(
-                        bad_case_analysis.join(
-                            bad_cases,
-                            bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
-                        ),
-                    )
-                    .group_by(bad_case_analysis.c.analysis_status),
+        try:
+            async with self._database.session() as session:
+                total = int(
+                    (
+                        await session.execute(
+                            select(func.count()).select_from(bad_cases),
+                        )
+                    ).scalar_one(),
                 )
-            ).all()
+                rows = (
+                    await session.execute(
+                        select(bad_case_analysis.c.analysis_status, func.count())
+                        .select_from(
+                            bad_case_analysis.join(
+                                bad_cases,
+                                bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
+                            ),
+                        )
+                        .group_by(bad_case_analysis.c.analysis_status),
+                    )
+                ).all()
+        except (OperationalError, ProgrammingError) as exc:
+            if "bad_cases" in str(exc).lower():
+                logger.warning(
+                    "bad_cases is not provisioned; reporting zero analysis progress",
+                )
+                return AnalysisProgress(
+                    total=0,
+                    analyzed=0,
+                    pending=0,
+                    issue=0,
+                    non_issue=0,
+                )
+            raise
         counts: dict[str, int] = {}
         for status, count in rows:
             if isinstance(count, int):

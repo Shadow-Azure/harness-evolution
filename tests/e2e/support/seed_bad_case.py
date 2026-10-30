@@ -15,13 +15,20 @@ from app.db.models.domain import bad_cases
 from app.utils.time import now_shanghai
 
 
-async def _seed(data_dir: Path, root_session_id: str) -> None:
+async def _seed(
+    data_dir: Path,
+    root_session_id: str,
+    *,
+    seed_row: bool = True,
+) -> None:
     settings = Settings(data_dir=data_dir, db_dialect=DatabaseDialect.SQLITE)
     database = create_database(settings)
     await database.start()
     try:
         await upgrade_database(database)
         await ensure_fixture_external_tables(database)
+        if not seed_row:
+            return
         now = now_shanghai()
         async with database.transaction() as session:
             exists = (
@@ -60,9 +67,16 @@ def main() -> None:
         "--root",
         default="11111111-1111-4111-8111-111111111111",
     )
+    parser.add_argument(
+        "--tables-only",
+        action="store_true",
+        help="create the external tables without inserting a smoke row",
+    )
     args = parser.parse_args()
-    asyncio.run(_seed(args.data_dir, args.root))
-    print(f"seeded bad_cases root {args.root}", flush=True)
+    asyncio.run(
+        _seed(args.data_dir, args.root, seed_row=not args.tables_only),
+    )
+    print(f"prepared bad_cases root {args.root}", flush=True)
 
 
 if __name__ == "__main__":
