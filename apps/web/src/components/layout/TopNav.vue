@@ -72,6 +72,25 @@ const syncDetail = computed(() => {
     .join(" · ");
 });
 
+const badCaseSync = computed(() => acquisition.value?.badCaseSync);
+
+const badCaseSyncAria = computed(() => {
+  const status = badCaseSync.value;
+  if (!status) {
+    return "";
+  }
+  if (status.status === "unavailable") {
+    return "问题轨迹未配置";
+  }
+  return `问题轨迹 总 ${status.total} 已同步 ${status.synced} 未同步 ${status.unsynced}`;
+});
+
+const syncAria = computed(() =>
+  [pendingLabel.value, syncDetail.value, badCaseSyncAria.value]
+    .filter(Boolean)
+    .join("；")
+);
+
 function logout() {
   void logoutUser().catch(() => {
     // The store always clears local state and the mutation still navigates.
@@ -170,10 +189,33 @@ onBeforeUnmount(() => {
         class="sync-status"
         data-testid="sync-status"
         tabindex="0"
-        :aria-label="`${pendingLabel}；${syncDetail}`"
+        :aria-label="syncAria"
       >
         <span class="sync-summary">{{ pendingLabel }}</span>
-        <span class="sync-popover">{{ syncDetail }}</span>
+        <span
+          v-if="badCaseSync && badCaseSync.status !== 'unavailable'"
+          class="sync-problem-badge"
+          data-testid="sync-problem-badge"
+        >
+          问题轨迹 {{ badCaseSync.synced }}/{{ badCaseSync.total }}
+        </span>
+        <span class="sync-popover">
+          <span class="sync-detail">{{ syncDetail }}</span>
+          <span
+            v-if="badCaseSync"
+            class="sync-problem"
+            data-testid="sync-problem"
+          >
+            <span class="sync-problem-title">问题轨迹</span>
+            <span v-if="badCaseSync.status === 'unavailable'">
+              未配置轨迹查询服务
+            </span>
+            <template v-else>
+              <span>总 {{ badCaseSync.total }} · 已同步 {{ badCaseSync.synced }} · 未同步 {{ badCaseSync.unsynced }}</span>
+              <span class="sync-problem-sub">同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }}</span>
+            </template>
+          </span>
+        </span>
       </div>
       <span
         v-if="props.demo"
@@ -349,6 +391,38 @@ onBeforeUnmount(() => {
 .sync-status:focus-visible {
   border-color: color-mix(in srgb, var(--blue) 42%, var(--border));
   color: var(--text-dim);
+}
+
+.sync-problem-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 9.5px;
+}
+
+.sync-detail {
+  display: block;
+}
+
+.sync-problem {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-problem-title {
+  display: block;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.sync-problem-sub {
+  display: block;
+  color: var(--text-faint);
 }
 
 .sync-popover {

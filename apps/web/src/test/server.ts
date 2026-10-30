@@ -27,7 +27,17 @@ export const server = setupServer(
       skipped: 0,
       lastRunAt: null,
       nextRunAt: null,
-      errors: []
+      errors: [],
+      badCaseSync: {
+        total: 0,
+        synced: 0,
+        unsynced: 0,
+        syncing: 0,
+        failed: 0,
+        status: "idle",
+        lastRunAt: null,
+        lastError: null
+      }
     }),
   ),
   http.post("/api/auth/refresh", () =>

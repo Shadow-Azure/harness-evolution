@@ -178,7 +178,17 @@ describe("top navigation user area", () => {
               code: "INVALID_JSONL_LINE",
               message: "raw diagnostic"
             }
-          ]
+          ],
+          badCaseSync: {
+            total: 12,
+            synced: 7,
+            unsynced: 5,
+            syncing: 1,
+            failed: 2,
+            status: "idle",
+            lastRunAt: "2026-10-26T08:00:00+08:00",
+            lastError: null
+          }
         }),
       ),
     );
@@ -217,6 +227,15 @@ describe("top navigation user area", () => {
     ).toContain("有一行轨迹无法解析");
     expect(
       wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
+    ).toContain("问题轨迹 总 12 已同步 7 未同步 5");
+    expect(wrapper.get("[data-testid='sync-problem-badge']").text()).toContain(
+      "问题轨迹 7/12",
+    );
+    expect(wrapper.get("[data-testid='sync-problem']").text()).toContain(
+      "未同步 5",
+    );
+    expect(
+      wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
     ).not.toContain("raw diagnostic");
     expect(wrapper.find("[data-testid='sync-now']").exists()).toBe(false);
   });
@@ -235,7 +254,17 @@ describe("top navigation user area", () => {
           skipped: 0,
           lastRunAt: null,
           nextRunAt: null,
-          errors: []
+          errors: [],
+          badCaseSync: {
+            total: 0,
+            synced: 0,
+            unsynced: 0,
+            syncing: 0,
+            failed: 0,
+            status: "idle",
+            lastRunAt: null,
+            lastError: null
+          }
         }),
       ),
       http.post("/api/acquisition/sync", () =>
@@ -314,7 +343,17 @@ describe("top navigation user area", () => {
           skipped: 0,
           lastRunAt: null,
           nextRunAt: null,
-          errors: []
+          errors: [],
+          badCaseSync: {
+            total: 0,
+            synced: 0,
+            unsynced: 0,
+            syncing: 0,
+            failed: 0,
+            status: "idle",
+            lastRunAt: null,
+            lastError: null
+          }
         }),
       ),
       http.post("/api/acquisition/sync", () =>
