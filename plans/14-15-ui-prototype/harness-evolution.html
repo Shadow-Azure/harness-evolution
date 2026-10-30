@@ -326,6 +326,7 @@
   .tn-sync-head { margin-bottom: 8px; font-size: 11px; font-weight: 700; color: var(--text); }
   .tn-sync-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 11px; line-height: 1.65; }
   .tn-sync-row + .tn-sync-row { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  .tn-sync-sub + .tn-sync-row { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
   .tn-sync-key { color: var(--text-faint); white-space: nowrap; }
   .tn-sync-val { color: var(--text-dim); text-align: right; }
   .tn-sync-val b { color: var(--text); font-family: var(--mono); font-weight: 600; }
@@ -662,16 +663,20 @@
   <button class="tn-item" id="tn-evo" onclick="switchMainView('evo')" title="筛选报告 · 聚类归因 · 迭代优化 · 终评">自进化<span class="tn-sub">报告驱动的迭代优化</span></button>
   <div class="tn-right">
     <details class="tn-sync">
-      <summary aria-label="数据同步：待处理 3；问题轨迹 总 12 个根会话，已同步 7，未同步 5">
+      <summary aria-label="数据同步：待处理 3；问题数量 总 136 已同步 128 未同步 8；问题轨迹 总 12 已同步 7 未同步 5；归因分析 已分析 96 待分析 40">
         <span class="tn-sync-dot"></span>
         <span class="tn-sync-label">待处理 3</span>
         <span class="tn-sync-badge">问题轨迹 7/12</span>
       </summary>
       <div class="tn-sync-popover">
         <div class="tn-sync-head">数据同步</div>
-        <div class="tn-sync-row"><span class="tn-sync-key">会话归一化</span><span class="tn-sync-val">待处理 3 · 已处理 8 · 已导入 4</span></div>
+        <div class="tn-sync-row"><span class="tn-sync-key">问题数量</span><span class="tn-sync-val">总 <b>136</b> · 已同步 <b>128</b> · 未同步 <b>8</b></span></div>
+        <div class="tn-sync-sub">空闲 · 游标 #128</div>
         <div class="tn-sync-row"><span class="tn-sync-key">问题轨迹</span><span class="tn-sync-val">总 <b>12</b> · 已同步 <b>7</b> · 未同步 <b>5</b></span></div>
         <div class="tn-sync-sub">同步中 1 · 失败 2</div>
+        <div class="tn-sync-row"><span class="tn-sync-key">会话归一化</span><span class="tn-sync-val">待处理 3 · 已处理 8 · 已导入 4</span></div>
+        <div class="tn-sync-row"><span class="tn-sync-key">归因分析</span><span class="tn-sync-val">已分析 <b>96</b> · 待分析 <b>40</b></span></div>
+        <div class="tn-sync-sub">问题 58 · 非问题 38</div>
       </div>
     </details>
     <span class="tn-note">问题 <span style="font-family:var(--mono)">I-××</span> 与报告 <span style="font-family:var(--mono)">R-××</span> 已串联 · 点击 ID 跨页溯源</span>
