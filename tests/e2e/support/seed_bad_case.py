@@ -7,6 +7,8 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from pydantic import SecretStr
+
 from app.config import DatabaseDialect, Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.factory import create_database
@@ -21,7 +23,11 @@ async def _seed(
     *,
     seed_row: bool = True,
 ) -> None:
-    settings = Settings(data_dir=data_dir, db_dialect=DatabaseDialect.SQLITE)
+    settings = Settings(
+        data_dir=data_dir,
+        db_dialect=DatabaseDialect.SQLITE,
+        jwt_secret=SecretStr("seed-bad-case-test-secret"),
+    )
     database = create_database(settings)
     await database.start()
     try:
