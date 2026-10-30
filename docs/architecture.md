@@ -48,6 +48,7 @@ lifespan 先恢复任务与 sync_lock 再调度；手动/定时共用单飞锁�
 - `sync_lock` 是单飞真值；job 与锁同事务创建，异常 `sync_runs` 先终结再释放匹配锁。
 - 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
 - 上游用版本化 outbound contract；pull 以 `http_api` 先写 payload 再共享重放。CI 只用 mock。
+- bad_cases 根会话自动补齐：定时任务从 distinct 根会话 LEFT JOIN `bad_case_root_sync`，串行取子 agent 轨迹写 payload；活跃批次跳过，下一 tick 按状态续跑。
 - 归一化按 payload 独立解析，消息与内容块只存内存；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
 - 重放按 root 原子：先组装，再事务重写并推进 source 游标。
 - 外部问题表只读。

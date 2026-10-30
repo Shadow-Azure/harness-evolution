@@ -48,6 +48,7 @@ The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed t
 - `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
+- bad_cases root sessions are backfilled automatically: a scheduled job LEFT JOINs distinct roots with `bad_case_root_sync`, fetches subagent trajectories serially, and writes payloads; an active batch is skipped and the next tick resumes from state.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
 - External problem tables are read-only.
