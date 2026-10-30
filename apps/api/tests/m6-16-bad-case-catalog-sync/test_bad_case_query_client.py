@@ -114,6 +114,40 @@ async def test_fetch_page_allows_missing_timestamps() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_page_allows_null_object_fields() -> None:
+    """Null or empty object identity is preserved for the storage fallback."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_page(
+                [
+                    _item(1, object_name=None, object_type=None),
+                    _item(2, object_name="", object_type=""),
+                ],
+                total=2,
+            ),
+        )
+
+    source = HttpBadCaseCatalogSource(
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(handler),
+            base_url="http://query.test",
+        ),
+        max_retries=0,
+    )
+    try:
+        page = await source.fetch_page(after_id=0, offset=0, limit=2)
+    finally:
+        await source.close()
+
+    assert page.items[0].object_name is None
+    assert page.items[0].object_type is None
+    assert page.items[1].object_name == ""
+    assert page.items[1].object_type == ""
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload",
     [

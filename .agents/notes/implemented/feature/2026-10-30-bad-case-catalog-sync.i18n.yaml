@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-10-30-bad-case-catalog-sync.md
-2026-10-30-bad-case-catalog-sync.md: 92594740ca6158f2506b1067cc15602fb81e5009
-2026-10-30-bad-case-catalog-sync.en.md: ba008f5625c11420f078d51211f33aad3e54fc52
+2026-10-30-bad-case-catalog-sync.md: 71ce9ec25b3680fdbe784e31610ef7b469d21ac7
+2026-10-30-bad-case-catalog-sync.en.md: 160c52357d801bd72e9db45eee19bd20259f85f6
