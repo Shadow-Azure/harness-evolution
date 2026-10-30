@@ -1,6 +1,6 @@
-﻿# Scheduled trajectory sync for bad-case root sessions
+# Scheduled trace sync for bad-case root sessions
 
-English | [涓枃](m6-bad-case-session-sync.md)
+English | [中文](m6-bad-case-session-sync.md)
 
 ```yaml flow
 kind: issue
@@ -30,13 +30,13 @@ github:
 
 ## Background
 
-`bad_cases.bad_case_session_id` already points at the root session a problem belongs to, but this service does not guarantee that the root session's raw trajectory has entered `trajectory_payloads`. Trajectory ingestion currently has only two paths: development-only local directory import, and the administrator-triggered `POST /api/acquisition/pull`; both require an operator who knows the session ids or the window. As bad_cases keeps growing, problem detail, the execution-flow graph, and evolution launch can all miss the session because its payload is absent.
+`bad_cases.bad_case_session_id` already points at the root session a problem belongs to, but this service does not guarantee that the root session's raw trace has entered `trajectory_payloads`. Trace ingestion currently has only two paths: development-only local directory import, and the administrator-triggered `POST /api/acquisition/pull`; both require an operator who knows the session ids or the window. As bad_cases keeps growing, problem detail, the execution-flow graph, and evolution launch can all miss the session because its payload is absent.
 
-The existing upstream trajectory contract (`third_party_api/trajectory`) returns a whole root package in one call. The query service integrated here is different: API 1 returns only the direct child sessionIds triggered by one session (main agent or subagent), so the tree must be expanded level by level; API 2 returns one agent's trajectory and forbids concurrent calls. The existing pull's "one package per root" model therefore does not fit, and a new client plus scheduling path is required.
+The existing upstream trace contract (`third_party_api/trace`) returns a whole root package in one call. The query service integrated here is different: API 1 returns only the direct child sessionIds triggered by one session (main agent or subagent), so the tree must be expanded level by level; API 2 returns one agent's trace and forbids concurrent calls. The existing pull's "one package per root" model therefore does not fit, and a new client plus scheduling path is required.
 
 ## Goals
 
-- Add a scheduled job that reads distinct root session ids from `bad_cases`, selects the unsynced roots, and fills the raw trajectories of the main agent and every subagent into `trajectory_payloads`.
+- Add a scheduled job that reads distinct root session ids from `bad_cases`, selects the unsynced roots, and fills the raw traces of the main agent and every subagent into `trajectory_payloads`.
 - Reuse the existing normalization/replay pipeline after payloads are written so the session, Agent tree, and problem read models become queryable immediately.
 - Add a root-session sync status table recording each root's state, attempts, last error, agent count, and completion time, supporting idempotent reruns and failure retries.
 - Add a read-only statistics API plus shared contract: total root sessions involved in bad_cases, synced count, and unsynced count.
@@ -45,17 +45,17 @@ The existing upstream trajectory contract (`third_party_api/trajectory`) returns
 
 ## Design authority
 
-- [04 搂5 data seams](../../../plans/fullstack-design/04-backend-architecture.md#L204-L214): boundaries for raw trajectories, external tables, and fixtures.
-- [05 搂4.8 raw trajectory ingestion](../../../plans/fullstack-design/05-api-design.md#L688-L708): existing acquisition endpoints and job semantics.
-- [06 搂3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md#L105-L145): the single raw payload store and pending detection.
-- [02 F9 trajectory ingestion and normalization](../../../plans/fullstack-design/02-features.md): capability boundary and demo-data rules.
+- [04 §5 data seams](../../../plans/fullstack-design/04-backend-architecture.md): boundaries for raw traces, external tables, and fixtures.
+- [05 §4.8 raw trace ingestion](../../../plans/fullstack-design/05-api-design.md): existing acquisition endpoints and job semantics.
+- [06 §3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md): the single raw payload store and pending detection.
+- [02 F9 trace ingestion and normalization](../../../plans/fullstack-design/02-features.md): capability boundary and demo-data rules.
 - [11 Scheduled sync for bad-case root sessions](../../../plans/fullstack-design/11-bad-case-session-sync.md): status table, query-service adapter, traversal, overlap policy, and frontend statistics.
 - Chapter 11 wins on conflict.
 
 ## Implementation
 
-- Add a query-service client for API 1 (direct child session ids) and API 2 (single-agent trajectory), with strict response models, timeouts, retries, and error mapping; API 2 calls stay serial within the process.
-- Add a root-session backfill service that expands recursively from each bad_cases root (main agent 鈫?direct children 鈫?grandchildren), deduplicating and guarding against cycles; each agent's trajectory is written to `trajectory_payloads` under the existing `(root_session_id, agent_id)` one-row-per-agent model.
+- Add a query-service client for API 1 (direct child session ids) and API 2 (single-agent trace), with strict response models, timeouts, retries, and error mapping; API 2 calls stay serial within the process.
+- Add a root-session backfill service that expands recursively from each bad_cases root (main agent → direct children → grandchildren), deduplicating and guarding against cycles; each agent's trace is written to `trajectory_payloads` under the existing `(root_session_id, agent_id)` one-row-per-agent model.
 - Add scheduling and a job kind that reuse the existing scheduler and `JobRunner` patterns, with single-flight and overlap handling; batch size, retry ladder, and state transitions are settled in the design document.
 - Add a status table and alembic migration with at least root_session_id, state, attempts, last error, agent count, synced time, and updated time, with root_session_id unique.
 - Add the statistics API and shared contract for total, synced, and unsynced counts; the frontend renders loading, empty, and failure states.
@@ -74,7 +74,7 @@ The existing upstream trajectory contract (`third_party_api/trajectory`) returns
 ## Dependencies and boundary
 
 - Dependencies: m2-07 (scheduling and job infrastructure), m4-01 (external problem read models).
-- Boundary: only backfill bad_cases root-session trajectories plus status/statistics; bad_cases stays "externally written, same database, read-only here"; the existing manual pull contract and semantics stay unchanged; CI never calls the real query service.
+- Boundary: only backfill bad_cases root-session traces plus status/statistics; bad_cases stays "externally written, same database, read-only here"; the existing manual pull contract and semantics stay unchanged; CI never calls the real query service.
 
 ## Verification
 
@@ -113,5 +113,4 @@ pnpm lint:docs
 - Do not change the direct-database bad_cases read boundary or its external writer.
 - Do not replace or remove the existing administrator-triggered pull; this issue only adds an automatic backfill path.
 - Do not call the real query service from CI; real integration stays in local mock and smoke testing.
-- Do not detect trajectory content changes or rebuild everything; whether incremental refetch is included is settled by the design document.
-
+- Do not detect trace content changes or rebuild everything; whether incremental refetch is included is settled by the design document.

@@ -45,9 +45,9 @@ github:
 
 ## 设计依据
 
-- [04 §5 数据接缝](../../../plans/fullstack-design/04-backend-architecture.md#L204-L214)：原始轨迹、外部表与 fixtures 的边界。
-- [05 §4.8 原始轨迹接入](../../../plans/fullstack-design/05-api-design.md#L688-L708)：acquisition 现有接口与 job 语义。
-- [06 §3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md#L105-L145)：原始 payload 的唯一存储与待处理判定。
+- [04 §5 数据接缝](../../../plans/fullstack-design/04-backend-architecture.md)：原始轨迹、外部表与 fixtures 的边界。
+- [05 §4.8 原始轨迹接入](../../../plans/fullstack-design/05-api-design.md)：acquisition 现有接口与 job 语义。
+- [06 §3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md)：原始 payload 的唯一存储与待处理判定。
 - [02 F9 轨迹接入与归一化](../../../plans/fullstack-design/02-features.md)：能力边界与演示数据规则。
 - [11 bad_cases 根会话轨迹定时同步](../../../plans/fullstack-design/11-bad-case-session-sync.md)：状态表、外部查询服务适配、遍历、重叠策略与前端统计。
 - 实现冲突时以 11 章为准。
