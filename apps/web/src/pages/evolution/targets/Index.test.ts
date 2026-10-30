@@ -99,6 +99,21 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("删除");
   });
 
+  it("links back to the evolution page from the page head", async () => {
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+    );
+    const wrapper = await mountPage("admin");
+
+    const back = wrapper.get(".back");
+    expect(back.text()).toContain("返回自进化");
+    expect(back.attributes("href")).toBe("/evolution");
+    expect(
+      (back.element as HTMLAnchorElement).dataset.testid,
+    ).toBe("target-config-back");
+  });
+
   it("uses the prototype page hierarchy without an extra eyebrow", async () => {
     server.use(
       http.get("/api/evolution/targets", () =>

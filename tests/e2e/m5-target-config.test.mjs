@@ -863,6 +863,16 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       await evaluate(page, "location.pathname"),
       "/evolution/targets",
     );
+    await evaluate(
+      page,
+      `document.querySelector("[data-testid='target-config-back']")?.click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `location.pathname === "/evolution" &&
+        Boolean(document.querySelector("[data-testid='open-launch-wizard']"))`,
+      "target config back navigation",
+    );
     assert.deepEqual(violations, []);
   } finally {
     await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
