@@ -10,7 +10,7 @@ depends:
   - m2-07
   - m4-01
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
