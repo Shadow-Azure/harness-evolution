@@ -1,5 +1,2 @@
-# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
-#   pnpm run record:i18n -- .agents/flow/issues/m6-wizard-validation-empty-state.md
-m6-wizard-validation-empty-state.md: fe398037f111cc0ea3c45bd7ee7f21239c9c4f29
-m6-wizard-validation-empty-state.en.md: 9c8c70713d826b784e689718c4802adf38a4a07a
+m6-wizard-validation-empty-state.md: ed7347301dd92305d9a6bc21dd85202044cc240d
+m6-wizard-validation-empty-state.en.md: f38ebe7bb5925d85d8990692adfd56cfb0ac9b50
