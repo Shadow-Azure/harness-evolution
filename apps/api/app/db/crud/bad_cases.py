@@ -128,6 +128,9 @@ class BadCaseRepositoryProtocol(Protocol):
     async def get_analysis(self, case_id: str) -> BadCaseAnalysisRow | None:
         """Return one attribution row by case id."""
 
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Return aggregate attribution counts over all cases."""
+
     async def probes_by_ids(
         self,
         probe_ids: tuple[str, ...],

@@ -15,6 +15,7 @@ from sqlalchemy import event, text
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.bad_cases import (
+    AnalysisProgress,
     BadCaseAnalysisRow,
     BadCaseRepository,
     BadCaseRow,
@@ -130,6 +131,16 @@ class FakeRepository:
         return next(
             (analysis for analysis in self.analyses if analysis.bad_case_id == case_id),
             None,
+        )
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Return empty aggregate counts; drift tests do not read the popover."""
+        return AnalysisProgress(
+            total=0,
+            analyzed=0,
+            pending=0,
+            issue=0,
+            non_issue=0,
         )
 
     async def probes_by_ids(

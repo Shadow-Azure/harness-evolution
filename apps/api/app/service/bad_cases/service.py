@@ -8,6 +8,7 @@ from types import MappingProxyType
 from typing import cast
 
 from app.db.crud.bad_cases import (
+    AnalysisProgress,
     BadCaseAnalysisRow,
     BadCaseRepositoryProtocol,
     BadCaseRow,
@@ -142,6 +143,10 @@ class BadCaseService:
             snapshot.probes,
         )
         return result.items[0] if result.items else None
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Return aggregate attribution counts for the sync popover."""
+        return await self._repository.analysis_progress()
 
     async def get_probe(self, probe_id: str) -> ProbeReportReadModel | None:
         """Return one root-cause report with reverse-linked source issues."""
