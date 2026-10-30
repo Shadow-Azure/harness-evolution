@@ -539,6 +539,16 @@ def _assemble_root(
 
         parent_tool = transcript.parent_tool_use_id
         if parent_tool is None:
+            parent_agent = transcript.parent_agent_id
+            if parent_agent is not None and parent_agent in nodes:
+                nodes[transcript.agent_id] = replace(
+                    nodes[transcript.agent_id],
+                    parent_agent_id=parent_agent,
+                )
+                parent_anchor = anchors.get(parent_agent)
+                if parent_anchor is not None:
+                    anchors[transcript.agent_id] = parent_anchor
+                continue
             fallback_to_main(
                 transcript,
                 "MISSING_PARENT_TOOL_USE_ID",
