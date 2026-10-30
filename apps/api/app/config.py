@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     upstream_retry_attempts: int = Field(default=3, ge=0, le=3)
     upstream_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
     upstream_max_pages: int = Field(default=100, gt=0, le=1_000)
+    session_query_base_url: str | None = None
+    session_query_token: SecretStr | None = None
+    session_query_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
+    session_query_retry_attempts: int = Field(default=2, ge=0, le=5)
+    session_query_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
+    bad_case_sync_interval_seconds: int = Field(default=300, ge=0)
+    bad_case_sync_batch_size: int = Field(default=20, ge=1, le=1_000)
+    bad_case_sync_time_budget_seconds: float = Field(default=600.0, gt=0, le=3_600)
+    bad_case_sync_max_agents: int = Field(default=200, ge=1, le=10_000)
+    bad_case_sync_max_depth: int = Field(default=10, ge=0, le=100)
+    bad_case_sync_lease_seconds: int = Field(default=900, ge=30, le=86_400)
     git_push: bool = True
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
@@ -155,4 +166,13 @@ class Settings(BaseSettings):
             self.upstream_base_url
             and self.upstream_token
             and self.upstream_token.get_secret_value(),
+        )
+
+    @property
+    def session_query_configured(self) -> bool:
+        """Return whether the bad-case query service is usable."""
+        return bool(
+            self.session_query_base_url
+            and self.session_query_token
+            and self.session_query_token.get_secret_value(),
         )
