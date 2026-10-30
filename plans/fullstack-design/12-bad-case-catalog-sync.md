@@ -109,6 +109,8 @@ Accept: application/json
 |---|---|---|
 | `bad_case_id` | `bad_cases.bad_case_id` | 接口是整数，落库转十进制字符串 |
 | `bad_case_title` | `bad_cases.title` | 唯一改名映射 |
+| `object_name` | `bad_cases.object_name` | 为空时依次取 `source`、`unknown` |
+| `object_type` | `bad_cases.object_type` | 为空时取 `skill` |
 | `created_at` / `updated_at` | 同名 | 可选；存在时解析 ISO-8601 带时区时间并按原值写入，缺失时用本次同步时间兜底 |
 
 ### 3.3 校验、错误与串行

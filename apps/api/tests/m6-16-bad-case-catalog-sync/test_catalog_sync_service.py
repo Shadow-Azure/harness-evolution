@@ -58,19 +58,26 @@ class FakeSource:
         return None
 
 
-def _item(case_id: int, *, title: str | None = None) -> BadCaseItem:
+def _item(
+    case_id: int,
+    *,
+    title: str | None = None,
+    object_name: str | None = "deep-research",
+    object_type: str | None = "skill",
+    source: str | None = "test",
+) -> BadCaseItem:
     return BadCaseItem(
         bad_case_id=case_id,
         bad_case_session_id=f"session-{case_id}",
         bad_case_type="self",
-        object_name="deep-research",
-        object_type="skill",
+        object_name=object_name,
+        object_type=object_type,
         object_version="v1",
         bad_case_agent_id=None,
         bad_case_title=title or f"case {case_id}",
         bad_case_description="description",
         meta_data=None,
-        source="test",
+        source=source,
         created_at=datetime.fromisoformat("2026-10-30T10:00:00+08:00"),
         updated_at=datetime.fromisoformat("2026-10-30T10:00:00+08:00"),
     )
@@ -254,6 +261,42 @@ async def test_missing_source_marks_failed(database: Database) -> None:
     assert state is not None
     assert state.status == "failed"
     assert state.last_error == "BAD_CASE_QUERY_UNAVAILABLE"
+
+
+@pytest.mark.asyncio
+async def test_null_object_fields_fall_back_to_source_and_skill(
+    database: Database,
+) -> None:
+    """A null object_name uses source and a null object_type uses skill."""
+    source = FakeSource(
+        [_item(1, object_name=None, object_type=None, source="upstream-src")],
+    )
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    async with database.session() as session:
+        row = (await session.execute(select(bad_cases))).mappings().one()
+    assert row["object_name"] == "upstream-src"
+    assert row["object_type"] == "skill"
+
+
+@pytest.mark.asyncio
+async def test_missing_object_name_and_source_fall_back_to_unknown(
+    database: Database,
+) -> None:
+    """Empty object fields degrade to unknown and skill instead of failing."""
+    source = FakeSource(
+        [_item(1, object_name="", object_type="", source=None)],
+    )
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    async with database.session() as session:
+        row = (await session.execute(select(bad_cases))).mappings().one()
+    assert row["object_name"] == "unknown"
+    assert row["object_type"] == "skill"
 
 
 @pytest.mark.asyncio
