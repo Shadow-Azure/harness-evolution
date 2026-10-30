@@ -789,6 +789,8 @@ export interface components {
         AcquisitionStatusResponse: {
             /** Activejobid */
             activeJobId: string | null;
+            badCaseAnalysis: components["schemas"]["BadCaseAnalysisSummary"];
+            badCaseCatalogSync: components["schemas"]["BadCaseCatalogSyncSummary"];
             badCaseSync: components["schemas"]["BadCaseSyncSummary"];
             /** Errors */
             errors: components["schemas"]["SyncStatusError"][];
@@ -904,6 +906,22 @@ export interface components {
          */
         BadCaseAnalysis: components["schemas"]["UnanalyzedBadCaseAnalysis"] | components["schemas"]["NonIssueBadCaseAnalysis"] | components["schemas"]["IssueBadCaseAnalysis"];
         /**
+         * BadCaseAnalysisSummary
+         * @description Read-only attribution progress for the top-nav popover.
+         */
+        BadCaseAnalysisSummary: {
+            /** Analyzed */
+            analyzed: number;
+            /** Issue */
+            issue: number;
+            /** Nonissue */
+            nonIssue: number;
+            /** Pending */
+            pending: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * BadCaseAnchor
          * @description Stable host Agent and event index for one problem card.
          */
@@ -912,6 +930,27 @@ export interface components {
             agentId: string;
             /** Eventindex */
             eventIndex: number;
+        };
+        /**
+         * BadCaseCatalogSyncSummary
+         * @description Read-only catalog-sync counters for the top-nav popover.
+         */
+        BadCaseCatalogSyncSummary: {
+            /** Lastbadcaseid */
+            lastBadCaseId: number;
+            /** Lasterror */
+            lastError: string | null;
+            /** Lastrunat */
+            lastRunAt: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unavailable" | "idle" | "queued" | "running" | "failed";
+            /** Synced */
+            synced: number;
+            /** Unsynced */
+            unsynced: number;
         };
         /**
          * BadCaseListResponse
@@ -1059,7 +1098,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
