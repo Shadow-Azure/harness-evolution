@@ -1,0 +1,199 @@
+{
+  "title": "根会话 ID 展示与检索 · 冒烟测试",
+  "eyebrow": "Harness Evolution · Issue #181",
+  "summary": "在真实启动的 API + Web 服务与 seed 数据上验证：Session 浏览器每张卡与右栏概览展示根会话 ID；搜索框可按完整根会话 ID 过滤；错误详情页左栏与右栏展示同一根会话 ID；390px 窄屏不横向溢出。",
+  "meta": "2026-10-30 · Windows · Chrome headless 1440×980 / 390×844",
+  "metrics": [
+    {
+      "value": "7",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "7 / 7",
+      "label": "通过"
+    },
+    {
+      "value": "37 / 37",
+      "label": "聚焦 Web 单测"
+    },
+    {
+      "value": "12 / 12",
+      "label": "聚焦 API 单测"
+    }
+  ],
+  "facts": [
+    {
+      "label": "Issue",
+      "value": "#181 m6-18"
+    },
+    {
+      "label": "Branch",
+      "value": "feat/m6-18-root-session-id"
+    },
+    {
+      "label": "Data",
+      "value": "fixtures:seed · 4 个根会话"
+    },
+    {
+      "label": "Services",
+      "value": "FastAPI + Vite dev proxy"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Session 卡展示根会话 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "4 张 Session 卡的 ID 行都等于其 data-session-id。",
+        "evidence": [
+          "screenshots/02-session-card-root-id.png"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "Session 概览展示根会话 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "右栏概览 meta 的 ID 等于当前选中会话 ID。",
+        "evidence": [
+          "screenshots/01-sessions-overview.png"
+        ]
+      },
+      {
+        "id": "03",
+        "name": "按完整根会话 ID 搜索",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "输入完整 UUID 后列表只剩 1 张卡，placeholder 与 aria-label 含“根会话 ID”。",
+        "evidence": [
+          "screenshots/03-search-by-root-id.png"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "错误页左栏展示根会话 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "左栏 ID 文本等于路由 sessionId，带“根会话 ID”标签。",
+        "evidence": [
+          "screenshots/04-error-detail-root-id.png"
+        ]
+      },
+      {
+        "id": "05",
+        "name": "错误页右栏 meta 展示根会话 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "右栏 meta 的 ID 与左栏一致，位于开始时间之后。",
+        "evidence": [
+          "screenshots/05-error-header-root-id.png"
+        ]
+      },
+      {
+        "id": "06",
+        "name": "390px Session 浏览器",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "窄屏下 4 张卡仍渲染 ID，页面无横向溢出。",
+        "evidence": [
+          "screenshots/06-mobile-sessions.png"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "390px 错误详情",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "窄屏下两处 ID 仍可读，页面无横向溢出。",
+        "evidence": [
+          "screenshots/07-mobile-error-detail.png"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-sessions-overview.png",
+      "alt": "Session 浏览器整页",
+      "label": "01 · Session 浏览器",
+      "caption": "左侧卡片 ID、右侧概览 ID 与搜索框同屏。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-search-by-root-id.png",
+      "alt": "按根会话 ID 搜索",
+      "label": "03 · ID 搜索",
+      "caption": "粘贴完整根会话 ID 后只剩目标卡片。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-error-detail-root-id.png",
+      "alt": "错误详情页",
+      "label": "04 · 错误详情",
+      "caption": "左栏与右栏顶部 meta 展示同一根会话 ID。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "后端搜索",
+        "coverage": "API UT",
+        "conclusion": "覆盖完整 ID、子串、大小写、缺失与 LIKE 元字符。",
+        "recommendation": "CI 继续跑全量 API 测试。"
+      },
+      {
+        "area": "前端展示",
+        "coverage": "Web UT",
+        "conclusion": "错误页两处、Session 卡、概览与搜索文案均有组件断言。",
+        "recommendation": "保留 E2E 作为跨栈兜底。"
+      },
+      {
+        "area": "真实浏览器",
+        "coverage": "Smoke + E2E",
+        "conclusion": "本机真实服务冒烟 7/7 通过；Windows 下 E2E runner 的 pnpm.cmd spawn EINVAL 由 CI 覆盖。",
+        "recommendation": "以 CI 的 ubuntu E2E 结果作为合并门槛。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "四处根会话 ID 展示与按 ID 搜索在真实服务上全部符合设计，窄屏无溢出。",
+    "points": [
+      "本机 Windows 无法直接运行 pnpm test:e2e（pnpm.cmd spawn EINVAL），E2E 以 CI 为准。",
+      "contract:check 在 Windows 因生成文件 CRLF 与 Git 归一化差异误报，CI/Linux 不受影响。"
+    ]
+  },
+  "footer": "由真实 API + Vite + headless Chrome 冒烟生成；无凭据或令牌写入报告。"
+}

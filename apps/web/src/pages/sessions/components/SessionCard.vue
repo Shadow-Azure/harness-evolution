@@ -57,6 +57,13 @@ const emit = defineEmits<{
       <span>{{ item.stats.tools }} 工具</span>
       <span class="agents">{{ item.stats.agents }} 子 Agent</span>
     </div>
+    <div
+      class="card-session-id"
+      data-testid="session-card-root-session-id"
+      :title="`根会话 ID: ${item.id}`"
+    >
+      根会话 ID · {{ item.id }}
+    </div>
     <dl class="card-stats">
       <div>
         <dt>用户轮次</dt>
@@ -185,6 +192,15 @@ const emit = defineEmits<{
   overflow: hidden;
   color: var(--text-dim);
   font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.card-session-id {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

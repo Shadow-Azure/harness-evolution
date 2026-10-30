@@ -234,7 +234,7 @@ async def list_sessions(filters: SessionFilters) -> list[SessionListItem]:
     return [to_list_item(r, bad_cases_count=counts.get(r.id, 0)) for r in rows]
 ```
 
-- `q`：`search_text LIKE '%q%'`（同步时把 `lower(title + repo)` 写进 `search_text`；SQLite/MySQL 行为一致，后续可换全文索引）。
+- `q`：`search_text LIKE '%q%' OR lower(id) LIKE '%q%'`（同步时把 `lower(title + repo)` 写进 `search_text`；根会话 ID 直接匹配 `id`，两处共用 `_escape_like`，见 [13 §4](13-root-session-id.md)）。
 - `sort`：`latest → started_at DESC`、`userTurns → user_turns_count DESC`、`messages → messages_count DESC`、`agents → agents_count DESC`。
 - `bad_cases_count`：**不落 `session_families` 列**。列表装配时按当前页 session id 做一次 `SELECT bad_case_session_id, COUNT(*) … GROUP BY`（只读表，走 `INDEX(bad_case_session_id)`），无记录按 0 计；会话概览复用同一口径。不做定时刷新——问题侧写入不发通知，刷新同样会陈旧；也**不支持**按问题数排序/筛选（若要支持，再单独评审物化缓存的刷新边界）。
 

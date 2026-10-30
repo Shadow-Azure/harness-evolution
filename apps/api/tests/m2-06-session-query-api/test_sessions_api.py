@@ -139,6 +139,31 @@ async def test_list_search_status_sort_limit_and_validation(
     assert zero.status_code == 422
 
 
+async def test_list_search_matches_root_session_id(session_query: Any) -> None:
+    """Root session IDs are searchable by full value, substring, and case."""
+    base = "/api/sessions"
+    headers = session_query.authorization
+
+    full = await session_query.client.get(
+        f"{base}?q={SESSION_1}",
+        headers=headers,
+    )
+    substring = await session_query.client.get(f"{base}?q=0001", headers=headers)
+    uppercase = await session_query.client.get(
+        f"{base}?q={SESSION_2.upper()}",
+        headers=headers,
+    )
+    missing = await session_query.client.get(
+        f"{base}?q=00000000-0000-4000-8000-000000000009",
+        headers=headers,
+    )
+
+    assert [item["id"] for item in full.json()["items"]] == [SESSION_1]
+    assert [item["id"] for item in substring.json()["items"]] == [SESSION_1]
+    assert [item["id"] for item in uppercase.json()["items"]] == [SESSION_2]
+    assert missing.json()["items"] == []
+
+
 async def test_overview_is_list_shape_and_missing_session_is_stable(
     session_query: Any,
 ) -> None:

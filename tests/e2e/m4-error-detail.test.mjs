@@ -308,6 +308,12 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
             .querySelector(".detail-panel")
             ?.textContent.includes("从左侧选择一个错误，查看问题描述与归因分析。"),
           title: document.querySelector(".error-heading h1")?.textContent,
+          sidebarRootId: sidebar
+            ?.querySelector("[data-testid='error-root-session-id']")
+            ?.textContent.trim(),
+          metaRootId: document
+            .querySelector("[data-testid='error-meta-root-session-id']")
+            ?.textContent.trim(),
           tabs: document.querySelectorAll(".detail-tabs [role='tab']").length,
           innerProblemHeader: Boolean(document.querySelector(".problem-list-head")),
           body: getComputedStyle(document.body).backgroundColor,
@@ -381,6 +387,8 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.equal(all.diagnosticsText, "");
     assert.equal(all.detailEmpty, true);
     assert.equal(all.title, "错误详情");
+    assert.equal(all.sidebarRootId, `根会话 ID · ${sessionId}`);
+    assert.equal(all.metaRootId, `根会话 ID · ${sessionId}`);
     assert.equal(all.tabs, 2);
     assert.equal(all.innerProblemHeader, false);
     assert.equal(all.body, "rgb(244, 245, 247)");

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
@@ -215,10 +215,11 @@ class SessionRepository:
         """List current session aggregates with stable server-side ordering."""
         conditions: list[ColumnElement[bool]] = []
         if query:
+            pattern = f"%{_escape_like(query.lower())}%"
             conditions.append(
-                session_families.c.search_text.like(
-                    f"%{_escape_like(query.lower())}%",
-                    escape="\\",
+                or_(
+                    session_families.c.search_text.like(pattern, escape="\\"),
+                    func.lower(session_families.c.id).like(pattern, escape="\\"),
                 ),
             )
         if status == "problem":

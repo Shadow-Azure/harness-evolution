@@ -226,6 +226,12 @@ describe("session browser", () => {
 
     try {
       const input = wrapper.get("[data-testid='search-input']");
+      expect(input.attributes("placeholder")).toBe(
+        "搜索标题、仓库或根会话 ID",
+      );
+      expect(input.attributes("aria-label")).toBe(
+        "搜索 Session（标题、仓库或根会话 ID）",
+      );
       await input.setValue("a");
       await input.setValue("ab");
       await input.setValue("abc");
@@ -306,6 +312,15 @@ describe("session browser", () => {
     expect(firstCard.attributes("role")).toBe("option");
     expect(firstCard.attributes("aria-selected")).toBe("true");
     expect(firstCard.text()).toContain("有失败");
+    expect(
+      firstCard.get("[data-testid='session-card-root-session-id']").text(),
+    ).toBe("根会话 ID · root-1");
+    expect(
+      wrapper
+        .get("[data-testid='session-overview']")
+        .get("[data-testid='session-overview-root-session-id']")
+        .text(),
+    ).toContain("根会话 ID · root-1");
     expect(router.currentRoute.value.path).toBe("/sessions/root-1");
     expect(router.currentRoute.value.query).toEqual({
       q: "agent",

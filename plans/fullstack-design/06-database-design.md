@@ -153,7 +153,7 @@ erDiagram
 | `id` | `VARCHAR(36)` | PK | 根会话 id |
 | `short_title` | `VARCHAR(255)` | NOT NULL | 列表卡标题 |
 | `title` | `TEXT` | NOT NULL | 完整标题 |
-| `search_text` | `VARCHAR(512)` | NOT NULL | `lower(title + repo)`，搜索用 |
+| `search_text` | `VARCHAR(512)` | NOT NULL | `lower(title + repo)`，标题/仓库搜索用；根会话 ID 直接匹配 `id`，不进此列（[13](13-root-session-id.md)） |
 | `repo_name` | `VARCHAR(255)` | NOT NULL | 仓库名 |
 | `project_path` | `TEXT` | NOT NULL | 项目路径（Claude Code `cwd`） |
 | `git_branch` | `VARCHAR(255)` | NULL | Claude Code `gitBranch` |
