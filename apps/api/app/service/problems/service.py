@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from app.db.crud.bad_cases import AnalysisProgress
 from app.db.crud.problems import ProbeListSnapshot, ProblemRepository, ProblemSnapshot
 from app.db.crud.sessions import EventRecord
 from app.errors import AppError, ErrorCode
@@ -37,6 +38,10 @@ class ProblemService:
         """Bind the public service to its snapshot and external read boundaries."""
         self._repository = repository
         self._bad_cases = bad_cases
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Return overall attribution progress for the sync popover."""
+        return await self._bad_cases.analysis_progress()
 
     async def list_for_session(self, session_id: str) -> BadCaseListResponse:
         """Return all problems for one Session with tree-derived anchors."""

@@ -16,6 +16,12 @@
             ],
             "title": "Activejobid"
           },
+          "badCaseAnalysis": {
+            "$ref": "#/components/schemas/BadCaseAnalysisSummary"
+          },
+          "badCaseCatalogSync": {
+            "$ref": "#/components/schemas/BadCaseCatalogSyncSummary"
+          },
           "badCaseSync": {
             "$ref": "#/components/schemas/BadCaseSyncSummary"
           },
@@ -94,7 +100,9 @@
           "lastRunAt",
           "nextRunAt",
           "errors",
-          "badCaseSync"
+          "badCaseSync",
+          "badCaseCatalogSync",
+          "badCaseAnalysis"
         ],
         "title": "AcquisitionStatusResponse",
         "type": "object"
@@ -288,6 +296,41 @@
         ],
         "title": "BadCaseAnalysis"
       },
+      "BadCaseAnalysisSummary": {
+        "additionalProperties": false,
+        "description": "Read-only attribution progress for the top-nav popover.",
+        "properties": {
+          "analyzed": {
+            "title": "Analyzed",
+            "type": "integer"
+          },
+          "issue": {
+            "title": "Issue",
+            "type": "integer"
+          },
+          "nonIssue": {
+            "title": "Nonissue",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "analyzed",
+          "pending",
+          "issue",
+          "nonIssue"
+        ],
+        "title": "BadCaseAnalysisSummary",
+        "type": "object"
+      },
       "BadCaseAnchor": {
         "additionalProperties": false,
         "description": "Stable host Agent and event index for one problem card.",
@@ -307,6 +350,68 @@
           "eventIndex"
         ],
         "title": "BadCaseAnchor",
+        "type": "object"
+      },
+      "BadCaseCatalogSyncSummary": {
+        "additionalProperties": false,
+        "description": "Read-only catalog-sync counters for the top-nav popover.",
+        "properties": {
+          "lastBadCaseId": {
+            "title": "Lastbadcaseid",
+            "type": "integer"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "lastRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrunat"
+          },
+          "status": {
+            "enum": [
+              "unavailable",
+              "idle",
+              "queued",
+              "running",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "synced": {
+            "title": "Synced",
+            "type": "integer"
+          },
+          "unsynced": {
+            "title": "Unsynced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "synced",
+          "unsynced",
+          "lastBadCaseId",
+          "status",
+          "lastRunAt",
+          "lastError"
+        ],
+        "title": "BadCaseCatalogSyncSummary",
         "type": "object"
       },
       "BadCaseListResponse": {
@@ -689,7 +794,14 @@
           "TRAVERSAL_LIMIT_EXCEEDED",
           "TRAJECTORY_EMPTY",
           "BAD_CASE_SYNC_FAILED",
-          "BAD_CASE_SYNC_TIME_BUDGET"
+          "BAD_CASE_SYNC_TIME_BUDGET",
+          "BAD_CASE_QUERY_UNAVAILABLE",
+          "BAD_CASE_QUERY_UNAUTHORIZED",
+          "BAD_CASE_QUERY_INVALID_RESPONSE",
+          "BAD_CASE_QUERY_TIMEOUT",
+          "BAD_CASE_QUERY_REQUEST_FAILED",
+          "BAD_CASE_CATALOG_SYNC_FAILED",
+          "BAD_CASE_CATALOG_SYNC_INTERRUPTED"
         ],
         "title": "ErrorCode",
         "type": "string"

@@ -317,6 +317,26 @@ bad_case_root_sync = Table(
 )
 
 
+bad_case_catalog_sync = Table(
+    "bad_case_catalog_sync",
+    DOMAIN_METADATA,
+    Column("id", String(16), primary_key=True),
+    Column(
+        "last_bad_case_id",
+        BigInteger().with_variant(Integer(), "sqlite"),
+        nullable=False,
+    ),
+    Column("synced_count", Integer, nullable=False),
+    Column("pending_count", Integer, nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("attempts", Integer, nullable=False),
+    Column("last_error", Text, nullable=True),
+    Column("last_run_at", DateTime(timezone=True), nullable=True),
+    Column("last_success_at", DateTime(timezone=True), nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+)
+
+
 evolution_targets = Table(
     "evolution_targets",
     DOMAIN_METADATA,

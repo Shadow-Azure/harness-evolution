@@ -17,6 +17,74 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
+async function mountWithStatus(payload: Record<string, unknown>) {
+  server.use(http.get("/api/acquisition/status", () => HttpResponse.json(payload)));
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().setSession({
+    accessToken: "access",
+    expiresIn: 1_800,
+    user: {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member",
+      mustChangePassword: false,
+    },
+  });
+  const router = createAppRouter();
+  await router.push("/sessions");
+  await router.isReady();
+  const wrapper = mount(TopNav, {
+    global: {
+      plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+    },
+  });
+  await flushPromises();
+  return wrapper;
+}
+
+function statusPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    activeJobId: null,
+    status: "idle",
+    payloadTable: "trajectory_payloads",
+    pending: 3,
+    processed: 8,
+    imported: 4,
+    skipped: 1,
+    lastRunAt: "2026-10-30T08:00:00+08:00",
+    nextRunAt: "2026-10-30T08:01:00+08:00",
+    errors: [],
+    badCaseSync: {
+      total: 12,
+      synced: 7,
+      unsynced: 5,
+      syncing: 1,
+      failed: 2,
+      status: "idle",
+      lastRunAt: "2026-10-30T08:00:00+08:00",
+      lastError: null,
+    },
+    badCaseCatalogSync: {
+      synced: 128,
+      unsynced: 8,
+      lastBadCaseId: 128,
+      status: "idle",
+      lastRunAt: "2026-10-30T08:00:00+08:00",
+      lastError: null,
+    },
+    badCaseAnalysis: {
+      total: 136,
+      analyzed: 96,
+      pending: 40,
+      issue: 58,
+      nonIssue: 38,
+    },
+    ...overrides,
+  };
+}
+
 describe("top navigation user area", () => {
   it("styles the rendered user popover button", () => {
     expect(TopNavSource).toContain(".user-popover button:hover");
@@ -502,5 +570,93 @@ describe("top navigation user area", () => {
     expect(wrapper.find("[data-testid='sync-status']").exists()).toBe(false);
     expect(wrapper.find("nav").exists()).toBe(true);
     expect(wrapper.text()).toContain("操作员");
+  });
+
+  it("renders the four sync sections in the prototype order", async () => {
+    const wrapper = await mountWithStatus(statusPayload());
+    const text = wrapper.get(".sync-popover").text();
+    const order = ["问题数量", "问题轨迹", "会话归一化", "归因分析"].map((label) =>
+      text.indexOf(label),
+    );
+
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((left, right) => left - right));
+    expect(text).toContain("总 136 · 已同步 128 · 未同步 8");
+    expect(text).toContain("已分析 96 · 待分析 40");
+    expect(text).toContain("问题 58 · 非问题 38");
+    expect(wrapper.get("[data-testid='sync-catalog']").text()).toContain("游标 #128");
+  });
+
+  it("shows catalog sync counts and stable failure copy", async () => {
+    const failed = await mountWithStatus(
+      statusPayload({
+        badCaseCatalogSync: {
+          synced: 120,
+          unsynced: 8,
+          lastBadCaseId: 128,
+          status: "failed",
+          lastRunAt: "2026-10-30T08:00:00+08:00",
+          lastError: "BAD_CASE_QUERY_TIMEOUT",
+        },
+      }),
+    );
+    expect(failed.get("[data-testid='sync-catalog']").text()).toContain("坏例查询超时");
+
+    const unavailable = await mountWithStatus(
+      statusPayload({
+        badCaseCatalogSync: {
+          synced: 0,
+          unsynced: 0,
+          lastBadCaseId: 0,
+          status: "unavailable",
+          lastRunAt: null,
+          lastError: null,
+        },
+      }),
+    );
+    expect(unavailable.get("[data-testid='sync-catalog']").text()).toContain(
+      "未配置坏例查询服务",
+    );
+  });
+
+  it("keeps the zero state visible with a 0/0 trace badge", async () => {
+    const wrapper = await mountWithStatus(
+      statusPayload({
+        pending: 0,
+        badCaseSync: {
+          total: 0,
+          synced: 0,
+          unsynced: 0,
+          syncing: 0,
+          failed: 0,
+          status: "idle",
+          lastRunAt: null,
+          lastError: null,
+        },
+        badCaseCatalogSync: {
+          synced: 0,
+          unsynced: 0,
+          lastBadCaseId: 0,
+          status: "idle",
+          lastRunAt: null,
+          lastError: null,
+        },
+        badCaseAnalysis: {
+          total: 0,
+          analyzed: 0,
+          pending: 0,
+          issue: 0,
+          nonIssue: 0,
+        },
+      }),
+    );
+
+    expect(wrapper.get("[data-testid='sync-problem-badge']").text()).toBe("问题轨迹 0/0");
+    expect(wrapper.get("[data-testid='sync-catalog']").text()).toContain(
+      "总 0 · 已同步 0 · 未同步 0",
+    );
+    expect(wrapper.get("[data-testid='sync-analysis']").text()).toContain(
+      "已分析 0 · 待分析 0",
+    );
   });
 });

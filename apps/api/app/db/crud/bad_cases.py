@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.utils.time import as_shanghai
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +90,17 @@ class BadCaseSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class AnalysisProgress:
+    """Aggregate attribution progress over all external bad cases."""
+
+    total: int
+    analyzed: int
+    pending: int
+    issue: int
+    non_issue: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProbeSnapshot:
     """One probe and its reverse links from one database snapshot."""
 
@@ -116,6 +131,9 @@ class BadCaseRepositoryProtocol(Protocol):
 
     async def get_analysis(self, case_id: str) -> BadCaseAnalysisRow | None:
         """Return one attribution row by case id."""
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Return aggregate attribution counts over all cases."""
 
     async def probes_by_ids(
         self,
@@ -229,6 +247,57 @@ class BadCaseRepository:
         async with self._database.session() as session:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_bad_case(row) if row is not None else None
+
+    async def analysis_progress(self) -> AnalysisProgress:
+        """Aggregate attribution states without materializing new columns."""
+        try:
+            async with self._database.session() as session:
+                total = int(
+                    (
+                        await session.execute(
+                            select(func.count()).select_from(bad_cases),
+                        )
+                    ).scalar_one(),
+                )
+                rows = (
+                    await session.execute(
+                        select(bad_case_analysis.c.analysis_status, func.count())
+                        .select_from(
+                            bad_case_analysis.join(
+                                bad_cases,
+                                bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
+                            ),
+                        )
+                        .group_by(bad_case_analysis.c.analysis_status),
+                    )
+                ).all()
+        except (OperationalError, ProgrammingError) as exc:
+            if "bad_cases" in str(exc).lower():
+                logger.warning(
+                    "bad_cases is not provisioned; reporting zero analysis progress",
+                )
+                return AnalysisProgress(
+                    total=0,
+                    analyzed=0,
+                    pending=0,
+                    issue=0,
+                    non_issue=0,
+                )
+            raise
+        counts: dict[str, int] = {}
+        for status, count in rows:
+            if isinstance(count, int):
+                counts[str(status)] = count
+        issue = counts.get("analyzed_issue", 0)
+        non_issue = counts.get("analyzed_nonissue", 0)
+        analyzed = min(issue + non_issue, total)
+        return AnalysisProgress(
+            total=total,
+            analyzed=analyzed,
+            pending=max(total - analyzed, 0),
+            issue=issue,
+            non_issue=non_issue,
+        )
 
     async def get_case_snapshot(self, case_id: str) -> BadCaseSnapshot:
         """Read one case and related rows in one database session."""

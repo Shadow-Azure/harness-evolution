@@ -16,6 +16,23 @@ def _parse_upstream_api_major(value: object) -> object:
     return value
 
 
+def _validate_http_url(value: str | None, name: str) -> str | None:
+    """Allow only explicit HTTP(S) endpoints without embedded credentials."""
+    if value is None or not value.strip():
+        return None
+    normalized = value.rstrip("/")
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"{name} must use http or https")
+    if not parsed.hostname:
+        raise ValueError(f"{name} must include a host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{name} must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise ValueError(f"{name} must not contain query or fragment")
+    return normalized
+
+
 UpstreamApiMajor = Annotated[Literal[1], BeforeValidator(_parse_upstream_api_major)]
 
 
@@ -76,6 +93,15 @@ class Settings(BaseSettings):
     bad_case_sync_max_agents: int = Field(default=200, ge=1, le=10_000)
     bad_case_sync_max_depth: int = Field(default=10, ge=0, le=100)
     bad_case_sync_lease_seconds: int = Field(default=900, ge=30, le=86_400)
+    bad_case_query_base_url: str | None = None
+    bad_case_query_token: SecretStr | None = None
+    bad_case_query_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    bad_case_query_retry_attempts: int = Field(default=2, ge=0, le=5)
+    bad_case_query_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=30)
+    bad_case_catalog_sync_interval_seconds: int = Field(default=300, ge=0)
+    bad_case_catalog_sync_page_size: int = Field(default=200, ge=1, le=200)
+    bad_case_catalog_sync_time_budget_seconds: float = Field(default=300.0, gt=0, le=3_600)
+    bad_case_catalog_sync_max_pages: int = Field(default=100, ge=1, le=1_000)
     git_push: bool = True
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
@@ -114,19 +140,13 @@ class Settings(BaseSettings):
     @classmethod
     def validate_upstream_url(cls, value: str | None) -> str | None:
         """Allow only explicit HTTP(S) endpoints without embedded credentials."""
-        if value is None or not value.strip():
-            return None
-        normalized = value.rstrip("/")
-        parsed = urlsplit(normalized)
-        if parsed.scheme not in {"http", "https"}:
-            raise ValueError("HE_UPSTREAM_BASE_URL must use http or https")
-        if not parsed.hostname:
-            raise ValueError("HE_UPSTREAM_BASE_URL must include a host")
-        if parsed.username is not None or parsed.password is not None:
-            raise ValueError("HE_UPSTREAM_BASE_URL must not contain credentials")
-        if parsed.query or parsed.fragment:
-            raise ValueError("HE_UPSTREAM_BASE_URL must not contain query or fragment")
-        return normalized
+        return _validate_http_url(value, "HE_UPSTREAM_BASE_URL")
+
+    @field_validator("bad_case_query_base_url")
+    @classmethod
+    def validate_bad_case_query_url(cls, value: str | None) -> str | None:
+        """Allow only explicit HTTP(S) endpoints without embedded credentials."""
+        return _validate_http_url(value, "HE_BAD_CASE_QUERY_BASE_URL")
 
     @field_validator("web_base_url")
     @classmethod
@@ -175,4 +195,13 @@ class Settings(BaseSettings):
             self.session_query_base_url
             and self.session_query_token
             and self.session_query_token.get_secret_value(),
+        )
+
+    @property
+    def bad_case_query_configured(self) -> bool:
+        """Return whether the catalog query service is usable."""
+        return bool(
+            self.bad_case_query_base_url
+            and self.bad_case_query_token
+            and self.bad_case_query_token.get_secret_value(),
         )

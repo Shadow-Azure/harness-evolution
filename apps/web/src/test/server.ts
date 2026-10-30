@@ -37,6 +37,21 @@ export const server = setupServer(
         status: "idle",
         lastRunAt: null,
         lastError: null
+      },
+      badCaseCatalogSync: {
+        synced: 0,
+        unsynced: 0,
+        lastBadCaseId: 0,
+        status: "idle",
+        lastRunAt: null,
+        lastError: null
+      },
+      badCaseAnalysis: {
+        total: 0,
+        analyzed: 0,
+        pending: 0,
+        issue: 0,
+        nonIssue: 0
       }
     }),
   ),

@@ -34,13 +34,13 @@ Target configuration is member-readable and admin-writable; it includes disabled
 
 Run lists are backend-grouped with backend-generated display facts.
 
-Error details combine a problem sidebar, execution flow and two tabs; selection lives in the URL, cross-session ownership returns 409, panels remember scroll offsets, and asynchronous flow remains subject to bundle and performance gates.
+Error details combine a problem sidebar, execution flow and two tabs; selection lives in the URL, cross-session ownership returns 409, panels remember scroll offsets, and asynchronous flow remains subject to gates.
 
 The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed triggers share the single-flight lock, and no pending work creates no job.
 
 ## Data-layer strategy
 
-- Production uses MySQL 8 while fast local runs and automated tests use SQLite; `HE_DB_DIALECT` is the only selection point.
+- Production uses MySQL 8 while local runs and tests use SQLite; `HE_DB_DIALECT` is the only selection point.
 - The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
 - Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and `Database` and never concatenates SQL.
 - `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
@@ -50,7 +50,7 @@ The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed t
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
-- External problem tables are read-only.
+- External problem tables sync by primary key: the catalog task upserts `bad_cases`; attribution stays read-only.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract
@@ -66,6 +66,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, workspace, blocked/retry/eval, real lastEventSeq), real prepare/Git candidates, placeholder evaluation closure and automatic recovery, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
+- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, blocked/retry, lastEventSeq), real prepare/Git candidates, placeholder evaluation closure, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
 - Missing: real evaluation, real patches, and user deactivation UI.
 - Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.

@@ -13,6 +13,8 @@ import { useCurrentUser, useLogout } from "../../composables/useAuth";
 import {
   badCaseSyncErrorLabel,
   badCaseSyncStatusLabel,
+  catalogSyncErrorLabel,
+  catalogSyncStatusLabel,
   syncErrorLabel,
   syncStatusLabel,
   waitForSyncPoll
@@ -75,19 +77,32 @@ const syncDetail = computed(() => {
 });
 
 const badCaseSync = computed(() => acquisition.value?.badCaseSync);
+const catalogSync = computed(() => acquisition.value?.badCaseCatalogSync);
+const analysis = computed(() => acquisition.value?.badCaseAnalysis);
 
 const badCaseSyncDetail = computed(() => {
+  const status = badCaseSync.value;
+  if (!status) {
+    return "";
+  }
+  if (status.status === "unavailable") {
+    return "未配置轨迹查询服务";
+  }
+  return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+});
+
+const badCaseProblemSub = computed(() => {
   const status = badCaseSync.value;
   if (!status || status.status === "unavailable") {
     return "";
   }
-  if (status.status === "queued" || status.status === "running") {
-    return `补齐中 · 总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+  if (status.status === "idle") {
+    return `${badCaseSyncStatusLabel(status.status)} · 同步中 ${status.syncing} · 失败 ${status.failed}`;
   }
   if (status.status === "failed") {
-    return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+    return `同步中 ${status.syncing} · 失败 ${status.failed} · ${badCaseSyncErrorLabel(status.lastError)}`;
   }
-  return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+  return badCaseSyncStatusLabel(status.status);
 });
 
 const badCaseSyncAria = computed(() => {
@@ -101,8 +116,99 @@ const badCaseSyncAria = computed(() => {
   return `问题轨迹 总 ${status.total} 已同步 ${status.synced} 未同步 ${status.unsynced}`;
 });
 
+const catalogDetail = computed(() => {
+  const status = catalogSync.value;
+  if (!status) {
+    return "";
+  }
+  if (status.status === "unavailable") {
+    return "未配置坏例查询服务";
+  }
+  return `总 ${status.synced + status.unsynced} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+});
+
+const catalogSub = computed(() => {
+  const status = catalogSync.value;
+  if (!status || status.status === "unavailable") {
+    return "";
+  }
+  if (status.status === "failed") {
+    return `${catalogSyncStatusLabel(status.status)} · ${catalogSyncErrorLabel(status.lastError)}`;
+  }
+  if (status.status === "idle") {
+    return `${catalogSyncStatusLabel(status.status)} · 游标 #${status.lastBadCaseId}`;
+  }
+  return catalogSyncStatusLabel(status.status);
+});
+
+const catalogSyncAria = computed(() => {
+  const status = catalogSync.value;
+  if (!status) {
+    return "";
+  }
+  if (status.status === "unavailable") {
+    return "问题数量 未配置坏例查询服务";
+  }
+  return `问题数量 总 ${status.synced + status.unsynced} 已同步 ${status.synced} 未同步 ${status.unsynced}`;
+});
+
+const normalizationDetail = computed(() => {
+  const status = acquisition.value;
+  if (!status) {
+    return "";
+  }
+  return `待处理 ${status.pending} · 已处理 ${status.processed} · 已导入 ${status.imported}`;
+});
+
+const normalizationSub = computed(() => {
+  const status = acquisition.value;
+  if (!status) {
+    return "";
+  }
+  const latestError = status.errors[0]
+    ? syncErrorLabel(status.errors[0].code)
+    : "";
+  return [
+    syncStatusLabel(status.status),
+    `跳过 ${status.skipped}`,
+    latestError ? `最近问题：${latestError}` : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
+});
+
+const analysisDetail = computed(() => {
+  const progress = analysis.value;
+  if (!progress) {
+    return "";
+  }
+  return `已分析 ${progress.analyzed} · 待分析 ${progress.pending}`;
+});
+
+const analysisSub = computed(() => {
+  const progress = analysis.value;
+  if (!progress) {
+    return "";
+  }
+  return `问题 ${progress.issue} · 非问题 ${progress.nonIssue}`;
+});
+
+const analysisAria = computed(() => {
+  const progress = analysis.value;
+  if (!progress) {
+    return "";
+  }
+  return `归因分析 已分析 ${progress.analyzed} 待分析 ${progress.pending}`;
+});
+
 const syncAria = computed(() =>
-  [pendingLabel.value, syncDetail.value, badCaseSyncAria.value]
+  [
+    pendingLabel.value,
+    syncDetail.value,
+    badCaseSyncAria.value,
+    catalogSyncAria.value,
+    analysisAria.value
+  ]
     .filter(Boolean)
     .join("；")
 );
@@ -217,38 +323,65 @@ onBeforeUnmount(() => {
         </span>
         <span class="sync-popover">
           <span class="sync-popover-head">数据同步</span>
-          <span class="sync-normalization-title">会话归一化</span>
-          <span class="sync-detail">{{ syncDetail }}</span>
+          <span
+            v-if="catalogSync"
+            class="sync-section"
+            data-testid="sync-catalog"
+          >
+            <span class="sync-row">
+              <span class="sync-key">问题数量</span>
+              <span class="sync-val">{{ catalogDetail }}</span>
+            </span>
+            <span
+              v-if="catalogSub"
+              class="sync-problem-sub"
+            >
+              {{ catalogSub }}
+            </span>
+          </span>
           <span
             v-if="badCaseSync"
-            class="sync-problem"
+            class="sync-section"
             data-testid="sync-problem"
           >
-            <span class="sync-problem-title">问题轨迹</span>
-            <span v-if="badCaseSync.status === 'unavailable'">
-              未配置轨迹查询服务
+            <span class="sync-row">
+              <span class="sync-key">问题轨迹</span>
+              <span class="sync-val">{{ badCaseSyncDetail }}</span>
             </span>
-            <template v-else>
-              <span>{{ badCaseSyncDetail }}</span>
-              <span
-                v-if="badCaseSync.status === 'idle'"
-                class="sync-problem-sub"
-              >
-                {{ badCaseSyncStatusLabel(badCaseSync.status) }} · 同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }}
-              </span>
-              <span
-                v-else-if="badCaseSync.status === 'failed'"
-                class="sync-problem-sub"
-              >
-                同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }} · {{ badCaseSyncErrorLabel(badCaseSync.lastError) }}
-              </span>
-              <span
-                v-else
-                class="sync-problem-sub"
-              >
-                {{ badCaseSyncStatusLabel(badCaseSync.status) }}
-              </span>
-            </template>
+            <span
+              v-if="badCaseProblemSub"
+              class="sync-problem-sub"
+            >
+              {{ badCaseProblemSub }}
+            </span>
+          </span>
+          <span
+            class="sync-section"
+            data-testid="sync-normalization"
+          >
+            <span class="sync-row">
+              <span class="sync-key">会话归一化</span>
+              <span class="sync-val">{{ normalizationDetail }}</span>
+            </span>
+            <span
+              v-if="normalizationSub"
+              class="sync-problem-sub"
+            >
+              {{ normalizationSub }}
+            </span>
+          </span>
+          <span
+            v-if="analysis"
+            class="sync-section"
+            data-testid="sync-analysis"
+          >
+            <span class="sync-row">
+              <span class="sync-key">归因分析</span>
+              <span class="sync-val">{{ analysisDetail }}</span>
+            </span>
+            <span class="sync-problem-sub">
+              {{ analysisSub }}
+            </span>
           </span>
         </span>
       </div>
@@ -447,6 +580,33 @@ onBeforeUnmount(() => {
   margin-bottom: 4px;
   color: var(--text);
   font-weight: 700;
+}
+
+.sync-section {
+  display: block;
+}
+
+.sync-section + .sync-section {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sync-key {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.sync-val {
+  color: var(--text-dim);
+  text-align: right;
 }
 
 .sync-normalization-title {

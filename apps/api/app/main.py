@@ -24,6 +24,7 @@ from app.api.sessions import router as sessions_router
 from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
@@ -40,6 +41,13 @@ from app.errors import register_exception_handlers
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.service.acquisition.bad_case_catalog_sync import (
+    KIND as BAD_CASE_CATALOG_SYNC_KIND,
+)
+from app.service.acquisition.bad_case_catalog_sync import BadCaseCatalogSyncService
+from app.service.acquisition.bad_case_catalog_sync_coordinator import (
+    BadCaseCatalogSyncCoordinator,
+)
 from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
 from app.service.acquisition.bad_case_sync_coordinator import (
     KIND as BAD_CASE_ROOT_SYNC_KIND,
@@ -84,6 +92,8 @@ from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
+from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
+from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
 from app.third_party_api.session_query.http import HttpSessionQuerySource
@@ -104,6 +114,7 @@ def create_app(
     database: Database | None = None,
     trajectory_source: TrajectorySource | None = None,
     session_query_source: SessionQuerySource | None = None,
+    bad_case_catalog_source: BadCaseCatalogSource | None = None,
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
 ) -> FastAPI:
@@ -172,6 +183,35 @@ def create_app(
         resolved_settings,
     )
     jobs.register_handler(BAD_CASE_ROOT_SYNC_KIND, bad_case_sync_service.handle)
+    resolved_catalog_source = bad_case_catalog_source
+    if resolved_catalog_source is None and resolved_settings.bad_case_query_configured:
+        catalog_token = resolved_settings.bad_case_query_token
+        if catalog_token is None:
+            raise RuntimeError("bad-case query configuration lost its token")
+        catalog_client = httpx.AsyncClient(
+            base_url=resolved_settings.bad_case_query_base_url or "",
+            headers={"Authorization": f"Bearer {catalog_token.get_secret_value()}"},
+            timeout=resolved_settings.bad_case_query_timeout_seconds,
+            follow_redirects=False,
+        )
+        resolved_catalog_source = HttpBadCaseCatalogSource(
+            catalog_client,
+            max_retries=resolved_settings.bad_case_query_retry_attempts,
+            backoff_seconds=resolved_settings.bad_case_query_retry_backoff_seconds,
+        )
+    catalog_repository = BadCaseCatalogSyncRepository(resolved_database)
+    catalog_service = BadCaseCatalogSyncService.from_settings(
+        catalog_repository,
+        resolved_catalog_source,
+        resolved_settings,
+    )
+    catalog_sync = BadCaseCatalogSyncCoordinator(
+        jobs,
+        catalog_repository,
+        resolved_settings,
+        catalog_service,
+    )
+    jobs.register_handler(BAD_CASE_CATALOG_SYNC_KIND, catalog_service.handle)
     sync = SyncCoordinator(
         resolved_database,
         jobs,
@@ -333,6 +373,8 @@ def create_app(
             await sync.start_scheduler()
             phase = "bad-case-sync-scheduler"
             await bad_case_sync.start()
+            phase = "bad-case-catalog-sync-scheduler"
+            await catalog_sync.start()
             phase = "job-dispatch"
             await jobs.start_queued()
             phase = "eval-poller"
@@ -365,20 +407,27 @@ def create_app(
                             await bad_case_sync.stop()
                         finally:
                             try:
-                                await jobs.close()
+                                await catalog_sync.stop()
                             finally:
                                 try:
-                                    if resolved_source is not None:
-                                        await resolved_source.close()
+                                    await jobs.close()
                                 finally:
                                     try:
-                                        if resolved_session_query_source is not None:
-                                            await resolved_session_query_source.close()
+                                        if resolved_source is not None:
+                                            await resolved_source.close()
                                     finally:
                                         try:
-                                            await event_bus.close()
+                                            if resolved_session_query_source is not None:
+                                                await resolved_session_query_source.close()
                                         finally:
-                                            await resolved_database.dispose()
+                                            try:
+                                                if resolved_catalog_source is not None:
+                                                    await resolved_catalog_source.close()
+                                            finally:
+                                                try:
+                                                    await event_bus.close()
+                                                finally:
+                                                    await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None
@@ -397,6 +446,7 @@ def create_app(
     app.state.jobs = jobs
     app.state.sync = sync
     app.state.bad_case_sync = bad_case_sync
+    app.state.bad_case_catalog_sync = catalog_sync
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events

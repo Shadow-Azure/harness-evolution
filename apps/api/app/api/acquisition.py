@@ -6,7 +6,12 @@ from typing import Literal, cast
 from fastapi import APIRouter, Request, Response, Security
 
 from app.api.security import BEARER_AUTH
+from app.db.crud.bad_cases import AnalysisProgress
 from app.errors import AppError, ErrorCode, ErrorResponse
+from app.service.acquisition.bad_case_catalog_sync_coordinator import (
+    BadCaseCatalogSyncCoordinator,
+    CatalogSyncStatus,
+)
 from app.service.acquisition.bad_case_sync_coordinator import (
     BadCaseRootSyncCoordinator,
     BadCaseSyncStatus,
@@ -14,6 +19,7 @@ from app.service.acquisition.bad_case_sync_coordinator import (
 from app.service.acquisition.sync import SyncCoordinator, SyncStatus, SyncTriggerResult
 from app.service.acquisition.upstream_pull import PullJobPayload, UpstreamPullService
 from app.service.identity.schemas import IdentityModel
+from app.service.problems.service import ProblemService
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition"])
 
@@ -61,6 +67,27 @@ class BadCaseSyncSummary(IdentityModel):
     last_error: str | None
 
 
+class BadCaseCatalogSyncSummary(IdentityModel):
+    """Read-only catalog-sync counters for the top-nav popover."""
+
+    synced: int
+    unsynced: int
+    last_bad_case_id: int
+    status: Literal["unavailable", "idle", "queued", "running", "failed"]
+    last_run_at: datetime | None
+    last_error: str | None
+
+
+class BadCaseAnalysisSummary(IdentityModel):
+    """Read-only attribution progress for the top-nav popover."""
+
+    total: int
+    analyzed: int
+    pending: int
+    issue: int
+    non_issue: int
+
+
 class AcquisitionStatusResponse(IdentityModel):
     """Current acquisition counts and durable latest-run metadata."""
 
@@ -75,6 +102,8 @@ class AcquisitionStatusResponse(IdentityModel):
     next_run_at: datetime | None
     errors: list[SyncStatusError]
     bad_case_sync: BadCaseSyncSummary
+    bad_case_catalog_sync: BadCaseCatalogSyncSummary
+    bad_case_analysis: BadCaseAnalysisSummary
 
 
 class SyncTriggerResponse(IdentityModel):
@@ -106,9 +135,24 @@ def bad_case_sync_from(request: Request) -> BadCaseRootSyncCoordinator:
     return cast(BadCaseRootSyncCoordinator, request.app.state.bad_case_sync)
 
 
+def catalog_sync_from(request: Request) -> BadCaseCatalogSyncCoordinator:
+    """Return the application-scoped catalog sync coordinator."""
+    return cast(
+        BadCaseCatalogSyncCoordinator,
+        request.app.state.bad_case_catalog_sync,
+    )
+
+
+def problems_from(request: Request) -> ProblemService:
+    """Return the application-scoped problem read service."""
+    return cast(ProblemService, request.app.state.problems)
+
+
 def _status_response(
     status: SyncStatus,
     bad_case_sync: BadCaseSyncStatus,
+    catalog_sync: CatalogSyncStatus,
+    analysis: AnalysisProgress,
 ) -> AcquisitionStatusResponse:
     errors: list[SyncStatusError] = []
     for issue in status.errors:
@@ -149,6 +193,21 @@ def _status_response(
             last_run_at=bad_case_sync.last_run_at,
             last_error=bad_case_sync.last_error,
         ),
+        bad_case_catalog_sync=BadCaseCatalogSyncSummary(
+            synced=catalog_sync.synced,
+            unsynced=catalog_sync.unsynced,
+            last_bad_case_id=catalog_sync.last_bad_case_id,
+            status=catalog_sync.status,
+            last_run_at=catalog_sync.last_run_at,
+            last_error=catalog_sync.last_error,
+        ),
+        bad_case_analysis=BadCaseAnalysisSummary(
+            total=analysis.total,
+            analyzed=analysis.analyzed,
+            pending=analysis.pending,
+            issue=analysis.issue,
+            non_issue=analysis.non_issue,
+        ),
     )
 
 
@@ -177,6 +236,8 @@ async def acquisition_status(request: Request) -> AcquisitionStatusResponse:
     return _status_response(
         await sync_from(request).status(),
         await bad_case_sync_from(request).status(),
+        await catalog_sync_from(request).status(),
+        await problems_from(request).analysis_progress(),
     )
 
 
