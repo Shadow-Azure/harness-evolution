@@ -200,6 +200,8 @@ onBeforeUnmount(() => {
           问题轨迹 {{ badCaseSync.synced }}/{{ badCaseSync.total }}
         </span>
         <span class="sync-popover">
+          <span class="sync-popover-head">数据同步</span>
+          <span class="sync-normalization-title">会话归一化</span>
           <span class="sync-detail">{{ syncDetail }}</span>
           <span
             v-if="badCaseSync"
@@ -405,6 +407,19 @@ onBeforeUnmount(() => {
 
 .sync-detail {
   display: block;
+}
+
+.sync-popover-head {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.sync-normalization-title {
+  display: block;
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .sync-problem {
