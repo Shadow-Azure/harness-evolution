@@ -125,6 +125,7 @@ class ParsedTranscript:
     ended_at: datetime | None
     ended_with_assistant: bool
     fatal_error_unrecovered: bool
+    parent_agent_id: str | None = None
 
     def agent_meta_dict(self) -> dict[str, object]:
         """Return a detached JSON-compatible copy of provider metadata."""
@@ -494,7 +495,10 @@ def normalize_transcript(
         model=_model(transcript_models),
         requested_model=_meta_string(meta, "model"),
         models=tuple(model_sequence),
-        parent_tool_use_id=_meta_string(meta, "toolUseId"),
+        parent_tool_use_id=(
+            _meta_string(meta, "toolUseId") or _meta_string(meta, "parentToolUseId")
+        ),
+        parent_agent_id=_meta_string(meta, "parentAgentId"),
         spawn_depth=_meta_depth(meta),
         lines=len(physical_lines),
         messages_count=len(seen_messages),

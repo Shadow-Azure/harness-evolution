@@ -16,6 +16,9 @@
             ],
             "title": "Activejobid"
           },
+          "badCaseSync": {
+            "$ref": "#/components/schemas/BadCaseSyncSummary"
+          },
           "errors": {
             "items": {
               "$ref": "#/components/schemas/SyncStatusError"
@@ -90,7 +93,8 @@
           "skipped",
           "lastRunAt",
           "nextRunAt",
-          "errors"
+          "errors",
+          "badCaseSync"
         ],
         "title": "AcquisitionStatusResponse",
         "type": "object"
@@ -321,6 +325,78 @@
           "items"
         ],
         "title": "BadCaseListResponse",
+        "type": "object"
+      },
+      "BadCaseSyncSummary": {
+        "additionalProperties": false,
+        "description": "Read-only bad-case root-sync counters for the top-nav popover.",
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lasterror"
+          },
+          "lastRunAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastrunat"
+          },
+          "status": {
+            "enum": [
+              "unavailable",
+              "idle",
+              "queued",
+              "running",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "synced": {
+            "title": "Synced",
+            "type": "integer"
+          },
+          "syncing": {
+            "title": "Syncing",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unsynced": {
+            "title": "Unsynced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "synced",
+          "unsynced",
+          "syncing",
+          "failed",
+          "status",
+          "lastRunAt",
+          "lastError"
+        ],
+        "title": "BadCaseSyncSummary",
         "type": "object"
       },
       "CatalogModel": {
@@ -603,7 +679,17 @@
           "UPSTREAM_NOT_AVAILABLE",
           "UPSTREAM_VERSION_INCOMPATIBLE",
           "UPSTREAM_INVALID_RESPONSE",
-          "UPSTREAM_REQUEST_FAILED"
+          "UPSTREAM_REQUEST_FAILED",
+          "SESSION_QUERY_UNAVAILABLE",
+          "SESSION_QUERY_UNAUTHORIZED",
+          "SESSION_QUERY_VERSION_INCOMPATIBLE",
+          "SESSION_QUERY_INVALID_RESPONSE",
+          "SESSION_QUERY_TIMEOUT",
+          "SESSION_QUERY_REQUEST_FAILED",
+          "TRAVERSAL_LIMIT_EXCEEDED",
+          "TRAJECTORY_EMPTY",
+          "BAD_CASE_SYNC_FAILED",
+          "BAD_CASE_SYNC_TIME_BUDGET"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -2278,6 +2364,7 @@
             "enum": [
               "sync",
               "pull",
+              "bad_case_root_sync",
               "evolution_prepare",
               "evolution_advance",
               "evolution_apply",

@@ -178,7 +178,17 @@ describe("top navigation user area", () => {
               code: "INVALID_JSONL_LINE",
               message: "raw diagnostic"
             }
-          ]
+          ],
+          badCaseSync: {
+            total: 12,
+            synced: 7,
+            unsynced: 5,
+            syncing: 1,
+            failed: 2,
+            status: "idle",
+            lastRunAt: "2026-10-26T08:00:00+08:00",
+            lastError: null
+          }
         }),
       ),
     );
@@ -217,8 +227,75 @@ describe("top navigation user area", () => {
     ).toContain("有一行轨迹无法解析");
     expect(
       wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
+    ).toContain("问题轨迹 总 12 已同步 7 未同步 5");
+    expect(wrapper.get("[data-testid='sync-problem-badge']").text()).toContain(
+      "问题轨迹 7/12",
+    );
+    expect(wrapper.get("[data-testid='sync-problem']").text()).toContain(
+      "未同步 5",
+    );
+    expect(
+      wrapper.get("[data-testid='sync-status']").attributes("aria-label"),
     ).not.toContain("raw diagnostic");
     expect(wrapper.find("[data-testid='sync-now']").exists()).toBe(false);
+  });
+
+  it("shows a failed bad-case sync state without exposing raw errors", async () => {
+    server.use(
+      http.get("/api/acquisition/status", () =>
+        HttpResponse.json({
+          activeJobId: null,
+          status: "idle",
+          payloadTable: "trajectory_payloads",
+          pending: 0,
+          processed: 0,
+          imported: 0,
+          skipped: 0,
+          lastRunAt: null,
+          nextRunAt: null,
+          errors: [],
+          badCaseSync: {
+            total: 2,
+            synced: 0,
+            unsynced: 2,
+            syncing: 0,
+            failed: 2,
+            status: "failed",
+            lastRunAt: "2026-10-30T08:00:00+08:00",
+            lastError: "SESSION_QUERY_TIMEOUT"
+          }
+        }),
+      ),
+    );
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    useAuthStore().setSession({
+      accessToken: "access",
+      expiresIn: 1_800,
+      user: {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member",
+        mustChangePassword: false,
+      },
+    });
+    const router = createAppRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [[VueQueryPlugin, { queryClient: new QueryClient() }], pinia, router],
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='sync-problem']").text()).toContain(
+      "轨迹查询超时",
+    );
+    expect(wrapper.get("[data-testid='sync-problem']").text()).toContain(
+      "失败 2",
+    );
   });
 
   it("lets admins process sync, poll the job, and invalidate session data", async () => {
@@ -235,7 +312,17 @@ describe("top navigation user area", () => {
           skipped: 0,
           lastRunAt: null,
           nextRunAt: null,
-          errors: []
+          errors: [],
+          badCaseSync: {
+            total: 0,
+            synced: 0,
+            unsynced: 0,
+            syncing: 0,
+            failed: 0,
+            status: "idle",
+            lastRunAt: null,
+            lastError: null
+          }
         }),
       ),
       http.post("/api/acquisition/sync", () =>
@@ -314,7 +401,17 @@ describe("top navigation user area", () => {
           skipped: 0,
           lastRunAt: null,
           nextRunAt: null,
-          errors: []
+          errors: [],
+          badCaseSync: {
+            total: 0,
+            synced: 0,
+            unsynced: 0,
+            syncing: 0,
+            failed: 0,
+            status: "idle",
+            lastRunAt: null,
+            lastError: null
+          }
         }),
       ),
       http.post("/api/acquisition/sync", () =>

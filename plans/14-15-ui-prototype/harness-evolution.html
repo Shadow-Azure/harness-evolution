@@ -312,9 +312,26 @@
   .tn-item.active { color: var(--text); border-bottom-color: var(--blue); }
   .tn-item#tn-evo.active { border-bottom-color: var(--purple); }
   .tn-item .tn-sub { font-size: 10.5px; font-weight: 400; color: var(--text-faint); margin-left: 8px; }
-  .tn-note { margin-left: auto; align-self: center; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
+  .tn-right { margin-left: auto; display: flex; align-items: center; gap: 16px; min-width: 0; }
+  .tn-note { margin-left: 0; align-self: center; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
   .tn-note .idlink { font-size: 10.5px; }
-  @media (max-width: 1100px) { .tn-note, .tn-item .tn-sub { display: none; } }
+  /* 数据同步：沿用应用顶栏的“待处理 + 浮层”形态；原型此前没有该浮层，本次补最小版本 */
+  .tn-sync { position: relative; align-self: center; }
+  .tn-sync summary { list-style: none; display: flex; align-items: center; gap: 7px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-panel); font: inherit; font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+  .tn-sync summary::-webkit-details-marker { display: none; }
+  .tn-sync summary:hover, .tn-sync[open] summary { border-color: color-mix(in srgb, var(--blue) 40%, transparent); color: var(--text); }
+  .tn-sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent); flex-shrink: 0; }
+  .tn-sync-badge { font-family: var(--mono); font-size: 10px; color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, transparent); border-radius: 999px; padding: 1px 6px; }
+  .tn-sync-popover { position: absolute; right: 0; top: calc(100% + 8px); z-index: 360; width: 288px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); box-shadow: 0 14px 34px rgba(20, 30, 50, .16); }
+  .tn-sync-head { margin-bottom: 8px; font-size: 11px; font-weight: 700; color: var(--text); }
+  .tn-sync-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 11px; line-height: 1.65; }
+  .tn-sync-row + .tn-sync-row { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+  .tn-sync-key { color: var(--text-faint); white-space: nowrap; }
+  .tn-sync-val { color: var(--text-dim); text-align: right; }
+  .tn-sync-val b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+  .tn-sync-sub { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border); font-size: 10.5px; color: var(--text-faint); }
+  @media (max-width: 1100px) { .tn-note, .tn-item .tn-sub, .tn-sync { display: none; } }
+  @media (max-width: 720px) { .tn-sync summary { padding: 4px 7px; } .tn-sync-popover { right: -6px; width: min(288px, calc(100vw - 28px)); } }
   .idlink { font-family: var(--mono); font-size: 11px; color: var(--blue); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent); cursor: pointer; white-space: nowrap; }
   .idlink:hover { border-bottom-style: solid; }
   .idlink.rep { color: var(--purple); border-bottom-color: color-mix(in srgb, var(--purple) 45%, transparent); }
@@ -643,7 +660,22 @@
   </div>
   <button class="tn-item" id="tn-session" onclick="switchMainView('session')" title="会话轨迹 · 家族树 · 问题与归因分析">Session 错误查看<span class="tn-sub">会话轨迹与归因</span></button>
   <button class="tn-item" id="tn-evo" onclick="switchMainView('evo')" title="筛选报告 · 聚类归因 · 迭代优化 · 终评">自进化<span class="tn-sub">报告驱动的迭代优化</span></button>
-  <span class="tn-note">问题 <span style="font-family:var(--mono)">I-××</span> 与报告 <span style="font-family:var(--mono)">R-××</span> 已串联 · 点击 ID 跨页溯源</span>
+  <div class="tn-right">
+    <details class="tn-sync">
+      <summary aria-label="数据同步：待处理 3；问题轨迹 总 12 个根会话，已同步 7，未同步 5">
+        <span class="tn-sync-dot"></span>
+        <span class="tn-sync-label">待处理 3</span>
+        <span class="tn-sync-badge">问题轨迹 7/12</span>
+      </summary>
+      <div class="tn-sync-popover">
+        <div class="tn-sync-head">数据同步</div>
+        <div class="tn-sync-row"><span class="tn-sync-key">会话归一化</span><span class="tn-sync-val">待处理 3 · 已处理 8 · 已导入 4</span></div>
+        <div class="tn-sync-row"><span class="tn-sync-key">问题轨迹</span><span class="tn-sync-val">总 <b>12</b> · 已同步 <b>7</b> · 未同步 <b>5</b></span></div>
+        <div class="tn-sync-sub">同步中 1 · 失败 2</div>
+      </div>
+    </details>
+    <span class="tn-note">问题 <span style="font-family:var(--mono)">I-××</span> 与报告 <span style="font-family:var(--mono)">R-××</span> 已串联 · 点击 ID 跨页溯源</span>
+  </div>
 </nav>
 
 <div id="view-session">

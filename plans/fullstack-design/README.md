@@ -34,6 +34,7 @@
 | [08 前端的实现设计](08-frontend-implementation.md) | 每个页面的组件树、数据流、交互与打桩接入点 | 写前端时 |
 | [09 Review 指南与已决问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q6 决策记录、评审重点 | **review 时先看这篇** |
 | [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 排期方案：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
+| [11 bad_cases 根会话轨迹定时同步](11-bad-case-session-sync.md) | 自动补齐策略、外部查询服务契约、状态表、重叠处理与前端统计 | 做 m6-15 前 |
 
 ## 系统一句话说明
 
