@@ -173,6 +173,25 @@ async def test_status_aggregates_synced_failed_and_orphan_rows(
 
 
 @pytest.mark.asyncio
+async def test_status_tolerates_missing_external_bad_cases_table(tmp_path: Path) -> None:
+    """A deployment without the external table still returns acquisition status."""
+    app = create_app(_settings(tmp_path), session_query_source=FakeSource())
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        headers = await _authenticate_admin(client)
+        response = await client.get("/api/acquisition/status", headers=headers)
+        assert response.status_code == 200
+        sync = response.json()["badCaseSync"]
+        assert sync["total"] == 0
+        assert sync["synced"] == 0
+        assert sync["unsynced"] == 0
+        assert sync["status"] == "idle"
+
+
+@pytest.mark.asyncio
 async def test_status_is_unavailable_without_query_service(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, configured=False))
     transport = httpx.ASGITransport(app=app)

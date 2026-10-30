@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, column, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
@@ -15,6 +17,8 @@ from sqlalchemy.sql.selectable import Subquery
 from app.db.base import Database
 from app.db.models.domain import bad_case_root_sync, bad_cases
 from app.utils.time import as_shanghai
+
+logger = logging.getLogger(__name__)
 
 _SYNCED = "synced"
 _SYNCING = "syncing"
@@ -125,6 +129,11 @@ def _candidate_query(now: datetime) -> Select[Any]:
     )
 
 
+def _missing_bad_cases(exc: OperationalError) -> bool:
+    """Return whether an operational error is only the external table being absent."""
+    return "bad_cases" in str(exc).lower()
+
+
 class BadCaseRootSyncRepository:
     """Read and write root-sync state without touching external tables."""
 
@@ -151,15 +160,27 @@ class BadCaseRootSyncRepository:
     async def list_candidates(self, now: datetime, *, limit: int) -> list[str]:
         """Return roots that are unclaimed, retry-due, or lease-expired."""
         statement = _candidate_query(now).order_by(column("candidate_root")).limit(limit)
-        async with self._database.session() as session:
-            rows: list[str] = list((await session.execute(statement)).scalars().all())
+        try:
+            async with self._database.session() as session:
+                rows: list[str] = list((await session.execute(statement)).scalars().all())
+        except OperationalError as exc:
+            if _missing_bad_cases(exc):
+                logger.warning("bad_cases is not provisioned; skipping root-sync candidates")
+                return []
+            raise
         return [str(row) for row in rows]
 
     async def count_candidates(self, now: datetime) -> int:
         """Return how many roots the next tick could work on."""
         statement = select(func.count()).select_from(_candidate_query(now).subquery())
-        async with self._database.session() as session:
-            value = (await session.execute(statement)).scalar_one()
+        try:
+            async with self._database.session() as session:
+                value = (await session.execute(statement)).scalar_one()
+        except OperationalError as exc:
+            if _missing_bad_cases(exc):
+                logger.warning("bad_cases is not provisioned; no root-sync candidates")
+                return 0
+            raise
         return int(value)
 
     async def claim(
@@ -298,8 +319,14 @@ class BadCaseRootSyncRepository:
             .group_by(bad_case_root_sync.c.status)
         )
         async with self._database.session() as session:
-            total_value = (await session.execute(total_statement)).scalar_one()
-            rows: list[Any] = list((await session.execute(grouped_statement)).all())
+            try:
+                total_value = (await session.execute(total_statement)).scalar_one()
+                rows: list[Any] = list((await session.execute(grouped_statement)).all())
+            except OperationalError as exc:
+                if _missing_bad_cases(exc):
+                    logger.warning("bad_cases is not provisioned; reporting zero sync stats")
+                    return BadCaseRootSyncStats(total=0, synced=0, syncing=0, failed=0)
+                raise
         total = int(total_value)
         counts = {str(status): int(count) for status, count in rows if isinstance(status, str)}
         return BadCaseRootSyncStats(
