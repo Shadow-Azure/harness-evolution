@@ -20,6 +20,7 @@ scope:
   - .agents/flow/**
   - .agents/notes/**
   - docs/**
+  - reports/**
 adr: []
 github:
   number: 181
