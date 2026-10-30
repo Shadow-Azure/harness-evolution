@@ -70,6 +70,50 @@ export function badCaseSyncStatusLabel(status: string): string {
 }
 
 /**
+ * Translate a catalog sync state into user-facing copy.
+ * @param status Durable catalog sync state.
+ * @returns Chinese status label.
+ */
+export function catalogSyncStatusLabel(status: string): string {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "同步中";
+    case "failed":
+      return "同步失败";
+    case "unavailable":
+      return "未配置坏例查询服务";
+    default:
+      return "空闲";
+  }
+}
+
+/**
+ * Translate a stable catalog sync error code into user-facing copy.
+ * @param code Machine-readable catalog error code.
+ * @returns Chinese failure label.
+ */
+export function catalogSyncErrorLabel(code: string | null): string {
+  switch (code) {
+    case "BAD_CASE_QUERY_TIMEOUT":
+      return "坏例查询超时";
+    case "BAD_CASE_QUERY_UNAUTHORIZED":
+      return "坏例查询鉴权失败";
+    case "BAD_CASE_QUERY_INVALID_RESPONSE":
+      return "坏例查询响应异常";
+    case "BAD_CASE_QUERY_REQUEST_FAILED":
+      return "坏例查询请求失败";
+    case "BAD_CASE_CATALOG_SYNC_INTERRUPTED":
+      return "上次同步中断";
+    case "BAD_CASE_CATALOG_SYNC_FAILED":
+      return "目录同步失败";
+    default:
+      return "目录同步失败";
+  }
+}
+
+/**
  * Translate a stable root-sync error code into user-facing copy.
  * @param code Machine-readable root-sync error code.
  * @returns Chinese failure label.
