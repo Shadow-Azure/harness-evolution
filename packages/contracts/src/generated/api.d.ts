@@ -789,6 +789,7 @@ export interface components {
         AcquisitionStatusResponse: {
             /** Activejobid */
             activeJobId: string | null;
+            badCaseSync: components["schemas"]["BadCaseSyncSummary"];
             /** Errors */
             errors: components["schemas"]["SyncStatusError"][];
             /** Imported */
@@ -921,6 +922,31 @@ export interface components {
             items: components["schemas"]["BadCase"][];
         };
         /**
+         * BadCaseSyncSummary
+         * @description Read-only bad-case root-sync counters for the top-nav popover.
+         */
+        BadCaseSyncSummary: {
+            /** Failed */
+            failed: number;
+            /** Lasterror */
+            lastError: string | null;
+            /** Lastrunat */
+            lastRunAt: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "unavailable" | "idle" | "queued" | "running" | "failed";
+            /** Synced */
+            synced: number;
+            /** Syncing */
+            syncing: number;
+            /** Total */
+            total: number;
+            /** Unsynced */
+            unsynced: number;
+        };
+        /**
          * CatalogModel
          * @description One normalized model and its usage across the trace corpus.
          */
@@ -1033,7 +1059,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -1712,7 +1738,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "sync" | "pull" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry";
+            kind: "sync" | "pull" | "bad_case_root_sync" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry";
             /** Progress */
             progress: number;
             /** Refid */

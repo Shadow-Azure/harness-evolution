@@ -7,6 +7,10 @@ from fastapi import APIRouter, Request, Response, Security
 
 from app.api.security import BEARER_AUTH
 from app.errors import AppError, ErrorCode, ErrorResponse
+from app.service.acquisition.bad_case_sync_coordinator import (
+    BadCaseRootSyncCoordinator,
+    BadCaseSyncStatus,
+)
 from app.service.acquisition.sync import SyncCoordinator, SyncStatus, SyncTriggerResult
 from app.service.acquisition.upstream_pull import PullJobPayload, UpstreamPullService
 from app.service.identity.schemas import IdentityModel
@@ -44,6 +48,19 @@ class SyncStatusError(IdentityModel):
     message: str
 
 
+class BadCaseSyncSummary(IdentityModel):
+    """Read-only bad-case root-sync counters for the top-nav popover."""
+
+    total: int
+    synced: int
+    unsynced: int
+    syncing: int
+    failed: int
+    status: Literal["unavailable", "idle", "queued", "running", "failed"]
+    last_run_at: datetime | None
+    last_error: str | None
+
+
 class AcquisitionStatusResponse(IdentityModel):
     """Current acquisition counts and durable latest-run metadata."""
 
@@ -57,6 +74,7 @@ class AcquisitionStatusResponse(IdentityModel):
     last_run_at: datetime | None
     next_run_at: datetime | None
     errors: list[SyncStatusError]
+    bad_case_sync: BadCaseSyncSummary
 
 
 class SyncTriggerResponse(IdentityModel):
@@ -83,7 +101,15 @@ def pull_from(request: Request) -> UpstreamPullService:
     return cast(UpstreamPullService, request.app.state.upstream_pull)
 
 
-def _status_response(status: SyncStatus) -> AcquisitionStatusResponse:
+def bad_case_sync_from(request: Request) -> BadCaseRootSyncCoordinator:
+    """Return the application-scoped bad-case root sync coordinator."""
+    return cast(BadCaseRootSyncCoordinator, request.app.state.bad_case_sync)
+
+
+def _status_response(
+    status: SyncStatus,
+    bad_case_sync: BadCaseSyncStatus,
+) -> AcquisitionStatusResponse:
     errors: list[SyncStatusError] = []
     for issue in status.errors:
         code = issue.get("code")
@@ -113,6 +139,16 @@ def _status_response(status: SyncStatus) -> AcquisitionStatusResponse:
         last_run_at=status.last_run_at,
         next_run_at=status.next_run_at,
         errors=errors,
+        bad_case_sync=BadCaseSyncSummary(
+            total=bad_case_sync.total,
+            synced=bad_case_sync.synced,
+            unsynced=bad_case_sync.unsynced,
+            syncing=bad_case_sync.syncing,
+            failed=bad_case_sync.failed,
+            status=bad_case_sync.status,
+            last_run_at=bad_case_sync.last_run_at,
+            last_error=bad_case_sync.last_error,
+        ),
     )
 
 
@@ -138,7 +174,10 @@ def _trigger_response(result: SyncTriggerResult) -> SyncTriggerResponse:
 )
 async def acquisition_status(request: Request) -> AcquisitionStatusResponse:
     """Return durable acquisition progress for all authenticated users."""
-    return _status_response(await sync_from(request).status())
+    return _status_response(
+        await sync_from(request).status(),
+        await bad_case_sync_from(request).status(),
+    )
 
 
 @router.post(
