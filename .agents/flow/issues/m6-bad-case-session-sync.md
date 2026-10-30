@@ -49,7 +49,8 @@ github:
 - [05 §4.8 原始轨迹接入](../../../plans/fullstack-design/05-api-design.md#L688-L708)：acquisition 现有接口与 job 语义。
 - [06 §3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md#L105-L145)：原始 payload 的唯一存储与待处理判定。
 - [02 F9 轨迹接入与归一化](../../../plans/fullstack-design/02-features.md)：能力边界与演示数据规则。
-- 本 issue 的实现细节（状态表结构、查询服务适配、遍历与并发策略、前端位置）以开发前产出的 `plans/fullstack-design` 新章节为准；实现冲突时以该章节为准。
+- [11 bad_cases 根会话轨迹定时同步](../../../plans/fullstack-design/11-bad-case-session-sync.md)：状态表、外部查询服务适配、遍历、重叠策略与前端统计。
+- 实现冲突时以 11 章为准。
 
 ## 实现内容
 

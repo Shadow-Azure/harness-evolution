@@ -49,7 +49,8 @@ The existing upstream trajectory contract (`third_party_api/trajectory`) returns
 - [05 §4.8 raw trajectory ingestion](../../../plans/fullstack-design/05-api-design.md#L688-L708): existing acquisition endpoints and job semantics.
 - [06 §3.0 trajectory_payloads](../../../plans/fullstack-design/06-database-design.md#L105-L145): the single raw payload store and pending detection.
 - [02 F9 trajectory ingestion and normalization](../../../plans/fullstack-design/02-features.md): capability boundary and demo-data rules.
-- Implementation details for this issue (status table shape, query-service adapter, traversal and concurrency policy, frontend placement) follow the new `plans/fullstack-design` chapter produced before development; that chapter wins on conflict.
+- [11 Scheduled sync for bad-case root sessions](../../../plans/fullstack-design/11-bad-case-session-sync.md): status table, query-service adapter, traversal, overlap policy, and frontend statistics.
+- Chapter 11 wins on conflict.
 
 ## Implementation
 
