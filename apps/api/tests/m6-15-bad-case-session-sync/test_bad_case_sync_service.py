@@ -230,6 +230,16 @@ async def test_one_root_failure_does_not_block_another_root(database: Database) 
     assert failed.last_error == ErrorCode.SESSION_QUERY_TIMEOUT.value
     assert failed.next_retry_at is not None
     assert failed.next_retry_at >= now + timedelta(minutes=1)
+    assert failed.agent_count == 1
+    async with database.session() as session:
+        partial = (
+            await session.execute(
+                select(func.count()).where(
+                    trajectory_payloads.c.root_session_id == ROOT_B,
+                ),
+            )
+        ).scalar_one()
+    assert partial == 1
 
 
 @pytest.mark.asyncio

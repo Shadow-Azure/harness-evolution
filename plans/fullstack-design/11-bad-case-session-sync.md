@@ -89,7 +89,7 @@ Accept: application/x-ndjson
 
 语义：返回该 agent 的完整轨迹，内容是纯轨迹数据，可以理解为直接对应 `trajectory_payloads.payload`；**不包含 `agent_meta`、`toolUseId`、`parentToolUseId` 等元数据**。浏览器直接访问会下载 `.jsonl`，Postman 中表现为多个 JSON object。
 
-响应按 NDJSON 解析：每行一个 JSON object；空行跳过，但至少要有一个非空行。每个 object 用 `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` 重新序列化为一行，行间 `\n`；`content_hash = sha256(规范化后的 UTF-8 字节)`；`line_count = object 数`。空轨迹、非 object 元素、重复 JSON key、超长行都拒绝并记为稳定错误码。
+响应按 NDJSON 解析：每行一个 JSON object；空行跳过，但至少要有一个非空行。每个 object 用 `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` 重新序列化为一行，行间 `\n`；`content_hash = sha256(规范化后的 UTF-8 字节)`；`line_count = object 数`。空轨迹、非 object 元素、重复 JSON key、超长行都拒绝并记为稳定错误码。按 `\n` 分帧而不是 `splitlines`，避免合法 JSON 字符串里的 U+2028/U+2029 被误切。响应体上限 64 MiB、单行上限 1 MiB、行数上限 1,000,000；超限记 `SESSION_QUERY_INVALID_RESPONSE`。
 
 接口 2 禁止并发：`SessionQueryClient` 内部用一把 `asyncio.Lock` 包住每次请求；同一进程内所有调用方共享这把锁。测试必须记录调用区间并断言不重叠。
 
@@ -165,9 +165,7 @@ while queue:
 | `source_type` | `http_api` |
 | `updated_at` | 本次写入时间（Asia/Shanghai） |
 
-写入复用 `write_local_payloads(database, payloads, source_type="http_api")`；它按 `(root_session_id, agent_id)` 幂等 upsert，并在同一事务更新 `source_records`。
-
-写入完成后调用一次 `replay_pending_payloads(database, source_type="http_api", sync_run_id=job.id)`，与 `UpstreamPullService` 保持一致。状态表的 `synced` 只表示 payload 已完整写入；重放失败进入 `sync_runs.errors`，由现有 sync 调度重试，不回滚 root 状态。
+写入复用 `write_local_payloads(database, payloads, source_type="http_api")`；每个 agent 取到后立即以单行事务写入，失败时已写入的行保留，`agent_count` 记录实际行数，重试按 `(root_session_id, agent_id)` 幂等覆盖。写入完成后调用一次 `replay_pending_payloads(database, source_type="http_api", sync_run_id=job.id)`，与 `UpstreamPullService` 保持一致。状态表的 `synced` 只表示 payload 已完整写入；重放失败进入 `sync_runs.errors`，由现有 sync 调度重试，不回滚 root 状态。
 
 ## 5. 状态表与状态机
 
@@ -364,13 +362,15 @@ V1 与现有 `sync` 一样按单实例部署：`JobRunner` 的全局锁是进程
 
 - `job_runs.result` 记录 `rootsConsidered`、`rootsSynced`、`rootsFailed`、`agentsFetched`、`payloadsInserted`、`payloadsUpdated`、`replayed`、`skippedTicks`。
 - `bad_case_root_sync.last_error` 记录稳定 code；日志只记 sessionId 前缀/数量，不记轨迹正文。
-- 新增错误码：`SESSION_QUERY_UNAVAILABLE`、`SESSION_QUERY_UNAUTHORIZED`、`SESSION_QUERY_VERSION_INCOMPATIBLE`、`SESSION_QUERY_INVALID_RESPONSE`、`SESSION_QUERY_TIMEOUT`、`TRAVERSAL_LIMIT_EXCEEDED`、`TRAJECTORY_EMPTY`。
+- 新增错误码：`SESSION_QUERY_UNAVAILABLE`、`SESSION_QUERY_UNAUTHORIZED`、`SESSION_QUERY_VERSION_INCOMPATIBLE`、`SESSION_QUERY_INVALID_RESPONSE`、`SESSION_QUERY_TIMEOUT`、`TRAVERSAL_LIMIT_EXCEEDED`、`TRAJECTORY_EMPTY`、`BAD_CASE_SYNC_TIME_BUDGET`。
 
 ## 9. 失败、重试与数据一致性
 
 - 单 root 失败隔离：一个 root 的接口失败不影响同批其他 root。
+- 单 root 也受批次时间预算约束：每取一个 agent 前检查 deadline，超限记 `BAD_CASE_SYNC_TIME_BUDGET`，已写入的 payload 保留，root 进入退避重试。
 - 重试退避：`attempts=1→1m`、`2→5m`、`3→15m`、`>=4→1h`，写入 `next_retry_at`；可配置。
-- 已写入 payload 不回滚；重试按 `(root_session_id, agent_id)` 幂等覆盖。
+- 已写入 payload 不回滚；重试按 `(root_session_id, agent_id)` 幂等覆盖；失败时 `agent_count` 记录已写入行数。
+- 租约按每个 root 的实际 claim 时间计算，并在每个 agent 写入后续期；租约长度至少覆盖单 root 的时间预算。
 - `synced` 与 payload 完整性：状态在遍历完成且所有 payload 写入成功后置 `synced`；`agent_count` 为实际写入行数。
 - 状态与 payload 漂移：若人工删除 payload，状态仍为 `synced`，统计不会自动发现；本 issue 不做自动对账，可在后续加健康检查。
 - 已有 payload 的根会话：见 §9.1。

@@ -18,6 +18,10 @@ from app.third_party_api.session_query.models import (
     SessionTrajectory,
 )
 
+MAX_TRAJECTORY_BYTES = 64 * 1024 * 1024
+MAX_TRAJECTORY_LINE_BYTES = 1024 * 1024
+MAX_TRAJECTORY_LINES = 1_000_000
+
 
 class HttpSessionQuerySource:
     """Call the two session-query endpoints with bounded retries and a serial trajectory lock."""
@@ -99,21 +103,33 @@ class HttpSessionQuerySource:
 
     @staticmethod
     def _parse_trajectory(body: bytes) -> SessionTrajectory:
+        if len(body) > MAX_TRAJECTORY_BYTES:
+            raise HttpSessionQuerySource._invalid_response(
+                "trajectory response exceeded the size limit",
+            )
         try:
             text = body.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise HttpSessionQuerySource._invalid_response(
                 "trajectory response was not UTF-8",
             ) from exc
-        lines = [line for line in text.splitlines() if line.strip()]
+        lines = [line.rstrip("\r") for line in text.split("\n") if line.strip()]
         if not lines:
             raise AppError(
                 status_code=HTTPStatus.BAD_GATEWAY,
                 code=ErrorCode.TRAJECTORY_EMPTY,
                 message="session query service returned an empty trajectory",
             )
+        if len(lines) > MAX_TRAJECTORY_LINES:
+            raise HttpSessionQuerySource._invalid_response(
+                "trajectory response exceeded the line limit",
+            )
         canonical: list[str] = []
         for line in lines:
+            if len(line.encode("utf-8")) > MAX_TRAJECTORY_LINE_BYTES:
+                raise HttpSessionQuerySource._invalid_response(
+                    "trajectory line exceeded the size limit",
+                )
             try:
                 value = json.loads(line, object_pairs_hook=_reject_duplicate_keys)
             except (json.JSONDecodeError, DuplicateJsonKeyError) as exc:

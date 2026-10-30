@@ -660,6 +660,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "evolution_rounds",
             "evolution_finals",
             "sync_lock",
+            "bad_case_root_sync",
         } <= table_names
         assert {
             "root_session_id",
@@ -1074,6 +1075,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "evolution_rounds",
             "evolution_finals",
             "sync_lock",
+            "bad_case_root_sync",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
         async with database.engine.connect() as connection:

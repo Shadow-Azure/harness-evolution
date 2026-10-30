@@ -11,6 +11,8 @@ import {
 import { queryKeys } from "../../api/queryKeys";
 import { useCurrentUser, useLogout } from "../../composables/useAuth";
 import {
+  badCaseSyncErrorLabel,
+  badCaseSyncStatusLabel,
   syncErrorLabel,
   syncStatusLabel,
   waitForSyncPoll
@@ -73,6 +75,20 @@ const syncDetail = computed(() => {
 });
 
 const badCaseSync = computed(() => acquisition.value?.badCaseSync);
+
+const badCaseSyncDetail = computed(() => {
+  const status = badCaseSync.value;
+  if (!status || status.status === "unavailable") {
+    return "";
+  }
+  if (status.status === "queued" || status.status === "running") {
+    return `补齐中 · 总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+  }
+  if (status.status === "failed") {
+    return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+  }
+  return `总 ${status.total} · 已同步 ${status.synced} · 未同步 ${status.unsynced}`;
+});
 
 const badCaseSyncAria = computed(() => {
   const status = badCaseSync.value;
@@ -213,8 +229,25 @@ onBeforeUnmount(() => {
               未配置轨迹查询服务
             </span>
             <template v-else>
-              <span>总 {{ badCaseSync.total }} · 已同步 {{ badCaseSync.synced }} · 未同步 {{ badCaseSync.unsynced }}</span>
-              <span class="sync-problem-sub">同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }}</span>
+              <span>{{ badCaseSyncDetail }}</span>
+              <span
+                v-if="badCaseSync.status === 'idle'"
+                class="sync-problem-sub"
+              >
+                {{ badCaseSyncStatusLabel(badCaseSync.status) }} · 同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }}
+              </span>
+              <span
+                v-else-if="badCaseSync.status === 'failed'"
+                class="sync-problem-sub"
+              >
+                同步中 {{ badCaseSync.syncing }} · 失败 {{ badCaseSync.failed }} · {{ badCaseSyncErrorLabel(badCaseSync.lastError) }}
+              </span>
+              <span
+                v-else
+                class="sync-problem-sub"
+              >
+                {{ badCaseSyncStatusLabel(badCaseSync.status) }}
+              </span>
             </template>
           </span>
         </span>

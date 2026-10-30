@@ -103,6 +103,38 @@ async def test_trajectory_rejects_empty_or_non_object(body: str, code: ErrorCode
 
 
 @pytest.mark.asyncio
+async def test_trajectory_does_not_split_on_unicode_line_separator() -> None:
+    body = json.dumps({"type": "assistant", "text": "a\u2028b"}, ensure_ascii=False)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=body)
+
+    source = HttpSessionQuerySource(_client(handler))
+    try:
+        trajectory = await source.fetch_trajectory("agent-a")
+        assert trajectory.line_count == 1
+        assert "\u2028" in trajectory.content
+    finally:
+        await source.close()
+
+
+@pytest.mark.asyncio
+async def test_trajectory_rejects_oversized_line() -> None:
+    body = json.dumps({"type": "assistant", "text": "x" * (1024 * 1024 + 1)})
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=body)
+
+    source = HttpSessionQuerySource(_client(handler))
+    try:
+        with pytest.raises(AppError) as error:
+            await source.fetch_trajectory("agent-a")
+        assert error.value.code is ErrorCode.SESSION_QUERY_INVALID_RESPONSE
+    finally:
+        await source.close()
+
+
+@pytest.mark.asyncio
 async def test_trajectory_calls_are_serialized() -> None:
     state = {"active": 0, "max_active": 0}
 

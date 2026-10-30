@@ -1,0 +1,143 @@
+{
+  "title": "m6-15 bad-case root trajectory sync smoke",
+  "eyebrow": "SMOKE REPORT",
+  "summary": "Seeded one bad_cases root with no trajectory payload, ran the real API + Web with a deterministic mock of the two query endpoints, and verified the scheduled job wrote main + two subagent payloads, replayed the session, and exposed synced counts in the top-nav popover.",
+  "meta": "2026-10-30 · Windows · SQLite + real Vite + headless Chrome",
+  "metrics": [
+    {
+      "value": "1",
+      "label": "bad_cases roots"
+    },
+    {
+      "value": "1",
+      "label": "synced roots"
+    },
+    {
+      "value": "3",
+      "label": "trajectory calls"
+    },
+    {
+      "value": "1",
+      "label": "max concurrent API 2 calls"
+    }
+  ],
+  "facts": [
+    {
+      "label": "Commit",
+      "value": "working tree"
+    },
+    {
+      "label": "Root session",
+      "value": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "label": "Mock service",
+      "value": "127.0.0.1:49675"
+    },
+    {
+      "label": "API / Web",
+      "value": "49682 / 51490"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "Scenario",
+      "Result",
+      "Detail",
+      "Evidence"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Seed bad_cases root and run first tick",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "Seeded 11111111-1111-4111-8111-111111111111 with no payload; after the first tick total=1, unsynced=0.",
+        "evidence": []
+      },
+      {
+        "id": "02",
+        "name": "Scheduled root traversal writes main + subagents",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "Mock API 2 served 3 serial calls; max concurrency 1.",
+        "evidence": []
+      },
+      {
+        "id": "03",
+        "name": "Replay makes the session queryable",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "GET /api/sessions contains 11111111-1111-4111-8111-111111111111.",
+        "evidence": []
+      },
+      {
+        "id": "04",
+        "name": "Top-nav status shows synced counts",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "badCaseSync total=1, synced=1, unsynced=0; popover text verified.",
+        "evidence": [
+          "screenshots/01-session-list-sync-popover.png"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-session-list-sync-popover.png",
+      "alt": "Session list with the data sync popover open",
+      "label": "01 · Session list + sync popover",
+      "caption": "The root session is queryable and the popover reports 1/1 synced, 0 unsynced.",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "Area",
+      "Coverage",
+      "Conclusion",
+      "Recommendation"
+    ],
+    "rows": [
+      {
+        "area": "Root traversal and payload writes",
+        "coverage": "UT + smoke",
+        "conclusion": "Main + two nested subagents written with parentAgentId metadata.",
+        "recommendation": "Keep the mock contract test in CI; keep the real service out."
+      },
+      {
+        "area": "Serial API 2",
+        "coverage": "UT + smoke",
+        "conclusion": "Mock observed maxActive=1.",
+        "recommendation": "Add a cross-process lock before multi-instance deployment."
+      },
+      {
+        "area": "Overlap / single-flight",
+        "coverage": "UT",
+        "conclusion": "Active job is skipped; batch/time budget leaves the next tick to resume.",
+        "recommendation": "Run a long-running smoke if the query service latency grows."
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready for PR review",
+    "summary": "The mock-backed end-to-end path works; the only unverified dependency is the real query service contract.",
+    "points": [
+      "Real API paths/token/version remain to be supplied by the service owner.",
+      "First production run will refetch existing roots once by design."
+    ]
+  },
+  "footer": "m6-15 · bad_cases 根会话轨迹定时同步 · mock query service, no production credentials"
+}

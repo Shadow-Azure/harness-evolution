@@ -48,3 +48,49 @@ export function syncErrorLabel(code: string): string {
       return "同步发现问题";
   }
 }
+
+/**
+ * Translate a bad-case root-sync state into user-facing copy.
+ * @param status Durable root-sync state.
+ * @returns Chinese status label.
+ */
+export function badCaseSyncStatusLabel(status: string): string {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "补齐中";
+    case "failed":
+      return "补齐失败";
+    case "unavailable":
+      return "未配置轨迹查询服务";
+    default:
+      return "空闲";
+  }
+}
+
+/**
+ * Translate a stable root-sync error code into user-facing copy.
+ * @param code Machine-readable root-sync error code.
+ * @returns Chinese failure label.
+ */
+export function badCaseSyncErrorLabel(code: string | null): string {
+  switch (code) {
+    case "SESSION_QUERY_TIMEOUT":
+      return "轨迹查询超时";
+    case "SESSION_QUERY_UNAUTHORIZED":
+      return "轨迹查询鉴权失败";
+    case "SESSION_QUERY_INVALID_RESPONSE":
+      return "轨迹查询响应异常";
+    case "SESSION_QUERY_REQUEST_FAILED":
+      return "轨迹查询请求失败";
+    case "TRAVERSAL_LIMIT_EXCEEDED":
+      return "会话树超过上限";
+    case "BAD_CASE_SYNC_TIME_BUDGET":
+      return "单批时间预算用尽";
+    case "TRAJECTORY_EMPTY":
+      return "轨迹为空";
+    default:
+      return "轨迹补齐失败";
+  }
+}

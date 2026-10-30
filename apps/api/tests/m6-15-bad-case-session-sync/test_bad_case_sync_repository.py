@@ -9,10 +9,11 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
+from sqlalchemy.exc import ProgrammingError
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
-from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository, _missing_bad_cases
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import bad_cases
@@ -60,6 +61,16 @@ async def _insert_bad_case(database: Database, root_session_id: str, suffix: str
                 updated_at=now,
             ),
         )
+
+
+def test_missing_table_helper_accepts_mysql_programming_error() -> None:
+    """MySQL missing-table errors surface as ProgrammingError, not OperationalError."""
+    error = ProgrammingError(
+        "SELECT 1",
+        {},
+        Exception("(1146, \"Table 'harness.bad_cases' doesn't exist\")"),
+    )
+    assert _missing_bad_cases(error) is True
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy import and_, column, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
@@ -129,7 +129,7 @@ def _candidate_query(now: datetime) -> Select[Any]:
     )
 
 
-def _missing_bad_cases(exc: OperationalError) -> bool:
+def _missing_bad_cases(exc: OperationalError | ProgrammingError) -> bool:
     """Return whether an operational error is only the external table being absent."""
     return "bad_cases" in str(exc).lower()
 
@@ -163,7 +163,7 @@ class BadCaseRootSyncRepository:
         try:
             async with self._database.session() as session:
                 rows: list[str] = list((await session.execute(statement)).scalars().all())
-        except OperationalError as exc:
+        except (OperationalError, ProgrammingError) as exc:
             if _missing_bad_cases(exc):
                 logger.warning("bad_cases is not provisioned; skipping root-sync candidates")
                 return []
@@ -176,7 +176,7 @@ class BadCaseRootSyncRepository:
         try:
             async with self._database.session() as session:
                 value = (await session.execute(statement)).scalar_one()
-        except OperationalError as exc:
+        except (OperationalError, ProgrammingError) as exc:
             if _missing_bad_cases(exc):
                 logger.warning("bad_cases is not provisioned; no root-sync candidates")
                 return 0
@@ -251,6 +251,29 @@ class BadCaseRootSyncRepository:
             )
             return True
 
+    async def renew_lease(
+        self,
+        root_session_id: str,
+        *,
+        owner: str,
+        lease_seconds: int,
+        now: datetime,
+    ) -> None:
+        """Extend a live claim without changing its status or attempt count."""
+        now_value = as_shanghai(now)
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(bad_case_root_sync)
+                .where(
+                    bad_case_root_sync.c.root_session_id == root_session_id,
+                    bad_case_root_sync.c.lease_owner == owner,
+                )
+                .values(
+                    lease_expires_at=now_value + timedelta(seconds=lease_seconds),
+                    updated_at=now_value,
+                ),
+            )
+
     async def mark_synced(
         self,
         root_session_id: str,
@@ -322,7 +345,7 @@ class BadCaseRootSyncRepository:
             try:
                 total_value = (await session.execute(total_statement)).scalar_one()
                 rows: list[Any] = list((await session.execute(grouped_statement)).all())
-            except OperationalError as exc:
+            except (OperationalError, ProgrammingError) as exc:
                 if _missing_bad_cases(exc):
                     logger.warning("bad_cases is not provisioned; reporting zero sync stats")
                     return BadCaseRootSyncStats(total=0, synced=0, syncing=0, failed=0)
@@ -337,16 +360,34 @@ class BadCaseRootSyncRepository:
         )
 
     async def last_run_at(self) -> datetime | None:
-        """Return the newest state change, or ``None`` before the first run."""
-        statement = select(func.max(bad_case_root_sync.c.updated_at))
-        async with self._database.session() as session:
-            value = (await session.execute(statement)).scalar_one_or_none()
+        """Return the newest state change for a root still in bad_cases."""
+        roots = _distinct_roots()
+        statement = select(func.max(bad_case_root_sync.c.updated_at)).select_from(
+            roots.join(
+                bad_case_root_sync,
+                bad_case_root_sync.c.root_session_id == roots.c.root_session_id,
+            ),
+        )
+        try:
+            async with self._database.session() as session:
+                value = (await session.execute(statement)).scalar_one_or_none()
+        except (OperationalError, ProgrammingError) as exc:
+            if _missing_bad_cases(exc):
+                return None
+            raise
         return as_shanghai(value) if isinstance(value, datetime) else None
 
     async def last_error(self) -> str | None:
-        """Return the newest failed root's sanitized error, if any."""
+        """Return the newest failed current root's sanitized error, if any."""
+        roots = _distinct_roots()
         statement = (
             select(bad_case_root_sync.c.last_error)
+            .select_from(
+                roots.join(
+                    bad_case_root_sync,
+                    bad_case_root_sync.c.root_session_id == roots.c.root_session_id,
+                ),
+            )
             .where(
                 bad_case_root_sync.c.status == _FAILED,
                 bad_case_root_sync.c.last_error.is_not(None),
@@ -354,6 +395,11 @@ class BadCaseRootSyncRepository:
             .order_by(bad_case_root_sync.c.updated_at.desc())
             .limit(1)
         )
-        async with self._database.session() as session:
-            value = (await session.execute(statement)).scalar_one_or_none()
+        try:
+            async with self._database.session() as session:
+                value = (await session.execute(statement)).scalar_one_or_none()
+        except (OperationalError, ProgrammingError) as exc:
+            if _missing_bad_cases(exc):
+                return None
+            raise
         return value if isinstance(value, str) else None

@@ -688,7 +688,8 @@
           "SESSION_QUERY_REQUEST_FAILED",
           "TRAVERSAL_LIMIT_EXCEEDED",
           "TRAJECTORY_EMPTY",
-          "BAD_CASE_SYNC_FAILED"
+          "BAD_CASE_SYNC_FAILED",
+          "BAD_CASE_SYNC_TIME_BUDGET"
         ],
         "title": "ErrorCode",
         "type": "string"

@@ -545,7 +545,12 @@ def _assemble_root(
                     nodes[transcript.agent_id],
                     parent_agent_id=parent_agent,
                 )
-                parent_anchor = anchors.get(parent_agent)
+                parent_node = nodes[parent_agent]
+                parent_anchor = (
+                    _event_anchor(parent_node.events[-1])
+                    if parent_node.events
+                    else anchors.get(parent_agent)
+                )
                 if parent_anchor is not None:
                     anchors[transcript.agent_id] = parent_anchor
                 continue

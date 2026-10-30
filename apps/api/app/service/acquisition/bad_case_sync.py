@@ -41,6 +41,15 @@ class BadCaseRootSyncResult:
     skipped: int
 
 
+@dataclass(slots=True)
+class RootSyncProgress:
+    """Mutable per-root counters; partial writes survive a later failure."""
+
+    agent_count: int = 0
+    inserted: int = 0
+    updated: int = 0
+
+
 def _retry_delay(attempts: int) -> timedelta:
     """Return the documented 1m/5m/15m/1h retry ladder."""
     if attempts <= 1:
@@ -147,35 +156,41 @@ class BadCaseRootSyncService:
             if time.monotonic() >= deadline:
                 roots_skipped += len(candidates) - index
                 break
+            root_now = now or self._clock()
             claimed = await self._repository.claim(
                 root_session_id,
                 owner=owner,
-                lease_seconds=self._lease_seconds,
-                now=started_at,
+                lease_seconds=self._root_lease_seconds,
+                now=root_now,
             )
             if not claimed:
                 roots_skipped += 1
                 continue
 
-            root_now = now or self._clock()
+            progress = RootSyncProgress()
             try:
-                payloads = await self._sync_root(root_session_id, root_now)
-                written = await write_local_payloads(
-                    self._database,
-                    tuple(payloads),
-                    source_type="http_api",
+                await self._sync_root(
+                    root_session_id,
+                    root_now,
+                    progress,
+                    owner=owner,
+                    deadline=deadline,
                 )
-                inserted += written.inserted_payloads
-                updated += written.updated_payloads
-                wrote_payloads = wrote_payloads or bool(payloads)
-                agents_fetched += len(payloads)
+                inserted += progress.inserted
+                updated += progress.updated
+                agents_fetched += progress.agent_count
+                wrote_payloads = wrote_payloads or progress.agent_count > 0
                 await self._repository.mark_synced(
                     root_session_id,
-                    agent_count=len(payloads),
+                    agent_count=progress.agent_count,
                     now=root_now,
                 )
                 roots_synced += 1
             except Exception as exc:
+                inserted += progress.inserted
+                updated += progress.updated
+                agents_fetched += progress.agent_count
+                wrote_payloads = wrote_payloads or progress.agent_count > 0
                 attempts = await self._attempts(root_session_id)
                 retry_at = root_now + _retry_delay(attempts)
                 await self._repository.mark_failed(
@@ -183,7 +198,7 @@ class BadCaseRootSyncService:
                     error=_stable_error(exc),
                     next_retry_at=retry_at,
                     now=root_now,
-                    agent_count=0,
+                    agent_count=progress.agent_count,
                 )
                 roots_failed += 1
 
@@ -208,6 +223,11 @@ class BadCaseRootSyncService:
             skipped=replay.skipped if replay is not None else 0,
         )
 
+    @property
+    def _root_lease_seconds(self) -> int:
+        """Keep a root's lease longer than its own time budget."""
+        return max(self._lease_seconds, int(self._time_budget_seconds) + 60)
+
     async def _attempts(self, root_session_id: str) -> int:
         row = await self._repository.get(root_session_id)
         return row.attempts if row is not None else 1
@@ -216,7 +236,11 @@ class BadCaseRootSyncService:
         self,
         root_session_id: str,
         now: datetime,
-    ) -> list[LocalAgentPayload]:
+        progress: RootSyncProgress,
+        *,
+        owner: str,
+        deadline: float,
+    ) -> None:
         source = self._source
         if source is None:
             raise AppError(
@@ -226,24 +250,42 @@ class BadCaseRootSyncService:
             )
         queue: deque[tuple[str, str | None, int]] = deque([(root_session_id, None, 0)])
         visited: set[str] = {root_session_id}
-        payloads: list[LocalAgentPayload] = []
         while queue:
+            if time.monotonic() >= deadline:
+                raise AppError(
+                    status_code=502,
+                    code=ErrorCode.BAD_CASE_SYNC_TIME_BUDGET,
+                    message="root sync exceeded the batch time budget",
+                )
             session_id, parent_id, depth = queue.popleft()
-            if depth > self._max_depth or len(payloads) >= self._max_agents:
+            if depth > self._max_depth or progress.agent_count >= self._max_agents:
                 raise AppError(
                     status_code=502,
                     code=ErrorCode.TRAVERSAL_LIMIT_EXCEEDED,
                     message="session traversal exceeded its configured limit",
                 )
             trajectory = await source.fetch_trajectory(session_id)
-            payloads.append(
-                _payload(
-                    root_session_id=root_session_id,
-                    session_id=session_id,
-                    parent_id=parent_id,
-                    trajectory=trajectory,
-                    now=now,
+            written = await write_local_payloads(
+                self._database,
+                (
+                    _payload(
+                        root_session_id=root_session_id,
+                        session_id=session_id,
+                        parent_id=parent_id,
+                        trajectory=trajectory,
+                        now=now,
+                    ),
                 ),
+                source_type="http_api",
+            )
+            progress.agent_count += 1
+            progress.inserted += written.inserted_payloads
+            progress.updated += written.updated_payloads
+            await self._repository.renew_lease(
+                root_session_id,
+                owner=owner,
+                lease_seconds=self._root_lease_seconds,
+                now=self._clock(),
             )
             children = await source.list_children(session_id)
             for child in children:
@@ -257,7 +299,6 @@ class BadCaseRootSyncService:
                     )
                 visited.add(child)
                 queue.append((child, session_id, depth + 1))
-        return payloads
 
 
 def _payload(
