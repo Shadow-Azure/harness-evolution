@@ -870,7 +870,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     await waitForDocument(
       page.session,
       `location.pathname === "/evolution" &&
-        Boolean(document.querySelector("[data-testid='open-launch-wizard']"))`,
+        document.querySelector("h1")?.textContent === "自进化"`,
       "target config back navigation",
     );
     assert.deepEqual(violations, []);

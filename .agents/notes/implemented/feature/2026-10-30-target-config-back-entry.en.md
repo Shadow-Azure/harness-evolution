@@ -2,7 +2,7 @@
 
 Status: implemented
 
-[中文](2026-10-30-target-config-back-entry.md) | English
+English | [中文](2026-10-30-target-config-back-entry.md)
 
 ## Problem
 
