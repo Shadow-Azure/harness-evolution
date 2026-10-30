@@ -2,7 +2,7 @@
 
 > 本文回答：bad_cases 涉及的根会话轨迹如何自动补齐、状态如何记录、前端如何展示，以及定时任务重叠时怎么处理。
 > 前置：[04 后端架构](04-backend-architecture.md) · [05 接口设计](05-api-design.md) · [06 数据库设计](06-database-design.md) · [07 后端实现](07-backend-implementation.md) · [08 前端实现](08-frontend-implementation.md)。
-> 状态：讨论稿（2026-10-30）。第 12 节的待确认问题定稿后，本文转为实现依据。
+> 状态：设计已确认（2026-10-30），待原型截图确认后实施。已确认项与遗留项见第 12 节。
 
 ## 1. 背景与目标
 
@@ -60,7 +60,7 @@ TopNav 数据同步浮层
 
 ## 3. 外部查询服务契约
 
-两个接口都由服务端令牌鉴权，浏览器不直接调用。路径与鉴权方式目前未给出，先按可配置模板设计，真实值在第 12 节确认。
+两个接口都由服务端令牌鉴权，浏览器不直接调用。真实 path、token 形式与版本头暂未提供，先按可配置模板设计；维护者后续给出真实值后只改配置与适配层，不改业务层。
 
 ### 3.1 接口 1：直接子会话
 
@@ -71,29 +71,25 @@ Authorization: Bearer <service-token>
 
 语义：传入主 agent 或 subagent 的 sessionId，返回它直接触发调用的 subagent sessionId；只返回一层，不递归。
 
-推荐响应（客户端严格校验，拒绝未知字段）：
+响应是**裸数组**（客户端严格校验，元素必须是字符串，拒绝对象包装与未知字段）：
 
 ```json
-{ "sessionIds": ["subagent-a", "subagent-b"] }
+["subagent-a", "subagent-b"]
 ```
 
-备选：裸数组 `["subagent-a"]`。两者只选一种；若真实服务是另一种，在适配层做一次显式映射，不把宽松解析带进业务层。
+空数组表示没有直接子会话，不是错误。若真实服务后续改成对象包装，只在适配层做一次显式映射，不把宽松解析带进业务层。
 
 ### 3.2 接口 2：单 agent 轨迹
 
 ```http
 GET {base}/sessions/{sessionId}/trajectory
 Authorization: Bearer <service-token>
-Accept: application/x-ndjson, application/json
+Accept: application/x-ndjson
 ```
 
-语义：返回该 agent 的完整轨迹。浏览器直接访问会下载 `.jsonl`；Postman 中表现为多个 JSON object。客户端必须同时接受两种形态：
+语义：返回该 agent 的完整轨迹，内容是纯轨迹数据，可以理解为直接对应 `trajectory_payloads.payload`；**不包含 `agent_meta`、`toolUseId`、`parentToolUseId` 等元数据**。浏览器直接访问会下载 `.jsonl`，Postman 中表现为多个 JSON object。
 
-- JSON 数组：每个元素是一个 object。
-- NDJSON：每行一个 object。
-- 单个 JSON object：视为一行。
-
-统一规范化：每个 object 用 `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` 序列化为一行，行间 `\n`；`content_hash = sha256(规范化后的 UTF-8 字节)`；`line_count = object 数`。空轨迹、非 object 元素、重复 JSON key、超长行都拒绝并记为稳定错误码。
+响应按 NDJSON 解析：每行一个 JSON object；空行跳过，但至少要有一个非空行。每个 object 用 `json.dumps(obj, ensure_ascii=False, separators=(",", ":"))` 重新序列化为一行，行间 `\n`；`content_hash = sha256(规范化后的 UTF-8 字节)`；`line_count = object 数`。空轨迹、非 object 元素、重复 JSON key、超长行都拒绝并记为稳定错误码。
 
 接口 2 禁止并发：`SessionQueryClient` 内部用一把 `asyncio.Lock` 包住每次请求；同一进程内所有调用方共享这把锁。测试必须记录调用区间并断言不重叠。
 
@@ -134,15 +130,24 @@ while queue:
 
 ### 4.2 `agent_meta` 与父子边
 
-接口 1 只给出父子 sessionId，没有给出触发子 agent 的 `tool_use_id`。现有归一化从 `agent_meta.toolUseId` 取 `parent_tool_use_id`，再匹配主 agent 的 Agent 触发事件；缺失时降级挂到主节点并记 `MISSING_PARENT_TOOL_USE_ID`。
+接口 2 只返回轨迹正文，没有 `agent_meta`，也没有触发子 agent 的 `tool_use_id`。本特性只能从接口 1 的父子 sessionId 关系构造边：
 
-本特性的处理：
+- 主 agent：`agent_meta = NULL`。
+- subagent：`agent_meta = {"parentAgentId": parent_id}`；不写 `toolUseId`、`agentType` 等无法从接口获得的信息。
 
-1. 如果接口 2 返回的轨迹首行/元数据里带有 `toolUseId` 或 `parentToolUseId`，适配层提取后写入 `agent_meta.toolUseId`，保持与本地导入语义一致。
-2. 否则写入 `agent_meta.parentAgentId = parent_id`，并在归一化/组树中增加一条受控回退：父 agent 存在时把子节点挂到父 agent 节点（锚到父节点最后一个事件），不再一律挂主节点；只有连父 agent 都没有时才记 `MISSING_PARENT_TOOL_USE_ID`。
-3. 修正现有 pull 路径 `parentToolUseId` 与 `toolUseId` 的键名不一致：归一化同时接受两个键，优先 `toolUseId`；新写入统一用 `toolUseId`。
+现有组树逻辑优先用 `agent_meta.toolUseId` 匹配父 agent 的 Agent 触发事件；本特性没有这个值，因此需要一条受控回退：
 
-第 2、3 条会改动 `normalize.py` / `agent_tree.py`，属于本特性的必要配套；若维护者希望严格限制改动面，可只做第 3 条并接受子 agent 挂到主节点的降级展示，第 12 节确认。
+1. 若 `parent_tool_use_id` 存在，维持现有逻辑，锚到具体 Agent 触发事件。
+2. 若没有 `parent_tool_use_id`，但有 `parentAgentId` 且对应父 agent 已存在：把子节点挂到父 agent 节点，锚到父节点最后一个事件，并记录 `PARENT_ANCHORED_BY_AGENT` 诊断（不作为失败）。
+3. 若连 `parentAgentId` 也没有：维持现有降级，挂到主节点并记录 `MISSING_PARENT_TOOL_USE_ID`。
+
+配套改动：
+
+- `ParsedTranscript` 增加 `parent_agent_id`，`normalize_transcript` 从 `agent_meta.parentAgentId` 读取；`agents.parent_agent_id` 仍由组树写入。
+- `agent_tree` 在普通 subagent 分支先尝试 `tool_use_id`，再尝试 `parent_agent_id`；`parent_agent_id` 的锚点取父节点最后一个事件，保证图上有确定的边。
+- 修正现有 pull 路径的键名不一致：`normalize_transcript` 读取 `toolUseId` 时同时接受 `parentToolUseId`，优先 `toolUseId`；新写入统一使用 `parentAgentId`（本特性）或 `toolUseId`（有真实触发 id 时）。
+
+这样即使接口 2 不提供元数据，subagent 仍能挂在正确的父 agent 下，只是无法精确到“父 agent 的哪一次 Agent 调用”；这是本特性可接受的展示精度。
 
 ### 4.3 payload 行
 
@@ -154,7 +159,7 @@ while queue:
 | `agent_id` | 主 agent = root；subagent = 接口 1 返回的 sessionId |
 | `agent_kind` | `main` / `subagent` |
 | `payload` | 规范化 JSONL |
-| `agent_meta` | 主 agent NULL；subagent 至少含 `parentAgentId`，可含 `toolUseId` |
+| `agent_meta` | 主 agent NULL；subagent 为 `{"parentAgentId": parent_id}` |
 | `content_hash` | 规范化 payload 的 sha256 |
 | `line_count` | object 数 |
 | `source_type` | `http_api` |
@@ -174,7 +179,7 @@ while queue:
 | `status` | `VARCHAR(16)` | NOT NULL | `pending` / `syncing` / `synced` / `failed` |
 | `attempts` | `INTEGER` | NOT NULL | 已尝试次数 |
 | `last_error` | `TEXT` | NULL | 脱敏后的稳定 code + message |
-| `agent_count` | `INTEGER` | NOT NULL | 已写入的 payload 行数（含 main） |
+| `agent_count` | `INTEGER` | NOT NULL | 该 root 在 `trajectory_payloads` 的实际行数（含 main）；失败时为已写入的部分值，成功时 ≥1 |
 | `started_at` | `DATETIME` | NULL | 本次 claim 时间 |
 | `synced_at` | `DATETIME` | NULL | 最近成功时间 |
 | `next_retry_at` | `DATETIME` | NULL | 失败后的下次可重试时间 |
@@ -228,7 +233,7 @@ claim 在事务内先查后写，避免依赖方言 upsert：
 - `sync` 已有自己的 `sync_lock` 单飞；`sync_lock` 目前只服务 `sync`。
 - 现有调度器每 60s 触发一次 `sync`，只重放 payload，不访问上游。
 
-### 6.2 推荐策略：跳过 + 状态驱动续跑
+### 6.2 已确认策略：跳过 + 状态驱动续跑
 
 当定时器触发时：
 
@@ -349,7 +354,23 @@ V1 与现有 `sync` 一样按单实例部署：`JobRunner` 的全局锁是进程
 - 已写入 payload 不回滚；重试按 `(root_session_id, agent_id)` 幂等覆盖。
 - `synced` 与 payload 完整性：状态在遍历完成且所有 payload 写入成功后置 `synced`；`agent_count` 为实际写入行数。
 - 状态与 payload 漂移：若人工删除 payload，状态仍为 `synced`，统计不会自动发现；本 issue 不做自动对账，可在后续加健康检查。
-- 已有 payload 的根会话：首次上线时状态表为空，会被当作未同步重拉一次；这是可接受的冷启动成本。若希望避免，可在扫描时先看 `trajectory_payloads` 主行并把 root 标 `synced`，但无法确认 subagent 完整性，推荐不采用。
+- 已有 payload 的根会话：见 §9.1。
+
+### 9.1 冷启动：状态表为空但 payload 已存在
+
+上线时 `bad_case_root_sync` 是空表，而 `trajectory_payloads` 可能已经有历史数据（本地导入、管理员 pull、旧脚本写入）。扫描只看状态表，因此这些 root 会被当成“未同步”，第一次跑就会重新走一遍接口 1/2。
+
+可选处理：
+
+| 方案 | 做法 | 结果 |
+|---|---|---|
+| A. 接受一次重拉（推荐） | 不特殊处理，按批量/时间预算逐步补齐 | 状态与 subagent 完整性都由真实遍历保证；代价是首轮 API 2 调用量等于历史 root 数 |
+| B. 按主 payload 直接标记 synced | 看到 `trajectory_payloads` 有 main 行就写 `synced` | 不重拉，但无法知道 subagent 是否齐全；状态可能长期说谎 |
+| C. 只用接口 1 校验 | 对已有 root 调接口 1 展开，比较 payload 行；缺失的才调接口 2 | 比 B 准确、比 A 省接口 2；但实现更复杂，且仍要遍历全部历史 root |
+
+推荐 A：状态表的价值是“可验证的完整”，不是“尽量少调用”。批量与时间预算已经把首轮压力摊到多个 tick；如果历史数据量导致首轮过慢，再单独做一次性 bootstrap 脚本（C），不作为自动路径的默认行为。
+
+补充：`agent_count` 只用于诊断/详情，不参与前端总数/已同步/未同步统计；统计只看 `status='synced'`，避免“有 main 行就算同步”的误判。
 
 ## 10. 测试与验收
 
@@ -361,7 +382,7 @@ V1 与现有 `sync` 一样按单实例部署：`JobRunner` 的全局锁是进程
 - 选择查询：只选未同步/到期失败/过期 syncing，不选 synced。
 - 调度重叠：active job 存在时 tick 跳过；job 结束后下一次继续。
 - 崩溃恢复：`running` job + `syncing` 行 → 重启后重新 claim。
-- 响应解析：JSON 数组、NDJSON、单 object、空体、非法 object。
+- 响应解析：NDJSON 正常、空体、非 object、重复 key、超长行；空数组（接口 1）不是错误。
 - 统计 API：总数/已同步/未同步与状态表一致。
 - 前端：浮层加载/空/失败/运行态；390px 不溢出。
 - 契约：`AcquisitionStatusResponse` 新增字段后 `contract:check` 绿。
@@ -380,20 +401,30 @@ pnpm lint:docs
 
 ## 11. 交付顺序
 
-1. 本文第 12 节确认，补 05/06/07/08 的对应小节。
+1. 设计确认完成，补 05/06/07/08 的对应小节。
 2. 契约：`AcquisitionStatusResponse.badCaseSync` + 生成类型；状态表迁移。
 3. 客户端与遍历：mock 契约测试先行，再接服务。
 4. 调度与单飞：复用 `JobRunner`，启动/停止接入 lifespan。
 5. 前端：顶栏浮层 + 组件测试。
 6. 冒烟：本地 mock 查询服务，验证两个接口、串行、重叠与统计。
 
-## 12. 待确认问题
+## 12. 已确认决策与遗留项
 
-1. **接口路径与鉴权**：两个接口的真实 path、token 形式、是否有版本头？当前设计用可配置模板 + mock 契约。
-2. **接口 1 响应**：`{"sessionIds":[...]}` 还是裸数组？是否分页？
-3. **接口 2 响应**：JSON 数组、NDJSON 还是两者都可能？是否返回 `toolUseId`/`parentToolUseId`？如果没有，是否接受 §4.2 第 2 条的“挂父 agent 节点”回退，还是只保留挂主节点的降级？
-4. **重叠策略**：确认采用 §6.2 的“跳过 + 状态驱动续跑”，不排队、不取消。
-5. **状态语义**：`synced` 只表示 payload 完整（重放由现有 sync 负责），还是必须等重放成功才置 `synced`？
-6. **已有 payload 的冷启动**：接受首次全量重拉一次，还是先按 `trajectory_payloads` 主行做一次 bootstrap？
-7. **批量/间隔默认值**：`batch_size=20`、`interval=300s`、`time_budget=600s` 是否合适？
-8. **前端位置**：确认放在顶栏“数据同步”浮层，还是新增独立的数据接入页面。
+已确认（2026-10-30）：
+
+| # | 问题 | 结论 |
+|---|---|---|
+| 1 | 接口路径与鉴权 | 先用可配置模板与 mock 契约；真实值由维护者后续给出，只改配置与适配层 |
+| 2 | 接口 1 响应 | 裸数组，元素为 subagent sessionId |
+| 3 | 接口 2 响应 | NDJSON 纯轨迹，无 `agent_meta`；父子边用 `parentAgentId` 回退 |
+| 4 | 重叠策略 | 跳过 + 状态驱动续跑，不排队、不取消 |
+| 5 | `synced` 语义 | payload 完整即 `synced`，重放由现有 sync 负责，不回滚状态 |
+| 6 | 冷启动 | 默认 A：接受首轮重拉，按批量/时间预算摊开；如需优化另做 bootstrap |
+| 7 | 批量/间隔默认值 | 300s / 20 roots / 600s / 200 agents / depth 10 |
+| 8 | 前端位置 | 顶栏“数据同步”浮层，不新增页面路由 |
+
+仍需维护者后续提供/调整：
+
+- 两个接口的真实 path、token 形式、版本头与响应样例；当前 mock 使用 `/sessions/{sessionId}/children` 与 `/sessions/{sessionId}/trajectory`。
+- 冷启动若选择 C（接口 1 校验 + 缺失才拉），实现前告知；默认按 A。
+- `agent_count` 字段名是否改为 `payload_count` 可在实现前调整；当前设计保留 `agent_count`，语义明确为该 root 在 `trajectory_payloads` 的实际行数（含 main）。
