@@ -224,9 +224,13 @@ try {
     (body) => body.badCaseSync.synced === 1 && body.badCaseSync.unsynced === 0,
     "root trace sync",
   );
-  const sessions = await fetch(`${apiUrl}/api/sessions`, { headers: authHeaders });
-  assert.equal(sessions.status, 200);
-  const sessionBody = await sessions.json();
+  const sessionBody = await pollJson(
+    `${apiUrl}/api/sessions`,
+    authHeaders,
+    (body) => body.items.some((item) => item.id === rootSession),
+    "root session",
+    30_000,
+  );
   assert.ok(
     sessionBody.items.some((item) => item.id === rootSession),
     `root session missing from list: ${JSON.stringify(sessionBody.items)}`,

@@ -47,6 +47,22 @@ async function waitForStatus(token, predicate) {
   throw new Error(`catalog sync did not converge:\n${apiLogs}`);
 }
 
+async function waitForSession(token) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${apiUrl}/api/sessions`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    if (payload.items.some((item) => item.id === rootSession)) {
+      return payload;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`root session was not normalized:\n${apiLogs}`);
+}
+
 async function authenticate() {
   const login = await fetch(`${apiUrl}/api/auth/login`, {
     method: "POST",
@@ -187,9 +203,7 @@ test("m6-16 catalog sync fills bad_cases and the root trace chain", async () => 
   assert.equal(status.badCaseCatalogSync.status, "idle");
   assert.equal(status.badCaseSync.total, 1);
 
-  const sessions = await fetch(`${apiUrl}/api/sessions`, { headers });
-  assert.equal(sessions.status, 200);
-  const sessionBody = await sessions.json();
+  const sessionBody = await waitForSession(token);
   assert.ok(
     sessionBody.items.some((item) => item.id === rootSession),
     "root session should be normalized after the trace backfill",

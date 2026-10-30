@@ -32,11 +32,11 @@
     },
     {
       "label": "Mock service",
-      "value": "127.0.0.1:54685"
+      "value": "127.0.0.1:52757"
     },
     {
       "label": "API / Web",
-      "value": "54691 / 55613"
+      "value": "52760 / 52791"
     }
   ],
   "matrix": {
