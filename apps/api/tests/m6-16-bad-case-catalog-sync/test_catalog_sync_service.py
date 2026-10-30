@@ -282,6 +282,43 @@ async def test_null_object_fields_fall_back_to_source_and_skill(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("source_value", ["code_reivew", "code_review"])
+async def test_code_review_source_maps_object_name_to_code_review(
+    database: Database,
+    source_value: str,
+) -> None:
+    """A code-review source gets the canonical hyphenated object name."""
+    source = FakeSource(
+        [_item(1, object_name=None, object_type=None, source=source_value)],
+    )
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    async with database.session() as session:
+        row = (await session.execute(select(bad_cases))).mappings().one()
+    assert row["object_name"] == "code-review"
+    assert row["object_type"] == "skill"
+
+
+@pytest.mark.asyncio
+async def test_code_review_source_keeps_explicit_object_name(
+    database: Database,
+) -> None:
+    """The special source mapping never overwrites an upstream object_name."""
+    source = FakeSource(
+        [_item(1, object_name="custom-object", source="code_reivew")],
+    )
+    service = _service(database, source)
+
+    await service.run(owner="job-1")
+
+    async with database.session() as session:
+        row = (await session.execute(select(bad_cases))).mappings().one()
+    assert row["object_name"] == "custom-object"
+
+
+@pytest.mark.asyncio
 async def test_missing_object_name_and_source_fall_back_to_unknown(
     database: Database,
 ) -> None:

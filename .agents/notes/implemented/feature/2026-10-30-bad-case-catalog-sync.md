@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-新增 `bad_case_catalog_sync` 单行游标表与同名定时任务：启动时若上次已结束立即跑一次，之后按 interval 触发，任务单飞且串行。同步按 `bad_case_id` 游标分页，`offset` 固定 0、页大小 200；每页在单事务内 upsert 全部 items 并推进游标、`synced_count`、`pending_count`，失败整页回滚。冷启动游标从 0 开始，首轮全量重拉，已存在 id 更新全部上游字段。前端在“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析展示；归因分析只读 `bad_case_analysis` 聚合，不实现归因流程。上游 `object_name` / `object_type` 为空时按写入映射降级：`object_name → source → unknown`、`object_type → skill`。
+新增 `bad_case_catalog_sync` 单行游标表与同名定时任务：启动时若上次已结束立即跑一次，之后按 interval 触发，任务单飞且串行。同步按 `bad_case_id` 游标分页，`offset` 固定 0、页大小 200；每页在单事务内 upsert 全部 items 并推进游标、`synced_count`、`pending_count`，失败整页回滚。冷启动游标从 0 开始，首轮全量重拉，已存在 id 更新全部上游字段。前端在“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析展示；归因分析只读 `bad_case_analysis` 聚合，不实现归因流程。上游 `object_name` / `object_type` 为空时按写入映射降级：`object_name` 显式值优先；`source` 为 `code_reivew` / `code_review` 时取 `code-review`；否则取 `source`；`source` 也为空取 `unknown`。`object_type` 为空取 `skill`。
 
 ## Alternatives considered
 

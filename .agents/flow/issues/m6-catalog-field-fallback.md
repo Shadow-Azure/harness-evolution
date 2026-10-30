@@ -30,9 +30,9 @@ github:
 ## 目标
 
 - 客户端允许 `object_name`、`object_type` 为 null，其余必填字段仍严格校验。
-- 存储映射降级：`object_name` 为空时取 `source`；`source` 也为空时取固定值 `unknown`；`object_type` 为空时取 `skill`。
+- 存储映射降级：`object_name` 为空时，`source` 为 `code_reivew` / `code_review` 取 `code-review`，否则取 `source`，`source` 也为空时取固定值 `unknown`；`object_type` 为空时取 `skill`。
 - 降级只发生在目录同步的写入映射，不改变 `bad_cases` 表结构、读取路径与已有存量行。
-- 补客户端解析与服务映射测试，覆盖 null、空字符串、source 也缺失三种组合。
+- 补客户端解析与服务映射测试，覆盖 null、空字符串、source 缺失与 `code-review` 别名。
 
 ## 设计依据
 
@@ -44,8 +44,8 @@ github:
 ## 实现内容
 
 - `app/third_party_api/bad_case_query/models.py`：`object_name` / `object_type` 改为可选，保留长度上限；`extra="forbid"` 与其余必填校验不变。
-- `app/service/acquisition/bad_case_catalog_sync.py`：`_row` 做降级映射——`object_name or source or "unknown"`、`object_type or "skill"`；`CatalogCaseRow` 仍保持非空类型。
-- 测试：客户端允许 null；服务把 null `object_name` 写成 `source`、null `object_type` 写成 `skill`、`source` 也缺失时写成 `unknown`。
+- `app/service/acquisition/bad_case_catalog_sync.py`：`_row` 做降级映射——`object_name` 显式值优先；为空且 `source` 为 `code_reivew` / `code_review` 时取 `code-review`；否则取 `source`；`source` 也为空取 `unknown`。`object_type` 为空取 `skill`；`CatalogCaseRow` 仍保持非空类型。
+- 测试：客户端允许 null；服务覆盖 source 兜底、`code-review` 别名、`unknown` 兜底，以及显式 `object_name` 不被覆盖。
 - 文档：12 §3.2 补一行降级规则；Agent Note 决策段补一句最终兜底值。
 
 ## 实施步骤
@@ -72,6 +72,7 @@ pnpm lint:docs
 ```
 
 - null `object_name` + source 有值时，落库 `object_name` 等于 source。
+- source 为 `code_reivew` / `code_review` 且 `object_name` 为 null 时，落库 `code-review`。
 - null `object_type` 落库为 `skill`。
 - source 也缺失时落库 `unknown`，不发生 500 或整页拒绝。
 - 其余必填字段缺失仍判 `BAD_CASE_QUERY_INVALID_RESPONSE`。
@@ -79,7 +80,7 @@ pnpm lint:docs
 ## 验收标准
 
 - 上游返回 null `object_name` / `object_type` 时目录同步继续成功，不再整页失败。
-- 降级规则与顺序为 `object_name → source → unknown`、`object_type → skill`。
+- 降级规则与顺序为 `object_name` 显式值 → `code-review` 别名（source 为 `code_reivew` / `code_review`）→ `source` → `unknown`；`object_type → skill`。
 - 非空值保持原样，不被降级覆盖。
 - 相关测试与门禁全绿。
 

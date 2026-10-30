@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 KIND = "bad_case_catalog_sync"
 
+_SOURCE_OBJECT_NAMES = {
+    "code_reivew": "code-review",
+    "code_review": "code-review",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class CatalogSyncResult:
@@ -46,13 +51,21 @@ def _stable_error(exc: Exception) -> str:
     return ErrorCode.BAD_CASE_CATALOG_SYNC_FAILED.value
 
 
+def _object_name(item: BadCaseItem) -> str:
+    """Return the explicit name, the code-review alias, or a source fallback."""
+    if item.object_name:
+        return item.object_name
+    source = item.source or ""
+    return _SOURCE_OBJECT_NAMES.get(source, source or "unknown")
+
+
 def _row(item: BadCaseItem, fallback: datetime) -> CatalogCaseRow:
     """Map one upstream item to local column names, defaulting timestamps."""
     return CatalogCaseRow(
         bad_case_id=item.bad_case_id,
         bad_case_session_id=item.bad_case_session_id,
         bad_case_type=item.bad_case_type,
-        object_name=item.object_name or item.source or "unknown",
+        object_name=_object_name(item),
         object_type=item.object_type or "skill",
         object_version=item.object_version,
         bad_case_agent_id=item.bad_case_agent_id,

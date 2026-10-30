@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
-#   pnpm run record:i18n -- .agents\flow\issues\m6-catalog-field-fallback.md
-m6-catalog-field-fallback.md: 4731ddc10ca2641d576b589a5540b2268dadbdb5
-m6-catalog-field-fallback.en.md: a72a57339a569aceea5429aba76fcc4482973a2e
+#   pnpm run record:i18n -- .agents/flow/issues/m6-catalog-field-fallback.md
+m6-catalog-field-fallback.md: dd584ae94602cd589395136143fffeae4f0f3654
+m6-catalog-field-fallback.en.md: 40b560d1cc1e8dd7d681c30c6b53fe9d07a58041
