@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 JobKind = Literal[
     "sync",
     "pull",
+    "bad_case_root_sync",
     "evolution_prepare",
     "evolution_advance",
     "evolution_apply",

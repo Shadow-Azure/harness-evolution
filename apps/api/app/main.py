@@ -24,6 +24,7 @@ from app.api.sessions import router as sessions_router
 from app.api.users import router as users_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
@@ -39,6 +40,13 @@ from app.errors import register_exception_handlers
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
+from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
+from app.service.acquisition.bad_case_sync_coordinator import (
+    KIND as BAD_CASE_ROOT_SYNC_KIND,
+)
+from app.service.acquisition.bad_case_sync_coordinator import (
+    BadCaseRootSyncCoordinator,
+)
 from app.service.acquisition.sync import SyncCoordinator
 from app.service.acquisition.upstream_pull import UpstreamPullService
 from app.service.bad_cases.service import BadCaseService
@@ -78,6 +86,8 @@ from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
+from app.third_party_api.session_query.http import HttpSessionQuerySource
+from app.third_party_api.session_query.models import SessionQuerySource
 from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
 
@@ -93,6 +103,7 @@ def create_app(
     settings: Settings | None = None,
     database: Database | None = None,
     trajectory_source: TrajectorySource | None = None,
+    session_query_source: SessionQuerySource | None = None,
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
 ) -> FastAPI:
@@ -131,6 +142,36 @@ def create_app(
         )
     pull_service = UpstreamPullService(resolved_database, jobs, resolved_source)
     jobs.register_handler("pull", pull_service.handle)
+    session_query_client: httpx.AsyncClient | None = None
+    resolved_session_query_source = session_query_source
+    if resolved_session_query_source is None and resolved_settings.session_query_configured:
+        query_token = resolved_settings.session_query_token
+        if query_token is None:
+            raise RuntimeError("session query configuration lost its token")
+        session_query_client = httpx.AsyncClient(
+            base_url=resolved_settings.session_query_base_url or "",
+            headers={"Authorization": f"Bearer {query_token.get_secret_value()}"},
+            timeout=resolved_settings.session_query_timeout_seconds,
+            follow_redirects=False,
+        )
+        resolved_session_query_source = HttpSessionQuerySource(
+            session_query_client,
+            max_retries=resolved_settings.session_query_retry_attempts,
+            backoff_seconds=resolved_settings.session_query_retry_backoff_seconds,
+        )
+    bad_case_sync_repository = BadCaseRootSyncRepository(resolved_database)
+    bad_case_sync_service = BadCaseRootSyncService.from_settings(
+        resolved_database,
+        bad_case_sync_repository,
+        resolved_session_query_source,
+        resolved_settings,
+    )
+    bad_case_sync = BadCaseRootSyncCoordinator(
+        jobs,
+        bad_case_sync_repository,
+        resolved_settings,
+    )
+    jobs.register_handler(BAD_CASE_ROOT_SYNC_KIND, bad_case_sync_service.handle)
     sync = SyncCoordinator(
         resolved_database,
         jobs,
@@ -290,6 +331,8 @@ def create_app(
             await jobs.recover()
             phase = "sync-scheduler"
             await sync.start_scheduler()
+            phase = "bad-case-sync-scheduler"
+            await bad_case_sync.start()
             phase = "job-dispatch"
             await jobs.start_queued()
             phase = "eval-poller"
@@ -319,16 +362,23 @@ def create_app(
                         await sync.stop_scheduler()
                     finally:
                         try:
-                            await jobs.close()
+                            await bad_case_sync.stop()
                         finally:
                             try:
-                                if resolved_source is not None:
-                                    await resolved_source.close()
+                                await jobs.close()
                             finally:
                                 try:
-                                    await event_bus.close()
+                                    if resolved_source is not None:
+                                        await resolved_source.close()
                                 finally:
-                                    await resolved_database.dispose()
+                                    try:
+                                        if resolved_session_query_source is not None:
+                                            await resolved_session_query_source.close()
+                                    finally:
+                                        try:
+                                            await event_bus.close()
+                                        finally:
+                                            await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None
@@ -346,6 +396,7 @@ def create_app(
     app.state.event_bus = event_bus
     app.state.jobs = jobs
     app.state.sync = sync
+    app.state.bad_case_sync = bad_case_sync
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events
