@@ -149,6 +149,13 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     class="evolution-page-frame target-config-page"
     data-testid="target-config-page"
   >
+    <RouterLink
+      class="back"
+      data-testid="target-config-back"
+      to="/evolution"
+    >
+      ← 返回自进化
+    </RouterLink>
     <header class="page-intro">
       <div class="page-head">
         <h1>进化对象配置</h1>
@@ -192,6 +199,17 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
 </template>
 
 <style scoped>
+.back {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.back:hover,
+.back:focus-visible {
+  color: var(--blue);
+}
+
 .target-config-page {
   display: grid;
   min-width: 0;

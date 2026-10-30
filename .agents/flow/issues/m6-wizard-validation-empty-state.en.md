@@ -9,7 +9,7 @@ milestone: m6
 depends:
   - m5-05
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - tests/**
@@ -27,7 +27,7 @@ github:
 
 ### What the problem is
 
-Wizard step 1 of 「启动自进化」 concentrates all validation into the disabled state of the "下一步：查询匹配报告" (Next: query matching reports) button: `LaunchWizard.vue` disables it outright with `:disabled="!selectedTarget || !targetVersion || windowInvalid()"`, giving users no explanation of why it cannot be clicked; meanwhile the time range is labeled required (`*`) but does not participate in the disabled condition, producing an inconsistent "sometimes gray, sometimes clickable" experience. When the form is complete but the query hits zero probes, the backend `probes/query` returns `409 NO_PROBES_MATCHED`, and the frontend renders the raw English message at the bottom of step 1, terminating the flow there.
+Wizard step 1 of 「启动自进化�?concentrates all validation into the disabled state of the "下一步：查询匹配报告" (Next: query matching reports) button: `LaunchWizard.vue` disables it outright with `:disabled="!selectedTarget || !targetVersion || windowInvalid()"`, giving users no explanation of why it cannot be clicked; meanwhile the time range is labeled required (`*`) but does not participate in the disabled condition, producing an inconsistent "sometimes gray, sometimes clickable" experience. When the form is complete but the query hits zero probes, the backend `probes/query` returns `409 NO_PROBES_MATCHED`, and the frontend renders the raw English message at the bottom of step 1, terminating the flow there.
 
 ### Symptoms
 
@@ -54,7 +54,7 @@ Wizard step 1 of 「启动自进化」 concentrates all validation into the disa
 
 ## Goals
 
-- The "下一步：查询匹配报告" button is always clickable; clicking validates required fields: missing target, version, or either end of the time range (or an inverted range) does not enter step 2 — the offending inputs turn red with a red hint below them, and each error clears as soon as the field is fixed.
+- The "下一步：查询匹配报告" button is always clickable; clicking validates required fields: missing target, version, or either end of the time range (or an inverted range) does not enter step 2 �?the offending inputs turn red with a red hint below them, and each error clears as soon as the field is fixed.
 - Zero hits (`409 NO_PROBES_MATCHED`) advance to step 2: show a "no matching problem reports" empty state with adjust-the-condition guidance; both exit buttons are disabled in the empty state; all other errors keep the red step-1 display.
 - Prototype, design docs, tests, and implementation stay four-way consistent, keeping the automated regression path.
 
@@ -71,16 +71,16 @@ Wizard step 1 of 「启动自进化」 concentrates all validation into the disa
 ## Implementation
 
 - Remove the `:disabled` on `wizard-next`; `runQuery()` validates on click: `selectedTarget` present, `targetVersion` present, `windowFrom`/`windowTo` present, and `from <= to`.
-- On validation failure: add a red border to each missing input (`aria-invalid` plus a style class) and show a red hint below it (missing-required-field copy such as 「请选择进化对象」「请选择版本」「请选择时间段」); the inverted range reuses 「起始时间不能晚于结束时间」 and is marked red too; any field edit clears that field's error; a failing validation issues no request and stays on step 1.
-- When `runQuery()` catches `409 NO_PROBES_MATCHED`, treat it as an empty result: set `step = 2` and render the empty-state panel (no matching problem reports/probes plus an adjust-the-condition guide), keep the condition strip, and disable both 「启动自进化」 and 「启动问题聚类分析」 (the backend launch enforces the same rule and would 409); all other errors keep the step-1 `wizard-error` display.
+- On validation failure: add a red border to each missing input (`aria-invalid` plus a style class) and show a red hint below it (missing-required-field copy such as 「请选择进化对象」「请选择版本」「请选择时间段�?; the inverted range reuses 「起始时间不能晚于结束时间�?and is marked red too; any field edit clears that field's error; a failing validation issues no request and stays on step 1.
+- When `runQuery()` catches `409 NO_PROBES_MATCHED`, treat it as an empty result: set `step = 2` and render the empty-state panel (no matching problem reports/probes plus an adjust-the-condition guide), keep the condition strip, and disable both 「启动自进化�?and 「启动问题聚类分析�?(the backend launch enforces the same rule and would 409); all other errors keep the step-1 `wizard-error` display.
 - Unit tests: drop the assertions on `wizard-next`'s `disabled` attribute; add cases for "always clickable", "each missing field turns red with a hint below and no request is sent", "errors clear on input", and "`NO_PROBES_MATCHED` advances to the step-2 empty state with exits disabled"; rewrite the "conflicts when no probe matches and stays on step 1" scenario to the new behavior.
 - Sync the E2E `m5-05-launch-wizard` scenarios for validation and the empty state.
-- Sync the prototype (validation-error and empty-state demo branches), the design docs (05 §4.9 / 08 §9.2–9.3 / 09 review rows), and the owning Agent Note (paired locales + `record:i18n`).
+- Sync the prototype (validation-error and empty-state demo branches), the design docs (05 §4.9 / 08 §9.2�?.3 / 09 review rows), and the owning Agent Note (paired locales + `record:i18n`).
 
 ## Implementation steps
 
 1. Failing tests first: unit tests assert the button is never disabled; clicking with empty target/version/time range turns each field red with a hint below and sends no request; `409 NO_PROBES_MATCHED` advances to the step-2 empty state with exits disabled; rewrite the E2E scenario the same way and watch it fail.
-2. Implement the field-level validation and the `NO_PROBES_MATCHED` → empty-state mapping in `LaunchWizard.vue`.
+2. Implement the field-level validation and the `NO_PROBES_MATCHED` �?empty-state mapping in `LaunchWizard.vue`.
 3. Bring the unit tests and E2E back to green.
 4. Sync the prototype, the design docs (05/08/09), and the owning Agent Note (paired locales + `record:i18n`).
 5. Run focused unit tests, web typecheck and lint, E2E, the flow and docs gates, and the design-token and bundle gates.
@@ -104,7 +104,7 @@ pnpm verify:bundle
 ```
 
 - Opening the wizard and clicking "Next" immediately marks target/version/time range red with hints below and sends no request; errors clear as each field is filled.
-- Querying a condition with zero hits advances to step 2, shows the no-match empty state, disables both exit buttons, and 「修改条件」 returns to step 1.
+- Querying a condition with zero hits advances to step 2, shows the no-match empty state, disables both exit buttons, and 「修改条件�?returns to step 1.
 - All gates above stay green.
 
 ## Acceptance

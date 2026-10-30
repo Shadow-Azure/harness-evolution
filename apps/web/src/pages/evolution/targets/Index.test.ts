@@ -7,6 +7,7 @@ import { ElAutocomplete } from "element-plus/es/components/autocomplete/index";
 import { ElMessageBox } from "element-plus/es/components/message-box/index";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
+import type { Component } from "vue";
 import {
   afterAll,
   afterEach,
@@ -16,6 +17,9 @@ import {
   it,
   vi,
 } from "vitest";
+
+import type { Router } from "vue-router";
+import { RouterLink } from "vue-router";
 
 import { createAppRouter } from "../../../router";
 import { useAuthStore } from "../../../stores/auth";
@@ -36,7 +40,10 @@ const target: EvolutionTarget = {
   enabled: true,
 };
 
-async function mountPage(role: "admin" | "member") {
+async function mountPage(
+  role: "admin" | "member",
+  stubs: Record<string, Component> = {},
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().setSession({
@@ -56,6 +63,7 @@ async function mountPage(role: "admin" | "member") {
   const wrapper = mount(TargetConfigPage, {
     global: {
       components: elementPlusComponents,
+      stubs,
       plugins: [
         [
           VueQueryPlugin,
@@ -97,6 +105,36 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("编辑");
     expect(wrapper.text()).toContain("停用");
     expect(wrapper.text()).toContain("删除");
+  });
+
+  it("links back to the evolution page from the page head", async () => {
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [target] })),
+    );
+    // jsdom 的 history.pushState 支持客户端导航；这里把 RouterLink
+    // stub 成点击即 $router.push(to) 的真 <a>，让用例能回归「点击返回
+    // 入口确实导航到 /evolution」这一行为而不只是链接属性。
+    const wrapper = await mountPage("admin", {
+      RouterLink: {
+        props: ["to"],
+        template: `<a :href="to" @click.prevent="$router.push(to)"><slot /></a>`,
+      },
+    });
+
+    const back = wrapper.getComponent(RouterLink);
+    expect(back.props("to")).toBe("/evolution");
+    expect(back.text()).toContain("返回自进化");
+    expect(
+      (back.element as HTMLAnchorElement).dataset.testid,
+    ).toBe("target-config-back");
+    await back.trigger("click");
+    await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
+    expect(
+      (wrapper.vm.$router as Router).currentRoute.value.path,
+    ).toBe("/evolution");
   });
 
   it("uses the prototype page hierarchy without an extra eyebrow", async () => {

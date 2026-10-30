@@ -1,0 +1,36 @@
+[
+  {
+    "id": "01",
+    "name": "数据态：配置页渲染且返回入口可见",
+    "ok": true,
+    "detail": "href=/evolution text=← 返回自进化",
+    "evidence": [
+      "04-smoke-targets-with-back.jpg"
+    ]
+  },
+  {
+    "id": "02",
+    "name": "点击返回入口落在 /evolution",
+    "ok": true,
+    "detail": "pathname=/evolution h1=自进化",
+    "evidence": [
+      "05-smoke-after-click-evolution.jpg"
+    ]
+  },
+  {
+    "id": "03",
+    "name": "往返后再进配置页返回入口仍可达",
+    "ok": true,
+    "detail": "href=/evolution",
+    "evidence": [
+      "04-smoke-targets-with-back.jpg"
+    ]
+  },
+  {
+    "id": "04",
+    "name": "返回入口键盘可聚焦（原生 <a>）",
+    "ok": true,
+    "detail": "focus() 后 activeElement 为返回链接",
+    "evidence": []
+  }
+]
