@@ -37,9 +37,10 @@ const emit = defineEmits<{
       </div>
       <div
         class="session-id"
-        :title="`session id: ${sessionId}`"
+        data-testid="error-root-session-id"
+        :title="`根会话 ID: ${sessionId}`"
       >
-        session · {{ sessionId }}
+        根会话 ID · {{ sessionId }}
       </div>
       <RouterLink
         class="sidebar-back"

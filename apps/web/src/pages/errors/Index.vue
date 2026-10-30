@@ -329,6 +329,11 @@ function toggleExpanded(agentId: string) {
                   :datetime="session.startedAt"
                 >{{ formatStartedAt(session.startedAt) }} 开始</time>
                 <span
+                  class="root-session-id"
+                  data-testid="error-meta-root-session-id"
+                  :title="`根会话 ID: ${sessionId}`"
+                >根会话 ID · <span class="mono">{{ sessionId }}</span></span>
+                <span
                   v-if="session?.repo"
                   class="repo-chip"
                 >{{ session.repo }}</span>
@@ -572,6 +577,16 @@ function toggleExpanded(agentId: string) {
   flex-wrap: wrap;
   color: var(--text-dim);
   font-size: 12px;
+}
+
+.root-session-id {
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.root-session-id .mono {
+  color: var(--text-dim);
+  font-size: 11px;
 }
 
 .mono {

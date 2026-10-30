@@ -365,7 +365,8 @@ Index.vue
 
 | 交互 | 实现 |
 |---|---|
-| 搜索 | 输入 300ms 防抖 → 更新 `filters.q` → queryKey 变化自动重取 |
+| 搜索 | 输入 300ms 防抖 → 更新 `filters.q` → queryKey 变化自动重取；`q` 同时匹配标题、仓库与根会话 ID（[13 §4](13-root-session-id.md)） |
+| 根会话 ID 展示 | 左栏每张 `SessionCard` 增加一行“根会话 ID · <UUID>”；右栏 `SessionOverview` meta 在开始时间之后增加同一 ID（[13 §3.3–3.4](13-root-session-id.md)） |
 | 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial）；对应 `status=all/ok/problem`（[05 §4.2](05-api-design.md)） |
 | 排序 | 4 个选项直传后端 `sort` |
 | 选中 session | 路由到 `/sessions/:sid`；列表高亮由当前路由参数派生，**不再用 Pinia 存当前 sid** |
@@ -409,6 +410,8 @@ Index.vue（grid: 340px 1fr）
 ```
 
 数据：页面初始化 `useSessionBadCases(sid)` 拿全部 bad_case（含 `analysis.status/attributeType/probeId`，左栏 5 态 chip 不再逐条取 probe）；选中后 `useBadCase(badCaseId)` + `useBadCaseAnalysis(badCaseId)`，归因 tab 再 `useProbe(probeId)` 取详情。
+
+根会话 ID 的展示位置与格式见 [13 §3](13-root-session-id.md)：左栏会话信息框显示“根会话 ID”标签 + 完整值（一行紧凑布局），右栏 `error-head` 的 meta 在开始时间之后、repo 之前增加同一 ID；两处都使用路由解析后的 `sid`，不额外请求，也不放进下方执行流面板的框内。
 
 ### 7.2 选中与联动
 

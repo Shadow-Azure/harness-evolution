@@ -24,13 +24,13 @@
 | 原型元素 / 交互 | 功能点 | 设计位置 |
 |---|---|---|
 | 左栏：标题 + 会话数量 | F3 | [02 §2.1](02-features.md) · [08 §5](08-frontend-implementation.md) |
-| 搜索框（标题/仓库，输入即筛） | F3 | [05 §4.2](05-api-design.md)（`q`） |
+| 搜索框（标题/仓库/根会话 ID，输入即筛） | F3 | [05 §4.2](05-api-design.md)（`q`）· [13 §4](13-root-session-id.md) |
 | 状态 chips：全部 / 完成 / 有失败 | F3 | [05 §4.2](05-api-design.md)（`status`） |
 | 排序下拉：最新 / 用户轮次 / 消息 / 子 agent | F3 | [05 §4.2](05-api-design.md)（`sort`） |
-| 会话卡：状态点、标题、时间、repo chip、时长、工具数、子 agent 数 | F3 | [05 §3.1](05-api-design.md)（`SessionListItem`） |
+| 会话卡：状态点、标题、时间、repo chip、时长、工具数、子 agent 数、根会话 ID | F3 | [05 §3.1](05-api-design.md)（`SessionListItem`）· [13 §3.3](13-root-session-id.md) |
 | 会话卡：5 项统计（用户轮次/消息/工具失败/Skill/问题） | F3 | [05 §3.1](05-api-design.md)（`stats`） |
 | 会话卡：失败密度条 + 问题密度条（每百消息，3 满格） | F3 | [06 §7.3](06-database-design.md)（口径）· [08 §5.3](08-frontend-implementation.md)（绘制） |
-| 右栏头：状态点 + 标题 + meta（开始时间/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) |
+| 右栏头：状态点 + 标题 + meta（开始时间/根会话 ID/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) · [13 §3.4](13-root-session-id.md) |
 | 右栏 CTA：打开错误详情（原「打开时间线」随 F7 裁撤移除） | F4 | [08 §1](08-frontend-implementation.md) · [08 §6](08-frontend-implementation.md) |
 | 9 项统计条（用户轮次/消息/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
 | Agent 执行流图：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N message 间隔/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
@@ -43,9 +43,9 @@
 | 问题列表：点击「定位 ↗」→ 画布滚动 + 高亮 + 聚焦 | F6 | [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 点击新窗口打开问题描述 tab | F2/F6 | [05 §5](05-api-design.md) |
 | 时间线页（面包屑/过滤 chips/用户轮次头/提问卡/消息卡/展开折叠/跳转） | ~~F7~~ | **已裁撤（2026-10-22）**：不实现，理由与替代见 [02 §2.1](02-features.md) · [08 §6](08-frontend-implementation.md) |
-| 错误详情左栏：错误数量、session 标题/id、返回 Session | F8 | [08 §7](08-frontend-implementation.md) |
+| 错误详情左栏：错误数量、session 标题/根会话 ID、返回 Session | F8 | [08 §7](08-frontend-implementation.md) · [13 §3.1](13-root-session-id.md) |
 | 错误详情左栏："全部错误" + bad_case 卡（ID/状态 chip/reason/上报对象） | F8 | [05 §3.4](05-api-design.md) · [08 §7.2](08-frontend-implementation.md) |
-| 错误详情右栏头：meta、返回 Session（原「打开时间线」移除） | F8 | [08 §7.1](08-frontend-implementation.md) |
+| 错误详情右栏头：meta（含根会话 ID）、返回 Session（原「打开时间线」移除） | F8 | [08 §7.1](08-frontend-implementation.md) · [13 §3.2](13-root-session-id.md) |
 | 执行流面板：未选时显示全部问题，选中时只留该问题卡 | F8 | [08 §7.2](08-frontend-implementation.md) |
 | 双 Tab：问题描述 / 归因分析 | F8 | [08 §7.3](08-frontend-implementation.md) |
 | 问题描述：badCaseId、reason、状态 chip、metaData facts、上报对象 | F8 | [05 §3.4](05-api-design.md) |

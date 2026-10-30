@@ -235,10 +235,20 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         const card = cards.find((candidate) => candidate.dataset.selected === "false");
         const detailCta = document.querySelector(".overview-head [data-testid='detail-cta']");
         if (cards.length !== 4 || !sidebar || !card || !detailCta) return null;
+        const cardIdNodes = cards.map((candidate) => ({
+          id: candidate.dataset.sessionId,
+          text: candidate.querySelector("[data-testid='session-card-root-session-id']")?.textContent.trim(),
+        }));
+        const selectedId = cards.find((candidate) => candidate.dataset.selected === "true")?.dataset.sessionId;
+        const overviewId = document.querySelector("[data-testid='session-overview-root-session-id']")?.textContent.trim();
+        if (cardIdNodes.some((entry) => !entry.text) || !selectedId || !overviewId) return null;
         return {
           path: location.pathname,
           query: location.search,
           cards: cards.length,
+          cardIds: cardIdNodes,
+          selectedId,
+          overviewId,
           densities: document.querySelectorAll("[data-testid='density-bar']").length,
           sidebarWidth: sidebar.getBoundingClientRect().width,
           browserWidth: document.querySelector(".session-browser").getBoundingClientRect().width,
@@ -253,6 +263,11 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
     );
     assert.equal(initial.cards, 4);
     assert.equal(initial.densities, 8);
+    assert.deepEqual(
+      initial.cardIds.map((entry) => entry.text),
+      initial.cardIds.map((entry) => `根会话 ID · ${entry.id}`),
+    );
+    assert.equal(initial.overviewId, `根会话 ID · ${initial.selectedId}`);
     assert.match(initial.path, /^\/sessions\/.+/);
     assert.ok(Math.abs(initial.sidebarWidth - 360) < 1, JSON.stringify(initial));
     assert.equal(initial.cardBackground, "rgb(255, 255, 255)");
@@ -473,6 +488,34 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       "browser forward state",
     );
     assert.equal(wentForward, true);
+
+    await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const input = document.querySelector("[data-testid='search-input']");
+        input.value = ${JSON.stringify(initial.selectedId)};
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      })()`,
+    });
+    const byId = await waitForDocument(
+      page.session,
+      `(() => {
+        const cards = [...document.querySelectorAll("[data-testid='session-card']")];
+        if (
+          !location.search.includes("q=${initial.selectedId}") ||
+          cards.length !== 1 ||
+          cards[0].dataset.sessionId !== ${JSON.stringify(initial.selectedId)}
+        ) return null;
+        return {
+          id: cards[0].dataset.sessionId,
+          text: cards[0].querySelector("[data-testid='session-card-root-session-id']")?.textContent.trim(),
+        };
+      })()`,
+      "root session ID search",
+    );
+    assert.deepEqual(byId, {
+      id: initial.selectedId,
+      text: `根会话 ID · ${initial.selectedId}`,
+    });
 
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {

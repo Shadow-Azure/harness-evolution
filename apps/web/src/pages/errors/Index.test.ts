@@ -213,7 +213,12 @@ describe("error detail page", () => {
 
     expect(wrapper.get(".error-heading h1").text()).toBe("错误详情");
     expect(wrapper.get(".error-sidebar").text()).toContain("原型错误详情");
-    expect(wrapper.get(".error-sidebar").text()).toContain("session · root-1");
+    expect(
+      wrapper.get("[data-testid='error-root-session-id']").text(),
+    ).toBe("根会话 ID · root-1");
+    expect(
+      wrapper.get("[data-testid='error-meta-root-session-id']").text(),
+    ).toContain("根会话 ID · root-1");
     expect(wrapper.get(".error-sidebar").text()).toContain("返回 Session");
     expect(wrapper.find(".problem-list-head").exists()).toBe(false);
     expect(wrapper.get(".all-errors").text()).toContain("全部错误");

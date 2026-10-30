@@ -579,7 +579,7 @@ erDiagram
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `q` | string | 标题/仓库模糊匹配（大小写不敏感） |
+| `q` | string | 标题/仓库/根会话 ID 模糊匹配（大小写不敏感；ID 支持完整值、前缀与子串，见 [13](13-root-session-id.md)） |
 | `status` | `all\|ok\|partial\|fail\|problem` | 默认 all；`problem` = `partial`+`fail`（前端"有失败"chip 的合并筛选） |
 | `sort` | `latest\|userTurns\|messages\|agents` | 默认 latest |
 | `limit` | int | 默认 100，最大 500 |

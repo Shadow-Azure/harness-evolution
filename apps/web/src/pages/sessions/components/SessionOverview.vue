@@ -188,6 +188,11 @@ const stats = computed<Array<{
           </div>
           <div class="meta">
             <time :datetime="item.startedAt">{{ formatStartedAt(item.startedAt) }}</time>
+            <span
+              class="root-session-id"
+              data-testid="session-overview-root-session-id"
+              :title="`根会话 ID: ${item.id}`"
+            >根会话 ID · <span class="mono">{{ item.id }}</span></span>
             <span class="repo-chip">{{ item.repo }}</span>
             <span>{{ formatDuration(item.durationSeconds) }}</span>
             <span>{{ item.model ?? "未知模型" }}</span>
@@ -381,6 +386,16 @@ const stats = computed<Array<{
 }
 
 .meta time {
+  font-family: var(--mono);
+}
+
+.root-session-id {
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.root-session-id .mono {
+  color: var(--text-dim);
   font-family: var(--mono);
 }
 

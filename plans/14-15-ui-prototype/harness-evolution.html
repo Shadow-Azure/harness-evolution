@@ -66,6 +66,9 @@
   .scard .title { font-weight: 600; font-size: 13px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .scard .clock { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); flex-shrink: 0; }
   .scard .r2 { display: flex; gap: 8px; align-items: center; margin: 5px 0 8px; font-size: 11.5px; color: var(--text-dim); flex-wrap: wrap; }
+  .scard .sid { margin: -2px 0 8px; font-family: var(--mono); font-size: 10px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fam-head .meta .meta-sid { color: var(--text-faint); }
+  .fam-head .meta .meta-sid .sid-value { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
   .repo-chip { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); background: color-mix(in srgb, var(--cyan) 12%, transparent); border-radius: 5px; padding: 0.5px 6px; }
   .descendants { color: var(--purple); }
   .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 8px; }
@@ -260,6 +263,8 @@
   .err-head { display: flex; align-items: flex-start; gap: 14px; }
   .err-head h2 { font-size: 17px; font-weight: 650; }
   .err-head .meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .err-head .meta .meta-sid { color: var(--text-faint); }
+  .err-head .meta .meta-sid .sid-value { font-family: var(--mono); font-size: 11px; color: var(--text-dim); overflow-wrap: anywhere; }
   .err-head-actions { margin-left: auto; display: flex; gap: 8px; flex-shrink: 0; }
   .err-head-actions .tbtn { cursor: pointer; }
   .err-flow-panel { margin-top: 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -700,7 +705,7 @@
           <h1>Session</h1>
           <span class="count" id="countLabel">4 个会话</span>
         </div>
-        <input class="search" id="searchInput" placeholder="搜索任务或仓库…">
+        <input class="search" id="searchInput" placeholder="搜索标题、仓库或根会话 ID…">
       </div>
       <div class="filters">
         <div class="filter-row">
@@ -845,9 +850,13 @@ const mainEl = document.getElementById("main");
 const countEl = document.getElementById("countLabel");
 
 function filteredSessions() {
+  const needle = keyword.toLocaleLowerCase();
   let arr = SESSIONS.filter(s =>
     (statusFilter === "all" || s.status === statusFilter) &&
-    (keyword === "" || s.title.includes(keyword) || s.repo.includes(keyword)));
+    (needle === "" ||
+      s.title.toLocaleLowerCase().includes(needle) ||
+      s.repo.toLocaleLowerCase().includes(needle) ||
+      s.id.toLocaleLowerCase().includes(needle)));
   const key = { latest: (a,b) => b.ts - a.ts, rounds: (a,b) => b.rounds - a.rounds,
                 steps: (a,b) => b.steps - a.steps, agents: (a,b) => b.agents - a.agents }[sortBy];
   return [...arr].sort(key);
@@ -876,6 +885,7 @@ function renderSessionList() {
         <span>工具 ${s.tools}</span>
         <span class="descendants">⇢ 子 agent ${s.agents}</span>
       </div>
+      <div class="sid" title="根会话 ID: ${s.id}">根会话 ID · ${s.id}</div>
       <div class="stats">
         <div class="stat"><b>${s.rounds}</b><span>轮次</span></div>
         <div class="stat"><b>${s.steps}</b><span>步骤</span></div>
@@ -918,6 +928,7 @@ function renderMain() {
         <h2><span class="dot ${s.status}" style="display:inline-block;margin-right:8px"></span>${s.title}</h2>
         <div class="meta">
           <span style="font-family:var(--mono)">${s.clock} 开始</span>
+          <span class="meta-sid" title="根会话 ID: ${s.id}">根会话 ID · <span class="sid-value">${s.id}</span></span>
           <span class="repo-chip">${s.repo}</span>
           <span>⏱ ${s.dur}</span>
           <span>模型 ${s.model}</span>
@@ -2270,7 +2281,7 @@ function ErrorApp({ sid, budget, initialNo, initialTab }) {
         <div className="err-side-head">
           <div className="err-side-title"><h1>错误</h1><span className="count">${enriched.length} 个</span></div>
           <div className="err-session" title=${session.title || sid}>${session.title || sid}</div>
-          <div className="err-sid" title=${"session id: " + sid}>session · ${sid}</div>
+          <div className="err-sid" title=${"根会话 ID: " + sid}>根会话 ID · ${sid}</div>
           <button className="err-back" onClick=${() => window.switchTab("explorer")}>← 返回 Session</button>
         </div>
         <div className="err-list">
@@ -2299,6 +2310,7 @@ function ErrorApp({ sid, budget, initialNo, initialTab }) {
             <h2>错误详情</h2>
             <div className="meta">
               <span>${session.clock || ""} 开始</span>
+              <span className="meta-sid" title=${"根会话 ID: " + sid}>根会话 ID · <span className="sid-value">${sid}</span></span>
               ${session.repo ? html`<span className="repo-chip">${session.repo}</span>` : null}
               <span>${enriched.length} 个错误</span>
               <span>${analyzedCount} 个已分析</span>
