@@ -9,7 +9,7 @@ milestone: m6
 depends:
   - m6-16
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - tests/**
