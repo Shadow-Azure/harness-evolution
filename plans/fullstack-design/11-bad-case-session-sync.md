@@ -224,6 +224,23 @@ claim 在事务内先查后写，避免依赖方言 upsert：
 2. 写 `status=syncing`、`attempts += 1`、`started_at=now`、`lease_owner`、`lease_expires_at`；
 3. 失败/成功分别写 `failed` / `synced`。
 
+### 5.4 bad_cases 与状态表关联不上的两种情况
+
+`bad_case_root_sync` 不是 `bad_cases` 的子表，也没有外键；两张表通过 `root_session_id` 做逻辑关联。关联不上分两种方向，语义不同：
+
+| 情况 | 含义 | 处理 |
+|---|---|---|
+| `bad_cases` 有 root，状态表没有行 | 新发现、从未同步过的根会话 | 算入 `total` 与 `unsynced`；候选查询包含它；claim 时插入状态行 |
+| 状态表有 root，`bad_cases` 已无该 root | 问题被删除/迁移后留下的审计行 | 不进 `total`/`synced`/`unsynced`；候选查询不选它；保留状态行用于审计，不主动删除 |
+
+补充规则：
+
+- 同一个 root 在 `bad_cases` 里出现多条记录时，`SELECT DISTINCT bad_case_session_id` 只算一次。
+- 已 `synced` 的 root 后续新增 bad_cases 行，不触发重拉；状态仍是 `synced`，payload 复用。
+- 已 `failed` 的 root 后续新增 bad_cases 行，不改变退避；到 `next_retry_at` 后照常重试。
+- 状态表行在 root 消失后仍保留；如果之后同一 root 重新出现在 bad_cases，按原状态继续（`synced` 不重拉，`failed` 按退避重试）。
+- 候选查询必须从 `bad_cases` 的 distinct root 出发做 `LEFT JOIN`，不能从状态表出发做 `INNER JOIN`，否则“关联不到状态表”的新 root 永远不会被处理。
+
 ## 6. 定时调度、并发与重入
 
 ### 6.1 现有事实
@@ -299,9 +316,11 @@ V1 与现有 `sync` 一样按单实例部署：`JobRunner` 的全局锁是进程
 }
 ```
 
-- `total`：`COUNT(DISTINCT bad_cases.bad_case_session_id)`，查询时实时计算。
-- `synced`：当前 bad_cases 根会话中状态为 `synced` 的数量。
-- `unsynced = total - synced`，包含 `syncing` 与 `failed`。
+- `total`：`COUNT(DISTINCT bad_cases.bad_case_session_id)`，查询时实时计算；没有状态行的新 root 也计入。
+- `synced`：当前 bad_cases 根会话中状态为 `synced` 的数量；没有状态行的 root 不算已同步。
+- `unsynced = total - synced`，包含 `syncing`、`failed` 与“还没有状态行”的 root。
+- `syncing` / `failed`：当前 bad_cases 根会话中对应状态的数量，是 `unsynced` 的子集。
+- 状态表有行但 bad_cases 已无该 root 时，该行不计入上述任何当前统计。
 - `status`：`unavailable`（未配置查询服务）/ `idle` / `queued` / `running` / `failed`。
 - `lastError` 只返回稳定 code，不返回上游正文。
 
