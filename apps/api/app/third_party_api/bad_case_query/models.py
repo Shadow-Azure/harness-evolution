@@ -22,7 +22,7 @@ class BadCaseItem(BaseModel):
     bad_case_agent_id: str | None = Field(default=None, max_length=64)
     title: str = Field(alias="bad_case_title", min_length=1, max_length=255)
     description: str = Field(alias="bad_case_description")
-    meta_data: dict[str, Any] | None = None
+    meta_data: Any | None = None
     source: str | None = Field(default=None, max_length=64)
     created_at: datetime | None = None
     updated_at: datetime | None = None

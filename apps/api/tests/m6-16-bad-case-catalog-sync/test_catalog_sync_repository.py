@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -40,7 +41,12 @@ async def database(tmp_path: Path) -> AsyncIterator[Database]:
         await database.dispose()
 
 
-def _case(case_id: int, *, title: str = "case title") -> CatalogCaseRow:
+def _case(
+    case_id: int,
+    *,
+    title: str = "case title",
+    meta_data: Any = None,
+) -> CatalogCaseRow:
     now = now_shanghai()
     return CatalogCaseRow(
         bad_case_id=case_id,
@@ -52,7 +58,7 @@ def _case(case_id: int, *, title: str = "case title") -> CatalogCaseRow:
         bad_case_agent_id=None,
         title=title,
         description="description",
-        meta_data=None,
+        meta_data=meta_data,
         source="test",
         created_at=now,
         updated_at=now,
@@ -169,6 +175,25 @@ async def test_mark_failed_and_idle_update_state(database: Database) -> None:
     assert idle.last_error is None
     assert idle.pending_count == 0
     assert idle.last_success_at is not None
+
+
+@pytest.mark.asyncio
+async def test_commit_page_persists_non_object_metadata(database: Database) -> None:
+    """upstream meta_data may be any JSON value, not only an object."""
+    repository = BadCaseCatalogSyncRepository(database)
+    now = now_shanghai()
+    await repository.initialize(now)
+
+    await repository.commit_page(
+        [_case(1, meta_data=["tag", 1])],
+        last_bad_case_id=1,
+        pending_count=0,
+        now=now,
+    )
+
+    async with database.session() as session:
+        row = (await session.execute(select(bad_cases))).mappings().one()
+    assert row["meta_data"] == ["tag", 1]
 
 
 @pytest.mark.asyncio

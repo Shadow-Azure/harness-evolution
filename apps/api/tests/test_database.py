@@ -31,6 +31,10 @@ from sqlalchemy.pool import QueuePool
 from alembic import command
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.bad_case_catalog_sync import (
+    BadCaseCatalogSyncRepository,
+    CatalogCaseRow,
+)
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import (
@@ -48,6 +52,7 @@ from app.db.models.domain import (
     agent_events,
     agents,
     bad_case_analysis,
+    bad_case_catalog_sync,
     bad_cases,
     evolution_targets,
     probe_reports,
@@ -2093,5 +2098,90 @@ async def test_mysql_evolution_target_repository_contract() -> None:
     finally:
         try:
             await cleanup()
+        finally:
+            await database.dispose()
+
+
+def _catalog_row(title: str, now: datetime) -> CatalogCaseRow:
+    """Build one catalog row for the MySQL dialect upsert contract."""
+    return CatalogCaseRow(
+        bad_case_id=1,
+        bad_case_session_id="session-catalog-mysql",
+        bad_case_type="self",
+        object_name="deep-research",
+        object_type="skill",
+        object_version="v1",
+        bad_case_agent_id=None,
+        title=title,
+        description="description",
+        meta_data=None,
+        source="test",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@pytest.mark.mysql
+async def test_mysql_catalog_sync_upserts_by_primary_key() -> None:
+    """MySQL keeps one row per bad_case_id and updates the existing one."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url)
+    database = MySqlDatabase(settings)
+    await database.start()
+    try:
+        await upgrade_database(database, bootstrap_external_tables=True)
+        now = datetime.now(UTC)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id == "catalog-mysql-1")
+            )
+            await session.execute(
+                delete(bad_case_catalog_sync).where(bad_case_catalog_sync.c.id == "bad_cases")
+            )
+        repository = BadCaseCatalogSyncRepository(database)
+        await repository.initialize(now)
+        first = await repository.commit_page(
+            [_catalog_row("old", now)],
+            last_bad_case_id=1,
+            pending_count=0,
+            now=now,
+        )
+        second = await repository.commit_page(
+            [_catalog_row("new", now)],
+            last_bad_case_id=1,
+            pending_count=0,
+            now=now,
+        )
+        assert (first.inserted, first.updated) == (1, 0)
+        assert (second.inserted, second.updated) == (0, 1)
+        async with database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(bad_cases).where(bad_cases.c.bad_case_id == "catalog-mysql-1")
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert len(rows) == 1
+        assert rows[0]["title"] == "new"
+        state = await repository.get_state()
+        assert state is not None
+        assert state.last_bad_case_id == 1
+        assert state.synced_count == 1
+    finally:
+        try:
+            async with database.transaction() as session:
+                await session.execute(
+                    delete(bad_cases).where(bad_cases.c.bad_case_id == "catalog-mysql-1")
+                )
+                await session.execute(
+                    delete(bad_case_catalog_sync).where(bad_case_catalog_sync.c.id == "bad_cases")
+                )
         finally:
             await database.dispose()

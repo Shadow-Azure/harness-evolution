@@ -53,7 +53,12 @@ async def test_fetch_page_maps_title_and_optionals() -> None:
         seen.append(request)
         return httpx.Response(
             200,
-            json=_page([_item(11), _item(12, title="second")]),
+            json=_page(
+                [
+                    _item(11, meta_data=["tag", 1]),
+                    _item(12, title="second"),
+                ],
+            ),
         )
 
     source = HttpBadCaseCatalogSource(
@@ -73,6 +78,7 @@ async def test_fetch_page_maps_title_and_optionals() -> None:
     assert page.items[0].bad_case_id == 11
     assert page.items[0].title == "case title"
     assert page.items[0].description == "description"
+    assert page.items[0].meta_data == ["tag", 1]
     assert page.items[0].created_at is not None
     assert page.items[0].created_at.utcoffset() is not None
     assert page.items[1].title == "second"

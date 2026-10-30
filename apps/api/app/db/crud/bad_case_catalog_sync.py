@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -50,7 +50,7 @@ class CatalogCaseRow:
     bad_case_agent_id: str | None
     title: str
     description: str
-    meta_data: Mapping[str, Any] | None
+    meta_data: Any | None
     source: str | None
     created_at: datetime
     updated_at: datetime
@@ -104,7 +104,7 @@ def _values(row: CatalogCaseRow) -> dict[str, Any]:
         "bad_case_agent_id": row.bad_case_agent_id,
         "title": row.title,
         "bad_case_description": row.description,
-        "meta_data": dict(row.meta_data) if row.meta_data is not None else None,
+        "meta_data": row.meta_data,
         "source": row.source,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
