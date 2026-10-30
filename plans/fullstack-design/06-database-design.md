@@ -12,13 +12,13 @@
 | 类别 | 表 | 写入方 | 我们的权限 |
 |---|---|---|---|
 | 轨迹侧 | `trajectory_payloads`（外部写）、`source_records`、`session_families`、`agents`、`user_turns`、`agent_events`、`sync_runs`、`sync_lock` | 本服务（source_records/归一化） | 读写（payload 表只读） |
-| 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 外部归因/上报系统 | **只读** |
+| 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 外部归因/上报系统 + 目录同步（本服务写 `bad_cases`） | 读写（`bad_cases` 按主键 upsert；关联表只读） |
 | 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
 
 - **原始层与归一化层分离**：`trajectory_payloads` 存原始 JSONL（外部写入/pull），`source_records` 存处理索引（不存 payload），其余轨迹表是归一化视图；解析规则升级时按 `parser_version` 从 payload 重放。
 - **明细层不落库**：`messages` / `content_blocks` 只在解析期存在，用于统计、usage 去重和状态判定；业务表不存消息与工具原文，需要原文时按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读。`user_turns` 是唯一保留的轨迹明细表，只存用户输入锚点。
-- **问题侧只读**：`bad_cases` 等表由外部系统写入，本服务不写、不做级联删除；表结构变更需与上游一起评审。
+- **问题侧写入边界**：`bad_cases` 由外部系统与目录同步共同写入，本服务只按主键 upsert 上游字段、不删除行；`bad_case_analysis`、`probe_reports` 仍只读，不做级联删除；表结构变更需与上游一起评审。
 - **跨写入方的派生值不落列**：轨迹侧表只存本服务归一化算得出的聚合；依赖问题侧（外部写入）的计数随上游随时变化，一律查询时聚合，不物化——会话问题数即属此类（见 §3.2、§7.3）。
 
 ### 1.1 逻辑类型 → 物理类型映射
@@ -317,7 +317,7 @@ erDiagram
 
 索引：`INDEX(status)`、`INDEX(kind, created_at DESC)`、`INDEX(ref_id)`。
 
-## 4. 问题侧表（外部写入，本服务只读）
+## 4. 问题侧表（外部写入 + 目录同步，本服务按主键维护 `bad_cases`）
 
 ### 4.1 `bad_cases` —— 上报的问题（症状）
 
@@ -338,11 +338,27 @@ erDiagram
 
 索引：`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`。
 
+> 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_analysis` / `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
+
 > 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因在 `probe_reports`。
 > `bad_case_session_id` 是根会话 id；`bad_case_agent_id` 是上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`。它记录的是“谁上报/发现”，不是“根因在谁”，也**不等于卡片宿主**：`self + agent` 挂 A 本身；`discovery + agent` 挂 A 的父节点 P 中调用 A 的 Agent 触发点；`skill` 型挂 A 中该 skill 的最后一次触发（`self` 卡片在药丸下方，`discovery` 在上方）。
 > 该列必须指向包含 `object_*` 触发记录的 agent——skill 型锚点只在该 agent 的 `agent_events` 里查找，找不到时退化为 `eventIndex=-1`（挂 A 节点）。API 将两列组装为 `badCaseAgent {sessionId, agentId}`，它是上报人，不一定是卡片宿主。
+
+### 4.1.1 `bad_case_catalog_sync` —— 目录同步游标（单行）
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | `VARCHAR(16)` | PK | 固定 `bad_cases`，保证单行 |
+| `last_bad_case_id` | `BIGINT` | NOT NULL | 已提交的最大 bad_case_id 游标 |
+| `synced_count` | `INTEGER` | NOT NULL | 最近一次提交时的 `COUNT(bad_cases)` |
+| `pending_count` | `INTEGER` | NOT NULL | 上游剩余数量 |
+| `status` | `VARCHAR(16)` | NOT NULL | `idle` / `running` / `failed` |
+| `attempts` / `last_error` | `INTEGER` / `TEXT` | NOT NULL / NULL | 连续失败次数与稳定错误码 |
+| `last_run_at` / `last_success_at` / `updated_at` | `DATETIME` | NULL / NULL / NOT NULL | 运行、成功与更新时间 |
+
+游标与页数据同事务推进；`unavailable` 不落库，由查询服务是否配置实时派生。
 
 ### 4.2 `bad_case_analysis` —— 归因状态（关联表）
 

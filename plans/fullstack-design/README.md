@@ -35,6 +35,7 @@
 | [09 Review 指南与已决问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q6 决策记录、评审重点 | **review 时先看这篇** |
 | [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 排期方案：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
 | [11 bad_cases 根会话轨迹定时同步](11-bad-case-session-sync.md) | 自动补齐策略、外部查询服务契约、状态表、重叠处理与前端统计 | 做 m6-15 前 |
+| [12 bad_cases 目录数据定时同步](12-bad-case-catalog-sync.md) | 上游分页查询契约、游标翻页、upsert、状态表与前端统计 | 做 m6-16 前 |
 
 ## 系统一句话说明
 

@@ -702,8 +702,18 @@ erDiagram
 { "activeJobId": "job-1", "status": "running", "payloadTable": "trajectory_payloads",
   "pending": 3, "processed": 8, "imported": 4, "skipped": 1,
   "lastRunAt": "2026-10-23T17:00:00+08:00", "nextRunAt": "2026-10-23T17:01:00+08:00",
-  "errors": [ { "sessionId": "2b7e9d4f-...", "message": "第 42 行非法 JSON" } ] }
+  "errors": [ { "sessionId": "2b7e9d4f-...", "message": "第 42 行非法 JSON" } ],
+  "badCaseSync": { "total": 12, "synced": 7, "unsynced": 5, "syncing": 1, "failed": 2,
+    "status": "idle", "lastRunAt": "2026-10-23T17:00:00+08:00", "lastError": null },
+  "badCaseCatalogSync": { "synced": 120, "unsynced": 8, "lastBadCaseId": 128,
+    "status": "idle", "lastRunAt": "2026-10-23T17:00:00+08:00", "lastError": null },
+  "badCaseAnalysis": { "total": 136, "analyzed": 96, "pending": 40, "issue": 58, "nonIssue": 38 } }
 ```
+
+- `badCaseSync`：问题轨迹（根会话轨迹补齐）统计；`total`/`synced`/`unsynced` 以 `bad_cases` 当前根会话为准。
+- `badCaseCatalogSync`：`bad_cases` 目录同步统计；`synced = COUNT(bad_cases)`，`unsynced` 为上游剩余量，`lastBadCaseId` 是游标。
+- `badCaseAnalysis`：归因整体进度；`analyzed = analyzed_issue + analyzed_nonissue`，`pending = total - analyzed`，只读 `bad_case_analysis`。
+- 前端“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析排列，只消费本接口。
 
 - 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads` 的 `(root_session_id, agent_id)` 表达，待处理状态由 `source_records.processed_*` 表达。
 - `GET /api/jobs/{jobId}` → 通用任务状态：
