@@ -10,7 +10,7 @@ depends:
   - m5-02
   - m5-03
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -86,7 +86,7 @@ github:
 - Database: add migration `0013_target_project_ids.py` with `validation_project_id` and `test_project_id` (`VARCHAR(128)`, `NOT NULL DEFAULT ''`) on both `evolution_targets` and `evolution_runs`; mirror the columns in `domain.py` and `evolution.py`.
 - Target backend: add `validation_project_id` and `test_project_id` to `EvolutionTargetWrite` and `EvolutionTarget`; map both columns in `EvolutionTargetRecord` and the repository insert/update/get/list paths; normalize and validate both fields in `_normalize_write`.
 - Run snapshot backend: expose both IDs from `LaunchTargetRecord`; write them into `evolution_runs` in `LaunchService._run_values`; map both columns in `EvolutionRunRecord` and the repository `create_run`/`_run_record` paths.
-- Validation: non-empty after trimming, at most 128 characters, and no whitespace or control characters. Failures raise `AppError(422, PROJECT_ID_INVALID, "test project id is invalid")` with `field` (`validationProjectId` or `testProjectId`) and `reason` (`project_id_required` or `project_id_format`) in `details`.
+- Validation: non-empty after trimming, with no whitespace or control characters. Empty, whitespace-only, or whitespace/control-bearing values raise `422 PROJECT_ID_INVALID` with `field` (`validationProjectId` or `testProjectId`) and `reason` (`project_id_required` or `project_id_format`) in `details`; values over 128 characters are rejected by request validation as `422 VALIDATION_INVALID` (blocked by the frontend `maxlength`).
 - Error code: add `PROJECT_ID_INVALID` to `ErrorCode` and update the OpenAPI error response description.
 - Contract: run `pnpm contract:generate` and update `packages/contracts/openapi.json` plus the generated types.
 - Frontend form: add two `ElInput` controls to `TargetFormDialog.vue` after the subdirectory/baseline row and before the enabled switch, in a two-column layout; cover the form model, reset, required-field validation, field errors, and emit; update `targetWrite` and `targetErrorMessage` in `Index.vue`.

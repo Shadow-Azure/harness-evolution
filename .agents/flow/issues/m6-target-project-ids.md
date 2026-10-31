@@ -10,7 +10,7 @@ depends:
   - m5-02
   - m5-03
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -86,7 +86,7 @@ github:
 - 数据库：新增迁移 `0013_target_project_ids.py`，为 `evolution_targets` 与 `evolution_runs` 各增加 `validation_project_id`、`test_project_id`（`VARCHAR(128)`，`NOT NULL DEFAULT ''`）；`domain.py` 与 `evolution.py` 同步列定义。
 - 后端 target：`EvolutionTargetWrite` 与 `EvolutionTarget` 增加 `validation_project_id`、`test_project_id`；`EvolutionTargetRecord`、repository 的 insert/update/get/list 映射两列；`_normalize_write` 校验并归一化两个字段。
 - 后端 run 快照：`LaunchTargetRecord` 暴露两个 ID；`LaunchService._run_values` 把它们写入 `evolution_runs`；`EvolutionRunRecord` 与 repository 的 `create_run`/`_run_record` 映射两列。
-- 校验：trim 后非空；长度不超过 128；不允许任何空白字符与控制字符。失败抛 `AppError(422, PROJECT_ID_INVALID, "test project id is invalid")`，`details` 含 `field`（`validationProjectId` / `testProjectId`）与 `reason`（`project_id_required` / `project_id_format`）。
+- 校验：trim 后非空；不允许任何空白字符与控制字符。空/纯空白/含空白或控制字符 → `422 PROJECT_ID_INVALID`，`details` 含 `field`（`validationProjectId` / `testProjectId`）与 `reason`（`project_id_required` / `project_id_format`）；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截）。
 - 错误码：`ErrorCode` 增加 `PROJECT_ID_INVALID`；OpenAPI 错误响应描述同步。
 - 契约：运行 `pnpm contract:generate`，更新 `packages/contracts/openapi.json` 与生成类型。
 - 前端：`TargetFormDialog.vue` 增加两个 `ElInput`，放在“子目录/基线”行之后、启用开关之前，两列布局；表单模型、reset、必填校验、字段错误、emit 全部覆盖；`Index.vue` 的 `targetWrite` 与 `targetErrorMessage` 同步。
