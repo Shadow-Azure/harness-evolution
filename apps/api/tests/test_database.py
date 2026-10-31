@@ -1961,6 +1961,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                     "repo_url": "https://git.example.com/duplicate.git",
                     "sub_dir": "skills/duplicate",
                     "default_ref": "main",
+                    "validation_project_id": "val-default",
+                    "test_project_id": "test-default",
                     "enabled": True,
                 },
             )
@@ -1973,6 +1975,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 "repo_url": "https://git.example.com/renamed.git",
                 "sub_dir": "skills/renamed",
                 "default_ref": "v2",
+                "validation_project_id": "val-renamed",
+                "test_project_id": "test-renamed",
                 "enabled": False,
             },
         )
@@ -1987,6 +1991,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                     "repo_url": "https://git.example.com/missing.git",
                     "sub_dir": "skills/missing",
                     "default_ref": "main",
+                    "validation_project_id": "val-default",
+                    "test_project_id": "test-default",
                     "enabled": True,
                 },
             )
