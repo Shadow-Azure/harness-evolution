@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-10-31-target-project-ids.md)
+
 ## Problem
 
 Evolution target configuration describes where the object lives and which baseline to use, but it has no field for “which test project holds the validation set and which holds the test set”. The external test platform hosts those sets in two separate projects; if the mapping only lives in the UI or in documents, the configuration page is not the source of truth, and the information disappears after a refresh, a handover, or an environment rebuild. A later evaluation integration that receives a target also has no persisted source to distinguish the validation set from the test set.
