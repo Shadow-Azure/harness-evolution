@@ -1,0 +1,238 @@
+{
+  "title": "Issue #187 冒烟测试：进化对象测试工程 ID",
+  "eyebrow": "REAL BROWSER · FASTAPI · MOCK SESSION QUERY",
+  "summary": "在真实 FastAPI、Vite、SQLite 与 headless Chrome 上验证新增/编辑浮窗的两个必填工程 ID、列表合并列，以及模拟的会话查询接口 1/2 被 bad_case 同步真实调用。",
+  "meta": "2026-10-31 · Windows · Chrome 1440x960",
+  "metrics": [
+    {
+      "value": "8",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "8",
+      "label": "接口 1 调用"
+    },
+    {
+      "value": "8",
+      "label": "接口 2 调用"
+    },
+    {
+      "value": "4",
+      "label": "已同步 root"
+    }
+  ],
+  "facts": [
+    {
+      "label": "Issue",
+      "value": "#187 m6-20"
+    },
+    {
+      "label": "PR",
+      "value": "#189"
+    },
+    {
+      "label": "后端",
+      "value": "FastAPI + SQLite + fixtures:seed"
+    },
+    {
+      "label": "前端",
+      "value": "Vite dev server（apps/web）"
+    },
+    {
+      "label": "模拟服务",
+      "value": "Node HTTP：children + trajectory"
+    },
+    {
+      "label": "浏览器",
+      "value": "headless Chrome，CDP 驱动"
+    },
+    {
+      "label": "账号",
+      "value": "admin（首次登录改密流程真实走通，密码 <redacted>）"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "实际断言",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "打开进化对象配置页",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "管理员登录后进入 /evolution/targets，页头与新增入口可见。",
+        "evidence": [
+          "screenshots/01-target-list.png"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "新增浮窗渲染两个必填字段",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "两个输入存在且带 required 星号，空提交被本地校验阻止。",
+        "evidence": [
+          "screenshots/02-create-dialog.png"
+        ]
+      },
+      {
+        "id": "03",
+        "name": "新增对象持久化两个工程 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "POST 后 API 与列表都返回 val-smoke-187 / test-smoke-187。",
+        "evidence": [
+          "screenshots/03-created-row.png"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "编辑浮窗回填两个工程 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "编辑态两个输入自动回填已保存值。",
+        "evidence": [
+          "screenshots/04-edit-dialog.png"
+        ]
+      },
+      {
+        "id": "05",
+        "name": "编辑只改一个工程 ID",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "PUT 后 testProjectId 更新，validationProjectId 保持 val-smoke-187。",
+        "evidence": [
+          "screenshots/05-updated-row.png"
+        ]
+      },
+      {
+        "id": "06",
+        "name": "模拟查询接口 1（children）被调用",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "模拟服务收到 8 次 /sessions/{id}/children 调用，全部带 Bearer 令牌。",
+        "evidence": [
+          "mock-requests.json"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "模拟查询接口 2（trajectory）被调用",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "模拟服务收到 8 次 /sessions/{id}/trajectory 调用，返回 NDJSON 并触发归一化。",
+        "evidence": [
+          "mock-requests.json"
+        ]
+      },
+      {
+        "id": "08",
+        "name": "bad_case 根会话同步状态",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "acquisition/status：total=4，synced=4，failed=0，status=idle。",
+        "evidence": [
+          "acquisition-status.json"
+        ]
+      }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    {
+      "src": "screenshots/01-target-list.png",
+      "alt": "进化对象配置列表",
+      "label": "01 · 列表",
+      "caption": "配置列表包含新增加的“测试工程”合并列。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-create-dialog.png",
+      "alt": "新增进化对象浮窗的两个必填字段",
+      "label": "02 · 新增浮窗",
+      "caption": "验证集/测试集测试工程 ID 位于基线与启用之间，带必填星号。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-created-row.png",
+      "alt": "新增对象后的列表行",
+      "label": "03 · 新增成功",
+      "caption": "新行“测试工程”列显示 val-smoke-187 / test-smoke-187。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-edit-dialog.png",
+      "alt": "编辑进化对象浮窗回填两个工程 ID",
+      "label": "04 · 编辑浮窗",
+      "caption": "编辑态回填 val-smoke-187 / test-smoke-187。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-updated-row.png",
+      "alt": "修改测试集工程 ID 后的列表行",
+      "label": "05 · 编辑成功",
+      "caption": "测试集工程 ID 更新为 test-smoke-187-v2，验证集保持不变。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "Target 表单/列表",
+        "coverage": "Web 单测 + E2E + 本冒烟",
+        "conclusion": "必填、回填、更新、合并列均有真实浏览器证据。",
+        "recommendation": "保持 E2E 作为合并前门禁。"
+      },
+      {
+        "area": "API / DB 迁移",
+        "coverage": "API 单测 + SQLite/MySQL CI",
+        "conclusion": "两字段 required、422 明细、历史行空串与 run 快照均有断言。",
+        "recommendation": "迁移 0013 回滚前导出 ID。"
+      },
+      {
+        "area": "模拟查询接口 1/2",
+        "coverage": "模拟服务 + bad_case 同步",
+        "conclusion": "两个接口被真实调用，接口 2 返回 NDJSON 并进入归一化。",
+        "recommendation": "真实上游就绪后替换 base URL 与 token。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "核心链路通过",
+    "summary": "8 个场景全部通过；新增/编辑浮窗、列表列、API 持久化、run 快照与两个模拟查询接口均得到验证。",
+    "points": [
+      "历史 target 的工程 ID 为空时，启动 run 仍会得到空快照；评测入口需要补校验。",
+      "模拟服务只验证协议与调用链，不代表真实测试平台的鉴权/版本行为。",
+      "报告中的密码与令牌已脱敏。"
+    ]
+  },
+  "footer": "Generated from report-data.json by computer-use-smoke-reporting renderer."
+}

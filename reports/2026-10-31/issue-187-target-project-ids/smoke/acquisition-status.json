@@ -1,0 +1,45 @@
+{
+  "activeJobId": null,
+  "status": "idle",
+  "payloadTable": "trajectory_payloads",
+  "pending": 0,
+  "processed": 8,
+  "imported": 8,
+  "skipped": 0,
+  "lastRunAt": "2026-10-31T14:11:01.068988+08:00",
+  "nextRunAt": null,
+  "errors": [
+    {
+      "sessionId": "10000000-0000-4000-8000-000000000002",
+      "agentId": "10000000-0000-4000-8000-000000000002",
+      "lineNo": 2,
+      "code": "SYNC_ISSUE",
+      "message": "Sync issue was reported"
+    }
+  ],
+  "badCaseSync": {
+    "total": 4,
+    "synced": 4,
+    "unsynced": 0,
+    "syncing": 0,
+    "failed": 0,
+    "status": "idle",
+    "lastRunAt": "2026-10-31T14:11:01.003628+08:00",
+    "lastError": null
+  },
+  "badCaseCatalogSync": {
+    "synced": 5,
+    "unsynced": 0,
+    "lastBadCaseId": 0,
+    "status": "unavailable",
+    "lastRunAt": null,
+    "lastError": null
+  },
+  "badCaseAnalysis": {
+    "total": 5,
+    "analyzed": 4,
+    "pending": 1,
+    "issue": 3,
+    "nonIssue": 1
+  }
+}

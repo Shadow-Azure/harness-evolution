@@ -1,0 +1,116 @@
+[
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000001/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.920Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000001/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.938Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s1-review-0001/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.939Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s1-review-0001/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.945Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000002/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.952Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000002/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.963Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/wf_9e88822acbfcd60c0837bf523793af78/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.967Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/wf_9e88822acbfcd60c0837bf523793af78/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.975Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s2-worker-0001/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.976Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s2-worker-0001/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.983Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000003/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.987Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000003/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.994Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s3-fork-0001/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:00.996Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/agent-s3-fork-0001/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:01.002Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000004/trajectory",
+    "authorization": true,
+    "at": "2026-10-31T06:11:01.006Z"
+  },
+  {
+    "method": "GET",
+    "path": "/sessions/10000000-0000-4000-8000-000000000004/children",
+    "authorization": true,
+    "at": "2026-10-31T06:11:01.012Z"
+  },
+  {
+    "method": "GET",
+    "path": "/requests",
+    "authorization": false,
+    "at": "2026-10-31T06:14:22.725Z"
+  },
+  {
+    "method": "GET",
+    "path": "/requests",
+    "authorization": false,
+    "at": "2026-10-31T06:14:58.164Z"
+  },
+  {
+    "method": "GET",
+    "path": "/requests",
+    "authorization": false,
+    "at": "2026-10-31T06:15:29.411Z"
+  }
+]

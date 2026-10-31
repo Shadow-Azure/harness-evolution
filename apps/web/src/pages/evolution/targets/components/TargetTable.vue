@@ -323,8 +323,10 @@ function toggle(target: EvolutionTarget): void {
 }
 
 .project-id-label {
+  flex-shrink: 0;
   color: var(--text-faint);
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .project-id-value {
