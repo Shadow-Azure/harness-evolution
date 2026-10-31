@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Issue #187 冒烟测试：进化对象测试工程 ID</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">REAL BROWSER · FASTAPI · MOCK SESSION QUERY</p>
+    <h1>Issue #187 冒烟测试：进化对象测试工程 ID</h1>
+    <p class="summary">在真实 FastAPI、Vite、SQLite 与 headless Chrome 上验证新增/编辑浮窗的两个必填工程 ID、列表合并列，以及模拟的会话查询接口 1/2 被 bad_case 同步真实调用。</p>
+    <span class="meta">2026-10-31 · Windows · Chrome 1440x960</span>
+    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>8</b><span>接口 1 调用</span></div><div class="metric"><b>8</b><span>接口 2 调用</span></div><div class="metric"><b>4</b><span>已同步 root</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-10-31 · Windows · Chrome 1440x960</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Issue</dt><dd>#187 m6-20</dd></div><div class="fact"><dt>PR</dt><dd>#189</dd></div><div class="fact"><dt>后端</dt><dd>FastAPI + SQLite + fixtures:seed</dd></div><div class="fact"><dt>前端</dt><dd>Vite dev server（apps/web）</dd></div><div class="fact"><dt>模拟服务</dt><dd>Node HTTP：children + trajectory</dd></div><div class="fact"><dt>浏览器</dt><dd>headless Chrome，CDP 驱动</dd></div><div class="fact"><dt>账号</dt><dd>admin（首次登录改密流程真实走通，密码 &lt;redacted&gt;）</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>8 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>实际断言</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>打开进化对象配置页</td><td><span class="status pass">PASS</span></td><td>管理员登录后进入 /evolution/targets，页头与新增入口可见。</td><td class="evidence">screenshots/01-target-list.png</td></tr><tr><td class="num">02</td><td>新增浮窗渲染两个必填字段</td><td><span class="status pass">PASS</span></td><td>两个输入存在且带 required 星号，空提交被本地校验阻止。</td><td class="evidence">screenshots/02-create-dialog.png</td></tr><tr><td class="num">03</td><td>新增对象持久化两个工程 ID</td><td><span class="status pass">PASS</span></td><td>POST 后 API 与列表都返回 val-smoke-187 / test-smoke-187。</td><td class="evidence">screenshots/03-created-row.png</td></tr><tr><td class="num">04</td><td>编辑浮窗回填两个工程 ID</td><td><span class="status pass">PASS</span></td><td>编辑态两个输入自动回填已保存值。</td><td class="evidence">screenshots/04-edit-dialog.png</td></tr><tr><td class="num">05</td><td>编辑只改一个工程 ID</td><td><span class="status pass">PASS</span></td><td>PUT 后 testProjectId 更新，validationProjectId 保持 val-smoke-187。</td><td class="evidence">screenshots/05-updated-row.png</td></tr><tr><td class="num">06</td><td>模拟查询接口 1（children）被调用</td><td><span class="status pass">PASS</span></td><td>模拟服务收到 8 次 /sessions/{id}/children 调用，全部带 Bearer 令牌。</td><td class="evidence">mock-requests.json</td></tr><tr><td class="num">07</td><td>模拟查询接口 2（trajectory）被调用</td><td><span class="status pass">PASS</span></td><td>模拟服务收到 8 次 /sessions/{id}/trajectory 调用，返回 NDJSON 并触发归一化。</td><td class="evidence">mock-requests.json</td></tr><tr><td class="num">08</td><td>bad_case 根会话同步状态</td><td><span class="status pass">PASS</span></td><td>acquisition/status：total=4，synced=4，failed=0，status=idle。</td><td class="evidence">acquisition-status.json</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>No defects found</small></div>
+    <div class="empty">No defects were found.</div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>5 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/01-target-list.png" alt="进化对象配置列表"><figcaption><b>01 · 列表</b><span>配置列表包含新增加的“测试工程”合并列。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-create-dialog.png" alt="新增进化对象浮窗的两个必填字段"><figcaption><b>02 · 新增浮窗</b><span>验证集/测试集测试工程 ID 位于基线与启用之间，带必填星号。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-created-row.png" alt="新增对象后的列表行"><figcaption><b>03 · 新增成功</b><span>新行“测试工程”列显示 val-smoke-187 / test-smoke-187。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-edit-dialog.png" alt="编辑进化对象浮窗回填两个工程 ID"><figcaption><b>04 · 编辑浮窗</b><span>编辑态回填 val-smoke-187 / test-smoke-187。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-updated-row.png" alt="修改测试集工程 ID 后的列表行"><figcaption><b>05 · 编辑成功</b><span>测试集工程 ID 更新为 test-smoke-187-v2，验证集保持不变。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>3 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>Target 表单/列表</td><td>Web 单测 + E2E + 本冒烟</td><td>必填、回填、更新、合并列均有真实浏览器证据。</td><td>保持 E2E 作为合并前门禁。</td></tr><tr><td>API / DB 迁移</td><td>API 单测 + SQLite/MySQL CI</td><td>两字段 required、422 明细、历史行空串与 run 快照均有断言。</td><td>迁移 0013 回滚前导出 ID。</td></tr><tr><td>模拟查询接口 1/2</td><td>模拟服务 + bad_case 同步</td><td>两个接口被真实调用，接口 2 返回 NDJSON 并进入归一化。</td><td>真实上游就绪后替换 base URL 与 token。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>核心链路通过</small></div>
+    <article class="card conclusion pass"><p><strong>8 个场景全部通过；新增/编辑浮窗、列表列、API 持久化、run 快照与两个模拟查询接口均得到验证。</strong></p><ul><li>历史 target 的工程 ID 为空时，启动 run 仍会得到空快照；评测入口需要补校验。</li><li>模拟服务只验证协议与调用链，不代表真实测试平台的鉴权/版本行为。</li><li>报告中的密码与令牌已脱敏。</li></ul></article>
+  </section>
+
+  <p class="foot">Generated from report-data.json by computer-use-smoke-reporting renderer.</p>
+</main>
+</body>
+</html>

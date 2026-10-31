@@ -46,7 +46,10 @@ async def list_targets(request: Request) -> EvolutionTargetList:
         401: {"model": ErrorResponse, "description": "Authentication is required"},
         403: {"model": ErrorResponse, "description": "Administrator role is required"},
         409: {"model": ErrorResponse, "description": "Object pair already exists"},
-        422: {"model": ErrorResponse, "description": "Target or remote is invalid"},
+        422: {
+            "model": ErrorResponse,
+            "description": "Target, remote, or test project id is invalid",
+        },
     },
 )
 async def create_target(
@@ -66,7 +69,10 @@ async def create_target(
         403: {"model": ErrorResponse, "description": "Administrator role is required"},
         404: {"model": ErrorResponse, "description": "Target does not exist"},
         409: {"model": ErrorResponse, "description": "Object pair already exists"},
-        422: {"model": ErrorResponse, "description": "Target or remote is invalid"},
+        422: {
+            "model": ErrorResponse,
+            "description": "Target, remote, or test project id is invalid",
+        },
     },
 )
 async def update_target(

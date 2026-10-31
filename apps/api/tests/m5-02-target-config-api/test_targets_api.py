@@ -24,6 +24,7 @@ from app.db.crud.evolution_targets import (
     EvolutionTargetRecord,
     EvolutionTargetRepository,
 )
+from app.db.models.domain import evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.errors import AppError, ErrorCode
 from app.main import create_app
@@ -126,6 +127,8 @@ def _record(target_id: str, values: Mapping[str, object]) -> EvolutionTargetReco
         repo_url=str(values["repo_url"]),
         sub_dir=str(values["sub_dir"]),
         default_ref=str(values["default_ref"]),
+        validation_project_id=str(values["validation_project_id"]),
+        test_project_id=str(values["test_project_id"]),
         enabled=bool(values["enabled"]),
     )
 
@@ -138,10 +141,28 @@ def _write(**overrides: Any) -> EvolutionTargetWrite:
         "repo_url": "https://git.example.com/agent-skills.git",
         "sub_dir": " skills/deep-research ",
         "default_ref": " main ",
+        "validation_project_id": " val-2026-q3 ",
+        "test_project_id": " test-2026-q3 ",
         "enabled": True,
     }
     values.update(overrides)
     return EvolutionTargetWrite(**values)
+
+
+def _project_payload(**overrides: Any) -> dict[str, Any]:
+    """Build one camelCase target payload including both project IDs."""
+    values: dict[str, Any] = {
+        "objectType": "skill",
+        "objectName": "deep-research",
+        "repoUrl": "https://git.example.com/agent-skills.git",
+        "subDir": "skills/deep-research",
+        "defaultRef": "main",
+        "validationProjectId": " val-2026-q3 ",
+        "testProjectId": " test-2026-q3 ",
+        "enabled": True,
+    }
+    values.update(overrides)
+    return values
 
 
 class FakeGitRemote:
@@ -302,6 +323,159 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     )
     assert deleted.status_code == 204
     assert deleted.content == b""
+
+
+def test_target_write_schema_requires_project_ids() -> None:
+    """The public write schema marks both project IDs as required inputs."""
+    schema = EvolutionTargetWrite.model_json_schema(by_alias=True)
+
+    assert {
+        "validationProjectId",
+        "testProjectId",
+    } <= set(schema["required"])
+
+
+async def test_target_project_ids_are_required_and_round_trip(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Both project IDs trim, persist, list, and survive a partial update."""
+    created = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_project_payload(),
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["validationProjectId"] == "val-2026-q3"
+    assert body["testProjectId"] == "test-2026-q3"
+
+    listed = await target_http.member.get("/api/evolution/targets")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["validationProjectId"] == "val-2026-q3"
+    assert listed.json()["items"][0]["testProjectId"] == "test-2026-q3"
+
+    updated = await target_http.admin.put(
+        f"/api/evolution/targets/{body['id']}",
+        json=_project_payload(validationProjectId=" val-v2 "),
+    )
+    assert updated.status_code == 200
+    assert updated.json()["validationProjectId"] == "val-v2"
+    assert updated.json()["testProjectId"] == "test-2026-q3"
+
+    async with target_http.database.session() as session:
+        row = (
+            (
+                await session.execute(
+                    select(evolution_targets).where(
+                        evolution_targets.c.id == body["id"],
+                    ),
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["validation_project_id"] == "val-v2"
+    assert row["test_project_id"] == "test-2026-q3"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("validationProjectId", "", "project_id_required"),
+        ("testProjectId", "   ", "project_id_required"),
+        ("validationProjectId", "val 2026", "project_id_format"),
+        ("testProjectId", "test\t2026", "project_id_format"),
+        ("testProjectId", "test\x00-2026", "project_id_format"),
+    ],
+)
+async def test_target_project_ids_reject_empty_or_whitespace(
+    target_http: TargetHttpEnvironment,
+    field: str,
+    value: str,
+    reason: str,
+) -> None:
+    """Blank, whitespace-bearing, and control-bearing project IDs are rejected."""
+    payload = _project_payload(**{field: value})
+    response = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "PROJECT_ID_INVALID"
+    assert error["details"] == {"field": field, "reason": reason}
+    assert error["message"] == "test project id is invalid"
+    listed = await target_http.member.get("/api/evolution/targets")
+    assert listed.json()["items"] == []
+
+
+async def test_target_project_ids_are_required_when_the_key_is_missing(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Omitting a project ID is one stable 422 rather than a generic validation error."""
+    payload = _project_payload()
+    del payload["testProjectId"]
+    response = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "PROJECT_ID_INVALID"
+    assert error["details"]["field"] == "testProjectId"
+    assert error["details"]["reason"] == "project_id_required"
+
+
+async def test_legacy_target_project_ids_are_empty_and_must_be_filled(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Rows migrated with empty IDs stay readable but cannot be saved empty."""
+    async with target_http.database.transaction() as session:
+        await session.execute(
+            insert(evolution_targets).values(
+                id="legacy-target",
+                object_type="skill",
+                object_name="legacy-skill",
+                repo_url="https://git.example.com/legacy.git",
+                sub_dir="skills/legacy",
+                default_ref="main",
+                enabled=True,
+                created_by=None,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
+
+    listed = await target_http.admin.get("/api/evolution/targets")
+    assert listed.status_code == 200
+    legacy = listed.json()["items"][0]
+    assert legacy["validationProjectId"] == ""
+    assert legacy["testProjectId"] == ""
+
+    empty = await target_http.admin.put(
+        "/api/evolution/targets/legacy-target",
+        json=_project_payload(
+            objectName="legacy-skill",
+            repoUrl="https://git.example.com/legacy.git",
+            subDir="skills/legacy",
+            validationProjectId="",
+            testProjectId="",
+        ),
+    )
+    assert empty.status_code == 422
+    assert empty.json()["error"]["code"] == "PROJECT_ID_INVALID"
+
+    filled = await target_http.admin.put(
+        "/api/evolution/targets/legacy-target",
+        json=_project_payload(
+            objectName="legacy-skill",
+            repoUrl="https://git.example.com/legacy.git",
+            subDir="skills/legacy",
+        ),
+    )
+    assert filled.status_code == 200
+    assert filled.json()["validationProjectId"] == "val-2026-q3"
 
 
 async def test_target_routes_preserve_admin_and_error_envelopes(

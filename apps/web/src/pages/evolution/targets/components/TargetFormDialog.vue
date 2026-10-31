@@ -30,8 +30,22 @@ const emit = defineEmits<{
 }>();
 
 type FormErrors = Partial<
-  Record<"objectName" | "repoUrl" | "subDir" | "defaultRef", string>
+  Record<
+    | "objectName"
+    | "repoUrl"
+    | "subDir"
+    | "defaultRef"
+    | "validationProjectId"
+    | "testProjectId",
+    string
+  >
 >;
+
+const PROJECT_ID_INVALID = (value: string): boolean =>
+  Array.from(value).some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return /\s/u.test(character) || code <= 0x1f || code === 0x7f;
+  });
 
 const form = reactive<EvolutionTargetWrite>({
   objectType: "skill",
@@ -39,6 +53,8 @@ const form = reactive<EvolutionTargetWrite>({
   repoUrl: "",
   subDir: "",
   defaultRef: "",
+  validationProjectId: "",
+  testProjectId: "",
   enabled: true,
 });
 const errors = reactive<FormErrors>({});
@@ -78,6 +94,8 @@ function resetForm(): void {
   form.repoUrl = props.target?.repoUrl ?? "";
   form.subDir = props.target?.subDir ?? "";
   form.defaultRef = props.target?.defaultRef ?? "";
+  form.validationProjectId = props.target?.validationProjectId ?? "";
+  form.testProjectId = props.target?.testProjectId ?? "";
   form.enabled = props.target?.enabled ?? true;
   clearErrors();
 }
@@ -117,10 +135,22 @@ function submit(): void {
   const repoUrl = form.repoUrl.trim();
   const subDir = form.subDir.trim();
   const defaultRef = form.defaultRef.trim();
+  const validationProjectId = form.validationProjectId.trim();
+  const testProjectId = form.testProjectId.trim();
   if (!objectName) errors.objectName = "请填写对象名称";
   if (!repoUrl) errors.repoUrl = "请填写仓库地址";
   if (!subDir) errors.subDir = "请填写子目录";
   if (!defaultRef) errors.defaultRef = "请填写基线分支或标签";
+  if (!validationProjectId) {
+    errors.validationProjectId = "请填写验证集测试工程 ID";
+  } else if (PROJECT_ID_INVALID(validationProjectId)) {
+    errors.validationProjectId = "工程 ID 不能包含空格或控制字符";
+  }
+  if (!testProjectId) {
+    errors.testProjectId = "请填写测试集测试工程 ID";
+  } else if (PROJECT_ID_INVALID(testProjectId)) {
+    errors.testProjectId = "工程 ID 不能包含空格或控制字符";
+  }
   if (Object.keys(errors).length > 0) return;
   emit("submit", {
     objectType: form.objectType,
@@ -128,6 +158,8 @@ function submit(): void {
     repoUrl,
     subDir,
     defaultRef,
+    validationProjectId,
+    testProjectId,
     enabled: form.enabled,
   });
 }
@@ -262,6 +294,48 @@ watch(
           </ElFormItem>
         </div>
 
+        <div class="form-grid">
+          <ElFormItem
+            label="验证集测试工程 ID"
+            required
+          >
+            <ElInput
+              v-model="form.validationProjectId"
+              maxlength="128"
+              name="validationProjectId"
+              placeholder="如 val-2026-q3"
+            />
+            <p
+              v-if="errors.validationProjectId"
+              class="field-error"
+            >
+              {{ errors.validationProjectId }}
+            </p>
+          </ElFormItem>
+
+          <ElFormItem
+            label="测试集测试工程 ID"
+            required
+          >
+            <ElInput
+              v-model="form.testProjectId"
+              maxlength="128"
+              name="testProjectId"
+              placeholder="如 test-2026-q3"
+            />
+            <p
+              v-if="errors.testProjectId"
+              class="field-error"
+            >
+              {{ errors.testProjectId }}
+            </p>
+          </ElFormItem>
+        </div>
+
+        <p class="field-help project-id-help">
+          验证集与测试集分别对应外部测试平台的测试工程 ID；只保存标识，不在此处校验工程是否存在。
+        </p>
+
         <ElFormItem label="启用">
           <div class="switch-row">
             <ElSwitch v-model="form.enabled" />
@@ -349,6 +423,10 @@ watch(
 
 .field-help {
   color: var(--text-faint);
+}
+
+.project-id-help {
+  margin: -2px 0 0;
 }
 
 .field-error,

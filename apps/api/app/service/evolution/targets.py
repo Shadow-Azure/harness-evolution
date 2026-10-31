@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
@@ -35,7 +35,22 @@ class EvolutionTargetWrite(IdentityModel):
     repo_url: str = Field(max_length=1024)
     sub_dir: str = Field(max_length=512)
     default_ref: str = Field(max_length=128)
+    validation_project_id: str = Field(max_length=128)
+    test_project_id: str = Field(max_length=128)
     enabled: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_missing_project_ids(cls, data: object) -> object:
+        """Keep the schema required while mapping an omitted ID to the service error."""
+        if not isinstance(data, dict):
+            return data
+        values = dict(data)
+        if "validationProjectId" not in values and "validation_project_id" not in values:
+            values["validationProjectId"] = ""
+        if "testProjectId" not in values and "test_project_id" not in values:
+            values["testProjectId"] = ""
+        return values
 
 
 class EvolutionTarget(EvolutionTargetWrite):
@@ -97,6 +112,30 @@ def _repo_invalid() -> AppError:
         code=ErrorCode.REPO_INVALID,
         message="repository or ref is invalid",
     )
+
+
+def _project_id_invalid(field: str, reason: str) -> AppError:
+    """Return the field-level response for an invalid test project ID."""
+    return AppError(
+        status_code=422,
+        code=ErrorCode.PROJECT_ID_INVALID,
+        message="test project id is invalid",
+        details={"field": field, "reason": reason},
+    )
+
+
+def _validate_project_id(value: str, *, field: str) -> str:
+    """Trim one opaque test project ID and reject blank or spaced values."""
+    normalized = value.strip()
+    if not normalized:
+        raise _project_id_invalid(field, "project_id_required")
+    if (
+        len(normalized) > 128
+        or _CONTROL.search(normalized)
+        or any(character.isspace() for character in normalized)
+    ):
+        raise _project_id_invalid(field, "project_id_format")
+    return normalized
 
 
 def _normalize_text(value: str, *, field: str, maximum: int) -> str:
@@ -171,6 +210,14 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             field="default_ref",
             maximum=128,
         ),
+        validation_project_id=_validate_project_id(
+            body.validation_project_id,
+            field="validationProjectId",
+        ),
+        test_project_id=_validate_project_id(
+            body.test_project_id,
+            field="testProjectId",
+        ),
         enabled=body.enabled,
     )
 
@@ -184,6 +231,8 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
         repo_url=record.repo_url,
         sub_dir=record.sub_dir,
         default_ref=record.default_ref,
+        validation_project_id=record.validation_project_id,
+        test_project_id=record.test_project_id,
         enabled=record.enabled,
     )
 

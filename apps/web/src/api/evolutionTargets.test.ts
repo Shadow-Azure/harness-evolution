@@ -24,6 +24,8 @@ const target = {
   repoUrl: "https://git.example.com/agent-skills.git",
   subDir: "skills/deep-research",
   defaultRef: "main",
+  validationProjectId: "val-deep-research",
+  testProjectId: "test-deep-research",
   enabled: true,
 };
 
@@ -64,6 +66,8 @@ describe("evolution target API", () => {
       repoUrl: target.repoUrl,
       subDir: target.subDir,
       defaultRef: target.defaultRef,
+      validationProjectId: target.validationProjectId,
+      testProjectId: target.testProjectId,
       enabled: true,
     };
 
@@ -104,6 +108,8 @@ describe("evolution target API", () => {
       repoUrl: target.repoUrl,
       subDir: target.subDir,
       defaultRef: target.defaultRef,
+      validationProjectId: target.validationProjectId,
+      testProjectId: target.testProjectId,
       enabled: false,
     };
 

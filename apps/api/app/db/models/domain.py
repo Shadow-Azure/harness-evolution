@@ -346,6 +346,13 @@ evolution_targets = Table(
     Column("repo_url", String(1024), nullable=False),
     Column("sub_dir", String(512), nullable=False),
     Column("default_ref", String(128), nullable=False),
+    Column(
+        "validation_project_id",
+        String(128),
+        nullable=False,
+        server_default="",
+    ),
+    Column("test_project_id", String(128), nullable=False, server_default=""),
     Column("enabled", Boolean, nullable=False, default=True, server_default=true()),
     Column(
         "created_by",

@@ -198,6 +198,8 @@ class EvolutionTargetFixture(FixtureModel):
     repo_url: str = Field(min_length=1, max_length=1024)
     sub_dir: str = Field(min_length=1, max_length=512)
     default_ref: str = Field(min_length=1, max_length=128)
+    validation_project_id: str = Field(min_length=1, max_length=128)
+    test_project_id: str = Field(min_length=1, max_length=128)
     enabled: bool
     created_at: datetime
     updated_at: datetime

@@ -13,6 +13,8 @@ const target = (overrides: Partial<EvolutionTarget> = {}): EvolutionTarget => ({
   repoUrl: "https://example.com/skills.git",
   subDir: "skills/deep-research",
   defaultRef: "main",
+  validationProjectId: "val-deep-research",
+  testProjectId: "test-deep-research",
   enabled: true,
   ...overrides,
 });
@@ -36,6 +38,11 @@ describe("TargetTable", () => {
     expect(wrapper.text()).toContain("仓库");
     expect(wrapper.text()).toContain("子目录");
     expect(wrapper.text()).toContain("基线");
+    expect(wrapper.text()).toContain("测试工程");
+    expect(wrapper.text()).toContain("验证集");
+    expect(wrapper.text()).toContain("测试集");
+    expect(wrapper.text()).toContain("val-deep-research");
+    expect(wrapper.text()).toContain("test-deep-research");
     expect(wrapper.text()).toContain("状态");
     expect(wrapper.text()).toContain("操作");
     expect(wrapper.text()).toContain("skill");
@@ -43,6 +50,17 @@ describe("TargetTable", () => {
     expect(wrapper.text()).toContain("已启用");
     expect(wrapper.text()).toContain("已停用");
     expect(wrapper.find(".target-table-scroll").exists()).toBe(true);
+  });
+
+  it("shows an explicit empty project value for historical rows", () => {
+    const wrapper = mount(TargetTable, {
+      props: {
+        targets: [target({ validationProjectId: "", testProjectId: "" })],
+        canWrite: false,
+      },
+    });
+
+    expect(wrapper.text()).toContain("未填写");
   });
 
   it("hides all write controls from members", () => {

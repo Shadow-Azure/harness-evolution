@@ -10,7 +10,7 @@ depends:
   - m5-02
   - m5-03
 priority: P1
-status: ready
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**
@@ -67,49 +67,53 @@ github:
 - The create dialog contains two required fields, “validation-set test project ID” and “test-set test project ID”, for both skill and agent.
 - The edit dialog populates and allows changing both fields; historical rows with an empty string render empty and require input.
 - `POST` and `PUT /api/evolution/targets` accept and persist both fields, and `GET /api/evolution/targets` returns them.
-- The `evolution_targets` table has both columns, and SQLite and MySQL migrations agree.
+- The `evolution_targets` and `evolution_runs` tables each have both columns, SQLite and MySQL migrations agree, and run creation snapshots the values from the target.
+- The configuration table gains one merged “test projects” column with a validation-set row and a test-set row.
 - Empty, whitespace-only, overlong, control-bearing, or whitespace-bearing input is rejected by both the frontend and the backend with a field-level message.
 - The contract, fixtures, prototype, and tests stay in sync; existing target CRUD and repository validation behavior does not change.
 
 ## Design authority
 
 - [05 §4.11 Evolution target configuration](../../../plans/fullstack-design/05-api-design.md#411-进化对象配置仅配置后可自进化): target configuration endpoints, fields, and error codes; this issue adds two fields to the body and response.
-- [06 §5.1 evolution_targets](../../../plans/fullstack-design/06-database-design.md#51-evolution_targets--可自进化的对象配置): existing columns, constraints, and the run snapshot boundary; this issue only extends the table and does not change run snapshots.
+- [06 §5.1 evolution_targets](../../../plans/fullstack-design/06-database-design.md#51-evolution_targets--可自进化的对象配置): existing columns, constraints, and the run snapshot boundary; this issue extends the target table and snapshots both values when a run is created.
 - [08 §9.5 Target configuration page](../../../plans/fullstack-design/08-frontend-implementation.md#95-进化对象配置页evolutiontargets): form structure, required-field validation, and error presentation.
 - [02 F19](../../../plans/fullstack-design/02-features.md): capability boundary of target configuration.
-- The design document `plans/fullstack-design/14-target-project-ids.md` is completed before implementation and takes precedence on conflict.
+- [14 Validation and test project IDs](../../../plans/fullstack-design/14-target-project-ids.md): field semantics, target/run columns, API validation, frontend and prototype rules; this chapter wins on conflict.
 - If implementation conflicts, the current `EvolutionTargetService` normalization and error wrapping take precedence.
 
 ## Implementation
 
-- Database: add migration `0013_target_project_ids.py` with `validation_project_id` and `test_project_id` (`VARCHAR(128)`, `NOT NULL DEFAULT ''`) on `evolution_targets`; mirror the columns in `domain.py`.
-- Backend: add `validation_project_id` and `test_project_id` to `EvolutionTargetWrite` and `EvolutionTarget`; map both columns in `EvolutionTargetRecord` and the repository insert/update/get/list paths; normalize and validate both fields in `_normalize_write`.
+- Database: add migration `0013_target_project_ids.py` with `validation_project_id` and `test_project_id` (`VARCHAR(128)`, `NOT NULL DEFAULT ''`) on both `evolution_targets` and `evolution_runs`; mirror the columns in `domain.py` and `evolution.py`.
+- Target backend: add `validation_project_id` and `test_project_id` to `EvolutionTargetWrite` and `EvolutionTarget`; map both columns in `EvolutionTargetRecord` and the repository insert/update/get/list paths; normalize and validate both fields in `_normalize_write`.
+- Run snapshot backend: expose both IDs from `LaunchTargetRecord`; write them into `evolution_runs` in `LaunchService._run_values`; map both columns in `EvolutionRunRecord` and the repository `create_run`/`_run_record` paths.
 - Validation: non-empty after trimming, at most 128 characters, and no whitespace or control characters. Failures raise `AppError(422, PROJECT_ID_INVALID, "test project id is invalid")` with `field` (`validationProjectId` or `testProjectId`) and `reason` (`project_id_required` or `project_id_format`) in `details`.
 - Error code: add `PROJECT_ID_INVALID` to `ErrorCode` and update the OpenAPI error response description.
 - Contract: run `pnpm contract:generate` and update `packages/contracts/openapi.json` plus the generated types.
-- Frontend: add two `ElInput` controls to `TargetFormDialog.vue` after the subdirectory/baseline row and before the enabled switch, in a two-column layout; cover the form model, reset, required-field validation, field errors, and emit; update `targetWrite` and `targetErrorMessage` in `Index.vue`.
+- Frontend form: add two `ElInput` controls to `TargetFormDialog.vue` after the subdirectory/baseline row and before the enabled switch, in a two-column layout; cover the form model, reset, required-field validation, field errors, and emit; update `targetWrite` and `targetErrorMessage` in `Index.vue`.
+- Frontend table: add a merged “test projects” column to `TargetTable.vue` between baseline and status, showing the validation set and test set on two lines; show “未填写” when empty.
 - Form copy: explain that the validation set and test set map to test project IDs on the external test platform; when a historical row is empty, say the values must be filled before saving.
 - Fixtures: add both required fields to `EvolutionTargetFixture`, fill the `evolutionTargets` entry in `fixtures/m2-synthetic/corpus.json`, and write both columns during seed.
-- Prototype: add both required fields and validation messages to the create and edit dialogs in `plans/14-15-ui-prototype/harness-evolution.html`, keeping the 720px two-column form layout.
-- Documentation: update 05 §4.11, 06 §5.1, 08 §9.5, and 02 F19; add `plans/fullstack-design/14-target-project-ids.md`; add an Agent Note recording the field semantics and the boundary that the values live only on the target and are not snapshotted into runs.
-- Tests: API create, update, list, required, format, and historical-row cases; repository and migration; Web form required, population, emit, and error cases; E2E create and edit.
+- Prototype: add both required fields and validation messages to the create and edit dialogs in `plans/14-15-ui-prototype/harness-evolution.html`, add the merged “test projects” column to the configuration list, and keep the 720px two-column form layout.
+- Documentation: update 05 §4.11, 06 §5.1/§5.2, 08 §9.5, and 02 F19; add `plans/fullstack-design/14-target-project-ids.md`; add an Agent Note recording the field semantics and the target/run double snapshot boundary.
+- Tests: API create, update, list, required, format, and historical-row cases; run-creation snapshot; repository and migration; Web form required, population, emit, error, and table-column cases; E2E create and edit.
 
 ## Implementation steps
 
-1. Add failing tests first: creating a target without either field returns 422 `PROJECT_ID_INVALID`; whitespace-only, overlong, control-bearing, and internal-whitespace input returns a field-level error; create and update then GET returns both fields; a migrated historical row reads as an empty string.
-2. Add the migration and ORM columns, update the record and repository, and run the database tests.
+1. Add failing tests first: creating a target without either field returns 422 `PROJECT_ID_INVALID`; whitespace-only, overlong, control-bearing, and internal-whitespace input returns a field-level error; create and update then GET returns both fields; migrated historical target/run rows read as an empty string.
+2. Add the migration and ORM columns, update the target record/repository and the run record/`create_run`, and run the database tests.
 3. Extend the service model and normalization, add the error code and details, and run the focused API tests.
-4. Run `pnpm contract:generate` and update the contract snapshot.
-5. Change the frontend form, reset, validation, emit, and Index mapping, and add Web unit tests.
-6. Update fixtures and seed, and run the fixtures gate.
-7. Update the prototype, 05/06/08/02 and chapter 14, and the Agent Note.
-8. Run focused tests, types, lint, E2E, flow, and documentation gates.
+4. Change the launch snapshot and assert that the run columns come from the target and that later target edits do not change an existing run.
+5. Run `pnpm contract:generate` and update the contract snapshot.
+6. Change the frontend form, reset, validation, emit, table column, and Index mapping, and add Web unit tests.
+7. Update fixtures and seed, and run the fixtures gate.
+8. Update the prototype, 05/06/08/02 and chapter 14, and the Agent Note.
+9. Run focused tests, types, lint, E2E, flow, and documentation gates.
 
 ## Dependencies and boundary
 
 - Dependencies: m5-02 (target CRUD API) and m5-03 (target configuration UI).
-- Delivery boundary: change only the target configuration table, API, contract, form, fixtures, prototype, and tests; do not change run creation, `evolution_runs`, the evaluation gateway, `/catalogs/targets`, or the launch wizard.
-- Compatibility: both columns are additive; historical rows read as an empty string and writes require values; old clients that omit the fields receive 422.
+- Delivery boundary: change the target configuration table, API, contract, form, table, fixtures, prototype, and tests, and add two run snapshot columns at creation; do not change the run API/detail response, the evaluation gateway, `EvalRequest`, `/catalogs/targets`, or the launch wizard.
+- Compatibility: all four columns are additive; historical target/run rows read as an empty string and target writes require values; old clients that omit the fields receive 422.
 - Non-goals: see the end of this document.
 
 ## Verification
@@ -131,8 +135,9 @@ pnpm verify:docs
 - Creating a target without either project ID returns 422, `details.field` names the missing field, and no row is written.
 - Creating a target with both valid fields returns 201, GET returns the same values, and both columns are queryable.
 - Updating only one project ID returns the new value and leaves the other unchanged.
-- A historical row returns empty strings after migration; submitting an empty value returns 422, and saving after filling both succeeds.
-- The frontend blocks submit while either input is empty; a filled form emits a body with both fields; edit mode populates both.
+- A historical target returns empty strings after migration; submitting an empty value returns 422, and saving after filling both succeeds.
+- Starting a run from a target with both fields writes the same values into `evolution_runs`; editing the target afterwards does not change the created run.
+- The frontend blocks submit while either input is empty; a filled form emits a body with both fields; edit mode populates both; the table shows two lines under “test projects”.
 - All type, lint, E2E, contract, flow, and documentation gates pass.
 
 ## Acceptance
@@ -140,11 +145,12 @@ pnpm verify:docs
 - The create dialog shows two required inputs, “validation-set test project ID” and “test-set test project ID”, for both skill and agent.
 - Submitting with either input empty or whitespace-only is blocked and the field shows “required”; overlong input or input containing whitespace or control characters shows the format requirement under the field.
 - The edit dialog populates both saved values; after a change and save, the list endpoint returns the new values.
-- The `evolution_targets` table has both columns after SQLite and MySQL migrations, and historical rows hold an empty string.
+- `evolution_targets` and `evolution_runs` each have both columns after SQLite and MySQL migrations, historical rows hold an empty string, and a new run snapshots the target values at creation.
 - `POST` and `PUT` without the fields return 422 `PROJECT_ID_INVALID`, with `details.field` set to `validationProjectId` or `testProjectId`.
 - `GET /api/evolution/targets` returns `validationProjectId` and `testProjectId`.
+- The merged “test projects” column shows the validation set and test set on two lines and shows “未填写” for empty historical values.
 - Existing target CRUD, repository/subdirectory/baseline validation, the enabled switch, and delete protection behave as before.
-- The prototype and the implemented form agree on field order, labels, required markers, and error placement.
+- The prototype and the implemented form agree on field order, labels, required markers, and error placement; the list column also matches.
 - Related unit tests, E2E, types, lint, contract, flow, and documentation gates are green.
 
 ## Gates and CI
@@ -157,8 +163,8 @@ pnpm verify:docs
 ## Non-goals
 
 - Do not call an external test project API or verify that a project ID exists in this slice.
-- Do not change `evolution_runs`, run creation or snapshots, the evaluation gateway, or `EvalRequest`.
+- Do not change the run API/detail response, the evaluation gateway, or `EvalRequest`; only add two snapshot columns at run creation.
 - Do not add either field to `GET /api/catalogs/targets`, the launch wizard, or the run detail page.
-- Do not add columns to the target configuration list table; change only the create and edit dialogs.
-- Do not migrate or guess real project IDs for historical objects; historical values stay empty until an administrator fills them.
+- Do not split the list column into two; show one merged “test projects” column.
+- Do not migrate or guess real project IDs for historical targets or runs; historical values stay empty until an administrator fills them.
 - Do not change the existing validation or error codes for `repoUrl`, `subDir`, or `defaultRef`.

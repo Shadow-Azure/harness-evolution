@@ -68,7 +68,7 @@
 | 向导：两步指示器 | F11 | [08 §9.1](08-frontend-implementation.md) |
 | 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.11](05-api-design.md) · [05 §4.13](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 向导 step1：提示文案内「配置页」链接 → 进化对象配置页 | F19 | [05 §4.11](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) · [08 §9.5](08-frontend-implementation.md) |
-| 配置页：列表/新增/编辑/删除，repoUrl/subDir/defaultRef/enabled | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) |
+| 配置页：列表/新增/编辑/删除，repoUrl/subDir/defaultRef/validationProjectId/testProjectId/enabled，测试工程合并列 | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) · [14](14-target-project-ids.md) |
 | 向导 step1 → step2：查询命中 | F11 | [05 §4.9](05-api-design.md) |
 | 向导 step1：下一步恒可点 + 必填字段级校验（标红 + 框下提示） | F11 | [08 §9.2](08-frontend-implementation.md) |
 | 向导 step2：零命中空态（出口禁用） | F11 | [05 §4.9](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
