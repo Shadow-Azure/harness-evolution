@@ -25,6 +25,8 @@ const target = {
   repoUrl: "https://git.example.com/agent-skills.git",
   subDir: "skills/deep-research",
   defaultRef: "main",
+  validationProjectId: "val-deep-research",
+  testProjectId: "test-deep-research",
   enabled: true,
 };
 const body = {
@@ -33,6 +35,8 @@ const body = {
   repoUrl: target.repoUrl,
   subDir: target.subDir,
   defaultRef: target.defaultRef,
+  validationProjectId: target.validationProjectId,
+  testProjectId: target.testProjectId,
   enabled: true,
 };
 const selectedTarget = ref<string | null>(null);

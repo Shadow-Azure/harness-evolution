@@ -508,18 +508,21 @@ GET /api/catalogs/models    → 模型列表（来自 agents.model 聚合，含 
 ```text
 Index.vue
 ├── 页头：标题 + "新增配置"
-├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / enabled / 操作
+├── TargetTable.vue：objectType / objectName / repoUrl / subDir / defaultRef / validationProjectId + testProjectId（合并“测试工程”列）/ enabled / 操作
 └── TargetFormDialog.vue（新增/编辑）
     ├── objectType（skill/agent）
     ├── objectName
     ├── repoUrl（git 远端地址，https/ssh；不写 token）
     ├── subDir（相对仓库根，如 skills/deep-research）
     ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议）
+    ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
+    ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
     └── enabled 开关
 ```
 
 - 写操作仅 admin 可见；成员只读。
-- 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，表单展示错误。
+- 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，两个工程 ID 的空白/控制字符由本地校验，后端兜底返回 `422 PROJECT_ID_INVALID`；表单展示错误。
+- 表格“测试工程”列合并展示两行，历史空值显示“未填写”。
 - `defaultRef` 的输入文本就是表单值；失焦或直接提交不得清空。已保存对象可通过输入框内的展开按钮查看仓库 tag 建议，键盘与指针选择 tag 都只是可选快捷路径。
 - 新增态没有 target id，不请求版本建议，也不显示版本加载；编辑态只在版本请求实际进行时显示加载。建议获取失败或为空时仍可直接输入并保存。
 - 删除前提示"有进行中 run 时不可删除"（后端 409 `TARGET_IN_USE`）。

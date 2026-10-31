@@ -91,6 +91,7 @@ function toggle(target: EvolutionTarget): void {
             <th>仓库</th>
             <th>子目录</th>
             <th>基线</th>
+            <th>测试工程</th>
             <th>状态</th>
             <th v-if="canWrite">
               操作
@@ -119,6 +120,29 @@ function toggle(target: EvolutionTarget): void {
             </td>
             <td class="mono">
               {{ target.defaultRef }}
+            </td>
+            <td
+              class="project-ids"
+              data-testid="target-project-ids"
+            >
+              <div class="project-id-row">
+                <span class="project-id-label">验证集</span>
+                <span
+                  class="project-id-value"
+                  :title="target.validationProjectId || '未填写'"
+                >
+                  {{ target.validationProjectId || "未填写" }}
+                </span>
+              </div>
+              <div class="project-id-row">
+                <span class="project-id-label">测试集</span>
+                <span
+                  class="project-id-value"
+                  :title="target.testProjectId || '未填写'"
+                >
+                  {{ target.testProjectId || "未填写" }}
+                </span>
+              </div>
             </td>
             <td>
               <span
@@ -215,7 +239,7 @@ function toggle(target: EvolutionTarget): void {
 
 .target-table {
   width: 100%;
-  min-width: 820px;
+  min-width: 980px;
   border-collapse: collapse;
   color: var(--text-dim);
   font-size: 11.5px;
@@ -286,6 +310,31 @@ function toggle(target: EvolutionTarget): void {
 
 .mono {
   font-family: var(--mono);
+}
+
+.project-ids {
+  min-width: 160px;
+}
+
+.project-id-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.project-id-label {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.project-id-value {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row-actions {

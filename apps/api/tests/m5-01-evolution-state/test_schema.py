@@ -311,6 +311,8 @@ def test_record_helpers_copy_json_and_normalize_timestamps() -> None:
         "target_version": "v2.0.0",
         "repo_url": "https://example.invalid/agent-skills.git",
         "sub_dir": "skills/deep-research",
+        "validation_project_id": "val-deep-research",
+        "test_project_id": "test-deep-research",
         "repo_path": None,
         "base_ref": None,
         "base_commit": None,

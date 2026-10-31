@@ -840,8 +840,8 @@ POST /runs（同步校验）
 
 | 端点 | 说明 |
 |---|---|
-| `GET /api/evolution/targets` | 列出配置：`{ "items": [ { id, objectType, objectName, repoUrl, subDir, defaultRef, enabled } ] }` |
-| `POST /api/evolution/targets` | 新增（admin）；body 同上；`repoUrl` 为 git 远端地址，`defaultRef` 为基线分支或 tag，`subDir` 为对象目录相对仓库根；`409 TARGET_EXISTS` |
+| `GET /api/evolution/targets` | 列出配置：`{ "items": [ { id, objectType, objectName, repoUrl, subDir, defaultRef, validationProjectId, testProjectId, enabled } ] }` |
+| `POST /api/evolution/targets` | 新增（admin）；body 同上；`repoUrl` 为 git 远端地址，`defaultRef` 为基线分支或 tag，`subDir` 为对象目录相对仓库根，两个 project ID 为必填；`409 TARGET_EXISTS`、`422 PROJECT_ID_INVALID` |
 | `PUT /api/evolution/targets/{id}` | 修改（admin）；`404 TARGET_NOT_FOUND` |
 | `DELETE /api/evolution/targets/{id}` | 删除（admin）；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | 从配置仓库读取 tag 列表：`{ "versions": ["v2.0.0", ...], "defaultRef": "main" }`；仓库不可用 → `422 REPO_INVALID` |
@@ -852,7 +852,8 @@ POST /runs（同步校验）
 { "items": [
   { "id": "tgt-123", "objectType": "skill", "objectName": "deep-research",
     "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-    "defaultRef": "main", "enabled": true }
+    "defaultRef": "main", "validationProjectId": "val-2026-q3",
+    "testProjectId": "test-2026-q3", "enabled": true }
 ] }
 ```
 
@@ -861,13 +862,16 @@ POST /runs（同步校验）
 ```json
 { "objectType": "skill", "objectName": "deep-research",
   "repoUrl": "https://git.example.com/agent-skills.git", "subDir": "skills/deep-research",
-  "defaultRef": "main", "enabled": true }
+  "defaultRef": "main", "validationProjectId": "val-2026-q3",
+  "testProjectId": "test-2026-q3", "enabled": true }
 ```
 
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
 - `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存和创建 run 前都校验。
+- `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、长度 ≤128、不含空白或控制字符；失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
+- 创建 run 时把两个 project ID 从 target 快照到 `evolution_runs`；run API 响应不变。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
 - 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
 
@@ -1039,6 +1043,7 @@ FastAPI /api/openapi.json
 | `TARGET_NOT_CONFIGURED` | 409 | 启动 run 时目标未配置或已停用 |
 | `TARGET_IN_USE` | 409 | 删除配置时仍有进行中的 run |
 | `REPO_INVALID` | 422 | 仓库路径不存在/不是 git 仓库/ref 不存在 |
+| `PROJECT_ID_INVALID` | 422 | 验证集/测试集测试工程 ID 为空、超长或含空白/控制字符 |
 | `ENGINE_INVALID` | 422 | `engineKey` 未注册或 `eval` 评测接入配置非法 |
 | `GIT_ERROR` | 500 | git 操作失败（clone/branch/commit；消息含 stderr 摘要） |
 | `UPSTREAM_NOT_AVAILABLE` | 409 | 上游查询接口未配置或未实现时的 pull 请求 |

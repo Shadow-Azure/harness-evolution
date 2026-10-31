@@ -206,6 +206,16 @@ async function fillTargetForm(page, values) {
   await setInput(page, "input[name='repoUrl']", values.repoUrl);
   await setInput(page, "input[name='subDir']", values.subDir);
   await setInput(page, "input[name='defaultRef']", values.defaultRef);
+  await setInput(
+    page,
+    "input[name='validationProjectId']",
+    values.validationProjectId ?? "val-m5-e2e",
+  );
+  await setInput(
+    page,
+    "input[name='testProjectId']",
+    values.testProjectId ?? "test-m5-e2e",
+  );
 }
 
 async function runTool(action, value) {
@@ -583,6 +593,17 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     const createdRows = await apiJson("/api/evolution/targets", admin.accessToken);
     const created = createdRows.items.find((item) => item.objectName === "m5-e2e-target");
     assert.ok(created);
+    assert.equal(created.validationProjectId, "val-m5-e2e");
+    assert.equal(created.testProjectId, "test-m5-e2e");
+    assert.match(
+      await evaluate(
+        page,
+        `[...document.querySelectorAll(".target-table tbody tr")]
+          .find((item) => item.textContent.includes("m5-e2e-target"))
+          ?.querySelector('[data-testid="target-project-ids"]')?.textContent ?? ""`,
+      ),
+      /验证集.*val-m5-e2e.*测试集.*test-m5-e2e/s,
+    );
 
     await evaluate(
       page,

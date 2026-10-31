@@ -16,6 +16,8 @@ const target: EvolutionTarget = {
   repoUrl: "https://example.com/skills.git",
   subDir: "skills/deep-research",
   defaultRef: "main",
+  validationProjectId: "val-deep-research",
+  testProjectId: "test-deep-research",
   enabled: true,
 };
 
@@ -46,6 +48,8 @@ async function fillRequired(
     repoUrl?: string;
     subDir?: string;
     defaultRef?: string;
+    validationProjectId?: string;
+    testProjectId?: string;
   } = {},
 ) {
   await wrapper.get('input[name="objectName"]').setValue(
@@ -60,6 +64,12 @@ async function fillRequired(
   await wrapper
     .get('input[name="defaultRef"]')
     .setValue(values.defaultRef ?? "  main  ");
+  await wrapper
+    .get('input[name="validationProjectId"]')
+    .setValue(values.validationProjectId ?? "  val-2026-q3  ");
+  await wrapper
+    .get('input[name="testProjectId"]')
+    .setValue(values.testProjectId ?? "  test-2026-q3  ");
   await flushPromises();
 }
 
@@ -88,6 +98,8 @@ describe("TargetFormDialog", () => {
         repoUrl: "https://example.com/skills.git",
         subDir: "skills/deep-research",
         defaultRef: "main",
+        validationProjectId: "val-2026-q3",
+        testProjectId: "test-2026-q3",
         enabled: true,
       },
     ]]);
@@ -126,6 +138,21 @@ describe("TargetFormDialog", () => {
     expect(wrapper.text()).toContain("请填写仓库地址");
     expect(wrapper.text()).toContain("请填写子目录");
     expect(wrapper.text()).toContain("请填写基线分支或标签");
+    expect(wrapper.text()).toContain("请填写验证集测试工程 ID");
+    expect(wrapper.text()).toContain("请填写测试集测试工程 ID");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+  });
+
+  it("rejects project IDs containing whitespace", async () => {
+    const wrapper = await mountDialog();
+    await fillRequired(wrapper, {
+      validationProjectId: "val 2026",
+      testProjectId: "test\t2026",
+    });
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("工程 ID 不能包含空格或控制字符");
     expect(wrapper.emitted("submit")).toBeUndefined();
   });
 
@@ -157,6 +184,17 @@ describe("TargetFormDialog", () => {
     expect(
       (wrapper.get('input[name="defaultRef"]').element as HTMLInputElement).value,
     ).toBe("main");
+    expect(
+      (
+        wrapper.get('input[name="validationProjectId"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe("val-deep-research");
+    expect(
+      (
+        wrapper.get('input[name="testProjectId"]').element as HTMLInputElement
+      ).value,
+    ).toBe("test-deep-research");
     const autocomplete = wrapper.findComponent(ElAutocomplete);
     const suggestions = await new Promise<Array<{ value: string }>>(
       (resolve) => {

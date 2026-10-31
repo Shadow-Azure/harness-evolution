@@ -170,6 +170,8 @@ def _target_values(
         "repo_url": repo_url or f"https://git.example.com/{object_name}.git",
         "sub_dir": f"{object_type}s/{object_name}",
         "default_ref": "main",
+        "validation_project_id": "val-default",
+        "test_project_id": "test-default",
         "enabled": enabled,
         "created_by": None,
     }

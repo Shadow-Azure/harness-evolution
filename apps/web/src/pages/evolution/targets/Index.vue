@@ -69,6 +69,8 @@ function targetWrite(target: EvolutionTarget): EvolutionTargetWrite {
     repoUrl: target.repoUrl,
     subDir: target.subDir,
     defaultRef: target.defaultRef,
+    validationProjectId: target.validationProjectId,
+    testProjectId: target.testProjectId,
     enabled: target.enabled,
   };
 }
@@ -118,6 +120,9 @@ function targetErrorMessage(errorValue: unknown): string {
     if (errorValue.code === "TARGET_EXISTS") {
       return "同类型的对象名称已经配置";
     }
+    if (errorValue.code === "PROJECT_ID_INVALID") {
+      return "测试工程 ID 无效，请检查是否为空、超长或包含空格";
+    }
     return errorValue.message || "保存配置失败，请稍后重试";
   }
   return errorValue instanceof Error
@@ -161,7 +166,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
         <h1>进化对象配置</h1>
       </div>
       <p class="page-note">
-        配置可被自进化修改的 skill 与 agent；仓库、引用和路径由后端校验。
+        配置 skill / agent 的仓库、子目录、基线与测试工程。基线可直接填写分支或 tag；tag 建议来自已保存配置的仓库。
       </p>
     </header>
 

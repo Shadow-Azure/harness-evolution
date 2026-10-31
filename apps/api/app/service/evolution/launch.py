@@ -46,6 +46,14 @@ class LaunchTargetRecord(Protocol):
         """Return the configured repository sub directory."""
 
     @property
+    def validation_project_id(self) -> str:
+        """Return the configured validation-set test project id."""
+
+    @property
+    def test_project_id(self) -> str:
+        """Return the configured test-set test project id."""
+
+    @property
     def enabled(self) -> bool:
         """Return whether the target accepts launches."""
 
@@ -192,6 +200,8 @@ class EvolutionLaunchService:
             "target_version": query.target_version,
             "repo_url": config.repo_url,
             "sub_dir": config.sub_dir,
+            "validation_project_id": config.validation_project_id,
+            "test_project_id": config.test_project_id,
             "base_ref": config.default_ref,
             "window_from": query.window_from,
             "window_to": query.window_to,

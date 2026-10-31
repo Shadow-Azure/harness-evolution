@@ -87,6 +87,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D17 | 原始 JSON 查看（2026-10-24） | **首版不提供「查看原始 JSON」overlay 或独立入口** | 时间线裁撤后没有消费入口；后续诊断功能可按 `(sessionId, agentId, lineNo)` 回读 payload，不恢复消息/内容块明细表。见 [06 §3.0](06-database-design.md) |
 | D18 | 用户管理（2026-10-24） | **首版只提供 admin 的 `GET/POST /api/users` 和顶栏用户区；不做管理页，也不提供停用/恢复用户 API** | 管理操作先走 API/脚本；`is_active` 继续作为登录闸门字段保留，未来恢复停用管理时再补写路径。见 [05 §4.1](05-api-design.md) · [08 §4.2](08-frontend-implementation.md) |
 | D19 | 上游轨迹查询契约（2026-10-24） | **[05 §10](05-api-design.md) 是本服务定义的客户端契约，用于 `HttpApiSource` 和 mock 契约联调；不表示真实上游已承诺该契约** | 上游就绪前继续用 `trajectory_payloads` 和 fixtures；真实上游接入时以其实现为准，主版本不兼容先评审适配，不静默放宽校验。 |
+| D20 | 测试工程 ID（2026-10-31） | **验证集/测试集测试工程 ID 挂在 `evolution_targets`，创建 run 时快照到 `evolution_runs`；必填在 API/表单层，不调用外部平台校验存在性** | 历史 target/run 为空串；本切片不改 run API、详情页与评测 gateway。见 [14](14-target-project-ids.md) |
 
 ## Review 前必看：结论状态
 

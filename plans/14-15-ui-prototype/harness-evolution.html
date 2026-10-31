@@ -423,6 +423,10 @@
 .evo-app .target-name { font-weight: 650; }
 .evo-app .target-repo, .evo-app .target-ref { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); word-break: break-all; }
 .evo-app .target-dir { color: var(--text-dim); }
+.evo-app .project-ids { min-width: 150px; }
+.evo-app .project-id-row { display: flex; align-items: baseline; gap: 6px; }
+.evo-app .project-id-label { color: var(--text-faint); font-size: 10.5px; }
+.evo-app .project-id-value { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; }
 .evo-app .enabled-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
 .evo-app .enabled-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
 .evo-app .enabled-pill.off { color: var(--text-faint); }
@@ -2672,9 +2676,9 @@ let expanded = new Set();
 let lastSelection = null;
 let clusterOnlyData = null;
 let targetConfigs = [
-  { id: 'target-deep-research', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.0.0', enabled: true, tags: ['v2.0.0', 'v1.9.0', 'v1.8.2'] },
-  { id: 'target-code-review', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'feature/review-rules', enabled: true, tags: ['v1.4.0', 'v1.3.1'] },
-  { id: 'target-explore', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'main', enabled: false, tags: [], tagsUnavailable: true },
+  { id: 'target-deep-research', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.0.0', validationProjectId: 'val-deep-research', testProjectId: 'test-deep-research', enabled: true, tags: ['v2.0.0', 'v1.9.0', 'v1.8.2'] },
+  { id: 'target-code-review', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'feature/review-rules', validationProjectId: 'val-code-review', testProjectId: 'test-code-review', enabled: true, tags: ['v1.4.0', 'v1.3.1'] },
+  { id: 'target-explore', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'main', validationProjectId: 'val-explore', testProjectId: 'test-explore', enabled: false, tags: [], tagsUnavailable: true },
 ];
 let targetDialog = null;
 
@@ -2763,6 +2767,10 @@ function renderTargets(){
     <td><span class="chip kind">${esc(target.kind)}</span><div class="target-name">${esc(target.objectName)}</div></td>
     <td><div class="target-repo">${esc(target.repoUrl)}</div><div class="target-dir">${esc(target.subDir)}</div></td>
     <td><div class="target-ref">${esc(target.defaultRef)}</div></td>
+    <td class="project-ids">
+      <div class="project-id-row"><span class="project-id-label">验证集</span><span class="project-id-value" title="${esc(target.validationProjectId || '未填写')}">${esc(target.validationProjectId || '未填写')}</span></div>
+      <div class="project-id-row"><span class="project-id-label">测试集</span><span class="project-id-value" title="${esc(target.testProjectId || '未填写')}">${esc(target.testProjectId || '未填写')}</span></div>
+    </td>
     <td><span class="enabled-pill ${target.enabled ? '' : 'off'}">${target.enabled ? '已启用' : '已停用'}</span></td>
     <td class="actions"><button class="btn sm" data-action="target-edit" data-id="${target.id}">编辑</button></td>
   </tr>`).join('');
@@ -2773,11 +2781,11 @@ function renderTargets(){
       <span class="spacer"></span>
       <button class="btn primary" data-action="target-create">＋ 新增配置</button>
     </div>
-    <p class="page-note">配置 skill / agent 的仓库、子目录与基线。基线可直接填写分支或 tag；tag 建议来自已保存配置的仓库。</p>
+    <p class="page-note">配置 skill / agent 的仓库、子目录、基线与测试工程。基线可直接填写分支或 tag；tag 建议来自已保存配置的仓库。</p>
     <div class="targets-panel">
       <table class="targets">
-        <thead><tr><th>对象</th><th>仓库 / 子目录</th><th>基线</th><th>状态</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="waiting">暂无配置</td></tr>'}</tbody>
+        <thead><tr><th>对象</th><th>仓库 / 子目录</th><th>基线</th><th>测试工程</th><th>状态</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="waiting">暂无配置</td></tr>'}</tbody>
       </table>
     </div>
   </div>`;
@@ -2801,6 +2809,8 @@ function openTargetDialog(target){
       repoUrl: target?.repoUrl || '',
       subDir: target?.subDir || '',
       defaultRef: target?.defaultRef || '',
+      validationProjectId: target?.validationProjectId || '',
+      testProjectId: target?.testProjectId || '',
       enabled: target?.enabled ?? true,
     },
   };
@@ -2910,6 +2920,17 @@ function renderTargetDialog(){
             </div>
             <div class="field-note ${targetRepoChanged() ? 'warn' : ''}" id="target-ref-note">${refNote}</div>
           </div>
+          <div class="f-row">
+            <div class="f-label">验证集测试工程 ID <span class="req">*</span></div>
+            <input class="inp" id="target-validation-project-id" data-target-field="validationProjectId" value="${esc(f.validationProjectId)}" placeholder="如 val-2026-q3" maxlength="128">
+          </div>
+          <div class="f-row">
+            <div class="f-label">测试集测试工程 ID <span class="req">*</span></div>
+            <input class="inp" id="target-test-project-id" data-target-field="testProjectId" value="${esc(f.testProjectId)}" placeholder="如 test-2026-q3" maxlength="128">
+          </div>
+          <div class="f-row span-2">
+            <div class="field-note">验证集与测试集分别对应外部测试平台的测试工程 ID；只保存标识，不在此处校验工程是否存在。</div>
+          </div>
           <div class="f-row span-2">
             <div class="f-label">启用</div>
             <div class="switch-row">
@@ -2937,6 +2958,8 @@ function syncTargetForm(){
   f.repoUrl = document.getElementById('target-repo-url')?.value || '';
   f.subDir = document.getElementById('target-sub-dir')?.value || '';
   f.defaultRef = document.getElementById('target-default-ref')?.value || '';
+  f.validationProjectId = document.getElementById('target-validation-project-id')?.value || '';
+  f.testProjectId = document.getElementById('target-test-project-id')?.value || '';
   f.enabled = !!document.getElementById('target-enabled')?.checked;
 }
 
@@ -2947,6 +2970,10 @@ function saveTargetConfig(){
   if (!f.repoUrl.trim()) return showTargetError('请填写仓库地址。');
   if (!f.subDir.trim()) return showTargetError('请填写子目录。');
   if (!f.defaultRef.trim()) return showTargetError('请填写基线分支或标签。');
+  if (!f.validationProjectId.trim()) return showTargetError('请填写验证集测试工程 ID。');
+  if (!f.testProjectId.trim()) return showTargetError('请填写测试集测试工程 ID。');
+  if (/[\s\x00-\x1f\x7f]/.test(f.validationProjectId.trim())) return showTargetError('验证集测试工程 ID 不能包含空格或控制字符。');
+  if (/[\s\x00-\x1f\x7f]/.test(f.testProjectId.trim())) return showTargetError('测试集测试工程 ID 不能包含空格或控制字符。');
   const saved = {
     id: targetDialog.id,
     kind: f.kind,
@@ -2954,6 +2981,8 @@ function saveTargetConfig(){
     repoUrl: f.repoUrl.trim(),
     subDir: f.subDir.trim(),
     defaultRef: f.defaultRef.trim(),
+    validationProjectId: f.validationProjectId.trim(),
+    testProjectId: f.testProjectId.trim(),
     enabled: f.enabled,
     tags: [...targetDialog.tags],
     tagsUnavailable: targetDialog.tagsFailed,

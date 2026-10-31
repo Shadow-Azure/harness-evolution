@@ -27,6 +27,8 @@ class EvolutionTargetRecord:
     repo_url: str
     sub_dir: str
     default_ref: str
+    validation_project_id: str
+    test_project_id: str
     enabled: bool
 
 
@@ -66,6 +68,8 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         repo_url=row["repo_url"],
         sub_dir=row["sub_dir"],
         default_ref=row["default_ref"],
+        validation_project_id=row["validation_project_id"],
+        test_project_id=row["test_project_id"],
         enabled=bool(row["enabled"]),
     )
 
@@ -142,6 +146,8 @@ class EvolutionTargetRepository:
                         repo_url=values["repo_url"],
                         sub_dir=values["sub_dir"],
                         default_ref=values["default_ref"],
+                        validation_project_id=values["validation_project_id"],
+                        test_project_id=values["test_project_id"],
                         enabled=values["enabled"],
                         created_by=values.get("created_by"),
                         created_at=now,
@@ -176,6 +182,8 @@ class EvolutionTargetRepository:
                             repo_url=values["repo_url"],
                             sub_dir=values["sub_dir"],
                             default_ref=values["default_ref"],
+                            validation_project_id=values["validation_project_id"],
+                            test_project_id=values["test_project_id"],
                             enabled=values["enabled"],
                             updated_at=now_shanghai(),
                         ),

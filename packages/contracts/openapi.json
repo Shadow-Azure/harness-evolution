@@ -770,6 +770,7 @@
           "RUN_BUSY",
           "RUN_NOT_RETRYABLE",
           "REPO_INVALID",
+          "PROJECT_ID_INVALID",
           "ENGINE_INVALID",
           "TARGET_EXISTS",
           "TARGET_NOT_FOUND",
@@ -2197,6 +2198,18 @@
             "maxLength": 512,
             "title": "Subdir",
             "type": "string"
+          },
+          "testProjectId": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Testprojectid",
+            "type": "string"
+          },
+          "validationProjectId": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Validationprojectid",
+            "type": "string"
           }
         },
         "required": [
@@ -2286,6 +2299,18 @@
           "subDir": {
             "maxLength": 512,
             "title": "Subdir",
+            "type": "string"
+          },
+          "testProjectId": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Testprojectid",
+            "type": "string"
+          },
+          "validationProjectId": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Validationprojectid",
             "type": "string"
           }
         },
@@ -6926,7 +6951,7 @@
                 }
               }
             },
-            "description": "Target or remote is invalid"
+            "description": "Target, remote, or test project id is invalid"
           }
         },
         "security": [
@@ -7107,7 +7132,7 @@
                 }
               }
             },
-            "description": "Target or remote is invalid"
+            "description": "Target, remote, or test project id is invalid"
           }
         },
         "security": [

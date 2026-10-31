@@ -121,6 +121,8 @@ def _target_values(
         "repo_url": f"https://git.example.com/{object_name}.git",
         "sub_dir": f"skills/{object_name}",
         "default_ref": "main",
+        "validation_project_id": "val-default",
+        "test_project_id": "test-default",
         "enabled": enabled,
         "created_by": None,
     }
@@ -203,6 +205,8 @@ async def test_repository_crud_ordering_and_conflicts(
             "repo_url": "ssh://git@git.example.com/renamed-skill.git",
             "sub_dir": "skills/renamed-skill",
             "default_ref": "v2",
+            "validation_project_id": "val-default",
+            "test_project_id": "test-default",
             "enabled": False,
         },
     )
@@ -217,6 +221,8 @@ async def test_repository_crud_ordering_and_conflicts(
                 "repo_url": "https://git.example.com/renamed-skill.git",
                 "sub_dir": "skills/renamed-skill",
                 "default_ref": "v2",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": True,
             },
         )
@@ -229,6 +235,8 @@ async def test_repository_crud_ordering_and_conflicts(
                 "repo_url": "https://git.example.com/missing.git",
                 "sub_dir": "skills/missing",
                 "default_ref": "main",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": True,
             },
         )

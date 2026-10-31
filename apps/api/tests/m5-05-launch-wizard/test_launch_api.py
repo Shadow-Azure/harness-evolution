@@ -250,6 +250,8 @@ async def _seed_hits(app: Any) -> None:
                     "repo_url": "https://git.example.com/agent-skills.git",
                     "sub_dir": "skills/deep-research",
                     "default_ref": "v2.0.0",
+                    "validation_project_id": "val-deep-research",
+                    "test_project_id": "test-deep-research",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -261,6 +263,8 @@ async def _seed_hits(app: Any) -> None:
                     "repo_url": "https://git.example.com/agent-skills.git",
                     "sub_dir": "skills/reported-object",
                     "default_ref": "v2.0.0",
+                    "validation_project_id": "val-reported-object",
+                    "test_project_id": "test-reported-object",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -272,6 +276,8 @@ async def _seed_hits(app: Any) -> None:
                     "repo_url": "https://git.example.com/agent-skills.git",
                     "sub_dir": "skills/web-search",
                     "default_ref": "v1.0.0",
+                    "validation_project_id": "val-web-search",
+                    "test_project_id": "test-web-search",
                     "enabled": True,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -283,6 +289,8 @@ async def _seed_hits(app: Any) -> None:
                     "repo_url": "https://git.example.com/agent-skills.git",
                     "sub_dir": "skills/code-review",
                     "default_ref": "v1.0.0",
+                    "validation_project_id": "val-code-review",
+                    "test_project_id": "test-code-review",
                     "enabled": False,
                     "created_at": NOW,
                     "updated_at": NOW,
@@ -682,6 +690,8 @@ async def test_start_run_accepts_and_snapshots_query(
     assert row["target_version"] == "v2.0.0"
     assert row["repo_url"] == "https://git.example.com/agent-skills.git"
     assert row["sub_dir"] == "skills/deep-research"
+    assert row["validation_project_id"] == "val-deep-research"
+    assert row["test_project_id"] == "test-deep-research"
     assert str(row["window_from"]) == "2026-08-01"
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []

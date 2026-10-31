@@ -37,6 +37,8 @@ const target: EvolutionTarget = {
   repoUrl: "https://example.com/skills.git",
   subDir: "skills/deep-research",
   defaultRef: "main",
+  validationProjectId: "val-deep-research",
+  testProjectId: "test-deep-research",
   enabled: true,
 };
 
@@ -101,6 +103,10 @@ describe("target configuration page", () => {
 
     expect(wrapper.get("h1").text()).toBe("进化对象配置");
     expect(wrapper.text()).toContain("deep-research");
+    expect(wrapper.text()).toContain("测试工程");
+    expect(wrapper.text()).toContain("验证集");
+    expect(wrapper.text()).toContain("val-deep-research");
+    expect(wrapper.text()).toContain("test-deep-research");
     expect(wrapper.find(".target-create").exists()).toBe(true);
     expect(wrapper.text()).toContain("编辑");
     expect(wrapper.text()).toContain("停用");
@@ -148,7 +154,7 @@ describe("target configuration page", () => {
     expect(wrapper.find(".lede").exists()).toBe(false);
     expect(wrapper.get(".page-head h1").text()).toBe("进化对象配置");
     expect(wrapper.get(".page-note").text()).toContain(
-      "配置可被自进化修改的 skill 与 agent",
+      "配置 skill / agent 的仓库、子目录、基线与测试工程",
     );
   });
 
@@ -212,6 +218,10 @@ describe("target configuration page", () => {
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -222,6 +232,8 @@ describe("target configuration page", () => {
       repoUrl: "https://example.com/skills.git",
       subDir: "skills/deep-research",
       defaultRef: "main",
+      validationProjectId: "val-2026-q3",
+      testProjectId: "test-2026-q3",
       enabled: true,
     });
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(false);
@@ -253,6 +265,10 @@ describe("target configuration page", () => {
       .get('input[name="subDir"]')
       .setValue("skills/deep-research");
     await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     await flushPromises();
@@ -263,6 +279,50 @@ describe("target configuration page", () => {
     expect(
       (wrapper.get('input[name="repoUrl"]').element as HTMLInputElement).value,
     ).toBe("https://example.com/skills.git");
+  });
+
+  it("maps PROJECT_ID_INVALID into the open form", async () => {
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [] })),
+      http.post("/api/evolution/targets", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "PROJECT_ID_INVALID",
+              message: "test project id is invalid",
+              details: {
+                field: "validationProjectId",
+                reason: "project_id_format",
+              },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/skills.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain(
+      "测试工程 ID 无效，请检查是否为空、超长或包含空格",
+    );
+    expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
   });
 
   it("loads target versions for edit mode", async () => {
@@ -455,6 +515,8 @@ describe("target configuration page", () => {
       repoUrl: "https://example.com/skills.git",
       subDir: "skills/deep-research",
       defaultRef: "main",
+      validationProjectId: "val-deep-research",
+      testProjectId: "test-deep-research",
       enabled: false,
     });
   });

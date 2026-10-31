@@ -507,7 +507,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0012"
+        assert result.scalar_one() == "0013"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -751,7 +751,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0012"
+        assert revision == "0013"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -922,7 +922,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0012"
+        assert result.scalar_one() == "0013"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -1898,6 +1898,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 "repo_url": "https://git.example.com/z-disabled.git",
                 "sub_dir": "skills/z-disabled",
                 "default_ref": "main",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": False,
             },
         )
@@ -1908,6 +1910,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 "repo_url": "ssh://git@git.example.com/b-agent.git",
                 "sub_dir": "agents/b-agent",
                 "default_ref": "main",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": True,
             },
         )
@@ -1918,6 +1922,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 "repo_url": "git@git.example.com:a-skill.git",
                 "sub_dir": "skills/a-skill",
                 "default_ref": "main",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": True,
             },
         )
@@ -1928,6 +1934,8 @@ async def test_mysql_evolution_target_repository_contract() -> None:
                 "repo_url": "https://git.example.com/terminal.git",
                 "sub_dir": "skills/terminal",
                 "default_ref": "main",
+                "validation_project_id": "val-default",
+                "test_project_id": "test-default",
                 "enabled": True,
             },
         )
