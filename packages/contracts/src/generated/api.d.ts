@@ -1659,15 +1659,9 @@ export interface components {
             repoUrl: string;
             /** Subdir */
             subDir: string;
-            /**
-             * Testprojectid
-             * @default
-             */
+            /** Testprojectid */
             testProjectId: string;
-            /**
-             * Validationprojectid
-             * @default
-             */
+            /** Validationprojectid */
             validationProjectId: string;
         };
         /**
@@ -1711,15 +1705,9 @@ export interface components {
             repoUrl: string;
             /** Subdir */
             subDir: string;
-            /**
-             * Testprojectid
-             * @default
-             */
+            /** Testprojectid */
             testProjectId: string;
-            /**
-             * Validationprojectid
-             * @default
-             */
+            /** Validationprojectid */
             validationProjectId: string;
         };
         /** HTTPValidationError */

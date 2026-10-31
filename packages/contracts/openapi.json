@@ -2200,13 +2200,11 @@
             "type": "string"
           },
           "testProjectId": {
-            "default": "",
             "maxLength": 128,
             "title": "Testprojectid",
             "type": "string"
           },
           "validationProjectId": {
-            "default": "",
             "maxLength": 128,
             "title": "Validationprojectid",
             "type": "string"
@@ -2218,6 +2216,8 @@
           "repoUrl",
           "subDir",
           "defaultRef",
+          "validationProjectId",
+          "testProjectId",
           "id"
         ],
         "title": "EvolutionTarget",
@@ -2302,13 +2302,11 @@
             "type": "string"
           },
           "testProjectId": {
-            "default": "",
             "maxLength": 128,
             "title": "Testprojectid",
             "type": "string"
           },
           "validationProjectId": {
-            "default": "",
             "maxLength": 128,
             "title": "Validationprojectid",
             "type": "string"
@@ -2319,7 +2317,9 @@
           "objectName",
           "repoUrl",
           "subDir",
-          "defaultRef"
+          "defaultRef",
+          "validationProjectId",
+          "testProjectId"
         ],
         "title": "EvolutionTargetWrite",
         "type": "object"

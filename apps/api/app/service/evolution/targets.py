@@ -8,7 +8,7 @@ from pathlib import PurePosixPath
 from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from app.db.crud.evolution_targets import (
     EvolutionTargetConflict,
@@ -35,9 +35,22 @@ class EvolutionTargetWrite(IdentityModel):
     repo_url: str = Field(max_length=1024)
     sub_dir: str = Field(max_length=512)
     default_ref: str = Field(max_length=128)
-    validation_project_id: str = Field(default="", max_length=128)
-    test_project_id: str = Field(default="", max_length=128)
+    validation_project_id: str = Field(max_length=128)
+    test_project_id: str = Field(max_length=128)
     enabled: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_missing_project_ids(cls, data: object) -> object:
+        """Keep the schema required while mapping an omitted ID to the service error."""
+        if not isinstance(data, dict):
+            return data
+        values = dict(data)
+        if "validationProjectId" not in values and "validation_project_id" not in values:
+            values["validationProjectId"] = ""
+        if "testProjectId" not in values and "test_project_id" not in values:
+            values["testProjectId"] = ""
+        return values
 
 
 class EvolutionTarget(EvolutionTargetWrite):

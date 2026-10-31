@@ -325,6 +325,16 @@ async def test_target_routes_round_trip_with_camel_case_and_member_reads(
     assert deleted.content == b""
 
 
+def test_target_write_schema_requires_project_ids() -> None:
+    """The public write schema marks both project IDs as required inputs."""
+    schema = EvolutionTargetWrite.model_json_schema(by_alias=True)
+
+    assert {
+        "validationProjectId",
+        "testProjectId",
+    } <= set(schema["required"])
+
+
 async def test_target_project_ids_are_required_and_round_trip(
     target_http: TargetHttpEnvironment,
 ) -> None:
