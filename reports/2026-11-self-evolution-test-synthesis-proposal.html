@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自进化瓶颈突破：从 Bad Case 到自动测试资产 —— 调研分析与落地方案</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1c2330; --muted:#5b6676;
+    --accent:#2563eb; --accent-soft:#eaf1ff; --ok:#16a34a; --ok-soft:#e8f7ee;
+    --warn:#d97706; --warn-soft:#fdf3e3; --bad:#dc2626; --bad-soft:#fdeaea;
+    --border:#e3e7ee; --code:#f1f3f7;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+    line-height:1.75;font-size:16px;}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 28px 80px;}
+  header{margin-bottom:36px;}
+  h1{font-size:30px;line-height:1.35;margin:0 0 10px;}
+  .sub{color:var(--muted);font-size:15px;}
+  h2{font-size:22px;margin:52px 0 14px;padding-left:12px;border-left:5px solid var(--accent);}
+  h3{font-size:17px;margin:28px 0 10px;}
+  p,li{color:#2a3240;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px 26px;margin:16px 0;}
+  .tldr{background:var(--accent-soft);border:1px solid #c9daff;}
+  .callout{border-radius:12px;padding:14px 18px;margin:14px 0;font-size:15px;}
+  .callout.ok{background:var(--ok-soft);border:1px solid #bfe8cd;}
+  .callout.warn{background:var(--warn-soft);border:1px solid #f2d9ac;}
+  .callout.bad{background:var(--bad-soft);border:1px solid #f3c1c1;}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:14px 0;background:var(--card);}
+  th,td{border:1px solid var(--border);padding:9px 12px;text-align:left;vertical-align:top;}
+  th{background:#eef2f8;font-weight:600;white-space:nowrap;}
+  code,.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;background:var(--code);
+    padding:1px 6px;border-radius:5px;}
+  pre{background:#141a26;color:#d7e2f2;border-radius:10px;padding:16px 18px;overflow-x:auto;
+    font-size:13px;line-height:1.6;}
+  pre code{background:none;color:inherit;padding:0;}
+  .tag{display:inline-block;font-size:12px;padding:2px 10px;border-radius:999px;font-weight:600;margin-right:6px;}
+  .tag.fit{background:var(--ok-soft);color:var(--ok);}
+  .tag.part{background:var(--warn-soft);color:var(--warn);}
+  .tag.no{background:var(--bad-soft);color:var(--bad);}
+  .fig{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin:18px 0;overflow-x:auto;}
+  .fig h4{margin:0 0 12px;font-size:15px;color:var(--muted);font-weight:600;}
+  svg{display:block;max-width:100%;height:auto;font-family:inherit;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+  ol li,ul li{margin:4px 0;}
+  .step-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+    border-radius:50%;background:var(--accent);color:#fff;font-size:14px;font-weight:700;margin-right:8px;flex:none;}
+  .stepline{display:flex;align-items:flex-start;margin:10px 0;}
+  footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--border);padding-top:18px;}
+  a{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>自进化瓶颈突破方案<br><span style="font-size:19px;color:var(--muted);font-weight:500;">从"人工造数据集"到"Bad Case 自动沉淀为可回归测试资产"</span></h1>
+  <div class="sub">调研范围：SWE-bench / SWE-smith / SWE-Gym · Agent-as-a-Judge · AgentDebug / TRAIL / Who&When · AgentEvolver / R-Zero / Absolute Zero · tau-bench / tau2-bench · CheckEval / metamorphic testing · OpenAI Agent Improvement Loop / LangSmith / DeepEval · ExpeL / AgentLoop 经验库 · specification mining（Prometheus / SpecFirst / TrajSpec）· On Randomness in Agentic Evals / Miller Error Bars · Silent Regressions（NeurIPS 2026 WS）· 生成与裁决分离验收闭环</div>
+</header>
+
+<div class="card tldr">
+  <h3 style="margin-top:0;">一句话方案</h3>
+  <p style="margin:0;">在现有 <code>probe_reports</code>（归因）与六步聚类之后，新增一条 <b>「轨迹 → 回归案件（Case）→ 三级验证器 → 回归门禁」</b> 的自动沉淀管线：每个分析出来的 bad case 不再只是"一条归因记录"，而是被自动合成为一份<b>最小复现输入 + 三级验证器（程序化断言 → checklist 评审 → 变换不变量）</b>的可回归案件，进入 FAIL_TO_PASS / PASS_TO_PASS 双集回归门禁，替代人工构造的评测数据集。</p>
+</div>
+
+<!-- ================= 1 现状与瓶颈 ================= -->
+<h2>一、我们卡在哪：现状与瓶颈</h2>
+<p>当前自进化闭环（M5）的链路是：<b>bad_cases（外部只读表）→ probe_reports 归因（model / prompt / error）→ 占位聚类 → git candidate → 占位评测</b>。整条链路上有两个断点：</p>
+
+<div class="fig">
+<h4>图 1 · 当前闭环与两个断点（红色）</h4>
+<svg viewBox="0 0 1000 210" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5b6676"/></marker>
+    <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#dc2626"/></marker>
+  </defs>
+  <g font-size="13" fill="#1c2330">
+    <rect x="10" y="60" width="130" height="58" rx="10" fill="#eef2f8" stroke="#c9d3e4"/>
+    <text x="75" y="84" text-anchor="middle" font-weight="600">轨迹导入/归因</text>
+    <text x="75" y="103" text-anchor="middle" font-size="11" fill="#5b6676">bad_cases · probe_reports</text>
+
+    <rect x="180" y="60" width="120" height="58" rx="10" fill="#eef2f8" stroke="#c9d3e4"/>
+    <text x="240" y="84" text-anchor="middle" font-weight="600">六步聚类</text>
+    <text x="240" y="103" text-anchor="middle" font-size="11" fill="#5b6676">simple_cluster 占位</text>
+
+    <rect x="340" y="60" width="120" height="58" rx="10" fill="#fdeaea" stroke="#f0a5a5"/>
+    <text x="400" y="84" text-anchor="middle" font-weight="600" fill="#dc2626">断点 ①</text>
+    <text x="400" y="103" text-anchor="middle" font-size="11" fill="#dc2626">无测试级验证资产</text>
+
+    <rect x="500" y="60" width="120" height="58" rx="10" fill="#eef2f8" stroke="#c9d3e4"/>
+    <text x="560" y="84" text-anchor="middle" font-weight="600">git candidate</text>
+    <text x="560" y="103" text-anchor="middle" font-size="11" fill="#5b6676">patch 生产</text>
+
+    <rect x="660" y="60" width="120" height="58" rx="10" fill="#fdeaea" stroke="#f0a5a5"/>
+    <text x="720" y="84" text-anchor="middle" font-weight="600" fill="#dc2626">断点 ②</text>
+    <text x="720" y="103" text-anchor="middle" font-size="11" fill="#dc2626">占位评测 · 人工数据集</text>
+
+    <rect x="820" y="60" width="150" height="58" rx="10" fill="#eef2f8" stroke="#c9d3e4"/>
+    <text x="895" y="84" text-anchor="middle" font-weight="600">接受/拒绝 patch</text>
+    <text x="895" y="103" text-anchor="middle" font-size="11" fill="#5b6676">charter：无证据不改码</text>
+
+    <line x1="140" y1="89" x2="178" y2="89" stroke="#5b6676" stroke-width="2" marker-end="url(#arr)"/>
+    <line x1="300" y1="89" x2="338" y2="89" stroke="#5b6676" stroke-width="2" marker-end="url(#arr)"/>
+    <line x1="460" y1="89" x2="498" y2="89" stroke="#5b6676" stroke-width="2" marker-end="url(#arr)"/>
+    <line x1="620" y1="89" x2="658" y2="89" stroke="#5b6676" stroke-width="2" marker-end="url(#arr)"/>
+    <line x1="780" y1="89" x2="818" y2="89" stroke="#5b6676" stroke-width="2" marker-end="url(#arr)"/>
+    <path d="M 895 120 C 895 175, 240 175, 240 121" fill="none" stroke="#5b6676" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arr)"/>
+    <text x="565" y="192" text-anchor="middle" font-size="11" fill="#5b6676">下一轮进化（但没有"上轮修好的问题已验证"的证据回路）</text>
+  </g>
+</svg>
+</div>
+
+<p><b>断点①：bad case 分析完就"沉库"了。</b> <code>probe_reports</code> 记录了归因类型与描述，但它只是一段文字，没有变成"可以重新执行、可以判定通过/失败"的东西。下一轮进化无法回答"上一轮修的那个问题，现在真的修好了吗"。</p>
+<p><b>断点②：评测集靠人工构造。</b> <code>eval_config</code> 由人工在向导里配置，评测证据从哪来是人工成本大头；且人工构造的集合是静态的，覆盖不到线上真实失败的长尾。</p>
+<div class="callout warn">charter 明确约束 <b>"没有评测证据的自动改代码"不做</b>——所以断点②不解决，整个闭环只能停在占位评测，进化就不是"进化"，是"换运气"。</div>
+
+<!-- ================= 2 业界盘点 ================= -->
+<h2>二、业界是怎么做的：五条路线与适用性判定</h2>
+<p>两条调研线（失败轨迹转测试、自构造数据与验证器）合计覆盖 20+ 个项目/论文。逐条判定是否适用我们的场景：</p>
+
+<table>
+<tr><th style="width:190px;">路线 / 代表项目</th><th>核心机制</th><th style="width:130px;">适用性</th><th>判定理由</th></tr>
+<tr>
+  <td><b>SWE-bench</b> 抽测试</td>
+  <td>从真实 PR 中抽取"人已写好的测试 diff"作为 FAIL_TO_PASS / PASS_TO_PASS 回归集</td>
+  <td><span class="tag no">不适用</span></td>
+  <td>前提是"修复者写了测试"。我们的 harness 目标对象（skill / agent 配置）没有自带测试套件，无 diff 可抽。但其 <b>FAIL_TO_PASS / PASS_TO_PASS 双集语义</b>被我们保留（见第四节）。</td>
+</tr>
+<tr>
+  <td><b>SWE-smith</b> bug 注入</td>
+  <td>LM 自动注入合成 bug，用仓库原有测试当验证器，批量造可执行任务</td>
+  <td><span class="tag part">部分适用</span></td>
+  <td>思想可借鉴："验证器可以复用、只有触发条件需要合成"。但注入对象是<b>代码</b>，我们进化的是<b>prompt/skill/agent 配置</b>，不能直接搬。其"合成样本不过就回炉"的自反馈环被吸收。</td>
+</tr>
+<tr>
+  <td><b>Agent-as-a-Judge</b>（Meta）</td>
+  <td>把完整轨迹喂给 judge agent，输出结构化判决（met / unmet + 证据定位）</td>
+  <td><span class="tag part">部分适用</span></td>
+  <td>轨迹评审形式与我们 probe 归因天然契合，可当 L2 验证器；但纯 LLM 判决方差大、不可当 CI 门禁，必须降级为"软验证层"并与程序化断言组合。</td>
+</tr>
+<tr>
+  <td><b>AgentDebug / TRAIL / Who&When</b> 失败归因</td>
+  <td>层级错误检测 + 根因聚类，输出 <code>(step, agent, error_type, root_cause)</code></td>
+  <td><span class="tag fit">已具备 / 直接复用</span></td>
+  <td>我们的 <code>probe_reports.attribute_type + probe_analysis</code> 就是这个三元组的简化版。<b>关键洞察：归因输出的"出错步骤"恰好是构造最小复现测试的归约（shrinking）锚点</b>——复现输入 = 固定出错步骤之前的最小上下文。</td>
+</tr>
+<tr>
+  <td><b>AgentEvolver</b>（阿里）</td>
+  <td>Self-Questioning：从失败/存疑轨迹自动提出带可验证答案的新任务；Self-Attributing 过程奖励</td>
+  <td><span class="tag fit">适用（思想层）</span></td>
+  <td>证明"失败轨迹本身就是新任务的矿"。我们吸收其"从失败生成新任务"的思想，但不需要其 RL 训练部分——我们是 harness 层进化，不是模型权重进化。</td>
+</tr>
+<tr>
+  <td><b>R-Zero / Absolute Zero</b> 自博弈</td>
+  <td>Challenger-Solver 互相出题；自生成<b>可执行验证程序</b>，解释器判定，零人工数据</td>
+  <td><span class="tag part">部分适用</span></td>
+  <td>Absolute Zero 的"验证器与任务同步自生成"是'轨迹→测试'的最纯形态，启发我们的 L1 程序化断言生成。但纯自博弈会<b>reward hacking</b>（论文已观察到奖励退化），所以必须加"验证器自身被校验"环节，不能裸跑。</td>
+</tr>
+<tr>
+  <td><b>tau-bench / tau2-bench</b></td>
+  <td>user simulator + <b>程序化终态断言</b>（DB 状态 / 动作集比对）+ pass<sup>k</sup> 显式建模 flaky</td>
+  <td><span class="tag fit">适用（L1 范式）</span></td>
+  <td>最有用的工程范式：验证器不必判"过程对不对"，只需判<b>终态可程序化比对的不变量</b>。pass<sup>k</sup> 直接解决 LLM 系统"这次过下次不过"的回归噪声问题。tau2 的 JSON domain spec 可直接作为我们 case 卡的存储格式参考。</td>
+</tr>
+<tr>
+  <td><b>CheckEval / G-Eval</b> rubric</td>
+  <td>把"好不好"拆成 yes/no 原子断言 checklist，一致性远超 1-5 打分；多 judge + 基线对照消噪</td>
+  <td><span class="tag fit">适用（L2 范式）</span></td>
+  <td>凡程序化断言覆盖不到的质量维度（措辞、合规、风格），用 checklist rubric + "基线版本 vs 新版本"对照判定，judge 噪声被两侧抵消。</td>
+</tr>
+<tr>
+  <td><b>Metamorphic / property-based</b>（metamorph、CheckList）</td>
+  <td>不判绝对对错，判<b>变换不变量</b>（换文件名/换顺序/加干扰，结果语义应等价）；违规样本自动 shrink 成最小失败 case</td>
+  <td><span class="tag fit">适用（L3 范式）</span></td>
+  <td>零 oracle、零 token 回归成本，且天然从 bad case 泛化出"一簇"变体（bad case 只是一簇的特例），正好补"人工数据集覆盖窄"的短板。</td>
+</tr>
+<tr>
+  <td><b>OpenAI Agent Improvement Loop / LangSmith 动态 dataset / DeepEval Synthesizer</b></td>
+  <td>trace 打标 → LLM 聚类归纳 failure taxonomy → 每类自动生成 eval case + grader → 重跑；动态 dataset = 持久化查询</td>
+  <td><span class="tag fit">适用（管线骨架）</span></td>
+  <td>这就是"断点①②"的标准工业解法，且与我们"probe → 聚类 → 评测"六步结构同构，挂接成本低。</td>
+</tr>
+<tr>
+  <td><b>ExpeL / AgentLoop 经验库</b></td>
+  <td>轨迹压缩成经验/insight 检索复用；<b>阿里 AgentLoop：经验先跑消融（带/不带回归对比）收益为正才入库</b></td>
+  <td><span class="tag part">部分适用</span></td>
+  <td>"消融验证后才入库"是全方案最重要的<b>防污染机制</b>，直接移植到我们的 patch 与 case 验证器的准入判定；经验库本身不是当前瓶颈，暂不引入。</td>
+</tr>
+<tr>
+  <td><b>Spec mining（Prometheus / SpecFirst / TrajSpec）</b></td>
+  <td>从轨迹反向归纳"场景 spec（前置条件+期望+禁止行为）"，编译成可执行断言</td>
+  <td><span class="tag part">远期</span></td>
+  <td>是 L1/L2 资产的终态形态（反复出现的 rubric 升级为持久 spec），有价值但有"把观察到的 bug 固化成规范"的幸存者偏差风险，放二期。</td>
+</tr>
+</table>
+
+<div class="callout bad"><b>结论：没有任何单一项目能直接搬进来。</b>SWE 系假设"有代码测试"，纯 judge 系不可当门禁，纯自博弈系会 reward hacking，tau 系需要重写领域。但把它们<b>按层拼装</b>，恰好补齐我们两个断点。</div>
+
+<!-- ================= 3 推荐方案 ================= -->
+<h2>三、推荐方案：「回归案件（Regression Case）」自动沉淀管线</h2>
+<p>核心动作只有一个：给 <code>probe_reports</code> 的每条归因，追加一个<b>自动合成阶段</b>，把"一段归因文字"升级为"一份可执行的案件卡"。案件卡由三部分组成：</p>
+
+<div class="card">
+<h3 style="margin-top:0;">案件卡（Case Card）的三要素 —— 用一个例子说明</h3>
+<p>假设线上分析出这样一个 bad case：</p>
+<pre><code>probe_id:      pr-20261104-017
+probe_object:  skill/pdf-export  (v1.3)
+attribute_type: error
+probe_analysis: 用户要求导出"季度报告-2026Q4.pdf"，agent 调用导出工具时
+                文件名未做编码处理，遇到中文与连字符导出静默失败，
+                会话内无报错提示，用户重试 3 次后放弃。</code></pre>
+<p>自动合成阶段把它升级为：</p>
+<table>
+<tr><th>要素</th><th>内容（本例）</th><th>来源机制</th></tr>
+<tr><td><b>① 最小复现输入</b></td><td>归约后的会话上下文：同一句用户指令 + 中文文件名环境 + 导出工具可用。<b>只保留出错步骤之前的必要状态</b>，剥掉无关历史（长对话、无关子任务）</td><td>AgentDebug / Who&When：归因的出错步骤 = 归约锚点</td></tr>
+<tr><td><b>② 三级验证器</b></td><td><b>L1 程序化断言</b>：导出产物存在、文件名经编码比对一致、无静默失败标记。<b>L2 checklist 评审</b>：失败时是否有用户可见报错提示（yes/no 原子断言 × N，双 judge 对照）。<b>L3 变换不变量</b>：换成纯英文名 / 换成日文 / 加空格，导出均应成功且语义等价</td><td>tau-bench 终态断言 / CheckEval / metamorphic</td></tr>
+<tr><td><b>③ 准入记录</b></td><td>合成后先自证：<b>在旧版本（v1.3）上必须失败、在人工确认的修复版上必须通过</b>，两条都成立才准许入集；judge 生成的断言需双 judge 共识 + 采样一致性</td><td>SWE-smith 回炉 / R-Zero 共识 / AgentLoop 消融入库</td></tr>
+</table>
+</div>
+
+<div class="fig">
+<h4>图 2 · 管线全景：从轨迹到回归门禁（六步）</h4>
+<svg viewBox="0 0 1040 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#2563eb"/></marker>
+  </defs>
+  <g font-size="13" fill="#1c2330">
+    <!-- step boxes -->
+    <g>
+      <rect x="10"  y="40" width="150" height="86" rx="12" fill="#eaf1ff" stroke="#9db9f0"/>
+      <text x="85" y="66" text-anchor="middle" font-weight="700">① 归因定位</text>
+      <text x="85" y="86" text-anchor="middle" font-size="11" fill="#5b6676">已有 probe_reports</text>
+      <text x="85" y="104" text-anchor="middle" font-size="11" fill="#5b6676">(step, type, cause)</text>
+
+      <rect x="185" y="40" width="150" height="86" rx="12" fill="#eaf1ff" stroke="#9db9f0"/>
+      <text x="260" y="66" text-anchor="middle" font-weight="700">② 归约复现</text>
+      <text x="260" y="86" text-anchor="middle" font-size="11" fill="#5b6676">截断到出错步骤前</text>
+      <text x="260" y="104" text-anchor="middle" font-size="11" fill="#5b6676">剥无关上下文</text>
+
+      <rect x="360" y="40" width="150" height="86" rx="12" fill="#eaf1ff" stroke="#9db9f0"/>
+      <text x="435" y="66" text-anchor="middle" font-weight="700">③ 合成验证器</text>
+      <text x="435" y="86" text-anchor="middle" font-size="11" fill="#5b6676">L1 断言 / L2 rubric</text>
+      <text x="435" y="104" text-anchor="middle" font-size="11" fill="#5b6676">L3 变换不变量</text>
+
+      <rect x="535" y="40" width="150" height="86" rx="12" fill="#fdf3e3" stroke="#e8c98a"/>
+      <text x="610" y="66" text-anchor="middle" font-weight="700">④ 案件自证准入</text>
+      <text x="610" y="86" text-anchor="middle" font-size="11" fill="#5b6676">旧版必败·修复版必过</text>
+      <text x="610" y="104" text-anchor="middle" font-size="11" fill="#5b6676">双 judge 共识，否则回炉</text>
+
+      <rect x="710" y="40" width="150" height="86" rx="12" fill="#e8f7ee" stroke="#9ad6b2"/>
+      <text x="785" y="66" text-anchor="middle" font-weight="700">⑤ 入回归双集</text>
+      <text x="785" y="86" text-anchor="middle" font-size="11" fill="#5b6676">FAIL_TO_PASS</text>
+      <text x="785" y="104" text-anchor="middle" font-size="11" fill="#5b6676">+ PASS_TO_PASS</text>
+
+      <rect x="885" y="40" width="145" height="86" rx="12" fill="#e8f7ee" stroke="#9ad6b2"/>
+      <text x="957" y="66" text-anchor="middle" font-weight="700">⑥ 门禁判定</text>
+      <text x="957" y="86" text-anchor="middle" font-size="11" fill="#5b6676">pass^k 统计回归</text>
+      <text x="957" y="104" text-anchor="middle" font-size="11" fill="#5b6676">证据 → 接受/拒绝 patch</text>
+    </g>
+    <line x1="160" y1="83" x2="183" y2="83" stroke="#2563eb" stroke-width="2" marker-end="url(#a2)"/>
+    <line x1="335" y1="83" x2="358" y2="83" stroke="#2563eb" stroke-width="2" marker-end="url(#a2)"/>
+    <line x1="510" y1="83" x2="533" y2="83" stroke="#2563eb" stroke-width="2" marker-end="url(#a2)"/>
+    <line x1="685" y1="83" x2="708" y2="83" stroke="#2563eb" stroke-width="2" marker-end="url(#a2)"/>
+    <line x1="860" y1="83" x2="883" y2="83" stroke="#2563eb" stroke-width="2" marker-end="url(#a2)"/>
+
+    <!-- feedback loops -->
+    <path d="M 610 128 C 610 190, 435 190, 435 128" fill="none" stroke="#d97706" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#a2)"/>
+    <text x="522" y="205" text-anchor="middle" font-size="11.5" fill="#d97706">自证不过 → 回炉重合成（SWE-smith 自反馈）</text>
+    <path d="M 957 128 C 957 245, 85 245, 85 128" fill="none" stroke="#5b6676" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a2)"/>
+    <text x="520" y="262" text-anchor="middle" font-size="11.5" fill="#5b6676">patch 修复后的证据反哺下一轮聚类与归因（进化闭环闭合）</text>
+    <path d="M 785 128 C 785 168, 260 168, 260 128" fill="none" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#a2)"/>
+    <text x="520" y="160" text-anchor="middle" font-size="11.5" fill="#16a34a">通过的案件升格为 PASS_TO_PASS 常驻回归</text>
+  </g>
+</svg>
+</div>
+
+<h3>为什么是"三级验证器"，而不是只靠 judge？</h3>
+<div class="grid2">
+  <div class="card" style="margin:0;">
+    <b>L1 程序化断言（门禁主力）</b>
+    <p style="font-size:14.5px;margin:8px 0 0;">判<b>终态事实</b>：产物存在性、工具调用参数、数据库/状态比对。确定性、零 token、可当 CI 硬门禁。来源：tau-bench 范式 + LLM 从轨迹归纳 likely invariants（自动导出不变量）。</p>
+  </div>
+  <div class="card" style="margin:0;">
+    <b>L2 checklist 评审（软层）</b>
+    <p style="font-size:14.5px;margin:8px 0 0;">判<b>质量与体验</b>：报错是否可见、回答是否合规。CheckEval 式 yes/no 原子断言 + 异构双 judge + "基线 vs 新版"对照判定，judge 噪声被对照抵消，只做加分/降级不单独否决。</p>
+  </div>
+</div>
+<div class="card">
+  <b>L3 变换不变量（泛化层）</b>
+  <p style="font-size:14.5px;margin:8px 0 0;">一个 bad case 往往是一<b>簇</b>问题的特例。对复现输入做自动变换（换语言、换格式、加干扰、重排序），断言"语义等价"仍然成立——不用人工补数据，就把 1 个 case 扩成 1 组回归，且 L3 是零 judge 成本的可重复执行。</p>
+</div>
+
+<h3>防作弊与防污染（业界踩过的三个坑，逐一设防）</h3>
+<div class="callout bad"><b>坑1 · 生成测试本身是错的（reward hacking）</b>：Absolute Zero 已观察到自博弈奖励退化。设防 = 第④步"旧版必败 + 修复版必过"双向自证 + 断言生成的双 judge 共识；自证不过的案件回炉，重合成 2 次仍不过则降级为"仅观察"不入集。</div>
+<div class="callout bad"><b>坑2 · 把观察到的行为固化成规范（幸存者偏差）</b>：spec mining 系的通病。设防 = 案件卡区分 <code>verified</code>（经过第④步双向自证）与 <code>observed</code>（仅来自轨迹观察），只有 verified 才能进 FAIL_TO_PASS；L2 rubric 由"期望行为"而非"实际行为"生成。</div>
+<div class="callout bad"><b>坑3 · LLM 系统回归 flaky（这次过下次不过）</b>：设防 = tau-bench 的 pass<sup>k</sup>：每个案件独立重放 k 次（如 k=3）全过才算通过，门禁比较新旧版本的通过率而非单次结果。</div>
+
+<!-- ================= 4 落地 ================= -->
+<h2>四、怎么落到我们的代码上</h2>
+<p>方案对现有架构是<b>增量插入</b>，不推翻任何既有模块。复用现有的事实：六步状态机（<code>state.py</code> 单游标）、job 队列与事件总线（<code>job_runs</code> + run_events）、外部网关模式（<code>eval_poller</code> 冻结网关）、双方言存储与契约门禁。</p>
+
+<table>
+<tr><th style="width:220px;">新增/改造点</th><th>位置与做法</th><th style="width:170px;">对齐的架构约束</th></tr>
+<tr>
+  <td>案件卡存储 <code>regression_cases</code></td>
+  <td>新表（Alembic 双方言迁移）：输入快照引用（复用 raw payload 按 <code>(root_session_id, agent_id)</code> 唯一保存的事实）、三级验证器定义（JSON）、准入状态 <code>verified / observed / rejected</code>、归属 <code>probe_id / cluster_id / run_id</code></td>
+  <td>存储隔离在 <code>db/</code> 接口与 repository 后；一个事实一个 home</td>
+</tr>
+<tr>
+  <td>合成服务 <code>service/evolution/case_synthesis/</code></td>
+  <td>三步：归约（按 <code>probe_analysis</code> 定位步骤截断会话树，复用既有树组装）、验证器合成（LLM 生成 L1 断言表达式 / L2 checklist / L3 变换表）、自证准入（对基线 ref 与修复 ref 各跑一遍）</td>
+  <td>业务规则进 <code>service/</code>；LLM 调用放 <code>third_party_api/</code> 出站边界</td>
+</tr>
+<tr>
+  <td>挂接六步状态机</td>
+  <td>在「聚类」与「迭代」之间插入案件合成子阶段（cluster_only 引擎可跳过）；合成任务走既有 job 队列 + run_events，事件序列号机制原样沿用</td>
+  <td>单一 m5-01 unit-cursor 状态机，不另起状态副本</td>
+</tr>
+<tr>
+  <td>评测执行器（替换占位评测）</td>
+  <td><code>eval_poller</code> 的冻结外部网关语义不变：网关收到的不再是人工 eval_config，而是 <b>regression 双集引用</b>；执行器按案件重放输入、执行 L1 断言、收集 L2 判决，返回 pass<sup>k</sup> 统计</td>
+  <td>出站用版本化 contract；CI 只用 mock；<code>packages/contracts</code> 先行</td>
+</tr>
+<tr>
+  <td>门禁判定（增强 <code>apply_final.py</code>）</td>
+  <td>接受条件从占位改为：<b>FAIL_TO_PASS 配对统计显著翻绿（McNemar）且 PASS_TO_PASS 通过率配对不降</b>（n 由功效分析定，见"随机性修正"一节）；判决证据（哪个案件、哪级验证器、judge 意见）写进 round 快照，满足 charter"评测证据"要求</td>
+  <td>charter：无评测证据不自动改代码；评测器改动单独实验</td>
+</tr>
+<tr>
+  <td>评测集不再人工构造</td>
+  <td>向导第 2 步的 probe 预览保持不变；新增"案件预览"：展示合成出的 L1/L2/L3 与自证结果，人工只做<b>抽查否决</b>，不做构造</td>
+  <td>admin 可写、成员只读的既有权限模型</td>
+</tr>
+</table>
+
+<h3>分阶段推进（每步独立可验收）</h3>
+<div class="stepline"><span class="step-num">1</span><div><b>先做 L1 + 自证准入</b>（价值最大、风险最小）：只合成程序化断言，先把"旧 bad case 可重放、可判定"打通，评测占位符即可下线。</div></div>
+<div class="stepline"><span class="step-num">2</span><div><b>补 pass<sup>k</sup> 与 PASS_TO_PASS</b>：接入门禁判定，替代占位评测，进化闭环拿到真实评测证据。</div></div>
+<div class="stepline"><span class="step-num">3</span><div><b>补 L2 checklist + 双 judge 对照</b>：覆盖体验/合规类归因（prompt 型 probe 的主场景）。</div></div>
+<div class="stepline"><span class="step-num">4</span><div><b>补 L3 变换泛化</b>：从单案扩为案件组，数据集规模开始自增长。</div></div>
+<div class="stepline"><span class="step-num">5</span><div><b>远期：rubric 升格为持久场景 spec</b>（spec mining 形态），反复出现的 checklist 沉淀为对象级规格。</div></div>
+
+<!-- ================= 4.5 随机性修正 ================= -->
+<h2>补充：随机性与可复现性——"跑 3 次必失败"成立吗？（修正后的口径）</h2>
+<p><b>不成立，方案在此处修正。</b>实证依据：KTH《On Randomness in Agentic Evals》（6 万条 SWE-bench 轨迹）测得——温度 0 也不确定（推理引擎浮点/并行/批处理引入非确定性），同配置 10 次独立评测单次成功率波动 2.2–6.0 个百分点，pass^5 与 pass@1 最大差 24.9 个百分点。agent 的成败是<b>伯努利事件</b>，不是确定性事件。Miller《Adding Error Bars to Evals》(arXiv 2411.00640) 给出正确统计口径；Anthropic 官方指引：客户侧 agent 用 pass^k，"demo 看 pass@k、产品看 pass^k，两者之差就是 flakiness"。业界已有可借鉴实现：Anthropic skill-creator 的 test/measure/refine、社区 agent-regression-evals（flake_detector + regression_gate）、regressgate。</p>
+
+<div class="card">
+<h3 style="margin-top:0;">修正一：案件先分类——很多 skill 问题冻结输入后其实是确定性的</h3>
+<p>以"步 50 触发 skill、步 90 出错"为例：随机性只存在于 agent <b>构造输入的决策过程</b>（步 1–89）；前缀冻结、指令固定后，步 50 之后的工具调用路径（skill 代码 + 工具）往往是确定性代码。据此分类：</p>
+<table>
+<tr><th>类别</th><th>失败位置</th><th>复现预期</th><th>自证判据（旧版跑 n 次）</th></tr>
+<tr><td><b>D 类（确定性）</b></td><td>工具/代码层（如文件名编码 bug）</td><td>10/10 复现</td><td>失败 ≥10/10，按传统测试对待</td></tr>
+<tr><td><b>S 类（统计性）</b></td><td>LLM 决策层（如该触发未触发）</td><td>以失败率复现</td><td>失败率显著高于阈值（Wilson 区间下界 &gt; 30%），n 由功效分析定，通常 ≥ 20</td></tr>
+</table>
+<p><b>归约（shrink）的真正目的由此改写</b>：不是"保证复现"，而是把"30% 的玄学失败"放大成"可检测的高频失败"——逐条裁剪前缀摘要、重测失败率，留下抬升失败率的条目。达不到统计判据的案件降级 <code>observed</code>，不进门禁。</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0;">修正二与修正三：统计口径的门禁</h3>
+<ul>
+<li><b>准入（修正"旧版必败+修复版必过"）</b>：旧版跑 n 次（D 类 10、S 类 ≥20），Wilson 区间估计失败率；修复版同理验证通过率显著上升。单次或 3 次的结论一律不算数。</li>
+<li><b>门禁（修正"pass^3 全绿"）</b>：新旧版在同一案件上各跑 n 次，做 <b>per-case 配对差值 + McNemar 翻转检验</b>（只看翻绿/翻红案件，配对消掉案件难度噪声）；同时报告 pass@k 与 pass^k 两个口径，gap 作为 flakiness 指标持续监控。多案件不做逐案显著性检验（避免多重检验误报），关键案件按策略规则"一票否决"。</li>
+<li><b>k 与 n 的确定</b>：按 Miller 功效公式 n ≈ ((1.96+0.84)·σ/δ)² 由期望检测的效应量决定，不拍脑袋。</li>
+</ul>
+</div>
+
+<div class="callout warn"><b>结论修正</b>：随机性不能被"消除"，也不能被"3 次"采样消除，只能被<b>冻结输入（提高复现概率）+ 足量重复（估准失败率）+ 配对比较（消掉案件难度与 judge 偏置）</b>三层统计机制所"度量与约束"。门禁回答的问题从"这个版本过没过"改为"这个版本在此案件上的失败率是否显著下降、其他案件是否显著变差"。</div>
+
+<!-- ================= 5 预期效果 ================= -->
+<h2>五、预期效果</h2>
+<table>
+<tr><th>维度</th><th>现状</th><th>预期</th></tr>
+<tr><td>评测数据集来源</td><td>人工构造，静态，覆盖窄</td><td>从线上轨迹自动沉淀，<b>每个 bad case 产出 1 案件 + L3 变换组（约 5–10 条回归）</b>，随使用持续增长，人工只剩抽查</td></tr>
+<tr><td>bad case 的归宿</td><td>归因文字入库，无后续验证</td><td>100% 转为可重放案件；<b>"上轮修的问题这轮仍修好"可机器回答</b></td></tr>
+<tr><td>patch 接受依据</td><td>占位评测（无证据）</td><td>FAIL_TO_PASS 全绿 + PASS_TO_PASS 不降的 pass<sup>k</sup> 统计证据，满足 charter 红线，闭环从"占位"变"真实"</td></tr>
+<tr><td>回归噪声</td><td>无机制（LLM flaky 会误判）</td><td>pass<sup>k</sup> + 基线对照，把单次波动从门禁中剔除</td></tr>
+<tr><td>误差可控性</td><td>—</td><td>案件卡区分 verified / observed，生成测试自身错误被双向自证拦截；评测器改动走独立实验，不与 harness 改动混合（charter 要求）</td></tr>
+</table>
+
+<div class="callout ok"><b>为什么这套方案成立</b>：它没有发明新科学，而是把四个已被验证的机制按我们的架构缝隙拼装——tau-bench 的"程序化终态断言"解决"判什么"，CheckEval 的"checklist + 对照"解决"判不了怎么办"，SWE-bench 的"FAIL_TO_PASS / PASS_TO_PASS"解决"怎么算回归"，AgentLoop 的"消融通过才入库"解决"生成的测试可不可信"。而我们的 <code>probe_reports</code> 归因结构恰好已具备这一切需要的输入。</div>
+
+<!-- ================= 6 场景深化 ================= -->
+<h2>六、场景深化：四类对象的复现与回归难度与形态</h2>
+<p>前述管线在不同被测对象上难度不同，逐一看清"复现什么、回归什么"。</p>
+
+<h3>6.1 检视类 skill（误报/漏报）</h3>
+<p>先分清三个层次：<b>病</b>（"检视 skill 有误报漏报"，不可测试）、<b>病例</b>（"第 3 次会话把正常 try-except 报成缺陷"，可测试）、<b>案件</b>（冻结输入 + 判定标准，回归对象）。要点：</p>
+<ul>
+<li>每个 bad case 独立成案件、按病根组成案件组，<b>不合并</b>——误报组与漏报组是两个独立指标，合并会看不见此消彼长。</li>
+<li>检视类输入是代码（确定性），误报案件多为 D 类（确定性复现）；输出是结构化 findings 列表，L1 断言 = 集合比对（"findings 不得含 X"/"必须含 Y"）。</li>
+<li><b>oracle 来源 = 归因报告本身</b>：probe_analysis 里"该处符合规范、属误报"的确认结论与证据链，就是案件标签——归因时已付过人工确认成本，转化近乎免费。</li>
+<li><b>检视类专属陷阱（二维门禁的原因）</b>：修复 prompt 时最经典失败是"改保守了——误报没了但漏报更多（学会装死）"。门禁必须二维：误报组不回升 + 漏报组检出率不降。若某病根只有单侧病例，标注"单侧验证"并借其他病根的常驻集补位。</li>
+<li>L3 变换防两个方向作弊：换代码写法后"仍应检出"（防背答案）、"误报不应回来"（防文件名黑名单式假修复）。</li>
+</ul>
+
+<h3>6.2 超长程任务 skill（Superpowers / OpenSpec 类）</h3>
+<p>三个变化：错误暴露点离根因远（归因要找<b>最早显著偏离点</b>而非最晚出错点）；判定对象从单点变成"过程轨迹 + 中间产物"；中间有人工交互点。关键洞察与对策：</p>
+<ul>
+<li><b>过程类 skill 的典型 bad case 是"流程没走对"（跳过 TDD、没等批准就动手、没跑测试就宣称完成），而这类错误是事件流断言，可程序化检查</b>——比结果质量好判。</li>
+<li><b>OpenSpec 有免费 oracle</b>：spec/tasks/验收标准在仓库里，验证器直接从 spec 编译（SpecFirst 结论：有显式 spec 的流程验证器生成成本最低）。</li>
+<li>验证器从单点断言升级为<b>检查点链</b>（C1 过程断言：测试文件创建早于实现修改；C2 产物断言；C3 终态断言；C4 rubric）。</li>
+<li>人工交互点提取为<b>用户应答表</b>（tau-bench user simulator 最小化），脚本按表应答；交互分支变体留给 L3。</li>
+<li><b>里程碑级重放</b>控制成本：检查点产物落盘为中间工件，回归可从"卡住点之前的状态"起跑，不必全流程重放。</li>
+<li><b>按检查点分层统计</b>：全程 pass^k 在长轨迹下低到不可用；"流程合规率"与"终态成功率"分开报，修复哪类病根看哪层。</li>
+</ul>
+
+<h3>6.3 链式方案：检视正报 → 上游工作流的 bad case（自增长数据源）</h3>
+<p>思路：Superpowers/OpenSpec 执行中调用检视 skill，检视的<b>正报（真缺陷）直接当作上游工作流的 bad case</b>——即把检视器当上游的外部验证器，用其输出当免标注 oracle。实证支持：</p>
+<ul>
+<li><b>Silent Regressions</b>（NeurIPS 2026 workshop，2750 条 SWE-bench 轨迹）：完成信号几乎无效（返回 patch 率仅差 1.2pp，实际解决率差 22.2pp）；agent 自己写测试自证无效；<b>把验证预算花在外部提供的 FAIL_TO_PASS 测试上，带静默回归的补丁占比从 18.8% 降到 4.8%</b>（随机选测试只降到 10%）——"验证器不能瞄准，跑多少都没用"，而检视正报天然有瞄准。方差 62–76% 在任务之间而非运行之间——按案件/任务簇组织回归集比按多跑几次更有效。</li>
+<li><b>验收闭环工程范式</b>（生成与裁决分离）：任务契约（allowed_paths + 验证命令）、隔离 worktree、确定性门禁优先、模型复核非阻塞、验收测试防篡改（agent 不可写目录 / CI 注入隐藏测试）。</li>
+</ul>
+<p>转化三步：</p>
+<div class="stepline"><span class="step-num">1</span><div><b>确认归属</b>：正报只说明"代码有缺陷"，根因可能是上游流程漏环节、模型能力问题或检视口径问题——复用 probe_reports 归因层判定，决定案件挂哪个回归集。</div></div>
+<div class="stepline"><span class="step-num">2</span><div><b>编译成案件</b>：finding 是判断文本不是可执行资产。编译产物 = 冻结被检视代码段 + 任务上下文 + L1 断言（该缺陷复现断言，SWE-bench 语义的外部验证命令）+ L3 注入写法变体。</div></div>
+<div class="stepline"><span class="step-num">3</span><div><b>双回归集挂载（最大红利）</b>：同一条正报同时进上游流程案件集（FAIL_TO_PASS：修复后这类缺陷不应再产出）与检视器案件集（PASS_TO_PASS：检视 skill 迭代后必须"仍然报出来"，防止升级时把能抓的缺陷抓丢）。零人工构造、双向夹板。</div></div>
+<div class="callout warn"><b>两个偏差要诚实面对</b>：① 幸存者偏差——检视器报不出的缺陷永远进不了该数据集，靠漏报案件 + L3 泛化补位；② 正报 ≠ 免费午餐——每条仍需归属确认与断言编译，只是人工成本从"构造数据集"（天级）降到"确认+编译"（秒级）。</div>
+
+<h3>6.4 代码首次生成类（纯 S 类）</h3>
+<p><b>"复现那次特定的坏生成"这个目标应直接放弃</b>：坏代码是模型能力 × 采样运气的产物，同输入同版本也会时好时坏。回归对象换成：<b>"同样输入契约下，产出坏代码的概率是多少，修复后降了多少"</b>。代码生成的独特红利是产出物可执行——oracle 就是断言，不需要 judge（SWE-bench / SWE-Gym 全套形态照搬）。案件形态：任务契约（冻结需求 + allowed_paths + 环境快照）+ 从检视正报编译的 L1 断言集 + n≥20 次独立生成的断言通过率。预期通过率从 30%→85% 而非 100%——门禁回答"显著改善且其他簇不退化"，不要求全绿。</p>
+<p>真正难的三点与对策：</p>
+<table>
+<tr><th>难点</th><th>说明</th><th>对策</th></tr>
+<tr><td><b>oracle 覆盖窄</b></td><td>检视正报只是缺陷总体的一个采样；单输入案件只守住一个坑</td><td>L3 输入变体扩成案件组；按能力簇（边界条件/错误处理/并发/注入安全）归组，门禁看簇级通过率——Silent Regressions"方差在任务间"的发现支持以任务簇为稳定观测单位</td></tr>
+<tr><td><b>病可能修不动</b></td><td>怎么改 prompt 通过率都在 30% 附近 → 不是 prompt 病，是模型能力边界</td><td>案件的价值从"验收修复"扩展为"诊断病因"：区分流程病（好修）与能力病（换模型/加生成后自检/约束解码），为归因层 attribute_type 提供量化依据</td></tr>
+<tr><td><b>组合空间爆炸</b></td><td>案件永远只是真实输入空间的采样</td><td>无银弹：靠检视正报链路持续供料（唯一能自动跟上真实分布的来源）+ 簇级看趋势而非绝对值</td></tr>
+</table>
+
+<h3>6.5 复现/回归难度总排序</h3>
+<pre><code>流程漏验证（D 类，流程锚点）      ★☆☆☆☆  冻结输入重放，接近传统测试
+检视误报/漏报（D/S 混合）         ★★☆☆☆  集合比对，oracle 来自归因报告
+代码首次生成（纯 S 类）           ★★★☆☆  不复现轨迹，复现"失败率"；
+                                          oracle 最便宜（代码可执行）但覆盖窄
+纯长程流程编排无产物锚点          ★★★★☆  检查点链 + 里程碑重放，成本最高</code></pre>
+<div class="callout ok"><b>体系自洽点</b>：检视正报既是上游流程的免费 oracle，也是首生成案件的主要供料源——整个自进化闭环的数据来源收敛到"真实执行 + 外部有瞄准的验证信号"一个点上，且随使用自增长。</div>
+
+<footer>
+  依据：仓库现状（<code>apps/api/app/service/evolution/</code>、<code>db/models/domain.py</code>、<code>docs/charter.md</code>）与两路业界调研（SWE 系、Agent-as-a-Judge、AgentDebug/TRAIL/Who&When、AgentEvolver/R-Zero/Absolute Zero、tau-bench 系、CheckEval/metamorphic、OpenAI Agent Improvement Loop/LangSmith/DeepEval、ExpeL/AgentLoop、spec mining）。本文件为洞察分析报告，非实施计划；实施前按仓库流程挂 flow issue。
+</footer>
+
+</div>
+</body>
+</html>
