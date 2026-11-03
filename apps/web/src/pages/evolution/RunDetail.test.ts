@@ -917,6 +917,52 @@ describe("evolution run detail page", () => {
     );
   });
 
+  it("maps retry validation failures to actionable copy", async () => {
+    server.use(
+      http.get("/api/evolution/runs/:runId", () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "blocked" }),
+            ["done", "done", "done", "done", "active", "pending"],
+            { blockedStage: "eval" },
+          ),
+        )),
+      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+        HttpResponse.json(iterationStep)),
+      http.post("/api/evolution/runs/:runId/retry", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "VALIDATION_INVALID",
+              message: "request validation failed",
+              details: {
+                errors: [
+                  {
+                    loc: ["body", "reason"],
+                    msg: "Value error, invalid retry reason",
+                    type: "value_error",
+                  },
+                ],
+              },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    const wrapper = await mountPage();
+
+    await wrapper.get("[data-testid='run-retry']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='retry-error']").text()).toContain(
+      "查询参数格式不正确，请按字段要求修改后再试",
+    );
+    expect(wrapper.get("[data-testid='retry-error']").text()).not.toContain(
+      "invalid retry reason",
+    );
+  });
+
   it("explains an interrupted run without offering a retry", async () => {
     server.use(
       http.get("/api/evolution/runs/:runId", () =>

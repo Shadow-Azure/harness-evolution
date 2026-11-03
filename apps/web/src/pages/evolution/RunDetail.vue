@@ -13,6 +13,7 @@ import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
 import { retryEvolutionRun } from "../../api/evolutionRuns";
 import { queryKeys } from "../../api/queryKeys";
+import { formatApiError } from "../../app/apiError";
 import { mergeRunEvents } from "../../composables/useEvolutionRunEventLog";
 import {
   runDetailRefetchInterval,
@@ -322,7 +323,7 @@ function retryErrorMessage(error: unknown): string {
   if (code === "RUN_NOT_FOUND") {
     return "运行不存在或已被删除。";
   }
-  return "重试请求失败，请稍后再试。";
+  return formatApiError(error, "重试请求失败").message;
 }
 
 async function retryBlockedRun(): Promise<void> {

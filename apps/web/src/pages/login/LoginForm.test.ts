@@ -35,6 +35,41 @@ async function mountForm() {
 }
 
 describe("login form", () => {
+  it("maps server validation details to the password field", async () => {
+    server.use(
+      http.post("/api/auth/login", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "VALIDATION_INVALID",
+              message: "request validation failed",
+              details: {
+                errors: [
+                  {
+                    loc: ["body", "password"],
+                    msg: "String should match pattern",
+                    type: "string_pattern_mismatch",
+                  },
+                ],
+              },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountForm();
+
+    await wrapper.get('input[name="username"]').setValue("operator");
+    await wrapper.get('input[name="password"]').setValue("bad");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toBe(
+      "密码格式不正确，请按字段要求修改后再试。",
+    );
+  });
+
   it("owns validation, inline errors, and the authenticated redirect", async () => {
     server.use(
       http.post("/api/auth/login", () =>

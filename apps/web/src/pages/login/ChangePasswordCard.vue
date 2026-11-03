@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
+import { formatApiError } from "../../app/apiError";
 import { authErrorCode, useChangePassword } from "../../composables/useAuth";
 
 defineOptions({ name: "ChangePasswordCard" });
@@ -21,7 +22,12 @@ const errorMessage = computed(() => {
   if (authErrorCode(error.value) === "AUTH_INVALID") {
     return "当前密码错误";
   }
-  return error.value.message || "修改密码失败，请稍后重试";
+  const formatted = formatApiError(error.value, "修改密码失败");
+  return (
+    formatted.fieldErrors.oldPassword ??
+    formatted.fieldErrors.newPassword ??
+    formatted.message
+  );
 });
 
 const isSubmitDisabled = computed(

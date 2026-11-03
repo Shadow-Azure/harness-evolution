@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 
+import { formatApiError } from "../../app/apiError";
 import { authErrorCode, useLogin } from "../../composables/useAuth";
 
 defineOptions({ name: "LoginForm" });
@@ -24,7 +25,8 @@ const errorMessage = computed(() => {
   if (code === "RATE_LIMITED") {
     return "登录尝试过多，请稍后重试";
   }
-  return error.value.message || "登录失败，请稍后重试";
+  const formatted = formatApiError(error.value, "登录失败");
+  return formatted.fieldErrors.username ?? formatted.fieldErrors.password ?? formatted.message;
 });
 
 const isSubmitDisabled = computed(

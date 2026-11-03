@@ -9,6 +9,7 @@ import {
   triggerSync,
 } from "../../api/acquisition";
 import { queryKeys } from "../../api/queryKeys";
+import { formatApiError } from "../../app/apiError";
 import { useCurrentUser, useLogout } from "../../composables/useAuth";
 import {
   badCaseSyncErrorLabel,
@@ -252,8 +253,7 @@ async function processNow() {
       actionError.value = "同步已中断，请稍后重试";
     }
   } catch (error) {
-    actionError.value =
-      error instanceof Error ? error.message : "立即处理失败，请稍后重试";
+    actionError.value = formatApiError(error, "立即处理失败").message;
   } finally {
     isProcessing.value = false;
   }
