@@ -515,12 +515,22 @@ async def test_validation_error_uses_unified_error() -> None:
         base_url="http://testserver",
     ) as test_client:
         response = await test_client.get("/needs-number")
+        invalid_value_response = await test_client.get("/needs-number?number=not-a-number")
 
     assert response.status_code == 422
     payload = response.json()
+    validation_error = payload["error"]["details"]["errors"][0]
     assert payload["error"]["code"] == "VALIDATION_INVALID"
     assert payload["error"]["message"] == "request validation failed"
-    assert payload["error"]["details"]["errors"][0]["loc"] == ["query", "number"]
+    assert validation_error["loc"] == ["query", "number"]
+    assert validation_error["type"] == "missing"
+    assert set(validation_error) == {"loc", "msg", "type"}
+    assert "submitted" not in validation_error["msg"].lower()
+    assert invalid_value_response.status_code == 422
+    invalid_value = invalid_value_response.json()["error"]["details"]["errors"][0]
+    assert invalid_value["type"] == "int_parsing"
+    assert invalid_value["loc"] == ["query", "number"]
+    assert "not-a-number" not in invalid_value["msg"]
 
 
 async def test_application_error_preserves_status_and_code() -> None:

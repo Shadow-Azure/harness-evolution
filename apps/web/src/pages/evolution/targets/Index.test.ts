@@ -325,6 +325,47 @@ describe("target configuration page", () => {
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
   });
 
+  it("hides an unknown save failure behind the shared save guidance", async () => {
+    server.use(
+      http.get("/api/evolution/targets", () =>
+        HttpResponse.json({ items: [] })),
+      http.post("/api/evolution/targets", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "INTERNAL",
+              message: "repository probe failed",
+            },
+          },
+          { status: 500 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/skills.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toBe(
+      "服务暂时不可用，请稍后重试；若持续失败请联系管理员。",
+    );
+    expect(wrapper.text()).not.toContain("repository probe failed");
+    expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
   it("loads target versions for edit mode", async () => {
     server.use(
       http.get("/api/evolution/targets", () =>

@@ -16,6 +16,7 @@ import {
 import { ApiError } from "../../../api/http";
 import { getModelCatalog, getTargetCatalog } from "../../../api/catalogs";
 import { queryKeys } from "../../../api/queryKeys";
+import { formatApiError } from "../../../app/apiError";
 import { useEvolutionTargetVersions } from "../../../composables/useEvolutionTargets";
 
 const emit = defineEmits<{
@@ -252,7 +253,7 @@ async function runQuery(): Promise<void> {
     }
     preview.value = null;
     emptyResult.value = false;
-    previewError.value = error instanceof Error ? error.message : String(error);
+    previewError.value = formatApiError(error, "查询命中结果失败").message;
   }
 }
 
@@ -265,7 +266,7 @@ async function changePage(next: number): Promise<void> {
   try {
     preview.value = await queryProbeHits(condition());
   } catch (error) {
-    previewError.value = error instanceof Error ? error.message : String(error);
+    previewError.value = formatApiError(error, "查询命中结果失败").message;
   }
 }
 
@@ -281,7 +282,7 @@ async function launch(mode: "full" | "cluster_only"): Promise<void> {
       mode === "full" ? await startEvolutionRun(body) : await startClusterPreview(body);
     emit("launched", mode, accepted.runId);
   } catch (error) {
-    launchError.value = error instanceof Error ? error.message : String(error);
+    launchError.value = formatApiError(error, "启动运行失败").message;
   } finally {
     launching.value = false;
   }

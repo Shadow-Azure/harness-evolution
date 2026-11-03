@@ -454,6 +454,47 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.get("[data-testid='wizard-start']").attributes("disabled")).toBe("");
   });
 
+  it("maps probe validation failures to a readable field warning", async () => {
+    useCatalogHandlers();
+    server.use(
+      http.post("/api/evolution/probes/query", () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "VALIDATION_INVALID",
+              message: "request validation failed",
+              details: {
+                errors: [
+                  {
+                    loc: ["body", "to"],
+                    msg: "Field required",
+                    type: "missing",
+                  },
+                ],
+              },
+            },
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    const wrapper = await mountWizard();
+
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+    await wrapper.get("[data-testid='wizard-version']").setValue("v2.0.0");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-08-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-08-31");
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const alert = wrapper.get(".wizard-error");
+    expect(alert.text()).toBe(
+      "请检查以下输入：结束时间不能为空，请检查输入后再试。",
+    );
+    expect(alert.text()).not.toContain("Field required");
+  });
+
   it("launches a cluster-only run and reports the accepted run id", async () => {
     useCatalogHandlers();
     const bodies: Record<string, unknown>[] = [];
