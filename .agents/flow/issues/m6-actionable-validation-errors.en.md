@@ -8,7 +8,7 @@ id: m6-21
 milestone: m6
 depends: []
 priority: P1
-status: ready
+status: done
 scope:
   - apps/api/app/errors.py
   - apps/api/app/api/**
