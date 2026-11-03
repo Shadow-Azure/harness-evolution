@@ -956,7 +956,7 @@ describe("evolution run detail page", () => {
     await flushPromises();
 
     expect(wrapper.get("[data-testid='retry-error']").text()).toContain(
-      "查询参数格式不正确，请按字段要求修改后再试",
+      "请求体字段格式不正确，请按字段要求修改后再试",
     );
     expect(wrapper.get("[data-testid='retry-error']").text()).not.toContain(
       "invalid retry reason",
