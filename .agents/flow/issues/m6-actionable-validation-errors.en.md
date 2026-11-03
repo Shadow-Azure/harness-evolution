@@ -12,6 +12,7 @@ status: ready
 scope:
   - apps/api/app/errors.py
   - apps/api/app/api/**
+  - apps/api/tests/**
   - apps/web/src/**
   - packages/contracts/**
   - tests/**
