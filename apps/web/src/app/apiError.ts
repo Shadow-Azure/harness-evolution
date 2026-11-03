@@ -24,6 +24,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   version: "目标版本",
 };
 
+const LOCATION_LABELS: Readonly<Record<string, string>> = {
+  body: "请求体字段",
+  path: "路径参数",
+  query: "查询参数",
+};
+
 const VALIDATION_REASONS: Readonly<Record<string, string>> = {
   enum: "不在可选范围内，请选择有效选项",
   int_parsing: "应为有效数字，请修改格式",
@@ -57,8 +63,17 @@ function fieldKey(detail: ValidationDetail): string {
   return typeof last === "string" && last ? last : "input";
 }
 
-function fieldLabel(key: string): string {
-  return FIELD_LABELS[key] ?? "查询参数";
+function fieldLabel(detail: ValidationDetail, key: string): string {
+  const knownLabel = FIELD_LABELS[key];
+  if (knownLabel) {
+    return knownLabel;
+  }
+
+  const loc = Array.isArray(detail.loc) ? detail.loc : [];
+  const location = safeText(loc.at(0));
+  return location in LOCATION_LABELS
+    ? (LOCATION_LABELS[location] ?? "输入")
+    : "输入";
 }
 
 function validationReason(type: string): string {
@@ -88,7 +103,7 @@ export function formatValidationDetails(
     const detail = item as ValidationDetail;
     const key = fieldKey(detail);
     const type = safeText(detail.type) || "invalid";
-    const label = key === "input" ? "输入" : fieldLabel(key);
+    const label = key === "input" ? "输入" : fieldLabel(detail, key);
     const separator = /[A-Za-z0-9]$/.test(label) ? " " : "";
     fieldErrors[key] = `${label}${separator}${validationReason(type)}后再试。`;
     return fieldErrors;

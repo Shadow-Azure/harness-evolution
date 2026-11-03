@@ -22,17 +22,29 @@ describe("global API error presentation", () => {
               msg: "Field required",
               type: "missing",
             },
+            {
+              loc: ["body", "unknownBodyField"],
+              msg: "Field required",
+              type: "missing",
+            },
+            {
+              loc: ["path", "unknownPathField"],
+              msg: "Field required",
+              type: "missing",
+            },
           ],
         },
       ),
     );
 
     expect(formatted.message).toBe(
-      "请检查以下输入：验证集测试工程 ID 不能为空，请填写后再试；查询参数不能为空，请检查输入后再试。",
+      "请检查以下输入：验证集测试工程 ID 不能为空，请填写后再试；查询参数不能为空，请检查输入后再试；请求体字段不能为空，请检查输入后再试；路径参数不能为空，请检查输入后再试。",
     );
     expect(formatted.fieldErrors).toEqual({
       validationProjectId: "验证集测试工程 ID 不能为空，请填写后再试。",
       unknownField: "查询参数不能为空，请检查输入后再试。",
+      unknownBodyField: "请求体字段不能为空，请检查输入后再试。",
+      unknownPathField: "路径参数不能为空，请检查输入后再试。",
     });
     expect(formatted.message).not.toContain("String should");
     expect(formatted.message).not.toContain("Field required");

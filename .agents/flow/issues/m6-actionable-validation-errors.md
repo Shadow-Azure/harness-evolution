@@ -49,7 +49,7 @@ github:
 ## 实现内容
 
 - 新增 `formatApiError` / `formatValidationDetails` 展示层工具，按 `code`、`status`、`details.errors[].loc/msg/type` 归纳字段级原因和建议。
-- 全局 query fallback 不再只处理 409；对 422 与业务错误使用同一格式化入口，业务页已有定制文案优先保留。
+- 已有定制文案的业务页优先处理领域错误；页面内联 catch 使用共享解释层兜底，不引入无去重机制的全局二次通知。
 - 将目标配置、自进化向导、run 重试和登录/改密的裸 `error.message` 展示替换为共享格式化结果；已有稳定错误码分支保留。
 - 后端 `RequestValidationError` 的 `details.errors` 保留 `loc/msg/type`，补充可安全展示的字段路径语义；契约类型保持 additive。
 - 为错误格式化与关键页面失败态补前端单测；为 422 信封补 API 集成测试。
@@ -57,7 +57,7 @@ github:
 ## 实施步骤
 
 1. 先写共享错误格式化的失败测试，覆盖校验详情、无详情、网络、权限、冲突和服务错误。
-2. 实现统一格式化工具，并接入全局 query fallback 与目标配置、向导、run 重试、登录/改密页面。
+2. 实现统一格式化工具，并接入目标配置、向导、run 重试、登录/改密页面。
 3. 为 FastAPI 422 响应补集成断言，必要时同步生成契约。
 4. 运行前后端 lint、typecheck、聚焦单测、契约与流程文档门禁。
 

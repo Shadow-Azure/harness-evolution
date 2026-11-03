@@ -49,7 +49,7 @@ The backend already returns stable `code` and `details` in the unified error env
 ## Implementation
 
 - Add `formatApiError` / `formatValidationDetails` presentation helpers that synthesize field-level reasons and fixes from `code`, `status`, and `details.errors[].loc/msg/type`.
-- Extend the global query fallback beyond 409 so 422 and business errors use the same formatter; retain page-specific stable-code branches where they already exist.
+- Let business pages keep their specialized handling first, use the shared explanation layer in page-level catches, and avoid a global second notification layer without deduplication.
 - Replace raw `error.message` presentation in target save, the wizard, run retry, and login/password change with the shared formatter.
 - Keep `loc/msg/type` in FastAPI `RequestValidationError` details and add safe field-path semantics; contract changes remain additive.
 - Add frontend unit tests for formatting and key page failure states, plus API integration assertions for the 422 envelope.
@@ -57,7 +57,7 @@ The backend already returns stable `code` and `details` in the unified error env
 ## Implementation steps
 
 1. Add failing tests for shared formatting across validation details, no details, network, permission, conflict, and server failures.
-2. Implement the shared formatter and connect the global query fallback plus target save, wizard, run retry, and login/password change pages.
+2. Implement the shared formatter and connect target save, the wizard, run retry, and login/password change pages.
 3. Add FastAPI 422 response assertions and regenerate contracts when needed.
 4. Run frontend/backend lint, typecheck, focused tests, contract checks, and flow/docs gates.
 

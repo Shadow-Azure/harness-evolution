@@ -12,6 +12,7 @@ import {
   useEvolutionTargetVersions,
 } from "../../../composables/useEvolutionTargets";
 import { ApiError } from "../../../api/http";
+import { formatApiError } from "../../../app/apiError";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
@@ -123,11 +124,9 @@ function targetErrorMessage(errorValue: unknown): string {
     if (errorValue.code === "PROJECT_ID_INVALID") {
       return "测试工程 ID 无效，请检查是否为空、超长或包含空格";
     }
-    return errorValue.message || "保存配置失败，请稍后重试";
+    return formatApiError(errorValue, "保存配置失败").message;
   }
-  return errorValue instanceof Error
-    ? errorValue.message
-    : "保存配置失败，请稍后重试";
+  return formatApiError(errorValue, "保存配置失败").message;
 }
 
 async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
