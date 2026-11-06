@@ -28,6 +28,8 @@ pnpm dev
 - 决策记录：[.agents/notes/README.md](.agents/notes/README.md)
 - PR 检视：[docs/review.md](docs/review.md)
 
+<!-- dev-gate-probe: 临时门禁探测注释，验证后删除，不合并。 -->
+
 ```sh
 pnpm lint:docs     # 快速文档门禁
 pnpm verify:docs   # 全量文档门禁
