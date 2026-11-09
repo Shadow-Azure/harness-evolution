@@ -14,6 +14,8 @@ scope:
   - .github/workflows/**
   - deploy/**
   - docs/**
+  - plans/**
+  - scripts/doc-budgets.manifest.json
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -58,7 +60,7 @@ The service currently runs only locally via `pnpm dev`; CI has PR gates and the 
 ## Dependencies and boundary
 
 - Depends on: m6-09 (CI lane split and the `ci-ok` aggregate gate; deploy hangs off it).
-- Delivery boundary: only the pipeline, server configuration templates, and docs; no changes to any `apps/` or `packages/` code or contracts.
+- Delivery boundary: only the pipeline, server configuration templates, and docs; no changes to any `apps/` or `packages/` code or contracts. Scope-extension note: `plans/**` (deployment playbook and the PR review doc land in plans/ per docs/review.md) and `scripts/doc-budgets.manifest.json` (word-budget registration for the new resident doc, per docs/AGENTS.md) are required by this issue's implementation.
 - Non-goals: see the dedicated section below.
 
 ## Verification

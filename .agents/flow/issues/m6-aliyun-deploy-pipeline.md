@@ -14,6 +14,8 @@ scope:
   - .github/workflows/**
   - deploy/**
   - docs/**
+  - plans/**
+  - scripts/doc-budgets.manifest.json
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -58,7 +60,7 @@ github:
 ## 依赖与交付边界
 
 - 依赖：m6-09（CI lane 拆分与 `ci-ok` 聚合 gate，deploy 挂在它之后）。
-- 交付边界：只新增流水线、服务器配置模板与文档；不改 `apps/`、`packages/` 任何代码与契约。
+- 交付边界：只新增流水线、服务器配置模板与文档；不改 `apps/`、`packages/` 任何代码与契约。scope 扩展说明：`plans/**`（部署手册与 PR 检视文档按 docs/review.md 落 plans/）与 `scripts/doc-budgets.manifest.json`（新常驻文档登记词数预算，docs/AGENTS.md 规则）为本 issue 实现所需。
 - 非目标：见下方专节。
 
 ## 独立验证
