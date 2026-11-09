@@ -55,6 +55,10 @@ if [ ! -x /opt/harness/shared/venv/bin/pip ]; then
   "$PY" -m venv /opt/harness/shared/venv
 fi
 chown -R deploy:deploy /opt/harness/shared/venv
+# pip 走阿里云公网镜像：内网镜像在本 VPC 不可达，pypi.org 跨境大包传输易被重置（会拖死发布 SSH 会话）
+install -d -m 755 -o deploy -g deploy /home/deploy/.config/pip
+printf '[global]\nindex-url = https://mirrors.aliyun.com/pypi/simple\ntrusted-host = mirrors.aliyun.com\n' > /home/deploy/.config/pip/pip.conf
+chown deploy:deploy /home/deploy/.config/pip/pip.conf
 
 echo "[bootstrap] 5/7 MySQL 8 建库建号"
 service mysql start || systemctl start mysql
