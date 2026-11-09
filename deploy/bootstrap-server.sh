@@ -49,7 +49,9 @@ if [ -f /root/.ssh/authorized_keys ] && [ ! -f /home/deploy/.ssh/authorized_keys
 fi
 
 echo "[bootstrap] 4/7 共享 Python venv"
-if [ ! -x /opt/harness/shared/venv/bin/python ]; then
+# 以 pip 可用为准（python -m venv 在缺 ensurepip 的系统上会产出无 pip 的残缺 venv）
+if [ ! -x /opt/harness/shared/venv/bin/pip ]; then
+  rm -rf /opt/harness/shared/venv
   "$PY" -m venv /opt/harness/shared/venv
 fi
 chown -R deploy:deploy /opt/harness/shared/venv
