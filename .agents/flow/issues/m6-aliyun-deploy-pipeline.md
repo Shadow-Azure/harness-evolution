@@ -9,7 +9,7 @@ milestone: m6
 depends:
   - m6-09
 priority: P1
-status: ready
+status: done
 scope:
   - .github/workflows/**
   - deploy/**

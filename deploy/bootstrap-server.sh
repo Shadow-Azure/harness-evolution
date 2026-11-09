@@ -49,10 +49,16 @@ if [ -f /root/.ssh/authorized_keys ] && [ ! -f /home/deploy/.ssh/authorized_keys
 fi
 
 echo "[bootstrap] 4/7 共享 Python venv"
-if [ ! -x /opt/harness/shared/venv/bin/python ]; then
+# 以 pip 可用为准（python -m venv 在缺 ensurepip 的系统上会产出无 pip 的残缺 venv）
+if [ ! -x /opt/harness/shared/venv/bin/pip ]; then
+  rm -rf /opt/harness/shared/venv
   "$PY" -m venv /opt/harness/shared/venv
 fi
 chown -R deploy:deploy /opt/harness/shared/venv
+# pip 走阿里云公网镜像：内网镜像在本 VPC 不可达，pypi.org 跨境大包传输易被重置（会拖死发布 SSH 会话）
+install -d -m 755 -o deploy -g deploy /home/deploy/.config/pip
+printf '[global]\nindex-url = https://mirrors.aliyun.com/pypi/simple\ntrusted-host = mirrors.aliyun.com\n' > /home/deploy/.config/pip/pip.conf
+chown deploy:deploy /home/deploy/.config/pip/pip.conf
 
 echo "[bootstrap] 5/7 MySQL 8 建库建号"
 service mysql start || systemctl start mysql
