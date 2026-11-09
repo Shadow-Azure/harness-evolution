@@ -12,6 +12,7 @@
 | [architecture.md](architecture.md) | 服务边界、数据流、数据层策略与当前 API |
 | [roadmap.md](roadmap.md) | 产品阶段路线与各阶段验收 |
 | [development.md](development.md) | 本地环境、日常循环、提交与流程操作 |
+| [deployment.md](deployment.md) | 阿里云生产部署形态、资源、初始化与发布回滚 |
 | [review.md](review.md) | PR 结构化检视、证据要求与分流表 |
 | [charter.md](charter.md) | 实验协议、进化判定与安全边界 |
 | [metrics.md](metrics.md) | 主指标、护栏指标与运行记录要求 |
