@@ -1,4 +1,4 @@
-﻿# Deploy 娴佹按绾?SSH 浼氳瘽淇濇椿
+# Deploy 娴佹按绾?SSH 浼氳瘽淇濇椿
 
 [English](m6-deploy-ssh-keepalive.en.md) | 涓枃
 

@@ -1,4 +1,4 @@
-﻿# SSH keepalive for the Deploy workflow
+# SSH keepalive for the Deploy workflow
 
 English | [涓枃](m6-deploy-ssh-keepalive.md)
 
