@@ -1,6 +1,6 @@
 # SSH keepalive for the Deploy workflow
 
-English | [涓枃](m6-deploy-ssh-keepalive.md)
+English | [中文](m6-deploy-ssh-keepalive.md)
 
 ```yaml flow
 kind: issue
@@ -21,7 +21,7 @@ github:
 
 ## Background
 
-During m6-22's first real release, the SSH session was reset by a network middlebox mid remote pip install (`Connection reset by peer`, exit 255), failing the Deploy run. The server now uses the Aliyun pip mirror to shorten the saturation window, but any long remote step (migrations, large uploads) still rides a default keepalive-less SSH connection 鈥?a single network hiccup invalidates the whole release.
+During m6-22's first real release, the SSH session was reset by a network middlebox mid remote pip install (`Connection reset by peer`, exit 255), failing the Deploy run. The server now uses the Aliyun pip mirror to shorten the saturation window, but any long remote step (migrations, large uploads) still rides a default keepalive-less SSH connection — a single network hiccup invalidates the whole release.
 
 ## Goals
 
@@ -29,7 +29,7 @@ During m6-22's first real release, the SSH session was reset by a network middle
 
 ## Design authority
 
-- [plans/fullstack-design/01-architecture.md 搂6 Deployment shape and scaling path](../../../plans/fullstack-design/01-architecture.md): delivery-channel reliability is an operational requirement of that shape; this issue hardens the channel only and changes no deployment semantics.
+- [plans/fullstack-design/01-architecture.md §6 Deployment shape and scaling path](../../../plans/fullstack-design/01-architecture.md): delivery-channel reliability is an operational requirement of that shape; this issue hardens the channel only and changes no deployment semantics.
 - m6-22's implementation section (Deploy workflow vs release.sh responsibility split) is the direct predecessor.
 
 ## Implementation
@@ -62,7 +62,7 @@ pnpm verify:flow
 
 ## Gates and CI
 
-- `verify:flow --diff`: titles carry `(#N)`, and the diff lands inside the registered scope.
+- `verify-flow --diff`: titles carry `(#202)`, and the diff lands inside the registered scope.
 - This issue is activated from backlog within the defect-fix PR (a legal path per the flow README).
 
 ## Non-goals

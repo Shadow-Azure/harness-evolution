@@ -1,6 +1,6 @@
-# Deploy 娴佹按绾?SSH 浼氳瘽淇濇椿
+# Deploy 流水线 SSH 会话保活
 
-[English](m6-deploy-ssh-keepalive.en.md) | 涓枃
+[English](m6-deploy-ssh-keepalive.en.md) | 中文
 
 ```yaml flow
 kind: issue
@@ -19,35 +19,53 @@ github:
   url: https://github.com/Shadow-Azure/harness-evolution/issues/202
 ```
 
-## 鑳屾櫙
+## 背景
 
-m6-22 浜や粯鐨勯娆＄湡瀹炲彂甯冧腑锛岃繙绋?pip 瀹夎鏈熼棿 SSH 浼氳瘽琚綉缁滀腑闂磋澶囬噸缃紙`Connection reset by peer`锛宔xit 255锛夛紝Deploy 闅忎箣澶辫触銆傛湇鍔″櫒渚у凡鏀圭敤闃块噷浜?pip 闀滃儚缂╃煭楗卞拰绐楀彛锛屼絾闀胯€楁椂杩滅▼姝ラ锛堣縼绉汇€佸ぇ浣撶Н涓婁紶锛変粛渚濊禆榛樿鏃犱繚娲荤殑 SSH 杩炴帴锛屼换浣曚竴娆＄綉缁滄姈鍔ㄩ兘浼氳鏁存潯鍙戝竷浣滃簾銆?
-## 鐩爣
+m6-22 交付的首次真实发布中，远程 pip 安装期间 SSH 会话被网络中间设备重置（`Connection reset by peer`，exit 255），Deploy 随之失败。服务器侧已改用阿里云 pip 镜像缩短饱和窗口，但长耗时远程步骤（迁移、大体积上传）仍依赖默认无保活的 SSH 连接，任何一次网络抖动都会让整条发布作废。
 
-- Deploy workflow 鐨勪袱澶?SSH锛坮sync 涓婁紶涓庤繙绋嬪彂甯冭剼鏈級甯?`ServerAliveInterval=30` / `ServerAliveCountMax=6`锛岀┖闂叉湡涓诲姩淇濇椿锛岃繛鎺ユ姈鍔ㄥ彲鑷剤銆?
-## 璁捐渚濇嵁
+## 目标
 
-- [plans/fullstack-design/01-architecture.md 搂6 閮ㄧ讲褰㈡€佷笌鎵╁睍璺緞](../../../plans/fullstack-design/01-architecture.md)锛氬崟瀹炰緥 SaaS 浜や粯閫氶亾鐨勫彲闈犳€у睘浜庤褰㈡€佺殑杩愯瑕佹眰锛涙湰 issue 鍙姞鍥洪€氶亾锛屼笉鏀瑰彉閮ㄧ讲璇箟銆?- m6-22 issue 鐨勫疄鐜板唴瀹癸紙Deploy workflow 涓?release.sh 鑱岃矗鍒掑垎锛変负鏈?issue 鐨勭洿鎺ュ墠缃€?
-## 瀹炵幇鍐呭
+- Deploy workflow 的两处 SSH（rsync 上传与远程发布脚本）带 `ServerAliveInterval=30` / `ServerAliveCountMax=6`，空闲期主动保活，连接抖动可自愈。
 
-- `.github/workflows/deploy.yml`锛歚SSH_CMD` 涓庡彂甯冩楠ょ殑 ssh 鍛戒护杩藉姞涓や釜 keepalive 鍙傛暟銆?
-## 瀹炴柦姝ラ
+## 设计依据
 
-1. 鍦?m6-22 浜や粯鍚庣殑缂洪櫡淇 PR 涓慨鏀?`deploy.yml` 骞跺悓 PR 鍐呮帹杩涙湰 issue 鑷?ready銆?2. 鐢卞悎骞跺悗鐨?Deploy run 楠岃瘉鐪熷疄鍙戝竷閾捐矾銆?
-## 渚濊禆涓庝氦浠樿竟鐣?
-- 渚濊禆锛歮6-22锛圖eploy workflow 鏈綋锛夈€?- 浜や粯杈圭晫锛氬彧鏀?workflow 鐨?ssh 鍙傛暟锛涗笉鍔ㄥ彂甯冭剼鏈笌鏈嶅姟鍣ㄩ厤缃€?- 闈炵洰鏍囷細瑙佷笅鏂逛笓鑺傘€?
-## 鐙珛楠岃瘉
+- [plans/fullstack-design/01-architecture.md §6 部署形态与扩展路径](../../../plans/fullstack-design/01-architecture.md)：单实例 SaaS 交付通道的可靠性属于该形态的运行要求；本 issue 只加固通道，不改变部署语义。
+- m6-22 issue 的实现内容（Deploy workflow 与 release.sh 职责划分）为本 issue 的直接前置。
+
+## 实现内容
+
+- `.github/workflows/deploy.yml`：`SSH_CMD` 与发布步骤的 ssh 命令追加两个 keepalive 参数。
+
+## 实施步骤
+
+1. 在 m6-22 交付后的缺陷修复 PR 中修改 `deploy.yml` 并同 PR 内推进本 issue 至 ready。
+2. 由合并后的 Deploy run 验证真实发布链路。
+
+## 依赖与交付边界
+
+- 依赖：m6-22（Deploy workflow 本体）。
+- 交付边界：只改 workflow 的 ssh 参数；不动发布脚本与服务器配置。
+- 非目标：见下方专节。
+
+## 独立验证
 
 ```sh
 pnpm verify:flow
 ```
 
-- `verify:flow` 鍏ㄩ儴閫氳繃锛涘悎骞跺悗鐨?Deploy run 鍏ㄧ豢涓旀湇鍔″櫒 `/api/health` 杩斿洖 200銆?
-## 楠屾敹鏍囧噯
+- `verify:flow` 全部通过；合并后的 Deploy run 全绿且服务器 `/api/health` 返回 200。
 
-- Deploy workflow 鐨?ssh 鍛戒护鍚繚娲诲弬鏁般€?- 鍚堝苟鍚庣殑鑷姩鍙戝竷鍏ㄧ豢锛屽仴搴锋鏌ラ€氳繃銆?
-## 闂ㄧ涓?CI
+## 验收标准
 
-- `verify:flow --diff`锛氭爣棰樺甫 `(#N)`锛宒iff 钀藉湪鐧昏 scope 鍐呫€?- 鏈?issue 鐢辩己闄蜂慨澶?PR 鍦ㄥ悓 PR 鍐呬粠 backlog 婵€娲伙紙flow README 鍏佽鐨勫悎娉曡矾寰勶級銆?
-## 闈炵洰鏍?
-- 涓嶆敼 rsync 鎺掗櫎瑙勫垯銆佽Е鍙戞潯浠朵笌鍙戝竷鑴氭湰銆?- 涓嶅紩鍏ョ涓夋柟 Actions銆?
+- Deploy workflow 的 ssh 命令含保活参数。
+- 合并后的自动发布全绿，健康检查通过。
+
+## 门禁与 CI
+
+- `verify-flow --diff`：标题带 `(#202)`，diff 落在登记 scope 内。
+- 本 issue 由缺陷修复 PR 在同 PR 内从 backlog 激活（flow README 允许的合法路径）。
+
+## 非目标
+
+- 不改 rsync 排除规则、触发条件与发布脚本。
+- 不引入第三方 Actions。
