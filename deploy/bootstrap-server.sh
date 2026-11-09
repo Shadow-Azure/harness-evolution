@@ -18,17 +18,17 @@ apt-get install -y ca-certificates curl git rsync nginx mysql-server
 
 echo "[bootstrap] 2/7 Python 3.12"
 PY=python3.12
-if ! command -v "$PY" > /dev/null; then
-  . /etc/os-release
-  if [ "${VERSION_ID%%.*}" -ge 24 ]; then
-    apt-get install -y python3.12 python3.12-venv python3.12-dev
-  else
-    # Ubuntu 22.04 走 deadsnakes PPA
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:deadsnakes/ppa
-    apt-get update -y
-    apt-get install -y python3.12 python3.12-venv python3.12-dev
-  fi
+# 始终显式安装三件（Ubuntu 24.04 自带解释器但不带 venv/ensurepip，apt 幂等）
+export DEBIAN_FRONTEND=noninteractive
+. /etc/os-release
+if [ "${VERSION_ID%%.*}" -ge 24 ]; then
+  apt-get install -y python3.12 python3.12-venv python3.12-dev
+else
+  # Ubuntu 22.04 走 deadsnakes PPA
+  apt-get install -y software-properties-common
+  add-apt-repository -y ppa:deadsnakes/ppa
+  apt-get update -y
+  apt-get install -y python3.12 python3.12-venv python3.12-dev
 fi
 "$PY" --version
 
