@@ -1,0 +1,71 @@
+# 生产发布：CI（main push）全绿后自动部署前后端到阿里云 ECS。
+# 手动入口：Actions 页 workflow_dispatch，用于首跑与演练。
+# 前置：GitHub Secrets ALIYUN_HOST / ALIYUN_USER / ALIYUN_SSH_KEY；
+#       仓库（或环境）Variable ALIYUN_SSH_PORT（默认 22）；服务器已完成 bootstrap。
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    env:
+      SSH_HOST: ${{ secrets.ALIYUN_HOST }}
+      SSH_USER: ${{ secrets.ALIYUN_USER }}
+      SSH_PORT: ${{ vars.ALIYUN_SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 构建前端
+        run: pnpm build
+
+      - name: 配置 SSH
+        env:
+          SSH_KEY: ${{ secrets.ALIYUN_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/deploy_key
+          printf '%s\n' "$SSH_KEY" > ~/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 上传 release 与配置
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          RELEASE="/opt/harness/releases/$SHA"
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT"
+          $SSH_CMD "$SSH_USER@$SSH_HOST" "mkdir -p $RELEASE/api $RELEASE/web /opt/harness/shared/config"
+          rsync -az --delete -e "$SSH_CMD" apps/web/dist/ "$SSH_USER@$SSH_HOST:$RELEASE/web/"
+          rsync -az --delete --exclude .venv --exclude __pycache__ -e "$SSH_CMD" apps/api/ "$SSH_USER@$SSH_HOST:$RELEASE/api/"
+          rsync -az -e "$SSH_CMD" deploy/ "$SSH_USER@$SSH_HOST:/opt/harness/shared/config/"
+          $SSH_CMD "$SSH_USER@$SSH_HOST" "chmod +x /opt/harness/shared/config/release.sh"
+
+      - name: 执行发布（迁移 + 切换 + 重启 + 探活）
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          ssh -i ~/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "/opt/harness/shared/config/release.sh /opt/harness/releases/$SHA"

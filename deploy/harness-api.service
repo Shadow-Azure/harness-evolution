@@ -1,0 +1,22 @@
+# Harness Evolution API — systemd 常驻单元
+# 安装（root）：cp deploy/harness-api.service /etc/systemd/system/
+#              systemctl daemon-reload && systemctl enable --now harness-api
+[Unit]
+Description=Harness Evolution API (FastAPI/uvicorn)
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=harness
+Group=harness
+WorkingDirectory=/opt/harness/current/api
+EnvironmentFile=/opt/harness/shared/.env
+ExecStart=/opt/harness/shared/venv/bin/python -m app
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
