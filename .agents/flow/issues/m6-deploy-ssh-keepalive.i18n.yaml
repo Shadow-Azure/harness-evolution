@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m6-deploy-ssh-keepalive.md
+m6-deploy-ssh-keepalive.md: e961c34367c9d6d93bd110a6cb02b5e0a937ed13
+m6-deploy-ssh-keepalive.en.md: 677dd3feb2ff35d8295e0ed19be539cb9888cd14
