@@ -14,7 +14,7 @@ fi
 echo "[bootstrap] 1/7 基础包"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y ca-certificates curl git rsync nginx mysql-server ufw
+apt-get install -y ca-certificates curl git rsync nginx mysql-server
 
 echo "[bootstrap] 2/7 Python 3.12"
 PY=python3.12
@@ -39,6 +39,14 @@ mkdir -p /opt/harness/releases /opt/harness/shared
 touch /opt/harness/shared/.env
 chmod 600 /opt/harness/shared/.env
 chown -R deploy:deploy /opt/harness
+# deploy 用户是 GitHub Actions 的登录账号：把 root 已装的公钥复制过去
+if [ -f /root/.ssh/authorized_keys ] && [ ! -f /home/deploy/.ssh/authorized_keys ]; then
+  install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+  cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+  chown deploy:deploy /home/deploy/.ssh/authorized_keys
+  chmod 600 /home/deploy/.ssh/authorized_keys
+  echo "[bootstrap] 已把 root 的 authorized_keys 复制给 deploy 用户"
+fi
 
 echo "[bootstrap] 4/7 共享 Python venv"
 if [ ! -x /opt/harness/shared/venv/bin/python ]; then
