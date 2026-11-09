@@ -12,6 +12,7 @@ The sole index for `docs/`. Every resident document must be registered in the ta
 | [architecture.en.md](architecture.en.md) | Service boundaries, data flow, data-layer strategy and current API |
 | [roadmap.en.md](roadmap.en.md) | Product phase roadmap and per-phase acceptance |
 | [development.en.md](development.en.md) | Local environment, daily loop, commits and flow operations |
+| [deployment.en.md](deployment.en.md) | Alibaba Cloud deployment shape and release/rollback |
 | [review.en.md](review.en.md) | Structured PR review, evidence requirements and triage |
 | [charter.en.md](charter.en.md) | Experiment protocol, evolution criteria and safety boundaries |
 | [metrics.en.md](metrics.en.md) | Primary metrics, guardrail metrics and run-record requirements |
