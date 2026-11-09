@@ -15,9 +15,9 @@
 
 ## 2. 安装部署公钥（本机一条命令）
 
-1. 本机生成密钥对（如已有 `~/.ssh/id_ed25519` 可跳过）：`ssh-keygen -t ed25519 -f $env:USERPROFILE\.ssh\id_ed25519 -N '""'`。
-2. 把公钥装到服务器（提示输入 root 密码，只在本机输入）：`type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@<公网IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"`。
-3. 验证免密：`ssh root@<公网IP> hostname` 返回主机名即可。
+1. 部署专用密钥对本机路径：`~\.ssh\harness-deploy`（私钥）/ `~\.ssh\harness-deploy.pub`（公钥），已生成，勿删除。
+2. 把公钥装到服务器（提示输入 root 密码，只在本机输入）：`type $env:USERPROFILE\.ssh\harness-deploy.pub | ssh root@<公网IP> "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"`。
+3. 验证免密：`ssh -i $env:USERPROFILE\.ssh\harness-deploy root@<公网IP> hostname` 返回主机名即可。
 
 ## 3. 服务器初始化（bootstrap 一次）
 
@@ -32,7 +32,7 @@
 1. Settings → Secrets and variables → Actions：
    - Secret `ALIYUN_HOST` = 公网 IP；
    - Secret `ALIYUN_USER` = `deploy`；
-   - Secret `ALIYUN_SSH_KEY` = 本机 `~/.ssh/id_ed25519` **私钥**全文（含 BEGIN/END 行）；
+   - Secret `ALIYUN_SSH_KEY` = 本机 `~\.ssh\harness-deploy` **私钥**全文（含 BEGIN/END 行；用 `gh secret set ALIYUN_SSH_KEY < ~\.ssh\harness-deploy` 直推，不经聊天与剪贴板）；
    - Variable `ALIYUN_SSH_PORT` = 22。
 2. Settings → Environments → 新建 `production`（可加 required reviewers）。
 
