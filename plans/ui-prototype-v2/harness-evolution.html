@@ -4517,8 +4517,8 @@ function v2RenderOverview() {
     const t = b.self + b.discovery;
     const h = t ? Math.max(3, Math.round(t / max * 100)) : 0;
     const showLabel = bi % labelStep === 0 || bi === buckets.length - 1;
-    return `<div class="ov-bucket" title="${b.label} · self ${b.self} · discovery ${b.discovery}">
-      <span class="ov-tip">${b.label} · self ${b.self} · discovery ${b.discovery}</span>
+    return `<div class="ov-bucket" title="${b.label} · 自身存在问题 ${b.self} · 发现前置步骤问题 ${b.discovery}">
+      <span class="ov-tip">${b.label} · 自身存在问题 ${b.self} · 发现前置步骤问题 ${b.discovery}</span>
       ${t ? `<div class="ov-stack" style="height:${h}%">
         <span class="ov-bar self" style="height:${(b.self / t * 100).toFixed(1)}%"></span>
         <span class="ov-bar discovery" style="height:${(b.discovery / t * 100).toFixed(1)}%"></span>
@@ -4531,7 +4531,7 @@ function v2RenderOverview() {
     return `<tr data-v2-overview-case="${c.id}" title="打开 Session 错误详情 · 问题描述">
       <td><span class="ov-case-title">${v2Esc(c.title)}</span><span class="ov-case-id">${c.id}</span></td>
       <td><span class="chip kind">${v2Esc(c.objectName)}</span></td>
-      <td>${c.type === 'self' ? '<span class="v2-badge self">self</span>' : '<span class="v2-badge discovery">discovery</span>'}</td>
+      <td>${c.type === 'self' ? '<span class="v2-badge self">自身存在问题</span>' : '<span class="v2-badge discovery">发现前置步骤问题</span>'}</td>
       <td><span class="ov-mono">L${c.triggerLine}</span></td>
       <td><span class="ov-mono">${c.clock}</span></td>
       <td><span class="ov-mono" title="${c.sessionId}">${c.sessionId.slice(0, 13)}…</span></td>
@@ -4541,7 +4541,7 @@ function v2RenderOverview() {
   host.innerHTML = `<div class="page-head-v2">
     <div>
       <h1>工作空间总览</h1>
-      <div class="ph-sub">${v2Esc(ws.name || '')} · 从 object_name 与时间维度观察 self / discovery 的 bad case 分布，并下钻到 Session 错误详情。</div>
+      <div class="ph-sub">${v2Esc(ws.name || '')} · 从 bad case 上报来源与时间维度观察自身存在问题 / 发现前置步骤问题的分布，并下钻到 Session 错误详情。</div>
     </div>
     <div class="ph-actions">
       ${v2CanManage(V2.wsId) ? `<button class="btn" data-v2-overview-ingest>上报接入</button>
@@ -4550,10 +4550,10 @@ function v2RenderOverview() {
   </div>
   <div class="statstrip">
     <div class="ss"><b>${total}</b><span>bad case</span></div>
-    <div class="ss"><b style="color:var(--blue)">${self}</b><span>self</span></div>
-    <div class="ss"><b style="color:var(--purple)">${total - self}</b><span>discovery</span></div>
+    <div class="ss"><b style="color:var(--blue)">${self}</b><span>自身存在问题</span></div>
+    <div class="ss"><b style="color:var(--purple)">${total - self}</b><span>发现前置步骤问题</span></div>
     <div class="ss"><b>${new Set(base.map(c => c.sessionId)).size}</b><span>关联 Session</span></div>
-    <div class="ss"><b>${objects.length}</b><span>object_name</span></div>
+    <div class="ss"><b>${objects.length}</b><span>bad case 上报来源</span></div>
     <div class="ss ${used / (ws.quota || 1) > .8 ? 'bad' : ''}"><b>${used} / ${ws.quota}</b><span>空间额度</span></div>
   </div>
   <div class="card ov-filterbar">
@@ -4577,12 +4577,12 @@ function v2RenderOverview() {
       </div>
     </div>
     <span class="ov-filter-sep"></span>
-    <div class="ov-filter-group"><span class="ov-filter-label">object_name</span>
+    <div class="ov-filter-group"><span class="ov-filter-label">bad case 上报来源</span>
       <details class="ov-multi" ${o.multiOpen ? 'open' : ''}>
-        <summary>${o.objects.size ? `已选 ${o.objects.size} 个对象` : '全部对象'}<span class="caret">⌄</span></summary>
+        <summary>${o.objects.size ? `已选 ${o.objects.size} 个来源` : '全部来源'}<span class="caret">⌄</span></summary>
         <div class="ov-multi-menu">
           ${v2OverviewObjects().map(name => `<label><input type="checkbox" value="${name}" ${o.objects.has(name) ? 'checked' : ''} data-v2-ov-object> ${v2Esc(name)}</label>`).join('')}
-          <div class="om-foot"><span>不选 = 全部</span><button data-v2-ov-clear>清空</button></div>
+          <div class="om-foot"><span>不选 = 全部来源</span><button data-v2-ov-clear>清空</button></div>
         </div>
       </details>
     </div>
@@ -4591,26 +4591,26 @@ function v2RenderOverview() {
   <div class="ov-grid">
     <div class="card ov-chart-card">
       <div class="ov-card-head">
-        <div><h2>bad case 趋势</h2><div class="hint">按 ${o.grain === 'day' ? '日' : o.grain === 'week' ? '周' : '月'}聚合 · 悬停查看 self / discovery 明细</div></div>
+        <div><h2>bad case 趋势</h2><div class="hint">按 ${o.grain === 'day' ? '日' : o.grain === 'week' ? '周' : '月'}聚合 · 悬停查看自身存在问题 / 发现前置步骤问题明细</div></div>
         <span class="spacer"></span>
-        <div class="ov-legend"><span><i class="self"></i>self</span><span><i class="discovery"></i>discovery</span></div>
+        <div class="ov-legend"><span><i class="self"></i>自身存在问题</span><span><i class="discovery"></i>发现前置步骤问题</span></div>
       </div>
-      ${buckets.length && total ? `<div class="ov-chart ${buckets.length > 26 ? 'dense' : ''}"><div class="ov-yaxis">${yLabel(max)}${yLabel(Math.round(max / 2))}${yLabel(0)}</div>${chart}</div>` : '<div class="ov-empty"><b>当前条件下没有 bad case</b>调整时间范围或 object_name 后重试。</div>'}
+      ${buckets.length && total ? `<div class="ov-chart ${buckets.length > 26 ? 'dense' : ''}"><div class="ov-yaxis">${yLabel(max)}${yLabel(Math.round(max / 2))}${yLabel(0)}</div>${chart}</div>` : '<div class="ov-empty"><b>当前条件下没有 bad case</b>调整时间范围或 bad case 上报来源后重试。</div>'}
       <div class="ov-objects">
         ${objRows.length ? (() => { const maxObj = Math.max(1, ...objRows.map(x => x.total)); return objRows.slice(0, 6).map(x => `<div class="ov-obj-row">
           <span class="ov-obj-name" title="${x.name}">${v2Esc(x.name)}</span>
           <span class="ov-obj-bar"><span class="self" style="width:${x.total ? x.self / maxObj * 100 : 0}%"></span><span class="discovery" style="width:${x.total ? x.disc / maxObj * 100 : 0}%"></span></span>
-          <span class="ov-obj-num"><b>${x.total}</b> · s${x.self} / d${x.disc}</span>
-        </div>`).join(''); })() : '<div class="v2-note">暂无 object_name 数据</div>'}
+          <span class="ov-obj-num" title="自身存在问题 ${x.self} 个 · 发现前置步骤问题 ${x.disc} 个"><b>${x.total}</b> · 自身 ${x.self} / 前置 ${x.disc}</span>
+        </div>`).join(''); })() : '<div class="v2-note">暂无 bad case 上报来源数据</div>'}
       </div>
       ${objRows.length && buckets.length ? `<details class="ov-matrix">
-        <summary>按 object_name × 时间查看 self / discovery 明细</summary>
+        <summary>按 bad case 上报来源 × 时间查看问题类型明细</summary>
         <div class="ov-matrix-wrap"><table>
-          <thead><tr><th>object_name</th>${buckets.map(b => `<th>${b.label}</th>`).join('')}<th>合计</th></tr></thead>
+          <thead><tr><th>bad case 上报来源</th>${buckets.map(b => `<th>${b.label}</th>`).join('')}<th>合计</th></tr></thead>
           <tbody>${objRows.map(x => `<tr><td>${v2Esc(x.name)}</td>${buckets.map(b => {
             const cells = base.filter(c => c.objectName === x.name && v2BucketKey(c.createdAt, o.grain) === b.key);
             const sN = cells.filter(c => c.type === 'self').length, dN = cells.length - sN;
-            return `<td><span class="s">${sN}</span> / <span class="d">${dN}</span></td>`;
+            return `<td><span class="s">自身 ${sN}</span> / <span class="d">前置 ${dN}</span></td>`;
           }).join('')}<td><b>${x.self}</b> / <b>${x.disc}</b></td></tr>`).join('')}</tbody>
         </table></div>
       </details>` : ''}
@@ -4639,17 +4639,17 @@ function v2RenderOverview() {
   </div>
   <div class="card ov-list-card">
     <div class="ov-list-head">
-      <div><h2>bad case 列表</h2><div class="hint">时间段、object_name、bad_case_type 均可选；点击行进入对应 Session 的错误详情。</div></div>
+      <div><h2>bad case 列表</h2><div class="hint">时间段、上报来源、问题类型均可选；点击行进入对应 Session 的错误详情。</div></div>
       <div class="ov-list-filters">
         <input class="inp" type="date" value="${o.listFrom}" data-v2-ov-list-from title="开始时间（可选）">
         <span class="ov-filter-label">~</span>
         <input class="inp" type="date" value="${o.listTo}" data-v2-ov-list-to title="结束时间（可选）">
-        <select class="inp" data-v2-ov-list-object><option value="">全部 object_name</option>${v2OverviewObjects().map(x => `<option ${o.listObject === x ? 'selected' : ''}>${v2Esc(x)}</option>`).join('')}</select>
-        <select class="inp" data-v2-ov-list-type><option value="all" ${o.listType === 'all' ? 'selected' : ''}>全部类型</option><option value="self" ${o.listType === 'self' ? 'selected' : ''}>self</option><option value="discovery" ${o.listType === 'discovery' ? 'selected' : ''}>discovery</option></select>
+        <select class="inp" data-v2-ov-list-object><option value="">全部上报来源</option>${v2OverviewObjects().map(x => `<option ${o.listObject === x ? 'selected' : ''}>${v2Esc(x)}</option>`).join('')}</select>
+        <select class="inp" data-v2-ov-list-type><option value="all" ${o.listType === 'all' ? 'selected' : ''}>全部类型</option><option value="self" ${o.listType === 'self' ? 'selected' : ''}>自身存在问题</option><option value="discovery" ${o.listType === 'discovery' ? 'selected' : ''}>发现前置步骤问题</option></select>
         <button class="btn sm" data-v2-ov-reset>重置</button>
       </div>
     </div>
-    <table class="ov-table"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>触发点</th><th>上报时间</th><th>Session</th><th>归因</th></tr></thead>
+    <table class="ov-table"><thead><tr><th>bad case</th><th>bad case 上报来源</th><th>类型</th><th>触发点</th><th>上报时间</th><th>Session</th><th>归因</th></tr></thead>
       <tbody>${listRows || `<tr><td colspan="7"><div class="ov-empty"><b>没有符合筛选条件的 bad case</b>清空列表筛选条件或调整时间范围。</div></td></tr>`}</tbody>
     </table>
     <div class="v2-pager"><span class="info">共 ${list.arr.length} 条 · 第 ${list.page} / ${list.pages} 页</span><button data-v2-ov-page="${list.page - 1}" ${list.page <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-ov-page="${list.page + 1}" ${list.page >= list.pages ? 'disabled' : ''}>下一页 →</button></div>
