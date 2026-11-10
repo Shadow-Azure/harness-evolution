@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness Evolution V1 → V2 原型变更报告</title>
+<style>
+  :root {
+    --bg:#f4f5f7; --panel:#fafbfc; --card:#ffffff; --inset:#f1f3f6; --border:#e2e5ea;
+    --text:#212832; --dim:#5a6372; --faint:#9aa2ae;
+    --blue:#2f6fe0; --green:#1f9d6b; --orange:#d97b1c; --red:#d63c3c; --purple:#8a55c9; --cyan:#158a8a;
+    --mono:"SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    --shadow:0 1px 3px rgba(30,40,60,.06);
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
+  body { font-family:-apple-system,"SF Pro Text","Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); font-size:13px; line-height:1.65; }
+  a { color:var(--blue); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .page { max-width:1380px; margin:0 auto; padding:0 28px 80px; }
+  .hero { padding:56px 0 30px; border-bottom:1px solid var(--border); }
+  .eyebrow { display:inline-flex; align-items:center; gap:7px; font-size:11px; color:var(--purple); border:1px solid color-mix(in srgb,var(--purple) 35%, transparent); background:color-mix(in srgb,var(--purple) 7%, #fff); border-radius:999px; padding:2px 10px; }
+  h1 { margin-top:13px; font-size:31px; line-height:1.25; letter-spacing:.2px; font-weight:750; }
+  .hero p.lead { max-width:880px; margin-top:11px; color:var(--dim); font-size:14px; line-height:1.8; }
+  .meta { display:flex; flex-wrap:wrap; gap:7px; margin-top:18px; }
+  .pill { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--dim); border:1px solid var(--border); background:var(--card); border-radius:999px; padding:2px 9px; }
+  .pill b { color:var(--text); font-weight:650; }
+  .pill.blue { color:var(--blue); border-color:color-mix(in srgb,var(--blue) 35%, transparent); background:color-mix(in srgb,var(--blue) 6%, #fff); }
+  .pill.purple { color:var(--purple); border-color:color-mix(in srgb,var(--purple) 35%, transparent); background:color-mix(in srgb,var(--purple) 6%, #fff); }
+  .summary { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:24px 0 0; }
+  .sum { padding:14px 16px; background:var(--card); border:1px solid var(--border); border-radius:11px; box-shadow:var(--shadow); }
+  .sum b { display:block; font-family:var(--mono); font-size:21px; line-height:1.25; font-weight:650; }
+  .sum span { display:block; margin-top:2px; font-size:10.5px; color:var(--faint); }
+  .toc { position:sticky; top:0; z-index:10; margin:26px 0 30px; padding:10px 0; background:color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); display:flex; gap:5px; flex-wrap:wrap; }
+  .toc a { font-size:11.5px; color:var(--dim); border:1px solid transparent; border-radius:7px; padding:3px 9px; }
+  .toc a:hover { color:var(--text); border-color:var(--border); background:var(--card); text-decoration:none; }
+  section { margin:34px 0 0; }
+  h2 { font-size:20px; line-height:1.35; letter-spacing:.1px; margin-bottom:12px; }
+  h2 .n { font-family:var(--mono); font-size:12px; color:var(--blue); margin-right:7px; vertical-align:2px; }
+  h3 { font-size:14.5px; margin:22px 0 9px; }
+  h4 { font-size:12.5px; margin:14px 0 6px; color:var(--dim); }
+  p { color:var(--dim); }
+  p + p { margin-top:8px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); }
+  .pad { padding:16px 18px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .note { padding:11px 14px; border:1px solid color-mix(in srgb,var(--blue) 26%, transparent); background:color-mix(in srgb,var(--blue) 5%, transparent); border-radius:9px; font-size:12px; color:var(--dim); line-height:1.7; }
+  .note.warn { border-color:color-mix(in srgb,var(--orange) 38%, transparent); background:color-mix(in srgb,var(--orange) 6%, transparent); }
+  .note b { color:var(--text); }
+  table { width:100%; border-collapse:collapse; font-size:12px; background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  th, td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--border); vertical-align:top; }
+  tr:last-child td { border-bottom:none; }
+  th { font-size:10.5px; color:var(--faint); font-weight:650; background:var(--panel); white-space:nowrap; }
+  td b { font-weight:600; }
+  code, .mono { font-family:var(--mono); font-size:11px; }
+  code { background:var(--inset); border:1px solid var(--border); border-radius:4px; padding:0 4px; color:var(--text-dim); }
+  .compare { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:12px 0 6px; align-items:start; }
+  .shot { background:var(--card); border:1px solid var(--border); border-radius:11px; overflow:hidden; box-shadow:var(--shadow); }
+  .shot .bar { display:flex; align-items:center; gap:7px; padding:7px 11px; border-bottom:1px solid var(--border); background:var(--panel); font-size:10.5px; color:var(--faint); }
+  .shot .bar b { color:var(--text); font-size:11px; }
+  .shot .bar .tag { margin-left:auto; font-family:var(--mono); font-size:9.5px; color:var(--dim); border:1px solid var(--border); border-radius:999px; padding:0 7px; background:var(--card); }
+  .shot img { display:block; width:100%; height:auto; background:#fff; }
+  .cap { padding:8px 11px; font-size:10.5px; color:var(--faint); line-height:1.6; border-top:1px solid var(--border); }
+  .full { margin-top:12px; }
+  .full img { display:block; width:100%; height:auto; border-radius:11px; border:1px solid var(--border); box-shadow:var(--shadow); }
+  .kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:14px 0; }
+  .kpi .k { padding:12px 14px; background:var(--panel); border:1px solid var(--border); border-radius:9px; }
+  .kpi .k b { display:block; font-family:var(--mono); font-size:17px; font-weight:650; }
+  .kpi .k span { display:block; font-size:10px; color:var(--faint); margin-top:1px; }
+  .changes { display:grid; gap:8px; margin-top:10px; }
+  .change { display:flex; gap:9px; padding:10px 12px; border:1px solid var(--border); border-radius:9px; background:var(--card); }
+  .change .badge { flex-shrink:0; width:20px; height:20px; display:grid; place-items:center; border-radius:6px; font-family:var(--mono); font-size:10px; font-weight:700; color:#fff; background:var(--blue); }
+  .change .badge.p { background:var(--purple); }
+  .change .badge.o { background:var(--orange); }
+  .change .badge.g { background:var(--green); }
+  .change .body { min-width:0; }
+  .change .body b { display:block; font-size:12px; font-weight:650; margin-bottom:1px; }
+  .change .body span { font-size:11.5px; color:var(--dim); line-height:1.65; }
+  .flow { display:grid; grid-template-columns:repeat(6,1fr); gap:7px; margin:14px 0; }
+  .flow .step { position:relative; padding:10px 9px; border:1px solid var(--border); border-radius:9px; background:var(--panel); font-size:11px; color:var(--dim); }
+  .flow .step b { display:block; color:var(--text); font-size:11.5px; margin-bottom:2px; }
+  .flow .step.on { border-color:color-mix(in srgb,var(--purple) 45%, transparent); background:color-mix(in srgb,var(--purple) 6%, #fff); }
+  .flow .step:after { content:"→"; position:absolute; right:-8px; top:50%; transform:translateY(-50%); color:var(--faint); font-size:11px; }
+  .flow .step:last-child:after { content:""; }
+  ul { padding-left:18px; color:var(--dim); }
+  li { margin:3px 0; }
+  .tag { display:inline-flex; align-items:center; gap:4px; font-size:10px; border-radius:999px; padding:0 7px; border:1px solid var(--border); color:var(--dim); background:var(--card); }
+  .tag.ok { color:var(--green); border-color:color-mix(in srgb,var(--green) 38%, transparent); background:color-mix(in srgb,var(--green) 7%, transparent); }
+  .tag.warn { color:var(--orange); border-color:color-mix(in srgb,var(--orange) 38%, transparent); background:color-mix(in srgb,var(--orange) 7%, transparent); }
+  .tag.purple { color:var(--purple); border-color:color-mix(in srgb,var(--purple) 38%, transparent); background:color-mix(in srgb,var(--purple) 7%, transparent); }
+  footer { margin-top:44px; padding-top:16px; border-top:1px solid var(--border); font-size:10.5px; color:var(--faint); line-height:1.7; }
+  @media (max-width: 1100px) { .summary { grid-template-columns:1fr 1fr; } .compare { grid-template-columns:1fr; } .grid3 { grid-template-columns:1fr 1fr; } .flow { grid-template-columns:1fr 1fr; } .flow .step:after { content:""; } }
+  @media (max-width: 720px) { .page { padding:0 14px 50px; } h1 { font-size:24px; } .grid2, .grid3, .kpi { grid-template-columns:1fr; } .summary { grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="hero">
+    <span class="eyebrow">Prototype Review · V1 → V2</span>
+    <h1>Harness Evolution V2<br>多工作空间与归因流程 · 原型变更报告</h1>
+    <p class="lead">V2 没有另起一套设计语言：它从 <code>plans/14-15-ui-prototype</code> 完整拷贝后迭代，保留 V1 的顶栏、卡片、表格、执行流与自进化详情，只在身份、空间、总览、Session 查询和归因流程上做增量。这份报告用同尺寸截图说明“哪些没变、哪些变了、为什么变”。</p>
+    <div class="meta">
+      <span class="pill"><b>分支</b> feat/ui-prototype-v2</span>
+      <span class="pill"><b>基线</b> origin/main @ 1afda0d</span>
+      <span class="pill"><b>日期</b> 2026-11-10</span>
+      <span class="pill blue"><b>原型</b> harness-evolution.html</span>
+      <span class="pill purple"><b>数据</b> 3 空间 · 21 Session · 43 bad case</span>
+    </div>
+    <div class="summary">
+      <div class="sum"><b>7 / 7</b><span>需求点已覆盖</span></div>
+      <div class="sum"><b>4</b><span>新增页面/页签：登录、总览、空间管理、鉴权</span></div>
+      <div class="sum"><b>3</b><span>改造：Session 列表、错误详情、自进化向导</span></div>
+      <div class="sum"><b>0</b><span>新增视觉体系 / 设计 token</span></div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#reuse">01 为什么沿用 V1</a>
+    <a href="#map">02 需求映射</a>
+    <a href="#session">03 Session</a>
+    <a href="#error">04 多归因错误详情</a>
+    <a href="#evo">05 自进化流程</a>
+    <a href="#new">06 新增页面</a>
+    <a href="#roles">07 角色视图</a>
+    <a href="#flows">08 关键路径</a>
+    <a href="#model">09 数据与迁移</a>
+    <a href="#verify">10 验收</a>
+  </nav>
+
+  <section id="reuse">
+    <h2><span class="n">01</span>为什么 V2 继续沿用 V1，而不是重做</h2>
+    <p>V2 的新需求主要是“权限、空间、数据入口、归因编排”，它们不应该迫使页面换一套视觉语言。V1 已经有一套适合排障/演化场景的紧凑亮色界面；V2 复用它，用户从 V1 迁移时不需要重新学习布局。</p>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card pad">
+        <h4>原样保留</h4>
+        <ul>
+          <li>56px 顶栏 + 页签下划线选中态、品牌 logo、右侧同步浮层</li>
+          <li><code>--bg #f4f5f7</code>、12px 卡片、蓝/紫/橙/红语义色、13px 正文</li>
+          <li>Session 卡片、状态点、两条密度条、10 格统计条</li>
+          <li>React Flow 家族树、问题卡、执行流选中联动</li>
+          <li>自进化 run-card、6 步 stepper、cluster/diff/eval/commit</li>
+          <li>启动向导 modal、条件摘要条、分页表格</li>
+        </ul>
+      </div>
+      <div class="card pad">
+        <h4>只在必要处改动</h4>
+        <ul>
+          <li>顶栏增加工作空间切换器与用户菜单；多一个「总览」页签</li>
+          <li>Session 默认 10 条，搜索从“实时过滤”改为“回车查询 root session ID”</li>
+          <li>错误详情左栏从平铺错误卡改为可折叠 bad case 组 + 归因子列表</li>
+          <li>自进化向导从 2 步扩展为 3 步：范围 → 关联/潜在 → 归因预览</li>
+          <li>运行详情步骤从「筛选/聚类/归因」改为「范围/关联/潜在/归因」</li>
+          <li>新增登录、总览、空间管理；全部复用 V1 控件</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px">V2 里没有出现第二套导航、第二套卡片或第二种主色。新增的登录页也只是把 V1 的亮色卡片放大，而不是改成营销落地页或深色后台。</div>
+  </section>
+
+  <section id="map">
+    <h2><span class="n">02</span>需求映射：7 个目标态落在哪里</h2>
+    <table>
+      <thead><tr><th style="width:36px">#</th><th>V2 目标</th><th>原型落点</th><th style="width:150px">证据</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><b>多用户登录，不开放注册，预留 Cookie/用户信息接入</b></td><td>登录页 4 个演示账号；唯一全局管理员；空间管理 → 鉴权接入（Cookie、登录/登出、用户映射、SSO 回调契约）</td><td>登录页、鉴权接入截图</td></tr>
+        <tr><td>2</td><td><b>多工作空间；管理员管理空间与空间管理员</b></td><td>工作空间切换器；空间管理四个页签；创建空间时多选初始管理员；成员页可任命/撤销；可把自己设为空间管理员</td><td>空间管理截图</td></tr>
+        <tr><td>3</td><td><b>空间上报接口与 bad case 额度</b></td><td>每空间独立 <code>POST /api/workspaces/{id}/bad-cases</code>、凭据、额度、请求体示例；创建后可调额度；409 说明</td><td>上报接入截图</td></tr>
+        <tr><td>4</td><td><b>空间总览：object × 时间 × self/discovery，列表分页下钻</b></td><td>总览页：日/周/月、object_name 多选、self/discovery 堆叠、对象分布、组合筛选列表、点击行进入对应 bad case 问题描述</td><td>总览截图</td></tr>
+        <tr><td>5</td><td><b>Session 默认 10 个；输入 session ID 回车重查</b></td><td>侧栏显示「最新 10 / 13」；输入 root session ID 回车命中老 Session；清空回车恢复 10 条；无命中空态</td><td>Session 截图</td></tr>
+        <tr><td>6</td><td><b>归因进入自进化流程；对象关联、潜在策略、缓存</b></td><td>向导 3 步；详情 6 步；默认策略 = self ∪ 触发点在对象之后；自定义规则；缓存开关与复用/新增/非该对象统计</td><td>向导 2/3 步截图</td></tr>
+        <tr><td>7</td><td><b>错误详情：一个 bad case 多条归因，左栏可折叠 + 分页</b></td><td>bad case 组折叠；每组归因子项按对象版本分页（2 条/页）；点击子项进入归因分析；未归因状态</td><td>错误详情截图</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="session">
+    <h2><span class="n">03</span>Session 错误查看：同一套壳层，新增空间上下文与精确查询</h2>
+    <div class="compare">
+      <div class="shot">
+        <div class="bar"><b>V1 · Session 浏览器</b><span class="tag">4 个会话 · 实时搜索</span></div>
+        <a href="screenshots-v1-baseline/v1-session.png" target="_blank"><img src="screenshots-v1-baseline/v1-session.png" alt="V1 Session 页面"></a>
+        <div class="cap">V1：无工作空间上下文；搜索框对标题/仓库/ID 实时过滤；4 个样例会话全量展示。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · Session 错误查看</b><span class="tag">最新 10 / 13 · 回车查询</span></div>
+        <a href="screenshots-v2/v2-session.png" target="_blank"><img src="screenshots-v2/v2-session.png" alt="V2 Session 页面"></a>
+        <div class="cap">V2：顶栏出现工作空间与角色；侧栏明确「最新 10 / 13」；搜索改为 root session ID + Enter；卡片统计与密度条保持 V1。</div>
+      </div>
+    </div>
+    <div class="changes">
+      <div class="change"><span class="badge">1</span><div class="body"><b>默认只查 10 个</b><span>进入页面不再默认拉全量家族树；左侧只请求当前空间最新 10 个 root Session，标题显示「最新 10 / 总数」。选中后才加载概览与执行流。</span></div></div>
+      <div class="change"><span class="badge">2</span><div class="body"><b>搜索是“查询”而不是“过滤”</b><span>输入 root session ID（支持子串）后回车，左侧替换为命中结果并选中；清空再回车恢复最新 10 个。未命中时左右都显示空态，不保留旧选中。</span></div></div>
+      <div class="change"><span class="badge">3</span><div class="body"><b>空间上下文可见</b><span>侧栏显示当前空间；顶栏切换器会同步刷新 Session 列表、总览、自进化与空间管理，不把空间状态散落在各页面。</span></div></div>
+      <div class="change"><span class="badge">4</span><div class="body"><b>问题 → bad case 文案</b><span>统计条、卡片密度、列表标题统一为 bad case；底层仍是 V1 的 findings 数量与执行流锚点，便于迁移时一一对应。</span></div></div>
+    </div>
+    <div class="full"><img src="screenshots-v2/v2-workspace-switcher.png" alt="工作空间切换器"><div class="cap">工作空间切换器：显示空间名、当前角色、bad case 使用量/额度与成员数；切换后所有页签共享同一空间上下文。</div></div>
+  </section>
+
+  <section id="error">
+    <h2><span class="n">04</span>错误详情：从“一个错误一个归因”到“一个 bad case 多条归因”</h2>
+    <div class="compare">
+      <div class="shot">
+        <div class="bar"><b>V1 · 错误详情</b><span class="tag">I-/R- 双 ID · 单条分析</span></div>
+        <a href="screenshots-v1-baseline/v1-error-detail.png" target="_blank"><img src="screenshots-v1-baseline/v1-error-detail.png" alt="V1 错误详情"></a>
+        <div class="cap">V1：左栏平铺错误卡；问题描述/归因分析两个 Tab；归因结论内嵌在 <code>ERROR_META</code>，一个错误只有一条。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 错误详情</b><span class="tag">BC- ID · 多对象 · 折叠+分页</span></div>
+        <a href="screenshots-v2/v2-error-detail.png" target="_blank"><img src="screenshots-v2/v2-error-detail.png" alt="V2 错误详情"></a>
+        <div class="cap">V2：左栏每个 bad case 可折叠，组内按「对象 · 版本」列归因并分页；选中子项直接进入该条归因分析；右侧仍保留执行流与双 Tab。</div>
+      </div>
+    </div>
+    <div class="full"><a href="screenshots-v2/v2-error-detail.png" target="_blank"><img src="screenshots-v2/v2-error-detail.png" alt="V2 错误详情全尺寸"></a><div class="cap">V2 错误详情全尺寸：左侧 bad case #1 展开 3 条归因（当前第 1–2 条），右侧“归因分析 (3)”展示对象版本、运行 ID、缓存来源与触发点对比。</div></div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="card pad">
+        <h4>左栏结构</h4>
+        <ul>
+          <li>父行：<code>#no</code>、bad case ID、标题、object_name、self/discovery、归因数</li>
+          <li>展开：归因列表（2 条/页），显示对象版本、结论、时间、缓存标记</li>
+          <li>筛选：全部 / 有归因 / 待归因；没有归因的 case 显示「尚未归因」</li>
+        </ul>
+      </div>
+      <div class="card pad">
+        <h4>右栏语义</h4>
+        <ul>
+          <li>点父行 →「问题描述」：问题现象、对象、触发点、上报时间、归因数量</li>
+          <li>点子项 →「归因分析」：结论、分类、对象版本、运行 ID、置信度、策略、触发点对比、缓存来源、推导</li>
+          <li>「非该对象问题」是对象版本级结论，不修改 bad case，也不影响其他对象</li>
+        </ul>
+      </div>
+    </div>
+    <div class="compare" style="margin-top:12px">
+      <div class="shot">
+        <div class="bar"><b>V2 · 问题描述</b><span class="tag">从总览下钻后的默认 Tab</span></div>
+        <a href="screenshots-v2/v2-error-problem.png" target="_blank"><img src="screenshots-v2/v2-error-problem.png" alt="V2 问题描述"></a>
+        <div class="cap">总览列表点击行进入该 Session，并自动选中对应 bad case 的问题描述。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 尚未归因</b><span class="tag">归因在进化流程中生成</span></div>
+        <a href="screenshots-v2/v2-pending-attribution.png" target="_blank"><img src="screenshots-v2/v2-pending-attribution.png" alt="V2 尚未归因"></a>
+        <div class="cap">没有进入过自进化运行的 bad case 显示“尚未归因”，提供启动入口；不再伪造“未分析”结论。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="evo">
+    <h2><span class="n">05</span>自进化：归因前移，向导与运行详情同步改版</h2>
+    <div class="flow">
+      <div class="step on"><b>1 选择范围</b>对象 + 版本 + 时间段</div>
+      <div class="step on"><b>2 Session 关联</b>对象是否出现</div>
+      <div class="step on"><b>3 潜在 bad case</b>self ∪ 触发点之后</div>
+      <div class="step on"><b>4 对象归因</b>可归因 / 非该对象 / 缓存</div>
+      <div class="step"><b>5 迭代优化</b>patch → eval → accept</div>
+      <div class="step"><b>6 终评</b>best vs 初始</div>
+    </div>
+    <div class="compare">
+      <div class="shot">
+        <div class="bar"><b>V1 · 启动向导</b><span class="tag">对象/版本/时间段/模型 → 报告</span></div>
+        <a href="screenshots-v1-baseline/v1-evo-wizard.png" target="_blank"><img src="screenshots-v1-baseline/v1-evo-wizard.png" alt="V1 启动向导"></a>
+        <div class="cap">V1：筛选条件直接命中「问题报告」，归因发生在运行内部的第 3 步；输入没有 Session 关联与潜在策略概念。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 向导第 2 步</b><span class="tag">Session 关联 + 潜在 bad case</span></div>
+        <a href="screenshots-v2/v2-wizard-step2.png" target="_blank"><img src="screenshots-v2/v2-wizard-step2.png" alt="V2 向导第 2 步"></a>
+        <div class="cap">V2：先展示时间段内 Session、对象出现与否、对象触发点与潜在数量；下方是潜在 bad case 明细。</div>
+      </div>
+    </div>
+    <div class="compare" style="margin-top:12px">
+      <div class="shot">
+        <div class="bar"><b>V2 · 向导第 3 步</b><span class="tag">缓存 + 归因预览 + 启动</span></div>
+        <a href="screenshots-v2/v2-wizard-step3.png" target="_blank"><img src="screenshots-v2/v2-wizard-step3.png" alt="V2 向导第 3 步"></a>
+        <div class="cap">「复用缓存归因」开关；预览潜在 / 复用 / 新增 / 非该对象四类数量；缓存键包含空间、bad case、对象版本、策略与模型版本。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 向导第 1 步</b><span class="tag">默认值与自定义策略</span></div>
+        <a href="screenshots-v2/v2-wizard-step1.png" target="_blank"><img src="screenshots-v2/v2-wizard-step1.png" alt="V2 向导第 1 步"></a>
+        <div class="cap">对象/版本有默认值；默认策略说明与自定义策略（self、触发点之后、仅同 object_name）在同一屏选择。</div>
+      </div>
+    </div>
+    <h3>运行详情：把“为什么进入这次进化”讲清楚</h3>
+    <div class="compare">
+      <div class="shot">
+        <div class="bar"><b>V1 · 运行详情</b><span class="tag">筛选 → 聚类 → 归因 → 迭代</span></div>
+        <a href="screenshots-v1-baseline/v1-evo-detail.png" target="_blank"><img src="screenshots-v1-baseline/v1-evo-detail.png" alt="V1 运行详情"></a>
+        <div class="cap">V1：信息面板以“问题报告数 / 已分析 / 用于进化”为主；来源是报告 ID。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 运行详情</b><span class="tag">关联 → 潜在 → 归因 → 迭代</span></div>
+        <a href="screenshots-v2/v2-evo-detail.png" target="_blank"><img src="screenshots-v2/v2-evo-detail.png" alt="V2 运行详情"></a>
+        <div class="cap">V2：信息面板显示关联 Session、时间段内 bad case、潜在 bad case、可归因/非该对象；聚类来源改为 bad case 链接。</div>
+      </div>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <div class="card pad">
+        <h4>默认潜在策略</h4>
+        <p><code>(object_name = target AND type = self) OR (bad_case.trigger_line &gt; object.trigger_line)</code></p>
+        <p style="margin-top:6px">即“对象自身 self 上报”并集“触发点在对象触发点之后”。不选/无命中时进入空态，不伪造候选。</p>
+      </div>
+      <div class="card pad">
+        <h4>缓存与结论边界</h4>
+        <p>缓存命中只复用最近一次成功归因；“非该对象问题”仍然是一条归因结论，会写入集合，但不会修改 bad case，也不会阻止它成为其他对象的潜在 bad case。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="new">
+    <h2><span class="n">06</span>新增页面：登录、总览、空间管理</h2>
+    <div class="compare">
+      <div class="shot">
+        <div class="bar"><b>V2 · 登录</b><span class="tag">唯一管理员 · 无注册入口</span></div>
+        <a href="screenshots-v2/v2-login.png" target="_blank"><img src="screenshots-v2/v2-login.png" alt="V2 登录页"></a>
+        <div class="cap">4 个演示账号；说明“账号由管理员开通”；底部展示 Cookie 会话、用户映射、SSO/OIDC 接入预留。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>V2 · 工作空间总览</b><span class="tag">object × 时间 × self/discovery</span></div>
+        <a href="screenshots-v2/v2-overview.png" target="_blank"><img src="screenshots-v2/v2-overview.png" alt="V2 总览"></a>
+        <div class="cap">日/周/月、object_name 多选、堆叠柱、对象分布，以及可展开的 object_name × 时间明细矩阵；下方组合筛选列表支持分页并下钻到错误详情。</div>
+      </div>
+    </div>
+    <div class="grid3" style="margin-top:12px">
+      <div class="shot">
+        <div class="bar"><b>空间与额度</b></div>
+        <a href="screenshots-v2/v2-admin-spaces.png" target="_blank"><img src="screenshots-v2/v2-admin-spaces.png" alt="空间与额度"></a>
+        <div class="cap">全局管理员看到全部空间；空间管理员只看到当前空间。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>成员与角色</b></div>
+        <a href="screenshots-v2/v2-admin-members.png" target="_blank"><img src="screenshots-v2/v2-admin-members.png" alt="成员与角色"></a>
+        <div class="cap">添加成员、改成员/只读；全局管理员可任命空间管理员。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>上报接入</b></div>
+        <a href="screenshots-v2/v2-admin-ingest.png" target="_blank"><img src="screenshots-v2/v2-admin-ingest.png" alt="上报接入"></a>
+        <div class="cap">空间专属地址、凭据、额度、bad_cases 请求体与 curl 示例。</div>
+      </div>
+    </div>
+    <div class="compare" style="margin-top:12px">
+      <div class="shot">
+        <div class="bar"><b>鉴权接入</b><span class="tag">Cookie / SSO / 用户映射</span></div>
+        <a href="screenshots-v2/v2-admin-auth.png" target="_blank"><img src="screenshots-v2/v2-admin-auth.png" alt="鉴权接入"></a>
+        <div class="cap">接入契约直接列出 <code>GET /api/auth/session</code>、登录/登出 Set-Cookie 与用户 workspaces 返回结构。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>创建工作空间</b><span class="tag">额度 + 多选管理员</span></div>
+        <a href="screenshots-v2/v2-create-workspace.png" target="_blank"><img src="screenshots-v2/v2-create-workspace.png" alt="创建工作空间"></a>
+        <div class="cap">创建时设置 bad case 上限与初始空间管理员（可多选，包括自己）；创建后可调额度。</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roles">
+    <h2><span class="n">07</span>角色视图：同一页面，按权限收口</h2>
+    <div class="grid3">
+      <div class="shot">
+        <div class="bar"><b>普通成员（赵敏）</b><span class="tag">只读体验</span></div>
+        <a href="screenshots-v2/v2-member-view.png" target="_blank"><img src="screenshots-v2/v2-member-view.png" alt="普通成员视角"></a>
+        <div class="cap">隐藏“上报接入/启动自进化/空间管理”；总览与 Session 仍可读。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>空间管理员（李伟）</b><span class="tag">当前空间管理</span></div>
+        <a href="screenshots-v2/v2-space-admin.png" target="_blank"><img src="screenshots-v2/v2-space-admin.png" alt="空间管理员视角"></a>
+        <div class="cap">只能调整当前空间额度/成员/上报；不能创建新空间、不能授予空间管理员。</div>
+      </div>
+      <div class="shot">
+        <div class="bar"><b>全局管理员（林澈）</b><span class="tag">全部空间</span></div>
+        <a href="screenshots-v2/v2-user-menu.png" target="_blank"><img src="screenshots-v2/v2-user-menu.png" alt="全局管理员用户菜单"></a>
+        <div class="cap">用户菜单可切换演示身份；空间切换器列出所有空间。</div>
+      </div>
+    </div>
+    <table style="margin-top:12px">
+      <thead><tr><th>能力</th><th>全局管理员</th><th>空间管理员</th><th>成员</th><th>只读</th></tr></thead>
+      <tbody>
+        <tr><td>创建空间 / 调整初始额度</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>查看有权限空间</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>调整额度 / 上报凭据</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+        <tr><td>添加成员 / 成员、只读</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+        <tr><td>任命空间管理员</td><td>✓</td><td>—</td><td>—</td><td>—</td></tr>
+        <tr><td>配置对象 / 启动自进化</td><td>✓</td><td>✓</td><td>—</td><td>—</td></tr>
+        <tr><td>查看 Session / bad case / 归因 / 运行</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="flows">
+    <h2><span class="n">08</span>关键路径：从登录到一条归因</h2>
+    <div class="grid2">
+      <div class="card pad">
+        <h4>A · 空间总览下钻</h4>
+        <ol style="padding-left:18px;color:var(--dim);font-size:12px;line-height:1.8">
+          <li>登录 → 默认空间「Harness 核心研发」</li>
+          <li>总览选择近 90 天、object_name 多选（或不选 = 全部）</li>
+          <li>查看 self/discovery 堆叠趋势与对象分布</li>
+          <li>列表按时间段 / object_name / bad_case_type 组合筛选</li>
+          <li>点行 → Session 错误详情，自动选中该 bad case 的问题描述</li>
+        </ol>
+      </div>
+      <div class="card pad">
+        <h4>B · 精确查 Session</h4>
+        <ol style="padding-left:18px;color:var(--dim);font-size:12px;line-height:1.8">
+          <li>进入 Session 页，默认最新 10 / 13</li>
+          <li>输入 <code>cb819c5b…</code> 或 ID 子串，回车</li>
+          <li>左侧替换为命中的 1 个 Session 并选中</li>
+          <li>打开错误详情 → 选择 bad case → 展开归因</li>
+          <li>清空输入再回车，恢复最新 10 条</li>
+        </ol>
+      </div>
+      <div class="card pad">
+        <h4>C · 启动自进化</h4>
+        <ol style="padding-left:18px;color:var(--dim);font-size:12px;line-height:1.8">
+          <li>选择对象 + 版本 + bad case 时间段</li>
+          <li>查看对象出现在哪些 Session、对象触发点</li>
+          <li>默认/自定义潜在策略 → 预览潜在 bad case</li>
+          <li>选择是否复用缓存 → 查看复用/新增/非该对象</li>
+          <li>启动 → 运行详情第 4 步查看对象级归因</li>
+        </ol>
+      </div>
+      <div class="card pad">
+        <h4>D · 管理空间与上报</h4>
+        <ol style="padding-left:18px;color:var(--dim);font-size:12px;line-height:1.8">
+          <li>全局管理员创建工作空间，设置额度与初始管理员</li>
+          <li>空间管理员调整额度、添加成员/只读</li>
+          <li>上报接入复制空间专属地址与凭据</li>
+          <li>POST body 使用 bad_cases 类型；额度内写入</li>
+          <li>鉴权接入替换成 Cookie/SSO 用户源</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="model">
+    <h2><span class="n">09</span>数据与迁移边界</h2>
+    <div class="grid2">
+      <div class="card pad">
+        <h4>新增/扩展的数据</h4>
+        <ul>
+          <li><code>workspaces</code>：名称、额度、状态、创建信息</li>
+          <li><code>workspace_members</code>：空间 + 用户 + 角色（唯一约束）</li>
+          <li><code>workspace_ingest_credentials</code>：凭据摘要、轮换/撤销</li>
+          <li><code>bad_cases</code>：增加 <code>workspace_id</code> 与触发点索引</li>
+          <li><code>bad_case_attributions</code>：bad case + 对象版本 + 策略/模型版本 + 结论 + 缓存来源</li>
+          <li><code>evolution_run_candidates</code>：关联 Session、潜在 case、触发点、命中原因</li>
+        </ul>
+      </div>
+      <div class="card pad">
+        <h4>兼容与迁移顺序</h4>
+        <ol style="padding-left:18px;color:var(--dim);font-size:12px;line-height:1.8">
+          <li>空间底座：membership、workspace_id、默认空间迁移</li>
+          <li>上报与总览：额度、统计、分页 API</li>
+          <li>Session 与错误详情：默认 10、精确查询、多归因集合</li>
+          <li>自进化编排：Session 关联、潜在策略、缓存键</li>
+          <li>权限收口：所有读写服务端校验；前端入口只做体验</li>
+        </ol>
+      </div>
+    </div>
+    <div class="note warn" style="margin-top:12px"><b>兼容风险</b>：V1 的 <code>I-/R-</code> 双 ID 深链、无空间上下文的 <code>/sessions/**</code>、以及单条 <code>ERROR_META</code> 归因都需要适配层。建议保留旧深链参数解析，解析到 bad case 后再重定向到带 workspace 的新 URL；历史归因写入默认对象版本，读侧逐步切到归因集合。</div>
+  </section>
+
+  <section id="verify">
+    <h2><span class="n">10</span>验收与渲染检查</h2>
+    <div class="kpi">
+      <div class="k"><b>1440 × 900</b><span>本报告截图视口</span></div>
+      <div class="k"><b>0</b><span>核心页面 console error</span></div>
+      <div class="k"><b>7 / 7</b><span>需求点可点击验证</span></div>
+      <div class="k"><b>3</b><span>工作空间样例</span></div>
+    </div>
+    <div class="grid2">
+      <div class="card pad">
+        <h4>已实际点击验证</h4>
+        <ul>
+          <li>登录 / 切换演示身份 / 退出；手动登录后恢复深链</li>
+          <li>空间切换；总览多选 object、粒度、分页、行下钻</li>
+          <li>Session 默认 10/13、ID 回车命中、无命中空态</li>
+          <li>错误详情折叠、归因子项分页/切换、未归因态</li>
+          <li>自进化向导 3 步、缓存开关、启动生成运行</li>
+          <li>创建空间、调额度、添加成员、把自己设为管理员</li>
+          <li>上报地址/凭据复制、curl 示例、鉴权接入说明</li>
+        </ul>
+      </div>
+      <div class="card pad">
+        <h4>原型边界</h4>
+        <ul>
+          <li>真实鉴权、持久化、统计 SQL、归因算法与 SSO 回调未实现</li>
+          <li>权限只做前端护栏，生产必须服务端按空间再校验</li>
+          <li>执行流依赖 CDN 的 React / React Flow；离线时仅树图不可用</li>
+          <li>数据为打桩；额度、成员、归因状态在刷新后回到样例值</li>
+        </ul>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px">复现：直接打开 <code>harness-evolution.html</code>（默认登录页），或使用 <code>?u=admin&amp;page=overview</code> 等演示参数；设计说明见 <code>design-v2.md</code>，页面入口见 <code>index.html</code>。</div>
+  </section>
+
+  <footer>
+    Harness Evolution V2 prototype · 2026-11-10 · 分支 feat/ui-prototype-v2 · 从 origin/main 1afda0d 切出。<br>
+    截图：<code>screenshots-v1-baseline/</code>（V1 基线）与 <code>screenshots-v2/</code>（V2）。本报告与原型均为讨论用打桩资产，不进入产品构建。
+  </footer>
+</div>
+</body>
+</html>

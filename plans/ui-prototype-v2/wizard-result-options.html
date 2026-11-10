@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>向导查询结果区 · 设计方案对比</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --bg-panel: #fafbfc; --bg-card: #ffffff; --bg-inset: #f1f3f6;
+    --border: #e2e5ea;
+    --text: #212832; --text-dim: #5a6372; --text-faint: #9aa2ae;
+    --blue: #2f6fe0; --green: #1f9d6b; --orange: #d97b1c; --red: #d63c3c; --purple: #8a55c9; --cyan: #158a8a;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.55; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 24px 80px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { color: var(--text-dim); font-size: 12.5px; margin-bottom: 18px; }
+  /* 方案切换 */
+  .switch { display: flex; gap: 8px; margin-bottom: 16px; }
+  .switch button { font: inherit; font-size: 12.5px; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-dim); padding: 7px 16px; }
+  .switch button.active { color: var(--blue); border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, #fff); font-weight: 600; }
+  .opt-note { font-size: 12px; color: var(--text-dim); background: #fff; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+  .opt-note b { color: var(--text); }
+
+  /* 模拟向导弹窗 */
+  .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 60px rgba(20,30,50,.14); overflow: hidden; }
+  .modal-head { display: flex; align-items: center; padding: 13px 18px; border-bottom: 1px solid var(--border); font-size: 15px; font-weight: 700; }
+  .modal-head .x { margin-left: auto; color: var(--text-faint); }
+  .modal-body { padding: 16px 18px; }
+  .fake-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { display: inline-block; font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; background: var(--bg-card); white-space: nowrap; }
+  .chip.kind { font-family: var(--mono); font-size: 10.5px; color: var(--purple); border-color: color-mix(in srgb, var(--purple) 35%, transparent); background: color-mix(in srgb, var(--purple) 9%, transparent); }
+  .chip.model { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 35%, transparent); background: color-mix(in srgb, var(--cyan) 9%, transparent); }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--bg-panel); }
+  .btn { font: inherit; font-size: 12.5px; cursor: pointer; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); color: var(--text-dim); padding: 6px 14px; }
+  .btn.accent { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 9%, #fff); font-weight: 600; }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .idlink { font-family: var(--mono); font-size: 11px; color: var(--blue); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent); white-space: nowrap; }
+  .idlink.rep { color: var(--purple); border-bottom-color: color-mix(in srgb, var(--purple) 45%, transparent); }
+  .type-chip { display: inline-block; font-size: 10.5px; line-height: 1.6; border-radius: 999px; padding: 0 8px; border: 1px solid; white-space: nowrap; }
+  .pager { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .pager .info { font-size: 11.5px; color: var(--text-dim); }
+  .pager .info b { font-family: var(--mono); }
+  .pager .btn { padding: 3px 12px; font-size: 11.5px; }
+
+  /* ═══ 方案 A：统计摘要条 + 类型分布条 + 紧凑表格 ═══ */
+  .a-summary { border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent); background: color-mix(in srgb, var(--blue) 5%, #fff); border-radius: 10px; padding: 12px 14px; }
+  .a-stats { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+  .a-stats .st b { font-family: var(--mono); font-weight: 650; font-size: 14px; margin-right: 3px; }
+  .a-stats .st span { color: var(--text-faint); font-size: 11px; }
+  .a-stats .st.accent b { color: var(--blue); }
+  .typebar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 2px 0 6px; }
+  .typebar span { display: block; height: 100%; }
+  .a-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
+  .a-legend .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-right: 4px; vertical-align: -1px; }
+  .a-table { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.data th { text-align: left; font-size: 11px; color: var(--text-faint); font-weight: 600; background: var(--bg-panel); padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  table.data td { padding: 7px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  table.data tr:last-child td { border-bottom: none; }
+  table.data tbody tr:hover { background: color-mix(in srgb, var(--blue) 4%, #fff); }
+  table.data td.ph { color: var(--text-dim); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ═══ 方案 B：按归因类型分组的命令面板风列表 ═══ */
+  .b-box { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .b-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--bg-panel); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--text-dim); }
+  .b-head b { font-family: var(--mono); }
+  .b-group { border-bottom: 1px solid var(--border); }
+  .b-group:last-child { border-bottom: none; }
+  .b-ghead { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; user-select: none; background: #fff; }
+  .b-ghead:hover { background: var(--bg-panel); }
+  .b-ghead .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .b-ghead .cnt { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .b-ghead .caret { margin-left: auto; color: var(--text-faint); font-size: 11px; transition: transform .15s; }
+  .b-group.open .b-ghead .caret { transform: rotate(90deg); }
+  .b-rows { display: none; }
+  .b-group.open .b-rows { display: block; }
+  .b-row { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 30px; font-size: 12px; border-top: 1px dashed color-mix(in srgb, var(--border) 70%, transparent); }
+  .b-row:hover { background: color-mix(in srgb, var(--blue) 4%, #fff); }
+  .b-row .ph { color: var(--text-dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b-row .mdl { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); flex-shrink: 0; }
+
+  /* ═══ 方案 C：报告卡片网格 ═══ */
+  .c-summary { display: flex; gap: 14px; align-items: baseline; margin-bottom: 12px; font-size: 12.5px; color: var(--text-dim); }
+  .c-summary b { font-family: var(--mono); }
+  .c-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .c-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #fff; transition: border-color .12s, box-shadow .12s; cursor: default; }
+  .c-card:hover { border-color: var(--blue); box-shadow: 0 2px 8px rgba(47,111,224,.10); }
+  .c-card .r1 { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .c-card .ph { font-size: 12px; color: var(--text-dim); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 36px; }
+  .c-card .r3 { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .c-card .mdl { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); margin-left: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>启动向导 · 查询结果区设计方案</h1>
+  <p class="sub">同一批数据（命中 51 session · 18 份报告 · 是问题 11 份）的三种呈现方式，点击上方按钮切换对比。</p>
+  <div class="switch">
+    <button data-opt="a" class="active">方案 A · 摘要 + 分布条 + 表格</button>
+    <button data-opt="b">方案 B · 按归因类型分组</button>
+    <button data-opt="c">方案 C · 报告卡片网格</button>
+  </div>
+  <div class="opt-note" id="optNote"></div>
+
+  <div class="modal">
+    <div class="modal-head">启动自进化 <span class="x">✕</span></div>
+    <div class="modal-body">
+      <div class="fake-filter">
+        <span class="chip kind">skill:deep-research@v2.0.0</span>
+        <span class="chip">2026-08-20 ~ 2026-09-10</span>
+        <span class="chip model">glm-5.3</span>
+        <span class="chip model">glm-5.3-flash</span>
+        <span class="chip model">claude-sonnet-4.5</span>
+      </div>
+      <div id="optHost"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn accent">⟳ 查询匹配报告</button>
+      <button class="btn">仅聚类分析</button>
+      <button class="btn primary">启动自进化 →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const TYPE_COLOR = { '非问题': '#9aa2ae', '是问题-错误': '#d63c3c', '是问题-prompt缺失某些提示词': '#d97b1c', '是问题-模型问题': '#8a55c9', '未分析': '#c4cbd6' };
+const tchip = t => `<span class="type-chip" style="color:${TYPE_COLOR[t]};border-color:color-mix(in srgb, ${TYPE_COLOR[t]} 45%, transparent);background:color-mix(in srgb, ${TYPE_COLOR[t]} 9%, #fff)">${t}</span>`;
+
+// 与默认筛选条件命中一致的打桩数据（前 7 份为关联真实 session 的报告）
+const ROWS = [
+  { rid: 'R-CB81-02', iid: 'I-CB81-02', ph: '反序列化检索结果时假定 items 字段一定存在，实际返回体缺少该字段，导致该次检索返回 0 条结果', model: 'glm-5.3', type: '是问题-错误', real: true },
+  { rid: 'R-CB81-03', iid: 'I-CB81-03', ph: '模型在规划阶段连续扩大检索范围，未复用已抓取结果；预期 ≤30min，实际执行 2h 12m，超出 4.4 倍', model: 'glm-5.3', type: '是问题-模型问题', real: true },
+  { rid: 'R-2F5E-01', iid: 'I-2F5E-01', ph: 'prompt 未要求读取快照前校验 turns 字段，subagent 直接读取导致越界，该步结果被丢弃', model: 'glm-5.3-flash', type: '是问题-prompt缺失某些提示词', real: true },
+  { rid: 'R-2F5E-02', iid: 'I-2F5E-02', ph: '模型在规划阶段连续扩大检索范围，未复用已抓取结果；预期 ≤30min，实际执行 2h 12m', model: 'glm-5.3-flash', type: '是问题-模型问题', real: true },
+  { rid: 'R-050B-03', iid: 'I-050B-03', ph: '读取 data/index.json 时未处理 ENOENT，错误被上层 catch 静默吞掉，导致 5 条结论引用空索引', model: 'glm-5.3', type: '是问题-错误', real: true },
+  { rid: 'R-050B-04', iid: 'I-050B-04', ph: '模型在规划阶段连续扩大检索范围，未复用已抓取结果；预期 ≤30min，实际执行 2h 12m', model: 'glm-5.3', type: '是问题-模型问题', real: true },
+  { rid: 'R-3F8E-01', iid: 'I-3F8E-01', ph: '插件清单不是合法 JSON，解析时抛出 SyntaxError，后续插件事件缺失', model: 'glm-5.3', type: '是问题-错误', real: true },
+  { rid: 'R-1647', iid: null, ph: '报告导出结构损坏', model: 'kimi-k2', type: '是问题-模型问题' },
+  { rid: 'R-1664', iid: null, ph: '研究计划过度拆分', model: 'deepseek-v3.2', type: '非问题' },
+  { rid: 'R-1681', iid: null, ph: '重复加载同一文档', model: 'gpt-5', type: '是问题-错误' },
+  { rid: 'R-1698', iid: null, ph: '会话快照读取越界', model: 'claude-sonnet-4.5', type: '未分析' },
+  { rid: 'R-1715', iid: null, ph: '分析范围越界', model: 'glm-5.3-flash', type: '是问题-模型问题' },
+  { rid: 'R-1732', iid: null, ph: '检索结果反序列化失败', model: 'glm-5.3', type: '非问题' },
+  { rid: 'R-1749', iid: null, ph: '输出缺少来源引用', model: 'kimi-k2', type: '是问题-错误' },
+  { rid: 'R-1766', iid: null, ph: '长文档分块上下文丢失', model: 'deepseek-v3.2', type: '未分析' },
+  { rid: 'R-1783', iid: null, ph: '报告导出结构损坏', model: 'gpt-5', type: '是问题-模型问题' },
+  { rid: 'R-1800', iid: null, ph: '重复加载同一文档', model: 'glm-5.3', type: '是问题-错误' },
+  { rid: 'R-1817', iid: null, ph: '输出缺少来源引用', model: 'glm-5.3-flash', type: '是问题-prompt缺失某些提示词' },
+];
+const TOTAL = ROWS.length, USED = ROWS.filter(r => r.type.startsWith('是问题')).length;
+const idCell = r => r.real
+  ? `<a class="idlink rep" href="#">${r.rid}</a>`
+  : `<span style="font-family:var(--mono);font-size:11px;color:var(--text-faint)">${r.rid}</span>`;
+const iidCell = r => r.real
+  ? `<a class="idlink" href="#">${r.iid}</a>`
+  : `<span style="color:var(--text-faint)">—</span>`;
+function pagerHTML(page, pages){
+  const from = (page - 1) * 8 + 1, to = Math.min(TOTAL, page * 8);
+  return `<div class="pager">
+    <button class="btn" data-pg="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
+    <span class="info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${TOTAL}</b> 份 · 当前第 ${from}–${to} 份</span>
+    <button class="btn" data-pg="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
+  </div>`;
+}
+
+/* ── 方案 A：统计摘要条 + 类型分布条 + 紧凑表格（现方案的增强版）── */
+let aPage = 1;
+function renderA(){
+  const byType = {};
+  ROWS.forEach(r => byType[r.type] = (byType[r.type] || 0) + 1);
+  const entries = Object.entries(byType);
+  const bar = entries.map(([t, n]) => `<span style="width:${(n / TOTAL * 100).toFixed(1)}%;background:${TYPE_COLOR[t]}"></span>`).join('');
+  const legend = entries.map(([t, n]) => `<span><span class="dot" style="background:${TYPE_COLOR[t]}"></span>${t} <b style="font-family:var(--mono)">${n}</b></span>`).join('');
+  const pages = Math.ceil(TOTAL / 8);
+  const rows = ROWS.slice((aPage - 1) * 8, aPage * 8).map(r => `<tr>
+    <td>${idCell(r)}</td><td>${iidCell(r)}</td><td class="ph" title="${esc(r.ph)}">${esc(r.ph)}</td>
+    <td style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${r.model}</td><td>${tchip(r.type)}</td>
+  </tr>`).join('');
+  return `<div class="a-summary">
+    <div class="a-stats">
+      <span class="st"><b>51</b><span>命中 session</span></span>
+      <span class="st"><b>${TOTAL}</b><span>问题报告</span></span>
+      <span class="st"><b>15</b><span>已分析</span></span>
+      <span class="st"><b>3</b><span>未分析</span></span>
+      <span class="st accent"><b>${USED}</b><span>「是问题」进入聚类</span></span>
+    </div>
+    <div class="typebar">${bar}</div>
+    <div class="a-legend">${legend}</div>
+    <div class="a-table"><table class="data"><thead><tr><th>报告 ID</th><th>来源问题 ID</th><th>问题现象</th><th>模型</th><th>归因</th></tr></thead><tbody>${rows}</tbody></table></div>
+    ${pagerHTML(aPage, pages)}
+  </div>`;
+}
+
+/* ── 方案 B：按归因类型分组的命令面板风列表 ── */
+const bOpen = new Set(['是问题-错误', '是问题-模型问题', '是问题-prompt缺失某些提示词']);
+function renderB(){
+  const groups = ['是问题-错误', '是问题-模型问题', '是问题-prompt缺失某些提示词', '非问题', '未分析']
+    .map(t => ({ t, rows: ROWS.filter(r => r.type === t) })).filter(g => g.rows.length);
+  return `<div class="b-box">
+    <div class="b-head">命中 <b>51</b> 个 session · <b>${TOTAL}</b> 份报告 · 「是问题」<b style="color:var(--blue)">${USED}</b> 份将进入聚类 · 按归因类型分组</div>
+    ${groups.map(g => `<div class="b-group ${bOpen.has(g.t) ? 'open' : ''}" data-g="${g.t}">
+      <div class="b-ghead"><span class="dot" style="background:${TYPE_COLOR[g.t]}"></span><b style="font-size:12.5px">${g.t}</b><span class="cnt">${g.rows.length} 份</span><span class="caret">▶</span></div>
+      <div class="b-rows">${g.rows.map(r => `<div class="b-row">${idCell(r)}${iidCell(r)}<span class="ph" title="${esc(r.ph)}">${esc(r.ph)}</span><span class="mdl">${r.model}</span></div>`).join('')}</div>
+    </div>`).join('')}
+  </div>
+  <div style="margin-top:8px;font-size:11px;color:var(--text-faint)">「非问题 / 未分析」分组默认折叠；未分析的会先补归因再进入聚类</div>`;
+}
+
+/* ── 方案 C：报告卡片网格 ── */
+let cPage = 1;
+function renderC(){
+  const pages = Math.ceil(TOTAL / 8);
+  const rows = ROWS.slice((cPage - 1) * 8, cPage * 8);
+  return `<div class="c-summary">命中 <b>51</b> 个 session · <b>${TOTAL}</b> 份问题报告 · 「是问题」<b style="color:var(--blue)">${USED}</b> 份将进入聚类</div>
+  <div class="c-grid">${rows.map(r => `<div class="c-card">
+    <div class="r1">${idCell(r)}${tchip(r.type)}</div>
+    <div class="ph">${esc(r.ph)}</div>
+    <div class="r3">${iidCell(r)}<span class="mdl">${r.model}</span></div>
+  </div>`).join('')}</div>
+  ${pagerHTML(cPage, pages)}`;
+}
+
+const NOTES = {
+  a: '<b>方案 A</b>：现方案的增强版——顶部加统计数字与归因类型分布条，表格行高压缩、加 hover，分页条不变。信息密度最高，改动最小。',
+  b: '<b>方案 B</b>：命令面板风——按归因类型分组、组头可折叠，「是问题」三组默认展开，「非问题 / 未分析」默认折叠。一眼看清类型构成，不需要分页。',
+  c: '<b>方案 C</b>：报告卡片网格——每份报告一张卡，现象两行截断，hover 浮起。最直观、适合逐份阅读，但密度最低、ID 扫视不如表格。',
+};
+const host = document.getElementById('optHost');
+const note = document.getElementById('optNote');
+let cur = 'a';
+function render(){
+  host.innerHTML = cur === 'a' ? renderA() : cur === 'b' ? renderB() : renderC();
+  note.innerHTML = NOTES[cur];
+}
+document.querySelectorAll('.switch button').forEach(b => b.onclick = () => {
+  cur = b.dataset.opt;
+  document.querySelectorAll('.switch button').forEach(x => x.classList.toggle('active', x === b));
+  render();
+});
+host.addEventListener('click', e => {
+  const pg = e.target.closest('[data-pg]');
+  if (pg) { if (cur === 'a') aPage += +pg.dataset.pg; else cPage += +pg.dataset.pg; render(); return; }
+  const gh = e.target.closest('.b-ghead');
+  if (gh) { const g = gh.parentElement.dataset.g; bOpen.has(g) ? bOpen.delete(g) : bOpen.add(g); render(); }
+  const link = e.target.closest('a.idlink');
+  if (link) e.preventDefault();
+});
+render();
+</script>
+</body>
+</html>

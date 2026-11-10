@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自进化 · UI 原型</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --bg-panel: #fafbfc;
+    --bg-card: #ffffff;
+    --border: #e2e5ea;
+    --text: #212832;
+    --text-dim: #5a6372;
+    --text-faint: #9aa2ae;
+    --blue: #2f6fe0;
+    --green: #1f9d6b;
+    --orange: #d97b1c;
+    --red: #d63c3c;
+    --purple: #8a55c9;
+    --cyan: #158a8a;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.55;
+  }
+  /* ── 顶栏 ─────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    height: 44px; padding: 0 16px;
+    background: var(--bg-panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .logo { font-weight: 650; font-size: 13.5px; letter-spacing: .2px; }
+  .env-badge {
+    font-size: 11px; color: var(--purple);
+    border: 1px solid color-mix(in srgb, var(--purple) 45%, transparent);
+    background: color-mix(in srgb, var(--purple) 12%, transparent);
+    padding: 1px 8px; border-radius: 999px;
+  }
+  .topbar .spacer { flex: 1; }
+  .navlink { font-size: 12px; color: var(--text-dim); text-decoration: none; }
+  .navlink:hover { color: var(--blue); }
+  /* ── 通用 ─────────────────────────── */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 24px 64px; }
+  .btn {
+    font: inherit; font-size: 12.5px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-card); color: var(--text-dim); padding: 6px 14px;
+  }
+  .btn:hover { border-color: #c4cbd6; color: var(--text); }
+  .btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.06); color: #fff; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .chip {
+    display: inline-block; font-size: 11px; color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px;
+    background: var(--bg-card); white-space: nowrap;
+  }
+  .chip.model { font-family: var(--mono); font-size: 10.5px; color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 35%, transparent); background: color-mix(in srgb, var(--cyan) 9%, transparent); }
+  .chip.kind { font-family: var(--mono); font-size: 10.5px; color: var(--purple); border-color: color-mix(in srgb, var(--purple) 35%, transparent); background: color-mix(in srgb, var(--purple) 9%, transparent); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .badge.running { color: var(--blue); background: color-mix(in srgb, var(--blue) 13%, transparent); }
+  .badge.done-ok { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
+  .badge.done-no { color: var(--text-dim); background: color-mix(in srgb, var(--text-faint) 22%, transparent); }
+  .badge.accepted { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
+  .badge.rejected { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
+  .badge.pending { color: var(--text-faint); background: color-mix(in srgb, var(--text-faint) 18%, transparent); }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); animation: pulse 1.4s infinite; display: inline-block; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  .mono { font-family: var(--mono); }
+  .delta-pos { color: var(--green); font-family: var(--mono); font-weight: 600; }
+  .delta-neg { color: var(--red); font-family: var(--mono); font-weight: 600; }
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.05); }
+  .sec-title { font-size: 13.5px; font-weight: 650; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .sec-title .sub { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
+  /* ── 列表页 ────────────────────────── */
+  .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .page-head h1 { font-size: 18px; font-weight: 700; }
+  .page-head .spacer { flex: 1; }
+  .page-note { font-size: 12px; color: var(--text-faint); margin-bottom: 20px; }
+  .group-label { font-size: 12px; color: var(--text-faint); font-weight: 600; margin: 18px 0 10px; display: flex; align-items: center; gap: 8px; }
+  .run-list { display: flex; flex-direction: column; gap: 12px; }
+  .run-card { padding: 14px 16px; cursor: pointer; transition: border-color .12s; }
+  .run-card:hover { border-color: var(--blue); }
+  .run-card .r1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .run-card .title { font-weight: 650; font-size: 14px; }
+  .run-card .time { margin-left: auto; font-size: 11.5px; color: var(--text-faint); font-family: var(--mono); }
+  .run-card .r2 { display: flex; gap: 6px; margin: 8px 0; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--text-dim); }
+  .run-stats { display: flex; gap: 18px; flex-wrap: wrap; }
+  .run-stats .st b { font-family: var(--mono); font-weight: 600; margin-right: 3px; }
+  .run-stats .st span { color: var(--text-faint); font-size: 11px; }
+  .run-progress { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+  .run-progress .bar { flex: 1; height: 6px; background: #e8ebf0; border-radius: 3px; overflow: hidden; }
+  .run-progress .fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 55%, #fff), var(--blue)); transition: width .4s; }
+  .run-progress .txt { font-size: 11px; color: var(--text-dim); font-family: var(--mono); white-space: nowrap; }
+  .final-line { margin-top: 10px; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  /* ── 详情页 ────────────────────────── */
+  .back { font-size: 12px; color: var(--text-dim); text-decoration: none; }
+  .back:hover { color: var(--blue); }
+  .detail-head { display: flex; align-items: center; gap: 10px; margin: 12px 0 18px; flex-wrap: wrap; }
+  .detail-head h1 { font-size: 17px; font-weight: 700; }
+  .detail-head .spacer { flex: 1; }
+  .panel { padding: 16px 18px; margin-bottom: 16px; }
+  .kv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 20px; margin-bottom: 14px; }
+  .kv .k { font-size: 11px; color: var(--text-faint); margin-bottom: 2px; }
+  .kv .v { font-size: 13px; font-weight: 600; }
+  .kv .v.big { font-family: var(--mono); font-size: 15px; }
+  .kv .v.big.accent { color: var(--blue); }
+  .typebar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin: 6px 0 8px; }
+  .typebar span { display: block; height: 100%; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-dim); }
+  .legend .dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 5px; vertical-align: -1px; }
+  .legend b { font-family: var(--mono); }
+  /* 流程 stepper */
+  .stepper { display: flex; align-items: center; gap: 0; overflow-x: auto; padding: 4px 2px; }
+  .step { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .step .ico {
+    width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; border: 1.5px solid var(--border); color: var(--text-faint); background: var(--bg-card);
+  }
+  .step.done .ico { background: var(--green); border-color: var(--green); color: #fff; }
+  .step.active .ico { border-color: var(--blue); color: var(--blue); }
+  .step .lbl { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+  .step.done .lbl { color: var(--text); }
+  .step.active .lbl { color: var(--blue); font-weight: 600; }
+  .conn { width: 34px; height: 1.5px; background: var(--border); margin: 0 8px; flex-shrink: 0; }
+  .conn.done { background: var(--green); }
+  .step.clickable { cursor: pointer; padding: 4px 8px; margin: -4px -8px; border-radius: 8px; }
+  .step.clickable:hover { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+  .step.selected .ico { background: var(--blue); border-color: var(--blue); color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 22%, transparent); }
+  .step.selected .lbl { color: var(--blue); font-weight: 700; }
+  .step-hint { font-size: 11px; color: var(--text-faint); margin-top: 8px; }
+  /* 归因卡片 */
+  .attr-card { border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; margin-bottom: 10px; }
+  .attr-card .r1 { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 6px; font-size: 13px; }
+  .attr-card .r1 .cid { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .attr-card .meta { font-size: 11.5px; color: var(--text-dim); font-family: var(--mono); }
+  /* 聚类条目 */
+  .cluster { border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; background: var(--bg-card); }
+  .cluster-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; flex-wrap: wrap; }
+  .cluster-head:hover { background: var(--bg-panel); }
+  .rank { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #fff; background: var(--orange); border-radius: 6px; padding: 1px 7px; }
+  .cluster-head .cid { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .cluster-head .ctitle { font-weight: 600; font-size: 13px; }
+  .cluster-head .meta { font-size: 11.5px; color: var(--text-dim); font-family: var(--mono); white-space: nowrap; }
+  .cluster-head .tail { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .sev { display: flex; align-items: center; gap: 6px; }
+  .sev .bar { width: 56px; height: 5px; border-radius: 3px; background: #e8ebf0; overflow: hidden; }
+  .sev .fill { height: 100%; border-radius: 3px; }
+  .caret { color: var(--text-faint); font-size: 11px; transition: transform .15s; }
+  .cluster.open .caret { transform: rotate(90deg); }
+  .cluster-body { border-top: 1px solid var(--border); padding: 14px 16px; display: none; }
+  .cluster.open .cluster-body { display: block; }
+  .cb-sec { margin-bottom: 14px; }
+  .cb-sec:last-child { margin-bottom: 0; }
+  .cb-label { font-size: 11px; color: var(--text-faint); font-weight: 600; margin-bottom: 6px; }
+  .report-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .report-chip { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; background: var(--bg-panel); }
+  .attr-line { font-size: 12px; color: var(--text-dim); }
+  .attr-line b { color: var(--text); }
+  /* diff */
+  .diff { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-family: var(--mono); font-size: 11.5px; }
+  .diff .fhead { background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 5px 10px; color: var(--text-dim); font-size: 11px; }
+  .dline { padding: 1px 10px; white-space: pre-wrap; word-break: break-all; }
+  .dline.add { background: color-mix(in srgb, var(--green) 11%, transparent); color: #146c4a; }
+  .dline.del { background: color-mix(in srgb, var(--red) 9%, transparent); color: #a02c2c; }
+  .dline.hunk { color: var(--blue); background: color-mix(in srgb, var(--blue) 7%, transparent); }
+  .dline.ctx { color: var(--text-dim); }
+  /* 评测对比 */
+  .evalcmp { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+  .evalrow { display: flex; align-items: center; gap: 10px; font-size: 11.5px; }
+  .evalrow .who { width: 92px; color: var(--text-dim); flex-shrink: 0; }
+  .evalrow .bar { flex: 1; height: 8px; background: #e8ebf0; border-radius: 4px; overflow: hidden; }
+  .evalrow .fill { height: 100%; border-radius: 4px; }
+  .evalrow .val { font-family: var(--mono); font-weight: 600; width: 44px; text-align: right; }
+  /* commit */
+  .commit { border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); background: color-mix(in srgb, var(--green) 6%, transparent); border-radius: 8px; padding: 10px 12px; font-family: var(--mono); font-size: 11.5px; }
+  .commit .hash { color: var(--green); font-weight: 700; }
+  .commit .cline { color: var(--text-dim); white-space: pre-wrap; word-break: break-all; }
+  .reject-note { border: 1px dashed var(--border); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: var(--text-dim); }
+  /* 最终结果 */
+  .verdict { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-radius: 10px; margin-bottom: 14px; }
+  .verdict.ok { background: color-mix(in srgb, var(--green) 10%, transparent); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); }
+  .verdict.no { background: color-mix(in srgb, var(--text-faint) 10%, transparent); border: 1px solid var(--border); }
+  .verdict .big { font-size: 15px; font-weight: 700; }
+  .verdict .desc { font-size: 12px; color: var(--text-dim); }
+  table.metrics { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.metrics th, table.metrics td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  table.metrics th { font-size: 11px; color: var(--text-faint); font-weight: 600; }
+  table.metrics td.num { font-family: var(--mono); }
+  .changes-list { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .changes-list .ch { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .waiting { padding: 18px; text-align: center; color: var(--text-faint); font-size: 12.5px; border: 1px dashed var(--border); border-radius: 10px; }
+  /* ── 启动向导 modal ─────────────────── */
+  .overlay { position: fixed; inset: 0; background: rgba(25,32,44,.42); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 50; overflow-y: auto; }
+  .modal { width: 720px; max-width: 100%; background: var(--bg-card); border-radius: 14px; box-shadow: 0 18px 60px rgba(20,30,50,.25); overflow: hidden; }
+  .modal-head { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .modal-head h2 { font-size: 15px; font-weight: 700; }
+  .modal-head .x { margin-left: auto; cursor: pointer; color: var(--text-faint); font-size: 16px; border: none; background: none; }
+  .modal-body { padding: 18px; max-height: 66vh; overflow-y: auto; }
+  .modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 13px 18px; border-top: 1px solid var(--border); background: var(--bg-panel); }
+  .f-row { margin-bottom: 14px; }
+  .f-label { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-bottom: 6px; }
+  .f-label .req { color: var(--red); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 12.5px; padding: 6px 16px; border: none; background: var(--bg-card); color: var(--text-dim); cursor: pointer; }
+  .seg button.active { background: var(--blue); color: #fff; font-weight: 600; }
+  select.inp, input.inp {
+    font: inherit; font-size: 12.5px; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; background: var(--bg-card); outline: none;
+  }
+  select.inp:focus, input.inp:focus { border-color: var(--blue); }
+  .f-inline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pick { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pick .opt {
+    font-size: 12px; cursor: pointer; user-select: none; border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 12px; color: var(--text-dim); background: var(--bg-card);
+    font-family: var(--mono);
+  }
+  .pick .opt.on { color: var(--text); border-color: var(--blue); background: color-mix(in srgb, var(--blue) 13%, transparent); }
+  .match-summary { border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent); background: color-mix(in srgb, var(--blue) 6%, transparent); border-radius: 10px; padding: 12px 14px; font-size: 12.5px; }
+  .match-summary b { font-family: var(--mono); }
+  table.rep { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  table.rep th, table.rep td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  table.rep th { font-size: 11px; color: var(--text-faint); font-weight: 600; }
+  table.rep td.id { font-family: var(--mono); color: var(--blue); }
+  .wz-steps { display: flex; gap: 8px; font-size: 11.5px; color: var(--text-faint); margin-bottom: 16px; }
+  .wz-steps .on { color: var(--blue); font-weight: 600; }
+  /* 仅聚类页 banner */
+  .banner { border: 1px solid color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); border-radius: 10px; padding: 11px 14px; font-size: 12.5px; color: var(--text-dim); display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .banner .spacer { flex: 1; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">Harness Evolution</span>
+  <span class="env-badge">自进化 · 原型</span>
+  <span class="spacer"></span>
+  <a class="navlink" href="index.html">← 原型入口</a>
+  <a class="navlink" href="claude-code.html">Session 浏览器 →</a>
+</div>
+<div id="app"></div>
+<div id="modal-root"></div>
+
+<script>
+/* ════════════════════════ 工具 ════════════════════════ */
+const $app = document.getElementById('app');
+const $modal = document.getElementById('modal-root');
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function hashStr(s){ let h=7; for (const c of s) h=(h*31 + c.charCodeAt(0))>>>0; return h; }
+function fmtDelta(x, unit){ const v = (x>0?'+':'') + x.toFixed(1) + (unit||''); return x >= 0 ? `<span class="delta-pos">${v}</span>` : `<span class="delta-neg">${v}</span>`; }
+function confPct(c){ return (c*100).toFixed(0) + '%'; }
+
+const TYPE_COLOR = {
+  '非问题': '#9aa2ae',
+  '是问题-错误': '#d63c3c',
+  '是问题-prompt缺失某些提示词': '#d97b1c',
+  '是问题-模型问题': '#8a55c9',
+};
+function typeChip(t){ const c = TYPE_COLOR[t] || '#9aa2ae'; return `<span class="chip" style="color:${c};border-color:color-mix(in srgb, ${c} 40%, transparent);background:color-mix(in srgb, ${c} 9%, transparent)">${esc(t)}</span>`; }
+function sevHTML(sev){
+  const pct = sev * 10;
+  const color = sev >= 8 ? 'var(--red)' : sev >= 6 ? 'var(--orange)' : 'var(--text-faint)';
+  return `<span class="sev"><span class="bar"><span class="fill" style="width:${pct}%;background:${color}"></span></span><span class="mono" style="font-size:11px;color:${color};font-weight:600">${sev.toFixed(1)}</span></span>`;
+}
+function reportIds(seed, n){ const out=[]; let h=hashStr(seed); for(let i=0;i<n;i++){ h=(h*31+17)>>>0; out.push('R-'+(1000+(h%900))); } return out; }
+
+/* ════════════════════════ 打桩数据 ════════════════════════ */
+const PATCH = {
+  deser: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -42,6 +42,13 @@ ## 检索结果处理',
+      ' 读取检索索引返回的分块后，直接使用其 content 字段。',
+      '+### 反序列化校验（新增）',
+      '+- 检索工具返回的 JSON 必须先经 safeParse 做 schema 校验；',
+      '+- 校验失败时回退到原始文本分块，并在报告中标注「未结构化」；',
+      '+- 禁止对未校验字段直接做属性访问。',
+      ' ## 报告撰写',
+    ],
+  },
+  citation: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -88,5 +88,11 @@ ## 报告撰写',
+      ' 按大纲组织结论，语言简洁。',
+      '+### 来源引用（新增）',
+      '+- 每条结论必须附 ≥1 条可溯源引用（URL 或文档段落编号）；',
+      '+- 无法溯源的结论标记为「推测」，不得与事实混排；',
+      '+- 输出前逐条检查引用可解析。',
+    ],
+  },
+  chunk: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -31,7 +31,9 @@ ## 文档读取',
+      ' 将长文档按固定 4000 字符分块。',
+      '-逐块独立总结后再合并。',
+      '+优先按章节边界分块；跨块实体保留重叠窗口 500 字符；',
+      '+合并总结前先输出「跨块事实对照表」，避免上下文丢失。',
+    ],
+  },
+  export: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -120,4 +120,8 @@ ## 报告导出',
+      ' 将最终报告写入 Markdown 文件。',
+      '+### 结构自检（新增）',
+      '+- 导出前校验标题层级连续、代码围栏成对闭合；',
+      '+- 校验失败时降级为纯文本段落并提示。',
+    ],
+  },
+  plan: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -15,5 +15,7 @@ ## 研究计划',
+      ' 将研究问题拆分为子任务。',
+      '+单个子任务预估 < 3 次工具调用时不再拆分，直接执行；',
+      '+拆分上限 8 个子任务，超出时按主题归并。',
+    ],
+  },
+  index: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -58,5 +58,8 @@ ## 检索索引',
+      ' 从本地索引读取分块。',
+      '+读取前校验索引版本与文件锁；',
+      '+读取失败自动重建一次，仍失败则明确报错退出。',
+    ],
+  },
+  reload: {
+    file: 'skills/deep-research/SKILL.md',
+    lines: [
+      '@@ -70,4 +70,7 @@ ## 文档缓存',
+      ' 按路径缓存已读文档。',
+      '+命中缓存时跳过重复加载与重复总结；',
+      '+缓存键加入文档 mtime，避免陈旧内容。',
+    ],
+  },
+  bounds: {
+    file: 'agents/Explore/AGENT.md',
+    lines: [
+      '@@ -24,6 +24,10 @@ ## 分析约束',
+      ' 对指定代码区域做只读分析。',
+      '+### 范围约束（新增）',
+      '+- 仅访问任务声明的目录与文件清单；',
+      '+- 越界访问前必须先向调用方确认；',
+      '+- 会话快照读取做边界检查，越界即返回空。',
+    ],
+  },
+  readonly: {
+    file: 'agents/Explore/AGENT.md',
+    lines: [
+      '@@ -40,4 +40,7 @@ ## 工具使用',
+      ' 可使用文件检索与读取工具。',
+      '+Explore 全程只读：禁止写入、移动、删除任何文件；',
+      '+需要修改时输出建议而非执行。',
+    ],
+  },
+};
+
+const RUNS = [
+  {
+    id: 'evo-20261019-01',
+    title: 'deep-research v2.0.0 自进化',
+    target: { kind: 'skill', name: 'deep-research', version: 'v2.0.0' },
+    window: ['2026-10-01', '2026-10-19'],
+    models: ['claude-sonnet-4.5', 'gpt-5', 'deepseek-v3.2'],
+    createdAt: '2026-10-19 18:42',
+    stats: { sessions: 128, reports: 46, analyzed: 38, unanalyzed: 8,
+      byType: { '非问题': 10, '是问题-错误': 14, '是问题-prompt缺失某些提示词': 8, '是问题-模型问题': 6 }, used: 28 },
+    progress: 6,
+    clusters: [
+      { id: 'C1', title: '检索结果反序列化失败', type: '是问题-错误', conf: 0.92, sev: 9.1, impact: 9,
+        phenomenon: '检索工具返回的分块 JSON 未做 schema 校验，直接属性访问导致反序列化异常与 undefined 引用',
+        patch: PATCH.deser, eval: { cur: 84.6, cand: 87.2 }, accepted: true, commit: 'a3f9c21' },
+      { id: 'C2', title: '输出缺少来源引用校验', type: '是问题-prompt缺失某些提示词', conf: 0.85, sev: 7.8, impact: 8,
+        phenomenon: 'prompt 未约束引用来源标注，报告中出现无法溯源的结论，用户无法核验',
+        patch: PATCH.citation, eval: { cur: 87.2, cand: 88.6 }, accepted: true, commit: '7b2e084' },
+      { id: 'C3', title: '长文档分块导致上下文丢失', type: '是问题-模型问题', conf: 0.71, sev: 6.4, impact: 6,
+        phenomenon: '固定长度分块切断跨段落实体，合并总结时事实冲突、指代丢失',
+        patch: PATCH.chunk, eval: { cur: 88.6, cand: 88.1 }, accepted: false, commit: null },
+      { id: 'C4', title: '报告导出 Markdown 结构损坏', type: '是问题-错误', conf: 0.66, sev: 4.2, impact: 4,
+        phenomenon: '标题层级跳跃、代码围栏未闭合，导出文档渲染错乱',
+        patch: PATCH.export, eval: { cur: 88.6, cand: 89.3 }, accepted: true, commit: '51f8d9a' },
+      { id: 'C5', title: '研究计划过度拆分', type: '是问题-模型问题', conf: 0.58, sev: 3.5, impact: 3,
+        phenomenon: '简单问题被拆成 10+ 个子任务，调度开销远超执行收益',
+        patch: PATCH.plan, eval: { cur: 89.3, cand: 88.2 }, accepted: false, commit: null },
+    ],
+    final: {
+      bestVersion: 'v2.0.0-best', verdict: true,
+      bestScore: 88.9, initScore: 84.3,
+      metrics: [
+        { name: '总体得分', init: '84.3', best: '88.9', delta: +4.6, unit: '' },
+        { name: '任务成功率', init: '86.5%', best: '91.2%', delta: +4.7, unit: 'pp' },
+        { name: '来源引用准确率', init: '82.0%', best: '95.1%', delta: +13.1, unit: 'pp' },
+        { name: '问题复现率', init: '11.8%', best: '3.2%', delta: -8.6, unit: 'pp' },
+        { name: '平均交互轮数', init: '15.6', best: '14.2', delta: -1.4, unit: '' },
+      ],
+    },
+  },
+  {
+    id: 'evo-20261002-02',
+    title: 'deep-research v1.9.0 自进化',
+    target: { kind: 'skill', name: 'deep-research', version: 'v1.9.0' },
+    window: ['2026-09-01', '2026-09-30'],
+    models: ['claude-sonnet-4.5', 'gpt-5'],
+    createdAt: '2026-10-02 21:15',
+    stats: { sessions: 96, reports: 31, analyzed: 27, unanalyzed: 4,
+      byType: { '非问题': 6, '是问题-错误': 9, '是问题-prompt缺失某些提示词': 7, '是问题-模型问题': 5 }, used: 21 },
+    progress: 8,
+    clusters: [
+      { id: 'C1', title: '检索索引读取失败', type: '是问题-错误', conf: 0.94, sev: 8.8, impact: 9,
+        phenomenon: '索引版本漂移导致读取 panic，未做版本校验与重建回退',
+        patch: PATCH.index, eval: { cur: 82.3, cand: 85.2 }, accepted: true, commit: '4d1a7f0' },
+      { id: 'C2', title: '输出缺少来源校验', type: '是问题-prompt缺失某些提示词', conf: 0.81, sev: 7.2, impact: 7,
+        phenomenon: '结论无引用标注，无法溯源',
+        patch: PATCH.citation, eval: { cur: 85.2, cand: 85.9 }, accepted: true, commit: '9c03bd2' },
+      { id: 'C3', title: '重复加载同一文档', type: '是问题-模型问题', conf: 0.63, sev: 5.1, impact: 5,
+        phenomenon: '同一路径文档在一次研究中被重复加载与总结 3 次以上',
+        patch: PATCH.reload, eval: { cur: 85.9, cand: 84.7 }, accepted: false, commit: null },
+    ],
+    final: {
+      bestVersion: 'v1.9.0-best', verdict: true,
+      bestScore: 85.4, initScore: 81.8,
+      metrics: [
+        { name: '总体得分', init: '81.8', best: '85.4', delta: +3.6, unit: '' },
+        { name: '任务成功率', init: '84.0%', best: '88.3%', delta: +4.3, unit: 'pp' },
+        { name: '来源引用准确率', init: '80.2%', best: '93.4%', delta: +13.2, unit: 'pp' },
+        { name: '问题复现率', init: '13.5%', best: '5.0%', delta: -8.5, unit: 'pp' },
+        { name: '平均交互轮数', init: '16.1', best: '15.0', delta: -1.1, unit: '' },
+      ],
+    },
+  },
+  {
+    id: 'evo-20261006-03',
+    title: 'Explore v1.0.1 自进化',
+    target: { kind: 'agent', name: 'Explore', version: 'v1.0.1' },
+    window: ['2026-09-15', '2026-10-05'],
+    models: ['deepseek-v3.2'],
+    createdAt: '2026-10-06 10:03',
+    stats: { sessions: 74, reports: 19, analyzed: 16, unanalyzed: 3,
+      byType: { '非问题': 5, '是问题-错误': 4, '是问题-prompt缺失某些提示词': 3, '是问题-模型问题': 4 }, used: 11 },
+    progress: 8,
+    clusters: [
+      { id: 'C1', title: '会话快照读取越界', type: '是问题-错误', conf: 0.77, sev: 6.9, impact: 7,
+        phenomenon: '读取会话快照时未做边界检查，越界后抛异常中断分析',
+        patch: PATCH.bounds, eval: { cur: 80.1, cand: 81.2 }, accepted: true, commit: 'e62b1c8' },
+      { id: 'C2', title: '分析范围越界', type: '是问题-模型问题', conf: 0.62, sev: 5.4, impact: 5,
+        phenomenon: '分析蔓延到任务未声明的目录，产生大量无关读取',
+        patch: PATCH.bounds, eval: { cur: 81.2, cand: 80.6 }, accepted: false, commit: null },
+      { id: 'C3', title: '缺少只读操作约束', type: '是问题-prompt缺失某些提示词', conf: 0.55, sev: 3.9, impact: 4,
+        phenomenon: 'prompt 未声明只读，个别轨迹出现试探性写入',
+        patch: PATCH.readonly, eval: { cur: 81.2, cand: 79.8 }, accepted: false, commit: null },
+    ],
+    final: {
+      bestVersion: 'v1.0.1-best', verdict: false,
+      bestScore: 79.8, initScore: 80.1,
+      metrics: [
+        { name: '总体得分', init: '80.1', best: '79.8', delta: -0.3, unit: '' },
+        { name: '任务成功率', init: '83.8%', best: '83.1%', delta: -0.7, unit: 'pp' },
+        { name: '越界访问次数', init: '5.2', best: '2.4', delta: -2.8, unit: '' },
+        { name: '问题复现率', init: '8.9%', best: '6.1%', delta: -2.8, unit: 'pp' },
+        { name: '平均交互轮数', init: '9.8', best: '10.4', delta: +0.6, unit: '' },
+      ],
+    },
+  },
+];
+
+// 每个 run 的报告 id 打桩
+RUNS.forEach(r => r.clusters.forEach((c, i) => {
+  const n = { 'evo-20261019-01': [12, 8, 4, 2, 2], 'evo-20261002-02': [9, 7, 5], 'evo-20261006-03': [4, 4, 3] }[r.id][i];
+  c.reportIds = reportIds(r.id + c.id, n);
+}));
+
+const TOTAL_UNITS = run => 4 + run.clusters.length + 1; // 筛选/聚类/归因/排序 + M 轮 + 终评
+const isDone = run => run.progress >= TOTAL_UNITS(run);
+const roundDone = (run, i) => run.progress >= 5 + i;
+const roundActive = (run, i) => run.progress === 4 + i;
+
+/* ════════════════════════ 路由 ════════════════════════ */
+let expanded = new Set();
+let lastSelection = null;
+let clusterOnlyData = null;
+
+function route(){
+  const h = location.hash || '#/runs';
+  if (h.startsWith('#/run/')) renderDetail(h.slice(6));
+  else if (h === '#/cluster') renderClusterOnly();
+  else renderList();
+}
+window.addEventListener('hashchange', route);
+
+/* ════════════════════════ 列表页 ════════════════════════ */
+function statusBadge(run){
+  if (!isDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行</span>`;
+  return run.final.verdict
+    ? `<span class="badge done-ok">✓ 已完成 · 自进化有效</span>`
+    : `<span class="badge done-no">已完成 · 无收益</span>`;
+}
+function runCard(run){
+  const total = TOTAL_UNITS(run);
+  const pct = Math.min(100, Math.round(run.progress / total * 100));
+  const accepted = run.clusters.filter((c, i) => roundDone(run, i) && c.accepted).length;
+  const doneRounds = run.clusters.filter((c, i) => roundDone(run, i)).length;
+  let tail;
+  if (!isDone(run)) {
+    const M = run.clusters.length;
+    const STEP_NAMES = ['筛选输入', '问题聚类', 'LLM 归因置信度', '严重程度排序', '迭代优化', '测试集终评'];
+    let stage;
+    if (run.progress < 4) stage = `第 ${run.progress + 1}/6 步 · ${STEP_NAMES[run.progress]}中…`;
+    else if (run.progress < 4 + M) stage = `第 5/6 步 · 迭代优化 · 第 ${run.progress - 3}/${M} 轮`;
+    else stage = `第 6/6 步 · 测试集终评中…`;
+    tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">${esc(stage)} · ${pct}%</span></div>`;
+  } else {
+    tail = `<div class="final-line">
+      <span style="color:var(--text-dim)">best <b class="mono">${run.final.bestScore.toFixed(1)}</b> vs 初始 <b class="mono">${run.final.initScore.toFixed(1)}</b></span>
+      ${fmtDelta(run.final.bestScore - run.final.initScore)}
+      <span style="color:var(--text-faint)">· 接纳 ${accepted}/${run.clusters.length} 个 patch</span>
+    </div>`;
+  }
+  return `<div class="card run-card" data-action="open-run" data-id="${run.id}">
+    <div class="r1">
+      <span class="title">${esc(run.title)}</span>
+      ${statusBadge(run)}
+      <span class="time">${run.createdAt}</span>
+    </div>
+    <div class="r2">
+      <span class="chip kind">${run.target.kind}:${esc(run.target.name)}@${run.target.version}</span>
+      <span class="mono" style="font-size:11px">${run.window[0]} ~ ${run.window[1]}</span>
+      ${run.models.map(m => `<span class="chip model">${esc(m)}</span>`).join('')}
+    </div>
+    <div class="run-stats">
+      <span class="st"><b>${run.stats.sessions}</b><span>session</span></span>
+      <span class="st"><b>${run.stats.reports}</b><span>问题报告</span></span>
+      <span class="st"><b>${run.stats.used}</b><span>用于进化</span></span>
+      <span class="st"><b>${run.clusters.length}</b><span>聚类</span></span>
+      <span class="st"><b>${doneRounds}/${run.clusters.length}</b><span>已跑轮次</span></span>
+      <span class="st"><b>${accepted}</b><span>已接纳</span></span>
+    </div>
+    ${tail}
+  </div>`;
+}
+function renderList(){
+  const running = RUNS.filter(r => !isDone(r));
+  const history = RUNS.filter(r => isDone(r)).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  $app.innerHTML = `<div class="wrap">
+    <div class="page-head">
+      <h1>自进化</h1>
+      <span class="spacer"></span>
+      <button class="btn primary" data-action="launch">＋ 启动自进化</button>
+    </div>
+    <p class="page-note">基于问题报告对 skill / agent 做「聚类 → 归因 → 按严重程度迭代打 patch → 评测接纳 → 测试集终评」的自动进化。全部数据为打桩样例。</p>
+    <div class="group-label"><span class="pulse"></span>正在执行（${running.length}）</div>
+    <div class="run-list">${running.length ? running.map(runCard).join('') : '<div class="waiting">当前没有正在执行的自进化</div>'}</div>
+    <div class="group-label">历史记录（${history.length}）</div>
+    <div class="run-list">${history.map(runCard).join('')}</div>
+  </div>`;
+}
+
+/* ════════════════════════ 详情页 ════════════════════════ */
+function stepperHTML(run, sel){
+  const M = run.clusters.length;
+  const roundNo = Math.min(Math.max(run.progress - 4 + 1, 1), M);
+  const steps = ['筛选输入', `问题聚类（M=${M}）`, 'LLM 归因置信度', '严重程度排序', `迭代优化（第 ${roundNo}/${M} 轮）`, '测试集终评'];
+  return `<div class="stepper">` + steps.map((s, i) => {
+    const done = unitDone(run, i), active = unitActive(run, i);
+    const st = done ? 'done' : active ? 'active' : '';
+    const clickable = done || active;
+    const ico = st === 'done' ? '✓' : (active ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
+    return `${i ? `<div class="conn ${unitDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="step ${st}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="sel-step" data-step="${i}" title="点击查看该步骤的产出"` : ''}><span class="ico">${ico}</span><span class="lbl">${esc(s)}</span></div>`;
+  }).join('') + `</div>`;
+}
+// stepper 的 6 个阶段映射到 progress 单元：0,1,2,3 一一对应；阶段4=全部 M 轮；阶段5=终评
+function unitDone(run, stage){
+  if (stage === 4) return run.progress >= 4 + run.clusters.length;
+  if (stage === 5) return isDone(run);
+  return run.progress > stage;
+}
+function unitActive(run, stage){
+  if (stage === 4) return run.progress >= 4 && run.progress < 4 + run.clusters.length;
+  if (stage === 5) return run.progress === 4 + run.clusters.length && !isDone(run);
+  return run.progress === stage;
+}
+
+function infoPanel(run){
+  const s = run.stats;
+  const total = s.analyzed || 1;
+  const typeEntries = Object.entries(s.byType);
+  const bar = typeEntries.map(([t, n]) => `<span style="width:${(n / total * 100).toFixed(1)}%;background:${TYPE_COLOR[t]}"></span>`).join('');
+  const legend = typeEntries.map(([t, n]) => `<span><span class="dot" style="background:${TYPE_COLOR[t]}"></span>${esc(t)} <b>${n}</b></span>`).join('');
+  return `<div class="card panel">
+    <div class="sec-title">目标与输入 <span class="sub">筛选条件命中的问题报告即本次进化的输入</span></div>
+    <div class="kv-grid">
+      <div class="kv"><div class="k">进化对象</div><div class="v"><span class="chip kind">${run.target.kind}:${esc(run.target.name)}</span></div></div>
+      <div class="kv"><div class="k">版本</div><div class="v mono">${run.target.version}</div></div>
+      <div class="kv"><div class="k">时间段（session 启动）</div><div class="v mono" style="font-size:12px">${run.window[0]} ~ ${run.window[1]}</div></div>
+      <div class="kv"><div class="k">模型（多选）</div><div class="v">${run.models.map(m => `<span class="chip model">${esc(m)}</span>`).join(' ')}</div></div>
+      <div class="kv"><div class="k">时间段内 session 数</div><div class="v big">${s.sessions}</div></div>
+      <div class="kv"><div class="k">问题报告数</div><div class="v big">${s.reports}</div></div>
+      <div class="kv"><div class="k">已分析 / 未分析</div><div class="v big">${s.analyzed} <span style="color:var(--text-faint)">/ ${s.unanalyzed}</span></div></div>
+      <div class="kv"><div class="k">最终用于进化的问题数</div><div class="v big accent">${s.used}</div></div>
+    </div>
+    <div class="cb-label">已分析问题的归因类型分布（${s.analyzed} 份）</div>
+    <div class="typebar">${bar}</div>
+    <div class="legend">${legend}<span style="color:var(--text-faint)">＝ 用于进化的 ${s.used} = 错误 + prompt 缺失 + 模型问题（非问题剔除）</span></div>
+  </div>`;
+}
+
+function diffHTML(patch){
+  return `<div class="diff"><div class="fhead">${esc(patch.file)}</div>${patch.lines.map(l => {
+    const cls = l.startsWith('+') ? 'add' : l.startsWith('-') ? 'del' : l.startsWith('@@') ? 'hunk' : 'ctx';
+    return `<div class="dline ${cls}">${esc(l)}</div>`;
+  }).join('')}</div>`;
+}
+
+function evalHTML(ev, accepted){
+  const maxV = Math.max(ev.cur, ev.cand) * 1.06;
+  const candColor = ev.cand >= ev.cur ? 'var(--green)' : 'var(--red)';
+  return `<div class="evalcmp">
+    <div class="evalrow"><span class="who">current skill</span><span class="bar"><span class="fill" style="width:${(ev.cur / maxV * 100).toFixed(1)}%;background:#9aa2ae"></span></span><span class="val">${ev.cur.toFixed(1)}</span></div>
+    <div class="evalrow"><span class="who">candidate</span><span class="bar"><span class="fill" style="width:${(ev.cand / maxV * 100).toFixed(1)}%;background:${candColor}"></span></span><span class="val">${ev.cand.toFixed(1)}</span></div>
+    <div style="font-size:11.5px;color:var(--text-dim)">评测集得分差 ${fmtDelta(ev.cand - ev.cur)} · ${accepted ? '有收益，candidate 已提升为 current' : '无收益，current 保持不变'}</div>
+  </div>`;
+}
+
+function commitHTML(run, c){
+  return `<div class="commit">
+    <div><span class="hash">commit ${c.commit}</span>　evolve(${esc(run.target.name)}): ${esc(c.title)}</div>
+    <div class="cline">cluster: ${c.id} · ${esc(c.title)}（${esc(c.type)}，置信度 ${confPct(c.conf)}，严重程度 ${c.sev.toFixed(1)}）
+reports: ${c.reportIds.join(', ')}
+phenomenon: ${esc(c.phenomenon)}</div>
+  </div>`;
+}
+
+function clusterHTML(run, c, i){
+  const key = run.id + ':' + c.id;
+  const open = expanded.has(key);
+  const done = roundDone(run, i), active = roundActive(run, i);
+  let stateBadge;
+  if (done) stateBadge = c.accepted ? `<span class="badge accepted">已接纳 ${fmtDelta(c.eval.cand - c.eval.cur)}</span>` : `<span class="badge rejected">未接纳 ${fmtDelta(c.eval.cand - c.eval.cur)}</span>`;
+  else if (active) stateBadge = `<span class="badge running"><span class="pulse"></span>第 ${i + 1} 轮 · 评测中</span>`;
+  else stateBadge = `<span class="badge pending">待执行</span>`;
+  let body = '';
+  if (open) {
+    body = `<div class="cluster-body">
+      <div class="cb-sec"><div class="cb-label">来源问题报告（${c.reportIds.length} 份 · 由归因结论聚类而来，同类问题才聚为一簇）</div>
+        <div class="report-chips">${c.reportIds.map(r => `<span class="report-chip">${r}</span>`).join('')}</div></div>
+      <div class="cb-sec"><div class="cb-label">LLM 归因（拉取 ${esc(run.target.name)}@${run.target.version} 源码判定问题是否真实存在）</div>
+        <div class="attr-line">判定：<b>问题真实存在</b> · 置信度 <b class="mono">${confPct(c.conf)}</b> · 严重程度 <b class="mono">${c.sev.toFixed(1)}</b>/10（置信度 × 影响面 × 报告频次综合）</div></div>
+      ${done || active ? `<div class="cb-sec"><div class="cb-label">生成的 edit patch（current → candidate）</div>${diffHTML(c.patch)}</div>` : ''}
+      ${done ? `<div class="cb-sec"><div class="cb-label">评测对比（验证集）</div>${evalHTML(c.eval, c.accepted)}</div>
+        <div class="cb-sec">${c.accepted ? `<div class="cb-label">已接纳 · commit 携带聚类 / 来源报告 / 问题现象</div>${commitHTML(run, c)}` : `<div class="reject-note">未接纳：candidate 评测无收益，current skill 保持 ${c.eval.cur.toFixed(1)}，进入下一轮。</div>`}</div>` : ''}
+      ${active ? `<div class="waiting"><span class="pulse"></span> 正在评测 candidate skill…（点右上角「模拟推进一轮」查看结果）</div>` : ''}
+      ${!done && !active ? `<div class="waiting">等待前面 ${i} 轮迭代完成后执行</div>` : ''}
+    </div>`;
+  }
+  return `<div class="cluster ${open ? 'open' : ''}">
+    <div class="cluster-head" data-action="toggle-cluster" data-key="${key}">
+      <span class="rank">#${i + 1}</span>
+      <span class="ctitle">${esc(c.title)}</span>
+      ${typeChip(c.type)}
+      <span class="meta">报告 ×${c.reportIds.length}</span>
+      <span class="meta">置信度 ${confPct(c.conf)}</span>
+      ${sevHTML(c.sev)}
+      <span class="tail">${stateBadge}<span class="caret">▶</span></span>
+    </div>
+    ${body}
+  </div>`;
+}
+
+function stepFinalHTML(run){
+  if (!isDone(run)) {
+    return `<div class="card panel"><div class="sec-title">第 6 步 · 测试集终评</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best skill 与初始 skill。</div></div>`;
+  }
+  const f = run.final;
+  const acceptedClusters = run.clusters.filter(c => c.accepted);
+  return `<div class="card panel">
+    <div class="sec-title">第 6 步 · 测试集终评 <span class="sub">M 轮迭代完成后的最终结果</span></div>
+    <div class="verdict ${f.verdict ? 'ok' : 'no'}">
+      <span class="big">${f.verdict ? '✓ 自进化有效' : '✗ 未产生收益'}</span>
+      <span class="desc">best skill <b class="mono">${esc(f.bestVersion)}</b> 测试集得分 <b class="mono">${f.bestScore.toFixed(1)}</b> vs 初始 ${run.target.version} <b class="mono">${f.initScore.toFixed(1)}</b>（${fmtDelta(f.bestScore - f.initScore)}）</span>
+    </div>
+    <div class="cb-sec"><div class="cb-label">best skill 相对初始版本的修改点（${acceptedClusters.length} 个已接纳 patch）</div>
+      <div class="changes-list">${acceptedClusters.map(c => `<div class="ch"><span class="mono" style="color:var(--green);font-weight:700">${c.commit}</span><span>[${c.id}] ${esc(c.title)}</span>${typeChip(c.type)}<span style="color:var(--text-faint);font-size:11px">来源 ${c.reportIds.length} 份报告</span></div>`).join('')}</div></div>
+    <div class="cb-sec"><div class="cb-label">测试集对比（best vs 初始）</div>
+      <table class="metrics"><thead><tr><th>指标</th><th>初始 ${run.target.version}</th><th>${esc(f.bestVersion)}</th><th>Δ</th></tr></thead>
+      <tbody>${f.metrics.map(m => `<tr><td>${esc(m.name)}</td><td class="num">${m.init}</td><td class="num">${m.best}</td><td>${fmtDelta(m.delta, m.unit)}</td></tr>`).join('')}</tbody></table></div>
+  </div>`;
+}
+
+/* ── 各步骤的内容区 ── */
+const STEP_TITLES = ['筛选输入', '问题聚类', 'LLM 归因置信度', '严重程度排序', '迭代优化', '测试集终评'];
+function stepFilterHTML(run){
+  const s = run.stats;
+  const rows = [];
+  run.clusters.forEach(c => c.reportIds.forEach(rid => rows.push({ rid, ph: c.phenomenon, model: run.models[hashStr(rid) % run.models.length], type: c.type, cluster: c.id })));
+  return `<div class="card panel">
+    <div class="sec-title">第 1 步 · 筛选输入 <span class="sub">筛选条件命中的问题报告即本次进化的输入</span></div>
+    <div class="f-inline" style="margin-bottom:10px">
+      <span class="chip kind">${run.target.kind}:${esc(run.target.name)}@${run.target.version}</span>
+      <span class="chip mono">${run.window[0]} ~ ${run.window[1]}</span>
+      ${run.models.map(m => `<span class="chip model">${esc(m)}</span>`).join('')}
+    </div>
+    <p style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px">命中 session <b class="mono">${s.sessions}</b> 个 · 问题报告 <b class="mono">${s.reports}</b> 份；剔除非问题 <b class="mono">${s.byType['非问题']}</b> 份与未分析 <b class="mono">${s.unanalyzed}</b> 份后，<b class="mono" style="color:var(--blue)">${s.used}</b> 份「是问题」报告进入聚类：</p>
+    <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>模型</th><th>归因类型</th><th>归属簇</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td class="id">${r.rid}</td><td>${esc(r.ph)}</td><td class="mono" style="color:var(--cyan)">${esc(r.model)}</td><td>${typeChip(r.type)}</td><td class="mono">${r.cluster}</td></tr>`).join('')}</tbody></table>
+  </div>`;
+}
+function stepClusterHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 2 步 · 问题聚类 <span class="sub">M=${run.clusters.length} 类 · 不同类型的问题不聚为一簇 · 展开可查看来源问题报告列表</span></div>
+    ${run.clusters.map(c => {
+      const key = run.id + ':cl' + c.id; const open = expanded.has(key);
+      return `<div class="cluster ${open ? 'open' : ''}">
+        <div class="cluster-head" data-action="toggle-cluster" data-key="${key}">
+          <span class="cid">${c.id}</span><span class="ctitle">${esc(c.title)}</span>${typeChip(c.type)}
+          <span class="meta">报告 ×${c.reportIds.length}</span>
+          <span class="tail"><span class="caret">▶</span></span>
+        </div>
+        ${open ? `<div class="cluster-body">
+          <div class="cb-sec"><div class="cb-label">来源问题报告（${c.reportIds.length} 份）</div>
+            <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>来源 session</th><th>模型</th><th>归因类型</th></tr></thead>
+            <tbody>${c.reportIds.map(rid => {
+              const h = hashStr(rid);
+              return `<tr><td class="id">${rid}</td><td>${esc(c.phenomenon)}</td><td class="mono">S-${2026 + h % 80}</td><td class="mono" style="color:var(--cyan)">${esc(run.models[h % run.models.length])}</td><td>${typeChip(c.type)}</td></tr>`;
+            }).join('')}</tbody></table></div>
+        </div>` : ''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function stepAttrHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 3 步 · LLM 归因置信度 <span class="sub">拉取 ${esc(run.target.name)}@${run.target.version}，逐类判定问题在对象中是否真实存在</span></div>
+    ${run.clusters.map(c => `<div class="attr-card">
+      <div class="r1">
+        <span class="cid">${c.id}</span><b>${esc(c.title)}</b>${typeChip(c.type)}
+        <span class="badge accepted">✓ 真实存在</span>
+        <span class="sev"><span class="bar"><span class="fill" style="width:${(c.conf * 100).toFixed(0)}%;background:var(--blue)"></span></span><span class="meta">置信度 ${confPct(c.conf)}</span></span>
+      </div>
+      <div class="attr-line">归因依据：拉取 <b>${esc(run.target.name)}@${run.target.version}</b>（<span class="mono">${esc(c.patch.file)}</span>），LLM 在对应逻辑中复现并确认该问题存在于当前版本；典型现象：${esc(c.phenomenon)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+function stepSortHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 4 步 · 严重程度排序 <span class="sub">严重程度 = 置信度 × 影响面 × 报告频次加权（0–10），降序决定第 5 步的迭代顺序</span></div>
+    <table class="metrics"><thead><tr><th>迭代顺序</th><th>聚类问题</th><th>类型</th><th>置信度</th><th>影响面</th><th>报告频次</th><th>严重程度</th></tr></thead>
+    <tbody>${run.clusters.map((c, i) => `<tr>
+      <td class="num"><span class="rank">#${i + 1}</span></td>
+      <td><b>${c.id}</b> · ${esc(c.title)}</td>
+      <td>${typeChip(c.type)}</td>
+      <td class="num">${confPct(c.conf)}</td>
+      <td class="num">${c.impact}/10</td>
+      <td class="num">${c.reportIds.length} 份</td>
+      <td>${sevHTML(c.sev)}</td>
+    </tr>`).join('')}</tbody></table>
+  </div>`;
+}
+function stepIterHTML(run){
+  return `<div class="card panel">
+    <div class="sec-title">第 5 步 · 迭代优化 <span class="sub">按严重程度降序逐轮执行 · 每轮生成 patch → 评测 → 接纳 / 拒绝</span></div>
+    ${run.clusters.map((c, i) => clusterHTML(run, c, i)).join('')}
+  </div>`;
+}
+function stepContentHTML(run, sel){
+  return [stepFilterHTML, stepClusterHTML, stepAttrHTML, stepSortHTML, stepIterHTML, stepFinalHTML][sel](run);
+}
+function defaultStep(run){
+  for (let i = 0; i < 6; i++) if (unitActive(run, i)) return i;
+  return 5;
+}
+
+let selStep = null;
+let lastDetailId = null;
+function renderDetail(id){
+  const run = RUNS.find(r => r.id === id);
+  if (!run) { location.hash = '#/runs'; return; }
+  if (lastDetailId !== id) { selStep = null; lastDetailId = id; window.scrollTo(0, 0); }
+  if (selStep === null) selStep = defaultStep(run);
+  if (![...expanded].some(k => k.startsWith(id + ':'))) {
+    const ai = run.clusters.findIndex((c, i) => roundActive(run, i));
+    expanded.add(id + ':' + run.clusters[ai >= 0 ? ai : 0].id);
+  }
+  $app.innerHTML = `<div class="wrap">
+    <a class="back" href="#/runs">← 返回自进化列表</a>
+    <div class="detail-head">
+      <h1>${esc(run.title)}</h1>
+      ${statusBadge(run)}
+      <span class="spacer"></span>
+      ${!isDone(run) ? `<button class="btn primary" data-action="advance" data-id="${run.id}">▶ 模拟推进一轮</button>` : ''}
+    </div>
+    ${infoPanel(run)}
+    <div class="card panel">
+      <div class="sec-title">流程进度 <span class="sub">当前查看：第 ${selStep + 1} 步 · ${esc(STEP_TITLES[selStep])}</span></div>
+      ${stepperHTML(run, selStep)}
+      <div class="step-hint">已完成 / 进行中的节点可点击，下方内容会切换为该步骤的产出；未到达的节点不可点击。</div>
+    </div>
+    ${stepContentHTML(run, selStep)}
+  </div>`;
+}
+
+/* ════════════════════════ 仅聚类结果页 ════════════════════════ */
+function renderClusterOnly(){
+  const d = clusterOnlyData;
+  if (!d) { location.hash = '#/runs'; return; }
+  $app.innerHTML = `<div class="wrap">
+    <a class="back" href="#/runs">← 返回自进化列表</a>
+    <div class="detail-head"><h1>问题聚类结果</h1><span class="chip kind">${d.sel.kind}:${esc(d.sel.name)}@${d.sel.version}</span></div>
+    <div class="banner">仅聚类分析：展示该对象在所选条件下识别出的问题，<b>未执行</b> patch 生成与评测迭代。<span class="spacer"></span><button class="btn primary" data-action="launch-from-cluster">以这批问题启动自进化 →</button></div>
+    <div class="card panel">
+      <div class="sec-title">输入概况</div>
+      <div class="run-stats">
+        <span class="st"><b>${d.sessions}</b><span>session</span></span>
+        <span class="st"><b>${d.reports}</b><span>问题报告</span></span>
+        <span class="st"><b>${d.used}</b><span>是问题（用于聚类）</span></span>
+        <span class="st"><b>${d.clusters.length}</b><span>聚类数 M</span></span>
+      </div>
+      <div style="margin-top:8px;font-size:11.5px;color:var(--text-faint)">时间段 ${d.sel.from} ~ ${d.sel.to} · 模型 ${d.sel.models.join(' / ') || '全部'}</div>
+    </div>
+    <div class="card panel">
+      <div class="sec-title">聚类出的 ${d.clusters.length} 类问题 <span class="sub">按严重程度降序 · 同类问题才聚为一簇</span></div>
+      ${d.clusters.map((c, i) => `<div class="cluster ${expanded.has('co:' + i) ? 'open' : ''}">
+        <div class="cluster-head" data-action="toggle-cluster" data-key="co:${i}">
+          <span class="rank">#${i + 1}</span><span class="ctitle">${esc(c.title)}</span>${typeChip(c.type)}
+          <span class="meta">报告 ×${c.reportIds.length}</span><span class="meta">置信度 ${confPct(c.conf)}</span>${sevHTML(c.sev)}
+          <span class="tail"><span class="caret">▶</span></span>
+        </div>
+        <div class="cluster-body">
+          <div class="cb-sec"><div class="cb-label">来源问题报告（${c.reportIds.length} 份）</div>
+            <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>来源 session</th><th>模型</th><th>归因类型</th></tr></thead>
+            <tbody>${c.reportIds.map(rid => {
+              const h = hashStr(rid); const ms = d.sel.models.length ? d.sel.models : MODELS;
+              return `<tr><td class="id">${rid}</td><td>${esc(c.phenomenon)}</td><td class="mono">S-${2026 + h % 80}</td><td class="mono" style="color:var(--cyan)">${esc(ms[h % ms.length])}</td><td>${typeChip(c.type)}</td></tr>`;
+            }).join('')}</tbody></table></div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ════════════════════════ 启动向导 ════════════════════════ */
+const OBJECTS = {
+  skill: ['deep-research', 'code-review', 'web-search'],
+  agent: ['general-purpose', 'Explore', 'workflow'],
+};
+const VERSIONS = {
+  'deep-research': ['v2.0.0', 'v1.9.0', 'v1.8.2'],
+  'code-review': ['v1.4.0', 'v1.3.1'],
+  'web-search': ['v0.9.3'],
+  'general-purpose': ['v1.2.0', 'v1.1.0'],
+  'Explore': ['v1.0.1', 'v1.0.0'],
+  'workflow': ['v0.8.0'],
+};
+const MODELS = ['claude-sonnet-4.5', 'gpt-5', 'deepseek-v3.2', 'kimi-k2'];
+const PHENOMENA = ['检索结果反序列化失败', '输出缺少来源引用', '长文档分块上下文丢失', '报告导出结构损坏', '研究计划过度拆分', '重复加载同一文档', '会话快照读取越界', '分析范围越界'];
+
+let wz = null;
+function openWizard(){
+  wz = { step: 1, kind: 'skill', name: 'deep-research', version: 'v2.0.0', from: '2026-10-01', to: '2026-10-19', models: new Set(MODELS.slice(0, 3)), queried: false };
+  renderWizard();
+}
+function wzMatch(){
+  const h = hashStr([wz.kind, wz.name, wz.version, wz.from, wz.to, [...wz.models].sort().join(',')].join('|'));
+  const sessions = 40 + h % 120;
+  const reports = 12 + (h >> 3) % 40;
+  const analyzed = Math.round(reports * (0.7 + (h % 20) / 100));
+  const notProblem = Math.round(analyzed * 0.25);
+  const used = analyzed - notProblem;
+  return { sessions, reports, analyzed, unanalyzed: reports - analyzed, notProblem, used };
+}
+function wzReports(){
+  const m = wzMatch();
+  const h0 = hashStr(wz.name + wz.version);
+  const rows = [];
+  for (let i = 0; i < Math.min(8, m.reports); i++) {
+    const h = (h0 * 31 + i * 17) >>> 0;
+    const analyzed = i < Math.round(8 * m.analyzed / m.reports);
+    rows.push({
+      id: 'R-' + (1000 + h % 900),
+      ph: PHENOMENA[h % PHENOMENA.length],
+      model: MODELS[h % MODELS.length],
+      type: analyzed ? ['非问题', '是问题-错误', '是问题-prompt缺失某些提示词', '是问题-模型问题'][h % 4] : '未分析',
+    });
+  }
+  return rows;
+}
+function renderWizard(){
+  const names = OBJECTS[wz.kind];
+  const vers = VERSIONS[wz.name] || ['v1.0.0'];
+  if (!names.includes(wz.name)) wz.name = names[0];
+  if (!vers.includes(wz.version)) wz.version = vers[0];
+  const m = wz.queried ? wzMatch() : null;
+  $modal.innerHTML = `<div class="overlay" data-action="close-wizard-bg">
+    <div class="modal">
+      <div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="close-wizard">✕</button></div>
+      <div class="modal-body">
+        <div class="wz-steps"><span class="${wz.step === 1 ? 'on' : ''}">① 筛选问题报告</span> → <span class="${wz.step === 2 ? 'on' : ''}">② 确认输入并启动</span></div>
+        <div class="f-row"><div class="f-label">进化对象 <span class="req">*</span></div>
+          <div class="f-inline">
+            <div class="seg">
+              <button class="${wz.kind === 'skill' ? 'active' : ''}" data-action="wz-kind" data-v="skill">skill</button>
+              <button class="${wz.kind === 'agent' ? 'active' : ''}" data-action="wz-kind" data-v="agent">agent</button>
+            </div>
+            <select class="inp" id="wz-name">${names.map(n => `<option ${n === wz.name ? 'selected' : ''}>${n}</option>`).join('')}</select>
+            <span style="color:var(--text-faint);font-size:12px">版本</span>
+            <select class="inp" id="wz-version">${vers.map(v => `<option ${v === wz.version ? 'selected' : ''}>${v}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="f-row"><div class="f-label">时间段（session 启动时间） <span class="req">*</span></div>
+          <div class="f-inline"><input class="inp" type="date" id="wz-from" value="${wz.from}"> <span style="color:var(--text-faint)">~</span> <input class="inp" type="date" id="wz-to" value="${wz.to}"></div>
+        </div>
+        <div class="f-row"><div class="f-label">模型（多选，只纳入这些模型跑出的报告）</div>
+          <div class="pick">${MODELS.map(x => `<span class="opt ${wz.models.has(x) ? 'on' : ''}" data-action="wz-model" data-v="${x}">${x}</span>`).join('')}</div>
+        </div>
+        <div class="f-row"><button class="btn" data-action="wz-query">查询匹配报告</button></div>
+        ${m ? `<div class="match-summary">
+          命中 session <b>${m.sessions}</b> 个 · 问题报告 <b>${m.reports}</b> 份（已分析 <b>${m.analyzed}</b> / 未分析 <b>${m.unanalyzed}</b>）· 其中「是问题」<b>${m.used}</b> 份将作为进化输入
+          <table class="rep"><thead><tr><th>报告 ID</th><th>问题现象</th><th>模型</th><th>归因</th></tr></thead>
+          <tbody>${wzReports().map(r => `<tr><td class="id">${r.id}</td><td>${esc(r.ph)}</td><td class="mono" style="color:var(--cyan)">${r.model}</td><td>${r.type === '未分析' ? '<span style="color:var(--text-faint)">未分析</span>' : typeChip(r.type)}</td></tr>`).join('')}</tbody></table>
+          <div style="margin-top:6px;font-size:11px;color:var(--text-faint)">预览前 8 份 · 未分析的报告会先补归因再进入聚类</div>
+        </div>` : ''}
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-action="wz-cluster" ${m ? '' : 'disabled'}>仅聚类分析</button>
+        <button class="btn primary" data-action="wz-start" ${m ? '' : 'disabled'}>启动自进化 →</button>
+      </div>
+    </div>
+  </div>`;
+}
+function wzSelection(){ return { kind: wz.kind, name: wz.name, version: wz.version, from: wz.from, to: wz.to, models: [...wz.models] }; }
+
+function templateClusters(kind){
+  // 打桩：按对象类型复用预置聚类
+  const src = kind === 'agent' ? RUNS[2].clusters : RUNS[0].clusters;
+  return src.map(c => ({ ...c, reportIds: reportIds('new' + c.id + c.title, c.reportIds.length) }));
+}
+function buildClusterOnly(){
+  const sel = wzSelection();
+  const m = wzMatch();
+  clusterOnlyData = { sel, sessions: m.sessions, reports: m.reports, used: m.used, clusters: templateClusters(sel.kind) };
+  lastSelection = sel;
+}
+function startRun(){
+  const sel = lastSelection = wzSelection();
+  const m = wzMatch();
+  const id = 'evo-new-' + Date.now().toString(36);
+  const nErr = Math.round(m.used * 0.5), nPrompt = Math.min(Math.round(m.used * 0.3), m.used - nErr);
+  const run = {
+    id, title: `${sel.name} ${sel.version} 自进化`,
+    target: { kind: sel.kind, name: sel.name, version: sel.version },
+    window: [sel.from, sel.to], models: sel.models.length ? sel.models : MODELS,
+    createdAt: '2026-10-19 19:05',
+    stats: { sessions: m.sessions, reports: m.reports, analyzed: m.analyzed, unanalyzed: m.unanalyzed,
+      byType: { '非问题': m.notProblem, '是问题-错误': nErr, '是问题-prompt缺失某些提示词': nPrompt, '是问题-模型问题': m.used - nErr - nPrompt }, used: m.used },
+    progress: 1,
+    clusters: templateClusters(sel.kind),
+    final: JSON.parse(JSON.stringify(RUNS[0].final)),
+  };
+  run.final.bestVersion = sel.version + '-best';
+  RUNS.unshift(run);
+  return run;
+}
+
+/* ════════════════════════ 事件 ════════════════════════ */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const a = el.dataset.action;
+  if (a === 'open-run') { expanded.clear(); lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
+  else if (a === 'toggle-cluster') { const k = el.dataset.key; expanded.has(k) ? expanded.delete(k) : expanded.add(k); route(); }
+  else if (a === 'sel-step') { selStep = +el.dataset.step; route(); }
+  else if (a === 'advance') {
+    const run = RUNS.find(r => r.id === el.dataset.id);
+    if (run && !isDone(run)) { run.progress++; expanded.clear(); selStep = null; renderDetail(run.id); }
+  }
+  else if (a === 'launch') openWizard();
+  else if (a === 'close-wizard') { $modal.innerHTML = ''; }
+  else if (a === 'close-wizard-bg') { if (e.target === el) $modal.innerHTML = ''; }
+  else if (a === 'wz-kind') { wz.kind = el.dataset.v; wz.name = OBJECTS[wz.kind][0]; wz.version = VERSIONS[wz.name][0]; wz.queried = false; renderWizard(); }
+  else if (a === 'wz-model') { const v = el.dataset.v; wz.models.has(v) ? wz.models.delete(v) : wz.models.add(v); wz.queried = false; renderWizard(); }
+  else if (a === 'wz-query') { syncWzInputs(); wz.queried = true; wz.step = 2; renderWizard(); }
+  else if (a === 'wz-cluster') { syncWzInputs(); buildClusterOnly(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/cluster'; }
+  else if (a === 'wz-start') { syncWzInputs(); const run = startRun(); $modal.innerHTML = ''; expanded.clear(); location.hash = '#/run/' + run.id; }
+  else if (a === 'launch-from-cluster') {
+    // 从仅聚类结果直接启动：复用当前选择
+    if (clusterOnlyData) {
+      wz = { kind: clusterOnlyData.sel.kind, name: clusterOnlyData.sel.name, version: clusterOnlyData.sel.version, from: clusterOnlyData.sel.from, to: clusterOnlyData.sel.to, models: new Set(clusterOnlyData.sel.models), queried: true };
+      const run = startRun(); expanded.clear(); location.hash = '#/run/' + run.id;
+    }
+  }
+});
+document.addEventListener('change', e => {
+  if (!wz) return;
+  if (e.target.id === 'wz-name') { wz.name = e.target.value; wz.version = (VERSIONS[wz.name] || ['v1.0.0'])[0]; wz.queried = false; renderWizard(); }
+  else if (e.target.id === 'wz-version') { wz.version = e.target.value; wz.queried = false; }
+  else if (e.target.id === 'wz-from') { wz.from = e.target.value; wz.queried = false; }
+  else if (e.target.id === 'wz-to') { wz.to = e.target.value; wz.queried = false; }
+});
+function syncWzInputs(){
+  const g = id => document.getElementById(id);
+  if (g('wz-name')) wz.name = g('wz-name').value;
+  if (g('wz-version')) wz.version = g('wz-version').value;
+  if (g('wz-from')) wz.from = g('wz-from').value;
+  if (g('wz-to')) wz.to = g('wz-to').value;
+}
+
+route();
+</script>
+</body>
+</html>

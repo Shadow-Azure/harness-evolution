@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Turn 时间线 · #15 原型</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --bg-panel: #fafbfc; --bg-card: #ffffff; --bg-inset: #f1f3f6;
+    --border: #e2e5ea;
+    --text: #212832; --text-dim: #5a6372; --text-faint: #9aa2ae;
+    --blue: #2f6fe0; --green: #1f9d6b; --orange: #d97b1c; --red: #d63c3c;
+    --purple: #8a55c9; --cyan: #158a8a;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.55;
+  }
+  .topbar {
+    display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px;
+    background: var(--bg-panel); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 30;
+  }
+  .logo { font-weight: 650; font-size: 13.5px; }
+  .env-badge {
+    font-size: 11px; color: var(--orange);
+    border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+    background: color-mix(in srgb, var(--orange) 12%, transparent);
+    padding: 1px 8px; border-radius: 999px;
+  }
+  .crumb { color: var(--text-faint); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .crumb a { color: var(--text-dim); text-decoration: none; }
+  .crumb a:hover { color: var(--text); }
+  .agent-sel {
+    font: inherit; font-size: 12px; color: var(--text);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px;
+    max-width: 340px;
+  }
+  .topbar .spacer { flex: 1; }
+  .backlink { font-size: 12px; color: var(--text-dim); text-decoration: none; }
+  .backlink:hover { color: var(--text); }
+  /* ── 工具条 ───────────────────────── */
+  .toolbar {
+    position: sticky; top: 44px; z-index: 25;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 8px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+  }
+  .fchip {
+    font-size: 11.5px; color: var(--text-dim); cursor: pointer; user-select: none;
+    border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px;
+    background: transparent; display: inline-flex; align-items: center; gap: 5px;
+  }
+  .fchip .n { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+  .fchip.on { color: var(--text); background: color-mix(in srgb, var(--blue) 12%, transparent); border-color: var(--blue); }
+  .fchip.on .n { color: var(--text-dim); }
+  .toolbar .sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+  .tbtn {
+    font: inherit; font-size: 11.5px; color: var(--text-dim); cursor: pointer;
+    background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 2px 9px;
+  }
+  .tbtn:hover { color: var(--text); }
+  .tbtn.key { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 50%, transparent); }
+  .jump { font: inherit; font-size: 11.5px; color: var(--text-dim); background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+  /* ── 时间线 ───────────────────────── */
+  .timeline { max-width: 880px; margin: 0 auto; padding: 16px 20px 80px; }
+  .turn-head {
+    position: sticky; top: 96px; z-index: 20;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 9px;
+    padding: 7px 14px; margin: 18px 0 10px;
+    font-size: 12px; box-shadow: 0 4px 14px rgba(30,40,60,.08);
+  }
+  .turn-head .tno { font-weight: 700; font-size: 12.5px; }
+  .turn-head .tmeta { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .turn-head .tok {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px;
+  }
+  /* ── 事件卡 ────────────────────────── */
+  .ev {
+    box-shadow: 0 1px 3px rgba(30,40,60,.06); background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--border);
+    border-radius: 9px; margin: 8px 0; overflow: hidden;
+  }
+  .ev.user   { border-left-color: var(--blue); }
+  .ev.agent  { border-left-color: var(--green); }
+  .ev.reason { border-left-color: var(--purple); }
+  .ev.tool   { border-left-color: var(--cyan); }
+  .ev.file   { border-left-color: var(--orange); }
+  .ev.error  { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 6%, var(--bg-card)); }
+  .ev-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; }
+  .ev-head .kind { font-weight: 650; font-size: 11.5px; }
+  .ev.user .kind { color: var(--blue); } .ev.agent .kind { color: var(--green); }
+  .ev.reason .kind { color: var(--purple); } .ev.tool .kind { color: var(--cyan); }
+  .ev.file .kind { color: var(--orange); } .ev.error .kind { color: var(--red); }
+  .ev-head .meta { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
+  .ev-head .ops { margin-left: auto; display: flex; gap: 4px; }
+  .op {
+    font: inherit; font-size: 10.5px; color: var(--text-faint); cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-radius: 5px; padding: 1px 7px;
+  }
+  .op:hover { color: var(--text); border-color: var(--border); }
+  .ev-body { padding: 4px 12px 11px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }
+  .ev-body code, .codeblock { font-family: var(--mono); font-size: 11.5px; }
+  .codeblock {
+    display: block; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 7px;
+    padding: 8px 10px; margin-top: 6px; white-space: pre; overflow-x: auto; color: var(--text-dim);
+  }
+  /* 折叠体 */
+  .collapsed-wrap { position: relative; }
+  .collapsed-wrap .fade {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 42px;
+    background: linear-gradient(transparent, var(--bg-card)); pointer-events: none;
+  }
+  .expand-btn {
+    display: block; width: 100%; font: inherit; font-size: 11px; color: var(--blue); cursor: pointer;
+    background: var(--bg-inset); border: none; border-top: 1px dashed var(--border); padding: 5px;
+  }
+  /* call_id 配对 */
+  .pair { border-left: 2px solid color-mix(in srgb, var(--cyan) 40%, transparent); margin-left: 10px; padding-left: 10px; }
+  .pair .ev { margin-left: 0; }
+  .callid {
+    font-family: var(--mono); font-size: 10px; color: var(--cyan); cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--cyan) 40%, transparent); border-radius: 5px; padding: 0 6px;
+  }
+  .callid:hover { background: color-mix(in srgb, var(--cyan) 15%, transparent); }
+  .ev.flash { outline: 2px solid var(--cyan); outline-offset: 1px; }
+  .exit-badge {
+    font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: #fff;
+    background: var(--red); border-radius: 5px; padding: 1px 7px;
+  }
+  .ok-badge {
+    font-family: var(--mono); font-size: 10.5px; color: var(--green);
+    border: 1px solid color-mix(in srgb, var(--green) 45%, transparent); border-radius: 5px; padding: 0 6px;
+  }
+  .diffstat { display: flex; gap: 10px; font-family: var(--mono); font-size: 11px; margin-top: 5px; }
+  .diffstat .add { color: var(--green); } .diffstat .del { color: var(--red); }
+  .final-tag {
+    font-size: 10px; font-weight: 700; color: var(--green);
+    border: 1px solid color-mix(in srgb, var(--green) 45%, transparent);
+    border-radius: 4px; padding: 0 5px;
+  }
+  .hidden { display: none !important; }
+  /* 原始 JSON 弹层 */
+  .rawmask {
+    position: fixed; inset: 0; background: rgba(30,35,45,.45); z-index: 100;
+    display: none; align-items: center; justify-content: center;
+  }
+  .rawmask.show { display: flex; }
+  .rawbox {
+    width: min(720px, 90vw); max-height: 76vh; overflow: auto;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+  }
+  .rawbox h3 { font-size: 13px; margin-bottom: 10px; }
+  .rawbox pre { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: pre-wrap; }
+  .rawbox .close { float: right; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="logo">Harness Evolution</span>
+  <span class="env-badge">M1 原型 · 打桩</span>
+  <span class="crumb">
+    <a href="session-explorer.html">Session 20:05:12</a> ›
+    <select class="agent-sel" id="agentSel">
+      <option>root · 主 agent · ingest 重构（5 问题）</option>
+      <option>└ explore · 门禁脚本扫描（2 问题）</option>
+      <option>└ code · ingest 管线重写（4 问题）</option>
+      <option>│ └ test · 幂等性验证（2 问题）</option>
+      <option>│ │ └ debug · 重复记录定位（1 问题）</option>
+      <option>└ docs · 文档同步修复（0 问题）</option>
+    </select>
+  </span>
+  <span class="spacer"></span>
+  <a class="backlink" href="session-explorer.html">← 返回家族摘要</a>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <span style="font-size:11px;color:var(--text-faint)">过滤：</span>
+  <!-- chips 由 JS 生成 -->
+  <span class="sep"></span>
+  <button class="tbtn key" id="keyOnlyBtn">仅用户消息与最终回复</button>
+  <button class="tbtn" id="expandAllBtn">全部展开</button>
+  <button class="tbtn" id="collapseAllBtn">全部折叠</button>
+  <span class="sep"></span>
+  <select class="jump" id="jumpSel"><option value="">跳转到 Turn…</option></select>
+</div>
+
+<div class="timeline" id="timeline"></div>
+
+<div class="rawmask" id="rawmask">
+  <div class="rawbox">
+    <button class="op close" onclick="rawmask.classList.remove('show')">关闭 ✕</button>
+    <h3>原始载荷（redacted）</h3>
+    <pre id="rawpre"></pre>
+  </div>
+</div>
+
+<script>
+// ── 打桩轨迹数据 ────────────────────────────────────────
+const TURNS = [
+  { no: 1, at: "20:05:12", dur: "38s", tokens: "9.2k", events: [
+    { type: "user", at: "20:05:12", text: "ingest 管线重复扫描同一个 rollout 会产生重复 session。请定位原因并修复，要求导入幂等：同一 rollout 重复扫描不产生重复 session 或 turn。先读 docs/architecture.md 了解数据层约束。" },
+    { type: "reason", at: "20:05:14", summary: "计划：先读架构文档与 ingest 现有实现，定位幂等性缺口…", text: "用户要求修复重复导入。约束：业务代码只依赖 repository 接口，不直接拼 SQL。\n计划：\n1. 读 docs/architecture.md 与 apps/server/src/ingest/\n2. 找到 upsert 缺失的表\n3. 加唯一约束 + INSERT OR IGNORE\n4. 用重复扫描 fixture 验证" },
+    { type: "tool", at: "20:05:15", name: "read", args: 'file_path: "docs/architecture.md"', callId: "call_a101", status: "ok",
+      output: "# 架构\n\n记录当前服务边界、数据流与数据层策略……（共 113 行，已截断展示）", outputLines: 113 },
+  ]},
+  { no: 2, at: "20:06:01", dur: "1m 12s", tokens: "21.7k", events: [
+    { type: "tool", at: "20:06:02", name: "bash", args: 'command: "ls apps/server/src/ingest/"', callId: "call_b201", status: "ok",
+      output: "scanner.ts\nparser.ts\nnormalize.ts\nwriter.ts\nscanner.spec.ts", outputLines: 5 },
+    { type: "tool", at: "20:06:09", name: "bash", args: 'command: "pnpm test -- ingest 2>&1 | tail -40"', callId: "call_b202", status: "error", exit: 1,
+      output: "FAIL apps/server/src/ingest/scanner.spec.ts\n  ✕ 重复扫描同一 rollout 不产生重复 session (412ms)\n    Expected: 1 session, Received: 2 sessions\n\nTest Suites: 1 failed, 1 passed\nTests:       1 failed, 14 passed\n…（完整输出 2,314 行）", outputLines: 2314 },
+    { type: "reason", at: "20:07:02", summary: "失败复现：scanner 未按 rollout 文件身份 upsert……", text: "测试复现了用户问题。根因假设：sessions 表插入前没有按 rollout_path 查重。\n验证：读 writer.ts 确认 insert 路径。" },
+    { type: "file", at: "20:07:10", name: "apps/server/src/ingest/writer.ts", add: 18, del: 4, note: "insertSession 改为 upsert：按 rollout_path 唯一约束查重" },
+  ]},
+  { no: 3, at: "20:07:41", dur: "42s", tokens: "12.4k", events: [
+    { type: "tool", at: "20:07:43", name: "bash", args: 'command: "pnpm test -- ingest 2>&1 | tail -10"', callId: "call_c301", status: "ok",
+      output: "Test Suites: 2 passed, 0 failed\nTests:       16 passed\n✓ 重复扫描同一 rollout 不产生重复 session", outputLines: 10 },
+    { type: "tool", at: "20:08:01", name: "mcp__sqlite__query", args: 'sql: "SELECT rollout_path, COUNT(*) FROM sessions GROUP BY 1 HAVING COUNT(*)>1"', callId: "call_c302", status: "error", exit: 1,
+      output: "MCP server \"sqlite\" not connected: ENOENT data/harness.db", outputLines: 2, mcp: true },
+    { type: "error", at: "20:08:03", title: "MCP 调用失败", text: "sqlite MCP server 未启动。降级方案：改用 repository 接口的集成测试验证，不依赖本地 db 文件。" },
+  ]},
+  { no: 4, at: "20:08:30", dur: "1m 05s", tokens: "15.1k", events: [
+    { type: "file", at: "20:08:44", name: "apps/server/src/storage/migrations/003_sessions_unique.sql", add: 6, del: 0, note: "新增 rollout_path UNIQUE 索引" },
+    { type: "tool", at: "20:09:10", name: "bash", args: 'command: "pnpm typecheck && pnpm test"', callId: "call_d401", status: "ok",
+      output: "✓ 全 workspace 类型检查通过\nTest Suites: 7 passed, 7 total\nTests:       58 passed", outputLines: 31 },
+    { type: "agent", at: "20:09:30", final: true, text: "已修复。根因是 writer.ts 的 insertSession 每次扫描都无条件 INSERT。\n\n改动：\n1. writer.ts：insertSession 改为按 rollout_path upsert（18 增 4 删）\n2. 新增迁移 003：rollout_path 唯一索引\n3. 幂等性测试已通过（重复扫描 3 次仍只有 1 条 session）\n\n遗留：sqlite MCP 本地未启动，已用集成测试替代验证，不影响结论。" },
+  ]},
+];
+
+const KIND = {
+  user:   { label: "用户",     icon: "◈" },
+  agent:  { label: "Agent 回复", icon: "◆" },
+  reason: { label: "推理",     icon: "◇" },
+  tool:   { label: "工具调用", icon: "⚙" },
+  file:   { label: "文件变更", icon: "±" },
+  error:  { label: "错误",     icon: "✕" },
+};
+const FILTERS = [
+  ["user", "用户"], ["agent", "Agent"], ["reason", "推理"],
+  ["tool", "工具"], ["file", "文件"], ["error", "错误"],
+];
+
+let activeFilters = new Set(FILTERS.map(f => f[0]));
+let keyOnly = false;
+const timeline = document.getElementById("timeline");
+const toolbar = document.getElementById("toolbar");
+const rawmask = document.getElementById("rawmask");
+
+// ── 过滤 chips（带计数）────────────────────────────────
+const counts = {};
+TURNS.forEach(t => t.events.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; }));
+let anchor = toolbar.querySelector("span[style]");
+FILTERS.forEach(([k, label]) => {
+  const c = document.createElement("span");
+  c.className = "fchip on"; c.dataset.k = k;
+  c.innerHTML = `${label} <span class="n">${counts[k] || 0}</span>`;
+  c.onclick = () => {
+    c.classList.toggle("on");
+    c.classList.contains("on") ? activeFilters.add(k) : activeFilters.delete(k);
+    render();
+  };
+  anchor.after(c); anchor = c;
+});
+
+// turn 跳转
+const jumpSel = document.getElementById("jumpSel");
+TURNS.forEach(t => {
+  const o = document.createElement("option");
+  o.value = `turn-${t.no}`; o.textContent = `Turn ${t.no} · ${t.at}`;
+  jumpSel.appendChild(o);
+});
+jumpSel.onchange = () => {
+  const el = document.getElementById(jumpSel.value);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  jumpSel.value = "";
+};
+
+document.getElementById("keyOnlyBtn").onclick = e => {
+  keyOnly = !keyOnly;
+  e.target.style.borderColor = keyOnly ? "var(--blue)" : "";
+  e.target.style.background = keyOnly ? "color-mix(in srgb, var(--blue) 12%, transparent)" : "";
+  render();
+};
+document.getElementById("expandAllBtn").onclick = () => { document.querySelectorAll(".ev.collapsed").forEach(toggleEv); };
+document.getElementById("collapseAllBtn").onclick = () => {
+  document.querySelectorAll(".ev.collapsible:not(.collapsed)").forEach(toggleEv);
+};
+
+function showRaw(ev) {
+  document.getElementById("rawpre").textContent = JSON.stringify(ev, null, 2);
+  rawmask.classList.add("show");
+}
+rawmask.onclick = e => { if (e.target === rawmask) rawmask.classList.remove("show"); };
+
+function flashPair(callId) {
+  document.querySelectorAll(`[data-callid="${callId}"]`).forEach(el => {
+    el.classList.add("flash");
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => el.classList.remove("flash"), 1200);
+  });
+}
+
+function toggleEv(card) {
+  const body = card.querySelector(".ev-body");
+  const wrap = card.querySelector(".collapsed-wrap");
+  const btn = card.querySelector(".expand-btn");
+  const nowCollapsed = card.classList.toggle("collapsed");
+  if (nowCollapsed) {
+    card.dataset.full = body.innerHTML;
+    const summary = card.dataset.summary;
+    body.innerHTML = summary ? `<span style="color:var(--text-faint)">${summary}</span>` : "";
+    if (btn) btn.remove();
+    if (wrap) wrap.classList.remove("collapsed-wrap");
+  } else {
+    body.innerHTML = card.dataset.full;
+    restoreExtras(card);
+  }
+}
+
+function restoreExtras(card) {
+  // 重新绑定展开按钮与遮罩
+  const body = card.querySelector(".ev-body");
+  const lines = +card.dataset.lines || 0;
+  if (lines > 15) {
+    body.classList.add("collapsed-wrap");
+    body.style.maxHeight = "220px"; body.style.overflow = "hidden";
+    const fade = document.createElement("div"); fade.className = "fade";
+    const btn = document.createElement("button");
+    btn.className = "expand-btn"; btn.textContent = `展开全部 ${lines.toLocaleString()} 行 ▾`;
+    btn.onclick = () => {
+      body.style.maxHeight = ""; body.style.overflow = "";
+      fade.remove(); btn.remove();
+    };
+    body.appendChild(fade); body.after(btn);
+  }
+}
+
+function evCard(t, e) {
+  const k = KIND[e.type];
+  const card = document.createElement("div");
+  let cls = `ev ${e.type}`;
+  if (e.callId) card.dataset.callid = e.callId;
+  card.className = cls;
+
+  let headMeta = `<span class="meta">${e.at}</span>`;
+  if (e.callId) headMeta += `<span class="callid" onclick="flashPair('${e.callId}')" title="点击定位配对卡片">${e.callId}</span>`;
+  if (e.status === "error") headMeta += `<span class="exit-badge">exit ${e.exit ?? 1}</span>`;
+  if (e.status === "ok" && e.type === "tool") headMeta += `<span class="ok-badge">ok</span>`;
+  if (e.mcp) headMeta += `<span class="meta" style="color:var(--purple)">MCP</span>`;
+  if (e.final) headMeta += `<span class="final-tag">最终回复</span>`;
+
+  let bodyHtml = "";
+  let collapsible = false, summary = "";
+  if (e.type === "user" || e.type === "agent") bodyHtml = e.text;
+  if (e.type === "reason") {
+    bodyHtml = e.text; collapsible = true; summary = e.summary;
+  }
+  if (e.type === "tool") {
+    bodyHtml = `<code style="color:var(--cyan)">${e.name}</code>  <span style="color:var(--text-faint)" class="codeblock-args">${e.args}</span>`;
+    if (e.output) bodyHtml += `<span class="codeblock">${e.output}</span>`;
+  }
+  if (e.type === "file") {
+    bodyHtml = `<code>${e.name}</code><div style="color:var(--text-dim);margin-top:3px">${e.note}</div>
+      <div class="diffstat"><span class="add">+${e.add}</span><span class="del">−${e.del}</span></div>`;
+  }
+  if (e.type === "error") bodyHtml = `<b>${e.title}</b>\n${e.text}`;
+
+  card.innerHTML = `
+    <div class="ev-head">
+      <span class="kind">${k.icon} ${k.label}</span>
+      ${e.type === "tool" ? `<code style="font-size:11.5px;color:var(--text)">${e.name}</code>` : ""}
+      ${headMeta}
+      <span class="ops">
+        <button class="op" onclick="navigator.clipboard.writeText(this.closest('.ev').querySelector('.ev-body').innerText)">复制</button>
+        <button class="op" data-raw>原始 JSON</button>
+        ${collapsible ? `<button class="op" data-fold>折叠</button>` : ""}
+      </span>
+    </div>
+    <div class="ev-body">${bodyHtml}</div>`;
+
+  card.querySelector("[data-raw]").onclick = () => showRaw(e);
+  if (collapsible) {
+    card.classList.add("collapsible");
+    card.dataset.summary = summary;
+    card.querySelector("[data-fold]").onclick = () => toggleEv(card);
+    toggleEv(card); // 推理默认折叠
+  }
+  if (e.outputLines > 15) {
+    card.dataset.lines = e.outputLines;
+    restoreExtras(card);
+  }
+  return card;
+}
+
+function render() {
+  timeline.innerHTML = "";
+  TURNS.forEach(t => {
+    const visible = t.events.filter(e => {
+      if (keyOnly && !(e.type === "user" || (e.type === "agent" && e.final))) return false;
+      return activeFilters.has(e.type);
+    });
+    if (visible.length === 0) return;
+    const head = document.createElement("div");
+    head.className = "turn-head"; head.id = `turn-${t.no}`;
+    head.innerHTML = `
+      <span class="tno">Turn ${t.no}</span>
+      <span class="tmeta">${t.at} · 耗时 ${t.dur} · ${visible.length}/${t.events.length} 个事件</span>
+      <span class="tok">Σ ${t.tokens} tok</span>`;
+    timeline.appendChild(head);
+    // call_id 配对分组：工具调用与输出在同一张卡内，这里用 pair 容器把同 turn 内连续工具事件归组
+    let pairHost = null;
+    visible.forEach(e => {
+      const card = evCard(t, e);
+      if (e.type === "tool") {
+        if (!pairHost) { pairHost = document.createElement("div"); pairHost.className = "pair"; timeline.appendChild(pairHost); }
+        pairHost.appendChild(card);
+      } else {
+        pairHost = null;
+        timeline.appendChild(card);
+      }
+    });
+  });
+}
+render();
+</script>
+</body>
+</html>

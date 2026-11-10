@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>React Flow 家族树原型</title>
+<link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.12.0/dist/style.css">
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --border: #e2e5ea;
+    --text: #212832; --dim: #5a6372; --faint: #9aa2ae;
+    --blue: #2f6fe0; --green: #1f9d6b; --orange: #d97b1c; --red: #d63c3c;
+    --purple: #8a55c9; --cyan: #158a8a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 13px; }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .topbar h1 { font-size: 13.5px; font-weight: 650; }
+  .badge { font-size: 10.5px; color: var(--orange); border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent); background: color-mix(in srgb, var(--orange) 10%, transparent); border-radius: 999px; padding: 1px 8px; }
+  .sess-btn { font: inherit; font-size: 12px; color: var(--dim); background: transparent; border: 1px solid var(--border); border-radius: 7px; padding: 3px 10px; cursor: pointer; }
+  .sess-btn.active { color: var(--text); border-color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+  .topbar .spacer { flex: 1; }
+  .hint { font-size: 11px; color: var(--faint); }
+  .canvas { flex: 1; position: relative; min-height: 0; }
+  /* 节点 */
+  .rf-agent { padding: 2px 0; }
+  .rf-label { font-size: 11px; color: var(--dim); white-space: nowrap; margin-bottom: 4px; background: #fff; }
+  .rf-bar { position: relative; height: 18px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 16%, #fff); }
+  .rf-agent.sub .rf-bar { border-color: color-mix(in srgb, var(--purple) 40%, transparent); background: color-mix(in srgb, var(--purple) 10%, #fff); }
+  .rf-agent.wf .rf-bar { border-color: color-mix(in srgb, var(--orange) 40%, transparent); background: color-mix(in srgb, var(--orange) 12%, #fff); }
+  .rf-agent.group { border: 1px dashed var(--faint); border-radius: 8px; padding: 8px 10px; text-align: center; font-size: 11px; color: var(--dim); cursor: pointer; background: var(--panel); }
+  .rf-mark { position: absolute; top: 50%; width: 8px; height: 8px; transform: translate(-50%, -50%) rotate(45deg); border-radius: 1px; }
+  .rf-mark.skill { background: var(--cyan); }
+  .rf-mark.agent, .rf-mark.workflow { background: var(--purple); }
+  .rf-lines { font-size: 10px; color: var(--faint); margin-top: 2px; }
+  .rf-skill-wrap { display: flex; justify-content: flex-end; }
+  .rf-skill { display: inline-flex; align-items: center; gap: 5px; width: 100%; box-sizing: border-box; font-size: 10.5px; color: var(--cyan); background: #fff; border: 1px dashed color-mix(in srgb, var(--cyan) 55%, transparent); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+  .rf-skill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rf-skill-dot { width: 6px; height: 6px; border-radius: 1px; background: var(--cyan); transform: rotate(45deg); }
+  .rf-finding { border: 1px solid #e05555; color: #c03434; background: #fff5f5; border-radius: 6px; padding: 3px 8px; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 1px 2px rgba(224,85,85,.12); }
+  .rf-legend { position: absolute; left: 12px; bottom: 12px; z-index: 5; display: flex; gap: 14px; font-size: 10.5px; color: var(--faint); background: color-mix(in srgb, var(--panel) 88%, transparent); padding: 4px 9px; border-radius: 6px; border: 1px solid var(--border); }
+  .rf-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .error { padding: 20px; color: var(--red); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <h1>家族树 · React Flow 版</h1>
+    <span class="badge">@xyflow/react 12.12 + htm（免构建）</span>
+    <span class="spacer"></span>
+    <span id="sessions"></span>
+    <span class="spacer"></span>
+    <span class="hint">◆ Skill 触发 · ▾ Subagent 触发 · <b style="color:var(--red);font-weight:400">■</b> 问题发现 · 滚轮缩放 · 拖拽平移</span>
+  </div>
+  <div class="canvas" id="canvas"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.2.0",
+    "react/": "https://esm.sh/react@19.2.0/",
+    "react/jsx-runtime": "https://esm.sh/react@19.2.0/jsx-runtime",
+    "react/jsx-dev-runtime": "https://esm.sh/react@19.2.0/jsx-dev-runtime",
+    "react-dom": "https://esm.sh/react-dom@19.2.0?external=react",
+    "react-dom/client": "https://esm.sh/react-dom@19.2.0/client?external=react",
+    "@xyflow/react": "https://esm.sh/@xyflow/react@12.12.0?external=react,react-dom",
+    "htm": "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
+
+<script type="module">
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  ReactFlow, Background, Controls, MiniMap, Handle, Position,
+  useNodesState, useEdgesState, MarkerType,
+} from "@xyflow/react";
+import htm from "htm";
+const html = htm.bind(React.createElement);
+
+/* ── 真实数据：4 条 llm-wiki 会话的递归家族树 ── */
+const TREE = {"050b81ba-9621-4992-84fe-106ae46eb36b":{"main":{"lines":172,"events":[{"line":11,"kind":"skill","name":"deep-research"},{"line":27,"kind":"skill","name":"superpowers:dispatching-parallel-agents"},{"line":33,"kind":"agent","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364"},{"line":34,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727"},{"line":35,"kind":"agent","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de"},{"line":36,"kind":"agent","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f"},{"line":37,"kind":"agent","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa"},{"line":68,"kind":"agent","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6"}]},"subs":[{"id":"a2895fbff994319b9","type":"general-purpose","desc":"检索工具层四项+综述","toolUseId":"call_721e8f24e31a43f2ae4a729f","lines":218,"events":[],"children":[]},{"id":"a1e781fa406447bd1","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_c3d67fda22ff475ca33c0727","lines":67,"events":[],"children":[]},{"id":"a1b56297d1a40a4a3","type":"general-purpose","desc":"检索CopilotKit与AgentLoop","toolUseId":"call_a889b3257feb452b9cf626de","lines":102,"events":[],"children":[]},{"id":"ac2160daf0faacf0e","type":"general-purpose","desc":"检索EverMind与Hermes","toolUseId":"call_184b9af0f222466c829d47a6","lines":115,"events":[],"children":[]},{"id":"aea6f9b15b1c40b11","type":"general-purpose","desc":"检索Skill层五方法","toolUseId":"call_ae52e1ef5ee241ada8121daa","lines":100,"events":[],"children":[]},{"id":"a52da9da97e2dfb47","type":"general-purpose","desc":"检索模型层三方法","toolUseId":"call_e53aacffd75243cfb4149364","lines":155,"events":[],"children":[]}]},"cb819c5b-286f-4eab-a681-4ba5414b844d":{"main":{"lines":765,"events":[{"line":24,"kind":"skill","name":"deep-research"},{"line":30,"kind":"workflow","name":"deep-research","toolUseId":"call_ca6fc28804434e5090e6a5e2"},{"line":86,"kind":"workflow","name":"workflow","toolUseId":"call_fafc9d21a30c430981d5baec"},{"line":96,"kind":"workflow","name":"workflow","toolUseId":"call_40746578c3e749b59f248000"}]},"subs":[{"id":"wf_1fb8ca61-c70","type":"workflow","desc":"56 个 workflow 子 agent","lines":0,"events":[],"children":[{"id":"ac36d6e975490864d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"a5a83bdb710566b2d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a6932a5807e8fe835","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a11c18476a850547b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"acd03e893a30ba3d3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"aa3767120db81c557","type":"workflow-subagent","desc":"","toolUseId":null,"lines":25,"events":[],"children":[]},{"id":"a07fd64b88a9fe721","type":"workflow-subagent","desc":"","toolUseId":null,"lines":20,"events":[],"children":[]},{"id":"a75602e08fcc4e0cd","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a16a4a2f8f83ebaf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":30,"events":[],"children":[]},{"id":"a096d8db77b01a2c5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"ae8dfe8fb668716fa","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"aa44961ca580ca971","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5de0c4193f235a20","type":"workflow-subagent","desc":"","toolUseId":null,"lines":15,"events":[],"children":[]},{"id":"a867160aa06bdb8c3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a24df81ee6d95db89","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a2a7fe251d67d3f00","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a6ccc55785f59078e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a205180ccb6595676","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a9dfeef3d5a082ea8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a88f36ebc60749319","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]},{"id":"a6b4c4c5610ee7220","type":"workflow-subagent","desc":"","toolUseId":null,"lines":8,"events":[],"children":[]},{"id":"a7ec3cc0abccf8f18","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a147c8d32bc363abc","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a8dfda2ac8a92b03f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a069628a22668b5bf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ab4ac00a69d52afdf","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"af96fa5b003c9ba6a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a58d359839c447fc9","type":"workflow-subagent","desc":"","toolUseId":null,"lines":10,"events":[],"children":[]},{"id":"a51f79677edf27d40","type":"workflow-subagent","desc":"","toolUseId":null,"lines":27,"events":[],"children":[]},{"id":"addf2ae8cc3cdc8a0","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a5f5d43792060d25b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":26,"events":[],"children":[]},{"id":"a4ab3257583e408f5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac1b3cdaa9f4a0622","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a07750dfd9e1dbc31","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"ad5324b3bbbe5c9fb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"ac9094285f2ae7124","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5b0a0b71a7d15b4a","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"aaf97c90e144c2962","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"a04db93ae03781487","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a4165f215195b2771","type":"workflow-subagent","desc":"","toolUseId":null,"lines":14,"events":[],"children":[]},{"id":"ac58eff7336630fd8","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a42023f24122896d7","type":"workflow-subagent","desc":"","toolUseId":null,"lines":16,"events":[],"children":[]},{"id":"a5f24ff936197abf5","type":"workflow-subagent","desc":"","toolUseId":null,"lines":34,"events":[],"children":[]},{"id":"a1daa453c10c94610","type":"workflow-subagent","desc":"","toolUseId":null,"lines":6,"events":[],"children":[]},{"id":"a751831cbb4561874","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a6d5156449ac4d54b","type":"workflow-subagent","desc":"","toolUseId":null,"lines":36,"events":[],"children":[]},{"id":"ac4b110729444739e","type":"workflow-subagent","desc":"","toolUseId":null,"lines":17,"events":[],"children":[]},{"id":"a1ed323809b4de3ab","type":"workflow-subagent","desc":"","toolUseId":null,"lines":23,"events":[],"children":[]},{"id":"a2648bb186362666c","type":"workflow-subagent","desc":"","toolUseId":null,"lines":28,"events":[],"children":[]},{"id":"a9b38066ce599d0e3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":42,"events":[],"children":[]},{"id":"a609a6b4a290624e1","type":"workflow-subagent","desc":"","toolUseId":null,"lines":18,"events":[],"children":[]},{"id":"adf051df0e301c41d","type":"workflow-subagent","desc":"","toolUseId":null,"lines":19,"events":[],"children":[]},{"id":"a5063dc82b8cb21eb","type":"workflow-subagent","desc":"","toolUseId":null,"lines":13,"events":[],"children":[]},{"id":"a1e4c45c611d7b873","type":"workflow-subagent","desc":"","toolUseId":null,"lines":12,"events":[],"children":[]},{"id":"a18da33bd1200e0f3","type":"workflow-subagent","desc":"","toolUseId":null,"lines":22,"events":[],"children":[]},{"id":"a163628a06fde4a4f","type":"workflow-subagent","desc":"","toolUseId":null,"lines":9,"events":[],"children":[]}],"toolUseId":null,"line":30}]},"2f5e7ae8-c04a-46d2-a17a-0b431ef17d44":{"main":{"lines":245,"events":[{"line":70,"kind":"agent","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58"},{"line":71,"kind":"agent","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e"},{"line":72,"kind":"agent","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc"},{"line":73,"kind":"agent","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2"}]},"subs":[{"id":"a4e4e3c14f6f54077","type":"Explore","desc":"分析工具管线与安全域","toolUseId":"call_df693038d0b94deba3aa9fcc","lines":123,"events":[],"children":[]},{"id":"a7c4a9def54b2fa40","type":"Explore","desc":"分析 agent loop 与 LLM 层","toolUseId":"call_f83509dc96064516b918ab58","lines":148,"events":[],"children":[]},{"id":"aefdc8337a8afc051","type":"Explore","desc":"分析自进化与协调面","toolUseId":"call_2b3ef841c8034e90b2ce79a2","lines":118,"events":[],"children":[]},{"id":"a131d7b1bd65cf691","type":"Explore","desc":"分析 session 域实现","toolUseId":"call_baa0925a3c294e1da456a20e","lines":193,"events":[],"children":[]}]},"3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5":{"main":{"lines":390,"events":[{"line":15,"kind":"agent","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958"},{"line":16,"kind":"agent","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6"}]},"subs":[{"id":"ac5d429d5b911f846","type":"Explore","desc":"分析 claudian 代码仓","toolUseId":"call_86730e8c925e4d9db00b0958","lines":58,"events":[],"children":[]},{"id":"a67115fa5b0005ae5","type":"Explore","desc":"分析 deepseek-harness 插件机制","toolUseId":"call_4625441ea18541368c324be6","lines":38,"events":[],"children":[]}]},"demo-nested":{"main":{"lines":100,"events":[{"line":20,"kind":"agent","desc":"子任务 A","toolUseId":"call_A"},{"line":80,"kind":"agent","desc":"子任务 B","toolUseId":"call_B"}]},"subs":[{"id":"A","type":"general-purpose","desc":"子任务 A","lines":60,"toolUseId":"call_A","events":[{"line":30,"kind":"agent","desc":"子任务 C","toolUseId":"call_C"}],"children":[{"id":"C","type":"Explore","desc":"子任务 C","lines":20,"toolUseId":"call_C","events":[],"findings":["子任务 C subagent发现前置步骤存在问题：快照缺少 turn 边界"],"children":[]}]},{"id":"B","type":"general-purpose","desc":"子任务 B","lines":40,"toolUseId":"call_B","events":[{"line":15,"kind":"skill","name":"review-changes"}],"children":[]}]}};
+
+/* 精确测量文字宽度（与药丸同字体），避免药丸留白 */
+const _mc = document.createElement("canvas").getContext("2d");
+function measureW(text, font) {
+  _mc.font = font;
+  return _mc.measureText(text).width;
+}
+function skillPillW(name) {
+  const font = '10.5px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  return Math.round(measureW(name, font) + 40); // 内边距 20 + 圆点 6 + 间距 5 + 边框/余量
+}
+function agentLabelW(label) {
+  const font = '11px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+  return Math.round(measureW(label, font));
+}
+
+const LABEL_FONT = '11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+const SESSIONS = [{"id":"050b81ba-9621-4992-84fe-106ae46eb36b","short":"自进化方法检索"},{"id":"cb819c5b-286f-4eab-a681-4ba5414b844d","short":"视频分析调研"},{"id":"2f5e7ae8-c04a-46d2-a17a-0b431ef17d44","short":"DeepSeek Harness"},{"id":"3f8ed3dd-ff2c-4510-b944-b3f3e2edf8f5","short":"Obsidian 插件"},{"id":"demo-nested","short":"嵌套示例"}];
+
+const NODE_W = (lines, maxLines) => Math.max(120, Math.min(560, Math.round((lines || 0) / maxLines * 540)));
+
+/* 把递归树转成 React Flow 的 nodes/edges；位置=触发点，宽度∝日志行数 */
+function buildGraph(sid, expanded) {
+  const d = TREE[sid];
+  const flat = [];
+  (function walk(list) { list.forEach(n => { flat.push(n); walk(n.children || []); }); })(d.subs);
+  const maxLines = Math.max(d.main.lines, ...flat.map(n => n.lines || 0), 1);
+  const wOf = l => NODE_W(l, maxLines);
+  const nodes = [], edges = [];
+  const rootW = wOf(d.main.lines);
+  nodes.push({
+    id: "main", type: "agent",
+    position: { x: 60, y: 40 },
+    data: { label: "主会话", kind: "root", w: rootW, visualW: rootW, lines: d.main.lines,
+            marks: marksOf(d.main.events, d.main.lines) },
+  });
+  const skillNodes = [];
+  const explicitAgentFindings = [];  // 数据里显式声明的「某个 agent 发现了问题」
+  const branchVSegs = [];            // 父→子连线的竖直段；问题卡无脑放右边会横穿兄弟分支
+  const isDemo = sid === "demo-nested";
+  let cursorY = 40 + 130;
+  let row = 1;          // 行号：决定横条起点右移量
+  let lastX = 60;       // 保证起点严格递增，形成阶梯
+  const INDENT = 46, MIN_STEP = 38;
+
+  function marksOf(events, lines) {
+    return (events || []).map((e, i) => ({
+      id: i, kind: e.kind, line: e.line, name: e.name, desc: e.desc,
+      pct: Math.min(0.98, (e.line || 0) / Math.max(lines, 1)),
+      title: `L${e.line} · ${e.kind === "skill" ? e.name : (e.desc || e.name || "")}`,
+    }));
+  }
+
+  function childEventIndex(parentEvents, child) {
+    if (!parentEvents) return -1;
+    if (child.toolUseId) {
+      const i = parentEvents.findIndex(e => e.toolUseId === child.toolUseId);
+      if (i >= 0) return i;
+    }
+    return parentEvents.findIndex(e => e.kind === "workflow");
+  }
+
+  function addSkillNodes(nodeId, nodeX, nodeY, nodeW, events, lines) {
+    let k = 0;  // 同一节点上的多个 skill 竖向堆叠，避免互相压住
+    (events || []).forEach((e, i) => {
+      if (e.kind !== "skill") return;
+      const name = e.name || "skill";
+      const pw = skillPillW(name);  // 实测宽度，药丸填满不留白
+      const px = nodeX - pw - 14;   // 右缘在会话条左侧 14px
+      const sid = `${nodeId}-skill-${i}`;
+      nodes.push({
+        id: sid, type: "skill",
+        position: { x: px, y: nodeY + 50 + k * 66 },
+        data: { name, line: e.line, w: pw, findings: e.findings || [] },
+      });
+      skillNodes.push({ sid, agent: nodeId, name, x: px, y: nodeY + 50 + k * 66, w: pw, findings: e.findings || [] });
+      k += 1;
+      edges.push({
+        id: `e-${nodeId}-skill-${i}`,
+        source: nodeId, sourceHandle: "h" + i,
+        target: sid, targetHandle: "in",
+        type: "skilledge",
+        style: { stroke: "#158a8a", strokeWidth: 1.2, strokeDasharray: "4 3" },
+      });
+    });
+  }
+
+  function rowX(trigger) {
+    const x = Math.max(lastX + MIN_STEP, 40 + row * INDENT, trigger + 14);
+    lastX = x;
+    return x;
+  }
+
+  function place(parentNode, parentData, children) {
+    if (!children || !children.length) return;
+    // 按触发日志行号排序：子节点自身没有 line，需要用 toolUseId 回查父节点事件
+    const lineOf = (c) => {
+      if (c.line != null) return c.line;
+      if (c.toolUseId && parentData.events) {
+        const e = parentData.events.find(x => x.toolUseId === c.toolUseId);
+        if (e) return e.line;
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
+    const sorted = children
+      .map((c, i) => ({ c, i, k: lineOf(c) }))
+      .sort((x, y) => (x.k - y.k) || (x.i - y.i))
+      .map(x => x.c);
+    const tooMany = sorted.length > 8 && !expanded[parentNode];
+    if (tooMany) {
+      const gid = parentNode + "-group";
+      const gi = Math.max(childEventIndex(parentData.events, sorted[0]), 0);
+      const x = rowX(parentData.x + ((parentData.events?.[gi]?.line ?? 0) / Math.max(parentData.lines, 1)) * parentData.w);
+      nodes.push({
+        id: gid, type: "collapse",
+        position: { x, y: cursorY },
+        data: { label: `${sorted.length} 个子 agent · 点击展开`, parent: parentNode },
+      });
+      edges.push({
+        id: `e-${parentNode}-${gid}`,
+        source: parentNode, sourceHandle: "h" + gi,
+        target: gid, targetHandle: "in",
+        type: "orth", data: { idx: 0 }, style: { stroke: "#c4cbd6", strokeWidth: 1.4 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#c4cbd6", width: 12, height: 12 },
+      });
+      cursorY += 104; row += 1;
+      return;
+    }
+    // 触发点相近的兄弟共用一个竖直通道：否则 L70~L73 这种连续触发会叠成一条灰带
+    const childInfo = sorted.map(c => {
+      const evIdx = childEventIndex(parentData.events, c);
+      const pct = evIdx >= 0 ? Math.min(0.98, (parentData.events[evIdx].line || 0) / Math.max(parentData.lines, 1)) : 0.45;
+      return { c, evIdx, triggerX: parentData.x + pct * parentData.w };
+    });
+    const clusters = [];
+    childInfo.forEach(info => {
+      const last = clusters[clusters.length - 1];
+      if (last && info.triggerX - last.maxTx <= 24) {
+        last.maxTx = info.triggerX;
+        last.items.push(info);
+      } else {
+        clusters.push({ minTx: info.triggerX, maxTx: info.triggerX, items: [info] });
+      }
+    });
+    const trunkOf = new Map();
+    clusters.forEach(cl => cl.items.forEach(it => trunkOf.set(it.c.id, { evIdx: cl.items[0].evIdx })));
+
+    childInfo.forEach(({ c, evIdx, triggerX }, idx) => {
+      c.__idx = idx;
+      const nodeY = cursorY;
+      const x = rowX(triggerX);
+      const trunk = trunkOf.get(c.id);
+      const sourceEvIdx = Math.max(trunk.evIdx, 0);
+      const sourceMark = parentData.events?.[sourceEvIdx];
+      const trunkX = sourceMark
+        ? parentData.x + Math.min(0.98, (sourceMark.line || 0) / Math.max(parentData.lines, 1)) * parentData.w
+        : triggerX;
+      const w = wOf(c.lines);
+      const label = `${c.type}${c.desc ? " · " + c.desc : ""}${evIdx >= 0 ? " · L" + parentData.events[evIdx].line : ""}`;
+      const visualW = Math.max(w, agentLabelW(label) + 60);  // 标签比条宽时给问题卡留出标签尾部空间
+      const nodeMarks = (c.type === "workflow" && (!c.events || !c.events.length))
+        ? [{ id: 0, kind: "workflow", pct: 0.5, title: "workflow run" }]
+        : marksOf(c.events, c.lines || 0);
+      nodes.push({
+        id: c.id, type: "agent",
+        position: { x, y: nodeY },
+        data: {
+          label,
+          kind: c.type === "workflow" ? "wf" : "sub",
+          w, visualW, lines: c.lines || 0,
+          marks: nodeMarks,
+          events: c.events,
+        },
+      });
+      edges.push({
+        id: `e-${parentNode}-${c.id}`,
+        source: parentNode, sourceHandle: "h" + sourceEvIdx,
+        target: c.id, targetHandle: "in",
+        type: "orth", data: { idx, trunkX }, style: { stroke: "#c4cbd6", strokeWidth: 1.4 },
+      });
+      // 记录这条父→子连线的竖直通道，问题卡选边时用来避让
+      const childCenterY = nodeY + 28;
+      const parentCenterY = (parentData.y ?? 40) + 28;
+      branchVSegs.push({
+        source: parentNode, target: c.id, x: trunkX,
+        y1: Math.min(parentCenterY, childCenterY),
+        y2: Math.max(parentCenterY, childCenterY),
+      });
+      if (c.findings?.length) {
+        explicitAgentFindings.push({ id: c.id, x, y: nodeY, w, visualW, texts: c.findings });
+      }
+      addSkillNodes(c.id, x, nodeY, w, c.events, c.lines || 0);
+      cursorY += 118; row += 1;
+      place(c.id, { x, y: nodeY, w, events: c.events, lines: c.lines || 0 }, c.children || []);
+    });
+  }
+
+  // 主会话的 marks 需要带 events 供子节点查找
+  addSkillNodes("main", 60, 40, rootW, d.main.events, d.main.lines);
+  const mainData = { x: 60, y: 40, w: rootW, events: d.main.events, lines: d.main.lines };
+  if (d.main.findings?.length) {
+    explicitAgentFindings.push({ id: "main", x: 60, y: 40, w: rootW, visualW: rootW, texts: d.main.findings });
+  }
+  place("main", mainData, d.subs);
+
+  // ── 问题打桩：skill 的问题放左侧堆叠，subagent 的问题放右侧堆叠 ──
+  const RED = "#d63c3c";
+  const textW = (s) => [...s].reduce((a, ch) => a + (/[\u2e80-\uffff]/.test(ch) ? 10.8 : 6.3), 0);
+  const BOX_H = 22, GAP = 6;
+  let fn = 1;
+
+  function addFindings(targetId, anchorX, centerY, side, texts, trunkX) {
+    const n = texts.length;
+    const totalH = n * BOX_H + (n - 1) * GAP;
+    const startY = centerY - totalH / 2;
+    texts.forEach((text, i) => {
+      const w = Math.max(150, Math.min(400, 26 + textW(text)));
+      const y = startY + i * (BOX_H + GAP);
+      const x = side === "left" ? anchorX - w - 46 : anchorX + 46;
+      const fid = `find-${targetId}-${i}`;
+      nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w } });
+      edges.push({
+        id: "ef-" + fid,
+        source: side === "left" ? fid : targetId,
+        sourceHandle: side === "left" ? "out" : "findout",
+        target: side === "left" ? targetId : fid,
+        targetHandle: side === "left" ? "in-left" : "in",
+        type: "findedge",
+        data: side === "right" && trunkX != null ? { trunk: trunkX } : null,
+        style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+      });
+    });
+  }
+
+  // 问题卡默认放 agent 右侧、skill 左侧；若右侧竖直通道会穿过问题堆，则换到左侧
+  function pickFindingSide(targetId, x, w, centerY, count, visualW = w) {
+    const totalH = count * BOX_H + (count - 1) * GAP;
+    const top = centerY - totalH / 2, bottom = centerY + totalH / 2;
+    const blocked = (x1, x2) => branchVSegs.some(s =>
+      s.target !== targetId && s.source !== targetId && s.x > x1 && s.x < x2 && s.y2 > top && s.y1 < bottom);
+    const rightBlocked = blocked(x + w + 8, x + visualW + 46 + 300);
+    const leftBlocked = blocked(x - 46 - 300, x - 8);
+    return rightBlocked && !leftBlocked ? "left" : "right";
+  }
+
+  // 数据里显式声明的问题：挂在发现它的那个 agent 横条上（可跨层级）
+  explicitAgentFindings.forEach((f) => {
+    const texts = f.texts.map(t => `#${fn++} ${t}`);
+    const side = pickFindingSide(f.id, f.x, f.w, f.y + 28, texts.length, f.visualW);
+    const trunkX = side === "right" ? f.x + f.visualW + 16 : undefined;
+    addFindings(f.id, side === "left" ? f.x : f.x + f.visualW, f.y + 28, side, texts, trunkX);
+  });
+
+  // skill 的问题堆在药丸左侧；嵌套示例只画显式问题，真实会话保留打桩问题
+  skillNodes.forEach((s) => {
+    if (s.findings.length) {
+      addFindings(s.sid, s.x, s.y + 10, "left", s.findings.map(t => `#${fn++} ${t}`));
+      return;
+    }
+    if (isDemo) return;
+    const texts = [
+      `#${fn++} skill出现问题：重复加载，未命中缓存`,
+      `#${fn++} skill出现问题：输出未校验来源`,
+    ];
+    addFindings(s.sid, s.x, s.y + 9, "left", texts);
+  });
+
+  // 嵌套示例到此为止：它只演示「C 报问题 + B 触发 skill」，不叠加上报型/末节点打桩
+  if (isDemo) return { nodes, edges };
+
+  // ── 上报型问题（类型 3/4）：挂在触发点右上方，先触发的在上 ──
+  function addReported(parentId, parentX, parentY, parentW, marks) {
+    const trig = (marks || [])
+      .filter(m => m.kind === "skill" || m.kind === "agent" || m.kind === "workflow")
+      .sort((a, b) => (a.line || 0) - (b.line || 0))
+      .slice(0, 4);
+    if (!trig.length) return;
+    const barTop = parentY + 16;
+    trig.forEach((m, i) => {
+      const skillTexts = ["检索结果缺少来源校验", "检索范围不足"];
+      const agentTexts = ["遗漏了 MCP 调用失败的重试", "未汇总其他子 agent 的结论"];
+      const finder = m.kind === "skill" ? (m.name || "skill") : (m.desc || "subagent");
+      const text = m.kind === "skill"
+        ? `#${fn++} ${finder} skill发现前置步骤存在问题：${skillTexts[i % 2]}`
+        : `#${fn++} ${finder} subagent发现前置步骤存在问题：${agentTexts[i % 2]}`;
+      const w = Math.max(170, Math.min(560, 26 + textW(text)));
+      const x = parentX + parentW + 18;
+      const y = barTop - 36 - (trig.length - i) * 28;
+      const fid = `rep-${parentId}-${i}`;
+      nodes.push({ id: fid, type: "finding", position: { x, y }, data: { text, w } });
+      edges.push({
+        id: "er-" + fid,
+        source: parentId, sourceHandle: "rep" + m.id,
+        target: fid, targetHandle: "in",
+        type: "reported",
+        style: { stroke: RED, strokeWidth: 1.3, strokeDasharray: "4 3" },
+      });
+    });
+  }
+
+  addReported("main", 60, 40, rootW, d.main.events.length ? marksOf(d.main.events, d.main.lines) : []);
+  nodes
+    .filter(n => n.type === "agent" && n.id !== "main")
+    .forEach(n => addReported(n.id, n.position.x, n.position.y,
+      Math.max(n.data.w, measureW(n.data.label || "", LABEL_FONT) + 6), n.data.marks || []));
+
+  // 最后一个 subagent：3 条问题，堆在条右侧
+  const agentNodes = nodes.filter(n => n.type === "agent");
+  const lastAgent = agentNodes[agentNodes.length - 1];
+  if (lastAgent) {
+    const texts = [
+      `#${fn++} subagent出现问题：越界执行，未按任务边界收敛`,
+      `#${fn++} subagent出现问题：子任务重复抓取同一页面`,
+      `#${fn++} subagent出现问题：未回报中间结果`,
+    ];
+    const centerY = lastAgent.position.y + 28;
+    const visualW = lastAgent.data.visualW || lastAgent.data.w;
+    const side = pickFindingSide(lastAgent.id, lastAgent.position.x, lastAgent.data.w, centerY, texts.length, visualW);
+    const trunkX = side === "right" ? lastAgent.position.x + visualW + 16 : undefined;
+    addFindings(lastAgent.id,
+      side === "left" ? lastAgent.position.x : lastAgent.position.x + visualW,
+      centerY, side, texts, trunkX);
+  }  return { nodes, edges };
+}
+
+/* ── 自定义节点 ── */
+function AgentNode({ data }) {
+  const marks = data.marks || [];
+  return html`
+    <div className=${"rf-agent " + (data.kind || "")} style=${{ width: data.w + "px" }}>
+      <div className="rf-label" title=${data.label}>${data.label}</div>
+      <div className="rf-bar">
+        ${marks.map((m, i) => html`
+          <span key=${"mk" + i} className=${"rf-mark " + m.kind}
+                style=${{ left: (m.pct * 100) + "%" }} title=${m.title}></span>
+        `)}
+        ${marks.map((m, i) => html`
+          <${Handle} key=${"h" + i} id=${"h" + i} type="source" position=${Position.Bottom}
+            style=${{ left: (m.pct * 100) + "%", top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        `)}
+        ${marks.map((m, i) => html`
+          <${Handle} key=${"rep" + i} id=${"rep" + i} type="source" position=${Position.Top}
+            style=${{ left: (m.pct * 100) + "%", top: 0, width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        `)}
+        <${Handle} type="target" position=${Position.Left} id="in"
+          style=${{ top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        <${Handle} type="target" position=${Position.Left} id="in-left"
+          style=${{ top: "50%", width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+        <${Handle} type="source" position=${Position.Right} id="findout"
+          style=${{ top: "50%", right: 0, width: 10, height: 10, opacity: 0, background: "transparent", border: "none" }} />
+      </div>
+      <div className="rf-lines">${data.lines} 行</div>
+    </div>`;
+}
+
+function GroupNode({ data }) {
+  return html`
+    <div className="rf-agent group" style=${{ width: "220px" }}>
+      <div>${data.label}</div>
+      <${Handle} type="target" position=${Position.Left} id="in"
+        style=${{ top: "50%", width: 10, height: 10, opacity: 0 }} />
+    </div>`;
+}
+
+
+
+function SkillEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const r = Math.min(8, Math.max(0, sourceX - targetX) / 2, Math.max(0, targetY - sourceY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${targetY - r} Q ${sourceX} ${targetY} ${sourceX - r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+
+function FindingEdge({ id, sourceX, sourceY, targetX, targetY, data, style }) {
+  const trunk = data?.trunk ?? sourceX + 24;
+  const dy = targetY - sourceY;
+  const s = dy === 0 ? 1 : Math.sign(dy);
+  const r = Math.min(7, Math.abs(dy) / 2);
+  const d = dy === 0
+    ? `M ${sourceX} ${sourceY} H ${targetX}`
+    : `M ${sourceX} ${sourceY} H ${trunk - r} Q ${trunk} ${sourceY} ${trunk} ${sourceY + s * r} ` +
+      `V ${targetY - s * r} Q ${trunk} ${targetY} ${trunk + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+
+function ReportEdge({ id, sourceX, sourceY, targetX, targetY, style }) {
+  const r = Math.min(7, Math.abs(targetY - sourceY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${targetY + r} Q ${sourceX} ${targetY} ${sourceX + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", { id, className: "react-flow__edge-path", d, style });
+}
+
+/* 正交折线：每条边用自己的竖直通道，避免线挤在一起 */
+function OrthEdge({ id, sourceX, sourceY, targetX, targetY, data, style, markerEnd }) {
+  // 触发点先落到条下，再按兄弟序号横移到自己的竖直通道
+  const idx = data?.idx ?? 0;
+  const jogY = sourceY + 12;
+  const trunk = data?.trunkX;
+  const channel = trunk != null
+    ? Math.min(trunk, Math.max(0, targetX - 8))
+    : Math.min(sourceX + idx * 8, Math.max(sourceX, targetX - 8));
+  const r = Math.min(8, Math.max(0, targetX - channel) / 2, Math.max(0, targetY - jogY) / 2);
+  const d = `M ${sourceX} ${sourceY} V ${jogY} H ${channel} V ${targetY - r} Q ${channel} ${targetY} ${channel + r} ${targetY} H ${targetX}`;
+  return React.createElement("path", {
+    id, className: "react-flow__edge-path", d, style, markerEnd,
+  });
+}
+const edgeTypes = { orth: OrthEdge, skilledge: SkillEdge, findedge: FindingEdge, reported: ReportEdge };
+
+
+function SkillNode({ data }) {
+  return html`
+    <div className="rf-skill-wrap" style=${{ width: (data.w || 200) + "px" }}>
+      <div className="rf-skill" title=${"L" + data.line + " · " + data.name}>
+        <span className="rf-skill-dot"></span><span className="rf-skill-name">${data.name}</span>
+      </div>
+      <${Handle} type="target" position=${Position.Right} id="in"
+        style=${{ top: "50%", right: 0, width: 8, height: 8, opacity: 0 }} />
+      <${Handle} type="target" position=${Position.Left} id="in-left"
+        style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
+    </div>`;
+}
+
+
+function FindingNode({ data }) {
+  return html`
+    <div className="rf-finding" style=${{ width: (data.w || 200) + "px" }} title=${data.text}>
+      ${data.text}
+      <${Handle} type="target" position=${Position.Left} id="in"
+        style=${{ top: "50%", left: 0, width: 8, height: 8, opacity: 0 }} />
+      <${Handle} type="source" position=${Position.Right} id="out"
+        style=${{ top: "50%", right: 0, width: 8, height: 8, opacity: 0 }} />
+    </div>`;
+}
+
+const nodeTypes = { agent: AgentNode, collapse: GroupNode, skill: SkillNode, finding: FindingNode };
+
+/* ── 应用 ── */
+function App({ initialSid }) {
+  const [sid, setSid] = useState(initialSid || SESSIONS[0].id);
+  const [expanded, setExpanded] = useState({});
+
+  const toggle = useCallback((parent) => {
+    setExpanded(prev => ({ ...prev, [parent]: !prev[parent] }));
+  }, []);
+
+  const { nodes, edges } = useMemo(() => {
+    const g = buildGraph(sid, expanded);
+    // 给 group 节点注入点击行为
+    const ns = g.nodes.map(n => n.type === "group"
+      ? { ...n, data: { ...n.data, toggle: () => toggle(n.data.parent) } }
+      : n);
+    return { nodes: ns, edges: g.edges };
+  }, [sid, expanded, toggle]);
+
+  const [rfNodes, setNodes, onNodesChange] = useNodesState(nodes);
+  const [rfEdges, setEdges, onEdgesChange] = useEdgesState(edges);
+
+  useEffect(() => { setNodes(nodes); setEdges(edges); }, [nodes, edges, setNodes, setEdges]);
+
+  const onNodeClick = useCallback((evt, node) => {
+    if (node.type === "collapse") toggle(node.data.parent);
+  }, [toggle]);
+
+  return html`
+    <${ReactFlow}
+      nodes=${rfNodes} edges=${rfEdges}
+      onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
+      nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
+      onNodeClick=${onNodeClick}
+      fitView fitViewOptions=${{ padding: 0.15 }}
+      minZoom=${0.2} maxZoom=${2.5}
+      nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
+      style=${{ width: "100%", height: "100%" }}
+    >
+      <${Background} gap=${22} color="#e6e9ef" />
+      <${Controls} showInteractive=${false} />
+      <${MiniMap} position="top-right" pannable zoomable nodeColor=${n => n.type === "collapse" ? "#c4cbd6" : "#9fb6ef"}
+        style=${{ background: "#fafbfc" }} />
+    <//>
+  `;
+}
+
+const rootEl = document.getElementById("canvas");
+const sessionEl = document.getElementById("sessions");
+const appRoot = createRoot(rootEl);
+
+function renderApp(sid) {
+  appRoot.render(html`<${App} key=${sid} initialSid=${sid} />`);
+}
+
+// 简单会话切换：重新挂载 App
+SESSIONS.forEach(s => {
+  const b = document.createElement("button");
+  b.className = "sess-btn";
+  b.textContent = s.short;
+  b.onclick = () => {
+    document.querySelectorAll(".sess-btn").forEach(x => x.classList.remove("active"));
+    b.classList.add("active");
+    renderApp(s.id);
+  };
+  sessionEl.appendChild(b);
+});
+function activeFromHash() {
+  const m = location.hash.match(/#(\w+)/);
+  const s = m && SESSIONS.find(x => x.id.startsWith(m[1]));
+  return s ? s.id : SESSIONS[0].id;
+}
+const initial = activeFromHash();
+document.querySelectorAll(".sess-btn").forEach(b => b.classList.toggle("active", b.textContent === SESSIONS.find(x => x.id === initial).short));
+renderApp(initial);
+window.addEventListener("hashchange", () => {
+  const id = activeFromHash();
+  document.querySelectorAll(".sess-btn").forEach(b => b.classList.toggle("active", b.textContent === SESSIONS.find(x => x.id === id).short));
+  renderApp(id);
+});
+</script>
+
+<script>
+window.addEventListener("error", e => {
+  const el = document.getElementById("canvas");
+  if (el && !el.querySelector(".react-flow")) {
+    el.innerHTML = '<div class="error">资源加载失败：需要能访问 esm.sh 与 unpkg.com（React / React Flow 走 CDN）。错误：' + (e.message || "") + '</div>';
+  }
+});
+</script>
+</body>
+</html>
