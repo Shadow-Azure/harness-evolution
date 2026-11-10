@@ -760,13 +760,21 @@
   .v2-toolbar .spacer { flex: 1; }
 
   /* ═════════════════════════ 工作空间总览 ═════════════════════════ */
-  .ov-filterbar { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; }
-  .ov-filter-group { display: flex; align-items: center; gap: 7px; }
+  .v2-page .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; background: var(--bg-card); }
+  .v2-page .seg button { font: inherit; font-size: 11.5px; color: var(--text-dim); background: transparent; border: 0; border-left: 1px solid var(--border); padding: 5px 11px; cursor: pointer; transition: background .12s, color .12s; }
+  .v2-page .seg button:first-child { border-left: 0; }
+  .v2-page .seg button:hover { color: var(--text); background: var(--bg-panel); }
+  .v2-page .seg button.active { color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); font-weight: 600; box-shadow: inset 0 -2px 0 var(--blue); }
+  .ov-filterbar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 9px 14px; margin-bottom: 12px; background: var(--bg-card); }
+  .ov-filter-group { display: flex; align-items: center; gap: 7px; min-height: 28px; }
   .ov-filter-label { font-size: 10.5px; color: var(--text-faint); white-space: nowrap; }
-  .ov-filterbar .inp { padding: 4px 8px; font-size: 11.5px; }
-  .ov-filterbar .seg button { padding: 4px 11px; font-size: 11.5px; }
+  .ov-filter-sep { width: 1px; height: 17px; background: var(--border); margin: 0 2px; flex: 0 0 auto; }
+  .ov-filter-spacer { flex: 1; min-width: 4px; }
+  .ov-range { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-inset); color: var(--text-dim); font-family: var(--mono); font-size: 10.5px; white-space: nowrap; }
+  .ov-filterbar .inp { height: 26px; padding: 0 7px; font-size: 11px; }
+  .ov-filterbar .seg button { padding: 4px 10px; font-size: 11.5px; }
   .ov-multi { position: relative; }
-  .ov-multi summary { list-style: none; display: flex; align-items: center; gap: 7px; min-width: 150px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card); font-size: 11.5px; color: var(--text-dim); cursor: pointer; }
+  .ov-multi summary { list-style: none; display: flex; align-items: center; gap: 7px; min-width: 138px; height: 26px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card); font-size: 11.5px; color: var(--text-dim); cursor: pointer; transition: border-color .12s, color .12s, box-shadow .12s; }
   .ov-multi summary::-webkit-details-marker { display: none; }
   .ov-multi summary:hover, .ov-multi[open] summary { border-color: var(--blue); color: var(--text); }
   .ov-multi summary .caret { margin-left: auto; font-size: 9px; color: var(--text-faint); }
@@ -798,6 +806,9 @@
   .ov-bar.discovery { background: var(--purple); opacity: .82; }
   .ov-bucket:hover .ov-bar.self { opacity: 1; }
   .ov-bucket:hover .ov-bar.discovery { opacity: 1; }
+  .ov-chart.dense { gap: 2px; }
+  .ov-chart.dense .ov-bucket { min-width: 0; }
+  .ov-chart.dense .ov-stack { width: 100%; max-width: 16px; }
   .ov-bucket .ov-lbl { position: absolute; bottom: -21px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; }
   .ov-bucket .ov-tip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 5; background: var(--text); color: #fff; border-radius: 5px; padding: 4px 7px; font-size: 10px; line-height: 1.5; white-space: nowrap; box-shadow: 0 4px 12px rgba(20,30,50,.2); }
   .ov-bucket:hover .ov-tip { display: block; }
@@ -4374,16 +4385,18 @@ function v2RenderOverview() {
   const rows = list.arr.slice((list.page - 1) * list.pageSize, list.page * list.pageSize);
   const selObjects = [...o.objects];
   const yLabel = n => `<span>${n}</span>`;
-  const chart = buckets.map(b => {
+  const labelStep = Math.max(1, Math.ceil(buckets.length / 14));
+  const chart = buckets.map((b, bi) => {
     const t = b.self + b.discovery;
     const h = t ? Math.max(3, Math.round(t / max * 100)) : 0;
+    const showLabel = bi % labelStep === 0 || bi === buckets.length - 1;
     return `<div class="ov-bucket" title="${b.label} · self ${b.self} · discovery ${b.discovery}">
       <span class="ov-tip">${b.label} · self ${b.self} · discovery ${b.discovery}</span>
       ${t ? `<div class="ov-stack" style="height:${h}%">
         <span class="ov-bar self" style="height:${(b.self / t * 100).toFixed(1)}%"></span>
         <span class="ov-bar discovery" style="height:${(b.discovery / t * 100).toFixed(1)}%"></span>
       </div>` : ''}
-      <span class="ov-lbl">${b.label}</span>
+      <span class="ov-lbl">${showLabel ? b.label : ''}</span>
     </div>`;
   }).join('');
   const listRows = rows.map(c => {
@@ -4424,8 +4437,11 @@ function v2RenderOverview() {
         <button class="${o.range === 90 ? 'active' : ''}" data-v2-ov-range="90">近 90 天</button>
         <button class="${o.range === 0 ? 'active' : ''}" data-v2-ov-range="0">自定义</button>
       </div>
-      ${o.range === 0 ? `<input class="inp" type="date" value="${o.from}" data-v2-ov-from><span class="ov-filter-label">~</span><input class="inp" type="date" value="${o.to}" data-v2-ov-to>` : `<span class="ov-filter-label">${from} ~ ${to}</span>`}
+      ${o.range === 0
+        ? `<div class="ov-filter-group" style="gap:5px"><input class="inp" type="date" value="${o.from}" data-v2-ov-from><span class="ov-filter-label">~</span><input class="inp" type="date" value="${o.to}" data-v2-ov-to></div>`
+        : `<span class="ov-range">${from} ~ ${to}</span>`}
     </div>
+    <span class="ov-filter-sep"></span>
     <div class="ov-filter-group"><span class="ov-filter-label">粒度</span>
       <div class="seg">
         <button class="${o.grain === 'day' ? 'active' : ''}" data-v2-ov-grain="day">日</button>
@@ -4433,6 +4449,7 @@ function v2RenderOverview() {
         <button class="${o.grain === 'month' ? 'active' : ''}" data-v2-ov-grain="month">月</button>
       </div>
     </div>
+    <span class="ov-filter-sep"></span>
     <div class="ov-filter-group"><span class="ov-filter-label">object_name</span>
       <details class="ov-multi" ${o.multiOpen ? 'open' : ''}>
         <summary>${o.objects.size ? `已选 ${o.objects.size} 个对象` : '全部对象'}<span class="caret">⌄</span></summary>
@@ -4442,7 +4459,7 @@ function v2RenderOverview() {
         </div>
       </details>
     </div>
-    ${selObjects.length ? `<div class="ov-selected">${selObjects.map(x => `<span class="ov-chip">${v2Esc(x)}<button data-v2-ov-remove="${x}">×</button></span>`).join('')}</div>` : ''}
+    ${selObjects.length ? `<span class="ov-filter-spacer"></span><div class="ov-selected">${selObjects.map(x => `<span class="ov-chip">${v2Esc(x)}<button data-v2-ov-remove="${x}" title="移除 ${v2Esc(x)}">×</button></span>`).join('')}</div>` : ''}
   </div>
   <div class="ov-grid">
     <div class="card ov-chart-card">
@@ -4451,7 +4468,7 @@ function v2RenderOverview() {
         <span class="spacer"></span>
         <div class="ov-legend"><span><i class="self"></i>self</span><span><i class="discovery"></i>discovery</span></div>
       </div>
-      ${buckets.length && total ? `<div class="ov-chart"><div class="ov-yaxis">${yLabel(max)}${yLabel(Math.round(max / 2))}${yLabel(0)}</div>${chart}</div>` : '<div class="ov-empty"><b>当前条件下没有 bad case</b>调整时间范围或 object_name 后重试。</div>'}
+      ${buckets.length && total ? `<div class="ov-chart ${buckets.length > 26 ? 'dense' : ''}"><div class="ov-yaxis">${yLabel(max)}${yLabel(Math.round(max / 2))}${yLabel(0)}</div>${chart}</div>` : '<div class="ov-empty"><b>当前条件下没有 bad case</b>调整时间范围或 object_name 后重试。</div>'}
       <div class="ov-objects">
         ${objRows.length ? (() => { const maxObj = Math.max(1, ...objRows.map(x => x.total)); return objRows.slice(0, 6).map(x => `<div class="ov-obj-row">
           <span class="ov-obj-name" title="${x.name}">${v2Esc(x.name)}</span>
@@ -4847,6 +4864,8 @@ function v2Boot() {
     const demoPage = (q.get('demo') === 'workspace' || q.get('demo') === 'member') ? 'admin' : 'evo';
     const page = q.get('page') || (q.get('demo') ? demoPage : 'overview');
     V2.page = ['overview', 'session', 'evo', 'admin'].includes(page) ? page : 'overview';
+    if (q.has('range')) V2.overview.range = Number(q.get('range'));
+    if (q.has('grain')) V2.overview.grain = q.get('grain');
     window.V2_READY = true;
     v2LoginAs(userParam, { keepPage: true, silent: true, auto: true });
     v2SetPage(V2.page);
