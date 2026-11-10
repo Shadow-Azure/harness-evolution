@@ -975,13 +975,13 @@
 .v2-page .tg-side-head h3 { margin: 0; font-size: 14px; }
 .v2-page .tg-side-head .v2-note { display: block; margin-top: 2px; }
 .v2-page .tg-side-head .btn { padding: 3px 8px; font-size: 10.5px; }
-.v2-page .tg-side-item { padding: 10px 0; border-top: 1px solid #f0f2f5; }
+.v2-page .tg-side-item { padding: 7px 0; border-top: 1px solid #f0f2f5; }
 .v2-page .tg-side-item:first-child { border-top: 0; }
 .v2-page .tg-side-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
 .v2-page .tg-side-top .tg-target-title b { font-size: 12.5px; }
 .v2-page .tg-side-top .tg-target-actions .btn { padding: 1px 5px; font-size: 9.5px; }
 .v2-page .tg-side-repo { margin-top: 4px; font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.v2-page .tg-side-meta { display: flex; gap: 12px; margin-top: 7px; font-size: 10px; color: var(--text-dim); }
+.v2-page .tg-side-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 10px; color: var(--text-dim); }
 .v2-page .tg-side-meta b { font-family: var(--mono); font-size: 12px; color: var(--text); }
 .v2-page .tg-side-counts { display: flex; gap: 10px; margin-top: 5px; font-size: 10px; color: var(--text-faint); }
 .v2-page .tg-side .tg-ratio { margin-top: 7px; }
@@ -4843,20 +4843,15 @@ function v2RenderTargetsOverview() {
       <span class="tg-lbl">${i % labelStep === 0 || i === buckets.length - 1 ? b.label : ''}</span>
     </div>`;
   }).join('');
-  const tPageSize = 3;
+  const tPageSize = 5;
   const tPages = Math.max(1, Math.ceil(all.length / tPageSize));
   const tPage = Math.min(Math.max(1, V2.targetOv.targetPage || 1), tPages);
   V2.targetOv.targetPage = tPage;
   const targetSide = all.slice((tPage - 1) * tPageSize, tPage * tPageSize).map(d => {
     const t = d.target, c = d.counts;
-    const pct = (n) => d.potential ? (n / d.potential * 100).toFixed(0) : 0;
-    return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}">
+    return `<div class="tg-side-item ${selected.has(t.id) ? 'selected' : ''}" title="${v2Esc(t.objectName)} · 潜在 ${d.potential} · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}">
       <div class="tg-side-top"><div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div><div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div></div>
-      <div class="tg-side-repo" title="${v2Esc(t.repoUrl || '')}${t.subDir ? ' · ' + v2Esc(t.subDir) : ''}">${v2Esc(t.repoUrl || '')}${t.subDir ? ` · ${v2Esc(t.subDir)}` : ''}</div>
       <div class="tg-side-meta"><span><b>${d.assoc}</b> 关联 Session</span><span><b>${d.potential}</b> 潜在 bad case</span></div>
-      <div class="tg-side-counts"><span style="color:var(--green)">是 ${c.isTarget}</span><span style="color:var(--orange)">非 ${c.notTarget}</span><span>未 ${c.unanalyzed}</span></div>
-      <div class="tg-ratio" title="是该对象 ${c.isTarget} · 非该对象 ${c.notTarget} · 未分析 ${c.unanalyzed}"><span class="tg-r-is" style="width:${pct(c.isTarget)}%"></span><span class="tg-r-not" style="width:${pct(c.notTarget)}%"></span><span class="tg-r-un" style="width:${pct(c.unanalyzed)}%"></span></div>
-      <div class="tg-ratio-legend"><span>${pct(c.isTarget)}% 是</span><span>${pct(c.notTarget)}% 非</span><span>${pct(c.unanalyzed)}% 未</span></div>
     </div>`;
   }).join('');
   const maxTargetPotential = Math.max(1, ...activeSets.map(d => d.potential));
