@@ -994,6 +994,7 @@
 .v2-page .tg-source-obj { grid-template-columns: 110px minmax(0, 1fr) 165px; }
 .v2-page .tg-source-obj .ov-obj-num { font-size: 9.5px; }
 .v2-page .tg-source-obj .ov-obj-bar { height: 7px; border-radius: 4px; overflow: hidden; background: #e8ebf0; }
+.v2-page .tg-source-fill { display: flex; height: 100%; border-radius: 4px; overflow: hidden; }
 .v2-page .tg-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
 .v2-page .tg-section-head h2 { font-size: 15px; margin: 0; }
 .v2-page .tg-section-head .v2-note { display: block; margin-top: 3px; }
@@ -4842,7 +4843,6 @@ function v2RenderTargetsOverview() {
       <span class="tg-lbl">${i % labelStep === 0 || i === buckets.length - 1 ? b.label : ''}</span>
     </div>`;
   }).join('');
-  const sources = v2TargetSourceRows(rows);
   const tPageSize = 3;
   const tPages = Math.max(1, Math.ceil(all.length / tPageSize));
   const tPage = Math.min(Math.max(1, V2.targetOv.targetPage || 1), tPages);
@@ -4859,12 +4859,13 @@ function v2RenderTargetsOverview() {
       <div class="tg-ratio-legend"><span>${pct(c.isTarget)}% 是</span><span>${pct(c.notTarget)}% 非</span><span>${pct(c.unanalyzed)}% 未</span></div>
     </div>`;
   }).join('');
-  const sourceRows = sources.slice(0, 6).map(s => {
-    const total = s.total || 1;
+  const maxTargetPotential = Math.max(1, ...activeSets.map(d => d.potential));
+  const targetDistRows = activeSets.map(d => {
+    const c = d.counts, total = d.potential || 1;
     return `<div class="ov-obj-row tg-source-obj">
-      <span class="ov-obj-name" title="${v2Esc(s.name)}">${v2Esc(s.name)}</span>
-      <span class="ov-obj-bar"><span class="tg-r-is" style="width:${s.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${s.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${s.unanalyzed / total * 100}%"></span></span>
-      <span class="ov-obj-num"><b>${s.total}</b> · 是 ${s.isTarget} / 非 ${s.notTarget} / 未 ${s.unanalyzed}</span>
+      <span class="ov-obj-name" title="${v2Esc(d.target.objectName)}">${v2Esc(d.target.objectName)}</span>
+      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${d.potential / maxTargetPotential * 100}%"><span class="tg-r-is" style="width:${c.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${c.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${c.unanalyzed / total * 100}%"></span></span></span>
+      <span class="ov-obj-num"><b>${d.potential}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>
     </div>`;
   }).join('');
   const tf = V2.targetOv;
@@ -4941,8 +4942,8 @@ function v2RenderTargetsOverview() {
       ${rows.length ? `<div class="tg-chart"><div class="tg-yaxis"><span>${bucketMax}</span><span>${Math.round(bucketMax / 2)}</span><span>0</span></div><div class="tg-buckets">${chart}</div></div>` : '<div class="ov-empty"><b>当前条件下没有潜在 bad case</b>调整时间、进化对象或查看信息后重试。</div>'}
       <p class="v2-note" style="margin:8px 0 0">柱高为所选信息之和；同一 bad case 可能同时出现在多个进化对象下。</p>
       <div class="ov-objects tg-source-objects">
-        <div class="tg-source-title">bad case 上报来源分布 <span>当前筛选下的潜在 bad case</span></div>
-        ${sourceRows || '<div class="waiting">暂无来源数据</div>'}
+        <div class="tg-source-title">不同进化对象的潜在 bad case <span>按对象汇总；柱长按最大值归一</span></div>
+        ${targetDistRows || '<div class="waiting">当前空间还没有进化对象</div>'}
       </div>
     </div>
     <div class="card ov-side tg-side">
