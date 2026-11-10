@@ -22,7 +22,7 @@ V2 不是重做一套设计系统。原型的目标是验证信息架构和交�
 | 顶栏、品牌、页签下划线选中态、`--bg/--card/--blue/--purple` 等 token | 原样保留；只在右侧增加工作空间切换器与用户菜单 |
 | Session 卡片、状态点、密度条、统计条、家族树 React Flow | 原样保留；列表默认改为最新 10 条，搜索改为回车精确查询 |
 | 错误详情左右分栏、执行流、问题描述 / 归因分析双 Tab | 保留布局；左栏由错误卡改为可折叠的 bad case 组，组内增加归因分页列表 |
-| 自进化列表 run-card、详情 panel/stepper/cluster/diff/eval/commit | 保留组件；流程步骤改为「选择范围 → Session 关联 → 潜在 bad case → 对象归因 → 迭代 → 终评」 |
+| 自进化列表 run-card、详情 panel/stepper/cluster/diff/eval/commit | 保留组件；流程步骤改为「选择范围 → Session 关联 → 潜在 bad case → 对象归因 → 聚类与严重度排序 → 迭代 → 终评」 |
 | 启动向导 modal、条件摘要条、分页表格 | 保留 modal 结构；新增 Session 关联与潜在策略预览 |
 | 进化对象配置 targets 表格与编辑弹窗 | 保留；配置按工作空间隔离 |
 | 亮色、13px 正文、圆角 8–12px、低饱和边框、红/橙/紫语义色 | 全部沿用，新增页面不引入第二套色彩 |
@@ -157,7 +157,7 @@ Content-Type: application/json
 
 原型把 Session 关联与潜在 bad case 拆成向导第 2、3 步：第 2 步只看关联 Session（分页），第 3 步只看潜在 bad case（分页），第 4 步才做归因预览与启动。
 
-实现上，`association` 只包含对象出现过的 Session；未出现的 Session 显示“跳过”。潜在 bad case 默认策略：
+实现上，关联表只列对象出现过的 Session；未出现的 Session 只在统计中计为“跳过”，不进入表格。潜在 bad case 默认策略：
 
 ```text
 (object_name == target.name && bad_case_type == self)

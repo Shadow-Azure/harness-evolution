@@ -3602,23 +3602,25 @@ function evStepScope(run) {
 
 function evStepAssoc(run) {
   const m = run.model;
+  const assoc = m.sessions.filter(a => a.appeared);
+  const skipped = m.sessions.length - assoc.length;
   const pageSize = 4;
-  const pages = Math.max(1, Math.ceil(m.sessions.length / pageSize));
+  const pages = Math.max(1, Math.ceil(assoc.length / pageSize));
   const page = Math.min(Math.max(1, run.assocPage || 1), pages);
   run.assocPage = page;
-  const slice = m.sessions.slice((page - 1) * pageSize, page * pageSize);
+  const slice = assoc.slice((page - 1) * pageSize, page * pageSize);
   const rows = slice.map(a => `<tr>
     <td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td>
-    <td>${a.appeared ? '<span class="v2-badge ok">已出现</span>' : '<span class="v2-badge">未出现</span>'}</td>
+    <td><span class="v2-badge ok">已出现</span></td>
     <td class="mono">L${a.line}</td>
     <td class="mono">${a.cases.length}</td>
     <td class="mono">${a.potential.length}</td>
-    <td>${a.appeared ? '<span class="v2-badge self">已关联</span>' : '<span class="v2-note">跳过</span>'}</td>
   </tr>`).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 2 步 · Session 关联 <span class="sub">对象版本出现过的 Session 才进入下一步</span></div>
-    <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在 bad case</th><th>关联</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">时间段内没有上报 bad case 的 Session</td></tr>'}</tbody></table>
-    <div class="pager"><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.sessions.length}</b> 个 Session</span><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
+    <div class="sec-title">第 2 步 · Session 关联 <span class="sub">只展示对象版本出现过的 Session；未出现的 Session 已跳过</span></div>
+    <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ok">关联 ${assoc.length}</span><span class="v2-note">时间段内共 ${m.sessions.length} 个 Session；未出现 ${skipped} 个已跳过</span></div>
+    <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在 bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本</td></tr>'}</tbody></table>
+    <div class="pager"><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${assoc.length}</b> 个关联 Session</span><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
 
@@ -3992,12 +3994,13 @@ function evRenderWizard() {
       </div>
       ${wz.focusCase ? `<div class="wz-demo"><b>从 bad case 启动</b> · ${evEsc(wz.focusCase)} 已锁定为关注对象；启动后可在归因列表中找到它。</div>` : ''}`;
   } else if (wz.step === 2) {
+    const assoc = m.sessions.filter(a => a.appeared);
     const pageSize = 4;
-    const pages = Math.max(1, Math.ceil(m.sessions.length / pageSize));
+    const pages = Math.max(1, Math.ceil(assoc.length / pageSize));
     const page = Math.min(Math.max(1, wz.assocPage || 1), pages);
     wz.assocPage = page;
-    const slice = m.sessions.slice((page - 1) * pageSize, page * pageSize);
-    const rows = slice.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td>${a.appeared ? '<span class="v2-badge ok">已出现</span>' : '<span class="v2-badge">未出现</span>'}</td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td><td>${a.appeared ? '<span class="v2-badge self">已关联</span>' : '<span class="v2-note">跳过</span>'}</td></tr>`).join('');
+    const slice = assoc.slice((page - 1) * pageSize, page * pageSize);
+    const rows = slice.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td><span class="v2-badge ok">已出现</span></td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td></tr>`).join('');
     body = `${cond}
       <div class="wz-section-title">第 2 步 · Session 关联 <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span></div>
       <div class="wz-stats">
@@ -4006,13 +4009,13 @@ function evRenderWizard() {
         <span class="st"><b>${m.sessions.filter(a => !a.appeared).length}</b><span>未出现 · 跳过</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
       </div>
-      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>关联</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">时间段内没有上报 bad case 的 Session</td></tr>'}</tbody></table>
+      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="waiting">没有对象版本出现过的 Session</td></tr>'}</tbody></table>
       <div class="pager">
         <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
-        <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.sessions.length}</b> 个 Session</span>
+        <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${assoc.length}</b> 个关联 Session</span>
         <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
       </div>
-      <div class="wz-note">关联只看“对象是否出现在该 Session 中”；这里不展开潜在 bad case，下一步再按策略筛选。</div>`;
+      <div class="wz-note">只展示对象版本出现过的 Session；未出现的 Session 已跳过，下一步再按策略筛选潜在 bad case。</div>`;
   } else if (wz.step === 3) {
     const pageSize = 5;
     const pages = Math.max(1, Math.ceil(m.potentialRows.length / pageSize));
