@@ -3576,7 +3576,12 @@ function evStepScope(run) {
 
 function evStepAssoc(run) {
   const m = run.model;
-  const rows = m.sessions.map(a => `<tr>
+  const pageSize = 4;
+  const pages = Math.max(1, Math.ceil(m.sessions.length / pageSize));
+  const page = Math.min(Math.max(1, run.assocPage || 1), pages);
+  run.assocPage = page;
+  const slice = m.sessions.slice((page - 1) * pageSize, page * pageSize);
+  const rows = slice.map(a => `<tr>
     <td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td>
     <td>${a.appeared ? '<span class="v2-badge ok">已出现</span>' : '<span class="v2-badge">未出现</span>'}</td>
     <td class="mono">L${a.line}</td>
@@ -3587,12 +3592,18 @@ function evStepAssoc(run) {
   return `<div class="card panel">
     <div class="sec-title">第 2 步 · Session 关联 <span class="sub">对象版本出现过的 Session 才进入下一步</span></div>
     <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在 bad case</th><th>关联</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">时间段内没有上报 bad case 的 Session</td></tr>'}</tbody></table>
+    <div class="pager"><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.sessions.length}</b> 个 Session</span><button class="btn" data-action="ev-run-page" data-target="assoc" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
 
 function evStepPotential(run) {
   const m = run.model;
-  const rows = m.potentialRows.map(r => {
+  const pageSize = 5;
+  const pages = Math.max(1, Math.ceil(m.potentialRows.length / pageSize));
+  const page = Math.min(Math.max(1, run.potentialPage || 1), pages);
+  run.potentialPage = page;
+  const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
+  const rows = slice.map(r => {
     const includedBy = r.c.type === 'self' && r.c.objectName === run.target.name
       ? 'self 上报'
       : (r.c.triggerLine > r.a.line ? `触发点 L${r.c.triggerLine} > 对象 L${r.a.line}` : '自定义策略');
@@ -3609,6 +3620,7 @@ function evStepPotential(run) {
     <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 ∪ 触发点在对象触发点之后</span></div>
     <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
     <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
+    <div class="pager"><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
 
@@ -3834,7 +3846,7 @@ function evWizardOpen(caseId) {
   EV_STATE.wz = {
     step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.tags?.[0] || first?.defaultRef || '',
     from, to, policy: 'default', includeSelf: true, includeAfter: true, sameObject: false,
-    cache: true, focusCase: caseId || null, page: 1, errors: {},
+    cache: true, focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {},
   };
   evRenderWizard();
 }
@@ -3870,6 +3882,7 @@ function evRenderWizard() {
   const { run, m } = evWizardModel();
   const step2 = wz.step >= 2;
   const step3 = wz.step >= 3;
+  const step4 = wz.step >= 4;
   const err = wz.errors || {};
   const fieldErr = k => err[k] ? `<div class="field-error">${evEsc(err[k])}</div>` : '';
   const cond = `<div class="wz-condstrip">
@@ -3878,9 +3891,9 @@ function evRenderWizard() {
     <span class="chip mono">${wz.from} ~ ${wz.to}</span>
     <span class="v2-badge ${wz.policy === 'default' ? 'ok' : ''}">${wz.policy === 'default' ? '默认潜在策略' : '自定义潜在策略'}</span>
     ${wz.cache ? '<span class="v2-badge">复用缓存</span>' : '<span class="v2-badge warn">不复用缓存</span>'}
-    <button class="btn sm" data-action="ev-wz-back" style="margin-left:auto">← 修改条件</button>
+    <button class="btn sm" data-action="ev-wz-edit" style="margin-left:auto">← 修改条件</button>
   </div>`;
-  const steps = `<div class="wz-steps"><span class="${!step2 ? 'on' : ''}">① 选择范围</span> → <span class="${step2 && !step3 ? 'on' : ''}">② Session 关联与潜在 bad case</span> → <span class="${step3 ? 'on' : ''}">③ 归因预览与启动</span></div>`;
+  const steps = `<div class="wz-steps"><span class="${!step2 ? 'on' : ''}">① 选择范围</span> → <span class="${step2 && !step3 ? 'on' : ''}">② Session 关联</span> → <span class="${step3 && !step4 ? 'on' : ''}">③ 潜在 bad case</span> → <span class="${step4 ? 'on' : ''}">④ 归因预览与启动</span></div>`;
 
   let body = '';
   if (wz.step === 1) {
@@ -3915,21 +3928,52 @@ function evRenderWizard() {
       </div>
       ${wz.focusCase ? `<div class="wz-demo"><b>从 bad case 启动</b> · ${evEsc(wz.focusCase)} 已锁定为关注对象；启动后可在归因列表中找到它。</div>` : ''}`;
   } else if (wz.step === 2) {
-    const assocRows = m.sessions.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td>${a.appeared ? '<span class="v2-badge ok">已出现</span>' : '<span class="v2-badge">未出现</span>'}</td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td><td class="mono">${a.potential.length}</td></tr>`).join('');
+    const pageSize = 4;
+    const pages = Math.max(1, Math.ceil(m.sessions.length / pageSize));
+    const page = Math.min(Math.max(1, wz.assocPage || 1), pages);
+    wz.assocPage = page;
+    const slice = m.sessions.slice((page - 1) * pageSize, page * pageSize);
+    const rows = slice.map(a => `<tr><td><b>${evEsc(a.sess.short)}</b><span class="cell-sub mono">${a.sid}</span></td><td>${a.appeared ? '<span class="v2-badge ok">已出现</span>' : '<span class="v2-badge">未出现</span>'}</td><td class="mono">L${a.line}</td><td class="mono">${a.cases.length}</td><td>${a.appeared ? '<span class="v2-badge self">已关联</span>' : '<span class="v2-note">跳过</span>'}</td></tr>`).join('');
     body = `${cond}
+      <div class="wz-section-title">第 2 步 · Session 关联 <span>先判断对象版本出现在哪些 Session，只有出现的 Session 才进入下一步</span></div>
       <div class="wz-stats">
         <span class="st"><b>${m.sessions.length}</b><span>时间段内 Session</span></span>
-        <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>对象出现</span></span>
-        <span class="st"><b>${m.cases.length}</b><span>bad case</span></span>
+        <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>对象出现 · 已关联</span></span>
+        <span class="st"><b>${m.sessions.filter(a => !a.appeared).length}</b><span>未出现 · 跳过</span></span>
+        <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
+      </div>
+      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>关联</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">时间段内没有上报 bad case 的 Session</td></tr>'}</tbody></table>
+      <div class="pager">
+        <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
+        <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.sessions.length}</b> 个 Session</span>
+        <button class="btn" data-action="ev-wz-page" data-target="assoc" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
+      </div>
+      <div class="wz-note">关联只看“对象是否出现在该 Session 中”；这里不展开潜在 bad case，下一步再按策略筛选。</div>`;
+  } else if (wz.step === 3) {
+    const pageSize = 5;
+    const pages = Math.max(1, Math.ceil(m.potentialRows.length / pageSize));
+    const page = Math.min(Math.max(1, wz.casePage || 1), pages);
+    wz.casePage = page;
+    const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
+    const rows = slice.map(r => `<tr><td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td><td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td><td>${evCaseType(r.c)}</td><td class="mono">L${r.c.triggerLine}</td><td><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td></tr>`).join('');
+    body = `${cond}
+      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：对象自身 self 上报 ∪ 触发点在对象触发点之后</span></div>
+      <div class="wz-stats">
+        <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>关联 Session</span></span>
+        <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
         <span class="st accent"><b>${m.potentialRows.length}</b><span>潜在 bad case</span></span>
+        <span class="st"><b>${m.potentialRows.filter(r => r.c.type === 'self' && r.c.objectName === run.target.name).length}</b><span>self 命中</span></span>
       </div>
-      <table class="rep"><thead><tr><th>Session</th><th>对象出现</th><th>对象触发点</th><th>bad case</th><th>潜在</th></tr></thead><tbody>${assocRows || '<tr><td colspan="5" class="waiting">时间段内没有上报 bad case 的 Session</td></tr>'}</tbody></table>
-      <div class="f-row" style="margin-top:14px"><div class="f-label">潜在 bad case 明细（前 6 个）</div>
-        ${m.potentialRows.length ? `<table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>触发点</th></tr></thead><tbody>${m.potentialRows.slice(0, 6).map(r => `<tr><td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td><td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td><td>${evCaseType(r.c)}</td><td class="mono">L${r.c.triggerLine}</td></tr>`).join('')}</tbody></table>` : '<div class="waiting">当前策略没有命中潜在 bad case；可返回调整时间段或策略。</div>'}
+      <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>触发点</th><th>来源 Session</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">当前策略没有命中潜在 bad case；可返回调整时间段或策略。</td></tr>'}</tbody></table>
+      <div class="pager">
+        <button class="btn" data-action="ev-wz-page" data-target="case" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
+        <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span>
+        <button class="btn" data-action="ev-wz-page" data-target="case" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
       </div>
-      <div class="wz-note">默认策略 = 对象 self 上报 ∪ 触发点在对象之后；这里只预览候选集，归因在下一步生成。</div>`;
+      <div class="wz-note">默认策略 = 对象 self 上报 ∪ 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。</div>`;
   } else {
     body = `${cond}
+      <div class="wz-section-title">第 4 步 · 归因预览与启动 <span>确认缓存策略后启动；归因结果会写回该对象版本</span></div>
       <div class="cache-option"><div><b>复用缓存归因</b><div class="v2-note" style="margin-top:2px">如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。</div></div><label class="switch"><input type="checkbox" ${wz.cache ? 'checked' : ''} data-action="ev-wz-cache"><span class="slider"></span></label></div>
       <div class="preview-stats">
         <div class="preview-stat"><strong>${m.potentialRows.length}</strong><span>潜在 bad case</span></div>
@@ -3946,8 +3990,9 @@ function evRenderWizard() {
       <div class="modal-body">${steps}${body}</div>
       <div class="modal-foot">
         ${wz.step === 1 ? `<button class="btn primary" data-action="ev-wz-next">下一步：关联 Session →</button>` : ''}
-        ${wz.step === 2 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：归因预览 →</button>` : ''}
-        ${wz.step === 3 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start">启动自进化 →</button>` : ''}
+        ${wz.step === 2 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：潜在 bad case →</button>` : ''}
+        ${wz.step === 3 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：归因预览 →</button>` : ''}
+        ${wz.step === 4 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start">启动自进化 →</button>` : ''}
       </div>
     </div></div>`;
 }
@@ -3979,6 +4024,7 @@ document.addEventListener('click', e => {
   if (a === 'ev-open-run') { EV_STATE.expanded.clear(); EV_STATE.lastDetailId = null; location.hash = '#/run/' + el.dataset.id; }
   else if (a === 'ev-toggle-cluster') { const k = el.dataset.key; EV_STATE.expanded.has(k) ? EV_STATE.expanded.delete(k) : EV_STATE.expanded.add(k); evRoute(); }
   else if (a === 'ev-sel-step') { EV_STATE.selStep = +el.dataset.step; evRoute(); }
+  else if (a === 'ev-run-page') { const run = EV_RUNS.find(r => r.id === el.dataset.id); if (!run) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'potentialPage'; run[key] = Math.max(1, (run[key] || 1) + Number(el.dataset.delta || 0)); evRenderDetail(run.id); }
   else if (a === 'ev-advance') {
     const run = EV_RUNS.find(r => r.id === el.dataset.id);
     if (run && !evIsDone(run)) { run.progress++; EV_STATE.expanded.clear(); EV_STATE.selStep = null; evRenderDetail(run.id); }
@@ -3988,14 +4034,16 @@ document.addEventListener('click', e => {
   else if (a === 'ev-wz-targets') { evModal.innerHTML = ''; location.hash = '#/targets'; }
   else if (a === 'ev-wz-close') { evModal.innerHTML = ''; }
   else if (a === 'ev-wz-close-bg') { if (e.target === el) evModal.innerHTML = ''; }
-  else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.tags?.[0] || t?.defaultRef || ''; evRenderWizard(); }
-  else if (a === 'ev-wz-policy') { evSyncWz(); EV_STATE.wz.policy = el.dataset.v; evRenderWizard(); }
-  else if (a === 'ev-wz-rule') { evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; evRenderWizard(); }
+  else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.tags?.[0] || t?.defaultRef || ''; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-policy') { evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-rule') { evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-cache') { evSyncWz(); EV_STATE.wz.cache = !!el.checked; evRenderWizard(); }
   else if (a === 'ev-wz-back') { evSyncWz(); EV_STATE.wz.step = Math.max(1, EV_STATE.wz.step - 1); evRenderWizard(); }
+  else if (a === 'ev-wz-edit') { evSyncWz(); EV_STATE.wz.step = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-page') { if (!EV_STATE.wz) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'casePage'; EV_STATE.wz[key] = Math.max(1, (EV_STATE.wz[key] || 1) + Number(el.dataset.delta || 0)); evRenderWizard(); }
   else if (a === 'ev-wz-next') {
     if (EV_STATE.wz.step === 1 && !evValidateWz()) { evRenderWizard(); return; }
-    evSyncWz(); EV_STATE.wz.step = Math.min(3, EV_STATE.wz.step + 1); evRenderWizard();
+    evSyncWz(); const fromStep = EV_STATE.wz.step; EV_STATE.wz.step = Math.min(4, EV_STATE.wz.step + 1); if (EV_STATE.wz.step === 2) EV_STATE.wz.assocPage = 1; if (EV_STATE.wz.step === 3) EV_STATE.wz.casePage = 1; evRenderWizard();
   }
   else if (a === 'ev-wz-start') {
     evSyncWz();
@@ -4022,7 +4070,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
-  if (e.target.id === 'ev-wz-name') { evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.tags?.[0] || t?.defaultRef || ''; evRenderWizard(); }
+  if (e.target.id === 'ev-wz-name') { evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.tags?.[0] || t?.defaultRef || ''; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (e.target.id === 'ev-wz-version') { evSyncWz(); }
   else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evSyncWz(); }
 });
@@ -4879,12 +4927,16 @@ function v2Boot() {
       window.__v2SelectSession(q.get('sid'));
     }
     const demo = q.get('demo');
-    if (demo === 'wizard1' || demo === 'wizard2' || demo === 'wizard3') {
+    if (demo === 'wizard1' || demo === 'wizard2' || demo === 'wizard3' || demo === 'wizard4') {
       setTimeout(() => {
         if (!window.__evOpenWizard) return;
         window.__evOpenWizard(q.get('case') || null);
-        const n = demo === 'wizard1' ? 1 : demo === 'wizard2' ? 2 : 3;
-        if (window.__evState && window.__evState.wz) window.__evState.wz.step = n;
+        const n = Number(demo.slice(-1));
+        if (window.__evState && window.__evState.wz) {
+          window.__evState.wz.step = n;
+          if (q.has('wzassoc')) window.__evState.wz.assocPage = Number(q.get('wzassoc')) || 1;
+          if (q.has('wzcase')) window.__evState.wz.casePage = Number(q.get('wzcase')) || 1;
+        }
         if (window.__evRenderWizard) window.__evRenderWizard();
       }, 300);
     } else if (demo === 'workspace') {

@@ -33,7 +33,7 @@
     <a class="card" href="harness-evolution.html">
       <span class="issue">V2 主原型</span>
       <h2>Harness Evolution V2 · 多工作空间 →</h2>
-      <p>登录页默认打开。全局管理员、空间管理员、普通成员三种视图；总览 → bad case 列表 → Session 错误详情 → 多归因；自进化向导 → Session 关联 → 潜在 bad case → 缓存归因；空间创建、额度、成员、上报接入与鉴权接入。</p>
+      <p>登录页默认打开。全局管理员、空间管理员、普通成员三种视图；总览 → bad case 列表 → Session 错误详情 → 多归因；自进化向导 → Session 关联（分页）→ 潜在 bad case（分页）→ 缓存归因；空间创建、额度、成员、上报接入与鉴权接入。</p>
     </a>
     <div class="grid2">
       <a class="card" href="harness-evolution.html?u=admin&page=overview">
@@ -42,7 +42,7 @@
       </a>
       <a class="card" href="harness-evolution.html?u=admin&page=evo&demo=wizard2">
         <span class="issue">演示入口</span><h2>自进化向导 →</h2>
-        <p>直接打开第 2 步：Session 关联、对象触发点与潜在 bad case 预览。</p>
+        <p>直接打开第 2 步：Session 关联结果与分页，第 3 步再看潜在 bad case。</p>
       </a>
       <a class="card" href="harness-evolution.html?u=admin&page=admin">
         <span class="issue">演示入口</span><h2>空间管理 →</h2>
@@ -66,7 +66,7 @@
       <p>本目录由该目录完整拷贝而来；V1 文件未改动，用于对照截图和迁移回归。</p>
     </a>
   </div>
-  <p class="note">所有数据为打桩样例，不写入生产库。Session 家族树与执行流依赖 CDN 的 React / React Flow；离线时家族树会显示加载失败提示，其余页面仍可浏览。V2 的演示参数：<code>?u=admin|liwei|chenyu|zhaomin</code>、<code>&amp;page=overview|session|evo|admin</code>、<code>&amp;demo=wizard1|wizard2|wizard3|workspace|member</code>。</p>
+  <p class="note">所有数据为打桩样例，不写入生产库。Session 家族树与执行流依赖 CDN 的 React / React Flow；离线时家族树会显示加载失败提示，其余页面仍可浏览。V2 的演示参数：<code>?u=admin|liwei|chenyu|zhaomin</code>、<code>&amp;page=overview|session|evo|admin</code>、<code>&amp;demo=wizard1|wizard2|wizard3|wizard4|workspace|member</code>。</p>
 </div>
 </body>
 </html>

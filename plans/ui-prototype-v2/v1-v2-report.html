@@ -150,7 +150,7 @@
           <li>顶栏增加工作空间切换器与用户菜单；多一个「总览」页签</li>
           <li>Session 默认 10 条，搜索从“实时过滤”改为“回车查询 root session ID”</li>
           <li>错误详情左栏从平铺错误卡改为可折叠 bad case 组 + 归因子列表</li>
-          <li>自进化向导从 2 步扩展为 3 步：范围 → 关联/潜在 → 归因预览</li>
+          <li>自进化向导从 2 步扩展为 4 步：范围 → Session 关联 → 潜在 bad case → 归因预览</li>
           <li>运行详情步骤从「筛选/聚类/归因」改为「范围/关联/潜在/归因」</li>
           <li>新增登录、总览、空间管理；全部复用 V1 控件</li>
         </ul>
@@ -169,7 +169,7 @@
         <tr><td>3</td><td><b>空间上报接口与 bad case 额度</b></td><td>每空间独立 <code>POST /api/workspaces/{id}/bad-cases</code>、凭据、额度、请求体示例；创建后可调额度；409 说明</td><td>上报接入截图</td></tr>
         <tr><td>4</td><td><b>空间总览：object × 时间 × self/discovery，列表分页下钻</b></td><td>总览页：日/周/月、object_name 多选、self/discovery 堆叠、对象分布、组合筛选列表、点击行进入对应 bad case 问题描述</td><td>总览截图</td></tr>
         <tr><td>5</td><td><b>Session 默认 10 个；输入 session ID 回车重查</b></td><td>侧栏显示「最新 10 / 13」；输入 root session ID 回车命中老 Session；清空回车恢复 10 条；无命中空态</td><td>Session 截图</td></tr>
-        <tr><td>6</td><td><b>归因进入自进化流程；对象关联、潜在策略、缓存</b></td><td>向导 3 步；详情 6 步；默认策略 = self ∪ 触发点在对象之后；自定义规则；缓存开关与复用/新增/非该对象统计</td><td>向导 2/3 步截图</td></tr>
+        <tr><td>6</td><td><b>归因进入自进化流程；对象关联、潜在策略、缓存</b></td><td>向导 4 步（关联 / 潜在各自分页）；详情 6 步；默认策略 = self ∪ 触发点在对象之后；自定义规则；缓存开关与复用/新增/非该对象统计</td><td>向导 2/3 步截图</td></tr>
         <tr><td>7</td><td><b>错误详情：一个 bad case 多条归因，左栏可折叠 + 分页</b></td><td>bad case 组折叠；每组归因子项按对象版本分页（2 条/页）；点击子项进入归因分析；未归因状态</td><td>错误详情截图</td></tr>
       </tbody>
     </table>
@@ -262,23 +262,24 @@
         <div class="cap">V1：筛选条件直接命中「问题报告」，归因发生在运行内部的第 3 步；输入没有 Session 关联与潜在策略概念。</div>
       </div>
       <div class="shot">
-        <div class="bar"><b>V2 · 向导第 2 步</b><span class="tag">Session 关联 + 潜在 bad case</span></div>
+        <div class="bar"><b>V2 · 向导第 2 步</b><span class="tag">Session 关联 · 分页</span></div>
         <a href="screenshots-v2/v2-wizard-step2.png" target="_blank"><img src="screenshots-v2/v2-wizard-step2.png" alt="V2 向导第 2 步"></a>
-        <div class="cap">V2：先展示时间段内 Session、对象出现与否、对象触发点与潜在数量；下方是潜在 bad case 明细。</div>
+        <div class="cap">V2：先看关联 Session 数量与“对象出现/未出现”结果；表格分页（4 个/页），下一步才进入潜在 bad case。</div>
       </div>
     </div>
     <div class="compare" style="margin-top:12px">
       <div class="shot">
-        <div class="bar"><b>V2 · 向导第 3 步</b><span class="tag">缓存 + 归因预览 + 启动</span></div>
+        <div class="bar"><b>V2 · 向导第 3 步</b><span class="tag">潜在 bad case · 分页</span></div>
         <a href="screenshots-v2/v2-wizard-step3.png" target="_blank"><img src="screenshots-v2/v2-wizard-step3.png" alt="V2 向导第 3 步"></a>
-        <div class="cap">「复用缓存归因」开关；预览潜在 / 复用 / 新增 / 非该对象四类数量；缓存键包含空间、bad case、对象版本、策略与模型版本。</div>
+        <div class="cap">V2：单独看潜在 bad case 数量与明细，表格分页（5 个/页），显示 object_name、类型、触发点与来源 Session。</div>
       </div>
       <div class="shot">
-        <div class="bar"><b>V2 · 向导第 1 步</b><span class="tag">默认值与自定义策略</span></div>
-        <a href="screenshots-v2/v2-wizard-step1.png" target="_blank"><img src="screenshots-v2/v2-wizard-step1.png" alt="V2 向导第 1 步"></a>
-        <div class="cap">对象/版本有默认值；默认策略说明与自定义策略（self、触发点之后、仅同 object_name）在同一屏选择。</div>
+        <div class="bar"><b>V2 · 向导第 4 步</b><span class="tag">缓存 + 归因预览 + 启动</span></div>
+        <a href="screenshots-v2/v2-wizard-step4.png" target="_blank"><img src="screenshots-v2/v2-wizard-step4.png" alt="V2 向导第 4 步"></a>
+        <div class="cap">「复用缓存归因」开关；预览潜在 / 复用 / 新增 / 非该对象四类数量；缓存键包含空间、bad case、对象版本、策略与模型版本。</div>
       </div>
     </div>
+    <div class="note" style="margin-top:12px">本次迭代把原第 2 步拆成两步：<b>第 2 步只看关联 Session</b>（4 条/页），<b>第 3 步只看潜在 bad case</b>（5 条/页）；归因预览移到第 4 步。修改前后对照见 <a href="screenshots-v2/v2-wizard-split-before-after.png" target="_blank">拆分前后截图</a>。</div>
     <h3>运行详情：把“为什么进入这次进化”讲清楚</h3>
     <div class="compare">
       <div class="shot">
@@ -473,7 +474,7 @@
           <li>空间切换；总览多选 object、粒度、分页、行下钻</li>
           <li>Session 默认 10/13、ID 回车命中、无命中空态</li>
           <li>错误详情折叠、归因子项分页/切换、未归因态</li>
-          <li>自进化向导 3 步、缓存开关、启动生成运行</li>
+          <li>自进化向导 4 步、缓存开关、启动生成运行</li>
           <li>创建空间、调额度、添加成员、把自己设为管理员</li>
           <li>上报地址/凭据复制、curl 示例、鉴权接入说明</li>
         </ul>

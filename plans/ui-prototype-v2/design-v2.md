@@ -153,6 +153,8 @@ Content-Type: application/json
   → 归因后的 bad case 进入聚类 / 迭代 / 终评
 ```
 
+原型把 Session 关联与潜在 bad case 拆成向导第 2、3 步：第 2 步只看关联 Session（分页），第 3 步只看潜在 bad case（分页），第 4 步才做归因预览与启动。
+
 实现上，`association` 只包含对象出现过的 Session；未出现的 Session 显示“跳过”。潜在 bad case 默认策略：
 
 ```text
@@ -170,7 +172,7 @@ OR (bad_case.trigger_line > object.trigger_line)
 
 ### 7.2 缓存
 
-启动向导第三步提供「复用缓存归因」开关。缓存键至少包含：
+启动向导第四步提供「复用缓存归因」开关。缓存键至少包含：
 
 ```text
 workspace_id + bad_case_id + object_identity + object_version + policy_version + attribution_model/prompt_version
@@ -224,6 +226,6 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 
 ## 11. 原型验收与边界
 
-- 已验证：登录 / 空间切换 / 总览筛选与分页 / 总览下钻 / 最新 10 条与空态 / 错误详情多归因折叠与分页 / 向导三步与缓存 / 空间创建与额度调整 / 成员添加与角色 / 上报接入 / 鉴权接入。
+- 已验证：登录 / 空间切换 / 总览筛选与分页 / 总览下钻 / 最新 10 条与空态 / 错误详情多归因折叠与分页 / 向导四步与缓存 / 空间创建与额度调整 / 成员添加与角色 / 上报接入 / 鉴权接入。
 - 渲染：headless Chrome 1440/1600 宽，无 console error；执行流依赖 CDN 的 React / React Flow。
 - 未实现：真实鉴权、持久化、统计聚合 SQL、上报写入事务、归因算法、SSO 回调、跨空间 403/404 的服务端测试。前端权限仅是体验护栏。
