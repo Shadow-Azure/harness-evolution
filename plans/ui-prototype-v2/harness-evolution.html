@@ -455,6 +455,8 @@
 .evo-app .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.05); }
 .evo-app .sec-title { font-size: 13.5px; font-weight: 650; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
 .evo-app .sec-title .sub { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
+.evo-app .rep td.session-cell { max-width: 170px; }
+.evo-app .rep td.session-cell b { display: block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
 /* ── 列表页 ────────────────────────── */
   .evo-app .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .evo-app .page-head h1 { font-size: 18px; font-weight: 700; }
@@ -3608,6 +3610,7 @@ function evStepPotential(run) {
       ? 'self 上报'
       : (r.c.triggerLine > r.a.line ? `触发点 L${r.c.triggerLine} > 对象 L${r.a.line}` : '自定义策略');
     return `<tr>
+      <td class="session-cell" title="${evEsc(r.a.sess.short)}"><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td>
       <td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td>
       <td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td>
       <td>${evCaseType(r.c)}</td>
@@ -3619,7 +3622,7 @@ function evStepPotential(run) {
   return `<div class="card panel">
     <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 ∪ 触发点在对象触发点之后</span></div>
     <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
-    <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
+    <table class="rep"><thead><tr><th>Session</th><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
     <div class="pager"><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
@@ -4917,6 +4920,10 @@ function v2Boot() {
     window.V2_READY = true;
     v2LoginAs(userParam, { keepPage: true, silent: true, auto: true });
     v2SetPage(V2.page);
+    if (q.has('step') && window.__evState) {
+      window.__evState.selStep = Math.max(0, Math.min(5, Number(q.get('step')) || 0));
+      if (window.evRoute) window.evRoute();
+    }
     if (q.get('page') === 'session' && q.get('view') === 'errors') {
       const apply = () => { if (window.__bootDeepLink) window.__bootDeepLink(q); };
       if (window.__mountErrorDetail) setTimeout(apply, 300); else {
