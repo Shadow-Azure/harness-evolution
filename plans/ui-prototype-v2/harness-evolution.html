@@ -946,7 +946,72 @@
   .auth-item .v2-badge { flex-shrink: 0; }
   @media (max-width: 980px) { .ov-grid { grid-template-columns: 1fr; } .admin-grid { grid-template-columns: 1fr; } .admin-nav { display: flex; gap: 4px; overflow-x: auto; } .admin-nav button { width: auto; white-space: nowrap; } .admin-nav .an-hint, .admin-nav .an-sep { display: none; } .ingest-grid, .quota-editor { grid-template-columns: 1fr; } }
 
-  /* ═════════════════════════ V2 错误详情：bad case × 多归因 ═════════════════════════ */
+  /* ═══ 进化对象总览 ═══ */
+.v2-page .ov-viewswitch { margin: 8px 0 14px; background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 3px; display: inline-flex; }
+.v2-page .ov-viewswitch button { border: 0; background: transparent; padding: 5px 14px; border-radius: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+.v2-page .ov-viewswitch button.active { background: color-mix(in srgb, var(--blue) 9%, transparent); color: var(--blue); font-weight: 650; }
+.v2-page .tg-filterbar { gap: 10px; }
+.v2-page .tg-metric-group { gap: 6px; }
+.v2-page .tg-metric { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--text-dim); cursor: pointer; }
+.v2-page .tg-metric.on { border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); background: color-mix(in srgb, var(--blue) 6%, #fff); color: var(--text); }
+.v2-page .tg-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.v2-page .tg-dot.isTarget { background: var(--green); }
+.v2-page .tg-dot.notTarget { background: var(--orange); }
+.v2-page .tg-dot.unanalyzed { background: var(--text-faint); }
+.v2-page .tg-legend { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--text-dim); }
+.v2-page .tg-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.v2-page .tg-chart { display: flex; gap: 10px; height: 220px; margin: 14px 0 2px; }
+.v2-page .tg-yaxis { width: 28px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding: 0 0 18px; font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); }
+.v2-page .tg-buckets { flex: 1; display: flex; align-items: flex-end; gap: 5px; border-bottom: 1px solid var(--border); padding: 0 4px 18px; min-width: 0; }
+.v2-page .tg-bucket { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; }
+.v2-page .tg-stack { width: 18px; max-width: 70%; min-height: 2px; display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; }
+.v2-page .tg-bar { width: 100%; min-height: 0; }
+.v2-page .tg-bar.isTarget { background: var(--green); }
+.v2-page .tg-bar.notTarget { background: var(--orange); }
+.v2-page .tg-bar.unanalyzed { background: #c7ccd4; }
+.v2-page .tg-lbl { font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; height: 12px; }
+.v2-page .tg-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
+.v2-page .tg-section-head h2 { font-size: 15px; margin: 0; }
+.v2-page .tg-section-head .v2-note { display: block; margin-top: 3px; }
+.v2-page .tg-target-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.v2-page .tg-target-card { margin: 0; padding: 13px 14px; }
+.v2-page .tg-target-card.selected { border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--blue) 8%, transparent); }
+.v2-page .tg-target-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.v2-page .tg-target-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.v2-page .tg-target-title b { font-size: 13px; }
+.v2-page .tg-target-title .mono { font-size: 10.5px; color: var(--text-faint); }
+.v2-page .tg-target-actions { display: flex; gap: 5px; flex: none; }
+.v2-page .tg-target-actions .btn { padding: 2px 7px; font-size: 10.5px; }
+.v2-page .btn.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 28%, var(--border)); }
+.v2-page .tg-target-meta { margin-top: 7px; font-size: 10px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-page .tg-target-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 12px 0 9px; }
+.v2-page .tg-target-stats div { display: flex; flex-direction: column; gap: 2px; }
+.v2-page .tg-target-stats b { font-family: var(--mono); font-size: 14px; }
+.v2-page .tg-target-stats span { font-size: 9.5px; color: var(--text-faint); white-space: nowrap; }
+.v2-page .tg-ratio { display: flex; height: 7px; border-radius: 4px; background: #e8ebf0; overflow: hidden; }
+.v2-page .tg-ratio > span, .v2-page .tg-source-bar > span { height: 100%; }
+.v2-page .tg-r-is { background: var(--green); }
+.v2-page .tg-r-not { background: var(--orange); }
+.v2-page .tg-r-un { background: #c7ccd4; }
+.v2-page .tg-ratio-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 9.5px; color: var(--text-faint); }
+.v2-page .tg-grid2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); gap: 12px; margin-bottom: 14px; }
+.v2-page .tg-source-row { display: grid; grid-template-columns: 125px minmax(0, 1fr) 150px; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f2f5; }
+.v2-page .tg-source-row:last-child { border-bottom: 0; }
+.v2-page .tg-source-name { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-page .tg-source-bar { display: flex; height: 7px; border-radius: 4px; background: #e8ebf0; overflow: hidden; }
+.v2-page .tg-source-num { font-family: var(--mono); font-size: 9.5px; color: var(--text-dim); text-align: right; white-space: nowrap; }
+.v2-page .tg-note-card h3 { font-size: 13px; margin: 0 0 8px; }
+.v2-page .tg-note-card p { font-size: 11.5px; line-height: 1.7; color: var(--text-dim); margin: 0 0 9px; }
+.v2-page .tg-list-filters { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px 0 12px; }
+.v2-page .tg-list-filters .inp { min-width: 130px; }
+.v2-page .tg-table th, .v2-page .tg-table td { padding: 9px 8px; }
+.v2-page .tg-table td:nth-child(1) { min-width: 150px; }
+.v2-page .tg-table td:nth-child(2) { white-space: nowrap; }
+.v2-page .tg-table td:nth-child(3) { white-space: nowrap; }
+.v2-page .tg-table .ov-case-title { margin-top: 2px; }
+@media (max-width: 1180px) { .v2-page .tg-target-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .v2-page .tg-grid2 { grid-template-columns: 1fr; } }
+
+/* ═════════════════════════ V2 错误详情：bad case × 多归因 ═════════════════════════ */
   .err-filter { display: flex; align-items: center; gap: 5px; padding: 0 10px 8px; }
   .err-filter .chip { font-size: 10.5px; padding: 1px 8px; }
   .err-case { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; transition: border-color .12s, background .12s; }
@@ -4188,9 +4253,15 @@ window.__evState = EV_STATE;
 const V2 = {
   user: null, wsId: 'ws-harness', page: 'overview',
   overview: {
+    tab: 'cases',
     range: 90, from: '2026-08-13', to: '2026-11-10', grain: 'week',
     objects: new Set(), type: 'all', page: 1, multiOpen: false,
     listFrom: '', listTo: '', listObject: '', listType: 'all',
+  },
+  targetOv: {
+    targets: new Set(), metrics: new Set(['isTarget', 'notTarget', 'unanalyzed']),
+    listTarget: '', listSource: '', listStatus: 'all',
+    listFrom: '', listTo: '', page: 1, multiOpen: false,
   },
   admin: { tab: 'spaces' },
   loginChoice: 'admin',
@@ -4385,6 +4456,8 @@ function v2SwitchWorkspace(id) {
   V2.wsId = id;
   V2.overview.objects.clear(); V2.overview.page = 1;
   V2.overview.listObject = ''; V2.overview.listType = 'all';
+  V2.targetOv.targets.clear(); V2.targetOv.page = 1;
+  V2.targetOv.listTarget = ''; V2.targetOv.listSource = ''; V2.targetOv.listStatus = 'all';
   const picker = document.getElementById('wsPicker'); if (picker) picker.open = false;
   v2RenderShell();
   v2SetPage(V2.page === 'admin' && !v2CanManage(id) ? 'overview' : V2.page);
@@ -4489,9 +4562,75 @@ function v2OverviewList() {
   if (o.page > pages) o.page = pages;
   return { arr, pages, page: o.page, pageSize };
 }
+const V2_TG_STATUS = {
+  isTarget: { label: '已分析 · 是该对象问题', short: '是该对象问题', color: 'var(--green)' },
+  notTarget: { label: '已分析 · 非该对象问题', short: '非该对象问题', color: 'var(--orange)' },
+  unanalyzed: { label: '未分析', short: '未分析', color: 'var(--text-faint)' },
+};
+function v2OverviewTabs() {
+  const tab = V2.overview.tab || 'cases';
+  return `<div class="seg ov-viewswitch">
+    <button class="${tab === 'cases' ? 'active' : ''}" data-v2-ov-tab="cases">bad case 总览</button>
+    <button class="${tab === 'targets' ? 'active' : ''}" data-v2-ov-tab="targets">进化对象总览</button>
+  </div>`;
+}
+function v2Targets() { return (EV_TARGETS[V2.wsId] || []).filter(t => t.enabled !== false); }
+function v2TargetVersion(t) { return t.defaultRef || (t.tags || [])[0] || '—'; }
+function v2TargetStatusCounts(rows) {
+  return rows.reduce((a, r) => { a[r.status] = (a[r.status] || 0) + 1; return a; }, { isTarget: 0, notTarget: 0, unanalyzed: 0 });
+}
+function v2TargetSet(t, from, to) {
+  const version = v2TargetVersion(t);
+  const fake = {
+    id: 'OV-' + t.id, workspace: V2.wsId,
+    target: { kind: t.kind, name: t.objectName, version },
+    window: [from, to], policy: 'default', cache: true,
+  };
+  let m;
+  try { m = evRunModel(fake); } catch (e) { m = { sessions: [], potentialRows: [] }; }
+  const rows = (m.potentialRows || []).map(r => {
+    const h = v2Hash(t.id + r.c.id);
+    const unanalyzed = h % 8 === 0;
+    const status = unanalyzed ? 'unanalyzed' : (r.conclusion === 'not-object' ? 'notTarget' : 'isTarget');
+    return { ...r, target: t, targetId: t.id, version, status, source: r.c.objectName, reportId: unanalyzed ? null : r.attributionId };
+  });
+  return {
+    target: t, version,
+    assoc: (m.sessions || []).filter(a => a.appeared).length,
+    potential: rows.length, rows,
+    counts: v2TargetStatusCounts(rows),
+  };
+}
+function v2TargetAll(from, to) { return v2Targets().map(t => v2TargetSet(t, from, to)); }
+function v2TargetBuckets(rows, from, to, grain) {
+  const buckets = v2Buckets([], from, to, grain).map(b => ({ key: b.key, label: b.label, isTarget: 0, notTarget: 0, unanalyzed: 0 }));
+  rows.forEach(r => {
+    const b = buckets.find(x => x.key === v2BucketKey(r.c.createdAt, grain));
+    if (b) b[r.status]++;
+  });
+  return buckets;
+}
+function v2TargetRows(data) {
+  const pick = V2.targetOv.targets;
+  return data.filter(d => !pick.size || pick.has(d.target.id)).flatMap(d => d.rows);
+}
+function v2TargetSourceRows(rows) {
+  const map = new Map();
+  rows.forEach(r => {
+    if (!map.has(r.source)) map.set(r.source, { name: r.source, isTarget: 0, notTarget: 0, unanalyzed: 0, total: 0 });
+    const x = map.get(r.source); x[r.status]++; x.total++;
+  });
+  return [...map.values()].sort((a, b) => b.total - a.total);
+}
+function v2TargetStatusBadge(status) {
+  const s = V2_TG_STATUS[status] || V2_TG_STATUS.unanalyzed;
+  return `<span class="v2-badge ${status === 'isTarget' ? 'ok' : status === 'notTarget' ? 'warn' : ''}">${s.label}</span>`;
+}
+
 function v2RenderOverview() {
   const host = document.getElementById('overviewApp');
   if (!host) return;
+  if ((V2.overview.tab || 'cases') === 'targets') { v2RenderTargetsOverview(); return; }
   const o = V2.overview;
   const { from, to } = v2Range();
   const base = v2OverviewBase();
@@ -4548,6 +4687,7 @@ function v2RenderOverview() {
       <button class="btn primary" data-v2-overview-evo>启动自进化</button>` : `<span class="v2-badge">只读访问 · 上报与启动由空间管理员执行</span>`}
     </div>
   </div>
+  ${v2OverviewTabs()}
   <div class="statstrip">
     <div class="ss"><b>${total}</b><span>bad case</span></div>
     <div class="ss"><b style="color:var(--blue)">${self}</b><span>自身存在问题</span></div>
@@ -4655,6 +4795,156 @@ function v2RenderOverview() {
     <div class="v2-pager"><span class="info">共 ${list.arr.length} 条 · 第 ${list.page} / ${list.pages} 页</span><button data-v2-ov-page="${list.page - 1}" ${list.page <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-ov-page="${list.page + 1}" ${list.page >= list.pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
+function v2RenderTargetsOverview() {
+  const host = document.getElementById('overviewApp');
+  if (!host) return;
+  const { from, to } = v2Range();
+  const all = v2TargetAll(from, to);
+  const selected = V2.targetOv.targets;
+  const activeSets = all.filter(d => !selected.size || selected.has(d.target.id));
+  const rows = activeSets.flatMap(d => d.rows);
+  const count = rows.reduce((a, r) => { a[r.status]++; return a; }, { isTarget: 0, notTarget: 0, unanalyzed: 0 });
+  const buckets = v2TargetBuckets(rows, from, to, V2.overview.grain);
+  const metrics = ['isTarget', 'notTarget', 'unanalyzed'];
+  const chosen = metrics.filter(k => V2.targetOv.metrics.has(k));
+  const bucketMax = Math.max(1, ...buckets.map(b => chosen.reduce((n, k) => n + b[k], 0)));
+  const labelStep = Math.max(1, Math.ceil(buckets.length / 13));
+  const chart = buckets.map((b, i) => {
+    const total = chosen.reduce((n, k) => n + b[k], 0);
+    const h = total ? Math.max(3, Math.round(total / bucketMax * 100)) : 0;
+    const bars = chosen.map(k => `<span class="tg-bar ${k}" style="height:${total ? (b[k] / total * 100).toFixed(1) : 0}%"></span>`).join('');
+    return `<div class="tg-bucket" title="${b.label} · ${chosen.map(k => `${V2_TG_STATUS[k].short} ${b[k]}`).join(' · ')}">
+      <div class="tg-stack" style="height:${h}%">${bars}</div>
+      <span class="tg-lbl">${i % labelStep === 0 || i === buckets.length - 1 ? b.label : ''}</span>
+    </div>`;
+  }).join('');
+  const sources = v2TargetSourceRows(rows);
+  const targetCards = all.map(d => {
+    const t = d.target, c = d.counts;
+    const ratio = (n) => d.potential ? (n / d.potential * 100).toFixed(0) : 0;
+    return `<div class="card panel tg-target-card ${selected.has(t.id) ? 'selected' : ''}">
+      <div class="tg-target-head">
+        <div class="tg-target-title"><span class="chip kind">${v2Esc(t.kind)}</span><b>${v2Esc(t.objectName)}</b><span class="mono">@${v2Esc(d.version)}</span></div>
+        <div class="tg-target-actions"><button class="btn sm" data-v2-tg-edit="${t.id}">编辑</button><button class="btn sm danger" data-v2-tg-remove="${t.id}">移除</button></div>
+      </div>
+      <div class="tg-target-meta"><span class="mono">${v2Esc(t.repoUrl || '')}</span>${t.subDir ? ` · ${v2Esc(t.subDir)}` : ''}</div>
+      <div class="tg-target-stats">
+        <div><b>${d.assoc}</b><span>关联 Session</span></div>
+        <div><b>${d.potential}</b><span>潜在 bad case</span></div>
+        <div><b style="color:var(--green)">${c.isTarget}</b><span>是该对象问题</span></div>
+        <div><b style="color:var(--orange)">${c.notTarget}</b><span>非该对象问题</span></div>
+        <div><b>${c.unanalyzed}</b><span>未分析</span></div>
+      </div>
+      <div class="tg-ratio" title="是该对象 ${c.isTarget} · 非该对象 ${c.notTarget} · 未分析 ${c.unanalyzed}">
+        <span class="tg-r-is" style="width:${ratio(c.isTarget)}%"></span><span class="tg-r-not" style="width:${ratio(c.notTarget)}%"></span><span class="tg-r-un" style="width:${ratio(c.unanalyzed)}%"></span>
+      </div>
+      <div class="tg-ratio-legend"><span>${ratio(c.isTarget)}% 是该对象</span><span>${ratio(c.notTarget)}% 非该对象</span><span>${ratio(c.unanalyzed)}% 未分析</span></div>
+    </div>`;
+  }).join('');
+  const sourceRows = sources.slice(0, 8).map(s => {
+    const total = s.total || 1;
+    return `<div class="tg-source-row">
+      <span class="tg-source-name">${v2Esc(s.name)}</span>
+      <span class="tg-source-bar"><span class="tg-r-is" style="width:${s.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${s.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${s.unanalyzed / total * 100}%"></span></span>
+      <span class="tg-source-num"><b>${s.total}</b> · 是 ${s.isTarget} / 非 ${s.notTarget} / 未 ${s.unanalyzed}</span>
+    </div>`;
+  }).join('');
+  const tf = V2.targetOv;
+  let lrows = rows.filter(r =>
+    (!tf.listTarget || r.targetId === tf.listTarget) &&
+    (!tf.listSource || r.source === tf.listSource) &&
+    (tf.listStatus === 'all' || r.status === tf.listStatus) &&
+    (!tf.listFrom || String(r.c.createdAt).slice(0, 10) >= tf.listFrom) &&
+    (!tf.listTo || String(r.c.createdAt).slice(0, 10) <= tf.listTo)
+  ).sort((a, b) => String(b.c.createdAt).localeCompare(String(a.c.createdAt)));
+  const pageSize = 8, pages = Math.max(1, Math.ceil(lrows.length / pageSize));
+  const page = Math.min(Math.max(1, tf.page || 1), pages); tf.page = page;
+  const listRows = lrows.slice((page - 1) * pageSize, page * pageSize).map(r => `<tr data-v2-overview-case="${r.c.id}">
+    <td>${evCaseLink(r.c)}<span class="ov-case-title" style="display:block">${v2Esc(r.c.title)}</span></td>
+    <td><span class="chip kind">${v2Esc(r.target.objectName)}@${v2Esc(r.version)}</span></td>
+    <td><span class="chip">${v2Esc(r.source)}</span></td>
+    <td>${v2TargetStatusBadge(r.status)}</td>
+    <td class="mono">L${r.c.triggerLine}</td>
+    <td class="mono">${r.c.clock}</td>
+    <td class="mono" title="${r.a.sid}">${r.a.sid.slice(0, 13)}…</td>
+    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
+  </tr>`).join('');
+  const targetOpts = all.map(d => `<option value="${d.target.id}" ${tf.listTarget === d.target.id ? 'selected' : ''}>${v2Esc(d.target.objectName)}</option>`).join('');
+  const sourceOpts = [...new Set(rows.map(r => r.source))].sort().map(x => `<option ${tf.listSource === x ? 'selected' : ''}>${v2Esc(x)}</option>`).join('');
+  host.innerHTML = `<div class="page-head-v2">
+    <div>
+      <h1>工作空间总览</h1>
+      <div class="ph-sub">${v2Esc(v2WsName(V2.wsId))} · 从进化对象与时间维度观察潜在 bad case、归因状态和上报来源，并下钻到对应 Session。</div>
+    </div>
+    <div class="ph-actions">
+      <button class="btn" data-v2-tg-add>+ 新增进化对象</button>
+      ${v2CanManage(V2.wsId) ? '<button class="btn primary" data-v2-overview-evo>启动自进化</button>' : '<span class="v2-badge">只读访问</span>'}
+    </div>
+  </div>
+  ${v2OverviewTabs()}
+  <div class="statstrip">
+    <div class="ss"><b>${all.length}</b><span>进化对象</span></div>
+    <div class="ss"><b>${activeSets.reduce((n, d) => n + d.assoc, 0)}</b><span>关联 Session</span></div>
+    <div class="ss"><b>${rows.length}</b><span>潜在 bad case</span></div>
+    <div class="ss"><b style="color:var(--green)">${count.isTarget}</b><span>已分析 · 是该对象问题</span></div>
+    <div class="ss"><b style="color:var(--orange)">${count.notTarget}</b><span>已分析 · 非该对象问题</span></div>
+    <div class="ss"><b>${count.unanalyzed}</b><span>未分析</span></div>
+  </div>
+  <div class="card ov-filterbar tg-filterbar">
+    <div class="ov-filter-group"><span class="ov-filter-label">时间</span>
+      <div class="seg">
+        <button class="${V2.overview.range === 7 ? 'active' : ''}" data-v2-ov-range="7">近 7 天</button>
+        <button class="${V2.overview.range === 30 ? 'active' : ''}" data-v2-ov-range="30">近 30 天</button>
+        <button class="${V2.overview.range === 90 ? 'active' : ''}" data-v2-ov-range="90">近 90 天</button>
+        <button class="${V2.overview.range === 0 ? 'active' : ''}" data-v2-ov-range="0">自定义</button>
+      </div>
+      ${V2.overview.range === 0 ? `<input class="inp" type="date" value="${V2.overview.from}" data-v2-ov-from> <span class="ov-filter-label">~</span> <input class="inp" type="date" value="${V2.overview.to}" data-v2-ov-to>` : `<span class="ov-range">${from} ~ ${to}</span>`}
+    </div>
+    <span class="ov-filter-sep"></span>
+    <div class="ov-filter-group"><span class="ov-filter-label">粒度</span><div class="seg">
+      <button class="${V2.overview.grain === 'day' ? 'active' : ''}" data-v2-ov-grain="day">日</button>
+      <button class="${V2.overview.grain === 'week' ? 'active' : ''}" data-v2-ov-grain="week">周</button>
+      <button class="${V2.overview.grain === 'month' ? 'active' : ''}" data-v2-ov-grain="month">月</button>
+    </div></div>
+    <span class="ov-filter-sep"></span>
+    <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
+      <details class="ov-multi"><summary>${selected.size ? `已选 ${selected.size} 个进化对象` : '全部进化对象'}<span class="caret">⌄</span></summary>
+        <div class="ov-multi-menu">${all.map(d => `<label><input type="checkbox" value="${d.target.id}" ${selected.has(d.target.id) ? 'checked' : ''} data-v2-tg-target> ${v2Esc(d.target.objectName)}</label>`).join('')}<div class="om-foot"><span>不选 = 全部对象</span><button data-v2-tg-clear>清空</button></div></div>
+      </details>
+    </div>
+    <span class="ov-filter-spacer"></span>
+    <div class="ov-filter-group tg-metric-group"><span class="ov-filter-label">查看</span>
+      ${metrics.map(k => `<button class="tg-metric ${V2.targetOv.metrics.has(k) ? 'on' : ''}" data-v2-tg-metric="${k}"><i class="tg-dot ${k}"></i>${V2_TG_STATUS[k].short}</button>`).join('')}
+    </div>
+  </div>
+  <div class="card ov-chart-card tg-chart-card">
+    <div class="ov-card-head"><div><h2>潜在 bad case 趋势</h2><div class="hint">按${V2.overview.grain === 'day' ? '日' : V2.overview.grain === 'week' ? '周' : '月'}聚合 · 可多选进化对象与查看信息</div></div><span class="spacer"></span><div class="tg-legend">${chosen.map(k => `<span><i class="tg-dot ${k}"></i>${V2_TG_STATUS[k].short}</span>`).join('') || '<span class="v2-note">未选择查看信息</span>'}</div></div>
+    ${rows.length ? `<div class="tg-chart"><div class="tg-yaxis"><span>${bucketMax}</span><span>${Math.round(bucketMax / 2)}</span><span>0</span></div><div class="tg-buckets">${chart}</div></div>` : '<div class="ov-empty"><b>当前条件下没有潜在 bad case</b>调整时间、进化对象或查看信息后重试。</div>'}
+    <p class="v2-note" style="margin:8px 0 0">柱高为所选信息之和；同一 bad case 可能同时出现在多个进化对象下。</p>
+  </div>
+  <div class="tg-section-head"><div><h2>进化对象</h2><span class="v2-note">当前空间已添加的对象；可直接编辑或移除</span></div><button class="btn sm" data-v2-tg-add>+ 新增进化对象</button></div>
+  <div class="tg-target-grid">${targetCards || '<div class="card panel waiting">当前空间还没有进化对象，先新增一个。</div>'}</div>
+  <div class="tg-grid2">
+    <div class="card panel tg-source-card"><div class="tg-section-head"><div><h2>bad case 上报来源分布</h2><span class="v2-note">当前筛选下的潜在 bad case</span></div></div>${sourceRows || '<div class="waiting">暂无来源数据</div>'}</div>
+    <div class="card panel tg-note-card"><h3>阅读方式</h3><p>先按进化对象看潜在 bad case 的总量与占比，再用时间、上报来源和状态筛选；列表中的归因报告 ID 可直接打开对应归因分析。</p><div class="tg-ratio-legend"><span>绿 = 是该对象问题</span><span>橙 = 非该对象问题</span><span>灰 = 未分析</span></div></div>
+  </div>
+  <div class="card ov-list-card">
+    <div class="ov-list-head"><div><h2>潜在 bad case</h2><div class="hint">按进化对象、上报来源、分析状态和时间分页查看；已分析的记录可打开归因报告。</div></div></div>
+    <div class="tg-list-filters">
+      <select class="inp" data-v2-tg-list-target><option value="">全部进化对象</option>${targetOpts}</select>
+      <select class="inp" data-v2-tg-list-source><option value="">全部上报来源</option>${sourceOpts}</select>
+      <select class="inp" data-v2-tg-list-status><option value="all" ${tf.listStatus === 'all' ? 'selected' : ''}>全部状态</option><option value="isTarget" ${tf.listStatus === 'isTarget' ? 'selected' : ''}>是该对象问题</option><option value="notTarget" ${tf.listStatus === 'notTarget' ? 'selected' : ''}>非该对象问题</option><option value="unanalyzed" ${tf.listStatus === 'unanalyzed' ? 'selected' : ''}>未分析</option></select>
+      <input class="inp" type="date" value="${tf.listFrom}" data-v2-tg-list-from title="开始时间">
+      <span class="ov-filter-label">~</span>
+      <input class="inp" type="date" value="${tf.listTo}" data-v2-tg-list-to title="结束时间">
+      <button class="btn sm" data-v2-tg-reset>重置</button>
+    </div>
+    <table class="ov-table tg-table"><thead><tr><th>潜在 bad case</th><th>进化对象</th><th>bad case 上报来源</th><th>状态</th><th>触发点</th><th>上报时间</th><th>Session</th><th>归因报告ID</th></tr></thead>
+      <tbody>${listRows || '<tr><td colspan="8"><div class="ov-empty"><b>没有符合条件的潜在 bad case</b>调整筛选条件或时间范围。</div></td></tr>'}</tbody></table>
+    <div class="v2-pager"><span class="info">共 ${lrows.length} 条 · 第 ${page} / ${pages} 页</span><button data-v2-tg-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
+  </div>`;
+}
+
 function v2OpenCase(caseId) {
   const c = caseById ? caseById(caseId) : null;
   if (!c) return;
@@ -4857,6 +5147,57 @@ function v2MemberModal() {
     <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-save-member>添加成员</button></div>
   </div></div>`);
 }
+function v2TargetModal(id) {
+  const list = EV_TARGETS[V2.wsId] || [];
+  const t = id ? list.find(x => x.id === id) : null;
+  if (id && !t) return;
+  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" style="width:560px">
+    <div class="modal-head"><h2>${t ? '编辑进化对象' : '新增进化对象'}</h2><button class="x" data-v2-close>✕</button></div>
+    <div class="modal-body">
+      <div class="f-row"><div class="f-label">对象名称 <span class="req">*</span></div><input class="inp" id="v2TgName" value="${t ? v2Esc(t.objectName) : ''}" placeholder="例如：code-review" style="width:100%"></div>
+      <div class="f-row"><div class="f-label">类型</div><select class="inp" id="v2TgKind" style="width:100%"><option value="skill" ${t && t.kind === 'skill' ? 'selected' : ''}>skill</option><option value="agent" ${t && t.kind === 'agent' ? 'selected' : ''}>agent</option></select></div>
+      <div class="f-row"><div class="f-label">默认版本 <span class="req">*</span></div><input class="inp" id="v2TgVersion" value="${t ? v2Esc(t.defaultRef || '') : ''}" placeholder="例如：v1.8.0" style="width:180px"></div>
+      <div class="f-row"><div class="f-label">仓库地址</div><input class="inp" id="v2TgRepo" value="${t ? v2Esc(t.repoUrl || '') : ''}" placeholder="https://github.com/acme/agent-skills.git" style="width:100%"></div>
+      <div class="f-row"><div class="f-label">子目录</div><input class="inp" id="v2TgSubdir" value="${t ? v2Esc(t.subDir || '') : ''}" placeholder="skills/code-review" style="width:100%"></div>
+      <div class="notice">新增后，这个对象会立即出现在本页统计、趋势和自进化启动向导中；移除不会删除已有运行记录。</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-tg-save="${t ? t.id : ''}">${t ? '保存' : '新增对象'}</button></div>
+  </div></div>`);
+}
+function v2SaveTarget(id) {
+  const name = (document.getElementById('v2TgName')?.value || '').trim();
+  const kind = document.getElementById('v2TgKind')?.value || 'skill';
+  const version = (document.getElementById('v2TgVersion')?.value || '').trim() || 'v1.0.0';
+  const repoUrl = (document.getElementById('v2TgRepo')?.value || '').trim();
+  const subDir = (document.getElementById('v2TgSubdir')?.value || '').trim();
+  if (!name) { v2Toast('请填写对象名称'); return; }
+  const list = EV_TARGETS[V2.wsId] || (EV_TARGETS[V2.wsId] = []);
+  if (list.some(x => x.id !== id && x.kind === kind && x.objectName === name)) { v2Toast('同类型下已存在同名对象'); return; }
+  if (id) {
+    const t = list.find(x => x.id === id);
+    if (!t) return;
+    Object.assign(t, { kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir });
+  } else {
+    const tid = 't-' + Date.now().toString(36);
+    list.push({ id: tid, kind, objectName: name, defaultRef: version, tags: [version], repoUrl, subDir, enabled: true, validationProjectId: 'val-' + tid, testProjectId: 'test-' + tid });
+  }
+  v2CloseModal();
+  V2.targetOv.page = 1;
+  v2RenderOverview();
+  v2Toast(id ? '进化对象已更新' : '已新增进化对象');
+}
+function v2RemoveTarget(id) {
+  const list = EV_TARGETS[V2.wsId] || [];
+  const t = list.find(x => x.id === id);
+  if (!t) return;
+  EV_TARGETS[V2.wsId] = list.filter(x => x.id !== id);
+  V2.targetOv.targets.delete(id);
+  if (V2.targetOv.listTarget === id) V2.targetOv.listTarget = '';
+  V2.targetOv.page = 1;
+  v2RenderOverview();
+  v2Toast(`已移除 ${t.objectName}`);
+}
+
 function v2SaveWorkspace(id) {
   const nameEl = document.getElementById('v2WsName');
   const quotaEl = document.getElementById('v2WsQuota');
@@ -4906,7 +5247,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-overview-case],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-overview-case],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -4919,8 +5260,17 @@ document.addEventListener('click', e => {
   if (ds.v2PreviewLogin !== undefined) { const menu = document.getElementById('userMenu'); if (menu) menu.open = false; v2ShowLogin(true); v2RenderLogin(); return; }
   if (ds.v2AdminEntry !== undefined) { const menu = document.getElementById('userMenu'); if (menu) menu.open = false; v2SetPage(v2CanManage(V2.wsId) ? 'admin' : 'overview'); return; }
   if (ds.v2Logout !== undefined) { v2Logout(); return; }
-  if (ds.v2OvRange) { V2.overview.range = +ds.v2OvRange; V2.overview.page = 1; v2RenderOverview(); return; }
-  if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; v2RenderOverview(); return; }
+  if (ds.v2OvTab) { V2.overview.tab = ds.v2OvTab; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2OvRange) { V2.overview.range = +ds.v2OvRange; V2.overview.page = 1; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2TgAdd !== undefined) { v2TargetModal(null); return; }
+  if (ds.v2TgEdit) { v2TargetModal(ds.v2TgEdit); return; }
+  if (ds.v2TgRemove) { v2RemoveTarget(ds.v2TgRemove); return; }
+  if (ds.v2TgMetric) { const k = ds.v2TgMetric; if (V2.targetOv.metrics.has(k)) V2.targetOv.metrics.delete(k); else V2.targetOv.metrics.add(k); v2RenderOverview(); return; }
+  if (ds.v2TgClear !== undefined) { V2.targetOv.targets.clear(); V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2TgPage) { V2.targetOv.page = Math.max(1, +ds.v2TgPage); v2RenderOverview(); return; }
+  if (ds.v2TgReset !== undefined) { V2.targetOv.listFrom = ''; V2.targetOv.listTo = ''; V2.targetOv.listTarget = ''; V2.targetOv.listSource = ''; V2.targetOv.listStatus = 'all'; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2TgSave !== undefined) { v2SaveTarget(ds.v2TgSave || null); return; }
   if (ds.v2OvClear !== undefined) { V2.overview.objects.clear(); v2RenderOverview(); return; }
   if (ds.v2OvRemove) { V2.overview.objects.delete(ds.v2OvRemove); v2RenderOverview(); return; }
   if (ds.v2OvPage) { V2.overview.page = Math.max(1, +ds.v2OvPage); v2RenderOverview(); return; }
@@ -4967,6 +5317,15 @@ document.addEventListener('change', e => {
   if (e.target.matches('[data-v2-ov-list-to]')) { V2.overview.listTo = e.target.value; V2.overview.page = 1; v2RenderOverview(); return; }
   if (e.target.matches('[data-v2-ov-list-object]')) { V2.overview.listObject = e.target.value; V2.overview.page = 1; v2RenderOverview(); return; }
   if (e.target.matches('[data-v2-ov-list-type]')) { V2.overview.listType = e.target.value; V2.overview.page = 1; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-tg-target]')) {
+    if (e.target.checked) V2.targetOv.targets.add(e.target.value); else V2.targetOv.targets.delete(e.target.value);
+    V2.targetOv.page = 1; v2RenderOverview(); return;
+  }
+  if (e.target.matches('[data-v2-tg-list-target]')) { V2.targetOv.listTarget = e.target.value; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-tg-list-source]')) { V2.targetOv.listSource = e.target.value; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-tg-list-status]')) { V2.targetOv.listStatus = e.target.value; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-tg-list-from]')) { V2.targetOv.listFrom = e.target.value; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-tg-list-to]')) { V2.targetOv.listTo = e.target.value; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (e.target.id === 'v2RoleSwitch') { v2LoginAs(e.target.value, { keepPage: true }); return; }
   if (e.target.matches('[data-v2-role]')) { v2SetMemberRole(e.target.dataset.v2Role, e.target.value); return; }
 });
@@ -4996,6 +5355,8 @@ function v2Boot() {
     window.V2_READY = true;
     v2LoginAs(userParam, { keepPage: true, silent: true, auto: true });
     v2SetPage(V2.page);
+    if (q.get('tab') === 'targets' && V2.page === 'overview') { V2.overview.tab = 'targets'; v2RenderOverview(); }
+    if (q.get('targetadd') === '1') setTimeout(() => v2TargetModal(null), 500);
     if (q.has('step') && window.__evState) {
       window.__evState.selStep = Math.max(0, Math.min(6, Number(q.get('step')) || 0));
       if (window.evRoute) window.evRoute();

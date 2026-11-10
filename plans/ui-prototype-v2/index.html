@@ -28,7 +28,7 @@
 <body>
 <div class="wrap">
   <h1>Harness Evolution V2 <span class="pill">多工作空间 · 归因进入进化</span></h1>
-  <p class="sub">在 V1 融合原型基础上迭代：登录与角色、工作空间、bad case 上报与额度、空间总览、默认 10 个 Session，以及「先关联 Session、再筛潜在 bad case、最后对象级归因」的进化流程。视觉与组件基线沿用 <code>plans/14-15-ui-prototype/harness-evolution.html</code>。</p>
+  <p class="sub">在 V1 融合原型基础上迭代：登录与角色、工作空间、bad case 上报与额度、空间总览、默认 10 个 Session，以及「先关联 Session、再筛潜在 bad case、最后对象级归因」的进化流程；总览页提供 bad case 与进化对象双视角。视觉与组件基线沿用 <code>plans/14-15-ui-prototype/harness-evolution.html</code>。</p>
   <div class="cards">
     <a class="card" href="harness-evolution.html">
       <span class="issue">V2 主原型</span>
@@ -38,7 +38,11 @@
     <div class="grid2">
       <a class="card" href="harness-evolution.html?u=admin&page=overview">
         <span class="issue">演示入口</span><h2>工作空间总览 →</h2>
-        <p>管理员视角，object_name 多选、日/周/月粒度、分页列表与下钻。</p>
+        <p>管理员视角，bad case 上报来源多选、日/周/月粒度、分页列表与下钻。</p>
+      </a>
+      <a class="card" href="harness-evolution.html?u=admin&page=overview&tab=targets">
+        <span class="issue">演示入口</span><h2>进化对象总览 →</h2>
+        <p>潜在 bad case 状态、上报来源分布、进化对象维度占比、分页下钻与增删改。</p>
       </a>
       <a class="card" href="harness-evolution.html?u=admin&page=evo&demo=wizard2">
         <span class="issue">演示入口</span><h2>自进化向导 →</h2>
