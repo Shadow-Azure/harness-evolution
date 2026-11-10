@@ -457,6 +457,11 @@
 .evo-app .sec-title .sub { font-size: 11.5px; color: var(--text-faint); font-weight: 400; }
 .evo-app .rep td.session-cell { max-width: 170px; }
 .evo-app .rep td.session-cell b { display: block; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.evo-app .rep td.attr-source { white-space: nowrap; }
+.evo-app .rep td.attr-case { max-width: 150px; font-weight: 600; font-size: 11.5px; }
+.evo-app .rep td.attr-target { white-space: nowrap; }
+.evo-app .rep td.attr-desc { max-width: 320px; color: var(--text-dim); font-size: 11px; line-height: 1.55; }
+.evo-app .rep td.attr-desc span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* ── 列表页 ────────────────────────── */
   .evo-app .page-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .evo-app .page-head h1 { font-size: 18px; font-weight: 700; }
@@ -3629,15 +3634,19 @@ function evStepPotential(run) {
 
 function evStepAttr(run) {
   const m = run.model;
-  const rows = m.potentialRows.map(r => `<tr>
-    <td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td>
-    <td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td>
-    <td class="mono">${run.target.name}@${run.target.version}</td>
-    <td>${r.conclusion === 'attributed' ? `<span class="v2-badge ok">可归因</span>` : `<span class="v2-badge warn">非该对象问题</span>`}</td>
-    <td>${evEsc(r.category)}</td>
-    <td>${r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">新增</span>'}</td>
-    <td class="mono">${(r.confidence * 100).toFixed(0)}%</td>
-  </tr>`).join('');
+  const rows = m.potentialRows.map(r => {
+    const category = r.conclusion === 'not-object' ? '非该对象问题' : r.category;
+    return `<tr>
+      <td class="mono attr-source">${evCaseLink(r.c)}</td>
+      <td class="attr-case">${evEsc(r.c.title)}</td>
+      <td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td>
+      <td class="mono attr-target">${run.target.name}@${run.target.version}</td>
+      <td>${evTypeChip(category)}</td>
+      <td class="attr-desc"><span title="${evEsc(r.c.detail)}">${evEsc(r.c.detail)}</span></td>
+      <td>${r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">新增</span>'}</td>
+      <td class="mono">${(r.confidence * 100).toFixed(0)}%</td>
+    </tr>`;
+  }).join('');
   return `<div class="card panel">
     <div class="sec-title">第 4 步 · 对象归因 <span class="sub">每条结论只作用于 ${evEsc(run.target.name)}@${run.target.version}</span></div>
     <div class="wz-stats" style="margin-bottom:10px">
@@ -3647,7 +3656,7 @@ function evStepAttr(run) {
       <span class="st"><b>${m.reused}</b><span>复用缓存</span></span>
       <span class="st"><b>${m.fresh}</b><span>本次新增</span></span>
     </div>
-    <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>归因对象版本</th><th>结论</th><th>分类</th><th>结果来源</th><th>置信度</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有需要归因的潜在 bad case</td></tr>'}</tbody></table>
+    <table class="rep"><thead><tr><th>来源 bad case</th><th>bad case</th><th>object_name</th><th>归因对象版本</th><th>分类</th><th>问题现象/描述</th><th>结果来源</th><th>置信度</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="waiting">没有需要归因的潜在 bad case</td></tr>'}</tbody></table>
     <p class="v2-note" style="margin-top:9px">「非该对象问题」是当前对象版本的一条归因结论，不修改 bad case 本身，也不影响它与其他对象的潜在关系。缓存键：工作空间 + bad case + 对象身份/版本 + 策略版本 + 归因模型版本。</p>
   </div>`;
 }
