@@ -150,7 +150,9 @@ Content-Type: application/json
   → 对关联 Session 找对象触发点与所有 bad case 触发点
   → 按潜在策略筛选潜在 bad case
   → 对每个潜在 bad case 生成「对象版本级」归因
-  → 归因后的 bad case 进入聚类 / 迭代 / 终评
+  → 对归因后的 bad case 按问题类型聚类，按严重程度降序排序
+  → 按聚类结果逐轮打 patch / 评测 / 接纳
+  → 测试集终评
 ```
 
 原型把 Session 关联与潜在 bad case 拆成向导第 2、3 步：第 2 步只看关联 Session（分页），第 3 步只看潜在 bad case（分页），第 4 步才做归因预览与启动。

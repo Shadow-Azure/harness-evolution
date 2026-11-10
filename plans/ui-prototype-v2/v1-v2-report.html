@@ -140,7 +140,7 @@
           <li><code>--bg #f4f5f7</code>、12px 卡片、蓝/紫/橙/红语义色、13px 正文</li>
           <li>Session 卡片、状态点、两条密度条、10 格统计条</li>
           <li>React Flow 家族树、问题卡、执行流选中联动</li>
-          <li>自进化 run-card、6 步 stepper、cluster/diff/eval/commit</li>
+          <li>自进化 run-card、7 步 stepper、cluster/diff/eval/commit</li>
           <li>启动向导 modal、条件摘要条、分页表格</li>
         </ul>
       </div>
@@ -169,7 +169,7 @@
         <tr><td>3</td><td><b>空间上报接口与 bad case 额度</b></td><td>每空间独立 <code>POST /api/workspaces/{id}/bad-cases</code>、凭据、额度、请求体示例；创建后可调额度；409 说明</td><td>上报接入截图</td></tr>
         <tr><td>4</td><td><b>空间总览：object × 时间 × self/discovery，列表分页下钻</b></td><td>总览页：日/周/月、object_name 多选、self/discovery 堆叠、对象分布、组合筛选列表、点击行进入对应 bad case 问题描述</td><td>总览截图</td></tr>
         <tr><td>5</td><td><b>Session 默认 10 个；输入 session ID 回车重查</b></td><td>侧栏显示「最新 10 / 13」；输入 root session ID 回车命中老 Session；清空回车恢复 10 条；无命中空态</td><td>Session 截图</td></tr>
-        <tr><td>6</td><td><b>归因进入自进化流程；对象关联、潜在策略、缓存</b></td><td>向导 4 步（关联 / 潜在各自分页）；详情 6 步；默认策略 = self ∪ 触发点在对象之后；自定义规则；缓存开关与复用/新增/非该对象统计</td><td>向导 2/3 步截图</td></tr>
+        <tr><td>6</td><td><b>归因进入自进化流程；对象关联、潜在策略、缓存</b></td><td>向导 4 步（关联 / 潜在各自分页）；详情 7 步；默认策略 = self ∪ 触发点在对象之后；自定义规则；缓存开关与复用/新增/非该对象统计</td><td>向导 2/3 步截图</td></tr>
         <tr><td>7</td><td><b>错误详情：一个 bad case 多条归因，左栏可折叠 + 分页</b></td><td>bad case 组折叠；每组归因子项按对象版本分页（2 条/页）；点击子项进入归因分析；未归因状态</td><td>错误详情截图</td></tr>
       </tbody>
     </table>
@@ -252,8 +252,9 @@
       <div class="step on"><b>2 Session 关联</b>对象是否出现</div>
       <div class="step on"><b>3 潜在 bad case</b>self ∪ 触发点之后</div>
       <div class="step on"><b>4 对象归因</b>可归因 / 非该对象 / 缓存</div>
-      <div class="step"><b>5 迭代优化</b>patch → eval → accept</div>
-      <div class="step"><b>6 终评</b>best vs 初始</div>
+      <div class="step on"><b>5 聚类与排序</b>按类型聚类 · 严重度降序</div>
+      <div class="step"><b>6 迭代优化</b>按簇 patch → eval → accept</div>
+      <div class="step"><b>7 终评</b>best vs 初始</div>
     </div>
     <div class="compare">
       <div class="shot">
@@ -279,7 +280,7 @@
         <div class="cap">「复用缓存归因」开关；预览潜在 / 复用 / 新增 / 非该对象四类数量；缓存键包含空间、bad case、对象版本、策略与模型版本。</div>
       </div>
     </div>
-    <div class="note" style="margin-top:12px">本次迭代把原第 2 步拆成两步：<b>第 2 步只看关联 Session</b>（4 条/页），<b>第 3 步只看潜在 bad case</b>（5 条/页）；归因预览移到第 4 步。修改前后对照见 <a href="screenshots-v2/v2-wizard-split-before-after.png" target="_blank">拆分前后截图</a>。</div>
+    <div class="note" style="margin-top:12px">本次迭代把原第 2 步拆成两步：<b>第 2 步只看关联 Session</b>（4 条/页），<b>第 3 步只看潜在 bad case</b>（5 条/页）；归因预览移到第 4 步。运行详情在归因后新增<b>第 5 步聚类与严重度排序</b>，迭代顺延到第 6 步。修改前后对照见 <a href="screenshots-v2/v2-wizard-split-before-after.png" target="_blank">向导拆分截图</a> / <a href="screenshots-v2/v2-evo-step5-insert-before-after.png" target="_blank">聚类步骤截图</a>。</div>
     <h3>运行详情：把“为什么进入这次进化”讲清楚</h3>
     <div class="compare">
       <div class="shot">
@@ -290,7 +291,7 @@
       <div class="shot">
         <div class="bar"><b>V2 · 运行详情</b><span class="tag">关联 → 潜在 → 归因 → 迭代</span></div>
         <a href="screenshots-v2/v2-evo-detail.png" target="_blank"><img src="screenshots-v2/v2-evo-detail.png" alt="V2 运行详情"></a>
-        <div class="cap">V2：信息面板显示关联 Session、时间段内 bad case、潜在 bad case、可归因/非该对象；第 3 步潜在表在 bad case 前显示关联 Session（标题 + 根会话 ID），聚类来源改为 bad case 链接。</div>
+        <div class="cap">V2：信息面板显示关联 Session、时间段内 bad case、潜在 bad case、可归因/非该对象；第 3 步潜在表在 bad case 前显示关联 Session（标题 + 根会话 ID）；新增第 5 步聚类与严重度排序，迭代顺延到第 6 步；聚类来源改为 bad case 链接。</div>
       </div>
     </div>
     <div class="grid2" style="margin-top:12px">

@@ -3369,19 +3369,28 @@ function evMakeRun(cfg) {
     if (/计划|拆分/.test(title)) return EV_PATCH.plan;
     return EV_PATCH.deser;
   };
-  run.clusters = attributed.slice(0, count).map((r, i) => {
+  const groups = [];
+  attributed.forEach(r => {
+    let g = groups.find(x => x.category === r.category);
+    if (!g) { g = { category: r.category, rows: [] }; groups.push(g); }
+    g.rows.push(r);
+  });
+  run.clusters = groups.slice(0, count).map((g, i) => {
+    const r = g.rows[0];
     const tpl = EV_CLUSTER_TEMPLATES[i] || EV_CLUSTER_TEMPLATES[0];
     return {
       ...tpl, id: 'C' + (i + 1), title: r.c.title,
       type: typeMap[r.category] || tpl.type,
       phenomenon: r.c.detail, patch: patchFor(r.c.title),
-      caseIds: [r.c.id],
+      caseIds: g.rows.map(x => x.c.id),
       accepted: i === 0 ? true : (i === 1 ? tpl.accepted : false),
       commit: i === 0 ? tpl.commit : (i === 1 ? tpl.commit : null),
     };
   });
+  run.clusters.sort((a, b) => b.sev - a.sev);
   run.final.bestVersion = cfg.target.version + '-best';
   run.progress = cfg.progress ?? 0;
+  if (cfg.progress === 8) run.progress = evTotal(run);
   return run;
 }
 
@@ -3421,18 +3430,25 @@ Object.assign(EV_RUNS[1].final, {
 
 const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, wz: null, targetDialog: null };
 
-function evTotal(run) { return 4 + run.clusters.length + 1; }
+function evTotal(run) { return 5 + run.clusters.length + 1; }
 function evIsDone(run) { return run.progress >= evTotal(run); }
-function evRoundDone(run, i) { return run.progress >= 5 + i; }
-function evRoundActive(run, i) { return run.progress === 4 + i; }
+function evRoundDone(run, i) { return run.progress >= 6 + i; }
+function evRoundActive(run, i) { return run.progress === 5 + i; }
+function evStageIndex(run) {
+  if (run.progress < 5) return run.progress;
+  if (run.progress < 5 + run.clusters.length) return 5;
+  return 6;
+}
 function evStageDone(run, stage) {
-  if (stage === 4) return run.progress >= 4 + run.clusters.length;
-  if (stage === 5) return evIsDone(run);
+  if (stage === 4) return run.progress >= 5;
+  if (stage === 5) return run.progress >= 5 + run.clusters.length;
+  if (stage === 6) return evIsDone(run);
   return run.progress > stage;
 }
 function evStageActive(run, stage) {
-  if (stage === 4) return run.progress >= 4 && run.progress < 4 + run.clusters.length;
-  if (stage === 5) return run.progress === 4 + run.clusters.length && !evIsDone(run);
+  if (stage === 4) return run.progress === 4;
+  if (stage === 5) return run.progress >= 5 && run.progress < 5 + run.clusters.length;
+  if (stage === 6) return run.progress === 5 + run.clusters.length && !evIsDone(run);
   return run.progress === stage;
 }
 function evTypeColor(t) {
@@ -3460,7 +3476,7 @@ function evRunsOfWs() { return EV_RUNS.filter(r => r.workspace === evCurrentWs()
 function evTargetsOfWs() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled); }
 
 function evStatusBadge(run) {
-  if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${Math.min(6, Math.max(1, run.progress + 1))}/6 步</span>`;
+  if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${evStageIndex(run) + 1}/7 步</span>`;
   return run.final.verdict ? `<span class="badge done-ok">✓ 已完成 · 自进化有效</span>` : `<span class="badge done-no">已完成 · 无收益</span>`;
 }
 
@@ -3480,9 +3496,9 @@ function evRunCard(run) {
   const m = run.model;
   let tail;
   if (!evIsDone(run)) {
-    const names = ['选择范围', 'Session 关联', '筛选潜在 bad case', '对象归因', '迭代优化', '测试集终评'];
-    const stage = run.progress < 4 ? run.progress : (run.progress < 4 + run.clusters.length ? 4 : 5);
-    tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">第 ${stage + 1}/6 步 · ${names[stage]} · ${pct}%</span></div>`;
+    const names = ['选择范围', 'Session 关联', '筛选潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
+    const stage = evStageIndex(run);
+    tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">第 ${stage + 1}/7 步 · ${names[stage]} · ${pct}%</span></div>`;
   } else {
     tail = `<div class="final-line"><span style="color:var(--text-dim)">best <b class="mono">${run.final.bestScore.toFixed(1)}</b> vs 初始 <b class="mono">${run.final.initScore.toFixed(1)}</b></span>${evDelta(run.final.bestScore - run.final.initScore)}<span style="color:var(--text-faint)">· 接纳 ${accepted}/${run.clusters.length} 个 patch</span></div>`;
   }
@@ -3561,13 +3577,13 @@ function evInfoPanel(run) {
   </div>`;
 }
 
-const EV_STEPS = ['选择范围', 'Session 关联', '潜在 bad case', '对象归因', '迭代优化', '测试集终评'];
+const EV_STEPS = ['选择范围', 'Session 关联', '潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
 function evStepper(run, sel) {
   return `<div class="stepper">` + EV_STEPS.map((s, i) => {
     const done = evStageDone(run, i), active = evStageActive(run, i);
     const clickable = done || active;
     const ico = done ? '✓' : (active ? '<span class="pulse" style="width:8px;height:8px"></span>' : i + 1);
-    return `${i ? `<div class="conn ${evStageDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="xstep ${done ? 'done' : active ? 'active' : ''}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="ev-sel-step" data-step="${i}"` : ''}><span class="ico">${ico}</span><span class="lbl">${evEsc(s)}${i === 4 ? `（${run.clusters.length} 轮）` : ''}</span></div>`;
+    return `${i ? `<div class="conn ${evStageDone(run, i - 1) ? 'done' : ''}"></div>` : ''}<div class="xstep ${done ? 'done' : active ? 'active' : ''}${clickable ? ' clickable' : ''}${sel === i ? ' selected' : ''}"${clickable ? ` data-action="ev-sel-step" data-step="${i}"` : ''}><span class="ico">${ico}</span><span class="lbl">${evEsc(s)}${i === 5 ? `（${run.clusters.length} 轮）` : ''}</span></div>`;
   }).join('') + `</div>`;
 }
 
@@ -3709,18 +3725,53 @@ function evCluster(run, c, i) {
   </div>`;
 }
 
+function evStepCluster(run) {
+  const m = run.model;
+  const clusters = run.clusters;
+  const totalCases = new Set(clusters.flatMap(c => c.caseIds || [])).size;
+  const avgConf = clusters.length ? clusters.reduce((a, c) => a + c.conf, 0) / clusters.length : 0;
+  const maxSev = clusters.length ? Math.max(...clusters.map(c => c.sev)) : 0;
+  const rows = clusters.map((c, i) => {
+    const cases = (c.caseIds || []).map(id => {
+      const x = caseById(id);
+      return x ? `<div>${evCaseLink(x)} <span class="v2-note">${evEsc(x.title)}</span></div>` : `<div class="mono">${evEsc(id)}</div>`;
+    }).join('');
+    return `<tr>
+      <td class="num"><span class="rank">#${i + 1}</span></td>
+      <td><b>${evEsc(c.id)}</b> · ${evEsc(c.title)}</td>
+      <td>${evTypeChip(c.type)}</td>
+      <td class="num">${(c.conf * 100).toFixed(0)}%</td>
+      <td class="num">${c.impact}/10</td>
+      <td>${cases || '<span class="v2-note">—</span>'}</td>
+      <td>${evSevHTML(c.sev)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="card panel">
+    <div class="sec-title">第 5 步 · 聚类与严重度排序 <span class="sub">按问题类型聚类，按严重程度降序决定第 6 步的迭代顺序</span></div>
+    <div class="wz-stats" style="margin-bottom:11px">
+      <span class="st"><b>${clusters.length}</b><span>聚类问题</span></span>
+      <span class="st"><b>${totalCases}</b><span>来源 bad case</span></span>
+      <span class="st"><b>${(avgConf * 100).toFixed(0)}%</b><span>平均置信度</span></span>
+      <span class="st accent"><b>${maxSev.toFixed(1)}</b><span>最高严重度</span></span>
+    </div>
+    <table class="metrics"><thead><tr><th>迭代顺序</th><th>聚类问题</th><th>类型</th><th>置信度</th><th>影响面</th><th>来源 bad case</th><th>严重程度</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="7" class="waiting">没有可聚类的归因结论</td></tr>'}</tbody></table>
+    <p class="v2-note" style="margin-top:9px">严重程度 = 置信度 × 影响面 × 来源频次加权（0–10）。非该对象问题不进入聚类；这里只做聚类与排序，不生成 patch，第 6 步按此顺序逐轮迭代。</p>
+  </div>`;
+}
+
 function evStepIter(run) {
   return `<div class="card panel">
-    <div class="sec-title">第 5 步 · 迭代优化 <span class="sub">按严重程度降序逐轮执行 · 每轮 patch → 评测 → 接纳 / 拒绝</span></div>
+    <div class="sec-title">第 6 步 · 迭代优化 <span class="sub">基于第 5 步聚类与严重度排序，逐轮执行 patch → 评测 → 接纳 / 拒绝</span></div>
     ${run.clusters.length ? run.clusters.map((c, i) => evCluster(run, c, i)).join('') : '<div class="waiting">没有可归因的潜在 bad case，本次运行不进入迭代。</div>'}
   </div>`;
 }
 function evStepFinal(run) {
-  if (!evIsDone(run)) return `<div class="card panel"><div class="sec-title">第 6 步 · 测试集终评</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best 与初始版本。</div></div>`;
+  if (!evIsDone(run)) return `<div class="card panel"><div class="sec-title">第 7 步 · 测试集终评</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best 与初始版本。</div></div>`;
   const f = run.final;
   const accepted = run.clusters.filter(c => c.accepted);
   return `<div class="card panel">
-    <div class="sec-title">第 6 步 · 测试集终评 <span class="sub">M 轮迭代完成后的最终结果</span></div>
+    <div class="sec-title">第 7 步 · 测试集终评 <span class="sub">M 轮迭代完成后的最终结果</span></div>
     <div class="verdict ${f.verdict ? 'ok' : 'no'}">
       <span class="big">${f.verdict ? '✓ 自进化有效' : '✗ 未产生收益'}</span>
       <span class="desc">best <b class="mono">${evEsc(f.bestVersion)}</b> 测试集得分 <b class="mono">${f.bestScore.toFixed(1)}</b> vs 初始 ${run.target.version} <b class="mono">${f.initScore.toFixed(1)}</b>（${evDelta(f.bestScore - f.initScore)}）</span>
@@ -3734,11 +3785,11 @@ function evStepFinal(run) {
 }
 
 function evStepContent(run, sel) {
-  return [evStepScope, evStepAssoc, evStepPotential, evStepAttr, evStepIter, evStepFinal][sel](run);
+  return [evStepScope, evStepAssoc, evStepPotential, evStepAttr, evStepCluster, evStepIter, evStepFinal][sel](run);
 }
 function evDefaultStep(run) {
-  for (let i = 0; i < 6; i++) if (evStageActive(run, i)) return i;
-  return 5;
+  for (let i = 0; i < 7; i++) if (evStageActive(run, i)) return i;
+  return 6;
 }
 
 function evRenderDetail(id) {
@@ -3750,7 +3801,7 @@ function evRenderDetail(id) {
     const ai = run.clusters.findIndex((c, i) => evRoundActive(run, i));
     if (run.clusters[ai >= 0 ? ai : 0]) EV_STATE.expanded.add(id + ':' + run.clusters[ai >= 0 ? ai : 0].id);
   }
-  const sel = Math.min(5, Math.max(0, EV_STATE.selStep));
+  const sel = Math.min(6, Math.max(0, EV_STATE.selStep));
   evApp.innerHTML = `<div class="wrap">
     <a class="back" href="#/runs">← 返回自进化列表</a>
     <div class="detail-head">
@@ -3873,7 +3924,7 @@ function evWzRun() {
     target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
     window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
     policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
-    cache: EV_STATE.wz.cache, progress: 4,
+    cache: EV_STATE.wz.cache, progress: 5,
   };
 }
 function evWizardModel() { const r = evWzRun(); return { run: r, m: evRunModel(r) }; }
@@ -4068,7 +4119,7 @@ document.addEventListener('click', e => {
       target: { kind: t.kind, name: t.objectName, version: EV_STATE.wz.version },
       window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy,
       policyRules: { includeSelf: EV_STATE.wz.includeSelf, includeAfter: EV_STATE.wz.includeAfter, sameObject: EV_STATE.wz.sameObject },
-      cache: EV_STATE.wz.cache, createdAt: '2026-11-10 09:10', progress: 4,
+      cache: EV_STATE.wz.cache, createdAt: '2026-11-10 09:10', progress: 5,
     });
     EV_RUNS.unshift(run);
     evModal.innerHTML = ''; EV_STATE.expanded.clear(); EV_STATE.selStep = null; EV_STATE.lastDetailId = null;
@@ -4109,6 +4160,7 @@ window.startEvolutionFromCase = function (caseId) {
   evWizardOpen(caseId);
 };
 window.__evOpenWizard = evWizardOpen;
+window.EV_RUNS = EV_RUNS;
 window.__evRenderWizard = evRenderWizard;
 window.__evState = EV_STATE;
 
@@ -4931,8 +4983,16 @@ function v2Boot() {
     v2LoginAs(userParam, { keepPage: true, silent: true, auto: true });
     v2SetPage(V2.page);
     if (q.has('step') && window.__evState) {
-      window.__evState.selStep = Math.max(0, Math.min(5, Number(q.get('step')) || 0));
+      window.__evState.selStep = Math.max(0, Math.min(6, Number(q.get('step')) || 0));
       if (window.evRoute) window.evRoute();
+    }
+    if (q.has('runprogress') && window.evRenderDetail) {
+      const rm = location.hash.match(/#\/run\/([^/?]+)/);
+      const run = rm && window.EV_RUNS && window.EV_RUNS.find(r => r.id === rm[1]);
+      if (run) {
+        run.progress = Math.max(0, Math.min(evTotal(run), Number(q.get('runprogress')) || 0));
+        window.evRenderDetail(run.id);
+      }
     }
     if (q.get('page') === 'session' && q.get('view') === 'errors') {
       const apply = () => { if (window.__bootDeepLink) window.__bootDeepLink(q); };
