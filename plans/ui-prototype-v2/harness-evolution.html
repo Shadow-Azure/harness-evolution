@@ -3728,37 +3728,34 @@ function evCluster(run, c, i) {
 }
 
 function evStepCluster(run) {
-  const m = run.model;
   const clusters = run.clusters;
   const totalCases = new Set(clusters.flatMap(c => c.caseIds || [])).size;
   const avgConf = clusters.length ? clusters.reduce((a, c) => a + c.conf, 0) / clusters.length : 0;
   const maxSev = clusters.length ? Math.max(...clusters.map(c => c.sev)) : 0;
-  const rows = clusters.map((c, i) => {
-    const cases = (c.caseIds || []).map(id => {
-      const x = caseById(id);
-      return x ? `<div>${evCaseLink(x)} <span class="v2-note">${evEsc(x.title)}</span></div>` : `<div class="mono">${evEsc(id)}</div>`;
-    }).join('');
-    return `<tr>
-      <td class="num"><span class="rank">#${i + 1}</span></td>
-      <td><b>${evEsc(c.id)}</b> · ${evEsc(c.title)}</td>
-      <td>${evTypeChip(c.type)}</td>
-      <td class="num">${(c.conf * 100).toFixed(0)}%</td>
-      <td class="num">${c.impact}/10</td>
-      <td>${cases || '<span class="v2-note">—</span>'}</td>
-      <td>${evSevHTML(c.sev)}</td>
-    </tr>`;
+  const cards = clusters.map((c, i) => {
+    const key = run.id + ':' + c.id;
+    const open = EV_STATE.expanded.has(key);
+    return `<div class="cluster ${open ? 'open' : ''}">
+      <div class="cluster-head" data-action="ev-toggle-cluster" data-key="${key}">
+        <span class="rank">#${i + 1}</span><span class="ctitle">${evEsc(c.id)} · ${evEsc(c.title)}</span>${evTypeChip(c.type)}
+        <span class="meta">bad case ×${(c.caseIds || []).length}</span><span class="meta">置信度 ${(c.conf * 100).toFixed(0)}%</span>${evSevHTML(c.sev)}
+        <span class="tail"><span class="caret">▶</span></span>
+      </div>
+      ${open ? `<div class="cluster-body">
+        <div class="cb-sec"><div class="cb-label">来源 bad case（${(c.caseIds || []).length} 个 · 点 ID 跳到错误详情）</div>${evCaseTable(c)}</div>
+      </div>` : ''}
+    </div>`;
   }).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 5 步 · 聚类与严重度排序 <span class="sub">按问题类型聚类，按严重程度降序决定第 6 步的迭代顺序</span></div>
+    <div class="sec-title">第 5 步 · 聚类与严重度排序 <span class="sub">按问题类型聚类，按严重程度降序；展开簇查看来源 bad case</span></div>
     <div class="wz-stats" style="margin-bottom:11px">
       <span class="st"><b>${clusters.length}</b><span>聚类问题</span></span>
       <span class="st"><b>${totalCases}</b><span>来源 bad case</span></span>
       <span class="st"><b>${(avgConf * 100).toFixed(0)}%</b><span>平均置信度</span></span>
       <span class="st accent"><b>${maxSev.toFixed(1)}</b><span>最高严重度</span></span>
     </div>
-    <table class="metrics"><thead><tr><th>迭代顺序</th><th>聚类问题</th><th>类型</th><th>置信度</th><th>影响面</th><th>来源 bad case</th><th>严重程度</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="7" class="waiting">没有可聚类的归因结论</td></tr>'}</tbody></table>
-    <p class="v2-note" style="margin-top:9px">严重程度 = 置信度 × 影响面 × 来源频次加权（0–10）。非该对象问题不进入聚类；这里只做聚类与排序，不生成 patch，第 6 步按此顺序逐轮迭代。</p>
+    <div class="cluster-list">${cards || '<div class="waiting">没有可聚类的归因结论</div>'}</div>
+    <p class="v2-note" style="margin-top:9px">严重程度 = 置信度 × 影响面 × 来源频次加权（0–10）；非该对象问题不进入聚类。这里只做聚类与排序，不生成 patch，第 6 步按 #1→#N 顺序逐轮迭代。</p>
   </div>`;
 }
 

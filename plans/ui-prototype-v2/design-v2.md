@@ -157,6 +157,8 @@ Content-Type: application/json
 
 原型把 Session 关联与潜在 bad case 拆成向导第 2、3 步：第 2 步只看关联 Session（分页），第 3 步只看潜在 bad case（分页），第 4 步才做归因预览与启动。
 
+运行详情的聚类步骤按严重程度降序展示簇卡片；每个簇可折叠，展开后在簇下方列出全部来源 bad case（ID、标题、object_name、类型、触发点、上报时间），默认展开第一簇。
+
 实现上，关联表只列对象出现过的 Session；未出现的 Session 只在统计中计为“跳过”，不进入表格。潜在 bad case 默认策略：
 
 ```text
