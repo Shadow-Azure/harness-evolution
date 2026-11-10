@@ -3642,7 +3642,6 @@ function evStepAttr(run) {
     return `<tr>
       <td class="mono attr-source">${evCaseLink(r.c)}</td>
       <td class="mono attr-report"><a class="idlink" href="${caseDeepLink(r.c.id, 'attr')}" target="_blank" rel="noopener" title="归因报告 ID · 打开归因分析">${r.attributionId}</a></td>
-      <td class="mono attr-target">${run.target.name}@${run.target.version}</td>
       <td>${evTypeChip(category)}</td>
       <td class="attr-desc"><span title="${evEsc(r.c.detail)}">${evEsc(r.c.detail)}</span></td>
       <td>${r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">新增</span>'}</td>
@@ -3658,7 +3657,7 @@ function evStepAttr(run) {
       <span class="st"><b>${m.reused}</b><span>复用缓存</span></span>
       <span class="st"><b>${m.fresh}</b><span>本次新增</span></span>
     </div>
-    <table class="rep"><thead><tr><th>来源 bad case</th><th>归因报告ID</th><th>归因对象版本</th><th>分类</th><th>问题现象/描述</th><th>结果来源</th><th>置信度</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有需要归因的潜在 bad case</td></tr>'}</tbody></table>
+    <table class="rep"><thead><tr><th>来源 bad case</th><th>归因报告ID</th><th>分类</th><th>问题现象/描述</th><th>结果来源</th><th>置信度</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="waiting">没有需要归因的潜在 bad case</td></tr>'}</tbody></table>
     <p class="v2-note" style="margin-top:9px">「非该对象问题」是当前对象版本的一条归因结论，不修改 bad case 本身，也不影响它与其他对象的潜在关系。缓存键：工作空间 + bad case + 对象身份/版本 + 策略版本 + 归因模型版本。</p>
   </div>`;
 }
