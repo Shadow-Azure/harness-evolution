@@ -13,7 +13,7 @@
 | 空间前缀（V2） | 业务资源一律 `/api/workspaces/{workspaceId}/...`；`workspaceId` 只在路径出现，body 不重复；对当前用户不可见的空间统一 `404 WORKSPACE_NOT_FOUND`（防枚举）。V1 无前缀路径冻结保留一个版本（§4.5 末段） |
 | 命名 | JSON 一律 **camelCase**（Pydantic `alias_generator=to_camel`）；数据库列 snake_case；两者转换只在 Pydantic 层发生 |
 | 时间 | ISO 8601 带时区，统一 **Asia/Shanghai（UTC+8）**，如 `2026-08-30T16:00:33.573+08:00`；不使用 `Z` 结尾；时长用整数秒 |
-| ID | `sessionId` 为根会话 UUID；`agentId` 主 agent = root session id、子 agent = 真实 `agentId`；`badCaseId` / `probeId` / `probeClusterId` / `attributionId` 由外部或本服务生成 |
+| ID | `sessionId` 为根会话 UUID；`agentId` 主 agent = root session id、子 agent = 真实 `agentId`；`badCaseId` / `attributionId` / `clusterId` / `runId` 由本服务生成 |
 | 列表 | `{ "items": [...], "total": 0, "page": 1, "pageSize": 20 }`；无分页的小列表直接 `{ "items": [...] }` |
 | 错误 | `{ "error": { "code": "SESSION_NOT_FOUND", "message": "...", "details": {} } }`，见 §8 |
 | 幂等 | `POST /api/acquisition/sync` 可重复调用（进行中返回 409）；`POST /evolution/runs` 无幂等键（每次启动都是新 run）；**V2 上报按 `badCaseId` 幂等 upsert**（§4.17） |
@@ -44,17 +44,18 @@ erDiagram
     SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
 
     SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
-    BAD_CASE ||--o| BAD_CASE_ANALYSIS : "归因状态"
-    BAD_CASE_ANALYSIS ||--o| PROBE_REPORT : "probe_id（1:1）"
-    SESSION_FAMILY ||--o{ PROBE_REPORT : "根因结论"
+    BAD_CASE ||--o{ BAD_CASE_ATTRIBUTION : "对象·版本结论"
 
     EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
-    EVOLUTION_RUN ||--o{ PROBE_CLUSTER : "本次 run 的聚类"
-    PROBE_CLUSTER ||--o{ PROBE_CLUSTER_PROBE : "M:N"
-    PROBE_REPORT ||--o{ PROBE_CLUSTER_PROBE : "被聚类"
+    EVOLUTION_RUN ||--o{ EVOLUTION_RUN_CANDIDATE : "候选快照"
+    BAD_CASE ||--o{ EVOLUTION_RUN_CANDIDATE : "潜在判定"
+    BAD_CASE_ATTRIBUTION ||--o| EVOLUTION_RUN_CANDIDATE : "本次关联"
+    EVOLUTION_RUN ||--o{ EVOLUTION_CLUSTER : "本次 run 的聚类"
+    EVOLUTION_CLUSTER ||--o{ EVOLUTION_CLUSTER_MEMBER : "成员（归因行）"
+    BAD_CASE_ATTRIBUTION ||--o{ EVOLUTION_CLUSTER_MEMBER : "被聚类"
     EVOLUTION_RUN ||--o{ EVOLUTION_ROUND : "迭代轮"
-    PROBE_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
+    EVOLUTION_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
     EVOLUTION_RUN ||--o| EVOLUTION_FINAL : "终评"
 
     USER ||--o{ WORKSPACE_MEMBER : "加入"
@@ -62,14 +63,9 @@ erDiagram
     WORKSPACE ||--o{ WORKSPACE_CREDENTIAL : "上报凭据"
     WORKSPACE ||--o{ BAD_CASE : "归属"
     WORKSPACE ||--o{ BAD_CASE_ATTRIBUTION : "归因"
-    BAD_CASE ||--o{ BAD_CASE_ATTRIBUTION : "对象·版本结论"
-    EVOLUTION_RUN ||--o{ EVOLUTION_RUN_CANDIDATE : "候选"
-    BAD_CASE ||--o{ EVOLUTION_RUN_CANDIDATE : "潜在判定"
-    EVOLUTION_RUN_CANDIDATE ||--o| BAD_CASE_ATTRIBUTION : "本次关联"
-    PROBE_CLUSTER ||--o{ EVOLUTION_CLUSTER_CASE : "簇成员（V2）"
 ```
 
-> 轨迹侧表由本服务同步写入；`BAD_CASE` 由空间上报接口（V2）与目录同步写入；`BAD_CASE_ATTRIBUTION` / `EVOLUTION_RUN_CANDIDATE` / `EVOLUTION_CLUSTER_CASE` 由自进化 run 写；`BAD_CASE_ANALYSIS` / `PROBE_REPORT` / `PROBE_CLUSTER_PROBE` V2 起冻结只读。`USER_TURN` 是内部表，不对外暴露（见 §3.3）。
+> 轨迹侧表由本服务同步写入；`BAD_CASE` 由空间上报接口与目录同步写入；`BAD_CASE_ATTRIBUTION`（由 `probe_reports` 演进）/ `EVOLUTION_RUN_CANDIDATE` / `EVOLUTION_CLUSTER` / `EVOLUTION_CLUSTER_MEMBER` 由自进化 run 写。`BAD_CASE_ANALYSIS` 与独立的 probe 表已删除；`USER_TURN` 是内部表，不对外暴露（见 §3.3）。
 
 ## 3. 领域模型（OpenAPI Schema 的源头）
 
@@ -220,45 +216,19 @@ erDiagram
   "title": "检索索引读取失败",
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
-  "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" }
+  "attributionCount": 3, "hasAttribution": true
 }
 ```
 
-- `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看 `probe`。
+- `objectName/objectType/objectVersion` 是**上报者/发现者**，不是根因；根因看该 bad case 的归因（§3.9）。
 - `badCaseAgent` 记录**上报/发现问题的 agent**：`sessionId` 是根会话，`agentId` 主 agent 为 `null`、子 agent 为真实 `agentId`。它是锚点计算的输入，不一定是卡片宿主；`discovery + agent` 时 `anchor.agentId` 会解析到父节点。
 - 上报契约：`badCaseAgent.agentId` 指向的 agent 必须包含 `objectName` 的触发记录；skill 型问题只在该 agent 的 `agent_events` 里查找，找不到时 `anchor.eventIndex=-1`。
-- `title` 是外部上报必填的短标题：问题列表卡、执行流图问题卡与详情页标题行的主文本；`reason` 是描述正文，渲染在详情页正文块。
+- `title` 是上报必填的短标题：问题列表卡、执行流图问题卡与详情页标题行的主文本；`reason` 是描述正文，渲染在详情页正文块。
 - DB 列映射：`title` ↔ `bad_cases.title`，`reason` ↔ `bad_cases.bad_case_description`——存储层列名带 `bad_case_` 前缀，DTO 字段保留 `reason`（见 [06 §4.1](06-database-design.md)）。
 - `anchor` 是后端算出的挂载点：`anchor.agentId` 是宿主节点（可能是上报人的父节点），`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
-- `analysis.attributeType`：仅 `analyzed_issue` 非空（冗余自 `probe.attributeType`），问题列表/错误页左栏据此一次渲染 5 种展示态，无需逐条取 probe；`unanalyzed` / `analyzed_nonissue` 为 `null`。
-- `analysis.status` 与原型展示的映射：
-
-| `analysis.status` | 附加条件 | 原型展示 |
-|---|---|---|
-| `unanalyzed` | — | 未分析 |
-| `analyzed_nonissue` | — | 非问题 |
-| `analyzed_issue` | `probe.attributeType = model` | 是问题-模型问题 |
-| `analyzed_issue` | `probe.attributeType = prompt` | 是问题-prompt缺失某些提示词 |
-| `analyzed_issue` | `probe.attributeType = error` | 是问题-错误 |
-
-`ProbeReport`（归因结论；由 bad_case 的 `probeId` 取）：
-
-```json
-{
-  "probeId": "pr-050b-03",
-  "sessionId": "050b81ba-...",
-  "probeType": "agent", "probeObject": "Explore", "objectVersion": "v1.0.1",
-  "attributeType": "prompt",
-  "probeDescription": "prompt 未要求读取快照前校验用户轮次字段，subagent 直接读取导致越界。",
-  "probeAnalysis": "1. 从 bad_case 的 `reason` 与 `meta_data` 定位到 Explore 的读取步骤。\n2. 同批次有校验的 subagent 未报错，说明是 prompt 约定缺失。\n\n~~~ts\nconst snap = readSnapshot(id); // 未校验 userTurn\n~~~",
-  "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1
-}
-```
-
-- `probeObject @ objectVersion` 是**自进化 target 的唯一来源**。
-- `fromBadCases` / `fromBadCasesCount` 由 `bad_case_analysis.probe_id` 反查得出（V1 恒 1 条）。
-- `probeAnalysis` 是 **Markdown 字符串**（对应 DB `probe_reports.probe_analysis`，`TEXT`）；前端按 Markdown 渲染，保留换行、列表与代码块。渲染时禁用裸 HTML、外链加安全属性；不接语法高亮，代码块按等宽 + 横向滚动展示。
+- **归因状态（V2）**：`attributionCount` 是该 bad case 的去重「对象·版本」归因数；`hasAttribution = attributionCount > 0`。没有归因行就是未归因——不再有 `analysis` 字段与「非问题」状态（V1 的 `bad_case_analysis` 已删除）。
+- 展示状态由归因子项决定：无归因 → 「尚未归因」；有 `attributed` → 「可归因」（附带 `category`：模型 / prompt / 错误）；只有 `non_target` → 「非该对象问题」。具体条数看 §4.19 的分页接口。
 
 ### 3.5 自进化运行
 
@@ -272,14 +242,16 @@ erDiagram
   "target": { "type": "skill", "name": "deep-research", "version": "v2.0.0" },
   "window": { "from": "2026-08-20", "to": "2026-09-10" },
   "models": ["glm-5.3", "glm-5.3-flash"],
+  "policy": { "preset": "default" },
+  "cacheEnabled": true,
   "createdBy": "Administrator",
   "createdAt": "2026-10-19T18:42:00+08:00",
   "status": "running",
   "error": null,
-  "stats": { "sessions": 4, "probes": 12, "usedProbes": 7, "clusters": 5,
-    "byAttributeType": { "model": 3, "prompt": 1, "error": 3, "nonIssue": 2 } },
-  "progress": { "unit": 6, "total": 10, "percent": 60,
-    "stageLabel": "第 5/6 步 · 迭代优化 · 第 3/5 轮", "doneRounds": 2, "accepted": 1 },
+  "stats": { "sessions": 9, "badCases": 42, "potential": 18, "attributed": 11,
+    "reused": 7, "clusters": 3, "byCategory": { "error": 6, "prompt": 3, "model": 2 } },
+  "progress": { "unit": 5, "total": 9, "percent": 55,
+    "stageLabel": "第 5/7 步 · 聚类与严重度", "doneRounds": 1, "accepted": 1 },
   "final": null
 }
 ```
@@ -290,7 +262,7 @@ erDiagram
 "final": { "bestVersion": "v2.0.0-best", "branchName": "evo/20261023-evo-20261023-01", "pushStatus": "succeeded", "verdict": true, "bestScore": 88.9, "initScore": 84.3 }
 ```
 
-`RunDetail` 在 RunCard 基础上多 `steps` 与 `workspace`（六步状态由后端算，前端不推算）：
+`RunDetail` 在 RunCard 基础上多 `steps` 与 `workspace`（七步状态由后端算，前端不推算）：
 
 ```json
 "status": "blocked",
@@ -319,292 +291,135 @@ erDiagram
 
 - `status` ∈ `preparing|running|blocked|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
 - `createdBy` 是创建人的可空显示名；删除用户后为 `null`。Issue 要求展示创建人，前端把它与 `createdAt` 放在原型右上 meta 槽，不新增视觉行。
-- `byAttributeType.nonIssue` 在自进化口径下恒为 0：`analyzed_nonissue` 没有 probe，无法归属任何 target；`usedProbes = model + prompt + error`（非问题剔除、未分析不计入），原型"剔除非问题 N 份"与分布条图例直接取该字段。
+- `stats` 是 V2 口径：`sessions`（关联 Session）、`badCases`（时间窗内 bad case 数）、`potential`（潜在）、`attributed`（可归因）、`reused`（复用缓存数）、`clusters`、`byCategory`（按 `category` 分布）。不再有 `probes/usedProbes/byAttributeType/nonIssue`。
 - `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 
 `status` ∈ `done | active | pending`；`clickable = status != pending`。
 
-### 3.6 六步产出（六个独立端点）
+### 3.6 七步产出（七个独立端点）
 
 每个 step 一个端点，响应均为 `EvolutionStep` 外壳 + 该步的 `payload`：
 
 | step | key | 端点 | payload 关键字段 |
 |---|---|---|---|
-| 0 筛选输入 | `input` | `GET /evolution/runs/{rid}/steps/input` | `condition`、`hits`（sessions/probes/usedProbes/byAttributeType 含 nonIssue）、`rows[]`（`ProbeRow` + `clusterId`） |
-| 1 问题聚类 | `clusters` | `GET /evolution/runs/{rid}/steps/clusters` | `clusters[]`：`probeClusterId/title/description/type/probeCount/confidence/severity/probes[]`（`ProbeRow`；confidence/severity 未算完时为 `null`） |
-| 2 LLM 归因置信度 | `attribution` | `GET /evolution/runs/{rid}/steps/attribution` | `items[]`：clusterId/probeId/probeObject/objectVersion/attributeType/description/analysis/confidence（confidence 取所属簇的值） |
-| 3 严重程度排序 | `severity` | `GET /evolution/runs/{rid}/steps/severity` | `rows[]`：rank/clusterId/title/type/probeCount/reportCount/confidence/impact/severity（按落库 severity 降序） |
-| 4 迭代优化 | `iteration` | `GET /evolution/runs/{rid}/steps/iteration` | `rounds[]`：clusterId/title/type/probeCount/confidence/severity/probes[]（`ProbeRow`）/status/candidate/push/eval/accepted/finalCommit |
-| 5 测试集终评 | `final` | `GET /evolution/runs/{rid}/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]`（结构化修改点） |
+| 0 选择范围 | `range` | `GET …/evolution/runs/{rid}/steps/range` | `condition`（target/版本/时间窗/policy/cacheEnabled）+ `stats`（sessions/badCases/potential） |
+| 1 Session 关联 | `sessions` | `GET …/steps/sessions` | `summary`（reported/associated/skipped/pending）+ `rows[]`（sessionId/title/objectTriggerAt/badCaseCount/potentialCount），4 条/页 |
+| 2 潜在 bad case | `potential` | `GET …/steps/potential` | `summary`（badCases/potential/byReason）+ `rows[]`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），5 条/页 |
+| 3 对象归因 | `attribution` | `GET …/steps/attribution` | `summary`（potential/reused/fresh/nonTarget）+ `rows[]`（badCaseId/attributionId/category/description/source/confidence） |
+| 4 聚类与严重度 | `clusters` | `GET …/steps/clusters` | `clusters[]`：`clusterId/title/description/category/caseCount/confidence/severity/rank/cases[]`（按 severity 降序） |
+| 5 迭代优化 | `iteration` | `GET …/steps/iteration` | `rounds[]`：roundId/clusterId/title/category/caseCount/severity/cases[]/status/candidate/patch/push/eval/accepted/finalCommit |
+| 6 测试集终评 | `final` | `GET …/steps/final` | `verdict/bestVersion/bestScore/initScore/metrics[]/changes[]` |
 
 统一外壳：
 
 ```json
-{ "key": "clusters", "index": 1, "title": "问题聚类", "status": "done", "payload": { "clusters": [] } }
+{ "key": "potential", "index": 2, "title": "潜在 bad case", "status": "done",
+  "detail": "18 / 42", "payload": { "summary": {}, "rows": [] } }
 ```
 
-- `index` 是步骤顺序（0–5），`key` 是稳定语义标识；两个都保留，前端路由/缓存优先用 `key`。
-- `confidence` 是**簇级**（第 2 步归因完成写入 `probe_clusters.confidence`）；`impact` 是建簇时按 `probe_cluster_type` 的固定映射（V1：`error=9` / `prompt=7` / `model=5`）；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`，`reportCount` 是簇内 probe 反查到的 distinct `bad_case_id` 数。第 3 步写入 `probe_clusters.severity/rank`；接口只读这些列，不再占位计算；未到达对应步骤时值为 `null`。
-- 示例：`confidence=0.82, impact=9, reportCount=1 → severity=7.4`；`reportCount=3 → 8.9`（封顶 10）。
-- `attribution.items[]` 仍按 probe 展开，`confidence` 取所属簇的值（同一簇内相同）；归因结果不包含 `verdict`。
-- 端点未到达时返回 `404 STEP_NOT_READY`；`input` 在 `preparing` 时返回准备态，不返回 404。
-- `final` 在 `active` 且终评尚未写入（`evolution_finals` 无行）时 `verdict/bestVersion/bestScore/initScore` 为 `null`、`metrics` 为 `[]`，`changes` 仍按已接纳轮次给出；消费方按 `status` 渲染，不把 `null` 解读为终评失败。
-- 第 0 步 `hits` 按该 run 已落簇的 probe（`probe_cluster_probes`）计数、不按条件重查；`preparing` 时为零值。
-- 六个端点共享同一 run 的权限和 readiness；服务端只复用同一个 `build_step_payload`，不复制业务逻辑。
-
-共享 `ProbeRow`（`steps/input` 的 `rows[]`、`steps/clusters` 与 `steps/iteration` 的 `probes[]`、向导 `probes/query` 的 `items[]` 同构）：
-
-```json
-{ "probeId": "pr-050b-03", "sessionId": "050b81ba-...",
-  "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法", "model": "glm-5.3",
-  "probeType": "skill", "probeObject": "deep-research", "objectVersion": "v2.0.0",
-  "attributeType": "error", "description": "检索索引读取失败…",
-  "sourceBadCaseIds": ["bc-050b-03"] }
-```
-
-- `sourceBadCaseIds` 由 `bad_case_analysis.probe_id` 反查（V1 恒 1 条）；深链用 `sessionId + sourceBadCaseIds[0]` 拼 `/sessions/{sid}/errors?case={badCaseId}&tab=attr|desc`（报告 ID 落归因 tab，来源问题 ID 落问题描述 tab）。
-- `description` 即 `probeDescription`（原型报告表的"问题现象"列）；`steps/input` 的行在此基础上多一个 `clusterId`。
+- `index` 是步骤顺序（0–6），`key` 是稳定语义标识；前端路由/缓存优先用 `key`，`detail` 给 stepper 副标题。
+- 进度公式 `5 + M + 1`（M = 簇数）：选择范围/Session 关联/潜在/归因/聚类各占 1，迭代占 M，终评占 1；`stageLabel` 文案按上表。
+- `confidence` 在 `clusters` 上是**簇级**占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66）；归因行上的 `confidence` 是单条结论置信度，两者不互相推导。
+- `impact` 按 `category` 固定映射（`error=9` / `prompt=7` / `model=5`）；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`，`reportCount` 是簇内成员 join 归因行统计的 distinct `bad_case_id` 数。
+- 端点未到达时返回 `404 STEP_NOT_READY`；`range` 在 `preparing` 时返回准备态（不 404）。
+- `final` 在 `active` 且终评尚未写入时 `verdict/bestVersion/bestScore/initScore` 为 `null`、`metrics` 为 `[]`，`changes` 仍按已接纳轮次给出。
+- `attribution.rows[].source` ∈ `cached | fresh`：本次复用缓存还是新计算；`summary.nonTarget` 是本 run 判定为非该对象的候选数。
+- `clusters[].cases[]` 字段：`badCaseId/title/objectName/badCaseType/triggerAt/createdAt`；簇标题取簇内最高频 bad case `title`，描述 = 「N 个 bad case 共同表现」+ 归因 reason 摘要。
+- 七个端点共享同一 run 的权限与 readiness；服务端只复用同一个 `build_step_payload`，不复制业务逻辑。
 
 #### 3.6.1 返回示例
 
-`steps/input`：
+`steps/range`：
 
 ```json
 {
-  "key": "input", "index": 0, "title": "筛选输入", "status": "done",
-  "payload": {
+  "key": "range", "index": 0, "title": "选择范围", "status": "done",
+  "detail": "18 / 42", "payload": {
     "condition": { "targetType": "skill", "targetName": "deep-research", "targetVersion": "v2.0.0",
-      "from": "2026-08-20", "to": "2026-09-10", "models": ["glm-5.3"] },
-    "hits": { "sessions": 130, "badCases": 1, "analyzed": 1, "unanalyzed": 0,
-      "probes": 1, "usedProbes": 1, "byAttributeType": { "model": 0, "prompt": 0, "error": 1, "nonIssue": 0 } },
-    "rows": [
-      { "probeId": "pr-050b-03", "sessionId": "050b81ba-...", "sessionTitle": "研究…",
-        "model": "glm-5.3", "probeType": "skill", "probeObject": "deep-research",
-        "objectVersion": "v2.0.0", "attributeType": "error", "description": "检索索引读取失败…",
-        "sourceBadCaseIds": ["bc-050b-03"], "clusterId": "C1" }
-    ]
-  }
-}
+      "from": "2026-08-20", "to": "2026-09-10", "policy": { "preset": "default" },
+      "cacheEnabled": true, "workspaceId": "ws-harness" },
+    "stats": { "sessions": 9, "badCases": 42, "potential": 18 } } }
 ```
 
-`steps/clusters`：
+`steps/sessions`：
 
 ```json
 {
-  "key": "clusters", "index": 1, "title": "问题聚类", "status": "done",
+  "key": "sessions", "index": 1, "title": "Session 关联", "status": "done",
   "payload": {
-    "clusters": [
-      { "probeClusterId": "C1", "title": "检索索引读取失败", "description": "检索索引读取失败",
-        "type": "error", "probeCount": 1, "confidence": 0.82, "severity": 7.4,
-        "probes": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...", "sessionTitle": "研究…",
-          "model": "glm-5.3", "probeType": "skill", "probeObject": "deep-research",
-          "objectVersion": "v2.0.0", "attributeType": "error", "description": "检索索引读取失败…",
-          "sourceBadCaseIds": ["bc-050b-03"] } ] }
-    ]
-  }
-}
+    "summary": { "reportedSessions": 12, "associatedSessions": 9, "skippedSessions": 3, "pendingSessions": 1 },
+    "rows": [ { "sessionId": "cb819c5b-…", "title": "AI agent + 视频播放…",
+      "objectTriggerAt": "2026-09-05T17:40:12+08:00", "badCaseCount": 3, "potentialCount": 2 } ],
+    "total": 9, "page": 1, "pageSize": 4 } }
+```
+
+`steps/potential`：
+
+```json
+{
+  "key": "potential", "index": 2, "title": "潜在 bad case", "status": "done",
+  "payload": {
+    "summary": { "badCases": 42, "potential": 18,
+      "byReason": { "self_report": 6, "after_object": 9, "both": 3 } },
+    "rows": [ { "badCaseId": "BC-HC-0007", "objectName": "deep-research", "badCaseType": "self",
+      "triggerAt": "2026-09-06T09:12:00+08:00", "sessionId": "cb819c5b-…",
+      "hitReason": "self_report", "orderState": "comparable" } ],
+    "total": 18, "page": 1, "pageSize": 5 } }
 ```
 
 `steps/attribution`：
 
 ```json
 {
-  "key": "attribution", "index": 2, "title": "LLM 归因置信度", "status": "done",
+  "key": "attribution", "index": 3, "title": "对象归因", "status": "done",
   "payload": {
-    "items": [
-      { "clusterId": "C1", "probeId": "pr-050b-03", "probeObject": "deep-research",
-        "objectVersion": "v2.0.0", "attributeType": "error",
-        "description": "检索索引读取失败", "analysis": "在对象逻辑中复现并确认索引未校验",
-        "confidence": 0.82 }
-    ]
-  }
-}
+    "summary": { "potential": 18, "reused": 11, "fresh": 7, "nonTarget": 4 },
+    "rows": [ { "badCaseId": "BC-HC-0007", "attributionId": "AT-01J9…", "category": "error",
+      "description": "检索索引读取失败", "source": "cached", "confidence": 0.8 } ] } }
 ```
 
-`steps/severity`：
+`steps/clusters`：
 
 ```json
 {
-  "key": "severity", "index": 3, "title": "严重程度排序", "status": "done",
+  "key": "clusters", "index": 4, "title": "聚类与严重度", "status": "done", "detail": "3 簇",
   "payload": {
-    "rows": [
-      { "rank": 1, "clusterId": "C1", "title": "检索索引读取失败", "type": "error", "probeCount": 1,
-        "reportCount": 1, "confidence": 0.82, "impact": 9, "severity": 7.4 }
-    ]
-  }
-}
+    "clusters": [
+      { "clusterId": "C1", "title": "检索索引读取失败",
+        "description": "索引读取前未校验快照字段（3 个 bad case 共同表现）",
+        "category": "error", "caseCount": 3, "confidence": 0.82, "severity": 7.4, "rank": 1,
+        "cases": [ { "badCaseId": "BC-HC-0007", "title": "检索索引读取失败",
+          "objectName": "deep-research", "badCaseType": "self",
+          "triggerAt": "2026-09-06T09:12:00+08:00", "createdAt": "2026-09-06T09:20:00+08:00" } ] } ] } }
 ```
 
-`steps/iteration`：
+`steps/iteration` 的 `rounds[]` 结构：
 
 ```json
-{
-  "key": "iteration", "index": 4, "title": "迭代优化", "status": "active", "detail": "第 1/1 轮",
-  "payload": {
-    "rounds": [
-      { "roundId": "r-01", "clusterId": "C1", "title": "检索索引读取失败", "type": "error",
-        "probeCount": 1, "confidence": 0.82, "severity": 7.4, "status": "accepted",
-        "probes": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...", "sessionTitle": "研究…",
-          "model": "glm-5.3", "attributeType": "error", "description": "检索索引读取失败…",
-          "sourceBadCaseIds": ["bc-050b-03"] } ],
-        "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1",
-          "commit": "ab12…", "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
-        "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
-        "push": { "status": "succeeded", "attempts": 1, "error": null },
-        "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
-        "accepted": true,
-        "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取" } }
-    ]
-  }
-}
+{ "roundId": "r-01", "clusterId": "C1", "title": "检索索引读取失败", "category": "error",
+  "caseCount": 3, "severity": 7.4, "status": "accepted",
+  "cases": [ { "badCaseId": "BC-HC-0007", "title": "检索索引读取失败",
+    "objectName": "deep-research", "badCaseType": "self",
+    "triggerAt": "2026-09-06T09:12:00+08:00", "createdAt": "2026-09-06T09:20:00+08:00" } ],
+  "patch": { "file": "SKILL.md", "lines": ["+ 读取索引前校验快照字段"] },
+  "candidate": { "ref": "evo/20261023-evo-20261023-01/candidate/r1", "commit": "ab12…",
+    "message": "evolve(deep-research@v2.0.0): 针对「检索索引读取失败」的候选变更" },
+  "push": { "status": "succeeded", "attempts": 1, "error": null },
+  "eval": { "status": "completed", "current": 84.6, "candidate": 87.2, "nextPollAt": null },
+  "accepted": true,
+  "finalCommit": { "hash": "cd34…", "message": "evolve(deep-research@v2.0.0): 修复检索索引未校验导致的越界读取" } }
 ```
 
 `steps/final`：
 
 ```json
 {
-  "key": "final", "index": 5, "title": "测试集终评", "status": "done",
+  "key": "final", "index": 6, "title": "测试集终评", "status": "done",
   "payload": {
     "verdict": true, "bestVersion": "v2.0.0-best", "bestScore": 88.9, "initScore": 84.3,
-    "metrics": [ { "name": "任务完成率", "init": 78.0, "best": 84.0, "delta": 6.0, "unit": "%" },
-      { "name": "平均耗时", "init": 42.0, "best": 36.0, "delta": -6.0, "unit": "s" } ],
+    "metrics": [ { "name": "任务完成率", "init": 78.0, "best": 84.0, "delta": 6.0, "unit": "%" } ],
     "changes": [ { "commit": "cd34…", "clusterId": "C1", "title": "检索索引读取失败",
-      "type": "error", "reportCount": 1 } ]
-  }
-}
-```
-
-迭代轮结构：`rounds[]` 含 `patch {file, lines[]}`、`candidate {ref, commit, message}`、`push {status, attempts, error}`、`eval {status, current, candidate, nextPollAt}`、`status ∈ pending|patching|pushing|evaluating|deciding|accepted|rejected|failed`、`finalCommit {hash, message}`（接纳后的 amend 结果）。candidate 先 push 临时 ref 再评测；接纳后 run 分支 fast-forward，拒绝后删除 candidate、`finalCommit=null`。「来源问题」是 `probes[]`（`ProbeRow`），展开即渲染原型的"来源问题报告"6 列表格；`final.changes[]` 每项对应一个已接纳轮次（`commit` = `finalCommit.hash`），原型"修改点"列表直接渲染。
-
-### 3.6.2 V2 七步产出（V1 六步冻结，本节替代）
-
-V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key,index,title,status,detail,payload}`），`key` 与 payload：
-
-| step | key | payload 关键字段 |
-|---|---|---|
-| 0 选择范围 | `range` | `condition{targetType,targetName,targetVersion,from,to,policy,cacheEnabled,workspaceId}` + `stats{sessions,badCases,potential}` |
-| 1 Session 关联 | `sessions` | `summary{reportedSessions,associatedSessions,skippedSessions,pendingSessions}` + `rows[{sessionId,title,objectTriggerAt,badCaseCount,potentialCount}]`（4 条/页） |
-| 2 潜在 bad case | `potential` | `summary{badCases,potential,byReason}` + `rows[{badCaseId,objectName,badCaseType,triggerAt,sessionId,hitReason,orderState}]`（5 条/页） |
-| 3 对象归因 | `attribution` | `summary{potential,reused,fresh,nonTarget}` + `rows[{badCaseId,attributionId,category,description,source,cached,confidence}]` |
-| 4 聚类与严重度 | `clusters` | `clusters[{probeClusterId,title,description,category,caseCount,confidence,severity,rank,cases[]}]`（按 severity 降序，`cases[]` 为来源 bad case） |
-| 5 迭代优化 | `iteration` | `rounds[]` 沿用 §3.6，`probes[]` 换成 `cases[]` |
-| 6 测试集终评 | `final` | 不变 |
-
-- 进度公式 `5 + M + 1`（M = 簇数），`stageLabel` 文案按上表；未到达 → `404 STEP_NOT_READY`（同 V1）。
-- `run.steps` 与 `stepsSchema`（`v1` / `v2`）由后端给出，前端按 schema 双轨渲染：V1 run 仍返回六步（`input/clusters/attribution/severity/iteration/final`）与 probe 语义 payload，历史数据不重算。
-- `clusters[].cases[]` 字段：`badCaseId/title/objectName/badCaseType/triggerAt/createdAt`；簇标题取簇内最高频 bad case `title`，描述 = 「N 个 bad case 共同表现」+ 归因 reason 摘要。
-
-### 3.7 工作空间、成员与凭据（V2）
-
-`Workspace`：
-
-```json
-{ "id": "ws-harness", "name": "Harness 核心研发", "mark": "核心轨迹诊断",
-  "role": "space_admin", "quota": 500, "used": 128, "memberCount": 4,
-  "createdAt": "2026-10-01T09:00:00+08:00" }
-```
-
-- `role` 是**当前用户在该空间的角色**：`space_admin` / `member` / `viewer`；全局管理员对所有空间返回 `space_admin`（不一定在成员表里）。
-- `used` 实时 `COUNT(bad_cases WHERE workspace_id=…)`，不物化；`memberCount` 是真实成员行数（不含仅因全局角色可见的管理员）。
-
-`SessionPayload`（`GET /api/auth/session`）：
-
-```json
-{ "user": { "id": "u-admin", "username": "admin", "displayName": "林澈", "role": "admin", "mustChangePassword": false },
-  "workspaces": [ { "id": "ws-harness", "name": "Harness 核心研发", "mark": "",
-                    "role": "space_admin", "quota": 500, "used": 128, "memberCount": 4 } ] }
-```
-
-`WorkspaceMember`：
-
-```json
-{ "userId": "u-alice", "username": "alice", "displayName": "Alice", "role": "member", "joinedAt": "2026-10-02T10:00:00+08:00" }
-```
-
-`WorkspaceCredential`（脱敏；明文只在创建响应出现一次）：
-
-```json
-{ "credentialId": "cred-01J9…", "prefix": "whk_9f2e…", "createdAt": "2026-10-01T09:00:00+08:00",
-  "lastUsedAt": "2026-11-11T09:12:00+08:00", "revokedAt": null }
-```
-
-### 3.8 bad case 上报请求（V2）
-
-请求体就是 `bad_cases` 表类型（camelCase）：
-
-```json
-{ "badCaseId": "BC-HC-0001",
-  "sessionId": "cb819c5b-286f-4eab-a681-4ba5414b844d",
-  "badCaseType": "self",
-  "objectName": "deep-research", "objectType": "skill", "objectVersion": "v2.0.0",
-  "badCaseAgentId": null,
-  "title": "检索索引读取失败",
-  "reason": "deep-research skill 自身执行时检索索引读取失败：ENOENT apps/server/src/search/index.ts:142",
-  "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
-  "source": "ci-reporter",
-  "createdAt": "2026-11-11T10:20:30+08:00" }
-```
-
-字段与校验：`badCaseId`（可选，≤64，携带即 upsert 幂等键）、`sessionId`（必填 36 位，不做存在性校验）、`badCaseType ∈ self|discovery`、`objectName`（1–128）、`objectType ∈ skill|agent`、`objectVersion`（可选 ≤64）、`badCaseAgentId`（可选 ≤64）、`title`（必填 1–255，超长 422 不截断）、`reason`（可选，缺省取 `title`）、`metaData`（可选 JSON 对象）、`source`（可选 ≤64）、`createdAt`（可选 ISO 8601；缺省服务端时间，未来 >5 分钟 422）。**body 不含空间字段**，空间身份只从 URL + 凭据解析。
-
-### 3.9 归因（V2）
-
-`AttributionItem`（错误详情左栏子项 / 分页列表）：
-
-```json
-{ "attributionId": "AT-01J9…", "objectType": "skill", "objectName": "deep-research",
-  "objectVersion": "v2.0.0", "conclusion": "attributed", "category": "error",
-  "confidence": 0.8, "runId": "evo-20261111-01", "isCached": true,
-  "createdAt": "2026-11-09T15:02:00+08:00" }
-```
-
-`AttributionDetail`（详情，含触发点对照）：
-
-```json
-{ "attributionId": "AT-01J9…", "objectType": "skill", "objectName": "deep-research",
-  "objectVersion": "v2.0.0", "conclusion": "attributed", "category": "error", "confidence": 0.8,
-  "runId": "evo-20261111-01", "isCached": true, "reusedCount": 3,
-  "policyVersion": "v1", "attributionEngine": "rule-v1",
-  "reason": "对象自身上报：检索索引读取失败；证据：ENOENT apps/server/src/search/index.ts:142",
-  "reasoning": ["bad_case 上报人即 deep-research 的宿主 agent", "对象在 L142 读取索引前未校验快照字段",
-                "同批次另一 subagent 有校验且未报错", "结论只作用于 v2.0.0"],
-  "triggerCompare": { "objectTriggerAt": "2026-09-05T17:40:12+08:00",
-                      "caseTriggerAt": "2026-09-06T09:12:00+08:00", "order": "after" },
-  "createdAt": "2026-11-09T15:02:00+08:00", "updatedAt": "2026-11-11T10:00:00+08:00" }
-```
-
-- `conclusion ∈ attributed|non_target`：后者是「非该对象问题」——不是未分析，也不否定 bad case 本身；同一 bad case 可对多个对象各有结论。
-- `category ∈ model|prompt|error`（`non_target` 为 `null`）；`policyVersion` / `attributionEngine` 进缓存键。
-- 结论只作用于该对象·版本；不修改 bad case，不影响它与其它对象的潜在关系。
-
-### 3.10 总览（V2）
-
-`OverviewSummary`：
-
-```json
-{ "window": { "from": "2026-10-12", "to": "2026-11-11", "grain": "day" },
-  "totals": { "badCases": 128, "self": 74, "discovery": 54, "sessions": 31, "pendingSessions": 2, "sources": 9 },
-  "quota": { "used": 128, "quota": 500 },
-  "byObject": [ { "object": "deep-research", "total": 42, "self": 30, "discovery": 12 } ] }
-```
-
-`TrendBucket`：
-
-```json
-{ "bucket": "2026-W42", "label": "10/12 – 10/18", "self": 6, "discovery": 3,
-  "byObject": [ { "object": "deep-research", "self": 4, "discovery": 2 } ] }
-```
-
-- 桶按 `created_at` 分桶，`day|week(ISO 周一起)|month`；空桶由服务端补零；`label` 由服务端给（前端不做日期运算）。
-- 日粒度窗口 > 92 天时服务端强制降级为 `week`，并在 `window.grain` 回传实际粒度。
-- 对象视角（进化对象总览）的 `potential/attributed/nonTarget/unanalyzed` 与向导/run 共用同一潜在匹配实现，三处数字必须一致。
-
-`TargetOverviewItem`：
-
-```json
-{ "targetId": "tgt-123", "objectType": "skill", "objectName": "deep-research",
-  "defaultRef": "v2.0.0", "enabled": true,
-  "sessions": 18, "potential": 42, "attributed": 20, "nonTarget": 6, "unanalyzed": 16, "evolvable": 36 }
+      "category": "error", "caseCount": 3 } ] } }
 ```
 
 ## 4. 端点清单
@@ -622,13 +437,11 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 │ GET  /api/sessions/{sid}                                 │
 │ GET  /api/sessions/{sid}/tree                            │
 │ GET  /api/sessions/{sid}/bad-cases                       │
-│ GET  /api/sessions/{sid}/probes                          │
 └──────────────────────────────────────────────────────────┘
 
 ┌─ 问题域（只读） ──────────────────────────────────────────┐
 │ GET  /api/bad-cases/{badCaseId}                          │
-│ GET  /api/bad-cases/{badCaseId}/analysis                 │
-│ GET  /api/probes/{probeId}                               │
+│ GET  /api/bad-cases/{badCaseId}/attributions             │
 └──────────────────────────────────────────────────────────┘
 
 ┌─ 轨迹接入 ────────────────────────────────────────────────┐
@@ -642,14 +455,14 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 │ GET  /api/evolution/runs                                 │
 │ POST /api/evolution/runs                                 │
 │ GET  /api/evolution/runs/{rid}                           │
-│ GET  /api/evolution/runs/{rid}/steps/input               │
-│ GET  /api/evolution/runs/{rid}/steps/clusters            │
+│ GET  /api/evolution/runs/{rid}/steps/range               │
+│ GET  /api/evolution/runs/{rid}/steps/sessions            │
+│ GET  /api/evolution/runs/{rid}/steps/potential           │
 │ GET  /api/evolution/runs/{rid}/steps/attribution         │
-│ GET  /api/evolution/runs/{rid}/steps/severity            │
+│ GET  /api/evolution/runs/{rid}/steps/clusters            │
 │ GET  /api/evolution/runs/{rid}/steps/iteration           │
 │ GET  /api/evolution/runs/{rid}/steps/final               │
 │ POST /api/evolution/runs/{rid}/retry                     │
-│ POST /api/evolution/probes/query                         │
 │ POST /api/evolution/cluster-previews                     │
 │ GET/POST/PUT/DELETE /api/evolution/targets               │
 │ GET  /api/evolution/targets/{id}/versions                │
@@ -688,7 +501,6 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 │ POST /api/workspaces/{wid}/evolution/cluster-previews     │
 │ POST /api/workspaces/{wid}/evolution/runs/{rid}/retry     │
 │ POST /api/workspaces/{wid}/evolution/runs/{rid}/events    │
-│ 移除：POST /api/evolution/probes/query                    │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -787,19 +599,21 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
       "badCaseAgent": { "sessionId": "050b81ba-...", "agentId": null },
       "title": "检索索引读取失败",
       "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
-      "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" } }
+      "attributionCount": 3, "hasAttribution": true }
   ]
 }
 ```
 
-### 4.7 问题、归因与 probe
+### 4.7 问题与归因读取
 
-> **V2（2026-11-11）**：错误详情改读 `…/bad-cases/{id}/attributions`（§4.19）；本节的 `/analysis` 与 `/probes/{id}` 标 `deprecated=true`，保留一个版本供历史脚本/旧客户端使用后删除。
+| 端点 | 返回 |
+|---|---|
+| `GET /api/workspaces/{wid}/bad-cases/{badCaseId}` | `BadCase`（含 `attributionCount` / `hasAttribution`），用于深链归属校验与左栏状态 |
+| `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions` | 分页归因列表（§4.19） |
+| `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}` | 单条归因详情（§4.19，含触发点对照） |
+| `GET /api/workspaces/{wid}/sessions/{sid}/bad-cases` | 会话内问题列表（结构见 §3.4） |
 
-- `GET /api/bad-cases/{badCaseId}` → `BadCase`（含 `sessionId`，用于深链校验）
-- `GET /api/bad-cases/{badCaseId}/analysis` → `{ "status": AnalysisStatus, "probeId": string|null, "result": object|null }`；无归因记录时返回 `status=unanalyzed` 占位
-- `GET /api/probes/{probeId}` → `ProbeReport`（含 `fromBadCases[]` / `fromBadCasesCount`）
-- `GET /api/sessions/{sid}/probes` → `{ "items": [ProbeReport] }`（可选，给"仅看根因"的场景用）
+> V1 的 `/api/bad-cases/{id}/analysis`、`/api/probes/{id}`、`/api/sessions/{sid}/probes` 已随 `bad_case_analysis` 与独立 probe 表删除而下线。归因只有一个来源：`bad_case_attributions`（由 `probe_reports` 演进）。
 
 `GET /bad-cases/{badCaseId}` 示例：
 
@@ -814,50 +628,59 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
   "title": "检索索引读取失败",
   "reason": "deep-research skill发现前置步骤存在问题：检索索引读取失败",
   "metaData": { "file": "apps/server/src/search/index.ts", "line": 142, "error": "ENOENT" },
-  "analysis": { "status": "analyzed_issue", "probeId": "pr-050b-03", "attributeType": "error" }
+  "attributionCount": 3, "hasAttribution": true
 }
 ```
 
-`GET /bad-cases/{badCaseId}/analysis` 示例：
+`GET …/attributions?page=1&pageSize=2` 示例：
 
 ```json
 {
-  "status": "analyzed_issue",
-  "probeId": "pr-050b-03",
-  "result": { "summary": "检索索引读取失败，属于对象自身错误" }
+  "items": [
+    { "attributionId": "AT-01J9…", "objectType": "skill", "objectName": "deep-research",
+      "objectVersion": "v2.0.0", "conclusion": "attributed", "category": "error",
+      "confidence": 0.8, "runId": "evo-20261111-01", "isCached": true,
+      "createdAt": "2026-11-09T15:02:00+08:00" },
+    { "attributionId": "AT-01J8…", "objectType": "agent", "objectName": "Explore",
+      "objectVersion": "v1.0.1", "conclusion": "non_target", "category": null,
+      "confidence": 0.7, "runId": "evo-20261110-03", "isCached": false,
+      "createdAt": "2026-11-10T09:31:00+08:00" }
+  ],
+  "total": 2, "page": 1, "pageSize": 2
 }
 ```
 
-未归因时：
-
-```json
-{ "status": "unanalyzed", "probeId": null, "result": null }
-```
-
-`result` 口径：`analyzed_issue` 用 `{summary}`（推导过程看 probe 的 `probeAnalysis`）；`analyzed_nonissue` 用 `{reason, reasoning[]}`（`reasoning` 为有序推导步骤数组）；`unanalyzed` 为 `null`。
-
-`GET /probes/{probeId}` 示例：
+`GET …/attributions/{attributionId}` 示例（完整推导与触发点对照）：
 
 ```json
 {
-  "probeId": "pr-050b-03", "sessionId": "050b81ba-...",
-  "probeType": "skill", "probeObject": "deep-research", "objectVersion": "v2.0.0",
-  "attributeType": "error",
-  "probeDescription": "检索索引读取失败",
-  "probeAnalysis": "1. 从 bad_case 的 `reason` 与 `meta_data` 定位到索引读取步骤。\n2. 当前版本未做快照校验。",
-  "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1
+  "attributionId": "AT-01J9…", "objectType": "skill", "objectName": "deep-research",
+  "objectVersion": "v2.0.0", "conclusion": "attributed", "category": "error", "confidence": 0.8,
+  "runId": "evo-20261111-01", "isCached": true, "reusedCount": 3,
+  "policyVersion": "v1", "attributionEngine": "rule-v1",
+  "reason": "对象自身上报：检索索引读取失败；证据：ENOENT apps/server/src/search/index.ts:142",
+  "reasoning": "1. bad_case 上报人即 deep-research 的宿主 agent\n2. 对象在 L142 读取索引前未校验快照字段\n3. 同批次另一 subagent 有校验且未报错\n4. 结论只作用于 v2.0.0",
+  "triggerCompare": { "objectTriggerAt": "2026-09-05T17:40:12+08:00",
+                      "caseTriggerAt": "2026-09-06T09:12:00+08:00", "order": "after" },
+  "createdAt": "2026-11-09T15:02:00+08:00", "updatedAt": "2026-11-11T10:00:00+08:00"
 }
 ```
 
-`GET /sessions/{sid}/probes` 示例：
+- `reason` 是纯文本结论说明（列由原 `probe_description` 演进）；`reasoning` 是 **Markdown 字符串**（列由原 `probe_analysis` 演进），前端按 Markdown 渲染（禁用裸 HTML、外链加安全属性；不接语法高亮）。
+- `conclusion ∈ attributed|non_target`：后者是「非该对象问题」——不是未分析，也不否定 bad case 本身；同一 bad case 可对多个对象各有结论。
+- `category ∈ model|prompt|error`（`non_target` 为 `null`）；`policyVersion` / `attributionEngine` 进缓存键。
+- 归因由自进化 run 生成并写入 `bad_case_attributions`；本服务**不提供「手动触发单条归因」端点**——没有归因行就是未归因，用户可「以该 bad case 启动自进化」触发。
+
+`GET /sessions/{sid}/bad-cases` 示例（会话内问题列表，不内联归因正文）：
 
 ```json
-{ "items": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...",
-  "probeObject": "deep-research", "attributeType": "error",
-  "fromBadCases": ["bc-050b-03"], "fromBadCasesCount": 1 } ] }
+{ "items": [ { "badCaseId": "bc-050b-03", "sessionId": "050b81ba-...",
+  "badCaseType": "discovery", "objectName": "deep-research", "objectType": "skill",
+  "objectVersion": "v2.0.0", "title": "检索索引读取失败",
+  "attributionCount": 3, "hasAttribution": true } ] }
 ```
 
-> 归因由外部系统完成并写入 `bad_case_analysis` / `probe_reports`，本服务**不提供"触发分析"端点**；没有归因记录就是 `unanalyzed`。
+`attributionCount` = 该 case 的去重 `(object_type, object_name, object_version)` 行数；左栏据此显示「尚未归因 / N 条归因」并按 §4.19 分页取子项。
 
 ### 4.8 原始轨迹接入（acquisition）
 
@@ -880,13 +703,12 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
   "badCaseSync": { "total": 12, "synced": 7, "unsynced": 5, "syncing": 1, "failed": 2,
     "status": "idle", "lastRunAt": "2026-10-23T17:00:00+08:00", "lastError": null },
   "badCaseCatalogSync": { "synced": 120, "unsynced": 8, "lastBadCaseId": 128,
-    "status": "idle", "lastRunAt": "2026-10-23T17:00:00+08:00", "lastError": null },
-  "badCaseAnalysis": { "total": 136, "analyzed": 96, "pending": 40, "issue": 58, "nonIssue": 38 } }
+    "status": "idle", "lastRunAt": "2026-10-23T17:00:00+08:00", "lastError": null } }
 ```
 
 - `badCaseSync`：问题轨迹（根会话轨迹补齐）统计；`total`/`synced`/`unsynced` 以 `bad_cases` 当前根会话为准。
 - `badCaseCatalogSync`：`bad_cases` 目录同步统计；`synced = COUNT(bad_cases)`，`unsynced` 为上游剩余量，`lastBadCaseId` 是游标。
-- `badCaseAnalysis`：归因整体进度；`analyzed = analyzed_issue + analyzed_nonissue`，`pending = total - analyzed`，只读 `bad_case_analysis`。
+- 归因进度改由 `bad_case_attributions` 聚合（行数、`attributed` / `non_target` 数），本接口不再返回 `badCaseAnalysis`。
 - 前端“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析排列，只消费本接口。
 
 - 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads` 的 `(root_session_id, agent_id)` 表达，待处理状态由 `source_records.processed_*` 表达。
@@ -902,49 +724,18 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 
 `status` ∈ `queued|running|completed|failed|interrupted`；`progress` 为 `0..1`。
 
-### 4.9 probe 命中查询（向导第 2 步）——V1 冻结，V2 移除
+### 4.9 向导预览（V2，见 §4.20）
 
-> **V2（2026-11-11）**：`POST /api/evolution/probes/query` 移除，向导改为四步、命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」，见 §4.20。本节保留为 V1 语义说明，供历史 run 与旧客户端对照；新前端不再调用。
+V1 的 `POST /api/evolution/probes/query` 已移除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。
 
-`POST /api/evolution/probes/query`
-
-```json
-{ "targetType": "skill", "targetName": "deep-research", "targetVersion": "v2.0.0",
-  "from": "2026-08-20", "to": "2026-09-10",
-  "models": ["glm-5.3", "glm-5.3-flash"], "page": 1, "pageSize": 8 }
-```
-
-响应：
-
-```json
-{
-  "summary": { "sessions": 130, "badCases": 1, "analyzed": 1, "unanalyzed": 0,
-    "probes": 1, "usedProbes": 1,
-    "byAttributeType": { "model": 0, "prompt": 0, "error": 1, "nonIssue": 0 } },
-  "items": [ { "probeId": "pr-050b-03", "sessionId": "050b81ba-...",
-    "sessionTitle": "研究'用户数据驱动自进化'提到的所有方法",
-    "model": "glm-5.3",
-    "probeType": "skill", "probeObject": "deep-research", "objectVersion": "v2.0.0",
-    "attributeType": "error", "description": "检索索引读取失败…",
-    "sourceBadCaseIds": ["bc-050b-03"] } ],
-  "total": 1, "page": 1, "pageSize": 8
-}
-```
-
-- 命中以 `probe_reports` 为准：按 `probe_object @ object_version`（并匹配 `probe_type`）选 probe，再经 `bad_case_analysis.probe_id` 反查 bad case、按 `probe_reports.session_id` 反查 session。
-- `badCases` 是命中 probe 关联的去重问题数；`analyzed` 是其中 `analyzed_issue` 的去重问题数；`unanalyzed` 恒为 0——未分析报告没有 probe，不参与自进化命中，界面保留该统计格显示 0。
-- `sessions` 是命中 probe 的去重 session 数。
-- **未分析报告不进入 `items`，也不计入 `probes` / `usedProbes`**：归因由外部系统完成，本服务不提供“触发分析”端点；自进化环节不感知未分析报告。
-- `items[].model` 是该 probe 归属 agent 的模型；按 `bad_cases.bad_case_agent_id` → `agents.model` 解析，缺失时回退主 agent 模型。
-- `items[]` 即 §3.6 的 `ProbeRow`；命中 probe 数为 0 时返回 `409 NO_PROBES_MATCHED`（与启动 run 同一校验口径），向导把该 409 映射为空结果：进入 Step2 渲染未命中空态并禁用两个出口，其余错误仍停在 Step1 提示。
-
-- `from/to` 按 **probe 所属 session 的启动时间**过滤。
-- `models[]` 匹配 **该 probe 所属 Agent 会话树内任一 agent 的模型**（`agents.model`），不是只看主 agent；没有模型时按“全部模型”处理。
-- `usedProbes = probes`（命中的 probe 必然已归因为 `analyzed_issue`）。
+- 响应 `summary` 用 `sessions / badCases / potential / byReason` 表达，替代 V1 的 `probes / usedProbes / byAttributeType`。
+- 行结构用 `PotentialRow`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），替代 V1 的 `ProbeRow`。
+- 时间窗按 bad case 的 `created_at` 过滤，不再按 probe 所属 Session 的启动时间。
+- 零命中：无关联 Session → `409 NO_ASSOCIATED_SESSIONS`；有关联但潜在为 0 → `409 NO_POTENTIAL_MATCHED`；向导把 409 映射为空态并禁用出口。
 
 ### 4.10 自进化运行（异步任务）
 
-> **V2（2026-11-11）**：创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20），其余端点形状不变；新 run 的 `steps` 为七步（§3.6.2），进度公式 `5+M+1`。V1 run 仍按六步渲染。
+> 创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20），端点形状其余不变；run 的 `steps` 为七步（§3.6），进度公式 `5+M+1`，只有一种 schema。
 
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）
 
@@ -952,8 +743,8 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 {
   "running": [
     { "runId": "evo-20261019-01", "title": "deep-research v2.0.0 自进化",
-      "status": "blocked", "progress": { "unit": 6, "total": 10, "percent": 60,
-        "stageLabel": "第 5/6 步 · 迭代优化 · 第 3/5 轮" } }
+      "status": "blocked", "progress": { "unit": 5, "total": 9, "percent": 56,
+        "stageLabel": "第 5/7 步 · 聚类与严重度" } }
   ],
   "history": [
     { "runId": "evo-20261018-02", "title": "Explore v1.0.1 自进化",
@@ -963,21 +754,21 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 ```
 
 `RunCard` 完整字段见 §3.5。
-- `POST /api/evolution/runs`（body 同 4.9 的查询条件 + `"mode": "full"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
+- `POST /api/evolution/runs`（body 同 §4.20 的条件 + `policy` + `cacheEnabled` + `"mode": "full"`）→ `202 { "runId": "evo-...", "jobId": "job-...", "status": "preparing" }`
 
 ```json
 { "targetType": "skill", "targetName": "deep-research", "targetVersion": "v2.0.0",
-  "from": "2026-08-20", "to": "2026-09-10", "models": ["glm-5.3"],
-  "mode": "full" }
+  "from": "2026-08-20", "to": "2026-09-10", "models": [],
+  "policy": { "preset": "default" }, "cacheEnabled": true, "mode": "full" }
 ```
-  - 同步前置校验：target 已配置/启用、条件合法、probe 数 > 0；失败直接 `409 TARGET_NOT_CONFIGURED` / `409 NO_PROBES_MATCHED`
+  - 同步前置校验：target 空间内已配置/启用、条件合法、policy 合法、关联 Session > 0、潜在 > 0；失败 `409 TARGET_NOT_CONFIGURED` / `422 POLICY_INVALID` / `409 NO_ASSOCIATED_SESSIONS` / `409 NO_POTENTIAL_MATCHED`
   - 可选字段：`engineKey`（执行引擎，默认 = `mode`）与 `eval`（评测接入配置，缺省用全局 `HE_EVAL_*`；密钥用 env 引用名，不落库）；两者随 run 快照（[07 §5.3](07-backend-implementation.md)）；`engineKey` 未注册或 `eval` 非法 → `422 ENGINE_INVALID`
   - 校验通过后只创建 `status=preparing` 的 run 并入队 `evolution_prepare`；workspace clone、repo/ref 校验、聚类、迭代轮（`evolution_rounds`）全部在后台完成；repo/ref 失败使 run `failed(error_stage=clone)`
 - `GET /api/evolution/runs/{rid}` → `RunDetail`
   - `status`：`preparing | running | blocked | completed | failed | interrupted`
   - 额外字段：`blockedStage`、`retryAttempts`、`nextRetryAt`、`evalStatus`
   - `workspace`：`repoUrl/repoPath/baseRef/baseCommit/branchName/workspacePath`
-- `GET /api/evolution/runs/{rid}/steps/{key}` 拆成六个独立端点（`input` / `clusters` / `attribution` / `severity` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `input` 可返回准备态）
+- `GET /api/evolution/runs/{rid}/steps/{key}` 七个独立端点（`range` / `sessions` / `potential` / `attribution` / `clusters` / `iteration` / `final`）→ `EvolutionStep`（§3.6；未到达 → `404 STEP_NOT_READY`；`preparing` 时 `range` 可返回准备态）
 - `POST /api/evolution/runs/{rid}/retry` → `202 { "jobId": "job-...", "reused": false }`
   - 所有登录用户可调用；只允许 `status=blocked`
   - 按 `blockedStage` 重试：`push` 重推当前 candidate；`eval` 重新提交评测
@@ -990,8 +781,8 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 POST /runs（同步校验）
   → run(preparing)
   → evolution_prepare
-       → 查 probe
-       → simple_cluster
+       → Session 关联 / 潜在筛选 / 对象归因
+       → 聚类与严重度
        → workspace clone / 建 run 分支
        → clusters / evolution_rounds
        → run(running)
@@ -1222,7 +1013,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions?page=1&pageSize=2` | `{items:[AttributionItem], total, page, pageSize}`；按 `updated_at` 倒序 |
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}` | `AttributionDetail`（含 `triggerCompare`）；`404 ATTRIBUTION_NOT_FOUND`（不存在或不属于该 bad case） |
 
-- 现有 `GET /sessions/{sid}/bad-cases` 的 `BadCase` 增补 `attributionCount`（去重对象·版本）与 `hasAttribution`；`analysis` 字段保留（V1 冻结语义），V2 前端不再消费。
+- `BadCase` 直接带 `attributionCount`（去重对象·版本）与 `hasAttribution`；`analysis` 字段已删除（`bad_case_analysis` 表删除）。
 - 深链：`?case={badCaseId}&tab=desc|attr&at={attributionId}`；`at` 缺失时取该 case 第一条归因；`obj=<objectName>` 兼容参数取该对象第一条。
 
 ### 4.20 自进化预览与启动（V2）
@@ -1239,12 +1030,12 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 - 同步校验（失败不建 run）：`TARGET_NOT_CONFIGURED`（空间内）、`422 VALIDATION_INVALID`（版本/窗口）、`422 POLICY_INVALID`（custom 未启用规则 / default 携带开关）、`409 NO_ASSOCIATED_SESSIONS`（无 Session 关联）、`409 NO_POTENTIAL_MATCHED`（潜在为 0）、`422 ENGINE_INVALID`。
 - 第 4 步预览的四数语义：`reused` = 潜在集合中缓存键已存在的精确数；`fresh = potential - reused`；`nonTargetKnown` = 该对象历史 `non_target` 去重数（参考值，不是本次预计结果）。
 - `policy` 结构：`{preset:"default"}` 或 `{preset:"custom", includeSelfReport, includeAfterObject, sameObjectOnly}`；policy 全量快照进 `evolution_runs.potential_policy`。
-- 旧 `POST /api/evolution/probes/query` 移除；`models` 字段保留可选（向导不再收集，默认空 = 全部模型）。
+- `models` 字段保留可选（向导不再收集，默认空 = 全部模型）；`probes/query` 已不存在。
 - `cluster_only` 同样执行 0–4 步（聚类依赖归因），只是不建 rounds、不迭代、不终评。
 
 ## 5. 深链契约
 
-ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / `probe_id` / `run_id`），不再造 `I-`/`R-` 展示号；UI 显示时取前 8 位 + tooltip 展示全量。
+ID 策略（2026-10-22 定稿，V2 更新）：**URL 直接用真实 ID**（`badCaseId` / `attributionId` / `clusterId` / `runId`），不再造 `I-`/`R-` 展示号；UI 显示时取前 8 位 + tooltip 展示全量。
 
 | 目标 | URL（前端路由） | 需要的后端字段 |
 |---|---|---|
@@ -1254,13 +1045,13 @@ ID 策略（2026-10-22 定稿）：**URL 直接用真实 ID**（`bad_case_id` / 
 | 问题描述 | `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=desc` | `BadCase.badCaseId/sessionId` |
 | 归因分析（V2） | `/workspaces/{wid}/sessions/{sid}/errors?case={badCaseId}&tab=attr&at={attributionId}` | `AttributionItem/AttributionDetail`；`at` 缺省取第一条；`obj={objectName}` 兼容 |
 | 自进化某步 | `/workspaces/{wid}/evolution/runs/{rid}?step={key}` | `RunDetail.steps[].status`（V2 七 key / V1 六 key） |
-| 自进化某簇 | `/workspaces/{wid}/evolution/runs/{rid}?step=clusters&cluster={probeClusterId}` | `steps/clusters` 的 `probeClusterId`；未命中时忽略参数并提示 |
+| 自进化某簇 | `/workspaces/{wid}/evolution/runs/{rid}?step=clusters&cluster={clusterId}` | `steps/clusters` 的 `clusterId`；未命中时忽略参数并提示 |
 | 旧深链（迁移期） | `/sessions/**`、`/evolution/**` | 前端按最近访问空间重定向（[08 §1.2](08-frontend-implementation.md)） |
 
 **解析规则**：
 
 - 深链必须用 URL 里的 `sid` 去 `GET /api/bad-cases/{badCaseId}`，响应 `sessionId` 与 URL 不一致 → 显示"问题不属于该会话"错误态；
-- 后端在 bad_case/probe 响应中**始终带齐 `sessionId` 与两个 ID**，前端不拼接、不反推；
+- 后端在 bad case / 归因响应中**始终带齐 `sessionId` 与对应 ID**，前端不拼接、不反推；
 - UI 展示 ID 时截短（如 `bc-050b-0…`），`title` 属性给全量；不引入新的展示号体系。
 
 ## 6. OpenAPI 与 TS 契约生成
@@ -1286,7 +1077,7 @@ FastAPI /api/openapi.json
 
 | 场景 | 方式 | 参数 |
 |---|---|---|
-| probe 表（向导） | 页码分页 | `page=1&pageSize=8` |
+| 预览表（向导） | 页码分页 | sessions 4/页、potential 5/页 |
 | 会话列表 | 一次性 + limit | `limit=100` |
 | 自进化运行 | 一次性 | 分 `running/history` 两组 |
 | 过滤 | 查询参数 | `q/status/sort/models/from/to` |
@@ -1305,14 +1096,10 @@ FastAPI /api/openapi.json
 | `SESSION_NOT_FOUND` | 404 | sid 不存在 |
 | `BAD_CASE_NOT_FOUND` | 404 | badCaseId 不存在 |
 | `BAD_CASE_SESSION_MISMATCH` | 409 | badCaseId 存在但不属于 URL 里的 sid |
-| `PROBE_NOT_FOUND` | 404 | probeId 不存在 |
-| `PROBE_CLUSTER_NOT_FOUND` | 404 | probeClusterId 不存在 |
 | `STEP_NOT_READY` | 404 | 请求的 step 尚未到达 |
 | `RUN_NOT_FOUND` | 404 | runId 不存在 |
-| `RUN_NOT_FINISHED` | 409 | 未完成时调用 push |
 | `RUN_NOT_RETRYABLE` | 409 | run 不是 blocked，不能 retry |
 | `RUN_BUSY` | 409 | 同一 run 有进行中的 prepare/advance/apply/retry 任务 |
-| `NO_PROBES_MATCHED` | 409 | 启动自进化或 `probes/query` 时筛选结果为空（命中 probe 数为 0） |
 | `TARGET_NOT_FOUND` | 404 | 进化对象配置不存在 |
 | `TARGET_EXISTS` | 409 | 同一 `(objectType, objectName)` 已配置 |
 | `TARGET_NOT_CONFIGURED` | 409 | 启动 run 时目标未配置或已停用 |
@@ -1361,9 +1148,8 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `TREE[sid].main/subs` | `SessionTree.agents[]` | 改为扁平列表；`id/agentType/desc/toolUseId/lines/events` 一一对应，新增 `agentId/parentAgentId/taskKind/spawnDepth/messagesCount`，事件新增 `messageOffset` |
 | `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel`；挂载位置改为 `anchor {agentId,eventIndex}` |
 | `TREE[sid].findings[].title / detail` | `SessionTree.badCases[].title / reason` | 短标题与描述正文两级文本；原型 `detail` 语义由 `reason` 承载 |
-| `ERROR_META[title].status` | `BadCase.analysis.status` | `unanalyzed / analyzed_nonissue / analyzed_issue`（5 种展示值） |
-| `ERROR_META[title].issue/nonissue/analyzed` | `ProbeReport` + `analysis.result` | `probe_description / probe_analysis(Markdown) / attribute_type` 对应"问题描述/推导过程/分类"；非问题的 `{reason, reasoning[]}` 在 `analysis.result` |
-| `REPORTS[]` | `ProbeReport` | 原"问题报告"= 归因报告；`reportId` → `probeId`，`issueId` → `badCaseId` |
+| `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
+| `REPORTS[]` | 归因行（`bad_case_attributions`） | 不再有独立「问题报告」实体；报告 ID 即 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | `stats.reports/used/byType` → `stats.probes/usedProbes/byAttributeType` |
 | `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
 
@@ -1377,7 +1163,7 @@ V2 新增映射（2026-11-11）：
 | `attributionsFor(case)`（对象·版本多条） | `AttributionItem` / `AttributionDetail`（§3.9） | 结论 `attributed/non_target`；缓存与触发点对照 |
 | 总览指标条 / 趋势 / 来源分布 | `OverviewSummary` / `TrendBucket`（§3.10） | 口径见 [06 §7.5](06-database-design.md) |
 | 进化对象总览（关联 Session / 潜在 / 三态） | `TargetOverviewItem`（§3.10） | 与向导/run 共用同一潜在匹配实现 |
-| V2 七步（选择范围…终评） | `steps[].key = range/sessions/potential/attribution/clusters/iteration/final` | V1 六步冻结；`stepsSchema` 区分 |
+| V2 七步（选择范围…终评） | `steps[].key = range/sessions/potential/attribution/clusters/iteration/final` | 唯一 schema，无 `stepsSchema` 双轨 |
 
 ## 10. 上游轨迹查询契约（由我们定义，待上游实现）
 

@@ -12,7 +12,7 @@
 | 原型元素 / 交互 | 功能点 | 设计位置 |
 |---|---|---|
 | 顶部导览：品牌、两大视图切换、ID 串联网提示 | F1 | [03 §6](03-frontend-architecture.md) · [08 §1](08-frontend-implementation.md) |
-| 真实 ID（`badCaseId` / `probeId` / `runId`）与点击深链（新窗口、指定 tab） | F2 | [05 §5](05-api-design.md) · [08 §7](08-frontend-implementation.md) |
+| 真实 ID（`badCaseId` / `attributionId` / `clusterId` / `runId`）与点击深链（新窗口、指定 tab/归因） | F2 | [05 §5](05-api-design.md) · [08 §7](08-frontend-implementation.md) |
 | 健康检查、空态/加载/失败三态 | F17 | [05 §4.1](05-api-design.md) · [08 §13](08-frontend-implementation.md) |
 | 登录页（用户名/密码、错误提示、登录跳转） | F18 | [05 §4.1](05-api-design.md)（auth 端点）· [08 §4](08-frontend-implementation.md) |
 | 强制改密页（首登改密、成功后换 token 并放行） | F18 | [05 §4.1](05-api-design.md)（`change-password`）· [08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md) |
@@ -50,7 +50,7 @@
 | 双 Tab：问题描述 / 归因分析 | F8 | [08 §7.3](08-frontend-implementation.md) |
 | 问题描述：badCaseId、reason、状态 chip、metaData facts、上报对象 | F8 | [05 §3.4](05-api-design.md) |
 | 归因：结论横幅（问题/非问题/未分析） | F8 | [05 §3.4](05-api-design.md)（`analysis.status`）· [08 §7.3](08-frontend-implementation.md) |
-| 归因：根因对象、问题分类、问题描述、分析推导过程（Markdown） | F8 | [05 §3.4](05-api-design.md)（`ProbeReport`） |
+| 归因：对象·版本、分类、结论说明、推导过程（Markdown）、触发点对照 | F8 | [05 §3.9](05-api-design.md)（`AttributionDetail`） |
 | 归因：非问题原因 | F8 | 同上（`analysis.result.reason`） |
 | 归因：未分析空态 | F8 | 同上（`unanalyzed` 占位） |
 | 不实现：卡片「查看原始 JSON」overlay（原属时间线卡片） | — | **首版裁剪**，见 §2 问题 Q3 |
@@ -61,7 +61,7 @@
 |---|---|---|
 | 列表：标题、说明、启动按钮 | F10 | [08 §8](08-frontend-implementation.md) |
 | 列表："正在执行"组（脉冲 + 数量）与"历史记录"组 | F10 | [05 §4.10](05-api-design.md)（`running/history`） |
-| run 卡：根因对象 chip、时间窗、模型 chips、probe/簇统计 | F10 | [05 §3.5](05-api-design.md)（`RunCard`） |
+| run 卡：对象 chip、时间窗、策略/缓存 chip、关联 Session/潜在/可归因/复用统计 | F10 | [05 §3.5](05-api-design.md)（`RunCard`） |
 | run 卡：进行中进度条 + 阶段文案 + 百分比 | F10 | [05 §3.5](05-api-design.md)（`progress`） |
 | run 卡：已完成 best vs 初始 + Δ + 接纳 patch 数 + 有效/无收益徽章 | F10 | 同上（`final`） |
 | 列表空态："当前没有正在执行的自进化" | F10 | [08 §8](08-frontend-implementation.md) |
@@ -74,7 +74,7 @@
 | 向导 step2：零命中空态（出口禁用） | F11 | [05 §4.9](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 向导 step2：条件摘要 + 修改条件 | F11 | [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：3 项统计 + 属性分布条 + 图例 | F11 | [05 §4.9](05-api-design.md)（`summary/byAttributeType`） |
-| 向导 step2：probe 表（probe ID/会话/根因对象/属性/来源 bad_case） | F11 | [05 §4.9](05-api-design.md)（`items`） |
+| 向导 step2/3：Session 关联表 + 潜在 bad case 表（含命中原因） | F11 | [05 §4.20](05-api-design.md)（`preview/*`） |
 | 向导 step2：分页（每页 8 条） | F11 | [05 §7](05-api-design.md) |
 | 向导 step2：两个出口「仅聚类」「启动自进化」 | F11 | [05 §4.9–4.10](05-api-design.md) · [08 §9.3](08-frontend-implementation.md) |
 | 向导 step2：未关联 session 的行不渲染链接 | F11 | [08 §9.3](08-frontend-implementation.md) |
@@ -82,10 +82,10 @@
 | 详情：目标与输入 panel（8 项 kv + 类型分布条 + 图例） | F13 | [05 §3.5](05-api-design.md)（`stats/byAttributeType`） |
 | 详情：工作区信息（分支/base commit/路径） | F13 | [05 §3.5](05-api-design.md)（`workspace`）· [08 §10.2](08-frontend-implementation.md) |
 | 详情：6 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
-| 第 1 步：probe 筛选表（含归属簇） | F13 | [05 §3.6](05-api-design.md)（step 0） |
-| 第 2 步：聚类卡 + 簇内 probe 列表 | F13 | [05 §3.6](05-api-design.md)（step 1） |
+| 第 1 步：范围条件与统计 | F13 | [05 §3.6](05-api-design.md)（step 0 `range`） |
+| 第 2/3 步：Session 关联表、潜在 bad case 表（含命中原因） | F13 | [05 §3.6](05-api-design.md)（step 1/2） |
 | 第 3 步：LLM 归因置信度（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
-| 第 4 步：严重程度排序表（顺序/类型/probe 数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3） |
+| 第 4/5 步：对象归因表、聚类与严重度（顺序/类型/来源数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3/4） |
 | 第 5 步：迭代卡（patch → push → eval → 决策：接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.6](07-backend-implementation.md) |
 | 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |
 | 第 6 步：分支名、push 状态、blocked 阶段与重试 | F13 | [05 §4.10](05-api-design.md)（`workspace/pushStatus`）· [08 §10.2](08-frontend-implementation.md) |
@@ -136,7 +136,7 @@
 | R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 迁移；先做 `demo-nested` 最小树验收；`×N` 改为 message 口径（[03 §8.3](03-frontend-architecture.md)） |
 | R2 | 外部问题/归因表契约 | 字段漂移会让整个错误页与自进化失效 | 只读表 + 查询层防御（缺字段降级、日志告警）；fixtures 与真实表同构；上游表变更需评审（[06 §4](06-database-design.md)） |
 | R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
-| R4 | 六步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
+| R4 | 七步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
 | R6 | 深链 ID 校验 | 前缀猜 session 会串会话 | 解析后用 `sessionId` 校验，不匹配报 409（[05 §5](05-api-design.md)） |
 | R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, agent_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |

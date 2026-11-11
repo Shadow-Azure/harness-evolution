@@ -36,7 +36,7 @@ router
     ├── /sessions/:sid/errors ────► errors/Index（多归因）
     ├── /evolution ───────────────► evolution/Index
     │                                 └──► pages/evolution/components/LaunchWizard（四步）
-    ├── /evolution/runs/:rid ─────► evolution/RunDetail（七步 / V1 六步）
+    ├── /evolution/runs/:rid ─────► evolution/RunDetail（七步）
     ├── /evolution/cluster/:previewId ► evolution/ClusterPreview
     ├── /evolution/targets ───────► evolution/targets/Index
     └── /admin ───────────────────► workspaces/Admin（四 Tab，空间管理员及以上）
@@ -73,8 +73,7 @@ router
 | `api/overview.ts` | summary / trend / sources / bad-cases / targets / targets-trend / targets-cases / target-detail（V2） |
 | `api/sessions.ts` | 列表（limit 10 + total）/ 会话概览 / Agent 会话树 / 问题 |
 | `api/badCases.ts` | 问题详情 / **归因分页与详情**（V2）/ 归因状态（V1 冻结） |
-| `api/probes.ts` | 归因结论（V1 冻结，仅历史 run） |
-| `api/evolution.ts` | runs / 七步与六步 / 事件 / 配置 / 预览三段 / 启动（runs、cluster-previews）/ 重试 |
+| `api/evolution.ts` | runs / 七步 / 事件 / 配置 / 预览三段 / 启动（runs、cluster-previews）/ 重试 |
 | `api/acquisition.ts` | 同步 / 拉取 / 状态 |
 | `api/catalogs.ts` | 对象 / 模型清单 |
 
@@ -149,7 +148,6 @@ export const keys = {
   badCase: (wid: string, badCaseId: string) => ["ws", wid, "case", badCaseId] as const,
   attributions: (wid: string, badCaseId: string) => ["ws", wid, "case", badCaseId, "attributions"] as const,
   attribution: (wid: string, badCaseId: string, atId: string) => ["ws", wid, "case", badCaseId, "attribution", atId] as const,
-  probe: (probeId: string) => ["probe", probeId] as const,          // V1 历史 run 专用
   runs: (wid: string) => ["ws", wid, "evolution", "runs"] as const,
   run: (wid: string, rid: string) => ["ws", wid, "evolution", rid] as const,
   runStep: (wid: string, rid: string, key: StepKey) => ["ws", wid, "evolution", rid, "step", key] as const,
@@ -210,7 +208,6 @@ useSessionBadCases(wid, sid)       // GET …/sessions/{sid}/bad-cases（含 att
 useBadCase(wid, badCaseId)
 useAttributions(wid, badCaseId)     // 分页（2/页）
 useAttribution(wid, badCaseId, atId) // 详情（含 triggerCompare）
-useProbe(probeId)                   // V1 历史 run 专用
 
 // useEvolution.ts
 useRuns(wid)  useRun(wid, rid)  useRunStep(wid, rid, key)  useRunEventLog(wid, rid)
@@ -542,7 +539,7 @@ Index.vue（grid: 340px 1fr）
         └── components/AttributionReport.vue（重写：归因集合 + 多条导航 + 触发点对照）
 ```
 
-数据：`useSessionBadCases(wid, sid)` 拿全部 bad_case（含 `attributionCount` / `hasAttribution`，不再逐条取 probe）；选中 case 后 `useAttributions(wid, badCaseId)`（分页 2/页）取子项，选中子项后 `useAttribution(wid, badCaseId, atId)` 取详情。每个展开组各自维护页码（`Record<badCaseId, number>`）。
+数据：`useSessionBadCases(wid, sid)` 拿全部 bad_case（含 `attributionCount` / `hasAttribution`）；选中 case 后 `useAttributions(wid, badCaseId)`（分页 2/页）取子项，选中子项后 `useAttribution(wid, badCaseId, atId)` 取详情。每个展开组各自维护页码（`Record<badCaseId, number>`）。
 
 根会话 ID 的展示位置与格式见 [13 §3](13-root-session-id.md)：左栏会话信息框显示“根会话 ID”标签 + 完整值（一行紧凑布局），右栏 `error-head` 的 meta 在开始时间之后、repo 之前增加同一 ID；两处都使用路由解析后的 `sid`，不额外请求，也不放进下方执行流面板的框内。
 
@@ -567,7 +564,7 @@ Index.vue（grid: 340px 1fr）
 3. 置信度 + 策略（默认/自定义，附策略一句话）。
 4. 触发点对照：对象进入点 vs bad case 触发点（`order` 文案：位于对象触发点之后/之前；`unknown` 时说明轨迹时间戳待重放）。
 5. 归因结论说明（`reason`）。
-6. 推导过程（`reasoning`，有序列表，Markdown 风格）。
+6. 推导过程（`reasoning`，Markdown 渲染；`reason` 按纯文本渲染）。
 7. 结论边界：只作用于该对象版本，不修改 bad case，不影响其它对象的潜在关系。
 
 > `reasoning` 与 `reason` 由服务端模板生成，前端按 Markdown 渲染（`html:false`、`breaks:true`、`linkify:true`；代码块等宽横向滚动，不接语法高亮）；外链 `target="_blank" rel="noopener noreferrer"`，禁止裸 HTML。
@@ -664,10 +661,10 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 | 维度 | V1（冻结） | V2 |
 |---|---|---|
 | 步数 | 2（条件 → 命中确认） | 4（范围 → Session 关联 → 潜在 → 归因预览） |
-| 命中源 | `probe_reports`（`POST /evolution/probes/query`） | 空间 bad case + Session 关联 + 潜在策略 |
+| 命中源 | 旧版 probe 报告（接口已删除） | 空间 bad case + Session 关联 + 潜在策略 |
 | 筛选 | 对象/版本/时间段/模型多选 | 对象/版本/时间段/策略/缓存开关（模型多选移除） |
 | 出口 | 仅聚类 / 启动 | 同左（body 增加 `policy`/`cacheEnabled`） |
-| 空态码 | `409 NO_PROBES_MATCHED` | `409 NO_ASSOCIATED_SESSIONS` / `409 NO_POTENTIAL_MATCHED` |
+| 空态码 | —（已废弃） | `409 NO_ASSOCIATED_SESSIONS` / `409 NO_POTENTIAL_MATCHED` |
 
 V1 向导只用于理解历史 run；生产入口一律四步。
 
@@ -709,7 +706,7 @@ RunDetail.vue
 ├── DetailHeader.vue（标题 + 状态 + 空间 badge；无“推进一轮”按钮）
 ├── blockedBanner（push/eval/attribution 失败时显示阶段、错误、自动重试时间、[重试]）
 ├── infoPanel（目标与输入：kv-grid + 策略/缓存 chip + 类型分布条 + 评测/推送状态）
-├── StepperPanel.vue（步数由 run.steps 决定：V2 七步 / V1 六步）
+├── StepperPanel.vue（步数由 run.steps 决定：七步）
 │   └── StepContent.vue（按 step.key 动态组件）
 │       ├── V2：StepRange / StepSessions / StepPotential / StepAttributionV2 / StepClustersV2
 │       └── V1（冻结）：StepInput / StepClusters / StepAttribution / StepSeverity
@@ -717,7 +714,7 @@ RunDetail.vue
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
 
-**双轨渲染（V2）**：`run.stepsSchema` 为 `v2` 时用七步组件，`v1` 时用冻结的六步组件；`steps[].key` 由后端给定，前端不推算回退。新 run 一律 `v2`。
+**单一 schema**：`run.steps` 恒为七步，`steps[].key` 由后端给定，前端按 key 渲染，不推算回退。
 
 **V2 七步的展示要点**：
 
@@ -728,7 +725,7 @@ RunDetail.vue
 | 3 潜在 bad case | 5 条/页，含「命中原因」列；`order_state=unknown` 行加提示 |
 | 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」 |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |
-| 6 迭代优化 | 沿用 V1 的轮次卡（patch/candidate/push/eval/接纳），来源问题从 `probes[]` 变为 `cases[]` |
+| 6 迭代优化 | 沿用既有轮次卡（patch/candidate/push/eval/接纳），来源问题为 `cases[]` |
 | 7 测试集终评 | 沿用 V1（verdict/metrics/changes） |
 
 ### 10.2 交互
@@ -745,7 +742,7 @@ RunDetail.vue
 | 实时追加 | SSE `run.event` → 把事件 append 到列表并更新 `loadedSeq`；`run.blocked/failed/interrupted` → 失效 run + events |
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
-| 簇深链 | `?step=clusters&cluster={probeClusterId}`：切到聚类步（V2 第 5 步 / V1 第 2 步）并滚动到该簇卡、加高亮（commit message 的「问题簇」链接落点）；簇不存在时忽略参数并提示“簇已不存在” |
+| 簇深链 | `?step=clusters&cluster={clusterId}`：切到聚类步并滚动到该簇卡、加高亮（commit message 的「问题簇」链接落点）；簇不存在时忽略参数并提示“簇已不存在” |
 | Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
 | 评测状态 | `evalStatus`：pending/evaluating/completed/failed/timeout；`evaluating` 显示“评测中，下一次轮询 …”；failed/timeout 进入 blocked |
@@ -754,8 +751,8 @@ RunDetail.vue
 
 ### 10.3 Step4 迭代卡
 
-- 卡片头：排名、簇类型 chip、probe 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
-- 展开内容顺序：簇内 probe 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
+- 卡片头：排名、`category` chip、来源 bad case 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
+- 展开内容顺序：簇内来源 bad case 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
 - 生成 patch 中：展示“正在生成/应用 patch、commit candidate”，不显示 candidate ref。
 - 评测中：展示 **candidate ref + commit**（如 `.../candidate/r2`），表示已 push、等待评测；显示 `evalStatus` 与下一次轮询时间。
 - 本地模式：`HE_GIT_PUSH=false` 时 candidate 只存在本地；卡片显示“本地候选（未推送）”，candidate 标签显示“已生成 · 未推送”，推送状态显示“已跳过（本地模式）”，不进入评测。
@@ -785,7 +782,7 @@ RunLogPanel.vue
 
 - 页面先处理 `preparing`：显示“正在关联 Session / 筛选潜在 / 生成归因 / 聚类”（V2 的 `cluster_only` 也执行 0–4 步，见 [07 §5.11](07-backend-implementation.md)），轮询 `GET /runs/{rid}` 到 `status=completed`，再拉 `steps/clusters`。
 - 顶部 banner："仅聚类分析：未执行 patch 生成与评测迭代" + 「以这批问题启动自进化 →」。
-- 输入概况（V2）：关联 Session / 潜在 bad case / 聚类数；V1 run 显示 session / probe / 聚类数。
+- 输入概况：关联 Session / 潜在 bad case / 聚类数。
 - 聚类列表：每簇展示分类、来源 bad case 数、严重程度，簇内来源 bad case 表（可展开，ID 可深链错误详情）。
 - 数据来自 `mode=cluster_only` 的 run（`GET /runs/{rid}/steps/clusters`）；「启动自进化」用同一条件再创建 `mode=full` 的 run（同样 202）。
 
@@ -798,15 +795,13 @@ RunLogPanel.vue
 ### 12.2 状态色与类型色（前端常量，唯一允许的"静态数据"）
 
 ```ts
-export const ANALYSIS_STATUS_META = {
-  unanalyzed:        { label: "未分析", cls: "unanalyzed" },
-  analyzed_nonissue: { label: "非问题", cls: "nonissue" },
-  "issue-model":     { label: "是问题-模型问题", cls: "issue-model" },
-  "issue-prompt":    { label: "是问题-prompt缺失某些提示词", cls: "issue-prompt" },
-  "issue-error":     { label: "是问题-错误", cls: "issue-error" },
+export const ATTRIBUTION_STATE_META = {
+  unanalyzed: { label: "尚未归因", cls: "unanalyzed" },
+  attributed: { label: "可归因", cls: "issue" },
+  non_target: { label: "非该对象问题", cls: "nonissue" },
 } as const
 
-// 展示值由 analysis.status + analysis.attributeType 推导（见 §7.3）
+// 展示值由 attributionCount + 归因行的 conclusion/category 推导（见 §7.3）
 export const TYPE_COLOR: Record<string, string> = {
   nonissue: "var(--text-faint)",
   error: "var(--red)",
@@ -842,7 +837,7 @@ export const TYPE_COLOR: Record<string, string> = {
 | API / composable | `api/<domain>.ts`、`useXxx` 的 query/mutation 缓存行为；**V2**：切换空间整树失效、上报后三处失效、成员写入后 `auth/session` 失效 | Vitest `node` + MSW `src/test/server.ts` |
 | 组件 | SessionCard 密度条、Stepper 状态、ClusterCard 展开、DiffView 着色、RunLogPanel；**V2**：CaseGroup 折叠与组内分页、AttributionReport 多条导航、SourceMultiSelect、StatStrip、TargetSideList | Vitest `jsdom` project + Vue Test Utils |
 | 契约 | 生成类型能被真实响应赋值（编译期）；`openapi` 生成物不含 `any` | `vue-tsc` + `pnpm contract:check` |
-| 交互 | V2 向导四步流转（含空态与禁用出口）、旧链接重定向、深链 `?case=&tab=&at=` 恢复选中与定位、`steps_schema` 双轨渲染、SSE 事件触发重取 | VTU + MSW（仅测试，不进 dev） |
+| 交互 | V2 向导四步流转（含空态与禁用出口）、旧链接重定向、深链 `?case=&tab=&at=` 恢复选中与定位、SSE 事件触发重取 | VTU + MSW（仅测试，不进 dev） |
 | 视觉回归（后续） | 关键页面截图对比原型 | Playwright（暂不进 CI） |
 
 - 配置：`vitest.config.ts` 两个 project（`node` / `jsdom`），`src/test/setup.ts` 统一 `afterEach` 清理，`src/test/server.ts` 导出 MSW `server`。
@@ -871,7 +866,7 @@ Agent 执行流图全量 + 问题卡
   ▼
 自进化列表 + 四步向导 + 对象配置（按空间）
   ▼
-运行详情七步 + SSE + 执行日志（V1 六步组件冻结维护）
+运行详情七步 + SSE + 执行日志
   ▼
 仅聚类 + push 状态/重试 + 收尾三态
 ```
@@ -886,6 +881,6 @@ Agent 执行流图全量 + 问题卡
 
 - **前端没有 mock 分支**：所有数据来自真实 HTTP 与真实表。开发/演示时用 `fixtures` seed 造数。
 - 登录态：V1 也必须登录（初始管理员由后端 env 播种），鉴权链路从一开始就是真实的；只有 `preparing/running` 的 run 页面才申请 SSE 票据，重连重新取票，完成/阻塞/离开即关闭。
-- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/probe/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate ref、切回 run 分支（不 reset 已接纳轮次）。patch 内容与评分是占位，但 commit/amend/fast-forward/push 都是真的。UI 需明示"占位 patch / 占位评测"。
+- **自进化是真实写文件与真实 git**：每个 candidate patch 都会产生一次 commit（message 带 run/cluster/attribution/bad_case 追溯）；candidate 先 push 到临时 ref 再评测；接纳后 amend + fast-forward run 分支，拒绝则删除 candidate ref、切回 run 分支（不 reset 已接纳轮次）。patch 内容与评分是占位，但 commit/amend/fast-forward/push 都是真的。UI 需明示"占位 patch / 占位评测"。
 - 只有配置且启用的对象能启动自进化；配置入口在向导 Step1 提示文案内的「配置页」链接。
 - 真实执行接入时前端**零改动**：接口形状不变，只是 patch 内容与评分换成真实结果。
