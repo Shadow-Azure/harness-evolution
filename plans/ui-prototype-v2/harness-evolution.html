@@ -602,6 +602,9 @@
 .evo-app .modal-head h2 { font-size: 15px; font-weight: 700; }
 .evo-app .modal-head .x { margin-left: auto; cursor: pointer; color: var(--text-faint); font-size: 16px; border: none; background: none; }
 .evo-app .modal-body { padding: 18px; max-height: 66vh; overflow-y: auto; }
+.evo-app .modal-body::-webkit-scrollbar { width: 10px; }
+.evo-app .modal-body::-webkit-scrollbar-track { background: transparent; }
+.evo-app .modal-body::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text-faint) 45%, transparent); border-radius: 999px; border: 3px solid var(--bg-card); }
 .evo-app .modal-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 13px 18px; border-top: 1px solid var(--border); background: var(--bg-panel); }
 .evo-app .f-row { margin-bottom: 14px; }
 .evo-app .f-label { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-bottom: 6px; }
@@ -1144,9 +1147,9 @@
       <div class="login-points">
         <div class="login-point"><span class="lp-ico">1</span><span><b>工作空间隔离</b>：数据、成员、额度与进化对象都按空间收口。</span></div>
         <div class="login-point"><span class="lp-ico">2</span><span><b>归因进入进化流程</b>：同一 bad case 可以拥有多个对象的归因结论。</span></div>
-        <div class="login-point"><span class="lp-ico">3</span><span><b>默认 10 个 Session</b>：输入 root session ID 回车，精确拉取目标会话。</span></div>
+        <div class="login-point"><span class="lp-ico">3</span><span><b>默认 10 个 Session</b>：输入 root session ID 回车，<br>精确拉取目标会话。</span></div>
       </div>
-      <div class="lb-foot">V2 原型 · 全部数据为打桩样例，不写入生产库。<br>视觉与交互基线沿用 plans/14-15-ui-prototype/harness-evolution.html。</div>
+      <div class="lb-foot">V2 原型 · 全部数据为打桩样例，不写入生产库。<br>视觉与交互基线沿用 plans/ui-prototype-v2/harness-evolution.html。</div>
     </section>
     <section class="login-form-wrap">
       <h2>登录</h2>
@@ -3092,7 +3095,7 @@ function AttributionReport({ c, a, index, total, onPrev, onNext, onOpenRun }) {
           <span className="attr-label">置信度</span>
           <span className="mono" style=${{ fontSize: 11 }}>${(a.confidence * 100).toFixed(0)}%</span>
           <span className="attr-label" style=${{ marginLeft: "16px" }}>潜在策略</span>
-          <span className="v2-badge">${a.policy === "custom" ? "自定义策略" : "默认策略 · self + 触发点在对象之后"}</span>
+          <span className="v2-badge">${a.policy === "custom" ? "自定义策略" : "默认策略 · self 上报 或 触发点在对象之后"}</span>
         </div>
       </div>
       <div className="attr-trigger">
@@ -3716,7 +3719,7 @@ function evInfoPanel(run) {
     <div class="typebar">${bar}</div>
     <div class="legend">${legend}<span style="color:var(--text-faint)">＝ 归因 ${m.attributed.length} · 复用缓存 ${m.reused} · 本次新增 ${m.fresh}</span></div>
     <div class="f-inline" style="margin-top:10px">
-      <span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略 · 对象 self + 触发点在对象之后' : '自定义策略'}</span>
+      <span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略 · 对象自身 self 上报 或 触发点在其后' : '自定义策略'}</span>
       <span class="v2-badge ${run.cache ? 'ok' : 'warn'}">${run.cache ? '复用缓存归因' : '不复用缓存'}</span>
       ${run.policy !== 'default' ? `<span class="v2-note">${evEsc(JSON.stringify(run.policyRules || {}))}</span>` : ''}
     </div>
@@ -3740,7 +3743,7 @@ function evStepScope(run) {
     <table class="rep"><tbody>
       <tr><th style="width:160px">进化对象</th><td><span class="chip kind">${run.target.kind}:${evEsc(run.target.name)}</span></td><th style="width:100px">版本</th><td class="mono">${run.target.version}</td></tr>
       <tr><th>bad case 时间段</th><td class="mono">${run.window[0]} ~ ${run.window[1]}</td><th>工作空间</th><td>${evEsc((WORKSPACES.find(w => w.id === run.workspace) || {}).name || run.workspace)}</td></tr>
-      <tr><th>潜在策略</th><td>${run.policy === 'default' ? '默认：对象自身 self 上报 + 触发点在对象之后' : '自定义：' + evEsc(JSON.stringify(run.policyRules || {}))}</td><th>缓存归因</th><td>${run.cache ? '复用最近一次成功归因' : '不复用，全部重新归因'}</td></tr>
+      <tr><th>潜在策略</th><td>${run.policy === 'default' ? '默认：对象自身 self 上报 或 触发点在对象之后' : '自定义：' + evEsc(JSON.stringify(run.policyRules || {}))}</td><th>缓存归因</th><td>${run.cache ? '复用最近一次成功归因' : '不复用，全部重新归因'}</td></tr>
     </tbody></table>
     <p class="v2-note" style="margin-top:10px">先找出时间段内当前空间上报过 bad case 的 Session，共 <b>${m.sessions.length}</b> 个；再判断 ${evEsc(run.target.name)}@${run.target.version} 是否出现在这些 Session 中。</p>
   </div>`;
@@ -3792,7 +3795,7 @@ function evStepPotential(run) {
     </tr>`;
   }).join('');
   return `<div class="card panel">
-    <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 ∪ 触发点在对象触发点之后</span></div>
+    <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
     <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
     <table class="rep"><thead><tr><th>Session</th><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
     <div class="pager"><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
@@ -4128,7 +4131,7 @@ function evRenderWizard() {
       <div class="f-row"><div class="f-label">潜在 bad case 策略</div>
         <div class="policy ${wz.policy === 'default' ? 'selected' : ''}">
           <label><input type="radio" name="ev-policy" ${wz.policy === 'default' ? 'checked' : ''} data-action="ev-wz-policy" data-v="default"> 默认策略</label>
-          <p>进化对象自身 <b>self</b> 上报的 bad case，并集触发点在对象触发点之后的 bad case。</p>
+          <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
         </div>
         <div class="policy ${wz.policy === 'custom' ? 'selected' : ''}">
           <label><input type="radio" name="ev-policy" ${wz.policy === 'custom' ? 'checked' : ''} data-action="ev-wz-policy" data-v="custom"> 自定义策略</label>
@@ -4136,7 +4139,7 @@ function evRenderWizard() {
             <label class="switch-row"><input type="checkbox" ${wz.includeSelf ? 'checked' : ''} data-action="ev-wz-rule" data-rule="includeSelf"> 包含对象自身 self 上报</label>
             <label class="switch-row"><input type="checkbox" ${wz.includeAfter ? 'checked' : ''} data-action="ev-wz-rule" data-rule="includeAfter"> 包含触发点在对象之后</label>
             <label class="switch-row"><input type="checkbox" ${wz.sameObject ? 'checked' : ''} data-action="ev-wz-rule" data-rule="sameObject"> 仅纳入同 object_name</label>
-          </div>` : '<p>在默认策略上叠加规则；与默认策略不同时会在运行详情中记录策略快照。</p>'}
+          </div>` : '<p>勾选规则组合成策略；与默认策略不同时会在运行详情中记录策略快照。</p>'}
         </div>
       </div>
       ${wz.focusCase ? `<div class="wz-demo"><b>从 bad case 启动</b> · ${evEsc(wz.focusCase)} 已锁定为关注对象；启动后可在归因列表中找到它。</div>` : ''}`;
@@ -4171,7 +4174,7 @@ function evRenderWizard() {
     const slice = m.potentialRows.slice((page - 1) * pageSize, page * pageSize);
     const rows = slice.map(r => `<tr><td>${evCaseLink(r.c)}<span class="cell-sub">${evEsc(r.c.title)}</span></td><td><span class="v2-badge">${evEsc(r.c.objectName)}</span></td><td>${evCaseType(r.c)}</td><td class="mono">L${r.c.triggerLine}</td><td><b>${evEsc(r.a.sess.short)}</b><span class="cell-sub mono">${r.a.sid}</span></td></tr>`).join('');
     body = `${cond}
-      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：对象自身 self 上报 ∪ 触发点在对象触发点之后</span></div>
+      <div class="wz-section-title">第 3 步 · 潜在 bad case <span>默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
       <div class="wz-stats">
         <span class="st"><b>${m.sessions.filter(a => a.appeared).length}</b><span>关联 Session</span></span>
         <span class="st"><b>${m.cases.length}</b><span>时间段内 bad case</span></span>
@@ -4184,7 +4187,7 @@ function evRenderWizard() {
         <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span>
         <button class="btn" data-action="ev-wz-page" data-target="case" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button>
       </div>
-      <div class="wz-note">默认策略 = 对象 self 上报 ∪ 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。</div>`;
+      <div class="wz-note">默认策略 = 对象自身 self 上报 或 触发点在对象之后；自定义策略可回第 1 步调整。归因在下一步生成。</div>`;
   } else {
     body = `${cond}
       <div class="wz-section-title">第 4 步 · 归因预览与启动 <span>确认缓存策略后启动；归因结果会写回该对象版本</span></div>
@@ -5166,11 +5169,11 @@ function v2AdminIngest() {
     </div>`;
 }
 function v2AdminAuth() {
-  return `<div class="admin-head"><div><h2>鉴权接入（预留）</h2><div class="sub">当前原型使用内置演示账号；生产接入只需替换身份提供方，业务鉴权仍由本服务的 membership 判定。</div></div><div class="actions">${v2Badge('注册未开放', 'warn')}</div></div>
+  return `<div class="admin-head"><div><h2>鉴权接入（预留）</h2><div class="sub">当前原型使用内置演示账号；生产接入只需替换身份提供方，业务权限仍由本服务的成员关系判定。</div></div><div class="actions">${v2Badge('注册未开放', 'warn')}</div></div>
     <div class="auth-list">
       <div class="auth-item"><span class="ai-ico">1</span><div class="ai-main"><b>Cookie 会话</b><div class="ai-desc">登录成功后写入 HttpOnly <code>he_session</code>（SameSite=Lax）；前端启动时调用 <code>GET /api/auth/session</code> 恢复用户与可用空间，不把身份放进 localStorage。</div></div><span class="v2-badge ok">已预留</span></div>
       <div class="auth-item"><span class="ai-ico">2</span><div class="ai-main"><b>登录 / 登出</b><div class="ai-desc"><code>POST /api/auth/login</code> 校验凭据并下发 Cookie；<code>POST /api/auth/logout</code> 清理会话。不提供公开注册端点，账号由管理员创建或邀请。</div></div><span class="v2-badge ok">已预留</span></div>
-      <div class="auth-item"><span class="ai-ico">3</span><div class="ai-main"><b>用户信息映射</b><div class="ai-desc">外部身份只需映射 <code>id / email / name / avatar</code>，再关联 <code>workspace_members</code>；全局管理员唯一，普通用户的角色由 membership 决定。</div></div><span class="v2-badge ok">已预留</span></div>
+      <div class="auth-item"><span class="ai-ico">3</span><div class="ai-main"><b>用户信息映射</b><div class="ai-desc">外部身份只需映射 <code>id / email / name / avatar</code>，再关联 <code>workspace_members</code>；全局管理员唯一，普通用户的角色由成员关系决定。</div></div><span class="v2-badge ok">已预留</span></div>
       <div class="auth-item"><span class="ai-ico">4</span><div class="ai-main"><b>SSO / OIDC 回调</b><div class="ai-desc"><code>GET /api/auth/callback</code> 接收 IdP 回调，按 <code>sub</code> 或 <code>email</code> 匹配用户；未匹配时拒绝登录，不自动创建账号（不放开注册）。</div></div><span class="v2-badge">待接入</span></div>
       <div class="auth-item"><span class="ai-ico">5</span><div class="ai-main"><b>空间授权</b><div class="ai-desc">所有读写在服务端按 <code>workspace_id + user_id</code> 校验角色；前端隐藏入口只是体验优化，不能替代服务端校验。</div></div><span class="v2-badge ok">已预留</span></div>
     </div>

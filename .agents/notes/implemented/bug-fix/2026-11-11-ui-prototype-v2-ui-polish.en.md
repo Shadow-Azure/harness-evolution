@@ -10,6 +10,8 @@ Real-browser review of the V2 prototype exposed several visible defects that dis
 
 The third turn found further state and content mismatches: rejected iterations in a completed run still showed a positive delta, the final-evaluation subtitle kept the literal "M" placeholder, and a rising issue-reproduction rate was colored as a gain; the add-member dialog granted Space Admin by default; the workspace-management list left a large blank area; and the last Session stat label wrapped at 1280px.
 
+The fourth turn found the default policy mixing `+` and `∪`, where `+` reads as addition or stacking; the wizard step 3 body overflowing `66vh` while relying on the macOS overlay scrollbar, leaving no visible scroll affordance; the third login bullet leaving an orphan line and the footer pointing at the old prototype path; the auth copy mixing the English word `membership`; and the custom-policy description saying rules are stacked on the default even though checked rules compose a new policy.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -18,13 +20,17 @@ The second turn fixes interaction state: page and workspace are written to the U
 
 The third turn makes rejected candidates score below current, uses the real iteration count in the final-evaluation subtitle, and adds a `lowerBetter` direction to `evDelta`; it defaults the add-member role to Member, lowers the admin content minimum height to 340px, labels the run-card percentage as total progress, and keeps Session stat labels on one line with tighter cell padding.
 
+The fourth turn unifies the default policy as "the object's own self report or a trigger after the object trigger point" and adds a 10px persistent scrollbar to modal bodies; splits the third login bullet across two balanced lines and points the footer at `plans/ui-prototype-v2/`; uses "membership relation" consistently in the auth copy; and describes custom policy as composing checked rules.
+
 ## Alternatives considered
 
 - Edit production `apps/web` directly: it mixes prototype review with product implementation, and this issue only covers prototype assets.
 - Hide subtitles only below 1100px: the 1408px wrap remains unsolved.
 - Keep wheel zoom and move the legend into a fixed overlay: the gesture conflict remains and users still zoom by accident.
 - Only darken the color: contrast improves, but 9px dates on a dense weekly axis remain hard to read.
+- Keep `+`/`∪` as mathematical notation: `+` reads as addition in progress and gain contexts, while `∪` depends on font support; plain-language "or" is harder to misread.
+- Rely on the system overlay scrollbar: macOS hides it by default, so readers cannot tell that a short modal has more content.
 
 ## Consequences
 
-The prototype drifts further from production frontend styling; future alignment work should treat this note and its screenshots as the reference. Review screenshots add repository weight but make each turn auditable. The 1400px threshold, 0.5 minimum zoom, and canvas height clamps are empirical; re-measure if real data lengthens labels or adds nodes. URLs use `replaceState`, so refresh restores the current page and workspace; browser back still leaves the prototype, and full history semantics would need `pushState` plus `popstate` replay.
+The prototype drifts further from production frontend styling; future alignment work should treat this note and its screenshots as the reference. Review screenshots add repository weight but make each turn auditable. The 1400px threshold, 0.5 minimum zoom, and canvas height clamps are empirical; re-measure if real data lengthens labels or adds nodes. URLs use `replaceState`, so refresh restores the current page and workspace; browser back still leaves the prototype, and full history semantics would need `pushState` plus `popstate` replay. The scrollbar uses `::-webkit-scrollbar`, which stays visible in Chrome and Safari; Firefox falls back to its native scrollbar, so broader browser support would need `scrollbar-color`.
