@@ -41,9 +41,10 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 ## 实现内容
 
 - 新增三篇补篇 `15-v2-workspaces.md` / `16-v2-overview.md` / `17-v2-attribution.md`（沿续 11–14 号体例：背景、数据模型、API 契约、代码改动地图、测试与验收、非目标、已确认决策）。
+- 三篇按 V1 设计文档（05/06/07/08）的实现级粒度展开：时序图与状态机、逐端点请求/响应 JSON、逐表列与索引、Repository/Service 方法签名、并发与幂等策略、迁移与回滚脚本、组件树与 queryKey 失效矩阵、分层测试用例。
 - README：文档地图加三行、决策表追加 D21/D22/D23、系统一句话说明与数据边界段落更新、V2 与仓库现状关系。
-- 02-features：新增 §2.4（F21–F27 七个 V2 功能点 + 五个 V1 功能点变更表）。
-- 05-api-design：§4 端点清单追加 V2 增补块；§8 错误码表追加 12 个 V2 错误码。
+- 02-features：新增 §2.4（F21–F27 七个 V2 功能点 + 五个 V1 功能点变更表）与 §2.5（V2 功能点验收口径）。
+- 05-api-design：§4 端点清单追加 V2 增补块；§8 错误码表追加 V2 错误码。
 - 06-database-design：§1 表分类追加 V2 增补块（新表 + 加列 + 冻结清单）。
 - 01-architecture / 07-backend-implementation / 08-frontend-implementation：边界修订（空间输入/输出/不做清单、workspaces 服务）与 V1 冻结注记。
 - 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（补篇方案与关键取舍）。
