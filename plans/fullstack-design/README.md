@@ -37,10 +37,13 @@
 | [11 bad_cases 根会话轨迹定时同步](11-bad-case-session-sync.md) | 自动补齐策略、外部查询服务契约、状态表、重叠处理与前端统计 | 做 m6-15 前 |
 | [12 bad_cases 目录数据定时同步](12-bad-case-catalog-sync.md) | 上游分页查询契约、游标翻页、upsert、状态表与前端统计 | 做 m6-16 前 |
 | [13 根会话 ID 的展示与检索](13-root-session-id.md) | 错误页两处展示、会话搜索匹配 `id`、契约与性能边界 | 做 m6-18 前 |
+| [15 V2 多用户鉴权接入与工作空间](15-v2-workspaces.md) | 鉴权接入接缝、空间/成员/额度/凭据模型、上报接口、空间化迁移与权限矩阵 | 做 V2 空间相关 issue 前 |
+| [16 V2 工作空间总览与 Session 列表](16-v2-overview.md) | 总览双视角口径与聚合接口、Session 最新 10 条 + 回车查询 | 做 V2 总览相关 issue 前 |
+| [17 V2 归因进入自进化与错误详情多归因](17-v2-attribution.md) | 七步流程、触发点坐标、潜在策略、归因缓存、多归因错误详情、probe 链路退役 | 做 V2 归因相关 issue 前 |
 
 ## 系统一句话说明
 
-Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 组成的 Agent 会话树）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。归一化后供组织内登录用户在 Agent 执行流图上查看主/子 agent 的执行过程、对暴露的问题做归因分析，再按 skill / agent 聚合问题报告，驱动"聚类 → 归因 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，完整时间线由外部平台承担；本服务只保留用户输入锚点，见 [02 §2.1](02-features.md)。
+Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 SaaS 服务**：第三方脚本把有问题的 Claude Code 会话轨迹（主会话 + 子 agent 组成的 Agent 会话树）写入 MySQL 的 `trajectory_payloads`，本服务读取并归一化；也支持从"轨迹查询接口"按需 pull。V2 起 bad case 经**工作空间上报接口**（`POST /api/workspaces/{wid}/bad-cases`，额度管控）进入，归一化后供组织内登录用户在 Agent 执行流图上查看主/子 agent 的执行过程；**归因由自进化流程按「对象 · 版本」生成**，一个 bad case 可有多条归因，再按 skill / agent 聚合驱动"关联 → 潜在筛选 → 归因 → 聚类 → 打 patch → 评测接纳 → 终评"的自进化闭环。时间线页面（原型 B 页）在 2026-10-22 评审中决定不做，完整时间线由外部平台承担；本服务只保留用户输入锚点，见 [02 §2.1](02-features.md)。
 
 ```text
 轨迹输入：上游查询接口 / trajectory_payloads（脚本写入）
@@ -88,6 +91,9 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D18 | 用户管理（2026-10-24） | **首版只提供 admin 的 `GET/POST /api/users` 和顶栏用户区；不做管理页，也不提供停用/恢复用户 API** | 管理操作先走 API/脚本；`is_active` 继续作为登录闸门字段保留，未来恢复停用管理时再补写路径。见 [05 §4.1](05-api-design.md) · [08 §4.2](08-frontend-implementation.md) |
 | D19 | 上游轨迹查询契约（2026-10-24） | **[05 §10](05-api-design.md) 是本服务定义的客户端契约，用于 `HttpApiSource` 和 mock 契约联调；不表示真实上游已承诺该契约** | 上游就绪前继续用 `trajectory_payloads` 和 fixtures；真实上游接入时以其实现为准，主版本不兼容先评审适配，不静默放宽校验。 |
 | D20 | 测试工程 ID（2026-10-31） | **验证集/测试集测试工程 ID 挂在 `evolution_targets`，创建 run 时快照到 `evolution_runs`；必填在 API/表单层，不调用外部平台校验存在性** | 历史 target/run 为空串；本切片不改 run API、详情页与评测 gateway。见 [14](14-target-project-ids.md) |
+| D21 | 多工作空间（2026-11-11，V2） | **工作空间是 bad case 的归属与权限单元**：`workspaces` / `workspace_members` / `workspace_ingest_credentials` 三表；空间 Session 集合 = 空间 bad case 涉及的根会话投影，轨迹表不加空间列；bad_cases / evolution_targets / evolution_runs / evolution_run_events 加 `workspace_id` | 全局管理员唯一（禁建 admin、可自任空间管理员）；空间角色 `space_admin/member/viewer` 服务端收口。见 [15](15-v2-workspaces.md) |
+| D22 | 鉴权接入预留（2026-11-11，V2） | **身份栈不变（JWT + refresh cookie），鉴权接入收敛为 `AuthProvider` 协议 + 会话桥 + `GET /api/auth/callback` 占位**；新增 `GET /api/auth/session` 返回 user + workspaces；不开放注册，SSO 按 sub/email 匹配不自动建号 | 接入 Cookie/SSO 只改 provider/桥/callback 三处，业务与前端契约不变。见 [15 §2](15-v2-workspaces.md) |
+| D23 | 归因进自进化（2026-11-11，V2） | **归因由本服务在 run 内按「对象 · 版本」生成**（`bad_case_attributions`，每缓存键一行）；自进化输入从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case（默认/自定义策略）→ 归因 → 聚类」；`probe_reports`/`bad_case_analysis` 冻结只读；错误详情承载一个 bad case × 多条归因 | 七步流程；缓存键 = workspace+bad case+对象身份+版本+策略版本+归因引擎；「非该对象问题」是一等结论。见 [17](17-v2-attribution.md) |
 
 ## Review 前必看：结论状态
 
@@ -96,8 +102,8 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 ## 数据边界与演示数据（全局最重要的设计约束）
 
 - **轨迹**：第三方脚本/上游 pull → `trajectory_payloads`（每 agent 一行原始 JSONL）→ `service/acquisition` 归一化 → 业务表。
-- **问题与归因**：外部系统写 `bad_cases` / `bad_case_analysis` / `probe_reports`，本服务**只读**。
-- **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库副本、candidate commit、push 临时 candidate ref 供评测，接纳后 fast-forward run 分支**（candidate 先 push 再评测；拒绝删 candidate，run 分支不变）。
+- **问题与归因**：V1 由外部系统写 `bad_cases` / `bad_case_analysis` / `probe_reports`（本服务只读）；**V2 起 bad case 主通道是空间上报接口**（[15 §4.2](15-v2-workspaces.md)，目录同步默认停用），归因改由自进化 run 写 `bad_case_attributions`（[17 §5](17-v2-attribution.md)），旧归因表冻结只读。
+- **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `evolution_run_candidates` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库副本、candidate commit、push 临时 candidate ref 供评测，接纳后 fast-forward run 分支**（candidate 先 push 再评测；拒绝删 candidate，run 分支不变）。
 - **执行过程**：阶段、候选、评测、推送、异常全部落 `evolution_run_events`；前端通过 `GET /runs/{rid}/events` 读取，SSE 只做实时通知。
 - **演示数据**：`fixtures/` + `python -m app.cli seed`，仅开发/演示灌入真实表；运行时无 stub 分支。
 - **V1 占位**：聚类用"按 attribute_type 分半"的占位算法；patch 内容追加占位小节但**真实落盘/commit**；评测/终评为占位分数。
@@ -107,6 +113,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 ## 与仓库现状的关系
 
 - 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹接入与归一化）+ M4（问题与归因，外部表只读）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；当前 M1（纯前端原型）已由 [plans/14-15-ui-prototype](../14-15-ui-prototype/) 完成。
+- **V2 目标态**（2026-11-11 起）：多用户鉴权接入 + 多工作空间 + 总览 + 归因进自进化，由 [15](15-v2-workspaces.md) / [16](16-v2-overview.md) / [17](17-v2-attribution.md) 三篇定义，原型基线为 [plans/ui-prototype-v2](../ui-prototype-v2/)；D10（单组织共享）与 D6/D13/D14 中与 probe 输入相关的表述以 D21–D23 为准修订。V1 六步 run 与 probe 读端点冻结维护。
 - `apps/web` 现有 React 壳（3 个文件）由 Vue 3 应用替换；`apps/server` 由 `apps/api` 替换；`packages/contracts` 保留但改为存放 OpenAPI 生成物。
 - 本次 SaaS 化修订后，`docs/architecture.md` 中"当前只做 Codex / 本机 rollout 扫描 / Fastify"等表述将不再成立，需按本设计同步（确认后执行）。
 - 文档确认后的后续动作：重排 roadmap / milestone / issue（`.agents/flow/`），把 `docs/architecture.md` 的技术栈表述同步为新架构，再逐 issue 实现。
