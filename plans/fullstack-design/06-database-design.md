@@ -815,7 +815,7 @@ erDiagram
 | 对象进入点 | Session 内该对象（按 `kind` 匹配 `object_type`、`name == object_name`）最早的 `agent_events`；无触发事件 → 该 Session 与对象不关联 |
 | bad case 触发点 | §7.4 锚点事件；锚点缺失（`eventIndex=-1`）退化为上报 agent 的出生点（子 agent 取父节点 `tool_use_id` 匹配的 `agent` 事件，主 agent 取 `started_at`） |
 | 触发点比较 | 双方 `triggered_at` 非空 → 按时间；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；双缺失 → `order_state=unknown`（不满足「之后」） |
-| 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.11](07-backend-implementation.md) |
+| 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 归因三态 | 潜在集合中已有 `bad_case_attributions`（对象·版本）：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无记录 → 未分析 |
 | 对象「出现」的版本口径 | 按对象名判定（触发事件不记录版本）；`target_version` 只进归因身份与缓存键。遗留项：上游轨迹带版本后收紧 |
 

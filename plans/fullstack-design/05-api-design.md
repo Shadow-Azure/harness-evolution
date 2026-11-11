@@ -794,6 +794,8 @@ V2 起新 run 的 `steps[]` 是七步，step 独立端点与外壳不变（`{key
 
 ### 4.7 问题、归因与 probe
 
+> **V2（2026-11-11）**：错误详情改读 `…/bad-cases/{id}/attributions`（§4.19）；本节的 `/analysis` 与 `/probes/{id}` 标 `deprecated=true`，保留一个版本供历史脚本/旧客户端使用后删除。
+
 - `GET /api/bad-cases/{badCaseId}` → `BadCase`（含 `sessionId`，用于深链校验）
 - `GET /api/bad-cases/{badCaseId}/analysis` → `{ "status": AnalysisStatus, "probeId": string|null, "result": object|null }`；无归因记录时返回 `status=unanalyzed` 占位
 - `GET /api/probes/{probeId}` → `ProbeReport`（含 `fromBadCases[]` / `fromBadCasesCount`）

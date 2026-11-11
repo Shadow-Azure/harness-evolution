@@ -1067,6 +1067,7 @@ class AttributionRunner:
 - `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
 - V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
+- **簇级 confidence 与归因 confidence 是两回事**：归因行上的 `confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
 - `non_target` 候选保留在候选表与归因表（错误详情可见），不进簇。
 
 ### 5.14 预览端点（`service/evolution/preview.py`）

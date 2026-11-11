@@ -178,16 +178,16 @@ apps/web/
 页面不调用“一个整页接口”，而是按区块并行发起多个资源接口；每个接口只组装自己那块数据：
 
 ```text
-浏览器 /sessions/:sid
+浏览器 /workspaces/:wid/sessions/:sid
    │
-   ├──► GET /sessions/{sid} ──────────► sessions 服务 ──► session_families 表
+   ├──► GET …/sessions/{sid} ──────────► sessions 服务 ──► session_families 表
    │                                      └──► summary 响应 ──┐
    │                                                          │
-   ├──► GET /sessions/{sid}/tree ─────► sessions 服务 ──► agents / agent_events
+   ├──► GET …/sessions/{sid}/tree ─────► sessions 服务 ──► agents / agent_events
    │                                      │                  + bad_cases
    │                                      └──► tree 响应 ─────┤
    │                                                          │
-   └──► GET /sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
+   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
                                           │                  + session_families（存在性校验）
                                           └──► bad-cases 响应 ┘
                                                                │
@@ -196,9 +196,9 @@ apps/web/
 ```
 
 - **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），会话概览先到就先渲染，Agent 会话树/问题列表后到。
-- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
-- 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
-- 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
+- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_id` 关联问题卡；问题列表读问题表并校验 `session` 存在。
+- 问题详情页同理：先取 `…/sessions/{sid}/bad-cases`，选中后再取 `…/bad-cases/{id}/attributions`（分页）与 `…/attributions/{at}`（按需串行，不是整页一次拉完）；V1 的 `/analysis`、`/probes/{id}` 仅历史 run/旧客户端使用。
+- 页面级聚合仅用于**列表页**（`…/sessions`、`…/evolution/runs`）、**总览页**（`…/overview/*`，静态聚合）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
 前端拿到的每个响应只覆盖一个模块；问题侧数据由外部系统写入，本服务只读。**V2 起问题侧主通道改为空间上报接口**（[05 §4.17](05-api-design.md)），目录同步默认停用；空间隔离下每个业务端点都按 `workspace_id` 过滤并校验成员角色（[07 §5.15](07-backend-implementation.md)），`principal` 既记录审计字段也决定可见性。
 
