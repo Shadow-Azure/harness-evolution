@@ -63,6 +63,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - The eighth turn removes the trigger-point column from the potential bad-case list and adds a "phenomenon / description" column after the report ID.
 - The eighth turn fixes the attribution report deep link: it carries the current user, opens the Session error view on the attribution tab, and preselects the attribution matching `obj`; the list's attribution status and report ID now come from the case's existing attribution records.
 - Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
+- The ninth turn adds a clickable leading "ID" column to the bad-case list; clicking opens the Session error view on the matching case, the title cell drops the duplicated ID subtext, and the empty-state column count is updated.
+- Ninth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round9/`.
 
 ## Implementation steps
 
@@ -112,6 +114,7 @@ pnpm verify:flow; pnpm lint:docs
 - The single-target card is no taller than 380px at 1440px; the two columns are divided; empty versions are dimmed; below 1100px the card becomes a single column.
 - The potential bad-case list no longer has a trigger-point column; rows with an attribution report show its phenomenon / description after the report ID, and rows without one show —.
 - Clicking a report ID opens the Session error view on the attribution tab with the matching target preselected, and never lands on the login page.
+- The bad-case list starts with an ID column that opens the Session error view on that case; the title cell no longer repeats the ID.
 
 ## Gates and CI
 

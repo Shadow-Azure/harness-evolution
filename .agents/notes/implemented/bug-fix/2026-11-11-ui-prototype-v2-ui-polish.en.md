@@ -20,6 +20,8 @@ The seventh turn found layout defects in the new card: the four stats each occup
 
 The eighth turn found defects in the potential bad-case list: the trigger-point column duplicates the Session detail and execution flow while consuming width; cases with an attribution report give no hint of its subject; clicking a report ID lands on the login page; the deep link selects only the case, so a case with several object attributions may open the wrong one; and the list's report IDs are synthesized per run, so they often open "no attribution yet".
 
+The ninth turn found the bad-case list's ID only as subtext under the title: it cannot be clicked on its own, and a single case cannot be linked to directly; after adding a column, the title cell would also repeat the ID.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -37,6 +39,8 @@ The sixth turn moves the source distribution out of the trend card into a new "s
 The seventh turn only changes layout: the stats collapse into one divided strip; filters move into a tinted toolbar with the date range pushed right; the columns get a 1px divider and 22px inner padding, switching to a single column with a horizontal divider below 1100px; the left column gains an is / not / unanalyzed summary legend in its header; empty versions drop to 60% opacity and read "no potential bad case"; and the footnote moves to the card bottom across both columns. The target and version dropdowns now share one control: 28px tall, 8px radius, a drawn chevron, native select appearance disabled with a 30px arrow gutter, and a blue border plus 3px ring on hover and focus.
 
 The eighth turn drops the trigger-point column and adds a "phenomenon / description" column after the report ID (the bad-case description, ellipsized with a title tooltip); `caseDeepLink` now always carries `u=<current user>` and accepts `obj=<target>`, and the error detail preselects the attribution matching that object name; the list's attribution status and report ID now come from the case's existing attribution records, and rows without a matching object attribution read "unanalyzed".
+
+The ninth turn adds a leading "ID" column to the bad-case list: the ID uses the same deep link to open the Session error view on the matching case's problem-description tab; the title cell keeps only the title, and the empty-state colspan moves to 8.
 
 ## Alternatives considered
 
@@ -58,6 +62,9 @@ The eighth turn drops the trigger-point column and adds a "phenomenon / descript
 - Keep the trigger-point column and only narrow it: it still duplicates the Session detail for little gain.
 - Fix only the `u` parameter: the target would still open "no attribution yet", which is worse.
 - Target `at=<report ID>`: the report ID is synthesized per run and does not match the attributions stored on the case.
+- Make the title a link: the title is long, so its large hit area invites accidental full-page navigation.
+- Keep the subtext ID and only make it clickable: it still wastes width and mixes the ID with the title.
+- Render the ID as plain text with a copy button: it adds a step and still cannot be shared as a deep link.
 
 ## Consequences
 
@@ -70,3 +77,5 @@ The sixth turn grows the overview by roughly 330px at 1440px, and the version co
 The seventh turn trims the card from roughly 430px to 376px at 1440px. The `.td-*` classes added for the stat strip and toolbar only serve this card, so reuse needs promotion into the shared style layer first; empty versions rely on opacity, which needs a different value under a dark theme or high-contrast mode.
 
 The eighth turn aligns the list with the error detail, but the overview's analyzed / unanalyzed counts are no longer hash-sampled; they follow each case's attribution records and therefore shift with the mock distribution. With a real attribution API, the object-name matching should become a query by object version. Deep links gained an `obj` parameter; older links still work and fall back to the first attribution.
+
+The ninth turn moves the ID into the first column, so that column is now one ID wide and the title column gains the horizontal room; the ID deep link still opens a new tab, and in-page navigation would use `v2OpenCase` instead.

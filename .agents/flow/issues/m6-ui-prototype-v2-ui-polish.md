@@ -63,6 +63,8 @@ V2 原型承载多工作空间下的总览、Session 查看、自进化与空间
 - 第八轮删除潜在 bad case 列表的「触发点」列，并在归因报告 ID 后新增「问题现象/描述」列。
 - 第八轮修复归因报告深链：补当前用户参数，打开 Session 错误查看页的归因分析页签，并按 `obj` 预选对应对象的归因；列表的归因状态与报告 ID 改为取该 bad case 现有的归因记录。
 - 第八轮截图落在 `plans/ui-prototype-v2/_ui-review/round8/`。
+- 第九轮在 bad case 列表最前面新增可点击的「ID」列，点击打开 Session 错误查看 → 错误详情的对应 bad case；标题列去掉重复的 ID 副文本，空态列数同步调整。
+- 第九轮截图落在 `plans/ui-prototype-v2/_ui-review/round9/`。
 
 ## 实施步骤
 
@@ -112,6 +114,7 @@ pnpm verify:flow; pnpm lint:docs
 - 单个进化对象分析卡在 1440px 下高度不超过 380px；两栏之间有分隔线；零数据版本弱化显示；1100px 以下转单列。
 - 潜在 bad case 列表不再有触发点列；有归因报告的行在报告 ID 后显示问题现象/描述，无报告的行显示 —。
 - 点归因报告 ID 打开 Session 错误查看页并停在归因分析页签，预选与列表一致的进化对象，不再出现登录页。
+- bad case 列表首列是 ID，点击后打开 Session 错误查看 → 错误详情并选中该 bad case；标题列不再重复显示 ID。
 
 ## 门禁与 CI
 
