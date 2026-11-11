@@ -1027,6 +1027,9 @@
 .v2-page .tg-r-is { background: var(--green); }
 .v2-page .tg-r-not { background: var(--orange); }
 .v2-page .tg-r-un { background: #c7ccd4; }
+.v2-page .tg-r-sess-with { background: var(--blue); }
+.v2-page .tg-r-sess-only { background: #d5dae2; }
+.v2-page .tg-r-src { background: var(--purple); }
 .v2-page .tg-ratio-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-grid2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); gap: 12px; margin-bottom: 14px; }
 .v2-page .tg-source-row { display: grid; grid-template-columns: 125px minmax(0, 1fr) 150px; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f2f5; }
@@ -4081,11 +4084,18 @@ function evWzRun() {
 }
 function evWizardModel() { const r = evWzRun(); return { run: r, m: evRunModel(r) }; }
 
+/* 向导浮窗挂载点：自进化页内用 view-evo 里的 #modal-root（随页面隐藏），
+   从总览等页面启动时挂到全局 #v2Modal，浮窗因此不依赖当前页面。 */
+function evWizardHost() {
+  const onEvoPage = !window.V2 || !window.V2.page || window.V2.page === 'evo';
+  return document.getElementById(onEvoPage ? 'modal-root' : 'v2Modal');
+}
+
 function evRenderWizard() {
   const wz = EV_STATE.wz; if (!wz) return;
   const targets = evWzTargets();
   if (!targets.length) {
-    evModal.innerHTML = `<div class="evov" data-action="ev-wz-close-bg"><div class="modal" style="width:560px">
+    evWizardHost().innerHTML = `<div class="evov" data-action="ev-wz-close-bg"><div class="modal" style="width:560px">
       <div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="ev-wz-close">✕</button></div>
       <div class="modal-body"><div class="wz-empty"><div><div class="wz-empty-icon">∅</div><h3>当前空间还没有启用的进化对象</h3><p>请先在「进化对象配置」中新增 skill / agent，并确认已启用，再回到这里启动自进化。</p><button class="btn primary" data-action="ev-wz-targets">前往配置 →</button></div></div></div>
       <div class="modal-foot"><button class="btn" data-action="ev-wz-close">取消</button></div>
@@ -4202,7 +4212,7 @@ function evRenderWizard() {
       <div class="wz-note">缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。</div>`;
   }
 
-  evModal.innerHTML = `<div class="evov" data-action="ev-wz-close-bg">
+  evWizardHost().innerHTML = `<div class="evov" data-action="ev-wz-close-bg">
     <div class="modal"><div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="ev-wz-close">✕</button></div>
       <div class="modal-body">${steps}${body}</div>
       <div class="modal-foot">
@@ -4248,9 +4258,9 @@ document.addEventListener('click', e => {
   }
   else if (a === 'ev-launch') evWizardOpen(null);
   else if (a === 'ev-targets') { evRoute(); }
-  else if (a === 'ev-wz-targets') { evModal.innerHTML = ''; location.hash = '#/targets'; }
-  else if (a === 'ev-wz-close') { evModal.innerHTML = ''; }
-  else if (a === 'ev-wz-close-bg') { if (e.target === el) evModal.innerHTML = ''; }
+  else if (a === 'ev-wz-targets') { evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
+  else if (a === 'ev-wz-close') { evWizardHost().innerHTML = ''; }
+  else if (a === 'ev-wz-close-bg') { if (e.target === el) evWizardHost().innerHTML = ''; }
   else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.tags?.[0] || t?.defaultRef || ''; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-policy') { evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-rule') { evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
@@ -4275,8 +4285,10 @@ document.addEventListener('click', e => {
       cache: EV_STATE.wz.cache, createdAt: '2026-11-10 09:10', progress: 5,
     });
     EV_RUNS.unshift(run);
-    evModal.innerHTML = ''; EV_STATE.expanded.clear(); EV_STATE.selStep = null; EV_STATE.lastDetailId = null;
+    evWizardHost().innerHTML = ''; EV_STATE.expanded.clear(); EV_STATE.selStep = null; EV_STATE.lastDetailId = null;
     location.hash = '#/run/' + run.id;
+    if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo');
+    else if (window.evRoute) window.evRoute();
   }
   else if (a === 'ev-target-create') evOpenTargetDialog(null);
   else if (a === 'ev-target-edit') evOpenTargetDialog((EV_TARGETS[evCurrentWs()] || []).find(t => t.id === el.dataset.id));
@@ -4502,6 +4514,8 @@ function v2RenderShell() {
 function v2SetPage(page) {
   if (!V2.user) return;
   v2CloseMenus();
+  const v2ModalHost = document.getElementById('v2Modal');
+  if (v2ModalHost) v2ModalHost.innerHTML = '';
   if (page === 'admin' && !v2CanManage(V2.wsId)) { v2Toast('当前角色没有空间管理权限'); page = 'overview'; }
   V2.page = page;
   ['overview', 'session', 'evo', 'admin'].forEach(p => {
@@ -4932,6 +4946,30 @@ function v2RenderTargetsOverview() {
       <span class="ov-obj-num"><b>${d.potential}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>
     </div>`;
   }).join('');
+  const maxTargetAssoc = Math.max(1, ...activeSets.map(d => d.assoc));
+  const assocDistRows = activeSets.map(d => {
+    const withPotential = new Set(d.rows.map(r => r.a.sid)).size;
+    const onlyAssoc = Math.max(0, d.assoc - withPotential);
+    const ratio = d.assoc ? Math.min(100, withPotential / d.assoc * 100) : 0;
+    return `<div class="ov-obj-row tg-source-obj" title="${v2Esc(d.target.objectName)} · ${d.assoc} 关联 Session · ${withPotential} 个含潜在 bad case / ${onlyAssoc} 个仅关联">
+      <span class="ov-obj-name">${v2Esc(d.target.objectName)}</span>
+      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${d.assoc / maxTargetAssoc * 100}%"><span class="tg-r-sess-with" style="width:${ratio}%"></span><span class="tg-r-sess-only" style="width:${100 - ratio}%"></span></span></span>
+      <span class="ov-obj-num"><b>${d.assoc}</b> · 含潜在 ${withPotential} / 仅关联 ${onlyAssoc}</span>
+    </div>`;
+  }).join('');
+  const srcMap = new Map();
+  rows.forEach(r => {
+    if (!srcMap.has(r.source)) srcMap.set(r.source, { name: r.source, total: 0, uniq: new Set() });
+    const s = srcMap.get(r.source);
+    s.total++; s.uniq.add(r.c.id);
+  });
+  const sourceDist = [...srcMap.values()].sort((a, b) => b.total - a.total);
+  const maxSourceTotal = Math.max(1, ...sourceDist.map(s => s.total));
+  const sourceDistRows = sourceDist.map(s => `<div class="ov-obj-row tg-source-obj" title="${v2Esc(s.name)} · 潜在 bad case ${s.total} 条 · 去重后 ${s.uniq.size} 个">
+      <span class="ov-obj-name">${v2Esc(s.name)}</span>
+      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${s.total / maxSourceTotal * 100}%"><span class="tg-r-src" style="width:100%"></span></span></span>
+      <span class="ov-obj-num"><b>${s.total}</b>（去重后：${s.uniq.size}）</span>
+    </div>`).join('');
   const tf = V2.targetOv;
   let lrows = rows.filter(r =>
     (!tf.listTarget || r.targetId === tf.listTarget) &&
@@ -5006,8 +5044,16 @@ function v2RenderTargetsOverview() {
       ${rows.length ? `<div class="tg-chart"><div class="tg-yaxis"><span>${bucketMax}</span><span>${Math.round(bucketMax / 2)}</span><span>0</span></div><div class="tg-buckets">${chart}</div></div>` : '<div class="ov-empty"><b>当前条件下没有潜在 bad case</b>调整时间、进化对象或查看信息后重试。</div>'}
       <p class="v2-note" style="margin:8px 0 0">柱高为所选信息之和；同一 bad case 可能同时出现在多个进化对象下。</p>
       <div class="ov-objects tg-source-objects">
+        <div class="tg-source-title">不同进化对象的关联 Session <span>按对象汇总；柱长按最大值归一，蓝色为含潜在 bad case 的 Session</span></div>
+        ${assocDistRows || '<div class="waiting">当前空间还没有进化对象</div>'}
+      </div>
+      <div class="ov-objects tg-source-objects">
         <div class="tg-source-title">不同进化对象的潜在 bad case <span>按对象汇总；柱长按最大值归一</span></div>
         ${targetDistRows || '<div class="waiting">当前空间还没有进化对象</div>'}
+      </div>
+      <div class="ov-objects tg-source-objects">
+        <div class="tg-source-title">潜在 bad case 来源分布 <span>所选进化对象在当前时间段的潜在 bad case；柱长为未去重条数，括号内为去重后数量</span></div>
+        ${sourceDistRows || '<div class="waiting">当前条件下没有潜在 bad case</div>'}
       </div>
     </div>
     <div class="card ov-side tg-side">
@@ -5366,7 +5412,7 @@ document.addEventListener('click', e => {
   if (ds.v2OvReset !== undefined) { V2.overview.listFrom = ''; V2.overview.listTo = ''; V2.overview.listObject = ''; V2.overview.listType = 'all'; V2.overview.page = 1; v2RenderOverview(); return; }
   if (ds.v2OverviewCase) { v2OpenCase(ds.v2OverviewCase); return; }
   if (ds.v2OverviewIngest !== undefined) { V2.admin.tab = 'ingest'; v2SetPage('admin'); return; }
-  if (ds.v2OverviewEvo !== undefined) { v2SetPage('evo'); if (window.__evOpenWizard) window.__evOpenWizard(null); return; }
+  if (ds.v2OverviewEvo !== undefined) { if (window.__evOpenWizard) window.__evOpenWizard(null); return; }
   if (ds.v2CopyEndpoint) { v2Copy(`${V2_ORIGIN}/api/workspaces/${ds.v2CopyEndpoint}/bad-cases`, '上报地址已复制'); return; }
   if (ds.v2AdminTab) { V2.admin.tab = ds.v2AdminTab; v2RenderAdmin(); return; }
   if (ds.v2OpenWs) { v2SwitchWorkspace(ds.v2OpenWs); V2.admin.tab = 'spaces'; v2SetPage('overview'); return; }

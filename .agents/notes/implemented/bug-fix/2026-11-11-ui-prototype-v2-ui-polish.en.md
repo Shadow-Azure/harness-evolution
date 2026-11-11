@@ -12,6 +12,8 @@ The third turn found further state and content mismatches: rejected iterations i
 
 The fourth turn found the default policy mixing `+` and `∪`, where `+` reads as addition or stacking; the wizard step 3 body overflowing `66vh` while relying on the macOS overlay scrollbar, leaving no visible scroll affordance; the third login bullet leaving an orphan line and the footer pointing at the old prototype path; the auth copy mixing the English word `membership`; and the custom-policy description saying rules are stacked on the default even though checked rules compose a new policy.
 
+The fifth turn found the evolution-target overview missing object-level associated Sessions and a source view, so readers could only infer them from the side card and the trend chart; the overview page's "start evolution" push sent readers to the evolution history page before opening the wizard, adding a pointless full-page jump and discarding the overview's current time window and target filter.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -22,6 +24,8 @@ The third turn makes rejected candidates score below current, uses the real iter
 
 The fourth turn unifies the default policy as "the object's own self report or a trigger after the object trigger point" and adds a 10px persistent scrollbar to modal bodies; splits the third login bullet across two balanced lines and points the footer at `plans/ui-prototype-v2/`; uses "membership relation" consistently in the auth copy; and describes custom policy as composing checked rules.
 
+The fifth turn adds two distribution blocks inside the trend card: associated Sessions normalized per target with the blue segment marking Sessions that contain potential bad cases, and a source distribution normalized by non-deduplicated count with the deduplicated count in parentheses keyed by bad case ID. Both reuse the existing `ov-obj-row` / `tg-source-obj` structure and normalized bars and share the target multi-select and time window. Launching becomes overlay-first: a new `evWizardHost()` picks the mount point by current page (`#modal-root` inside the evolution page, the global `#v2Modal` elsewhere); "start evolution" only opens the overlay, and step 4 writes the run hash and calls `V2.setPage('evo')` to leave the overview.
+
 ## Alternatives considered
 
 - Edit production `apps/web` directly: it mixes prototype review with product implementation, and this issue only covers prototype assets.
@@ -30,7 +34,12 @@ The fourth turn unifies the default policy as "the object's own self report or a
 - Only darken the color: contrast improves, but 9px dates on a dense weekly axis remain hard to read.
 - Keep `+`/`∪` as mathematical notation: `+` reads as addition in progress and gain contexts, while `∪` depends on font support; plain-language "or" is harder to misread.
 - Rely on the system overlay scrollbar: macOS hides it by default, so readers cannot tell that a short modal has more content.
+- Keep the overlay on `#modal-root` while temporarily unhiding `view-evo`: it flashes the evolution history page and still binds the mount point to page visibility.
+- Keep the "jump to the evolution page, then open the wizard" flow: the extra full-page switch discards the overview's time window and target filter.
+- Show only deduplicated or only non-deduplicated source counts: the former contradicts the list row count, and the latter cannot explain how 31 potential bad cases break down.
 
 ## Consequences
 
 The prototype drifts further from production frontend styling; future alignment work should treat this note and its screenshots as the reference. Review screenshots add repository weight but make each turn auditable. The 1400px threshold, 0.5 minimum zoom, and canvas height clamps are empirical; re-measure if real data lengthens labels or adds nodes. URLs use `replaceState`, so refresh restores the current page and workspace; browser back still leaves the prototype, and full history semantics would need `pushState` plus `popstate` replay. The scrollbar uses `::-webkit-scrollbar`, which stays visible in Chrome and Safari; Firefox falls back to its native scrollbar, so broader browser support would need `scrollbar-color`.
+
+The fifth turn grows the trend card by roughly 200px at 1440px, with all three distribution definitions carried by subtitles; compressing the card later means rewriting those three notes together. The evolution overlay now depends on the global `#v2Modal`, so new full-screen overlays should reuse that mount point. Launch still writes the hash and then calls `v2SetPage('evo')`; introducing client-side routing should collapse that into a single navigation.

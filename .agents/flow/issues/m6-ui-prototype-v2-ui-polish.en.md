@@ -51,6 +51,9 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Third-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round3/`.
 - The fourth turn unifies the default policy wording as "the object's own self report or a trigger after the object trigger point", removing mixed `+` and `∪`; keeps a persistent scrollbar in the wizard body; balances the third login bullet and corrects the baseline path; uses "membership relation" consistently in the auth copy; and describes custom policy as composing checked rules.
 - Fourth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round4/`.
+- The fifth turn adds two distribution blocks inside the evolution-target overview trend card: associated Sessions normalized per target with the blue segment marking Sessions that contain potential bad cases, and a source distribution normalized by non-deduplicated count with the deduplicated count in parentheses keyed by bad case ID; both follow the target multi-select and time window.
+- The fifth turn makes the overview's "start evolution" open the wizard overlay directly (new `evWizardHost()`: `#modal-root` inside the evolution page, the global `#v2Modal` elsewhere); only step 4 confirmation leaves the overview, landing on the new run detail.
+- Fifth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round5/`.
 
 ## Implementation steps
 
@@ -92,6 +95,8 @@ pnpm verify:flow; pnpm lint:docs
 - Rejected iterations in a completed run show a negative score delta; the final-evaluation subtitle iteration count matches the cluster count; an increase in issue-reproduction rate is colored as negative.
 - The add-member default role is Member; the workspace-management list no longer leaves a large blank area; Session stat labels stay on one line at 1280px; and the run-card percentage is labeled total progress.
 - The default policy uses the same "or" wording everywhere; the wizard body shows a persistent scrollbar when content overflows; the login page has no orphan line and its baseline path points at `plans/ui-prototype-v2/`; auth copy does not mix `membership`; and custom-policy copy matches rule-composition semantics.
+- The evolution-target overview states three object-level distributions — associated Sessions, potential bad cases, and sources — and the non-deduplicated source total matches the "potential bad cases" stat.
+- Clicking "start evolution" on the overview stays on the overview and completes all four steps in the overlay; after confirmation the page lands on the new run detail with `page=evo` and `#/run/<id>` in the URL.
 
 ## Gates and CI
 
