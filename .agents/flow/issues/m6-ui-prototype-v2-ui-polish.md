@@ -79,6 +79,8 @@ V2 原型承载多工作空间下的总览、Session 查看、自进化与空间
 - 第十五轮截图落在 `plans/ui-prototype-v2/_ui-review/round15/`。
 - 第十六轮修复大屏下 `#appShell` 只占视口约 80% 的问题：去掉 zoom 元素上多余的宽度除法，容器恢复铺满，内容区继续居中并封顶 1720px。
 - 第十六轮截图落在 `plans/ui-prototype-v2/_ui-review/round16/`。
+- 第十七轮取消两个列表的整行点击跳转，只保留 bad case ID 与归因报告 ID 的链接；行 cursor 改 default，hover 提亮减弱。
+- 第十七轮截图落在 `plans/ui-prototype-v2/_ui-review/round17/`。
 
 ## 实施步骤
 
@@ -136,6 +138,7 @@ pnpm verify:flow; pnpm lint:docs
 - 趋势卡内的状态 chip 显示各自数量，点击可切换趋势图堆叠，卡头不再重复图例。
 - 1700px 视口下顶部导航、页面内容与弹层一起放大到约 1.17×，1920px 封顶 1.25×；Session 页与错误详情放大后不出现横向或纵向溢出。
 - 2560px 与 3440px 视口下 `#appShell` 覆盖整个视口宽度，内容区 1720px 居中，右侧与下方不再露出 `body` 底色。
+- 两个列表点击行不再跳转，只有 bad case ID 与归因报告 ID 可点击跳转。
 
 ## 门禁与 CI
 

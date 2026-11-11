@@ -886,8 +886,8 @@
   .ov-table th, .ov-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
   .ov-table th { font-size: 10px; font-weight: 650; color: var(--text-faint); background: var(--bg-panel); white-space: nowrap; }
   .ov-table tr:last-child td { border-bottom: none; }
-  .ov-table tbody tr { cursor: pointer; }
-  .ov-table tbody tr:hover { background: color-mix(in srgb, var(--blue) 5%, transparent); }
+  .ov-table tbody tr { cursor: default; }
+  .ov-table tbody tr:hover { background: color-mix(in srgb, var(--blue) 3%, transparent); }
   .ov-case-title { font-weight: 600; color: var(--text); }
   .ov-case-id { display: block; margin-top: 1px; font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); }
   .ov-mono { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); white-space: nowrap; }
@@ -4999,7 +4999,7 @@ function v2RenderOverview() {
   }).join('');
   const listRows = rows.map(c => {
     const n = (window.attributionsFor ? window.attributionsFor(c) : []).length;
-    return `<tr data-v2-overview-case="${c.id}" title="打开 Session 错误详情 · 问题描述">
+    return `<tr>
       <td><a class="idlink" href="${caseDeepLink(c.id, 'desc')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="打开 Session 错误查看 · 错误详情">${c.id}</a></td>
       <td><span class="ov-case-title">${v2Esc(c.title)}</span></td>
       <td><span class="chip kind">${v2Esc(c.objectName)}</span></td>
@@ -5195,7 +5195,7 @@ function v2RenderTargetsOverview() {
   ).sort((a, b) => String(b.c.createdAt).localeCompare(String(a.c.createdAt)));
   const pageSize = 8, pages = Math.max(1, Math.ceil(lrows.length / pageSize));
   const page = Math.min(Math.max(1, tf.page || 1), pages); tf.page = page;
-  const listRows = lrows.slice((page - 1) * pageSize, page * pageSize).map(r => `<tr data-v2-overview-case="${r.c.id}">
+  const listRows = lrows.slice((page - 1) * pageSize, page * pageSize).map(r => `<tr>
     <td>${evCaseLink(r.c)}<span class="ov-case-title" style="display:block">${v2Esc(r.c.title)}</span></td>
     <td><span class="chip kind">${v2Esc(r.target.objectName)}@${v2Esc(r.version)}</span></td>
     <td><span class="chip">${v2Esc(r.source)}</span></td>
@@ -5593,7 +5593,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-case],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -5624,7 +5624,6 @@ document.addEventListener('click', e => {
   if (ds.v2OvRemove) { V2.overview.objects.delete(ds.v2OvRemove); v2RenderOverview(); return; }
   if (ds.v2OvPage) { V2.overview.page = Math.max(1, +ds.v2OvPage); v2RenderOverview(); return; }
   if (ds.v2OvReset !== undefined) { V2.overview.listFrom = ''; V2.overview.listTo = ''; V2.overview.listObject = ''; V2.overview.listType = 'all'; V2.overview.page = 1; v2RenderOverview(); return; }
-  if (ds.v2OverviewCase) { v2OpenCase(ds.v2OverviewCase); return; }
   if (ds.v2OverviewIngest !== undefined) { V2.admin.tab = 'ingest'; v2SetPage('admin'); return; }
   if (ds.v2OverviewEvo !== undefined) { if (window.__evOpenWizard) window.__evOpenWizard(null); return; }
   if (ds.v2CopyEndpoint) { v2Copy(`${V2_ORIGIN}/api/workspaces/${ds.v2CopyEndpoint}/bad-cases`, '上报地址已复制'); return; }

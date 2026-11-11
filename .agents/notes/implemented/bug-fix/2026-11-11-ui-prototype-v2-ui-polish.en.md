@@ -36,6 +36,8 @@ The fifteenth turn found that the previous change only widened the content area 
 
 The sixteenth turn found the fifteenth's width compensation on `#appShell` wrong: on 2560 / 3440 screens the whole page occupied only ~80% of the viewport, exposing `body` background on the right and below, so content looked pushed into the top-left; below 1440px `zoom = 1`, so the defect only showed up after scaling.
 
+The seventeenth turn found both list rows still acting as click targets: the hit area is large, an accidental click leaves the page, and it contradicts the rule that only bad-case IDs and report IDs navigate.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -69,6 +71,8 @@ The fourteenth turn moves the three status toggles out of the filter bar into th
 The fifteenth turn scales the whole UI proportionally from a 1440px design baseline: `v2ApplyUiZoom()` writes `--ui-zoom = clamp(1, vw / 1440, 1.25)` to the root, `#appShell` applies `zoom` with `width: 100% / zoom`, `.wrap` width becomes `min(100%, 1720px / zoom)`, and viewport-based heights in Session, error detail, and `.v2-page` become `calc(100vh / zoom - 56px)`. Nothing scales below 1440px, and the factor caps at 1.25× above 1800px.
 
 The sixteenth turn drops the redundant width on `#appShell`: percentages inside a zoomed element already resolve in scaled coordinates, so dividing by zoom again shrinks the box to 1/zoom. Only `zoom: var(--ui-zoom)` remains, letting the container fill naturally. After the fix, at 2560 `#appShell` spans 0–2560 with the 1720 content centered (420 on each side), and at 3440 it centers with 860 on each side, with no horizontal overflow.
+
+The seventeenth turn removes `data-v2-overview-case` and the shared click branch from both the bad-case list and the potential bad-case list, sets the row cursor to `default`, and softens row hover to 3%; the in-table bad-case ID and report-ID links stay, still opening their target tab in a new tab.
 
 ## Alternatives considered
 
@@ -113,6 +117,9 @@ The sixteenth turn drops the redundant width on `#appShell`: percentages inside 
 - Keep a width on `#appShell` but switch to `100vw / zoom`: it shrinks twice just the same, so the defect remains.
 - Put `zoom` on `body`: it also scales the login page and viewport-height math, widening the blast radius.
 - Swap `zoom` for `transform: scale`: it drags in coordinate conversion and fixed-overlay misalignment.
+- Keep row clicks behind a confirmation: it adds a step and duplicates the links.
+- Respond to row clicks only on blank cells: complex and unpredictable.
+- Make the whole row a link: it conflicts with the existing ID and report-ID links.
 
 ## Consequences
 
@@ -141,3 +148,5 @@ After the fourteenth turn, "chart shows" only controls the trend chart's stacked
 The fifteenth turn scales the top bar, pages, and overlays together: the wider the window, the larger everything reads, but `zoom` needs Firefox 126+ and older browsers fall back to "fill without scaling". New viewport-height styles must be written as `calc(100vh / var(--ui-zoom) - …)` or they overflow after scaling; the login page sits outside `#appShell` and still renders unscaled.
 
 After the sixteenth-turn fix, content remains capped at 1720px on large screens (about 67% of a 2560px window); filling more would mean raising the cap or the zoom ceiling. Do not divide percentage widths by zoom inside a zoomed element — that is the only trap this turn hit.
+
+After the seventeenth turn, drilling down from either list requires clicking an ID or report ID; rows no longer respond. Adding row-level actions (selection, hover menus) later should follow the "only links and buttons are clickable" rule instead of turning the row into a navigation target again.
