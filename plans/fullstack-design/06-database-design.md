@@ -699,6 +699,21 @@ erDiagram
 - 结论只作用于该对象·版本：不修改 bad case 本身，不影响它与其它对象的潜在关系。`analyzed_nonissue`（V1 非问题）**不迁移**——它与「非该对象问题」是不同谓词（§9）。
 - 冻结表：`bad_case_analysis` / `probe_reports` / `probe_cluster_probes` 自 V2 起不写不删，历史 run（`steps_schema=v1`）仍读；`/api/probes/*` 与 `/bad-cases/{id}/analysis` 标 deprecated 保留一个版本后删除。
 
+**与 `probe_reports` 的关系与终局**：两张表回答不同问题，不是替代关系。
+
+| 维度 | `probe_reports`（V1，外部） | `bad_case_attributions`（V2，本服务） |
+|---|---|---|
+| 回答的问题 | 这个 bad case **是什么问题**（根因对象 + `model/prompt/error` 分类） | 这个 bad case **是不是某对象·版本的问题**（是否纳入进化） |
+| 粒度 | bad case 级，经 `bad_case_analysis` 1:1 | bad case × 对象类型/名/版本，N 条 |
+| 写入方 | 外部归因系统（本服务只读） | 自进化 run（缓存键唯一、可复用） |
+| V2 角色 | 冻结只读；仅历史 run 与旧客户端消费 | 错误详情、总览三态、聚类输入的权威来源 |
+
+演进分三段：
+
+1. **V2 短期（当前）**：并存、语义分离。同一 bad case 上两者结论可以不同（外部说「是问题」，本 run 可能判「非该对象」），**以 attribution 为准展示**，互不覆盖；不提供两者自动对齐或冲突仲裁（V2 非目标）。
+2. **V2 中期**：真实归因引擎（LLM）接入后，`probe_reports.probe_analysis` 降级为引擎的**可选证据源**（作为上下文），不再作为自进化输入，也不再新增写入。
+3. **终局**：历史 `analyzed_issue` 经 `legacy-probe-import` 一次性映射为 attribution（§9）后，历史 run 出保留期且 `/analysis`、`/probes` 端点下线时，随同一次迁移删除 `bad_case_analysis`、`probe_reports`、`probe_cluster_probes`；同一次迁移把 `probe_clusters` 改名为 `evolution_clusters`（见 §5.11 命名欠账）。
+
 ### 5.9 `evolution_run_candidates` —— run 候选快照（V2）
 
 > 一次 run 中每个 bad case 的「是否关联、命中什么策略、两个触发点在哪、归因走了缓存没有」；全量落库（含被策略排除的行），保证运行详情可解释。
@@ -739,6 +754,27 @@ erDiagram
 - 簇表 `probe_clusters` 沿用（`confidence/impact/severity/rank` 语义不变；`probe_cluster_type` 改由归因 `category` 驱动）；`probe_cluster_probes` 停止写入，历史 run 只读。
 - 聚类输入 = `included AND attribution.conclusion='attributed'` 的候选，按 `category` 分组；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight` 按 distinct `bad_case_id` 计。
 
+### 5.11 表演进原则：改旧表、加列还是新起一张（V2 决策记录）
+
+V2 复用了三张既有表、只新增了三张，判断标准是**粒度（grain）与语义是否变化**：
+
+| 表 | 处理 | 理由 |
+|---|---|---|
+| `evolution_runs` | **加列**（`workspace_id` / `potential_policy` / `cache_enabled` / `steps_schema`） | 同一实体、同一语义：V1/V2 的 run 都是「一次自进化运行」，只是输入与步骤不同 |
+| `probe_clusters` | **沿用**（`probe_cluster_type` 改由归因 `category` 驱动） | 同一实体（run 内簇），列语义不变；只是成员来源从 probe 换成候选 |
+| `evolution_rounds` | **不改** | 每簇一轮的结构不变；payload 的 `probes[]` 变成 `cases[]` 属于 DTO 层 |
+| `probe_cluster_probes` | **冻结 + 新起 `evolution_cluster_cases`** | 既有行的语义是「簇 → probe」；V2 成员是 candidate。改语义等于篡改历史行的含义，且 `probe_id` 的外键在新行上无值可填 |
+| `bad_case_analysis` | **冻结** | 它是**全局 1:1**（一条 case 一行），塞不下 run 级、对象级、版本级的 N 条结论；改主键/唯一键会破坏 V1 语义 |
+| `evolution_run_candidates` | **新增** | 全新粒度 `(run, bad_case)`：V1 没有「候选快照」这张表可继承；它承载被排除行、触发点坐标、命中原因与缓存标记，是运行详情可解释性的唯一来源 |
+| `bad_case_attributions` | **新增** | 全新概念（对象·版本级归因），且需要跨 run 复用（缓存键唯一） |
+
+两条被明确拒绝的省事做法：
+
+1. **多态外键**：把 `probe_cluster_probes` 改成 `(cluster_id, member_id, member_type)`，让 V2 成员塞进同一张表。代价是失去引用完整性（DB 不保证 `member_id` 指向哪张表）、每个查询都要带 `member_type` 分支、历史行与新行在同一张表里语义不同——评审时无法回答「这一行为什么主外键指不到东西」。
+2. **候选并入簇成员表**：候选是 run 级事实（含 `included=false` 的排除行，用于解释「为什么没进潜在」），簇成员是它的子集（仅 `attributed` 且已入簇）。合并会让被排除行污染簇查询，或让候选被簇结构绑死。
+
+**命名欠账**：`probe_clusters` / `probe_cluster_probes` 的名字在 V2 已不含 probe 语义（成员是 candidate）。V2 保留表名——改名的成本是 FK 链（rounds / run_events / cluster_cases）与历史数据迁移，收益只是可读性；因此在删除 probe 表的同一次迁移里一并改名为 `evolution_clusters` / `evolution_cluster_members`。
+
 ## 6. 索引与容量估算
 
 | 表 | 量级（单组织） | 说明 |
@@ -749,14 +785,20 @@ erDiagram
 | `agents` | 10⁴ | 单会话最多几十个子 agent |
 | `agent_events` | 10⁴ | — |
 | `user_turns` | 10⁴ | 主 agent 每轮一行；只存用户输入锚点 |
-| `bad_cases` | 10³–10⁴ | 外部写入 |
-| `probe_reports` | 10³–10⁴ | 与 bad_case 1:1 |
-| `evolution_targets` | 10¹–10² | 每个可进化 skill/agent 一行 |
+| `bad_cases` | 10³–10⁴ | 上报接口与目录同步写入 |
+| `probe_reports` | 10³–10⁴ | 与 bad_case 1:1（V2 冻结） |
+| `bad_case_attributions` | 10³–10⁵ | 每 `(bad case × 对象版本 × 策略版本 × 引擎)` 一行；复用不新增行 |
+| `evolution_run_candidates` | 每 run 10¹–10³ | 随 run 清理（`clean-runs` 级联） |
+| `evolution_cluster_cases` | 每 run 数十 | 随簇级联删除 |
+| `evolution_targets` | 10¹–10² | 每个可进化 skill/agent 一行（按空间） |
 | `evolution_runs` | 10² | — |
 | `evolution_run_events` | 每 run 数十–数百条 | 执行过程与异常；随 run 清理 |
 | `probe_clusters` | 每次 run 数条–数十条 | 按 run 归属，可随 run 清理 |
 | `job_runs` | 10³ | 任务审计 |
 | `sync_lock` | 1 | 单飞锁，固定一行 |
+| `workspaces` | 10¹–10² | 单组织内部 |
+| `workspace_members` | 10²–10³ | 每空间 1–20 人 |
+| `workspace_ingest_credentials` | 10² | 每空间 1–3 条（轮换期并存） |
 
 `trajectory_payloads.payload` 使该表成为最大表，按"外部写、本服务只读"设计；查询只走归一化表与问题侧表。消息/内容块不落库，需要原文时按 `(root_session_id, agent_id)` 从 payload 回读。
 
@@ -867,3 +909,4 @@ erDiagram
 - **回滚**：`downgrade()` 只删新列与索引、保留 6 张新表（避免丢成员/归因数据）；生产回滚的实际操作是「回退应用版本 + 保留加列」（新列都有默认值，V1 代码不认识但不会报错）。
 - **存量 probe 数据**：`analyzed_issue` 一次性导入 `bad_case_attributions`（`attribution_engine='legacy-probe-import'`、`conclusion=attributed`、`category=attribute_type`、`confidence=0.8`、`reason=probe_description`、`reasoning=[probe_analysis]`、`created_run_id=NULL`）；`analyzed_nonissue` **不迁移**（谓词不同）。生产当前无数据，导入仅对 fixtures/开发库执行。
 - **触发点补齐**：`triggered_at` / `tree_index` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的数据按 §7.5 回退字典序。
+- **终局清理（不在 V2 范围，登记以防遗忘）**：历史 run 出保留期且 `/analysis`、`/probes` 下线后，一次迁移完成「删除 `bad_case_analysis` / `probe_reports` / `probe_cluster_probes` + 把 `probe_clusters` 改名 `evolution_clusters`、新增 `evolution_cluster_members` 替代簇成员表」；迁移前须确认 `steps_schema=v1` 的 run 数量为 0（否则旧详情无法渲染）。
