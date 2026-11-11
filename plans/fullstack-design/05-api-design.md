@@ -518,6 +518,25 @@ erDiagram
 │ GET  /api/catalogs/models                                │
 │ GET  /api/events（SSE）                                  │
 └──────────────────────────────────────────────────────────┘
+
+┌─ V2 增补（2026-11-11；空间前缀 + 完整契约见 15/16/17）────┐
+│ GET  /api/auth/session · GET /api/auth/callback（占位）   │
+│ GET/POST/PUT /api/workspaces · members · credentials     │
+│ POST /api/workspaces/{wid}/members/self-admin            │
+│ POST /api/workspaces/{wid}/bad-cases（上报，凭据鉴权）    │
+│ GET  /api/workspaces/{wid}/overview/{summary|trend|      │
+│      sources|targets|targets/trend|targets/cases}        │
+│ GET  /api/workspaces/{wid}/overview/targets/{id}/detail  │
+│ GET  /api/workspaces/{wid}/bad-cases（组合筛选分页）      │
+│ GET  /api/workspaces/{wid}/sessions（最新 10 + total）    │
+│ GET  /api/workspaces/{wid}/bad-cases/{id}/attributions   │
+│ GET  …/attributions/{attributionId}                      │
+│ POST /api/workspaces/{wid}/evolution/preview/{sessions|  │
+│      potential|attribution}                              │
+│ POST /api/workspaces/{wid}/evolution/{runs|              │
+│      cluster-previews}（含 policy/cacheEnabled）          │
+│ 移除：POST /api/evolution/probes/query                   │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### 4.1 基础端点：健康检查与鉴权
@@ -1051,6 +1070,19 @@ FastAPI /api/openapi.json
 | `JOB_NOT_FOUND` | 404 | jobId 不存在 |
 | `DB_UNAVAILABLE` | 503 | 数据库不可达（仅健康检查与依赖 DB 的端点；消息含方言与错误摘要） |
 | `INTERNAL` | 500 | 未捕获异常（`details` 只含 requestId） |
+
+V2 新增错误码（2026-11-11；定义见 [15 §4.3](15-v2-workspaces.md) / [16 §6](16-v2-overview.md) / [17 §7](17-v2-attribution.md)）：
+
+| code | HTTP | 触发场景 |
+|---|---|---|
+| `WORKSPACE_NOT_FOUND` / `WORKSPACE_FORBIDDEN` / `WORKSPACE_EXISTS` | 404/403/409 | 空间不存在（或不可见）/ 无所需空间角色 / 同名空间已存在 |
+| `MEMBER_EXISTS` / `ROLE_INVALID` / `ROLE_LOCKED` | 409/422/409 | 成员已存在 / 角色值非法（含建 admin）/ 空间管理员越权改 space_admin 行 |
+| `CREDENTIAL_INVALID` / `CREDENTIAL_NOT_FOUND` | 401/404 | 上报凭据缺失/错误/已撤销 / 凭据不存在 |
+| `QUOTA_EXCEEDED` / `QUOTA_INVALID` | 409/422 | 空间 bad case 达到额度上限 / 额度非法或低于已用量 |
+| `AUTH_NO_MAPPING` / `AUTH_PROVIDER_NOT_CONFIGURED` | 403/501 | SSO 回调匹配不到用户 / IdP 未配置 |
+| `GRAIN_INVALID` | 422 | 总览粒度非法（仅 day/week/month） |
+| `POLICY_INVALID` | 422 | 潜在策略非法（custom 未启用任何规则） |
+| `NO_POTENTIAL_MATCHED` | 409 | V2 启动自进化/预览时潜在 bad case 数为 0（替代 `NO_PROBES_MATCHED` 的新链路） |
 
 ## 9. 与原型字段的映射对照
 

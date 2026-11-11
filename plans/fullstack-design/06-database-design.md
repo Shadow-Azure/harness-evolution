@@ -16,6 +16,16 @@
 | 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
 
+**V2 增补（2026-11-11；完整定义见 [15 §3](15-v2-workspaces.md) / [17 §5–§6](17-v2-attribution.md)）**：
+
+| 类别 | 表 | 说明 |
+|---|---|---|
+| 空间侧（新） | `workspaces`、`workspace_members`、`workspace_ingest_credentials` | 空间/成员/凭据；`used` 实时聚合不落列 |
+| 归因侧（新） | `bad_case_attributions` | run 内按「对象 · 版本」生成的归因，每缓存键一行；错误详情多归因的数据源 |
+| 自进化侧（新） | `evolution_run_candidates`、`evolution_cluster_cases` | run 候选快照（触发点/策略命中/缓存标记）与簇 ↔ 候选关联 |
+| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id/potential_policy/cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at` | 迁移与回填见 [15 §3.5](15-v2-workspaces.md)；触发点坐标语义见 [17 §3](17-v2-attribution.md) |
+| 冻结 | `bad_case_analysis`、`probe_reports`、`probe_cluster_probes` | V2 起不写不删，历史 run 详情仍读（[17 §11](17-v2-attribution.md)） |
+
 - **原始层与归一化层分离**：`trajectory_payloads` 存原始 JSONL（外部写入/pull），`source_records` 存处理索引（不存 payload），其余轨迹表是归一化视图；解析规则升级时按 `parser_version` 从 payload 重放。
 - **明细层不落库**：`messages` / `content_blocks` 只在解析期存在，用于统计、usage 去重和状态判定；业务表不存消息与工具原文，需要原文时按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读。`user_turns` 是唯一保留的轨迹明细表，只存用户输入锚点。
 - **问题侧写入边界**：`bad_cases` 由外部系统与目录同步共同写入，本服务只按主键 upsert 上游字段、不删除行；`bad_case_analysis`、`probe_reports` 仍只读，不做级联删除；表结构变更需与上游一起评审。

@@ -88,6 +88,30 @@
 | F17 | 基础壳：健康检查、全局错误处理、空态/加载态/失败态 | 各页面 | 真实 | `GET /api/health` | — | `App.vue` + 各页面三态 |
 | F18 | 登录与鉴权：登录页、access/refresh token、401 自动刷新、首登强制改密、路由守卫、SSE 一次性票据、顶栏用户区与退出 | SaaS 前提 | 真实 | `POST /api/auth/login`、`POST /api/auth/refresh`、`POST /api/auth/logout`、`POST /api/auth/change-password`、`GET /api/auth/me`、`POST /api/events/ticket` | `users` | `pages/login/*` + `stores/auth.ts` |
 
+### 2.4 V2 功能点（2026-11-11 增补；设计见 [15](15-v2-workspaces.md) / [16](16-v2-overview.md) / [17](17-v2-attribution.md)）
+
+新增功能：
+
+| ID | 功能 | 原型出处 | 依赖接口（空间前缀） | 前端落点 |
+|---|---|---|---|---|
+| F21 | 登录与鉴权接入预留：会话聚合（user + workspaces）、AuthProvider 接缝、SSO 回调占位、不开放注册 | [V2 原型](../ui-prototype-v2/harness-evolution.html) 登录页/鉴权接入 Tab | `GET /api/auth/session`、`GET /api/auth/callback`（占位 501） | `stores/auth.ts` + 空间管理鉴权 Tab |
+| F22 | 工作空间管理：创建（额度 + 初始空间管理员多选）、额度调整、成员与角色（space_admin/member/viewer）、自任空间管理员、上报凭据轮换 | 空间管理四 Tab | `GET/POST/PUT /api/workspaces`、`…/members`、`…/credentials`、`…/members/self-admin` | `pages/workspaces/Admin.vue` |
+| F23 | bad case 上报接入：每空间独立地址 + Bearer 凭据，body 即 `bad_cases` 类型，额度上限 409，幂等 upsert | 上报接入 Tab | `POST /api/workspaces/{wid}/bad-cases`（凭据鉴权） | 上报接入 Tab（地址/示例/复制） |
+| F24 | 工作空间总览（bad case 视角）：指标条、时间/粒度、来源多选、self/discovery 堆叠趋势、来源分布与矩阵、组合筛选分页列表、下钻错误详情 | 总览页一级 Tab | `GET …/overview/summary|trend|sources`、`GET …/bad-cases` | `pages/overview/Index.vue` |
+| F25 | 进化对象总览（二级 Tab）：对象多选趋势与三态、关联 Session/潜在分布、对象列表（可进化排序、分页、就地增编删）、潜在 bad case 列表、单对象分析卡 | 总览页二级 Tab | `GET …/overview/targets`、`…/targets/trend|cases|{id}/detail` | `pages/overview/components/TargetsOverview.vue` |
+| F26 | 归因进自进化：向导四步（范围+策略 → Session 关联 → 潜在 bad case → 归因预览与缓存开关）、run 七步详情、潜在策略（默认/自定义）、归因缓存与「非该对象问题」 | 向导/运行详情 | `POST …/evolution/preview/{sessions|potential|attribution}`、`POST …/evolution/runs`、`GET …/runs/{rid}/steps/{key}`（七步） | `LaunchWizard.vue`、`RunDetail.vue` 新 step 组件 |
+| F27 | 错误详情多归因：左栏可折叠 bad case 组 + 归因子项分页（2 条/页）、归因 Tab 承载多条结论、未归因一键启动自进化 | 错误详情页 | `GET …/bad-cases/{id}/attributions`（分页）、`GET …/attributions/{attributionId}` | `ErrorSidebar.vue`、`AttributionReport.vue` |
+
+修改的 V1 功能点：
+
+| ID | V2 变更 |
+|---|---|
+| F3 | Session 列表改空间投影口径：默认最新 10 条（响应带 total）、搜索回车触发；接口加空间前缀（[16 §5](16-v2-overview.md)） |
+| F5/F6/F8 | 数据加空间校验；`BadCase` 增 `attributionCount`；F8 归因来源从 probe 换成 `bad_case_attributions` 集合（[17 §9](17-v2-attribution.md)） |
+| F10/F11/F13 | run 卡片增空间/策略/缓存信息；向导两步改四步、移除模型多选；详情六步改七步、历史 run 按旧 schema 渲染（[17 §7/§8](17-v2-attribution.md)） |
+| F19 | 进化对象配置按空间隔离：唯一键 `(workspace_id, object_type, object_name)`，空间管理员可写（[15 §3.4](15-v2-workspaces.md)） |
+| F9 | 目录同步默认停用（空间上报为主通道）；根轨迹补齐保持启用（[15 §3.5](15-v2-workspaces.md)） |
+
 ## 3. 功能点 → 数据来源矩阵（哪些是桩）
 
 | 数据 | 原型里的来源 | 本方案来源 | 接入真实实现的位置 |
