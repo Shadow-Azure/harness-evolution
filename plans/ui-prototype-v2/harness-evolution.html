@@ -5207,11 +5207,13 @@ function v2Modal(html) { const host = document.getElementById('v2Modal'); if (ho
 function v2CloseModal() { V2.pendingConfirm = null; v2Modal(''); }
 function v2Confirm(title, desc, action) {
   V2.pendingConfirm = action;
-  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" style="width:420px">
-    <div class="modal-head"><h2>${v2Esc(title)}</h2><button class="x" data-v2-close>✕</button></div>
+  v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" role="dialog" aria-modal="true" aria-labelledby="v2ConfirmTitle" style="width:420px">
+    <div class="modal-head"><h2 id="v2ConfirmTitle">${v2Esc(title)}</h2><button class="x" data-v2-close aria-label="关闭">✕</button></div>
     <div class="modal-body"><p class="confirm-desc">${v2Esc(desc)}</p></div>
     <div class="modal-foot"><button class="btn" data-v2-confirm-cancel>取消</button><button class="btn danger" data-v2-confirm>确认</button></div>
   </div></div>`);
+  const cancel = document.querySelector('#v2Modal [data-v2-confirm-cancel]');
+  if (cancel) cancel.focus();
 }
 function v2WorkspaceModal(wsId) {
   const editing = !!wsId;
@@ -5454,7 +5456,10 @@ document.addEventListener('toggle', e => {
   if (e.target.matches && e.target.matches('details.tn-ws, details.tn-user, details.tn-sync') && e.target.open) v2CloseMenus(e.target);
 }, true);
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') v2CloseMenus();
+  if (e.key !== 'Escape') return;
+  const modal = document.getElementById('v2Modal');
+  if (modal && modal.children.length) { v2CloseModal(); return; }
+  v2CloseMenus();
 });
 
 /* ── 启动 ── */

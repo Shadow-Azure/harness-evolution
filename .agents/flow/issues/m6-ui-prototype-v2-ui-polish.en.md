@@ -59,6 +59,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
 - The eighth turn puts three destructive actions behind an explicit confirmation: removing a member, regenerating the ingest credential, and removing an evolution target each explain the consequence first, leave state untouched on cancel, and act only after confirmation; the dialog shares one `v2Confirm` helper and document-level click dispatch.
 - Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
+- The ninth turn completes keyboard behavior: the confirm dialog focuses Cancel on open, Escape closes it and skips the pending action, and ordinary form dialogs also close on Escape; the confirm dialog gains `role="dialog"`, `aria-modal`, and a title association.
+- Ninth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round9/`.
 
 ## Implementation steps
 
@@ -104,6 +106,7 @@ pnpm verify:flow; pnpm lint:docs
 - Required markers in the evolution-target dialog match save validation; the login page's visual baseline points at the V1 prototype rather than the current file.
 - A workspace's creation date precedes its earliest Session; the user menu, login page, and header show the same role label for the same user.
 - Removing a member, regenerating the ingest credential, and removing an evolution target all ask for confirmation first; cancelling leaves the member list, credential, and target totals unchanged, while confirming applies the change and shows a toast.
+- The confirm dialog focuses Cancel on open, Enter cancels, and Escape closes it; closing skips the pending action, and ordinary form dialogs also close on Escape and return focus to the trigger.
 
 ## Gates and CI
 
