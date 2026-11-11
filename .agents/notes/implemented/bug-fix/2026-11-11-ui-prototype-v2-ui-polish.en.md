@@ -32,6 +32,8 @@ The thirteenth turn found the overview, evolution, and workspace-management page
 
 The fourteenth turn found the three status toggles crammed at the far right of the filter bar next to time, grain, and targets, while the chart card repeated the same legend in its header; the toggles carried no counts and off/on states were hard to tell apart.
 
+The fifteenth turn found that the previous change only widened the content area while fonts and controls stayed at fixed pixels: on windows wider than 1700px the content fills the viewport, but text still reads small relative to the window — what is wanted is proportional scaling with the viewport.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -61,6 +63,8 @@ The twelfth turn sorts the side card by is-target plus unanalyzed counts descend
 The thirteenth turn raises both `.v2-page .wrap` and `.evo-app .wrap` to a 1720px cap, letting width follow the viewport: at 1700px the content measures 1659px (overview) and 1674px (evolution), at 1920px it caps at 1720px centered, and at 1280px it fills the width without horizontal overflow.
 
 The fourteenth turn moves the three status toggles out of the filter bar into the trend card (below the chart note, above the distribution blocks) and rebuilds them as pill chips with counts: each shows its status and the current count, on-state gets a blue border and tint, and off-state dims; the duplicated header legend is removed because the chips now serve as the legend.
+
+The fifteenth turn scales the whole UI proportionally from a 1440px design baseline: `v2ApplyUiZoom()` writes `--ui-zoom = clamp(1, vw / 1440, 1.25)` to the root, `#appShell` applies `zoom` with `width: 100% / zoom`, `.wrap` width becomes `min(100%, 1720px / zoom)`, and viewport-based heights in Session, error detail, and `.v2-page` become `calc(100vh / zoom - 56px)`. Nothing scales below 1440px, and the factor caps at 1.25× above 1800px.
 
 ## Alternatives considered
 
@@ -99,6 +103,9 @@ The fourteenth turn moves the three status toggles out of the filter bar into th
 - Move the toggles but keep the header legend: the same information appears twice and readers do not know which one to click.
 - Render the toggles as plain text buttons: they blend into the nearby filter controls and hide the counts.
 - Let the toggles also filter the three distribution blocks: that changes their composition and readers can no longer see the full picture.
+- Scale only the font sizes: spacing and controls stay put, so density becomes unbalanced.
+- Use `transform: scale`: fixed overlays inside `#appShell` misalign and hit-testing needs coordinate conversion.
+- Use a handful of media-query breakpoints: the factor jumps and visibly snaps while resizing.
 
 ## Consequences
 
@@ -123,3 +130,5 @@ After the twelfth turn the side card order follows the selected time window, so 
 The thirteenth turn gives the content room to breathe on large screens, at the cost of longer single lines (cluster descriptions); existing local caps such as `.cluster-desc p { max-width: 980px }` keep body text readable, and if it still feels too wide the fix is a per-section cap rather than shrinking the whole page again.
 
 After the fourteenth turn, "chart shows" only controls the trend chart's stacked series; the three distribution blocks below still show the full composition, and their counts shift with filters. Wiring those blocks to the same switches later means updating their subtitles and legends too.
+
+The fifteenth turn scales the top bar, pages, and overlays together: the wider the window, the larger everything reads, but `zoom` needs Firefox 126+ and older browsers fall back to "fill without scaling". New viewport-height styles must be written as `calc(100vh / var(--ui-zoom) - …)` or they overflow after scaling; the login page sits outside `#appShell` and still renders unscaled.

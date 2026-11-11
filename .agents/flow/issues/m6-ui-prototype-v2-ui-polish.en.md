@@ -75,6 +75,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Thirteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round13/`.
 - The fourteenth turn moves the three status toggles into the trend card and rebuilds them as pill chips with counts (blue border and tint when on, dimmed when off), removing the duplicated header legend.
 - Fourteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round14/`.
+- The fifteenth turn upgrades "content grows with the viewport" to proportional whole-UI scaling: `--ui-zoom` is derived from a 1440px baseline, `#appShell` applies `zoom` with a width compensating factor, viewport-height pages are converted, nothing scales below 1440px, and the factor caps at 1.25× above 1800px.
+- Fifteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round15/`.
 
 ## Implementation steps
 
@@ -130,6 +132,7 @@ pnpm verify:flow; pnpm lint:docs
 - The evolution-target side card is ordered by evolvable potential bad cases and shows that count with its issues / unanalyzed breakdown.
 - At a 1720px viewport the three pages fill the visible width (≥1650px), cap at 1720px centered on a 1920px screen, and show no horizontal overflow at 1280px.
 - The status chips inside the trend card show their counts, toggle the chart's stacked series, and the card header no longer repeats the legend.
+- At 1700px the top bar, page content, and overlays scale together to about 1.17×, capping at 1.25× on 1920px; Session and error detail show no horizontal or vertical overflow after scaling.
 
 ## Gates and CI
 

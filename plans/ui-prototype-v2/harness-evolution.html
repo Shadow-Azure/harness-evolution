@@ -35,7 +35,7 @@
   .page-tabs .issue-no { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-right: 4px; }
 
   /* ═══ 左侧 Session 浏览器 ═══ */
-  .shell { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 56px); }
+  .shell { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh / var(--ui-zoom, 1) - 56px); }
   .sidebar { border-right: 1px solid var(--border); background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; }
   .side-head { padding: 12px 14px 8px; }
   .side-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
@@ -236,7 +236,7 @@
   .ovbox pre { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); white-space: pre-wrap; line-height: 1.6; }
   .ovbox .close { float: right; }
   /* ═══ 错误详情 / 归因 ═══ */
-  #page-errors { height: calc(100vh - 56px); }
+  #page-errors { height: calc(100vh / var(--ui-zoom, 1) - 56px); }
   #errorApp { height: 100%; }
   .err-shell { display: grid; grid-template-columns: 340px 1fr; height: 100%; min-height: 0; }
   .err-sidebar { border-right: 1px solid var(--border); background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; }
@@ -408,7 +408,7 @@
 .evo-app .navlink { font-size: 12px; color: var(--text-dim); text-decoration: none; }
 .evo-app .navlink:hover { color: var(--blue); }
 /* ── 通用 ─────────────────────────── */
-  .evo-app .wrap { max-width: 1720px; margin: 0 auto; padding: 20px 24px 64px; }
+  .evo-app .wrap { width: min(100%, calc(1720px / var(--ui-zoom, 1))); max-width: none; margin: 0 auto; padding: 20px 24px 64px; }
 .evo-app .btn {
     font: inherit; font-size: 12.5px; cursor: pointer;
     border: 1px solid var(--border); border-radius: 8px;
@@ -689,6 +689,7 @@
 
   /* ═════════════════════════ V2 壳层：登录 · 工作空间 · 用户 ═════════════════════════ */
   body.v2-auth { padding-top: 0; }
+  #appShell { zoom: var(--ui-zoom, 1); width: calc(100% / var(--ui-zoom, 1)); }
   #appShell[hidden], #loginView[hidden] { display: none !important; }
   .login-page {
     min-height: 100vh; display: grid; place-items: center; padding: 30px;
@@ -765,8 +766,8 @@
   .tn-item#tn-admin.active { border-bottom-color: var(--cyan); }
 
   /* ═════════════════════════ V2 页面通用 ═════════════════════════ */
-  .v2-page { min-height: calc(100vh - 56px); }
-  .v2-page .wrap { max-width: 1720px; margin: 0 auto; padding: 20px 24px 64px; }
+  .v2-page { min-height: calc(100vh / var(--ui-zoom, 1) - 56px); }
+  .v2-page .wrap { width: min(100%, calc(1720px / var(--ui-zoom, 1))); max-width: none; margin: 0 auto; padding: 20px 24px 64px; }
   .page-head-v2 { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
   .page-head-v2 h1 { font-size: 18px; font-weight: 700; line-height: 1.35; }
   .page-head-v2 .ph-sub { margin-top: 4px; font-size: 12px; color: var(--text-faint); line-height: 1.65; }
@@ -5705,6 +5706,15 @@ document.addEventListener('keydown', e => {
 });
 
 /* ── 启动 ── */
+/* 等比缩放：以 1440px 为设计基准，视口更宽时把页面内容整体放大（字号、间距、控件一起），最多 1.25× */
+function v2ApplyUiZoom() {
+  const w = document.documentElement.clientWidth || window.innerWidth || 1440;
+  const zoom = Math.min(1.25, Math.max(1, w / 1440));
+  document.documentElement.style.setProperty('--ui-zoom', zoom.toFixed(3));
+}
+v2ApplyUiZoom();
+window.addEventListener('resize', v2ApplyUiZoom);
+
 function v2Boot() {
   const q = new URLSearchParams(location.search);
   v2RenderLogin();
