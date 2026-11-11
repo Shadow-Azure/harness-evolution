@@ -33,7 +33,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │ 服务层：sessions / acquisition / bad_cases / probes    │  │
+│  │ 服务层：sessions / acquisition / bad_cases / workspaces │  │
 │  │         / evolution / identity / workspaces（V2）      │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
@@ -90,7 +90,7 @@ apps/api/app/
     sessions/             # 会话列表、会话概览、Agent 会话树
     acquisition/          # 轨迹来源、归一化、Agent 会话树组装、幂等写入
     bad_cases/            # 问题列表与详情（只读）
-    probes/               # 归因结论读取（V1 冻结，只读）
+    # 归因读取并入 bad_cases/ 与 evolution/（表：bad_case_attributions）
     evolution/            # run、七步管线、潜在匹配、归因与缓存
     catalogs/             # 目标/模型清单（只读聚合）
     jobs.py               # 串行任务执行器（job_runs）
@@ -112,7 +112,7 @@ alembic/                  # 迁移（项目根）
 apps/web/
   vitest.config.ts        # node / jsdom 两个测试 project
   src/
-    api/                  # http/queryClient/queryKeys + 按域模块（auth/sessions/badCases/probes/evolution/acquisition/catalogs）
+    api/                  # http/queryClient/queryKeys + 按域模块（auth/workspaces/overview/sessions/badCases/evolution/acquisition/catalogs）
     composables/         # 每个域一个 useXxx + useAuth/useRunEvents/useTargets
     stores/              # Pinia：登录态（access token + 当前用户）、视图偏好；不存当前 session
     pages/
@@ -187,7 +187,7 @@ apps/web/
    │                                      │                  + bad_cases
    │                                      └──► tree 响应 ─────┤
    │                                                          │
-   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
+   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / attributions（只读）
                                           │                  + session_families（存在性校验）
                                           └──► bad-cases 响应 ┘
                                                                │
@@ -213,7 +213,7 @@ apps/web/
   → GET /evolution/runs
   → 渲染「正在执行」「历史记录」
      ├─ 点击「启动自进化」
-     │    → 向导 /probes/query → 命中确认
+     │    → 向导预览三段 → Session/潜在确认
      │    → POST /evolution/runs → 202 {runId, status:"preparing"}
      │    → 路由 /evolution/runs/:rid
      └─ 点击历史 run
@@ -245,7 +245,7 @@ apps/web/
 
 ```text
 POST /runs（同步校验 target/policy/window/潜在命中）
-  → run(preparing, steps_schema=v2)
+  → run(preparing, 七步)
   → evolution_prepare job
        → Session 关联（对象在哪些 Session 出现）
        → 潜在筛选（默认/自定义策略，候选全量落库）
@@ -292,7 +292,7 @@ POST /acquisition/sync
 ```
 
 - **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `session_families` 里不存在，自然查不到。
-- **自进化查询仍是 `probe_reports INNER JOIN session_families`**：session 未归一化 → probe 不可见；不做 preflight，也不返回 `DATA_NOT_READY`。
+- **自进化查询基于候选表**（`evolution_run_candidates`）与空间 bad case：Session 未归一化 → 不计入关联，只进「待轨迹同步」；不做 preflight，也不返回 `DATA_NOT_READY`。
 - **单飞锁**：`sync_lock` 单行表（`name='sync'`）+ `job_id/acquired_at/expires_at`；`INSERT` 主键冲突即已有任务。
 - V1 单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
 - `job_runs` 同 `kind=sync` 只允许一个 `queued/running`，作为第二道保险。
@@ -344,12 +344,12 @@ POST /acquisition/sync
 └───────────────────────────────────────────────────────────────────┘
 
 ┌─ 问题与归因（外部写，本服务只读） ────────────────────────────────┐
-│ 外部上报/归因系统 ──► bad_cases / analysis / probe ──► bad_cases/probes 服务 │
+│ 空间上报接口 ──► bad_cases ──► bad_cases 服务；归因由 run 写 attributions │
 └───────────────────────────────────────────────┬───────────────────┘
                                                 │ 只读
                                                 ▼
 ┌─ 自进化（本服务写） ──────────────────────────────────────────────┐
-│ evolution ──► evolution_runs / probe_clusters / evolution_rounds        │
+│ evolution ──► runs / candidates / clusters / members / rounds           │
 └───────────────────────────────────────────────────────────────────┘
 
 fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
@@ -361,7 +361,7 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 | 轨迹业务表（session_families/agents/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
 | 问题（bad_cases，V2 按空间） | **空间上报接口（凭据鉴权）**；目录同步默认停用 | 读写 | `api/ingest.py` + `service/workspaces` |
 | 归因（V2） | 自进化 run（`bad_case_attributions`、候选、簇成员） | 读写 | `service/evolution/attribution.py` |
-| 旧归因（probe/analysis） | 外部系统（历史） | **冻结只读** | 历史 run 详情 |
+| 归因（V2） | 自进化 run（`bad_case_attributions`） | 读写 | `service/evolution/attribution.py` |
 | 自进化（runs / clusters / rounds / finals / events） | 本服务 | 读写 | `service/evolution` |
 | 空间 / 成员 / 凭据（V2） | 本服务 | 读写 | `service/workspaces` |
 | 用户、任务审计 | 本服务 | 读写 | `service/identity`、`service/jobs.py` |
@@ -376,8 +376,8 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 
 ### 5.3 演示数据（fixtures）的边界
 
-- `fixtures/` 内含原型 4 个会话、若干 bad_case / probe，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
-- `probe_clusters` / `probe_cluster_probes` 是派生数据，不由 seed 写入；seed 后从向导启动，聚类由 `simple_cluster` 生成；
+- `fixtures/` 内含原型 4 个会话、若干 bad case 与归因行，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
+- `evolution_clusters` / `evolution_cluster_members` / `bad_case_attributions` 是派生数据，不由 seed 写入；seed 后从向导启动，归因与聚类由 run 生成；
 - 生产环境不执行 seed；UI 读到的永远是真实表；
 - 与早期 D4 的差别：**不再有"Stub Provider 返回不入库数据"的运行时分支**，桩数据也从正式表结构走，避免字段对不上。
 
@@ -422,7 +422,7 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 大轨迹 | Agent 会话树触发点处理时预计算；轨迹聚合统计入库时冗余（跨写入方的派生值如问题数除外，查询时聚合）；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
-| 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
+| 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / attributionId / clusterId 跨页溯源的载体 |
 | 可观测 | 结构化日志 + sync_runs / job_runs / evolution_run_events 留痕；不打印轨迹原文 | 轨迹可能含敏感内容；异常需在 UI 可查 |
 | 数据库可替换 | `Database` 接口 + SQLite/MySQL 适配器 | 测试用 SQLite 快跑；生产 MySQL |
 | 自进化隔离 | 每次 run 独立 workspace + 新分支；只改配置仓库副本，绝不写用户 `~/.claude` | 不污染用户环境、可回滚、可复现；candidate commit 在评测后 amend 或 reset |

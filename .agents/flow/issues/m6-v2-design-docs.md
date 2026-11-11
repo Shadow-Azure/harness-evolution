@@ -34,7 +34,7 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 
 - [01-architecture.md §4.4](../../../plans/fullstack-design/01-architecture.md)：鉴权链路与空间授权在总体架构中的位置。
 - [05-api-design.md §3.7–§3.10、§4.16–§4.20](../../../plans/fullstack-design/05-api-design.md)：空间/成员/凭据/上报/总览/归因端点与 DTO。
-- [06-database-design.md §3.10–§3.12、§5.8–§5.10、§7.5、§9](../../../plans/fullstack-design/06-database-design.md)：空间/归因/候选表、V2 口径与迁移。
+- [06-database-design.md §3.10–§3.12、§4.2、§5.3–§5.4、§5.9、§7.5、§9](../../../plans/fullstack-design/06-database-design.md)：空间表、归因表（由 `probe_reports` 演进）、簇与成员表、候选表、V2 口径与迁移。
 - [07-backend-implementation.md §5.11–§5.15、§8.2.1](../../../plans/fullstack-design/07-backend-implementation.md)：七步管线、潜在匹配、归因缓存、空间服务与鉴权接缝。
 - [08-frontend-implementation.md §1.4、§4.2、§5.2.1、§6、§7、§9、§10](../../../plans/fullstack-design/08-frontend-implementation.md)：空间壳、总览、最新 10 条、多归因、四步向导、七步详情。
 - [README.md 决策表 D21–D23](../../../plans/fullstack-design/README.md)：V2 顶层决策与 V1 冻结语义。
@@ -48,7 +48,7 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 - 03：空间前缀路由、空间守卫、queryKey 带 `wid`、空间/总览/多归因组件与目录。
 - 04：workspaces/overview 模块、上报写入边界、归因引擎占位、V2 配置项与测试策略。
 - 05：§3.7–§3.10 新 DTO（Workspace/Member/Credential/Ingest/Attribution/Overview）；§3.6.2 七步 payload；§4.16–§4.20 端点；§5 深链；§8 完整 V2 错误码；§9 映射。
-- 06：workspaces/workspace_members/workspace_ingest_credentials；bad_cases.workspace_id；evolution_runs 四个新列；bad_case_attributions/evolution_run_candidates/evolution_cluster_cases；§7.5 口径；§9 迁移。
+- 06：workspaces/workspace_members/workspace_ingest_credentials；bad_cases.workspace_id；evolution_runs 三个新列；归因与簇表在既有表上演进（`probe_reports → bad_case_attributions`、`probe_clusters → evolution_clusters`、`probe_cluster_probes → evolution_cluster_members`），`bad_case_analysis` 删除；新增 `evolution_run_candidates`；§7.5 口径；§9 迁移。
 - 07：归一化补 tree_index/triggered_at；七步 prepare；潜在匹配；归因缓存；预览端点；空间服务与依赖；鉴权接缝；测试与切片顺序。
 - 08：路由与重定向；api 模块与 queryKeys；空间管理四 Tab；最新 10 条 + 回车；总览页；多归因错误详情；四步向导；七步详情与 `stepsSchema` 双轨。
 - 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（决策与取舍）。
@@ -79,7 +79,7 @@ pnpm verify:flow; pnpm lint:docs
 - 01–08 覆盖 7 点需求，且每项都有数据模型、API 契约与代码改动地图。
 - 总览/向导/run 三处的「潜在 bad case」口径声明为同一实现。
 - V1 已实现行为有冻结标注，历史 run 渲染兼容（`stepsSchema` 双轨）写明。
-- 05 错误码表覆盖 15–17 曾定义的全部 V2 码；06 列定义与 05/07 引用一致。
+- 05 错误码表覆盖 V2 全部错误码；06 列定义与 05/07 引用一致；归因/簇表为「演进」而非新增（与 D23 一致）。
 - README 决策表含 D21–D23；02 含 F21–F27；Agent Note 双语配对完整。
 
 ## 门禁与 CI

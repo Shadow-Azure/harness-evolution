@@ -57,7 +57,7 @@
 └───────────────┬───────────────────────────────┬───────────────┘
                 ▼                               ▼
 ┌─ 外部数据接入 ──────────────────┐  ┌─ 存储层（db/） ─────────────┐
-│ bad_cases/analysis/probe 只读   │  │ Database 接口 + SQLite/MySQL│
+│ bad_cases 读写 + 归因只读       │  │ Database 接口 + SQLite/MySQL│
 │ 上游轨迹 API（third_party_api） │  │ CRUD（方言无关）            │
 └───────────────┬─────────────────┘  │ Alembic 迁移（双方言）      │
                 └───────────────────►└─────────────────────────────┘
@@ -75,7 +75,7 @@ apps/api/
     main.py                  # create_app()：中间件（含 JWT 鉴权）、异常处理、路由注册（唯一注册点）
     config.py                # Settings：DB、鉴权、来源、同步间隔
     api/                     # 各域 router（薄层）
-      auth.py  sessions.py  acquisition.py  bad_cases.py  probes.py  evolution.py  catalogs.py  events.py
+      auth.py  sessions.py  acquisition.py  bad_cases.py  evolution.py  catalogs.py  events.py
       workspaces.py  ingest.py  overview.py        # V2：空间/上报/总览
     api_req/                 # 请求 DTO（Pydantic）
     api_resp/                # 响应 DTO（OpenAPI 契约源头）
@@ -96,7 +96,6 @@ apps/api/
       sessions/              # 列表/会话概览/Agent 会话树
       acquisition/           # 读 payload、归一化、Agent 会话树组装、定时调度（scheduler.py）
       bad_cases/             # 问题列表/详情
-      probes/                # 归因结论（V1 冻结，只读）
       evolution/             # run、七步管线、潜在匹配、归因与缓存、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
       jobs.py                # 串行任务执行器（job_runs）
@@ -212,7 +211,7 @@ def create_database(settings: Settings) -> Database:
 |---|---|---|
 | 原始轨迹 | `service/acquisition/payloads.py` + `third_party_api/trajectory/` | 读 `trajectory_payloads`（外部脚本写）；pull 时写入同一张表 |
 | 问题（bad case） | `api/ingest.py` + `service/workspaces` | **V2 主通道**：空间上报接口（凭据 + 额度）写 `bad_cases`；目录同步默认停用 |
-| 旧归因（probe） | `db/models/` 只读映射 + `db/crud/` | V1 冻结：V2 起不写不删，历史 run 详情仍读 |
+| 归因（V2） | `service/evolution/attribution.py` | run 内按对象·版本生成 `bad_case_attributions`（由 `probe_reports` 演进） |
 | 归因（V2） | `service/evolution/attribution.py` | 自进化 run 内按对象·版本生成 `bad_case_attributions` |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
 
@@ -238,8 +237,8 @@ class PayloadSource(Protocol):
 
 ### 5.3 fixtures：演示数据的唯一形态
 
-- `fixtures/` 放原型 4 个会话的轨迹、bad_cases、probes，以及可选的 `evolution_targets` 配置；
-- `probe_clusters` / `probe_cluster_probes` 是**派生数据，不写入 fixtures**；seed 后在向导启动 `POST /evolution/cluster-previews` 或 `POST /evolution/runs`，由 `simple_cluster` 生成；
+- `fixtures/` 放原型 4 个会话的轨迹、bad_cases、归因行，以及可选的 `evolution_targets` 配置；
+- `evolution_clusters` / `evolution_cluster_members` / `bad_case_attributions` 是**派生数据，不写入 fixtures**；seed 后在向导启动 `POST /evolution/cluster-previews` 或 `POST /evolution/runs`，由 `simple_cluster` 生成；
 - `python -m app.cli seed` 幂等写入真实表（按主键 upsert 语义），仅开发/演示环境执行；
 - 生产不执行 seed；UI 永远读真实表；
 - 与"运行时 Stub Provider"的区别：没有 `phase=demo` 之外的运行时分支逻辑，问题侧字段与真实表完全一致（`demo` 只表示数据来自 seed）。
@@ -395,7 +394,7 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 
 | 层 | 方式 | 重点 |
 |---|---|---|
-| 只读查询 | 单元/集成测试 | bad_case / probe 联表查询、状态合并、缺失字段降级 |
+| 只读查询 | 单元/集成测试 | bad_case / 归因联表查询、计数合并、缺失字段降级 |
 | 鉴权 | 单元 + 路由测试 | 登录/刷新/登出、错误密码 401、过期 token、SSE 票据一次性 |
 | 同步 | 集成测试 | `trajectory_payloads` 待处理判定、幂等、payload 结构变更隔离 |
 | 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（V2 `0..5+M+1`；V1 `0..4+M+1`）；越界推进报 409 |

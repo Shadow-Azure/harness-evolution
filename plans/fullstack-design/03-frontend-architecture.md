@@ -89,7 +89,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `api/<domain>.ts` | 该域请求函数 + 请求/筛选类型（`sessions.ts` / `badCases.ts` / `probes.ts` / `evolution.ts` / `acquisition.ts` / `catalogs.ts` / `auth.ts`） |
+| `api/<domain>.ts` | 该域请求函数 + 请求/筛选类型（`auth.ts` / `workspaces.ts` / `overview.ts` / `sessions.ts` / `badCases.ts` / `evolution.ts` / `acquisition.ts` / `catalogs.ts`） |
 | `api/http.ts` | 传输层：Bearer、401 刷新、`ApiError`、取消；**不 import 任何域模块** |
 | `api/queryClient.ts` | 全局缓存策略 |
 | `api/queryKeys.ts` | queryKey 工厂；**保持集中**，因为跨域失效多（同步→sessions+session；推进→run+runs） |
@@ -138,7 +138,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | `/workspaces/:wid/evolution` | 运行列表 | — |
 | `/workspaces/:wid/evolution/targets` | 进化对象配置（按空间） | — |
 | `/workspaces/:wid/evolution/cluster/:previewId` | 仅聚类结果 | — |
-| `/workspaces/:wid/evolution/runs/:rid` | 运行详情 | `?step={key}`（V2 七 key / V1 六 key）；簇定位 `?step=clusters&cluster={probeClusterId}` |
+| `/workspaces/:wid/evolution/runs/:rid` | 运行详情 | `?step={key}`（七 key）；簇定位 `?step=clusters&cluster={clusterId}` |
 | `/workspaces/:wid/admin` | 空间管理四 Tab（V2） | `?tab=spaces\|members\|ingest\|auth` |
 
 **空间守卫（V2）**：`:wid` 不在 `user.workspaces` 内 → 跳 `/workspaces`（选择页），不静默选第一个；角色不足 → 空间首页 + toast。服务端仍会独立校验（前端只是护栏）。
@@ -149,7 +149,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 
 **强制改密守卫**：`user.mustChangePassword === true` 时只放行 `/change-password` 与 `/login`，其余目标一律重定向到 `/change-password?redirect=<原路径>`；该判定排在登录守卫之后，两者都依赖 `tryRefresh()` 已填充的登录态。服务端另有 `403 PASSWORD_CHANGE_REQUIRED` 硬闸，守卫只负责体验（[08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md)）。
 
-**真实 ID 深链契约**：URL 直接用 `badCaseId` / `probeId` / `runId`（不再造 `I-`/`R-` 展示号）；问题描述与归因 tab 用 `?case={badCaseId}&tab=desc|attr`。`sessionId` 由后端在 bad-case 响应中给出，前端不拼接、不反推。
+**真实 ID 深链契约**：URL 直接用 `badCaseId` / `attributionId` / `clusterId` / `runId`（不再造 `I-`/`R-` 展示号）；问题描述与归因 tab 用 `?case={badCaseId}&tab=desc|attr[&at={attributionId}]`。`sessionId` 由后端在 bad-case 响应中给出，前端不拼接、不反推。
 
 路由守卫/兜底：`/:pathMatch(.*)*` → NotFound 页；每页统一三态（加载骨架 / 空态 / 错误重试）。
 
@@ -157,7 +157,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 
 | 状态 | 载体 | 例子 | 生命周期 |
 |---|---|---|---|
-| 服务端状态 | vue-query 缓存 | session 列表、会话详情、bad_cases、run 详情、六步产出 | 应用会话（`gcTime` 5min） |
+| 服务端状态 | vue-query 缓存 | session 列表、会话详情、bad_cases、归因、总览、run 详情、七步产出 | 应用会话（`gcTime` 5min） |
 | 页面 UI 状态 | 组件 `ref` / `reactive` | 筛选词、排序、展开的轮次、选中的错误、展开的 cluster | 页面挂载期 |
 | 跨页客户端状态 | Pinia | **仅登录态（access token + 当前用户）**、视图偏好 | 应用会话（access token 只存内存） |
 | URL 状态 | vue-router | 选中 session（`/sessions/:sid`）、选中问题、tab、step、筛选条件 | 刷新可恢复 |
@@ -196,7 +196,7 @@ App.vue
     └── pages/*
         ├── agent-tree/                 （Vue Flow Agent 执行流图）
         ├── bad-cases/                   （问题卡）
-        └── pages/evolution/components/  （向导/六步/簇卡/日志）
+        └── pages/evolution/components/  （向导/七步/簇卡/日志）
                 └── 共用 ui/
                     BaseCard / Chip / Badge / StatStrip / DensityBar /
                     EmptyState / ErrorState / LoadingSkeleton / Pagination /
@@ -208,7 +208,7 @@ App.vue
 | 全局壳 | `App.vue`、`TopNav.vue` | 全站 | 导览、品牌；**不持有全局 SSE** |
 | 页面编排 | `pages/*/Index.vue` | 单页面 | 只做布局与组合，数据来自 composable |
 | 跨页面领域组件 | `agent-tree/*`、`bad-cases/*` | 多页面 | Agent 执行流图、问题卡；props/emits 交互 |
-| 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、六步面板、簇卡、日志；随页面删除 |
+| 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、七步面板、簇卡、日志；随页面删除 |
 | UI 基元 | `ui/BaseCard.vue`、`Chip.vue`、`Badge.vue`、`StatStrip.vue`、`DensityBar.vue`、`EmptyState.vue`、`ErrorState.vue`、`LoadingSkeleton.vue`、`Pagination.vue`、`Modal.vue`、`Tabs.vue`、`IconRenderer.vue` | 任意 | 无业务语义；颜色/间距全部走设计令牌；`IconRenderer` 是唯一 lucide 出口 |
 
 **关键领域组件**（与原型一一对应）：
@@ -222,7 +222,7 @@ App.vue
 | `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
 | `bad-cases/BadCaseList.vue` | `.finding-item` | 列表卡（主文本 `title` 短标题；`reason` 描述正文用于详情面板；状态/事实/上报对象） |
 | `pages/errors/components/AttributionReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
-| `pages/evolution/components/Stepper.vue` | `stepperHTML` | 步数由 `run.steps` 决定（V2 七步 / V1 六步），可点击已到达节点 |
+| `pages/evolution/components/Stepper.vue` | `stepperHTML` | 七步（`run.steps` 直出），可点击已到达节点 |
 | `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片（V2 增空间/策略/缓存 chip） |
 | `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 四步 Modal（V2；V1 两步冻结） |
 | `pages/evolution/components/ClusterCard.vue` | `clusterHTML` | 聚类卡（来源 bad case / patch / 评测 / commit） |
@@ -310,8 +310,7 @@ apps/web/src/
     overview.ts           总览聚合（V2）
     sessions.ts           列表/会话概览/Agent 会话树/问题
     badCases.ts           问题详情、归因分页与详情（V2）
-    probes.ts             归因结论（V1 冻结，仅历史 run）
-    evolution.ts          runs / 预览三段 / 七步与六步 / 事件 / 配置 / 启动推进
+    evolution.ts          runs / 预览三段 / 七步 / 事件 / 配置 / 启动推进
     acquisition.ts        同步/拉取/状态
     catalogs.ts           对象/模型清单
     generated/            openapi-typescript 生成物（禁止手改）
@@ -331,7 +330,7 @@ apps/web/src/
     preferences.ts        折叠/缩放偏好（localStorage）
   pages/
     login/  workspaces/  overview/  sessions/  errors/  evolution/  evolution/targets/
-    evolution/components/ Stepper / Step*（V2 七步 + V1 六步冻结）/ ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard
+    evolution/components/ Stepper / Step*（七步）/ ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard
   components/
     agent-tree/  bad-cases/  ui/（含 IconRenderer.vue）  layout/
   test/
