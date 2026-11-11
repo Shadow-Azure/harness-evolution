@@ -18,3 +18,5 @@ dist/
 .vite/
 .pnpm-store/
 claude-code-sessions
+.shots/
+.tmp-chrome-profile/
