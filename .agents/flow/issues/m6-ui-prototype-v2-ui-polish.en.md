@@ -60,6 +60,9 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
 - The seventh turn polishes the single-target card layout: stats collapse into one divided strip, filters move into a tinted toolbar with the date range on the right, the two columns get a divider, the left header gains an is / not / unanalyzed summary legend, empty versions are dimmed, and the footnote spans the card bottom; the target and version dropdowns share one 28px control with an 8px radius and a drawn chevron.
 - Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
+- The eighth turn removes the trigger-point column from the potential bad-case list and adds a "phenomenon / description" column after the report ID.
+- The eighth turn fixes the attribution report deep link: it carries the current user, opens the Session error view on the attribution tab, and preselects the attribution matching `obj`; the list's attribution status and report ID now come from the case's existing attribution records.
+- Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
 
 ## Implementation steps
 
@@ -107,6 +110,8 @@ pnpm verify:flow; pnpm lint:docs
 - The single-target card defaults to the first enabled target, shows the newest five versions by default, expands to 10 / 20 / all, and keeps stats plus both distributions in sync when the target or date range changes.
 - When the workspace has no enabled targets, the card's target select is empty and shows the configure entry.
 - The single-target card is no taller than 380px at 1440px; the two columns are divided; empty versions are dimmed; below 1100px the card becomes a single column.
+- The potential bad-case list no longer has a trigger-point column; rows with an attribution report show its phenomenon / description after the report ID, and rows without one show —.
+- Clicking a report ID opens the Session error view on the attribution tab with the matching target preselected, and never lands on the login page.
 
 ## Gates and CI
 

@@ -1109,6 +1109,8 @@
 .v2-page .tg-table td:nth-child(2) { white-space: nowrap; }
 .v2-page .tg-table td:nth-child(3) { white-space: nowrap; }
 .v2-page .tg-table .ov-case-title { margin-top: 2px; }
+.v2-page .tg-table .tg-desc { max-width: 260px; }
+.v2-page .tg-table .tg-desc > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-dim); }
 @media (max-width: 1180px) { .v2-page .tg-target-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .v2-page .tg-grid2 { grid-template-columns: 1fr; } }
 
 /* ═════════════════════════ V2 错误详情：bad case × 多归因 ═════════════════════════ */
@@ -1371,13 +1373,15 @@
    从总览点进错误详情时使用 ?page=session&view=errors&sid=…&case=BC-…&dtab=desc
    归因分析使用 dtab=attr，并可用 at=AT-… 定位到具体一条归因。 */
 function sid4(sid) { return String(sid || "").slice(0, 4).toUpperCase(); }
-function caseDeepLink(caseId, dtab, atId) {
+function caseDeepLink(caseId, dtab, atId, targetName) {
   const c = (window.BAD_CASES || []).find(x => x.id === caseId);
   const sid = c ? c.sessionId : "";
+  const user = window.V2 && window.V2.user ? "&u=" + encodeURIComponent(window.V2.user.id) : "";
   return location.pathname + "?page=session&view=errors&ws=" + encodeURIComponent(c.workspace) +
     "&sid=" + encodeURIComponent(sid) +
     "&case=" + encodeURIComponent(caseId) + "&dtab=" + (dtab === "attr" ? "attr" : "desc") +
-    (atId ? "&at=" + encodeURIComponent(atId) : "");
+    (atId ? "&at=" + encodeURIComponent(atId) : "") +
+    (targetName ? "&obj=" + encodeURIComponent(targetName) : "") + user;
 }
 function sessionDeepLink(sid, no, dtab) {
   const c = (window.BAD_CASES || []).find(x => x.sessionId === sid && x.no === no);
@@ -1903,7 +1907,7 @@ window.__bootDeepLink = function (q) {
   renderSessionList(); renderMain();
   switchTab("errors");
   const caseObj = c ? window.caseById(c) : null;
-  const opts = { caseId: c, tab: q.get("dtab") === "attr" ? "attr" : "desc", atId: q.get("at") || null };
+  const opts = { caseId: c, tab: q.get("dtab") === "attr" ? "attr" : "desc", atId: q.get("at") || null, object: q.get("obj") || null };
   if (!caseObj && q.get("issue")) opts.no = window.__parseIssueNo(q.get("issue"));
   if (window.__mountErrorDetail) window.__mountErrorDetail(s.id, window.casesForSession ? window.casesForSession(s.id).length : s.findings, opts);
   else window.__pendingError = { sid: s.id, budget: s.findings, opts };
@@ -3222,7 +3226,7 @@ function ErrorFlow({ nodes, edges, findings, selectedNo }) {
     <//>`;
 }
 
-function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId }) {
+function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initialObject }) {
   const cases = useMemo(() => (window.casesForSession ? window.casesForSession(sid) : []), [sid]);
   const { nodes, edges, findings } = useMemo(
     () => buildGraph(sid, {}, cases.length || budget, cases),
@@ -3230,7 +3234,15 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId }) {
   );
   const session = (window.SESSIONS || []).find(s => s.id === sid) || {};
   const [selectedCaseId, setSelectedCaseId] = useState(initialCaseId || null);
-  const [selectedAtId, setSelectedAtId] = useState(initialAtId || null);
+  const [selectedAtId, setSelectedAtId] = useState(() => {
+    if (initialAtId) return initialAtId;
+    if (initialObject && initialCaseId && window.attributionsFor) {
+      const ats = window.attributionsFor(window.caseById ? window.caseById(initialCaseId) : null) || [];
+      const hit = ats.find(a => a.objectName === initialObject);
+      if (hit) return hit.id;
+    }
+    return null;
+  });
   const [tab, setTab] = useState(initialTab || "desc");
   const [expanded, setExpanded] = useState(() => new Set(initialCaseId ? [initialCaseId] : (cases[0] ? [cases[0].id] : [])));
   const [pages, setPages] = useState({});
@@ -3432,10 +3444,11 @@ function mountErrorDetail(sid, budget, opts) {
   }
   errorRoot = createRoot(host);
   errorRoot.render(html`<${ErrorApp}
-    key=${sid + ":" + (caseId || "all") + ":" + (o.tab || "desc") + ":" + (o.atId || "")}
+    key=${sid + ":" + (caseId || "all") + ":" + (o.tab || "desc") + ":" + (o.atId || "") + ":" + (o.object || "")}
     sid=${sid} budget=${budget}
     initialCaseId=${caseId}
     initialAtId=${o.atId || null}
+    initialObject=${o.object || null}
     initialTab=${o.tab === "attr" ? "attr" : "desc"} />`);
 }
 
@@ -4761,10 +4774,12 @@ function v2TargetSet(t, from, to) {
   let m;
   try { m = evRunModel(fake); } catch (e) { m = { sessions: [], potentialRows: [] }; }
   const rows = (m.potentialRows || []).map(r => {
-    const h = v2Hash(t.id + r.c.id);
-    const unanalyzed = h % 8 === 0;
-    const status = unanalyzed ? 'unanalyzed' : (r.conclusion === 'not-object' ? 'notTarget' : 'isTarget');
-    return { ...r, target: t, targetId: t.id, version, status, source: r.c.objectName, reportId: unanalyzed ? null : r.attributionId };
+    // 归因结论以 bad case 现有的归因记录为准，避免列表里的报告 ID 指向不存在的归因
+    const attrs = (window.attributionsFor ? window.attributionsFor(r.c) : []) || [];
+    const match = attrs.find(a => a.objectName === t.objectName) || null;
+    const unanalyzed = !match;
+    const status = unanalyzed ? 'unanalyzed' : (match.conclusion === 'not-object' ? 'notTarget' : 'isTarget');
+    return { ...r, target: t, targetId: t.id, version, status, source: r.c.objectName, reportId: match ? match.id : null };
   });
   return {
     target: t, version,
@@ -5167,10 +5182,10 @@ function v2RenderTargetsOverview() {
     <td><span class="chip kind">${v2Esc(r.target.objectName)}@${v2Esc(r.version)}</span></td>
     <td><span class="chip">${v2Esc(r.source)}</span></td>
     <td>${v2TargetStatusBadge(r.status)}</td>
-    <td class="mono">L${r.c.triggerLine}</td>
     <td class="mono">${r.c.clock}</td>
     <td class="mono" title="${r.a.sid}">${r.a.sid.slice(0, 13)}…</td>
-    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
+    <td>${r.reportId ? `<a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, r.target.objectName)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${r.reportId}</a>` : '<span class="v2-note">—</span>'}</td>
+    <td class="tg-desc">${r.reportId ? `<span title="${v2Esc(r.c.detail || r.c.title)}">${v2Esc(r.c.detail || r.c.title)}</span>` : '<span class="v2-note">—</span>'}</td>
   </tr>`).join('');
   const targetOpts = all.map(d => `<option value="${d.target.id}" ${tf.listTarget === d.target.id ? 'selected' : ''}>${v2Esc(d.target.objectName)}</option>`).join('');
   const sourceOpts = [...new Set(rows.map(r => r.source))].sort().map(x => `<option ${tf.listSource === x ? 'selected' : ''}>${v2Esc(x)}</option>`).join('');
@@ -5252,7 +5267,7 @@ function v2RenderTargetsOverview() {
       <input class="inp" type="date" value="${tf.listTo}" data-v2-tg-list-to title="结束时间">
       <button class="btn sm" data-v2-tg-reset>重置</button>
     </div>
-    <table class="ov-table tg-table"><thead><tr><th>潜在 bad case</th><th>进化对象</th><th>bad case 上报来源</th><th>状态</th><th>触发点</th><th>上报时间</th><th>Session</th><th>归因报告ID</th></tr></thead>
+    <table class="ov-table tg-table"><thead><tr><th>潜在 bad case</th><th>进化对象</th><th>bad case 上报来源</th><th>状态</th><th>上报时间</th><th>Session</th><th>归因报告ID</th><th>问题现象/描述</th></tr></thead>
       <tbody>${listRows || '<tr><td colspan="8"><div class="ov-empty"><b>没有符合条件的潜在 bad case</b>调整筛选条件或时间范围。</div></td></tr>'}</tbody></table>
     <div class="v2-pager"><span class="info">共 ${lrows.length} 条 · 第 ${page} / ${pages} 页</span><button data-v2-tg-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
