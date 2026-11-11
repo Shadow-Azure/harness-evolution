@@ -61,6 +61,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
 - The ninth turn completes keyboard behavior: the confirm dialog focuses Cancel on open, Escape closes it and skips the pending action, and ordinary form dialogs also close on Escape; the confirm dialog gains `role="dialog"`, `aria-modal`, and a title association.
 - Ninth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round9/`.
+- The tenth turn restores focus after a dialog closes: the trigger is recorded on open and refocused on close when it is still in the document, falling back naturally when the action removed the trigger instead of dropping keyboard users on the page root.
+- Tenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round10/`.
 
 ## Implementation steps
 
@@ -107,6 +109,7 @@ pnpm verify:flow; pnpm lint:docs
 - A workspace's creation date precedes its earliest Session; the user menu, login page, and header show the same role label for the same user.
 - Removing a member, regenerating the ingest credential, and removing an evolution target all ask for confirmation first; cancelling leaves the member list, credential, and target totals unchanged, while confirming applies the change and shows a toast.
 - The confirm dialog focuses Cancel on open, Enter cancels, and Escape closes it; closing skips the pending action, and ordinary form dialogs also close on Escape and return focus to the trigger.
+- After cancelling or pressing Escape, focus returns to the button that opened the dialog; confirming an action that removed that button raises no error.
 
 ## Gates and CI
 

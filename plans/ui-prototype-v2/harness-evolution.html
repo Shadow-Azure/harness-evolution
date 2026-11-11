@@ -4342,6 +4342,7 @@ const V2 = {
   admin: { tab: 'spaces' },
   loginChoice: 'admin',
   pendingConfirm: null,
+  modalTrigger: null,
 };
 window.V2 = V2;
 const V2_TODAY = '2026-11-10';
@@ -5203,8 +5204,19 @@ POST /api/auth/logout
 }
 
 /* ── 弹窗 ── */
-function v2Modal(html) { const host = document.getElementById('v2Modal'); if (host) host.innerHTML = html; }
-function v2CloseModal() { V2.pendingConfirm = null; v2Modal(''); }
+function v2Modal(html) {
+  const host = document.getElementById('v2Modal');
+  if (!host) return;
+  if (html && !host.children.length) V2.modalTrigger = document.activeElement;
+  host.innerHTML = html;
+}
+function v2CloseModal() {
+  V2.pendingConfirm = null;
+  v2Modal('');
+  const trigger = V2.modalTrigger;
+  V2.modalTrigger = null;
+  if (trigger && trigger.isConnected && typeof trigger.focus === 'function') trigger.focus();
+}
 function v2Confirm(title, desc, action) {
   V2.pendingConfirm = action;
   v2Modal(`<div class="evov" data-v2-close-bg><div class="modal" role="dialog" aria-modal="true" aria-labelledby="v2ConfirmTitle" style="width:420px">
