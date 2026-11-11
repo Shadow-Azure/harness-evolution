@@ -89,7 +89,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `api/<domain>.ts` | 该域请求函数 + 请求/筛选类型（`sessions.ts` / `badCases.ts` / `probes.ts` / `evolution.ts` / `acquisition.ts` / `catalogs.ts` / `auth.ts`） |
+| `api/<domain>.ts` | 该域请求函数 + 请求/筛选类型（`auth.ts` / `workspaces.ts` / `overview.ts` / `sessions.ts` / `badCases.ts` / `evolution.ts` / `acquisition.ts` / `catalogs.ts`） |
 | `api/http.ts` | 传输层：Bearer、401 刷新、`ApiError`、取消；**不 import 任何域模块** |
 | `api/queryClient.ts` | 全局缓存策略 |
 | `api/queryKeys.ts` | queryKey 工厂；**保持集中**，因为跨域失效多（同步→sessions+session；推进→run+runs） |
@@ -128,21 +128,28 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 
 | 路由 | 页面 | 承载状态 |
 |---|---|---|
-| `/login` | 登录页（唯一公开页） | `?redirect=/sessions/...` |
-| `/change-password` | 首次登录强制改密（需登录） | `?redirect=/sessions/...` |
-| `/sessions` | Session 浏览器（列表 + 会话概览） | `?q=&status=&sort=`；选中 session 用 `/sessions/:sid` |
-| `/sessions/:sid` | 会话概览（默认落地页） | — |
-| `/sessions/:sid/errors` | 错误详情与归因 | `?case={badCaseId}&tab=desc\|attr` |
-| `/evolution` | 运行列表 | — |
-| `/evolution/targets` | 进化对象配置（repoUrl/defaultRef/子目录/启用） | — |
-| `/evolution/cluster/:previewId` | 仅聚类结果 | — |
-| `/evolution/runs/:rid` | 运行详情 | `?step={key}`（`input / clusters / attribution / severity / iteration / final`）；簇定位 `?step=clusters&cluster={probeClusterId}` |
+| `/login` | 登录页（唯一公开页） | `?redirect=/workspaces/:wid/...` |
+| `/change-password` | 首次登录强制改密（需登录） | `?redirect=...` |
+| `/workspaces` | 空间选择（多空间或旧链接解析失败） | — |
+| `/workspaces/:wid/overview` | 工作空间总览（V2，默认落地页） | `?tab=cases\|targets&range=&grain=&from=&to=&objects=&badCaseType=&page=&targets=&states=&targetPage=` |
+| `/workspaces/:wid/sessions` | Session 浏览器（列表 + 会话概览） | `?q=&status=&sort=`；选中 session 用 `/sessions/:sid` |
+| `/workspaces/:wid/sessions/:sid` | 会话概览 | — |
+| `/workspaces/:wid/sessions/:sid/errors` | 错误详情与多归因 | `?case={badCaseId}&tab=desc\|attr&at={attributionId}`（`obj=` 兼容） |
+| `/workspaces/:wid/evolution` | 运行列表 | — |
+| `/workspaces/:wid/evolution/targets` | 进化对象配置（按空间） | — |
+| `/workspaces/:wid/evolution/cluster/:previewId` | 仅聚类结果 | — |
+| `/workspaces/:wid/evolution/runs/:rid` | 运行详情 | `?step={key}`（七 key）；簇定位 `?step=clusters&cluster={clusterId}` |
+| `/workspaces/:wid/admin` | 空间管理四 Tab（V2） | `?tab=spaces\|members\|ingest\|auth` |
 
-**登录守卫**：全局 `beforeEach`——未登录（无 access token 且 refresh 失败）且目标不是 `/login` 时跳 `/login?redirect=<原路径>`；已登录访问 `/login` 跳回 `/sessions`。登录后跳回 `redirect` 或 `/sessions`。
+**空间守卫（V2）**：`:wid` 不在 `user.workspaces` 内 → 跳 `/workspaces`（选择页），不静默选第一个；角色不足 → 空间首页 + toast。服务端仍会独立校验（前端只是护栏）。
+
+**旧路由（迁移期）**：`/sessions/**`、`/evolution/**` 按「最近访问且有权限的空间」重定向到 `/workspaces/:wid/...`，解析失败进选择页（[08 §1.4](08-frontend-implementation.md)）。
+
+**登录守卫**：全局 `beforeEach`——未登录（无 access token 且 refresh 失败）且目标不是 `/login` 时跳 `/login?redirect=<原路径>`；已登录访问 `/login` 跳回 `/workspaces`（或最近空间的总览）。登录后跳回 `redirect` 或空间默认页。
 
 **强制改密守卫**：`user.mustChangePassword === true` 时只放行 `/change-password` 与 `/login`，其余目标一律重定向到 `/change-password?redirect=<原路径>`；该判定排在登录守卫之后，两者都依赖 `tryRefresh()` 已填充的登录态。服务端另有 `403 PASSWORD_CHANGE_REQUIRED` 硬闸，守卫只负责体验（[08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md)）。
 
-**真实 ID 深链契约**：URL 直接用 `badCaseId` / `probeId` / `runId`（不再造 `I-`/`R-` 展示号）；问题描述与归因 tab 用 `?case={badCaseId}&tab=desc|attr`。`sessionId` 由后端在 bad-case 响应中给出，前端不拼接、不反推。
+**真实 ID 深链契约**：URL 直接用 `badCaseId` / `attributionId` / `clusterId` / `runId`（不再造 `I-`/`R-` 展示号）；问题描述与归因 tab 用 `?case={badCaseId}&tab=desc|attr[&at={attributionId}]`。`sessionId` 由后端在 bad-case 响应中给出，前端不拼接、不反推。
 
 路由守卫/兜底：`/:pathMatch(.*)*` → NotFound 页；每页统一三态（加载骨架 / 空态 / 错误重试）。
 
@@ -150,7 +157,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 
 | 状态 | 载体 | 例子 | 生命周期 |
 |---|---|---|---|
-| 服务端状态 | vue-query 缓存 | session 列表、会话详情、bad_cases、run 详情、六步产出 | 应用会话（`gcTime` 5min） |
+| 服务端状态 | vue-query 缓存 | session 列表、会话详情、bad_cases、归因、总览、run 详情、七步产出 | 应用会话（`gcTime` 5min） |
 | 页面 UI 状态 | 组件 `ref` / `reactive` | 筛选词、排序、展开的轮次、选中的错误、展开的 cluster | 页面挂载期 |
 | 跨页客户端状态 | Pinia | **仅登录态（access token + 当前用户）**、视图偏好 | 应用会话（access token 只存内存） |
 | URL 状态 | vue-router | 选中 session（`/sessions/:sid`）、选中问题、tab、step、筛选条件 | 刷新可恢复 |
@@ -159,23 +166,24 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 **queryKey 工厂**（[08 §2](08-frontend-implementation.md) 给出完整代码结构）：
 
 ```text
-['sessions']                      → 列表
-['sessions', filters]             → 列表（带筛选）
-['session', sid]                  → 会话概览
-['session', sid, 'tree']          → Agent 会话树
-['session', sid, 'bad-cases']     → 问题列表
-['bad-case', badCaseId]           → 问题详情
-['bad-case', badCaseId, 'analysis'] → 归因状态
-['probe', probeId]                → 归因结论
-['probes', query]                 → 向导命中查询（mutation，一次性结果，不常驻缓存）
+['auth', 'session']               → user + workspaces（V2 启动唯一入口）
+['ws']                            → 我的空间列表
+['ws', wid, 'overview', ...]      → 总览 summary/trend/sources/targets/…
+['ws', wid, 'bad-cases', f]       → 组合筛选分页列表
+['ws', wid, 'sessions', f]        → 列表（limit 10 + total）
+['ws', wid, 'session', sid]       → 会话概览
+['ws', wid, 'session', sid, 'tree'] → Agent 会话树
+['ws', wid, 'case', id, 'attributions'] → 归因分页（V2）
+['ws', wid, 'case', id, 'attribution', at] → 归因详情（V2）
+['ws', wid, 'evolution', 'runs']  → 运行列表
+['ws', wid, 'evolution', rid]     → 运行详情
+['ws', wid, 'evolution', rid, 'step', key] → 第 key 步产出（V2 七 key / V1 六 key）
+['ws', wid, 'evolution', 'targets'] → 对象配置（按空间）
+['ws', wid, 'catalogs']           → 对象/模型清单（staleTime ∞）
 ['acquisition', 'status']         → 最近一次处理状态
-['evolution', 'runs']             → 运行列表
-['evolution', rid]                → 运行详情（stepper 进度）
-['evolution', rid, 'step', n]     → 第 n 步产出
-['catalogs']                      → 对象/模型清单（staleTime ∞）
 ```
 
-写路径的失效规则：`POST /runs` → 失效 `['evolution','runs']`；`POST /runs/{rid}/retry` → 失效 `['evolution', rid]` 整棵前缀（详情 + 所有 step）；SSE `run.progress`/`run.blocked` 事件同样只失效前缀，页面自己决定要不要立即重取。
+写路径的失效规则：切换空间失效 `["ws", 旧wid]` 整棵；`POST …/evolution/runs` → 失效该空间 runs；`POST /retry` 与 SSE `run.progress` → 失效该 run 整棵前缀；上报成功 → 失效该空间 overview/bad-cases/sessions；成员/空间写入 → 失效 `["auth","session"]` 与 `["ws"]`。
 
 ## 8. 组件体系
 
@@ -188,7 +196,7 @@ App.vue
     └── pages/*
         ├── agent-tree/                 （Vue Flow Agent 执行流图）
         ├── bad-cases/                   （问题卡）
-        └── pages/evolution/components/  （向导/六步/簇卡/日志）
+        └── pages/evolution/components/  （向导/七步/簇卡/日志）
                 └── 共用 ui/
                     BaseCard / Chip / Badge / StatStrip / DensityBar /
                     EmptyState / ErrorState / LoadingSkeleton / Pagination /
@@ -200,7 +208,7 @@ App.vue
 | 全局壳 | `App.vue`、`TopNav.vue` | 全站 | 导览、品牌；**不持有全局 SSE** |
 | 页面编排 | `pages/*/Index.vue` | 单页面 | 只做布局与组合，数据来自 composable |
 | 跨页面领域组件 | `agent-tree/*`、`bad-cases/*` | 多页面 | Agent 执行流图、问题卡；props/emits 交互 |
-| 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、六步面板、簇卡、日志；随页面删除 |
+| 页面专属组件 | `pages/evolution/components/*` | 单页面/单功能 | 向导、七步面板、簇卡、日志；随页面删除 |
 | UI 基元 | `ui/BaseCard.vue`、`Chip.vue`、`Badge.vue`、`StatStrip.vue`、`DensityBar.vue`、`EmptyState.vue`、`ErrorState.vue`、`LoadingSkeleton.vue`、`Pagination.vue`、`Modal.vue`、`Tabs.vue`、`IconRenderer.vue` | 任意 | 无业务语义；颜色/间距全部走设计令牌；`IconRenderer` 是唯一 lucide 出口 |
 
 **关键领域组件**（与原型一一对应）：
@@ -214,14 +222,18 @@ App.vue
 | `agent-tree/edges/*.ts` | `OrthEdge/FindingEdge/ReportEdge/TriggerEdge` | 改为 `OrthEdge/BadCaseEdge/DiscoveryEdge/TriggerEdge`，SVG path 生成是纯函数 |
 | `bad-cases/BadCaseList.vue` | `.finding-item` | 列表卡（主文本 `title` 短标题；`reason` 描述正文用于详情面板；状态/事实/上报对象） |
 | `pages/errors/components/AttributionReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
-| `pages/evolution/components/Stepper.vue` | `stepperHTML` | 6 步进度，可点击已到达节点 |
-| `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片 |
-| `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 两步 Modal |
-| `pages/evolution/components/ClusterCard.vue` | `clusterHTML` | 聚类卡（来源报告/归因/patch/评测/commit） |
+| `pages/evolution/components/Stepper.vue` | `stepperHTML` | 七步（`run.steps` 直出），可点击已到达节点 |
+| `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片（V2 增空间/策略/缓存 chip） |
+| `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 四步 Modal（V2；V1 两步冻结） |
+| `pages/evolution/components/ClusterCard.vue` | `clusterHTML` | 聚类卡（来源 bad case / patch / 评测 / commit） |
 | `pages/evolution/components/DiffView.vue` | `diffHTML` | patch 着色 diff |
 | `pages/evolution/components/EvalCompare.vue` | `evalHTML` | current vs candidate 条形对比 |
 | `pages/evolution/components/FinalVerdict.vue` | `stepFinalHTML` | 终评横幅 + 指标表 |
 | `pages/evolution/components/RunLogPanel.vue` | —（新增） | 执行日志/异常时间线 |
+| `components/layout/WorkspacePicker.vue` | 原型 `wsPicker` | 顶栏空间切换器（V2）：名称 + used/quota + 角色 |
+| `pages/workspaces/Admin.vue` + `SpacesTab/MembersTab/IngestTab/AuthTab` | 原型空间管理四 Tab | 空间/成员/凭据/鉴权接入（V2） |
+| `pages/overview/*`（`StackedBucketChart`/`SourceBars`/`SourceMatrix`/`TargetsOverview`/`TargetDetailCard`） | 原型总览页 | 双视角总览，自研 SVG（V2） |
+| `pages/errors/components/CaseGroup.vue` + `AttributionItem.vue` | 原型错误详情左栏 | 可折叠 bad case 组 + 归因子项分页（V2） |
 ### 8.2 图标门面（`ui/IconRenderer.vue`）
 
 - 业务组件只写 `<IconRenderer name="chevron-down" />`，不直接 import `lucide-vue-next`。
@@ -293,29 +305,32 @@ apps/web/src/
     http.ts               fetch 封装（Bearer 注入、401 自动 refresh 一次、错误模型、取消）
     queryClient.ts        QueryClient 默认策略（staleTime 30s / gc 5min / 4xx 不重试）
     queryKeys.ts          queryKey 工厂（集中，跨域失效）
-    auth.ts               login/refresh/logout/me
+    auth.ts               login/refresh/logout/me/session
+    workspaces.ts         空间/成员/凭据（V2）
+    overview.ts           总览聚合（V2）
     sessions.ts           列表/会话概览/Agent 会话树/问题
-    badCases.ts           问题详情与归因
-    probes.ts             归因结论
-    evolution.ts          runs / 六步产出 / 事件 / 配置 / 启动推进
+    badCases.ts           问题详情、归因分页与详情（V2）
+    evolution.ts          runs / 预览三段 / 七步 / 事件 / 配置 / 启动推进
     acquisition.ts        同步/拉取/状态
     catalogs.ts           对象/模型清单
     generated/            openapi-typescript 生成物（禁止手改）
   composables/
-    useAuth.ts            登录/登出/refresh/当前用户
+    useAuth.ts            登录/登出/refresh/当前用户/会话（V2）
+    useWorkspaces.ts      空间/成员/凭据（V2）
+    useOverview.ts        总览（V2）
     useSessions.ts        列表/会话概览/Agent 会话树/问题
-    useBadCases.ts        问题详情与归因
-    useEvolution.ts       runs / 六步产出 / 事件 / 启动 / 推进
+    useBadCases.ts        问题详情、归因分页与详情
+    useEvolution.ts       runs / 预览 / 七步产出 / 事件 / 启动
     useAcquisition.ts     同步 / 拉取 / 状态
-    useTargets.ts         进化对象配置 CRUD
+    useTargets.ts         进化对象配置 CRUD（按空间）
     useCatalogs.ts        对象/模型清单
     useRunEvents.ts       run 页面的 SSE 票据 + 连接 + 事件追加（preparing/running）
   stores/
     auth.ts               登录态（access token 内存 + 当前用户）
     preferences.ts        折叠/缩放偏好（localStorage）
   pages/
-    login/  sessions/  errors/  evolution/  evolution/targets/
-    evolution/components/ Stepper / Step* / ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard
+    login/  workspaces/  overview/  sessions/  errors/  evolution/  evolution/targets/
+    evolution/components/ Stepper / Step*（七步）/ ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard
   components/
     agent-tree/  bad-cases/  ui/（含 IconRenderer.vue）  layout/
   test/
