@@ -45,6 +45,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Set the Session shell height to `calc(100vh - 56px)`; allow the detail header's first column to shrink and ellipsize long session IDs.
 - Widen the overview source-total column to 120px; make the evolution-target side card a column flex container with a bottom-pinned pager.
 - Store before/after evidence under `plans/ui-prototype-v2/_ui-review/round1/` for turn-by-turn comparison.
+- The second turn adds interaction state: page and workspace are written to the URL; workspace/user/sync menus close on outside click, Escape, and mutual exclusion; family-tree and error-flow canvases compress on short viewports with the legend moved to the top; switching workspace closes the old detail; and the timeline only renders for the Session with real data.
+- Second-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round2/`.
 
 ## Implementation steps
 
@@ -81,6 +83,8 @@ pnpm verify:flow; pnpm lint:docs
 - `--text-faint` reaches at least 4.5:1 contrast on white and page backgrounds; chart dates, ticks, and object totals are legible.
 - The Session view bottom edge aligns with the viewport bottom; detail actions no longer fall to a second line.
 - Overview source totals and the evolution-target card show no clipped text, and the pager sits at the card bottom.
+- Refresh keeps the current page and workspace; switching workspace no longer shows the previous workspace's error detail; the timeline title matches the current Session.
+- Workspace, user, and sync menus close on outside click, Escape, or page change, and only one opens at a time; on short viewports the family-tree legend and case detail are visible on first screen.
 
 ## Gates and CI
 
