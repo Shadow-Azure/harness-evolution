@@ -1030,16 +1030,25 @@
 .v2-page .tg-r-sess-with { background: var(--blue); }
 .v2-page .tg-r-sess-only { background: #d5dae2; }
 .v2-page .tg-r-src { background: var(--purple); }
-.v2-page .td-card { padding: 16px 18px 18px; margin: 0 0 14px; }
+.v2-page .td-card { padding: 16px 18px 14px; margin: 0 0 14px; }
+.v2-page .td-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .v2-page .td-head h2 { font-size: 15px; margin: 0; }
-.v2-page .td-head .hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
-.v2-page .td-filterbar { border: 0; background: transparent; box-shadow: none; padding: 12px 0 4px; margin: 0; }
-.v2-page .td-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 16px; }
-.v2-page .td-stat { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; background: var(--bg-panel); }
-.v2-page .td-stat b { display: block; font-family: var(--mono); font-size: 19px; line-height: 1.2; }
-.v2-page .td-stat span { font-size: 10px; color: var(--text-faint); }
-.v2-page .td-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; }
+.v2-page .td-head .hint { font-size: 11px; color: var(--text-faint); }
+.v2-page .td-toolbar { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding: 7px 12px; margin: 12px 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); }
+.v2-page .td-toolbar .ov-filter-label { font-size: 10px; color: var(--text-faint); }
+.v2-page .td-toolbar-spacer { margin-left: auto; }
+.v2-page .td-statstrip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+.v2-page .td-cell { padding: 9px 14px; border-right: 1px solid var(--border); }
+.v2-page .td-cell:last-child { border-right: 0; }
+.v2-page .td-cell b { display: block; font-family: var(--mono); font-size: 18px; line-height: 1.2; }
+.v2-page .td-cell span { font-size: 10px; color: var(--text-faint); }
+.v2-page .td-grid { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr); }
 .v2-page .td-sec { min-width: 0; }
+.v2-page .td-sec:first-child { padding-right: 22px; }
+.v2-page .td-sec + .td-sec { padding-left: 22px; border-left: 1px solid var(--border); }
+.v2-page .td-sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.v2-page .td-sec-head .tg-source-title { margin-bottom: 0; }
+.v2-page .td-legend { margin-left: auto; display: flex; gap: 10px; font-size: 10px; color: var(--text-faint); white-space: nowrap; }
 .v2-page .td-ver-multi summary { min-width: 168px; }
 .v2-page .td-ver-menu { width: 296px; max-height: 268px; display: flex; flex-direction: column; }
 .v2-page .td-ver-list { overflow: auto; min-height: 0; }
@@ -1049,12 +1058,19 @@
 .v2-page .td-limit-btns { display: flex; gap: 4px; }
 .v2-page .td-limit-btns button, .v2-page .td-footnote button { border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; background: var(--bg-card); color: var(--text-dim); font-size: 10px; cursor: pointer; }
 .v2-page .td-limit-btns button.on { border-color: var(--blue); color: var(--blue); }
-.v2-page .td-ver-row { grid-template-columns: 148px minmax(0, 1fr) 168px; }
+.v2-page .td-ver-row { grid-template-columns: 140px minmax(0, 1fr) 172px; }
 .v2-page .td-ver-row .ov-obj-name { display: flex; align-items: baseline; gap: 6px; }
-.v2-page .td-footnote { margin-top: 8px; font-size: 10px; color: var(--text-faint); }
+.v2-page .td-ver-row.is-empty .ov-obj-name { opacity: .6; }
+.v2-page .td-src-dedup { color: var(--text-faint); font-size: 9.5px; }
+.v2-page .td-sec .ov-obj-row + .ov-obj-row { margin-top: 6px; }
+.v2-page .td-card .ov-obj-num, .v2-page .td-cell b { font-variant-numeric: tabular-nums; }
+.v2-page .td-footnote { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-faint); }
 @media (max-width: 1100px) {
   .v2-page .td-grid { grid-template-columns: 1fr; }
-  .v2-page .td-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v2-page .td-sec:first-child { padding-right: 0; }
+  .v2-page .td-sec + .td-sec { padding-left: 0; border-left: 0; border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+  .v2-page .td-statstrip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v2-page .td-cell:nth-child(2) { border-right: 0; }
 }
 .v2-page .tg-ratio-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-grid2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); gap: 12px; margin-bottom: 14px; }
@@ -4799,22 +4815,27 @@ function v2TargetDetailData() {
 function v2TargetDetailCard() {
   const d = v2TargetDetailData();
   const td = d.td;
-  const head = `<div class="td-head"><h2>单个进化对象分析</h2><div class="hint">独立筛选：选一个进化对象，查看它在所选版本与时间段内的关联 Session、潜在 bad case 分布与来源构成。</div></div>`;
+  const head = `<div class="td-head"><h2>单个进化对象分析</h2><div class="hint">选一个对象，按版本与时间看它的关联 Session、潜在 bad case 与来源构成</div></div>`;
   if (d.empty) {
     return `<div class="card td-card" data-testid="target-detail-card">${head}
       <div class="ov-empty"><b>当前空间还没有启用中的进化对象</b>先到进化对象配置新增并启用对象，再回来查看单个对象的关联 Session 与来源分布。<div style="margin-top:12px"><button class="btn sm" data-v2-td-config>去配置进化对象 →</button></div></div>
     </div>`;
   }
+  const scopeCounts = v2TargetStatusCounts(d.scopeRows);
   const verMenu = d.versions.map(v => `<label><input type="checkbox" value="${v.ref}" ${td.versions.has(v.ref) ? 'checked' : ''} data-v2-td-version><span class="mono">${v.ref}</span><span class="mono faint">${v.commit}</span></label>`).join('');
   const limitBtns = [5, 10, 20].map(n => `<button class="${td.limit === n ? 'on' : ''}" data-v2-td-limit="${n}">${n}</button>`).join('') + `<button class="${td.limit === 'all' ? 'on' : ''}" data-v2-td-limit="all">全部</button>`;
   const summary = td.versions.size ? `已选 ${td.versions.size} 个版本` : (td.limit === 'all' ? '全部版本' : `最近 ${td.limit} 个版本`);
   const maxVer = Math.max(1, ...d.scope.map(b => b.rows.length));
   const verRows = d.scope.map(b => {
     const c = v2TargetStatusCounts(b.rows), total = b.rows.length || 1;
-    return `<div class="ov-obj-row tg-source-obj td-ver-row" title="${v2Esc(b.v.ref)} · ${v2Esc(b.v.commit)} · ${v2Esc(b.v.date)} · 潜在 bad case ${b.rows.length}">
+    const empty = !b.rows.length;
+    const num = empty
+      ? '<span class="ov-obj-num"><b>0</b> <span class="faint">无潜在 bad case</span></span>'
+      : `<span class="ov-obj-num"><b>${b.rows.length}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>`;
+    return `<div class="ov-obj-row tg-source-obj td-ver-row ${empty ? 'is-empty' : ''}" title="${v2Esc(b.v.ref)} · ${v2Esc(b.v.commit)} · ${v2Esc(b.v.date)} · 潜在 bad case ${b.rows.length}">
       <span class="ov-obj-name"><span class="mono">${v2Esc(b.v.ref)}</span> <span class="mono faint">${v2Esc(b.v.commit)}</span></span>
       <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${b.rows.length / maxVer * 100}%"><span class="tg-r-is" style="width:${c.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${c.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${c.unanalyzed / total * 100}%"></span></span></span>
-      <span class="ov-obj-num"><b>${b.rows.length}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>
+      ${num}
     </div>`;
   }).join('');
   const srcMap = new Map();
@@ -4825,10 +4846,11 @@ function v2TargetDetailCard() {
   });
   const sourceDist = [...srcMap.values()].sort((a, b) => b.total - a.total);
   const maxSrc = Math.max(1, ...sourceDist.map(s => s.total));
-  const srcRows = sourceDist.map(s => `<div class="ov-obj-row tg-source-obj" title="${v2Esc(s.name)} · 潜在 bad case ${s.total} 条 · 去重后 ${s.uniq.size} 个">
+  const srcTotal = d.scopeRows.length || 1;
+  const srcRows = sourceDist.map(s => `<div class="ov-obj-row tg-source-obj" title="${v2Esc(s.name)} · 潜在 bad case ${s.total} 条 · 去重后 ${s.uniq.size} 个 · 占 ${Math.round(s.total / srcTotal * 100)}%">
       <span class="ov-obj-name">${v2Esc(s.name)}</span>
       <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${s.total / maxSrc * 100}%"><span class="tg-r-src" style="width:100%"></span></span></span>
-      <span class="ov-obj-num"><b>${s.total}</b>（去重后：${s.uniq.size}）</span>
+      <span class="ov-obj-num"><b>${s.total}</b><span class="td-src-dedup"> · 去重 ${s.uniq.size}</span></span>
     </div>`).join('');
   const canExpand = !td.versions.size && d.scope.length < d.list.length;
   const nextLimit = d.scope.length < 10 ? 10 : d.scope.length < 20 ? 20 : 'all';
@@ -4837,7 +4859,7 @@ function v2TargetDetailCard() {
     : (d.scope.length >= d.list.length ? `当前查看全部 ${d.list.length} 个` : `当前查看最近 ${d.scope.length} 个`);
   return `<div class="card td-card" data-testid="target-detail-card">
     ${head}
-    <div class="ov-filterbar td-filterbar">
+    <div class="td-toolbar">
       <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
         <select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(t.objectName)} · ${v2Esc(t.kind)}</option>`).join('')}</select>
       </div>
@@ -4853,32 +4875,38 @@ function v2TargetDetailCard() {
           </div>
         </details>
       </div>
-      <span class="ov-filter-sep"></span>
+      <span class="td-toolbar-spacer"></span>
       <div class="ov-filter-group"><span class="ov-filter-label">时间</span>
         <input class="inp" type="date" value="${v2Esc(d.from)}" data-v2-td-from>
         <span class="ov-filter-label">~</span>
         <input class="inp" type="date" value="${v2Esc(d.to)}" data-v2-td-to>
       </div>
     </div>
-    <div class="td-stats">
-      <div class="td-stat"><b>${d.stats.sessions}</b><span>关联 Session</span></div>
-      <div class="td-stat"><b>${d.stats.potential}</b><span>潜在 bad case</span></div>
-      <div class="td-stat"><b>${d.stats.unique}</b><span>去重后 bad case</span></div>
-      <div class="td-stat"><b>${d.stats.versions}</b><span>覆盖版本</span></div>
+    <div class="td-statstrip">
+      <div class="td-cell"><b>${d.stats.sessions}</b><span>关联 Session</span></div>
+      <div class="td-cell"><b>${d.stats.potential}</b><span>潜在 bad case</span></div>
+      <div class="td-cell"><b>${d.stats.unique}</b><span>去重后 bad case</span></div>
+      <div class="td-cell"><b>${d.stats.versions}</b><span>覆盖版本</span></div>
     </div>
     <div class="td-grid">
       <section class="td-sec">
-        <div class="tg-source-title">潜在 bad case 分布 <span>按版本汇总；柱长按最大值归一</span></div>
+        <div class="td-sec-head">
+          <div class="tg-source-title">潜在 bad case 分布 <span>按版本汇总；柱长按最大值归一</span></div>
+          <div class="td-legend"><span><i class="tg-dot isTarget"></i>是 ${scopeCounts.isTarget}</span><span><i class="tg-dot notTarget"></i>非 ${scopeCounts.notTarget}</span><span><i class="tg-dot unanalyzed"></i>未 ${scopeCounts.unanalyzed}</span></div>
+        </div>
         ${verRows || '<div class="waiting">当前条件下没有关联 Session 或潜在 bad case</div>'}
-        <div class="td-footnote">共 ${d.versions.length} 个版本 · ${scopeText}${canExpand ? ` · <button data-v2-td-limit="${nextLimit}">${nextLimit === 'all' ? '查看全部' : `展开到 ${nextLimit}`}</button>` : ''}</div>
       </section>
       <section class="td-sec">
-        <div class="tg-source-title">bad case 来源分布 <span>当前对象、版本与时间段；括号内为去重后数量</span></div>
+        <div class="td-sec-head">
+          <div class="tg-source-title">bad case 来源分布 <span>当前对象、版本与时间段</span></div>
+        </div>
         ${srcRows || '<div class="waiting">当前条件下没有潜在 bad case</div>'}
       </section>
     </div>
+    <div class="td-footnote">共 ${d.versions.length} 个版本 · ${scopeText}${canExpand ? ` · <button data-v2-td-limit="${nextLimit}">${nextLimit === 'all' ? '查看全部' : `展开到 ${nextLimit}`}</button>` : ''}</div>
   </div>`;
 }
+
 
 
 function v2RenderOverview() {

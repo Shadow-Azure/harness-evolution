@@ -16,6 +16,8 @@ The fifth turn found the evolution-target overview missing object-level associat
 
 The sixth turn found that keeping the source distribution inside the multi-target trend card only yields an aggregate view: readers cannot focus on one target and read its potential bad-case distribution by version and time range, and the version dimension is entirely absent from the overview, which only ever shows the `defaultRef` build.
 
+The seventh turn found layout defects in the new card: the four stats each occupy a box with tall rows; the filter row has no separation from the body; the two columns are not divided and their titles, legend, and footnote are scattered; and empty versions look as prominent as versions with data.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -29,6 +31,8 @@ The fourth turn unifies the default policy as "the object's own self report or a
 The fifth turn adds two distribution blocks inside the trend card: associated Sessions normalized per target with the blue segment marking Sessions that contain potential bad cases, and a source distribution normalized by non-deduplicated count with the deduplicated count in parentheses keyed by bad case ID. Both reuse the existing `ov-obj-row` / `tg-source-obj` structure and normalized bars and share the target multi-select and time window. Launching becomes overlay-first: a new `evWizardHost()` picks the mount point by current page (`#modal-root` inside the evolution page, the global `#v2Modal` elsewhere); "start evolution" only opens the overlay, and step 4 writes the run hash and calls `V2.setPage('evo')` to leave the overview.
 
 The sixth turn moves the source distribution out of the trend card into a new "single evolution target" card: the target select is required and defaults to the first enabled target, falling back to an empty state with a "configure targets" entry when the workspace has none; the version multi-select starts empty (meaning the newest five), its footer pins a 5 / 10 / 20 / all switch, and the card footer offers a "expand to 10" shortcut; the date range is independent of the overview filter. The card shows object-level stats (associated Sessions, potential bad cases, deduplicated, covered versions) plus two distributions: potential bad cases stacked per version and deduplicated counts per source.
+
+The seventh turn only changes layout: the stats collapse into one divided strip; filters move into a tinted toolbar with the date range pushed right; the columns get a 1px divider and 22px inner padding, switching to a single column with a horizontal divider below 1100px; the left column gains an is / not / unanalyzed summary legend in its header; empty versions drop to 60% opacity and read "no potential bad case"; and the footnote moves to the card bottom across both columns.
 
 ## Alternatives considered
 
@@ -44,6 +48,9 @@ The sixth turn moves the source distribution out of the trend card into a new "s
 - Keep the source distribution inside the trend card behind a target filter: the trend card is a multi-target comparison, so a single-target filter would mix two different scopes in one card.
 - Split the card's potential cases by the session-to-version assignment: the current model maps one session to one version, leaving most versions with no data.
 - Show every version by default: 18 versions fill two screens and contradict the "newest five by default" requirement.
+- Only tighten the spacing of four stat cards: they still consume a row each, so density does not improve.
+- Repeat the legend on every row: it duplicates the inline breakdown and adds noise.
+- Use a single column at desktop widths too: it wastes horizontal space and prevents reading versions and sources side by side.
 
 ## Consequences
 
@@ -52,3 +59,5 @@ The prototype drifts further from production frontend styling; future alignment 
 The fifth turn grows the trend card by roughly 200px at 1440px, with all three distribution definitions carried by subtitles; compressing the card later means rewriting those three notes together. The evolution overlay now depends on the global `#v2Modal`, so new full-screen overlays should reuse that mount point. Launch still writes the hash and then calls `v2SetPage('evo')`; introducing client-side routing should collapse that into a single navigation.
 
 The sixth turn grows the overview by roughly 330px at 1440px, and the version commit IDs and timestamps are new mock data (18 for deep-research, 12 for code-review, 9 for Explore) that do not yet match the tag-based version list in the evolution wizard; a real version API should unify both. The per-version split is hash-sampled, so one bad case can appear under several versions and the potential count exceeds the deduplicated one; that is the intended definition, not cache reuse or duplicate reporting.
+
+The seventh turn trims the card from roughly 430px to 376px at 1440px. The `.td-*` classes added for the stat strip and toolbar only serve this card, so reuse needs promotion into the shared style layer first; empty versions rely on opacity, which needs a different value under a dark theme or high-contrast mode.

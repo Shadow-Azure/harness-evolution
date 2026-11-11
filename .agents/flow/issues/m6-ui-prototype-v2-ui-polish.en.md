@@ -58,6 +58,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - The sixth turn's card has independent filters: a required target select defaulting to the first enabled target (empty state with a configure prompt when the workspace has none), a version multi-select defaulting to the newest five and expandable to 10 / 20 / all, and a date range independent of the overview.
 - The sixth turn's card shows object-level stats (associated Sessions, potential bad cases, deduplicated, covered versions) plus a per-version stacked potential-bad-case distribution and a per-source deduplicated distribution.
 - Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
+- The seventh turn polishes the single-target card layout: stats collapse into one divided strip, filters move into a tinted toolbar with the date range on the right, the two columns get a divider, the left header gains an is / not / unanalyzed summary legend, empty versions are dimmed, and the footnote spans the card bottom.
+- Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
 
 ## Implementation steps
 
@@ -104,6 +106,7 @@ pnpm verify:flow; pnpm lint:docs
 - The trend card no longer carries the source distribution; source composition and the multi-version view appear only in the "single evolution target" card.
 - The single-target card defaults to the first enabled target, shows the newest five versions by default, expands to 10 / 20 / all, and keeps stats plus both distributions in sync when the target or date range changes.
 - When the workspace has no enabled targets, the card's target select is empty and shows the configure entry.
+- The single-target card is no taller than 380px at 1440px; the two columns are divided; empty versions are dimmed; below 1100px the card becomes a single column.
 
 ## Gates and CI
 
