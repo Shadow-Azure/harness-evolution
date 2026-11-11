@@ -77,6 +77,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Fourteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round14/`.
 - The fifteenth turn upgrades "content grows with the viewport" to proportional whole-UI scaling: `--ui-zoom` is derived from a 1440px baseline, `#appShell` applies `zoom` with a width compensating factor, viewport-height pages are converted, nothing scales below 1440px, and the factor caps at 1.25× above 1800px.
 - Fifteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round15/`.
+- The sixteenth turn fixes `#appShell` occupying only ~80% of the viewport on large screens: the redundant width division on the zoomed element is removed, so the container fills again while the content stays centered and capped at 1720px.
+- Sixteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round16/`.
 
 ## Implementation steps
 
@@ -133,6 +135,7 @@ pnpm verify:flow; pnpm lint:docs
 - At a 1720px viewport the three pages fill the visible width (≥1650px), cap at 1720px centered on a 1920px screen, and show no horizontal overflow at 1280px.
 - The status chips inside the trend card show their counts, toggle the chart's stacked series, and the card header no longer repeats the legend.
 - At 1700px the top bar, page content, and overlays scale together to about 1.17×, capping at 1.25× on 1920px; Session and error detail show no horizontal or vertical overflow after scaling.
+- At 2560px and 3440px `#appShell` spans the full viewport width, the content stays centered at 1720px, and no `body` background leaks on the right or below.
 
 ## Gates and CI
 

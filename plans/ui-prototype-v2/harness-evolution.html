@@ -689,7 +689,8 @@
 
   /* ═════════════════════════ V2 壳层：登录 · 工作空间 · 用户 ═════════════════════════ */
   body.v2-auth { padding-top: 0; }
-  #appShell { zoom: var(--ui-zoom, 1); width: calc(100% / var(--ui-zoom, 1)); }
+  /* zoom 下百分比宽度已按缩放坐标解析，不能再除以 zoom（否则整页只占视口的 1/zoom） */
+  #appShell { zoom: var(--ui-zoom, 1); }
   #appShell[hidden], #loginView[hidden] { display: none !important; }
   .login-page {
     min-height: 100vh; display: grid; place-items: center; padding: 30px;
