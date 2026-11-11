@@ -20,3 +20,5 @@
 - `after-run-policy.png`：运行详情策略徽标，确认统一文案在窄卡片内不溢出。
 
 浏览器视口：1408 × 611（默认桌面短视口），用于复现向导正文超出与鉴权页副标题拥挤。
+
+> 注：第 6 轮复核确认 V1 原型才是视觉基线，页脚路径已在 round6 恢复为 `plans/14-15-ui-prototype/harness-evolution.html`。

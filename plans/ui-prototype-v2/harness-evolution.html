@@ -1149,7 +1149,7 @@
         <div class="login-point"><span class="lp-ico">2</span><span><b>归因进入进化流程</b>：同一 bad case 可以拥有多个对象的归因结论。</span></div>
         <div class="login-point"><span class="lp-ico">3</span><span><b>默认 10 个 Session</b>：输入 root session ID 回车，<br>精确拉取目标会话。</span></div>
       </div>
-      <div class="lb-foot">V2 原型 · 全部数据为打桩样例，不写入生产库。<br>视觉与交互基线沿用 plans/ui-prototype-v2/harness-evolution.html。</div>
+      <div class="lb-foot">V2 原型 · 全部数据为打桩样例，不写入生产库。<br>视觉与交互基线沿用 plans/14-15-ui-prototype/harness-evolution.html。</div>
     </section>
     <section class="login-form-wrap">
       <h2>登录</h2>
@@ -4024,10 +4024,10 @@ function evRenderTargetDialog() {
             <button type="button" class="kind-choice ${f.kind === 'skill' ? 'active' : ''}" data-action="ev-target-kind" data-kind="skill">Skill</button>
             <button type="button" class="kind-choice ${f.kind === 'agent' ? 'active' : ''}" data-action="ev-target-kind" data-kind="agent">Agent</button>
           </div></div>
-          <div class="f-row"><div class="f-label">对象名称</div><input class="inp" data-ev-target-field="objectName" value="${evEsc(f.objectName)}" placeholder="如 deep-research"></div>
-          <div class="f-row span-2"><div class="f-label">仓库地址</div><input class="inp" data-ev-target-field="repoUrl" value="${evEsc(f.repoUrl)}" placeholder="https://… 或 git@…"></div>
-          <div class="f-row"><div class="f-label">子目录</div><input class="inp" data-ev-target-field="subDir" value="${evEsc(f.subDir)}" placeholder="如 skills/deep-research"></div>
-          <div class="f-row"><div class="f-label">基线分支或标签</div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后可在启动向导中看到版本。</div></div>
+          <div class="f-row"><div class="f-label">对象名称 <span class="req">*</span></div><input class="inp" data-ev-target-field="objectName" value="${evEsc(f.objectName)}" placeholder="如 deep-research"></div>
+          <div class="f-row span-2"><div class="f-label">仓库地址 <span class="req">*</span></div><input class="inp" data-ev-target-field="repoUrl" value="${evEsc(f.repoUrl)}" placeholder="https://… 或 git@…"></div>
+          <div class="f-row"><div class="f-label">子目录 <span class="req">*</span></div><input class="inp" data-ev-target-field="subDir" value="${evEsc(f.subDir)}" placeholder="如 skills/deep-research"></div>
+          <div class="f-row"><div class="f-label">基线分支或标签 <span class="req">*</span></div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后可在启动向导中看到版本。</div></div>
           <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
           <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
           <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
