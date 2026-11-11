@@ -32,29 +32,33 @@ The V2 prototype (`plans/ui-prototype-v2/`) establishes four new capability clas
 
 ## Design authority
 
-- [15-v2-workspaces.md](../../../plans/fullstack-design/15-v2-workspaces.md): auth integration seam, workspace/member/quota/credential model, ingest API, workspace-scoped migration and permission matrix.
-- [16-v2-overview.md](../../../plans/fullstack-design/16-v2-overview.md): overview dual-view metrics, aggregation APIs, latest-10 sessions with enter-to-search.
-- [17-v2-attribution.md](../../../plans/fullstack-design/17-v2-attribution.md): seven-step flow, trigger-point coordinates, potential policy, attribution cache, multi-attribution error detail, probe pipeline retirement.
+- [01-architecture.md §4.4](../../../plans/fullstack-design/01-architecture.md): auth flow and workspace scoping in the overall architecture.
+- [05-api-design.md §3.7–§3.10, §4.16–§4.20](../../../plans/fullstack-design/05-api-design.md): workspace/member/credential/ingest/overview/attribution endpoints and DTOs.
+- [06-database-design.md §3.10–§3.12, §5.8–§5.10, §7.5, §9](../../../plans/fullstack-design/06-database-design.md): workspace/attribution/candidate tables, V2 metrics and migration.
+- [07-backend-implementation.md §5.11–§5.15, §8.2.1](../../../plans/fullstack-design/07-backend-implementation.md): seven-step pipeline, potential matcher, attribution cache, workspace service and auth seam.
+- [08-frontend-implementation.md §1.4, §4.2, §5.2.1, §6, §7, §9, §10](../../../plans/fullstack-design/08-frontend-implementation.md): space shell, overview, latest-10 list, multi-attribution, four-step wizard, seven-step detail.
 - [README decision table D21–D23](../../../plans/fullstack-design/README.md): top-level V2 decisions and V1 freeze semantics.
 - [design-v2.md](../../../plans/ui-prototype-v2/design-v2.md): V2 prototype acceptance baseline.
 
 ## Implementation
 
-- Three new addendum docs `15-v2-workspaces.md` / `16-v2-overview.md` / `17-v2-attribution.md` following the 11–14 addendum style (background, data model, API contract, code-change map, tests and acceptance, non-goals, confirmed decisions).
-- All three are written at the implementation granularity of the V1 docs (05/06/07/08): sequence diagrams and state machines, per-endpoint request/response JSON, per-table columns and indexes, Repository/Service method signatures, concurrency and idempotency rules, migration and rollback scripts, component trees with queryKey invalidation matrices, and layered test cases.
-- README: three doc-map rows, decision table gains D21/D22/D23, updated one-line system description and data-boundary block, V2 relationship to repository state.
-- 02-features: new §2.4 (F21–F27 V2 feature points plus a change table for five V1 feature points) and §2.5 (V2 acceptance criteria).
-- 05-api-design: V2 endpoint block appended to §4; V2 error codes appended to §8.
-- 06-database-design: V2 table addendum block in §1 (new tables, added columns, frozen list).
-- 01-architecture / 07-backend-implementation / 08-frontend-implementation: boundary revisions (workspace inputs/outputs/non-goals, workspaces service) and V1 freeze notes.
-- New Agent Note triple `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*` (addendum approach and key trade-offs).
+- Merge the V2 design into docs 01–08 by domain instead of adding new addendum docs: 01 boundaries/modules/flows; 02 feature points F21–F27 and acceptance; 03 routes/state/components/directories; 04 modules/integration/config/extensions/tests; 05 DTOs and endpoints; 06 tables and migration; 07 pipeline and implementation; 08 pages and interactions.
+- 01: workspace inputs/outputs/non-goals, workspaces service, seven-step execution chain, auth/session and workspace scoping, data-access table, extensions and risks.
+- 02: §2.4 (F21–F27 plus changes to five V1 feature points) and §2.5 (V2 acceptance criteria).
+- 03: workspace-prefixed routes, space guard, queryKeys carrying `wid`, workspace/overview/multi-attribution components and directories.
+- 04: workspaces/overview modules, ingest write boundary, attribution engine placeholder, V2 config keys and test strategy.
+- 05: §3.7–§3.10 new DTOs (Workspace/Member/Credential/Ingest/Attribution/Overview); §3.6.2 seven-step payloads; §4.16–§4.20 endpoints; §5 deep links; §8 complete V2 error codes; §9 mapping.
+- 06: workspaces/workspace_members/workspace_ingest_credentials; bad_cases.workspace_id; four new evolution_runs columns; bad_case_attributions/evolution_run_candidates/evolution_cluster_cases; §7.5 metrics; §9 migration.
+- 07: normalization adds tree_index/triggered_at; seven-step prepare; potential matcher; attribution cache; preview endpoints; workspace service and dependency; auth seam; tests and slicing order.
+- 08: routes and redirects; api modules and queryKeys; workspace admin four tabs; latest 10 with enter-to-search; overview page; multi-attribution error detail; four-step wizard; seven-step detail with `stepsSchema` dual track.
+- New Agent Note triple `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*` (decisions and trade-offs).
 
 ## Implementation steps
 
 1. Read the V1 design docs and the current implementation to establish the gap baseline (endpoints/tables/services checked item by item).
 2. Compare the V1/V2 prototypes and verify UI coverage of the seven requirements.
-3. Write the three addenda (API, table structure, code-change maps, tests included).
-4. Revise README/01/02/05/06/07/08 pointers and addendum blocks.
+3. Write the V2 design into docs 01–08 by domain (no new addenda) and fix cross-doc inconsistencies (error codes, columns, `blocked_stage`, admin path rules).
+4. Delete the temporary addenda 15–17 and clean up every reference (README/02/09).
 5. Add the Agent Note and re-record the i18n pairing.
 
 ## Dependencies and boundary
@@ -72,11 +76,11 @@ pnpm verify:flow; pnpm lint:docs
 
 ## Acceptance
 
-- The three addenda cover every one of the seven requirements with an explicit data model, API contract, and code-change map.
-- The overview, wizard, and run declare the same potential-bad-case implementation (PotentialMatcher).
-- V1 implemented behavior carries freeze markers in 05/06/07/08, and historical run rendering compatibility (steps_schema dual track) is documented.
-- The README decision table contains D21–D23; the 02 feature table contains F21–F27; the 05 error-code table contains the new V2 codes.
-- The Agent Note bilingual triple has a complete pairing record.
+- Docs 01–08 cover all seven requirements, each with an explicit data model, API contract, and code-change map.
+- The overview, wizard, and run declare the same potential-bad-case implementation.
+- V1 implemented behavior carries freeze markers, and historical run rendering compatibility (`stepsSchema` dual track) is documented.
+- The 05 error-code table covers every V2 code previously defined; 06 column definitions agree with references in 05/07.
+- The README decision table contains D21–D23; 02 contains F21–F27; the Agent Note bilingual triple has a complete pairing record.
 
 ## Gates and CI
 

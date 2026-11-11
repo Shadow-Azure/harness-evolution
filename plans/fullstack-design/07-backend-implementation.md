@@ -1,9 +1,7 @@
 # 07 · 后端接口的实现设计
 
-> 本文回答：每个功能域的路由/服务/数据访问/任务怎么落地。
-> **V2 增补（2026-11-11）**：工作空间/鉴权接入/上报的实现见 [15 §5](15-v2-workspaces.md)；总览聚合与 Session 列表见 [16 §6](16-v2-overview.md)；自进化管线重排（七步、触发点、潜在策略、归因与缓存）见 [17 §2/§12](17-v2-attribution.md)——本文 §5 的 prepare/聚类/命中查询描述为 V1 冻结实现，新 run 按 17 号文执行。
-
 > 本文回答：每个功能域的路由、服务、外部数据接入、任务具体怎么写，状态机怎么推，同步怎么保证幂等。
+> **V2（2026-11-11）**：空间/成员/凭据与上报见 §5.15；鉴权接入接缝见 §8.2.1；自进化七步、潜在匹配、归因与缓存见 §5.11–§5.14；触发点坐标的归一化写入见 §2.3。§5.1/§5.3/§5.5/§5.10 对 `steps_schema=v1` 的历史 run 仍然成立。
 > 前置：[04 后端架构](04-backend-architecture.md) · [05 接口设计](05-api-design.md) · [06 数据库设计](06-database-design.md)。
 > 阅读方式：按 §2–§7 的域顺序即可；每个域都给出"职责划分 → 关键流程 → 伪代码/结构 → 测试点"。
 
@@ -155,6 +153,26 @@ class ParsedTranscript:
 9. **节点统计**：唯一 `message.id` 计数 → `agents.messages_count`；`tool_use` 块数 → `tools_count`；`is_error` 块数 → `errors_count`；usage 去重求和 → `tokens_total`；workflow 节点全为 0。
 10. **模型**：从 assistant 消息的 `model` 字段取该 agent 的实际模型，写 `agents.model`；`meta.model` 写 `requested_model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。
 11. **会话元数据**：主 payload 的 `cwd` / `gitBranch` / `version` / `entrypoint` 写 `session_families.project_path/git_branch/cli_version/entrypoint`。
+12. **V2 触发点坐标**：每条 `agent_events` 额外写 `triggered_at`——取该触发事件 `tool_use` 所在 assistant 消息的 `timestamp`（转换到 Asia/Shanghai；取不到留 NULL，不猜测）；同时给每个 `agents` 节点写 `tree_index`——Session 内 DFS 先序遍历（父先于子，兄弟按 `sort_key`）赋的全局递增整数。两列是自进化「对象触发点 vs bad case 触发点」比较的坐标（[06 §7.5](06-database-design.md)）：时间戳优先，缺失时用 `(tree_index, event_index)` 字典序。`parser_version` 递增后由下一次归一化或 `pnpm data:replay:sessions` 重放补齐存量。
+
+```python
+def assign_tree_index(nodes: list[ParsedTranscript]) -> dict[str, int]:
+    """DFS preorder over the built agent tree; siblings keep sort_key order."""
+    children: dict[str | None, list[ParsedTranscript]] = {}
+    for node in nodes:
+        children.setdefault(node.parent_tool_use_id, []).append(node)
+    for group in children.values():
+        group.sort(key=lambda n: n.sort_key)
+    index, result = 0, {}
+    stack = list(reversed(children.get(None, [])))
+    while stack:
+        node = stack.pop()
+        result[node.agent_id] = index
+        index += 1
+        stack.extend(reversed(children.get(node.agent_id, [])))
+    return result
+```
+
 
 agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `task_kind` / `team_name` / `spawn_depth` / `lines` / `messages_count` / `tokens_total` / `tools_count` / `errors_count` / `agent_meta`；`session_families` 聚合在 Agent 会话树组装完成后计算（主 agent 模型 + 所有 agent 的 distinct 模型 + 四项统计求和）。
 
@@ -369,6 +387,8 @@ stateDiagram-v2
 - 唯一约束 `(object_type, object_name)` → 重复新增 `409 TARGET_EXISTS`；删除时若有进行中 run → `409 TARGET_IN_USE`。
 
 ### 5.3 创建 run：同步校验 → 入队
+
+> **V2（2026-11-11）**：本节描述 V1 的 probe 命中校验；V2 新 run 的校验与管线见 §5.11（target 空间内 enabled / policy / 窗口 / 关联 Session / 潜在命中），创建期快照额外落 `policy`、`cacheEnabled`、`stepsSchema=v2`。
 
 `POST /runs` 只做快速校验和建行，不 clone、不聚类：
 
@@ -970,6 +990,117 @@ severity = round(min(10, confidence * impact * report_weight(report_count)), 1)
 - 第 4 步：patch 落盘、candidate commit、candidate push、amend/fast-forward/拒绝删 ref 都是真实的；patch 内容与评测分数是占位；终评结果占位。
 - 真实 patch/评测接入后，新增 `EvolutionEngine` 子类（覆盖 `make_patch` / `decide` / `build_final`，需要时覆盖 `gateway`）并注册新 `engine_key`，状态机、表与 git 流程不变（§5.4）。
 
+### 5.11 V2 流程重排：七步与 prepare 管线
+
+> 2026-11-11：自进化输入从「probe 命中」改为「空间 bad case → Session 关联 → 潜在 bad case → 对象归因 → 聚类」。V1 的 §5.1/§5.3/§5.5/§5.10 描述对 `steps_schema=v1` 的历史 run 仍然成立；**新 run 一律 `steps_schema=v2`，按本节执行**。
+
+```text
+unit 0 选择范围 range        done when unit ≥ 1
+unit 1 Session 关联 sessions done when unit ≥ 2
+unit 2 潜在 bad case potential done when unit ≥ 3
+unit 3 对象归因 attribution  done when unit ≥ 4
+unit 4 聚类与严重度 clusters done when unit ≥ 5
+unit 5 迭代优化 iteration    done when unit ≥ 5 + M
+unit 6 测试集终评 final      done when unit ≥ 5 + M + 1
+```
+
+`evolution_prepare` 的七段（原地替换 §5.3 的「probe 命中 → simple_cluster」）：
+
+```python
+async def prepare(self, job) -> None:
+    run = self.run
+    cond = RunCondition(**job.payload["condition"])
+    await self._validate(run, cond)                     # target/policy/window，失败 failed(prepare)
+    sessions = await self.matcher.associated_sessions(run, cond)   # 对象在哪些 Session 出现
+    await self._record(run, "sessions_linked", reported=…, associated=…, skipped=…)
+    candidates = await self.matcher.potential_cases(run, sessions, cond.policy)
+    await self.candidates.insert_many(run.id, candidates)          # 全量落库（含 excluded）
+    await self._record(run, "potential_computed", bad_cases=…, potential=…)
+    await self.attribution.run(run, candidates, cond.cache_enabled)  # 缓存读写 + 引擎调用
+    await self.cluster.build(run, candidates)                       # 只取 attributed，按 category
+    await self.build_rounds(run) if run.mode == "full" else None
+    await self._finish_prepare(run)                                 # unit=5 或 completed(cluster_only)
+```
+
+- 失败语义：校验类 → `failed(error_stage=prepare)`；DB/引擎超时 → `blocked(stage=prepare|attribution)`，`/retry` 按 stage 重入（`attribution` 重跑只补未完成项，已复用结论不重算）。
+- 并发/幂等：候选唯一键 `(run_id, bad_case_id)` upsert；归因按缓存键 upsert；同一 run 的 prepare/advance 由 `RUN_BUSY` 串行。
+- 逐条归因事件按批写（每 20 条一条 `attribution_created/reused`，payload 带 `count` 与首尾 id），避免事件表与 SSE 洪泛。
+- 事件类型新增：`sessions_linked`、`potential_computed`、`attribution_reused`、`attribution_created`（`stage=prepare`）；`blocked_stage` 新增 `attribution`。
+
+### 5.12 潜在匹配（`service/evolution/potential.py`）
+
+```python
+class PotentialMatcher:
+    """Single implementation shared by wizard preview, run prepare and overview."""
+
+    async def associated_sessions(self, run, cond) -> tuple[AssociatedSession, ...]:
+        """Return Sessions in the window whose trace contains the object trigger."""
+
+    async def potential_cases(self, run, sessions, policy) -> tuple[Candidate, ...]:
+        """Apply the policy to every bad case of the associated Sessions."""
+```
+
+判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取并集，`sameObjectOnly` 再过滤。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行。
+
+- 查询形态：一次取空间窗口内 bad case 的会话集合；一次取这些会话的对象触发事件（按 session 分组取最早）；一次取关联会话内全部 bad case（含锚点列）并批量取坐标——避免 per-case 查询。
+- 触发点坐标：对象进入点 = 该 Session 内 `kind` 匹配 `object_type` 且 `name == object_name` 的最早 `agent_events`；bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
+- 版本口径：关联按对象名（触发事件不带版本），`target_version` 只参与归因身份与缓存键；待上游轨迹带版本后再收紧（遗留项）。
+
+### 5.13 归因生成与缓存（`service/evolution/attribution.py`）
+
+```python
+class AttributionEngine(Protocol):
+    key: str                                   # 参与缓存键，如 "rule-v1"
+    async def attribute(self, item: AttributionInput) -> AttributionResult: ...
+
+class AttributionRunner:
+    """Owns cache lookup, upsert and reuse accounting; engines stay pure."""
+
+    async def run(self, run, candidates, cache_enabled: bool) -> None:
+        for item in (c for c in candidates if c.included):
+            row, cached = await self._attribute_one(item, cache_enabled=cache_enabled)
+            await self.candidates.link_attribution(run.id, item.bad_case_id, row.id, cached)
+```
+
+- 缓存键 = `UNIQUE(workspace_id, bad_case_id, object_type, object_name, object_version, policy_version, attribution_engine)`。
+- 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
+- `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
+- 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
+- V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
+- `non_target` 候选保留在候选表与归因表（错误详情可见），不进簇。
+
+### 5.14 预览端点（`service/evolution/preview.py`）
+
+| 端点 | 服务实现 | 说明 |
+|---|---|---|
+| `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列对象出现过的 Session；跳过数进 summary |
+| `preview/potential` | `matcher.potential_cases` + 分页（5/页） | 含 `hitReason`/`orderState`；0 → `NO_POTENTIAL_MATCHED` |
+| `preview/attribution` | 归因表按缓存键 `IN` 查询 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值 |
+
+- 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
+- `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。
+
+### 5.15 空间隔离与工作空间服务（`service/workspaces` + 依赖）
+
+```text
+app/service/workspaces/
+  schemas.py     # Workspace / WorkspaceListItem / WorkspaceMember / WorkspaceCredential / SessionPayload
+  service.py     # WorkspaceService：CRUD、成员规则、凭据轮换、额度判定、auth/session 组装
+app/db/crud/workspaces.py   # WorkspaceRepository（见下）
+app/db/models/workspace.py  # 3 张表
+app/api/workspaces.py       # §4.16 端点
+app/api/ingest.py           # §4.17 上报（凭据鉴权）
+app/api/deps.py             # require_workspace_role(wid, minimum)
+```
+
+- `require_workspace_role`：先按 `users.role=admin` 直通；否则查 `workspace_members(workspace_id,user_id)`，等级 `viewer<member<space_admin` 不足 → `403 WORKSPACE_FORBIDDEN`；空间不存在或不可见 → `404 WORKSPACE_NOT_FOUND`。
+- 额度：上报事务内 `lock_quota`（MySQL `SELECT … FOR UPDATE`）→ `count_bad_cases` → 插入/upsert；upsert 已存在 `badCaseId` 不占新额度。
+- 凭据：`sha256(token)` 查 `workspace_ingest_credentials`；撤销/跨空间 → `401/403`；成功时 `last_used_at` 60 秒节流更新。凭据主体不进 `principal`，只能调上报端点。
+- 成员规则：空间管理员不能授 `space_admin`、不能改/移除 `space_admin` 行、不能移除最后一个空间管理员（`409 ROLE_LOCKED`）；「自任空间管理员」仅全局管理员，写入真实成员行。
+- 装配：`main.py` 构造 repository + service 并注册 `app.state.workspaces`；`_ADMIN_ROUTE_RULES` 只加 `POST /api/workspaces`（建空间）；**targets 写操作改为空间角色判定**（空间管理员可配本空间对象），旧全局路径保持 admin。
+- 目录同步默认停用：`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`；根轨迹补齐（`bad_case_root_sync`）保持启用，上报成功后标记该会话待补。
+- 「可用空间」查询（`auth/session`）用 3 条 SQL：用户 + 成员行；`GROUP BY workspace_id` 的 `used`；`member_count` 批量——不做 N+1。
+
 ## 6. 任务执行与 SSE（`service/jobs.py` + `service/events.py`）
 
 ### 6.1 串行执行器（V1）
@@ -1119,16 +1250,39 @@ async def auth_middleware(request, call_next):
     return await call_next(request)
 ```
 
-- **鉴权全部在 middleware**（2026-10-22 决定）：middleware 内按路径规则判定——公开 `/api/health`、`/api/auth/login|refresh`；`/api/events` 校验一次性票据；`/api/users*` 与 `POST /api/acquisition/sync` 要求 `role=admin`；其余要求登录。资源级归属校验（badCase 属于该 session）仍在 service。
-- **强制改密也在 middleware**：`mcp` 为 true 的请求只放行改密、登出与 `me`，其余 `403 PASSWORD_CHANGE_REQUIRED`；前端守卫只是体验层，越权不依赖它（[08 §4.1](08-frontend-implementation.md)）。
+- **鉴权全部在 middleware**（2026-10-22 决定）：middleware 内按路径规则判定——公开 `/api/health`、`/api/auth/login|refresh`；`/api/events` 校验一次性票据；`/api/users*`、`POST /api/acquisition/sync|pull`、`POST /api/workspaces` 要求 `role=admin`；其余要求登录。资源级归属校验（badCase 属于该 session、空间角色、凭据是否属于该空间）仍在 service/依赖层。
+- **空间角色在依赖层**（V2）：`require_workspace_role(wid, minimum)` 读 `workspace_members`；`users.role=admin` 直通；不可见空间统一 404。角色不进 token，每请求现查（成员变更立即生效）。
+- **强制改密也在 middleware**：`mcp` 为 true 的请求只放行改密、登出、`me` 与 `auth/session`，其余 `403 PASSWORD_CHANGE_REQUIRED`；前端守卫只是体验层，越权不依赖它（[08 §4.1](08-frontend-implementation.md)）。
 - `RequestContext` = `Principal + request_id`；业务代码只读 context，不解析 header。
+
+### 8.2.1 鉴权接入接缝（V2 预留）
+
+```text
+service/identity/
+  providers.py        # AuthProvider 协议 + ProviderRegistry（按 HE_AUTH_PROVIDER 选实现）
+  password.py         # PasswordProvider：现有 username/password 校验（默认）
+  session_bridge.py   # 会话桥：opaque 会话 Cookie（he_session）↔ access/refresh 对
+  callback.py         # OIDC 回调编排：state 校验、code 换 token、sub/email 匹配
+```
+
+```python
+class AuthProvider(Protocol):
+    """External identity seam: verify credentials and return a mapped user id."""
+
+    async def authenticate(self, credentials: Credentials) -> ProviderIdentity | None: ...
+```
+
+- `GET /api/auth/session`：user + workspaces（3 条 SQL，见 §5.15）；`must_change_password=true` 也可调用。
+- `GET /api/auth/callback`：未配置 IdP → `501 AUTH_PROVIDER_NOT_CONFIGURED`；`state` 缺失/过期/不匹配 → `400 AUTH_STATE_INVALID`；code 换取失败 → `502 AUTH_PROVIDER_ERROR`；匹配不到 `users` → `403 AUTH_NO_MAPPING`（**不自动建号**）；成功后签发与密码登录相同的一对 token 并 302 回前端。
+- `ProviderRegistry` 在 `main.py` 装配时按 env 选实现；非法组合启动失败（fail fast），不静默退回 password。接入 Cookie/SSO 只改 provider、桥、callback 三处，业务与前端契约不变。
+- `/api/auth/callback` 纳入登录限流键（按 IP）。
 
 ### 8.3 用户播种与管理
 
 - 首次启动：`users` 表为空且配置了 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` → 播种 admin（幂等，已有用户则跳过）；播种时 `hasher.hash(HE_ADMIN_PASSWORD)` 入库并置 `must_change_password=true`，首次登录强制改掉 env 里的初始密码。
 - `GET /api/users`（admin）：列出用户；`POST /api/users`（admin）：创建（初始密码由 admin 设置并立即哈希，`must_change_password=true`，用户首次登录必须自行改密——修改密码端点 `POST /api/auth/change-password`）。
 - 改密（`POST /api/auth/change-password`）：`hasher.verify(user.password_hash, body.old_password)` 校验旧密码 → `hasher.hash(body.new_password)` 写入 `password_hash`、更新 `password_changed_at`、置 `must_change_password=false`；旧密码错 → `401 AUTH_INVALID`。响应 `204`，前端随后换 token（§8.1）。
-- 首版不做注册、找回密码、SSO。
+- 首版不做注册、找回密码、SSO（V2 的接入接缝见 §8.2.1；`POST /api/users` 禁建 `admin`，全局管理员唯一，`422 ROLE_INVALID`）。
 
 ### 8.4 SSE 票据
 
@@ -1189,19 +1343,47 @@ job_runs + SSE + sync scheduler
 catalogs + health + 收尾
 ```
 
+V2 切片顺序（相对 V1 的增量，前置依赖严格）：
+
+```text
+workspaces 表 + require_workspace_role + 空间管理端点      （15 §2–§5 的地基）
+  ▼
+上报接口（凭据 + 额度） + bad_cases.workspace_id 回填      （15 §4.4）
+  ▼
+归一化补 tree_index / triggered_at + parser_version 重放   （17 §3；必须先于潜在匹配）
+  ▼
+potential matcher + 预览三段端点                           （17 §4/§7）
+  ▼
+attribution 引擎 + 缓存 + 候选表                           （17 §5/§6）
+  ▼
+prepare 七步重排 + 聚类输入切换 + steps_schema 双轨        （17 §2/§8）
+  ▼
+总览聚合（summary/trend/sources/targets/…）                （16 §6）
+  ▼
+Session 列表最新 10 + total/pendingSessions                （16 §5）
+  ▼
+错误详情多归因（分页 + 详情 + 深链）                        （17 §9）
+```
+
 建议一个域一个 PR：每个 PR 带路由 + 服务 + 数据访问 + 测试 + OpenAPI 快照更新。
 
 ## 11. 测试清单
 
 | 域 | 必测 |
 |---|---|
-| identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性 |
+| identity | 登录/刷新/登出、错误密码 401、过期 token、admin 边界、票据一次性；**V2**：`auth/session` 聚合（3 条 SQL、截断）、`/auth/callback` 四类失败码、provider 非法组合启动失败 |
+| workspaces | 权限矩阵逐格（全局管理员/空间管理员/成员/只读 × 各端点）；成员规则（授 `space_admin` 403、改 `space_admin` 行 409、最后一个管理员 409）；额度（`=quota` 拒绝、upsert 不计增量、`quota<used` 422）；凭据（轮换后旧 401、跨空间 403、60s 节流）；不可见空间 404 |
+| 上报 | 字段边界（17 字段）、幂等 upsert、并发额度、`createdAt` 超未来 422、上报后进入轨迹补齐队列 |
+| overview | 口径与手算 SQL 一致；空桶补零、ISO 周跨年；>92 天日粒度降级；`pendingSessions`；对象视角三态与版本口径；索引命中（EXPLAIN 对照） |
+| trigger | `triggered_at` 精确比较、缺失回退字典序、双缺失 `unknown`、对象多触发取最早、锚点缺失退化出生点 |
+| potential | 默认策略两支并集、custom 5 种合法组合、`sameObjectOnly`、命中原因优先级、关联 Session 只含有触发点的 |
+| attribution | 规则引擎四类结论、缓存命中/关闭、并发同键 upsert、`reused_count` 递增、`non_target` 不进簇 |
+| evolution | 状态机边界（含 V2 七 step 与 `steps_schema` 双轨）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked；engine 工厂 fail fast（未知 `engine_key`）、stages 契约（`ClusterOnlyEngine` 收到 `evolution_advance/apply/finalize/retry` → `ConfigError`；每个引擎 `stages()` 与 `KIND_TO_METHOD` 键一致）、`gateway()` 默认值来自 `run.eval_config`、迭代钩子可用 fake 子类单测 |
 | acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `(root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话、普通 skill 不建 `agents` 行、forked skill 恰好一行且 `skill_name` 正确、整树统计四列与 payload 一致 |
 | sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
 | session_families | 4 种排序、状态筛选、搜索、整树聚合统计（各 agent 求和）；问题数按会话聚合（无记录=0、外部新增后列表立即可见） |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |
 | probes | `fromBadCases` 反查、1:1 约束、防御校验（状态与 probe 不一致） |
-| evolution | 状态机边界（preparing/running/blocked/completed）、占位聚类确定性、簇落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked；engine 工厂 fail fast（未知 `engine_key`）、stages 契约（`ClusterOnlyEngine` 收到 `evolution_advance/apply/finalize/retry` → `ConfigError`；每个引擎 `stages()` 与 `KIND_TO_METHOD` 键一致）、`gateway()` 默认值来自 `run.eval_config`、迭代钩子可用 fake 子类单测 |
 | evolution git | 临时 git 仓库：clone、run 分支、candidate ref、push 重试（3 次立即 + 1/5/15min）、接纳 fast-forward、拒绝删 ref、run 分支不被污染 |
 | eval_poller | 到期扫描、每 5min 轮询、completed→apply、failed/timeout→blocked、重启后从 `next_poll_at` 恢复 |
 | blocked_sweeper | 只对可重试错误退避；1/5/15min 各一次；3 次后不再自动；`/retry` 手动恢复 |
