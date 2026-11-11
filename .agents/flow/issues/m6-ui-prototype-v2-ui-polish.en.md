@@ -69,6 +69,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Tenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round10/`.
 - The eleventh turn moves the workspace switcher from the brand area into the right-hand actions (after sync status, before the user menu), anchors the popover to the right, and widens the summary to 240px so the workspace name fits.
 - Eleventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round11/`.
+- The twelfth turn sorts the evolution-target side card by is-target plus unanalyzed counts descending (ties by potential total, then name) and shows "evolvable potential bad cases N (issues X; unanalyzed Y)" under each item, with the sort rule in the header.
+- Twelfth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round12/`.
 
 ## Implementation steps
 
@@ -121,6 +123,7 @@ pnpm verify:flow; pnpm lint:docs
 - The bad-case list starts with an ID column that opens the Session error view on that case; the title cell no longer repeats the ID.
 - A bad-case ID lands on the problem description from anywhere; a report ID lands on the attribution tab with the matching target preselected.
 - The workspace switcher sits in the right-hand top-bar actions, showing the full name and role at 1440px with no horizontal overflow at 1280px.
+- The evolution-target side card is ordered by evolvable potential bad cases and shows that count with its issues / unanalyzed breakdown.
 
 ## Gates and CI
 

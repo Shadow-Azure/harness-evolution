@@ -26,6 +26,8 @@ The tenth turn found the "source bad case" table in the evolution run detail pas
 
 The eleventh turn found the workspace switcher hugging the brand and competing with the navigation for width, while the right side of the top bar (between sync status and the user menu) sat empty; the current workspace is page-level context and reads better next to the user.
 
+The twelfth turn found the evolution-target side card ordered by insertion, so readers cannot tell which target to tackle first; the card only exposes "associated Sessions / potential bad cases", missing the "evolvable" definition (is-target issues plus unanalyzed).
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -49,6 +51,8 @@ The ninth turn adds a leading "ID" column to the bad-case list: the ID uses the 
 The tenth turn switches that table back to the default deep link (`desc`), adds the `obj` parameter to the report-ID deep link, and gives `evCaseLink` a `stopPropagation` so clicking an ID does not also trigger the row action.
 
 The eleventh turn moves `#wsPicker` out of the brand-and-nav area into `.tn-right`, after sync status and before the user menu; the popover anchors to the right (`right: 0`), and the summary cap grows to 240px with the name at 146px, so "Harness 核心研发 · 全局管理员" fits fully at 1440px and nothing overflows at 1280px.
+
+The twelfth turn sorts the side card by is-target plus unanalyzed counts descending (ties by potential total, then name) and paginates the sorted list; each item gains "evolvable potential bad cases N (issues X; unanalyzed Y)" and the header states the sort rule.
 
 ## Alternatives considered
 
@@ -78,6 +82,9 @@ The eleventh turn moves `#wsPicker` out of the brand-and-nav area into `.tn-righ
 - Keep the switcher on the left and merely narrow it: the brand area stays crowded and still competes with the navigation.
 - Put the switcher inside the navigation: it breaks the overview / Session / evolution / admin grouping.
 - Move it into the user menu: switching workspace is frequent, and a second-level menu makes it harder to find.
+- Sort silently without stating the rule: readers cannot tell the basis or the tie-break.
+- Sort by total potential bad cases: that counts not-object findings too, which contradicts "evolvable".
+- Summarize the evolvable count in the header only: each target has its own value, so the header cannot map to items.
 
 ## Consequences
 
@@ -96,3 +103,5 @@ The ninth turn moves the ID into the first column, so that column is now one ID 
 After the tenth turn, bad-case IDs land on the problem description across both the evolution pages and the overview lists; a table that genuinely wants the attribution tab must pass `tab` explicitly and update its own copy, or it will contradict the global rule.
 
 After the eleventh turn the top bar reads brand → navigation → sync status → workspace → user; on small screens the summary can still truncate the workspace name, so the role or name may need hiding; the right-anchored popover opens against the right edge, so narrow viewports must keep its width inside the viewport.
+
+After the twelfth turn the side card order follows the selected time window, so a target can move between windows; the extra line adds about 18px per item, making the right column taller when five targets share a page.
