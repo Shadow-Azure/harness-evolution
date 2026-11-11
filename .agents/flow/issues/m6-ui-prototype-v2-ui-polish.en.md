@@ -51,6 +51,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Third-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round3/`.
 - The fourth turn unifies the default policy wording as "the object's own self report or a trigger after the object trigger point", removing mixed `+` and `∪`; keeps a persistent scrollbar in the wizard body; balances the third login bullet and corrects the baseline path; uses "membership relation" consistently in the auth copy; and describes custom policy as composing checked rules.
 - Fourth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round4/`.
+- The fifth turn fixes login and member copy: the login footer is split into two balanced lines, and the read-only note points to the user-menu switch; the member sentence says space admins manage members, quota, and ingest but can only grant Member or Viewer; user tables replace the raw `object_name` field with Object, and the policy switch reads "same object only".
+- Fifth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round5/`.
 
 ## Implementation steps
 
@@ -92,6 +94,7 @@ pnpm verify:flow; pnpm lint:docs
 - Rejected iterations in a completed run show a negative score delta; the final-evaluation subtitle iteration count matches the cluster count; an increase in issue-reproduction rate is colored as negative.
 - The add-member default role is Member; the workspace-management list no longer leaves a large blank area; Session stat labels stay on one line at 1280px; and the run-card percentage is labeled total progress.
 - The default policy uses the same "or" wording everywhere; the wizard body shows a persistent scrollbar when content overflows; the login page has no orphan line and its baseline path points at `plans/ui-prototype-v2/`; auth copy does not mix `membership`; and custom-policy copy matches rule-composition semantics.
+- The login footer has no single-character orphan and the read-only note matches the available user-menu switch; member permissions are not self-contradictory; and user tables no longer expose `object_name`.
 
 ## Gates and CI
 

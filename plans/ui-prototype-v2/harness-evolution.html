@@ -1156,9 +1156,9 @@
       <div class="lf-sub">使用管理员开通的账号登录；当前未开放公开注册。</div>
       <div class="login-accounts" id="loginAccounts"></div>
       <input class="inp" id="loginPassword" type="password" value="prototype-only" aria-label="密码" style="width:100%">
-      <div class="field-note">唯一全局管理员为 <b>林澈</b>（admin@harness.dev）；其余账号用于演示空间管理员、普通成员与只读成员视图。</div>
+      <div class="field-note">唯一全局管理员为 <b>林澈</b>（admin@harness.dev）；其余账号演示空间管理员与普通成员，只读成员可在用户菜单切换。</div>
       <button class="btn primary" id="loginBtn">登录到工作空间</button>
-      <div class="login-foot">鉴权接入已预留：Cookie 会话 <code>he_session</code> · 用户信息映射 · SSO/OIDC 回调<br>接入说明见「空间管理 → 鉴权接入」</div>
+      <div class="login-foot">鉴权接入已预留：Cookie 会话 <code>he_session</code> · 用户信息映射<br>SSO/OIDC 回调；接入说明见「空间管理 → 鉴权接入」</div>
     </section>
   </div>
 </div>
@@ -3029,7 +3029,7 @@ function FindingDescription({ c, session, attributions, onOpenAttr }) {
         <span className=${"v2-badge " + (c.type === "self" ? "self" : "discovery")}>${c.type}</span>
       </div>
       <div className="ed-objects">
-        <span className="v2-badge">object_name · ${c.objectName}</span>
+        <span className="v2-badge">对象 · ${c.objectName}</span>
         <span className="v2-badge">触发点 · L${c.triggerLine}</span>
         <span className="v2-badge">上报 · ${c.clock}</span>
         ${ats.length
@@ -3797,7 +3797,7 @@ function evStepPotential(run) {
   return `<div class="card panel">
     <div class="sec-title">第 3 步 · 潜在 bad case <span class="sub">默认策略：对象自身 self 上报 或 触发点在对象触发点之后</span></div>
     <div class="f-inline" style="margin-bottom:8px"><span class="v2-badge ${run.policy === 'default' ? 'ok' : ''}">${run.policy === 'default' ? '默认策略' : '自定义策略'}</span><span class="v2-note">时间段内共 ${m.cases.length} 个 bad case，筛选出 ${m.potentialRows.length} 个潜在 bad case</span></div>
-    <table class="rep"><thead><tr><th>Session</th><th>bad case</th><th>object_name</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
+    <table class="rep"><thead><tr><th>Session</th><th>bad case</th><th>对象</th><th>类型</th><th>bad case 触发点</th><th>对象触发点</th><th>命中原因</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="waiting">没有命中潜在策略的 bad case</td></tr>'}</tbody></table>
     <div class="pager"><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button><span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span><button class="btn" data-action="ev-run-page" data-target="potential" data-id="${run.id}" data-delta="1" ${page >= pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;
 }
@@ -3847,7 +3847,7 @@ function evEval(ev, accepted) {
 function evCaseTable(c) {
   const rows = (c.caseIds || []).map(id => caseById(id)).filter(Boolean);
   if (!rows.length) return '<div class="v2-note">无来源 bad case</div>';
-  return `<table class="rep"><thead><tr><th>bad case</th><th>标题</th><th>object_name</th><th>类型</th><th>触发点</th><th>上报时间</th></tr></thead><tbody>
+  return `<table class="rep"><thead><tr><th>bad case</th><th>标题</th><th>对象</th><th>类型</th><th>触发点</th><th>上报时间</th></tr></thead><tbody>
     ${rows.map(x => `<tr><td>${evCaseLink(x, 'attr')}</td><td>${evEsc(x.title)}</td><td class="mono">${evEsc(x.objectName)}</td><td>${evCaseType(x)}</td><td class="mono">L${x.triggerLine}</td><td class="mono">${x.clock}</td></tr>`).join('')}
   </tbody></table>`;
 }
@@ -4138,7 +4138,7 @@ function evRenderWizard() {
           ${wz.policy === 'custom' ? `<div class="f-inline" style="margin:8px 0 0 24px">
             <label class="switch-row"><input type="checkbox" ${wz.includeSelf ? 'checked' : ''} data-action="ev-wz-rule" data-rule="includeSelf"> 包含对象自身 self 上报</label>
             <label class="switch-row"><input type="checkbox" ${wz.includeAfter ? 'checked' : ''} data-action="ev-wz-rule" data-rule="includeAfter"> 包含触发点在对象之后</label>
-            <label class="switch-row"><input type="checkbox" ${wz.sameObject ? 'checked' : ''} data-action="ev-wz-rule" data-rule="sameObject"> 仅纳入同 object_name</label>
+            <label class="switch-row"><input type="checkbox" ${wz.sameObject ? 'checked' : ''} data-action="ev-wz-rule" data-rule="sameObject"> 仅纳入同对象</label>
           </div>` : '<p>勾选规则组合成策略；与默认策略不同时会在运行详情中记录策略快照。</p>'}
         </div>
       </div>
@@ -4181,7 +4181,7 @@ function evRenderWizard() {
         <span class="st accent"><b>${m.potentialRows.length}</b><span>潜在 bad case</span></span>
         <span class="st"><b>${m.potentialRows.filter(r => r.c.type === 'self' && r.c.objectName === run.target.name).length}</b><span>self 命中</span></span>
       </div>
-      <table class="rep"><thead><tr><th>bad case</th><th>object_name</th><th>类型</th><th>触发点</th><th>来源 Session</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">当前策略没有命中潜在 bad case；可返回调整时间段或策略。</td></tr>'}</tbody></table>
+      <table class="rep"><thead><tr><th>bad case</th><th>对象</th><th>类型</th><th>触发点</th><th>来源 Session</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="waiting">当前策略没有命中潜在 bad case；可返回调整时间段或策略。</td></tr>'}</tbody></table>
       <div class="pager">
         <button class="btn" data-action="ev-wz-page" data-target="case" data-delta="-1" ${page <= 1 ? 'disabled' : ''}>← 上一页</button>
         <span class="pager-info">第 <b>${page}</b> / ${pages} 页 · 共 <b>${m.potentialRows.length}</b> 个潜在 bad case</span>
@@ -5121,7 +5121,7 @@ function v2AdminMembers() {
   }).join('');
   const me = ws.members.find(m => m.userId === V2.user.id);
   const canSelf = !me || me.role !== 'space_admin';
-  return `<div class="admin-head"><div><h2>成员与角色</h2><div class="sub">空间管理员拥有本空间全部操作权限；空间管理员可以添加成员，但只能授予管理员以下的权限。</div></div><div class="actions">${canSelf ? `<button class="btn" data-v2-self-admin>把自己设为空间管理员</button>` : ''}<button class="btn primary" data-v2-add-member>＋ 添加成员</button></div></div>
+  return `<div class="admin-head"><div><h2>成员与角色</h2><div class="sub">空间管理员可管理本空间成员、额度与上报凭据，但只能授予成员或只读成员角色。</div></div><div class="actions">${canSelf ? `<button class="btn" data-v2-self-admin>把自己设为空间管理员</button>` : ''}<button class="btn primary" data-v2-add-member>＋ 添加成员</button></div></div>
     <table class="admin-table"><thead><tr><th>用户</th><th>空间角色</th><th>加入时间</th><th>标记</th><th></th></tr></thead><tbody>${rows}</tbody></table>
     <div class="v2-note" style="margin-top:10px">${v2IsAdmin() ? '全局管理员可以任命或撤销空间管理员。' : '空间管理员不能把其他成员提升为空间管理员；如需新增管理员，请联系全局管理员。'}</div>`;
 }
