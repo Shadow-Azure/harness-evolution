@@ -125,6 +125,40 @@ bad case 总数 · 自身存在问题 · 发现前置步骤问题 · 关联 Sess
 - 来源分布：按 `object_name` 汇总总量与 self/discovery 占比（原型 top6 条形 + 「其余 N 个来源」折叠）。点击条形 = 切换该来源的选中态（与下拉联动）。
 - 明细矩阵：来源 × 时间桶的展开表格（行 = 来源，列 = 桶，单元格 = 该来源该桶的 self+discovery 合计），前端用 trend 的 `buckets[].byObject` 拼装，不额外请求。
 
+#### 3.2.1 图表坐标与刻度算法（前端纯函数，可单测）
+
+```ts
+// 刻度：1/2/5 × 10^n 的 4 段「漂亮刻度」，向上取整
+export function niceTicks(max: number, segments = 4): number[] {
+  if (max <= 0) return [0, 1, 2, 3, 4]
+  const rawStep = max / segments
+  const mag = 10 ** Math.floor(Math.log10(rawStep))
+  const norm = rawStep / mag
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag
+  const top = Math.ceil(max / step) * step
+  return Array.from({ length: segments + 1 }, (_, i) => i * step).filter((v) => v <= top)
+}
+
+// 柱布局：宽度自适应，超过 60 桶时提示降级（服务端也会强制降级，见 §6.3）
+export function barLayout(count: number, plotWidth: number) {
+  const slot = plotWidth / Math.max(count, 1)
+  const barWidth = Math.min(28, Math.max(2, slot * 0.6))
+  return { slot, barWidth, degraded: count > 60 }
+}
+
+// 堆叠：self 在下、discovery 在上；0 值不画
+export function stackY(self: number, discovery: number, top: number, plotHeight: number) {
+  const scale = (v: number) => (v / top) * plotHeight
+  const ySelf = plotHeight - scale(self)
+  const yDiscovery = ySelf - scale(discovery)
+  return { ySelf, hSelf: scale(self), yDiscovery, hDiscovery: scale(discovery) }
+}
+```
+
+- 刻度函数与柱布局是纯函数，放 `pages/overview/chartGeometry.ts` 并配单测（空数据、极大值、单桶、60+ 桶边界）。
+- `niceTicks` 的 `top` 与 §3.2 的 `max` 不同：`max` 是数据最大值，`top` 是刻度上界（≥ max），柱高按 `top` 归一，保证最高柱不贴顶。
+
+
 ### 3.3 列表与分页
 
 - 筛选：时间段、上报来源（多选）、类型（self/discovery/空=全部）。三者独立于图表筛选（原型行为）：图表用 `objects`，列表用 `objects + badCaseType + from/to`。
@@ -348,7 +382,25 @@ bad case 总数 · 自身存在问题 · 发现前置步骤问题 · 关联 Sess
 - 结构 = V1 `SessionListItem` + `total/pendingSessions`；`stats` 口径不变（[05 §3.1](05-api-design.md)）。
 - 空间过滤：`session_families.id IN (SELECT DISTINCT bad_case_session_id FROM bad_cases WHERE workspace_id=:wid)`；`total` 为该集合按 `q/status` 过滤后的计数。
 
-### 6.11 新增错误码
+### 6.11 端点校验矩阵
+
+| 端点 | 权限 | 分页 | 必填 | 关键校验 | 主要错误码 |
+|---|---|---|---|---|---|
+| `…/overview/summary` | viewer | 无 | — | `from ≤ to`、窗口 ≤366 天、`objects` ≤50 | `WINDOW_INVALID` `OBJECT_FILTER_TOO_LARGE` |
+| `…/overview/trend` | viewer | 无 | — | 同上 + `grain ∈ {day,week,month}` | `GRAIN_INVALID` `WINDOW_INVALID` |
+| `…/overview/sources` | viewer | 无 | — | 同 summary | 同上 |
+| `…/bad-cases` | viewer | 8/页 | — | 三个筛选均可空；`badCaseType ∈ {self,discovery}` | `VALIDATION_INVALID` |
+| `…/overview/targets` | viewer | 5/页 | — | 无 | `WINDOW_INVALID` |
+| `…/overview/targets/trend` | viewer | 无 | — | `targets` 均为本空间启用对象；`states` 子集校验 | `VALIDATION_INVALID` |
+| `…/overview/targets/cases` | viewer | 8/页 | — | `states ⊆ {isTarget,nonTarget,unanalyzed}` | `VALIDATION_INVALID` |
+| `…/overview/targets/{id}/detail` | viewer | 无 | `id` 存在且属于本空间 | `versions` ≤20；`versionLimit ∈ {5,10,20,0}` | `TARGET_NOT_FOUND` |
+| `…/sessions` | viewer | `limit` 默认 10 | — | `q ≤512`；`status/sort` 封闭集合 | `VALIDATION_INVALID` |
+
+- 权限列全部是「最低角色」；空间可见性由依赖统一处理（不可见 → 404）。
+- 分页端点 `page ≥ 1`、`pageSize` 受端点上限约束（列表 8、对象 5），超限 422；页码越界返回最后一页。
+- 时间参数二选一：`range=7|30|90` 或 `range=0&from=&to=`；同时给 `range` 与非空 `from/to` 时以 `from/to` 为准且不再校验 range 取值。
+
+### 6.12 新增错误码
 
 | code | HTTP | 场景 |
 |---|---|---|
@@ -441,6 +493,19 @@ SELECT COUNT(*) FROM (
 
 - `search_text` 已在归一化时 lower 拼接；`q` 先 lowercase 再 LIKE（与 V1 一致）。
 - 投影查询在 10⁴ bad case / 10³ session 量级下单次 < 20ms（`INDEX(workspace_id, created_at)` + `session_families` 主键 JOIN）。
+
+### 7.5 索引与执行计划核对（交付前必做）
+
+| 查询 | 期望访问路径 | 失败信号 |
+|---|---|---|
+| summary 计数 | `bad_cases` 走 `INDEX(workspace_id, created_at)` range scan + filesort 无 | `Using temporary` 出现在 EXPLAIN 的 Extra |
+| trend 分组 | 同上 + 临时表聚合（可接受） | 全表扫描（`type=ALL`） |
+| 列表分页 | 同上 + `LIMIT` 早停 | `Using filesort` 且行数 > 分页量级（说明排序键没进索引） |
+| 三态计数 | `bad_case_attributions` 走 `INDEX(workspace_id, object_name, object_version)` | 命中 `INDEX(workspace_id, updated_at)` 却在按 object 过滤 |
+| Session 投影 | `bad_cases` 的 `INDEX(workspace_id, created_at)` + `session_families` PK | `DISTINCT` 后回表行数 ≈ 全表 |
+
+- 交付验收要求附一次 `EXPLAIN` 输出（MySQL 8 与 SQLite `EXPLAIN QUERY PLAN`），与上表逐条对照。
+- 若某条查询计划不符：优先补索引，其次改查询形态（先按空间取 id 集合再 JOIN），**不加物化表**（§10 非目标）。
 
 ## 8. 前端
 
