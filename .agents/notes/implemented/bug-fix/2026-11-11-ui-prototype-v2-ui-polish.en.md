@@ -24,6 +24,8 @@ The ninth turn found the bad-case list's ID only as subtext under the title: it 
 
 The tenth turn found the "source bad case" table in the evolution run detail passing `attr` explicitly, so clicking a bad-case ID landed on the attribution tab — the opposite of the "ID shows the problem, report ID shows the attribution" rule; the report-ID deep link also lacked the object, so it selected the first attribution.
 
+The eleventh turn found the workspace switcher hugging the brand and competing with the navigation for width, while the right side of the top bar (between sync status and the user menu) sat empty; the current workspace is page-level context and reads better next to the user.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -45,6 +47,8 @@ The eighth turn drops the trigger-point column and adds a "phenomenon / descript
 The ninth turn adds a leading "ID" column to the bad-case list: the ID uses the same deep link to open the Session error view on the matching case's problem-description tab; the title cell keeps only the title, and the empty-state colspan moves to 8.
 
 The tenth turn switches that table back to the default deep link (`desc`), adds the `obj` parameter to the report-ID deep link, and gives `evCaseLink` a `stopPropagation` so clicking an ID does not also trigger the row action.
+
+The eleventh turn moves `#wsPicker` out of the brand-and-nav area into `.tn-right`, after sync status and before the user menu; the popover anchors to the right (`right: 0`), and the summary cap grows to 240px with the name at 146px, so "Harness 核心研发 · 全局管理员" fits fully at 1440px and nothing overflows at 1280px.
 
 ## Alternatives considered
 
@@ -71,6 +75,9 @@ The tenth turn switches that table back to the default deep link (`desc`), adds 
 - Render the ID as plain text with a copy button: it adds a step and still cannot be shared as a deep link.
 - Keep the `attr` deep link and only explain it in the table header: it stays inconsistent with every other list and still misleads readers.
 - Decide the tab from the clicked column position: it needs hit-testing, is fragile, and breaks with layout changes.
+- Keep the switcher on the left and merely narrow it: the brand area stays crowded and still competes with the navigation.
+- Put the switcher inside the navigation: it breaks the overview / Session / evolution / admin grouping.
+- Move it into the user menu: switching workspace is frequent, and a second-level menu makes it harder to find.
 
 ## Consequences
 
@@ -87,3 +94,5 @@ The eighth turn aligns the list with the error detail, but the overview's analyz
 The ninth turn moves the ID into the first column, so that column is now one ID wide and the title column gains the horizontal room; the ID deep link still opens a new tab, and in-page navigation would use `v2OpenCase` instead.
 
 After the tenth turn, bad-case IDs land on the problem description across both the evolution pages and the overview lists; a table that genuinely wants the attribution tab must pass `tab` explicitly and update its own copy, or it will contradict the global rule.
+
+After the eleventh turn the top bar reads brand → navigation → sync status → workspace → user; on small screens the summary can still truncate the workspace name, so the role or name may need hiding; the right-anchored popover opens against the right edge, so narrow viewports must keep its width inside the viewport.

@@ -726,14 +726,14 @@
   .login-foot code { font-family: var(--mono); font-size: 10px; color: var(--text-dim); background: var(--bg-inset); border-radius: 3px; padding: 0 4px; }
   @media (max-width: 760px) { .login-card { grid-template-columns: 1fr; } .login-brand { border-right: none; border-bottom: 1px solid var(--border); padding: 26px 24px; } .login-brand .lb-foot, .login-points { display: none; } .login-form-wrap { padding: 24px; } }
 
-  .tn-ws { position: relative; align-self: center; margin-right: 12px; }
-  .tn-ws summary { list-style: none; display: flex; align-items: center; gap: 7px; max-width: 210px; padding: 3px 10px 3px 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-panel); font: inherit; font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+  .tn-ws { position: relative; align-self: center; }
+  .tn-ws summary { list-style: none; display: flex; align-items: center; gap: 7px; max-width: 240px; padding: 3px 10px 3px 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-panel); font: inherit; font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
   .tn-ws summary::-webkit-details-marker { display: none; }
   .tn-ws summary:hover, .tn-ws[open] summary { border-color: color-mix(in srgb, var(--blue) 40%, transparent); color: var(--text); }
   .tn-ws-mark { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; font-family: var(--mono); font-size: 9px; font-weight: 700; color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, #fff); border: 1px solid color-mix(in srgb, var(--blue) 22%, transparent); }
-  .tn-ws-name { max-width: 126px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--text); }
+  .tn-ws-name { max-width: 146px; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--text); }
   .tn-ws-role { font-size: 9.5px; color: var(--text-faint); }
-  .tn-ws-pop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 360; width: 322px; padding: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); box-shadow: 0 14px 34px rgba(20,30,50,.16); }
+  .tn-ws-pop { position: absolute; right: 0; left: auto; top: calc(100% + 8px); z-index: 360; width: 322px; padding: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); box-shadow: 0 14px 34px rgba(20,30,50,.16); }
   .tn-ws-head { padding: 6px 8px 7px; font-size: 10.5px; color: var(--text-faint); }
   .tn-ws-opt { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px; text-align: left; font: inherit; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
   .tn-ws-opt:hover { background: color-mix(in srgb, var(--blue) 6%, var(--bg-card)); }
@@ -1237,10 +1237,6 @@
     <span class="tn-logo"></span>
     <span class="tt"><b>Harness Evolution</b><span>V2 · 多工作空间</span></span>
   </div>
-  <details class="tn-ws" id="wsPicker">
-    <summary id="wsSummary" aria-label="切换工作空间"></summary>
-    <div class="tn-ws-pop" id="wsMenu"></div>
-  </details>
   <button class="tn-item" id="tn-overview" onclick="switchMainView('overview')" title="当前空间的 bad case 趋势与列表">总览<span class="tn-sub">bad case 趋势</span></button>
   <button class="tn-item" id="tn-session" onclick="switchMainView('session')" title="会话轨迹 · 家族树 · 问题与归因分析">Session 错误查看<span class="tn-sub">会话轨迹与归因</span></button>
   <button class="tn-item" id="tn-evo" onclick="switchMainView('evo')" title="潜在 bad case · 对象归因 · 迭代优化">自进化<span class="tn-sub">潜在 bad case · 归因</span></button>
@@ -1261,6 +1257,10 @@
         <div class="tn-sync-row"><span class="tn-sync-key">归因分析</span><span class="tn-sync-val" id="syncAttr">—</span></div>
         <div class="tn-sync-sub">归因由自进化运行产出 · 支持缓存复用</div>
       </div>
+    </details>
+    <details class="tn-ws" id="wsPicker">
+      <summary id="wsSummary" aria-label="切换工作空间"></summary>
+      <div class="tn-ws-pop" id="wsMenu"></div>
     </details>
     <details class="tn-user" id="userMenu">
       <summary id="userSummary" aria-label="当前用户"></summary>
