@@ -47,6 +47,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Store before/after evidence under `plans/ui-prototype-v2/_ui-review/round1/` for turn-by-turn comparison.
 - The second turn adds interaction state: page and workspace are written to the URL; workspace/user/sync menus close on outside click, Escape, and mutual exclusion; family-tree and error-flow canvases compress on short viewports with the legend moved to the top; switching workspace closes the old detail; and the timeline only renders for the Session with real data.
 - Second-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round2/`.
+- The third turn fixes content and state coherence: rejected iterations now score below current, removing the contradictory "rejected +2.6" state; the final-evaluation subtitle uses the real iteration count; issue-reproduction rate is colored lower-is-better; the add-member default role is Member; the admin content minimum height is tightened to 340px; the run-card percentage is labeled total progress; and Session stat labels no longer wrap.
+- Third-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round3/`.
 
 ## Implementation steps
 
@@ -85,6 +87,8 @@ pnpm verify:flow; pnpm lint:docs
 - Overview source totals and the evolution-target card show no clipped text, and the pager sits at the card bottom.
 - Refresh keeps the current page and workspace; switching workspace no longer shows the previous workspace's error detail; the timeline title matches the current Session.
 - Workspace, user, and sync menus close on outside click, Escape, or page change, and only one opens at a time; on short viewports the family-tree legend and case detail are visible on first screen.
+- Rejected iterations in a completed run show a negative score delta; the final-evaluation subtitle iteration count matches the cluster count; an increase in issue-reproduction rate is colored as negative.
+- The add-member default role is Member; the workspace-management list no longer leaves a large blank area; Session stat labels stay on one line at 1280px; and the run-card percentage is labeled total progress.
 
 ## Gates and CI
 

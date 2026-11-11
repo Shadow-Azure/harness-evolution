@@ -109,10 +109,10 @@
   .cta.secondary { color: var(--blue); background: var(--bg-card); border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent); }
   .cta.secondary:hover { background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); }
   .statstrip { display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 3px rgba(30,40,60,.06); padding: 7px 0; margin-bottom: 14px; }
-  .ss { flex: 1 1 0; min-width: 70px; text-align: center; padding: 1px 10px; border-left: 1px solid var(--border); }
+  .ss { flex: 1 1 0; min-width: 70px; text-align: center; padding: 1px 8px; border-left: 1px solid var(--border); }
   .ss:first-child { border-left: none; }
   .ss b { display: block; font-family: var(--mono); font-size: 15px; font-weight: 650; line-height: 1.35; }
-  .ss span { font-size: 10px; color: var(--text-faint); }
+  .ss span { font-size: 10px; color: var(--text-faint); white-space: nowrap; }
   .ss.bad b { color: var(--red); }
   .ss.warn b { color: var(--orange); }
 
@@ -904,7 +904,7 @@
   .admin-nav button.active { color: var(--blue); background: color-mix(in srgb, var(--blue) 9%, var(--bg-card)); font-weight: 600; }
   .admin-nav .an-sep { margin: 7px 10px; border-top: 1px solid var(--border); }
   .admin-nav .an-hint { padding: 4px 10px 7px; font-size: 9.5px; line-height: 1.5; color: var(--text-faint); }
-  .admin-content { padding: 15px 17px 19px; min-height: 420px; }
+  .admin-content { padding: 15px 17px 19px; min-height: 340px; }
   .admin-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
   .admin-head h2 { font-size: 15px; font-weight: 650; }
   .admin-head .sub { margin-top: 2px; font-size: 11px; color: var(--text-faint); line-height: 1.6; }
@@ -3483,7 +3483,7 @@ const EV_FINAL_TEMPLATE = {
     { name: '总体得分', init: '84.3', best: '88.9', delta: 4.6, unit: '' },
     { name: '任务成功率', init: '86.5%', best: '91.2%', delta: 4.7, unit: 'pp' },
     { name: '来源引用准确率', init: '82.0%', best: '95.1%', delta: 13.1, unit: 'pp' },
-    { name: '问题复现率', init: '11.8%', best: '3.2%', delta: -8.6, unit: 'pp' },
+    { name: '问题复现率', init: '11.8%', best: '3.2%', delta: -8.6, unit: 'pp', lowerBetter: true },
   ],
 };
 
@@ -3559,14 +3559,17 @@ const EV_RUNS = [
   }),
 ];
 
-EV_RUNS[1].clusters.forEach(c => { c.accepted = false; c.commit = null; });
+EV_RUNS[1].clusters.forEach(c => {
+  c.accepted = false; c.commit = null;
+  c.eval = { cur: 81.2, cand: 80.8 };
+});
 Object.assign(EV_RUNS[1].final, {
   verdict: false, bestScore: 80.4, initScore: 81.2,
   metrics: [
     { name: '总体得分', init: '81.2', best: '80.4', delta: -0.8, unit: '' },
     { name: '任务成功率', init: '84.0%', best: '83.2%', delta: -0.8, unit: 'pp' },
     { name: '来源引用准确率', init: '81.0%', best: '82.1%', delta: 1.1, unit: 'pp' },
-    { name: '问题复现率', init: '9.2%', best: '10.4%', delta: 1.2, unit: 'pp' },
+    { name: '问题复现率', init: '9.2%', best: '10.4%', delta: 1.2, unit: 'pp', lowerBetter: true },
   ],
 });
 
@@ -3612,7 +3615,7 @@ function evSevHTML(sev) {
   const level = sev >= 8 ? '高' : sev >= 6 ? '中' : '低';
   return `<span class="sev-pill" style="color:${color};border-color:color-mix(in srgb, ${color} 28%, transparent);background:color-mix(in srgb, ${color} 7%, transparent)" title="严重程度 ${sev.toFixed(1)} / 10（${level}）"><span class="sev-pill-dot"></span><span class="sev-pill-name">严重程度</span><b>${sev.toFixed(1)}</b><span class="sev-pill-total">/10</span><span class="sev-pill-level">${level}</span></span>`;
 }
-function evDelta(x, unit) { const v = (x > 0 ? '+' : '') + x.toFixed(1) + (unit || ''); return x >= 0 ? `<span class="delta-pos">${v}</span>` : `<span class="delta-neg">${v}</span>`; }
+function evDelta(x, unit, lowerBetter) { const v = (x > 0 ? '+' : '') + x.toFixed(1) + (unit || ''); const good = lowerBetter ? x <= 0 : x >= 0; return good ? `<span class="delta-pos">${v}</span>` : `<span class="delta-neg">${v}</span>`; }
 function evCurrentWs() { return (window.V2 && window.V2.wsId) || 'ws-harness'; }
 function evCanEdit() { return !window.V2 || !window.V2.canManage || window.V2.canManage(); }
 function evRunsOfWs() { return EV_RUNS.filter(r => r.workspace === evCurrentWs()); }
@@ -3641,7 +3644,7 @@ function evRunCard(run) {
   if (!evIsDone(run)) {
     const names = ['选择范围', 'Session 关联', '筛选潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
     const stage = evStageIndex(run);
-    tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">第 ${stage + 1}/7 步 · ${names[stage]} · ${pct}%</span></div>`;
+    tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">第 ${stage + 1}/7 步 · ${names[stage]} · 总进度 ${pct}%</span></div>`;
   } else {
     tail = `<div class="final-line"><span style="color:var(--text-dim)">best <b class="mono">${run.final.bestScore.toFixed(1)}</b> vs 初始 <b class="mono">${run.final.initScore.toFixed(1)}</b></span>${evDelta(run.final.bestScore - run.final.initScore)}<span style="color:var(--text-faint)">· 接纳 ${accepted}/${run.clusters.length} 个 patch</span></div>`;
   }
@@ -3917,7 +3920,7 @@ function evStepFinal(run) {
   const f = run.final;
   const accepted = run.clusters.filter(c => c.accepted);
   return `<div class="card panel">
-    <div class="sec-title">第 7 步 · 测试集终评 <span class="sub">M 轮迭代完成后的最终结果</span></div>
+    <div class="sec-title">第 7 步 · 测试集终评 <span class="sub">${run.clusters.length} 轮迭代完成后的最终结果</span></div>
     <div class="verdict ${f.verdict ? 'ok' : 'no'}">
       <span class="big">${f.verdict ? '✓ 自进化有效' : '✗ 未产生收益'}</span>
       <span class="desc">best <b class="mono">${evEsc(f.bestVersion)}</b> 测试集得分 <b class="mono">${f.bestScore.toFixed(1)}</b> vs 初始 ${run.target.version} <b class="mono">${f.initScore.toFixed(1)}</b>（${evDelta(f.bestScore - f.initScore)}）</span>
@@ -3926,7 +3929,7 @@ function evStepFinal(run) {
       <div class="changes-list">${accepted.map(c => `<div class="ch"><span class="mono" style="color:var(--green);font-weight:700">${c.commit}</span><span>[${c.id}] ${evEsc(c.title)}</span>${evTypeChip(c.type)}<span style="color:var(--text-faint);font-size:11px">来源 ${(c.caseIds || []).length} 个 bad case</span></div>`).join('') || '<span class="v2-note">无</span>'}</div></div>
     <div class="cb-sec"><div class="cb-label">测试集对比（best vs 初始）</div>
       <table class="metrics"><thead><tr><th>指标</th><th>初始 ${run.target.version}</th><th>${evEsc(f.bestVersion)}</th><th>Δ</th></tr></thead>
-      <tbody>${f.metrics.map(mt => `<tr><td>${evEsc(mt.name)}</td><td class="num">${mt.init}</td><td class="num">${mt.best}</td><td>${evDelta(mt.delta, mt.unit)}</td></tr>`).join('')}</tbody></table></div>
+      <tbody>${f.metrics.map(mt => `<tr><td>${evEsc(mt.name)}</td><td class="num">${mt.init}</td><td class="num">${mt.best}</td><td>${evDelta(mt.delta, mt.unit, mt.lowerBetter)}</td></tr>`).join('')}</tbody></table></div>
   </div>`;
 }
 
@@ -5223,7 +5226,7 @@ function v2MemberModal() {
     <div class="modal-head"><h2>添加成员</h2><button class="x" data-v2-close>✕</button></div>
     <div class="modal-body">
       <div class="f-row"><div class="f-label">用户 <span class="req">*</span></div><select class="inp" id="v2MemberUser" style="width:100%">${candidates.map(u => `<option value="${u.id}">${v2Esc(u.name)} · ${v2Esc(u.email)}</option>`).join('')}</select></div>
-      <div class="f-row"><div class="f-label">空间角色</div><select class="inp" id="v2MemberRole" style="width:100%">${v2IsAdmin() ? '<option value="space_admin">空间管理员</option>' : ''}<option value="member">成员</option><option value="viewer">只读成员</option></select><div class="field-note">${v2IsAdmin() ? '全局管理员可以任命空间管理员。' : '空间管理员只能授予管理员以下的权限。'}</div></div>
+      <div class="f-row"><div class="f-label">空间角色</div><select class="inp" id="v2MemberRole" style="width:100%">${v2IsAdmin() ? '<option value="space_admin">空间管理员</option>' : ''}<option value="member" selected>成员</option><option value="viewer">只读成员</option></select><div class="field-note">${v2IsAdmin() ? '全局管理员可以任命空间管理员。' : '空间管理员只能授予管理员以下的权限。'}</div></div>
       <div class="notice">添加后该用户可在顶栏切换到 ${v2Esc(ws.name)}；成员默认不能管理空间。</div>
     </div>
     <div class="modal-foot"><button class="btn" data-v2-close>取消</button><button class="btn primary" data-v2-save-member>添加成员</button></div>
