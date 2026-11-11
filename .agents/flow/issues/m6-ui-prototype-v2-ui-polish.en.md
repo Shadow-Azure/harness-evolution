@@ -57,6 +57,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
 - The seventh turn fixes data and role labels: the `ws-harness` creation date moves from 2026-09-12 to 2026-08-01, before its earliest Session (2026-08-23); the user-menu demo identity reuses the login page's display-role calculation, so Space Admins are no longer labeled "regular user".
 - Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
+- The eighth turn puts three destructive actions behind an explicit confirmation: removing a member, regenerating the ingest credential, and removing an evolution target each explain the consequence first, leave state untouched on cancel, and act only after confirmation; the dialog shares one `v2Confirm` helper and document-level click dispatch.
+- Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
 
 ## Implementation steps
 
@@ -101,6 +103,7 @@ pnpm verify:flow; pnpm lint:docs
 - The login footer has no single-character orphan and the read-only note matches the available user-menu switch; member permissions are not self-contradictory; and user tables no longer expose `object_name`.
 - Required markers in the evolution-target dialog match save validation; the login page's visual baseline points at the V1 prototype rather than the current file.
 - A workspace's creation date precedes its earliest Session; the user menu, login page, and header show the same role label for the same user.
+- Removing a member, regenerating the ingest credential, and removing an evolution target all ask for confirmation first; cancelling leaves the member list, credential, and target totals unchanged, while confirming applies the change and shows a toast.
 
 ## Gates and CI
 
