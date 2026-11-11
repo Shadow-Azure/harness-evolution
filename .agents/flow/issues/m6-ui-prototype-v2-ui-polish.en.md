@@ -58,7 +58,7 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - The sixth turn's card has independent filters: a required target select defaulting to the first enabled target (empty state with a configure prompt when the workspace has none), a version multi-select defaulting to the newest five and expandable to 10 / 20 / all, and a date range independent of the overview.
 - The sixth turn's card shows object-level stats (associated Sessions, potential bad cases, deduplicated, covered versions) plus a per-version stacked potential-bad-case distribution and a per-source deduplicated distribution.
 - Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
-- The seventh turn polishes the single-target card layout: stats collapse into one divided strip, filters move into a tinted toolbar with the date range on the right, the two columns get a divider, the left header gains an is / not / unanalyzed summary legend, empty versions are dimmed, and the footnote spans the card bottom.
+- The seventh turn polishes the single-target card layout: stats collapse into one divided strip, filters move into a tinted toolbar with the date range on the right, the two columns get a divider, the left header gains an is / not / unanalyzed summary legend, empty versions are dimmed, and the footnote spans the card bottom; the target and version dropdowns share one 28px control with an 8px radius and a drawn chevron.
 - Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
 
 ## Implementation steps

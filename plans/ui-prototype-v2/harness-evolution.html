@@ -1036,6 +1036,27 @@
 .v2-page .td-head .hint { font-size: 11px; color: var(--text-faint); }
 .v2-page .td-toolbar { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; padding: 7px 12px; margin: 12px 0 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); }
 .v2-page .td-toolbar .ov-filter-label { font-size: 10px; color: var(--text-faint); }
+.v2-page .td-toolbar .inp,
+.v2-page .td-ver-multi summary { height: 28px; border-radius: 8px; font-size: 11.5px; background: var(--bg-card); border-color: var(--border); }
+.v2-page .td-toolbar .inp { padding: 0 10px; }
+.v2-page .td-toolbar .inp:hover,
+.v2-page .td-ver-multi summary:hover,
+.v2-page .td-toolbar .inp:focus-visible,
+.v2-page .td-ver-multi summary:focus-visible { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent); }
+.v2-page .td-ctl { position: relative; display: inline-flex; align-items: center; }
+.v2-page .td-ctl select { appearance: none; -webkit-appearance: none; cursor: pointer; text-overflow: ellipsis; min-width: 168px; }
+.v2-page .td-toolbar .td-ctl select { padding-right: 30px; }
+.v2-page .td-ctl::after,
+.v2-page .td-ver-multi summary::after {
+  content: ""; position: absolute; top: 50%; right: 10px; width: 6px; height: 6px; margin-top: -4px;
+  border-right: 1.5px solid var(--text-faint); border-bottom: 1.5px solid var(--text-faint);
+  transform: rotate(45deg); pointer-events: none;
+}
+.v2-page .td-ctl:hover::after { border-color: var(--blue); }
+.v2-page .td-ver-multi summary { position: relative; padding: 0 28px 0 10px; min-width: 150px; }
+.v2-page .td-ver-multi summary .caret { display: none; }
+.v2-page .td-ver-multi[open] summary { border-color: var(--blue); }
+.v2-page .td-ver-multi[open] summary::after { transform: rotate(-135deg); margin-top: -2px; }
 .v2-page .td-toolbar-spacer { margin-left: auto; }
 .v2-page .td-statstrip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
 .v2-page .td-cell { padding: 9px 14px; border-right: 1px solid var(--border); }
@@ -4861,7 +4882,7 @@ function v2TargetDetailCard() {
     ${head}
     <div class="td-toolbar">
       <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
-        <select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(t.objectName)} · ${v2Esc(t.kind)}</option>`).join('')}</select>
+        <span class="td-ctl"><select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(t.objectName)} · ${v2Esc(t.kind)}</option>`).join('')}</select></span>
       </div>
       <span class="ov-filter-sep"></span>
       <div class="ov-filter-group"><span class="ov-filter-label">版本</span>
