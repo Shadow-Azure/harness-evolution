@@ -73,6 +73,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Twelfth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round12/`.
 - The thirteenth turn raises the overview, evolution, and workspace-management content caps from 1200px / 1080px to 1720px, so width follows the viewport and caps only on ultra-wide screens.
 - Thirteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round13/`.
+- The fourteenth turn moves the three status toggles into the trend card and rebuilds them as pill chips with counts (blue border and tint when on, dimmed when off), removing the duplicated header legend.
+- Fourteenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round14/`.
 
 ## Implementation steps
 
@@ -127,6 +129,7 @@ pnpm verify:flow; pnpm lint:docs
 - The workspace switcher sits in the right-hand top-bar actions, showing the full name and role at 1440px with no horizontal overflow at 1280px.
 - The evolution-target side card is ordered by evolvable potential bad cases and shows that count with its issues / unanalyzed breakdown.
 - At a 1720px viewport the three pages fill the visible width (≥1650px), cap at 1720px centered on a 1920px screen, and show no horizontal overflow at 1280px.
+- The status chips inside the trend card show their counts, toggle the chart's stacked series, and the card header no longer repeats the legend.
 
 ## Gates and CI
 

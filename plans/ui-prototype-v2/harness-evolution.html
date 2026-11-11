@@ -960,6 +960,15 @@
 .v2-page .ov-viewswitch button.active { background: color-mix(in srgb, var(--blue) 9%, transparent); color: var(--blue); font-weight: 650; }
 .v2-page .tg-filterbar { gap: 10px; }
 .v2-page .tg-metric-group { gap: 6px; }
+.v2-page .tg-metrics { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.v2-page .tg-metrics-label { flex: none; font-size: 10px; color: var(--text-faint); }
+.v2-page .tg-metric-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+.v2-page .tg-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card); font: inherit; font-size: 11px; color: var(--text-dim); cursor: pointer; transition: border-color .12s, background .12s, color .12s; }
+.v2-page .tg-chip b { padding: 0 6px; border-radius: 999px; background: var(--bg-panel); font-family: var(--mono); font-size: 11px; font-weight: 600; line-height: 16px; color: var(--text); }
+.v2-page .tg-chip:hover { border-color: var(--blue); color: var(--text); }
+.v2-page .tg-chip.on { border-color: color-mix(in srgb, var(--blue) 38%, var(--border)); background: color-mix(in srgb, var(--blue) 7%, var(--bg-card)); color: var(--text); }
+.v2-page .tg-chip:not(.on) { opacity: .55; }
+.v2-page .tg-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .v2-page .tg-metric { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--text-dim); cursor: pointer; }
 .v2-page .tg-metric.on { border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); background: color-mix(in srgb, var(--blue) 6%, #fff); color: var(--text); }
 .v2-page .tg-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
@@ -5237,16 +5246,16 @@ function v2RenderTargetsOverview() {
         <div class="ov-multi-menu">${all.map(d => `<label><input type="checkbox" value="${d.target.id}" ${selected.has(d.target.id) ? 'checked' : ''} data-v2-tg-target> ${v2Esc(d.target.objectName)}</label>`).join('')}<div class="om-foot"><span>不选 = 全部对象</span><button data-v2-tg-clear>清空</button></div></div>
       </details>
     </div>
-    <span class="ov-filter-spacer"></span>
-    <div class="ov-filter-group tg-metric-group"><span class="ov-filter-label">查看</span>
-      ${metrics.map(k => `<button class="tg-metric ${V2.targetOv.metrics.has(k) ? 'on' : ''}" data-v2-tg-metric="${k}"><i class="tg-dot ${k}"></i>${V2_TG_STATUS[k].short}</button>`).join('')}
-    </div>
   </div>
   <div class="ov-grid">
     <div class="card ov-chart-card">
-      <div class="ov-card-head"><div><h2>潜在 bad case 趋势</h2><div class="hint">按${V2.overview.grain === 'day' ? '日' : V2.overview.grain === 'week' ? '周' : '月'}聚合 · 可多选进化对象与查看信息</div></div><span class="spacer"></span><div class="tg-legend">${chosen.map(k => `<span><i class="tg-dot ${k}"></i>${V2_TG_STATUS[k].short}</span>`).join('') || '<span class="v2-note">未选择查看信息</span>'}</div></div>
+      <div class="ov-card-head"><div><h2>潜在 bad case 趋势</h2><div class="hint">按${V2.overview.grain === 'day' ? '日' : V2.overview.grain === 'week' ? '周' : '月'}聚合 · 可多选进化对象与查看信息</div></div></div>
       ${rows.length ? `<div class="tg-chart"><div class="tg-yaxis"><span>${bucketMax}</span><span>${Math.round(bucketMax / 2)}</span><span>0</span></div><div class="tg-buckets">${chart}</div></div>` : '<div class="ov-empty"><b>当前条件下没有潜在 bad case</b>调整时间、进化对象或查看信息后重试。</div>'}
       <p class="v2-note" style="margin:8px 0 0">柱高为所选信息之和；同一 bad case 可能同时出现在多个进化对象下。</p>
+      <div class="tg-metrics">
+        <span class="tg-metrics-label">趋势图显示</span>
+        <div class="tg-metric-chips">${metrics.map(k => `<button class="tg-chip ${V2.targetOv.metrics.has(k) ? 'on' : ''}" data-v2-tg-metric="${k}" title="切换趋势图与分布里的「${V2_TG_STATUS[k].short}」"><i class="tg-dot ${k}"></i>${V2_TG_STATUS[k].short}<b>${count[k]}</b></button>`).join('')}</div>
+      </div>
       <div class="ov-objects tg-source-objects">
         <div class="tg-source-title">不同进化对象的关联 Session <span>按对象汇总；柱长按最大值归一，蓝色为含潜在 bad case 的 Session</span></div>
         ${assocDistRows || '<div class="waiting">当前空间还没有进化对象</div>'}

@@ -30,6 +30,8 @@ The twelfth turn found the evolution-target side card ordered by insertion, so r
 
 The thirteenth turn found the overview, evolution, and workspace-management pages capped at 1200px and 1080px, wasting 250–300px on each side of a ~1700px window and making the interface look undersized.
 
+The fourteenth turn found the three status toggles crammed at the far right of the filter bar next to time, grain, and targets, while the chart card repeated the same legend in its header; the toggles carried no counts and off/on states were hard to tell apart.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -57,6 +59,8 @@ The eleventh turn moves `#wsPicker` out of the brand-and-nav area into `.tn-righ
 The twelfth turn sorts the side card by is-target plus unanalyzed counts descending (ties by potential total, then name) and paginates the sorted list; each item gains "evolvable potential bad cases N (issues X; unanalyzed Y)" and the header states the sort rule.
 
 The thirteenth turn raises both `.v2-page .wrap` and `.evo-app .wrap` to a 1720px cap, letting width follow the viewport: at 1700px the content measures 1659px (overview) and 1674px (evolution), at 1920px it caps at 1720px centered, and at 1280px it fills the width without horizontal overflow.
+
+The fourteenth turn moves the three status toggles out of the filter bar into the trend card (below the chart note, above the distribution blocks) and rebuilds them as pill chips with counts: each shows its status and the current count, on-state gets a blue border and tint, and off-state dims; the duplicated header legend is removed because the chips now serve as the legend.
 
 ## Alternatives considered
 
@@ -92,6 +96,9 @@ The thirteenth turn raises both `.v2-page .wrap` and `.evo-app .wrap` to a 1720p
 - Remove the width cap entirely: on a 2560px screen the body reads too sparse and tables stretch excessively.
 - Use a viewport percentage (e.g. 92vw) instead of a cap: it still needs a bound and behaves like "cap plus growth".
 - Scale everything with `zoom`: overlays and fixed-pixel components scale too, which breaks alignment.
+- Move the toggles but keep the header legend: the same information appears twice and readers do not know which one to click.
+- Render the toggles as plain text buttons: they blend into the nearby filter controls and hide the counts.
+- Let the toggles also filter the three distribution blocks: that changes their composition and readers can no longer see the full picture.
 
 ## Consequences
 
@@ -114,3 +121,5 @@ After the eleventh turn the top bar reads brand → navigation → sync status �
 After the twelfth turn the side card order follows the selected time window, so a target can move between windows; the extra line adds about 18px per item, making the right column taller when five targets share a page.
 
 The thirteenth turn gives the content room to breathe on large screens, at the cost of longer single lines (cluster descriptions); existing local caps such as `.cluster-desc p { max-width: 980px }` keep body text readable, and if it still feels too wide the fix is a per-section cap rather than shrinking the whole page again.
+
+After the fourteenth turn, "chart shows" only controls the trend chart's stacked series; the three distribution blocks below still show the full composition, and their counts shift with filters. Wiring those blocks to the same switches later means updating their subtitles and legends too.
