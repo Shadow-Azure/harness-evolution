@@ -76,6 +76,7 @@ apps/api/
     config.py                # Settings：DB、鉴权、来源、同步间隔
     api/                     # 各域 router（薄层）
       auth.py  sessions.py  acquisition.py  bad_cases.py  probes.py  evolution.py  catalogs.py  events.py
+      workspaces.py  ingest.py  overview.py        # V2：空间/上报/总览
     api_req/                 # 请求 DTO（Pydantic）
     api_resp/                # 响应 DTO（OpenAPI 契约源头）
     constants/               # 枚举、错误码、issue/topic 常量
@@ -84,17 +85,19 @@ apps/api/
       sqlite.py              # SqliteDatabase：aiosqlite + WAL/PRAGMA
       mysql.py               # MySqlDatabase：asyncmy + 连接池/utf8mb4
       factory.py             # create_database(settings)：按 HE_DB_DIALECT 装配
-      models/                # SQLAlchemy 表模型（轨迹侧 + 问题侧只读）
+      models/                # SQLAlchemy 表模型（轨迹侧 + 问题侧 + V2 空间/归因）
       crud/                  # BaseCrud + 各表 CRUD（接收 AsyncSession）
     middleware/
       request_id.py  auth.py  cors.py  rate_limit.py
     service/
-      identity/              # 登录、token、用户、SSE 票据
+      identity/              # 登录、token、用户、SSE 票据；V2：providers/session_bridge/callback
+      workspaces/            # V2：空间、成员、额度、凭据
+      overview/              # V2：总览口径与聚合
       sessions/              # 列表/会话概览/Agent 会话树
       acquisition/           # 读 payload、归一化、Agent 会话树组装、定时调度（scheduler.py）
-      bad_cases/             # 问题列表/详情（只读）
-      probes/                # 归因结论（只读）
-      evolution/             # run、聚类、candidate push、eval gateway/poller、apply、blocked retry、事件
+      bad_cases/             # 问题列表/详情
+      probes/                # 归因结论（V1 冻结，只读）
+      evolution/             # run、七步管线、潜在匹配、归因与缓存、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
       jobs.py                # 串行任务执行器（job_runs）
       events.py              # 进程内 SSE 事件总线
@@ -208,7 +211,9 @@ def create_database(settings: Settings) -> Database:
 | 接缝 | 位置 | 说明 |
 |---|---|---|
 | 原始轨迹 | `service/acquisition/payloads.py` + `third_party_api/trajectory/` | 读 `trajectory_payloads`（外部脚本写）；pull 时写入同一张表 |
-| 问题/归因 | `db/models/` 只读映射 + `db/crud/` | `bad_cases` / `bad_case_analysis` / `probe_reports` 由外部系统写入，本服务只读 |
+| 问题（bad case） | `api/ingest.py` + `service/workspaces` | **V2 主通道**：空间上报接口（凭据 + 额度）写 `bad_cases`；目录同步默认停用 |
+| 旧归因（probe） | `db/models/` 只读映射 + `db/crud/` | V1 冻结：V2 起不写不删，历史 run 详情仍读 |
+| 归因（V2） | `service/evolution/attribution.py` | 自进化 run 内按对象·版本生成 `bad_case_attributions` |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
 
 早期"六类 Provider + stub 实现"的设计已取消：问题/归因数据本来就在外部表里，真实实现是"读表"，不需要再包一层可替换接口；强行抽象只会增加映射代码和漂移风险。
@@ -243,7 +248,9 @@ class PayloadSource(Protocol):
 
 | 占位点 | 位置 | 说明 / 后续替换 |
 |---|---|---|
-| 聚类 | `service/evolution/simple_cluster`（按 attribute_type 分组后再前后分半） | 换真实聚类，表不变 |
+| 聚类 | `service/evolution/simple_cluster`（按归因 `category` 分组） | 换真实聚类，表不变 |
+| 潜在匹配 | `service/evolution/potential.py`（默认策略 + 三开关） | 策略规则演进时递增 `policy_version`；表不变 |
+| 归因 | `service/evolution/attribution.py::RuleBasedEngine`（`rule-v1`） | 换 LLM 归因：新增 Engine 子类 + 注册新 `key`，缓存键自动隔离 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位（追加小节），但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval_gateway.py` + `eval_poller.py` | V1 可 `FakeEvalGateway`；真实接口走 submit/status/result 适配层；终评占位 |
 | git 推送 | `HE_GIT_PUSH=true`（每轮 candidate 评测前） | candidate 推临时 ref → 评测 → 接纳后 fast-forward run 分支；失败进入 blocked，3 次立即 + 1/5/15min 退避 |
@@ -300,7 +307,7 @@ worker_loop()                                                   # lifespan 启�
 - **SQLite 与 MySQL 的差异**：V1 单实例串行，不依赖 `SKIP LOCKED`；未来多实例 worker 时用 MySQL `SELECT … FOR UPDATE SKIP LOCKED` 抢占，SQLite 只用于测试。
 - **任务状态以 `job_runs` 表为准**：前端任何时候 `GET /api/jobs/{jobId}` 拿到的都是真值。
 - **sync 单飞**：`sync_lock` 单行表 + TTL；scheduler 与手动触发共用。已有 sync 时手动请求返回现有 `jobId`（`reused=true`），不重复入队。
-- **自进化任务**：`evolution_prepare` → `evolution_advance` →（eval_poller）→ `evolution_apply` → 下一轮 / `evolution_finalize`；`blocked` 时由 `blocked_sweeper` 或 `POST /retry` 入队 `evolution_retry`。
+- **自进化任务**：`evolution_prepare`（V2 七段：Session 关联 → 潜在筛选 → 归因 → 聚类 → 建轮次）→ `evolution_advance` →（eval_poller）→ `evolution_apply` → 下一轮 / `evolution_finalize`；`blocked` 时由 `blocked_sweeper` 或 `POST /retry` 入队 `evolution_retry`（`blocked_stage` 含 `attribution`）。
 - 同一 run 只允许一个进行中的推进/重试任务，冲突抛 `RUN_BUSY`。
 - **push 是评测前置条件**：每轮 candidate 先 push 到临时 candidate ref；失败进入 `blocked`，不提交评测。
 - SSE 只是通知：run worker 推进时写 `job_runs.progress` 并 publish 事件；前端收到后失效 queryKey 重取。
@@ -338,12 +345,13 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 
 | 接缝 | 现在（单实例） | 扩展时改动面 |
 |---|---|---|
-| 身份 | 自建账号 + JWT，单组织共享 | 接 OIDC：加一个 OIDC 登录端点，principal 来源从 users 表换成 claims；业务代码不变 |
+| 身份 | 自建账号 + JWT；全局 admin/member；空间角色在成员表 | 接 Cookie/SSO：实现 `AuthProvider` + 会话桥 + callback（[07 §8.2.1](07-backend-implementation.md)），principal 来源换成 claims；业务代码不变 |
+| 空间 | 多工作空间（bad case 归属 + 成员权限） | 空间删除/归档、跨空间汇总为 V2 非目标 |
 | 存储 | MySQL 8 主库；SQLite 仅测试 | 读写分离在 `Database` 适配器层加 read replica 路由；表结构不变 |
 | 任务 | `job_runs` + 进程内串行 worker | worker 独立部署（同一 `job_runs` 表 `SKIP LOCKED` 抢占），或接 CI 平台：新增 executor 实现 |
 | SSE | 内存事件总线 | 换 Redis pub/sub：`EventBus` 接口已抽象，业务无感 |
 | 静态资源 | FastAPI `StaticFiles` | 换 nginx / CDN，无需改前端 |
-| 多实例 | 不支持（内存总线 + 内存 worker 单进程） | 上三行完成后即可水平扩容 |
+| 多实例 | 不支持（内存总线 + 内存 worker 单进程） | 上三行完成后即可水平扩容；总览 60s 缓存各实例独立（可接受） |
 
 ## 9. 配置项清单
 
@@ -375,6 +383,13 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_CORS_ORIGINS` | `http://localhost:5173` | 允许的前端域名 |
 | `HE_WEB_BASE_URL` | 空 | 对外可访问的 Web 基址（如 `https://harness.example.com`），由 `.env` 注入、不落库；用于 commit message 中的追溯链接；空 = 只输出 ID、不输出链接 |
 | `HE_LLM_BASE_URL` / `HE_LLM_API_KEY` | 空 | **预留**，V1 不读取；密钥走环境变量，不入库 |
+| `HE_DEFAULT_WORKSPACE_ID` | `ws-default` | V2：无空间上下文的内部写入（目录同步、迁移回填） |
+| `HE_AUTH_PROVIDER` | `password` | V2：`password` / `oidc`；非法值启动失败（fail fast） |
+| `HE_OIDC_ISSUER` / `HE_OIDC_CLIENT_ID` / `HE_OIDC_CLIENT_SECRET_ENV` | 空 | 仅 `oidc` 模式必填；secret 只存 env 引用名 |
+| `HE_BAD_CASE_CATALOG_SYNC_ENABLED` | `false` | V2：目录同步默认停用（空间上报为主通道） |
+| `HE_ATTRIBUTION_ENGINE` | `rule-v1` | V2：归因引擎标识（进缓存键）；未注册 → 启动失败 |
+| `HE_POTENTIAL_POLICY_VERSION` | `v1` | V2：策略语义版本（进缓存键） |
+| `HE_OVERVIEW_CACHE_SECONDS` | `60` | V2：总览对象视角的进程内缓存 TTL（0 = 关闭） |
 
 ## 10. 测试策略
 
@@ -383,7 +398,10 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | 只读查询 | 单元/集成测试 | bad_case / probe 联表查询、状态合并、缺失字段降级 |
 | 鉴权 | 单元 + 路由测试 | 登录/刷新/登出、错误密码 401、过期 token、SSE 票据一次性 |
 | 同步 | 集成测试 | `trajectory_payloads` 待处理判定、幂等、payload 结构变更隔离 |
-| 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（0..4+M+1）；越界推进报 409 |
+| 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（V2 `0..5+M+1`；V1 `0..4+M+1`）；越界推进报 409 |
+| 空间与权限（V2） | 路由 + 服务测试 | `require_workspace_role` 全矩阵、不可见空间 404、额度事务与并发、凭据轮换窗口期、成员角色边界 |
+| 总览（V2） | 集成测试 | 口径与 SQL 一致、空桶补零、跨年 ISO 周、>92 天粒度降级、对象视角三态与潜在一致性 |
+| 归因（V2） | 单元 + 集成 | 策略真值表、触发点比较（时间/字典序/unknown）、缓存命中与关闭、并发同键 upsert、`non_target` 不进簇 |
 | git workspace | 临时 git 仓库 + bare remote | clone tag、建分支、candidate commit、amend/reset、push、push 前分支校验 |
 | Repository | 集成测试（参数化 SQLite / MySQL） | 幂等写入、聚合查询、事务边界；MySQL 用 `-m mysql` 标记 |
 | 路由 | `httpx.AsyncClient(ASGITransport)` | 状态码、错误模型、分页、深链字段、未登录 401 |

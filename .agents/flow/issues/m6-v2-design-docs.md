@@ -32,29 +32,33 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 
 ## 设计依据
 
-- [15-v2-workspaces.md](../../../plans/fullstack-design/15-v2-workspaces.md)：鉴权接入接缝、空间/成员/额度/凭据模型、上报接口、空间化迁移与权限矩阵。
-- [16-v2-overview.md](../../../plans/fullstack-design/16-v2-overview.md)：总览双视角口径、聚合接口、Session 最新 10 条 + 回车查询。
-- [17-v2-attribution.md](../../../plans/fullstack-design/17-v2-attribution.md)：七步流程、触发点坐标、潜在策略、归因缓存、多归因错误详情、probe 链路退役。
+- [01-architecture.md §4.4](../../../plans/fullstack-design/01-architecture.md)：鉴权链路与空间授权在总体架构中的位置。
+- [05-api-design.md §3.7–§3.10、§4.16–§4.20](../../../plans/fullstack-design/05-api-design.md)：空间/成员/凭据/上报/总览/归因端点与 DTO。
+- [06-database-design.md §3.10–§3.12、§5.8–§5.10、§7.5、§9](../../../plans/fullstack-design/06-database-design.md)：空间/归因/候选表、V2 口径与迁移。
+- [07-backend-implementation.md §5.11–§5.15、§8.2.1](../../../plans/fullstack-design/07-backend-implementation.md)：七步管线、潜在匹配、归因缓存、空间服务与鉴权接缝。
+- [08-frontend-implementation.md §1.4、§4.2、§5.2.1、§6、§7、§9、§10](../../../plans/fullstack-design/08-frontend-implementation.md)：空间壳、总览、最新 10 条、多归因、四步向导、七步详情。
 - [README.md 决策表 D21–D23](../../../plans/fullstack-design/README.md)：V2 顶层决策与 V1 冻结语义。
 - [design-v2.md](../../../plans/ui-prototype-v2/design-v2.md)：V2 原型验收基线。
 
 ## 实现内容
 
-- 新增三篇补篇 `15-v2-workspaces.md` / `16-v2-overview.md` / `17-v2-attribution.md`（沿续 11–14 号体例：背景、数据模型、API 契约、代码改动地图、测试与验收、非目标、已确认决策）。
-- 三篇按 V1 设计文档（05/06/07/08）的实现级粒度展开：时序图与状态机、逐端点请求/响应 JSON、逐表列与索引、Repository/Service 方法签名、并发与幂等策略、迁移与回滚脚本、组件树与 queryKey 失效矩阵、分层测试用例。
-- README：文档地图加三行、决策表追加 D21/D22/D23、系统一句话说明与数据边界段落更新、V2 与仓库现状关系。
-- 02-features：新增 §2.4（F21–F27 七个 V2 功能点 + 五个 V1 功能点变更表）与 §2.5（V2 功能点验收口径）。
-- 05-api-design：§4 端点清单追加 V2 增补块；§8 错误码表追加 V2 错误码。
-- 06-database-design：§1 表分类追加 V2 增补块（新表 + 加列 + 冻结清单）。
-- 01-architecture / 07-backend-implementation / 08-frontend-implementation：边界修订（空间输入/输出/不做清单、workspaces 服务）与 V1 冻结注记。
-- 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（补篇方案与关键取舍）。
+- 按域把 V2 设计并入 01–08（不新增补篇）：01 架构边界/模块/链路；02 功能点 F21–F27 与验收；03 路由/状态/组件/目录；04 模块/接入/配置/扩展/测试；05 DTO 与端点；06 表结构与迁移；07 管线与实现；08 页面与交互。
+- 01：空间输入/输出/不做清单、workspaces 服务、七步执行链、auth/session 与空间授权、数据接入表、扩展与风险。
+- 02：§2.4（F21–F27 + 五个 V1 功能点变更）与 §2.5（V2 验收口径）。
+- 03：空间前缀路由、空间守卫、queryKey 带 `wid`、空间/总览/多归因组件与目录。
+- 04：workspaces/overview 模块、上报写入边界、归因引擎占位、V2 配置项与测试策略。
+- 05：§3.7–§3.10 新 DTO（Workspace/Member/Credential/Ingest/Attribution/Overview）；§3.6.2 七步 payload；§4.16–§4.20 端点；§5 深链；§8 完整 V2 错误码；§9 映射。
+- 06：workspaces/workspace_members/workspace_ingest_credentials；bad_cases.workspace_id；evolution_runs 四个新列；bad_case_attributions/evolution_run_candidates/evolution_cluster_cases；§7.5 口径；§9 迁移。
+- 07：归一化补 tree_index/triggered_at；七步 prepare；潜在匹配；归因缓存；预览端点；空间服务与依赖；鉴权接缝；测试与切片顺序。
+- 08：路由与重定向；api 模块与 queryKeys；空间管理四 Tab；最新 10 条 + 回车；总览页；多归因错误详情；四步向导；七步详情与 `stepsSchema` 双轨。
+- 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（决策与取舍）。
 
 ## 实施步骤
 
 1. 通读 V1 设计文档与当前代码实现，确认差距基线（端点/表/服务逐项核对）。
 2. 对比 V1/V2 原型，核实 7 点需求的 UI 覆盖与出入。
-3. 撰写三篇补篇（含 API/表结构/代码改动地图/测试）。
-4. 同步修订 README/01/02/05/06/07/08 指针与增补块。
+3. 按域把 V2 设计写进 01–08（不新增补篇），同步修正跨文档不一致（错误码、列、`blocked_stage`、admin 路径规则）。
+4. 删除临时补篇 15–17，清理全部引用（README/02/09）。
 5. 新增 Agent Note 并重录 i18n 配对。
 
 ## 依赖与交付边界
@@ -72,11 +76,11 @@ pnpm verify:flow; pnpm lint:docs
 
 ## 验收标准
 
-- 三篇补篇覆盖 7 点需求的每一项，且都有明确的数据模型、API 契约与代码改动地图。
-- 总览/向导/run 三处的「潜在 bad case」口径声明为同一实现（PotentialMatcher）。
-- V1 已实现行为在 05/06/07/08 中有冻结标注，历史 run 渲染兼容（steps_schema 双轨）写明。
-- README 决策表含 D21–D23；02 功能点表含 F21–F27；05 错误码表含 V2 新码。
-- Agent Note 双语三件套配对记录完整。
+- 01–08 覆盖 7 点需求，且每项都有数据模型、API 契约与代码改动地图。
+- 总览/向导/run 三处的「潜在 bad case」口径声明为同一实现。
+- V1 已实现行为有冻结标注，历史 run 渲染兼容（`stepsSchema` 双轨）写明。
+- 05 错误码表覆盖 15–17 曾定义的全部 V2 码；06 列定义与 05/07 引用一致。
+- README 决策表含 D21–D23；02 含 F21–F27；Agent Note 双语配对完整。
 
 ## 门禁与 CI
 
