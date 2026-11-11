@@ -8,7 +8,7 @@
   :root {
     --bg: #f4f5f7; --bg-panel: #fafbfc; --bg-card: #ffffff; --bg-inset: #f1f3f6;
     --border: #e2e5ea;
-    --text: #212832; --text-dim: #5a6372; --text-faint: #9aa2ae;
+    --text: #212832; --text-dim: #5a6372; --text-faint: #66707c;
     --blue: #2f6fe0; --green: #1f9d6b; --orange: #d97b1c; --red: #d63c3c;
     --purple: #8a55c9; --cyan: #158a8a;
     --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -35,7 +35,7 @@
   .page-tabs .issue-no { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); margin-right: 4px; }
 
   /* ═══ 左侧 Session 浏览器 ═══ */
-  .shell { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 100px); }
+  .shell { display: grid; grid-template-columns: 360px 1fr; height: calc(100vh - 56px); }
   .sidebar { border-right: 1px solid var(--border); background: var(--bg-panel); display: flex; flex-direction: column; min-height: 0; }
   .side-head { padding: 12px 14px 8px; }
   .side-title { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
@@ -96,6 +96,10 @@
   .fam-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
   .fam-head h2 { font-size: 17px; font-weight: 650; }
   .fam-head .meta { color: var(--text-dim); font-size: 12px; margin-top: 3px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .fam-head > div:first-child { flex: 1 1 520px; min-width: 0; }
+  .fam-head .cta-group { flex-shrink: 0; margin-left: auto; }
+  .fam-head .meta-sid { min-width: 0; max-width: 100%; }
+  .fam-head .meta-sid .sid-value { display: inline-block; max-width: 300px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
   .status-badge { font-size: 11px; padding: 2px 10px; border-radius: 999px; font-weight: 600; }
   .status-badge.ok { color: var(--green); background: color-mix(in srgb, var(--green) 14%, transparent); }
   .status-badge.partial { color: var(--orange); background: color-mix(in srgb, var(--orange) 14%, transparent); }
@@ -309,16 +313,16 @@
   /* 顶部导览：GitHub / Vercel 式安静顶栏 —— 白面板 + 细分隔线，导航是纯文本下划线页签，
      选中态用分区色下划线（蓝=Session 查看，紫=自进化），不做卡片/按钮容器，视觉最轻 */
   .topnav { position: fixed; top: 0; left: 0; right: 0; z-index: 350; height: 56px; display: flex; align-items: stretch; padding: 0 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
-  .tn-brand { display: flex; align-items: center; gap: 9px; margin-right: 26px; white-space: nowrap; }
+  .tn-brand { display: flex; align-items: center; gap: 9px; margin-right: 18px; white-space: nowrap; }
   .tn-logo { width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0; background: linear-gradient(135deg, var(--blue), var(--purple)); box-shadow: 0 1px 3px rgba(30,40,60,.18); }
   .tn-brand .tt { display: flex; flex-direction: column; line-height: 1.3; }
   .tn-brand .tt b { font-size: 13.5px; font-weight: 700; letter-spacing: .2px; color: var(--text); }
   .tn-brand .tt span { font-size: 10px; color: var(--text-faint); }
-  .tn-item { display: flex; align-items: center; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-dim); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 0 18px; cursor: pointer; }
+  .tn-item { display: flex; align-items: center; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-dim); background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 0 12px; cursor: pointer; flex: 0 0 auto; white-space: nowrap; }
   .tn-item:hover { color: var(--text); }
   .tn-item.active { color: var(--text); border-bottom-color: var(--blue); }
   .tn-item#tn-evo.active { border-bottom-color: var(--purple); }
-  .tn-item .tn-sub { font-size: 10.5px; font-weight: 400; color: var(--text-faint); margin-left: 8px; }
+  .tn-item .tn-sub { font-size: 10.5px; font-weight: 400; color: var(--text-faint); margin-left: 8px; white-space: nowrap; }
   .tn-right { margin-left: auto; display: flex; align-items: center; gap: 16px; min-width: 0; }
   .tn-note { margin-left: 0; align-self: center; font-size: 11px; color: var(--text-faint); white-space: nowrap; }
   .tn-note .idlink { font-size: 10.5px; }
@@ -339,6 +343,7 @@
   .tn-sync-val b { color: var(--text); font-family: var(--mono); font-weight: 600; }
   .tn-sync-sub { margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--border); font-size: 10.5px; color: var(--text-faint); }
   @media (max-width: 1100px) { .tn-note, .tn-item .tn-sub, .tn-sync { display: none; } }
+  @media (max-width: 1340px) { .tn-item .tn-sub { display: none; } }
   @media (max-width: 720px) { .tn-sync summary { padding: 4px 7px; } .tn-sync-popover { right: -6px; width: min(288px, calc(100vw - 28px)); } }
   .idlink { font-family: var(--mono); font-size: 11px; color: var(--blue); text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent); cursor: pointer; white-space: nowrap; }
   .idlink:hover { border-bottom-style: solid; }
@@ -371,7 +376,7 @@
     --border: #e2e5ea;
     --text: #212832;
     --text-dim: #5a6372;
-    --text-faint: #9aa2ae;
+    --text-faint: #66707c;
     --blue: #2f6fe0;
     --green: #1f9d6b;
     --orange: #d97b1c;
@@ -815,7 +820,7 @@
   .ov-legend i.self { background: var(--blue); opacity: .82; }
   .ov-legend i.discovery { background: var(--purple); opacity: .82; }
   .ov-chart { position: relative; height: 244px; margin-top: 6px; padding: 10px 8px 26px 36px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-end; gap: 7px; background: repeating-linear-gradient(to bottom, transparent 0, transparent 47px, color-mix(in srgb, var(--border) 62%, transparent) 48px); }
-  .ov-yaxis { position: absolute; left: 0; top: 6px; bottom: 26px; width: 32px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding-right: 4px; font-family: var(--mono); font-size: 9px; color: var(--text-faint); }
+  .ov-yaxis { position: absolute; left: 0; top: 6px; bottom: 26px; width: 32px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; padding-right: 4px; font-family: var(--mono); font-size: 10px; color: var(--text-faint); }
   .ov-bucket { position: relative; flex: 1 1 0; min-width: 14px; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
   .ov-stack { width: min(34px, 72%); display: flex; flex-direction: column-reverse; border-radius: 3px 3px 0 0; overflow: hidden; box-shadow: 0 1px 2px rgba(30,40,60,.08); }
   .ov-bar { display: block; width: 100%; }
@@ -826,18 +831,18 @@
   .ov-chart.dense { gap: 2px; }
   .ov-chart.dense .ov-bucket { min-width: 0; }
   .ov-chart.dense .ov-stack { width: 100%; max-width: 16px; }
-  .ov-bucket .ov-lbl { position: absolute; bottom: -21px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; }
+  .ov-bucket .ov-lbl { position: absolute; bottom: -21px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); white-space: nowrap; }
   .ov-bucket .ov-tip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 5; background: var(--text); color: #fff; border-radius: 5px; padding: 4px 7px; font-size: 10px; line-height: 1.5; white-space: nowrap; box-shadow: 0 4px 12px rgba(20,30,50,.2); }
   .ov-bucket:hover .ov-tip { display: block; }
   .ov-empty-chart { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 12px; }
   .ov-objects { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .ov-obj-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 92px; gap: 10px; align-items: center; font-size: 11.5px; }
+  .ov-obj-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 120px; gap: 10px; align-items: center; font-size: 11.5px; }
   .ov-obj-name { font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ov-obj-bar { display: flex; height: 7px; border-radius: 4px; background: #e8ebf0; overflow: hidden; }
   .ov-obj-bar span { height: 100%; }
   .ov-obj-bar .self { background: var(--blue); opacity: .82; }
   .ov-obj-bar .discovery { background: var(--purple); opacity: .82; }
-  .ov-obj-num { text-align: right; font-family: var(--mono); font-size: 10px; color: var(--text-faint); white-space: nowrap; }
+  .ov-obj-num { text-align: right; font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); white-space: nowrap; }
   .ov-obj-num b { color: var(--text-dim); font-weight: 600; }
   .ov-matrix { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 9px; }
   .ov-matrix summary { cursor: pointer; font-size: 10.5px; color: var(--text-dim); }
@@ -970,7 +975,7 @@
 .v2-page .tg-bar.notTarget { background: var(--orange); }
 .v2-page .tg-bar.unanalyzed { background: #c7ccd4; }
 .v2-page .tg-lbl { font-family: var(--mono); font-size: 9px; color: var(--text-faint); white-space: nowrap; height: 12px; }
-.v2-page .tg-side { padding: 14px 14px 10px; }
+.v2-page .tg-side { padding: 14px 14px 10px; display: flex; flex-direction: column; }
 .v2-page .tg-side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .v2-page .tg-side-head h3 { margin: 0; font-size: 14px; }
 .v2-page .tg-side-head .v2-note { display: block; margin-top: 2px; }
@@ -985,9 +990,10 @@
 .v2-page .tg-side-meta b { font-family: var(--mono); font-size: 12px; color: var(--text); }
 .v2-page .tg-side-counts { display: flex; gap: 10px; margin-top: 5px; font-size: 10px; color: var(--text-faint); }
 .v2-page .tg-side .tg-ratio { margin-top: 7px; }
-.v2-page .tg-side .v2-pager { margin-top: 9px; gap: 7px; }
+.v2-page .tg-side .v2-pager { margin-top: auto; gap: 7px; }
 .v2-page .tg-side .v2-pager .info { font-size: 9px; }
 .v2-page .tg-side .v2-pager button { padding: 2px 7px; font-size: 9.5px; }
+.v2-page .tg-side-list { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .v2-page .tg-source-objects { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .v2-page .tg-source-title { display: flex; align-items: baseline; gap: 7px; margin-bottom: 3px; font-size: 12px; font-weight: 650; }
 .v2-page .tg-source-title span { font-size: 10px; color: var(--text-faint); font-weight: 400; }
@@ -1711,7 +1717,7 @@ function renderMain() {
         <span><span class="diamond agent"></span>Subagent 触发节点</span>
         <span><i class="sw gapnode"></i>×N 压缩日志</span>
         <span><i class="sw finding"></i>问题（打桩）</span>
-        <span class="hint">滚轮缩放 · 拖拽平移 · 右下角适应</span>
+        <span class="hint">拖拽平移 · 右下角缩放/适应</span>
       </div>
       <div id="famTree" class="rf-canvas"><div class="rf-loading">家族树加载中…</div></div>
     </div>
@@ -2778,7 +2784,8 @@ function App({ sid, findingsBudget }) {
         nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
         onNodeClick=${onNodeClick}
         fitView fitViewOptions=${{ padding: 0.12 }}
-        minZoom=${0.2} maxZoom=${2.5}
+        minZoom=${0.5} maxZoom=${2.5}
+        zoomOnScroll=${false} preventScrolling=${false}
         nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
         proOptions=${{ hideAttribution: true }}
         style=${{ width: "100%", height: "100%" }}
@@ -3099,7 +3106,8 @@ function ErrorFlow({ nodes, edges, findings, selectedNo }) {
       onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
       nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
       fitView fitViewOptions=${{ padding: 0.12 }}
-      minZoom=${0.2} maxZoom=${2.5}
+      minZoom=${0.5} maxZoom=${2.5}
+      zoomOnScroll=${false} preventScrolling=${false}
       nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
       proOptions=${{ hideAttribution: true }}
       style=${{ width: "100%", height: "100%" }}
