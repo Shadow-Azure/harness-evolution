@@ -1030,6 +1030,32 @@
 .v2-page .tg-r-sess-with { background: var(--blue); }
 .v2-page .tg-r-sess-only { background: #d5dae2; }
 .v2-page .tg-r-src { background: var(--purple); }
+.v2-page .td-card { padding: 16px 18px 18px; margin: 0 0 14px; }
+.v2-page .td-head h2 { font-size: 15px; margin: 0; }
+.v2-page .td-head .hint { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+.v2-page .td-filterbar { border: 0; background: transparent; box-shadow: none; padding: 12px 0 4px; margin: 0; }
+.v2-page .td-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 6px 0 16px; }
+.v2-page .td-stat { border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; background: var(--bg-panel); }
+.v2-page .td-stat b { display: block; font-family: var(--mono); font-size: 19px; line-height: 1.2; }
+.v2-page .td-stat span { font-size: 10px; color: var(--text-faint); }
+.v2-page .td-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; }
+.v2-page .td-sec { min-width: 0; }
+.v2-page .td-ver-multi summary { min-width: 168px; }
+.v2-page .td-ver-menu { width: 296px; max-height: 268px; display: flex; flex-direction: column; }
+.v2-page .td-ver-list { overflow: auto; min-height: 0; }
+.v2-page .td-ver-menu label .mono { font-size: 11px; }
+.v2-page .td-ver-menu label .faint { margin-left: auto; font-size: 10px; }
+.v2-page .td-limit { display: flex; align-items: center; gap: 6px; }
+.v2-page .td-limit-btns { display: flex; gap: 4px; }
+.v2-page .td-limit-btns button, .v2-page .td-footnote button { border: 1px solid var(--border); border-radius: 5px; padding: 1px 7px; background: var(--bg-card); color: var(--text-dim); font-size: 10px; cursor: pointer; }
+.v2-page .td-limit-btns button.on { border-color: var(--blue); color: var(--blue); }
+.v2-page .td-ver-row { grid-template-columns: 148px minmax(0, 1fr) 168px; }
+.v2-page .td-ver-row .ov-obj-name { display: flex; align-items: baseline; gap: 6px; }
+.v2-page .td-footnote { margin-top: 8px; font-size: 10px; color: var(--text-faint); }
+@media (max-width: 1100px) {
+  .v2-page .td-grid { grid-template-columns: 1fr; }
+  .v2-page .td-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .v2-page .tg-ratio-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 9.5px; color: var(--text-faint); }
 .v2-page .tg-grid2 { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, .75fr); gap: 12px; margin-bottom: 14px; }
 .v2-page .tg-source-row { display: grid; grid-template-columns: 125px minmax(0, 1fr) 150px; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f2f5; }
@@ -3449,9 +3475,9 @@ function evRunModel(run) {
 
 const EV_TARGETS = {
   'ws-harness': [
-    { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', enabled: true },
-    { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', enabled: true },
-    { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', enabled: true },
+    { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', enabled: true },
+    { id: 't-cr', kind: 'skill', objectName: 'code-review', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/code-review', defaultRef: 'v1.8.0', tags: ['v1.8.0', 'v1.7.2'], versions: [{ ref: 'v1.8.0', commit: 'f2c9a41', date: '2026-11-06' }, { ref: 'v1.7.2', commit: 'b7d3e58', date: '2026-10-24' }, { ref: 'v1.7.1', commit: '4e1a9c2', date: '2026-10-15' }, { ref: 'v1.7.0', commit: '9c5f2b8', date: '2026-10-03' }, { ref: 'v1.6.2', commit: '3a7e1d9', date: '2026-09-22' }, { ref: 'v1.6.1', commit: '8f2b4c7', date: '2026-09-12' }, { ref: 'v1.6.0', commit: 'd5e9a13', date: '2026-09-01' }, { ref: 'v1.5.3', commit: '6b1c8f4', date: '2026-08-22' }, { ref: 'v1.5.2', commit: 'e4a7d29', date: '2026-08-12' }, { ref: 'v1.5.1', commit: '1c6f9b3', date: '2026-08-02' }, { ref: 'v1.5.0', commit: 'a9d2e75', date: '2026-07-22' }, { ref: 'v1.4.0', commit: '7e3b5c1', date: '2026-07-10' }], validationProjectId: 'val-cr-2026q4', testProjectId: 'test-cr-2026q4', enabled: true },
+    { id: 't-ex', kind: 'agent', objectName: 'Explore', repoUrl: 'git@github.com:acme/agents.git', subDir: 'agents/Explore', defaultRef: 'v1.5.0', tags: ['v1.5.0', 'v1.4.3'], versions: [{ ref: 'v1.5.0', commit: 'c4a8b13', date: '2026-11-04' }, { ref: 'v1.4.3', commit: '6d2f9e1', date: '2026-10-20' }, { ref: 'v1.4.2', commit: 'b1e7c34', date: '2026-10-08' }, { ref: 'v1.4.1', commit: '9a3d5f7', date: '2026-09-25' }, { ref: 'v1.4.0', commit: 'f8c2e61', date: '2026-09-14' }, { ref: 'v1.3.2', commit: '2b6a9d4', date: '2026-09-02' }, { ref: 'v1.3.1', commit: 'd7e4b18', date: '2026-08-20' }, { ref: 'v1.3.0', commit: '5c1f7a2', date: '2026-08-08' }, { ref: 'v1.2.0', commit: '8e9b3c6', date: '2026-07-26' }], validationProjectId: 'val-ex-2026q4', testProjectId: 'test-ex-2026q4', enabled: true },
   ],
   'ws-agent': [
     { id: 't-ba', kind: 'skill', objectName: 'browser-agent', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/browser-agent', defaultRef: 'v0.9.4', tags: ['v0.9.4', 'v0.9.1'], validationProjectId: 'val-ba-2026q4', testProjectId: 'test-ba-2026q4', enabled: true },
@@ -4349,6 +4375,7 @@ const V2 = {
     listTarget: '', listSource: '', listStatus: 'all',
     listFrom: '', listTo: '', page: 1, targetPage: 1, multiOpen: false,
   },
+  targetDetail: { targetId: '', versions: new Set(), from: '', to: '', limit: 5, menuOpen: false },
   admin: { tab: 'spaces' },
   loginChoice: 'admin',
 };
@@ -4735,6 +4762,125 @@ function v2TargetStatusBadge(status) {
   return `<span class="v2-badge ${status === 'isTarget' ? 'ok' : status === 'notTarget' ? 'warn' : ''}">${s.label}</span>`;
 }
 
+/* ── 单个进化对象分析卡：独立筛选（对象 · 版本 · 时间段） ── */
+function v2TargetVersions(t) {
+  if (Array.isArray(t.versions) && t.versions.length) return t.versions;
+  const tags = (t.tags && t.tags.length) ? t.tags : [t.defaultRef || 'v0.1.0'];
+  return tags.map((ref, i) => ({
+    ref,
+    commit: v2Hash(ref + (t.id || '')).toString(16).padStart(8, '0').slice(-7),
+    date: `2026-${String(Math.max(1, 9 - i)).padStart(2, '0')}-10`,
+  }));
+}
+function v2TargetDetailData() {
+  const td = V2.targetDetail;
+  const targets = v2Targets();
+  if (!targets.length) { td.targetId = ''; return { td, targets, empty: true }; }
+  if (!td.targetId || !targets.some(t => t.id === td.targetId)) { td.targetId = targets[0].id; td.versions.clear(); }
+  const t = targets.find(x => x.id === td.targetId);
+  const from = td.from || V2.overview.from, to = td.to || V2.overview.to;
+  const set = v2TargetSet(t, from, to);
+  const versions = v2TargetVersions(t);
+  const list = versions.map((v, i) => ({ v, rows: set.rows.filter(r => v2Hash(r.c.id + v.ref) % (i + 1) === 0) }));
+  const sel = td.versions;
+  const limit = td.limit === 'all' ? list.length : Number(td.limit) || 5;
+  const scope = sel.size ? list.filter(b => sel.has(b.v.ref)) : list.slice(0, limit);
+  const scopeRows = scope.flatMap(b => b.rows);
+  return {
+    td, targets, t, set, versions, list, scope, scopeRows, sel, from, to,
+    stats: {
+      sessions: set.assoc,
+      potential: scopeRows.length,
+      unique: new Set(scopeRows.map(r => r.c.id)).size,
+      versions: scope.length,
+    },
+  };
+}
+function v2TargetDetailCard() {
+  const d = v2TargetDetailData();
+  const td = d.td;
+  const head = `<div class="td-head"><h2>单个进化对象分析</h2><div class="hint">独立筛选：选一个进化对象，查看它在所选版本与时间段内的关联 Session、潜在 bad case 分布与来源构成。</div></div>`;
+  if (d.empty) {
+    return `<div class="card td-card" data-testid="target-detail-card">${head}
+      <div class="ov-empty"><b>当前空间还没有启用中的进化对象</b>先到进化对象配置新增并启用对象，再回来查看单个对象的关联 Session 与来源分布。<div style="margin-top:12px"><button class="btn sm" data-v2-td-config>去配置进化对象 →</button></div></div>
+    </div>`;
+  }
+  const verMenu = d.versions.map(v => `<label><input type="checkbox" value="${v.ref}" ${td.versions.has(v.ref) ? 'checked' : ''} data-v2-td-version><span class="mono">${v.ref}</span><span class="mono faint">${v.commit}</span></label>`).join('');
+  const limitBtns = [5, 10, 20].map(n => `<button class="${td.limit === n ? 'on' : ''}" data-v2-td-limit="${n}">${n}</button>`).join('') + `<button class="${td.limit === 'all' ? 'on' : ''}" data-v2-td-limit="all">全部</button>`;
+  const summary = td.versions.size ? `已选 ${td.versions.size} 个版本` : (td.limit === 'all' ? '全部版本' : `最近 ${td.limit} 个版本`);
+  const maxVer = Math.max(1, ...d.scope.map(b => b.rows.length));
+  const verRows = d.scope.map(b => {
+    const c = v2TargetStatusCounts(b.rows), total = b.rows.length || 1;
+    return `<div class="ov-obj-row tg-source-obj td-ver-row" title="${v2Esc(b.v.ref)} · ${v2Esc(b.v.commit)} · ${v2Esc(b.v.date)} · 潜在 bad case ${b.rows.length}">
+      <span class="ov-obj-name"><span class="mono">${v2Esc(b.v.ref)}</span> <span class="mono faint">${v2Esc(b.v.commit)}</span></span>
+      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${b.rows.length / maxVer * 100}%"><span class="tg-r-is" style="width:${c.isTarget / total * 100}%"></span><span class="tg-r-not" style="width:${c.notTarget / total * 100}%"></span><span class="tg-r-un" style="width:${c.unanalyzed / total * 100}%"></span></span></span>
+      <span class="ov-obj-num"><b>${b.rows.length}</b> · 是 ${c.isTarget} / 非 ${c.notTarget} / 未 ${c.unanalyzed}</span>
+    </div>`;
+  }).join('');
+  const srcMap = new Map();
+  d.scopeRows.forEach(r => {
+    if (!srcMap.has(r.source)) srcMap.set(r.source, { name: r.source, total: 0, uniq: new Set() });
+    const s = srcMap.get(r.source);
+    s.total += 1; s.uniq.add(r.c.id);
+  });
+  const sourceDist = [...srcMap.values()].sort((a, b) => b.total - a.total);
+  const maxSrc = Math.max(1, ...sourceDist.map(s => s.total));
+  const srcRows = sourceDist.map(s => `<div class="ov-obj-row tg-source-obj" title="${v2Esc(s.name)} · 潜在 bad case ${s.total} 条 · 去重后 ${s.uniq.size} 个">
+      <span class="ov-obj-name">${v2Esc(s.name)}</span>
+      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${s.total / maxSrc * 100}%"><span class="tg-r-src" style="width:100%"></span></span></span>
+      <span class="ov-obj-num"><b>${s.total}</b>（去重后：${s.uniq.size}）</span>
+    </div>`).join('');
+  const canExpand = !td.versions.size && d.scope.length < d.list.length;
+  const nextLimit = d.scope.length < 10 ? 10 : d.scope.length < 20 ? 20 : 'all';
+  const scopeText = td.versions.size
+    ? `当前查看已选的 ${d.scope.length} 个`
+    : (d.scope.length >= d.list.length ? `当前查看全部 ${d.list.length} 个` : `当前查看最近 ${d.scope.length} 个`);
+  return `<div class="card td-card" data-testid="target-detail-card">
+    ${head}
+    <div class="ov-filterbar td-filterbar">
+      <div class="ov-filter-group"><span class="ov-filter-label">进化对象</span>
+        <select class="inp" data-v2-td-target>${d.targets.map(t => `<option value="${t.id}" ${t.id === td.targetId ? 'selected' : ''}>${v2Esc(t.objectName)} · ${v2Esc(t.kind)}</option>`).join('')}</select>
+      </div>
+      <span class="ov-filter-sep"></span>
+      <div class="ov-filter-group"><span class="ov-filter-label">版本</span>
+        <details class="ov-multi td-ver-multi" ${td.menuOpen ? 'open' : ''}>
+          <summary>${summary}<span class="caret">⌄</span></summary>
+          <div class="ov-multi-menu td-ver-menu">
+            <div class="td-ver-list">
+            ${verMenu}
+            </div>
+            <div class="om-foot td-limit"><span>默认显示最近</span><span class="td-limit-btns">${limitBtns}</span></div>
+          </div>
+        </details>
+      </div>
+      <span class="ov-filter-sep"></span>
+      <div class="ov-filter-group"><span class="ov-filter-label">时间</span>
+        <input class="inp" type="date" value="${v2Esc(d.from)}" data-v2-td-from>
+        <span class="ov-filter-label">~</span>
+        <input class="inp" type="date" value="${v2Esc(d.to)}" data-v2-td-to>
+      </div>
+    </div>
+    <div class="td-stats">
+      <div class="td-stat"><b>${d.stats.sessions}</b><span>关联 Session</span></div>
+      <div class="td-stat"><b>${d.stats.potential}</b><span>潜在 bad case</span></div>
+      <div class="td-stat"><b>${d.stats.unique}</b><span>去重后 bad case</span></div>
+      <div class="td-stat"><b>${d.stats.versions}</b><span>覆盖版本</span></div>
+    </div>
+    <div class="td-grid">
+      <section class="td-sec">
+        <div class="tg-source-title">潜在 bad case 分布 <span>按版本汇总；柱长按最大值归一</span></div>
+        ${verRows || '<div class="waiting">当前条件下没有关联 Session 或潜在 bad case</div>'}
+        <div class="td-footnote">共 ${d.versions.length} 个版本 · ${scopeText}${canExpand ? ` · <button data-v2-td-limit="${nextLimit}">${nextLimit === 'all' ? '查看全部' : `展开到 ${nextLimit}`}</button>` : ''}</div>
+      </section>
+      <section class="td-sec">
+        <div class="tg-source-title">bad case 来源分布 <span>当前对象、版本与时间段；括号内为去重后数量</span></div>
+        ${srcRows || '<div class="waiting">当前条件下没有潜在 bad case</div>'}
+      </section>
+    </div>
+  </div>`;
+}
+
+
 function v2RenderOverview() {
   const host = document.getElementById('overviewApp');
   if (!host) return;
@@ -4957,19 +5103,6 @@ function v2RenderTargetsOverview() {
       <span class="ov-obj-num"><b>${d.assoc}</b> · 含潜在 ${withPotential} / 仅关联 ${onlyAssoc}</span>
     </div>`;
   }).join('');
-  const srcMap = new Map();
-  rows.forEach(r => {
-    if (!srcMap.has(r.source)) srcMap.set(r.source, { name: r.source, total: 0, uniq: new Set() });
-    const s = srcMap.get(r.source);
-    s.total++; s.uniq.add(r.c.id);
-  });
-  const sourceDist = [...srcMap.values()].sort((a, b) => b.total - a.total);
-  const maxSourceTotal = Math.max(1, ...sourceDist.map(s => s.total));
-  const sourceDistRows = sourceDist.map(s => `<div class="ov-obj-row tg-source-obj" title="${v2Esc(s.name)} · 潜在 bad case ${s.total} 条 · 去重后 ${s.uniq.size} 个">
-      <span class="ov-obj-name">${v2Esc(s.name)}</span>
-      <span class="ov-obj-bar"><span class="tg-source-fill" style="width:${s.total / maxSourceTotal * 100}%"><span class="tg-r-src" style="width:100%"></span></span></span>
-      <span class="ov-obj-num"><b>${s.total}</b>（去重后：${s.uniq.size}）</span>
-    </div>`).join('');
   const tf = V2.targetOv;
   let lrows = rows.filter(r =>
     (!tf.listTarget || r.targetId === tf.listTarget) &&
@@ -5051,10 +5184,6 @@ function v2RenderTargetsOverview() {
         <div class="tg-source-title">不同进化对象的潜在 bad case <span>按对象汇总；柱长按最大值归一</span></div>
         ${targetDistRows || '<div class="waiting">当前空间还没有进化对象</div>'}
       </div>
-      <div class="ov-objects tg-source-objects">
-        <div class="tg-source-title">潜在 bad case 来源分布 <span>所选进化对象在当前时间段的潜在 bad case；柱长为未去重条数，括号内为去重后数量</span></div>
-        ${sourceDistRows || '<div class="waiting">当前条件下没有潜在 bad case</div>'}
-      </div>
     </div>
     <div class="card ov-side tg-side">
       <div class="tg-side-head"><div><h3>进化对象</h3><span class="v2-note">已添加的对象 · 可直接编辑或移除</span></div><button class="btn sm" data-v2-tg-add>+ 新增</button></div>
@@ -5062,6 +5191,7 @@ function v2RenderTargetsOverview() {
       <div class="v2-pager"><span class="info">共 ${all.length} 个 · 第 ${tPage} / ${tPages} 页</span><button data-v2-tg-side-page="${tPage - 1}" ${tPage <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-tg-side-page="${tPage + 1}" ${tPage >= tPages ? 'disabled' : ''}>下一页 →</button></div>
     </div>
   </div>
+  ${v2TargetDetailCard()}
   <div class="card ov-list-card">
     <div class="ov-list-head"><div><h2>潜在 bad case</h2><div class="hint">按进化对象、上报来源、分析状态和时间分页查看；已分析的记录可打开归因报告。</div></div></div>
     <div class="tg-list-filters">
@@ -5381,7 +5511,7 @@ function v2SetMemberRole(uid, role) {
 
 /* ── 事件 ── */
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-overview-case],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
+  const el = e.target.closest('[data-v2-login-user],[data-v2-switch-ws],[data-v2-manage-ws],[data-v2-preview-login],[data-v2-admin-entry],[data-v2-logout],[data-v2-ov-range],[data-v2-ov-grain],[data-v2-ov-clear],[data-v2-ov-remove],[data-v2-ov-page],[data-v2-ov-reset],[data-v2-ov-tab],[data-v2-tg-add],[data-v2-tg-edit],[data-v2-tg-remove],[data-v2-tg-metric],[data-v2-tg-clear],[data-v2-tg-page],[data-v2-tg-side-page],[data-v2-tg-reset],[data-v2-tg-save],[data-v2-td-limit],[data-v2-td-config],[data-v2-overview-case],[data-v2-overview-ingest],[data-v2-overview-evo],[data-v2-copy-endpoint],[data-v2-admin-tab],[data-v2-open-ws],[data-v2-members-ws],[data-v2-quota-ws],[data-v2-create-ws],[data-v2-add-member],[data-v2-self-admin],[data-v2-remove-member],[data-v2-copy],[data-v2-rotate-token],[data-v2-close],[data-v2-save-ws],[data-v2-save-member]');
   if (!el) return;
   const ds = el.dataset;
   if (ds.v2LoginUser) { V2.loginChoice = ds.v2LoginUser; v2RenderLogin(); return; }
@@ -5403,6 +5533,8 @@ document.addEventListener('click', e => {
   if (ds.v2TgMetric) { const k = ds.v2TgMetric; if (V2.targetOv.metrics.has(k)) V2.targetOv.metrics.delete(k); else V2.targetOv.metrics.add(k); v2RenderOverview(); return; }
   if (ds.v2TgClear !== undefined) { V2.targetOv.targets.clear(); V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgPage) { V2.targetOv.page = Math.max(1, +ds.v2TgPage); v2RenderOverview(); return; }
+  if (ds.v2TdLimit) { V2.targetDetail.limit = ds.v2TdLimit === 'all' ? 'all' : Number(ds.v2TdLimit) || 5; V2.targetDetail.menuOpen = true; v2RenderOverview(); return; }
+  if (ds.v2TdConfig !== undefined) { V2.setPage('evo'); location.hash = '#/targets'; return; }
   if (ds.v2TgSidePage) { V2.targetOv.targetPage = Math.max(1, +ds.v2TgSidePage); v2RenderOverview(); return; }
   if (ds.v2TgReset !== undefined) { V2.targetOv.listFrom = ''; V2.targetOv.listTo = ''; V2.targetOv.listTarget = ''; V2.targetOv.listSource = ''; V2.targetOv.listStatus = 'all'; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgSave !== undefined) { v2SaveTarget(ds.v2TgSave || null); return; }
@@ -5442,6 +5574,18 @@ document.addEventListener('click', e => {
   if (ds.v2SaveMember !== undefined) { v2SaveMember(); return; }
 });
 document.addEventListener('change', e => {
+  if (e.target.matches('[data-v2-td-target]')) {
+    V2.targetDetail.targetId = e.target.value;
+    V2.targetDetail.versions.clear();
+    v2RenderOverview(); return;
+  }
+  if (e.target.matches('[data-v2-td-version]')) {
+    const td = V2.targetDetail;
+    if (e.target.checked) td.versions.add(e.target.value); else td.versions.delete(e.target.value);
+    v2RenderOverview(); return;
+  }
+  if (e.target.matches('[data-v2-td-from]')) { V2.targetDetail.from = e.target.value; v2RenderOverview(); return; }
+  if (e.target.matches('[data-v2-td-to]')) { V2.targetDetail.to = e.target.value; v2RenderOverview(); return; }
   if (e.target.matches('[data-v2-ov-object]')) {
     if (e.target.checked) V2.overview.objects.add(e.target.value); else V2.overview.objects.delete(e.target.value);
     V2.overview.page = 1; v2RenderOverview(); return;
@@ -5473,6 +5617,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('toggle', e => {
   if (e.target.matches && e.target.matches('.ov-multi')) { V2.overview.multiOpen = e.target.open; }
+  if (e.target.matches && e.target.matches('details.td-ver-multi')) { V2.targetDetail.menuOpen = e.target.open; }
   if (e.target.matches && e.target.matches('details.tn-ws, details.tn-user, details.tn-sync') && e.target.open) v2CloseMenus(e.target);
 }, true);
 document.addEventListener('keydown', e => {

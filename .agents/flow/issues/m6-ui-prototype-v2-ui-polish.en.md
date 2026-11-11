@@ -54,6 +54,10 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - The fifth turn adds two distribution blocks inside the evolution-target overview trend card: associated Sessions normalized per target with the blue segment marking Sessions that contain potential bad cases, and a source distribution normalized by non-deduplicated count with the deduplicated count in parentheses keyed by bad case ID; both follow the target multi-select and time window.
 - The fifth turn makes the overview's "start evolution" open the wizard overlay directly (new `evWizardHost()`: `#modal-root` inside the evolution page, the global `#v2Modal` elsewhere); only step 4 confirmation leaves the overview, landing on the new run detail.
 - Fifth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round5/`.
+- The sixth turn moves "potential bad case source distribution" out of the trend card into a new "single evolution target" card; the trend card keeps only the associated-Session and potential-bad-case object summaries.
+- The sixth turn's card has independent filters: a required target select defaulting to the first enabled target (empty state with a configure prompt when the workspace has none), a version multi-select defaulting to the newest five and expandable to 10 / 20 / all, and a date range independent of the overview.
+- The sixth turn's card shows object-level stats (associated Sessions, potential bad cases, deduplicated, covered versions) plus a per-version stacked potential-bad-case distribution and a per-source deduplicated distribution.
+- Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
 
 ## Implementation steps
 
@@ -97,6 +101,9 @@ pnpm verify:flow; pnpm lint:docs
 - The default policy uses the same "or" wording everywhere; the wizard body shows a persistent scrollbar when content overflows; the login page has no orphan line and its baseline path points at `plans/ui-prototype-v2/`; auth copy does not mix `membership`; and custom-policy copy matches rule-composition semantics.
 - The evolution-target overview states three object-level distributions — associated Sessions, potential bad cases, and sources — and the non-deduplicated source total matches the "potential bad cases" stat.
 - Clicking "start evolution" on the overview stays on the overview and completes all four steps in the overlay; after confirmation the page lands on the new run detail with `page=evo` and `#/run/<id>` in the URL.
+- The trend card no longer carries the source distribution; source composition and the multi-version view appear only in the "single evolution target" card.
+- The single-target card defaults to the first enabled target, shows the newest five versions by default, expands to 10 / 20 / all, and keeps stats plus both distributions in sync when the target or date range changes.
+- When the workspace has no enabled targets, the card's target select is empty and shows the configure entry.
 
 ## Gates and CI
 
