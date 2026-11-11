@@ -22,6 +22,8 @@ The eighth turn found defects in the potential bad-case list: the trigger-point 
 
 The ninth turn found the bad-case list's ID only as subtext under the title: it cannot be clicked on its own, and a single case cannot be linked to directly; after adding a column, the title cell would also repeat the ID.
 
+The tenth turn found the "source bad case" table in the evolution run detail passing `attr` explicitly, so clicking a bad-case ID landed on the attribution tab — the opposite of the "ID shows the problem, report ID shows the attribution" rule; the report-ID deep link also lacked the object, so it selected the first attribution.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -41,6 +43,8 @@ The seventh turn only changes layout: the stats collapse into one divided strip;
 The eighth turn drops the trigger-point column and adds a "phenomenon / description" column after the report ID (the bad-case description, ellipsized with a title tooltip); `caseDeepLink` now always carries `u=<current user>` and accepts `obj=<target>`, and the error detail preselects the attribution matching that object name; the list's attribution status and report ID now come from the case's existing attribution records, and rows without a matching object attribution read "unanalyzed".
 
 The ninth turn adds a leading "ID" column to the bad-case list: the ID uses the same deep link to open the Session error view on the matching case's problem-description tab; the title cell keeps only the title, and the empty-state colspan moves to 8.
+
+The tenth turn switches that table back to the default deep link (`desc`), adds the `obj` parameter to the report-ID deep link, and gives `evCaseLink` a `stopPropagation` so clicking an ID does not also trigger the row action.
 
 ## Alternatives considered
 
@@ -65,6 +69,8 @@ The ninth turn adds a leading "ID" column to the bad-case list: the ID uses the 
 - Make the title a link: the title is long, so its large hit area invites accidental full-page navigation.
 - Keep the subtext ID and only make it clickable: it still wastes width and mixes the ID with the title.
 - Render the ID as plain text with a copy button: it adds a step and still cannot be shared as a deep link.
+- Keep the `attr` deep link and only explain it in the table header: it stays inconsistent with every other list and still misleads readers.
+- Decide the tab from the clicked column position: it needs hit-testing, is fragile, and breaks with layout changes.
 
 ## Consequences
 
@@ -79,3 +85,5 @@ The seventh turn trims the card from roughly 430px to 376px at 1440px. The `.td-
 The eighth turn aligns the list with the error detail, but the overview's analyzed / unanalyzed counts are no longer hash-sampled; they follow each case's attribution records and therefore shift with the mock distribution. With a real attribution API, the object-name matching should become a query by object version. Deep links gained an `obj` parameter; older links still work and fall back to the first attribution.
 
 The ninth turn moves the ID into the first column, so that column is now one ID wide and the title column gains the horizontal room; the ID deep link still opens a new tab, and in-page navigation would use `v2OpenCase` instead.
+
+After the tenth turn, bad-case IDs land on the problem description across both the evolution pages and the overview lists; a table that genuinely wants the attribution tab must pass `tab` explicitly and update its own copy, or it will contradict the global rule.

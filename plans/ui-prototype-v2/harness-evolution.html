@@ -3690,7 +3690,7 @@ function evTypeChip(t) {
 }
 function evCaseType(c) { return c.type === 'self' ? '<span class="v2-badge self">self</span>' : '<span class="v2-badge discovery">discovery</span>'; }
 function evCaseLink(c, tab) {
-  return `<a class="idlink" href="${caseDeepLink(c.id, tab || 'desc')}" target="_blank" rel="noopener">${c.id}</a>`;
+  return `<a class="idlink" href="${caseDeepLink(c.id, tab || 'desc')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${c.id}</a>`;
 }
 function evSevHTML(sev) {
   const color = sev >= 8 ? 'var(--red)' : sev >= 6 ? 'var(--orange)' : 'var(--text-faint)';
@@ -3887,7 +3887,7 @@ function evStepAttr(run) {
     const category = r.conclusion === 'not-object' ? '非该对象问题' : r.category;
     return `<tr>
       <td class="mono attr-source">${evCaseLink(r.c)}</td>
-      <td class="mono attr-report"><a class="idlink" href="${caseDeepLink(r.c.id, 'attr')}" target="_blank" rel="noopener" title="归因报告 ID · 打开归因分析">${r.attributionId}</a></td>
+      <td class="mono attr-report"><a class="idlink" href="${caseDeepLink(r.c.id, 'attr', null, run.target.name)}" target="_blank" rel="noopener" title="归因报告 ID · 打开归因分析">${r.attributionId}</a></td>
       <td>${evTypeChip(category)}</td>
       <td class="attr-desc"><span title="${evEsc(r.c.detail)}">${evEsc(r.c.detail)}</span></td>
       <td>${r.cached ? '<span class="v2-badge">缓存</span>' : '<span class="v2-badge">新增</span>'}</td>
@@ -3927,7 +3927,7 @@ function evCaseTable(c) {
   const rows = (c.caseIds || []).map(id => caseById(id)).filter(Boolean);
   if (!rows.length) return '<div class="v2-note">无来源 bad case</div>';
   return `<table class="rep"><thead><tr><th>bad case</th><th>标题</th><th>object_name</th><th>类型</th><th>触发点</th><th>上报时间</th></tr></thead><tbody>
-    ${rows.map(x => `<tr><td>${evCaseLink(x, 'attr')}</td><td>${evEsc(x.title)}</td><td class="mono">${evEsc(x.objectName)}</td><td>${evCaseType(x)}</td><td class="mono">L${x.triggerLine}</td><td class="mono">${x.clock}</td></tr>`).join('')}
+    ${rows.map(x => `<tr><td>${evCaseLink(x)}</td><td>${evEsc(x.title)}</td><td class="mono">${evEsc(x.objectName)}</td><td>${evCaseType(x)}</td><td class="mono">L${x.triggerLine}</td><td class="mono">${x.clock}</td></tr>`).join('')}
   </tbody></table>`;
 }
 function evCluster(run, c, i) {

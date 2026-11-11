@@ -65,6 +65,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Eighth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round8/`.
 - The ninth turn adds a clickable leading "ID" column to the bad-case list; clicking opens the Session error view on the matching case, the title cell drops the duplicated ID subtext, and the empty-state column count is updated.
 - Ninth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round9/`.
+- The tenth turn unifies link destinations: bad-case IDs always land on the problem-description tab, report IDs land on the attribution tab with the matching object preselected; the evolution "source bad case" table returns to the default deep link, and `evCaseLink` gains `stopPropagation`.
+- Tenth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round10/`.
 
 ## Implementation steps
 
@@ -115,6 +117,7 @@ pnpm verify:flow; pnpm lint:docs
 - The potential bad-case list no longer has a trigger-point column; rows with an attribution report show its phenomenon / description after the report ID, and rows without one show —.
 - Clicking a report ID opens the Session error view on the attribution tab with the matching target preselected, and never lands on the login page.
 - The bad-case list starts with an ID column that opens the Session error view on that case; the title cell no longer repeats the ID.
+- A bad-case ID lands on the problem description from anywhere; a report ID lands on the attribution tab with the matching target preselected.
 
 ## Gates and CI
 
