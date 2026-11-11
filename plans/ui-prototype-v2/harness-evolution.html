@@ -1350,7 +1350,7 @@ const USERS = [
 ];
 const WORKSPACES = [
   {
-    id: "ws-harness", name: "Harness 核心研发", mark: "HC", quota: 60, createdAt: "2026-09-12",
+    id: "ws-harness", name: "Harness 核心研发", mark: "HC", quota: 60, createdAt: "2026-08-01",
     desc: "Session 轨迹、错误归因与自进化的主研发空间。",
     ingestToken: "he_ws_hc_7f3c9a2e5b81d40c", ingestEnabled: true,
     members: [
@@ -4360,6 +4360,7 @@ function v2Role(wsId, user) {
 }
 function v2RoleLabel(wsId, user) { return V2_ROLE_LABEL[v2Role(wsId, user)] || '无权限'; }
 function v2IsAdmin(user) { return (user || V2.user)?.globalRole === 'admin'; }
+function v2UserRoleBadgeLabel(u) { if (u.globalRole === 'admin') return '全局管理员'; return V2_WS.some(w => w.members.some(m => m.userId === u.id && m.role === 'space_admin')) ? '空间管理员' : '普通成员'; }
 function v2CanManage(wsId) { const r = v2Role(wsId); return r === 'admin' || r === 'space_admin'; }
 function v2VisibleWorkspaces() {
   if (!V2.user) return [];
@@ -4398,7 +4399,7 @@ function v2RenderLogin() {
   if (!host) return;
   host.innerHTML = V2_USERS.filter(u => u.id !== 'wanghao').map(u => {
     const global = u.globalRole === 'admin';
-    const role = global ? '全局管理员' : (V2_WS.filter(w => w.members.some(m => m.userId === u.id && m.role === 'space_admin')).length ? '空间管理员' : '普通成员');
+    const role = v2UserRoleBadgeLabel(u);
     return `<button type="button" class="login-account ${u.id === V2.loginChoice ? 'active' : ''} ${global ? 'admin' : ''}" data-v2-login-user="${u.id}">
       <span class="la-av">${u.avatar}</span>
       <span class="la-main"><b>${v2Esc(u.name)}</b><span>${v2Esc(u.email)}</span></span>
@@ -4476,7 +4477,7 @@ function v2RenderShell() {
       <div class="up-role">${v2Badge(v2RoleLabel(V2.wsId), V2_ROLE_BADGE[v2Role(V2.wsId)] || '')}<span>当前空间：${v2Esc(ws.name || '')}</span></div>
       <div class="up-sep"></div>
       <label>切换演示身份（原型）</label>
-      <select id="v2RoleSwitch">${V2_USERS.map(u => `<option value="${u.id}" ${u.id === V2.user.id ? 'selected' : ''}>${v2Esc(u.name)} · ${u.globalRole === 'admin' ? '全局管理员' : '普通用户'}</option>`).join('')}</select>
+      <select id="v2RoleSwitch">${V2_USERS.map(u => `<option value="${u.id}" ${u.id === V2.user.id ? 'selected' : ''}>${v2Esc(u.name)} · ${v2UserRoleBadgeLabel(u)}</option>`).join('')}</select>
       <div class="up-sep"></div>
       <button class="up-link" data-v2-preview-login>打开登录页预览</button>
       <button class="up-link" data-v2-admin-entry>${v2CanManage(V2.wsId) ? '空间管理' : '总览'}</button>

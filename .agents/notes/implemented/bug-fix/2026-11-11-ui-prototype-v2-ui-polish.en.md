@@ -16,6 +16,8 @@ The fifth turn found the login footer splitting "SSO/OIDC callback" into a singl
 
 The sixth turn found the evolution-target dialog marking only the validation and test project fields as required even though save validation also requires object name, repo URL, subdirectory, and baseline; and the fourth turn had pointed the login page's "visual baseline" at the current file itself, creating a self-reference.
 
+The seventh turn found `ws-harness` created on 2026-09-12 in workspace management even though its earliest Session is 2026-08-23, with August bad cases already in the overview; and the user-menu demo identity labeling Space Admins such as Li Wei and Chen Yu as "regular user", contradicting the login cards and header.
+
 ## Decision
 
 Fix the same `plans/ui-prototype-v2/harness-evolution.html` with the smallest diff: make top-level entries non-shrinking and single-line, hiding subtitles below 1400px; disable wheel zoom and allow page scrolling on both React Flow instances, raising `minZoom` to 0.5; change `--text-faint` to `#66707c` and enlarge ticks and totals; set the Session shell to `calc(100vh - 56px)`, let the detail header's first column shrink, and ellipsize long IDs; widen the source-total column to 120px; and make the evolution-target side card a column flex container with a bottom-pinned pager. Before/after evidence lives under `plans/ui-prototype-v2/_ui-review/`.
@@ -30,6 +32,8 @@ The fifth turn splits the login footer into "Cookie session / user mapping" and 
 
 The sixth turn marks object name, repo URL, subdirectory, and baseline branch/tag as required, and restores the login baseline path to the V1 prototype `plans/14-15-ui-prototype/harness-evolution.html`.
 
+The seventh turn moves the `ws-harness` creation date to 2026-08-01, before the earliest Session; a new `v2UserRoleBadgeLabel` unifies the display role between the login page and user menu, so Space Admins read as "Space Admin" everywhere and Members as "Member".
+
 ## Alternatives considered
 
 - Edit production `apps/web` directly: it mixes prototype review with product implementation, and this issue only covers prototype assets.
@@ -42,7 +46,9 @@ The sixth turn marks object name, repo URL, subdirectory, and baseline branch/ta
 - Keep `object_name` as a field reference: the other headers are natural language, and mixing field names hurts table readability; the API sample still keeps the field name.
 - Mark only the validation and test project fields: save validation also requires object name, repo, subdirectory, and baseline, and a mismatch makes readers retry blindly.
 - Keep the self-referential baseline path: readers cannot tell which prototype version the baseline means; the V1 file is still in the repo, so restoring the old path is semantically accurate.
+- Move the August Sessions into another workspace: that would change overview counts, bad-case ownership, and quota usage, while changing the creation date has a smaller blast radius.
+- Keep the global role in the user menu and add "global regular user": it still conflicts with the workspace role in the header and forces readers to translate.
 
 ## Consequences
 
-The prototype drifts further from production frontend styling; future alignment work should treat this note and its screenshots as the reference. Review screenshots add repository weight but make each turn auditable. The 1400px threshold, 0.5 minimum zoom, and canvas height clamps are empirical; re-measure if real data lengthens labels or adds nodes. URLs use `replaceState`, so refresh restores the current page and workspace; browser back still leaves the prototype, and full history semantics would need `pushState` plus `popstate` replay. The scrollbar uses `::-webkit-scrollbar`, which stays visible in Chrome and Safari; Firefox falls back to its native scrollbar, so broader browser support would need `scrollbar-color`. The Viewer note on the login page depends on the identity switch in the user menu; removing that entry later requires updating the copy. The baseline path points at V1 again, so moving that folder requires a copy update; required markers must stay in sync with the `evSaveTarget` validation list.
+The prototype drifts further from production frontend styling; future alignment work should treat this note and its screenshots as the reference. Review screenshots add repository weight but make each turn auditable. The 1400px threshold, 0.5 minimum zoom, and canvas height clamps are empirical; re-measure if real data lengthens labels or adds nodes. URLs use `replaceState`, so refresh restores the current page and workspace; browser back still leaves the prototype, and full history semantics would need `pushState` plus `popstate` replay. The scrollbar uses `::-webkit-scrollbar`, which stays visible in Chrome and Safari; Firefox falls back to its native scrollbar, so broader browser support would need `scrollbar-color`. The Viewer note on the login page depends on the identity switch in the user menu; removing that entry later requires updating the copy. The baseline path points at V1 again, so moving that folder requires a copy update; required markers must stay in sync with the `evSaveTarget` validation list. The `ws-harness` creation date now precedes member join dates (2026-09-12), meaning the workspace existed before those members joined; the role label uses the highest workspace role, so a user who administers multiple workspaces shows as "Space Admin" without naming the workspace.

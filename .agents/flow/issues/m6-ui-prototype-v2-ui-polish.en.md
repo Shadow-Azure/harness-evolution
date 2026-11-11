@@ -55,6 +55,8 @@ The V2 prototype carries the multi-workspace overview, Session inspection, evolu
 - Fifth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round5/`.
 - The sixth turn marks every validated field in the evolution-target dialog as required: object name, repo URL, subdirectory, and baseline branch/tag are all checked on save, so their labels now match the validation list; the login page's visual baseline path returns to the V1 prototype, removing the self-reference introduced in the fourth turn.
 - Sixth-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round6/`.
+- The seventh turn fixes data and role labels: the `ws-harness` creation date moves from 2026-09-12 to 2026-08-01, before its earliest Session (2026-08-23); the user-menu demo identity reuses the login page's display-role calculation, so Space Admins are no longer labeled "regular user".
+- Seventh-turn evidence lives under `plans/ui-prototype-v2/_ui-review/round7/`.
 
 ## Implementation steps
 
@@ -98,6 +100,7 @@ pnpm verify:flow; pnpm lint:docs
 - The default policy uses the same "or" wording everywhere; the wizard body shows a persistent scrollbar when content overflows; the login page has no orphan line and its baseline path points at `plans/14-15-ui-prototype/`; auth copy does not mix `membership`; and custom-policy copy matches rule-composition semantics.
 - The login footer has no single-character orphan and the read-only note matches the available user-menu switch; member permissions are not self-contradictory; and user tables no longer expose `object_name`.
 - Required markers in the evolution-target dialog match save validation; the login page's visual baseline points at the V1 prototype rather than the current file.
+- A workspace's creation date precedes its earliest Session; the user menu, login page, and header show the same role label for the same user.
 
 ## Gates and CI
 
