@@ -41,9 +41,10 @@ The V2 prototype (`plans/ui-prototype-v2/`) establishes four new capability clas
 ## Implementation
 
 - Three new addendum docs `15-v2-workspaces.md` / `16-v2-overview.md` / `17-v2-attribution.md` following the 11–14 addendum style (background, data model, API contract, code-change map, tests and acceptance, non-goals, confirmed decisions).
+- All three are written at the implementation granularity of the V1 docs (05/06/07/08): sequence diagrams and state machines, per-endpoint request/response JSON, per-table columns and indexes, Repository/Service method signatures, concurrency and idempotency rules, migration and rollback scripts, component trees with queryKey invalidation matrices, and layered test cases.
 - README: three doc-map rows, decision table gains D21/D22/D23, updated one-line system description and data-boundary block, V2 relationship to repository state.
-- 02-features: new §2.4 (F21–F27 V2 feature points plus a change table for five V1 feature points).
-- 05-api-design: V2 endpoint block appended to §4; twelve V2 error codes appended to §8.
+- 02-features: new §2.4 (F21–F27 V2 feature points plus a change table for five V1 feature points) and §2.5 (V2 acceptance criteria).
+- 05-api-design: V2 endpoint block appended to §4; V2 error codes appended to §8.
 - 06-database-design: V2 table addendum block in §1 (new tables, added columns, frozen list).
 - 01-architecture / 07-backend-implementation / 08-frontend-implementation: boundary revisions (workspace inputs/outputs/non-goals, workspaces service) and V1 freeze notes.
 - New Agent Note triple `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*` (addendum approach and key trade-offs).

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m6-v2-design-docs.md
-m6-v2-design-docs.md: 2e9f782a3aaddc43c137a62a5be4096a3766f2d5
-m6-v2-design-docs.en.md: 9ae8e8dcce0030e737df52e1092ebd8dd3031f01
+m6-v2-design-docs.md: 451f94a28f09419e66e99f6acd43abd407df276d
+m6-v2-design-docs.en.md: d3226d7f759e86a7d9e514d566be7e46df74c0db
