@@ -1,7 +1,7 @@
 # 08 · 前端的实现设计
 
 > 本文回答：每个页面用什么组件、数据怎么取、交互怎么实现、Agent 执行流图怎么落地、V1 占位实现前端要注意什么。
-> **V2（2026-11-11）**：路由与守卫见 §1、§6；空间切换器、空间管理页与鉴权接入文案见 §4.2–§4.3；总览页见 §5；Session 列表「最新 10 + 回车查询」见 §5.4；错误详情多归因见 §7；向导四步见 §9；运行七步与 `stepsSchema` 双轨见 §10。旧 `/sessions/**`、`/evolution/**` 在迁移期重定向（§1.4）。
+> **V2（2026-11-11）**：路由与守卫见 §1、§6；空间切换器、空间管理页与鉴权接入文案见 §4.2–§4.3；总览页见 §5；Session 列表「最新 10 + 回车查询」见 §5.4；错误详情多归因见 §7；向导四步见 §9；运行详情统一消费服务端给出的七步列表，历史 V1 run 由服务端适配（§10）。旧 `/sessions/**`、`/evolution/**` 在迁移期重定向（§1.4）。
 > 前置：[03 前端架构](03-frontend-architecture.md) · [05 接口设计](05-api-design.md)；验收基准：[原型 HTML](../14-15-ui-prototype/harness-evolution.html) 与截图。
 
 ## 1. 页面与路由实现映射
@@ -16,7 +16,7 @@
 | `/workspaces/:wid/sessions/:sid/errors` | `pages/errors/Index.vue` | `GET …/sessions/{sid}/bad-cases`、`GET …/bad-cases/{id}/attributions`、`GET …/attributions/{at}` | 错误详情与多归因 |
 | `/workspaces/:wid/evolution` | `pages/evolution/Index.vue` | `GET …/evolution/runs`、`GET …/catalogs/*` | 自进化列表 + 启动向导 |
 | `/workspaces/:wid/evolution/targets` | `pages/evolution/targets/Index.vue` | `GET/POST/PUT/DELETE …/evolution/targets`、`GET .../versions` | 进化对象配置（按空间） |
-| `/workspaces/:wid/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET …/evolution/runs/{rid}`、`/steps/{key}` | 运行详情（V2 七步 / V1 六步） |
+| `/workspaces/:wid/evolution/runs/:rid` | `pages/evolution/RunDetail.vue` | `GET …/evolution/runs/{rid}`、`/steps/{key}` | 新 run 七步；历史 V1 run 由服务端适配后同样渲染七步 |
 | `/workspaces/:wid/evolution/cluster/:previewId` | `pages/evolution/ClusterPreview.vue` | 同上（`cluster_only`） | 仅聚类结果 |
 | `/workspaces/:wid/admin` | `pages/workspaces/Admin.vue` | `GET/PUT /workspaces/{wid}`、`…/members`、`…/credentials` | 空间管理四 Tab（原型） |
 
@@ -592,7 +592,7 @@ Index.vue
 
 ## 9. 启动向导（`pages/evolution/components/LaunchWizard.vue`）
 
-> V2（2026-11-11）：向导从两步扩为**四步**，命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case → 对象归因」；V1 的两步流程仅作为历史 run 的对照。
+> V2（2026-11-11）：向导从两步扩为**四步**，命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case → 对象归因」；V1 两步 API 进入兼容期，不再作为新页面路径。
 
 ### 9.1 状态机
 
@@ -656,12 +656,12 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 - 命中数字来自真实 `bad_cases` / `agent_events` 查询（潜在匹配与 run 共用实现），不再哈希模拟。
 - 若库里没有 bad case 或轨迹未归一化（开发环境），用 `fixtures` seed 后即可演示；前端不做任何桩分支。
 
-### 9.4 与 V1 两步向导的对照（冻结）
+### 9.4 与 V1 两步向导的迁移对照
 
 | 维度 | V1（冻结） | V2 |
 |---|---|---|
 | 步数 | 2（条件 → 命中确认） | 4（范围 → Session 关联 → 潜在 → 归因预览） |
-| 命中源 | 旧版 probe 报告（接口已删除） | 空间 bad case + Session 关联 + 潜在策略 |
+| 命中源 | 旧版 probe 报告（接口兼容保留） | 空间 bad case + Session 关联 + 潜在策略 |
 | 筛选 | 对象/版本/时间段/模型多选 | 对象/版本/时间段/策略/缓存开关（模型多选移除） |
 | 出口 | 仅聚类 / 启动 | 同左（body 增加 `policy`/`cacheEnabled`） |
 | 空态码 | —（已废弃） | `409 NO_ASSOCIATED_SESSIONS` / `409 NO_POTENTIAL_MATCHED` |

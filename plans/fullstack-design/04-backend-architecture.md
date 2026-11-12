@@ -5,7 +5,7 @@
 
 ## 1. 一句话架构
 
-**Python 3.12 + FastAPI 模块化单体（SaaS 服务）**：HTTP 层只做校验、鉴权与路由，service 层承载业务规则，DB 层通过 `Database` 接口 + crud 访问 MySQL（SQLite 仅测试）；外部数据（问题/归因）以只读表接入，出站调用封装在 `third_party_api`；任务由 `service/jobs.py` 串行执行，进度走 `service/events.py` 的 SSE 总线。
+**Python 3.12 + FastAPI 模块化单体（SaaS 服务）**：HTTP 层只做校验、鉴权与路由，service 层承载业务规则，DB 层通过 `Database` 接口 + crud 访问 MySQL（SQLite 仅测试）；V2 bad case 以空间凭据上报，归因由自进化 run 写入，历史外部数据通过兼容同步接入；出站调用封装在 `third_party_api`；任务由 `service/jobs.py` 串行执行，进度走 `service/events.py` 的 SSE 总线。
 
 ## 2. 技术选型总表
 
@@ -57,7 +57,7 @@
 └───────────────┬───────────────────────────────┬───────────────┘
                 ▼                               ▼
 ┌─ 外部数据接入 ──────────────────┐  ┌─ 存储层（db/） ─────────────┐
-│ bad_cases 读写 + 归因只读       │  │ Database 接口 + SQLite/MySQL│
+│ bad_cases / 归因读写             │  │ Database 接口 + SQLite/MySQL│
 │ 上游轨迹 API（third_party_api） │  │ CRUD（方言无关）            │
 └───────────────┬─────────────────┘  │ Alembic 迁移（双方言）      │
                 └───────────────────►└─────────────────────────────┘
@@ -211,8 +211,7 @@ def create_database(settings: Settings) -> Database:
 |---|---|---|
 | 原始轨迹 | `service/acquisition/payloads.py` + `third_party_api/trajectory/` | 读 `trajectory_payloads`（外部脚本写）；pull 时写入同一张表 |
 | 问题（bad case） | `api/ingest.py` + `service/workspaces` | **V2 主通道**：空间上报接口（凭据 + 额度）写 `bad_cases`；目录同步默认停用 |
-| 归因（V2） | `service/evolution/attribution.py` | run 内按对象·版本生成 `bad_case_attributions`（由 `probe_reports` 演进） |
-| 归因（V2） | `service/evolution/attribution.py` | 自进化 run 内按对象·版本生成 `bad_case_attributions` |
+| 归因（V2） | `service/evolution/attribution.py` | run 内按对象·版本 upsert `probe_reports`，并写 `bad_case_analysis` 一对多关联与缓存标签 |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
 
 早期"六类 Provider + stub 实现"的设计已取消：问题/归因数据本来就在外部表里，真实实现是"读表"，不需要再包一层可替换接口；强行抽象只会增加映射代码和漂移风险。
@@ -238,7 +237,7 @@ class PayloadSource(Protocol):
 ### 5.3 fixtures：演示数据的唯一形态
 
 - `fixtures/` 放原型 4 个会话的轨迹、bad_cases、归因行，以及可选的 `evolution_targets` 配置；
-- `evolution_clusters` / `evolution_cluster_members` / `bad_case_attributions` 是**派生数据，不写入 fixtures**；seed 后在向导启动 `POST /evolution/cluster-previews` 或 `POST /evolution/runs`，由 `simple_cluster` 生成；
+- `probe_clusters` / `probe_cluster_probes` / `bad_case_analysis` / `probe_reports` 的 V2 新增归因与聚类是**派生数据，不写入 fixtures**；seed 后在向导启动 `POST /evolution/cluster-previews` 或 `POST /evolution/runs`，由 `simple_cluster` 生成；
 - `python -m app.cli seed` 幂等写入真实表（按主键 upsert 语义），仅开发/演示环境执行；
 - 生产不执行 seed；UI 永远读真实表；
 - 与"运行时 Stub Provider"的区别：没有 `phase=demo` 之外的运行时分支逻辑，问题侧字段与真实表完全一致（`demo` 只表示数据来自 seed）。

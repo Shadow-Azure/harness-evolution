@@ -27,18 +27,19 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 
 - 定义 V2 三大主题的目标态设计：鉴权接入与工作空间、总览与 Session 列表、归因进自进化与多归因错误详情。
 - 覆盖用户 7 点需求：多用户不开放注册 + 鉴权接入预留；多工作空间与角色；空间 bad case 上报接口与额度；总览双视角与下钻；Session 最新 10 条 + 回车查询；归因进自进化（关联 Session → 潜在策略 → 归因/非该对象 → 缓存）；错误详情左栏多归因。
-- 保持 V1 已实现行为的陈述可追溯：V1 文档冻结标注 + 补篇指针，不全文改写。
+- 在 V2 目标态正文中保留 V1 数据兼容与迁移边界，并单独记录当前实现、V1 原型与 V2 原型的差距。
 - 给出代码改动地图与实施切片顺序，供后续 V2 实现 issue 直接引用。
 
 ## 设计依据
 
 - [01-architecture.md §4.4](../../../plans/fullstack-design/01-architecture.md)：鉴权链路与空间授权在总体架构中的位置。
 - [05-api-design.md §3.7–§3.10、§4.16–§4.20](../../../plans/fullstack-design/05-api-design.md)：空间/成员/凭据/上报/总览/归因端点与 DTO。
-- [06-database-design.md §3.10–§3.12、§4.2、§5.3–§5.4、§5.9、§7.5、§9](../../../plans/fullstack-design/06-database-design.md)：空间表、归因表（由 `probe_reports` 演进）、簇与成员表、候选表、V2 口径与迁移。
+- [06-database-design.md §3.10–§3.12、§4.2、§5.3–§5.4、§5.9、§7.5、§9](../../../plans/fullstack-design/06-database-design.md)：空间表、`bad_case_analysis` / `probe_reports` 多归因演进、原名簇与成员表、候选表、V2 口径与迁移。
 - [07-backend-implementation.md §5.11–§5.15、§8.2.1](../../../plans/fullstack-design/07-backend-implementation.md)：七步管线、潜在匹配、归因缓存、空间服务与鉴权接缝。
 - [08-frontend-implementation.md §1.4、§4.2、§5.2.1、§6、§7、§9、§10](../../../plans/fullstack-design/08-frontend-implementation.md)：空间壳、总览、最新 10 条、多归因、四步向导、七步详情。
 - [README.md 决策表 D21–D23](../../../plans/fullstack-design/README.md)：V2 顶层决策与 V1 冻结语义。
 - [design-v2.md](../../../plans/ui-prototype-v2/design-v2.md)：V2 原型验收基线。
+- [15-v1-v2-gap-analysis.md](../../../plans/fullstack-design/15-v1-v2-gap-analysis.md)：当前实现 vs V1、V2 vs V1 的差异与代码改动地图。
 
 ## 实现内容
 
@@ -48,9 +49,10 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 - 03：空间前缀路由、空间守卫、queryKey 带 `wid`、空间/总览/多归因组件与目录。
 - 04：workspaces/overview 模块、上报写入边界、归因引擎占位、V2 配置项与测试策略。
 - 05：§3.7–§3.10 新 DTO（Workspace/Member/Credential/Ingest/Attribution/Overview）；§3.6.2 七步 payload；§4.16–§4.20 端点；§5 深链；§8 完整 V2 错误码；§9 映射。
-- 06：workspaces/workspace_members/workspace_ingest_credentials；bad_cases.workspace_id；evolution_runs 三个新列；归因与簇表在既有表上演进（`probe_reports → bad_case_attributions`、`probe_clusters → evolution_clusters`、`probe_cluster_probes → evolution_cluster_members`），`bad_case_analysis` 删除；新增 `evolution_run_candidates`；§7.5 口径；§9 迁移。
-- 07：归一化补 tree_index/triggered_at；七步 prepare；潜在匹配；归因缓存；预览端点；空间服务与依赖；鉴权接缝；测试与切片顺序。
-- 08：路由与重定向；api 模块与 queryKeys；空间管理四 Tab；最新 10 条 + 回车；总览页；多归因错误详情；四步向导；七步详情与 `stepsSchema` 双轨。
+- 06：workspaces/workspace_members/workspace_ingest_credentials；bad_cases.workspace_id；`bad_case_analysis` 扩为一 case 多归因、`probe_reports` 原位加缓存字段，`probe_clusters` / `probe_cluster_probes` 保留原名；新增 `evolution_run_candidates`；§7.5 口径；§9 迁移。
+- 07：归一化补 tree_index/triggered_at/object_version；七步 prepare；潜在匹配；归因缓存；预览端点；空间服务与依赖；鉴权接缝；测试与切片顺序。
+- 08：路由与重定向；api 模块与 queryKeys；空间管理四 Tab；最新 10 条 + 回车；总览页；多归因错误详情；四步向导；七步详情；历史 V1 step 由服务端适配。
+- 15：记录当前实现 vs V1 原型、V2 vs V1 原型、数据库复用规则、代码改动地图、实施顺序与验收重点。
 - 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（决策与取舍）。
 
 ## 实施步骤
@@ -58,7 +60,7 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 1. 通读 V1 设计文档与当前代码实现，确认差距基线（端点/表/服务逐项核对）。
 2. 对比 V1/V2 原型，核实 7 点需求的 UI 覆盖与出入。
 3. 按域把 V2 设计写进 01–08（不新增补篇），同步修正跨文档不一致（错误码、列、`blocked_stage`、admin 路径规则）。
-4. 删除临时补篇 15–17，清理全部引用（README/02/09）。
+4. 删除临时补篇 15–17，新增长期差距文档 15，清理全部引用（README/02/09）。
 5. 新增 Agent Note 并重录 i18n 配对。
 
 ## 依赖与交付边界
@@ -76,10 +78,10 @@ pnpm verify:flow; pnpm lint:docs
 
 ## 验收标准
 
-- 01–08 覆盖 7 点需求，且每项都有数据模型、API 契约与代码改动地图。
+- 01–08 与 15 覆盖 7 点需求，且每项都有数据模型、API 契约与代码改动地图。
 - 总览/向导/run 三处的「潜在 bad case」口径声明为同一实现。
-- V1 已实现行为有冻结标注，历史 run 渲染兼容（`stepsSchema` 双轨）写明。
-- 05 错误码表覆盖 V2 全部错误码；06 列定义与 05/07 引用一致；归因/簇表为「演进」而非新增（与 D23 一致）。
+- 历史 run 渲染兼容由服务端映射为统一七步 DTO，不在前端维护第二套步骤 schema。
+- 05 错误码表覆盖 V2 全部错误码；06 列定义与 05/07 引用一致；归因/簇表保留 V1 名称并在原表演进（与 D23 一致）。
 - README 决策表含 D21–D23；02 含 F21–F27；Agent Note 双语配对完整。
 
 ## 门禁与 CI
@@ -91,5 +93,5 @@ pnpm verify:flow; pnpm lint:docs
 ## 非目标
 
 - 不实现任何 V2 功能代码或数据库迁移。
-- 不重写 V1 文档正文（只加补篇与指针）。
+- 不改历史实现代码；V1 行为只保留迁移、兼容和差距说明。
 - 不在本 issue 内裁决 V2 实现 issue 的排期与切分。

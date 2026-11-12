@@ -40,7 +40,7 @@
 | 全量自动导入 + 自研组件自动注册 | ❌ 不借鉴 | 自研组件显式 import，评审时能看出依赖来源；Element Plus 仍自动导入 |
 | 全局 `types/` 目录 | ❌ 不借鉴 | API 类型以 `packages/contracts` 为准；筛选类型放 `api/<domain>.ts`，视图模型放组件旁 `types.ts` |
 | `assets/` 替代 `styles/` | ❌ 不改 | 纯命名，无功能收益；`styles/` 更直白 |
-| MSW 一份 handler 服务 dev 与测试 | ❌ 不借鉴 | 数据来自真实表（问题侧外部只读、演示用 fixtures seed），前端不需要 mock 拦截器；测试用 MSW 仅用于组件测试的隔离 |
+| MSW 一份 handler 服务 dev 与测试 | ❌ 不借鉴 | 数据来自真实表（空间上报、自进化写入、演示用 fixtures seed），前端不需要 mock 拦截器；测试用 MSW 仅用于组件测试的隔离 |
 | 静态数据 + API 双轨 | ❌ 不借鉴 | 本方案数据一律走 API；只有 UI 词典（状态文案、颜色映射）是前端常量 |
 | 手动 vendor 分包 + 构建守卫 + 体积预算 | ✅ 借鉴精简版 | ECharts 类重库本项目没有，但 Vue Flow 与 Element Plus 要独立成 chunk |
 | Pinia + 持久化插件全量装配 | ⚠️ 精简 | 只装 Pinia（不装持久化插件）：登录态用 refresh cookie 恢复，access token 不落 localStorage |
@@ -224,7 +224,7 @@ App.vue
 | `pages/errors/components/AttributionReport.vue` | `AttributionReport` | 结论横幅 + 根因对象 + 推导过程（Markdown 渲染） |
 | `pages/evolution/components/Stepper.vue` | `stepperHTML` | 七步（`run.steps` 直出），可点击已到达节点 |
 | `pages/evolution/components/RunCard.vue` | `runCard` | 进行中/历史卡片（V2 增空间/策略/缓存 chip） |
-| `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 四步 Modal（V2；V1 两步冻结） |
+| `pages/evolution/components/LaunchWizard.vue` | `renderWizard` | 四步 Modal（范围/策略、Session、潜在、归因预览） |
 | `pages/evolution/components/ClusterCard.vue` | `clusterHTML` | 聚类卡（来源 bad case / patch / 评测 / commit） |
 | `pages/evolution/components/DiffView.vue` | `diffHTML` | patch 着色 diff |
 | `pages/evolution/components/EvalCompare.vue` | `evalHTML` | current vs candidate 条形对比 |
@@ -276,7 +276,7 @@ styles/element-overrides.css  Element Plus 变量映射到本项目令牌
 ```
 
 - **令牌是唯一颜色源**：`--blue/--green/--orange/--red/--purple/--cyan` 及 `--bg-*/--text-*/--border` 原样移植，组件里禁止写死色值。
-- **状态色映射表**（前端常量，唯一允许的"静态数据"）：归因状态 → 色（`unanalyzed` 灰 / `nonissue` 绿 / `issue-model` 紫 / `issue-prompt` 橙 / `issue-error` 红）；问题类型 → 色（非问题灰 / 错误红 / prompt 橙 / 模型紫）。与原型 `TYPE_COLOR` / `STATUS_LABEL` 一致。
+- **状态色映射表**（前端常量，唯一允许的"静态数据"）：归因三态 `unanalyzed` 灰 / `attributed` 绿 / `non_target` 橙；`attributed` 再按 `category` 映射 model 紫、prompt 橙、error 红。历史 V1 状态只在兼容数据中由服务端归一。
 - **Element Plus 覆盖**：只覆盖 `--el-color-primary`、圆角、字体，不做全量皮肤；EP 样式运行时注入，覆盖文件需提高特异性（参考报告 §8 的坑）。
 - 响应式：顶栏在 <1100px 隐藏副标题（原型同规则）；Agent 执行流图画布固定高度 720px，详情页 413px（原型值）。
 

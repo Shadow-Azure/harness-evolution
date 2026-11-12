@@ -1,7 +1,7 @@
 # 07 · 后端接口的实现设计
 
 > 本文回答：每个功能域的路由、服务、外部数据接入、任务具体怎么写，状态机怎么推，同步怎么保证幂等。
-> **V2（2026-11-11）**：空间/成员/凭据与上报见 §5.15；鉴权接入接缝见 §8.2.1；自进化七步、潜在匹配、归因与缓存见 §5.11–§5.14；触发点坐标的归一化写入见 §2.3。§5.1/§5.3/§5.5/§5.10 对 `steps_schema=v1` 的历史 run 仍然成立。
+> **V2（2026-11-11）**：空间/成员/凭据与上报见 §5.15；鉴权接入接缝见 §8.2.1；自进化七步、潜在匹配、归因与缓存见 §5.11–§5.14；触发点坐标的归一化写入见 §2.3。新 run 一律七步；历史 V1 run 由服务端只读适配，不把双代 schema 扩散到前端。
 > 前置：[04 后端架构](04-backend-architecture.md) · [05 接口设计](05-api-design.md) · [06 数据库设计](06-database-design.md)。
 > 阅读方式：按 §2–§7 的域顺序即可；每个域都给出"职责划分 → 关键流程 → 伪代码/结构 → 测试点"。
 
@@ -285,7 +285,7 @@ async def aggregate_session_stats(root_session_id: str) -> SessionStats:
 - `user_turns` 只保留用户输入锚点（`prompt_text` + `line_no`/`message_offset`），供未来在 Agent 执行流图展示用户输入；不含轮级统计。
 - 证据原文按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读；不恢复消息/内容块明细表。
 
-## 4. 问题与归因（`service/bad_cases`，归因读自 `bad_case_attributions`）
+## 4. 问题与归因（`service/bad_cases`，归因读自 `bad_case_analysis` + `probe_reports`）
 
 ### 4.1 读路径
 
@@ -303,11 +303,11 @@ async def get_attribution(wid: str, case_id: str, at_id: str) -> AttributionDeta
     row = await crud.attributions.get(at_id)
     if row is None or row.bad_case_id != case_id:
         raise NotFound("ATTRIBUTION_NOT_FOUND")
-    compare = await crud.candidates.latest_trigger_compare(row.id)
+    compare = await crud.candidates.latest_trigger_compare(row.probe_id)
     return to_detail(row, compare)
 ```
 
-- 归因只有一张表（由 `probe_reports` 演进）；没有行 = 未归因，`conclusion` 决定「可归因 / 非该对象问题」。
+- 归因由两张既有表组成：`bad_case_analysis` 表达 case↔归因多行关联，`probe_reports` 保存对象·版本结论与缓存元数据；没有关联行 = 未归因，`probe_reports.conclusion` 决定「可归因 / 非该对象问题」。
 - `BadCase` 附带的 `attributionCount` 用 `COUNT(DISTINCT object_type, object_name, object_version)`，供左栏「尚未归因 / N 条归因」。
 - `triggerCompare` 取自该归因最近一次关联的候选（`evolution_run_candidates` 的 `object_trigger_at / case_trigger_at`）。
 
@@ -317,39 +317,41 @@ async def get_attribution(wid: str, case_id: str, at_id: str) -> AttributionDeta
 - 错误详情左栏一次取 `/sessions/{sid}/bad-cases`（含计数），选中 case 后再分页取归因；不做「整页一次拉完」。
 - `analysis` 字段、`/analysis` 端点、`/probes` 端点均已删除；历史导入的归因行通过 `attribution_engine='legacy-probe-import'` 区分。
 
-## 5. 自进化（`service/evolution`）## 5. 自进化（`service/evolution`）
+## 5. 自进化（`service/evolution`）
 
 ### 5.1 状态机（unit 游标）
 
 ```text
-unit 0  筛选输入        done when unit >= 1
-unit 1  问题聚类        done when unit >= 2
-unit 2  归因确认        done when unit >= 3
-unit 3  严重程度排序    done when unit >= 4
-unit 4  迭代优化        done when unit >= 4 + M（M = 簇数；每推进一次 +1 轮）
-unit 5  测试集终评      done when unit >= 4 + M + 1
+unit 0  选择范围         done when unit >= 1
+unit 1  Session 关联     done when unit >= 2
+unit 2  潜在 bad case    done when unit >= 3
+unit 3  对象归因         done when unit >= 4
+unit 4  聚类与严重度     done when unit >= 5
+unit 5  迭代优化         done when unit >= 5 + M（M = 簇数；每推进一次 +1 轮）
+unit 6  测试集终评       done when unit >= 5 + M + 1
 ```
 
 ```mermaid
 stateDiagram-v2
     [*] --> S0: 创建 run（unit=0）
-    S0 --> S1: 筛选完成（unit=1）
-    S1 --> S2: 聚类完成（unit=2）
-    S2 --> S3: 归因确认（unit=3）
-    S3 --> S4: 排序完成（unit=4）
-    S4 --> S4: 每轮迭代（unit+1，直到 4+M）
-    S4 --> S5: 全部轮次完成（unit=4+M）
-    S5 --> [*]: 终评完成（unit=4+M+1）
+    S0 --> S1: 范围确认（unit=1）
+    S1 --> S2: Session 关联（unit=2）
+    S2 --> S3: 潜在筛选（unit=3）
+    S3 --> S4: 对象归因（unit=4）
+    S4 --> S5: 聚类与严重度（unit=5）
+    S5 --> S5: 每轮迭代（unit+1，直到 5+M）
+    S5 --> S6: 全部轮次完成（unit=5+M）
+    S6 --> [*]: 终评完成（unit=5+M+1）
 ```
 
-七步 `status` 映射与前端不推算的约定不变（[05 §3.6](05-api-design.md)）：`range / sessions / potential / attribution / clusters / iteration / final`，进度公式 `5 + M + 1`。
+`status` 映射与前端不推算的约定不变（[05 §3.6](05-api-design.md)）：`range / sessions / potential / attribution / clusters / iteration / final`，进度公式 `5 + M + 1`。历史 V1 run 只由 `build_step_payload` 的兼容分支映射为同样的七步 DTO。
 
 ### 5.2 对象配置（`service/evolution/targets.py`）
 
-- CRUD 维护 `evolution_targets`；写操作仅 admin（middleware 按「方法 + 路径」判定：`POST/PUT/DELETE /api/evolution/targets*` 要求 `role=admin`，`GET` 只需登录，成员只读配置页）。
+- CRUD 维护 `evolution_targets`；V2 写操作要求当前空间的 `space_admin`，全局管理员直通，`member/viewer` 只读。资源级权限在 `require_workspace_role`，middleware 只负责身份与全局路由边界。
 - 保存前校验：`repo_url` 可访问且 `default_ref` 可解析（`git ls-remote --exit-code <repo_url> <default_ref>`）、`sub_dir` 非空且不以 `..` 越界；失败 → `422 REPO_INVALID`。
 - 版本列表：拉取/更新仓库缓存到 `data/repos/{target_id}`，执行 `git tag --list`；V1 也允许 `git ls-remote --tags` 只读查询。
-- 唯一约束 `(object_type, object_name)` → 重复新增 `409 TARGET_EXISTS`；删除时若有进行中 run → `409 TARGET_IN_USE`。
+- 唯一约束 `(workspace_id, object_type, object_name)` → 同空间重复新增 `409 TARGET_EXISTS`，不同空间可各自配置；删除时若有进行中 run → `409 TARGET_IN_USE`。
 
 ### 5.3 创建 run：同步校验 → 入队
 
@@ -391,12 +393,12 @@ async def request_run(cond: RunCondition, mode: str = "full") -> RunAccepted:
 
 ### 5.4 执行引擎：`EvolutionEngine` 基类 + 工厂（七步流程的完整收口）
 
-第 1–6 步是一个完整流程，组织上收口为一个类层级：**能力边界由 `stages()` 声明，阶段编排写在"拥有该阶段"的类里**——`prepare` 骨架与生命周期在基类，迭代阶段（advance/apply/finalize/retry）只在 `FullEvolutionEngine`；随实现代际变化的钩子放在真正使用它的子类。每个阶段方法仍是一个短 job（activity）——不 sleep、不占 worker、可恢复状态全落 DB，并发与崩溃恢复语义不变；这是 durable execution 的穷人版：job handler ≈ activity，DB 表 ≈ 执行历史，`eval_poller` ≈ 定时器触发。**替换实现 = 新增子类 + 工厂注册一个 `engine_key`**，前端、API、表结构零改动。
+七步是一个完整流程，组织上收口为一个类层级：**能力边界由 `stages()` 声明，阶段编排写在"拥有该阶段"的类里**——`prepare` 骨架与生命周期在基类，迭代阶段（advance/apply/finalize/retry）只在 `FullEvolutionEngine`；随实现代际变化的钩子放在真正使用它的子类。每个阶段方法仍是一个短 job（activity）——不 sleep、不占 worker、可恢复状态全落 DB，并发与崩溃恢复语义不变；这是 durable execution 的穷人版：job handler ≈ activity，DB 表 ≈ 执行历史，`eval_poller` ≈ 定时器触发。**替换实现 = 新增子类 + 工厂注册一个 `engine_key`**，前端、API、表结构零改动。
 
 ```text
 service/evolution/engine/
   base.py          # EvolutionEngine 抽象基类：生命周期（stages/handle/gateway）+ prepare 骨架
-  full.py          # FullEvolutionEngine：V1 完整自进化（占位 patch / decide / final）
+  full.py          # FullEvolutionEngine：完整自进化（占位 patch / decide / final）
   cluster_only.py  # ClusterOnlyEngine：prepare 后即终态
   factory.py       # EngineFactory：engine_key → engine 类（fail fast 注册表）
 ```
@@ -422,7 +424,7 @@ class EvolutionEngine(ABC):
         return build_eval_gateway(self.run.eval_config)
 
     # ===== INTERNAL：prepare 骨架（所有引擎共有）+ 它的 4 个钩子 =====
-    async def prepare(self, job): ...            # 筛选→setup_workspace→聚类→归因→排序→build_rounds→收口→kickoff
+    async def prepare(self, job): ...            # 范围→Session→潜在→归因→聚类/严重度→setup_workspace→build_rounds→收口→kickoff
     @abstractmethod async def setup_workspace(self, run) -> Workspace | None: ...
     @abstractmethod async def build_rounds(self, run) -> None: ...
     @abstractmethod def final_status(self) -> str: ...
@@ -458,7 +460,7 @@ class EvolutionEngine(ABC):
         async with db.transaction():
             clusters = simple_cluster([c for c in candidates if c.included and c.attributed])
             await crud.clusters.bulk_insert(cluster_rows)
-            await crud.cluster_members.bulk_insert(member_rows)   # (cluster_id, attribution_id)
+            await crud.cluster_members.bulk_insert(member_rows)   # (probe_cluster_id, probe_id)
             await crud.runs.set_progress(run.id, progress_unit=4)
         await events.record(run.id, "clusters_created", stage="cluster", step_index=4)
 
@@ -558,7 +560,7 @@ async def evolution_dispatch(job) -> None:
 - `POST /cluster-previews` 与 `POST /runs` 共用同一入口；差异全部收敛在 `ClusterOnlyEngine`：不建 workspace、不建 `evolution_rounds`、不提交 advance；聚类与 `confidence`/`severity` 落库后 run 直接 `completed`（终态，归入历史组），前端轮询到 `completed` 再拉 `steps/clusters`（[08 §11](08-frontend-implementation.md)）。
 - `Workspace.prepare`：从 `data/repos/{target_id}` 缓存本地克隆 → 建 `evo/{YYYYMMDD}-{run_id}` 分支；缓存由 `RepoCache.ensure_by_url(repo_url)` 拉取/更新。
 - prepare 只读 run 快照（`repo_url` / `sub_dir` / `target_version` / `engine_key` / `eval_config`），不读 `evolution_targets` 的当前值；target 配置后续变更不影响已创建的 run。
-- `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `evolution_clusters.impact` 并固化；聚类步写入 `confidence / severity / rank`（簇级占位，按 `category`）。nfidence`，第 3 步排序完成更新 `severity` / `rank`，`build_step_payload` 只读这些列。
+- `TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}`：建簇时写入 `probe_clusters.impact` 并固化；聚类步写入 `confidence / severity / rank`（簇级占位，按 `probe_cluster_type`）。这些列落库后 `build_step_payload` 只读，不在接口层重算。
 - 第 2/3 步必须是独立写库点：归因步骤写 `confidence`，排序步骤写 `severity` / `rank`，**之后才**按 rank 顺序创建/推进 `evolution_rounds`。不能沿用"聚类后直接建轮次"的路径，否则分数没有落库时机，迭代顺序也不是严重度顺序。
 - `attribution_step` / `severity_step` 各自独立事务、各记一条 `step_advanced` 事件；V1 在 prepare 模板内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
 
@@ -930,8 +932,8 @@ Harness-Decision-Rule: external-verdict
 | 0 `range` | 条件 + 统计 | `evolution_runs`（condition/policy/cache 快照）+ `stats` |
 | 1 `sessions` | 关联/跳过/待同步 + 分页行 | 候选的 `DISTINCT session_id` + `session_families` + `run.stats` |
 | 2 `potential` | potential + 命中原因 | `evolution_run_candidates`（含 excluded）+ `bad_cases` |
-| 3 `attribution` | 潜在/复用/新增/非该对象 + 行 | `evolution_run_candidates` join `bad_case_attributions` |
-| 4 `clusters` | 簇 + 成员 + 严重度 | `evolution_clusters` + `evolution_cluster_members` + 归因行 |
+| 3 `attribution` | 潜在/复用/新增/非该对象 + 行 | `evolution_run_candidates` join `probe_reports`，经 `bad_case_analysis` 取 case 关联 |
+| 4 `clusters` | 簇 + 成员 + 严重度 | `probe_clusters` + `probe_cluster_probes` + `probe_reports` |
 | 5 `iteration` | 逐轮 candidate → push → eval → accept/reject | `evolution_rounds` + 簇 + 成员（`cases[]`） |
 | 6 `final` | 终评 verdict + metrics + changes | `evolution_finals` |
 
@@ -942,7 +944,7 @@ Harness-Decision-Rule: external-verdict
 
 ### 5.11 V2 流程重排：七步与 prepare 管线
 
-> 2026-11-11：自进化输入从「probe 命中」改为「空间 bad case → Session 关联 → 潜在 bad case → 对象归因 → 聚类」。V1 的 §5.1/§5.3/§5.5/§5.10 描述对 `steps_schema=v1` 的历史 run 仍然成立；**新 run 一律 `steps_schema=v2`，按本节执行**。
+> 2026-11-11：自进化输入从「probe 命中」改为「空间 bad case → Session 关联 → 潜在 bad case → 对象归因 → 聚类」。新 run 一律按本节七步执行；历史 V1 run 只由服务端兼容映射为七步 DTO，不再产生新六步 run。
 
 ```text
 unit 0 选择范围 range        done when unit ≥ 1
@@ -994,7 +996,7 @@ class PotentialMatcher:
 
 - 查询形态：一次取空间窗口内 bad case 的会话集合；一次取这些会话的对象触发事件（按 session 分组取最早）；一次取关联会话内全部 bad case（含锚点列）并批量取坐标——避免 per-case 查询。
 - 触发点坐标：对象进入点 = 该 Session 内 `kind` 匹配 `object_type` 且 `name == object_name` 的最早 `agent_events`；bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
-- 版本口径：关联按对象名（触发事件不带版本），`target_version` 只参与归因身份与缓存键；待上游轨迹带版本后再收紧（遗留项）。
+- 版本口径：`agent_events.object_version` 非空时必须等于所选 `target_version` 才建立关联；历史事件没有版本时按对象类型/名称匹配，并在候选 `order_state` 标记 `version_unknown`，预览与详情不得把它展示为版本精确命中。
 
 ### 5.13 归因生成与缓存（`service/evolution/attribution.py`）
 
@@ -1009,16 +1011,17 @@ class AttributionRunner:
     async def run(self, run, candidates, cache_enabled: bool) -> None:
         for item in (c for c in candidates if c.included):
             row, cached = await self._attribute_one(item, cache_enabled=cache_enabled)
-            await self.candidates.link_attribution(run.id, item.bad_case_id, row.id, cached)
+            await self.analyses.upsert_link(item.bad_case_id, row.probe_id)
+            await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 缓存键 = `UNIQUE(workspace_id, bad_case_id, object_type, object_name, object_version, policy_version, attribution_engine)`。
+- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
 - `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
 - V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。
-- **簇级 confidence 与归因 confidence 是两回事**：归因行上的 `confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `evolution_clusters.confidence` 是簇级占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
-- `non_target` 候选保留在候选表与归因表（错误详情可见），不进簇。
+- **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
+- `non_target` 候选保留在候选表、`probe_reports` 与 `bad_case_analysis`（错误详情可见），不进簇。
 
 ### 5.14 预览端点（`service/evolution/preview.py`）
 
@@ -1026,7 +1029,7 @@ class AttributionRunner:
 |---|---|---|
 | `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列对象出现过的 Session；跳过数进 summary |
 | `preview/potential` | `matcher.potential_cases` + 分页（5/页） | 含 `hitReason`/`orderState`；0 → `NO_POTENTIAL_MATCHED` |
-| `preview/attribution` | 归因表按缓存键 `IN` 查询 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值 |
+| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值 |
 
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
 - `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。

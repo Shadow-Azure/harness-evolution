@@ -44,28 +44,29 @@ erDiagram
     SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
 
     SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
-    BAD_CASE ||--o{ BAD_CASE_ATTRIBUTION : "对象·版本结论"
+    BAD_CASE ||--o{ BAD_CASE_ANALYSIS : "对象·版本归因"
+    BAD_CASE_ANALYSIS }o--|| PROBE_REPORT : "指向归因明细"
 
     EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_CANDIDATE : "候选快照"
     BAD_CASE ||--o{ EVOLUTION_RUN_CANDIDATE : "潜在判定"
-    BAD_CASE_ATTRIBUTION ||--o| EVOLUTION_RUN_CANDIDATE : "本次关联"
-    EVOLUTION_RUN ||--o{ EVOLUTION_CLUSTER : "本次 run 的聚类"
-    EVOLUTION_CLUSTER ||--o{ EVOLUTION_CLUSTER_MEMBER : "成员（归因行）"
-    BAD_CASE_ATTRIBUTION ||--o{ EVOLUTION_CLUSTER_MEMBER : "被聚类"
+    PROBE_REPORT ||--o| EVOLUTION_RUN_CANDIDATE : "本次关联"
+    EVOLUTION_RUN ||--o{ PROBE_CLUSTER : "本次 run 的聚类"
+    PROBE_CLUSTER ||--o{ PROBE_CLUSTER_PROBE : "成员（归因明细）"
+    PROBE_REPORT ||--o{ PROBE_CLUSTER_PROBE : "被聚类"
     EVOLUTION_RUN ||--o{ EVOLUTION_ROUND : "迭代轮"
-    EVOLUTION_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
+    PROBE_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
     EVOLUTION_RUN ||--o| EVOLUTION_FINAL : "终评"
 
     USER ||--o{ WORKSPACE_MEMBER : "加入"
     WORKSPACE ||--o{ WORKSPACE_MEMBER : "成员"
     WORKSPACE ||--o{ WORKSPACE_CREDENTIAL : "上报凭据"
     WORKSPACE ||--o{ BAD_CASE : "归属"
-    WORKSPACE ||--o{ BAD_CASE_ATTRIBUTION : "归因"
+    WORKSPACE ||--o{ PROBE_REPORT : "归因"
 ```
 
-> 轨迹侧表由本服务同步写入；`BAD_CASE` 由空间上报接口与目录同步写入；`BAD_CASE_ATTRIBUTION`（由 `probe_reports` 演进）/ `EVOLUTION_RUN_CANDIDATE` / `EVOLUTION_CLUSTER` / `EVOLUTION_CLUSTER_MEMBER` 由自进化 run 写。`BAD_CASE_ANALYSIS` 与独立的 probe 表已删除；`USER_TURN` 是内部表，不对外暴露（见 §3.3）。
+> 轨迹侧表由本服务同步写入；`BAD_CASE` 由空间上报接口与目录同步写入；`BAD_CASE_ANALYSIS` / `PROBE_REPORT` / `EVOLUTION_RUN_CANDIDATE` / `PROBE_CLUSTER` / `PROBE_CLUSTER_PROBE` 由自进化 run 写。物理表继续使用 V1 名称 `bad_case_analysis`、`probe_reports`、`probe_clusters`、`probe_cluster_probes`；API 的 `attributionId` 映射 `probe_reports.probe_id`，`USER_TURN` 是内部表，不对外暴露（见 §3.3）。
 
 ## 3. 领域模型（OpenAPI Schema 的源头）
 
@@ -227,7 +228,7 @@ erDiagram
 - DB 列映射：`title` ↔ `bad_cases.title`，`reason` ↔ `bad_cases.bad_case_description`——存储层列名带 `bad_case_` 前缀，DTO 字段保留 `reason`（见 [06 §4.1](06-database-design.md)）。
 - `anchor` 是后端算出的挂载点：`anchor.agentId` 是宿主节点（可能是上报人的父节点），`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
-- **归因状态（V2）**：`attributionCount` 是该 bad case 的去重「对象·版本」归因数；`hasAttribution = attributionCount > 0`。没有归因行就是未归因——不再有 `analysis` 字段与「非问题」状态（V1 的 `bad_case_analysis` 已删除）。
+- **归因状态（V2）**：`attributionCount` 是该 bad case 的去重「对象·版本」归因数；`hasAttribution = attributionCount > 0`。没有关联归因就是未归因；`BadCase` 不再内联单条 `analysis`，历史 `bad_case_analysis` 行保留并与多条 probe 归因关联。
 - 展示状态由归因子项决定：无归因 → 「尚未归因」；有 `attributed` → 「可归因」（附带 `category`：模型 / prompt / 错误）；只有 `non_target` → 「非该对象问题」。具体条数看 §4.19 的分页接口。
 
 ### 3.5 自进化运行
@@ -280,12 +281,13 @@ erDiagram
 "error": { "stage": "eval", "message": "评测执行失败：sandbox timeout", "at": "2026-10-23T09:41:02+08:00" },
 "lastEventSeq": 42,
 "steps": [
-  { "index": 0, "key": "input", "title": "筛选输入", "status": "done" },
-  { "index": 1, "key": "clusters", "title": "问题聚类", "status": "done" },
-  { "index": 2, "key": "attribution", "title": "LLM 归因置信度", "status": "done" },
-  { "index": 3, "key": "severity", "title": "严重程度排序", "status": "done" },
-  { "index": 4, "key": "iteration", "title": "迭代优化", "status": "active", "detail": "第 3/5 轮" },
-  { "index": 5, "key": "final", "title": "测试集终评", "status": "pending" }
+  { "index": 0, "key": "range", "title": "选择范围", "status": "done" },
+  { "index": 1, "key": "sessions", "title": "Session 关联", "status": "done" },
+  { "index": 2, "key": "potential", "title": "潜在 bad case", "status": "done" },
+  { "index": 3, "key": "attribution", "title": "对象归因", "status": "done" },
+  { "index": 4, "key": "clusters", "title": "聚类与严重度", "status": "done" },
+  { "index": 5, "key": "iteration", "title": "迭代优化", "status": "active", "detail": "第 3/5 轮" },
+  { "index": 6, "key": "final", "title": "测试集终评", "status": "pending" }
 ]
 ```
 
@@ -500,7 +502,7 @@ erDiagram
 │ POST /api/workspaces/{wid}/evolution/runs                 │
 │ POST /api/workspaces/{wid}/evolution/cluster-previews     │
 │ POST /api/workspaces/{wid}/evolution/runs/{rid}/retry     │
-│ POST /api/workspaces/{wid}/evolution/runs/{rid}/events    │
+│ GET  /api/workspaces/{wid}/evolution/runs/{rid}/events    │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -524,7 +526,7 @@ erDiagram
 | `POST /api/auth/logout` | 使 refresh cookie 失效（过期化）→ `204` |
 | `POST /api/auth/change-password` | 登录用户修改自己的密码 `{oldPassword, newPassword}` → `204`，成功后清 `must_change_password`；旧密码校验失败 `401 AUTH_INVALID` |
 | `GET /api/auth/me` | 当前用户信息 `{id, username, displayName, role, mustChangePassword}` |
-| `GET /api/users`、`POST /api/users` | 管理员创建/列出用户（单组织共享，仅 `role=admin`）；成员管理界面首版从简，可先只用 API。新建账号的 `mustChangePassword` 恒为 `true` |
+| `GET /api/users`、`POST /api/users` | 全局管理员创建/列出普通用户；V2 禁止通过该端点创建第二个 `admin`。新建账号的 `mustChangePassword` 恒为 `true` |
 
 **强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此服务端用 `must_change_password` 硬卡——该标记为 true 时仍签发 token，但除 `POST /api/auth/change-password`、`POST /api/auth/logout`、`GET /api/auth/me` 外的请求一律 `403 PASSWORD_CHANGE_REQUIRED`。改密成功后前端先 `POST /api/auth/refresh` 换新 access token、再 `GET /api/auth/me` 取到 `mustChangePassword=false`，然后放行到 `redirect`（[07 §8.2](07-backend-implementation.md) · [08 §4.1](08-frontend-implementation.md)）。
 
@@ -613,7 +615,7 @@ erDiagram
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}` | 单条归因详情（§4.19，含触发点对照） |
 | `GET /api/workspaces/{wid}/sessions/{sid}/bad-cases` | 会话内问题列表（结构见 §3.4） |
 
-> V1 的 `/api/bad-cases/{id}/analysis`、`/api/probes/{id}`、`/api/sessions/{sid}/probes` 已随 `bad_case_analysis` 与独立 probe 表删除而下线。归因只有一个来源：`bad_case_attributions`（由 `probe_reports` 演进）。
+> `/api/bad-cases/{id}/analysis` 与 `/api/sessions/{sid}/probes` 作为 V1 兼容端点保留一个版本；V2 页面只调用归因分页/详情端点。`/api/probes/{id}` 继续可读，但响应中的 `probeId` 是兼容别名，值等于 V2 `attributionId`。
 
 `GET /bad-cases/{badCaseId}` 示例：
 
@@ -669,7 +671,7 @@ erDiagram
 - `reason` 是纯文本结论说明（列由原 `probe_description` 演进）；`reasoning` 是 **Markdown 字符串**（列由原 `probe_analysis` 演进），前端按 Markdown 渲染（禁用裸 HTML、外链加安全属性；不接语法高亮）。
 - `conclusion ∈ attributed|non_target`：后者是「非该对象问题」——不是未分析，也不否定 bad case 本身；同一 bad case 可对多个对象各有结论。
 - `category ∈ model|prompt|error`（`non_target` 为 `null`）；`policyVersion` / `attributionEngine` 进缓存键。
-- 归因由自进化 run 生成并写入 `bad_case_attributions`；本服务**不提供「手动触发单条归因」端点**——没有归因行就是未归因，用户可「以该 bad case 启动自进化」触发。
+- 归因由自进化 run 生成：`probe_reports` 保存对象·版本结论与缓存元数据，`bad_case_analysis` 保存 case↔probe 的多行关联；本服务**不提供「手动触发单条归因」端点**——没有关联行就是未归因，用户可「以该 bad case 启动自进化」触发。
 
 `GET /sessions/{sid}/bad-cases` 示例（会话内问题列表，不内联归因正文）：
 
@@ -708,7 +710,7 @@ erDiagram
 
 - `badCaseSync`：问题轨迹（根会话轨迹补齐）统计；`total`/`synced`/`unsynced` 以 `bad_cases` 当前根会话为准。
 - `badCaseCatalogSync`：`bad_cases` 目录同步统计；`synced = COUNT(bad_cases)`，`unsynced` 为上游剩余量，`lastBadCaseId` 是游标。
-- 归因进度改由 `bad_case_attributions` 聚合（行数、`attributed` / `non_target` 数），本接口不再返回 `badCaseAnalysis`。
+- 归因进度改由 `bad_case_analysis JOIN probe_reports` 聚合（关联数、`attributed` / `non_target` 数）；V1 字段 `badCaseAnalysis` 保留一个兼容版本后删除。
 - 前端“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析排列，只消费本接口。
 
 - 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads` 的 `(root_session_id, agent_id)` 表达，待处理状态由 `source_records.processed_*` 表达。
@@ -735,7 +737,7 @@ V1 的 `POST /api/evolution/probes/query` 已移除。向导预演由三个端�
 
 ### 4.10 自进化运行（异步任务）
 
-> 创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20），端点形状其余不变；run 的 `steps` 为七步（§3.6），进度公式 `5+M+1`，只有一种 schema。
+> 创建 run 的 body 增加 `policy` 与 `cacheEnabled`（见 §4.20）；新 run 的 `steps` 为七步（§3.6），进度公式 `5+M+1`。历史 V1 run 只在服务端映射为同一 DTO，前端不维护第二套步骤 schema。
 
 - `GET /api/evolution/runs` → `{ "running": [RunCard], "history": [RunCard] }`（后端分组；`preparing/running/blocked` 归 running，终态归 history）
 
@@ -858,7 +860,7 @@ POST /runs（同步校验）
 - body 同样支持可选 `engineKey` / `eval`（同 §4.10；`cluster_only` 默认引擎不做 patch/评测，`eval` 仅在为该 mode 注册的引擎需要时生效）；
 - 完成后 `GET /runs/{rid}/steps/clusters` 取簇；不建 workspace、不做 patch/评测；
 - 前端跳转 `/evolution/cluster/:runId` 后先显示准备中，再轮询/SSE 到簇生成。
-- `steps/clusters` 的簇带落库的 `confidence/severity`（未算完为 `null`；仅聚类页簇头要渲染置信度与严重程度条）；`cluster_only` 的 run 请求 `attribution/severity/iteration/final` 步一律 `404 STEP_NOT_READY`。
+- `steps/clusters` 的簇带落库的 `confidence/severity`（未算完为 `null`；仅聚类页簇头要渲染置信度与严重程度条）；`cluster_only` 的 run 请求 `iteration/final` 步一律 `404 STEP_NOT_READY`。
 
 ### 4.13 清单
 
@@ -882,7 +884,7 @@ POST /runs（同步校验）
 ```text
 id: 42
 event: run.progress
-data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"running","stageLabel":"第 5/6 步 · 迭代优化 · 第 3/5 轮"}
+data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"running","stageLabel":"第 6/7 步 · 迭代优化 · 第 3/5 轮"}
 
 : heartbeat
 ```
@@ -1013,7 +1015,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions?page=1&pageSize=2` | `{items:[AttributionItem], total, page, pageSize}`；按 `updated_at` 倒序 |
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}` | `AttributionDetail`（含 `triggerCompare`）；`404 ATTRIBUTION_NOT_FOUND`（不存在或不属于该 bad case） |
 
-- `BadCase` 直接带 `attributionCount`（去重对象·版本）与 `hasAttribution`；`analysis` 字段已删除（`bad_case_analysis` 表删除）。
+- `BadCase` 直接带 `attributionCount`（去重对象·版本）与 `hasAttribution`；V2 DTO 不再内联 `analysis` 字段，但 `bad_case_analysis` 表保留并扩为一对多关联。
 - 深链：`?case={badCaseId}&tab=desc|attr&at={attributionId}`；`at` 缺失时取该 case 第一条归因；`obj=<objectName>` 兼容参数取该对象第一条。
 
 ### 4.20 自进化预览与启动（V2）
@@ -1078,7 +1080,7 @@ FastAPI /api/openapi.json
 | 场景 | 方式 | 参数 |
 |---|---|---|
 | 预览表（向导） | 页码分页 | sessions 4/页、potential 5/页 |
-| 会话列表 | 一次性 + limit | `limit=100` |
+| Session 列表 | 一次性 + limit | V2 默认 `limit=10`，响应带 `total/pendingSessions`；V1 兼容端点仍允许大 limit |
 | 自进化运行 | 一次性 | 分 `running/history` 两组 |
 | 过滤 | 查询参数 | `q/status/sort/models/from/to` |
 
@@ -1149,7 +1151,7 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `TREE[sid].findings[]`（原型问题卡） | `SessionTree.badCases[]` | `bad_case_id` → `badCaseId`；`bad_case_type + object*` 替换原 `targetKind/targetLabel`；挂载位置改为 `anchor {agentId,eventIndex}` |
 | `TREE[sid].findings[].title / detail` | `SessionTree.badCases[].title / reason` | 短标题与描述正文两级文本；原型 `detail` 语义由 `reason` 承载 |
 | `ERROR_META[title]`（单结论） | `BadCase.attributionCount` + 归因列表（§4.19） | 一个 bad case × 多对象·版本；`reason` / `reasoning(Markdown)` / `category` / `conclusion` 由归因行承载 |
-| `REPORTS[]` | 归因行（`bad_case_attributions`） | 不再有独立「问题报告」实体；报告 ID 即 `attributionId` |
+| `REPORTS[]` | `bad_case_analysis` 关联的 `probe_reports` 行 | 不再有独立产品实体「问题报告」；物理 `probe_id` 映射为 `attributionId` |
 | `RUNS[]` | `RunCard` / `RunDetail` | `stats.reports/used/byType` → `stats.probes/usedProbes/byAttributeType` |
 | `PATCH.deser` | `patch.file/lines` | diff 行数组原样传给前端着色 |
 
@@ -1163,7 +1165,7 @@ V2 新增映射（2026-11-11）：
 | `attributionsFor(case)`（对象·版本多条） | `AttributionItem` / `AttributionDetail`（§3.9） | 结论 `attributed/non_target`；缓存与触发点对照 |
 | 总览指标条 / 趋势 / 来源分布 | `OverviewSummary` / `TrendBucket`（§3.10） | 口径见 [06 §7.5](06-database-design.md) |
 | 进化对象总览（关联 Session / 潜在 / 三态） | `TargetOverviewItem`（§3.10） | 与向导/run 共用同一潜在匹配实现 |
-| V2 七步（选择范围…终评） | `steps[].key = range/sessions/potential/attribution/clusters/iteration/final` | 唯一 schema，无 `stepsSchema` 双轨 |
+| V2 七步（选择范围…终评） | `steps[].key = range/sessions/potential/attribution/clusters/iteration/final` | 新 run 使用七步 schema；历史 V1 六步由服务端 DTO 适配，前端只消费统一 step 列表 |
 
 ## 10. 上游轨迹查询契约（由我们定义，待上游实现）
 

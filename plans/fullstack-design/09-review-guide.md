@@ -16,15 +16,16 @@
 | 健康检查、空态/加载/失败三态 | F17 | [05 §4.1](05-api-design.md) · [08 §13](08-frontend-implementation.md) |
 | 登录页（用户名/密码、错误提示、登录跳转） | F18 | [05 §4.1](05-api-design.md)（auth 端点）· [08 §4](08-frontend-implementation.md) |
 | 强制改密页（首登改密、成功后换 token 并放行） | F18 | [05 §4.1](05-api-design.md)（`change-password`）· [08 §4.1](08-frontend-implementation.md) · [07 §8.2](07-backend-implementation.md) |
-| 顶栏用户区：演示数据角标、轨迹处理状态、当前用户与退出 | F18 / F9 | [08 §4.2](08-frontend-implementation.md) |
+| 顶栏工作空间切换、当前用户、角色与退出 | F18/F21/F22 | [05 §4.16](05-api-design.md) · [08 §4.2](08-frontend-implementation.md) |
 | 轨迹处理状态（`GET /acquisition/status`）与后台定时 | F9 | [05 §4.8](05-api-design.md) · [08 §4.3](08-frontend-implementation.md) |
+| 当前实现、V1 与 V2 的差异基线 | F21–F27 | [15 §2–§3](15-v1-v2-gap-analysis.md) |
 
 ### 1.2 Session 错误查看
 
 | 原型元素 / 交互 | 功能点 | 设计位置 |
 |---|---|---|
 | 左栏：标题 + 会话数量 | F3 | [02 §2.1](02-features.md) · [08 §5](08-frontend-implementation.md) |
-| 搜索框（标题/仓库/根会话 ID，输入即筛） | F3 | [05 §4.2](05-api-design.md)（`q`）· [13 §4](13-root-session-id.md) |
+| 搜索框（root session ID，回车查询；清空后回车恢复最新 10） | F3 | [05 §4.18](05-api-design.md) · [08 §5.2.1](08-frontend-implementation.md) |
 | 状态 chips：全部 / 完成 / 有失败 | F3 | [05 §4.2](05-api-design.md)（`status`） |
 | 排序下拉：最新 / 用户轮次 / 消息 / 子 agent | F3 | [05 §4.2](05-api-design.md)（`sort`） |
 | 会话卡：状态点、标题、时间、repo chip、时长、工具数、子 agent 数、根会话 ID | F3 | [05 §3.1](05-api-design.md)（`SessionListItem`）· [13 §3.3](13-root-session-id.md) |
@@ -44,15 +45,14 @@
 | 问题列表：`badCaseId` 点击新窗口打开问题描述 tab | F2/F6 | [05 §5](05-api-design.md) |
 | 时间线页（面包屑/过滤 chips/用户轮次头/提问卡/消息卡/展开折叠/跳转） | ~~F7~~ | **已裁撤（2026-10-22）**：不实现，理由与替代见 [02 §2.1](02-features.md) · [08 §5.4](08-frontend-implementation.md) |
 | 错误详情左栏：错误数量、session 标题/根会话 ID、返回 Session | F8 | [08 §7](08-frontend-implementation.md) · [13 §3.1](13-root-session-id.md) |
-| 错误详情左栏："全部错误" + bad_case 卡（ID/状态 chip/reason/上报对象） | F8 | [05 §3.4](05-api-design.md) · [08 §7.2](08-frontend-implementation.md) |
+| 错误详情左栏：可折叠 bad case 组（ID/状态/上报对象/归因数）+ 组内归因子项分页 | F8/F27 | [05 §3.9/§4.19](05-api-design.md) · [08 §7.2](08-frontend-implementation.md) |
 | 错误详情右栏头：meta（含根会话 ID）、返回 Session（原「打开时间线」移除） | F8 | [08 §7.1](08-frontend-implementation.md) · [13 §3.2](13-root-session-id.md) |
 | 执行流面板：未选时显示全部问题，选中时只留该问题卡 | F8 | [08 §7.2](08-frontend-implementation.md) |
 | 双 Tab：问题描述 / 归因分析 | F8 | [08 §7.3](08-frontend-implementation.md) |
 | 问题描述：badCaseId、reason、状态 chip、metaData facts、上报对象 | F8 | [05 §3.4](05-api-design.md) |
-| 归因：结论横幅（问题/非问题/未分析） | F8 | [05 §3.4](05-api-design.md)（`analysis.status`）· [08 §7.3](08-frontend-implementation.md) |
-| 归因：对象·版本、分类、结论说明、推导过程（Markdown）、触发点对照 | F8 | [05 §3.9](05-api-design.md)（`AttributionDetail`） |
-| 归因：非问题原因 | F8 | 同上（`analysis.result.reason`） |
-| 归因：未分析空态 | F8 | 同上（`unanalyzed` 占位） |
+| 归因：可归因 / 非该对象问题 / 尚未归因 | F8/F27 | [05 §3.9/§4.19](05-api-design.md) · [08 §7.3](08-frontend-implementation.md) |
+| 归因：对象·版本、分类、结论说明、推导过程（Markdown）、触发点对照 | F8/F27 | [05 §3.9](05-api-design.md)（`AttributionDetail`） |
+| 归因：未归因空态与快捷启动自进化 | F8/F27 | [08 §7.3](08-frontend-implementation.md) |
 | 不实现：卡片「查看原始 JSON」overlay（原属时间线卡片） | — | **首版裁剪**，见 §2 问题 Q3 |
 
 ### 1.3 自进化
@@ -65,30 +65,26 @@
 | run 卡：进行中进度条 + 阶段文案 + 百分比 | F10 | [05 §3.5](05-api-design.md)（`progress`） |
 | run 卡：已完成 best vs 初始 + Δ + 接纳 patch 数 + 有效/无收益徽章 | F10 | 同上（`final`） |
 | 列表空态："当前没有正在执行的自进化" | F10 | [08 §8](08-frontend-implementation.md) |
-| 向导：两步指示器 | F11 | [08 §9.1](08-frontend-implementation.md) |
-| 向导 step1：对象类型分段控件、名称/版本级联、时间段、模型多选 | F11 | [05 §4.11](05-api-design.md) · [05 §4.13](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
+| 向导：四步指示器 | F11 | [08 §9.1](08-frontend-implementation.md) |
+| 向导 step1：对象类型分段控件、名称/版本级联、时间段、潜在策略 | F11 | [05 §4.20](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 向导 step1：提示文案内「配置页」链接 → 进化对象配置页 | F19 | [05 §4.11](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) · [08 §9.5](08-frontend-implementation.md) |
 | 配置页：列表/新增/编辑/删除，repoUrl/subDir/defaultRef/validationProjectId/testProjectId/enabled，测试工程合并列 | F19 | [05 §4.11](05-api-design.md) · [08 §9.5](08-frontend-implementation.md) · [14](14-target-project-ids.md) |
-| 向导 step1 → step2：查询命中 | F11 | [05 §4.9](05-api-design.md) |
+| 向导 step1 → step2：Session 关联 | F11 | [05 §4.20](05-api-design.md) |
 | 向导 step1：下一步恒可点 + 必填字段级校验（标红 + 框下提示） | F11 | [08 §9.2](08-frontend-implementation.md) |
-| 向导 step2：零命中空态（出口禁用） | F11 | [05 §4.9](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
-| 向导 step2：条件摘要 + 修改条件 | F11 | [08 §9.3](08-frontend-implementation.md) |
-| 向导 step2：3 项统计 + 属性分布条 + 图例 | F11 | [05 §4.9](05-api-design.md)（`summary/byAttributeType`） |
-| 向导 step2/3：Session 关联表 + 潜在 bad case 表（含命中原因） | F11 | [05 §4.20](05-api-design.md)（`preview/*`） |
-| 向导 step2：分页（每页 8 条） | F11 | [05 §7](05-api-design.md) |
-| 向导 step2：两个出口「仅聚类」「启动自进化」 | F11 | [05 §4.9–4.10](05-api-design.md) · [08 §9.3](08-frontend-implementation.md) |
-| 向导 step2：未关联 session 的行不渲染链接 | F11 | [08 §9.3](08-frontend-implementation.md) |
+| 向导 step2：零关联空态（前进禁用） | F11 | [05 §4.20](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
+| 向导 step3：潜在 bad case 表、命中原因与版本未知标记 | F11 | [05 §4.20](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
+| 向导 step4：缓存开关、复用/新增/非该对象统计与两个出口 | F11 | [05 §4.20](05-api-design.md) · [08 §9.2](08-frontend-implementation.md) |
 | 详情：返回列表、标题、状态徽章、preparing/blocked | F13 | [05 §4.10](05-api-design.md)（`status/blockedStage`） |
 | 详情：目标与输入 panel（8 项 kv + 类型分布条 + 图例） | F13 | [05 §3.5](05-api-design.md)（`stats/byAttributeType`） |
 | 详情：工作区信息（分支/base commit/路径） | F13 | [05 §3.5](05-api-design.md)（`workspace`）· [08 §10.2](08-frontend-implementation.md) |
-| 详情：6 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
-| 第 1 步：范围条件与统计 | F13 | [05 §3.6](05-api-design.md)（step 0 `range`） |
-| 第 2/3 步：Session 关联表、潜在 bad case 表（含命中原因） | F13 | [05 §3.6](05-api-design.md)（step 1/2） |
-| 第 3 步：LLM 归因置信度（根因对象/属性/描述/推导） | F13 | [05 §3.6](05-api-design.md)（step 2） |
-| 第 4/5 步：对象归因表、聚类与严重度（顺序/类型/来源数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 3/4） |
-| 第 5 步：迭代卡（patch → push → eval → 决策：接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 4）· [07 §5.6](07-backend-implementation.md) |
-| 第 6 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 5） |
-| 第 6 步：分支名、push 状态、blocked 阶段与重试 | F13 | [05 §4.10](05-api-design.md)（`workspace/pushStatus`）· [08 §10.2](08-frontend-implementation.md) |
+| 详情：7 步 stepper、当前查看标注、点击规则（已完成/进行中可点） | F13 | [05 §3.5](05-api-design.md)（`steps[].status/clickable`）· [08 §10.2](08-frontend-implementation.md) |
+| 第 1 步：范围、策略与统计 | F13 | [05 §3.6](05-api-design.md)（step 0 `range`） |
+| 第 2/3 步：Session 关联表、潜在 bad case 表 | F13 | [05 §3.6](05-api-design.md)（step 1/2） |
+| 第 4 步：对象版本归因表与缓存来源 | F13 | [05 §3.6](05-api-design.md)（step 3） |
+| 第 5 步：聚类与严重度（顺序/类型/来源数/严重度） | F13 | [05 §3.6](05-api-design.md)（step 4） |
+| 第 6 步：迭代卡（patch → push → eval → 决策：接纳 ff / 拒绝删 candidate） | F13 | [05 §3.6](05-api-design.md)（step 5）· [07 §5.6](07-backend-implementation.md) |
+| 第 7 步：verdict 横幅、修改点清单、指标对比表 | F13 | [05 §3.6](05-api-design.md)（step 6） |
+| 第 7 步：分支名、push 状态、blocked 阶段与重试 | F13 | [05 §4.10](05-api-design.md)（`workspace/pushStatus`）· [08 §10.2](08-frontend-implementation.md) |
 | 执行日志：准备/候选/push/eval/阻塞/重试事件时间线、异常详情 | F20 | [05 §4.15](05-api-design.md) · [08 §10.4](08-frontend-implementation.md) |
 | 失败/中断：状态徽章、错误摘要、刷新后仍可查 | F20 | [06 §5.7](06-database-design.md) · [08 §10.2](08-frontend-implementation.md) |
 | 仅聚类页：banner、输入概况、聚类列表、一键转完整自进化 | F12 | [05 §4.12](05-api-design.md) · [08 §11](08-frontend-implementation.md) |
@@ -113,11 +109,11 @@
 - 原型：overlay 组件挂在时间线卡片上（"查看原始载荷"），时间线裁撤后该入口不复存在。
 - **已定（2026-10-24）**：首版不纳入。后续若做诊断证据查看，按 `(sessionId, agentId, lineNo)` 从 `trajectory_payloads.payload` 回读（见 [06 §3.0](06-database-design.md)）；不恢复消息/内容块明细表。
 
-### Q4. 用户管理界面范围（已定）
+### Q4. 用户与空间权限界面范围（V2 已定）
 
-- 现状：自建账号 + JWT（D11），单组织共享，初始管理员 env 播种，用户由 admin 创建。
-- **已定（2026-10-24）**：首版只做 API（`GET/POST /users`）+ 顶栏显示当前用户与退出；管理操作先用 API/脚本完成，不进 UI。
-- **边界**：V1 不提供停用/恢复用户 API；`is_active` 继续作为登录闸门字段保留，未来恢复停用管理时再补写路径。
+- 全局身份：`users.role=admin/member`；全局管理员唯一，`POST /users` 禁止创建第二个 admin，不开放注册。
+- **空间权限**：全局管理员管理空间与空间管理员；空间管理员管理本空间额度、成员（管理员以下角色）、对象与自进化；成员/只读按能力收口。
+- AuthProvider/Cookie/SSO 只替换身份来源，不改变 `auth/session` 的 `user + workspaces` 契约；外部身份按 sub/email 匹配，不自动建号。
 
 ### Q5. 轨迹归一化的触发方式（已定）
 
@@ -134,7 +130,7 @@
 | # | 风险点 | 为什么重要 | 设计中的对策 |
 |---|---|---|---|
 | R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 迁移；先做 `demo-nested` 最小树验收；`×N` 改为 message 口径（[03 §8.3](03-frontend-architecture.md)） |
-| R2 | 外部问题/归因表契约 | 字段漂移会让整个错误页与自进化失效 | 只读表 + 查询层防御（缺字段降级、日志告警）；fixtures 与真实表同构；上游表变更需评审（[06 §4](06-database-design.md)） |
+| R2 | 多归因关联与缓存 | 1:1 残留会丢失对象版本结论，错误缓存键会跨空间串结果 | `bad_case_analysis` 一对多 + `probe_reports.cache_key` 唯一；迁移与并发 upsert 测试（[06 §4.2](06-database-design.md)） |
 | R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
 | R4 | 七步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
@@ -171,14 +167,14 @@
 ## 5. Review checklist（快速勾选用）
 
 - [ ] 功能覆盖：§1 矩阵里没有"未覆盖"的功能（除 Q3 的 overlay）
-- [ ] 数据边界：轨迹（本服务写）/ 问题归因（外部只读）/ 自进化（本服务写）三类归属认可
+- [ ] 数据边界：轨迹全局归一化 / bad case 空间上报 / 对象版本归因由自进化 run 写三类归属认可
 - [ ] 演示数据：`fixtures` + seed，运行时不打桩的方式认可
 - [ ] 技术选型：Vue 3 / Vue Flow / Element Plus / FastAPI / SQLAlchemy 全部认可
 - [ ] 契约：OpenAPI 生成 + CI 校验方案认可
 - [ ] 数据库：MySQL 主库 + SQLite 测试的 `Database` 双实现与切换方式认可
-- [ ] 部署与身份：SaaS 单实例 + 自建账号 JWT + 单组织共享认可
+- [ ] 部署与身份：SaaS 单实例 + JWT/Cookie 会话 + 工作空间隔离 + AuthProvider 接入缝认可
 - [ ] 轨迹来源：契约先行（05 §10）+ 第三方写 `trajectory_payloads`、本服务只归一化的方式认可
-- [ ] 范围：时间线页面裁撤（F7 不做）、归因阶段不聚类（自进化阶段才聚类）确认
+- [ ] 范围：时间线页面裁撤（F7 不做）、归因进自进化后按归因结果聚类确认
 - [ ] 自进化：对象配置（repoUrl/defaultRef/子目录）、candidate 先 push 临时 ref 再评测、接纳 amend+fast-forward、拒绝删 candidate、push 失败 blocked + 1/5/15min 退避
 - [ ] 执行日志：过程/异常落库、事件 API、前端日志与失败/中断展示认可
 - [ ] SSE：`preparing/running` 页面级订阅、ticket 绑定 topics/cursor、blocked/终态关闭、断线从 DB 回放

@@ -13,7 +13,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
   1. **原始轨迹表 `trajectory_payloads`**：第三方脚本把"有问题的 session 轨迹"（每 agent 一份 JSONL）写入 MySQL，本服务读取并归一化；采集不归本服务。
   2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表。
   3. **空间上报接口（V2）**：`POST /api/workspaces/{wid}/bad-cases`，POST body 即 `bad_cases` 表类型，凭据 + 额度管控（[05 §4.17](05-api-design.md)）；bad case 主通道，目录同步默认停用。
-- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
 - **输出**：浏览器里的视图（V2：工作空间总览 + Session 错误查看 + 自进化 + 空间管理），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**按工作空间隔离 bad case 与权限**（[06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md)；轨迹归一化仍全局共享）。
 - **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做公网注册、不做空间删除与跨空间汇总（V2 非目标）；多租户语义止于工作空间（bad case 归属 + 成员权限），不做计费/配额通知。
 
@@ -38,7 +38,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │ 数据接入层：只读外部表 / 出站客户端 / fixtures         │  │
+│  │ 数据接入层：上报/同步适配 / 出站客户端 / fixtures       │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -60,7 +60,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 |---|---|---|
 | HTTP 层 | 路由注册、鉴权中间件、请求/响应的 Pydantic 校验、统一错误模型、SSE 通道 | 不写业务判断 |
 | 服务层 | 业务规则（筛选、排序、聚合、状态机推进、ID 生成、同步编排） | 不直接拼 SQL、不直接访问外部接口 |
-| 数据接入 | 只读外部表（问题/归因）、出站客户端（上游轨迹）、fixtures（演示） | 不写外部表；不把演示数据混进运行时分支 |
+| 数据接入 | 空间上报、历史数据同步、出站客户端（上游轨迹）、fixtures（演示） | 未授权写入不进业务表；不把演示数据混进运行时分支 |
 | Repository 层 | 表的读写，只暴露领域对象 | 不含业务规则、不含方言字符串 |
 
 依赖方向只允许向下：HTTP → 服务 → 数据接入/CRUD。
@@ -80,7 +80,7 @@ apps/api/app/
   constants/              # 枚举、错误码、issue/topic 常量
   db/
     session.py            # engine / session / 事务上下文
-    models/               # SQLAlchemy 表模型（轨迹侧 + 问题侧只读表 + V2 空间/归因表）
+    models/               # SQLAlchemy 表模型（轨迹侧 + 问题/归因 + V2 空间与候选表）
     crud/                 # BaseCrud + 各表 CRUD（方法接收 AsyncSession）
   middleware/             # request_id、JWT 鉴权（含路径规则）、CORS、登录限速
   service/
@@ -89,8 +89,8 @@ apps/api/app/
     overview/             # V2：总览口径与聚合
     sessions/             # 会话列表、会话概览、Agent 会话树
     acquisition/          # 轨迹来源、归一化、Agent 会话树组装、幂等写入
-    bad_cases/            # 问题列表与详情（只读）
-    # 归因读取并入 bad_cases/ 与 evolution/（表：bad_case_attributions）
+    bad_cases/            # 问题列表、详情与多归因读取
+    # 归因写入在 evolution/，问题侧读取经 bad_case_analysis + probe_reports
     evolution/            # run、七步管线、潜在匹配、归因与缓存
     catalogs/             # 目标/模型清单（只读聚合）
     jobs.py               # 串行任务执行器（job_runs）
@@ -187,7 +187,7 @@ apps/web/
    │                                      │                  + bad_cases
    │                                      └──► tree 响应 ─────┤
    │                                                          │
-   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / attributions（只读）
+   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / bad_case_analysis / probe_reports
                                           │                  + session_families（存在性校验）
                                           └──► bad-cases 响应 ┘
                                                                │
@@ -200,7 +200,7 @@ apps/web/
 - 问题详情页同理：先取 `…/sessions/{sid}/bad-cases`，选中后再取 `…/bad-cases/{id}/attributions`（分页）与 `…/attributions/{at}`（按需串行，不是整页一次拉完）；V1 的 `/analysis`、`/probes/{id}` 仅历史 run/旧客户端使用。
 - 页面级聚合仅用于**列表页**（`…/sessions`、`…/evolution/runs`）、**总览页**（`…/overview/*`，静态聚合）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
-前端拿到的每个响应只覆盖一个模块；问题侧数据由外部系统写入，本服务只读。**V2 起问题侧主通道改为空间上报接口**（[05 §4.17](05-api-design.md)），目录同步默认停用；空间隔离下每个业务端点都按 `workspace_id` 过滤并校验成员角色（[07 §5.15](07-backend-implementation.md)），`principal` 既记录审计字段也决定可见性。
+前端拿到的每个响应只覆盖一个模块；V2 bad case 由空间上报接口写入，归因由自进化 run 写入，目录同步只保留历史兼容。空间隔离下每个业务端点都按 `workspace_id` 过滤并校验成员角色（[07 §5.15](07-backend-implementation.md)），`principal` 既记录审计字段也决定可见性。
 
 ### 4.3 任务、自进化与 SSE 链路
 
@@ -360,8 +360,7 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 | 原始轨迹（每 agent JSONL） | 第三方脚本；pull 时本服务写入 | **只读**（pull 除外） | `trajectory_payloads` |
 | 轨迹业务表（session_families/agents/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
 | 问题（bad_cases，V2 按空间） | **空间上报接口（凭据鉴权）**；目录同步默认停用 | 读写 | `api/ingest.py` + `service/workspaces` |
-| 归因（V2） | 自进化 run（`bad_case_attributions`、候选、簇成员） | 读写 | `service/evolution/attribution.py` |
-| 归因（V2） | 自进化 run（`bad_case_attributions`） | 读写 | `service/evolution/attribution.py` |
+| 归因（V2） | 自进化 run（`bad_case_analysis`、`probe_reports`、候选、簇成员） | 读写 | `service/evolution/attribution.py` |
 | 自进化（runs / clusters / rounds / finals / events） | 本服务 | 读写 | `service/evolution` |
 | 空间 / 成员 / 凭据（V2） | 本服务 | 读写 | `service/workspaces` |
 | 用户、任务审计 | 本服务 | 读写 | `service/identity`、`service/jobs.py` |
@@ -377,7 +376,7 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 ### 5.3 演示数据（fixtures）的边界
 
 - `fixtures/` 内含原型 4 个会话、若干 bad case 与归因行，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
-- `evolution_clusters` / `evolution_cluster_members` / `bad_case_attributions` 是派生数据，不由 seed 写入；seed 后从向导启动，归因与聚类由 run 生成；
+- `probe_clusters` / `probe_cluster_probes` / `bad_case_analysis` / `probe_reports` 的 V2 新增归因与聚类是派生数据，不由 seed 写入；seed 后从向导启动，归因与聚类由 run 生成；
 - 生产环境不执行 seed；UI 读到的永远是真实表；
 - 与早期 D4 的差别：**不再有"Stub Provider 返回不入库数据"的运行时分支**，桩数据也从正式表结构走，避免字段对不上。
 

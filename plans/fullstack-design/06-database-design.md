@@ -3,7 +3,7 @@
 > 本文回答：数据怎么存、表怎么建、索引怎么加、迁移怎么管理、哪些表由谁写入。
 > 前置：[04 后端架构](04-backend-architecture.md)；配套：[05 接口设计](05-api-design.md) · [07 后端实现](07-backend-implementation.md)。
 > 2026-10-22 数据模型修订：问题侧改为外部写入的 `bad_cases` + 归因结论 `probe_reports`；自进化聚类结果落 `probe_clusters`（按 run 归属）。
-> 2026-11-11 V2 修订：`probe_reports` 就地演进为 `bad_case_attributions`（吸收 `bad_case_analysis`），`probe_clusters` / `probe_cluster_probes` 改名为 `evolution_clusters` / `evolution_cluster_members`；新增 `evolution_run_candidates`；详见 §4.2、§5.3–§5.4、§5.11 与 §9。
+> 2026-11-11 V2 修订：`probe_reports` 继续承载对象·版本级归因明细，`bad_case_analysis` 原位改造成一 case 多归因的关联表；`probe_clusters` / `probe_cluster_probes` 保留原名并扩展语义；新增 `evolution_run_candidates`；详见 §4.2、§5.3–§5.4、§5.11 与 §9。
 
 ## 1. 存储策略与跨库约定
 
@@ -13,8 +13,8 @@
 | 类别 | 表 | 写入方 | 我们的权限 |
 |---|---|---|---|
 | 轨迹侧 | `trajectory_payloads`（外部写）、`source_records`、`session_families`、`agents`、`user_turns`、`agent_events`、`sync_runs`、`sync_lock` | 本服务（source_records/归一化） | 读写（payload 表只读） |
-| 问题侧 | `bad_cases`、`bad_case_attributions`（由 `probe_reports` 演进） | 上报接口写 `bad_cases`；归因由自进化 run 写 | 读写 |
-| 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`evolution_run_candidates`、`evolution_clusters`（原 `probe_clusters`）、`evolution_cluster_members`（原 `probe_cluster_probes`）、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
+| 问题侧 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 上报接口写 `bad_cases`；归因由自进化 run 写 | 读写 |
+| 自进化侧 | `evolution_targets`、`evolution_runs`、`evolution_run_events`、`evolution_run_candidates`、`probe_clusters`、`probe_cluster_probes`、`evolution_rounds`、`evolution_finals` | 本服务 | 读写 |
 | 通用 | `users`、`job_runs` | 本服务 | 读写 |
 
 **V2 增补（2026-11-11）**：
@@ -22,17 +22,16 @@
 | 类别 | 表 | 说明 |
 |---|---|---|
 | 空间侧（新） | `workspaces`、`workspace_members`、`workspace_ingest_credentials` | 空间 / 成员 / 上报凭据；`used` 实时聚合不落列（§3.10–§3.12） |
-| 归因（演进） | `probe_reports → bad_case_attributions` | 就地改名 + 加列（主键/对象列/结论/缓存），并吸收 `bad_case_analysis` 的 1:1 关系与未分析状态（§4.2） |
-| 簇与成员（演进） | `probe_clusters → evolution_clusters`；`probe_cluster_probes → evolution_cluster_members` | 就地改名 + 改列（成员从 probe 改为归因行）（§5.3–§5.4） |
+| 归因（演进） | `bad_case_analysis`、`probe_reports` | `bad_case_analysis` 去掉一 case 唯一约束并扩为一 case 多归因；`probe_reports` 增加空间、结论、缓存与复用字段（§4.2） |
+| 簇与成员（演进） | `probe_clusters`、`probe_cluster_probes` | 保留表名；成员继续指向 `probe_reports.probe_id`，V2 的归因结论由同名 probe 承载（§5.3–§5.4） |
 | 自进化侧（新） | `evolution_run_candidates` | run 候选快照（触发点 / 策略命中 / 缓存标记）；全新粒度 `(run, bad_case)`，无既有表可继承（§5.9） |
-| 删除 | `bad_case_analysis` | 职责并入 `bad_case_attributions`；`/analysis` 与 `/probes` 端点一并下线（§4.2–§4.3） |
-| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at` | 定义见 §3.3、§3.4、§3.8、§4.1、§5.2；迁移见 §9 |
+| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at / object_version`；`probe_reports.workspace_id / conclusion / confidence / policy_version / attribution_engine / cache_key / created_run_id / last_reused_run_id / reused_count` | 定义见 §3.3、§3.4、§3.8、§4.1–§4.2、§5.2；迁移见 §9 |
 
-V2 的**写入方变化**：`bad_cases` 的主通道改为空间上报接口（凭据鉴权，§4.1），目录同步默认停用；`bad_case_attributions` / `evolution_run_candidates` / `evolution_clusters` / `evolution_cluster_members` 由自进化 run 写；空间三表由空间管理端点写。`session_families` / `agents` / `agent_events` / `user_turns` / `trajectory_payloads` / `source_records` **不加空间列**——轨迹归一化是全局管线，一个空间的 Session 集合是「该空间 bad case 涉及的根会话」投影（§7.5）。
+V2 的**写入方变化**：`bad_cases` 的主通道改为空间上报接口（凭据鉴权，§4.1），目录同步默认停用；`bad_case_analysis` / `probe_reports` / `evolution_run_candidates` / `probe_clusters` / `probe_cluster_probes` 由自进化 run 写；空间三表由空间管理端点写。`session_families` / `agents` / `agent_events` / `user_turns` / `trajectory_payloads` / `source_records` **不加空间列**——轨迹归一化是全局管线，一个空间的 Session 集合是「该空间 bad case 涉及的根会话」投影（§7.5）。
 
 - **原始层与归一化层分离**：`trajectory_payloads` 存原始 JSONL（外部写入/pull），`source_records` 存处理索引（不存 payload），其余轨迹表是归一化视图；解析规则升级时按 `parser_version` 从 payload 重放。
 - **明细层不落库**：`messages` / `content_blocks` 只在解析期存在，用于统计、usage 去重和状态判定；业务表不存消息与工具原文，需要原文时按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读。`user_turns` 是唯一保留的轨迹明细表，只存用户输入锚点。
-- **问题侧写入边界**：`bad_cases` 由空间上报接口（凭据 + 额度）与目录同步共同写入，本服务按主键 upsert 上游字段、不删除行；`bad_case_attributions` 由自进化 run 按缓存键 upsert（历史行由迁移生成）。两张表都在本服务写入边界内，表结构变更按本文评审。
+- **问题侧写入边界**：`bad_cases` 由空间上报接口（凭据 + 额度）与目录同步共同写入，本服务按主键 upsert 上游字段、不删除行；`bad_case_analysis` 维护 bad case 与归因报告的多对多关联，`probe_reports` 按缓存键 upsert 对象·版本级结论。三张表都在本服务写入边界内，表结构变更按本文评审。
 - **跨写入方的派生值不落列**：轨迹侧表只存本服务归一化算得出的聚合；依赖问题侧（外部写入）的计数随上游随时变化，一律查询时聚合，不物化——会话问题数即属此类（见 §3.2、§7.3）。
 
 ### 1.1 逻辑类型 → 物理类型映射
@@ -100,25 +99,26 @@ erDiagram
     SESSION_FAMILY ||--o{ USER_TURN : "user_turns"
 
     SESSION_FAMILY ||--o{ BAD_CASE : "上报的问题"
-    BAD_CASE ||--o{ BAD_CASE_ATTRIBUTION : "对象·版本结论"
+    BAD_CASE ||--o{ BAD_CASE_ANALYSIS : "对象·版本归因"
+    BAD_CASE_ANALYSIS }o--|| PROBE_REPORT : "指向归因明细"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_CANDIDATE : "候选快照"
     BAD_CASE ||--o{ EVOLUTION_RUN_CANDIDATE : "潜在判定"
-    BAD_CASE_ATTRIBUTION ||--o| EVOLUTION_RUN_CANDIDATE : "本次关联"
+    PROBE_REPORT ||--o| EVOLUTION_RUN_CANDIDATE : "本次关联"
 
     EVOLUTION_TARGET ||--o{ EVOLUTION_RUN : "配置后可用"
     EVOLUTION_RUN ||--o{ EVOLUTION_RUN_EVENT : "执行过程/异常"
-    EVOLUTION_RUN ||--o{ EVOLUTION_CLUSTER : "本次 run 的聚类"
-    EVOLUTION_CLUSTER ||--o{ EVOLUTION_CLUSTER_MEMBER : "成员（归因行）"
-    BAD_CASE_ATTRIBUTION ||--o{ EVOLUTION_CLUSTER_MEMBER : "被聚类"
+    EVOLUTION_RUN ||--o{ PROBE_CLUSTER : "本次 run 的聚类"
+    PROBE_CLUSTER ||--o{ PROBE_CLUSTER_PROBE : "成员"
+    PROBE_REPORT ||--o{ PROBE_CLUSTER_PROBE : "被聚类"
     EVOLUTION_RUN ||--o{ EVOLUTION_ROUND : "迭代轮"
-    EVOLUTION_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
+    PROBE_CLUSTER ||--o{ EVOLUTION_ROUND : "每簇一轮"
     EVOLUTION_RUN ||--o| EVOLUTION_FINAL : "终评"
 
     USER ||--o{ WORKSPACE_MEMBER : "加入"
     WORKSPACE ||--o{ WORKSPACE_MEMBER : "成员关系"
     WORKSPACE ||--o{ WORKSPACE_CREDENTIAL : "上报凭据"
     WORKSPACE ||--o{ BAD_CASE : "归属"
-    WORKSPACE ||--o{ BAD_CASE_ATTRIBUTION : "归因"
+    WORKSPACE ||--o{ PROBE_REPORT : "归因"
     WORKSPACE ||--o{ EVOLUTION_TARGET : "对象配置"
     WORKSPACE ||--o{ EVOLUTION_RUN : "运行"
 ```
@@ -245,6 +245,7 @@ erDiagram
 | `message_offset` | `INTEGER` | NOT NULL | 该触发点之前已经出现的 assistant message 数 |
 | `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` |
 | `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 |
+| `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空，关联与归因按 §7.5 的版本规则处理 |
 | `description` | `TEXT` | NULL | 子 agent / workflow 描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 触发调用 id |
 | `triggered_at` | `DATETIME` | NULL | 触发事件所在 assistant message 的时间戳（归一化从 JSONL 写入）；触发点比较主坐标，缺失时回退 `(tree_index, event_index)`（§7.5） |
@@ -415,13 +416,13 @@ erDiagram
 
 索引：`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`、`INDEX(workspace_id, created_at)`、`INDEX(workspace_id, object_name)`、`INDEX(workspace_id, bad_case_type)`。
 
-> 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_attributions`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
+> 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_analysis` 与 `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
 >
 > **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；upsert 同 `bad_case_id` 更新上游字段、不重复计数；额度在插入前按 `COUNT(workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。
 
 > 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
 
-> `object_*` 只表示**谁上报/发现了问题**，不是根因；根因看 `bad_case_attributions`（对象·版本级结论）。
+> `object_*` 只表示**谁上报/发现了问题**，不是根因；根因通过 `bad_case_analysis` 关联到 `probe_reports`，按对象·版本形成一条或多条结论。
 > `bad_case_session_id` 是根会话 id；`bad_case_agent_id` 是上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`。它记录的是“谁上报/发现”，不是“根因在谁”，也**不等于卡片宿主**：`self + agent` 挂 A 本身；`discovery + agent` 挂 A 的父节点 P 中调用 A 的 Agent 触发点；`skill` 型挂 A 中该 skill 的最后一次触发（`self` 卡片在药丸下方，`discovery` 在上方）。
 > 该列必须指向包含 `object_*` 触发记录的 agent——skill 型锚点只在该 agent 的 `agent_events` 里查找，找不到时退化为 `eventIndex=-1`（挂 A 节点）。API 将两列组装为 `badCaseAgent {sessionId, agentId}`，它是上报人，不一定是卡片宿主。
 
@@ -439,39 +440,60 @@ erDiagram
 
 游标与页数据同事务推进；`unavailable` 不落库，由查询服务是否配置实时派生。
 
-### 4.2 `bad_case_attributions` —— 归因（由 `probe_reports` 演进，V2）
+### 4.2 `bad_case_analysis` / `probe_reports` —— 多归因与缓存（V2）
 
-> 归因表不新起，而是在既有 `probe_reports` 上就地演进：改名 `bad_case_attributions`，主键 `probe_id → attribution_id`，`probe_type/probe_object → object_type/object_name`，新增 `workspace_id`、`bad_case_id`、`conclusion`、`confidence`、`policy_version`、`attribution_engine`、`created_run_id`、`last_reused_run_id`、`reused_count`；`attribute_type → category` 并放开可空；`probe_description → reason`（结论说明）；`probe_analysis → reasoning`（Markdown 推导过程）。原 1:1 关联表 `bad_case_analysis` 的职责（问题↔归因、未分析状态）并入本表：**没有行 = 未归因**，`conclusion` 决定是「可归因」还是「非该对象」。
+> V2 不新增“归因表”，而是把 V1 已有的 `bad_case_analysis` 从 `UNIQUE(bad_case_id)` 的 1:1 状态表扩展为一 case 多归因的关联表；每条关联指向 `probe_reports.probe_id`。`probe_reports` 继续保存归因明细、分类、对象版本与缓存元数据。API 的 `attributionId` 直接映射 `probe_id`，避免再造一套与 probe 报告平行的 ID。
+
+#### 4.2.1 `bad_case_analysis` —— bad case ↔ 归因关联
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `attribution_id` | `VARCHAR(64)` | PK | ULID；原 `probe_id` 的值全部保留 |
+| `id` | BIGINT | PK AUTOINCREMENT | 保留 V1 代理主键 |
+| `bad_case_id` | `VARCHAR(64)` | NOT NULL FK → `bad_cases.bad_case_id` ON DELETE CASCADE | 一个 case 可有多行 |
+| `analysis_status` | `VARCHAR(32)` | NOT NULL | `analyzed_issue` / `analyzed_nonissue`；V2 新写入时分别表示 `attributed` / `non_target`，未分析由无行表达 |
+| `probe_id` | `VARCHAR(64)` | NOT NULL FK → `probe_reports.probe_id` | 归因明细；对外别名 `attributionId` |
+| `analysis_result` | JSON | NULL | 兼容 V1 非问题原因/推导；V2 明细以 `probe_reports` 为准 |
+| `updated_at` | `DATETIME` | NOT NULL | 关联更新时间 |
+
+约束：`UNIQUE(bad_case_id, probe_id)`（同一 case 不重复关联同一归因）；删除 V1 的 `UNIQUE(bad_case_id)`。索引：`INDEX(bad_case_id, updated_at)`、`INDEX(probe_id)`、`INDEX(analysis_status)`。
+
+> `analysis_status` 只保留 V1 枚举，用于兼容历史查询；V2 结论以 `probe_reports.conclusion` 为准。一个 case 有多行时，`attributionCount = COUNT(DISTINCT probe_id)`；无行才表示“尚未归因”。
+
+#### 4.2.2 `probe_reports` —— 对象·版本级归因明细与缓存
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `probe_id` | `VARCHAR(64)` | PK | 稳定 ID；API 映射为 `attributionId` |
 | `workspace_id` | `VARCHAR(36)` | NOT NULL FK → `workspaces.id` ON DELETE CASCADE | 空间过滤 |
-| `bad_case_id` | `VARCHAR(64)` | NOT NULL FK → `bad_cases.bad_case_id` ON DELETE CASCADE | 原由 `bad_case_analysis` 承担的关系，现直接落列；一个 bad case 可有多行（对象·版本） |
-| `object_type` | `VARCHAR(16)` | NOT NULL | 原 `probe_type`；`skill` / `agent` |
-| `object_name` | `VARCHAR(128)` | NOT NULL | 原 `probe_object` |
+| `session_id` | `VARCHAR(36)` | NOT NULL | 归因所属根会话，与 bad case 的 session 一致 |
+| `probe_type` | `VARCHAR(16)` | NOT NULL | 归因目标类型 `skill` / `agent` |
+| `probe_object` | `VARCHAR(128)` | NOT NULL | 归因目标名 |
 | `object_version` | `VARCHAR(64)` | NOT NULL | 归因只作用于「对象 · 版本」 |
-| `conclusion` | `VARCHAR(16)` | NOT NULL DEFAULT 'attributed' | `attributed` / `non_target`（历史行默认 attributed） |
-| `category` | `VARCHAR(16)` | NULL | 原 `attribute_type`；`model` / `prompt` / `error`；`non_target` 为 NULL |
-| `confidence` | `DOUBLE` | NOT NULL DEFAULT 0.8 | 引擎给出的结论置信度 |
-| `reason` | `TEXT` | NOT NULL | 原 `probe_description`：结论说明 |
-| `reasoning` | `TEXT` | NOT NULL | 原 `probe_analysis`：Markdown 推导过程（有序列表/代码块；前端禁用裸 HTML） |
-| `policy_version` | `VARCHAR(16)` | NOT NULL DEFAULT 'v1' | 潜在策略语义版本（进缓存键） |
-| `attribution_engine` | `VARCHAR(64)` | NOT NULL DEFAULT 'legacy-probe-import' | 归因引擎标识（进缓存键；历史行标 `legacy-probe-import`） |
-| `created_run_id` | `VARCHAR(36)` | NULL FK → `evolution_runs.id` ON DELETE SET NULL | 首次生成该结论的 run（历史导入为 NULL） |
+| `attribute_type` | `VARCHAR(16)` | NULL | `model` / `prompt` / `error`；`non_target` 时为空 |
+| `conclusion` | `VARCHAR(16)` | NOT NULL DEFAULT 'attributed' | `attributed` / `non_target` |
+| `confidence` | `DOUBLE` | NOT NULL DEFAULT 0.8 | 单条归因置信度 |
+| `probe_description` | `TEXT` | NOT NULL | 问题现象/结论说明 |
+| `probe_analysis` | `TEXT` | NOT NULL | Markdown 推导过程；前端禁用裸 HTML |
+| `policy_version` | `VARCHAR(16)` | NOT NULL DEFAULT 'v1' | 潜在策略语义版本 |
+| `attribution_engine` | `VARCHAR(64)` | NOT NULL DEFAULT 'legacy-probe-import' | 归因引擎标识；历史行标 `legacy-probe-import` |
+| `cache_key` | `CHAR(64)` | NOT NULL UNIQUE | `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；case 维度由关联行保证 |
+| `created_run_id` | `VARCHAR(36)` | NULL FK → `evolution_runs.id` ON DELETE SET NULL | 首次生成该结论的 run |
 | `last_reused_run_id` | `VARCHAR(36)` | NULL FK | 最近一次复用的 run |
 | `reused_count` | `INTEGER` | NOT NULL DEFAULT 0 | 复用次数 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | `updated_at` 同时是最近归因/复用时间 |
 
-约束：`UNIQUE(workspace_id, bad_case_id, object_type, object_name, object_version, policy_version, attribution_engine)`——这七元组就是**缓存键**；索引 `INDEX(bad_case_id)`（错误详情分页）、`INDEX(workspace_id, object_name, object_version)`（总览三态/版本分布）、`INDEX(workspace_id, updated_at)`（对象趋势落桶）。
+索引：`INDEX(session_id)`、`INDEX(probe_type, probe_object, object_version)`、`INDEX(attribute_type)`、`INDEX(workspace_id, object_version)`、`INDEX(workspace_id, updated_at)`、`INDEX(conclusion)`。
 
-- **迁移映射**：存量 `probe_reports` 行保持 `attribution_id` 不变；`bad_case_id` 由 `bad_case_analysis` 反查回填（1:1 关系天然唯一）；`conclusion` 按 `analysis_status` 回填（`analyzed_issue → attributed`，`analyzed_nonissue → non_target`，`unanalyzed` 无行）；`workspace_id` 回填默认空间；`attribute_type` 为 `nonissue` 或空的历史行置 NULL。生产当前无数据，映射主要服务开发库与 fixtures。
-- **删除**：`bad_case_analysis` 整表删除（职责已并入）；`/api/bad-cases/{id}/analysis` 与 `/api/probes/{id}` 一并下线。
-- 写入方：自进化 run（缓存键 upsert，复用计数）；历史行只读。
+- **缓存键**：`cache_key` 是七元组的哈希；命中时复用 `probe_id`，更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，并在候选行记录 `is_cached=true`。这样可以保持既有 `probe_id`、`probe_cluster_probes` 与 `/api/probes/*` 的兼容链。
+- **一 case 多归因**：一个 case 可以在 `bad_case_analysis` 中关联多条 `probe_reports`，分别属于不同对象/版本；`non_target` 也保留明细与关联，但不进簇。
+- **写入方**：自进化 run 按缓存键 upsert `probe_reports`，再 upsert `bad_case_analysis` 关联；没有关联行即未归因。
+- **历史迁移**：现有 1:1 `bad_case_analysis` 行原样保留；按其 `probe_id` 对应的 `probe_reports` 回填 `workspace_id=默认空间`、`conclusion`、`cache_key` 与 legacy 引擎标记。`analyzed_nonissue` 只回填为 `non_target` 的兼容行，不迁移成新的问题结论。
 
-### 4.3 `probe_reports` / `bad_case_analysis`（已删除）
+### 4.3 `bad_case_analysis` / `probe_reports` 读写口径
 
-V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attributions`，`bad_case_analysis` 的职责（未分析状态、1:1 关系）并入同一张表。保留本节只为让迁移脚本与历史评审记录可追溯；新代码不得引用旧表名。
+- `/api/bad-cases/{id}/attributions` 查询 `bad_case_analysis JOIN probe_reports`，按 `probe_reports.updated_at DESC, probe_id` 分页。
+- `/api/attributions/{attributionId}` 收到的是 `probe_id`，必须校验对应 `bad_case_analysis` 仍关联当前 case；不存在或跨 case → `404 ATTRIBUTION_NOT_FOUND`。
+- `/api/probes/{probeId}` 保留为兼容读端点，返回同一 `probe_reports` 行；新 UI 统一使用 `AttributionItem/AttributionDetail`，不再把 probe 作为独立产品概念暴露。
 
 ## 5. 自进化侧表（本服务读写）
 
@@ -545,17 +567,17 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 > `repo_url` 指向**被进化对象（skill/agent）所在的 git 仓库**，不是自进化服务代码仓。一次 run 的仓库生命周期：clone 到 `repo_path` 缓存 → 复制到独立 `workspace_path` → checkout `target_version`（解析 `base_commit`）→ 建 `branch_name` → 每轮从 run 分支拉 `candidate_ref`、应用 `patch`、commit、push → 外部评测 → 接纳后 fast-forward run 分支、拒绝删除 candidate ref。仓库记录代码/分支/commit，`evolution_rounds` / `evolution_run_events` 记录过程与评测/接纳结果；后端只做 git 操作，不执行仓库里的脚本，评测由外部 gateway 完成。
 > `repo_url` 与 `sub_dir` 都是创建 run 时的配置快照；prepare 只读这两个字段，不读 `evolution_targets` 的当前值。`validation_project_id` / `test_project_id` 采用同一快照语义；本切片只落库，不改变评测 gateway。
 
-### 5.3 `evolution_clusters` —— 本次 run 的聚类结果（由 `probe_clusters` 演进）
+### 5.3 `probe_clusters` —— 本次 run 的聚类结果
 
-> V2 起就地改名与改列：`probe_cluster_id → cluster_id`、`probe_cluster_type → category`、`probe_cluster_description → description`；其余列与索引语义不变。
+> 表名与列名沿用 V1；V2 只把 `probe_cluster_type` 的取值来源改为归因 `attribute_type`，API 对外统一映射为 `clusterId/category/description`。
 
 | 列 | 类型 | 说明 |
 |---|---|---|
-| `cluster_id` | `VARCHAR(64)` PK | 本服务生成 |
+| `probe_cluster_id` | `VARCHAR(64)` PK | 本服务生成；API 映射为 `clusterId` |
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` | **按 run 归属** |
 | `seq` | `INTEGER` | 创建顺序（1..M）；不随 severity 重排 |
-| `description` | `TEXT` | 簇描述（占位文案） |
-| `category` | `VARCHAR(16)` | `model` / `prompt` / `error`（由归因 `category` 驱动） |
+| `probe_cluster_description` | `TEXT` | 簇描述（占位文案）；API 映射为 `description` |
+| `probe_cluster_type` | `VARCHAR(16)` | `model` / `prompt` / `error`（由归因 `attribute_type` 驱动）；API 映射为 `category` |
 | `confidence` | `DOUBLE` NULL | 簇级置信度 0–1；聚类步写入 |
 | `impact` | `DOUBLE` NULL | 影响面 0–10；按 `category` 映射并固化（`error=9` / `prompt=7` / `model=5`） |
 | `severity` | `DOUBLE` NULL | 排序分 0–10；`confidence × impact × 报告频次权重` |
@@ -564,25 +586,25 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(run_id)`、`INDEX(run_id, rank)`。
 
-> `confidence` 是**簇级**占位值（按 `category`：error 0.82 / prompt 0.74 / model 0.66），与归因行上的 `confidence`（单条结论置信度）是两个概念，不互相推导。
+> `confidence` 是**簇级**占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），与归因行上的 `confidence`（单条结论置信度）是两个概念，不互相推导。
 > `impact` 是固定映射，不是真实影响面；写入后固化，后续调整映射常量只影响新 run。
 > `severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight = 1 + 0.1 × min(reportCount - 1, 5)`；`reportCount` 是簇内成员反查到的 distinct `bad_case_id` 数，封顶 10。
 > `seq` 只表示创建顺序，`rank` 才是严重度排名；两者分开避免 `UNIQUE(run_id, seq)` 在重排时冲突。
 
-### 5.4 `evolution_cluster_members` —— 簇 ↔ 归因（由 `probe_cluster_probes` 演进）
+### 5.4 `probe_cluster_probes` —— 簇 ↔ 归因明细
 
-> V2 起就地改名与改列：`probe_cluster_id → cluster_id`、`probe_id → attribution_id`（指向 §4.2 的归因行）。成员粒度从「probe」变为「对象·版本级归因」，一个簇内的成员即该 run 中判定为 `attributed` 的候选对应的归因行。
+> 表名与列名沿用到 V2；`probe_id` 指向 §4.2 的 `probe_reports` 归因明细。一个簇内的成员即该 run 中判定为 `attributed` 的候选对应的归因报告。
 
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | BIGINT PK AUTOINCREMENT | — |
-| `cluster_id` | `VARCHAR(64)` FK → `evolution_clusters.cluster_id` | — |
-| `attribution_id` | `VARCHAR(64)` FK → `bad_case_attributions.attribution_id` | 归因行（每行对应一个 bad case × 对象·版本） |
+| `probe_cluster_id` | `VARCHAR(64)` FK → `probe_clusters.probe_cluster_id` | — |
+| `probe_id` | `VARCHAR(64)` FK → `probe_reports.probe_id` | 归因明细（每行对应一个 bad case × 对象·版本） |
 
-约束：`UNIQUE(cluster_id, attribution_id)`；索引：`INDEX(attribution_id)`。
+约束：`UNIQUE(probe_cluster_id, probe_id)`；索引：`INDEX(probe_id)`。
 
-- 候选上的 `attribution_id` 与成员表一致；「某候选属于哪个簇」由 `candidate.attribution_id → members.cluster_id` 推导，候选表不再冗余 `cluster_id` 列。
-- 簇内 distinct `bad_case_id`（`reportCount`）由成员 join 归因行统计。
+- 候选上的 `probe_id` 与成员表一致；「某候选属于哪个簇」由 `candidate.probe_id → probe_cluster_probes.probe_cluster_id` 推导，候选表不再冗余簇列。
+- 簇内 distinct `bad_case_id`（`reportCount`）由 `probe_cluster_probes JOIN bad_case_analysis` 统计。
 
 ### 5.5 `evolution_rounds` —— 每簇的迭代轮
 
@@ -590,7 +612,7 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 |---|---|---|
 | `id` | `VARCHAR(36)` PK | — |
 | `run_id` | `VARCHAR(36)` FK | — |
-| `probe_cluster_id` | `VARCHAR(64)` FK | 该轮针对的簇（V2 起列名语义为 `evolution_clusters.cluster_id`） |
+| `probe_cluster_id` | `VARCHAR(64)` FK → `probe_clusters.probe_cluster_id` | 该轮针对的簇 |
 | `seq` | `INTEGER` | 第几轮 |
 | `status` | `VARCHAR(16)` | `pending` 排队未开始 / `patching` 生成并应用 patch、commit candidate / `pushing` 推送 candidate ref / `evaluating` 等待评测 / `deciding` 根据评测结果接纳或拒绝 / `accepted` 已接纳 / `rejected` 已拒绝 / `skipped` 本地模式保留候选但跳过远端推送与评测 / `failed` 不可恢复失败 |
 | `started_at` / `finished_at` | DATETIME NULL | 进入 `patching` 时写开始时间；终态时写结束时间 |
@@ -616,7 +638,7 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 
 索引：`UNIQUE(run_id, seq)`、`INDEX(probe_cluster_id)`、`INDEX(run_id, status)`、`INDEX(eval_status, eval_next_poll_at)`。
 
-> V2 起 `evolution_rounds.probe_cluster_id` 指向 `evolution_clusters.cluster_id`（列名保留，避免 FK 链改名扩散；下个大版本随簇表统一改名）。
+> `evolution_rounds.probe_cluster_id` 继续指向 `probe_clusters.probe_cluster_id`，不引入额外映射表。
 
 > `patching` 覆盖 patch 生成 → 落盘 → candidate commit；`started_at` 在进入 `patching` 时写。patch 失败包括：生成失败（无输出 / 格式非法 / LLM 超时）、应用失败（上下文不匹配、文件冲突、`sub_dir` 不存在）、candidate commit 失败（hook / 脏工作区 / 权限）。可重试 → run `blocked`、`blocked_stage=patch`，本轮停在 `patching`；不可恢复 → 本轮 `failed`、run `failed`，`error_stage` 按子步骤记 `patch` 或 `commit`。
 > `deciding`：拿到评测结果后执行接纳/拒绝、fast-forward / 删 ref。`accepted` / `rejected` 是终态，`accepted` 布尔列与 `status` 同步。
@@ -647,7 +669,7 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 | `level` | `VARCHAR(8)` | NOT NULL | `info` / `warn` / `error` |
 | `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `push` / `eval` / `apply` / `final` |
 | `step_index` | `INTEGER` NULL | — | 对应六步的 step（0–5） |
-| `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `evolution_clusters` |
+| `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `probe_clusters.probe_cluster_id`；API 映射为 `clusterId` |
 | `evolution_round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
 | `job_id` | `VARCHAR(36)` NULL | — | 关联 `job_runs` |
 | `message` | `VARCHAR(512)` | NOT NULL | 人可读摘要 |
@@ -673,11 +695,11 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 
 ### 5.8 归因的写入与缓存语义（表定义见 §4.2）
 
-> 归因表就是由 `probe_reports` 演进而来的 `bad_case_attributions`（§4.2），**不另建表**。本节只记录「run 怎么写它」的行为约定。
+> 归因明细继续写 `probe_reports`，case 关联继续写 `bad_case_analysis`，不新增平行归因表。本节只记录「run 怎么写它们」的行为约定。
 
-- **缓存键** = `UNIQUE(workspace_id, bad_case_id, object_type, object_name, object_version, policy_version, attribution_engine)` 七元组。
-- 命中且 `cache_enabled`：复用（候选行 `is_cached=true`、`reused_count+1`、`last_reused_run_id` 更新），不再调用引擎。
-- `cache_enabled=false`：跳过读，重算并覆盖同键行（`created_run_id` 更新）——结论仍是「最新真相」，不按 run 追加历史行。
+- **缓存键** = `probe_reports.cache_key`，其原值为 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`。
+- 命中且 `cache_enabled`：复用同一 `probe_id`；更新 `probe_reports` 的 `reused_count / last_reused_run_id / updated_at`，候选行 `is_cached=true`，不再调用引擎。
+- `cache_enabled=false`：跳过读，重算并 upsert 同 `cache_key` 行（`created_run_id` 更新）——结论仍是「最新真相」，不按 run 追加历史行。
 - 并发同键 upsert 用方言语句原子完成（MySQL `ON DUPLICATE KEY UPDATE` / SQLite `ON CONFLICT DO UPDATE`），封装在 repository 内，不先查后写。
 - 结论只作用于该对象·版本：不修改 bad case 本身，不影响它与其它对象的潜在关系。
 - 历史 `non_target` 与历史 `analyzed_nonissue` 是不同谓词：迁移时 `analyzed_nonissue → conclusion='non_target'` 属于**语义重解释**（V1 的「非问题」= 不是问题；V2 的「非该对象问题」= 对当前对象不成立），因此迁移后 `category` 置 NULL，并在 `attribution_engine='legacy-probe-import'` 上可区分来源。
@@ -702,21 +724,21 @@ V2 起两张表不再存在：`probe_reports` 演进为 §4.2 的 `bad_case_attr
 | `order_state` | `VARCHAR(16)` | NOT NULL | `comparable` / `unknown` |
 | `included` | BOOLEAN | NOT NULL | 是否命中策略 |
 | `included_reason` | `VARCHAR(16)` | NOT NULL | `self_report` / `after_object` / `both` / `policy_excluded` / `order_unknown` |
-| `attribution_id` | `VARCHAR(64)` | NULL FK → `bad_case_attributions.attribution_id` | 本次 run 关联的归因行 |
+| `probe_id` | `VARCHAR(64)` | NULL FK → `probe_reports.probe_id` | 本次 run 关联的归因明细；API 映射为 `attributionId` |
 | `is_cached` | BOOLEAN | NOT NULL DEFAULT false | 本次是否走缓存 |
 | `created_at` | `DATETIME` | NOT NULL | — |
 
-约束：`UNIQUE(run_id, bad_case_id)`（一个 run 内一条 bad case 一行，重跑 prepare 时 upsert 幂等）；索引 `INDEX(run_id, included)`、`INDEX(bad_case_id)`、`INDEX(attribution_id)`、`INDEX(session_id)`。
+约束：`UNIQUE(run_id, bad_case_id)`（一个 run 内一条 bad case 一行，重跑 prepare 时 upsert 幂等）；索引 `INDEX(run_id, included)`、`INDEX(bad_case_id)`、`INDEX(probe_id)`、`INDEX(session_id)`。
 
 - **Session 关联结果不单独建表**：关联 Session = 候选的 `DISTINCT session_id`；跳过的 Session 没有候选行，只进 `run.stats` 与步骤 payload。向导第 2 步与运行详情第 2 步都按同一推导查询。
-- **候选不存 `cluster_id`**：簇成员是归因行（§5.4），「候选属于哪个簇」由 `candidate.attribution_id → evolution_cluster_members.cluster_id` 推导，避免两处冗余与不一致。
+- **候选不存簇列**：簇成员是归因明细，「候选属于哪个簇」由 `candidate.probe_id → probe_cluster_probes.probe_cluster_id` 推导，避免两处冗余与不一致。
 - 候选行随 run 清理（`clean-runs` 级联）。
 
-### 5.10 簇成员：复用 `evolution_cluster_members`，不另建表
+### 5.10 簇成员：复用 `probe_cluster_probes`，不另建表
 
-V2 没有独立的「簇 ↔ 候选」表：候选携带 `attribution_id`，而簇成员表（§5.4，由 `probe_cluster_probes` 演进）已经按 `(cluster_id, attribution_id)` 记录成员关系。聚类输入 = `included AND attribution.conclusion='attributed'` 的候选，按 `category` 分组后写成员行；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight` 按成员 join 归因行统计的 distinct `bad_case_id` 计。
+V2 没有独立的「簇 ↔ 候选」表：候选携带 `probe_id`，而 `probe_cluster_probes` 已经按 `(probe_cluster_id, probe_id)` 记录成员关系。聚类输入 = `included` 且关联 `probe_reports.conclusion='attributed'` 的候选，按 `attribute_type` 分组后写成员行；`severity = round(min(10, confidence × impact × reportWeight), 1)`，`reportWeight` 按成员 join `bad_case_analysis` 统计的 distinct `bad_case_id` 计。
 
-- 这样只需维护一张成员表：V1 的「簇 ↔ probe」与 V2 的「簇 ↔ 归因」共用同一实体关系，只是成员对象从 probe 变为归因行。
+- V2 的「簇 ↔ 归因」继续落 V1 的形状，`probe_id` 同时是可复用的归因报告 ID；不新增 `evolution_cluster_cases` 或成员改名表。
 - 若未来需要「候选级」成员（如一个 bad case 在一簇内按候选而非归因区分），再评估加列，不预建表。
 
 ### 5.11 表演进原则：改旧表、加列还是新起一张（V2 决策记录）
@@ -726,19 +748,19 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | 表 | 处理 | 理由 |
 |---|---|---|
 | `evolution_runs` | **加列**（`workspace_id` / `potential_policy` / `cache_enabled`） | 同一实体、同一语义：V1/V2 的 run 都是「一次自进化运行」，只是输入与步骤不同 |
-| `probe_clusters` → `evolution_clusters` | **就地改名 + 改列** | 同一实体（run 内簇）；`probe_cluster_type` 改由归因 `category` 驱动，名实对齐 |
-| `probe_cluster_probes` → `evolution_cluster_members` | **就地改名 + 改列**（`probe_id → attribution_id`） | 同一关系（簇 ↔ 成员）；成员对象从 probe 变为归因行，语义仍是「簇包含哪些结论」 |
-| `probe_reports` → `bad_case_attributions` | **就地改名 + 改列**（主键、`probe_type/probe_object/attribute_type`、新增归因/缓存列） | 同一实体（一次归因结论）；V2 只是把粒度从「bad case 级」放宽到「bad case × 对象·版本」，并补上缓存与结论字段 |
-| `bad_case_analysis` | **删除（职责并入归因表）** | 它的两项职责「问题↔归因的 1:1 关系」与「未分析状态」都可以由归因表直接表达：无行=未归因，`conclusion` 决定归属；保留它反而要求两张表同步 |
+| `probe_clusters` | **保留表名，原位加语义** | 同一实体（run 内簇）；`probe_cluster_type` 继续表示归因分类，仅数据来源改为 `probe_reports.attribute_type` |
+| `probe_cluster_probes` | **保留表名** | 同一关系（簇 ↔ 归因报告）；V2 的 `probe_id` 是对象·版本级归因 ID，关联行不再要求与 V1 一 case 一 probe 完全同构 |
+| `probe_reports` | **保留表名，原位加列** | 同一实体（一次归因明细）；新增空间、结论、缓存与复用字段，`probe_id` 继续作为稳定归因 ID |
+| `bad_case_analysis` | **保留表名，移除 bad_case 唯一约束** | 从 1:1 状态扩展为一 case 多归因关联；`(bad_case_id, probe_id)` 唯一，未分析仍由无行表达 |
 | `evolution_run_candidates` | **新增** | 全新粒度 `(run, bad_case)`：V1 没有「候选快照」这张表可继承；它承载被排除行、触发点坐标、命中原因与缓存标记，是运行详情可解释性的唯一来源 |
-| `evolution_cluster_cases` | **不建** | 成员关系已由 `evolution_cluster_members` 承担（见 §5.10） |
+| `evolution_cluster_cases` | **不建** | 成员关系已由 `probe_cluster_probes` 承担（见 §5.10） |
 
 两条被明确拒绝的省事做法：
 
-1. **多态外键**：把 `probe_cluster_probes` 改成 `(cluster_id, member_id, member_type)`，让 V2 成员塞进同一张表。代价是失去引用完整性（DB 不保证 `member_id` 指向哪张表）、每个查询都要带 `member_type` 分支、历史行与新行在同一张表里语义不同——评审时无法回答「这一行为什么主外键指不到东西」。
+1. **多态外键**：把 `probe_cluster_probes` 改成 `(member_id, member_type)`，让不同代际的成员塞进同一张表。代价是失去引用完整性、每个查询都要带 `member_type` 分支；当前直接沿用 `probe_id` 已能表达多归因，不需要多态。
 2. **候选并入簇成员表**：候选是 run 级事实（含 `included=false` 的排除行，用于解释「为什么没进潜在」），簇成员是它的子集（仅 `attributed` 且已入簇）。合并会让被排除行污染簇查询，或让候选被簇结构绑死。
 
-**残留命名**：`evolution_rounds.probe_cluster_id` 与 `evolution_run_events.cluster_id` 保留旧列名/旧引用，避免 FK 链在本次迁移里扩散改名；下个大版本随簇表统一清理。
+**命名约束**：V2 不重命名任何既有表或簇外键。API 可以在 DTO 中使用 `clusterId/category/description`，但存储层继续使用 `probe_cluster_id/probe_cluster_type/probe_cluster_description`，避免迁移扩散。
 
 ## 6. 索引与容量估算
 
@@ -751,13 +773,14 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | `agent_events` | 10⁴ | — |
 | `user_turns` | 10⁴ | 主 agent 每轮一行；只存用户输入锚点 |
 | `bad_cases` | 10³–10⁴ | 上报接口与目录同步写入 |
-| `bad_case_attributions` | 10³–10⁵ | 由 `probe_reports` 演进；每 `(bad case × 对象版本 × 策略版本 × 引擎)` 一行，复用不新增行 |
+| `probe_reports` | 10³–10⁵ | 每个 `(bad case × 对象版本 × 策略版本 × 引擎)` 一条缓存明细；复用不新增行 |
+| `bad_case_analysis` | 10³–10⁵ | 每条 case↔归因关联一行；一个 case 可多条 |
 | `evolution_run_candidates` | 每 run 10¹–10³ | 随 run 清理（`clean-runs` 级联） |
 | `evolution_targets` | 10¹–10² | 每个可进化 skill/agent 一行（按空间） |
 | `evolution_runs` | 10² | — |
 | `evolution_run_events` | 每 run 数十–数百条 | 执行过程与异常；随 run 清理 |
-| `evolution_clusters` | 每次 run 数条–数十条 | 按 run 归属，可随 run 清理 |
-| `evolution_cluster_members` | 每次 run 数十–数百行 | 随簇级联删除 |
+| `probe_clusters` | 每次 run 数条–数十条 | 按 run 归属，可随 run 清理 |
+| `probe_cluster_probes` | 每次 run 数十–数百行 | 随簇级联删除 |
 | `job_runs` | 10³ | 任务审计 |
 | `sync_lock` | 1 | 单飞锁，固定一行 |
 | `workspaces` | 10¹–10² | 单组织内部 |
@@ -822,8 +845,8 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | bad case 触发点 | §7.4 锚点事件；锚点缺失（`eventIndex=-1`）退化为上报 agent 的出生点（子 agent 取父节点 `tool_use_id` 匹配的 `agent` 事件，主 agent 取 `started_at`） |
 | 触发点比较 | 双方 `triggered_at` 非空 → 按时间；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；双缺失 → `order_state=unknown`（不满足「之后」） |
 | 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.12](07-backend-implementation.md) |
-| 归因三态 | 潜在集合中按 `bad_case_attributions`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无行 → 未归因 |
-| 对象「出现」的版本口径 | 按对象名判定（触发事件不记录版本）；`target_version` 只进归因身份与缓存键。遗留项：上游轨迹带版本后收紧 |
+| 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
+| 对象「出现」的版本口径 | `agent_events.object_version` 非空时必须等于所选目标版本；为空的历史事件按对象类型/名称关联，并在候选 `order_state` 标为 `version_unknown`。该降级只服务未重放数据，不能声称完成了版本级精确关联 |
 
 ## 8. 与功能点的映射
 
@@ -831,12 +854,12 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 |---|---|---|
 | F3 Session 列表 | `session_families` + `bad_cases`（计数、空间投影） | 读 |
 | F4 会话概览 | `session_families` + `bad_cases`（计数） | 读 |
-| F5 Agent 执行流图 | `agents`、`agent_events`、`bad_cases`、`bad_case_attributions`（问题卡状态） | 读 |
-| F6 会话内问题列表 | `bad_cases`、`bad_case_attributions` | 只读 |
+| F5 Agent 执行流图 | `agents`、`agent_events`、`bad_cases`、`bad_case_analysis`、`probe_reports`（问题卡状态） | 读 |
+| F6 会话内问题列表 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 只读 |
 | F7 时间线（已裁撤） | `user_turns`（用户输入锚点，预留执行流展示） | 不读接口 |
-| F8 错误详情与归因 | `bad_cases`、`bad_case_attributions`、`evolution_run_candidates`（触发点对照） | 只读 |
+| F8 错误详情与归因 | `bad_cases`、`bad_case_analysis`、`probe_reports`、`evolution_run_candidates`（触发点对照） | 只读 |
 | F9 轨迹接入与归一化 | `trajectory_payloads`（只读）、`source_records`、`sync_runs`、`sync_lock` + `session_families`、`agents`（含 `tree_index`）、`user_turns`、`agent_events`（含 `triggered_at`） | 读写（payload 只读） |
-| F10–F13 自进化 | `evolution_targets`、`bad_cases`、`bad_case_attributions`、`evolution_run_candidates`、`evolution_clusters`、`evolution_cluster_members`、`evolution_*` | 写/读 |
+| F10–F13 自进化 | `evolution_targets`、`bad_cases`、`bad_case_analysis`、`probe_reports`、`evolution_run_candidates`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
 | F19 进化对象配置 | `evolution_targets`（按空间） | 写/读 |
 | F20 执行日志与异常 | `evolution_run_events`、`evolution_runs.error_*`、`evolution_rounds.error_*` | 写/读 |
 | F14 进度推送 | `job_runs`、`evolution_rounds.eval_next_poll_at` | 写/读 |
@@ -845,46 +868,41 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | F21 鉴权接入预留 | `users`、`workspace_members` | 读/写 |
 | F22 工作空间管理 | `workspaces`、`workspace_members`、`workspace_ingest_credentials` | 写/读 |
 | F23 bad case 上报 | `bad_cases`、`workspaces.quota`（COUNT）、`workspace_ingest_credentials` | 写/读 |
-| F24/F25 总览 | `bad_cases`、`session_families`、`bad_case_attributions`、`evolution_targets` | 只读 |
-| F26 归因进自进化 | `bad_cases`、`bad_case_attributions`、`evolution_run_candidates`、`evolution_clusters`、`evolution_cluster_members`、`agents`/`agent_events`（触发点） | 写/读 |
-| F27 多归因错误详情 | `bad_case_attributions`、`evolution_run_candidates` | 只读 |
+| F24/F25 总览 | `bad_cases`、`session_families`、`bad_case_analysis`、`probe_reports`、`evolution_targets` | 只读 |
+| F26 归因进自进化 | `bad_cases`、`bad_case_analysis`、`probe_reports`、`evolution_run_candidates`、`probe_clusters`、`probe_cluster_probes`、`agents`/`agent_events`（触发点） | 写/读 |
+| F27 多归因错误详情 | `bad_case_analysis`、`probe_reports`、`evolution_run_candidates` | 只读 |
 
 ## 9. V2 迁移与回填
 
-单版本迁移（语义上一组；引擎里 `0014_v2_workspaces` + `0015_v2_attribution` 两个文件），顺序固定：
+单版本迁移（语义上一组；引擎里 `0014_v2_workspaces` + `0015_v2_attribution` 两个文件），顺序固定；所有既有表保留原名：
 
 ```text
 1) 建新表：workspaces / workspace_members / workspace_ingest_credentials /
           evolution_run_candidates
-2) 就地演进既有表（改名 + 加列，SQLite 用 batch 模式）：
-   RENAME probe_reports            → bad_case_attributions
-         列：probe_id→attribution_id、probe_type→object_type、
-             probe_object→object_name、attribute_type→category（放开可空）、
-             probe_description→reason、probe_analysis→reasoning
-         加：workspace_id、bad_case_id、conclusion、confidence、
-             policy_version、attribution_engine、created_run_id、
+2) 就地演进既有表（不改表名，SQLite 用 batch 模式）：
+   bad_case_analysis
+         删除 UNIQUE(bad_case_id)；新增 UNIQUE(bad_case_id, probe_id)
+   probe_reports
+         加：workspace_id、conclusion、confidence、policy_version、
+             attribution_engine、cache_key、created_run_id、
              last_reused_run_id、reused_count
-         （bad_case_id 由 bad_case_analysis 反查回填；conclusion 按 analysis_status 回填）
-   RENAME probe_clusters           → evolution_clusters
-         列：probe_cluster_id→cluster_id、probe_cluster_type→category、
-             probe_cluster_description→description
-   RENAME probe_cluster_probes     → evolution_cluster_members
-         列：probe_cluster_id→cluster_id、probe_id→attribution_id
-   DROP   bad_case_analysis
+         attribute_type 改为可空；保留现有 probe_id 与描述列名
+   probe_clusters / probe_cluster_probes
+         不加改名；仅按新归因明细补齐外键数据与索引
 3) 可空加列（新列）：
    bad_cases.workspace_id、evolution_targets.workspace_id、evolution_runs.workspace_id
    + potential_policy / cache_enabled、evolution_run_events.workspace_id
-   agents.tree_index、agent_events.triggered_at
+   agents.tree_index、agent_events.triggered_at / object_version
 4) 默认空间行（幂等）：id = HE_DEFAULT_WORKSPACE_ID（默认 ws-default），
    quota = COUNT(bad_cases) + 50
 5) 回填：bad_cases / evolution_targets / evolution_runs / evolution_run_events
-   的 workspace_id = 默认空间；bad_case_attributions.workspace_id = 默认空间
+   的 workspace_id = 默认空间；probe_reports.workspace_id = 默认空间
 6) 收紧 NOT NULL + 建 FK/索引；evolution_targets 唯一键
    (object_type, object_name) → (workspace_id, object_type, object_name)
 7) 现有用户全部加入默认空间（viewer；全局管理员不写也可见，写入仅为成员列表完整性）
 ```
 
 - **幂等**：可重复执行（`WHERE NOT EXISTS` + 回填只看 NULL），SQLite 测试库与 MySQL 生产库都能二次跑。
-- **回滚**：`downgrade()` 反向改回表名/列名并恢复 `bad_case_analysis` 空表（历史归因行的 `bad_case_id` 无法还原 1:1 关系时按 `created_run_id IS NULL` 勾选），实际生产回滚以「回退应用版本 + 保留新结构」为主。
-- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`attribution_id` 保持原值；`workspace_id` = 默认空间；`conclusion` 按 `analysis_status`（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、`unanalyzed` 无行）；`category` 按 `attribute_type`（`nonissue` 置 NULL）；`confidence=0.8`；`reason`/`reasoning` 沿用原 `probe_description`/`probe_analysis`；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`。
-- **触发点补齐**：`triggered_at` / `tree_index` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的数据按 §7.5 回退字典序。
+- **回滚**：删除新增列和外键，恢复 `bad_case_analysis` 的 `UNIQUE(bad_case_id)`；若已存在一 case 多归因，降级前只保留 `updated_at` 最新的一行并记录导出文件，实际生产回滚以「回退应用版本 + 保留新结构」为主。
+- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` = 默认空间；`conclusion` 按 `analysis_status`（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、`unanalyzed` 无行）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；重新计算 `cache_key` 并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
+- **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的数据按 §7.5 标记 `version_unknown`，不能静默当作版本精确命中。
