@@ -23,9 +23,9 @@
 | 包管理 | **venv + pip** | 依赖与虚拟环境 | `python -m venv .venv` + `pip install -e ".[dev]"`；依赖声明在 `pyproject.toml`，虚拟环境不入库 |
 | SSE | sse-starlette | 事件流 | 小型成熟库，自带心跳与断线处理；也可手写 `StreamingResponse` |
 | HTTP 客户端（测试/未来 LLM） | httpx | API 测试 | `AsyncClient` + `ASGITransport` |
-| 测试 | pytest + pytest-asyncio | 单测/接口测试 | 覆盖同步幂等、状态机、只读查询；MySQL 用可选 integration 标记 |
+| 测试 | pytest + pytest-asyncio | 单测/接口测试 | 覆盖同步幂等、空间权限、上报额度、状态机、归因缓存与查询；MySQL 用可选 integration 标记 |
 | 代码质量 | ruff（lint+format）、mypy（strict 模式渐进） | 门禁 | 与前端 lint/typecheck 对齐 |
-| 任务队列（未来） | arq / CI 平台 | 替换串行执行器 | V1 不需要；接口先行（§7.3） |
+| 任务队列（未来） | arq / CI 平台 | 替换串行执行器 | V2 单实例不需要；接口先行（§7.3） |
 | 契约生成（前端侧） | openapi-typescript | `apps/api` OpenAPI → TS | 见 [03 §10](03-frontend-architecture.md) |
 
 > **驱动 vs ORM**：`asyncmy` / `aiosqlite` 是数据库驱动（DBAPI 层，只负责连接数据库、发送 SQL、返回结果）；SQLAlchemy 是 ORM/SQL 工具层，通过 dialect 调用驱动。`mysql+asyncmy://` 中 `mysql` 是方言，`asyncmy` 是驱动；`sqlite+aiosqlite://` 同理。两者不是同一层，也不是二选一。
@@ -38,11 +38,11 @@
 |---|---|---|
 | 表达力 | 完整（复合索引、JSON、CHECK、原生 SQL 逃生口） | 受限于"一个类既是表又是 API 模型"的折中 |
 | 迁移 | Alembic 生态成熟，autogenerate 稳定 | 底层仍是 SQLAlchemy + Alembic，但双身份类让 autogenerate 偶有歧义 |
-| 分层清晰度 | 表模型（db）与 API 模型（api_req/api_resp）分离，正好匹配本方案的 CRUD/只读外部表分层 | 容易把"表字段"直接暴露成 API 字段，契约被存储细节绑架 |
+| 分层清晰度 | 表模型（db）与 API 模型（api_req/api_resp）分离，正好匹配本方案的 CRUD、历史导入和空间上报分层 | 容易把"表字段"直接暴露成 API 字段，契约被存储细节绑架 |
 | 团队认知 | Python 生态默认选择 | 小众但简洁 |
 | 结论 | ✅ 采用 | 不采用 |
 
-代价是每个实体要写两套模型（`db/models/` 的表模型 + `api_req/api_resp` 的 DTO），换来的边界清晰是只读外部表与契约稳定所需要的——**API DTO 与表结构解耦，外部表字段变化不会直接漏进契约**。
+代价是每个实体要写两套模型（`db/models/` 的表模型 + `api_req/api_resp` 的 DTO），换来的边界清晰是历史导入、迁移与稳定契约所需要的——**API DTO 与表结构解耦，存储字段变化不会直接漏进契约**。
 
 ## 3. 分层与目录
 
@@ -56,8 +56,8 @@
 │ 业务规则 · 聚合 · 状态机 · ID 生成                            │
 └───────────────┬───────────────────────────────┬───────────────┘
                 ▼                               ▼
-┌─ 外部数据接入 ──────────────────┐  ┌─ 存储层（db/） ─────────────┐
-│ bad_cases / 归因读写             │  │ Database 接口 + SQLite/MySQL│
+┌─ 数据接入与领域写入 ─────────────┐  ┌─ 存储层（db/） ─────────────┐
+│ 上报 / 历史导入 / bad_cases / 归因│  │ Database 接口 + SQLite/MySQL│
 │ 上游轨迹 API（third_party_api） │  │ CRUD（方言无关）            │
 └───────────────┬─────────────────┘  │ Alembic 迁移（双方言）      │
                 └───────────────────►└─────────────────────────────┘
@@ -186,7 +186,7 @@ def create_database(settings: Settings) -> Database:
         ──► 回退同样只改配置
 ```
 
-- **不需要写数据迁移脚本**：换库后重跑归一化即可（`trajectory_payloads` 仍是事实源）；问题侧数据由外部系统重新灌入；演示数据用 `fixtures` seed 重建。
+- **轨迹换库不需要业务迁移脚本**：重跑归一化即可（`trajectory_payloads` 仍是事实源）；V2 的空间、bad case 与归因结构变化必须通过 Alembic 迁移，演示数据用 `fixtures` seed 重建。
 - **切换是启动期配置**（改 env 后重启生效），不做运行时热切换——避免同一进程同时连两个库造成数据分裂。
 - Alembic 用**一棵版本树、双方言渲染**；SQLite 的 `ALTER TABLE` 限制用 `render_as_batch=True` 处理。
 - CI 两条：默认 SQLite 快跑；MySQL 任务（service container）跑 `-m mysql` 标记的集成测试，防止"只在小库上绿"。
@@ -203,7 +203,7 @@ def create_database(settings: Settings) -> Database:
 | 自增主键 | SQLite `INTEGER PRIMARY KEY` vs MySQL `BIGINT AUTO_INCREMENT` | SQLAlchemy `Integer primary_key=True autoincrement=True`，迁移里由方言渲染 |
 | 事务边界 | SQLite 整库写锁，MySQL 行锁 | 写操作统一走 `Database.transaction()`；不依赖"自动提交" |
 
-## 5. 数据接入：只读外部表 + 出站调用 + fixtures
+## 5. 数据接入：空间上报 + 历史导入 + 出站调用 + fixtures
 
 ### 5.1 三类接缝（不再有统一 Provider 层）
 
@@ -214,7 +214,7 @@ def create_database(settings: Settings) -> Database:
 | 归因（V2） | `service/evolution/attribution.py` | run 内按对象·版本 upsert `probe_reports`，并写 `bad_case_analysis` 一对多关联与缓存标签 |
 | 演示数据 | `fixtures/` + `app/cli.py seed` | 仅开发/演示时灌入真实表，运行时无 stub 分支 |
 
-早期"六类 Provider + stub 实现"的设计已取消：问题/归因数据本来就在外部表里，真实实现是"读表"，不需要再包一层可替换接口；强行抽象只会增加映射代码和漂移风险。
+早期"六类 Provider + stub 实现"的设计已取消：V2 bad case 与归因均在本服务写入边界内，不需要“读表 Provider”；历史问题数据只保留显式开关的兼容同步。
 
 ### 5.2 原始 payload 与归一化
 
@@ -269,7 +269,7 @@ class PayloadSource(Protocol):
 | `AppError`（其他业务错误） | 400 | `*_ERROR` |
 | 未捕获异常 | 500 | `INTERNAL`（响应不含堆栈，日志含 request_id） |
 
-- 请求上下文：JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点仅 `/api/health` 与 `/api/auth/login`、`/api/auth/refresh`，其余一律要求登录；`must_change_password` 的账号只放行改密/登出/`me`，其余 `403 PASSWORD_CHANGE_REQUIRED`（[07 §8.2](07-backend-implementation.md)）。
+- 请求上下文：当前 JWT 鉴权中间件把 `sub` 解析进 `RequestContext.principal`；公开端点为 `/api/health`、`/api/auth/login`、`/api/auth/refresh`，配置 IdP 时还包括 `/api/auth/callback`；其余业务请求要求登录，`/api/events` 走一次性票据。`must_change_password` 的账号只放行改密、登出、`me` 与 `auth/session`，其余 `403 PASSWORD_CHANGE_REQUIRED`（[07 §8.2](07-backend-implementation.md)）。
 - 日志：`structlog` 风格的结构化字段（`request_id / module / principal / duration_ms / code`），不打印轨迹原文（可能含敏感内容）。
 - CORS：只允许配置的正式域名（`HE_CORS_ORIGINS`）；同源托管后可关闭。
 - 限流（轻量）：登录端点按 IP 限速（如 10 次/分钟），防暴力破解；业务端点暂不限流（组织内部）。
@@ -278,7 +278,7 @@ class PayloadSource(Protocol):
 
 ### 7.1 为什么不用 Celery
 
-单实例 SaaS 下，任务是"秒级到分钟级的同步/聚类/推进"，且 V1 串行执行，不需要队列。设计上**接口先行**：`JobRunner` + `job_runs` 表 + 进程内串行 worker；未来并行/CI 时新增 executor 实现，业务代码不动。
+单实例 SaaS 下，任务是“秒级到分钟级的同步、归因、聚类与推进”，V2 仍串行执行，不需要队列。设计上**接口先行**：`JobRunner` + `job_runs` 表 + 进程内串行 worker；未来并行/CI 时新增 executor 实现，业务代码不动。
 
 ### 7.2 `job_runs` 表 + 进程内串行 worker
 
@@ -297,12 +297,12 @@ blocked_sweeper_loop()                                         # lifespan 启动
   └─ 入队 evolution_retry（自动退避每次只 push 1 次）
 
 JobRunner.submit(kind, payload, ref_id, created_by) -> job_id   # 落 job_runs 行（status=queued），立刻返回
-worker_loop()                                                   # lifespan 启动的串行执行器（V1 一把 asyncio.Lock）
+worker_loop()                                                   # lifespan 启动的串行执行器（当前一把 asyncio.Lock）
   └─ 同一时刻只执行一个任务：claim → running → 更新 progress → completed/failed
   └─ 重启时把残留 running 标为 interrupted；可重试的 kind 重新入队
 ```
 
-- **SQLite 与 MySQL 的差异**：V1 单实例串行，不依赖 `SKIP LOCKED`；未来多实例 worker 时用 MySQL `SELECT … FOR UPDATE SKIP LOCKED` 抢占，SQLite 只用于测试。
+- **SQLite 与 MySQL 的差异**：V2 单实例串行，不依赖 `SKIP LOCKED`；未来多实例 worker 时用 MySQL `SELECT … FOR UPDATE SKIP LOCKED` 抢占，SQLite 只用于测试。
 - **任务状态以 `job_runs` 表为准**：前端任何时候 `GET /api/jobs/{jobId}` 拿到的都是真值。
 - **sync 单飞**：`sync_lock` 单行表 + TTL；scheduler 与手动触发共用。已有 sync 时手动请求返回现有 `jobId`（`reused=true`），不重复入队。
 - **自进化任务**：`evolution_prepare`（V2 七段：Session 关联 → 潜在筛选 → 归因 → 聚类 → 建轮次）→ `evolution_advance` →（eval_poller）→ `evolution_apply` → 下一轮 / `evolution_finalize`；`blocked` 时由 `blocked_sweeper` 或 `POST /retry` 入队 `evolution_retry`（`blocked_stage` 含 `attribution`）。
@@ -382,7 +382,8 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_WEB_BASE_URL` | 空 | 对外可访问的 Web 基址（如 `https://harness.example.com`），由 `.env` 注入、不落库；用于 commit message 中的追溯链接；空 = 只输出 ID、不输出链接 |
 | `HE_LLM_BASE_URL` / `HE_LLM_API_KEY` | 空 | **预留**，V1 不读取；密钥走环境变量，不入库 |
 | `HE_DEFAULT_WORKSPACE_ID` | `ws-default` | V2：无空间上下文的内部写入（目录同步、迁移回填） |
-| `HE_AUTH_PROVIDER` | `password` | V2：`password` / `oidc`；非法值启动失败（fail fast） |
+| `HE_AUTH_PROVIDER` | `password` | V2：`password`；`cookie` / `oidc` 为预留接入值，未实现 provider 选择时启动失败（fail fast） |
+| `HE_SESSION_COOKIE_NAME` / `HE_SESSION_TTL_HOURS` | `he_session` / `12` | V2 预留：Cookie AuthProvider 的 opaque 会话名与有效期；当前 password 模式不读取 |
 | `HE_OIDC_ISSUER` / `HE_OIDC_CLIENT_ID` / `HE_OIDC_CLIENT_SECRET_ENV` | 空 | 仅 `oidc` 模式必填；secret 只存 env 引用名 |
 | `HE_BAD_CASE_CATALOG_SYNC_ENABLED` | `false` | V2：目录同步默认停用（空间上报为主通道） |
 | `HE_ATTRIBUTION_ENGINE` | `rule-v1` | V2：归因引擎标识（进缓存键）；未注册 → 启动失败 |
@@ -393,10 +394,10 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 
 | 层 | 方式 | 重点 |
 |---|---|---|
-| 只读查询 | 单元/集成测试 | bad_case / 归因联表查询、计数合并、缺失字段降级 |
+| 查询与写入 | 单元/集成测试 | 空间投影、上报额度、多归因联表、缓存 upsert、计数合并与缺失字段降级 |
 | 鉴权 | 单元 + 路由测试 | 登录/刷新/登出、错误密码 401、过期 token、SSE 票据一次性 |
 | 同步 | 集成测试 | `trajectory_payloads` 待处理判定、幂等、payload 结构变更隔离 |
-| 状态机 | 单元测试 | `evolution/state.py` 的 unit 推进规则（V2 `0..5+M+1`；V1 `0..4+M+1`）；越界推进报 409 |
+| 状态机 | 单元测试 | `evolution/state.py` 的 V2 unit 推进规则 `0..5+M+1`；越界推进报 409；legacy run 只读适配另有快照测试 |
 | 空间与权限（V2） | 路由 + 服务测试 | `require_workspace_role` 全矩阵、不可见空间 404、额度事务与并发、凭据轮换窗口期、成员角色边界 |
 | 总览（V2） | 集成测试 | 口径与 SQL 一致、空桶补零、跨年 ISO 周、>92 天粒度降级、对象视角三态与潜在一致性 |
 | 归因（V2） | 单元 + 集成 | 策略真值表、触发点比较（时间/字典序/unknown）、缓存命中与关闭、并发同键 upsert、`non_target` 不进簇 |

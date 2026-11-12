@@ -27,4 +27,4 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 
 ## Consequences
 
-V2 实现阶段的 issue 可以按 [15 §6–§7](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md) 的代码改动地图直接切片（空间表与权限 → 上报 → 总览 → 触发点列 → 向导/管线 → 错误详情），每片都有明确设计依据链接。前端只接收统一七步 DTO，历史 V1 run 由服务端适配，避免组件双轨。`agents.tree_index`、`agent_events.triggered_at`、`agent_events.object_version` 依赖 parser_version 递增重放才对存量数据生效，实施顺序上必须先于潜在匹配切片。总览「潜在」口径与向导/run 共用 PotentialMatcher 加 60s 缓存，三处数字一致性有回归用例保护。历史事件缺少对象版本时显式标记 `version_unknown`，不冒充版本精确关联；`/api/probes/*` 与 `/analysis` 端点进入 deprecated 兼容期，下个大版本删除。
+V2 实现阶段的 issue 可以按 [15 §6–§7](../../../../plans/fullstack-design/15-v1-v2-gap-analysis.md) 的代码改动地图直接切片（空间表与权限 → 上报 → 总览 → 触发点列 → 向导/管线 → 错误详情），每片都有明确设计依据链接。前端只接收统一七步 DTO，历史 V1 run 由服务端适配，避免组件双轨。`agents.tree_index`、`agent_events.triggered_at`、`agent_events.object_version` 依赖 parser_version 递增重放才对存量数据生效，实施顺序上必须先于潜在匹配切片。总览「潜在」口径与向导/run 共用 PotentialMatcher 加 60s 缓存，三处数字一致性有回归用例保护。历史事件缺少对象版本时不建立 Session 关联，单独计入 `versionUnresolvedSessions`；`/api/probes/*` 与 `/analysis` 端点进入 deprecated 兼容期，下个大版本删除。

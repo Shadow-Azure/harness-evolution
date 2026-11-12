@@ -250,7 +250,7 @@ erDiagram
 | `tool_use_id` | `VARCHAR(128)` | NULL | 触发调用 id |
 | `triggered_at` | `DATETIME` | NULL | 触发事件所在 assistant message 的时间戳（归一化从 JSONL 写入）；触发点比较主坐标，缺失时回退 `(tree_index, event_index)`（§7.5） |
 
-索引：`UNIQUE(agent_id, event_index)`、`INDEX(agent_id, line_no)`、`INDEX(agent_id, message_offset)`、`INDEX(agent_id, triggered_at)`。
+索引：`UNIQUE(agent_id, event_index)`、`INDEX(agent_id, line_no)`、`INDEX(agent_id, message_offset)`、`INDEX(agent_id, triggered_at)`、`INDEX(agent_id, kind, name, object_version)`。
 
 > `kind=skill` 只是触发事件，不是节点：普通 skill 只有这一条事件；forked skill 额外有 `agents` 行（`tool_use_id` 可空），装配时用 `skill_name` 关联回该事件。
 
@@ -304,7 +304,7 @@ erDiagram
 - scheduler 与 `POST /acquisition/sync` 共用此锁；拿不到锁时返回正在执行的 `jobId`，不重复入队。
 - V1 单实例再加进程内 `asyncio.Lock`；多实例依赖此表（或 MySQL `GET_LOCK`）。
 
-### 3.8 `users` —— 用户（单组织共享）
+### 3.8 `users` —— 全局用户目录
 
 | 列 | 类型 | 说明 |
 |---|---|---|
@@ -314,6 +314,8 @@ erDiagram
 | `must_change_password` | BOOLEAN NOT NULL DEFAULT true | 密码由他人设定且本人尚未更换；建号置 true，本人改密成功置 false |
 | `display_name` | `VARCHAR(128)` | — |
 | `role` | `VARCHAR(16)` | `admin` / `member` |
+| `auth_provider` | `VARCHAR(32)` NOT NULL DEFAULT `password` | `password` / `cookie` / `oidc`；V2 只启用 `password`，字段预留给鉴权接入 |
+| `external_subject` | `VARCHAR(255)` NULL | 外部身份稳定 subject；与 `auth_provider` 组成唯一映射 |
 | `is_active` | BOOLEAN | 停用即拒绝登录 |
 | `created_at` / `updated_at` / `password_changed_at` / `last_login_at` | DATETIME | `password_changed_at` 随每次改密更新 |
 
@@ -324,6 +326,7 @@ erDiagram
 - **密码与哈希不进日志与宽文本列**：不得写入 `job_runs.payload`、`evolution_run_events.payload/error_detail` 或任何 `TEXT` 列，脱敏清单见 [09 R15](09-review-guide.md)。
 - **`must_change_password` 由服务端强制**：该标记为 true 的 principal 只放行改密、登出、`GET /auth/me` 与 `GET /auth/session`，其余请求 `403 PASSWORD_CHANGE_REQUIRED`（见 [07 §8.2](07-backend-implementation.md) · [05 §8](05-api-design.md)），不依赖前端守卫。
 - **角色分层（V2）**：`users.role` 只表达全局角色 `admin` / `member`，全局管理员唯一（`POST /users` 禁建 `admin`）；**空间角色在 `workspace_members`**（§3.11），不进 token、每请求按主键现查——成员变更要立即生效，最长 30 分钟的越权窗口不可接受。
+- **外部身份映射**：`UNIQUE(auth_provider, external_subject)`；外部账号必须先映射到已有用户，不在回调中自动建号。接入 Cookie/OIDC 时只写这两个字段与 provider/session bridge，不新增用户主表。
 
 ### 3.9 `job_runs` —— 统一任务表
 
@@ -414,11 +417,11 @@ erDiagram
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
-索引：`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`、`INDEX(workspace_id, created_at)`、`INDEX(workspace_id, object_name)`、`INDEX(workspace_id, bad_case_type)`。
+索引：`INDEX(workspace_id, bad_case_session_id)`、`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`、`INDEX(workspace_id, created_at)`、`INDEX(workspace_id, object_name)`、`INDEX(workspace_id, bad_case_type)`。
 
 > 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_analysis` 与 `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
 >
-> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；upsert 同 `bad_case_id` 更新上游字段、不重复计数；额度在插入前按 `COUNT(workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。
+> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；启用 legacy 目录同步时只写 `HE_DEFAULT_WORKSPACE_ID`，不能绕过空间凭据给其它空间写数据。upsert 同 `bad_case_id` 更新上游字段、不重复计数；额度在插入前按 `COUNT(workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。
 
 > 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
 
@@ -450,14 +453,14 @@ erDiagram
 |---|---|---|---|
 | `id` | BIGINT | PK AUTOINCREMENT | 保留 V1 代理主键 |
 | `bad_case_id` | `VARCHAR(64)` | NOT NULL FK → `bad_cases.bad_case_id` ON DELETE CASCADE | 一个 case 可有多行 |
-| `analysis_status` | `VARCHAR(32)` | NOT NULL | `analyzed_issue` / `analyzed_nonissue`；V2 新写入时分别表示 `attributed` / `non_target`，未分析由无行表达 |
+| `analysis_status` | `VARCHAR(32)` | NULL | 仅 V1 行保留 `analyzed_issue` / `analyzed_nonissue`；V2 新行留空，结论以 `probe_reports.conclusion` 为唯一真相 |
 | `probe_id` | `VARCHAR(64)` | NOT NULL FK → `probe_reports.probe_id` | 归因明细；对外别名 `attributionId` |
-| `analysis_result` | JSON | NULL | 兼容 V1 非问题原因/推导；V2 明细以 `probe_reports` 为准 |
+| `analysis_result` | JSON | NULL | 仅兼容 V1 非问题原因/推导；V2 新行留空，明细以 `probe_reports` 为准 |
 | `updated_at` | `DATETIME` | NOT NULL | 关联更新时间 |
 
 约束：`UNIQUE(bad_case_id, probe_id)`（同一 case 不重复关联同一归因）；删除 V1 的 `UNIQUE(bad_case_id)`。索引：`INDEX(bad_case_id, updated_at)`、`INDEX(probe_id)`、`INDEX(analysis_status)`。
 
-> `analysis_status` 只保留 V1 枚举，用于兼容历史查询；V2 结论以 `probe_reports.conclusion` 为准。一个 case 有多行时，`attributionCount = COUNT(DISTINCT probe_id)`；无行才表示“尚未归因”。
+> `analysis_status` / `analysis_result` 仅服务 V1 兼容读取，V2 新行不写这两列，避免与 `probe_reports.conclusion` 形成双真相。一个 case 有多行时，API 的 `attributionCount = COUNT(DISTINCT probe_type, probe_object, object_version)`；无关联行才表示“尚未归因”。
 
 #### 4.2.2 `probe_reports` —— 对象·版本级归因明细与缓存
 
@@ -528,11 +531,12 @@ erDiagram
 | `mode` | `VARCHAR(16)` | `full`（完整自进化）/ `cluster_only`（仅聚类预览） |
 | `potential_policy` | JSON NULL | V2：潜在策略快照（`{preset, includeSelfReport, includeAfterObject, sameObjectOnly}`），见 §7.5 |
 | `cache_enabled` | BOOLEAN NOT NULL DEFAULT false | V2：是否复用缓存归因 |
+| `attribution_engine` | `VARCHAR(64)` NOT NULL | 创建 run 时的归因引擎标识；参与缓存键，后续全局配置变更不影响历史 run |
 | `engine_key` | `VARCHAR(64)` | 执行引擎选择键，默认 = `mode`；决定该 run 由哪个 `EvolutionEngine` 子类执行（[07 §5.4](07-backend-implementation.md)）；创建时固化 |
 | `eval_config` | JSON | 评测接入配置快照（上游传入，缺省为全局 `HE_EVAL_*`）；密钥不落库，只存 env 引用名（[07 §5.7](07-backend-implementation.md)） |
 | `target_config_id` | `VARCHAR(36)` | FK → `evolution_targets.id` |
-| `target_type` | `VARCHAR(16)` | `skill` / `agent`（来自 probe） |
-| `target_name` | `VARCHAR(128)` | `probe_object` |
+| `target_type` | `VARCHAR(16)` | `skill` / `agent`（来自 run 创建时选择的目标，字段名沿用 V1） |
+| `target_name` | `VARCHAR(128)` | 目标名（字段名沿用 V1，不再表示 probe 来源） |
 | `target_version` | `VARCHAR(64)` | 本次使用的 tag/版本；决定 checkout 的基线 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
@@ -547,8 +551,8 @@ erDiagram
 | `push_status` | `VARCHAR(16)` | 最近一次 push 的聚合状态：`pending` / `pushing` / `succeeded` / `failed` / `skipped` |
 | `pushed_at` | `DATETIME` | 最近一次 push 成功时间 |
 | `push_error` | `TEXT` | 最近一次 push 失败原因（脱敏 stderr 摘要） |
-| `window_from` / `window_to` | DATE | session 启动时间窗 |
-| `models` | JSON | 模型多选 |
+| `window_from` / `window_to` | DATE | bad case 上报时间窗，按 `bad_cases.created_at` 过滤 |
+| `models` | JSON | V1 模型筛选快照；V2 向导不再收集，写 `[]` 并保留字段兼容历史 run |
 | `status` | `VARCHAR(16)` | `preparing` / `running` / `blocked` / `completed` / `failed` / `interrupted` |
 | `blocked_stage` | `VARCHAR(16)` NULL | `patch` / `push` / `eval` / **`attribution`**（V2）；仅 `status=blocked` 时非空 |
 | `retry_attempts` | `INTEGER` | 自动退避重试已执行次数（0..3） |
@@ -558,7 +562,7 @@ erDiagram
 | `error_message` | `TEXT` NULL | 失败摘要（脱敏，供列表/详情头部展示） |
 | `error_at` | `DATETIME` NULL | 失败发生时间 |
 | `progress_unit` | `INTEGER` | 状态机游标（[07 §5](07-backend-implementation.md)） |
-| `stats` | JSON | 命中 session / probe / 簇数等 |
+| `stats` | JSON | 上报/关联/版本未解析 Session、bad case、潜在、归因三态、复用、簇数等运行事实 |
 | `created_by` | `VARCHAR(36)` NULL | FK → `users.id` |
 | `created_at` / `finished_at` | DATETIME | — |
 
@@ -668,7 +672,7 @@ erDiagram
 | `event_type` | `VARCHAR(48)` | NOT NULL | 见下表 |
 | `level` | `VARCHAR(8)` | NOT NULL | `info` / `warn` / `error` |
 | `stage` | `VARCHAR(32)` | NOT NULL | `prepare` / `cluster` / `step` / `candidate` / `push` / `eval` / `apply` / `final` |
-| `step_index` | `INTEGER` NULL | — | 对应六步的 step（0–5） |
+| `step_index` | `INTEGER` NULL | — | 对应七步的 step（0–6） |
 | `cluster_id` | `VARCHAR(64)` NULL | — | 关联 `probe_clusters.probe_cluster_id`；API 映射为 `clusterId` |
 | `evolution_round_id` | `VARCHAR(36)` NULL | — | 关联 `evolution_rounds` |
 | `job_id` | `VARCHAR(36)` NULL | — | 关联 `job_runs` |
@@ -721,7 +725,7 @@ erDiagram
 | `case_trigger_agent_id` | `VARCHAR(64)` | NULL | bad case 触发点宿主 |
 | `case_trigger_event_index` | `INTEGER` | NULL | — |
 | `case_trigger_at` | `DATETIME` | NULL | — |
-| `order_state` | `VARCHAR(16)` | NOT NULL | `comparable` / `unknown` |
+| `order_state` | `VARCHAR(16)` | NOT NULL | `comparable` / `unknown`；只描述触发点先后是否可比 |
 | `included` | BOOLEAN | NOT NULL | 是否命中策略 |
 | `included_reason` | `VARCHAR(16)` | NOT NULL | `self_report` / `after_object` / `both` / `policy_excluded` / `order_unknown` |
 | `probe_id` | `VARCHAR(64)` | NULL FK → `probe_reports.probe_id` | 本次 run 关联的归因明细；API 映射为 `attributionId` |
@@ -743,7 +747,7 @@ V2 没有独立的「簇 ↔ 候选」表：候选携带 `probe_id`，而 `probe
 
 ### 5.11 表演进原则：改旧表、加列还是新起一张（V2 决策记录）
 
-V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain）与语义是否变化**：
+V2 原位演进五张既有表、新增四张表，判断标准是**粒度（grain）与语义是否变化**：
 
 | 表 | 处理 | 理由 |
 |---|---|---|
@@ -764,7 +768,7 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 
 ## 6. 索引与容量估算
 
-| 表 | 量级（单组织） | 说明 |
+| 表 | 量级（单部署） | 说明 |
 |---|---|---|
 | `trajectory_payloads` | 10³–10⁴ | 每个 agent 一行；payload 占主要体积（外部写） |
 | `source_records` | 10³–10⁴ | 每个 agent 一行；处理索引，不存 payload |
@@ -783,7 +787,7 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | `probe_cluster_probes` | 每次 run 数十–数百行 | 随簇级联删除 |
 | `job_runs` | 10³ | 任务审计 |
 | `sync_lock` | 1 | 单飞锁，固定一行 |
-| `workspaces` | 10¹–10² | 单组织内部 |
+| `workspaces` | 10¹–10² | 单部署内部 |
 | `workspace_members` | 10²–10³ | 每空间 1–20 人 |
 | `workspace_ingest_credentials` | 10² | 每空间 1–3 条（轮换期并存） |
 
@@ -832,7 +836,7 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 - agent 调用用 `A.tool_use_id` 在 P 的 `agent_events` 里匹配 `kind=agent` 事件，不按 `object_name`（同类型 subagent 会撞）；匹配不到 → `-1` 并告警。
 - 上报契约：`bad_case_agent_id` 指向的 agent 必须包含 `object_*` 的触发记录；否则 skill 型锚点只能落到 `-1`。
 - 归因状态不再由 `bad_case_analysis` 保存：一个 bad case 没有任何归因行 = 未归因；有行则按 `conclusion` 区分「可归因」与「非该对象问题」。`category` 只对 `attributed` 非空。
-- `attribute_type`（V2 起为归因的 `category`）决定展示子状态（模型/prompt/错误）；`object_type@object_name@object_version` 构成归因身份，也是自进化 target 的唯一来源。
+- `attribute_type`（API 映射为 `category`）决定展示子状态（模型/prompt/错误）；归因身份来自 `probe_reports` 的 `probe_type/probe_object/object_version`，不是 bad case 上报者的 `object_*` 字段。
 
 ### 7.5 V2 口径（空间 / 触发点 / 潜在 / 归因三态）
 
@@ -841,12 +845,12 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | 空间 bad case 集合 | `bad_cases WHERE workspace_id = :wid`；额度 `used` = 该集合 `COUNT(*)`（不带时间窗，§3.10） |
 | 空间 Session 集合 | 上述集合的 `DISTINCT bad_case_session_id` 与 `session_families` 的 JOIN；未命中的计入「待轨迹同步」，不进列表 |
 | 时间桶 | 按 `bad_cases.created_at`（上报时间）分桶，`day` / `week`（ISO 周一）/ `month`，边界 Asia/Shanghai；空桶由服务端补零 |
-| 对象进入点 | Session 内该对象（按 `kind` 匹配 `object_type`、`name == object_name`）最早的 `agent_events`；无触发事件 → 该 Session 与对象不关联 |
+| 对象进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`；同时要求 `name == object_name` 且 `object_version == target_version`。无匹配事件 → 不关联 |
 | bad case 触发点 | §7.4 锚点事件；锚点缺失（`eventIndex=-1`）退化为上报 agent 的出生点（子 agent 取父节点 `tool_use_id` 匹配的 `agent` 事件，主 agent 取 `started_at`） |
 | 触发点比较 | 双方 `triggered_at` 非空 → 按时间；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；双缺失 → `order_state=unknown`（不满足「之后」） |
 | 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
-| 对象「出现」的版本口径 | `agent_events.object_version` 非空时必须等于所选目标版本；为空的历史事件按对象类型/名称关联，并在候选 `order_state` 标为 `version_unknown`。该降级只服务未重放数据，不能声称完成了版本级精确关联 |
+| 对象「出现」的版本口径 | 只有 `agent_events.object_version == 所选 target_version` 才建立关联；版本为空的 Session 计入 `versionUnresolvedSessions` 并跳过，不做名称级猜测。重放补齐后可重新启动 run |
 
 ## 8. 与功能点的映射
 
@@ -858,7 +862,7 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
 | F6 会话内问题列表 | `bad_cases`、`bad_case_analysis`、`probe_reports` | 只读 |
 | F7 时间线（已裁撤） | `user_turns`（用户输入锚点，预留执行流展示） | 不读接口 |
 | F8 错误详情与归因 | `bad_cases`、`bad_case_analysis`、`probe_reports`、`evolution_run_candidates`（触发点对照） | 只读 |
-| F9 轨迹接入与归一化 | `trajectory_payloads`（只读）、`source_records`、`sync_runs`、`sync_lock` + `session_families`、`agents`（含 `tree_index`）、`user_turns`、`agent_events`（含 `triggered_at`） | 读写（payload 只读） |
+| F9 轨迹接入与归一化 | `trajectory_payloads`（只读）、`source_records`、`sync_runs`、`sync_lock` + `session_families`、`agents`（含 `tree_index`）、`user_turns`、`agent_events`（含 `triggered_at/object_version`） | 读写（payload 只读） |
 | F10–F13 自进化 | `evolution_targets`、`bad_cases`、`bad_case_analysis`、`probe_reports`、`evolution_run_candidates`、`probe_clusters`、`probe_cluster_probes`、`evolution_*` | 写/读 |
 | F19 进化对象配置 | `evolution_targets`（按空间） | 写/读 |
 | F20 执行日志与异常 | `evolution_run_events`、`evolution_runs.error_*`、`evolution_rounds.error_*` | 写/读 |
@@ -881,7 +885,8 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
           evolution_run_candidates
 2) 就地演进既有表（不改表名，SQLite 用 batch 模式）：
    bad_case_analysis
-         删除 UNIQUE(bad_case_id)；新增 UNIQUE(bad_case_id, probe_id)
+         删除 UNIQUE(bad_case_id)；新增 UNIQUE(bad_case_id, probe_id)；
+         analysis_status 改为可空（V2 新行不再写 legacy 状态）
    probe_reports
          加：workspace_id、conclusion、confidence、policy_version、
              attribution_engine、cache_key、created_run_id、
@@ -891,18 +896,20 @@ V2 复用了四张既有表、只新增两张，判断标准是**粒度（grain�
          不加改名；仅按新归因明细补齐外键数据与索引
 3) 可空加列（新列）：
    bad_cases.workspace_id、evolution_targets.workspace_id、evolution_runs.workspace_id
-   + potential_policy / cache_enabled、evolution_run_events.workspace_id
+   + potential_policy / cache_enabled / attribution_engine、evolution_run_events.workspace_id
    agents.tree_index、agent_events.triggered_at / object_version
+   users.auth_provider（默认 password）、users.external_subject
 4) 默认空间行（幂等）：id = HE_DEFAULT_WORKSPACE_ID（默认 ws-default），
    quota = COUNT(bad_cases) + 50
 5) 回填：bad_cases / evolution_targets / evolution_runs / evolution_run_events
    的 workspace_id = 默认空间；probe_reports.workspace_id = 默认空间
 6) 收紧 NOT NULL + 建 FK/索引；evolution_targets 唯一键
-   (object_type, object_name) → (workspace_id, object_type, object_name)
+   (object_type, object_name) → (workspace_id, object_type, object_name)；
+   users 增加 UNIQUE(auth_provider, external_subject)，external_subject 为空的行不参与外部映射
 7) 现有用户全部加入默认空间（viewer；全局管理员不写也可见，写入仅为成员列表完整性）
 ```
 
 - **幂等**：可重复执行（`WHERE NOT EXISTS` + 回填只看 NULL），SQLite 测试库与 MySQL 生产库都能二次跑。
 - **回滚**：删除新增列和外键，恢复 `bad_case_analysis` 的 `UNIQUE(bad_case_id)`；若已存在一 case 多归因，降级前只保留 `updated_at` 最新的一行并记录导出文件，实际生产回滚以「回退应用版本 + 保留新结构」为主。
-- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` = 默认空间；`conclusion` 按 `analysis_status`（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、`unanalyzed` 无行）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；重新计算 `cache_key` 并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
-- **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的数据按 §7.5 标记 `version_unknown`，不能静默当作版本精确命中。
+- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` = 默认空间；`conclusion` 按 `analysis_status`（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、`unanalyzed` 无行）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`object_version` 为空的历史行回填 `legacy-unknown`；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；重新计算 `cache_key` 并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
+- **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的对象事件版本为空，按 §7.5 跳过并计数，不能静默当作版本精确命中。

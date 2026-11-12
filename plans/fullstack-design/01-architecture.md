@@ -34,7 +34,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │ 服务层：sessions / acquisition / bad_cases / workspaces │  │
-│  │         / evolution / identity / workspaces（V2）      │  │
+│  │         / overview / evolution / identity              │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -98,7 +98,7 @@ apps/api/app/
   schemas/                # service 层数据结构（跨层传递）
   third_party_api/        # 出站 HTTP 客户端（接口 + 实现成对）
     trajectory/           # 上游轨迹查询（上游待实现）
-    llm/                  # 预留：LLM 调用（V1 不用）
+    llm/                  # 预留：真实归因/补丁生成，当前占位引擎不读取
   utils/                  # 纯工具（JSONL 行辅助、哈希、时间、JWT）
 fixtures/                 # 演示种子数据 + app/cli.py seed
 alembic/                  # 迁移（项目根）
@@ -294,7 +294,7 @@ POST /acquisition/sync
 - **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `session_families` 里不存在，自然查不到。
 - **自进化查询基于候选表**（`evolution_run_candidates`）与空间 bad case：Session 未归一化 → 不计入关联，只进「待轨迹同步」；不做 preflight，也不返回 `DATA_NOT_READY`。
 - **单飞锁**：`sync_lock` 单行表（`name='sync'`）+ `job_id/acquired_at/expires_at`；`INSERT` 主键冲突即已有任务。
-- V1 单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
+- 当前单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
 - `job_runs` 同 `kind=sync` 只允许一个 `queued/running`，作为第二道保险。
 - 锁 TTL 30 分钟；进程崩溃后下一次 tick 可回收。
 - 手动触发只作为 admin/运维的“立即处理”，普通用户在顶栏只看到 pending 状态，不提供按钮。
@@ -334,7 +334,7 @@ POST /acquisition/sync
 - **V2 空间授权**：业务请求在 Bearer 之后再过 `require_workspace_role(wid, minimum)`——全局管理员直通，其余查 `workspace_members`；不可见空间统一 404（防枚举）。空间角色不进 token。
 - **V2 接入预留**：身份提供方收敛为 `AuthProvider` 协议 + 会话桥 + `GET /api/auth/callback` 占位（未配置 501）；接入 Cookie/SSO 只改这三处，业务与前端契约不变（[07 §8.2.1](07-backend-implementation.md)）。
 
-## 5. 数据来源、外部表与演示数据
+## 5. 数据来源、写入边界与演示数据
 
 ### 5.1 三类数据，三种处理方式
 
@@ -343,10 +343,10 @@ POST /acquisition/sync
 │ trajectory_payloads / 上游 API ──► acquisition ──► session_families/agents/… │
 └───────────────────────────────────────────────────────────────────┘
 
-┌─ 问题与归因（外部写，本服务只读） ────────────────────────────────┐
-│ 空间上报接口 ──► bad_cases ──► bad_cases 服务；归因由 run 写 attributions │
-└───────────────────────────────────────────────┬───────────────────┘
-                                                │ 只读
+┌─ 问题与归因（空间上报 + 自进化写入） ──────────────────────────────┐
+│ 空间凭据 ──► bad_cases；自进化 run ──► bad_case_analysis/probe_reports │
+└───────────────────────────────────────────────────────────────────┘
+                                                │
                                                 ▼
 ┌─ 自进化（本服务写） ──────────────────────────────────────────────┐
 │ evolution ──► runs / candidates / clusters / members / rounds           │
@@ -367,10 +367,10 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 
 ### 5.2 没有统一 Provider 层（2026-10-22 修订）
 
-早期设计的"六类 Provider + 全量桩实现"已取消，原因：问题/归因数据由外部系统写入表，真实实现读表即可；强行加一层 Provider 只会把"读表"包成假接口。现在只有三种接缝：
+早期设计的"六类 Provider + 全量桩实现"已取消，原因：V2 的 bad case 与归因都在本服务写入边界内，读表即可；只有上游轨迹和历史导入需要外部接缝。现在有以下边界：
 
 1. **出站调用** → `third_party_api/`（轨迹查询接口，未来 LLM/CI），接口 + 实现成对；
-2. **外部表** → `db/models` 只读映射 + `db/crud`，表契约即接口；
+2. **历史问题数据** → 目录同步默认关闭；启用时只做兼容导入，不承担 V2 主写路径；
 3. **演示数据** → `fixtures/` + `app/cli.py seed`，仅开发/演示时灌入真实表，**运行时没有 stub 分支**。
 
 ### 5.3 演示数据（fixtures）的边界
@@ -384,7 +384,7 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 
 | 占位点 | 位置 | 后续替换 |
 |---|---|---|
-| 聚类算法 | `service/evolution/simple_cluster`（按 attribute_type 分半） | 换真正的聚类实现，表不变 |
+| 聚类算法 | `service/evolution/simple_cluster`（按 `attribute_type` 分半） | 换真正的聚类实现，表不变 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位，但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测 |
 | 上游轨迹接口 | 未配置时 `HttpApiSource` 不可用 | 上游就绪后启用 |
@@ -437,17 +437,17 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 脚本 payload 先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
 | payload 表结构与预期不一致 | 归一化失败 | payload 契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
 | Vue Flow 与 React Flow 的 API 差异 | Agent 执行流图移植返工 | 布局几何纯 TS 迁移，先做 `demo-nested` 最小树验证；`×N` 改为 message 口径（[08 §3](08-frontend-implementation.md)） |
-| 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
+| 上游与历史数据契约 | 上游轨迹或历史问题表字段与文档漂移 | 版本化契约 + 导入层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
 | git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
 | 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_url`/`ref`/`sub_dir`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
 | 工作区残留 | 磁盘增长 | 默认保留最近 20 个 run，`clean-workspaces` 命令清理；不自动删进行中的 run |
 | push 失败 | 评测无法开始，流程阻塞 | run 标 `blocked` + `blocked_stage=push`；保留 candidate ref；3 次立即 + 1/5/15min 退避；仍失败等 `/retry`；run 分支不被回滚 |
 | 执行异常未留痕 | 无法定位/复盘 | 阶段/候选/评测/推送/异常统一写 `evolution_run_events`；job 边界捕获；启动扫描残留任务记 `interrupted` |
-| JWT 泄漏 | 组织数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
+| JWT 泄漏 | 当前用户可访问的空间数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
 | SSE 长连接在代理下断流 | 进度不更新 | 事件带 seq + Last-Event-ID；run 事件从 DB 回放，sync 用 job_runs + REST 兜底 |
-| 单实例宕机 | 全员不可用 | 单组织内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |
+| 单实例宕机 | 内部服务不可用 | V2 单实例内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |
 | 空间越权（V2） | 跨空间读数据 | 服务端统一依赖校验；E2E 用成员账号直连 API 验证 403/404；前端隐藏入口只是护栏 |
 | 额度超卖（V2） | 并发上报突破上限 | 事务内行锁 + COUNT；upsert 已存在 ID 不占增量；`used` 不物化 |
-| 触发点缺失（V2） | 潜在筛选漏判/误判 | `triggered_at` 缺失回退字典序并记 `order_state=unknown`；重放补齐；未知只可能经 self 规则命中 |
+| 触发点缺失（V2） | 潜在筛选漏判/误判 | `triggered_at` 缺失回退字典序并记 `order_state=unknown`；对象版本缺失的 Session 直接跳过并计入 `versionUnresolvedSessions`；重放补齐后再启动 |
 | 归因缓存不一致（V2） | 复用旧结论 | 缓存键含策略版本与引擎标识；`cache_enabled=false` 强制重算；换引擎自动隔离 |
 | 迁移回填遗漏（V2） | 空间为 NULL 的行不可见 | 迁移幂等 + 校验 `SELECT COUNT(*) WHERE workspace_id IS NULL`；默认空间兜底 |

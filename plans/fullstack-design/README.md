@@ -1,7 +1,7 @@
 # Harness Evolution 前后端整体设计方案
 
-> 目标：把 [14-15-ui-prototype 原型](../14-15-ui-prototype/harness-evolution.html) 里的全部功能与 UI 效果，落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
-> 状态：**关键设计决策已确认（2026-10-24）**；milestone / roadmap / issue 排期仍需确认 [10 §5](10-roadmap-draft.md)。
+> 目标：以 [V1 原型](../14-15-ui-prototype/harness-evolution.html) 为基线，把 [V2 原型](../ui-prototype-v2/harness-evolution.html) 的工作空间、总览、上报、多归因与七步自进化落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
+> 状态：V1 已实现；**V2 关键设计决策已确认（2026-11-11）**，milestone / roadmap / issue 排期仍需确认 [10 §5](10-roadmap-draft.md)。
 >
 > 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。数据模型统一为 `session_families` / `agents` / `user_turns` / `agent_events`；消息与内容块只在解析期用于统计，不落库；前端组件为 `agent-tree/`、`AgentTree.vue`、`SessionOverview.vue`，API 类型 `SessionTree` 保留。
 
@@ -82,7 +82,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D10 | 租户模型（2026-10-22，V2 由 D21 取代） | **V1 单组织共享；V2 改为工作空间级隔离** | V2 以 `workspace_id + workspace_members` 收口 bad case 与权限；轨迹表仍全局共享，通过 bad case 投影空间 Session |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
 | D12 | 轨迹来源（2026-10-24 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时（默认 60s）+ 单飞锁读取并归一化，admin 可手动立即处理，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；手动 sync 复用运行中的任务；幂等靠 `(root_session_id, agent_id)` + hash + `parser_version` |
-| D13 | 进化对象配置（2026-10-23） | **只有配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导提示文案内的「配置页」链接 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；模型清单来自归一化后的 `agents.model` |
+| D13 | 进化对象配置（2026-10-23；V2 按空间） | **只有当前空间配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导提示文案内的「配置页」链接 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；V2 向导不再做模型多选 |
 | D14 | 自进化 git 流程（2026-10-23） | **candidate commit → push 临时 candidate ref → 评测 → 接纳 amend + fast-forward run 分支 / 拒绝删 candidate；push 是评测前置条件** | run 分支只含已接纳 commit，评测用 `.../candidate/r{n}`；push 失败 run 进入 blocked，3 次立即 + 1/5/15min 退避，`/retry` 恢复 |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
 
@@ -114,7 +114,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 
 - 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹接入与归一化）+ M4（问题与归因，外部表只读）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；当前 M1（纯前端原型）已由 [plans/14-15-ui-prototype](../14-15-ui-prototype/) 完成。
 - **V2 目标态**（2026-11-11 起）：多用户鉴权接入 + 多工作空间 + 总览 + 归因进自进化，按域并入 01–08：空间与鉴权见 [01 §4.4](01-architecture.md) · [05 §3.7/§4.16–§4.17](05-api-design.md) · [06 §3.10–3.12](06-database-design.md) · [07 §5.15/§8.2.1](07-backend-implementation.md) · [08 §4.2](08-frontend-implementation.md)；总览与 Session 列表见 [05 §3.10/§4.18](05-api-design.md) · [06 §7.5](06-database-design.md) · [08 §5.2.1/§6](08-frontend-implementation.md)；归因与七步流程见 [05 §3.6.2/§4.19–§4.20](05-api-design.md) · [06 §4.2/§5.8–5.10/§7.5](06-database-design.md) · [07 §5.11–5.14](07-backend-implementation.md) · [08 §7/§9/§10](08-frontend-implementation.md)。原型基线为 [plans/ui-prototype-v2](../ui-prototype-v2/)；D10（单组织共享）与 D6/D13/D14 中与 probe 输入相关的表述以 D21–D23 为准修订；当前实现与两代原型的差距见 [15](15-v1-v2-gap-analysis.md)。
-- `apps/web` 现有 React 壳（3 个文件）由 Vue 3 应用替换；`apps/server` 由 `apps/api` 替换；`packages/contracts` 保留但改为存放 OpenAPI 生成物。
-- 本次 SaaS 化修订后，`docs/architecture.md` 中"当前只做 Codex / 本机 rollout 扫描 / Fastify"等表述将不再成立，需按本设计同步（确认后执行）。
+- 当前仓库已使用 `apps/web` Vue 3 + `apps/api` FastAPI + `packages/contracts` OpenAPI 生成物；V2 设计直接在当前实现上增量演进。
+- 本次 V2 设计落地后，`docs/architecture.md` 中单组织共享、归因单条与两层向导的现状描述需按 D21–D23 同步。
 - 文档确认后的后续动作：重排 roadmap / milestone / issue（`.agents/flow/`），把 `docs/architecture.md` 的技术栈表述同步为新架构，再逐 issue 实现。
-- 原型截图直接复用为各文档插图（相对路径 `../14-15-ui-prototype/screenshot-*.png`），设计稿中的 UI 描述以 [harness-evolution.html](../14-15-ui-prototype/harness-evolution.html) 为最终验收基准。
+- V1 截图继续作为既有页面基线；V2 新增页面与交互以 [V2 harness-evolution.html](../ui-prototype-v2/harness-evolution.html) 和 [design-v2.md](../ui-prototype-v2/design-v2.md) 为验收基准。

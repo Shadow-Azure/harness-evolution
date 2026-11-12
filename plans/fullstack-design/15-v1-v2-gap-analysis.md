@@ -107,7 +107,7 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 - `auth/session` 聚合当前用户和可用空间；`/api/users` 保留全局用户管理，但禁止创建第二个全局管理员。
 - `service/acquisition` 归一化补 `tree_index`、`triggered_at`、`object_version`；parser version 升级并支持回放。
 - `service/overview` 按 workspace 过滤，聚合来源、时间桶、self/discovery 和归因三态；所有列表使用 SQL 分页。
-- `service/evolution/potential.py` 成为预览、run prepare、总览的唯一匹配实现；版本已知时必须精确匹配，版本未知必须显式标为 `version_unknown`。
+- `service/evolution/potential.py` 成为预览、run prepare、总览的唯一匹配实现；只按目标版本精确关联，版本未知的 Session 跳过并计入 `versionUnresolvedSessions`。
 - `service/evolution/attribution.py` 负责缓存读写、upsert、复用计数与候选关联；归因引擎保持纯函数边界。
 - `service/sessions` 与 `service/problems` 所有读写加 workspace 约束；Session 成员关系通过 bad case 投影，不在轨迹表复制空间列。
 
@@ -135,7 +135,7 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 
 - 同一用户只能看见有成员关系的空间；空间管理员不能任命或修改空间管理员，全局管理员可以；不可见空间统一 404。
 - 上报重复 ID 不增加额度，跨空间凭据失败，额度满时旧数据不丢。
-- 对象版本已知时 Session 关联必须精确匹配；版本未知的历史数据有显式降级标记，不会被展示成版本精确命中。
+- Session 关联必须按对象版本精确匹配；版本未知的历史数据单独计数并跳过，不会被展示成版本精确命中。
 - 向导预览、运行 prepare 和总览使用同一潜在匹配实现，三处数量一致。
 - 缓存关闭时重算并覆盖同键结果，缓存开启时复用最近成功结论并增加复用计数；“非该对象问题”不进入簇但出现在错误详情。
 - 错误详情一个 case 的多条归因可分页、可通过 `case/tab/at` 深链恢复，切换空间不会复用旧空间缓存。

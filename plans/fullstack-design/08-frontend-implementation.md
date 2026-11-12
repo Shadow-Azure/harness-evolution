@@ -1,7 +1,7 @@
 # 08 · 前端的实现设计
 
 > 本文回答：每个页面用什么组件、数据怎么取、交互怎么实现、Agent 执行流图怎么落地、V1 占位实现前端要注意什么。
-> **V2（2026-11-11）**：路由与守卫见 §1、§6；空间切换器、空间管理页与鉴权接入文案见 §4.2–§4.3；总览页见 §5；Session 列表「最新 10 + 回车查询」见 §5.4；错误详情多归因见 §7；向导四步见 §9；运行详情统一消费服务端给出的七步列表，历史 V1 run 由服务端适配（§10）。旧 `/sessions/**`、`/evolution/**` 在迁移期重定向（§1.4）。
+> **V2（2026-11-11）**：路由与守卫见 §1、§6；空间切换器、空间管理页与鉴权接入文案见 §4.2–§4.3；总览页见 §6；Session 列表「最新 10 + 回车查询」见 §5.2.1；错误详情多归因见 §7；向导四步见 §9；运行详情统一消费服务端给出的七步列表，历史 V1 run 由服务端适配（§10）。旧 `/sessions/**`、`/evolution/**` 在迁移期重定向（§1.4）。
 > 前置：[03 前端架构](03-frontend-architecture.md) · [05 接口设计](05-api-design.md)；验收基准：[原型 HTML](../14-15-ui-prototype/harness-evolution.html) 与截图。
 
 ## 1. 页面与路由实现映射
@@ -128,8 +128,6 @@ export const queryClient = new QueryClient({
 
 ```ts
 export type StepKey = "range" | "sessions" | "potential" | "attribution" | "clusters" | "iteration" | "final"
-// V1 历史 run 的 key（冻结）：input | clusters | attribution | severity | iteration | final
-
 export const keys = {
   session: () => ["auth", "session"] as const,
   workspaces: () => ["ws"] as const,
@@ -157,6 +155,7 @@ export const keys = {
   targets: (wid: string) => ["ws", wid, "evolution", "targets"] as const,
   targetVersions: (wid: string, id: string) => ["ws", wid, "evolution", "targets", id, "versions"] as const,
   adminMembers: (wid: string) => ["ws", wid, "admin", "members"] as const,
+  adminMemberCandidates: (wid: string, q: string) => ["ws", wid, "admin", "member-candidates", q] as const,
   adminCredentials: (wid: string) => ["ws", wid, "admin", "credentials"] as const,
 }
 ```
@@ -170,7 +169,7 @@ export const keys = {
 | `POST /runs/{rid}/retry` / SSE `run.progress` | `["ws", wid, "evolution", rid]` 前缀（详情 + 全部 step） |
 | sync job 完成（轮询 `GET /jobs/{jobId}` 发现；sync 无 SSE） | `["ws", wid, "sessions"]`、该空间全部 `["ws", wid, "session", …]`、`["ws", wid, "catalogs"]` |
 | 上报成功（管理页模拟/真实） | `["ws", wid, "overview"]`、`["ws", wid, "bad-cases"]`、`["ws", wid, "sessions"]` |
-| 加/改/移成员、建/改空间 | `["ws", wid, "admin", "members"]` + `["auth", "session"]` + `["ws"]` |
+| 加/改/移成员、建/改空间 | `["ws", wid, "admin", "members"]`、`["ws", wid, "admin", "member-candidates"]` + `["auth", "session"]` + `["ws"]` |
 | 轮换凭据 | `["ws", wid, "admin", "credentials"]` |
 
 > 仅聚类预览页复用 `keys.run(rid)` / `keys.runStep(rid, "clusters")`：`previewId` 即 `cluster_only` run 的 runId，不单设 queryKey。
@@ -190,6 +189,7 @@ useWorkspaces()             // GET /workspaces
 useCreateWorkspace()        // POST /workspaces（全局管理员）
 useUpdateWorkspace(wid)     // PUT /workspaces/{wid}
 useWorkspaceMembers(wid)    // GET /workspaces/{wid}/members
+useMemberCandidates(wid, q) // 空间管理员添加成员时搜索非成员用户
 useAddMember(wid) useChangeMemberRole(wid) useRemoveMember(wid) useMakeSelfAdmin(wid)
 useCredentials(wid) useRotateCredential(wid) useRevokeCredential(wid)
 
@@ -211,8 +211,8 @@ useAttribution(wid, badCaseId, atId) // 详情（含 triggerCompare）
 
 // useEvolution.ts
 useRuns(wid)  useRun(wid, rid)  useRunStep(wid, rid, key)  useRunEventLog(wid, rid)
-usePreviewSessions()  usePreviewPotential()  usePreviewAttribution()   // 向导 2–4 步
-useCreatePreview()   useStartRun()   useRetry(wid, rid)
+usePreviewSessions(wid)  usePreviewPotential(wid)  usePreviewAttribution(wid)   // 向导 2–4 步
+useCreatePreview(wid)   useStartRun(wid)   useRetry(wid, rid)
 useTargets(wid) useTargetConfigs(wid) useTargetVersions(wid, id)
 useCreateTarget(wid) useUpdateTarget(wid) useDeleteTarget(wid)
 
@@ -356,8 +356,8 @@ Index.vue（居中卡片，无顶栏）
 └── 页脚说明：组织内部系统，账号由管理员分配
 ```
 
-- 提交：`useLogin().mutate({username, password})`；成功后写 `stores/auth`（access token + user）→ 跳 `route.query.redirect ?? "/sessions"`。
-- 已登录访问 `/login` 直接跳 `/sessions`（路由守卫处理）。
+- 提交：`useLogin().mutate({username, password})`；成功后恢复 `auth/session` 并写 `stores/auth` → 跳 `route.query.redirect ?? 最近空间总览`；无可用空间则进 `/workspaces` 选择页。
+- 已登录访问 `/login` 直接跳最近空间总览（路由守卫处理）。
 - **首次登录强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此登录响应带 `user.mustChangePassword=true`；此时业务端点回 `403 PASSWORD_CHANGE_REQUIRED`，前端只放行 `/change-password`。
 
 `pages/login/ChangePassword.vue`（同款居中卡片，需登录，未登录跳 `/login`）：
@@ -367,10 +367,10 @@ ChangePasswordCard.vue
 ├── 提示条：初始密码由管理员分配，首次登录请设置自己的密码
 ├── oldPassword / newPassword / confirmPassword（el-input type=password）
 ├── 本地校验：两次新密码一致、新密码不等于旧密码
-└── 提交 → POST /auth/change-password → 成功后 refresh() + 重取 me → 跳 redirect ?? "/sessions"
+└── 提交 → POST /auth/change-password → 成功后 refresh() + 重取 session → 跳 redirect ?? 最近空间总览
 ```
 
-- 成功后**必须换一次 token**：access token 的 `mcp` 声明是登录时签的，改密后要 `POST /auth/refresh`（重读用户行重签）再 `GET /auth/me` 拿到 `mustChangePassword=false`，守卫才放行到 `redirect`。
+- 成功后**必须换一次 token**：access token 的 `mcp` 声明是登录时签的，改密后要 `POST /auth/refresh`（重读用户行重签）再 `GET /auth/session` 拿到 `mustChangePassword=false` 与空间列表，守卫才放行到 `redirect`。
 - 守卫：`user.mustChangePassword === true` 时，除 `/change-password` 与 `/login` 外的导航一律重定向到 `/change-password?redirect=<原路径>`（[03 §6](03-frontend-architecture.md)）。
 - 兜底：http 层收到 `403 PASSWORD_CHANGE_REQUIRED`（本地标记已陈旧）时置 store 标记并跳改密页，不渲染业务页错误态。
 
@@ -390,14 +390,14 @@ Admin.vue
 │   └── WorkspaceFormDialog.vue   # 创建：名称/说明/额度（≥0）/初始空间管理员多选（默认含自己）
 │                                # 编辑：仅额度，校验 ≥ used（422 QUOTA_INVALID 兜底）
 ├── MembersTab.vue       # 成员表 + 角色下拉；空间管理员看到的 space_admin 行禁用并 tooltip
-│   └── MemberFormDialog.vue
+│   └── MemberFormDialog.vue  # 搜索非成员用户（不在前端加载全局用户目录）+ 选择角色
 ├── IngestTab.vue        # 上报地址（location.origin 拼 /api/workspaces/{wid}/bad-cases）、
 │                        # 凭据 prefix/复制/轮换（明文仅展示一次 + 「我已保存」）、额度条、body 与 curl 示例
 └── AuthTab.vue          # 鉴权接入说明（只读）：Cookie 会话 / 不开放注册 / 用户映射 / SSO 回调 / 服务端授权
 ```
 
 - 写操作仅 `space_admin` 及以上可见（全局管理员含他空间的创建入口）；成员/只读进入页面时所有写按钮隐藏 + 顶部「只读」badge；直连 API 仍 403（前端只是护栏）。
-- 凭据轮换：二次确认「旧凭据立即失效」→ 成功弹窗展示明文一次 → 关闭即不可再取。
+- 凭据轮换：先创建新凭据并展示明文一次；用户确认上游已切换后再撤销旧凭据，切换窗口内新旧并存（最多 3 个有效）。
 - 上报成功（接入页的「试发一条」或真实脚本）后失效总览/列表缓存，`used` 立刻可见。
 
 ### 4.3 轨迹处理状态
@@ -428,7 +428,7 @@ Index.vue
 
 | 交互 | 实现 |
 |---|---|
-| 搜索（V2） | **回车触发**（Enter 或搜索按钮）：`q` 非空 → 重新查询（`limit=10`），命中替换左侧并选中第一条；未命中显示双侧空态且**不保留旧选中**；清空再回车恢复最新 10。移除 V1 的 300ms 防抖实时查询（逐键 LIKE 在数据量上去后不可控） |
+| 搜索（V2） | **回车触发**（Enter 或搜索按钮）：`q` 非空按 root session ID 精确查询（`limit=10`），命中替换左侧并选中；未命中显示双侧空态且**不保留旧选中**；清空再回车恢复最新 10。移除 V1 的 300ms 防抖实时查询。 |
 | 根会话 ID 展示 | 左栏每张 `SessionCard` 增加一行“根会话 ID · <UUID>”；右栏 `SessionOverview` meta 在开始时间之后增加同一 ID（[13 §3.3–3.4](13-root-session-id.md)） |
 | 状态筛选 | 三个 chip 单选（全部/完成/有失败）；`partial` 与 `fail` 都算"有失败"（原型只有 ok/partial）；对应 `status=all/ok/problem`（[05 §4.2](05-api-design.md)） |
 | 排序 | 4 个选项直传后端 `sort` |
@@ -448,7 +448,7 @@ Index.vue
 | 空间无 bad case | 「该工作空间还没有上报 bad case」+ 上报接入链接（管理员可见） | 同左说明 |
 | Session 不属于本空间 | 跳回列表 + toast「该 Session 不在当前空间」 | 同 |
 
-- 输入框 placeholder：「输入 Session ID 或标题关键词，回车查询」；`q` 与 `status`/`sort` 可组合。
+- 输入框 placeholder：「输入 root Session ID，回车查询」；V2 的 `q` 精确匹配 session ID，可与 `status`/`sort` 组合。
 
 ### 5.3 密度条
 
@@ -629,7 +629,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 
 **Step 2 Session 关联**
 
-- 条件摘要 chip + 「修改条件」；统计：上报过 bad case 的 Session / 关联 / 跳过 / 待轨迹同步。
+- 条件摘要 chip + 「修改条件」；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
 - 表格 4 条/页：Session 标题 / 对象触发点时间 / 该 Session 的 bad case 数 / 潜在数；只列**对象出现过**的 Session；未出现的只进「跳过」统计，不入表。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
@@ -637,7 +637,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 3 潜在 bad case**
 
 - 统计：时间段内 bad case 总数 / 潜在数 / 按命中原因分布（`self_report` / `after_object` / `both`）。
-- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因**；`orderState=unknown` 的行加提示「触发点顺序待轨迹时间戳重放」。
+- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
 - 空态：「当前策略没有命中潜在 bad case；可返回调整时间段或策略」+ 前进禁用（`409 NO_POTENTIAL_MATCHED`）。
 - 「上一步」回到 Step 2；修改策略需回 Step 1（策略影响潜在集合，前端不就地重算）。
 
@@ -708,8 +708,7 @@ RunDetail.vue
 ├── infoPanel（目标与输入：kv-grid + 策略/缓存 chip + 类型分布条 + 评测/推送状态）
 ├── StepperPanel.vue（步数由 run.steps 决定：七步）
 │   └── StepContent.vue（按 step.key 动态组件）
-│       ├── V2：StepRange / StepSessions / StepPotential / StepAttributionV2 / StepClustersV2
-│       └── V1（冻结）：StepInput / StepClusters / StepAttribution / StepSeverity
+│       └── StepRange / StepSessions / StepPotential / StepAttribution / StepClusters / StepIterations / StepFinal
 ├── RunLogPanel.vue（执行日志/异常，tab 或右栏）
 └── （iteration step 内）ClusterCard.vue → DiffView / EvalCompare / CommitBlock
 ```
@@ -722,7 +721,7 @@ RunDetail.vue
 |---|---|
 | 1 选择范围 | 条件摘要（对象@版本、时间窗、策略、缓存开关）+ 统计 |
 | 2 Session 关联 | 4 条/页表格（Session / 对象触发点 / bad case 数 / 潜在数）+ 跳过统计 |
-| 3 潜在 bad case | 5 条/页，含「命中原因」列；`order_state=unknown` 行加提示 |
+| 3 潜在 bad case | 5 条/页，含「命中原因」列；`unknown` 标注触发点顺序待重放 |
 | 4 对象归因 | 统计四数 + 表格（来源 bad case / 归因 ID / 分类 / 现象 / 结果来源 cached\|fresh / 置信度）；对象·版本在 step 标题，不在表格重复「结论」 |
 | 5 聚类与严重度 | 簇卡片按 severity 降序，每簇标题 + 聚类描述 + 可折叠来源 bad case 表（ID 可深链错误详情），默认展开第一簇（或 active 簇） |
 | 6 迭代优化 | 沿用既有轮次卡（patch/candidate/push/eval/接纳），来源问题为 `cases[]` |
@@ -743,13 +742,13 @@ RunDetail.vue
 | 中断/阻塞恢复 | 刷新后先拉 `run` 与 `events`；`blocked` 显示“可重试”，`interrupted` 显示“任务被中断，可查看最后事件” |
 | 点击 stepper | 只允许 `clickable === true` 的节点；点击 → `?step={key}` + 拉 `useRunStep` |
 | 簇深链 | `?step=clusters&cluster={clusterId}`：切到聚类步并滚动到该簇卡、加高亮（commit message 的「问题簇」链接落点）；簇不存在时忽略参数并提示“簇已不存在” |
-| Step 4 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
+| Step 5 聚类展开 | 本地 `expandedClusters: Set<string>`；默认展开当前进行中的轮次 |
 | 自动推进 | 生产 UI 无「推进一轮」；后台逐轮自动执行，页面只通过 SSE/轮询更新 |
 | 评测状态 | `evalStatus`：pending/evaluating/completed/failed/timeout；`evaluating` 显示“评测中，下一次轮询 …”；failed/timeout 进入 blocked |
-| 进度实时更新 | 仅 `preparing/running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress`/`run.blocked` → 失效前缀；`run.completed` → 额外失效 `["evolution","runs"]` 并关闭 |
+| 进度实时更新 | 仅 `preparing/running` 时 `useRunEvents` 订阅 `run:{rid}`；`run.progress`/`run.blocked` → 失效当前 run 前缀；`run.completed` → 额外失效 `["ws", wid, "evolution", "runs"]` 并关闭 |
 | 未到达的 step | 后端返回 404 `STEP_NOT_READY`；前端不请求（`enabled: step.clickable`） |
 
-### 10.3 Step4 迭代卡
+### 10.3 Step6 迭代卡
 
 - 卡片头：排名、`category` chip、来源 bad case 数、状态 badge（待执行 / 生成 patch 中 / 推送中 / 评测中 / 决策中 / 已接纳 Δ / 未接纳 Δ / 阻塞）。
 - 展开内容顺序：簇内来源 bad case 列表 → patch diff → candidate ref/commit → 推送状态 → 评测对比 → 最终 commit / 拒绝说明。
@@ -798,12 +797,12 @@ RunLogPanel.vue
 export const ATTRIBUTION_STATE_META = {
   unanalyzed: { label: "尚未归因", cls: "unanalyzed" },
   attributed: { label: "可归因", cls: "issue" },
-  non_target: { label: "非该对象问题", cls: "nonissue" },
+  non_target: { label: "非该对象问题", cls: "non-target" },
 } as const
 
 // 展示值由 attributionCount + 归因行的 conclusion/category 推导（见 §7.3）
+// state tone：unanalyzed=灰、attributed=绿、non_target=橙
 export const TYPE_COLOR: Record<string, string> = {
-  nonissue: "var(--text-faint)",
   error: "var(--red)",
   prompt: "var(--orange)",
   model: "var(--purple)",

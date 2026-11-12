@@ -57,6 +57,7 @@
 └───────────────────────────┬───────────────────────────────────┘
                             ▼
 ┌─ 路由页面层 ──────────────────────────────────────────────────┐
+│ pages/workspaces    pages/overview                            │
 │ pages/sessions      pages/errors                              │
 │ pages/evolution（含 components/）                             │
 │ pages/evolution/targets                                      │
@@ -109,7 +110,7 @@ main.ts
   ├─ app.use(router)
   ├─ app.use(pinia)
   ├─ app.use(VueQueryPlugin, queryClient)
-  ├─ tryRefresh()：refresh cookie 有效则恢复登录态，失败清空
+  ├─ restoreSession()：refresh cookie 换取 access token，再 GET /auth/session 取 user + workspaces
   ├─ await router.isReady()（含登录守卫首次判定）
   └─ mount('#app') ──► App.vue（不建立全局 SSE）
                           └─ preparing/running 的 run 页面按需建立 SSE
@@ -118,7 +119,7 @@ main.ts
 四条顺序约束（参考报告 §3.1 的教训）：
 
 1. **插件全部注册先于 mount**：query/pinia 注入上下文必须对根组件可见。
-2. **refresh 先于 `router.isReady()`**：否则守卫会把已登录用户误判成未登录，首屏闪到登录页再跳回。
+2. **restoreSession 先于 `router.isReady()`**：否则守卫会把已登录用户误判成未登录，或不知道可访问空间而错误重定向。
 3. **`router.isReady()` 先于 mount**：避免首屏先渲染空路由再跳转的闪动与重复请求。
 4. **SSE 由页面按需建立**：只有 `preparing/running` 的 run 详情才订阅；App.vue 不建立常驻连接；完成/阻塞/离开即关闭；轨迹归一化走 REST 轮询。
 
@@ -160,7 +161,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 | 服务端状态 | vue-query 缓存 | session 列表、会话详情、bad_cases、归因、总览、run 详情、七步产出 | 应用会话（`gcTime` 5min） |
 | 页面 UI 状态 | 组件 `ref` / `reactive` | 筛选词、排序、展开的轮次、选中的错误、展开的 cluster | 页面挂载期 |
 | 跨页客户端状态 | Pinia | **仅登录态（access token + 当前用户）**、视图偏好 | 应用会话（access token 只存内存） |
-| URL 状态 | vue-router | 选中 session（`/sessions/:sid`）、选中问题、tab、step、筛选条件 | 刷新可恢复 |
+| URL 状态 | vue-router | 空间、选中 session（`/workspaces/:wid/sessions/:sid`）、选中问题/归因、tab、step、筛选条件 | 刷新可恢复 |
 | 持久化状态 | localStorage（手写小工具，不引插件） | 折叠偏好、Agent 执行流图缩放偏好 | 长期 |
 
 **queryKey 工厂**（[08 §2](08-frontend-implementation.md) 给出完整代码结构）：
@@ -177,7 +178,7 @@ History 模式，`createWebHistory(import.meta.env.BASE_URL)`。URL 即状态（
 ['ws', wid, 'case', id, 'attribution', at] → 归因详情（V2）
 ['ws', wid, 'evolution', 'runs']  → 运行列表
 ['ws', wid, 'evolution', rid]     → 运行详情
-['ws', wid, 'evolution', rid, 'step', key] → 第 key 步产出（V2 七 key / V1 六 key）
+['ws', wid, 'evolution', rid, 'step', key] → 第 key 步产出（统一七 key）
 ['ws', wid, 'evolution', 'targets'] → 对象配置（按空间）
 ['ws', wid, 'catalogs']           → 对象/模型清单（staleTime ∞）
 ['acquisition', 'status']         → 最近一次处理状态
@@ -285,9 +286,9 @@ styles/element-overrides.css  Element Plus 变量映射到本项目令牌
 | 项 | 方案 |
 |---|---|
 | 代码分割 | 路由级懒加载（`() => import(...)`）；`vendor-vue`（vue/router/pinia/query）、`vendor-element-plus`、`vendor-vue-flow` 三个手动 chunk；其余按 20KB 兜底合并 |
-| 首屏 | `/sessions` 为默认路由，同步加载；其余页面懒加载 |
+| 首屏 | `/` 先恢复 `auth/session`，再进入最近空间的 `/overview`；空间壳与总览同步加载，Session/错误/自进化页面懒加载 |
 | 体积预算 | 入口 JS ≤ 250KB（gzip ≤ 90KB），每个 vendor chunk ≤ 400KB；超限 CI 红 |
-| 构建守卫 | 构建后校验：Vue Flow 不得进入首屏闭包；`/evolution` 路由必须能动态到达 Vue Flow |
+| 构建守卫 | 构建后校验：Vue Flow 不得进入首屏闭包；`/workspaces/:wid/evolution` 与运行详情必须能动态到达 Vue Flow |
 | Lint | ESLint 9 flat + eslint-plugin-vue，`--max-warnings=0` |
 | 类型 | `vue-tsc --noEmit` strict |
 | 测试 | Vitest 两个 project：`node`（纯函数、API、queryKey、深链）+ `jsdom`（组件/页面）；`src/test/setup.ts` 统一清理，`src/test/server.ts` 提供 MSW node server；布局与关键组件必须有测试 |
