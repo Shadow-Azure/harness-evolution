@@ -332,6 +332,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
   const workspaces = await apiJson("/api/workspaces", admin.accessToken);
   const defaultWorkspace = workspaces.items.find((item) => item.id === "ws-default");
   assert.ok(defaultWorkspace);
+  const workspaceBase = `/workspaces/${defaultWorkspace.id}`;
   await apiJson(
     `/api/workspaces/${defaultWorkspace.id}/members`,
     admin.accessToken,
@@ -351,7 +352,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
   const violations = browserViolations(page.session, {
     isExpectedLogEntry: (entry) =>
       entry.source === "network" &&
-      entry.url?.includes("/api/evolution/targets") &&
+      entry.url?.includes("/evolution/targets") &&
       /status of (422|409)/.test(entry.text),
   });
   try {
@@ -363,7 +364,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       mobile: false,
     });
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/evolution/targets`,
+      url: `${baseUrl}${workspaceBase}/evolution/targets`,
     });
     await waitForTargetConfigPage(page, "target config page", violations);
     const desktopLayout = await evaluate(
@@ -837,7 +838,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       JSON.stringify(mobile),
     );
 
-    await evaluate(page, `history.pushState({}, "", "/evolution");
+    await evaluate(page, `history.pushState({}, "", "${workspaceBase}/evolution");
       window.dispatchEvent(new PopStateEvent("popstate"));`);
     try {
       await waitForDocument(
@@ -894,7 +895,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     );
     assert.equal(
       await evaluate(page, "location.pathname"),
-      "/evolution/targets",
+      `${workspaceBase}/evolution/targets`,
     );
     await evaluate(
       page,
@@ -902,7 +903,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     );
     await waitForDocument(
       page.session,
-      `location.pathname === "/evolution" &&
+      `location.pathname === "${workspaceBase}/evolution" &&
         document.querySelector("h1")?.textContent === "自进化"`,
       "target config back navigation",
     );

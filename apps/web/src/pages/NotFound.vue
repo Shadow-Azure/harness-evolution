@@ -10,8 +10,8 @@ import ErrorState from "../components/ui/ErrorState.vue";
       :retryable="false"
       title="页面不可用"
     />
-    <RouterLink to="/sessions">
-      返回 Session 浏览器
+    <RouterLink to="/workspaces">
+      返回工作空间选择
     </RouterLink>
   </section>
 </template>

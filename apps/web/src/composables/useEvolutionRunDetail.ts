@@ -47,19 +47,26 @@ export function runDetailRefetchInterval(
 
 /**
  * Read the backend-owned run shell with workspace and stepper state.
+ * @param workspaceId Workspace route identifier.
  * @param runId Evolution run identifier.
  * @param options Optional polling cadence for live or blocked runs.
  * @returns Query state for one run detail.
  */
 export function useEvolutionRunDetail(
+  workspaceId: MaybeRefOrGetter<string>,
   runId: MaybeRefOrGetter<string>,
   options: EvolutionRunDetailOptions = {},
 ) {
   const { refetchInterval } = options;
   return useQuery({
-    queryKey: computed(() => queryKeys.evolutionRun(toValue(runId))),
-    queryFn: () => getEvolutionRunDetail(toValue(runId)),
-    enabled: computed(() => toValue(runId).length > 0),
+    queryKey: computed(() =>
+      queryKeys.evolutionRun(toValue(workspaceId), toValue(runId)),
+    ),
+    queryFn: () =>
+      getEvolutionRunDetail(toValue(workspaceId), toValue(runId)),
+    enabled: computed(
+      () => toValue(workspaceId).length > 0 && toValue(runId).length > 0,
+    ),
     refetchInterval: (query) =>
       typeof refetchInterval === "function"
         ? refetchInterval(query.state.data)

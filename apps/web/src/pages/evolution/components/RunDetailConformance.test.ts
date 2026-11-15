@@ -125,6 +125,7 @@ describe("run detail conformance", () => {
     const fullBadCaseId = "22222222-2222-4222-8222-222222222222";
     const wrapper = mount(ProbeSourceTable, {
       props: {
+        wid: "ws-test",
         rows: [
           {
             ...probe,
@@ -146,12 +147,12 @@ describe("run detail conformance", () => {
     }
 
     expect(links[0]?.attributes()).toMatchObject({
-      href: `/sessions/session-1/errors?case=${fullBadCaseId}&tab=attr`,
+      href: `/workspaces/ws-test/sessions/session-1/errors?case=${fullBadCaseId}&tab=attr`,
       title: fullProbeId,
       "aria-label": "归因报告 11111111，在新窗口打开归因分析",
     });
     expect(links[1]?.attributes()).toMatchObject({
-      href: `/sessions/session-1/errors?case=${fullBadCaseId}&tab=desc`,
+      href: `/workspaces/ws-test/sessions/session-1/errors?case=${fullBadCaseId}&tab=desc`,
       title: fullBadCaseId,
       "aria-label": "来源问题 22222222，在新窗口打开问题描述",
     });
@@ -159,7 +160,7 @@ describe("run detail conformance", () => {
 
   it("renders the prototype source-problem table with report and issue deep links", async () => {
     const clusters = mount(StepClusters, {
-      props: { step: clusterStep, focusCluster: "C1" },
+      props: { wid: "ws-test", step: clusterStep, focusCluster: "C1" },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
     await clusters.vm.$nextTick();
@@ -187,7 +188,7 @@ describe("run detail conformance", () => {
     );
 
     const iterations = mount(StepIterations, {
-      props: { step: iterationStep([round({ status: "evaluating" })]) },
+      props: { wid: "ws-test", step: iterationStep([round({ status: "evaluating" })]) },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
     expect(iterations.text()).toContain("来源 session");
@@ -197,14 +198,14 @@ describe("run detail conformance", () => {
 
   it("expands a valid focused cluster and emits a cleanup request for a missing one", async () => {
     const present = mount(StepClusters, {
-      props: { step: clusterStep, focusCluster: "C1" },
+      props: { wid: "ws-test", step: clusterStep, focusCluster: "C1" },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
     await present.vm.$nextTick();
     expect(present.get(".cluster-head").attributes("aria-expanded")).toBe("true");
 
     const missing = mount(StepClusters, {
-      props: { step: clusterStep, focusCluster: "missing" },
+      props: { wid: "ws-test", step: clusterStep, focusCluster: "missing" },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
     await missing.vm.$nextTick();
@@ -223,6 +224,7 @@ describe("run detail conformance", () => {
   ])("maps round status %s to %s", (status, label) => {
     const wrapper = mount(StepIterations, {
       props: {
+        wid: "ws-test",
         step: iterationStep([
           round({
             status: status as StepRound["status"],
@@ -286,6 +288,7 @@ describe("run detail conformance", () => {
     (_stage, status, push, evaluation, label, className) => {
       const wrapper = mount(StepIterations, {
         props: {
+          wid: "ws-test",
           step: iterationStep([
             round({
               status: status as StepRound["status"],
@@ -308,7 +311,7 @@ describe("run detail conformance", () => {
 
   it("explains that patching has not created a candidate ref yet", () => {
     const wrapper = mount(StepIterations, {
-      props: { step: iterationStep([round({ status: "patching" })]) },
+      props: { wid: "ws-test", step: iterationStep([round({ status: "patching" })]) },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
 
@@ -319,6 +322,7 @@ describe("run detail conformance", () => {
   it("renders local-only candidates as skipped instead of remote push success", () => {
     const wrapper = mount(StepIterations, {
       props: {
+        wid: "ws-test",
         step: iterationStep([
           round({
             status: "skipped",
@@ -348,7 +352,7 @@ describe("run detail conformance", () => {
 
   it("renders an explicit empty state when no iteration round exists", () => {
     const wrapper = mount(StepIterations, {
-      props: { step: iterationStep([]) },
+      props: { wid: "ws-test", step: iterationStep([]) },
     });
 
     expect(wrapper.text()).toContain("当前还没有进入迭代轮次");
@@ -415,6 +419,7 @@ describe("run detail conformance", () => {
     const finalCommit = "fedcba0987654321";
     const wrapper = mount(StepIterations, {
       props: {
+        wid: "ws-test",
         step: iterationStep([
           round({
             status: "accepted",

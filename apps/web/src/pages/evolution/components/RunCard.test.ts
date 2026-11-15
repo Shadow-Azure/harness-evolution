@@ -52,6 +52,7 @@ describe("RunCard", () => {
   it("renders the preparing status explicitly", () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "preparing",
           progress: {
@@ -72,7 +73,7 @@ describe("RunCard", () => {
 
   it("renders prototype metadata and uses backend progress verbatim", () => {
     const wrapper = mount(RunCard, {
-      props: { run: run() },
+      props: { wid: "ws-test", run: run() },
     });
 
     expect(wrapper.get(".run-card").classes()).toContain("run-card");
@@ -111,6 +112,7 @@ describe("RunCard", () => {
   it("renders the effective history summary from backend values", () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "completed",
           progress: {
@@ -145,6 +147,7 @@ describe("RunCard", () => {
   it("marks completed runs without improvement without claiming success", () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "completed",
           final: {
@@ -166,6 +169,7 @@ describe("RunCard", () => {
   it("keeps a completed run with no final neutral instead of claiming no benefit", () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "completed",
           final: null,
@@ -182,6 +186,7 @@ describe("RunCard", () => {
   it("makes failed and interrupted error details available through a focusable tooltip", async () => {
     const failed = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "failed",
           error: {
@@ -194,6 +199,7 @@ describe("RunCard", () => {
     });
     const interrupted = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "interrupted",
           error: {
@@ -237,6 +243,7 @@ describe("RunCard", () => {
   it("marks blocked active runs with a focusable warning tooltip", async () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "blocked",
           error: {
@@ -261,7 +268,7 @@ describe("RunCard", () => {
 
   it("keeps status badges non-interactive when no error is present", () => {
     const wrapper = mount(RunCard, {
-      props: { run: run() },
+      props: { wid: "ws-test", run: run() },
     });
 
     expect(wrapper.get(".badge").element.tagName).toBe("SPAN");
@@ -270,32 +277,35 @@ describe("RunCard", () => {
 
   it("opens the run detail with pointer and keyboard semantics", async () => {
     const wrapper = mount(RunCard, {
-      props: { run: run() },
+      props: { wid: "ws-test", run: run() },
     });
 
     expect(wrapper.get(".run-card-link").attributes("href")).toBe(
-      "/evolution/runs/run-1",
+      "/workspaces/ws-test/evolution/runs/run-1",
     );
     expect(wrapper.get(".run-card-link").attributes("aria-label")).toBe(
       "查看运行 deep-research v2.0.0 自进化",
     );
     await wrapper.get(".run-card-link").trigger("click");
-    expect(wrapper.emitted("open")).toEqual([["/evolution/runs/run-1"]]);
+    expect(wrapper.emitted("open")).toEqual([
+      ["/workspaces/ws-test/evolution/runs/run-1"],
+    ]);
   });
 
   it("routes cluster-only cards to the dedicated preview page", () => {
     const wrapper = mount(RunCard, {
-      props: { run: run({ mode: "cluster_only" }) },
+      props: { wid: "ws-test", run: run({ mode: "cluster_only" }) },
     });
 
     expect(wrapper.get(".run-card-link").attributes("href")).toBe(
-      "/evolution/cluster/run-1",
+      "/workspaces/ws-test/evolution/cluster/run-1",
     );
   });
 
   it("keeps the error tooltip button from opening the detail", async () => {
     const wrapper = mount(RunCard, {
       props: {
+        wid: "ws-test",
         run: run({
           status: "blocked",
           error: {

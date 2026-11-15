@@ -21,12 +21,20 @@ export type SessionFilters = {
   limit?: number;
 };
 
+function workspaceSessionPath(workspaceId: string, suffix = ""): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/sessions${suffix}`;
+}
+
 /**
- * List root sessions using server-side filtering and ordering.
+ * List root sessions projected from one workspace's bad cases.
+ * @param workspaceId Route workspace identifier.
  * @param filters Current search, status, sort, and limit values.
  * @returns Current-page session cards in server order.
  */
-export function listSessions(filters: SessionFilters = {}): Promise<SessionListResponse> {
+export function listSessions(
+  workspaceId: string,
+  filters: SessionFilters = {},
+): Promise<SessionListResponse> {
   const query = new URLSearchParams();
   for (const key of ["q", "status", "sort", "limit"] as const) {
     const value = filters[key];
@@ -35,40 +43,53 @@ export function listSessions(filters: SessionFilters = {}): Promise<SessionListR
     }
   }
   const suffix = query.size ? `?${query.toString()}` : "";
-  return request<SessionListResponse>(`/api/sessions${suffix}`);
+  return request<SessionListResponse>(workspaceSessionPath(workspaceId, suffix));
 }
 
 /**
- * Read one root-session overview.
+ * Read one workspace-projected root-session overview.
+ * @param workspaceId Route workspace identifier.
  * @param sessionId Root session identifier.
  * @returns Session overview and whole-tree statistics.
  */
-export function getSession(sessionId: string): Promise<SessionListItem> {
+export function getSession(
+  workspaceId: string,
+  sessionId: string,
+): Promise<SessionListItem> {
   return request<SessionListItem>(
-    `/api/sessions/${encodeURIComponent(sessionId)}`,
+    workspaceSessionPath(workspaceId, `/${encodeURIComponent(sessionId)}`),
   );
 }
 
 /**
- * Read the canonical flat Agent tree for one root session.
+ * Read the canonical flat Agent tree for one workspace-projected session.
+ * @param workspaceId Route workspace identifier.
  * @param sessionId Root session identifier.
- * @returns Flat Agent nodes and anchored problem references.
+ * @returns Flat Agent nodes and the workspace's anchored problem references.
  */
-export function getSessionTree(sessionId: string): Promise<SessionTree> {
+export function getSessionTree(
+  workspaceId: string,
+  sessionId: string,
+): Promise<SessionTree> {
   return request<SessionTree>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/tree`,
+    workspaceSessionPath(workspaceId, `/${encodeURIComponent(sessionId)}/tree`),
   );
 }
 
 /**
- * Read all problems for one root session.
+ * Read the problems of one root session inside a workspace.
+ * @param workspaceId Route workspace identifier.
  * @param sessionId Root session identifier.
  * @returns Problem cards carrying five-state attribution and anchor data.
  */
 export function listSessionBadCases(
+  workspaceId: string,
   sessionId: string,
 ): Promise<BadCaseListResponse> {
   return request<BadCaseListResponse>(
-    `/api/sessions/${encodeURIComponent(sessionId)}/bad-cases`,
+    workspaceSessionPath(
+      workspaceId,
+      `/${encodeURIComponent(sessionId)}/bad-cases`,
+    ),
   );
 }

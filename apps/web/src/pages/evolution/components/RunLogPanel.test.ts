@@ -12,6 +12,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { server } from "../../../test/server";
 import RunLogPanel from "./RunLogPanel.vue";
 
+const workspaceId = "ws-test";
+const eventsBase = `/api/workspaces/${workspaceId}/evolution/runs`;
+
 const wrappers: VueWrapper[] = [];
 
 const steps = [
@@ -69,6 +72,7 @@ function page(
 async function mountPanel(runId = "run-events") {
   const wrapper = mount(RunLogPanel, {
     props: {
+      wid: workspaceId,
       runId,
       steps: availableSteps,
     },
@@ -88,7 +92,7 @@ afterAll(() => server.close());
 describe("RunLogPanel", () => {
   it("renders REST events and jumps to valid step and cluster targets", async () => {
     server.use(
-      http.get("/api/evolution/runs/run-events/events", () =>
+      http.get(`${eventsBase}/run-events/events`, () =>
         HttpResponse.json(page([event(1), event(2)]))),
     );
     const wrapper = await mountPanel();
@@ -109,7 +113,7 @@ describe("RunLogPanel", () => {
   it("filters by level and appends a non-duplicated next page", async () => {
     const queries: URLSearchParams[] = [];
     server.use(
-      http.get("/api/evolution/runs/run-events/events", ({ request }) => {
+      http.get(`${eventsBase}/run-events/events`, ({ request }) => {
         const query = new URL(request.url).searchParams;
         queries.push(query);
         if (query.get("level") === "error") {
@@ -143,10 +147,10 @@ describe("RunLogPanel", () => {
   it("clears the previous run immediately while the next run is pending", async () => {
     let resolveNext!: (response: Response) => void;
     server.use(
-      http.get("/api/evolution/runs/run-a/events", () =>
+      http.get(`${eventsBase}/run-a/events`, () =>
         HttpResponse.json(page([event(1, { message: "run-a event" })]))),
       http.get(
-        "/api/evolution/runs/run-b/events",
+        `${eventsBase}/run-b/events`,
         () => new Promise<Response>((resolve) => {
           resolveNext = resolve;
         }),
@@ -173,7 +177,7 @@ describe("RunLogPanel", () => {
   it("clears the previous filter immediately while the next page is pending", async () => {
     let resolveFiltered!: (response: Response) => void;
     server.use(
-      http.get("/api/evolution/runs/run-events/events", ({ request }) => {
+      http.get(`${eventsBase}/run-events/events`, ({ request }) => {
         const level = new URL(request.url).searchParams.get("level");
         if (level === "error") {
           return new Promise<Response>((resolve) => {
@@ -216,7 +220,7 @@ describe("RunLogPanel", () => {
   it("keeps loaded events when a later page fails and retries inline", async () => {
     let appendAttempts = 0;
     server.use(
-      http.get("/api/evolution/runs/run-events/events", ({ request }) => {
+      http.get(`${eventsBase}/run-events/events`, ({ request }) => {
         const afterSeq = new URL(request.url).searchParams.get("afterSeq");
         if (afterSeq === "0") {
           return HttpResponse.json(page([event(1)], 1, true));
@@ -256,7 +260,7 @@ describe("RunLogPanel", () => {
       value: { writeText: async (value: string) => writes.push(value) },
     });
     server.use(
-      http.get("/api/evolution/runs/run-events/events", () =>
+      http.get(`${eventsBase}/run-events/events`, () =>
         HttpResponse.json(
           page([
             event(3, {
@@ -286,7 +290,7 @@ describe("RunLogPanel", () => {
 
   it("does not link to a future or missing navigation target", async () => {
     server.use(
-      http.get("/api/evolution/runs/run-events/events", () =>
+      http.get(`${eventsBase}/run-events/events`, () =>
         HttpResponse.json(
           page([
             event(1, {
@@ -307,7 +311,7 @@ describe("RunLogPanel", () => {
 
   it("pauses auto-scroll when the operator scrolls upward", async () => {
     server.use(
-      http.get("/api/evolution/runs/run-events/events", () =>
+      http.get(`${eventsBase}/run-events/events`, () =>
         HttpResponse.json(page([event(1), event(2)]))),
     );
     const wrapper = await mountPanel();
@@ -326,7 +330,7 @@ describe("RunLogPanel", () => {
   it("shows explicit empty and retryable error states", async () => {
     let attempts = 0;
     server.use(
-      http.get("/api/evolution/runs/run-events/events", () => {
+      http.get(`${eventsBase}/run-events/events`, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json(

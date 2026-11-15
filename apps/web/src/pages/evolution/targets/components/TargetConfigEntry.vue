@@ -1,11 +1,20 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { RouterLink } from "vue-router";
+
+import { workspacePath } from "../../../../router/workspace";
+
+const props = defineProps<{ wid: string }>();
+
+const targetPath = computed(() =>
+  workspacePath(props.wid, "evolution/targets"),
+);
 </script>
 
 <template>
   <RouterLink
     class="target-config-entry"
-    to="/evolution/targets"
+    :to="targetPath"
     aria-label="配置进化对象"
     title="配置进化对象"
   >

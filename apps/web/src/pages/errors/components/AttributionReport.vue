@@ -14,6 +14,7 @@ import {
 import { renderMarkdown } from "../../../utils/markdown";
 
 const props = defineProps<{
+  wid: string;
   analysis: BadCaseAnalysis | null;
   analysisLoading: boolean;
   analysisError: Error | null;
@@ -194,7 +195,7 @@ const analysisHtml = computed(() =>
           <a
             v-for="source in probe.fromBadCases"
             :key="source"
-            :href="badCaseDeepLink(sessionId, source, 'desc')"
+            :href="badCaseDeepLink(wid, sessionId, source, 'desc')"
             :aria-label="`来源问题 ${shortBadCaseId(source)}，在新窗口打开问题描述`"
             rel="noopener noreferrer"
             target="_blank"

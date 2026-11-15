@@ -18,11 +18,31 @@ import {
 import { healthFixtures } from "@harness/contracts";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
-import { useAuthStore } from "./stores/auth";
+import { signInWithWorkspace, TEST_WORKSPACE_ID } from "./test/auth";
 import { server } from "./test/server";
+
+const ws = `/workspaces/${TEST_WORKSPACE_ID}`;
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
+  server.use(
+    http.get(`/api/workspaces/${TEST_WORKSPACE_ID}/sessions`, () =>
+      HttpResponse.json({ items: [] }),
+    ),
+    http.get("/api/acquisition/status", () =>
+      HttpResponse.json({
+        status: "idle",
+        pending: 0,
+        processed: 0,
+        imported: 0,
+        skipped: 0,
+        errors: [],
+        badCaseSync: null,
+        badCaseCatalogSync: null,
+        badCaseAnalysis: null,
+      }),
+    ),
+  );
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -51,18 +71,14 @@ async function mountApp() {
   });
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setSession({
-    accessToken: "test-access",
-    expiresIn: 1_800,
-    user: {
-      id: "u-test",
-      username: "operator",
-      displayName: "测试用户",
-      role: "member",
-      mustChangePassword: false,
-    },
+  signInWithWorkspace({
+    id: "u-test",
+    username: "operator",
+    displayName: "测试用户",
+    role: "member",
+    mustChangePassword: false,
   });
-  window.history.replaceState({}, "", "/sessions");
+  window.history.replaceState({}, "", `${ws}/sessions`);
   const router = createAppRouter();
   const wrapper = mount(App, {
     global: {
@@ -87,11 +103,11 @@ describe("App shell", () => {
     expect(wrapper.find("nav").exists()).toBe(true);
   });
 
-  it("uses /sessions as the default empty view without developer status chrome", async () => {
+  it("uses the workspace session view without developer status chrome", async () => {
     server.use(http.get("/api/health", () => HttpResponse.json(healthFixtures.healthy)));
     const { router, wrapper } = await mountApp();
 
-    expect(router.currentRoute.value.path).toBe("/sessions");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
     expect(wrapper.find("nav").text()).toContain("Session 错误查看");
     expect(wrapper.find("nav").text()).toContain("自进化");
     expect(wrapper.find("nav").text()).not.toContain("Errors");
@@ -158,10 +174,10 @@ describe("App shell", () => {
 
   it("lazily reaches the evolution view", async () => {
     const { router, wrapper } = await mountApp();
-    await router.push("/evolution");
+    await router.push(`${ws}/evolution`);
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/evolution");
+    expect(router.currentRoute.value.path).toBe(`${ws}/evolution`);
     expect(wrapper.text()).toContain("自进化");
   });
 
@@ -195,7 +211,7 @@ describe("App shell", () => {
     await router.push("/errors");
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/sessions");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
     expect(wrapper.text()).not.toContain("请选择会话");
   });
 });

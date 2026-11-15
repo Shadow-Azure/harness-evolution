@@ -2,8 +2,10 @@
 import type { BadCase, SessionListItem } from "@harness/contracts";
 
 import BadCaseList from "../../../components/bad-cases/BadCaseList.vue";
+import { workspacePath } from "../../../router/workspace";
 
 defineProps<{
+  wid: string;
   problems: BadCase[];
   session: SessionListItem | null;
   sessionId: string;
@@ -44,7 +46,7 @@ const emit = defineEmits<{
       </div>
       <RouterLink
         class="sidebar-back"
-        :to="`/sessions/${encodeURIComponent(sessionId)}`"
+        :to="workspacePath(wid, `sessions/${encodeURIComponent(sessionId)}`)"
       >
         ← 返回 Session
       </RouterLink>
@@ -61,6 +63,7 @@ const emit = defineEmits<{
       </button>
       <BadCaseList
         compact
+        :wid="wid"
         :active-bad-case-id="activeBadCaseId"
         :error="error"
         :loading="loading"

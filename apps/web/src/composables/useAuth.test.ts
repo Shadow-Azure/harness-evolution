@@ -11,6 +11,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createAppRouter } from "../router";
 import { useAuthStore } from "../stores/auth";
 import { server } from "../test/server";
+import { testWorkspace, TEST_WORKSPACE_ID } from "../test/auth";
+
+const ws = `/workspaces/${TEST_WORKSPACE_ID}`;
 import {
   useChangePassword,
   useCurrentUser,
@@ -33,10 +36,16 @@ async function mountComposables(initialPath = "/login", user: PublicUser | null 
   const pinia = createPinia();
   setActivePinia(pinia);
   if (user) {
-    useAuthStore(pinia).setSession({
+    const auth = useAuthStore(pinia);
+    auth.setSession({
       accessToken: "active",
       expiresIn: 1_800,
       user,
+    });
+    auth.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
     });
   }
   const queryClient = new QueryClient();
@@ -93,6 +102,19 @@ describe("auth composables", () => {
           },
         }),
       ),
+      http.get("/api/auth/session", () =>
+        HttpResponse.json({
+          user: {
+            id: "u-1",
+            username: "operator",
+            displayName: "操作员",
+            role: "member",
+            mustChangePassword: false,
+          },
+          workspaces: [testWorkspace({ role: "viewer" })],
+          truncated: false,
+        }),
+      ),
     );
     const { composables, pinia, router, wrapper } = await mountComposables();
 
@@ -105,7 +127,7 @@ describe("auth composables", () => {
     expect(composables.login.data.value?.displayName).toBe("操作员");
     expect(useAuthStore(pinia).user?.displayName).toBe("操作员");
     expect(composables.currentUser.data.value?.displayName).toBe("操作员");
-    expect(router.currentRoute.value.path).toBe("/sessions");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
     wrapper.unmount();
   });
 
@@ -154,7 +176,7 @@ describe("auth composables", () => {
   it("tracks current-user refetch failures and clears them after recovery", async () => {
     let calls = 0;
     server.use(
-      http.get("/api/auth/me", () => {
+      http.get("/api/auth/session", () => {
         calls += 1;
         return calls === 1
           ? HttpResponse.json(
@@ -162,15 +184,19 @@ describe("auth composables", () => {
               { status: 500 },
             )
           : HttpResponse.json({
-              id: "u-1",
-              username: "operator",
-              displayName: "操作员",
-              role: "member",
-              mustChangePassword: false,
+              user: {
+                id: "u-1",
+                username: "operator",
+                displayName: "操作员",
+                role: "member",
+                mustChangePassword: false,
+              },
+              workspaces: [testWorkspace({ role: "viewer" })],
+              truncated: false,
             });
       }),
     );
-    const { composables, pinia, wrapper } = await mountComposables("/sessions");
+    const { composables, pinia, wrapper } = await mountComposables(`${ws}/sessions`);
     const auth = useAuthStore(pinia);
     auth.setSession({
       accessToken: "active",
@@ -191,7 +217,9 @@ describe("auth composables", () => {
     expect(composables.currentUser.isError.value).toBe(true);
     expect(composables.currentUser.error.value).toMatchObject({ code: "INTERNAL" });
 
-    await expect(composables.currentUser.refetch()).resolves.toMatchObject({ id: "u-1" });
+    await expect(composables.currentUser.refetch()).resolves.toMatchObject({
+      id: "u-1",
+    });
     expect(composables.currentUser.isError.value).toBe(false);
     expect(composables.currentUser.error.value).toBeNull();
     wrapper.unmount();

@@ -13,22 +13,35 @@ import type {
 
 import { request } from "./http";
 
+function workspaceEvolutionPath(workspaceId: string, suffix: string): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/evolution${suffix}`;
+}
+
 /**
- * Read backend-grouped evolution runs in backend order.
+ * Read backend-grouped evolution runs owned by one workspace.
+ * @param workspaceId Route workspace identifier.
  * @returns Running and history groups.
  */
-export function listEvolutionRuns(): Promise<EvolutionRunList> {
-  return request<EvolutionRunList>("/api/evolution/runs");
+export function listEvolutionRuns(
+  workspaceId: string,
+): Promise<EvolutionRunList> {
+  return request<EvolutionRunList>(
+    workspaceEvolutionPath(workspaceId, "/runs"),
+  );
 }
 
 /**
  * Read one run detail shell with workspace and backend-owned step states.
+ * @param workspaceId Route workspace identifier.
  * @param runId Evolution run identifier.
  * @returns The complete run detail contract.
  */
-export function getEvolutionRunDetail(runId: string): Promise<EvolutionRunDetail> {
+export function getEvolutionRunDetail(
+  workspaceId: string,
+  runId: string,
+): Promise<EvolutionRunDetail> {
   return request<EvolutionRunDetail>(
-    `/api/evolution/runs/${encodeURIComponent(runId)}`,
+    workspaceEvolutionPath(workspaceId, `/runs/${encodeURIComponent(runId)}`),
   );
 }
 
@@ -41,11 +54,13 @@ export interface EvolutionRunEventQuery {
 
 /**
  * Read one stable page of durable evolution events.
+ * @param workspaceId Route workspace identifier.
  * @param runId Evolution run identifier.
  * @param query Cursor, page size, and optional level filter.
  * @returns The ordered event page and continuation cursor.
  */
 export function listEvolutionRunEvents(
+  workspaceId: string,
   runId: string,
   query: EvolutionRunEventQuery = {},
 ): Promise<EvolutionRunEventPage> {
@@ -54,22 +69,30 @@ export function listEvolutionRunEvents(
   parameters.set("limit", String(query.limit ?? 100));
   if (query.level) parameters.set("level", query.level);
   return request<EvolutionRunEventPage>(
-    `/api/evolution/runs/${encodeURIComponent(runId)}/events?${parameters.toString()}`,
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/events?${parameters.toString()}`,
+    ),
   );
 }
 
 /**
  * Read one reached step projection for an evolution run.
+ * @param workspaceId Route workspace identifier.
  * @param runId Evolution run identifier.
  * @param key Stable step key selected in the detail route.
  * @returns The key-discriminated step payload.
  */
 export function getEvolutionRunStep(
+  workspaceId: string,
   runId: string,
   key: EvolutionStepKey,
 ): Promise<EvolutionStep> {
   return request<EvolutionStep>(
-    `/api/evolution/runs/${encodeURIComponent(runId)}/steps/${key}`,
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/steps/${key}`,
+    ),
   );
 }
 
@@ -77,6 +100,9 @@ const LAUNCH_STATUSES = [200, 202] as const;
 
 /**
  * Preview probe hits for one wizard condition.
+ *
+ * The compatibility query filters by every workspace visible to the caller;
+ * the wizard only offers targets configured in the current workspace.
  * @param body Wizard filter condition.
  * @returns Hit statistics plus the requested probe page.
  */
@@ -101,14 +127,19 @@ const RETRY_STATUSES = [202] as const;
 
 /**
  * Request one manual retry for a blocked evolution run.
+ * @param workspaceId Route workspace identifier.
  * @param runId Evolution run identifier.
  * @returns The accepted retry job and whether an active job was reused.
  */
 export function retryEvolutionRun(
+  workspaceId: string,
   runId: string,
 ): Promise<EvolutionRetryAccepted> {
   return request<EvolutionRetryAccepted>(
-    `/api/evolution/runs/${encodeURIComponent(runId)}/retry`,
+    workspaceEvolutionPath(
+      workspaceId,
+      `/runs/${encodeURIComponent(runId)}/retry`,
+    ),
     { method: "POST" },
     { acceptedStatuses: RETRY_STATUSES },
   );
@@ -116,12 +147,16 @@ export function retryEvolutionRun(
 
 /**
  * Start one full evolution run after backend validation.
+ * @param workspaceId Route workspace identifier.
  * @param body Wizard filter condition with `mode: "full"`.
  * @returns Accepted run and job identifiers in preparing state.
  */
-export function startEvolutionRun(body: ProbeQueryRequest): Promise<RunAccepted> {
+export function startEvolutionRun(
+  workspaceId: string,
+  body: ProbeQueryRequest,
+): Promise<RunAccepted> {
   return request<RunAccepted>(
-    "/api/evolution/runs",
+    workspaceEvolutionPath(workspaceId, "/runs"),
     { method: "POST", body: JSON.stringify(body) },
     { acceptedStatuses: LAUNCH_STATUSES },
   );
@@ -129,14 +164,16 @@ export function startEvolutionRun(body: ProbeQueryRequest): Promise<RunAccepted>
 
 /**
  * Start one cluster-only preview run.
+ * @param workspaceId Route workspace identifier.
  * @param body Wizard filter condition with `mode: "cluster_only"`.
  * @returns Accepted run and job identifiers in preparing state.
  */
 export function startClusterPreview(
+  workspaceId: string,
   body: ProbeQueryRequest,
 ): Promise<RunAccepted> {
   return request<RunAccepted>(
-    "/api/evolution/cluster-previews",
+    workspaceEvolutionPath(workspaceId, "/cluster-previews"),
     { method: "POST", body: JSON.stringify(body) },
     { acceptedStatuses: LAUNCH_STATUSES },
   );

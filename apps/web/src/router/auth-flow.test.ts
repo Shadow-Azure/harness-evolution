@@ -7,6 +7,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { useAuthStore } from "../stores/auth";
 import { server } from "../test/server";
 import { createAppRouter } from "./index";
+import { testWorkspace } from "../test/auth";
+
+const ws = "/workspaces/ws-test";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => setActivePinia(createPinia()));
@@ -18,13 +21,17 @@ function refreshHandlers(mustChangePassword: boolean) {
     http.post("/api/auth/refresh", () =>
       HttpResponse.json({ accessToken: "restored", expiresIn: 1_800 }),
     ),
-    http.get("/api/auth/me", () =>
+    http.get("/api/auth/session", () =>
       HttpResponse.json({
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword,
+        user: {
+          id: "u-1",
+          username: "operator",
+          displayName: "操作员",
+          role: "member",
+          mustChangePassword,
+        },
+        workspaces: [testWorkspace({ role: "viewer" })],
+        truncated: false,
       }),
     ),
   ];
@@ -38,7 +45,9 @@ describe("MSW-driven auth guard branches", () => {
     await router.push("/sessions?sort=recent");
     await router.isReady();
 
-    expect(router.currentRoute.value.fullPath).toBe("/sessions?sort=recent");
+    expect(router.currentRoute.value.fullPath).toBe(
+      `${ws}/sessions?sort=recent`,
+    );
     expect(useAuthStore().accessToken).toBe("restored");
   });
 
@@ -55,22 +64,28 @@ describe("MSW-driven auth guard branches", () => {
 
   it("rejects an external redirect target for an authenticated login visit", async () => {
     const store = useAuthStore();
+    const user = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member" as const,
+      mustChangePassword: false,
+    };
     store.setSession({
       accessToken: "active",
       expiresIn: 1_800,
-      user: {
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword: false,
-      },
+      user,
+    });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
     });
     const router = createAppRouter();
 
     await router.push("/login?redirect=//evil.example");
     await router.isReady();
 
-    expect(router.currentRoute.value.fullPath).toBe("/sessions");
+    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions`);
   });
 });

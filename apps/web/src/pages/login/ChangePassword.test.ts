@@ -4,12 +4,15 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { useAuthStore } from "../../stores/auth";
 import { server } from "../../test/server";
 import { elementPlusComponents } from "../../test/setup";
+import { testWorkspace } from "../../test/auth";
 import { createAppRouter } from "../../router";
+
+const ws = "/workspaces/ws-test";
 import ChangePasswordPage from "./ChangePassword.vue";
 
 const firstLoginUser = {
@@ -29,6 +32,11 @@ async function mountPage() {
   setActivePinia(pinia);
   const store = useAuthStore();
   store.setSession({ accessToken: "access", expiresIn: 1_800, user: firstLoginUser });
+  store.setWorkspaceSession({
+    user: firstLoginUser,
+    workspaces: [testWorkspace({ role: "viewer" })],
+    truncated: false,
+  });
   const router = createAppRouter();
   await router.push("/change-password?redirect=/sessions");
   await router.isReady();
@@ -69,8 +77,12 @@ describe("change-password page", () => {
       http.post("/api/auth/refresh", () =>
         HttpResponse.json({ accessToken: "new-access", expiresIn: 1_800 }),
       ),
-      http.get("/api/auth/me", () =>
-        HttpResponse.json({ ...firstLoginUser, mustChangePassword: false }),
+      http.get("/api/auth/session", () =>
+        HttpResponse.json({
+          user: { ...firstLoginUser, mustChangePassword: false },
+          workspaces: [testWorkspace({ role: "viewer" })],
+          truncated: false,
+        }),
       ),
     );
     const { router, store, wrapper } = await mountPage();
@@ -79,10 +91,11 @@ describe("change-password page", () => {
     await wrapper.get('input[name="newPassword"]').setValue("replacement-password");
     await wrapper.get('input[name="confirmPassword"]').setValue("replacement-password");
     await wrapper.get("form").trigger("submit");
-    await flushPromises();
+    await vi.waitFor(() =>
+      expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions`),
+    );
 
     expect(store.accessToken).toBe("new-access");
     expect(store.user?.mustChangePassword).toBe(false);
-    expect(router.currentRoute.value.fullPath).toBe("/sessions");
   });
 });

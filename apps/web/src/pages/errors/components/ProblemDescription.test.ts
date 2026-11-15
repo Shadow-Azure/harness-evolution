@@ -73,7 +73,7 @@ describe("ProblemDescription", () => {
     "renders the short title and the full description for $state",
     ({ problem }) => {
       const wrapper = mount(ProblemDescription, {
-        props: { problem, index: 2 },
+        props: { wid: "ws-test", problem, index: 2 },
       });
 
       expect(wrapper.get(".problem-title").text()).toBe(problem.title);
@@ -87,7 +87,7 @@ describe("ProblemDescription", () => {
 
   it("keeps the heading chips and orders body, facts and association after it", () => {
     const wrapper = mount(ProblemDescription, {
-      props: { problem: variants[2]!.problem, index: 2 },
+      props: { wid: "ws-test", problem: variants[2]!.problem, index: 2 },
     });
 
     expect(blockOrder(wrapper)).toEqual([
@@ -107,6 +107,7 @@ describe("ProblemDescription", () => {
   it("keeps the degraded chip and diagnostic without collapsing the two text levels", () => {
     const wrapper = mount(ProblemDescription, {
       props: {
+        wid: "ws-test",
         problem: badCaseFixture({
           badCaseId: "case-degraded",
           title: "数据漂移",

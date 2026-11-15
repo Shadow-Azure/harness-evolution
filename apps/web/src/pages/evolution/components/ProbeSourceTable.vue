@@ -4,6 +4,7 @@ import type { ProbePreviewItem } from "@harness/contracts";
 import { badCaseDeepLink, shortBadCaseId } from "../../../utils/badCaseId";
 
 defineProps<{
+  wid: string;
   rows: ProbePreviewItem[];
   showCluster?: boolean;
   clusterOfProbe?: Record<string, string | null>;
@@ -47,6 +48,7 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
               v-if="probe.sourceBadCaseIds[0]"
               :href="
                 badCaseDeepLink(
+                  wid,
                   probe.sessionId,
                   probe.sourceBadCaseIds[0],
                   'attr',
@@ -66,6 +68,7 @@ function typeLabel(type: ProbePreviewItem["attributeType"]): string {
               v-if="probe.sourceBadCaseIds[0]"
               :href="
                 badCaseDeepLink(
+                  wid,
                   probe.sessionId,
                   probe.sourceBadCaseIds[0],
                   'desc',

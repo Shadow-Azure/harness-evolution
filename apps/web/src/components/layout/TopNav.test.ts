@@ -10,6 +10,9 @@ import { server } from "../../test/server";
 import { queryKeys } from "../../api/queryKeys";
 import { useAuthStore } from "../../stores/auth";
 import { createAppRouter } from "../../router";
+import { testWorkspace, TEST_WORKSPACE_ID } from "../../test/auth";
+
+const ws = `/workspaces/${TEST_WORKSPACE_ID}`;
 import TopNav from "./TopNav.vue";
 import TopNavSource from "./TopNav.vue?raw";
 
@@ -96,21 +99,27 @@ describe("top navigation user area", () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     const store = useAuthStore();
+    const user = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member" as const,
+      mustChangePassword: false,
+    };
     store.setSession({
       accessToken: "access",
       expiresIn: 1_800,
-      user: {
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword: false,
-      },
+      user,
+    });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
     });
     const queryClient = new QueryClient();
     queryClient.setQueryData(["sessions"], [{ id: "s-1" }]);
     const router = createAppRouter();
-    await router.push("/sessions");
+    await router.push(`${ws}/sessions`);
     await router.isReady();
     const wrapper = mount(TopNav, {
       global: {
@@ -166,19 +175,26 @@ describe("top navigation user area", () => {
   it("keeps the prototype active state across session sub-routes", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
-    useAuthStore().setSession({
+    const store = useAuthStore();
+    const user = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member" as const,
+      mustChangePassword: false,
+    };
+    store.setSession({
       accessToken: "access",
       expiresIn: 1_800,
-      user: {
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword: false,
-      },
+      user,
+    });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
     });
     const router = createAppRouter();
-    await router.push("/sessions/root-1/errors");
+    await router.push(`${ws}/sessions/root-1/errors`);
     await router.isReady();
 
     const wrapper = mount(TopNav, {
@@ -418,21 +434,30 @@ describe("top navigation user area", () => {
     );
     const pinia = createPinia();
     setActivePinia(pinia);
-    useAuthStore().setSession({
+    const store = useAuthStore();
+    const user = {
+      id: "u-admin",
+      username: "admin",
+      displayName: "管理员",
+      role: "admin" as const,
+      mustChangePassword: false,
+    };
+    store.setSession({
       accessToken: "access",
       expiresIn: 1_800,
-      user: {
-        id: "u-admin",
-        username: "admin",
-        displayName: "管理员",
-        role: "admin",
-        mustChangePassword: false,
-      },
+      user,
+    });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace()],
+      truncated: false,
     });
     const queryClient = new QueryClient();
-    queryClient.setQueryData(queryKeys.sessions, [{ id: "s-1" }]);
+    queryClient.setQueryData(queryKeys.sessions(TEST_WORKSPACE_ID), [
+      { id: "s-1" },
+    ]);
     const router = createAppRouter();
-    await router.push("/sessions");
+    await router.push(`${ws}/sessions`);
     await router.isReady();
     const wrapper = mount(TopNav, {
       global: {
@@ -445,7 +470,11 @@ describe("top navigation user area", () => {
     await vi.waitFor(
       () => {
         expect(calls).toBe(2);
-        expect(queryClient.getQueryState(queryKeys.sessions)?.isInvalidated).toBe(true);
+        expect(
+          queryClient.getQueryState(
+            queryKeys.sessions(TEST_WORKSPACE_ID),
+          )?.isInvalidated,
+        ).toBe(true);
       },
       { timeout: 2_000 },
     );

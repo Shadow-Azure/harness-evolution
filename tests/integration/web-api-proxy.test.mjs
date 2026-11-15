@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -75,6 +75,24 @@ before(async () => {
   const webPort = await availablePort();
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-integration-"));
   webBaseUrl = `http://127.0.0.1:${webPort}`;
+
+  // auth/session aggregates the externally bootstrapped bad_cases table, which
+  // the workspace shell needs before it can leave the login page.
+  const setup = spawnSync(pnpm, ["fixtures:seed"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      HE_ADMIN_PASSWORD: "integration-initial-password",
+      HE_ADMIN_USERNAME: "admin",
+      HE_DATA_DIR: dataDir,
+      HE_DB_DIALECT: "sqlite",
+      HE_FIXTURE_MANIFEST: "fixtures/m1-shell.json",
+      HE_JWT_SECRET: "integration-signing-secret-with-sufficient-length",
+      HE_PHASE: "demo",
+    },
+    encoding: "utf8",
+  });
+  assert.equal(setup.status, 0, setup.stderr || setup.stdout);
 
   api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
     cwd: root,

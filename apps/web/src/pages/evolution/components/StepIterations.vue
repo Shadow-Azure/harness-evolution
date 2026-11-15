@@ -7,6 +7,7 @@ import EvalCompare from "./EvalCompare.vue";
 import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
+  wid: string;
   step: EvolutionStepIteration;
   blockedStage?: string | null;
 }>();
@@ -186,7 +187,10 @@ function pushLabel(status: string): string {
           <p class="cb-label">
             来源问题报告（{{ round.probes.length }} 份 · 由归因结论聚类而来）
           </p>
-          <ProbeSourceTable :rows="round.probes" />
+          <ProbeSourceTable
+            :wid="wid"
+            :rows="round.probes"
+          />
         </section>
 
         <section

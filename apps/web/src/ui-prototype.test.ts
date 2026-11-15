@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import TopNav from "./components/layout/TopNav.vue";
 import { createAppRouter } from "./router";
+import { testWorkspace, TEST_WORKSPACE_ID } from "./test/auth";
 import { useAuthStore } from "./stores/auth";
 import TopNavSource from "./components/layout/TopNav.vue?raw";
 
@@ -40,19 +41,28 @@ describe("prototype visual system", () => {
   it("uses the prototype brand and underline navigation structure", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
-    useAuthStore().setSession({
+    const store = useAuthStore();
+    const user = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member" as const,
+      mustChangePassword: false,
+    };
+    store.setSession({
       accessToken: "access",
       expiresIn: 1_800,
-      user: {
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword: false,
-      },
+      user,
+    });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
     });
     const router = createAppRouter();
-    await router.push("/evolution");
+    await router.push(
+      `/workspaces/${TEST_WORKSPACE_ID}/evolution`,
+    );
     await router.isReady();
 
     const wrapper = mount(TopNav, {

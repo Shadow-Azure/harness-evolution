@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>m7-08 空间壳集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · M7 身份与空间边界</p>
+    <h1>m7-08 空间壳集成冒烟报告</h1>
+    <p class="summary">在真实 API + Vite proxy + 无头 Chrome 环境中验证 /workspaces/:wid 空间壳、空间选择、跨空间缓存隔离、旧深链一次重定向与不可见空间回退。4 条新增浏览器用例、m1/m3/m4/m5/m6 回归与跨栈代理测试全部通过；发现并修复了移动端自进化页横向溢出与测试环境外部表未初始化两个问题。</p>
+    <span class="meta">2026-11-15 · macOS · Chrome headless · 1408×900 与 390×844</span>
+    <div class="metrics"><div class="metric"><b>6</b><span>冒烟场景</span></div><div class="metric"><b>4/4</b><span>新增空间壳 E2E</span></div><div class="metric"><b>6/6</b><span>跨栈代理集成</span></div><div class="metric"><b>0</b><span>未解决缺陷</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-11-15 · macOS · Chrome headless · 1408×900 与 390×844</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>代码提交</dt><dd>c3eebbf（PR #261；截图采集于 5519a9a，之后仅非视觉修复）</dd></div><div class="fact"><dt>分支</dt><dd>agent/develop-m7-08-b2e3bbf74fc0</dd></div><div class="fact"><dt>应用</dt><dd>harness-evolution web + api（sqlite, demo fixtures）</dd></div><div class="fact"><dt>测试方式</dt><dd>真实 API + Vite proxy + CDP 无头 Chrome</dd></div><div class="fact"><dt>数据</dt><dd>fixtures:seed（m2-synthetic）与独立临时数据目录</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>6 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>未登录访问空间路由</td><td><span class="status pass">PASS</span></td><td>访问 /workspaces/ws-default/sessions 跳 /login，redirect 参数保留原路径。</td><td class="evidence">01-anonymous-login-redirect.png</td></tr><tr><td class="num">02</td><td>空间选择页</td><td><span class="status pass">PASS</span></td><td>两个可见空间各展示名称、角色、used/quota 与成员数，卡片可进入。</td><td class="evidence">02-workspace-chooser.png</td></tr><tr><td class="num">03</td><td>空间壳与顶栏切换器</td><td><span class="status pass">PASS</span></td><td>Session 浏览器在空间壳内渲染，顶栏显示当前空间、角色与配额入口。</td><td class="evidence">03-workspace-sessions.png<br>04-workspace-picker.png</td></tr><tr><td class="num">04</td><td>切换空间后不复用旧缓存</td><td><span class="status pass">PASS</span></td><td>从默认空间切到空空间后列表为空，不出现旧空间 Session；切回后重新拉取。</td><td class="evidence">05-empty-workspace.png</td></tr><tr><td class="num">05</td><td>旧深链一次重定向</td><td><span class="status pass">PASS</span></td><td>旧 /sessions/:sid/errors 替换为 /workspaces/ws-default/...，history.state.replaced=true。</td><td class="evidence">06-legacy-deep-link.png</td></tr><tr><td class="num">06</td><td>不可见空间回选择页</td><td><span class="status pass">PASS</span></td><td>wid 不在 auth/session 可见空间内时进入 /workspaces?reason=forbidden，并显示无权限提示。</td><td class="evidence">—</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P2 移动端自进化页横向溢出 12px<br>P2 auth/session 启动依赖外部 bad_cases 表<br>P3 默认落地页暂为 Session 列表而非总览<br>P3 归因/探针仍走可见空间并集兼容端点</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>移动端自进化页横向溢出 12px</h3><dl><div><dt>实际</dt><dd>390px 视口下 .evolution-page-frame scrollWidth=402。</dd></div><div><dt>预期</dt><dd>scrollWidth 等于 clientWidth，顶栏与内容不横向滚动。</dd></div><div><dt>根因</dt><dd>空间壳 main 改为全宽后，V1 的页面框仍按旧的 1280 居中列做 -12px/宽度 +24px 补偿。</dd></div></dl><div class="fixed">已修复 · 5519a9a</div></article><article class="issueCard"><span class="tag">P2</span><h3>auth/session 启动依赖外部 bad_cases 表</h3><dl><div><dt>实际</dt><dd>未 seed 外部表的 E2E/集成环境启动后停在登录页。</dd></div><div><dt>预期</dt><dd>空间壳启动前外部表已初始化；测试环境应显式 bootstrap。</dd></div><div><dt>根因</dt><dd>auth/session 的 used 聚合读取外部引导表；m1 与跨栈代理测试原先未 seed。</dd></div></dl><div class="fixed">已修复 · 5519a9a（测试 bootstrap）</div></article><article class="issueCard"><span class="tag">P3</span><h3>默认落地页暂为 Session 列表而非总览</h3><dl><div><dt>实际</dt><dd>/workspaces/:wid 默认进入 sessions。</dd></div><div><dt>预期</dt><dd>设计 08 §1 的默认落地页是 overview。</dd></div><div><dt>根因</dt><dd>overview 属于 m8-04，尚未实现；m7-08 不新建占位页。</dd></div></dl><div class="fixed">已记录 · 待 m8-04</div></article><article class="issueCard"><span class="tag">P3</span><h3>归因/探针仍走可见空间并集兼容端点</h3><dl><div><dt>实际</dt><dd>bad case 详情已空间化，/analysis 与 /probes 仍是兼容端点。</dd></div><div><dt>预期</dt><dd>空间级归因端点落地后，同一 case 的多空间归因各自隔离。</dd></div><div><dt>根因</dt><dd>m7-06 只提供可见空间并集；m7-08 scope 不含 apps/api。</dd></div></dl><div class="fixed">已记录 · Agent Note 欠账</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>6 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="01-anonymous-login-redirect.png" alt="未登录访问空间路由跳到登录页"><figcaption><b>01 · 未登录回退</b><span>redirect 参数保留原空间路径，登录后可直接回到目标页。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="02-workspace-chooser.png" alt="空间选择页"><figcaption><b>02 · 空间选择</b><span>两卡片并列展示角色、bad case 额度与成员数。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="03-workspace-sessions.png" alt="空间壳内的 Session 浏览器"><figcaption><b>03 · 空间壳</b><span>顶栏显示当前空间与角色；页面全部带 wid。</span></figcaption></figure><figure class="issue"><img loading="lazy" src="04-workspace-picker.png" alt="空间切换器展开"><figcaption><b>04 · 切换器</b><span>切换器列出全部可见空间及配额进度。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="05-empty-workspace.png" alt="切换到空空间后列表为空"><figcaption><b>05 · 缓存隔离</b><span>空空间不显示旧空间 Session，证明缓存未跨空间命中。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="06-legacy-deep-link.png" alt="旧深链重定向到空间错误详情"><figcaption><b>06 · 旧深链</b><span>旧 /sessions/:sid/errors 已在空间壳内打开。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>路由守卫与旧链接解析</td><td>UT + E2E</td><td>router.test.ts 15 条 + auth-flow 3 条；空间壳 E2E 覆盖未登录、不可见空间与一次重定向。</td><td>保留；每次新增空间路由时补一条守卫断言。</td></tr><tr><td>缓存隔离与页面状态重建</td><td>UT + E2E</td><td>queryKeys 前缀、WorkspacePicker 切空间、App RouterView key 均有测试。</td><td>新增工作空间级资源时沿用 [&#39;ws&#39;, wid] 前缀。</td></tr><tr><td>数据端点空间化</td><td>UT + E2E</td><td>Session/bad case/evolution/catalog/SSE ticket 均带 wid；m3/m4/m5 回归通过。</td><td>后端新增空间端点时同步 API 模块与 query key。</td></tr><tr><td>视觉与响应式</td><td>E2E + 截图</td><td>1408 与 390 两档通过；Before/After 截图已归档。</td><td>m8-04 总览页加入后重跑同一组视口。</td></tr><tr><td>真实外部服务</td><td>未覆盖</td><td>使用 sqlite + demo fixtures；未连接真实轨迹服务或生产数据库。</td><td>发布前按部署 issue 做一次真实环境冒烟。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>Ready for review · follow-ups tracked</small></div>
+    <article class="card conclusion pass"><p><strong>空间壳、守卫与缓存隔离在真实浏览器链路中按预期工作；没有未解决的阻断缺陷。两个已修复问题均通过自动化回归覆盖。</strong></p><ul><li>m8-04 交付总览后，把默认落地页从 sessions 切到 overview 并重跑本报告。</li><li>空间级归因端点落地前，归因只做 wid 缓存隔离与 Session 归属校验。</li><li>发布前在真实部署上补一次外部表初始化与登录冒烟。</li></ul></article>
+  </section>
+
+  <p class="foot">由 dsh-superagent 在 ZTGolem 账号下生成；证据来自真实 API + Vite proxy + 无头 Chrome。</p>
+</main>
+</body>
+</html>

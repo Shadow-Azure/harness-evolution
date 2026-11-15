@@ -102,7 +102,7 @@ const fiveStates = [
 describe("BadCaseList", () => {
   it("renders all five labels, summaries and stable short IDs", () => {
     const wrapper = mount(BadCaseList, {
-      props: { problems: fiveStates },
+      props: { wid: "ws-test", problems: fiveStates },
     });
 
     expect(wrapper.get("[data-testid='problem-list']").text()).toContain(
@@ -144,7 +144,7 @@ describe("BadCaseList", () => {
     expect(firstId.text()).toBe("case-una");
     expect(firstId.attributes("title")).toBe("case-unanalyzed");
     expect(firstId.attributes("href")).toBe(
-      "/sessions/root-1/errors?case=case-unanalyzed&tab=desc",
+      "/workspaces/ws-test/sessions/root-1/errors?case=case-unanalyzed&tab=desc",
     );
     expect(firstId.attributes("target")).toBe("_blank");
     expect(firstId.attributes("rel")).toBe("noopener noreferrer");
@@ -156,6 +156,7 @@ describe("BadCaseList", () => {
   it("keeps degraded problems visible with an explicit diagnostic label", () => {
     const wrapper = mount(BadCaseList, {
       props: {
+        wid: "ws-test",
         problems: [
           badCaseFixture({
             badCaseId: "case-degraded",
@@ -174,6 +175,7 @@ describe("BadCaseList", () => {
   it("emits the real badCaseId and gives every row one active source of truth", async () => {
     const wrapper = mount(BadCaseList, {
       props: {
+        wid: "ws-test",
         problems: fiveStates,
         activeBadCaseId: "case-prompt",
       },
@@ -211,7 +213,7 @@ describe("BadCaseList", () => {
 
   it("keeps the ID deep link independent from card selection", async () => {
     const wrapper = mount(BadCaseList, {
-      props: { problems: fiveStates },
+      props: { wid: "ws-test", problems: fiveStates },
     });
 
     const idLink = wrapper.get(
@@ -235,7 +237,7 @@ describe("BadCaseList", () => {
 
   it("groups compact card status and target below the title", () => {
     const wrapper = mount(BadCaseList, {
-      props: { problems: fiveStates, compact: true },
+      props: { wid: "ws-test", problems: fiveStates, compact: true },
     });
 
     const card = wrapper.get("#problem-row-case-error");
@@ -254,7 +256,7 @@ describe("BadCaseList", () => {
 
   it("links analyzed issue cards to their attribution report", async () => {
     const wrapper = mount(BadCaseList, {
-      props: { problems: fiveStates, compact: true },
+      props: { wid: "ws-test", problems: fiveStates, compact: true },
     });
 
     const reportLink = wrapper.get(
@@ -263,7 +265,7 @@ describe("BadCaseList", () => {
     expect(reportLink.text()).toBe("probe-er");
     expect(reportLink.attributes("title")).toBe("probe-error");
     expect(reportLink.attributes("href")).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      "/workspaces/ws-test/sessions/root-1/errors?case=case-error&tab=attr",
     );
     expect(reportLink.attributes("target")).toBe("_blank");
     expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
@@ -289,7 +291,7 @@ describe("BadCaseList", () => {
       value: scrollIntoView,
     });
     const wrapper = mount(BadCaseList, {
-      props: { problems: fiveStates },
+      props: { wid: "ws-test", problems: fiveStates },
       attachTo: document.body,
     });
 
@@ -304,19 +306,19 @@ describe("BadCaseList", () => {
 
   it("renders loading, empty, and retryable error states independently", async () => {
     const loading = mount(BadCaseList, {
-      props: { problems: [], loading: true },
+      props: { wid: "ws-test", problems: [], loading: true },
     });
     expect(loading.get("[role='status']").attributes("aria-label")).toBe(
       "正在读取问题",
     );
 
     const empty = mount(BadCaseList, {
-      props: { problems: [] },
+      props: { wid: "ws-test", problems: [] },
     });
     expect(empty.text()).toContain("暂无问题");
 
     const failed = mount(BadCaseList, {
-      props: { problems: [], error: new Error("offline") },
+      props: { wid: "ws-test", problems: [], error: new Error("offline") },
     });
     expect(failed.text()).toContain("问题列表读取失败");
     await failed.get("button").trigger("click");

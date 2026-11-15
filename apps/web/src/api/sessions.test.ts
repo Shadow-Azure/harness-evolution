@@ -11,6 +11,8 @@ import {
 } from "./sessions";
 import { server } from "../test/server";
 
+const workspaceId = "ws-test";
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -19,7 +21,7 @@ describe("sessions api", () => {
   it("encodes list filters without reordering the server response", async () => {
     let requestUrl = "";
     server.use(
-      http.get("/api/sessions", ({ request }) => {
+      http.get(`/api/workspaces/${workspaceId}/sessions`, ({ request }) => {
         requestUrl = request.url;
         return HttpResponse.json({
           items: [
@@ -50,7 +52,7 @@ describe("sessions api", () => {
       }),
     );
 
-    const result = await listSessions({
+    const result = await listSessions(workspaceId, {
       q: "a&b",
       status: "problem",
       sort: "agents",
@@ -63,23 +65,25 @@ describe("sessions api", () => {
     expect(result.items.map((item) => item.id)).toEqual(["s-2"]);
   });
 
-  it("URL-encodes a session id", async () => {
+  it("URL-encodes a workspace and session id", async () => {
     let pathname = "";
     server.use(
-      http.get("/api/sessions/:id", ({ request }) => {
+      http.get("/api/workspaces/:wid/sessions/:id", ({ request }) => {
         pathname = new URL(request.url).pathname;
         return HttpResponse.json({});
       }),
     );
 
-    await getSession("root/with space");
-    expect(pathname).toBe("/api/sessions/root%2Fwith%20space");
+    await getSession("ws/with space", "root/with space");
+    expect(pathname).toBe(
+      "/api/workspaces/ws%2Fwith%20space/sessions/root%2Fwith%20space",
+    );
   });
 
   it("URL-encodes the tree request", async () => {
     let pathname = "";
     server.use(
-      http.get("/api/sessions/:id/tree", ({ request }) => {
+      http.get("/api/workspaces/:wid/sessions/:id/tree", ({ request }) => {
         pathname = new URL(request.url).pathname;
         return HttpResponse.json({
           sessionId: "root/with space",
@@ -89,25 +93,27 @@ describe("sessions api", () => {
       }),
     );
 
-    const result = await getSessionTree("root/with space");
+    const result = await getSessionTree(workspaceId, "root/with space");
 
-    expect(pathname).toBe("/api/sessions/root%2Fwith%20space/tree");
+    expect(pathname).toBe(
+      `/api/workspaces/${workspaceId}/sessions/root%2Fwith%20space/tree`,
+    );
     expect(result.sessionId).toBe("root/with space");
   });
 
   it("URL-encodes the session problem request", async () => {
     let pathname = "";
     server.use(
-      http.get("/api/sessions/:id/bad-cases", ({ request }) => {
+      http.get("/api/workspaces/:wid/sessions/:id/bad-cases", ({ request }) => {
         pathname = new URL(request.url).pathname;
         return HttpResponse.json({ items: [] });
       }),
     );
 
-    const result = await listSessionBadCases("root/with space");
+    const result = await listSessionBadCases(workspaceId, "root/with space");
 
     expect(pathname).toBe(
-      "/api/sessions/root%2Fwith%20space/bad-cases",
+      `/api/workspaces/${workspaceId}/sessions/root%2Fwith%20space/bad-cases`,
     );
     expect(result.items).toEqual([]);
   });

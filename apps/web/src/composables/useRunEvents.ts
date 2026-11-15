@@ -89,6 +89,7 @@ function parseLifecycleNotice(data: unknown): RunLifecycleNotice {
  * state. A dropped connection retries with a fresh ticket after three seconds
  * so the cursor stays authoritative. Page restarts (`reset`) close the stream
  * and hand control back to the REST snapshot.
+ * @param workspaceId Workspace route identifier bound to the ticket and cache.
  * @param rid Evolution run identifier.
  * @param loadedSeq Highest durable event sequence already rendered, advanced in place.
  * @param isActive Whether the run is preparing or running and may be subscribed.
@@ -97,6 +98,7 @@ function parseLifecycleNotice(data: unknown): RunLifecycleNotice {
  * @returns No value; cleanup is registered on the owning component.
  */
 export function useRunEvents(
+  workspaceId: MaybeRefOrGetter<string>,
   rid: MaybeRefOrGetter<string>,
   loadedSeq: Ref<number>,
   isActive: MaybeRefOrGetter<boolean>,
@@ -105,7 +107,10 @@ export function useRunEvents(
 ): void {
   const queryClient = useQueryClient();
   const eventSourceFactory = options.eventSource ?? globalThis.EventSource;
-  const requestTicket = options.requestTicket ?? requestEventTicket;
+  const requestTicket =
+    options.requestTicket ??
+    ((topics: string[], lastEventId: number) =>
+      requestEventTicket(topics, lastEventId, toValue(workspaceId)));
   const reconnectDelayMs = options.reconnectDelayMs ?? 3_000;
   const scheduleTimer =
     options.setTimeoutFn ??
@@ -123,7 +128,7 @@ export function useRunEvents(
 
   function invalidateRun(): void {
     void queryClient.invalidateQueries({
-      queryKey: queryKeys.evolutionRun(toValue(rid)),
+      queryKey: queryKeys.evolutionRun(toValue(workspaceId), toValue(rid)),
     });
   }
 

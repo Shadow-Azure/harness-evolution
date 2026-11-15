@@ -7,40 +7,51 @@ import type {
 
 import { request } from "./http";
 
-/**
- * Read every evolution target configuration, including disabled rows.
- * @returns Target configuration collection.
- */
-export function listEvolutionTargets(): Promise<EvolutionTargetList> {
-  return request<EvolutionTargetList>("/api/evolution/targets");
+function workspaceTargetsPath(workspaceId: string, suffix = ""): string {
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/evolution/targets${suffix}`;
 }
 
 /**
- * Create one evolution target.
+ * Read every evolution target configuration of one workspace, including disabled rows.
+ * @param workspaceId Route workspace identifier.
+ * @returns Target configuration collection.
+ */
+export function listEvolutionTargets(
+  workspaceId: string,
+): Promise<EvolutionTargetList> {
+  return request<EvolutionTargetList>(workspaceTargetsPath(workspaceId));
+}
+
+/**
+ * Create one evolution target owned by the route workspace.
+ * @param workspaceId Route workspace identifier.
  * @param body Mutable target configuration.
  * @returns Persisted target.
  */
 export function createEvolutionTarget(
+  workspaceId: string,
   body: EvolutionTargetWrite,
 ): Promise<EvolutionTarget> {
-  return request<EvolutionTarget>("/api/evolution/targets", {
+  return request<EvolutionTarget>(workspaceTargetsPath(workspaceId), {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
 /**
- * Update one evolution target.
+ * Update one evolution target owned by the route workspace.
+ * @param workspaceId Route workspace identifier.
  * @param id Stable target identifier.
  * @param body Mutable target configuration.
  * @returns Updated target.
  */
 export function updateEvolutionTarget(
+  workspaceId: string,
   id: string,
   body: EvolutionTargetWrite,
 ): Promise<EvolutionTarget> {
   return request<EvolutionTarget>(
-    `/api/evolution/targets/${encodeURIComponent(id)}`,
+    workspaceTargetsPath(workspaceId, `/${encodeURIComponent(id)}`),
     {
       method: "PUT",
       body: JSON.stringify(body),
@@ -50,24 +61,31 @@ export function updateEvolutionTarget(
 
 /**
  * Delete one evolution target when no active run references it.
+ * @param workspaceId Route workspace identifier.
  * @param id Stable target identifier.
  * @returns No value.
  */
-export function deleteEvolutionTarget(id: string): Promise<void> {
-  return request<void>(`/api/evolution/targets/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
+export function deleteEvolutionTarget(
+  workspaceId: string,
+  id: string,
+): Promise<void> {
+  return request<void>(
+    workspaceTargetsPath(workspaceId, `/${encodeURIComponent(id)}`),
+    { method: "DELETE" },
+  );
 }
 
 /**
  * Read remote versions and the configured baseline for one target.
+ * @param workspaceId Route workspace identifier.
  * @param id Stable target identifier.
  * @returns Sorted remote tags and the persisted default ref.
  */
 export function listEvolutionTargetVersions(
+  workspaceId: string,
   id: string,
 ): Promise<EvolutionTargetVersions> {
   return request<EvolutionTargetVersions>(
-    `/api/evolution/targets/${encodeURIComponent(id)}/versions`,
+    workspaceTargetsPath(workspaceId, `/${encodeURIComponent(id)}/versions`),
   );
 }

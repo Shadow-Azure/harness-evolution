@@ -21,6 +21,8 @@ import {
 } from "../../composables/useEvolutionRunDetail";
 import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import { useRunEvents } from "../../composables/useRunEvents";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
+import { workspacePath } from "../../router/workspace";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -35,6 +37,7 @@ defineOptions({ name: "EvolutionRunDetailPage" });
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
+const workspaceId = useWorkspaceId();
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -42,7 +45,7 @@ const {
   error: runError,
   isPending: runPending,
   refetch: refetchRun,
-} = useEvolutionRunDetail(runId, {
+} = useEvolutionRunDetail(workspaceId, runId, {
   refetchInterval: runDetailRefetchInterval,
 });
 
@@ -84,7 +87,7 @@ const RETRY_ACCEPTED_FALLBACK_MS = 10_000;
 
 function currentBlockedFacts(): { errorAt: string; nextRetryAt: string } {
   const snapshot = queryClient.getQueryData<EvolutionRunDetail>(
-    queryKeys.evolutionRun(runId.value),
+    queryKeys.evolutionRun(workspaceId.value, runId.value),
   );
   return {
     errorAt: snapshot?.error?.at ?? "",
@@ -127,7 +130,7 @@ function resetRunSnapshot(): void {
   void refetchRun();
 }
 
-useRunEvents(runId, loadedSeq, isActive, {
+useRunEvents(workspaceId, runId, loadedSeq, isActive, {
   onEvent: appendLiveEvent,
   onReset: resetRunSnapshot,
 });
@@ -166,6 +169,7 @@ const {
   isPending: stepPending,
   refetch: refetchStep,
 } = useEvolutionRunStep(
+  workspaceId,
   runId,
   selectedKey,
   computed(() => selectedStep.value?.clickable === true),
@@ -332,10 +336,10 @@ async function retryBlockedRun(): Promise<void> {
   retryError.value = "";
   let accepted = false;
   try {
-    await retryEvolutionRun(runId.value);
+    await retryEvolutionRun(workspaceId.value, runId.value);
     accepted = true;
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.evolutionRun(runId.value),
+      queryKey: queryKeys.evolutionRun(workspaceId.value, runId.value),
     });
   } catch (caught) {
     if (!accepted) retryError.value = retryErrorMessage(caught);
@@ -375,7 +379,7 @@ function clearMissingClusterFocus(): void {
   >
     <RouterLink
       class="back"
-      to="/evolution"
+      :to="workspacePath(workspaceId, 'evolution')"
     >
       ← 返回自进化列表
     </RouterLink>
@@ -769,6 +773,7 @@ function clearMissingClusterFocus(): void {
         </p>
         <RunStepContent
           v-else
+          :wid="workspaceId"
           :run="run"
           :step="stepData"
           :condition="condition"
@@ -780,6 +785,7 @@ function clearMissingClusterFocus(): void {
       </template>
       <RunLogPanel
         v-else
+        :wid="workspaceId"
         :run-id="run.runId"
         :steps="steps"
         :live-events="liveEvents"

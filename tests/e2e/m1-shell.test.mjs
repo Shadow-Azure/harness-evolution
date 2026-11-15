@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -17,6 +17,7 @@ import {
 
 const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const workspaceBase = "/workspaces/ws-default";
 let api;
 let web;
 let apiLogs = "";
@@ -95,6 +96,25 @@ before(async () => {
     const webPort = await availablePort();
     dataDir = await mkdtemp(path.join(tmpdir(), "harness-e2e-"));
     baseUrl = `http://127.0.0.1:${webPort}`;
+
+    // The workspace shell bootstraps from auth/session, whose aggregates read
+    // the externally bootstrapped bad_cases table. Seed the M1 identity scope
+    // first so migrations create that table without adding demo sessions.
+    const setup = spawnSync(pnpm, ["fixtures:seed"], {
+      cwd: root,
+      env: {
+        ...process.env,
+        HE_ADMIN_PASSWORD: "m1-shell-initial-password",
+        HE_ADMIN_USERNAME: "admin",
+        HE_DATA_DIR: dataDir,
+        HE_DB_DIALECT: "sqlite",
+        HE_FIXTURE_MANIFEST: "fixtures/m1-shell.json",
+        HE_JWT_SECRET: "m1-shell-e2e-signing-secret-with-sufficient-length",
+        HE_PHASE: "demo",
+      },
+      encoding: "utf8",
+    });
+    assert.equal(setup.status, 0, setup.stderr || setup.stdout);
 
     api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
       cwd: root,
@@ -325,7 +345,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       })()`,
       "authenticated M1 shell",
     );
-    assert.equal(initial.path, "/sessions");
+    assert.equal(initial.path, `${workspaceBase}/sessions`);
     assert.deepEqual(initial.links, ["Session 错误查看会话轨迹与归因", "自进化报告驱动的迭代优化"]);
     assert.equal(initial.badge, "演示数据");
     assert.equal(initial.pending, "待处理 0");
@@ -375,14 +395,14 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
     assert.deepEqual(idleSync, { action: "立即处理", pending: "待处理 0" });
 
     await page.session.send("Runtime.evaluate", {
-      expression: `document.querySelector('nav a[href="/evolution"]').click()`,
+      expression: `document.querySelector('#tn-evo').click()`,
     });
     const evolutionPage = await waitForDocument(
       page.session,
       `(() => {
         const active = document.querySelector("nav a.tn-item.active");
         if (
-          location.pathname !== "/evolution" ||
+          location.pathname !== "${workspaceBase}/evolution" ||
           !document.querySelector("[data-testid='evolution-run-list']") ||
           !document.body.textContent.includes("当前没有正在执行的自进化")
         ) {
@@ -395,7 +415,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       })()`,
       "evolution run list",
     );
-    assert.equal(evolutionPage.path, "/evolution");
+    assert.equal(evolutionPage.path, `${workspaceBase}/evolution`);
     assert.equal(evolutionPage.underline, "rgb(138, 85, 201)");
 
     await page.session.send("Runtime.evaluate", {
@@ -411,7 +431,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       `(() => {
         const active = document.querySelector("nav a.tn-item.active");
         if (
-          location.pathname !== "/sessions" ||
+          location.pathname !== "${workspaceBase}/sessions" ||
           !document.querySelector(".session-browser") ||
           !active
         ) return null;
@@ -422,7 +442,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       })()`,
       "retired errors redirect",
     );
-    assert.equal(retiredErrors.path, "/sessions");
+    assert.equal(retiredErrors.path, `${workspaceBase}/sessions`);
     assert.equal(retiredErrors.underline, "rgb(47, 111, 224)");
 
     await page.session.send("Runtime.evaluate", {
@@ -454,7 +474,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
 
     await page.session.send("Runtime.evaluate", {
       expression: `(() => {
-        window.history.pushState({}, "", "/evolution");
+        window.history.pushState({}, "", "${workspaceBase}/evolution");
         window.dispatchEvent(new PopStateEvent("popstate", {
           state: window.history.state,
         }));
@@ -462,7 +482,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
     });
     await waitForDocument(
       page.session,
-      `location.pathname === "/evolution" &&
+      `location.pathname === "${workspaceBase}/evolution" &&
         Boolean(document.querySelector("[data-testid='evolution-run-list']"))`,
       "return to evolution run list",
     );
@@ -497,7 +517,7 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       })()`,
       "responsive M1 shell",
     );
-    assert.equal(shell.path, "/evolution", JSON.stringify(shell));
+    assert.equal(shell.path, `${workspaceBase}/evolution`, JSON.stringify(shell));
     assert.equal(shell.hasMenu, true, JSON.stringify(shell));
     assert.equal(shell.syncDisplay, "none");
     assert.equal(shell.brandAriaLabel, "Harness Evolution");
@@ -547,7 +567,7 @@ test("m1-shell opens the direct Evolution run-list URL", async () => {
       "direct evolution run list",
     );
 
-    assert.equal(runList.path, "/evolution");
+    assert.equal(runList.path, `${workspaceBase}/evolution`);
     assert.ok(runList.width > 0, JSON.stringify(runList));
     assert.ok(runList.height > 0, JSON.stringify(runList));
     assert.equal(runList.hasCanvas, false);

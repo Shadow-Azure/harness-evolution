@@ -11,6 +11,8 @@ import {
 } from "./evolutionRuns";
 import { server } from "../test/server";
 
+const workspaceId = "ws-test";
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -21,64 +23,76 @@ const response: EvolutionRunList = {
 };
 
 describe("evolution run API", () => {
-  it("reads the backend-grouped run list from the exact endpoint", async () => {
+  it("reads the workspace run list from the exact endpoint", async () => {
     let method = "";
     let path = "";
     server.use(
-      http.get("/api/evolution/runs", ({ request }) => {
+      http.get(`/api/workspaces/${workspaceId}/evolution/runs`, ({ request }) => {
         method = request.method;
         path = new URL(request.url).pathname;
         return HttpResponse.json(response);
       }),
     );
 
-    await expect(listEvolutionRuns()).resolves.toEqual(response);
+    await expect(listEvolutionRuns(workspaceId)).resolves.toEqual(response);
     expect(method).toBe("GET");
-    expect(path).toBe("/api/evolution/runs");
+    expect(path).toBe(`/api/workspaces/${workspaceId}/evolution/runs`);
   });
 
-  it("reads one run step from the key-specific endpoint", async () => {
+  it("reads one run step from the key-specific workspace endpoint", async () => {
     let path = "";
     server.use(
-      http.get("/api/evolution/runs/:runId/steps/:step", ({ request }) => {
-        path = new URL(request.url).pathname;
-        return HttpResponse.json({
-          key: "iteration",
-          index: 4,
-          title: "迭代优化",
-          status: "active",
-          clickable: true,
-          payload: { rounds: [] },
-        });
-      }),
+      http.get(
+        "/api/workspaces/:wid/evolution/runs/:runId/steps/:step",
+        ({ request }) => {
+          path = new URL(request.url).pathname;
+          return HttpResponse.json({
+            key: "iteration",
+            index: 4,
+            title: "迭代优化",
+            status: "active",
+            clickable: true,
+            payload: { rounds: [] },
+          });
+        },
+      ),
     );
 
-    const response = await getEvolutionRunStep("run with spaces", "iteration");
+    const step = await getEvolutionRunStep(
+      workspaceId,
+      "run with spaces",
+      "iteration",
+    );
 
-    expect(response.key).toBe("iteration");
-    expect(path).toBe("/api/evolution/runs/run%20with%20spaces/steps/iteration");
+    expect(step.key).toBe("iteration");
+    expect(path).toBe(
+      `/api/workspaces/${workspaceId}/evolution/runs/run%20with%20spaces/steps/iteration`,
+    );
   });
 
   it("reads execution events with the documented cursor and level filter", async () => {
     let query = "";
     server.use(
-      http.get("/api/evolution/runs/:runId/events", ({ request }) => {
-        query = new URL(request.url).search;
-        return HttpResponse.json({
-          items: [],
-          nextSeq: 12,
-          hasMore: false,
-        });
-      }),
+      http.get(
+        "/api/workspaces/:wid/evolution/runs/:runId/events",
+        ({ request }) => {
+          query = new URL(request.url).search;
+          return HttpResponse.json({
+            items: [],
+            nextSeq: 12,
+            hasMore: false,
+          });
+        },
+      ),
     );
 
-    const response = await listEvolutionRunEvents("run events", {
+    const page = await listEvolutionRunEvents(workspaceId, "run events", {
       afterSeq: 12,
       limit: 50,
       level: "warn",
     });
 
-    expect(response.nextSeq).toBe(12);
+    expect(page.nextSeq).toBe(12);
     expect(query).toBe("?afterSeq=12&limit=50&level=warn");
   });
 });

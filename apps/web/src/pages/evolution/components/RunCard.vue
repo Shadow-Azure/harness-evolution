@@ -2,7 +2,10 @@
 import type { EvolutionRunCard } from "@harness/contracts";
 import { computed, ref } from "vue";
 
+import { workspacePath } from "../../../router/workspace";
+
 const props = defineProps<{
+  wid: string;
   run: EvolutionRunCard;
 }>();
 
@@ -61,9 +64,12 @@ const targetLabel = computed(() =>
 );
 
 const detailPath = computed(() =>
-  props.run.mode === "cluster_only"
-    ? `/evolution/cluster/${props.run.runId}`
-    : `/evolution/runs/${props.run.runId}`,
+  workspacePath(
+    props.wid,
+    props.run.mode === "cluster_only"
+      ? `evolution/cluster/${props.run.runId}`
+      : `evolution/runs/${props.run.runId}`,
+  ),
 );
 
 const windowLabel = computed(() => {

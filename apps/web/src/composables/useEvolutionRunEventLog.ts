@@ -24,12 +24,14 @@ export function mergeRunEvents(
 
 /**
  * Load and paginate durable execution-log events for one run.
+ * @param workspaceId Workspace route identifier.
  * @param runId Evolution run identifier.
  * @param level Active severity filter.
  * @param enabled Whether the log tab is visible.
  * @returns Observable event state and refresh/load-more actions.
  */
 export function useEvolutionRunEventLog(
+  workspaceId: MaybeRefOrGetter<string>,
   runId: MaybeRefOrGetter<string>,
   level: MaybeRefOrGetter<EvolutionRunEventLevel | undefined>,
   enabled: MaybeRefOrGetter<boolean>,
@@ -59,11 +61,15 @@ export function useEvolutionRunEventLog(
     error.value = null;
     appendError.value = null;
     try {
-      const page = await listEvolutionRunEvents(toValue(runId), {
-        afterSeq: 0,
-        limit: 100,
-        level: toValue(level),
-      });
+      const page = await listEvolutionRunEvents(
+        toValue(workspaceId),
+        toValue(runId),
+        {
+          afterSeq: 0,
+          limit: 100,
+          level: toValue(level),
+        },
+      );
       if (generation !== requestGeneration) return;
       items.value = mergeRunEvents([], page.items);
       nextSeq.value = page.nextSeq;
@@ -76,16 +82,26 @@ export function useEvolutionRunEventLog(
   }
 
   async function loadMore(): Promise<void> {
-    if (!toValue(enabled) || !hasMore.value || isPending.value) return;
+    if (
+      !toValue(enabled) ||
+      !toValue(workspaceId) ||
+      !hasMore.value ||
+      isPending.value
+    )
+      return;
     const generation = requestGeneration;
     isPending.value = true;
     appendError.value = null;
     try {
-      const page = await listEvolutionRunEvents(toValue(runId), {
-        afterSeq: nextSeq.value,
-        limit: 100,
-        level: toValue(level),
-      });
+      const page = await listEvolutionRunEvents(
+        toValue(workspaceId),
+        toValue(runId),
+        {
+          afterSeq: nextSeq.value,
+          limit: 100,
+          level: toValue(level),
+        },
+      );
       if (generation !== requestGeneration) return;
       items.value = mergeRunEvents(items.value, page.items);
       nextSeq.value = page.hasMore ? page.nextSeq : Math.max(nextSeq.value, page.nextSeq);
@@ -98,15 +114,20 @@ export function useEvolutionRunEventLog(
   }
 
   watch(
-    [() => toValue(runId), () => toValue(level), () => toValue(enabled)],
-    ([currentRun, currentLevel, visible]) => {
-      const nextSnapshotKey = `${currentRun ?? ""}\0${currentLevel ?? ""}`;
+    [
+      () => toValue(workspaceId),
+      () => toValue(runId),
+      () => toValue(level),
+      () => toValue(enabled),
+    ],
+    ([currentWorkspace, currentRun, currentLevel, visible]) => {
+      const nextSnapshotKey = `${currentWorkspace ?? ""}\0${currentRun ?? ""}\0${currentLevel ?? ""}`;
       if (nextSnapshotKey !== snapshotKey) {
         snapshotKey = nextSnapshotKey;
         requestGeneration += 1;
         resetSnapshot();
       }
-      if (visible && currentRun) void refresh();
+      if (visible && currentRun && currentWorkspace) void refresh();
     },
     { immediate: true },
   );

@@ -22,6 +22,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m5-detail-initial-password";
 const finalPassword = "m5-detail-final-password";
 const secret = "m5-detail-signing-secret-with-sufficient-length";
+const ws = "/workspaces/ws-default";
 let api;
 let web;
 let dataDir;
@@ -251,7 +252,7 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     const running = await waitForDocument(
       page.session,
       `(() => {
-        if (location.pathname !== "/evolution/runs/run-running") return null;
+        if (location.pathname !== "${ws}/evolution/runs/run-running") return null;
         const page = document.querySelector("[data-testid='evolution-run-detail']");
         if (!page || !page.textContent.includes("evo/run-running/candidate/r1")) return null;
         return {
@@ -335,7 +336,7 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
         page.session,
         `(() => {
           if (
-            location.pathname !== "/sessions/session-run-running-1/errors" ||
+            location.pathname !== "${ws}/sessions/session-run-running-1/errors" ||
             !location.search.includes("case=case-run-running-1") ||
             !location.search.includes("tab=attr")
           ) return null;

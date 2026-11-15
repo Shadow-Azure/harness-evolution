@@ -1,6 +1,6 @@
 import type { EvolutionTarget, EvolutionTargetWrite } from "@harness/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
-import { computed, type Ref } from "vue";
+import { computed, toValue, type MaybeRefOrGetter, type Ref } from "vue";
 
 import {
   createEvolutionTarget,
@@ -13,26 +13,35 @@ import { queryKeys } from "../api/queryKeys";
 
 async function invalidateTargetDependents(
   queryClient: ReturnType<typeof useQueryClient>,
+  workspaceId: string,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: queryKeys.evolutionTargets }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.catalogs }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.evolutionTargets(workspaceId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.catalogs(workspaceId),
+    }),
   ]);
 }
 
 /**
- * Read target configuration and expose cache-aware CRUD mutations.
+ * Read target configuration of one workspace and expose cache-aware CRUD mutations.
+ * @param workspaceId Workspace route identifier.
  * @returns Collection query state and mutation methods.
  */
-export function useEvolutionTargets() {
+export function useEvolutionTargets(workspaceId: MaybeRefOrGetter<string>) {
   const queryClient = useQueryClient();
   const targets = useQuery({
-    queryKey: queryKeys.evolutionTargets,
-    queryFn: listEvolutionTargets,
+    queryKey: computed(() => queryKeys.evolutionTargets(toValue(workspaceId))),
+    queryFn: () => listEvolutionTargets(toValue(workspaceId)),
+    enabled: computed(() => toValue(workspaceId).length > 0),
   });
   const createMutation = useMutation({
-    mutationFn: (body: EvolutionTargetWrite) => createEvolutionTarget(body),
-    onSuccess: () => invalidateTargetDependents(queryClient),
+    mutationFn: (body: EvolutionTargetWrite) =>
+      createEvolutionTarget(toValue(workspaceId), body),
+    onSuccess: () =>
+      invalidateTargetDependents(queryClient, toValue(workspaceId)),
   });
   const updateMutation = useMutation({
     mutationFn: ({
@@ -41,12 +50,15 @@ export function useEvolutionTargets() {
     }: {
       id: string;
       body: EvolutionTargetWrite;
-    }) => updateEvolutionTarget(id, body),
-    onSuccess: () => invalidateTargetDependents(queryClient),
+    }) => updateEvolutionTarget(toValue(workspaceId), id, body),
+    onSuccess: () =>
+      invalidateTargetDependents(queryClient, toValue(workspaceId)),
   });
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteEvolutionTarget(id),
-    onSuccess: () => invalidateTargetDependents(queryClient),
+    mutationFn: (id: string) =>
+      deleteEvolutionTarget(toValue(workspaceId), id),
+    onSuccess: () =>
+      invalidateTargetDependents(queryClient, toValue(workspaceId)),
   });
 
   return {
@@ -63,19 +75,30 @@ export function useEvolutionTargets() {
 }
 
 /**
- * Read remote versions for one selected target.
+ * Read remote versions for one selected target of the route workspace.
+ * @param workspaceId Workspace route identifier.
  * @param targetId Reactive target identifier, or null when no target is selected.
  * @returns Version query state.
  */
-export function useEvolutionTargetVersions(targetId: Ref<string | null>) {
+export function useEvolutionTargetVersions(
+  workspaceId: MaybeRefOrGetter<string>,
+  targetId: Ref<string | null>,
+) {
   return useQuery({
-    enabled: computed(() => Boolean(targetId.value)),
-    queryKey: computed(() =>
-      targetId.value
-        ? queryKeys.evolutionTargetVersions(targetId.value)
-        : (["evolution", "targets", "empty", "versions"] as const),
+    enabled: computed(
+      () => Boolean(targetId.value) && toValue(workspaceId).length > 0,
     ),
-    queryFn: () => listEvolutionTargetVersions(targetId.value as string),
+    queryKey: computed(() =>
+      queryKeys.evolutionTargetVersions(
+        toValue(workspaceId),
+        targetId.value ?? "empty",
+      ),
+    ),
+    queryFn: () =>
+      listEvolutionTargetVersions(
+        toValue(workspaceId),
+        targetId.value as string,
+      ),
     retry: false,
   });
 }

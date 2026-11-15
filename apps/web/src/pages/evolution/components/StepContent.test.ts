@@ -202,6 +202,7 @@ describe("evolution step content", () => {
   it("deduplicates repeated probe input while preserving source rows", () => {
     const wrapper = mount(StepInput, {
       props: {
+        wid: "ws-test",
         step: inputStep,
         condition: inputStep.payload.condition,
       },
@@ -227,7 +228,7 @@ describe("evolution step content", () => {
 
   it("expands a cluster to reveal its source probes", async () => {
     const wrapper = mount(StepClusters, {
-      props: { step: clustersStep },
+      props: { wid: "ws-test", step: clustersStep },
       global: {
         stubs: { RouterLink: routerLink },
       },
@@ -242,13 +243,13 @@ describe("evolution step content", () => {
 
   it("highlights an addressed cluster and reports a missing target", async () => {
     const highlighted = mount(StepClusters, {
-      props: { step: clustersStep, focusCluster: "C1" },
+      props: { wid: "ws-test", step: clustersStep, focusCluster: "C1" },
       global: {
         stubs: { RouterLink: routerLink },
       },
     });
     const missing = mount(StepClusters, {
-      props: { step: clustersStep, focusCluster: "missing" },
+      props: { wid: "ws-test", step: clustersStep, focusCluster: "missing" },
       global: {
         stubs: { RouterLink: routerLink },
       },

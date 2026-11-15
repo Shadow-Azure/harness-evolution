@@ -13,6 +13,8 @@ import {
 } from "../../../composables/useEvolutionTargets";
 import { ApiError } from "../../../api/http";
 import { formatApiError } from "../../../app/apiError";
+import { useWorkspaceId } from "../../../composables/useWorkspaceId";
+import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
@@ -20,6 +22,7 @@ import TargetFormDialog from "./components/TargetFormDialog.vue";
 defineOptions({ name: "TargetConfigPage" });
 
 const auth = useAuthStore();
+const workspaceId = useWorkspaceId();
 const {
   createTarget,
   data,
@@ -28,7 +31,7 @@ const {
   isPending,
   refetch,
   updateTarget,
-} = useEvolutionTargets();
+} = useEvolutionTargets(workspaceId);
 
 const targets = computed(() => data.value?.items ?? []);
 const canWrite = computed(() => auth.user?.role === "admin");
@@ -38,7 +41,7 @@ const formError = ref("");
 const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
-const versionsQuery = useEvolutionTargetVersions(editingTargetId);
+const versionsQuery = useEvolutionTargetVersions(workspaceId, editingTargetId);
 const versions = computed(() => versionsQuery.data.value?.versions ?? []);
 const versionsLoading = computed(
   () => Boolean(editingTargetId.value) && versionsQuery.isFetching.value,
@@ -156,7 +159,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     <RouterLink
       class="back"
       data-testid="target-config-back"
-      to="/evolution"
+      :to="workspacePath(workspaceId, 'evolution')"
     >
       ← 返回自进化
     </RouterLink>

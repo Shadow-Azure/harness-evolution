@@ -5,6 +5,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
+  wid: string;
   step: EvolutionStepClusters;
   focusCluster?: string;
 }>();
@@ -107,7 +108,10 @@ watch(
         <p class="cb-label">
           来源问题（{{ cluster.probes.length }} 条 · 来自同一归因类型）
         </p>
-        <ProbeSourceTable :rows="cluster.probes" />
+        <ProbeSourceTable
+          :wid="wid"
+          :rows="cluster.probes"
+        />
       </div>
     </div>
     <p

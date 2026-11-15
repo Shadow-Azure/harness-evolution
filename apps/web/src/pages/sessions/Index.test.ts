@@ -12,7 +12,11 @@ import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
-import { useAuthStore } from "../../stores/auth";
+import { signInWithWorkspace } from "../../test/auth";
+
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const sessionsBase = `/api/workspaces/${workspaceId}/sessions`;
 
 vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
   const { defineComponent, h } = await import("vue");
@@ -108,38 +112,27 @@ function mockSessionApi(
     sessionId: items[0]?.id ?? "root-1",
   };
   server.use(
-    http.get("/api/sessions", () => HttpResponse.json({ items })),
-    http.get("/api/sessions/:id", ({ params }) =>
+    http.get(sessionsBase, () => HttpResponse.json({ items })),
+    http.get(`${sessionsBase}/:id`, ({ params }) =>
       HttpResponse.json(
         items.find((item) => item.id === params.id) ?? {
           error: { code: "SESSION_NOT_FOUND", message: "missing" },
         },
       ),
     ),
-    http.get("/api/sessions/:id/tree", () =>
+    http.get(`${sessionsBase}/:id/tree`, () =>
       HttpResponse.json(tree),
     ),
-    http.get("/api/sessions/:id/bad-cases", () =>
+    http.get(`${sessionsBase}/:id/bad-cases`, () =>
       HttpResponse.json({ items: problems }),
     ),
   );
 }
 
-async function mountPage(path = "/sessions?q=agent&status=problem&sort=messages") {
+async function mountPage(path = `${ws}/sessions?q=agent&status=problem&sort=messages`) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  const auth = useAuthStore();
-  auth.setSession({
-    accessToken: "access",
-    expiresIn: 1_800,
-    user: {
-      id: "u-1",
-      username: "admin",
-      displayName: "管理员",
-      role: "admin",
-      mustChangePassword: false,
-    },
-  });
+  signInWithWorkspace();
   const router = createAppRouter();
   await router.push(path);
   await router.isReady();
@@ -181,14 +174,14 @@ describe("session browser", () => {
       stats: { ...session().stats, errors: 9 },
     });
     server.use(
-      http.get("/api/sessions", () => HttpResponse.json({ items: [listed] })),
-      http.get("/api/sessions/:id", () => HttpResponse.json(detailed)),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(sessionsBase, () => HttpResponse.json({ items: [listed] })),
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(detailed)),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json({ ...demoCoreTree, sessionId: "root-1" }),
       ),
     );
 
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     const overview = wrapper.get("[data-testid='session-overview']");
@@ -199,27 +192,27 @@ describe("session browser", () => {
 
   it("links the Session overview to its error-detail workspace", async () => {
     mockSessionApi([session()]);
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
 
     const detail = wrapper.get("[data-testid='detail-cta']");
     expect(detail.element.tagName).toBe("A");
-    expect(detail.attributes("href")).toBe("/sessions/root-1/errors");
+    expect(detail.attributes("href")).toBe(`${ws}/sessions/root-1/errors`);
     expect(detail.text()).toBe("打开错误详情");
   });
 
   it("debounces search and persists the final status filter in the URL", async () => {
     const requestedQueries: string[] = [];
     server.use(
-      http.get("/api/sessions", ({ request }) => {
+      http.get(sessionsBase, ({ request }) => {
         requestedQueries.push(new URL(request.url).searchParams.get("q") ?? "");
         return HttpResponse.json({ items: [session()] });
       }),
-      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(session())),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json({ ...demoCoreTree, sessionId: "root-1" }),
       ),
     );
-    const { router, wrapper } = await mountPage("/sessions");
+    const { router, wrapper } = await mountPage(`${ws}/sessions`);
     await flushPromises();
     requestedQueries.length = 0;
     vi.useFakeTimers();
@@ -259,14 +252,14 @@ describe("session browser", () => {
 
   it("cancels a pending debounced search when navigation changes the query", async () => {
     mockSessionApi([session()]);
-    const { router, wrapper } = await mountPage("/sessions");
+    const { router, wrapper } = await mountPage(`${ws}/sessions`);
     await flushPromises();
     vi.useFakeTimers();
 
     try {
       await wrapper.get("[data-testid='search-input']").setValue("stale");
       await router.push({
-        path: "/sessions/root-1",
+        path: `${ws}/sessions/root-1`,
         query: { q: "server" },
       });
       await flushPromises();
@@ -293,7 +286,7 @@ describe("session browser", () => {
     const { router, wrapper } = await mountPage();
     await flushPromises();
     await vi.waitFor(() => {
-      expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+      expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
     });
     await flushPromises();
 
@@ -321,7 +314,7 @@ describe("session browser", () => {
         .get("[data-testid='session-overview-root-session-id']")
         .text(),
     ).toContain("根会话 ID · root-1");
-    expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
     expect(router.currentRoute.value.query).toEqual({
       q: "agent",
       sort: "messages",
@@ -353,7 +346,7 @@ describe("session browser", () => {
       }),
     ];
     mockSessionApi([session()], problems);
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     expect(wrapper.findAll("[data-bad-case-id]")).toHaveLength(2);
@@ -440,14 +433,14 @@ describe("session browser", () => {
       ],
     };
     server.use(
-      http.get("/api/sessions", () =>
+      http.get(sessionsBase, () =>
         HttpResponse.json({ items: [session()] }),
       ),
-      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(session())),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json(foldedTree),
       ),
-      http.get("/api/sessions/:id/bad-cases", () =>
+      http.get(`${sessionsBase}/:id/bad-cases`, () =>
         HttpResponse.json({
           items: [
             badCaseFixture({
@@ -459,7 +452,7 @@ describe("session browser", () => {
       ),
     );
 
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
     await wrapper.get("[data-bad-case-id='case-folded']").trigger("click");
     await flushPromises();
@@ -474,9 +467,9 @@ describe("session browser", () => {
   it("loads the production tree independently and retries tree failures", async () => {
     const item = session();
     server.use(
-      http.get("/api/sessions", () => HttpResponse.json({ items: [item] })),
-      http.get("/api/sessions/:id", () => HttpResponse.json(item)),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(sessionsBase, () => HttpResponse.json({ items: [item] })),
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(item)),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json(
           { error: { code: "SESSION_NOT_FOUND", message: "missing" } },
           { status: 404 },
@@ -484,7 +477,7 @@ describe("session browser", () => {
       ),
     );
 
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     const overview = wrapper.get("[data-testid='session-overview']");
@@ -498,12 +491,12 @@ describe("session browser", () => {
     const item = session();
     let problemRequests = 0;
     server.use(
-      http.get("/api/sessions", () => HttpResponse.json({ items: [item] })),
-      http.get("/api/sessions/:id", () => HttpResponse.json(item)),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(sessionsBase, () => HttpResponse.json({ items: [item] })),
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(item)),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json({ ...demoCoreTree, sessionId: item.id }),
       ),
-      http.get("/api/sessions/:id/bad-cases", () => {
+      http.get(`${sessionsBase}/:id/bad-cases`, () => {
         problemRequests += 1;
         if (problemRequests === 1) {
           return HttpResponse.json(
@@ -522,7 +515,7 @@ describe("session browser", () => {
       }),
     );
 
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     expect(wrapper.find("[data-testid='agent-tree']").exists()).toBe(true);
@@ -547,7 +540,7 @@ describe("session browser", () => {
       session({ id: "root-2", title: "Second" }),
       session({ id: "root-3", title: "Third" }),
     ]);
-    const { router, wrapper } = await mountPage("/sessions/root-1");
+    const { router, wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     const listbox = wrapper.get("[role='listbox']");
@@ -555,18 +548,18 @@ describe("session browser", () => {
 
     await cards[0]?.trigger("keydown", { key: "ArrowDown" });
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe("/sessions/root-2");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-2`);
     expect(wrapper.findAll("[data-testid='session-card']").map((card) =>
       card.attributes("tabindex"),
     )).toEqual(["-1", "0", "-1"]);
 
     await listbox.trigger("keydown", { key: "End" });
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe("/sessions/root-3");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-3`);
 
     await listbox.trigger("keydown", { key: "Home" });
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
   });
 
   it.each([
@@ -576,7 +569,7 @@ describe("session browser", () => {
     "normalizes %s URLs to the failed chip and keeps its severity color",
     async (status, badgeClass) => {
       mockSessionApi([session({ status })]);
-      const { wrapper } = await mountPage(`/sessions/root-1?status=${status}`);
+      const { wrapper } = await mountPage(`${ws}/sessions/root-1?status=${status}`);
       await flushPromises();
 
       const overview = wrapper.get("[data-testid='session-overview']");
@@ -603,7 +596,7 @@ describe("session browser", () => {
         },
       }),
     ]);
-    const { wrapper } = await mountPage("/sessions/root-1");
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
     await flushPromises();
 
     const overview = wrapper.get("[data-testid='session-overview']");
@@ -617,7 +610,7 @@ describe("session browser", () => {
   it("restores Agent and evidence state from a Session deep link", async () => {
     mockSessionApi([session()]);
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?agent=agent-a&evidence=1",
+      `${ws}/sessions/root-1?agent=agent-a&evidence=1`,
     );
     await flushPromises();
 
@@ -633,7 +626,7 @@ describe("session browser", () => {
   it("canonicalizes accepted deep-link query values", async () => {
     mockSessionApi([session()]);
     const { router } = await mountPage(
-      "/sessions/root-1?agent=agent-a&evidence=01&case=case-1&tab=attr",
+      `${ws}/sessions/root-1?agent=agent-a&evidence=01&case=case-1&tab=attr`,
     );
     await flushPromises();
 
@@ -684,17 +677,17 @@ describe("session browser", () => {
       badCases: [],
     };
     server.use(
-      http.get("/api/sessions", () =>
+      http.get(sessionsBase, () =>
         HttpResponse.json({ items: [session()] }),
       ),
-      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(session())),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json(foldedTree),
       ),
     );
 
     const { wrapper } = await mountPage(
-      "/sessions/root-1?agent=child-9",
+      `${ws}/sessions/root-1?agent=child-9`,
     );
     await flushPromises();
 
@@ -706,21 +699,21 @@ describe("session browser", () => {
   it("keeps an explicit Session isolated when filters exclude it", async () => {
     const other = session({ id: "root-2", title: "Other" });
     server.use(
-      http.get("/api/sessions", () =>
+      http.get(sessionsBase, () =>
         HttpResponse.json({ items: [other] }),
       ),
-      http.get("/api/sessions/:id", () => HttpResponse.json(session())),
-      http.get("/api/sessions/:id/tree", () =>
+      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(session())),
+      http.get(`${sessionsBase}/:id/tree`, () =>
         HttpResponse.json(demoCoreTree),
       ),
     );
 
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?q=filtered&agent=agent-a&evidence=1",
+      `${ws}/sessions/root-1?q=filtered&agent=agent-a&evidence=1`,
     );
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/sessions/root-1");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
     expect(router.currentRoute.value.query.agent).toBe("agent-a");
     expect(wrapper.get("[data-testid='agent-tree']").text()).toContain(
       "selected:agent-a:evidence:1",
@@ -733,7 +726,7 @@ describe("session browser", () => {
   it("writes Agent selection to the URL and clears stale evidence", async () => {
     mockSessionApi([session()]);
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?agent=agent-a&evidence=1",
+      `${ws}/sessions/root-1?agent=agent-a&evidence=1`,
     );
     await flushPromises();
 
@@ -741,18 +734,18 @@ describe("session browser", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.fullPath).toBe(
-      "/sessions/root-1?agent=main",
+      `${ws}/sessions/root-1?agent=main`,
     );
   });
 
   it("clears an Agent that no longer exists without changing Session", async () => {
     mockSessionApi([session()]);
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?agent=missing&evidence=1",
+      `${ws}/sessions/root-1?agent=missing&evidence=1`,
     );
     await flushPromises();
 
-    expect(router.currentRoute.value.fullPath).toBe("/sessions/root-1");
+    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions/root-1`);
     expect(wrapper.get("[data-testid='deep-link-notice']").text()).toContain(
       "Agent 已不存在",
     );
@@ -764,12 +757,12 @@ describe("session browser", () => {
   it("clears out-of-range evidence while retaining the Agent", async () => {
     mockSessionApi([session()]);
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?agent=agent-a&evidence=99",
+      `${ws}/sessions/root-1?agent=agent-a&evidence=99`,
     );
     await flushPromises();
 
     expect(router.currentRoute.value.fullPath).toBe(
-      "/sessions/root-1?agent=agent-a",
+      `${ws}/sessions/root-1?agent=agent-a`,
     );
     expect(wrapper.get("[data-testid='deep-link-notice']").text()).toContain(
       "证据位置",
@@ -782,7 +775,7 @@ describe("session browser", () => {
   it("clears a stale deep-link notice when a later URL is valid", async () => {
     mockSessionApi([session()]);
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1?agent=missing&evidence=1",
+      `${ws}/sessions/root-1?agent=missing&evidence=1`,
     );
     await flushPromises();
 
@@ -790,7 +783,7 @@ describe("session browser", () => {
       "Agent 已不存在",
     );
 
-    await router.push("/sessions/root-1?agent=agent-a&evidence=1");
+    await router.push(`${ws}/sessions/root-1?agent=agent-a&evidence=1`);
     await flushPromises();
 
     expect(wrapper.find("[data-testid='deep-link-notice']").exists()).toBe(false);
@@ -803,21 +796,21 @@ describe("session browser", () => {
     const detailRequests: string[] = [];
     const treeRequests: string[] = [];
     server.use(
-      http.get("/api/sessions", () => HttpResponse.json({ items: [session()] })),
-      http.get("/api/sessions/:id", ({ params }) => {
+      http.get(sessionsBase, () => HttpResponse.json({ items: [session()] })),
+      http.get(`${sessionsBase}/:id`, ({ params }) => {
         detailRequests.push(String(params.id));
         return HttpResponse.json(session());
       }),
-      http.get("/api/sessions/:id/tree", ({ params }) => {
+      http.get(`${sessionsBase}/:id/tree`, ({ params }) => {
         treeRequests.push(String(params.id));
         return HttpResponse.json(demoCoreTree);
       }),
     );
     const invalidId = "x".repeat(37);
-    const { router, wrapper } = await mountPage(`/sessions/${invalidId}`);
+    const { router, wrapper } = await mountPage(`${ws}/sessions/${invalidId}`);
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe(`/sessions/${invalidId}`);
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/${invalidId}`);
     expect(detailRequests).toEqual([]);
     expect(treeRequests).toEqual([]);
     expect(wrapper.get("[data-testid='deep-link-notice']").text()).toContain(
@@ -830,18 +823,18 @@ describe("session browser", () => {
     const detailRequests: string[] = [];
     const treeRequests: string[] = [];
     server.use(
-      http.get("/api/sessions", () => HttpResponse.json({ items: [session()] })),
-      http.get("/api/sessions/:id", ({ params }) => {
+      http.get(sessionsBase, () => HttpResponse.json({ items: [session()] })),
+      http.get(`${sessionsBase}/:id`, ({ params }) => {
         detailRequests.push(String(params.id));
         return HttpResponse.json(session());
       }),
-      http.get("/api/sessions/:id/tree", ({ params }) => {
+      http.get(`${sessionsBase}/:id/tree`, ({ params }) => {
         treeRequests.push(String(params.id));
         return HttpResponse.json(demoCoreTree);
       }),
     );
 
-    const { wrapper } = await mountPage("/sessions/a%2541b");
+    const { wrapper } = await mountPage(`${ws}/sessions/a%2541b`);
     await flushPromises();
 
     expect(detailRequests).toEqual([]);
@@ -856,10 +849,10 @@ describe("session browser", () => {
       session(),
       session({ id: "root-2", title: "Second" }),
     ]);
-    const { router, wrapper } = await mountPage("/sessions/root-2?q=agent&status=all&sort=latest");
+    const { router, wrapper } = await mountPage(`${ws}/sessions/root-2?q=agent&status=all&sort=latest`);
     await flushPromises();
 
-    expect(router.currentRoute.value.path).toBe("/sessions/root-2");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-2`);
     expect(wrapper.get(".session-browser").attributes("data-selected-id")).toBe("root-2");
     expect(wrapper.get("[data-testid='search-input']").element).toHaveProperty(
       "value",
@@ -874,7 +867,7 @@ describe("session browser", () => {
 
   it("keeps empty filters and list failures actionable", async () => {
     mockSessionApi([]);
-    const empty = await mountPage("/sessions?q=none");
+    const empty = await mountPage(`${ws}/sessions?q=none`);
     await flushPromises();
 
     expect(empty.wrapper.text()).toContain("没有匹配当前筛选的 session");
@@ -885,14 +878,14 @@ describe("session browser", () => {
     expect(empty.wrapper.get(".empty-list").attributes("role")).toBe("status");
 
     server.use(
-      http.get("/api/sessions", () =>
+      http.get(sessionsBase, () =>
         HttpResponse.json(
           { error: { code: "SESSIONS_UNAVAILABLE", message: "unavailable" } },
           { status: 500 },
         ),
       ),
     );
-    const failed = await mountPage("/sessions");
+    const failed = await mountPage(`${ws}/sessions`);
     await flushPromises();
 
     expect(failed.wrapper.text()).toContain("Session 列表加载失败");

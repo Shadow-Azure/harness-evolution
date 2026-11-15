@@ -8,6 +8,7 @@ import { computed } from "vue";
 import ProbeSourceTable from "./ProbeSourceTable.vue";
 
 const props = defineProps<{
+  wid: string;
   step: EvolutionStepInput;
   condition: StepCondition;
 }>();
@@ -85,6 +86,7 @@ const clusterOfProbe = computed<Record<string, string | null>>(() =>
     </p>
     <ProbeSourceTable
       v-if="uniqueRows.length"
+      :wid="wid"
       :rows="uniqueRows"
       show-cluster
       :cluster-of-probe="clusterOfProbe"

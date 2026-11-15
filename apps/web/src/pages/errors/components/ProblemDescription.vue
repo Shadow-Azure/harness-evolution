@@ -9,6 +9,7 @@ import {
 } from "../../../utils/badCaseId";
 
 const props = defineProps<{
+  wid: string;
   problem: BadCase;
   index: number | null;
 }>();
@@ -39,6 +40,7 @@ const reportId = computed(() =>
       <a
         class="problem-id"
         :href="badCaseDeepLink(
+          wid,
           problem.sessionId,
           problem.badCaseId,
           'desc',
@@ -58,6 +60,7 @@ const reportId = computed(() =>
         v-if="reportId"
         class="report-id"
         :href="badCaseDeepLink(
+          wid,
           problem.sessionId,
           problem.badCaseId,
           'attr',

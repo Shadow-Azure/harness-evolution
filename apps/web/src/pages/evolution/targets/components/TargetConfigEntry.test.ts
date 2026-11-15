@@ -9,6 +9,7 @@ import TargetConfigEntry from "./TargetConfigEntry.vue";
 describe("TargetConfigEntry", () => {
   it("links to the target configuration page with an accessible label", () => {
     const wrapper = mount(TargetConfigEntry, {
+      props: { wid: "ws-test" },
       global: {
         stubs: {
           RouterLink: {
@@ -20,7 +21,7 @@ describe("TargetConfigEntry", () => {
     });
 
     const link = wrapper.getComponent(RouterLink);
-    expect(link.props("to")).toBe("/evolution/targets");
+    expect(link.props("to")).toBe("/workspaces/ws-test/evolution/targets");
     expect(wrapper.get("a").attributes("aria-label")).toBe("配置进化对象");
     expect(wrapper.get("a").attributes("title")).toBe("配置进化对象");
     expect(wrapper.text()).toBe("");

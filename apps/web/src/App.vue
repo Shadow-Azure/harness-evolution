@@ -13,6 +13,9 @@ import { queryKeys } from "./api/queryKeys";
 const route = useRoute();
 const isAuthLayout = computed(() => route.meta.authLayout === true);
 const isWorkspace = computed(() => route.meta.workspace === true);
+const workspaceKey = computed(() =>
+  typeof route.params.wid === "string" ? route.params.wid : "",
+);
 
 const { data, error, isPending, refetch } = useQuery({
   enabled: computed(() => !isAuthLayout.value),
@@ -83,7 +86,10 @@ function retryHealth() {
           message="API 或数据库当前不可用，请稍后重试。"
           @retry="retryHealth"
         />
-        <RouterView v-else />
+        <RouterView
+          v-else
+          :key="workspaceKey"
+        />
       </template>
     </main>
   </div>

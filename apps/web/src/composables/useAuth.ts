@@ -4,6 +4,7 @@ import { computed, ref, shallowRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { safeRedirect } from "../router/safeRedirect";
+import { defaultLandingPath } from "../router/workspace";
 import { useAuthStore } from "../stores/auth";
 
 /**
@@ -29,7 +30,9 @@ export function useLogin() {
   const mutation = useMutation({
     mutationFn: (credentials: LoginRequest) => auth.login(credentials),
     onSuccess: async () => {
-      await router.push(safeRedirect(route.query.redirect));
+      await router.push(
+        safeRedirect(route.query.redirect, defaultLandingPath(auth)),
+      );
     },
   });
   return {
@@ -107,7 +110,9 @@ export function useChangePassword() {
   const mutation = useMutation({
     mutationFn: (passwords: ChangePasswordRequest) => auth.changePassword(passwords),
     onSuccess: async () => {
-      await router.push(safeRedirect(route.query.redirect));
+      await router.push(
+        safeRedirect(route.query.redirect, defaultLandingPath(auth)),
+      );
     },
     onError: async () => {
       if (!auth.isAuthenticated) {
