@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -76,6 +76,25 @@ before(async () => {
   const apiPort = await availablePort();
   const webPort = await availablePort();
   baseUrl = `http://127.0.0.1:${webPort}`;
+
+  // auth/session reads the externally bootstrapped bad_cases table; bootstrap
+  // it before the workspace shell can leave the login page.
+  const setup = spawnSync(pnpm, ["fixtures:seed"], {
+    cwd: root,
+    env: {
+      ...process.env,
+      HE_ADMIN_PASSWORD: "m3-agent-tree-initial-password",
+      HE_ADMIN_USERNAME: "admin",
+      HE_DATA_DIR: dataDir,
+      HE_DB_DIALECT: "sqlite",
+      HE_FIXTURE_MANIFEST: "fixtures/m1-shell.json",
+      HE_JWT_SECRET: "m3-agent-tree-signing-secret-with-sufficient-length",
+      HE_PHASE: "demo",
+    },
+    encoding: "utf8",
+  });
+  assert.equal(setup.status, 0, setup.stderr || setup.stdout);
+
   api = spawn(process.execPath, ["scripts/run-api.mjs", "start"], {
     cwd: root,
     env: {

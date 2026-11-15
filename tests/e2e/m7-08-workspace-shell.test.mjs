@@ -406,10 +406,14 @@ test("m7-08 workspace-shell routes an invisible workspace to the chooser", async
       page.session,
       `(() => {
         if (location.pathname !== "/workspaces") return null;
+        const cards = document.querySelectorAll(
+          "[data-testid^='workspace-card-']",
+        ).length;
+        if (cards < 1) return null;
         return {
           path: location.pathname,
           reason: new URLSearchParams(location.search).get("reason"),
-          cards: document.querySelectorAll("[data-testid^='workspace-card-']").length,
+          cards,
           text: document.body.innerText,
         };
       })()`,
