@@ -50,7 +50,7 @@ The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed t
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
 - Normalization parses each payload independently, keeps messages and content blocks in memory, and emits user-input anchors, Agent/Skill/Workflow triggers, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
-- External problem tables sync by primary key: the catalog task upserts `bad_cases`; attribution stays read-only.
+- External problem tables sync by primary key: credential ingest upserts `bad_cases` idempotently, the catalog task is limited to the default workspace, and attribution stays read-only.
 - Secrets enter only through environment variables, never repo or database.
 
 ## Shared contract

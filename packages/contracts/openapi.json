@@ -414,6 +414,142 @@
         "title": "BadCaseCatalogSyncSummary",
         "type": "object"
       },
+      "BadCaseIngest": {
+        "additionalProperties": false,
+        "description": "One camelCase report accepted from a workspace ingest credential.\n\nOnly JSON camelCase aliases are accepted: the body may never carry a\nworkspace identity and snake_case input is rejected rather than silently\naccepted, so a caller cannot smuggle server-owned columns.",
+        "properties": {
+          "badCaseAgentId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badcaseagentid"
+          },
+          "badCaseId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "metaData": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "sessionId",
+          "badCaseType",
+          "objectName",
+          "objectType",
+          "title",
+          "reason",
+          "createdAt"
+        ],
+        "title": "BadCaseIngest",
+        "type": "object"
+      },
+      "BadCaseIngestResponse": {
+        "additionalProperties": false,
+        "description": "Stable success payload shared by the 201 insert and 200 upsert paths.",
+        "properties": {
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "workspaceUsed": {
+            "title": "Workspaceused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "workspaceUsed"
+        ],
+        "title": "BadCaseIngestResponse",
+        "type": "object"
+      },
       "BadCaseListResponse": {
         "additionalProperties": false,
         "description": "A Session's problems in external creation order.",
@@ -817,7 +953,9 @@
           "QUOTA_INVALID",
           "CREDENTIAL_NOT_FOUND",
           "CREDENTIAL_INVALID",
-          "CREDENTIAL_LIMIT"
+          "CREDENTIAL_LIMIT",
+          "QUOTA_EXCEEDED",
+          "BAD_CASE_ID_CONFLICT"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -8896,6 +9034,129 @@
         "summary": "Update Workspace",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/bad-cases": {
+      "post": {
+        "description": "Upsert one reported bad case as the workspace resolved from URL and credential.\n\nAuthentication is a workspace ingest credential\n(`Authorization: Bearer whk_…`), not the browser access token. The body may\nnever carry workspace identity: the workspace comes from the URL, and the\ncredential must belong to it. A new `badCaseId` answers `201`; re-reporting\nan id already owned by this workspace replaces its upstream fields and\nanswers `200` without consuming quota.",
+        "operationId": "ingest_bad_case_api_workspaces__wid__bad_cases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BadCaseIngest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadCaseIngestResponse"
+                }
+              }
+            },
+            "description": "The same workspace already owned badCaseId; upstream fields were replaced",
+            "headers": {
+              "X-HE-Workspace-Used": {
+                "description": "Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings.",
+                "schema": {
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadCaseIngestResponse"
+                }
+              }
+            },
+            "description": "A new bad case was created inside the workspace quota",
+            "headers": {
+              "X-HE-Workspace-Used": {
+                "description": "Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings.",
+                "schema": {
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The workspace credential is missing or invalid"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The credential belongs to a different workspace"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The workspace does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The quota is exhausted or badCaseId belongs to another workspace"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The reported payload violates the contract"
+          }
+        },
+        "summary": "Report one bad case with a workspace credential",
+        "tags": [
+          "ingest"
         ]
       }
     },

@@ -94,6 +94,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/members/self-admin",
         "/api/workspaces/{wid}/credentials",
         "/api/workspaces/{wid}/credentials/{cid}",
+        "/api/workspaces/{wid}/bad-cases",
         "/api/workspaces/{wid}/sessions",
         "/api/workspaces/{wid}/sessions/{sessionId}",
         "/api/workspaces/{wid}/sessions/{sessionId}/tree",
@@ -169,6 +170,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "WorkspaceCredential",
         "WorkspaceCredentialListResponse",
         "WorkspaceCredentialCreated",
+        "BadCaseIngest",
+        "BadCaseIngestResponse",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -245,6 +248,41 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/auth/callback", "get"),
     ]:
         assert "security" not in paths[path][method]
+    ingest = paths["/api/workspaces/{wid}/bad-cases"]["post"]
+    assert "security" not in ingest
+    assert {"200", "201", "401", "403", "404", "409", "422"} <= set(ingest["responses"])
+    for status_code in ("200", "201"):
+        success = ingest["responses"][status_code]
+        assert success["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/BadCaseIngestResponse"
+        }
+        used_schema = success["headers"]["X-HE-Workspace-Used"]["schema"]
+        assert used_schema["type"] == "string"
+        assert used_schema["pattern"] == "^[0-9]+$"
+    assert ingest["requestBody"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/BadCaseIngest"
+    }
+    ingest_properties = set(components["BadCaseIngest"]["properties"])
+    assert ingest_properties == {
+        "badCaseId",
+        "sessionId",
+        "badCaseType",
+        "objectName",
+        "objectType",
+        "objectVersion",
+        "badCaseAgentId",
+        "title",
+        "reason",
+        "metaData",
+        "source",
+        "createdAt",
+    }
+    assert "workspaceId" not in ingest_properties
+    assert components["BadCaseIngest"]["additionalProperties"] is False
+    assert set(components["BadCaseIngestResponse"]["properties"]) == {
+        "badCaseId",
+        "workspaceUsed",
+    }
 
     assert {parameter["name"] for parameter in paths["/api/sessions"]["get"]["parameters"]} == {
         "q",
@@ -411,6 +449,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "CREDENTIAL_NOT_FOUND",
         "CREDENTIAL_INVALID",
         "CREDENTIAL_LIMIT",
+        "QUOTA_EXCEEDED",
+        "BAD_CASE_ID_CONFLICT",
     } <= set(error_codes)
     assert "/api/sessions/{sessionId}/timeline" not in paths
     trigger_responses = paths["/api/acquisition/sync"]["post"]["responses"]

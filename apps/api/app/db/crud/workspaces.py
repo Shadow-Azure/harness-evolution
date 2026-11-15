@@ -10,6 +10,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.integrity import is_unique_violation
 from app.db.models.domain import bad_cases
 from app.db.models.users import users
 from app.db.models.workspace import (
@@ -175,16 +176,6 @@ def _credential_from_row(row: Any) -> WorkspaceCredentialRecord:
         created_at=as_shanghai(row["created_at"]),
         last_used_at=as_shanghai(last_used_at) if last_used_at is not None else None,
         revoked_at=as_shanghai(revoked_at) if revoked_at is not None else None,
-    )
-
-
-def _is_unique_violation(error: IntegrityError) -> bool:
-    """Recognize uniqueness failures across SQLite and MySQL."""
-    message = str(error.orig).lower()
-    return (
-        "unique constraint failed" in message
-        or "duplicate entry" in message
-        or "unique violation" in message
     )
 
 
@@ -386,7 +377,7 @@ class WorkspaceRepository:
                     ),
                 )
             except IntegrityError as exc:
-                if not _is_unique_violation(exc):
+                if not is_unique_violation(exc):
                     raise
                 raise WorkspaceNameConflict from exc
             for user_id in space_admin_ids:
@@ -418,7 +409,7 @@ class WorkspaceRepository:
                         update(workspaces).where(workspaces.c.id == workspace_id).values(**values),
                     )
                 except IntegrityError as exc:
-                    if not _is_unique_violation(exc):
+                    if not is_unique_violation(exc):
                         raise
                     raise WorkspaceNameConflict from exc
         return await self.get(workspace_id)
@@ -590,7 +581,7 @@ class WorkspaceRepository:
                     ),
                 )
             except IntegrityError as exc:
-                if not _is_unique_violation(exc):
+                if not is_unique_violation(exc):
                     raise
                 raise MemberAlreadyExists from exc
         member = await self.get_member(workspace_id, user_id)
@@ -768,6 +759,29 @@ class WorkspaceRepository:
                     workspace_ingest_credentials.c.revoked_at.is_(None),
                 )
                 .values(revoked_at=now_shanghai()),
+            )
+            changed = cast(CursorResult[Any], result).rowcount or 0
+        return changed > 0
+
+    async def touch_credential(
+        self,
+        credential_id: str,
+        *,
+        now: datetime,
+        not_before: datetime,
+    ) -> bool:
+        """Record one successful ingest unless a recent touch already did."""
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(workspace_ingest_credentials)
+                .where(
+                    workspace_ingest_credentials.c.id == credential_id,
+                    or_(
+                        workspace_ingest_credentials.c.last_used_at.is_(None),
+                        workspace_ingest_credentials.c.last_used_at <= not_before,
+                    ),
+                )
+                .values(last_used_at=as_shanghai(now)),
             )
             changed = cast(CursorResult[Any], result).rowcount or 0
         return changed > 0

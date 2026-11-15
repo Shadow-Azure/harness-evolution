@@ -862,6 +862,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/bad-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report one bad case with a workspace credential
+         * @description Upsert one reported bad case as the workspace resolved from URL and credential.
+         *
+         *     Authentication is a workspace ingest credential
+         *     (`Authorization: Bearer whk_…`), not the browser access token. The body may
+         *     never carry workspace identity: the workspace comes from the URL, and the
+         *     credential must belong to it. A new `badCaseId` answers `201`; re-reporting
+         *     an id already owned by this workspace replaces its upstream fields and
+         *     answers `200` without consuming quota.
+         */
+        post: operations["ingest_bad_case_api_workspaces__wid__bad_cases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/bad-cases/{badCaseId}": {
         parameters: {
             query?: never;
@@ -1501,6 +1528,61 @@ export interface components {
             unsynced: number;
         };
         /**
+         * BadCaseIngest
+         * @description One camelCase report accepted from a workspace ingest credential.
+         *
+         *     Only JSON camelCase aliases are accepted: the body may never carry a
+         *     workspace identity and snake_case input is rejected rather than silently
+         *     accepted, so a caller cannot smuggle server-owned columns.
+         */
+        BadCaseIngest: {
+            /** Badcaseagentid */
+            badCaseAgentId?: string | null;
+            /** Badcaseid */
+            badCaseId: string;
+            /**
+             * Badcasetype
+             * @enum {string}
+             */
+            badCaseType: "self" | "discovery";
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Metadata */
+            metaData?: {
+                [key: string]: unknown;
+            } | null;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent";
+            /** Objectversion */
+            objectVersion?: string | null;
+            /** Reason */
+            reason: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Source */
+            source?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * BadCaseIngestResponse
+         * @description Stable success payload shared by the 201 insert and 200 upsert paths.
+         */
+        BadCaseIngestResponse: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Workspaceused */
+            workspaceUsed: number;
+        };
+        /**
          * BadCaseListResponse
          * @description A Session's problems in external creation order.
          */
@@ -1646,7 +1728,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -5973,6 +6055,90 @@ export interface operations {
                 };
             };
             /** @description Quota is below current usage */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_bad_case_api_workspaces__wid__bad_cases_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BadCaseIngest"];
+            };
+        };
+        responses: {
+            /** @description The same workspace already owned badCaseId; upstream fields were replaced */
+            200: {
+                headers: {
+                    /** @description Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings. */
+                    "X-HE-Workspace-Used"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadCaseIngestResponse"];
+                };
+            };
+            /** @description A new bad case was created inside the workspace quota */
+            201: {
+                headers: {
+                    /** @description Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings. */
+                    "X-HE-Workspace-Used"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BadCaseIngestResponse"];
+                };
+            };
+            /** @description The workspace credential is missing or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credential belongs to a different workspace */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The quota is exhausted or badCaseId belongs to another workspace */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The reported payload violates the contract */
             422: {
                 headers: {
                     [name: string]: unknown;

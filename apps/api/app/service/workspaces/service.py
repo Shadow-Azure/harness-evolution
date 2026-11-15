@@ -4,6 +4,7 @@ import hashlib
 import logging
 import secrets
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import cast
 
 from app.db.crud.workspaces import (
@@ -37,6 +38,7 @@ from app.service.workspaces.schemas import (
     WorkspaceMemberUpdateRequest,
     WorkspaceUpdateRequest,
 )
+from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,9 @@ CREDENTIAL_PREFIX_LENGTH = 12
 
 CREDENTIAL_TOKEN_PREFIX = "whk_"  # noqa: S105
 """Namespace every plaintext workspace ingest credential starts with."""
+
+CREDENTIAL_TOUCH_SECONDS = 60
+"""Minimum interval between two `last_used_at` writes for one credential."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -435,6 +440,27 @@ class WorkspaceService:
             workspace_id=record.workspace_id,
             credential_id=record.id,
         )
+
+    async def touch_credential(self, credential_id: str) -> None:
+        """Record one successful ingest without ever failing the report.
+
+        `last_used_at` is diagnostic only, so the update is throttled to one
+        write per minute and a failure is logged instead of surfacing as a 500
+        after the bad case was already committed.
+        """
+        now = now_shanghai()
+        try:
+            await self._repository.touch_credential(
+                credential_id,
+                now=now,
+                not_before=now - timedelta(seconds=CREDENTIAL_TOUCH_SECONDS),
+            )
+        except Exception:
+            logger.warning(
+                "workspace credential last-used update failed",
+                extra={"credential_id": credential_id},
+                exc_info=True,
+            )
 
     @staticmethod
     def _effective_role(stored_role: str | None) -> WorkspaceRole:

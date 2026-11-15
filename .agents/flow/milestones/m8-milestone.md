@@ -6,7 +6,7 @@
 kind: milestone
 id: m8
 title: M8 空间数据面与总览
-status: planned
+status: active
 github:
   number: 18
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/18
