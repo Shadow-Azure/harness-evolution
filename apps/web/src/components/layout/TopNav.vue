@@ -16,9 +16,11 @@ import {
   forgetLastWorkspace,
   workspacePath,
 } from "../../router/workspace";
-import { workspaceRoleLabel } from "../../utils/workspaceDisplay";
-import WorkspacePicker from "./WorkspacePicker.vue";
 import {
+  canManageWorkspace,
+  workspaceRoleLabel,
+} from "../../utils/workspaceDisplay";
+import WorkspacePicker from "./WorkspacePicker.vue";import {
   badCaseSyncErrorLabel,
   badCaseSyncStatusLabel,
   catalogSyncErrorLabel,
@@ -59,6 +61,12 @@ const sessionsPath = computed(() =>
 const evolutionPath = computed(() =>
   workspaceId.value ? workspacePath(workspaceId.value, "evolution") : "/workspaces",
 );
+const adminPath = computed(() =>
+  workspaceId.value ? workspacePath(workspaceId.value, "admin") : "/workspaces",
+);
+const canManage = computed(() =>
+  canManageWorkspace(currentWorkspace.value?.role),
+);
 
 const activeSection = computed(() => {
   const name = typeof route.name === "string" ? route.name : "";
@@ -70,6 +78,7 @@ const activeSection = computed(() => {
     return "sessions";
   }
   if (name.startsWith("workspace-evolution")) return "evo";
+  if (name === "workspace-admin") return "admin";
   return "";
 });
 
@@ -337,6 +346,15 @@ onBeforeUnmount(() => {
       >
         自进化<span class="tn-sub">报告驱动的迭代优化</span>
       </RouterLink>
+      <RouterLink
+        v-if="canManage"
+        id="tn-admin"
+        class="tn-item"
+        :class="{ active: activeSection === 'admin' }"
+        :to="adminPath"
+      >
+        空间管理<span class="tn-sub">成员 · 上报 · 鉴权</span>
+      </RouterLink>
     </nav>
 
     <span class="tn-note">问题与报告 ID 已串联 · 点击 ID 跨页溯源</span>
@@ -567,6 +585,10 @@ onBeforeUnmount(() => {
 
 .tn-item#tn-evo.active {
   border-bottom-color: var(--purple);
+}
+
+.tn-item#tn-admin.active {
+  border-bottom-color: var(--cyan);
 }
 
 .actions {

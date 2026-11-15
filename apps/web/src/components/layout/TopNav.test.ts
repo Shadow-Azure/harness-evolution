@@ -688,4 +688,54 @@ describe("top navigation user area", () => {
       "已分析 0 · 待分析 0",
     );
   });
+
+  it.each([
+    ["space_admin" as const, 3],
+    ["viewer" as const, 2],
+  ])(
+    "shows the admin entry only to %s roles",
+    async (role, expectedItems) => {
+      const pinia = createPinia();
+      setActivePinia(pinia);
+      const store = useAuthStore();
+      const user = {
+        id: "u-1",
+        username: "operator",
+        displayName: "操作员",
+        role: "member" as const,
+        mustChangePassword: false,
+      };
+      store.setSession({
+        accessToken: "access",
+        expiresIn: 1_800,
+        user,
+      });
+      store.setWorkspaceSession({
+        user,
+        workspaces: [testWorkspace({ role })],
+        truncated: false,
+      });
+      const router = createAppRouter();
+      await router.push(`${ws}/admin`);
+      await router.isReady();
+      const wrapper = mount(TopNav, {
+        global: {
+          plugins: [
+            [VueQueryPlugin, { queryClient: new QueryClient() }],
+            pinia,
+            router,
+          ],
+        },
+      });
+      await flushPromises();
+
+      expect(wrapper.findAll("nav .tn-item")).toHaveLength(expectedItems);
+      if (role === "space_admin") {
+        expect(wrapper.get("#tn-admin").text()).toContain("空间管理");
+        expect(wrapper.get("#tn-admin").classes("active")).toBe(true);
+      } else {
+        expect(wrapper.find("#tn-admin").exists()).toBe(false);
+      }
+    },
+  );
 });

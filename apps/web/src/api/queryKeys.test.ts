@@ -58,6 +58,27 @@ describe("workspace query keys", () => {
       workspaceId,
       "catalogs",
     ]);
+    expect(queryKeys.adminMembers(workspaceId)).toEqual([
+      "ws",
+      workspaceId,
+      "admin",
+      "members",
+    ]);
+    expect(queryKeys.adminMemberCandidates(workspaceId, "q")).toEqual([
+      "ws",
+      workspaceId,
+      "admin",
+      "member-candidates",
+      "q",
+    ]);
+    expect(queryKeys.adminCredentials(workspaceId)).toEqual([
+      "ws",
+      workspaceId,
+      "admin",
+      "credentials",
+    ]);
+    expect(queryKeys.workspaces()).toEqual(["ws"]);
+    expect(queryKeys.users()).toEqual(["users"]);
   });
 
   it("keeps two workspaces in separate cache branches", () => {

@@ -45,6 +45,10 @@ async function mountPicker(path = "/workspaces/ws-a/sessions") {
         path: "/workspaces/:wid/evolution/runs/:runId",
         component: { template: "<div />" },
       },
+      {
+        path: "/workspaces/:wid/admin",
+        component: { template: "<div />" },
+      },
     ],
   });
   await router.push(path);
@@ -71,6 +75,9 @@ describe("WorkspacePicker", () => {
     );
     expect(wrapper.text()).toContain("空间管理员");
     expect(wrapper.text()).toContain("空间数据与权限相互隔离");
+    expect(
+      wrapper.get("[data-testid='workspace-admin-link']").attributes("href"),
+    ).toBe("/workspaces/ws-a/admin");
   });
 
   it("switches to the same section in another workspace and invalidates the old tree", async () => {

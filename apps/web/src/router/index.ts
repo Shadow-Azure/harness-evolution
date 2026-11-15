@@ -81,6 +81,11 @@ export function createAppRouter() {
             name: "workspace-evolution-targets",
             component: () => import("../pages/evolution/targets/Index.vue"),
           },
+          {
+            path: "admin",
+            name: "workspace-admin",
+            component: () => import("../pages/workspaces/Admin.vue"),
+          },
         ],
       },
       ...(import.meta.env.DEV

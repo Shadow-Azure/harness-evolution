@@ -10,15 +10,22 @@ depends:
   - m7-05
   - m7-08
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/workspaces/**
   - apps/web/src/api/**
+  - apps/web/src/composables/**
   - apps/web/src/stores/**
+  - apps/web/src/router/**
+  - apps/web/src/components/**
+  - packages/contracts/**
   - tests/e2e/**
+  - plans/**
+  - reports/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/feature/2026-11-15-workspace-admin-ui.md
 github:
   number: 230
   url: https://github.com/Shadow-Azure/harness-evolution/issues/230

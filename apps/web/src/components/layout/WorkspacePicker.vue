@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { useQueryClient } from "@tanstack/vue-query";
 import { computed, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import { queryKeys } from "../../api/queryKeys";
 import { useAuthStore } from "../../stores/auth";
 import {
+  canManageWorkspace,
   workspaceMark,
   workspaceQuotaPercent,
   workspaceRoleLabel,
@@ -33,6 +34,7 @@ const current = computed(() =>
 );
 const visible = computed(() => auth.workspaces);
 const currentRole = computed(() => current.value?.role);
+const canManage = computed(() => canManageWorkspace(currentRole.value));
 
 /**
  * Build the same child route under another workspace while preserving query.
@@ -124,7 +126,15 @@ async function switchWorkspace(workspaceId: string): Promise<void> {
         <span class="wo-role">{{ workspaceRoleLabel(workspace.role) }}</span>
       </button>
       <div class="ws-foot">
-        空间数据与权限相互隔离
+        <span>空间数据与权限相互隔离</span>
+        <RouterLink
+          v-if="canManage"
+          class="ws-admin-link"
+          data-testid="workspace-admin-link"
+          :to="workspacePath(currentId, 'admin')"
+        >
+          空间设置 →
+        </RouterLink>
       </div>
     </div>
   </details>
@@ -299,11 +309,23 @@ async function switchWorkspace(workspaceId: string): Promise<void> {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-top: 5px;
   padding: 7px 8px 3px;
   border-top: 1px solid var(--border);
   color: var(--text-faint);
   font-size: 10.5px;
+}
+
+.ws-admin-link {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ws-admin-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 1100px) {
