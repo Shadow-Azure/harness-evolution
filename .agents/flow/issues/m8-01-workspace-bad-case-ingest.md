@@ -20,6 +20,7 @@ scope:
   - apps/api/app/main.py
   - apps/api/tests/**
   - packages/contracts/**
+  - plans/**
   - docs/**
   - tests/**
   - .agents/flow/**

@@ -499,6 +499,8 @@ erDiagram
 - `badCaseId`、`sessionId`、`badCaseType`、`objectName`、`objectType`、`title`、`reason`、`createdAt` 必填；`objectVersion`、`badCaseAgentId`、`metaData`、`source` 可空。
 - `sessionId` 映射 `bad_case_session_id`；`reason` 映射 `bad_case_description`；`badCaseAgentId` 主 agent 可空。
 - `badCaseType` 仅 `self|discovery`，`objectType` 仅 `skill|agent`；body 不接受 `workspaceId`。
+- `metaData` 必须是 JSON object，可为 `null`；数组、字符串等标量一律 `422 VALIDATION_INVALID`（与读模型 `Record<string, unknown>` 一致）。
+- `createdAt` 必须带时区偏移（如 `2026-11-09T15:58:00+08:00` 或 `...Z`）；无偏移的 naive 时间戳一律 `422 VALIDATION_INVALID`，不会按 `+08:00` 静默解释。
 
 ### 3.9 归因
 
@@ -1152,10 +1154,11 @@ Content-Type: application/json
 ```
 
 - 请求/字段校验见 §3.8；空间身份只从 URL + 凭据解析。
-- 响应 `201 {badCaseId, workspaceUsed}`；头 `X-HE-Workspace-Used: 129`；同一 `badCaseId` 并发插入撞主键时退化为 upsert，返回 `200`。
-- 幂等：同空间内同 `badCaseId` 重报更新全部上游字段、`used` 不变；若 ID 已属于其它空间 → `409 BAD_CASE_ID_CONFLICT`，不能跨空间搬移或覆盖。
+- 响应 `201 {badCaseId, workspaceUsed}`（新建）或 `200`（同空间重报），body 两种状态相同；头 `X-HE-Workspace-Used` 的值是十进制整数的字符串（HTTP 头值恒为字符串，OpenAPI 声明 `type: string` + `pattern: ^[0-9]+$`）。
+- 幂等：同空间内同 `badCaseId` 重报（无论顺序还是并发）一律返回 `200`，更新全部上游字段、`used` 不变；并发插入撞主键时退化为 upsert，属于正常路径而不是错误。
+- 若 ID 已属于其它空间 → `409 BAD_CASE_ID_CONFLICT`，不能跨空间搬移或覆盖。
 - 额度：插入前在事务内 `SELECT quota … FOR UPDATE` + `COUNT(bad_cases WHERE workspace_id)`；`used >= quota` → `409 QUOTA_EXCEEDED`（`details:{quota,used}`），不自动丢弃旧数据；upsert 已存在 ID 不占新额度。
-- 写入成功后异步标记该 `sessionId` 待补轨迹（`bad_case_root_sync`，[11](11-bad-case-session-sync.md)）；上报不要求轨迹已存在。
+- 写入 case 的同一事务里以 insert-if-absent 语义标记该 `sessionId` 待补轨迹（`bad_case_root_sync`，[11 §5.2](11-bad-case-session-sync.md) 允许显式 `pending` 行）；没有独立的异步任务，已提交的 case 不会缺标记；`synced`/`failed` 行保持原状态。上报不要求轨迹已存在。
 - 错误矩阵：`401 CREDENTIAL_INVALID`、`403 WORKSPACE_FORBIDDEN`（凭据与 URL 空间不匹配）、`404 WORKSPACE_NOT_FOUND`、`422 VALIDATION_INVALID`（字段）、`409 QUOTA_EXCEEDED`。
 
 ```bash

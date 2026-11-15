@@ -12,11 +12,11 @@ m7 已经交付空间、成员与一次性上报凭据，但 `bad_cases` 仍只�
 
 - 新增 `POST /api/workspaces/{wid}/bad-cases`，鉴权用空间凭据（`Authorization: Bearer whk_…`）。`AuthMiddleware` 只对该 `POST` 路由跳过 access-token 解码，匹配用锚定正则 `^/api/workspaces/[^/]+/bad-cases$`：尾斜杠、子路径与其它方法继续走 JWT，泄漏的凭据在别处一律 401 `AUTH_REQUIRED`。
 - 凭据解析放在路由依赖里并复用 `WorkspaceService.verify_credential`：缺失、未知或已撤销 → 401 `CREDENTIAL_INVALID`；凭据空间与 URL 不一致 → 403 `WORKSPACE_FORBIDDEN`；URL 指向不存在的空间 → 404 `WORKSPACE_NOT_FOUND`。凭据先验证，未认证调用方无法枚举空间 id。
-- 请求体是封闭的 camelCase 契约（`extra="forbid"`，只认别名），`workspaceId`、snake_case 与未知字段都 422；空间身份只来自 URL 与凭据，body 不参与。
+- 请求体是封闭的 camelCase 契约（`extra="forbid"`，只认别名），`workspaceId`、snake_case 与未知字段都 422；空间身份只来自 URL 与凭据，body 不参与。`metaData` 只接受 JSON object 或 `null`（数组与标量 422，与读模型一致）；`createdAt` 必须带时区偏移，naive 时间戳 422 而不是按 `+08:00` 静默解释。
 - 一次事务覆盖额度判定与写入：先锁空间行（MySQL `SELECT … FOR UPDATE`；SQLite 没有行锁，用一次 `UPDATE … SET updated_at = updated_at` 取得数据库写锁），再按主键读既有 case，最后插入或更新。`used` 永远是 `COUNT(bad_cases WHERE workspace_id)`，不落列、不缓存；响应头 `X-HE-Workspace-Used` 与 body `workspaceUsed` 取自写后同事务的计数。
 - 归属与额度的顺序固定：既有 case 属于其它空间 → 409 `BAD_CASE_ID_CONFLICT`（不搬移、不覆盖、不占额度）；属于本空间 → 200 更新全部上游字段；只有新 ID 才做额度判定，`used >= quota` → 409 `QUOTA_EXCEEDED`（`details: {quota, used}`），旧数据不动。
-- 同 ID 并发插入撞主键时捕获 `IntegrityError` 后重读：同空间退化为更新（201 变 200），异空间升级为冲突。锁顺序固定为空间 → case，竞态双方都不会持有对方需要的锁。
-- 写入成功后在同一事务里 insert-if-absent 一条 `bad_case_root_sync` 的 `pending` 行，让新根会话立即成为 `bad_case_root_sync` 候选；已 `synced`（吸收态）或 `failed`（退避中）的行保持原状，不会被重报重置。无状态行按 pending 处理的语义不变。
+- 同 ID 并发插入撞主键时捕获 `IntegrityError`，再用**锁定读**重读归属：MySQL 的 REPEATABLE READ 一致性读复用旧快照，只有当前读（`SELECT … FOR UPDATE`）看得见竞争方刚提交的行；同空间退化为更新（201 变 200），异空间升级为冲突。锁顺序固定为空间 → case，竞态双方都不会持有对方需要的锁。
+- 写入成功后在同一事务里 insert-if-absent 一条 `bad_case_root_sync` 的 `pending` 行，让新根会话立即成为 `bad_case_root_sync` 候选；已 `synced`（吸收态）或 `failed`（退避中）的行保持原状，不会被重报重置。无状态行按 pending 处理的语义不变。`claim` 与这条写入共用 insert-if-absent 语义：无状态行时撞主键只返回 `False`，交由下一 tick 认领已可见的 `pending` 行，不让整次同步 job 失败。
 - `last_used_at` 只是排障信息：60 秒节流写入，失败只记日志，绝不把已提交的上报变成 500。
 - `BadCaseIngest` / `BadCaseIngestResponse` 进入 FastAPI OpenAPI，`packages/contracts` 由 `pnpm contract:generate` 生成；`QUOTA_EXCEEDED` 与 `BAD_CASE_ID_CONFLICT` 进入共享错误码枚举。
 
@@ -33,10 +33,10 @@ m7 已经交付空间、成员与一次性上报凭据，但 `bad_cases` 仍只�
 
 ## Consequences
 
-- SQLite 上每次上报会短暂持有数据库写锁，写路径在这一段全局串行；这是单写者方言的固有代价，本地与测试可接受，生产 MySQL 用空间行锁并发。
+- SQLite 上每次上报会短暂持有数据库写锁，写路径在这一段全局串行；这是单写者方言的固有代价，本地与测试可接受，生产 MySQL 用空间行锁并发。等锁超过 `busy_timeout=5000`（5 秒）时上报会以 500 失败，而不是无限排队；突发本地写入需要重试。
 - 额度判定新增一次 `COUNT(*)`；`used` 不物化，空间列表与 `auth/session` 继续用同一口径，不存在两套计数。
-- 403 与 404 的区分让持有任一有效凭据的调用方知道某个空间 id 是否存在；未认证调用仍统一 401。
-- 凭据只证明空间范围，没有 per-agent 身份与速率限制；吊销即时生效的代价是每次上报一次凭据索引查询。
+- 403 与 404 的区分让持有任一有效凭据的调用方可以探测任意空间 id 是否存在（存在 403、不存在 404）；未认证调用仍统一 401。这是设计 §4.17 错误矩阵的既有取舍，不是实现漂移。
+- 凭据只证明空间范围，没有 per-agent 身份；也没有按凭据的速率限制与请求体大小上限，调用方可以高频重试或提交接近字段上限的 body；吊销即时生效的代价是每次上报一次凭据索引查询。
 - 根会话状态表新增显式 `pending` 行；调度器「无行即 pending」的分支保留，两者都算候选。
 - legacy 目录任务继续只向默认空间插入，冲突时更新上游字段而不改 `workspace_id`；上报路径保证不跨空间覆盖，但不接管目录任务的写入边界。
 - MySQL 并发额度测试只在 `HE_DB_URL` 指向 MySQL 的 lane 运行；本地 SQLite 只验证等价语义与串行化分支。

@@ -24,7 +24,7 @@
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新、IdP 回调与票据 SSE 公开；其余需 Bearer JWT，用户管理、sync 与上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用边界。
+仅健康、登录、刷新、IdP 回调与票据 SSE 公开；其余需 Bearer JWT，用户管理、sync、上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用边界。
 
 Web 先恢复会话再挂路由；token 与用户只留内存。守卫处理登录与强改密，并发 401 单飞刷新，退出清 query cache。
 
@@ -34,7 +34,7 @@ Session 页用 360px 列表+概览；搜索/状态/排序/选中/证据写 URL�
 
 运行列表后端分组并生成展示事实。
 
-错误详情含问题列表、执行流与双 Tab；选中态写 URL，跨 Session 为 409，侧栏记忆滚动，流图异步加载受门禁约束。
+错误详情含问题列表、执行流与双 Tab；选中态写 URL，跨 Session 409，侧栏记忆滚动，流图异步加载受门禁约束。
 
 lifespan 先恢复任务与 sync_lock 再调度；手动/定时共用单飞锁，无 pending 不建 job。
 
@@ -45,11 +45,11 @@ lifespan 先恢复任务与 sync_lock 再调度；手动/定时共用单飞锁�
 - Alembic 维护双方言迁移树；业务只依赖 `db/crud/` 与 `Database`，不拼 SQL。
 - `job_runs` 是任务真值；串行 worker 写 run 事件，总线只做有界通知。
 - 自进化：`progress_unit`/`EngineFactory`、admin target、git ref/tag、`agents.model`。
-- `sync_lock` 是单飞真值；job 与锁同事务创建，异常 `sync_runs` 先终结再释放锁。
+- `sync_lock` 是单飞真值；job 与锁同事务创建，异常 `sync_runs` 先终结再释放匹配锁。
 - 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
 - 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放。CI 只用 mock。
 - 归一化按 payload 独立解析，消息与内容块只存内存；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
-- 重放按 root 原子：先组装，再事务重写并推进游标。
+- 重放按 root 原子：先组装，再事务重写并推进 source 游标。
 - 外部问题表按主键同步：凭据上报幂等 upsert `bad_cases`，目录任务限默认空间；归因只读。
 - 密钥只从环境变量注入，不入仓库或数据库。
 

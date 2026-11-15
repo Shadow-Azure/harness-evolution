@@ -421,7 +421,9 @@ erDiagram
 
 > 自动入库由 `bad_case_catalog_sync` 定时任务完成：按 `bad_case_id` 游标分页拉取上游，命中已有 id 时更新全部上游字段，缺失时插入；不触碰 `bad_case_analysis` 与 `probe_reports`。前端“已同步”取 `COUNT(bad_cases)`，“未同步”取上游剩余量。
 >
-> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；启用 legacy 目录同步时只写 `HE_DEFAULT_WORKSPACE_ID`，不能绕过空间凭据给其它空间写数据。upsert 同 `bad_case_id` 更新上游字段、不重复计数；额度在插入前按 `COUNT(workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。
+> **V2 写入边界**：目录同步默认停用（`HE_BAD_CASE_CATALOG_SYNC_ENABLED=false`），主通道是空间上报接口（§4.1 的 `workspace_id` 由 URL + 凭据决定，body 不含空间字段）；启用 legacy 目录同步时只写 `HE_DEFAULT_WORKSPACE_ID`，不能绕过空间凭据给其它空间写数据。upsert 同 `bad_case_id` 更新上游字段、不重复计数。
+>
+> **`quota` 的语义**：`quota` 只约束凭据上报路径——额度在插入前按 `COUNT(bad_cases WHERE workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。legacy 目录同步不查 `quota`、也不参与空间行锁，只写默认空间，因此它可以把默认空间推过 `quota`：此时默认空间的 `workspaceUsed`（以及新建上报的判定）会如实反映超限状态，新 ID 上报继续 `409` 直至既有行被清理。这是有意的边界——`quota` 是“凭据上报的准入上限”，不是“空间容量的硬上限”；默认空间上并发的上报仍可能读到目录任务提交前的计数。
 
 > 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
 
