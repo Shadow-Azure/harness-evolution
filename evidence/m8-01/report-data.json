@@ -1,0 +1,245 @@
+{
+  "title": "m8-01 空间 bad case 上报集成冒烟报告",
+  "eyebrow": "Harness Evolution · M8 空间数据面与总览",
+  "summary": "在真实 API（SQLite + demo fixtures）+ Vite proxy + 无头 Chrome 环境中验证空间凭据上报的完整矩阵：新建 201、同 ID 重报 200 且不占额度、额度 409、跨空间 403、越权 401、body 不接受 workspaceId 422，并在空间管理「上报」Tab 核对 used/quota 与原型一致。冒烟同时发现并修复上报 Tab 文案仍承诺「workspace 字段会被忽略」的问题（实际返回 422）。",
+  "meta": "2026-11-16 · macOS · Chrome headless · 1440×980",
+  "metrics": [
+    {
+      "value": "9",
+      "label": "API 场景"
+    },
+    {
+      "value": "1",
+      "label": "已修缺陷"
+    },
+    {
+      "value": "3",
+      "label": "截图（前后 / 原型）"
+    }
+  ],
+  "facts": [
+    {
+      "label": "分支",
+      "value": "agent/develop-m8-01-78f1516bd9a9"
+    },
+    {
+      "label": "提交",
+      "value": "dcea1d5（PR #265 head）"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution web + api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 API + Vite proxy + CDP 无头 Chrome"
+    },
+    {
+      "label": "数据",
+      "value": "fixtures:seed 与独立临时数据目录"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "凭据新建 bad case",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "POST /api/workspaces/{wid}/bad-cases → 201，body {badCaseId, workspaceUsed:1}，头 X-HE-Workspace-Used: 1。",
+        "evidence": []
+      },
+      {
+        "id": "02",
+        "name": "同 ID 重报不占额度",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "同空间同 badCaseId 重报 → 200，workspaceUsed 仍为 1，标题与 createdAt 被更新。",
+        "evidence": []
+      },
+      {
+        "id": "03",
+        "name": "额度内第二条",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "第二条新 ID → 201，workspaceUsed 变为 2（quota=2）。",
+        "evidence": []
+      },
+      {
+        "id": "04",
+        "name": "超出额度拒绝且保留旧数据",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "第三条新 ID → 409 QUOTA_EXCEEDED，details {quota:2, used:2}；旧两条仍可读。",
+        "evidence": []
+      },
+      {
+        "id": "05",
+        "name": "凭据不能写入其它空间",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "同一凭据打对照空间 URL → 403 WORKSPACE_FORBIDDEN；凭据只绑定签发空间。",
+        "evidence": []
+      },
+      {
+        "id": "06",
+        "name": "跨空间 ID 不搬移",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "用对照空间凭据复用已存在 badCaseId → 409 BAD_CASE_ID_CONFLICT，原行仍归签发空间。",
+        "evidence": []
+      },
+      {
+        "id": "07",
+        "name": "凭据只在授权端点生效",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "JWT 打上报端点 → 401；上报凭据打 sessions 端点 → 401 AUTH_REQUIRED。",
+        "evidence": []
+      },
+      {
+        "id": "08",
+        "name": "body 不接受 workspaceId",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "合法 camelCase body 额外携带 workspaceId → 422 VALIDATION_INVALID，空间只取自 URL + 凭据。",
+        "evidence": []
+      },
+      {
+        "id": "09",
+        "name": "管理页 used/quota 与原型",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "上报 Tab 显示 2 / 2 额度；与 plans/ui-prototype-v2/harness-evolution.html 的上报 Tab 信息架构一致。",
+        "evidence": [
+          "01-admin-ingest-used.png",
+          "02-prototype-admin-ingest.png"
+        ]
+      },
+      {
+        "id": "10",
+        "name": "上报 Tab 文案对齐 422",
+        "status": {
+          "kind": "fixed",
+          "label": "FIXED"
+        },
+        "detail": "发现文案仍写「body 中的 workspace 字段会被忽略」；改为「不接受，多带会返回 422」，应用与原型同步，Admin.test.ts 钉住。",
+        "evidence": [
+          "00-admin-ingest-stale-copy.png",
+          "01-admin-ingest-used.png"
+        ]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "上报 Tab 文案承诺忽略 workspace 字段，实际返回 422",
+      "facts": [
+        {
+          "label": "实际",
+          "value": "页面与原型写「body 中的 workspace 字段会被忽略」。"
+        },
+        {
+          "label": "预期",
+          "value": "body 不接受 workspace 字段，多带返回 422 VALIDATION_INVALID（设计 05 §3.8）。"
+        },
+        {
+          "label": "根因",
+          "value": "m7-09 复制原型文案时沿用旧语义，新端点按设计收紧为拒绝。"
+        }
+      ],
+      "state": {
+        "kind": "fixed",
+        "label": "已修复 · dcea1d5"
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "00-admin-ingest-stale-copy.png",
+      "alt": "修复前的上报 Tab 文案",
+      "label": "00 · 修复前",
+      "caption": "文案仍说 body 的 workspace 字段会被忽略，与 422 契约相反。",
+      "variant": "wide"
+    },
+    {
+      "src": "01-admin-ingest-used.png",
+      "alt": "空间管理上报 Tab 显示已用 2 / 2",
+      "label": "01 · 实现（上报 Tab）",
+      "caption": "真实上报两条后，管理页 used=2/quota=2；凭据、端点与 curl 示例与原型同构。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-prototype-admin-ingest.png",
+      "alt": "原型的上报 Tab",
+      "label": "02 · 原型参考",
+      "caption": "plans/ui-prototype-v2/harness-evolution.html 的上报 Tab，用作视觉与信息架构对照。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "额度/幂等/冲突事务",
+        "coverage": "API 测试 51 例 + 本冒烟 8 场景",
+        "conclusion": "SQLite 与 MySQL lane 均覆盖，并含并发不超卖。",
+        "recommendation": "保留 MySQL lane 的同 ID 并发用例。"
+      },
+      {
+        "area": "凭据边界",
+        "coverage": "API 测试 + 本冒烟",
+        "conclusion": "凭据只在上报端点生效，且只写签发空间。",
+        "recommendation": "后续如引入速率限制，补一条 429 冒烟。"
+      },
+      {
+        "area": "管理页 used 展示",
+        "coverage": "本冒烟截图",
+        "conclusion": "上报后刷新管理页能看到 used 变化。",
+        "recommendation": "m8-04 总览页落地后复用同一聚合口径。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "8 个 API 场景与 1 个管理页视觉核对全部通过，未发现新缺陷。",
+    "points": [
+      "截图与原型信息架构一致；实现侧使用的是真实空间 used/quota。",
+      "原型请求体示例仍是打桩数据的 snake_case 展示；真实契约以 plans/fullstack-design 05 §3.8 的 camelCase 为准，应用示例已按契约渲染。",
+      "冒烟不写入仓库，报告与截图仅本地保存。"
+    ]
+  },
+  "footer": "由 m8-01 集成冒烟生成；截图来自真实 API + 浏览器，非原型静态页。"
+}
