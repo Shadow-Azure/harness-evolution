@@ -327,10 +327,10 @@ async def test_problem_snapshot_is_requested_once_per_session_list(
     calls = 0
     original = service._repository.session_snapshot
 
-    async def observed(session_id: str) -> object:
+    async def observed(session_id: str, scope: object) -> object:
         nonlocal calls
         calls += 1
-        return await original(session_id)
+        return await original(session_id, scope)
 
     service._repository.session_snapshot = observed
     response = await problem_api.client.get(

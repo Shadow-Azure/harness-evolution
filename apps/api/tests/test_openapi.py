@@ -83,6 +83,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/members/self-admin",
         "/api/workspaces/{wid}/credentials",
         "/api/workspaces/{wid}/credentials/{cid}",
+        "/api/workspaces/{wid}/sessions",
+        "/api/workspaces/{wid}/sessions/{sessionId}",
+        "/api/workspaces/{wid}/sessions/{sessionId}/tree",
+        "/api/workspaces/{wid}/sessions/{sessionId}/bad-cases",
+        "/api/workspaces/{wid}/bad-cases/{badCaseId}",
     }
     assert {
         "HealthResponse",

@@ -44,6 +44,7 @@ from app.db.crud.evolution_targets import (
     ModelUsageRecord,
 )
 from app.db.crud.problems import ProblemRepository
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.database import SqlAlchemyDatabase
@@ -1754,31 +1755,6 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
                 ),
             )
 
-        await replay_pending_payloads(database)
-        repository = SessionRepository(database)
-        records = await repository.list_sessions(
-            query="queryable",
-            status="all",
-            sort="latest",
-            limit=10,
-        )
-        matching = [record for record in records if record.id == root_id]
-        tree_agents = await repository.list_agents(root_id)
-        tree_snapshot = await repository.tree_snapshot(root_id)
-        counts = await repository.bad_case_counts([root_id])
-
-        assert len(matching) == 1
-        assert matching[0].model == "mysql-query-model"
-        assert matching[0].user_turns_count == 1
-        assert matching[0].messages_count == 1
-        assert tree_agents[0].kind == "main"
-        assert tree_snapshot is not None
-        assert tree_snapshot.session.id == root_id
-        assert [agent.id for agent in tree_snapshot.agents] == [root_id]
-        assert tree_snapshot.events == ()
-        assert tree_snapshot.bad_cases == ()
-        assert counts == {}
-
         case_id = "mysql-problem-api-case"
         probe_id = "mysql-problem-api-probe"
         created_at = datetime(2026, 10, 26, 9, tzinfo=UTC)
@@ -1835,12 +1811,39 @@ async def test_mysql_session_query_lists_and_reads_canonical_tree() -> None:
                 ),
             )
 
+        await replay_pending_payloads(database)
+        repository = SessionRepository(database)
+        scope = WorkspaceReadScope.all_workspaces()
+        records = await repository.list_sessions(
+            query="queryable",
+            status="all",
+            sort="latest",
+            limit=10,
+            scope=scope,
+        )
+        matching = [record for record in records if record.id == root_id]
+        tree_agents = await repository.list_agents(root_id)
+        tree_snapshot = await repository.tree_snapshot(root_id, scope)
+        counts = await repository.bad_case_counts([root_id], scope)
+
+        assert len(matching) == 1
+        assert matching[0].model == "mysql-query-model"
+        assert matching[0].user_turns_count == 1
+        assert matching[0].messages_count == 1
+        assert tree_agents[0].kind == "main"
+        assert tree_snapshot is not None
+        assert tree_snapshot.session.id == root_id
+        assert [agent.id for agent in tree_snapshot.agents] == [root_id]
+        assert tree_snapshot.events == ()
+        assert [case.bad_case_id for case in tree_snapshot.bad_cases] == [case_id]
+        assert counts == {root_id: 1}
+
         problems = ProblemService(
             ProblemRepository(database),
             BadCaseService(BadCaseRepository(database)),
         )
-        listed = await problems.list_for_session(root_id)
-        detailed = await problems.get_case(case_id, root_id)
+        listed = await problems.list_for_session(root_id, scope)
+        detailed = await problems.get_case(case_id, root_id, scope)
 
         assert [item.bad_case_id for item in listed.items] == [case_id]
         assert detailed.anchor.agent_id == root_id
