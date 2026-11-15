@@ -4,60 +4,122 @@
   "summary": "在真实 API + Vite proxy + 无头 Chrome 环境中验证 /workspaces/:wid 空间壳、空间选择、跨空间缓存隔离、旧深链一次重定向与不可见空间回退。4 条新增浏览器用例、m1/m3/m4/m5/m6 回归与跨栈代理测试全部通过；发现并修复了移动端自进化页横向溢出与测试环境外部表未初始化两个问题。",
   "meta": "2026-11-15 · macOS · Chrome headless · 1408×900 与 390×844",
   "metrics": [
-    { "value": "6", "label": "冒烟场景" },
-    { "value": "4/4", "label": "新增空间壳 E2E" },
-    { "value": "6/6", "label": "跨栈代理集成" },
-    { "value": "0", "label": "未解决缺陷" }
+    {
+      "value": "6",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "4/4",
+      "label": "新增空间壳 E2E"
+    },
+    {
+      "value": "6/6",
+      "label": "跨栈代理集成"
+    },
+    {
+      "value": "0",
+      "label": "未解决缺陷"
+    }
   ],
   "facts": [
-    { "label": "代码提交", "value": "5519a9a（PR #261）" },
-    { "label": "分支", "value": "agent/develop-m7-08-b2e3bbf74fc0" },
-    { "label": "应用", "value": "harness-evolution web + api（sqlite, demo fixtures）" },
-    { "label": "测试方式", "value": "真实 API + Vite proxy + CDP 无头 Chrome" },
-    { "label": "数据", "value": "fixtures:seed（m2-synthetic）与独立临时数据目录" }
+    {
+      "label": "代码提交",
+      "value": "c3eebbf（PR #261；截图采集于 5519a9a，之后仅非视觉修复）"
+    },
+    {
+      "label": "分支",
+      "value": "agent/develop-m7-08-b2e3bbf74fc0"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution web + api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 API + Vite proxy + CDP 无头 Chrome"
+    },
+    {
+      "label": "数据",
+      "value": "fixtures:seed（m2-synthetic）与独立临时数据目录"
+    }
   ],
   "matrix": {
-    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
     "rows": [
       {
         "id": "01",
         "name": "未登录访问空间路由",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "访问 /workspaces/ws-default/sessions 跳 /login，redirect 参数保留原路径。",
-        "evidence": ["01-anonymous-login-redirect.png"]
+        "evidence": [
+          "01-anonymous-login-redirect.png"
+        ]
       },
       {
         "id": "02",
         "name": "空间选择页",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "两个可见空间各展示名称、角色、used/quota 与成员数，卡片可进入。",
-        "evidence": ["02-workspace-chooser.png"]
+        "evidence": [
+          "02-workspace-chooser.png"
+        ]
       },
       {
         "id": "03",
         "name": "空间壳与顶栏切换器",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "Session 浏览器在空间壳内渲染，顶栏显示当前空间、角色与配额入口。",
-        "evidence": ["03-workspace-sessions.png", "04-workspace-picker.png"]
+        "evidence": [
+          "03-workspace-sessions.png",
+          "04-workspace-picker.png"
+        ]
       },
       {
         "id": "04",
         "name": "切换空间后不复用旧缓存",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "从默认空间切到空空间后列表为空，不出现旧空间 Session；切回后重新拉取。",
-        "evidence": ["05-empty-workspace.png"]
+        "evidence": [
+          "05-empty-workspace.png"
+        ]
       },
       {
         "id": "05",
         "name": "旧深链一次重定向",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "旧 /sessions/:sid/errors 替换为 /workspaces/ws-default/...，history.state.replaced=true。",
-        "evidence": ["06-legacy-deep-link.png"]
+        "evidence": [
+          "06-legacy-deep-link.png"
+        ]
       },
       {
         "id": "06",
         "name": "不可见空间回选择页",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "wid 不在 auth/session 可见空间内时进入 /workspaces?reason=forbidden，并显示无权限提示。",
         "evidence": []
       }
@@ -68,41 +130,89 @@
       "severity": "P2",
       "title": "移动端自进化页横向溢出 12px",
       "facts": [
-        { "label": "实际", "value": "390px 视口下 .evolution-page-frame scrollWidth=402。" },
-        { "label": "预期", "value": "scrollWidth 等于 clientWidth，顶栏与内容不横向滚动。" },
-        { "label": "根因", "value": "空间壳 main 改为全宽后，V1 的页面框仍按旧的 1280 居中列做 -12px/宽度 +24px 补偿。" }
+        {
+          "label": "实际",
+          "value": "390px 视口下 .evolution-page-frame scrollWidth=402。"
+        },
+        {
+          "label": "预期",
+          "value": "scrollWidth 等于 clientWidth，顶栏与内容不横向滚动。"
+        },
+        {
+          "label": "根因",
+          "value": "空间壳 main 改为全宽后，V1 的页面框仍按旧的 1280 居中列做 -12px/宽度 +24px 补偿。"
+        }
       ],
-      "state": { "kind": "fixed", "label": "已修复 · 5519a9a" }
+      "state": {
+        "kind": "fixed",
+        "label": "已修复 · 5519a9a"
+      }
     },
     {
       "severity": "P2",
       "title": "auth/session 启动依赖外部 bad_cases 表",
       "facts": [
-        { "label": "实际", "value": "未 seed 外部表的 E2E/集成环境启动后停在登录页。" },
-        { "label": "预期", "value": "空间壳启动前外部表已初始化；测试环境应显式 bootstrap。" },
-        { "label": "根因", "value": "auth/session 的 used 聚合读取外部引导表；m1 与跨栈代理测试原先未 seed。" }
+        {
+          "label": "实际",
+          "value": "未 seed 外部表的 E2E/集成环境启动后停在登录页。"
+        },
+        {
+          "label": "预期",
+          "value": "空间壳启动前外部表已初始化；测试环境应显式 bootstrap。"
+        },
+        {
+          "label": "根因",
+          "value": "auth/session 的 used 聚合读取外部引导表；m1 与跨栈代理测试原先未 seed。"
+        }
       ],
-      "state": { "kind": "fixed", "label": "已修复 · 5519a9a（测试 bootstrap）" }
+      "state": {
+        "kind": "fixed",
+        "label": "已修复 · 5519a9a（测试 bootstrap）"
+      }
     },
     {
       "severity": "P3",
       "title": "默认落地页暂为 Session 列表而非总览",
       "facts": [
-        { "label": "实际", "value": "/workspaces/:wid 默认进入 sessions。" },
-        { "label": "预期", "value": "设计 08 §1 的默认落地页是 overview。" },
-        { "label": "根因", "value": "overview 属于 m8-04，尚未实现；m7-08 不新建占位页。" }
+        {
+          "label": "实际",
+          "value": "/workspaces/:wid 默认进入 sessions。"
+        },
+        {
+          "label": "预期",
+          "value": "设计 08 §1 的默认落地页是 overview。"
+        },
+        {
+          "label": "根因",
+          "value": "overview 属于 m8-04，尚未实现；m7-08 不新建占位页。"
+        }
       ],
-      "state": { "kind": "manual", "label": "已记录 · 待 m8-04" }
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · 待 m8-04"
+      }
     },
     {
       "severity": "P3",
       "title": "归因/探针仍走可见空间并集兼容端点",
       "facts": [
-        { "label": "实际", "value": "bad case 详情已空间化，/analysis 与 /probes 仍是兼容端点。" },
-        { "label": "预期", "value": "空间级归因端点落地后，同一 case 的多空间归因各自隔离。" },
-        { "label": "根因", "value": "m7-06 只提供可见空间并集；m7-08 scope 不含 apps/api。" }
+        {
+          "label": "实际",
+          "value": "bad case 详情已空间化，/analysis 与 /probes 仍是兼容端点。"
+        },
+        {
+          "label": "预期",
+          "value": "空间级归因端点落地后，同一 case 的多空间归因各自隔离。"
+        },
+        {
+          "label": "根因",
+          "value": "m7-06 只提供可见空间并集；m7-08 scope 不含 apps/api。"
+        }
       ],
-      "state": { "kind": "manual", "label": "已记录 · Agent Note 欠账" }
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · Agent Note 欠账"
+      }
     }
   ],
   "screenshots": [
@@ -150,7 +260,12 @@
     }
   ],
   "coverage": {
-    "columns": ["区域", "覆盖", "结论", "建议"],
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
     "rows": [
       {
         "area": "路由守卫与旧链接解析",
