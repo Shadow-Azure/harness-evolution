@@ -47,6 +47,9 @@ export type EventTicketResponse = components["schemas"]["EventTicketResponse"];
 /** User fields safe to retain in the browser. */
 export type PublicUser = components["schemas"]["PublicUser"];
 
+/** Small unpaginated administrator user list used to seed workspace admins. */
+export type UserListResponse = components["schemas"]["UserListResponse"];
+
 /** Durable job status returned by the REST source of truth. */
 export type JobResponse = components["schemas"]["JobResponse"];
 

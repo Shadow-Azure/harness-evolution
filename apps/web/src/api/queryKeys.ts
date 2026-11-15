@@ -13,6 +13,14 @@ export const queryKeys = {
   authSession: ["auth", "session"] as const,
   workspaces: () => ["ws"] as const,
   workspace: (workspaceId: string) => ["ws", workspaceId] as const,
+  admin: (workspaceId: string) => ["ws", workspaceId, "admin"] as const,
+  adminMembers: (workspaceId: string) =>
+    ["ws", workspaceId, "admin", "members"] as const,
+  adminMemberCandidates: (workspaceId: string, query: string) =>
+    ["ws", workspaceId, "admin", "member-candidates", query] as const,
+  adminCredentials: (workspaceId: string) =>
+    ["ws", workspaceId, "admin", "credentials"] as const,
+  users: () => ["users"] as const,
   sessions: (workspaceId: string) => ["ws", workspaceId, "sessions"] as const,
   sessionList: (workspaceId: string, filters: SessionFilters) =>
     ["ws", workspaceId, "sessions", filters] as const,

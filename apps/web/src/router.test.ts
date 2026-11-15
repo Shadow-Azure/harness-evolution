@@ -80,6 +80,7 @@ describe("web router", () => {
     const targets = children.find(
       (route) => route.path === "evolution/targets",
     );
+    const admin = children.find((route) => route.path === "admin");
 
     expect(typeof evolution?.component).toBe("function");
     const evolutionComponent = await (
@@ -98,6 +99,12 @@ describe("web router", () => {
       targets?.component as () => Promise<{ default: { name: string } }>
     )();
     expect(targetsComponent.default.name).toBe("TargetConfigPage");
+
+    expect(typeof admin?.component).toBe("function");
+    const adminComponent = await (
+      admin?.component as () => Promise<{ default: { name: string } }>
+    )();
+    expect(adminComponent.default.name).toBe("WorkspaceAdminPage");
   });
 
   it("keeps the development-only Agent tree visual fixture", async () => {
