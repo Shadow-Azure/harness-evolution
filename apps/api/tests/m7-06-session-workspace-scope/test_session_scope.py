@@ -155,18 +155,26 @@ async def test_workspace_session_list_is_projected_from_its_bad_cases(
     alice = await _workspace_sessions(environment, environment.workspace_a, environment.alice)
     assert alice.status_code == 200
     assert _ids(alice.json()) == [SESSION_3, SESSION_1]
+    # The shared root counts once in each workspace; nothing is pending because
+    # every visible root already has a session_families row.
+    assert alice.json()["total"] == 2
+    assert alice.json()["pendingSessions"] == 0
     alice_counts = {item["id"]: item["stats"]["badCases"] for item in alice.json()["items"]}
     assert alice_counts == {SESSION_1: 1, SESSION_3: 1}
 
     bob = await _workspace_sessions(environment, environment.workspace_b, environment.bob)
     assert bob.status_code == 200
     assert _ids(bob.json()) == [SESSION_2, SESSION_1]
+    assert bob.json()["total"] == 2
+    assert bob.json()["pendingSessions"] == 0
     bob_counts = {item["id"]: item["stats"]["badCases"] for item in bob.json()["items"]}
     assert bob_counts == {SESSION_1: 1, SESSION_2: 1}
 
     carol = await _workspace_sessions(environment, environment.workspace_a, environment.carol)
     assert carol.status_code == 200
     assert _ids(carol.json()) == [SESSION_3, SESSION_1]
+    assert carol.json()["total"] == 2
+    assert carol.json()["pendingSessions"] == 0
     assert {item["id"]: item["stats"]["badCases"] for item in carol.json()["items"]} == {
         SESSION_1: 1,
         SESSION_3: 1,
@@ -315,12 +323,18 @@ async def test_legacy_session_endpoints_filter_by_all_visible_workspaces(
     alice = await environment.client.get("/api/sessions", headers=environment.alice)
     assert alice.status_code == 200
     assert _ids(alice.json()) == [SESSION_3, SESSION_1]
+    assert alice.json()["total"] == 2
+    assert alice.json()["pendingSessions"] == 0
 
     bob = await environment.client.get("/api/sessions", headers=environment.bob)
     assert _ids(bob.json()) == [SESSION_2, SESSION_1]
+    assert bob.json()["total"] == 2
 
     carol = await environment.client.get("/api/sessions", headers=environment.carol)
     assert _ids(carol.json()) == [SESSION_3, SESSION_2, SESSION_1]
+    # The legacy union dedupes the shared root across Carol's two workspaces.
+    assert carol.json()["total"] == 3
+    assert carol.json()["pendingSessions"] == 0
     carol_session = await environment.client.get(
         f"/api/sessions/{SESSION_1}",
         headers=environment.carol,
@@ -331,9 +345,13 @@ async def test_legacy_session_endpoints_filter_by_all_visible_workspaces(
     dave = await environment.client.get("/api/sessions", headers=environment.dave)
     assert dave.status_code == 200
     assert dave.json()["items"] == []
+    assert dave.json()["total"] == 0
+    assert dave.json()["pendingSessions"] == 0
 
     admin = await environment.client.get("/api/sessions", headers=environment.admin)
     assert _ids(admin.json()) == [SESSION_4, SESSION_3, SESSION_2, SESSION_1]
+    assert admin.json()["total"] == 4
+    assert admin.json()["pendingSessions"] == 0
 
 
 async def test_legacy_detail_tree_and_case_routes_enforce_visibility(

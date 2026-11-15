@@ -2757,3 +2757,106 @@ async def test_mysql_cross_workspace_same_id_race_is_a_conflict() -> None:
             )
         finally:
             await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_workspace_session_list_reports_total_and_pending() -> None:
+    """The V2 list, total, and pending SQL stay correct on the MySQL lane."""
+    database = await _mysql_ingest_database()
+    workspace_id = await _insert_ingest_workspace(database, quota=4)
+    normalized_root = new_id()
+    pending_root = new_id()
+    now = now_shanghai()
+    try:
+        async with database.transaction() as session:
+            source_id = int(new_id().replace("-", "")[:8], 16)
+            await session.execute(
+                insert(source_records).values(
+                    id=source_id,
+                    root_session_id=normalized_root,
+                    agent_id=f"{normalized_root}-main",
+                    kind="main",
+                    source_type="jsonl",
+                    line_count=1,
+                    received_at=now,
+                ),
+            )
+            await session.execute(
+                insert(session_families).values(
+                    id=normalized_root,
+                    short_title="mysql workspace session",
+                    title="mysql workspace session",
+                    search_text="mysql workspace session",
+                    repo_name="repo",
+                    project_path="/repo",
+                    models=[],
+                    started_at=now,
+                    ended_at=now,
+                    duration_seconds=0,
+                    status="ok",
+                    skill_names=[],
+                    user_turns_count=1,
+                    messages_count=1,
+                    tools_count=0,
+                    errors_count=0,
+                    agents_count=0,
+                    tokens_total=0,
+                    source_type="jsonl",
+                    main_record_id=source_id,
+                    imported_at=now,
+                    updated_at=now,
+                ),
+            )
+
+        ingest = BadCaseIngestRepository(database)
+        await ingest.ingest(
+            workspace_id,
+            _mysql_ingest_row("BC-MYSQL-LIST-1", normalized_root),
+        )
+        for bad_case_id in ("BC-MYSQL-LIST-2", "BC-MYSQL-LIST-3"):
+            await ingest.ingest(
+                workspace_id,
+                _mysql_ingest_row(bad_case_id, pending_root),
+            )
+
+        repository = SessionRepository(database)
+        scope = WorkspaceReadScope.for_workspace(workspace_id)
+        records = await repository.list_sessions(
+            query="",
+            status="all",
+            sort="latest",
+            limit=10,
+            scope=scope,
+            exact_query=True,
+        )
+        total = await repository.count_sessions(
+            query="",
+            status="all",
+            scope=scope,
+            exact_query=True,
+        )
+        pending = await repository.count_pending_sessions(scope)
+
+        assert [record.id for record in records] == [normalized_root]
+        assert total == 1
+        assert pending == 1
+    finally:
+        try:
+            async with database.transaction() as session:
+                await session.execute(
+                    delete(session_families).where(
+                        session_families.c.id == normalized_root,
+                    ),
+                )
+                await session.execute(
+                    delete(source_records).where(
+                        source_records.c.root_session_id == normalized_root,
+                    ),
+                )
+            await _drop_mysql_ingest_rows(
+                database,
+                [workspace_id],
+                [normalized_root, pending_root],
+            )
+        finally:
+            await database.dispose()

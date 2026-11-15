@@ -136,6 +136,15 @@ async def latest_ten(tmp_path: Path) -> AsyncIterator[LatestTenEnvironment]:
                     )
                 ),
             )
+            await session.execute(
+                insert(bad_cases).values(
+                    **bad_case_values(
+                        bad_case_id="latest-case-pending-second",
+                        workspace_id=workspace_a,
+                        session_id=PENDING_ROOT,
+                    )
+                ),
+            )
 
         yield LatestTenEnvironment(
             client=client,
@@ -345,6 +354,41 @@ async def test_pending_root_is_counted_but_never_listed(
     assert payload["items"] == []
     assert payload["total"] == 0
     assert payload["pendingSessions"] == 1
+
+
+async def test_pending_root_with_two_bad_cases_counts_once(
+    latest_ten: LatestTenEnvironment,
+) -> None:
+    """pendingSessions counts distinct roots, never scoped bad-case rows."""
+    environment = latest_ten
+
+    response = await _workspace_sessions(
+        environment,
+        environment.workspace_a,
+        environment.alice,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pendingSessions"] == 1
+    assert PENDING_ROOT not in [item["id"] for item in payload["items"]]
+
+
+async def test_empty_workspace_returns_zero_counters(
+    latest_ten: LatestTenEnvironment,
+) -> None:
+    """A workspace with the table present but no cases reports only zeros."""
+    environment = latest_ten
+
+    empty_workspace = await insert_workspace(environment.database, name="latest-ten-empty")
+    response = await _workspace_sessions(
+        environment,
+        empty_workspace,
+        environment.admin,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0, "pendingSessions": 0}
 
 
 async def test_whitespace_query_behaves_like_no_query(
