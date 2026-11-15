@@ -20,6 +20,7 @@ scope:
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 232
