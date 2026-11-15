@@ -220,10 +220,10 @@ describe("session browser", () => {
     try {
       const input = wrapper.get("[data-testid='search-input']");
       expect(input.attributes("placeholder")).toBe(
-        "搜索标题、仓库或根会话 ID",
+        "输入完整 root Session ID 查询",
       );
       expect(input.attributes("aria-label")).toBe(
-        "搜索 Session（标题、仓库或根会话 ID）",
+        "搜索 Session（完整 root Session ID）",
       );
       await input.setValue("a");
       await input.setValue("ab");
@@ -871,6 +871,8 @@ describe("session browser", () => {
     await flushPromises();
 
     expect(empty.wrapper.text()).toContain("没有匹配当前筛选的 session");
+    expect(empty.wrapper.text()).toContain("完整 root Session ID");
+    expect(empty.wrapper.text()).toContain("清空搜索可恢复最新列表");
     expect(empty.wrapper.find("[data-testid='session-overview']").text()).toContain(
       "从左侧选择",
     );
