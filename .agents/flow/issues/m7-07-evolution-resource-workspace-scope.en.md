@@ -10,7 +10,7 @@ depends:
   - m7-03
   - m7-05
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/evolution_*.py
   - apps/api/app/api/events.py
