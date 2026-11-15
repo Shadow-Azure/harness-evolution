@@ -10,7 +10,7 @@ depends:
   - m7-06
   - m8-01
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/sessions.py
   - apps/api/app/service/sessions/**
