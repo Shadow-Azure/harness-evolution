@@ -9,12 +9,13 @@
 
 Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在本机上的工具：
 
-- **输入**（两类轨迹来源，见 §4.1）：
+- **输入**（三类来源，见 §4.1）：
   1. **原始轨迹表 `trajectory_payloads`**：第三方脚本把"有问题的 session 轨迹"（每 agent 一份 JSONL）写入 MySQL，本服务读取并归一化；采集不归本服务。
   2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表。
-- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 问题与归因（外部只读）→ 自进化（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
-- **输出**：浏览器里的两大视图（Session 错误查看 / 自进化），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**单组织共享**。
-- **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做多租户、不做公网注册。
+  3. **空间上报接口（V2）**：`POST /api/workspaces/{wid}/bad-cases`，POST body 即 `bad_cases` 表类型，凭据 + 额度管控（[05 §4.17](05-api-design.md)）；bad case 主通道，目录同步默认停用。
+- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+- **输出**：浏览器里的视图（V2：工作空间总览 + Session 错误查看 + 自进化 + 空间管理），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**按工作空间隔离 bad case 与权限**（[06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md)；轨迹归一化仍全局共享）。
+- **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做公网注册、不做空间删除与跨空间汇总（V2 非目标）；多租户语义止于工作空间（bad case 归属 + 成员权限），不做计费/配额通知。
 
 ## 2. 组成与分层
 
@@ -32,12 +33,12 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │ 服务层：sessions / acquisition / bad_cases / probes    │  │
-│  │         / evolution / identity                         │  │
+│  │ 服务层：sessions / acquisition / bad_cases / workspaces │  │
+│  │         / overview / evolution / identity              │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │ 数据接入层：只读外部表 / 出站客户端 / fixtures         │  │
+│  │ 数据接入层：上报/同步适配 / 出站客户端 / fixtures       │  │
 │  └───────────────────────────┬────────────────────────────┘  │
 │                              ▼                               │
 │  ┌────────────────────────────────────────────────────────┐  │
@@ -59,7 +60,7 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 |---|---|---|
 | HTTP 层 | 路由注册、鉴权中间件、请求/响应的 Pydantic 校验、统一错误模型、SSE 通道 | 不写业务判断 |
 | 服务层 | 业务规则（筛选、排序、聚合、状态机推进、ID 生成、同步编排） | 不直接拼 SQL、不直接访问外部接口 |
-| 数据接入 | 只读外部表（问题/归因）、出站客户端（上游轨迹）、fixtures（演示） | 不写外部表；不把演示数据混进运行时分支 |
+| 数据接入 | 空间上报、历史数据同步、出站客户端（上游轨迹）、fixtures（演示） | 未授权写入不进业务表；不把演示数据混进运行时分支 |
 | Repository 层 | 表的读写，只暴露领域对象 | 不含业务规则、不含方言字符串 |
 
 依赖方向只允许向下：HTTP → 服务 → 数据接入/CRUD。
@@ -71,28 +72,33 @@ apps/api/app/
   main.py                 # 组装入口：建 app、挂中间件（含鉴权）、注册全部路由
   config.py               # pydantic-settings：DB、鉴权、来源、同步间隔（必要补充）
   api/                    # 各域 router（薄，只做参数校验与 DTO 映射）
+  api/workspaces.py       # V2：空间/成员/凭据
+  api/ingest.py           # V2：bad case 上报（凭据鉴权）
+  api/overview.py         # V2：总览聚合
   api_req/                # 请求 DTO（Pydantic）
   api_resp/               # 响应 DTO（OpenAPI 契约源头）
   constants/              # 枚举、错误码、issue/topic 常量
   db/
     session.py            # engine / session / 事务上下文
-    models/               # SQLAlchemy 表模型（轨迹侧 + 问题侧只读表）
+    models/               # SQLAlchemy 表模型（轨迹侧 + 问题/归因 + V2 空间与候选表）
     crud/                 # BaseCrud + 各表 CRUD（方法接收 AsyncSession）
   middleware/             # request_id、JWT 鉴权（含路径规则）、CORS、登录限速
   service/
-    identity/             # 登录、token、用户、SSE 票据
+    identity/             # 登录、token、用户、SSE 票据；V2：AuthProvider 接缝 + /auth/session
+    workspaces/           # V2：空间、成员、额度、凭据
+    overview/             # V2：总览口径与聚合
     sessions/             # 会话列表、会话概览、Agent 会话树
     acquisition/          # 轨迹来源、归一化、Agent 会话树组装、幂等写入
-    bad_cases/            # 问题列表与详情（外部表只读）
-    probes/               # 归因结论读取（外部表只读）
-    evolution/            # run、占位聚类、六步产出、推进
+    bad_cases/            # 问题列表、详情与多归因读取
+    # 归因写入在 evolution/，问题侧读取经 bad_case_analysis + probe_reports
+    evolution/            # run、七步管线、潜在匹配、归因与缓存
     catalogs/             # 目标/模型清单（只读聚合）
     jobs.py               # 串行任务执行器（job_runs）
     events.py             # 进程内 SSE 事件总线
   schemas/                # service 层数据结构（跨层传递）
   third_party_api/        # 出站 HTTP 客户端（接口 + 实现成对）
     trajectory/           # 上游轨迹查询（上游待实现）
-    llm/                  # 预留：LLM 调用（V1 不用）
+    llm/                  # 预留：真实归因/补丁生成，当前占位引擎不读取
   utils/                  # 纯工具（JSONL 行辅助、哈希、时间、JWT）
 fixtures/                 # 演示种子数据 + app/cli.py seed
 alembic/                  # 迁移（项目根）
@@ -106,13 +112,15 @@ alembic/                  # 迁移（项目根）
 apps/web/
   vitest.config.ts        # node / jsdom 两个测试 project
   src/
-    api/                  # http/queryClient/queryKeys + 按域模块（auth/sessions/badCases/probes/evolution/acquisition/catalogs）
+    api/                  # http/queryClient/queryKeys + 按域模块（auth/workspaces/overview/sessions/badCases/evolution/acquisition/catalogs）
     composables/         # 每个域一个 useXxx + useAuth/useRunEvents/useTargets
     stores/              # Pinia：登录态（access token + 当前用户）、视图偏好；不存当前 session
     pages/
       login/             # 登录页
+      workspaces/        # V2：空间选择、空间管理四 Tab
+      overview/          # V2：工作空间总览（双视角）
       sessions/          # Session 浏览器（列表 + 会话概览 + Agent 执行流图）
-      errors/            # 错误详情与归因
+      errors/            # 错误详情与多归因
       evolution/         # 运行列表 / 详情 / 仅聚类 / 对象配置
       evolution/components/  # Stepper/ClusterCard/DiffView/RunLogPanel/LaunchWizard 等页面专属件
     components/          # agent-tree / bad-cases / ui（含 IconRenderer）/ layout（跨页面共享）
@@ -170,16 +178,16 @@ apps/web/
 页面不调用“一个整页接口”，而是按区块并行发起多个资源接口；每个接口只组装自己那块数据：
 
 ```text
-浏览器 /sessions/:sid
+浏览器 /workspaces/:wid/sessions/:sid
    │
-   ├──► GET /sessions/{sid} ──────────► sessions 服务 ──► session_families 表
+   ├──► GET …/sessions/{sid} ──────────► sessions 服务 ──► session_families 表
    │                                      └──► summary 响应 ──┐
    │                                                          │
-   ├──► GET /sessions/{sid}/tree ─────► sessions 服务 ──► agents / agent_events
+   ├──► GET …/sessions/{sid}/tree ─────► sessions 服务 ──► agents / agent_events
    │                                      │                  + bad_cases
    │                                      └──► tree 响应 ─────┤
    │                                                          │
-   └──► GET /sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / analysis / probe（只读）
+   └──► GET …/sessions/{sid}/bad-cases ─► bad_cases 服务 ──► bad_cases / bad_case_analysis / probe_reports
                                           │                  + session_families（存在性校验）
                                           └──► bad-cases 响应 ┘
                                                                │
@@ -188,11 +196,11 @@ apps/web/
 ```
 
 - **没有“整页单接口”**：三个请求由前端并行发出（vue-query 各自 queryKey），会话概览先到就先渲染，Agent 会话树/问题列表后到。
-- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_id` 关联问题卡；问题列表读外部只读表并校验 `session` 存在。
-- 问题详情页同理：先取 `/sessions/{sid}/bad-cases`，选中后再取 `/bad-cases/{id}`、`/analysis`、`/probes/{id}`（按需串行，不是整页一次拉完）。
-- 页面级聚合仅用于**列表页**（`GET /sessions`、`GET /evolution/runs`）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
+- 每个接口只做自己的服务组装：会话概览读 `session_families`；Agent 会话树读 `agents/agent_events` 并按 `bad_case_agent_id` 关联问题卡；问题列表读问题表并校验 `session` 存在。
+- 问题详情页同理：先取 `…/sessions/{sid}/bad-cases`，选中后再取 `…/bad-cases/{id}/attributions`（分页）与 `…/attributions/{at}`（按需串行，不是整页一次拉完）；V1 的 `/analysis`、`/probes/{id}` 仅历史 run/旧客户端使用。
+- 页面级聚合仅用于**列表页**（`…/sessions`、`…/evolution/runs`）、**总览页**（`…/overview/*`，静态聚合）和**静态元数据**（`/catalogs`、向导的 targets meta），不用于详情页的“大杂烩”响应。
 
-前端拿到的每个响应只覆盖一个模块；问题侧数据由外部系统写入，本服务只读。单组织共享下无行级过滤，`principal` 只记录进审计字段（`created_by`）。
+前端拿到的每个响应只覆盖一个模块；V2 bad case 由空间上报接口写入，归因由自进化 run 写入，目录同步只保留历史兼容。空间隔离下每个业务端点都按 `workspace_id` 过滤并校验成员角色（[07 §5.15](07-backend-implementation.md)），`principal` 既记录审计字段也决定可见性。
 
 ### 4.3 任务、自进化与 SSE 链路
 
@@ -205,7 +213,7 @@ apps/web/
   → GET /evolution/runs
   → 渲染「正在执行」「历史记录」
      ├─ 点击「启动自进化」
-     │    → 向导 /probes/query → 命中确认
+     │    → 向导预览三段 → Session/潜在确认
      │    → POST /evolution/runs → 202 {runId, status:"preparing"}
      │    → 路由 /evolution/runs/:rid
      └─ 点击历史 run
@@ -233,15 +241,17 @@ apps/web/
 
 > `lastEventId` 必须用**已加载的最后一条事件 seq**，不能用 `run.lastEventSeq` 的最大值；否则 events 分页未拉完时会丢中间事件。
 
-#### 4.3.3 自进化执行链：prepare → advance → eval → apply
+#### 4.3.3 自进化执行链：prepare（七步）→ advance → eval → apply
 
 ```text
-POST /runs（同步校验 target/probe）
-  → run(preparing)
+POST /runs（同步校验 target/policy/window/潜在命中）
+  → run(preparing, 七步)
   → evolution_prepare job
-       → 查 probe → simple_cluster
-       → workspace clone / 建 run 分支
-       → clusters / evolution_rounds
+       → Session 关联（对象在哪些 Session 出现）
+       → 潜在筛选（默认/自定义策略，候选全量落库）
+       → 对象归因（缓存命中复用 / 未命中计算并 upsert）
+       → 聚类与严重度（只取 attributed，按 category）
+       → workspace clone / 建 run 分支 / 建 rounds
        → run(running)
   → evolution_advance job（每轮）
        → patch → candidate commit
@@ -282,9 +292,9 @@ POST /acquisition/sync
 ```
 
 - **读路径不触发同步**：Session 页、自进化查询都只读，不做“发现没处理就顺手同步”。没处理的 session 在 `session_families` 里不存在，自然查不到。
-- **自进化查询仍是 `probe_reports INNER JOIN session_families`**：session 未归一化 → probe 不可见；不做 preflight，也不返回 `DATA_NOT_READY`。
+- **自进化查询基于候选表**（`evolution_run_candidates`）与空间 bad case：Session 未归一化 → 不计入关联，只进「待轨迹同步」；不做 preflight，也不返回 `DATA_NOT_READY`。
 - **单飞锁**：`sync_lock` 单行表（`name='sync'`）+ `job_id/acquired_at/expires_at`；`INSERT` 主键冲突即已有任务。
-- V1 单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
+- 当前单实例再加进程内 `asyncio.Lock` 兜底；多实例用 DB 行锁 / MySQL `GET_LOCK`。
 - `job_runs` 同 `kind=sync` 只允许一个 `queued/running`，作为第二道保险。
 - 锁 TTL 30 分钟；进程崩溃后下一次 tick 可回收。
 - 手动触发只作为 admin/运维的“立即处理”，普通用户在顶栏只看到 pending 状态，不提供按钮。
@@ -320,8 +330,11 @@ POST /acquisition/sync
 
 - EventSource 不能自定义请求头，SSE 用**一次性短票据**（查询参数），不用长期 token。
 - refresh token 用 httpOnly + SameSite=Strict cookie，SPA 不接触；access token 只存内存（Pinia），刷新页面时先走 refresh。
+- **V2 会话聚合**：登录/刷新后调 `GET /api/auth/session` 一次取回 `user + workspaces`（含角色与 `used/quota`）；前端启动不再分别拉 `me` 与空间列表。
+- **V2 空间授权**：业务请求在 Bearer 之后再过 `require_workspace_role(wid, minimum)`——全局管理员直通，其余查 `workspace_members`；不可见空间统一 404（防枚举）。空间角色不进 token。
+- **V2 接入预留**：身份提供方收敛为 `AuthProvider` 协议 + 会话桥 + `GET /api/auth/callback` 占位（未配置 501）；接入 Cookie/SSO 只改这三处，业务与前端契约不变（[07 §8.2.1](07-backend-implementation.md)）。
 
-## 5. 数据来源、外部表与演示数据
+## 5. 数据来源、写入边界与演示数据
 
 ### 5.1 三类数据，三种处理方式
 
@@ -330,13 +343,13 @@ POST /acquisition/sync
 │ trajectory_payloads / 上游 API ──► acquisition ──► session_families/agents/… │
 └───────────────────────────────────────────────────────────────────┘
 
-┌─ 问题与归因（外部写，本服务只读） ────────────────────────────────┐
-│ 外部上报/归因系统 ──► bad_cases / analysis / probe ──► bad_cases/probes 服务 │
-└───────────────────────────────────────────────┬───────────────────┘
-                                                │ 只读
+┌─ 问题与归因（空间上报 + 自进化写入） ──────────────────────────────┐
+│ 空间凭据 ──► bad_cases；自进化 run ──► bad_case_analysis/probe_reports │
+└───────────────────────────────────────────────────────────────────┘
+                                                │
                                                 ▼
 ┌─ 自进化（本服务写） ──────────────────────────────────────────────┐
-│ evolution ──► evolution_runs / probe_clusters / evolution_rounds        │
+│ evolution ──► runs / candidates / clusters / members / rounds           │
 └───────────────────────────────────────────────────────────────────┘
 
 fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
@@ -346,22 +359,24 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 |---|---|---|---|
 | 原始轨迹（每 agent JSONL） | 第三方脚本；pull 时本服务写入 | **只读**（pull 除外） | `trajectory_payloads` |
 | 轨迹业务表（session_families/agents/...） | 本服务归一化 | 读写 | `service/acquisition` + `source_records` |
-| 问题与归因（bad_cases / analysis / probe） | 外部系统 | **只读** | `db/models` 只读表 + `db/crud` |
-| 自进化（runs / clusters / evolution_rounds / finals） | 本服务 | 读写 | `service/evolution` |
+| 问题（bad_cases，V2 按空间） | **空间上报接口（凭据鉴权）**；目录同步默认停用 | 读写 | `api/ingest.py` + `service/workspaces` |
+| 归因（V2） | 自进化 run（`bad_case_analysis`、`probe_reports`、候选、簇成员） | 读写 | `service/evolution/attribution.py` |
+| 自进化（runs / clusters / rounds / finals / events） | 本服务 | 读写 | `service/evolution` |
+| 空间 / 成员 / 凭据（V2） | 本服务 | 读写 | `service/workspaces` |
 | 用户、任务审计 | 本服务 | 读写 | `service/identity`、`service/jobs.py` |
 
 ### 5.2 没有统一 Provider 层（2026-10-22 修订）
 
-早期设计的"六类 Provider + 全量桩实现"已取消，原因：问题/归因数据由外部系统写入表，真实实现读表即可；强行加一层 Provider 只会把"读表"包成假接口。现在只有三种接缝：
+早期设计的"六类 Provider + 全量桩实现"已取消，原因：V2 的 bad case 与归因都在本服务写入边界内，读表即可；只有上游轨迹和历史导入需要外部接缝。现在有以下边界：
 
 1. **出站调用** → `third_party_api/`（轨迹查询接口，未来 LLM/CI），接口 + 实现成对；
-2. **外部表** → `db/models` 只读映射 + `db/crud`，表契约即接口；
+2. **历史问题数据** → 目录同步默认关闭；启用时只做兼容导入，不承担 V2 主写路径；
 3. **演示数据** → `fixtures/` + `app/cli.py seed`，仅开发/演示时灌入真实表，**运行时没有 stub 分支**。
 
 ### 5.3 演示数据（fixtures）的边界
 
-- `fixtures/` 内含原型 4 个会话、若干 bad_case / probe，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
-- `probe_clusters` / `probe_cluster_probes` 是派生数据，不由 seed 写入；seed 后从向导启动，聚类由 `simple_cluster` 生成；
+- `fixtures/` 内含原型 4 个会话、若干 bad case 与归因行，以及可选的 `evolution_targets` 配置；`python -m app.cli seed` 写入真实表；
+- `probe_clusters` / `probe_cluster_probes` / `bad_case_analysis` / `probe_reports` 的 V2 新增归因与聚类是派生数据，不由 seed 写入；seed 后从向导启动，归因与聚类由 run 生成；
 - 生产环境不执行 seed；UI 读到的永远是真实表；
 - 与早期 D4 的差别：**不再有"Stub Provider 返回不入库数据"的运行时分支**，桩数据也从正式表结构走，避免字段对不上。
 
@@ -369,7 +384,7 @@ fixtures/ + seed（仅开发） ┄┄► 业务表 / 问题表
 
 | 占位点 | 位置 | 后续替换 |
 |---|---|---|
-| 聚类算法 | `service/evolution/simple_cluster`（按 attribute_type 分半） | 换真正的聚类实现，表不变 |
+| 聚类算法 | `service/evolution/simple_cluster`（按 `attribute_type` 分半） | 换真正的聚类实现，表不变 |
 | patch 内容 | `service/evolution/patch.py` | 内容占位，但**真实写文件、真实 commit**；后续换 LLM/规则生成 |
 | eval / 终评 | `service/evolution/eval.py` | 分数占位；后续换真实评测 |
 | 上游轨迹接口 | 未配置时 `HttpApiSource` 不可用 | 上游就绪后启用 |
@@ -387,7 +402,8 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 
 | 维度 | 现在 | 扩展路径 |
 |---|---|---|
-| 用户 | 自建账号 + JWT，单组织共享 | 需要 SSO 时加 OIDC Provider（鉴权是独立接缝） |
+| 用户 | 自建账号 + JWT；全局角色 admin/member；空间角色在成员表 | 需要 SSO 时实现 `AuthProvider` + 会话桥 + callback（[07 §8.2.1](07-backend-implementation.md)），业务代码不变 |
+| 空间 | 多工作空间（bad case 归属 + 成员权限）；轨迹归一化全局共享 | 空间删除/归档与跨空间汇总为 V2 非目标 |
 | 数据库 | MySQL 8 主库；SQLite 仅测试/本地开发 | 读写分离/分库暂无需求 |
 | 任务 | `job_runs` 表 + 进程内串行 worker | 多实例时 worker 独立部署（同一 `job_runs` 表，`SELECT … FOR UPDATE SKIP LOCKED` 抢占） |
 | SSE | 内存事件总线（单实例） | 多实例时换 Redis pub/sub（EventBus 已是接口） |
@@ -405,10 +421,14 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 大轨迹 | Agent 会话树触发点处理时预计算；轨迹聚合统计入库时冗余（跨写入方的派生值如问题数除外，查询时聚合）；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |
-| 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / probeId 跨页溯源的载体 |
+| 深链可恢复 | 选中 session / bad_case / tab / step 全在 URL（真实 ID） | badCaseId / attributionId / clusterId 跨页溯源的载体 |
 | 可观测 | 结构化日志 + sync_runs / job_runs / evolution_run_events 留痕；不打印轨迹原文 | 轨迹可能含敏感内容；异常需在 UI 可查 |
 | 数据库可替换 | `Database` 接口 + SQLite/MySQL 适配器 | 测试用 SQLite 快跑；生产 MySQL |
 | 自进化隔离 | 每次 run 独立 workspace + 新分支；只改配置仓库副本，绝不写用户 `~/.claude` | 不污染用户环境、可回滚、可复现；candidate commit 在评测后 amend 或 reset |
+| 空间隔离（V2） | 每个业务端点按 `workspace_id` 过滤 + 成员角色校验；不可见空间 404；查询缓存 key 带 `wid` | 空间是数据边界，不能只靠前端隐藏 |
+| 额度（V2） | 上报事务内 `SELECT quota … FOR UPDATE` + `COUNT`；`used` 实时聚合不物化 | 并发上报不超卖；物化计数必然陈旧 |
+| 口径一致（V2） | 总览 / 向导 / run 共用同一潜在匹配实现 + 60s 缓存；三态按归因行统计 | 同一数字在三处对比，近似口径会被立刻发现 |
+| 触发点（V2） | `agent_events.triggered_at` 优先、`(tree_index, event_index)` 兜底；缺失记 `order_state` | 跨 agent 行号不可比；时间戳缺失时仍可解释 |
 
 ## 8. 风险与对策
 
@@ -417,12 +437,17 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 | 上游查询接口迟迟不实现 | pull 来源一直空着 | 契约先行 + 脚本 payload 先跑通；上游就绪只换适配器（[05 §10](05-api-design.md)） |
 | payload 表结构与预期不一致 | 归一化失败 | payload 契约写入文档并约版本号；解析失败隔离到单条记录（不毁整批），错误进 `sync_runs.errors` |
 | Vue Flow 与 React Flow 的 API 差异 | Agent 执行流图移植返工 | 布局几何纯 TS 迁移，先做 `demo-nested` 最小树验证；`×N` 改为 message 口径（[08 §3](08-frontend-implementation.md)） |
-| 外部表契约 | 外部表结构/字段与文档漂移 | 表契约评审 + 查询层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
+| 上游与历史数据契约 | 上游轨迹或历史问题表字段与文档漂移 | 版本化契约 + 导入层防御（字段缺失降级、日志告警）；fixtures 与真实表同构 |
 | git 操作失败 | 分支/commit 失败导致 run 卡住 | 每步幂等 + 失败标 `failed` 并保留工作区；错误含 stderr 摘要；串行执行避免并发写仓库 |
 | 仓库配置错误 | clone/tag 不存在 | 保存配置时校验 `repo_url`/`ref`/`sub_dir`；启动 run 前再校验一次，失败 `422 REPO_INVALID` |
 | 工作区残留 | 磁盘增长 | 默认保留最近 20 个 run，`clean-workspaces` 命令清理；不自动删进行中的 run |
 | push 失败 | 评测无法开始，流程阻塞 | run 标 `blocked` + `blocked_stage=push`；保留 candidate ref；3 次立即 + 1/5/15min 退避；仍失败等 `/retry`；run 分支不被回滚 |
 | 执行异常未留痕 | 无法定位/复盘 | 阶段/候选/评测/推送/异常统一写 `evolution_run_events`；job 边界捕获；启动扫描残留任务记 `interrupted` |
-| JWT 泄漏 | 组织数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
+| JWT 泄漏 | 当前用户可访问的空间数据暴露 | access token 短命 + 只在内存；refresh httpOnly + SameSite=Strict；所有流量走 HTTPS |
 | SSE 长连接在代理下断流 | 进度不更新 | 事件带 seq + Last-Event-ID；run 事件从 DB 回放，sync 用 job_runs + REST 兜底 |
-| 单实例宕机 | 全员不可用 | 单组织内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |
+| 单实例宕机 | 内部服务不可用 | V2 单实例内部工具可接受；`job_runs` 持久化保证重启续跑，横向扩展路径见 §6 |
+| 空间越权（V2） | 跨空间读数据 | 服务端统一依赖校验；E2E 用成员账号直连 API 验证 403/404；前端隐藏入口只是护栏 |
+| 额度超卖（V2） | 并发上报突破上限 | 事务内行锁 + COUNT；upsert 已存在 ID 不占增量；`used` 不物化 |
+| 触发点缺失（V2） | 潜在筛选漏判/误判 | `triggered_at` 缺失回退字典序并记 `order_state=unknown`；对象版本缺失的 Session 直接跳过并计入 `versionUnresolvedSessions`；重放补齐后再启动 |
+| 归因缓存不一致（V2） | 复用旧结论 | 缓存键含策略版本与引擎标识；`cache_enabled=false` 强制重算；换引擎自动隔离 |
+| 迁移回填遗漏（V2） | 空间为 NULL 的行不可见 | 迁移幂等 + 校验 `SELECT COUNT(*) WHERE workspace_id IS NULL`；默认空间兜底 |

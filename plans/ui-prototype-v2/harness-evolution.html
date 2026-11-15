@@ -118,7 +118,19 @@
 
   /* ═══ 家族树（React Flow · 执行流与触发时序） ═══ */
   .tree-panel { position: relative; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.06); overflow: hidden; }
+  .tree-flow-shell { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .tree-flow-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 650; color: var(--text-dim); flex-shrink: 0; background: var(--bg-card); }
+  .tree-flow-hint { font-size: 9.5px; color: var(--text-faint); font-weight: 400; }
+  .tree-flow-bar .flow-mode { margin-left: auto; }
+  .tree-flow-body { flex: 1; min-height: 0; position: relative; }
   .rf-canvas { width: 100%; height: clamp(420px, calc(100vh - 280px), 720px); background: #fafbfc; }
+  /* DAG 模式：面板高度跟着 lane 数走（46 + lanes*44 + toolbar + foot），footnote 紧贴 board；
+     720px 画布只在结构树模式生效，避免 Session 页 DAG 下方留下大块空白。 */
+  .tree-panel:has(.ld-view) #famTree { height: auto; }
+  .tree-panel:has(.ld-view) .tree-flow-shell { height: auto; }
+  .tree-panel:has(.ld-view) .tree-flow-body { flex: 0 0 auto; min-height: 0; }
+  .tree-panel:has(.ld-view) .ld-view { height: clamp(360px, 50vh, 520px); }
+  .tree-panel:has(.ld-view) .ld-scroll { flex: 0 0 auto; }
   .rf-loading, .rf-error { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-faint); font-size: 12px; }
   .rf-error { color: var(--red); padding: 20px; text-align: center; line-height: 1.7; }
   .rf-agent { position: relative; box-sizing: border-box; padding: 8px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 1px 3px rgba(30,40,60,.06); }
@@ -277,8 +289,169 @@
   .err-flow-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 650; color: var(--text-dim); }
   .err-flow-head .note { margin-left: auto; font-size: 10.5px; color: var(--text-faint); font-weight: 400; }
   .err-flow-canvas { height: clamp(240px, calc(100vh - 380px), 413px); } /* 原 620px 的 2/3，短视口继续压缩以露出详情 */
+  /* DAG 模式与 Session 页一致：高度由 lane 数决定，footnote 紧跟 board，不出现内部滚动条；
+     413px 只留给结构树（ReactFlow 需要确定高度）。 */
+  .err-flow-canvas:has(.ld-view) { height: auto; }
+  .err-flow-canvas:has(.ld-view) .ld-view { height: clamp(360px, 48vh, 520px); }
+  .err-flow-canvas:has(.ld-view) .ld-scroll { flex: 0 0 auto; }
   .err-flow-canvas .react-flow__edges { z-index: 2; pointer-events: none; }
   .err-flow-canvas .react-flow__nodes { z-index: 1; }
+  .err-flow-head .flow-head-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .err-flow-head .flow-head-right .note { margin-left: 0; }
+  .flow-mode { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  .flow-mode button { font: inherit; font-size: 10.5px; font-weight: 650; color: var(--text-dim); background: var(--bg-card); border: none; padding: 4px 9px; cursor: pointer; }
+  .flow-mode button:hover { color: var(--text); background: var(--bg-inset); }
+  .flow-mode button.active { color: #fff; background: var(--text); }
+  .dag-view { height: 100%; display: flex; flex-direction: column; background: #fafbfc; }
+  .dag-toolbar { display: flex; align-items: center; gap: 9px; padding: 7px 12px 5px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  .dag-badge { font-size: 9.5px; font-weight: 750; letter-spacing: .04em; color: var(--purple); background: color-mix(in srgb, var(--purple) 9%, #fff); border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent); border-radius: 999px; padding: 2px 8px; }
+  .dag-sub { font-size: 10px; color: var(--text-faint); }
+  .dag-legend { margin-left: auto; display: flex; gap: 9px; flex-wrap: wrap; font-size: 9.5px; color: var(--text-faint); align-items: center; }
+  .dag-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .dag-demo-link { color: var(--purple); font-weight: 750; text-decoration: none; border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent); }
+  .dag-demo-link:hover { text-decoration: none; border-bottom-style: solid; }
+  .dag-line { width: 15px; height: 0; border-top: 2px solid #c4cbd6; display: inline-block; }
+  .dag-line-spawn { border-top: 2px dashed var(--purple); }
+  .dag-line-join { border-top: 2px solid var(--green); }
+  .dag-line-notify { border-top: 2px dashed var(--orange); }
+  .dag-line-concurrent { border-top: 2px solid var(--orange); }
+  .dag-scroll { flex: 1; overflow: auto; padding: 2px 12px 0; }
+  .dag-board { position: relative; min-width: 850px; }
+  .dag-lane { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 210px 1fr; gap: 8px; align-items: center; }
+  .dag-lane-label { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 10.5px; color: var(--text-dim); }
+  .dag-lane-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--text-faint); }
+  .dag-dot-main { background: var(--blue); }
+  .dag-dot-sub { background: var(--purple); }
+  .dag-dot-sub2 { background: var(--orange); }
+  .dag-lane-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dag-state { margin-left: auto; font-size: 8.5px; font-weight: 750; padding: 1px 5px; border-radius: 999px; flex-shrink: 0; letter-spacing: .02em; }
+  .dag-state-concurrent { color: #9a5a15; background: var(--orange-soft); border: 1px solid #f0c58e; }
+  .dag-state-unknown { color: var(--text-faint); background: var(--bg-inset); border: 1px solid var(--border); }
+  .dag-track { position: relative; height: 34px; border-radius: 8px; background: linear-gradient(180deg, #f7f9fe, #f1f4fb); border: 1px solid #e9edf7; }
+  .dag-node { position: absolute; top: 5px; transform: translateX(-50%); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 9.5px; font-weight: 650; color: var(--text-dim); background: #fff; border: 1px solid var(--border); z-index: 2; }
+  .dag-node-main { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 38%, transparent); background: color-mix(in srgb, var(--blue) 5%, #fff); max-width: 118px; }
+  .dag-node-sub { color: var(--purple); border-color: color-mix(in srgb, var(--purple) 38%, transparent); background: color-mix(in srgb, var(--purple) 5%, #fff); }
+  .dag-node-summary { color: var(--text-faint); border-style: dashed; background: var(--bg-inset); }
+  .dag-node-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .dag-span { position: absolute; top: 14px; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--purple) 18%, transparent); z-index: 0; }
+  .dag-span-main { background: color-mix(in srgb, var(--blue) 16%, transparent); }
+  .dag-span-summary { background: transparent; border-top: 1px dashed var(--text-faint); height: 0; }
+  .dag-case { position: absolute; top: -13px; transform: translateX(-50%); font-size: 8px; font-weight: 800; color: #c03434; background: #fff5f5; border: 1px solid #e05555; border-radius: 999px; padding: 0 5px; z-index: 5; cursor: default; }
+  .dag-case-selected { color: #fff; background: #c03434; border-color: #c03434; box-shadow: 0 0 0 2px color-mix(in srgb, #d63c3c 20%, transparent); }
+  .dag-case::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 10px; background: #e05555; }
+  .dag-edges { position: absolute; left: 218px; right: 0; top: 0; bottom: 0; width: calc(100% - 218px); height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
+  .dag-bracket { position: absolute; left: 210px; width: 9px; border-left: 2px solid var(--orange); border-top: 2px solid var(--orange); border-bottom: 2px solid var(--orange); border-radius: 3px 0 0 3px; z-index: 3; }
+  .dag-bracket span { position: absolute; left: 7px; top: 50%; transform: translateY(-50%) rotate(-90deg); transform-origin: left center; font-size: 7.5px; font-weight: 750; letter-spacing: .08em; color: #9a5a15; white-space: nowrap; }
+  .dag-foot { flex-shrink: 0; padding: 5px 12px 7px; font-size: 9px; color: var(--text-faint); border-top: 1px dashed var(--border); }
+
+  /* ── Lane + bar DAG（正式执行流 / 家族树共用） ── */
+  .ld-view { height: clamp(360px, 48vh, 520px); display: flex; flex-direction: column; background: #fafbfc; }
+  .ld-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #fafbfc; cursor: grab; touch-action: none; }
+  .ld-viewport.is-panning { cursor: grabbing; }
+  .ld-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .ld-zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; align-items: center; z-index: 9; }
+  .ld-zoom button { width: 24px; height: 24px; padding: 0; border: 1px solid var(--line-strong); border-radius: 7px; background: rgba(255,255,255,.94); color: var(--ink-soft); font: 700 12px/1 inherit; cursor: pointer; box-shadow: 0 2px 6px rgba(23,32,51,.08); }
+  .ld-zoom button:hover { border-color: #aebbe0; color: var(--blue); }
+  .ld-zoom button.wide { width: auto; padding: 0 7px; font-size: 9.5px; }
+  .ld-toolbar { display: flex; align-items: center; gap: 9px; padding: 7px 12px 5px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  .ld-badge { font-size: 9.5px; font-weight: 750; letter-spacing: .04em; color: var(--purple); background: color-mix(in srgb, var(--purple) 9%, #fff); border: 1px solid color-mix(in srgb, var(--purple) 35%, transparent); border-radius: 999px; padding: 2px 8px; }
+  .ld-sub { font-size: 10px; color: var(--text-faint); }
+  .ld-legend { margin-left: auto; display: flex; gap: 9px; flex-wrap: wrap; font-size: 9.5px; color: var(--text-faint); align-items: center; }
+  .ld-legend span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .ld-line { width: 15px; height: 0; border-top: 2px solid #c4cbd6; display: inline-block; }
+  .ld-line-spawn { border-top: 2px dashed var(--purple); }
+  .ld-swatch { width: 15px; height: 8px; border-radius: 3px; display: inline-block; }
+  .ld-swatch-main { background: var(--blue); }
+  .ld-swatch-sub { background: var(--purple); }
+  .ld-swatch-sub2 { background: var(--orange); }
+  .ld-swatch-skill { background: #0e8f9e; }
+  .ld-swatch-gap { background: #e9edf5; border: 1px dashed #b8c3d6; }
+  .ld-swatch-fold { background: #efeafd; border: 1px dashed #b3a1f0; }
+  .ld-scroll { flex: 1; overflow: auto; padding: 0 12px; }
+  .ld-board { position: relative; width: 100%; min-width: 0; }
+  .ld-axis { position: relative; margin-left: 218px; height: 18px; color: var(--text-faint); font-size: 9.5px; }
+  .ld-axis span { position: absolute; transform: translateX(-50%); }
+  .ld-axis span:first-child { transform: none; } /* 0 刻度就是绘图区左边界，不左溢 */
+  .ld-axis span:last-child { transform: translateX(-100%); }
+  .ld-grid { position: absolute; left: 218px; right: 0; top: 18px; bottom: 0; pointer-events: none; z-index: 1; }
+  .ld-grid i { position: absolute; top: 0; bottom: 0; width: 1px; background: #e2e8f3; }
+  .ld-grid i:last-child { transform: translateX(-1px); } /* 100% 网格线内收 1px，避免 scroll 容器横向溢出 */
+  /* case 行：badge + 独立的红色定位线（不复用 bar 高亮）。线从 badge 直落到 main bar 顶边，
+     与 bar 上的针尖刻度一起标出精确触发行；选中时只加粗这条线，不描红 gap bar。
+     定位线要压在 main 轨的触发标签 chip 之上（z-index 8 > rail 7），否则「选中 case → 定位到 bar」
+     这条主交互会被白底 chip 遮断；线本身加 1px 白色描边，压在 chip 文字上也读得清。 */
+  .ld-cases { position: absolute; left: 218px; right: 0; top: 18px; height: 28px; pointer-events: none; z-index: 8; }
+  .ld-case-lead { position: absolute; width: 1px; margin-left: -.5px; background: #e05555; opacity: .78; box-shadow: 0 0 0 1px rgba(255,255,255,.92); }
+  .ld-case-lead.is-selected { background: #c03434; opacity: 1; width: 2px; margin-left: -1px; z-index: 2; box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(192,52,52,.22); }
+  .ld-ticks { position: absolute; left: 218px; right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 6; }
+  /* 针尖：落在 bar 顶边的菱形，标记精确触发行；bar 内部的竖线在文字之下，不压 label */
+  .ld-case-tick { position: absolute; top: 48px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg); background: #d63c3c; border: 1px solid #fff; border-radius: 1px; box-shadow: 0 0 0 1px rgba(214,60,60,.35); }
+  .ld-case-tick.is-selected { width: 9px; height: 9px; margin-left: -4.5px; top: 47px; background: #b02a2a; box-shadow: 0 0 0 1.5px rgba(255,255,255,.95), 0 0 6px rgba(214,60,60,.4); }
+  .ld-lane { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: 210px 1fr; gap: 8px; align-items: center; }
+  .ld-label { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+  .ld-label-fold .ld-name { font-size: 10px; }
+  .ld-label-fold .ld-idx { font-size: 8px; }
+  .ld-dot-fold { background: #a58cff; box-shadow: 0 0 0 2px #efeafd; }
+  .ld-idx { flex-shrink: 0; font-family: var(--mono); font-size: 8.5px; font-weight: 750; color: var(--purple); background: color-mix(in srgb, var(--purple) 9%, #fff); border: 1px solid color-mix(in srgb, var(--purple) 30%, transparent); border-radius: 999px; padding: 0 4px; }
+  .ld-idx.is-fold { color: #5a3fd0; background: #efeafd; border-color: #b3a1f0; }
+  .ld-indent-1 { padding-left: 14px; }
+  .ld-indent-2 { padding-left: 30px; }
+  .ld-tree { color: #b4bdd0; font-family: var(--mono); font-size: 10px; flex-shrink: 0; }
+  .ld-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--text-faint); }
+  .ld-dot-main { background: var(--blue); }
+  .ld-dot-sub { background: var(--purple); }
+  .ld-dot-sub2 { background: var(--orange); }
+  .ld-name { overflow: hidden; text-overflow: ellipsis; }
+  .ld-depth { margin-left: auto; font-size: 8px; font-weight: 750; color: var(--text-faint); background: var(--bg-inset); border: 1px solid var(--border); border-radius: 999px; padding: 0 4px; flex-shrink: 0; }
+  .ld-state { margin-left: 2px; font-size: 8px; font-weight: 750; color: #9a5a15; background: var(--orange-soft); border: 1px solid #f0c58e; border-radius: 999px; padding: 0 4px; flex-shrink: 0; }
+  .ld-track { position: relative; height: 30px; border-radius: 8px; background: linear-gradient(180deg, #f8fafd, #f2f5fb); border: 1px solid #e9edf7; }
+  /* 绘图区：左右各内收 2px，bar 的 0% / 100% 就落在圆角内，不用再把数据压到 3–96%。 */
+  .ld-bars { position: absolute; left: 2px; right: 2px; top: 0; bottom: 0; }
+  /* main 轨：上半条是触发标签带（标注触发点，不参与长度编码），下半条才是日志行区间 bar。 */
+  .ld-track-main { height: 56px; }
+  .ld-rail { position: absolute; left: 0; right: 0; top: 2px; height: 30px; z-index: 7; pointer-events: none; }
+  .ld-rail-chip { position: absolute; height: 11px; line-height: 11px; font-size: 8.5px; font-weight: 750; color: #2b3a55; background: #fff; border: 1px solid #dbe3f3; border-radius: 4px; padding: 0 4px; white-space: nowrap; box-shadow: 0 1px 2px rgba(30,40,60,.08); pointer-events: auto; }
+  .ld-rail-chip.is-skill { color: #0b6f7a; background: #f2fbfc; border-color: #b6e0e4; }
+  .ld-rail-chip.is-main { color: #2452c7; background: #f3f7ff; border-color: #c7d6ff; }
+  .ld-rail-lead { position: absolute; width: 1px; background: #9aa8c0; opacity: .55; z-index: 6; }
+  .ld-rail-lead::before { content: ""; position: absolute; left: -1px; top: -1px; width: 3px; height: 3px; border-radius: 50%; background: #9aa8c0; }
+  .ld-rail-lead-h { position: absolute; height: 1px; background: #9aa8c0; opacity: .55; z-index: 6; }
+  .ld-rail-note { font-size: 8px; font-weight: 750; color: var(--text-faint); letter-spacing: .02em; white-space: nowrap; margin-left: 2px; }
+  /* 并发分支带：水平覆盖子 lane 的实际 min(start)..max(end)，不再画在 0% 轴上。 */
+  .ld-bands { position: absolute; left: 218px; right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 1; }
+  .ld-band { position: absolute; border: 1px dashed #e0a15a; border-left: 2px dashed #e0a15a; border-right: 2px dashed #e0a15a; background: color-mix(in srgb, var(--orange) 9%, transparent); border-radius: 5px; pointer-events: none; z-index: 1; }
+  .ld-bar.is-unknown { color: #5a3fd0; background: repeating-linear-gradient(135deg, #efeafd 0 6px, #f8f5ff 6px 12px); border: 1px dashed #b3a1f0; box-shadow: none; }
+  .ld-bar.is-event { padding: 0; } /* 1 行触发条可能只有 4px，别让 padding 把宽度撑成 12px */
+  .ld-bar.is-gap { font-size: 8px; padding: 0 3px; }
+  .ld-bar.is-gap.is-tight { padding: 0; } /* 极窄缺口不靠 padding 撑宽，避免压到相邻 bar */
+  .ld-cont-mark { position: absolute; top: 4px; transform: translateX(-50%); width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 1px solid #8a7ad0; color: #5a3fd0; font-size: 10px; font-weight: 900; line-height: 10px; text-align: center; z-index: 4; box-shadow: 0 1px 3px rgba(30,40,60,.18); }
+  /* 折叠行不画宽度编码条：只在轨道右端挂一个小 chip（行尾注释），写「类型 ×N · 行数范围」，
+     点击打开全部被折叠 lane 的 id / 行数。汇总行因此不会被读成覆盖 90% 时间轴的长区间。 */
+  .ld-fold-summary { position: absolute; right: 0; top: 7px; width: max-content; max-width: 100%; height: 16px; display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border: 1px dashed #b3a1f0; border-radius: 999px; background: #faf7ff; color: #5a3fd0; font: inherit; font-size: 8.5px; font-weight: 750; white-space: nowrap; cursor: pointer; z-index: 3; }
+  .ld-fold-summary:hover { background: #efeafd; border-color: #8a7ad0; }
+  .ld-swatch-band { width: 15px; height: 8px; border-radius: 2px; display: inline-block; background: color-mix(in srgb, var(--orange) 12%, #fff); border-left: 2px dashed #e0a15a; border-right: 2px dashed #e0a15a; }
+  .ld-swatch-case { width: 15px; height: 8px; border-radius: 2px; display: inline-block; background: #fff5f5; border: 1px solid #e05555; }
+  .ld-bar { position: absolute; top: 4px; height: 20px; border-radius: 6px; display: flex; align-items: center; padding: 0 6px; font-size: 9px; font-weight: 750; color: #fff; white-space: nowrap; overflow: hidden; z-index: 2; box-shadow: 0 3px 8px rgba(23,32,51,.12); }
+  .ld-bar > .lb { position: relative; z-index: 1; display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ld-bar.is-main { background: linear-gradient(135deg,#3568f0,#6d96ff); }
+  .ld-bar.is-sub { background: linear-gradient(135deg,#7a5af8,#a58cff); }
+  .ld-bar.is-sub2 { background: linear-gradient(135deg,#d9822b,#f0ad62); }
+  .ld-bar.is-skill { background: linear-gradient(135deg,#0e8f9e,#4fc3cf); }
+  .ld-bar.is-summary { color: var(--text-faint); background: var(--bg-inset); border: 1px dashed var(--line-strong); box-shadow: none; }
+  .ld-bar.is-gap { color: #54607a; background: #e9edf5; border: 1px dashed #b8c3d6; box-shadow: none; font-weight: 700; }
+  .ld-bar.is-fold { color: #5a3fd0; background: #efeafd; border: 1px dashed #b3a1f0; box-shadow: none; font-weight: 750; }
+  .ld-bar.is-case-src { outline: 2px solid #d63c3c; outline-offset: 1px; box-shadow: 0 0 0 3px color-mix(in srgb, #d63c3c 14%, transparent); }
+  .ld-case { position: absolute; top: 0; transform: translateX(-50%); font-size: 7.5px; font-weight: 800; line-height: 11px; color: #c03434; background: #fff5f5; border: 1px solid #e05555; border-radius: 999px; padding: 0 4px; z-index: 5; white-space: nowrap; cursor: default; }
+  .ld-case.is-selected { color: #fff; background: #c03434; border-color: #c03434; box-shadow: 0 0 0 2px color-mix(in srgb, #d63c3c 20%, transparent); }
+  .ld-hit { display: inline-flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 750; color: #9d3030; background: #fdecec; border: 1px solid #e9a5a5; border-radius: 999px; padding: 1px 8px; }
+  .ld-edges { position: absolute; left: 218px; right: 0; top: 46px; bottom: 0; width: calc(100% - 218px); height: calc(100% - 46px); pointer-events: none; z-index: 1; overflow: visible; }
+  /* spawn：trunk 只走空白列（或直落、从中间 lane 的 bar 后面穿过），branch 是贴着子 lane bar 的短肘。 */
+  .ld-edge { fill: none; stroke: #7a5af8; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .ld-edge-trunk { fill: none; stroke: #7a5af8; stroke-width: 1.3; stroke-dasharray: 4 3; opacity: .8; }
+  .ld-spawnmarks { position: absolute; left: 218px; right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 5; }
+  .ld-spawn-chip { position: absolute; transform: translateX(3px); height: 12px; line-height: 12px; padding: 0 5px; border-radius: 999px; background: #f2eefd; border: 1px dashed #a58cff; color: #5a3fd0; font-size: 8px; font-weight: 800; white-space: nowrap; }
+  .ld-foot { flex-shrink: 0; padding: 5px 12px 7px; font-size: 9px; color: var(--text-faint); border-top: 1px dashed var(--border); }
+  .ld-foot b { color: var(--ink-soft); }
   .err-detail { margin-top: 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(30,40,60,.06); overflow: hidden; }
   .err-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 14px; gap: 4px; }
   .err-tab { font: inherit; font-size: 12.5px; color: var(--text-dim); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 10px 12px 9px; cursor: pointer; }
@@ -1829,17 +2002,11 @@ function renderMain() {
       <div class="ss warn"><b>${failRate(s).toFixed(1)}</b><span>失败/百步</span></div>
       <div class="ss warn"><b>${findRate(s).toFixed(1)}</b><span>bad case/百步</span></div>
     </div>
-    <div class="section-title" style="margin-bottom:6px">家族树 · 执行流（节点链 = 时序，×N = 压缩合并的 session 日志行数）</div>
+    <div class="section-title" style="margin-bottom:6px">执行流 · 默认执行序 DAG（bar 长度 = 日志行区间；跨 lane 重叠 = 并发）· 可切回结构树</div>
     <div class="tree-panel">
       <div class="tree-legend">
-        <span><i class="sw session"></i>主会话</span>
-        <span><i class="sw sub"></i>子 agent</span>
-        <span><i class="sw wf"></i>Workflow</span>
-        <span><span class="diamond skill"></span>Skill 触发节点</span>
-        <span><span class="diamond agent"></span>Subagent 触发节点</span>
-        <span><i class="sw gapnode"></i>×N 压缩日志</span>
-        <span><i class="sw finding"></i>问题（打桩）</span>
-        <span class="hint">拖拽平移 · 右下角缩放/适应</span>
+        <span>执行序 DAG：lane = agent invocation · bar 长度 = 日志行区间（逻辑序） · 缩进 = 嵌套 · 跨 lane 重叠 = 并发</span>
+        <span class="hint">切到结构树可看节点链、×N 与问题卡；右上角切换</span>
       </div>
       <div id="famTree" class="rf-canvas"><div class="rf-loading">家族树加载中…</div></div>
     </div>
@@ -2456,7 +2623,7 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
     const totalH = n * BOX_H + (n - 1) * GAP;
     const startY = centerY - totalH / 2;
     items.forEach((item, i) => {
-      const text = `#${item.no} ${item.label}`;
+      const text = `BC${item.no} ${item.label}`;
       const w = Math.max(150, Math.min(400, 26 + textW(text)));
       const y = startY + i * (BOX_H + GAP);
       const x = side === "left" ? anchorX - w - 46 : anchorX + 46;
@@ -2484,7 +2651,7 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
     const tailByAnchor = new Map();
     entries.forEach((en, i) => {
       const item = en.item;
-      const text = `#${item.no} ${item.label}`;
+      const text = `BC${item.no} ${item.label}`;
       const w = Math.max(170, Math.min(400, 26 + textW(text)));
       const anchorX = nodeX + BOX_PAD + BOX_EDGE + (chain?.offsets?.[en.evIdx] ?? 0);
       const x = Math.max(8, anchorX - w / 2);
@@ -2586,7 +2753,7 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
       const trigX = 60 + BOX_PAD + BOX_EDGE + (mainChain.offsets[m.id] ?? 0);
       let previous = null;
       items.forEach((item, i) => {
-        const text = `#${item.no} ${item.label}`;
+        const text = `BC${item.no} ${item.label}`;
         const w = Math.max(170, Math.min(560, 26 + textW(text)));
         const x = Math.max(8, trigX - w / 2);
         const y = 8 - i * (BOX_H + GAP);
@@ -2662,7 +2829,7 @@ function buildGraph(sid, expanded, findingsBudget, cases) {
     findingsOut.forEach((f, i) => {
       const c = cases[i];
       if (!c) return;
-      const text = `#${c.no} ${c.title}`;
+      const text = `BC${c.no} ${c.title}`;
       const w = Math.max(160, Math.min(460, 26 + textW(text)));
       const node = nodes.find(n => n.id === f.nodeId);
       if (node) {
@@ -2807,7 +2974,7 @@ function FindingList({ findings, activeId, onLocate, sid }) {
         <button key=${f.nodeId} type="button"
           className=${"finding-item" + (f.nodeId === activeId ? " active" : "")}
           onClick=${() => onLocate(f)}>
-          <span className="fi-no">#${f.no}</span>
+          <span className="fi-no">BC${f.no}</span>
           <span className="fi-body">
             <span className="fi-head">
               <span className="fi-title">${f.title}</span>
@@ -2867,6 +3034,8 @@ function App({ sid, findingsBudget }) {
   const [expanded, setExpanded] = useState({});
   const [activeFinding, setActiveFinding] = useState(null);
   const [focusToken, setFocusToken] = useState(0);
+  const [flowMode, setFlowMode] = useState(() => new URLSearchParams(location.search).get("treeflow") === "tree" ? "tree" : "dag");
+  const cases = useMemo(() => (window.casesForSession ? window.casesForSession(sid) : []), [sid]);
 
   const toggle = useCallback((parent) => {
     setExpanded(prev => ({ ...prev, [parent]: !prev[parent] }));
@@ -2896,31 +3065,45 @@ function App({ sid, findingsBudget }) {
     document.querySelector(".tree-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
+  const selectedNo = (findings.find(f => f.nodeId === activeFinding) || {}).no ?? null;
   const listHost = document.getElementById("findingList");
 
   return html`
-    <${React.Fragment}>
-      <${ReactFlow}
-        nodes=${rfNodes} edges=${rfEdges}
-        onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
-        nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
-        onNodeClick=${onNodeClick}
-        fitView fitViewOptions=${{ padding: 0.12 }}
-        minZoom=${0.5} maxZoom=${2.5}
-        zoomOnScroll=${false} preventScrolling=${false}
-        nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
-        proOptions=${{ hideAttribution: true }}
-        style=${{ width: "100%", height: "100%" }}
-      >
-        <${FitTree} fitKey=${sid + ":" + Object.keys(expanded).sort().join(",")} />
-        <${FocusNode} focusId=${activeFinding} token=${focusToken} />
-        <${Background} gap=${22} color="#e6e9ef" />
-        <${Controls} showInteractive=${false} position="bottom-right" />
-      <//>
+    <div className="tree-flow-shell">
+      <div className="tree-flow-bar">
+        <span>执行流</span>
+        <span className="tree-flow-hint">默认执行序 DAG；可切回结构树</span>
+        <div className="flow-mode" role="group" aria-label="执行流视图">
+          <button className=${flowMode === "dag" ? "active" : ""} onClick=${() => setFlowMode("dag")}>执行序 DAG</button>
+          <button className=${flowMode === "tree" ? "active" : ""} onClick=${() => setFlowMode("tree")}>结构树</button>
+        </div>
+      </div>
+      <div className="tree-flow-body">
+        ${flowMode === "dag"
+          ? html`<${DagBoundary}><${LaneDag} sid=${sid} selectedNo=${selectedNo} cases=${cases} /><//>`
+          : html`
+            <${ReactFlow}
+              nodes=${rfNodes} edges=${rfEdges}
+              onNodesChange=${onNodesChange} onEdgesChange=${onEdgesChange}
+              nodeTypes=${nodeTypes} edgeTypes=${edgeTypes}
+              onNodeClick=${onNodeClick}
+              fitView fitViewOptions=${{ padding: 0.12 }}
+              minZoom=${0.5} maxZoom=${2.5}
+              zoomOnScroll=${false} preventScrolling=${false}
+              nodesDraggable=${false} nodesConnectable=${false} elementsSelectable=${true}
+              proOptions=${{ hideAttribution: true }}
+              style=${{ width: "100%", height: "100%" }}
+            >
+              <${FitTree} fitKey=${sid + ":" + Object.keys(expanded).sort().join(",")} />
+              <${FocusNode} focusId=${activeFinding} token=${focusToken} />
+              <${Background} gap=${22} color="#e6e9ef" />
+              <${Controls} showInteractive=${false} position="bottom-right" />
+            <//>`}
+      </div>
       ${listHost ? createPortal(html`
         <${FindingList} findings=${findings} activeId=${activeFinding} onLocate=${locateFinding} sid=${sid} />
       `, listHost) : null}
-    <//>`;
+    </div>`;
 }
 
 /* ═══ 错误详情 / 归因 ═══ */
@@ -3106,7 +3289,7 @@ function FindingDescription({ c, session, attributions, onOpenAttr }) {
   return html`
     <div>
       <div className="ed-head">
-        <span className="ed-no">#${c.no}</span>
+        <span className="ed-no">BC${c.no}</span>
         <a className="idlink" href=${caseDeepLink(c.id, "desc")} target="_blank" rel="noopener"
            title="bad case 深链 · 新窗口打开">${c.id}</a>
         <span className="ed-title">${c.title}</span>
@@ -3240,6 +3423,785 @@ function ErrorFlow({ nodes, edges, findings, selectedNo }) {
     <//>`;
 }
 
+/* 并发感知的执行序视图：lane = agent invocation，spawn 虚线，并发区间用橙色括号。
+   原型数据没有 run_in_background / 完成事件，因此子链默认画成 concurrent；
+   真实实现里 sync spawn 会补 join，background 保持 concurrent/unknown。 */
+/* 正式执行流：lane + 区间 bar。
+   TREE 没有真实时间戳：bar 只用逻辑序排版（不是真实耗时），缺失时间戳标 unknown、不伪造 duration。
+   主 lane 的每个 bar 覆盖一段日志行（触发动作或「×N 无触发」），badge / spawn 都反查这个区间，
+   保证三者共用一套坐标；跨 lane 的 spawn 折线沿空白走廊下行，避免被中间 lane 的 bar 遮住。 */
+const LD_AXIS_H = 18;
+const LD_CASE_ROW = 28;
+const LD_LANE_TOP = LD_AXIS_H + LD_CASE_ROW;
+const LD_MAIN_ROW_H = 70;
+const LD_ROW_H = 44;
+const LD_BAR_TOP = 4;
+const LD_MAIN_BAR_TOP = 34; // main 轨：上方触发标签带，bar 从标签带下方开始
+const LD_BAR_H = 20;
+const LD_TRACK_H = 30;
+const LD_MAIN_TRACK_H = 56;
+/* 数据坐标 = 轴坐标：0 就是日志行 0，100 就是最后一行。左右留白交给 track 的内边距
+   （.ld-bars 左右各 2px），不再用 3/96 压缩绘图区，避免刻度与日志行百分比错位。 */
+const LD_BX0 = 0;
+const LD_BX1 = 100;
+const LD_MAX_LANES = Infinity; // 小窗口 + 缩放/平移后不再按行数截断
+const LD_MAX_SIBLINGS = Infinity;
+const LD_TRACK_PX = 780; // 1440 视口下 track 的近似像素宽，只用于标签 chip 的碰撞估算
+const LD_SUB_MAX_PCT = 42; // 全 session 最长子 lane 的宽度上限；其余按日志行数等比
+const LD_FONT = '700 9px -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif';
+
+function ldShort(s) {
+  const t = String(s || "step");
+  if (t.length > 24 && t.includes(":")) return t.slice(t.lastIndexOf(":") + 1);
+  return t;
+}
+function ldLabelPct(text) {
+  return (measureW(text, LD_FONT) + 14) / LD_TRACK_PX * 100;
+}
+
+function buildLaneDag(sid, selectedNo, cases) {
+  const d = TREE[sid] || {};
+  const mainLines = Math.max(1, d.main?.lines || 1);
+  const mainEvents = (d.main?.events || []).slice();
+  const chain = chainOf(mainEvents, mainLines);
+
+  /* 1) item → 日志行区间 */
+  let cursor = 0;
+  const items = chain.items.map(it => {
+    if (it.kind === "gap") {
+      const lo = cursor;
+      const hi = cursor + it.n - 1;
+      cursor += it.n;
+      return { gap: true, n: it.n, label: "×" + it.n, lo, hi };
+    }
+    const line = it.line != null ? it.line : cursor;
+    cursor = Math.max(cursor, line + 1);
+    return { gap: false, kind: it.kind, label: it.name || it.kind || "step", lo: line, hi: line };
+  });
+
+  /* 2) 相邻触发（同一轮并发 dispatch）合并成一个 bar；缺口单独成「×N 无触发」条 */
+  const groups = [];
+  items.forEach(it => {
+    const prev = groups[groups.length - 1];
+    if (!it.gap && prev && !prev.gap && prev.hi + 1 >= it.lo) {
+      prev.members.push(it);
+      prev.hi = Math.max(prev.hi, it.hi);
+      return;
+    }
+    groups.push({ gap: it.gap, n: it.gap ? it.n : 1, lo: it.lo, hi: it.hi, members: [it] });
+  });
+  groups.forEach((g, i) => {
+    g.id = "g" + i;
+    if (g.gap) {
+      g.disp = "×" + g.n;
+      g.kind = "is-gap";
+      /* gap 只是「这段日志行里没有触发事件」；落在里面的 bad case 只标触发行，
+         不再把 gap bar 当成触发点，tooltip 里列出它包含的 case 行。 */
+      const inGap = (cases || []).filter(c => (c.triggerLine ?? -1) >= g.lo && c.triggerLine <= g.hi);
+      g.title = `无触发区间 · ${g.n} 行日志（逻辑序，无真实时间戳）`
+        + (inGap.length ? ` · 含 bad case 触发行 ${inGap.map(c => "L" + c.triggerLine).join(" / ")}` : "");
+      return;
+    }
+    const kinds = [...new Set(g.members.map(m => m.kind))];
+    if (g.members.length === 1) {
+      g.disp = ldShort(g.members[0].label);
+      g.kind = kinds[0] === "skill" ? "is-skill" : "is-main";
+    } else {
+      g.disp = `${g.members.length} 个 ${kinds.length === 1 && kinds[0] === "agent" ? "agent" : "动作"}`;
+      g.kind = "is-main";
+    }
+    g.title = g.members.map(m => `${m.label} L${m.lo}`).join(" · ") + "（逻辑序，无真实时间戳）";
+  });
+
+  /* 3) 统一宽度规则：每条 bar 覆盖的日志行数就是它的相对区间（逻辑序）。
+       事件触发、无触发缺口、子 lane 都从同一个「行」概念出发；
+       main 的 1 行事件因此很窄，触发名称放到上方标签带，不让文字反过来决定 bar 长度。 */
+  groups.forEach(g => { g.span = Math.max(1, g.hi - g.lo + 1); });
+  const spanSum = groups.reduce((a, g) => a + g.span, 0);
+  const lineScale = (LD_BX1 - LD_BX0) / Math.max(1, spanSum);
+  let bx = LD_BX0;
+  groups.forEach(g => {
+    g.start = bx;
+    g.width = g.span * lineScale;
+    bx += g.width;
+    g.end = g.start + g.width;
+  });
+
+  const groupOfLine = line => groups.find(x => line >= x.lo && line <= x.hi) || null;
+  const xOfLine = line => {
+    const g = groupOfLine(line) || groups[groups.length - 1];
+    if (!g) return LD_BX0;
+    const span = g.hi - g.lo + 1;
+    const frac = span <= 1 ? 0.5 : (Math.min(g.hi, Math.max(g.lo, line)) - g.lo + 0.5) / span;
+    return g.start + Math.max(0.6, Math.min(g.width - 0.6, g.width * frac));
+  };
+
+  const mainBars = groups.map(g => ({
+    id: g.id, start: g.start, end: g.end, width: g.width, label: g.disp, kind: g.kind, title: g.title,
+    lo: g.lo, hi: g.hi, span: g.span, rail: !g.gap,
+  }));
+
+  /* 触发标签带：chip 只是一个定位到触发点的注释，宽度只用于排版，不参与 0–100 区间编码。
+     chip 左缘对齐触发点，两行错位避让；极端拥挤时右移，但仍用竖线指回真实触发点。 */
+  const railLabels = mainBars.filter(b => b.rail).map(b => {
+    const text = b.label + (b.lo != null ? (b.lo === b.hi ? " L" + b.lo : " L" + b.lo + "–" + b.hi) : "");
+    const w = Math.min(34, Math.max(5.5, ldLabelPct(text) + 0.4));
+    return {
+      id: b.id, text, kind: b.kind, x: b.start + b.width / 2,
+      w, left: Math.max(0.4, Math.min(LD_BX1 - w, b.start)), row: 0, title: b.title,
+    };
+  });
+  const railEnd = [-Infinity, -Infinity];
+  railLabels.sort((a, b) => a.left - b.left).forEach(m => {
+    let row = railEnd.findIndex(end => m.left > end + 0.7);
+    if (row < 0) {
+      row = railEnd[0] <= railEnd[1] ? 0 : 1;
+      m.left = Math.min(LD_BX1 - m.w, Math.max(m.left, railEnd[row] + 0.7));
+    }
+    m.row = row;
+    railEnd[row] = m.left + m.w;
+  });
+
+  const lanes = [{
+    id: "main", depth: 0, label: "main", full: "main", top: LD_LANE_TOP,
+    bars: mainBars, state: "", parent: null, trigger: LD_BX0, lines: mainLines,
+    events: mainEvents, x0: LD_BX0, x1: LD_BX1,
+    barTop: LD_MAIN_BAR_TOP, trackH: LD_MAIN_TRACK_H, rowH: LD_MAIN_ROW_H,
+    railLabels, path: "A0",
+  }];
+
+  function laneBars(c, start, end, kind, opts) {
+    const o = opts || {};
+    const evs = (c.events || []).slice(0, 4);
+    const base = `${c.type || "agent"}${c.desc ? " · " + c.desc : ""}${c.lines ? " · " + c.lines + " 行" : " · 行数 unknown"}（区间为逻辑序占位，无真实时间戳）`
+      + (o.unknown ? "；右缘取父 lane 末端，不是真实结束时间" : "")
+      + (o.cont ? "；右缘延续标记表示区间超出 100% 轴右缘" : "");
+    if (!evs.length) {
+      /* 子 lane 的 bar 就是该 invocation 的逻辑区间；行数 unknown 时画斜纹 unknown，不猜 40%。 */
+      return [{
+        id: "one", start, end, width: Math.max(1.2, end - start),
+        label: o.unknown ? "unknown" : (c.desc || c.type || "agent"),
+        kind: o.unknown ? "is-unknown" : kind,
+        title: base, lo: null, hi: null, unknown: !!o.unknown, cont: !!o.cont, contReason: o.contReason || "",
+      }];
+    }
+    const slot = (end - start) / evs.length;
+    return evs.map((e, i) => {
+      const s = start + i * slot + 0.4;
+      const eEnd = start + (i + 1) * slot - 0.4;
+      /* 标签与 main 的 chainOf 命名规则一致：desc 优先，其次 name / kind；
+         agent 事件在 tooltip 里带 spawn 前缀，读得出这是「父 lane 内的一次 spawn」。 */
+      const evLabel = e.desc || e.name || e.kind || "step";
+      const lead = e.kind === "agent" ? "spawn " : "";
+      return {
+        id: "e" + i,
+        start: s,
+        end: eEnd,
+        width: Math.max(2, eEnd - s),
+        label: ldShort(evLabel),
+        kind: e.kind === "skill" ? "is-skill" : kind,
+        title: `${lead}${evLabel} · ${c.type || "agent"} 内第 ${i + 1} 个动作（逻辑序，区间为占位，无真实时间戳）`,
+        lo: e.line,
+        hi: e.line,
+        unknown: !!o.unknown, cont: !!o.cont, contReason: o.contReason || "",
+      };
+    });
+  }
+
+  /* 子 lane 的统一线性尺度：同一 session 内同样多的日志行得到同样长度；
+     最长的那条最多占 42%，其余按行数等比。行数未知时单独画 unknown，不套用这个尺度。 */
+  const maxSubLines = (() => {
+    let max = 1;
+    const walk = list => (list || []).forEach(c => {
+      if (c.lines > 0) max = Math.max(max, c.lines);
+      walk(c.children);
+    });
+    (d.subs || []).forEach(s => { if (s.lines > 0) max = Math.max(max, s.lines); walk(s.children); });
+    return max;
+  })();
+  const subLinePct = LD_SUB_MAX_PCT / Math.max(1, maxSubLines);
+
+  /* 两种语义严格分开，禁止把 lane 内每条 bar 一起拉伸（那会违反「同一 lane 内 bar 不重叠」）：
+     extendLaneEnd：只为容纳嵌套子 lane 而把 lane 末端往后延，只延长最后一个 bar（覆盖新增尾段）；
+     clampLaneEnd：按父 lane 边界截断，只收缩 end 超出边界的 bar，并留延续标记。 */
+  function extendLaneEnd(lane, end) {
+    const next = Math.max(lane.start + 1.2, Math.min(LD_BX1, end));
+    if (next <= lane.end + 0.01) return;
+    const prevEnd = lane.end;
+    lane.end = next;
+    lane.x1 = next;
+    const bars = lane.bars || [];
+    const last = bars[bars.length - 1];
+    if (!last) return;
+    last.end = next;
+    last.width = Math.max(1.2, next - last.start);
+    last.extended = true;
+    last.title = (last.title || last.label)
+      + `；右缘从 ${prevEnd.toFixed(1)}% 延长到 ${next.toFixed(1)}% 以容纳嵌套子 lane（逻辑序占位，不是真实结束时间）`;
+  }
+
+  function clampLaneEnd(lane, end, contReason) {
+    const next = Math.max(lane.start + 1.2, Math.min(LD_BX1, end));
+    lane.end = Math.min(lane.end, next);
+    lane.x1 = lane.end;
+    (lane.bars || []).forEach(b => {
+      if (b.end <= next + 0.01) return;
+      b.end = Math.max(b.start + 1.2, next);
+      b.width = Math.max(1.2, b.end - b.start);
+      if (contReason) {
+        b.cont = true;
+        b.contReason = contReason;
+        b.title = (b.title || b.label) + "；" + contReason;
+      }
+    });
+    if (lane.bars && lane.bars.length) {
+      const last = lane.bars[lane.bars.length - 1];
+      lane.end = Math.max(lane.start + 1.2, last.end);
+      lane.x1 = lane.end;
+    }
+  }
+
+  function addSubs(parent, subs, depth) {
+    const list = subs || [];
+    const trigOf = c => {
+      let line = c.line;
+      if (line == null && c.toolUseId) {
+        const ev = (parent.events || []).find(e => e.toolUseId === c.toolUseId);
+        if (ev) line = ev.line;
+      }
+      if (line == null) return { line: null, bar: null };
+      const bar = (parent.bars || []).find(b => b.lo != null && line >= b.lo && line <= b.hi) || null;
+      return { line, bar };
+    };
+    /* 同父 sibling 按 trigger / line 排序（同一 bar 内保持原序，稳定排序），
+       lane 顺序与 spawn 位置一致：不再出现 #4 排在 #5 上面、spawn 边绕到最右侧再折回。 */
+    const ordered = list
+      .map((c, i) => ({ c, i, trig: trigOf(c) }))
+      .sort((a, b) => ((a.trig.line ?? 1e9) - (b.trig.line ?? 1e9)) || (a.i - b.i));
+    const descOf = c => c.desc || c.type || "agent";
+    /* 无 desc 的 agent（如 56 个 workflow-subagent）用同父兄弟序号生成唯一短名：
+       否则 6 条 lane 全叫 workflow-subagent，折叠后也定位不到具体哪一条。 */
+    const shortOf = (c, ord) => (c.desc ? c.desc : `${descOf(c)} #${ord + 1}`);
+    const idTail = c => String(c.id || "").slice(-6);
+    ordered.forEach((s, i) => { s.ord = i; });
+    const shown = [];
+    const dropped = [];
+    ordered.forEach(s => {
+      if (shown.length >= LD_MAX_SIBLINGS || lanes.length >= LD_MAX_LANES - 1) { dropped.push(s.c); return; }
+      shown.push(s);
+    });
+
+    /* 同一触发 bar 内的兄弟按 0.2..0.8 分摊 spawn 点；没有触发行时在整个父 lane 内分摊。 */
+    const buckets = new Map();
+    shown.forEach(s => {
+      const key = s.trig.bar ? parent.bars.indexOf(s.trig.bar) : "none";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(s);
+    });
+    buckets.forEach(arr => {
+      const bar = arr[0].trig.bar;
+      const bw = bar ? (bar.width != null ? bar.width : bar.end - bar.start) : 0;
+      arr.forEach((s, j) => {
+        const f = arr.length === 1 ? 0.5 : 0.2 + 0.6 * (j / (arr.length - 1));
+        const x = bar ? bar.start + bw * f : parent.x0 + (parent.x1 - parent.x0) * (0.12 + 0.76 * f);
+        s.start = Math.max(LD_BX0, Math.min(LD_BX1 - 2.4, x));
+      });
+    });
+
+    shown.forEach((s, idx) => {
+      const c = s.c;
+      const start = s.start;
+      const known = c.lines > 0;
+      const width = known ? Math.max(2.2, c.lines * subLinePct) : Math.max(2.2, parent.x1 - start);
+      const desired = start + width;
+      const end = Math.min(LD_BX1, desired);
+      const cont = desired > LD_BX1 + 0.001;
+      const kind = depth === 1 ? "is-sub" : "is-sub2";
+      const path = parent.depth === 0 ? "A" + (idx + 1) : parent.path + "." + (idx + 1);
+      const lane = {
+        id: c.id || ("lane-" + depth + "-" + idx),
+        path,
+        depth,
+        label: shortOf(c, s.ord),
+        full: [c.type || "agent", shortOf(c, s.ord), c.lines ? c.lines + " 行" : "行数 unknown", "id " + (c.id || "unknown")]
+          .filter(Boolean).join(" · ")
+          + "（子 lane 长度按日志行数线性缩放，不是真实耗时）" + (cont ? "；右缘延续标记表示超出 100% 轴" : ""),
+        top: 0,
+        bars: laneBars(c, start, end, kind, {
+          unknown: !known,
+          cont,
+          contReason: cont ? "超出 100% 轴右缘，右缘延续标记表示未结束" : "",
+        }),
+        state: "concurrent",
+        parent: parent.id,
+        trigger: start,
+        spawnBar: s.trig.bar ? s.trig.bar.id : null,
+        lines: c.lines || 0,
+        start,
+        end,
+        events: c.events || [],
+        x0: start,
+        x1: end,
+        barTop: LD_BAR_TOP,
+        trackH: LD_TRACK_H,
+        rowH: LD_ROW_H,
+      };
+      lanes.push(lane);
+      if ((c.children || []).length) addSubs(lane, c.children, depth + 1);
+    });
+
+    /* 到上限不静默丢弃：汇总成紧跟最后一个已展开兄弟之后的一行。
+       汇总行没有时间宽度，也不画横跨时间轴的假条：只在行尾挂一个 chip 写「类型 ×N · 行数范围」，
+       点击 chip 打开全部被折叠 lane 的 id / 行数清单（可定位到具体一条）。 */
+    if (dropped.length) {
+      if (lanes.length >= LD_MAX_LANES) return;
+      const foldGroups = new Map();
+      dropped.forEach(c => {
+        const d = descOf(c);
+        const g = foldGroups.get(d) || { desc: d, type: c.type || "agent", lines: new Set(), n: 0 };
+        g.n += 1;
+        if (c.lines) g.lines.add(c.lines);
+        foldGroups.set(d, g);
+      });
+      const allLines = dropped.map(c => c.lines || 0).filter(n => n > 0);
+      const foldRange = allLines.length
+        ? (Math.min(...allLines) === Math.max(...allLines) ? Math.min(...allLines) + " 行" : Math.min(...allLines) + "–" + Math.max(...allLines) + " 行")
+        : "行数 unknown";
+      const typeNames = [...new Set(dropped.map(c => c.type || "agent"))].join(" / ");
+      const nAll = dropped.length;
+      const foldRows = dropped.map((c, i) => ({
+        id: c.id || ("unknown-" + i), idx: (ordered.find(o => o.c === c) || { ord: i }).ord,
+        lines: c.lines || 0, type: c.type || "agent", desc: c.desc || "",
+      }));
+      const names = [...foldGroups.values()].map(g =>
+        `${g.type} · ${g.desc}${g.lines.size ? " · " + [...g.lines].sort((a, b) => a - b).join("/") + " 行" : ""}${g.n > 1 ? " ×" + g.n : ""}`);
+      const foldTitle = `${nAll} 个未展开的 ${typeNames}：${names.join(" / ")}（汇总行，不占时间轴宽度；点击看全部 id / 行数）`
+        + " · " + dropped.map(c => `${c.type || "agent"} #${(ordered.find(o => o.c === c) || { ord: 0 }).ord + 1} ${idTail(c)}`).join(" / ");
+      const foldNo = lanes.filter(l => l.fold).length + 1;      lanes.push({
+        id: parent.id + "-fold-" + foldNo,
+        path: "F" + foldNo,
+        depth,
+        label: "＋" + nAll + " " + typeNames,
+        full: foldTitle,
+        top: 0,
+        bars: [],
+        foldSummary: "＋" + nAll + " 未展开 · " + typeNames + " ×" + nAll + " · " + foldRange + " · 查看全部",
+        state: "fold",
+        /* 折叠行跟随被折叠的兄弟：保留 parent / depth，缩进与 └─、d2 都和 A1.x 对齐，
+           并排进 A1.6 之后；不参与 spawn / 父边界计算（没有 bar）。 */
+        parent: parent.id,
+        trigger: null,
+        lines: 0,
+        start: null,
+        end: null,
+        events: [],
+        fold: true,
+        foldType: typeNames,
+        foldRange,
+        foldRows,
+        barTop: LD_BAR_TOP,
+        trackH: LD_TRACK_H,
+        rowH: LD_ROW_H,
+      });
+    }
+  }
+
+  addSubs(lanes[0], d.subs || [], 1);
+
+  /* 父 lane 只为容纳子 lane 而延长末端（只延长最后一个 bar）；子 lane 超出父边界时才截断。
+     折叠行（fold）没有 bar，也没有时间区间，不参与这两步。 */
+  function reconcileLane(lane) {
+    if (lane.fold) return;
+    const kids = lanes.filter(l => l.parent === lane.id && !l.fold);
+    kids.forEach(reconcileLane);
+    if (lane.depth === 0) return;
+    const childMax = kids.length ? Math.max(...kids.map(k => k.end)) : lane.end;
+    if (childMax > lane.end + 0.01) extendLaneEnd(lane, Math.min(LD_BX1, childMax));
+    kids.forEach(k => {
+      if (k.end > lane.end + 0.01) clampLaneEnd(k, lane.end, "超出父 lane 末端，右缘为父 lane 边界");
+    });
+  }
+  reconcileLane(lanes[0]);
+
+  /* 断言：同一 lane 内 bar 不重叠（脚注承诺）。违反时在控制台报出，不静默改写几何。 */
+  lanes.forEach(l => {
+    const bs = (l.bars || []).slice().sort((a, b) => a.start - b.start);
+    for (let i = 1; i < bs.length; i++) {
+      if (bs[i].start < bs[i - 1].end - 0.01) {
+        console.assert(false,
+          `lane ${l.path} bar 重叠：${bs[i - 1].id}[${bs[i - 1].start.toFixed(2)}–${bs[i - 1].end.toFixed(2)}] × ${bs[i].id}[${bs[i].start.toFixed(2)}–${bs[i].end.toFixed(2)}]`);
+      }
+    }
+  });
+
+  /* 行高：main 轨多一条触发标签带；其余 lane 44px。 */
+  lanes.forEach((l, i) => {
+    l.top = i === 0 ? LD_LANE_TOP : LD_LANE_TOP + LD_MAIN_ROW_H + (i - 1) * LD_ROW_H;
+  });
+
+  /* spawn 连线：同一父 bar 上的兄弟共用一个汇合点（trunk），trunk 竖段只画一条，
+     每个 sibling 只在自己的行高上分出一条短肘。不再用「同父 sibling 最左点 −1.1%」的共享走廊，
+     避免 5 条 spawn 竖段叠成梳状、也避免长横线浮在父 bar 下方的空白里。 */
+  const byId = {};
+  lanes.forEach(l => { byId[l.id] = l; });
+  const spawnLanes = lanes.filter(l => l.parent && !l.fold);
+  spawnLanes.forEach(l => {
+    const p = byId[l.parent] || lanes[0];
+    l.parentTop = p.top;
+    l.parentBarTop = p.barTop ?? LD_BAR_TOP;
+  });
+  const spawnGroups = [];
+  spawnLanes.forEach(l => {
+    /* 同一条触发 bar 上的兄弟才是「同一次并发 spawn」，共用 trunk + 汇合点；
+       没有触发 bar 的子 lane（如 workflow 的 N 个 subagent 沿父 lane 分摊 spawn 点）各自从自己的
+       spawn 点直落，不共用 trunk，否则会在每个子行上各画一条横穿父 lane 的长横线。 */
+    const key = l.parent + "|" + (l.spawnBar || "x" + l.trigger.toFixed(2));
+    let g = spawnGroups.find(x => x.key === key);
+    if (!g) { g = { key, parent: l.parent, members: [] }; spawnGroups.push(g); }
+    g.members.push(l);
+  });
+  spawnGroups.forEach(g => {
+    const p = byId[g.parent] || lanes[0];
+    const x0 = p.x0 ?? LD_BX0;
+    const x1 = p.x1 ?? LD_BX1;
+    const mergeX = Math.min(...g.members.map(m => m.trigger));
+    g.n = g.members.length;
+    g.mergeX = mergeX;
+    g.top = p.top;
+    g.barTop = p.barTop ?? LD_BAR_TOP;
+    g.adjacentOnly = g.members.every(m => (m.top - p.top) === LD_ROW_H || (m.top - p.top) === LD_MAIN_ROW_H);
+    const maxTop = Math.max(...g.members.map(m => m.top));
+    /* trunk 只走空白列：竖段要穿过中间 lane 时，先试 merge−1.1% 起的几条候选列（步长 0.6%），
+       找到不压任何 bar 的一列就用它（短肘 1–3%）；3% 内都没有空白列就干脆从 spawn 点直落，
+       让竖段从中间 lane 的 bar 后面穿过（bar 不透明，断面留在行间空隙），不再画横穿空白的长横线。 */
+    const crossesBar = x => spawnLanes.some(l =>
+      l.top > g.top + 0.1 && l.top <= maxTop + 0.1 &&
+      (l.bars || []).some(b => x > b.start + 0.2 && x < b.end - 0.2));
+    let trunk = mergeX;
+    for (let d = 1.1; d <= 3.1; d += 0.6) {
+      const x = Math.max(x0 + 0.4, mergeX - d);
+      if (x < mergeX - 0.2 && x < x1 && !crossesBar(x)) { trunk = x; break; }
+    }
+    g.trunk = trunk;
+    g.lastY2 = Math.max(...g.members.map(m => m.top + (m.barTop ?? LD_BAR_TOP)));
+    g.members.forEach(m => { m.spawnTrunkX = trunk; });
+  });
+
+  const height = LD_LANE_TOP + LD_MAIN_ROW_H + Math.max(0, lanes.length - 1) * LD_ROW_H;
+  const width = Math.max(1100, 980 + Math.max(0, mainBars.length - 6) * 80);
+
+  /* bad case：x 严格按触发行取（gap 内按行比例定位），badge 不再在同一个 bar 里均分；
+     落在 gap 时给出「最近触发」注解，避免被读成 gap bar 就是触发点。 */
+  const evLines = (mainEvents || []).map(e => e.line).filter(n => n != null).sort((a, b) => a - b);
+  const caseMarkers = (cases || []).map(c => {
+    const line = Math.max(0, Math.min(mainLines, c.triggerLine ?? 0));
+    const g = groupOfLine(line);
+    const inGap = !!g && !!g.gap;
+    let gapNote = null;
+    if (inGap) {
+      const prev = evLines.filter(n => n < line).pop();
+      const next = evLines.find(n => n > line);
+      gapNote = `×${g.n} 无触发区间（最近触发 ${prev != null ? "L" + prev : "无"}${next != null ? " → L" + next : "，其后无事件"}）`;
+    }
+    return {
+      ...c,
+      line,
+      x: Math.max(1.6, Math.min(98.4, xOfLine(line))),
+      barId: g ? g.id : null,
+      inGap,
+      gapNote,
+      selected: c.no === selectedNo,
+    };
+  });
+  const rowLast = [-99, -99];
+  /* badge 两行错位：按精确 x 分摊，取剩余空间更大的一行，尽量不压字 */
+  caseMarkers.slice().sort((a, b) => a.x - b.x).forEach(m => {
+    const gap0 = m.x - rowLast[0];
+    const gap1 = m.x - rowLast[1];
+    m.row = gap0 > 3.6 ? 0 : (gap1 > 3.6 ? 1 : (gap0 >= gap1 ? 0 : 1));
+    rowLast[m.row] = Math.max(rowLast[m.row], m.x);
+  });
+  /* 定位线从 badge 落到 main bar 顶边（+1px 边框，正好接上针尖刻度）；选中只加粗这条线 */
+  caseMarkers.forEach(m => {
+    m.leadTop = m.row * 14 + 13;
+    m.leadH = Math.max(2, LD_LANE_TOP + LD_MAIN_BAR_TOP + 1 - LD_AXIS_H - m.leadTop);
+  });
+  const hit = selectedNo != null ? caseMarkers.find(m => m.no === selectedNo) || null : null;
+
+  return {
+    lanes,
+    spawnGroups,
+    width,
+    height,
+    caseMarkers,
+    selected: hit ? {
+      no: hit.no, title: hit.title, line: hit.triggerLine, barId: hit.barId,
+      inGap: hit.inGap, gapNote: hit.gapNote,
+    } : null,
+  };
+}
+
+class DagBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { err: null };
+  }
+  static getDerivedStateFromError(err) {
+    return { err };
+  }
+  componentDidCatch(err) {
+    console.error("LaneDag failed", err);
+  }
+  render() {
+    if (this.state.err) {
+      return html`<div style=${{ padding: "18px", fontFamily: "monospace", fontSize: "11px", whiteSpace: "pre-wrap", color: "#9d3030" }}>${String(this.state.err.stack || this.state.err)}</div>`;
+    }
+    return this.props.children;
+  }
+}
+
+function LaneDag({ sid, selectedNo, cases }) {
+  const model = useMemo(() => buildLaneDag(sid, selectedNo, cases), [sid, selectedNo, cases]);
+  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const [panning, setPanning] = useState(false);
+  const vpRef = React.useRef(null);
+  const dragRef = React.useRef(null);
+
+  const zoomAt = (factor, cx, cy) => {
+    const vp = vpRef.current;
+    if (!vp) return;
+    const px = cx != null ? cx : vp.clientWidth / 2;
+    const py = cy != null ? cy : vp.clientHeight / 2;
+    setView(v => {
+      const k = Math.max(0.08, Math.min(3, v.k * factor));
+      const r = k / v.k;
+      return { k, x: px - (px - v.x) * r, y: py - (py - v.y) * r };
+    });
+  };
+
+  const fit = useCallback(() => {
+    const vp = vpRef.current;
+    if (!vp || !vp.clientWidth || !vp.clientHeight) return;
+    const vw = Math.max(160, vp.clientWidth - 20);
+    const vh = Math.max(120, vp.clientHeight - 20);
+    const k = Math.max(0.08, Math.min(1.3, Math.min(vw / model.width, vh / model.height)));
+    setView({
+      k,
+      x: (vp.clientWidth - model.width * k) / 2,
+      y: (vp.clientHeight - model.height * k) / 2,
+    });
+  }, [model.width, model.height]);
+
+  useEffect(() => {
+    const vp = vpRef.current;
+    if (!vp) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const r = vp.getBoundingClientRect();
+      zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX - r.left, e.clientY - r.top);
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => fit(), 40);
+    return () => clearTimeout(t);
+  }, [sid, fit, model.lanes.length]);
+
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    const vp = vpRef.current;
+    if (!vp) return;
+    vp.setPointerCapture(e.pointerId);
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+    setPanning(true);
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setView(v => ({ ...v, x: d.ox + e.clientX - d.sx, y: d.oy + e.clientY - d.sy }));
+  };
+  const onPointerUp = (e) => {
+    dragRef.current = null;
+    setPanning(false);
+    const vp = vpRef.current;
+    if (vp && vp.hasPointerCapture(e.pointerId)) vp.releasePointerCapture(e.pointerId);
+  };
+  /* 并发带：水平范围只取有真实区间的子 lane；折叠行没有时间宽度，只参与竖直范围（跟着 A1.6 一起被带住）。 */
+  const subLanes = model.lanes.filter(l => l.depth > 0);
+  const geoLanes = subLanes.filter(l => !l.fold);
+  const hit = model.selected;
+  const band = geoLanes.length ? {
+    left: Math.min(...geoLanes.map(l => l.start)),
+    right: Math.max(...geoLanes.map(l => l.end)),
+    top: Math.min(...subLanes.map(l => l.top)) - 3,
+    bottom: Math.max(...subLanes.map(l => l.top)) + LD_TRACK_H + 3,
+  } : null;
+  const groups = model.spawnGroups || [];
+  const barTopY = l => l.top + (l.barTop ?? LD_BAR_TOP) - LD_LANE_TOP;
+  const openFold = l => {
+    const rows = (l.foldRows || []).map(r => `#${r.idx + 1}  ${r.id}  ${r.lines ? r.lines + " 行" : "行数 unknown"}  ${r.type}`).join("\n");
+    if (window.openOverlay && rows) {
+      window.openOverlay(
+        `＋${(l.foldRows || []).length} 个未展开的 ${l.foldType} · ${l.foldRange}`,
+        `${l.label} · 折叠行只是汇总，不占时间轴宽度；下面是全部 lane 的序号 / id / 行数（逻辑序，无真实时间戳）`,
+        rows,
+      );
+    }
+  };
+  return html`
+    <div className="ld-view">
+      <div className="ld-toolbar">
+        <span className="ld-badge">执行序 DAG</span>
+        ${hit
+          ? html`<span className="ld-hit">高亮 BC${hit.no} · ${hit.title} · 触发点 L${hit.line}${hit.gapNote ? " · " + hit.gapNote : ""}</span>`
+          : html`<span className="ld-sub">lane = 一次 agent invocation · 编号 A1 / A1.1；bar = 日志行区间（逻辑序）· 滚轮缩放 / 拖拽平移</span>`}
+        <div className="ld-legend">
+          <span><i className="ld-swatch ld-swatch-main"></i>main</span>
+          <span><i className="ld-swatch ld-swatch-sub"></i>subagent</span>
+          <span><i className="ld-swatch ld-swatch-sub2"></i>nested</span>
+          <span><i className="ld-swatch ld-swatch-skill"></i>skill</span>
+          <span><i className="ld-swatch ld-swatch-gap"></i>×N 无触发</span>
+          <span><i className="ld-swatch ld-swatch-band"></i>并发分支带</span>
+          <span><i className="ld-swatch ld-swatch-case"></i>BC 触发 · lane A1 / A1.1</span>
+          <span><i className="ld-line ld-line-spawn"></i>spawn</span>
+        </div>
+      </div>
+      <div className=${"ld-viewport" + (panning ? " is-panning" : "")} ref=${vpRef}
+        onPointerDown=${onPointerDown} onPointerMove=${onPointerMove}
+        onPointerUp=${onPointerUp} onPointerCancel=${onPointerUp} onDoubleClick=${fit}>
+        <div className="ld-canvas" style=${{ width: model.width + "px", height: model.height + "px", transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+          <div className="ld-board" style=${{ height: model.height + "px" }}>
+          <div className="ld-axis" aria-hidden="true">
+            <span style=${{ left: "0%" }}>0</span><span style=${{ left: "25%" }}>25</span><span style=${{ left: "50%" }}>50</span><span style=${{ left: "75%" }}>75</span><span style=${{ left: "100%" }}>100</span>
+          </div>
+          <div className="ld-grid" aria-hidden="true">
+            <i style=${{ left: "0%" }}></i><i style=${{ left: "25%" }}></i><i style=${{ left: "50%" }}></i><i style=${{ left: "75%" }}></i><i style=${{ left: "100%" }}></i>
+          </div>
+
+          <div className="ld-cases">
+            ${model.caseMarkers.map(m => html`
+              <span key=${"case" + m.id} className=${"ld-case" + (m.selected ? " is-selected" : "")}
+                style=${{ left: m.x + "%", top: (m.row * 14) + "px" }}
+                title=${"BC" + m.no + " " + m.title + " · 触发点 L" + m.triggerLine + (m.gapNote ? " · " + m.gapNote : "")}>BC${m.no}</span>
+              <i key=${"lead" + m.id} className=${"ld-case-lead" + (m.selected ? " is-selected" : "")}
+                style=${{ left: m.x + "%", top: m.leadTop + "px", height: m.leadH + "px" }}></i>
+            `)}
+          </div>
+
+          <svg className="ld-edges" viewBox=${"0 0 1000 " + (model.height - LD_LANE_TOP)} preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <marker id="ldSpawn" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+                <path d="M0 0 L8 4 L0 8 z" fill="#7a5af8"></path>
+              </marker>
+            </defs>
+            ${groups.map(g => {
+              const y1 = g.top + g.barTop + LD_BAR_H - LD_LANE_TOP;
+              if (g.adjacentOnly) {
+                return html`<g key=${"eg" + g.key}>${g.members.map(m => html`
+                  <path key=${"edge" + m.id} className="ld-edge" d=${`M ${m.trigger * 10} ${y1} L ${m.start * 10} ${barTopY(m)}`}
+                    markerEnd="url(#ldSpawn)"></path>`)}</g>`;
+              }
+              const yEnd = g.lastY2 - LD_LANE_TOP - 5;
+              const trunkX = g.trunk * 10;
+              return html`<g key=${"eg" + g.key}>
+                ${Math.abs(g.mergeX - g.trunk) > 0.05 ? html`<path className="ld-edge-trunk"
+                  d=${`M ${g.mergeX * 10} ${y1} L ${trunkX} ${y1}`}></path>` : null}
+                <path className="ld-edge-trunk" d=${`M ${trunkX} ${y1} L ${trunkX} ${yEnd}`}></path>
+                ${g.members.map(m => html`
+                  <path key=${"edge" + m.id} className="ld-edge"
+                    d=${`M ${trunkX} ${barTopY(m) - 5} L ${m.start * 10} ${barTopY(m) - 5} L ${m.start * 10} ${barTopY(m)}`}
+                    markerEnd="url(#ldSpawn)"></path>`)}
+              </g>`;
+            })}
+            ${groups.map(g => html`
+              <circle key=${"anchor" + g.key} cx=${g.mergeX * 10} cy=${g.top + g.barTop + LD_BAR_H - LD_LANE_TOP} r=${g.n > 1 ? 3.2 : 2.6}
+                fill="#7a5af8" stroke="#fff" strokeWidth="1"></circle>
+            `)}
+          </svg>
+
+          <div className="ld-spawnmarks">
+            ${groups.filter(g => g.n > 1).map(g => html`
+              <span key=${"spawnchip" + g.key} className="ld-spawn-chip"
+                style=${{ left: g.mergeX + "%", top: (g.top + g.barTop + LD_BAR_H + 2) + "px" }}
+                title=${`${g.n} 个并发 spawn 共用一条 trunk（汇合点 ${g.mergeX.toFixed(2)}%，trunk ${g.trunk.toFixed(2)}%）`}>spawn ×${g.n}</span>
+            `)}
+          </div>
+
+          ${model.lanes.map(l => html`
+            <div key=${"row" + l.id} className="ld-lane" style=${{ top: l.top + "px" }}>
+              <div className=${"ld-label" + (l.depth ? " ld-indent-" + Math.min(2, l.depth) : "") + (l.fold ? " ld-label-fold" : "")}>
+                ${l.depth ? html`<span className="ld-tree">└─</span>` : null}
+                <span className=${"ld-dot " + (l.depth === 0 ? "ld-dot-main" : l.fold ? "ld-dot-fold" : l.depth === 1 ? "ld-dot-sub" : "ld-dot-sub2")}></span>
+                ${l.path ? html`<span className=${"ld-idx" + (l.fold ? " is-fold" : "")}>${l.path}</span>` : null}
+                <span className="ld-name" title=${l.full}>${l.label}</span>
+                ${l.depth === 0 ? html`<span className="ld-rail-note">触发标签</span>` : null}
+                <span className="ld-depth">d${l.depth}</span>
+              </div>
+              <div className=${"ld-track" + (l.depth === 0 ? " ld-track-main" : "")}>
+                ${l.depth === 0 ? html`
+                  <div className="ld-rail" aria-hidden="true">
+                    ${(l.railLabels || []).map(m => html`
+                      <div key=${"rail" + m.id} className=${"ld-rail-chip " + m.kind}
+                        style=${{ left: m.left + "%", top: (m.row * 13) + "px" }} title=${m.title}>${m.text}</div>
+                      <i key=${"raillead" + m.id} className="ld-rail-lead"
+                        style=${{ left: m.x + "%", top: (m.row * 13 + 11) + "px", height: Math.max(2, LD_MAIN_BAR_TOP - 2 - (m.row * 13 + 11)) + "px" }}></i>
+                      ${m.left > m.x + 0.25 ? html`<i key=${"railh" + m.id} className="ld-rail-lead-h"
+                        style=${{ left: m.x + "%", width: (m.left - m.x) + "%", top: (m.row * 13 + 11) + "px" }}></i>` : null}
+                    `)}
+                  </div>` : null}
+                <div className="ld-bars">
+                  ${l.bars.map((b, i) => html`
+                    <div key=${"bar" + l.id + i}
+                      className=${"ld-bar " + b.kind + (l.depth === 0 && b.rail ? " is-event" : "") + (b.kind === "is-gap" && (b.end - b.start) < 2 ? " is-tight" : "") + (l.depth === 0 && hit && !hit.inGap && b.kind !== "is-gap" && b.id === hit.barId ? " is-case-src" : "")}
+                      style=${{ left: b.start + "%", width: (b.end - b.start) + "%", top: (l.barTop ?? LD_BAR_TOP) + "px" }}
+                      title=${b.title || b.label}>
+                      ${l.depth === 0 && b.rail ? null : (b.kind === "is-gap" && (b.end - b.start) < 1.2 ? null : html`<span className="lb">${b.label}</span>`)}
+                    </div>
+                    ${b.cont ? html`<span key=${"cont" + l.id + i} className="ld-cont-mark"
+                      style=${{ left: Math.min(99.4, b.end) + "%", top: ((l.barTop ?? LD_BAR_TOP) + 4) + "px" }}
+                      title=${b.contReason || "区间延续"}>›</span>` : null}
+                  `)}
+                  ${l.fold ? html`<button type="button" className="ld-fold-summary" title=${l.full}
+                    onClick=${() => openFold(l)}>${l.foldSummary}</button>` : null}
+                </div>
+              </div>
+            </div>
+          `)}
+
+          ${band ? html`
+            <div className="ld-bands" aria-hidden="true">
+              <div className="ld-band"
+                style=${{ left: band.left + "%", width: (band.right - band.left) + "%", top: band.top + "px", height: (band.bottom - band.top) + "px" }}
+                title=${`并发分支 / 嵌套 subagent · ${band.left.toFixed(1)}–${band.right.toFixed(1)}%（子 lane min start – max end，不是从 0% 开始）`}></div>
+            </div>` : null}
+
+          <div className="ld-ticks">
+            ${model.caseMarkers.map(m => html`
+              <i key=${"tick" + m.id}
+                className=${"ld-case-tick" + (m.selected ? " is-selected" : "")}
+                style=${{ left: m.x + "%", top: (LD_LANE_TOP + LD_MAIN_BAR_TOP - 2 - (m.selected ? 1 : 0)) + "px" }}
+                title=${"BC" + m.no + " " + m.title + " · 触发点 L" + m.triggerLine + (m.gapNote ? " · " + m.gapNote : "")}></i>
+            `)}
+          </div>
+        </div>
+        </div>
+        <div className="ld-zoom" role="group" aria-label="执行序 DAG 缩放与平移" onPointerDown=${e => e.stopPropagation()}>
+          <button type="button" title="放大" onClick=${() => zoomAt(1.2)}>＋</button>
+          <button type="button" title="缩小" onClick=${() => zoomAt(0.83)}>－</button>
+          <button type="button" className="wide" title="适应窗口" onClick=${fit}>适应</button>
+          <button type="button" className="wide" title="恢复 1:1" onClick=${() => setView({ x: 0, y: 0, k: 1 })}>1:1</button>
+        </div>
+      </div>
+      <div className="ld-foot">
+        <b>逻辑序（无时间戳）：</b>bar 长度 = 日志行区间（main 按行位置；sub 按同 session 行数线性缩放），不是真实耗时；轴 0–100 就是日志行比例（bar 起止直接对应首 / 末行位置，没有额外内缩），main 上方触发标签只标注触发点，不参与长度编码。
+        同一 lane 内 bar 不重叠（构建时断言），跨 lane 重叠表示并发；橙色带 = 子 agent 区间 min(start)–max(end)。小窗口支持滚轮缩放、拖拽平移；右下角可「适应」或「1:1」；所有 lane 均已展开，不再按数量折叠。
+        真实实现用 <span className="mono">triggered_at</span> / 工具结果时间戳；缺失时画 <span className="mono">unknown</span>，不伪造长度。
+      </div>
+    </div>`;
+}
+
 function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initialObject }) {
   const cases = useMemo(() => (window.casesForSession ? window.casesForSession(sid) : []), [sid]);
   const { nodes, edges, findings } = useMemo(
@@ -3247,7 +4209,9 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
     [sid, budget, cases],
   );
   const session = (window.SESSIONS || []).find(s => s.id === sid) || {};
-  const [selectedCaseId, setSelectedCaseId] = useState(initialCaseId || null);
+  /* 默认选中第一条 bad case（与默认展开的第一条一致）；深链带 case 参数时仍以参数为准。 */
+  const initialSelectedId = initialCaseId || (cases[0] ? cases[0].id : null);
+  const [selectedCaseId, setSelectedCaseId] = useState(initialSelectedId);
   const [selectedAtId, setSelectedAtId] = useState(() => {
     if (initialAtId) return initialAtId;
     if (initialObject && initialCaseId && window.attributionsFor) {
@@ -3258,9 +4222,10 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
     return null;
   });
   const [tab, setTab] = useState(initialTab || "desc");
-  const [expanded, setExpanded] = useState(() => new Set(initialCaseId ? [initialCaseId] : (cases[0] ? [cases[0].id] : [])));
+  const [expanded, setExpanded] = useState(() => new Set(initialSelectedId ? [initialSelectedId] : []));
   const [pages, setPages] = useState({});
   const [filter, setFilter] = useState("all");
+  const [flowMode, setFlowMode] = useState(() => new URLSearchParams(location.search).get("flow") === "tree" ? "tree" : "dag");
   const selectedCase = cases.find(c => c.id === selectedCaseId) || null;
   const attributionMap = useMemo(() => {
     const m = {};
@@ -3327,7 +4292,7 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
                 <div className="err-case-head">
                   <button className="err-case-toggle" aria-label=${isOpen ? "折叠归因" : "展开归因"} onClick=${(e) => { e.stopPropagation(); toggle(c.id); }}>${isOpen ? "▾" : "▸"}</button>
                   <button className="err-case-main" onClick=${() => pickCase(c)}>
-                    <div className="err-case-title"><span className="no">#${c.no}</span><span className="tt">${c.title}</span></div>
+                    <div className="err-case-title"><span className="no">BC${c.no}</span><span className="tt">${c.title}</span></div>
                     <div className="err-case-meta">
                       <span className="id">${c.id}</span>
                       <span className=${"v2-badge " + (c.type === "self" ? "self" : "discovery")}>${c.type}</span>
@@ -3384,10 +4349,20 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
         <div className="err-flow-panel">
           <div className="err-flow-head">
             <span>执行流</span>
-            <span className="note">${selectedCase ? `仅显示 #${selectedCase.no} · ${selectedCase.title}` : `全部 bad case · ${cases.length} 个`}</span>
+            <div className="flow-head-right">
+              <span className="note">${flowMode === "dag"
+                ? (selectedCase ? `DAG 保留全部并发分支，高亮 BC${selectedCase.no}` : `全部 bad case · ${cases.length} 个`)
+                : (selectedCase ? `仅显示 BC${selectedCase.no} · ${selectedCase.title}` : `全部 bad case · ${cases.length} 个`)}</span>
+              <div className="flow-mode" role="group" aria-label="执行流视图">
+                <button className=${flowMode === "dag" ? "active" : ""} onClick=${() => setFlowMode("dag")}>执行序 DAG</button>
+                <button className=${flowMode === "tree" ? "active" : ""} onClick=${() => setFlowMode("tree")}>结构树</button>
+              </div>
+            </div>
           </div>
           <div className="err-flow-canvas">
-            <${ErrorFlow} nodes=${nodes} edges=${edges} findings=${findings} selectedNo=${selectedNo} />
+            ${flowMode === "dag"
+              ? html`<${DagBoundary}><${LaneDag} sid=${sid} selectedNo=${selectedNo} cases=${cases} /><//>`
+              : html`<${ErrorFlow} nodes=${nodes} edges=${edges} findings=${findings} selectedNo=${selectedNo} />`}
           </div>
         </div>
         <div className="err-detail">
