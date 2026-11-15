@@ -2709,3 +2709,51 @@ async def test_mysql_concurrent_ingest_never_oversells() -> None:
             await _drop_mysql_ingest_rows(database, [workspace_id], roots)
         finally:
             await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_cross_workspace_same_id_race_is_a_conflict() -> None:
+    """Two workspaces reporting one new id: one insert wins, the loser is a 409."""
+    database = await _mysql_ingest_database()
+    first_workspace = await _insert_ingest_workspace(database, quota=4)
+    second_workspace = await _insert_ingest_workspace(database, quota=4)
+    roots = [new_id(), new_id()]
+    bad_case_id = f"BC-MYSQL-RACE-{new_id()[:8]}"
+    try:
+        repository = BadCaseIngestRepository(database)
+        results = await asyncio.gather(
+            repository.ingest(
+                first_workspace,
+                _mysql_ingest_row(bad_case_id, roots[0]),
+            ),
+            repository.ingest(
+                second_workspace,
+                _mysql_ingest_row(bad_case_id, roots[1]),
+            ),
+            return_exceptions=True,
+        )
+
+        writes = [result for result in results if isinstance(result, BadCaseIngestWrite)]
+        refusals = [result for result in results if isinstance(result, BadCaseIdConflict)]
+
+        # The loser must re-read the committed winner (a locking current read);
+        # a stale REPEATABLE READ snapshot would surface as an unhandled
+        # IntegrityError instead, which is a 500 at the API boundary.
+        assert len(writes) == 1
+        assert len(refusals) == 1
+        assert isinstance(results[0], (BadCaseIngestWrite, BadCaseIdConflict))
+        assert isinstance(results[1], (BadCaseIngestWrite, BadCaseIdConflict))
+        stored = await repository.read(bad_case_id)
+        assert stored is not None
+        assert stored.workspace_id == (
+            first_workspace if isinstance(results[0], BadCaseIngestWrite) else second_workspace
+        )
+    finally:
+        try:
+            await _drop_mysql_ingest_rows(
+                database,
+                [first_workspace, second_workspace],
+                roots,
+            )
+        finally:
+            await database.dispose()

@@ -219,6 +219,22 @@ class BadCaseIngestRepository:
             )
         ).scalar_one_or_none()
 
+    async def _reload_owner(self, session: AsyncSession, bad_case_id: str) -> str | None:
+        """Re-read the owner as a current read after a primary-key race.
+
+        MySQL's default REPEATABLE READ answers the pre-insert ownership read
+        from the snapshot opened before the winner committed, so a plain re-read
+        can still miss it. A locking read is a current read: it waits for the
+        winner and returns the committed row instead of the stale snapshot.
+        """
+        return (
+            await session.execute(
+                select(bad_cases.c.workspace_id)
+                .where(bad_cases.c.bad_case_id == bad_case_id)
+                .with_for_update(),
+            )
+        ).scalar_one_or_none()
+
     async def _insert(
         self,
         session: AsyncSession,
@@ -231,8 +247,8 @@ class BadCaseIngestRepository:
 
         A concurrent report of the same id can win between the ownership read
         and this insert. Both supported drivers keep the transaction usable
-        after a constraint violation, so the loser re-reads the winner and
-        either updates it or refuses a foreign workspace.
+        after a constraint violation, so the loser re-reads the winner as a
+        locking read and either updates it or refuses a foreign workspace.
         """
         try:
             await session.execute(
@@ -245,7 +261,7 @@ class BadCaseIngestRepository:
         except IntegrityError as exc:
             if not is_unique_violation(exc):
                 raise
-            owner = await self._existing_owner(session, str(values["bad_case_id"]))
+            owner = await self._reload_owner(session, str(values["bad_case_id"]))
             if owner is None:
                 raise
             if owner != workspace_id:

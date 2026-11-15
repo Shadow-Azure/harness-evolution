@@ -269,22 +269,13 @@ class BadCaseRootSyncRepository:
                 .one_or_none()
             )
             if row is None:
-                await session.execute(
-                    insert(bad_case_root_sync).values(
-                        root_session_id=root_session_id,
-                        status=_SYNCING,
-                        attempts=1,
-                        last_error=None,
-                        agent_count=0,
-                        started_at=now_value,
-                        synced_at=None,
-                        next_retry_at=None,
-                        lease_owner=owner,
-                        lease_expires_at=expires_at,
-                        updated_at=now_value,
-                    ),
+                return await self._start_syncing(
+                    session,
+                    root_session_id,
+                    owner=owner,
+                    now_value=now_value,
+                    expires_at=expires_at,
                 )
-                return True
 
             status = str(row["status"])
             if status == _SYNCED:
@@ -312,6 +303,44 @@ class BadCaseRootSyncRepository:
                 ),
             )
             return True
+
+    async def _start_syncing(
+        self,
+        session: AsyncSession,
+        root_session_id: str,
+        *,
+        owner: str,
+        now_value: datetime,
+        expires_at: datetime,
+    ) -> bool:
+        """Insert the first state row for a root that had none when read.
+
+        `insert_pending_root` is a second writer: a report may commit a
+        `pending` row for the same root between this claim's read and its
+        insert. The primary key then rejects this insert, and the next tick
+        claims the now-visible pending row instead of failing the whole job.
+        """
+        try:
+            await session.execute(
+                insert(bad_case_root_sync).values(
+                    root_session_id=root_session_id,
+                    status=_SYNCING,
+                    attempts=1,
+                    last_error=None,
+                    agent_count=0,
+                    started_at=now_value,
+                    synced_at=None,
+                    next_retry_at=None,
+                    lease_owner=owner,
+                    lease_expires_at=expires_at,
+                    updated_at=now_value,
+                ),
+            )
+        except IntegrityError as exc:
+            if not is_unique_violation(exc):
+                raise
+            return False
+        return True
 
     async def renew_lease(
         self,
