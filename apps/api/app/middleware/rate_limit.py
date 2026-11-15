@@ -53,11 +53,11 @@ class LoginRateLimiter:
 
 
 class LoginRateLimitMiddleware(BaseHTTPMiddleware):
-    """Apply the login limit before validation or password hashing."""
+    """Apply the login limit before validation, password hashing, or callbacks."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Return a stable 429 response when an IP exhausts the sliding window."""
-        if request.method == "POST" and request.url.path == "/api/auth/login":
+        if request.url.path in {"/api/auth/login", "/api/auth/callback"}:
             client = request.client.host if request.client else "unknown"
             delay = await request.app.state.login_rate_limiter.retry_after(client)
             if delay:

@@ -1,5 +1,6 @@
 """Environment-backed service configuration."""
 
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -7,6 +8,11 @@ from urllib.parse import urlsplit
 
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_COOKIE_TOKEN_CHARS = set(
+    "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+)
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _parse_upstream_api_major(value: object) -> object:
@@ -49,6 +55,14 @@ class DatabaseDialect(StrEnum):
 
     SQLITE = "sqlite"
     MYSQL = "mysql"
+
+
+class AuthProviderName(StrEnum):
+    """Selectable identity sources for the authentication seam."""
+
+    PASSWORD = "password"  # noqa: S105 - provider name, not a secret
+    COOKIE = "cookie"
+    OIDC = "oidc"
 
 
 class Settings(BaseSettings):
@@ -108,6 +122,12 @@ class Settings(BaseSettings):
     eval_timeout_seconds: int = Field(default=7_200, gt=0)
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
+    auth_provider: AuthProviderName = AuthProviderName.PASSWORD
+    session_cookie_name: str = Field(default="he_session", min_length=1, max_length=64)
+    session_ttl_hours: int = Field(default=12, gt=0, le=24 * 30)
+    oidc_issuer: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret_env: str | None = None
     admin_username: str | None = None
     admin_password: SecretStr | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
@@ -164,6 +184,31 @@ class Settings(BaseSettings):
             raise ValueError("HE_WEB_BASE_URL must not contain query or fragment")
         return normalized
 
+    @field_validator("session_cookie_name")
+    @classmethod
+    def validate_session_cookie_name(cls, value: str) -> str:
+        """Keep the opaque session cookie a single RFC 6265 token."""
+        if not value or any(character not in _COOKIE_TOKEN_CHARS for character in value):
+            raise ValueError("HE_SESSION_COOKIE_NAME must be a cookie token")
+        return value
+
+    @field_validator("oidc_issuer")
+    @classmethod
+    def validate_oidc_issuer(cls, value: str | None) -> str | None:
+        """Allow only an explicit HTTP(S) issuer without embedded credentials."""
+        return _validate_http_url(value, "HE_OIDC_ISSUER")
+
+    @field_validator("oidc_client_secret_env")
+    @classmethod
+    def validate_oidc_client_secret_env(cls, value: str | None) -> str | None:
+        """Store only the name of the environment variable holding the client secret."""
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip()
+        if not _ENV_NAME.fullmatch(normalized):
+            raise ValueError("HE_OIDC_CLIENT_SECRET_ENV must be an environment variable name")
+        return normalized
+
     @property
     def access_ttl_seconds(self) -> int:
         """Return the configured bearer-token lifetime in seconds."""
@@ -195,6 +240,13 @@ class Settings(BaseSettings):
             self.session_query_base_url
             and self.session_query_token
             and self.session_query_token.get_secret_value(),
+        )
+
+    @property
+    def oidc_configured(self) -> bool:
+        """Return whether every OIDC switch is present for a future adapter."""
+        return bool(
+            self.oidc_issuer and self.oidc_client_id and self.oidc_client_secret_env,
         )
 
     @property

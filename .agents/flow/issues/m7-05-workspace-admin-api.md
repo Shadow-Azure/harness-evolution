@@ -10,7 +10,7 @@ depends:
   - m7-03
   - m7-04
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/workspaces.py
   - apps/api/app/service/workspaces/**

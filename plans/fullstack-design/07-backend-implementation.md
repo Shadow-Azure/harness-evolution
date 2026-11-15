@@ -1223,7 +1223,7 @@ service/identity/
   providers.py        # AuthProvider 协议 + ProviderRegistry（按 HE_AUTH_PROVIDER 选实现）
   password.py         # PasswordProvider：现有 username/password 校验（默认）
   session_bridge.py   # 会话桥：opaque 会话 Cookie（he_session）↔ access/refresh 对
-  callback.py         # OIDC 回调编排：state 校验、code 换 token、sub/email 匹配
+  callback.py         # OIDC 回调编排：state 校验、code 换 token、sub 匹配（email 不参与匹配）
 ```
 
 ```python

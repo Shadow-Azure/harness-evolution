@@ -10,16 +10,27 @@ depends:
   - m7-02
   - m7-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/identity/**
   - apps/api/app/api/auth.py
+  - apps/api/app/api/users.py
   - apps/api/app/config.py
+  - apps/api/app/errors.py
+  - apps/api/app/db/crud/users.py
+  - apps/api/app/db/models/users.py
+  - apps/api/app/middleware/auth.py
+  - apps/api/app/middleware/rate_limit.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - docs/**
+  - deploy/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-auth-provider-seam.md
 github:
   number: 225
   url: https://github.com/Shadow-Azure/harness-evolution/issues/225
@@ -45,6 +56,7 @@ github:
 - password provider 保持现有行为。
 - HE_AUTH_PROVIDER 对 cookie/oidc 未配置实现 fail fast。
 - callback 覆盖 400/401/403/501/502 稳定错误码。
+- 公开回调、稳定错误码与启动校验需要触碰 API 装配、错误码、中间件和 API 测试，故 scope 覆盖这些文件；配置说明、OpenAPI 与 Agent Note 同 PR 更新。
 
 ## 实施步骤
 

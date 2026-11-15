@@ -63,6 +63,8 @@ class UserRecord:
     updated_at: datetime
     last_login_at: datetime | None
     password_changed_at: datetime | None
+    auth_provider: str
+    external_subject: str | None
 
     @property
     def public_fields(self) -> dict[str, object]:
@@ -94,4 +96,6 @@ def record_from_row(row: Any) -> UserRecord:
         password_changed_at=(
             as_shanghai(password_changed_at) if password_changed_at is not None else None
         ),
+        auth_provider=row["auth_provider"],
+        external_subject=row["external_subject"],
     )

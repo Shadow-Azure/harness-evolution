@@ -37,6 +37,30 @@ class UserRepository:
             )
         return record_from_row(row) if row else None
 
+    async def get_by_provider_subject(
+        self,
+        *,
+        provider: str,
+        subject: str,
+    ) -> UserRecord | None:
+        """Return the single user mapped to an external provider subject."""
+        if not subject:
+            return None
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(users).where(
+                            users.c.auth_provider == provider,
+                            users.c.external_subject == subject,
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return record_from_row(row) if row else None
+
     async def count(self) -> int:
         """Return the total number of users for seed idempotence checks."""
         async with self._database.session() as session:

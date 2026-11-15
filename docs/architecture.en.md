@@ -24,7 +24,7 @@ Routes are registered only in `apps/api/app/main.py`; dependency direction is `a
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, and ticket-authenticated SSE are public; other APIs require bearer JWTs, and `/api/users`, manual sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
+Only health, login, refresh, the IdP callback, and ticket-authenticated SSE are public; other requests require bearer JWTs, and `/api/users`, sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
 
 Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change, concurrent 401s share one refresh, and logout clears the query cache.
 

@@ -113,7 +113,7 @@
 
 - 全局身份：`users.role=admin/member`；全局管理员唯一，`POST /users` 禁止创建第二个 admin，不开放注册。
 - **空间权限**：全局管理员管理空间与空间管理员；空间管理员管理本空间额度、成员（管理员以下角色）、对象与自进化；成员/只读按能力收口。
-- AuthProvider/Cookie/SSO 只替换身份来源，不改变 `auth/session` 的 `user + workspaces` 契约；外部身份按 sub/email 匹配，不自动建号。
+- AuthProvider/Cookie/SSO 只替换身份来源，不改变 `auth/session` 的 `user + workspaces` 契约；外部身份按 sub 匹配（email 不参与自动关联），不自动建号。
 
 ### Q5. 轨迹归一化的触发方式（已定）
 
