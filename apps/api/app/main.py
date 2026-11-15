@@ -22,6 +22,7 @@ from app.api.jobs import router as jobs_router
 from app.api.problems import router as problems_router
 from app.api.sessions import router as sessions_router
 from app.api.users import router as users_router
+from app.api.workspaces import router as workspaces_router
 from app.config import Settings
 from app.db.base import Database
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
@@ -493,6 +494,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(workspaces_router)
     app.include_router(jobs_router)
     app.include_router(sessions_router)
     app.include_router(problems_router)

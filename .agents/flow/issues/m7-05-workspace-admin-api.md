@@ -10,13 +10,18 @@ depends:
   - m7-03
   - m7-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/workspaces.py
   - apps/api/app/service/workspaces/**
   - apps/api/app/db/crud/workspaces.py
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/app/middleware/auth.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
