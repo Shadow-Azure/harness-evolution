@@ -846,6 +846,8 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 |---|---|
 | 空间 bad case 集合 | `bad_cases WHERE workspace_id = :wid`；额度 `used` = 该集合 `COUNT(*)`（不带时间窗，§3.10） |
 | 空间 Session 集合 | 上述集合的 `DISTINCT bad_case_session_id` 与 `session_families` 的 JOIN；未命中的计入「待轨迹同步」，不进列表 |
+| 共享 root 的 `total` | 按空间投影计数：同一 root 被两个空间上报时，每个空间的 `total` 各算一次；V1 的可见空间并集用 `IN` 半连接按根去重，只算一次 |
+| 共享 root 的 `pendingSessions` | 同样按空间各算一次：每个空间都需要自己的轨迹补齐；V1 在可见空间并集内按 root `COUNT(DISTINCT)`，同一根只算一次 |
 | 时间桶 | 按 `bad_cases.created_at`（上报时间）分桶，`day` / `week`（ISO 周一）/ `month`，边界 Asia/Shanghai；空桶由服务端补零 |
 | 对象进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`；同时要求 `name == object_name` 且 `object_version == target_version`。无匹配事件 → 不关联 |
 | bad case 触发点 | §7.4 锚点事件；锚点缺失（`eventIndex=-1`）退化为上报 agent 的出生点（子 agent 取父节点 `tool_use_id` 匹配的 `agent` 事件，主 agent 取 `started_at`） |

@@ -165,13 +165,14 @@ conditions.append(
 
 ### 4.4 搜索框文案
 
-- placeholder：`搜索标题、仓库或根会话 ID`
-- `aria-label`：`搜索 Session（标题、仓库或根会话 ID）`
+- placeholder：`输入完整 root Session ID 查询`
+- `aria-label`：`搜索 Session（完整 root Session ID）`
+- 过渡期（m8-05 前）：V2 的 `q` 已是完整 root ID 精确匹配，Session 页仍保留 300ms 防抖并原样发送 `q`，因此标题/仓库检索暂不开放；m8-05 改为回车触发后再恢复「标题/仓库」能力与对应文案。
 - 输入、300ms 防抖、URL `q` 同步、清空后的空态都与现状一致；不新增下拉建议或高亮。
 
 ## 5. 契约与边界
 
-- **API 契约不变**：`SessionListItem.id` 已经是根会话 ID；不新增 `rootSessionId` 字段，不改 `GET /api/sessions` 的请求/响应模型，`packages/contracts` 无 diff。
+- **API 请求与检索语义不变**：`SessionListItem.id` 已经是根会话 ID；不新增 `rootSessionId` 字段，不改 `GET /api/sessions` 的请求参数与检索语义。响应在 `items` 之外 additive 增加 `total` 与 `pendingSessions`：V1 的 `pendingSessions` 按调用方可见空间并集去重，V2 是单空间根数（[05 §4.2/§4.18](05-api-design.md)）；`packages/contracts` 的差异仅来自这两个 additive 字段。
 - **数据库不变**：不改 `session_families` 表结构、索引与 `search_text` 写入逻辑；不回填存量行。
 - **错误页数据流不变**：继续使用 `useSessionSummary` / `useSessionBadCases` / `useSessionTree`；根会话 ID 来自路由解析后的 `sessionId`，不额外请求。
 - **Session 浏览器数据流不变**：卡片与概览继续使用 `SessionListItem`；根会话 ID 直接取 `item.id`，不新增请求或响应字段。
