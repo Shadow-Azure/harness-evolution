@@ -14,6 +14,7 @@ import StepIterations from "./StepIterations.vue";
 import StepSeverity from "./StepSeverity.vue";
 
 defineProps<{
+  wid: string;
   run: EvolutionRunDetail;
   step: EvolutionStep | undefined;
   condition: StepCondition;
@@ -42,11 +43,13 @@ defineEmits<{
   </p>
   <StepInput
     v-else-if="step?.key === 'input'"
+    :wid="wid"
     :step="step"
     :condition="condition"
   />
   <StepClusters
     v-else-if="step?.key === 'clusters'"
+    :wid="wid"
     :step="step"
     :focus-cluster="focusCluster"
     @missing-focus="$emit('missing-cluster-focus')"
@@ -62,6 +65,7 @@ defineEmits<{
   />
   <StepIterations
     v-else-if="step?.key === 'iteration'"
+    :wid="wid"
     :step="step"
     :blocked-stage="run.blockedStage"
   />

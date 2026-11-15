@@ -3,15 +3,17 @@ import type {
   LoginRequest,
   LoginResponse,
   PublicUser,
+  SessionPayload,
+  SessionWorkspace,
 } from "@harness/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 
 import {
   changePassword as changePasswordRequest,
+  getSession,
   login as loginRequest,
   logout as logoutRequest,
-  me,
   refresh as refreshRequest,
 } from "../api/auth";
 
@@ -21,12 +23,17 @@ type SessionInput = Pick<LoginResponse, "accessToken" | "expiresIn" | "user">;
 export const useAuthStore = defineStore("auth", () => {
   const accessToken = ref<string | null>(null);
   const user = ref<PublicUser | null>(null);
+  const workspaces = ref<SessionWorkspace[]>([]);
+  const sessionTruncated = ref(false);
   const isBootstrapped = ref(false);
   const isAuthenticated = computed(() => Boolean(accessToken.value && user.value));
   let bootstrapPromise: Promise<boolean> | null = null;
 
   /**
    * Install a successful login payload into memory.
+   *
+   * The login response carries identity only; the guard calls `loadSession`
+   * before choosing a workspace destination.
    * @param session Authenticated token and public user.
    * @returns No value.
    */
@@ -37,12 +44,45 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
+   * Install the authoritative auth/session payload.
+   * @param payload Current user plus every visible workspace.
+   * @returns No value.
+   */
+  function setWorkspaceSession(payload: SessionPayload): void {
+    user.value = payload.user;
+    workspaces.value = payload.workspaces;
+    sessionTruncated.value = payload.truncated;
+    isBootstrapped.value = true;
+  }
+
+  /**
    * Clear all in-memory authentication state.
    * @returns No value.
    */
   function clear(): void {
     accessToken.value = null;
     user.value = null;
+    workspaces.value = [];
+    sessionTruncated.value = false;
+  }
+
+  /**
+   * Look up one visible workspace by route id.
+   * @param workspaceId Candidate route workspace identifier.
+   * @returns The matching session workspace, or null when invisible.
+   */
+  function workspaceById(workspaceId: string): SessionWorkspace | null {
+    return workspaces.value.find((workspace) => workspace.id === workspaceId) ?? null;
+  }
+
+  /**
+   * Read the current user, visible workspaces, and truncation flag from the server.
+   * @returns The refreshed session payload.
+   */
+  async function loadSession(): Promise<SessionPayload> {
+    const payload = await getSession();
+    setWorkspaceSession(payload);
+    return payload;
   }
 
   /**
@@ -53,6 +93,7 @@ export const useAuthStore = defineStore("auth", () => {
   async function login(credentials: LoginRequest): Promise<PublicUser> {
     const response = await loginRequest(credentials);
     setSession(response);
+    await loadSession();
     return response.user;
   }
 
@@ -97,8 +138,7 @@ export const useAuthStore = defineStore("auth", () => {
       return false;
     }
     try {
-      user.value = await me();
-      isBootstrapped.value = true;
+      await loadSession();
       return true;
     } catch {
       clear();
@@ -108,13 +148,12 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   /**
-   * Load the current user and replace stale public fields.
+   * Reload the current session payload and replace stale public fields.
    * @returns The latest public user.
    */
   async function loadCurrentUser(): Promise<PublicUser> {
-    const current = await me();
-    user.value = current;
-    return current;
+    const payload = await loadSession();
+    return payload.user;
   }
 
   /**
@@ -159,9 +198,14 @@ export const useAuthStore = defineStore("auth", () => {
   return {
     accessToken,
     user,
+    workspaces,
+    sessionTruncated,
     isBootstrapped,
     isAuthenticated,
     setSession,
+    setWorkspaceSession,
+    workspaceById,
+    loadSession,
     clear,
     login,
     refresh,

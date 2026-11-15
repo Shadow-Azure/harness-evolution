@@ -54,3 +54,19 @@ a {
     padding: 8px 24px 0;
   }
 }
+
+/* Inside the workspace shell the main column is already full-width, so the
+   V1 frame must not compensate for the old centered 1280px column. */
+.workspace-main .evolution-page-frame {
+  left: 0;
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 20px 24px 64px;
+}
+
+@media (max-width: 640px) {
+  .workspace-main .evolution-page-frame {
+    width: 100%;
+    padding: 8px 24px 0;
+  }
+}

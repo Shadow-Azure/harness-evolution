@@ -7,6 +7,8 @@ import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
 import { queryKeys } from "../../api/queryKeys";
 import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
+import { workspacePath } from "../../router/workspace";
 import LaunchWizard from "./components/LaunchWizard.vue";
 import RunGroup from "./components/RunGroup.vue";
 import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
@@ -15,7 +17,8 @@ defineOptions({ name: "EvolutionPage" });
 
 const router = useRouter();
 const queryClient = useQueryClient();
-const { data, error, isPending, refetch } = useEvolutionRuns();
+const workspaceId = useWorkspaceId();
+const { data, error, isPending, refetch } = useEvolutionRuns(workspaceId);
 const wizardOpen = ref(false);
 const running = computed(() => data.value?.running ?? []);
 const history = computed(() => data.value?.history ?? []);
@@ -34,9 +37,16 @@ async function onLaunched(
   runId: string,
 ): Promise<void> {
   wizardOpen.value = false;
-  await queryClient.invalidateQueries({ queryKey: queryKeys.evolutionRuns });
+  await queryClient.invalidateQueries({
+    queryKey: queryKeys.evolutionRuns(workspaceId.value),
+  });
   await router.push(
-    mode === "full" ? `/evolution/runs/${runId}` : `/evolution/cluster/${runId}`,
+    workspacePath(
+      workspaceId.value,
+      mode === "full"
+        ? `evolution/runs/${encodeURIComponent(runId)}`
+        : `evolution/cluster/${encodeURIComponent(runId)}`,
+    ),
   );
 }
 
@@ -46,7 +56,7 @@ async function onLaunched(
  * @returns A navigation promise after the route changes.
  */
 async function openRun(path: string): Promise<void> {
-  await router.push(path);
+  await router.push(workspacePath(workspaceId.value, path.replace(/^\/+/, "")));
 }
 </script>
 
@@ -59,7 +69,7 @@ async function openRun(path: string): Promise<void> {
       <div class="page-head">
         <h1>自进化</h1>
         <div class="page-actions">
-          <TargetConfigEntry />
+          <TargetConfigEntry :wid="workspaceId" />
           <button
             class="launch-run"
             type="button"
@@ -102,6 +112,7 @@ async function openRun(path: string): Promise<void> {
 
   <LaunchWizard
     v-if="wizardOpen"
+    :wid="workspaceId"
     @close="wizardOpen = false"
     @launched="onLaunched"
   />

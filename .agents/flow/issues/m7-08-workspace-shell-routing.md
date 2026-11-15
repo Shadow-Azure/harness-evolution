@@ -11,14 +11,17 @@ depends:
   - m7-06
   - m7-07
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/**
   - packages/contracts/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+  - plans/**
+  - reports/**
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-workspace-shell-routing.md
 github:
   number: 229
   url: https://github.com/Shadow-Azure/harness-evolution/issues/229
@@ -44,6 +47,7 @@ github:
 - bootstrap 只依赖 auth/session。
 - queryKeys 以 workspaceId 开头。
 - TopNav 增加空间切换器和用户菜单。
+- 产出检视记录与集成冒烟报告，落在 plans/ 与 reports/，故 scope 覆盖对应目录。
 
 ## 实施步骤
 

@@ -19,6 +19,7 @@ const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m4-problem-cards-initial-password";
 const secret = "m4-problem-cards-signing-secret-with-sufficient-length";
+const ws = "/workspaces/ws-default";
 let api;
 let web;
 let dataDir;
@@ -532,11 +533,11 @@ test("m4 problem cards reveal a selected problem inside a folded branch", async 
     await page.session.send("Fetch.enable", {
       patterns: [
         {
-          urlPattern: `*://*/api/sessions/${sessionId}/tree`,
+          urlPattern: `*://*/api/workspaces/*/sessions/${sessionId}/tree`,
           requestStage: "Request",
         },
         {
-          urlPattern: `*://*/api/sessions/${sessionId}/bad-cases`,
+          urlPattern: `*://*/api/workspaces/*/sessions/${sessionId}/bad-cases`,
           requestStage: "Request",
         },
       ],
@@ -556,7 +557,7 @@ test("m4 problem cards reveal a selected problem inside a folded branch", async 
     });
 
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/sessions/${sessionId}`,
+      url: `${baseUrl}${ws}/sessions/${sessionId}`,
     });
     const beforeSelection = await waitForDocument(
       page.session,

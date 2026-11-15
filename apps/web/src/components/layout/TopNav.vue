@@ -11,6 +11,13 @@ import {
 import { queryKeys } from "../../api/queryKeys";
 import { formatApiError } from "../../app/apiError";
 import { useCurrentUser, useLogout } from "../../composables/useAuth";
+import { useAuthStore } from "../../stores/auth";
+import {
+  forgetLastWorkspace,
+  workspacePath,
+} from "../../router/workspace";
+import { workspaceRoleLabel } from "../../utils/workspaceDisplay";
+import WorkspacePicker from "./WorkspacePicker.vue";
 import {
   badCaseSyncErrorLabel,
   badCaseSyncStatusLabel,
@@ -30,15 +37,32 @@ const props = defineProps({
 
 const { data: user } = useCurrentUser();
 const { isLoading, refetch: logoutUser } = useLogout();
+const auth = useAuthStore();
 const queryClient = useQueryClient();
 const route = useRoute();
 const isProcessing = ref(false);
 const actionError = ref("");
 let disposed = false;
 
+const workspaceId = computed(() =>
+  typeof route.params.wid === "string" ? route.params.wid : "",
+);
+const currentWorkspace = computed(() =>
+  workspaceId.value ? auth.workspaceById(workspaceId.value) : null,
+);
+const currentRole = computed(() =>
+  currentWorkspace.value ? workspaceRoleLabel(currentWorkspace.value.role) : "",
+);
+const sessionsPath = computed(() =>
+  workspaceId.value ? workspacePath(workspaceId.value, "sessions") : "/workspaces",
+);
+const evolutionPath = computed(() =>
+  workspaceId.value ? workspacePath(workspaceId.value, "evolution") : "/workspaces",
+);
+
 const activeSection = computed(() => {
-  if (route.path.startsWith("/sessions")) return "sessions";
-  if (route.path.startsWith("/evolution")) return "evo";
+  if (route.path.includes("/sessions")) return "sessions";
+  if (route.path.includes("/evolution")) return "evo";
   return "";
 });
 
@@ -215,6 +239,7 @@ const syncAria = computed(() =>
 );
 
 function logout() {
+  forgetLastWorkspace();
   void logoutUser().catch(() => {
     // The store always clears local state and the mutation still navigates.
   });
@@ -243,7 +268,11 @@ async function processNow() {
     }
     if (!disposed) {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.sessions }),
+        workspaceId.value
+          ? queryClient.invalidateQueries({
+              queryKey: queryKeys.sessions(workspaceId.value),
+            })
+          : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: queryKeys.acquisitionStatus })
       ]);
     }
@@ -269,7 +298,7 @@ onBeforeUnmount(() => {
     <RouterLink
       aria-label="Harness Evolution"
       class="brand"
-      to="/sessions"
+      :to="sessionsPath"
     >
       <span
         class="brand-mark"
@@ -289,7 +318,7 @@ onBeforeUnmount(() => {
         id="tn-sessions"
         class="tn-item"
         :class="{ active: activeSection === 'sessions' }"
-        to="/sessions"
+        :to="sessionsPath"
       >
         Session 错误查看<span class="tn-sub">会话轨迹与归因</span>
       </RouterLink>
@@ -297,7 +326,7 @@ onBeforeUnmount(() => {
         id="tn-evo"
         class="tn-item"
         :class="{ active: activeSection === 'evo' }"
-        to="/evolution"
+        :to="evolutionPath"
       >
         自进化<span class="tn-sub">报告驱动的迭代优化</span>
       </RouterLink>
@@ -385,6 +414,7 @@ onBeforeUnmount(() => {
           </span>
         </span>
       </div>
+      <WorkspacePicker v-if="workspaceId" />
       <span
         v-if="props.demo"
         class="demo-badge"
@@ -398,7 +428,14 @@ onBeforeUnmount(() => {
       >
         <summary>{{ user.displayName }}</summary>
         <div class="user-popover">
-          <span>{{ user.username }}</span>
+          <span class="user-identity">{{ user.displayName }} · {{ user.username }}</span>
+          <span
+            v-if="currentWorkspace"
+            class="user-workspace"
+            data-testid="current-workspace"
+          >
+            {{ currentWorkspace.name }} · {{ currentRole }}
+          </span>
           <button
             v-if="user.role === 'admin'"
             class="sync-now"

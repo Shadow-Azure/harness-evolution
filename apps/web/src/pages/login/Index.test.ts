@@ -4,14 +4,44 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import LoginPage from "./Index.vue";
 import { createAppRouter } from "../../router";
 import { server } from "../../test/server";
 import { elementPlusComponents } from "../../test/setup";
+import { testWorkspace } from "../../test/auth";
+
+const ws = "/workspaces/ws-test";
+const user = {
+  id: "u-1",
+  username: "operator",
+  displayName: "操作员",
+  role: "member" as const,
+  mustChangePassword: false,
+};
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeEach(() => {
+  server.use(
+    http.get("/api/auth/session", () =>
+      HttpResponse.json({
+        user,
+        workspaces: [testWorkspace({ role: "viewer" })],
+        truncated: false,
+      }),
+    ),
+  );
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
@@ -77,8 +107,10 @@ describe("login page", () => {
     await wrapper.get('input[name="username"]').setValue("operator");
     await wrapper.get('input[name="password"]').setValue("correct-password");
     await wrapper.get("form").trigger("submit");
-    await flushPromises();
-
-    expect(router.currentRoute.value.fullPath).toBe("/sessions?sort=recent");
+    await vi.waitFor(() =>
+      expect(router.currentRoute.value.fullPath).toBe(
+        `${ws}/sessions?sort=recent`,
+      ),
+    );
   });
 });

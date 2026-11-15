@@ -12,6 +12,8 @@ import { createAppQueryClient } from "../api/queryClient";
 import { server } from "../test/server";
 import { useEvolutionRuns } from "./useEvolutionRuns";
 
+const workspaceId = "ws-test";
+
 const response: EvolutionRunList = {
   running: [],
   history: [],
@@ -23,7 +25,7 @@ let wrapper: VueWrapper;
 
 const Page = defineComponent({
   setup() {
-    model = useEvolutionRuns();
+    model = useEvolutionRuns(workspaceId);
     return () => null;
   },
 });
@@ -31,7 +33,9 @@ const Page = defineComponent({
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => {
   server.use(
-    http.get("/api/evolution/runs", () => HttpResponse.json(response)),
+    http.get(`/api/workspaces/${workspaceId}/evolution/runs`, () =>
+      HttpResponse.json(response),
+    ),
   );
   client = createAppQueryClient();
   wrapper = mount(Page, {
@@ -47,12 +51,14 @@ afterAll(() => server.close());
 describe("useEvolutionRuns", () => {
   it("queries the stable evolution runs key", async () => {
     server.use(
-      http.get("/api/evolution/runs", () => HttpResponse.json(response)),
+      http.get(`/api/workspaces/${workspaceId}/evolution/runs`, () =>
+      HttpResponse.json(response),
+    ),
     );
 
     await expect.poll(() => model.data.value).toEqual(response);
     expect(
-      client.getQueryData(queryKeys.evolutionRuns),
+      client.getQueryData(queryKeys.evolutionRuns(workspaceId)),
     ).toEqual(response);
   });
 

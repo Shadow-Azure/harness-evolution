@@ -17,6 +17,7 @@ import {
 import EventList from "./EventList.vue";
 
 const props = defineProps<{
+  wid: string;
   runId: string;
   steps: EvolutionRunStep[];
   liveEvents?: EvolutionRunEvent[];
@@ -45,6 +46,7 @@ const {
   refresh,
   loadMore,
 } = useEvolutionRunEventLog(
+  computed(() => props.wid),
   computed(() => props.runId),
   computed(() => filter.value),
   visible,

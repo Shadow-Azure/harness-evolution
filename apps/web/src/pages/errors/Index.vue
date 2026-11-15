@@ -25,6 +25,8 @@ import {
 } from "../../composables/useSessions";
 import { ApiError } from "../../api/http";
 import { parseSessionDeepLink } from "../../router/deepLink";
+import { workspacePath } from "../../router/workspace";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import ErrorState from "../../components/ui/ErrorState.vue";
 import EmptyState from "../../components/ui/EmptyState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
@@ -41,6 +43,7 @@ const AgentTree = defineAsyncComponent(
 
 const route = useRoute();
 const router = useRouter();
+const workspaceId = useWorkspaceId();
 const expandedAgentIds = ref<string[]>([]);
 
 const rawSessionId = computed(() =>
@@ -56,6 +59,12 @@ const deepLink = computed(() =>
 const sessionId = computed(() =>
   deepLink.value?.ok ? deepLink.value.state.sessionId : "",
 );
+const sessionOverviewPath = computed(() =>
+  workspacePath(
+    workspaceId.value,
+    `sessions/${encodeURIComponent(sessionId.value)}`,
+  ),
+);
 const selectedBadCaseId = computed(() =>
   deepLink.value?.ok ? deepLink.value.state.badCaseId : null,
 );
@@ -64,19 +73,24 @@ const activeTab = computed<"desc" | "attr">(() =>
 );
 
 const problemsQuery = useSessionBadCases(
+  workspaceId,
   computed(() => sessionId.value || null),
 );
 const summaryQuery = useSessionSummary(
+  workspaceId,
   computed(() => sessionId.value || null),
 );
 const treeQuery = useSessionTree(
+  workspaceId,
   computed(() => sessionId.value || null),
 );
 const detailQuery = useBadCase(
+  workspaceId,
   computed(() => selectedBadCaseId.value),
   sessionId,
 );
 const analysisQuery = useBadCaseAnalysis(
+  workspaceId,
   computed(() => selectedBadCaseId.value),
   sessionId,
 );
@@ -86,7 +100,7 @@ const probeId = computed(() =>
     ? analysisQuery.data.value.probeId
     : null,
 );
-const probeQuery = useProbe(computed(() => probeId.value));
+const probeQuery = useProbe(workspaceId, computed(() => probeId.value));
 
 const problems = computed(() => problemsQuery.data.value?.items ?? []);
 const session = computed<SessionListItem | null>(
@@ -154,6 +168,18 @@ const routeFatalError = computed(() => {
       retry: false,
     };
   }
+  const detail = detailQuery.data.value;
+  if (
+    detail &&
+    sessionId.value &&
+    detail.sessionId !== sessionId.value
+  ) {
+    return {
+      code: "BAD_CASE_SESSION_MISMATCH",
+      message: "问题不属于当前 Session。",
+      retry: false,
+    };
+  }
   const error = detailQuery.error.value ?? analysisQuery.error.value;
   if (error instanceof ApiError && error.status === 409) {
     return {
@@ -194,26 +220,31 @@ function routeQuery(caseId: string | null, tab: "desc" | "attr") {
   return { case: caseId, tab };
 }
 
+function errorsPath(): string {
+  return workspacePath(
+    workspaceId.value,
+    `sessions/${encodeURIComponent(sessionId.value)}/errors`,
+  );
+}
+
 function selectBadCase(badCaseId: string) {
   if (selectedBadCaseId.value === badCaseId) return;
   expandedAgentIds.value = [];
   void router.push({
-    path: `/sessions/${encodeURIComponent(sessionId.value)}/errors`,
+    path: errorsPath(),
     query: routeQuery(badCaseId, "desc"),
   });
 }
 
 function showAllErrors() {
   expandedAgentIds.value = [];
-  void router.push({
-    path: `/sessions/${encodeURIComponent(sessionId.value)}/errors`,
-  });
+  void router.push({ path: errorsPath() });
 }
 
 function selectTab(tab: "desc" | "attr") {
   if (!selectedBadCaseId.value) return;
   void router.push({
-    path: `/sessions/${encodeURIComponent(sessionId.value)}/errors`,
+    path: errorsPath(),
     query: routeQuery(selectedBadCaseId.value, tab),
   });
 }
@@ -299,6 +330,7 @@ function toggleExpanded(agentId: string) {
     />
     <template v-else>
       <ErrorSidebar
+        :wid="workspaceId"
         :active-bad-case-id="selectedBadCaseId"
         :error="problemsQuery.error.value"
         :loading="problemsQuery.isPending.value"
@@ -343,7 +375,7 @@ function toggleExpanded(agentId: string) {
             </div>
             <RouterLink
               class="overview-link"
-              :to="`/sessions/${encodeURIComponent(sessionId)}`"
+              :to="sessionOverviewPath"
             >
               返回 Session
             </RouterLink>
@@ -433,6 +465,7 @@ function toggleExpanded(agentId: string) {
             >
               <ProblemDescription
                 v-if="selectedProblem"
+                :wid="workspaceId"
                 :index="selectedIndex"
                 :problem="selectedProblem"
               />
@@ -452,6 +485,7 @@ function toggleExpanded(agentId: string) {
             >
               <AttributionReport
                 v-if="selectedProblem"
+                :wid="workspaceId"
                 :analysis="analysisQuery.data.value ?? null"
                 :analysis-error="analysisQuery.error.value"
                 :analysis-loading="analysisQuery.isPending.value"

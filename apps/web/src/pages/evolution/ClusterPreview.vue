@@ -5,13 +5,16 @@ import { useRoute, useRouter } from "vue-router";
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
 import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
+import { workspacePath } from "../../router/workspace";
 
 defineOptions({ name: "ClusterPreviewPage" });
 
 const route = useRoute();
 const router = useRouter();
+const workspaceId = useWorkspaceId();
 const runId = computed(() => String(route.params.runId ?? ""));
-const { data, error, isPending, refetch } = useEvolutionRuns();
+const { data, error, isPending, refetch } = useEvolutionRuns(workspaceId);
 
 const run = computed(() => {
   const list = data.value;
@@ -41,7 +44,7 @@ function retry(): void {
       <button
         class="btn primary"
         type="button"
-        @click="router.push('/evolution')"
+        @click="router.push(workspacePath(workspaceId, 'evolution'))"
       >
         返回运行列表
       </button>

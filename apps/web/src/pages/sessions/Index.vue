@@ -17,6 +17,8 @@ import {
   useSessionTree,
 } from "../../composables/useSessions";
 import { parseSessionDeepLink } from "../../router/deepLink";
+import { workspacePath } from "../../router/workspace";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import SearchBox from "./components/SearchBox.vue";
 import SessionList from "./components/SessionList.vue";
 import SessionOverview from "./components/SessionOverview.vue";
@@ -28,6 +30,7 @@ defineOptions({ name: "SessionsPage" });
 
 const route = useRoute();
 const router = useRouter();
+const workspaceId = useWorkspaceId();
 const pageRoot = ref<HTMLElement | null>(null);
 const scrollMemory = new SessionScrollMemory();
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
@@ -101,14 +104,17 @@ const activeStatus = computed<SessionStatusFilter>(() => {
   return "problem";
 });
 
-const listQuery = useSessionList(filters);
+const listQuery = useSessionList(workspaceId, filters);
 const summaryQuery = useSessionSummary(
+  workspaceId,
   computed(() => selectedId.value || null),
 );
 const treeQuery = useSessionTree(
+  workspaceId,
   computed(() => selectedId.value || null),
 );
 const problemsQuery = useSessionBadCases(
+  workspaceId,
   computed(() => selectedId.value || null),
 );
 
@@ -178,6 +184,18 @@ const activeEventIndex = computed(() => {
     : null;
 });
 
+/**
+ * Build one session route inside the current workspace shell.
+ * @param sessionId Selected root session, or null for the list.
+ * @returns App-relative workspace session path.
+ */
+function sessionPath(sessionId: string | null = null): string {
+  return workspacePath(
+    workspaceId.value,
+    sessionId ? `sessions/${encodeURIComponent(sessionId)}` : "sessions",
+  );
+}
+
 function routeWithFilters(
   overrides: Partial<SessionFilters>,
   preserveDeepLink = true,
@@ -227,9 +245,7 @@ function ownDeepLinkNotice(message: string, targetPath: string, query: Record<st
 async function updateFilter(overrides: Partial<SessionFilters>) {
   deepLinkNotice.value = "";
   await router.push({
-    path: selectedId.value
-      ? `/sessions/${encodeURIComponent(selectedId.value)}`
-      : "/sessions",
+    path: sessionPath(selectedId.value || null),
     query: routeWithFilters(overrides),
   });
 }
@@ -256,7 +272,7 @@ function updateSort(value: SessionSort) {
 function selectSession(sessionId: string) {
   deepLinkNotice.value = "";
   void router.push({
-    path: `/sessions/${encodeURIComponent(sessionId)}`,
+    path: sessionPath(sessionId),
     query: routeWithFilters({}, false),
   });
 }
@@ -300,7 +316,7 @@ function selectAgent(agentId: string) {
   if (!selectedId.value) return;
   deepLinkNotice.value = "";
   void router.push({
-    path: `/sessions/${encodeURIComponent(selectedId.value)}`,
+    path: sessionPath(selectedId.value),
     query: {
       ...routeWithFilters({}, false),
       agent: agentId,
@@ -444,7 +460,7 @@ watch(
     Object.assign(next, result.canonicalQuery);
     if (sameStringQuery(route.query, next)) return;
     void router.replace({
-      path: `/sessions/${encodeURIComponent(result.state.sessionId)}`,
+      path: sessionPath(result.state.sessionId),
       query: next,
     });
   },
@@ -464,7 +480,7 @@ watch(
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       if (revision !== autoSelectionRevision || selectedId.value) return;
       void router.replace({
-        path: `/sessions/${encodeURIComponent(firstId)}`,
+        path: sessionPath(firstId),
         query: routeWithFilters({}),
       });
     }
@@ -494,7 +510,7 @@ watch(
       (candidate) => candidate.agentId === requested,
     );
     if (!agent) {
-      const targetPath = `/sessions/${encodeURIComponent(currentId)}`;
+      const targetPath = sessionPath(currentId);
       const targetQuery = routeWithFilters({}, false);
       ownDeepLinkNotice(
         "链接中的 Agent 已不存在，已返回主会话。",
@@ -523,7 +539,7 @@ watch(
       (requestedEventIndex.value < 0 ||
         requestedEventIndex.value >= agent.events.length)
     ) {
-      const targetPath = `/sessions/${encodeURIComponent(currentId)}`;
+      const targetPath = sessionPath(currentId);
       const targetQuery = {
         ...routeWithFilters({}, false),
         agent: agent.agentId,
@@ -645,6 +661,7 @@ onBeforeUnmount(() => {
     </aside>
     <SessionOverview
       v-if="!deepLinkError"
+      :wid="workspaceId"
       :active-agent-id="activeAgentId"
       :active-event-index="activeEventIndex"
       :expanded-agent-ids="expandedAgentIds"

@@ -19,6 +19,7 @@ const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m4-error-detail-initial-password";
 const secret = "m4-error-detail-signing-secret-with-sufficient-length";
+const ws = "/workspaces/ws-default";
 let api;
 let web;
 let dataDir;
@@ -253,10 +254,10 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     // for the auto-selection to settle before crossing routes.
     await waitForDocument(
       page.session,
-      `/^\\/sessions\\/[0-9a-f-]{36}$/.test(location.pathname)`,
+      `/^\\/workspaces\\/ws-default\\/sessions\\/[0-9a-f-]{36}$/.test(location.pathname)`,
       "session auto-selection settled",
     );
-    await clientNavigate(page, `/sessions/${sessionId}/errors`);
+    await clientNavigate(page, `${ws}/sessions/${sessionId}/errors`);
 
     const all = await waitForDocument(
       page.session,
@@ -354,7 +355,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       all.idLinks.every(
         (link) =>
           link.href ===
-            `/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
+            `${ws}/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
           link.target === "_blank" &&
           link.rel === "noopener noreferrer" &&
           !link.insideButton,
@@ -376,7 +377,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       all.reportLinks.every(
         (link, index) =>
           link.href ===
-            `/sessions/${sessionId}/errors?case=${issueCases[index].badCaseId}&tab=attr` &&
+            `${ws}/sessions/${sessionId}/errors?case=${issueCases[index].badCaseId}&tab=attr` &&
           link.target === "_blank" &&
           link.rel === "noopener noreferrer" &&
           !link.insideButton,
@@ -458,7 +459,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.equal(selectedView.descriptionLabelCount, 0);
     assert.deepEqual(selectedView.detailId, {
       text: selected.badCaseId.slice(0, 8),
-      href: `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=desc`,
+      href: `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=desc`,
       title: selected.badCaseId,
       target: "_blank",
       rel: "noopener noreferrer",
@@ -468,7 +469,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     });
     assert.deepEqual(selectedView.reportLink, {
       text: selected.analysis.probeId.slice(0, 8),
-      href: `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      href: `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
       title: selected.analysis.probeId,
       target: "_blank",
       rel: "noopener noreferrer",
@@ -554,7 +555,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         (link) =>
           link.text === link.title.slice(0, 8) &&
           link.href ===
-            `/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
+            `${ws}/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
           link.ariaLabel ===
             `来源问题 ${link.title.slice(0, 8)}，在新窗口打开问题描述` &&
           link.target === "_blank" &&
@@ -576,7 +577,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.ok(unanalyzed);
     await clientNavigate(
       page,
-      `/sessions/${unanalyzedSessionId}/errors?case=${unanalyzed.badCaseId}&tab=attr`,
+      `${ws}/sessions/${unanalyzedSessionId}/errors?case=${unanalyzed.badCaseId}&tab=attr`,
     );
     const unanalyzedView = await waitForDocument(
       page.session,
@@ -608,7 +609,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
 
     await clientNavigate(
       page,
-      `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
     );
     await waitForDocument(
       page.session,
@@ -622,7 +623,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     await page.session.send("Page.reload");
     await waitForDocument(
       page.session,
-      `location.pathname === "/sessions/${sessionId}/errors" &&
+      `location.pathname === "${ws}/sessions/${sessionId}/errors" &&
         location.search.includes("case=${selected.badCaseId}") &&
         location.search.includes("tab=attr") &&
         document.querySelector("#attr-tab")?.getAttribute("aria-selected") === "true"`,
@@ -667,7 +668,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
 
     await clientNavigate(
       page,
-      `/sessions/${otherSession.id}/errors?case=${selected.badCaseId}&tab=desc`,
+      `${ws}/sessions/${otherSession.id}/errors?case=${selected.badCaseId}&tab=desc`,
     );
     await waitForDocument(
       page.session,
@@ -683,7 +684,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
 
     await clientNavigate(
       page,
-      `/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
     );
     await waitForDocument(
       page.session,

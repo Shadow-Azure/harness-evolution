@@ -27,6 +27,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const initialPassword = "m5-launch-initial-password";
 const finalPassword = "m5-launch-final-password";
 const secret = "m5-launch-signing-secret-with-sufficient-length";
+const ws = "/workspaces/ws-default";
 let api;
 let web;
 let dataDir;
@@ -505,7 +506,7 @@ test("m5-05 launch wizard starts a cluster-only run and lands on its preview", a
     );
     await waitForDocument(
       page.session,
-      `location.pathname.startsWith("/evolution/cluster/") &&
+      `location.pathname.startsWith("${ws}/evolution/cluster/") &&
         Boolean(document.querySelector("[data-testid='cluster-status']")) &&
         document.body.textContent.includes("准备中")`,
       "cluster preview preparing page",
@@ -519,7 +520,7 @@ test("m5-05 launch wizard starts a cluster-only run and lands on its preview", a
         info: document.querySelector(".info-panel")?.textContent ?? "",
       }))()`,
     );
-    assert.ok(landing.path.startsWith("/evolution/cluster/"));
+    assert.ok(landing.path.startsWith(`${ws}/evolution/cluster/`));
     assert.ok(landing.banner.includes("仅聚类分析"));
     assert.ok(landing.status.includes("准备中"));
     assert.ok(landing.info.includes("2026-10-01"));

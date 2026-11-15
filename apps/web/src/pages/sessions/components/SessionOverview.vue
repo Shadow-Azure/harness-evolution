@@ -9,6 +9,7 @@ import {
 } from "vue";
 
 import BadCaseList from "../../../components/bad-cases/BadCaseList.vue";
+import { workspacePath } from "../../../router/workspace";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import StatStrip from "../../../components/ui/StatStrip.vue";
@@ -23,6 +24,10 @@ const AgentTree = defineAsyncComponent(
 );
 
 const props = defineProps({
+  wid: {
+    type: String,
+    required: true,
+  },
   item: {
     type: Object as () => SessionListItem | null,
     default: null,
@@ -202,7 +207,7 @@ const stats = computed<Array<{
           <RouterLink
             class="detail-cta"
             data-testid="detail-cta"
-            :to="`/sessions/${encodeURIComponent(item.id)}/errors`"
+            :to="workspacePath(wid, `sessions/${encodeURIComponent(item.id)}/errors`)"
           >
             打开错误详情
           </RouterLink>
@@ -274,6 +279,7 @@ const stats = computed<Array<{
       </section>
       <BadCaseList
         ref="badCaseListRef"
+        :wid="wid"
         :active-bad-case-id="activeBadCaseId"
         :error="problemsError"
         :loading="problemsLoading"

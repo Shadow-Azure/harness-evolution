@@ -11,14 +11,17 @@ depends:
   - m7-06
   - m7-07
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/**
   - packages/contracts/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+  - plans/**
+  - reports/**
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-workspace-shell-routing.md
 github:
   number: 229
   url: https://github.com/Shadow-Azure/harness-evolution/issues/229
@@ -44,6 +47,7 @@ Every V2 page needs explicit workspace context.
 - Bootstrap from auth/session.
 - Prefix query keys with workspaceId.
 - Add the workspace picker.
+- Review records and the integration smoke report live in plans/ and reports/, so the scope covers both trees.
 
 ## Implementation steps
 

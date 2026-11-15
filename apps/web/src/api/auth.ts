@@ -4,6 +4,7 @@ import type {
   LoginResponse,
   PublicUser,
   RefreshResponse,
+  SessionPayload,
 } from "@harness/contracts";
 
 import { request } from "./http";
@@ -61,4 +62,12 @@ export function changePassword(passwords: ChangePasswordRequest): Promise<void> 
  */
 export function me(): Promise<PublicUser> {
   return request<PublicUser>("/api/auth/me");
+}
+
+/**
+ * Load the current user together with every workspace visible to this session.
+ * @returns The single V2 bootstrap payload.
+ */
+export function getSession(): Promise<SessionPayload> {
+  return request<SessionPayload>("/api/auth/session");
 }

@@ -9,6 +9,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import { queryKeys } from "../../api/queryKeys";
+
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const evolutionBase = `/api/workspaces/${workspaceId}/evolution`;
 import { server } from "../../test/server";
 import RunDetail from "./RunDetail.vue";
 
@@ -267,16 +271,19 @@ async function mountPage(runId = "evo-full-1", query = "") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/evolution", component: { template: "<div />" } },
-      { path: "/evolution/runs/:runId", component: RunDetail },
-      { path: "/evolution/cluster/:runId", component: { template: "<div />" } },
+      { path: "/workspaces/:wid/evolution", component: { template: "<div />" } },
+      { path: "/workspaces/:wid/evolution/runs/:runId", component: RunDetail },
       {
-        path: "/sessions/:sessionId/errors",
+        path: "/workspaces/:wid/evolution/cluster/:runId",
+        component: { template: "<div />" },
+      },
+      {
+        path: "/workspaces/:wid/sessions/:sessionId/errors",
         component: { template: "<div />" },
       },
     ],
   });
-  await router.push(`/evolution/runs/${runId}${query}`);
+  await router.push(`${ws}/evolution/runs/${runId}${query}`);
   await router.isReady();
   const queryClient = new QueryClient({
     defaultOptions: { queries: { gcTime: 0, retry: false } },
@@ -314,7 +321,7 @@ describe("evolution run detail page", () => {
   it("shows an unreached explanation when a failed run stops before step 1", async () => {
     const requested: string[] = [];
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -336,7 +343,7 @@ describe("evolution run detail page", () => {
             ["pending", "pending", "pending", "pending", "pending", "pending"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", ({ params }) => {
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         requested.push(String(params.step));
         return HttpResponse.json(inputStep);
       }),
@@ -356,9 +363,9 @@ describe("evolution run detail page", () => {
       value: { writeText: async (value: string) => writes.push(value) },
     });
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(detail())),
-      http.get("/api/evolution/runs/evo-full-1/steps/input", () =>
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
         HttpResponse.json(inputStep)),
     );
     const wrapper = await mountPage();
@@ -374,9 +381,9 @@ describe("evolution run detail page", () => {
 
   it("renders the preparing input step and keeps later steps disabled", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(detail())),
-      http.get("/api/evolution/runs/evo-full-1/steps/input", () =>
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
         HttpResponse.json(inputStep)),
     );
     const wrapper = await mountPage();
@@ -401,7 +408,7 @@ describe("evolution run detail page", () => {
   it("loads only the active iteration and shows candidate/eval state", async () => {
     const requested: string[] = [];
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -418,7 +425,7 @@ describe("evolution run detail page", () => {
             ["done", "done", "done", "done", "active", "pending"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", ({ params }) => {
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         requested.push(String(params.step));
         return HttpResponse.json(iterationStep);
       }),
@@ -439,7 +446,7 @@ describe("evolution run detail page", () => {
   it("switches reached steps through the query-string route", async () => {
     const requested: string[] = [];
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -456,7 +463,7 @@ describe("evolution run detail page", () => {
             ["done", "done", "done", "done", "active", "pending"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", ({ params }) => {
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         const key = String(params.step);
         requested.push(key);
         if (key === "iteration") return HttpResponse.json(iterationStep);
@@ -489,7 +496,7 @@ describe("evolution run detail page", () => {
     await flushPromises();
 
     expect(wrapper.vm.$route.fullPath).toBe(
-      "/evolution/runs/evo-full-1?step=clusters",
+      `${ws}/evolution/runs/evo-full-1?step=clusters`,
     );
     expect(requested).toEqual(["iteration", "clusters"]);
     expect(wrapper.get("[data-step-key='clusters']").attributes("aria-current")).toBe(
@@ -500,14 +507,14 @@ describe("evolution run detail page", () => {
 
   it("removes a missing cluster deep-link while retaining the notice", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({ status: "completed" }),
             ["done", "done", "done", "done", "done", "done"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json({
           key: "clusters",
           index: 1,
@@ -536,7 +543,7 @@ describe("evolution run detail page", () => {
     );
 
     expect(wrapper.vm.$route.fullPath).toBe(
-      "/evolution/runs/evo-full-1?step=clusters",
+      `${ws}/evolution/runs/evo-full-1?step=clusters`,
     );
     expect(wrapper.text()).toContain("目标簇已不存在");
   });
@@ -544,7 +551,7 @@ describe("evolution run detail page", () => {
   it("loads a completed run's final verdict by default", async () => {
     const requested: string[] = [];
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -569,7 +576,7 @@ describe("evolution run detail page", () => {
             ["done", "done", "done", "done", "done", "done"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", ({ params }) => {
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         requested.push(String(params.step));
         return HttpResponse.json({
           key: "final",
@@ -612,7 +619,7 @@ describe("evolution run detail page", () => {
   it("shows blocked facts, the next retry time, and a manual retry action", async () => {
     const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -651,7 +658,7 @@ describe("evolution run detail page", () => {
             },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json({
           ...iterationStep,
           detail: "第 1/1 轮",
@@ -697,7 +704,7 @@ describe("evolution run detail page", () => {
       releaseRetry = resolve;
     });
     server.use(
-      http.get("/api/evolution/runs/:runId", () => {
+      http.get(`${evolutionBase}/runs/:runId`, () => {
         detailCalls += 1;
         return HttpResponse.json(
           detail(
@@ -714,9 +721,9 @@ describe("evolution run detail page", () => {
           ),
         );
       }),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", async () => {
+      http.post(`${evolutionBase}/runs/:runId/retry`, async () => {
         retryCalls += 1;
         await retryGate;
         return HttpResponse.json(
@@ -747,7 +754,7 @@ describe("evolution run detail page", () => {
   it("restores the retry button when an accepted retry never advances the run", async () => {
     const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -762,9 +769,9 @@ describe("evolution run detail page", () => {
             { blockedStage: "eval", retryAttempts: 1, nextRetryAt },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", () =>
+      http.post(`${evolutionBase}/runs/:runId/retry`, () =>
         HttpResponse.json(
           { jobId: "job-retry-1", reused: false },
           { status: 202 },
@@ -793,7 +800,7 @@ describe("evolution run detail page", () => {
   it("clears the accepted retry when a new blocked snapshot shows different facts", async () => {
     const errorAt = "2026-10-27T12:00:00+08:00";
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -808,9 +815,9 @@ describe("evolution run detail page", () => {
             { blockedStage: "eval", retryAttempts: 1, nextRetryAt: null },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", () =>
+      http.post(`${evolutionBase}/runs/:runId/retry`, () =>
         HttpResponse.json(
           { jobId: "job-retry-1", reused: false },
           { status: 202 },
@@ -834,7 +841,7 @@ describe("evolution run detail page", () => {
       ["done", "done", "done", "done", "active", "pending"],
       { blockedStage: "eval", retryAttempts: 2, nextRetryAt: null },
     );
-    activeQueryClient?.setQueryData(queryKeys.evolutionRun("evo-full-1"), refreshed);
+    activeQueryClient?.setQueryData(queryKeys.evolutionRun(workspaceId, "evo-full-1"), refreshed);
 
     await vi.waitFor(() => expect(button.text()).toBe("重试"));
     expect(button.attributes("disabled")).toBeUndefined();
@@ -843,7 +850,7 @@ describe("evolution run detail page", () => {
 
   it("shows an inline error when the run is no longer retryable", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -858,9 +865,9 @@ describe("evolution run detail page", () => {
             { blockedStage: "push" },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", () =>
+      http.post(`${evolutionBase}/runs/:runId/retry`, () =>
         HttpResponse.json(
           {
             error: {
@@ -886,7 +893,7 @@ describe("evolution run detail page", () => {
 
   it("reports a missing run when the retry endpoint returns 404", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({ status: "blocked" }),
@@ -894,9 +901,9 @@ describe("evolution run detail page", () => {
             { blockedStage: "eval" },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", () =>
+      http.post(`${evolutionBase}/runs/:runId/retry`, () =>
         HttpResponse.json(
           {
             error: {
@@ -919,7 +926,7 @@ describe("evolution run detail page", () => {
 
   it("maps retry validation failures to actionable copy", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({ status: "blocked" }),
@@ -927,9 +934,9 @@ describe("evolution run detail page", () => {
             { blockedStage: "eval" },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.post("/api/evolution/runs/:runId/retry", () =>
+      http.post(`${evolutionBase}/runs/:runId/retry`, () =>
         HttpResponse.json(
           {
             error: {
@@ -965,7 +972,7 @@ describe("evolution run detail page", () => {
 
   it("explains an interrupted run without offering a retry", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({
@@ -1004,16 +1011,16 @@ describe("evolution run detail page", () => {
       error: null,
     };
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({ status: "running" }),
             ["done", "done", "done", "done", "active", "pending"],
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
-      http.get("/api/evolution/runs/:runId/events", () =>
+      http.get(`${evolutionBase}/runs/:runId/events`, () =>
         HttpResponse.json({
           items: [existingEvent],
           nextSeq: 1,
@@ -1047,7 +1054,7 @@ describe("evolution run detail page", () => {
   it("seeds the SSE cursor from the run snapshot high-water mark", async () => {
     let lastEventId = -1;
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           detail(
             run({ status: "running" }),
@@ -1055,7 +1062,7 @@ describe("evolution run detail page", () => {
             { lastEventSeq: 105 },
           ),
         )),
-      http.get("/api/evolution/runs/:runId/steps/:step", () =>
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json(iterationStep)),
       http.post("/api/events/ticket", async ({ request }) => {
         const body = (await request.json()) as { lastEventId?: number };
@@ -1075,7 +1082,7 @@ describe("evolution run detail page", () => {
   it("shows a retryable error when the run list request fails", async () => {
     let attempts = 0;
     server.use(
-      http.get("/api/evolution/runs/:runId", () => {
+      http.get(`${evolutionBase}/runs/:runId`, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json(
@@ -1084,7 +1091,7 @@ describe("evolution run detail page", () => {
             )
           : HttpResponse.json(detail());
       }),
-      http.get("/api/evolution/runs/evo-full-1/steps/input", () =>
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
         HttpResponse.json(inputStep)),
     );
     const wrapper = await mountPage();
@@ -1104,7 +1111,7 @@ describe("evolution run detail page", () => {
 
   it("reports a missing run without offering a retry", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(
           {
             error: {
@@ -1123,7 +1130,7 @@ describe("evolution run detail page", () => {
 
   it("opens durable execution history from the error banner", async () => {
     server.use(
-      http.get("/api/evolution/runs/:runId", () =>
+      http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json({
           ...detail(
             run({
@@ -1138,7 +1145,7 @@ describe("evolution run detail page", () => {
           ),
           lastEventSeq: 2,
         })),
-      http.get("/api/evolution/runs/:runId/events", () =>
+      http.get(`${evolutionBase}/runs/:runId/events`, () =>
         HttpResponse.json({
           items: [
             {

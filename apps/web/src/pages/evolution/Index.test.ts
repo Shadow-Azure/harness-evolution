@@ -16,10 +16,14 @@ import {
 } from "vitest";
 
 import { createAppRouter } from "../../router";
-import { useAuthStore } from "../../stores/auth";
+import { signInWithWorkspace } from "../../test/auth";
 import { server } from "../../test/server";
 import EvolutionPage from "./Index.vue";
 import RunGroup from "./components/RunGroup.vue";
+
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const runsBase = `/api/workspaces/${workspaceId}/evolution/runs`;
 
 const wrappers: VueWrapper[] = [];
 let activeRouter: ReturnType<typeof createAppRouter>;
@@ -69,20 +73,16 @@ const run = (
 async function mountPage() {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setSession({
-    accessToken: "access",
-    expiresIn: 1_800,
-    user: {
-      id: "user-1",
-      username: "admin",
-      displayName: "Administrator",
-      role: "admin",
-      mustChangePassword: false,
-    },
+  signInWithWorkspace({
+    id: "user-1",
+    username: "admin",
+    displayName: "Administrator",
+    role: "admin",
+    mustChangePassword: false,
   });
   const router = createAppRouter();
   activeRouter = router;
-  await router.push("/evolution");
+  await router.push(`${ws}/evolution`);
   await router.isReady();
   const wrapper = mount(EvolutionPage, {
     global: {
@@ -115,7 +115,7 @@ afterAll(() => server.close());
 describe("evolution run list page", () => {
   it("shows the shared loading state while runs are pending", async () => {
     server.use(
-      http.get("/api/evolution/runs", async () => {
+      http.get(runsBase, async () => {
         await delay(100);
         return HttpResponse.json({ running: [], history: [] });
       }),
@@ -132,7 +132,7 @@ describe("evolution run list page", () => {
 
   it("renders both required empty groups and keeps launch explicitly unavailable", async () => {
     server.use(
-      http.get("/api/evolution/runs", () =>
+      http.get(runsBase, () =>
         HttpResponse.json({ running: [], history: [] })),
     );
     const wrapper = await mountPage();
@@ -149,7 +149,7 @@ describe("evolution run list page", () => {
 
   it("opens the launch wizard from the header action", async () => {
     server.use(
-      http.get("/api/evolution/runs", () =>
+      http.get(runsBase, () =>
         HttpResponse.json({ running: [], history: [] })),
       http.get("/api/catalogs/targets", () =>
         HttpResponse.json({ skill: [], agent: [] })),
@@ -176,7 +176,7 @@ describe("evolution run list page", () => {
       ],
     };
     server.use(
-      http.get("/api/evolution/runs", () => HttpResponse.json(response)),
+      http.get(runsBase, () => HttpResponse.json(response)),
     );
     const wrapper = await mountPage();
 
@@ -194,7 +194,7 @@ describe("evolution run list page", () => {
 
   it("opens an existing run card at its detail route", async () => {
     server.use(
-      http.get("/api/evolution/runs", () =>
+      http.get(runsBase, () =>
         HttpResponse.json({
           running: [run("running-new", "running", "2026-10-27T10:00:00+08:00")],
           history: [],
@@ -209,13 +209,15 @@ describe("evolution run list page", () => {
     );
     await flushPromises();
 
-    expect(push).toHaveBeenCalledWith("/evolution/runs/running-new");
+    expect(push).toHaveBeenCalledWith(
+      `${ws}/evolution/runs/running-new`,
+    );
   });
 
   it("retries a failed read without replacing the header", async () => {
     let attempts = 0;
     server.use(
-      http.get("/api/evolution/runs", () => {
+      http.get(runsBase, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json(

@@ -22,7 +22,11 @@ import type { Router } from "vue-router";
 import { RouterLink } from "vue-router";
 
 import { createAppRouter } from "../../../router";
-import { useAuthStore } from "../../../stores/auth";
+
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const base = `/api/workspaces/${workspaceId}/evolution/targets`;
+import { signInWithWorkspace } from "../../../test/auth";
 import { server } from "../../../test/server";
 import { elementPlusComponents } from "../../../test/setup";
 import TargetConfigPage from "./Index.vue";
@@ -48,19 +52,15 @@ async function mountPage(
 ) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setSession({
-    accessToken: "access",
-    expiresIn: 1_800,
-    user: {
-      id: "user-1",
-      username: role,
-      displayName: role,
-      role,
-      mustChangePassword: false,
-    },
+  signInWithWorkspace({
+    id: "user-1",
+    username: role,
+    displayName: role,
+    role,
+    mustChangePassword: false,
   });
   const router = createAppRouter();
-  await router.push("/evolution/targets");
+  await router.push(`${ws}/evolution/targets`);
   await router.isReady();
   const wrapper = mount(TargetConfigPage, {
     global: {
@@ -96,7 +96,7 @@ afterAll(() => server.close());
 describe("target configuration page", () => {
   it("renders the real target list for admins with configuration actions", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
     );
     const wrapper = await mountPage("admin");
@@ -115,7 +115,7 @@ describe("target configuration page", () => {
 
   it("links back to the evolution page from the page head", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
     );
     // jsdom 的 history.pushState 支持客户端导航；这里把 RouterLink
@@ -129,7 +129,7 @@ describe("target configuration page", () => {
     });
 
     const back = wrapper.getComponent(RouterLink);
-    expect(back.props("to")).toBe("/evolution");
+    expect(back.props("to")).toBe(`${ws}/evolution`);
     expect(back.text()).toContain("返回自进化");
     expect(
       (back.element as HTMLAnchorElement).dataset.testid,
@@ -140,12 +140,12 @@ describe("target configuration page", () => {
     await flushPromises();
     expect(
       (wrapper.vm.$router as Router).currentRoute.value.path,
-    ).toBe("/evolution");
+    ).toBe(`${ws}/evolution`);
   });
 
   it("uses the prototype page hierarchy without an extra eyebrow", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
     );
     const wrapper = await mountPage("admin");
@@ -160,7 +160,7 @@ describe("target configuration page", () => {
 
   it("renders the list for members without write controls", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
     );
     const wrapper = await mountPage("member");
@@ -173,7 +173,7 @@ describe("target configuration page", () => {
   it("retries a failed target query without replacing the page", async () => {
     let attempts = 0;
     server.use(
-      http.get("/api/evolution/targets", () => {
+      http.get(base, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json(
@@ -194,9 +194,9 @@ describe("target configuration page", () => {
   it("creates an admin target and closes the form after success", async () => {
     let submitted: unknown;
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [] })),
-      http.post("/api/evolution/targets", async ({ request }) => {
+      http.post(base, async ({ request }) => {
         submitted = await request.json();
         return HttpResponse.json(
           {
@@ -241,9 +241,9 @@ describe("target configuration page", () => {
 
   it("keeps the admin form open and preserves values on REPO_INVALID", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [] })),
-      http.post("/api/evolution/targets", () =>
+      http.post(base, () =>
         HttpResponse.json(
           {
             error: {
@@ -283,9 +283,9 @@ describe("target configuration page", () => {
 
   it("maps PROJECT_ID_INVALID into the open form", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [] })),
-      http.post("/api/evolution/targets", () =>
+      http.post(base, () =>
         HttpResponse.json(
           {
             error: {
@@ -327,9 +327,9 @@ describe("target configuration page", () => {
 
   it("hides an unknown save failure behind the shared save guidance", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [] })),
-      http.post("/api/evolution/targets", () =>
+      http.post(base, () =>
         HttpResponse.json(
           {
             error: {
@@ -368,9 +368,9 @@ describe("target configuration page", () => {
 
   it("loads target versions for edit mode", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
-      http.get("/api/evolution/targets/:targetId/versions", () =>
+      http.get(`${base}/:targetId/versions`, () =>
         HttpResponse.json({
           versions: ["main", "v1.9.0", "v2.0.0"],
           defaultRef: "main",
@@ -407,9 +407,9 @@ describe("target configuration page", () => {
   it("does not request or show version loading in create mode", async () => {
     let versionRequests = 0;
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [] })),
-      http.get("/api/evolution/targets/:targetId/versions", () => {
+      http.get(`${base}/:targetId/versions`, () => {
         versionRequests += 1;
         return HttpResponse.json({ versions: [], defaultRef: "" });
       }),
@@ -426,11 +426,11 @@ describe("target configuration page", () => {
 
   it("maps TARGET_EXISTS into the open edit form", async () => {
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
-      http.get("/api/evolution/targets/:targetId/versions", () =>
+      http.get(`${base}/:targetId/versions`, () =>
         HttpResponse.json({ versions: ["main"], defaultRef: "main" })),
-      http.put("/api/evolution/targets/:targetId", () =>
+      http.put(`${base}/:targetId`, () =>
         HttpResponse.json(
           {
             error: {
@@ -458,9 +458,9 @@ describe("target configuration page", () => {
     let deletes = 0;
     vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
-      http.delete("/api/evolution/targets/:targetId", () => {
+      http.delete(`${base}/:targetId`, () => {
         deletes += 1;
         return new HttpResponse(null, { status: 204 });
       }),
@@ -483,11 +483,11 @@ describe("target configuration page", () => {
     let reads = 0;
     vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
     server.use(
-      http.get("/api/evolution/targets", () => {
+      http.get(base, () => {
         reads += 1;
         return HttpResponse.json({ items: reads === 1 ? [target] : [] });
       }),
-      http.delete("/api/evolution/targets/:targetId", () => {
+      http.delete(`${base}/:targetId`, () => {
         deletes += 1;
         return new HttpResponse(null, { status: 204 });
       }),
@@ -505,9 +505,9 @@ describe("target configuration page", () => {
   it("keeps TARGET_IN_USE visible and preserves the row", async () => {
     vi.spyOn(ElMessageBox, "confirm").mockResolvedValue("confirm" as never);
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
-      http.delete("/api/evolution/targets/:targetId", () =>
+      http.delete(`${base}/:targetId`, () =>
         HttpResponse.json(
           {
             error: {
@@ -533,9 +533,9 @@ describe("target configuration page", () => {
     let updates = 0;
     let submitted: unknown;
     server.use(
-      http.get("/api/evolution/targets", () =>
+      http.get(base, () =>
         HttpResponse.json({ items: [target] })),
-      http.put("/api/evolution/targets/:targetId", async ({ request }) => {
+      http.put(`${base}/:targetId`, async ({ request }) => {
         updates += 1;
         submitted = await request.json();
         return HttpResponse.json({

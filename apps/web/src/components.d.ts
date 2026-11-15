@@ -37,5 +37,6 @@ declare module 'vue' {
     StatStrip: typeof import('./components/ui/StatStrip.vue')['default']
     TopNav: typeof import('./components/layout/TopNav.vue')['default']
     TriggerEdge: typeof import('./components/agent-tree/edges/TriggerEdge.vue')['default']
+    WorkspacePicker: typeof import('./components/layout/WorkspacePicker.vue')['default']
   }
 }

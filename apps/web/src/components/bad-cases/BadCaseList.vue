@@ -17,6 +17,7 @@ import {
 
 const props = withDefaults(
   defineProps<{
+    wid: string;
     problems: BadCase[];
     activeBadCaseId?: string | null;
     loading?: boolean;
@@ -113,6 +114,7 @@ defineExpose({ scrollToProblem });
                 <a
                   class="problem-id"
                   :href="badCaseDeepLink(
+                    props.wid,
                     problem.sessionId,
                     problem.badCaseId,
                     'desc',
@@ -149,6 +151,7 @@ defineExpose({ scrollToProblem });
                   "
                   class="report-id"
                   :href="badCaseDeepLink(
+                    props.wid,
                     problem.sessionId,
                     problem.badCaseId,
                     'attr',
@@ -177,6 +180,7 @@ defineExpose({ scrollToProblem });
             <a
               class="problem-id"
               :href="badCaseDeepLink(
+                props.wid,
                 problem.sessionId,
                 problem.badCaseId,
                 'desc',

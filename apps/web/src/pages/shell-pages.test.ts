@@ -17,10 +17,12 @@ import {
 
 import { createAppRouter } from "../router";
 import { server } from "../test/server";
-import { useAuthStore } from "../stores/auth";
+import { signInWithWorkspace, TEST_WORKSPACE_ID } from "../test/auth";
 import EvolutionPage from "./evolution/Index.vue";
 import NotFound from "./NotFound.vue";
 import SessionsPage from "./sessions/Index.vue";
+
+const ws = `/workspaces/${TEST_WORKSPACE_ID}`;
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -44,11 +46,26 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-async function withRouter(component: Parameters<typeof mount>[0]) {
+async function withRouter(
+  component: Parameters<typeof mount>[0],
+  path = `${ws}/sessions`,
+) {
+  server.use(
+    http.get(`/api/workspaces/${TEST_WORKSPACE_ID}/sessions`, () =>
+      HttpResponse.json({ items: [] }),
+    ),
+  );
   const pinia = createPinia();
   setActivePinia(pinia);
+  signInWithWorkspace({
+    id: "u-1",
+    username: "operator",
+    displayName: "操作员",
+    role: "member",
+    mustChangePassword: false,
+  });
   const router = createAppRouter();
-  await router.push("/sessions");
+  await router.push(path);
   await router.isReady();
   return mount(component, {
     global: {
@@ -72,30 +89,29 @@ describe("M1 shell pages", () => {
   it("retires the top-level errors entry into the sessions view", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
-    useAuthStore().setSession({
-      accessToken: "access",
-      expiresIn: 1_800,
-      user: {
-        id: "u-1",
-        username: "operator",
-        displayName: "操作员",
-        role: "member",
-        mustChangePassword: false,
-      },
+    signInWithWorkspace({
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member",
+      mustChangePassword: false,
     });
     const router = createAppRouter();
     await router.push("/errors");
     await router.isReady();
 
-    expect(router.currentRoute.value.path).toBe("/sessions");
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
   });
 
   it("renders the backend-owned evolution run list shell", async () => {
     server.use(
-      http.get("/api/evolution/runs", () =>
+      http.get(`/api/workspaces/${TEST_WORKSPACE_ID}/evolution/runs`, () =>
         HttpResponse.json({ running: [], history: [] })),
     );
-    const wrapper = await withRouter(EvolutionPage);
+    const wrapper = await withRouter(
+      EvolutionPage,
+      `${ws}/evolution`,
+    );
     await flushPromises();
 
     expect(wrapper.find("[data-testid='evolution-run-list']").exists()).toBe(true);

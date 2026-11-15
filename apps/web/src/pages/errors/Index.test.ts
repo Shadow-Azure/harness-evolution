@@ -11,7 +11,12 @@ import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
-import { useAuthStore } from "../../stores/auth";
+import { signInWithWorkspace } from "../../test/auth";
+
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const sessionsBase = `/api/workspaces/${workspaceId}/sessions`;
+const badCasesBase = `/api/workspaces/${workspaceId}/bad-cases`;
 
 vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
   const { defineComponent, h } = await import("vue");
@@ -96,7 +101,7 @@ const wrappers: VueWrapper[] = [];
 function mockApi(items = problems) {
   const tree = { ...demoCoreTree, sessionId: "root-1" };
   server.use(
-    http.get("/api/sessions/:id", () =>
+    http.get(`${sessionsBase}/:id`, () =>
       HttpResponse.json({
         id: "root-1",
         title: "原型错误详情",
@@ -120,11 +125,11 @@ function mockApi(items = problems) {
         },
       }),
     ),
-    http.get("/api/sessions/:id/bad-cases", () =>
+    http.get(`${sessionsBase}/:id/bad-cases`, () =>
       HttpResponse.json({ items }),
     ),
-    http.get("/api/sessions/:id/tree", () => HttpResponse.json(tree)),
-    http.get("/api/bad-cases/:caseId", ({ params }) => {
+    http.get(`${sessionsBase}/:id/tree`, () => HttpResponse.json(tree)),
+    http.get(`${badCasesBase}/:caseId`, ({ params }) => {
       const item = items.find((candidate) => candidate.badCaseId === params.caseId);
       if (!item) {
         return HttpResponse.json(
@@ -164,20 +169,10 @@ function mockApi(items = problems) {
   );
 }
 
-async function mountPage(path = "/sessions/root-1/errors") {
+async function mountPage(path = `${ws}/sessions/root-1/errors`) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAuthStore().setSession({
-    accessToken: "access",
-    expiresIn: 1_800,
-    user: {
-      id: "u-1",
-      username: "admin",
-      displayName: "管理员",
-      role: "admin",
-      mustChangePassword: false,
-    },
-  });
+  signInWithWorkspace();
   const router = createAppRouter();
   await router.push(path);
   await router.isReady();
@@ -234,7 +229,7 @@ describe("error detail page", () => {
     await flushPromises();
 
     expect(router.currentRoute.value.fullPath).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
     expect(wrapper.text()).toContain(issueTitle);
     expect(wrapper.get(".description .problem-title").text()).toBe(issueTitle);
@@ -251,7 +246,7 @@ describe("error detail page", () => {
     expect(detailId.text()).toBe("case-err");
     expect(detailId.attributes("title")).toBe("case-error");
     expect(detailId.attributes("href")).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
     expect(detailId.attributes("target")).toBe("_blank");
     expect(detailId.attributes("rel")).toBe("noopener noreferrer");
@@ -263,7 +258,7 @@ describe("error detail page", () => {
     expect(reportLink.text()).toBe("probe-er");
     expect(reportLink.attributes("title")).toBe("probe-error");
     expect(reportLink.attributes("href")).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
     );
     expect(reportLink.attributes("target")).toBe("_blank");
     expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
@@ -278,7 +273,7 @@ describe("error detail page", () => {
   it("restores case and attribution tab from a refresh URL", async () => {
     mockApi();
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
     );
 
     expect(wrapper.text()).toContain("是问题-错误");
@@ -297,7 +292,7 @@ describe("error detail page", () => {
     expect(sourceLink.text()).toBe("case-err");
     expect(sourceLink.attributes("title")).toBe("case-error");
     expect(sourceLink.attributes("href")).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
     expect(sourceLink.attributes("target")).toBe("_blank");
     expect(sourceLink.attributes("rel")).toBe("noopener noreferrer");
@@ -344,7 +339,7 @@ describe("error detail page", () => {
       ),
     );
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-prompt&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-prompt&tab=attr`,
     );
 
     expect(wrapper.get(".conclusion .state-chip").text()).toBe(
@@ -364,7 +359,7 @@ describe("error detail page", () => {
   it("uses accessible tabs with roving focus and control relationships", async () => {
     mockApi();
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
 
     const desc = wrapper.get("#desc-tab");
@@ -391,7 +386,7 @@ describe("error detail page", () => {
   it("orders non-issue reason before reasoning and keeps tabs URL-driven", async () => {
     mockApi();
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-nonissue&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-nonissue&tab=attr`,
     );
 
     const content = wrapper.get(".attribution").text();
@@ -425,7 +420,7 @@ describe("error detail page", () => {
   it("renders a page-level mismatch for a cross-session problem", async () => {
     mockApi();
     server.use(
-      http.get("/api/bad-cases/:caseId", () =>
+      http.get(`${badCasesBase}/:caseId`, () =>
         HttpResponse.json(
           {
             error: {
@@ -438,7 +433,7 @@ describe("error detail page", () => {
       ),
     );
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
 
     expect(wrapper.text()).toContain("问题不属于当前 Session");
@@ -449,7 +444,7 @@ describe("error detail page", () => {
   it("renders a non-retryable page state when the problem no longer exists", async () => {
     mockApi();
     server.use(
-      http.get("/api/bad-cases/:caseId", () =>
+      http.get(`${badCasesBase}/:caseId`, () =>
         HttpResponse.json(
           {
             error: {
@@ -462,7 +457,7 @@ describe("error detail page", () => {
       ),
     );
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
 
     expect(wrapper.text()).toContain("问题不存在或已删除");
@@ -474,7 +469,7 @@ describe("error detail page", () => {
     let detailAttempts = 0;
     let analysisAttempts = 0;
     server.use(
-      http.get("/api/bad-cases/:caseId", () => {
+      http.get(`${badCasesBase}/:caseId`, () => {
         detailAttempts += 1;
         return detailAttempts === 1
           ? HttpResponse.json(
@@ -504,7 +499,7 @@ describe("error detail page", () => {
       }),
     );
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
 
     expect(wrapper.text()).toContain("问题详情读取失败，请重试");
@@ -528,7 +523,7 @@ describe("error detail page", () => {
     });
     mockApi([degraded]);
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-degraded&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-degraded&tab=desc`,
     );
 
     const description = wrapper.get(".description").text();
@@ -552,7 +547,7 @@ describe("error detail page", () => {
     });
     mockApi([unanalyzed]);
     const { wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-unanalyzed&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-unanalyzed&tab=attr`,
     );
 
     expect(wrapper.get(".description .problem-title").text()).toBe(
@@ -594,12 +589,12 @@ describe("error detail page", () => {
       }),
     );
     const { router } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=desc",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
 
     expect(probeRequests).toEqual([]);
     await router.push(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
     );
     await flushPromises();
 
@@ -609,13 +604,13 @@ describe("error detail page", () => {
   it("clears the case and restores the complete graph via all errors", async () => {
     mockApi();
     const { router, wrapper } = await mountPage(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
     );
 
     await wrapper.get(".all-errors").trigger("click");
     await flushPromises();
 
-    expect(router.currentRoute.value.fullPath).toBe("/sessions/root-1/errors");
+    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions/root-1/errors`);
     expect(
       wrapper.get("[data-testid='errors-agent-tree']").text(),
     ).toContain("badcases:2");

@@ -14,6 +14,9 @@ import {
 } from "./useEvolutionTargets";
 import { server } from "../test/server";
 
+const workspaceId = "ws-test";
+const base = `/api/workspaces/${workspaceId}/evolution/targets`;
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -48,17 +51,15 @@ let wrapper: VueWrapper;
 
 const Page = defineComponent({
   setup() {
-    model = useEvolutionTargets();
-    versions = useEvolutionTargetVersions(selectedTarget);
+    model = useEvolutionTargets(workspaceId);
+    versions = useEvolutionTargetVersions(workspaceId, selectedTarget);
     return () => null;
   },
 });
 
 beforeEach(() => {
   server.use(
-    http.get("/api/evolution/targets", () =>
-      HttpResponse.json({ items: [target] }),
-    ),
+    http.get(base, () => HttpResponse.json({ items: [target] })),
   );
   client = createAppQueryClient();
   vi.spyOn(client, "invalidateQueries").mockResolvedValue();
@@ -73,18 +74,20 @@ afterEach(() => wrapper.unmount());
 describe("useEvolutionTargets", () => {
   it("exposes the collection query", async () => {
     server.use(
-      http.get("/api/evolution/targets", () => HttpResponse.json({ items: [target] })),
+      http.get(base, () => HttpResponse.json({ items: [target] })),
     );
     await vi.waitFor(() => expect(model.data.value?.items).toEqual([target]));
   });
 
   it("invalidates target and catalog prefixes after every successful mutation", async () => {
     server.use(
-      http.post("/api/evolution/targets", () => HttpResponse.json(target, { status: 201 })),
-      http.put("/api/evolution/targets/:id", () =>
+      http.post(base, () => HttpResponse.json(target, { status: 201 })),
+      http.put(`${base}/:id`, () =>
         HttpResponse.json({ ...target, enabled: false }),
       ),
-      http.delete("/api/evolution/targets/:id", () => new HttpResponse(null, { status: 204 })),
+      http.delete(`${base}/:id`, () =>
+        new HttpResponse(null, { status: 204 }),
+      ),
     );
     const invalidate = vi.mocked(client.invalidateQueries);
 
@@ -99,18 +102,18 @@ describe("useEvolutionTargets", () => {
         return filters?.queryKey;
       }),
     ).toEqual([
-      queryKeys.evolutionTargets,
-      queryKeys.catalogs,
-      queryKeys.evolutionTargets,
-      queryKeys.catalogs,
-      queryKeys.evolutionTargets,
-      queryKeys.catalogs,
+      queryKeys.evolutionTargets(workspaceId),
+      queryKeys.catalogs(workspaceId),
+      queryKeys.evolutionTargets(workspaceId),
+      queryKeys.catalogs(workspaceId),
+      queryKeys.evolutionTargets(workspaceId),
+      queryKeys.catalogs(workspaceId),
     ]);
   });
 
   it("propagates ApiError and does not invalidate after a failed mutation", async () => {
     server.use(
-      http.post("/api/evolution/targets", () =>
+      http.post(base, () =>
         HttpResponse.json(
           { error: { code: "REPO_INVALID", message: "repo invalid", details: {} } },
           { status: 422 },
@@ -127,13 +130,13 @@ describe("useEvolutionTargets", () => {
 
   it("does not invalidate after failed update or delete", async () => {
     server.use(
-      http.put("/api/evolution/targets/:id", () =>
+      http.put(`${base}/:id`, () =>
         HttpResponse.json(
           { error: { code: "REPO_INVALID", message: "repo invalid", details: {} } },
           { status: 422 },
         ),
       ),
-      http.delete("/api/evolution/targets/:id", () =>
+      http.delete(`${base}/:id`, () =>
         HttpResponse.json(
           { error: { code: "TARGET_IN_USE", message: "target in use", details: {} } },
           { status: 409 },
@@ -158,7 +161,7 @@ describe("useEvolutionTargets", () => {
 describe("useEvolutionTargetVersions", () => {
   it("loads remote tags for the selected target", async () => {
     server.use(
-      http.get("/api/evolution/targets/:id/versions", () =>
+      http.get(`${base}/:id/versions`, () =>
         HttpResponse.json({
           versions: ["v2.0.0", "v1.9.0"],
           defaultRef: "main",

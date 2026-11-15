@@ -22,6 +22,8 @@ import {
 } from "vue";
 
 import { queryKeys } from "../api/queryKeys";
+
+const workspaceId = "ws-test";
 import {
   useRunEvents,
   type EventSourceConstructor,
@@ -131,6 +133,7 @@ const EventsHarness = defineComponent({
   },
   setup(props) {
     useRunEvents(
+      workspaceId,
       props.state.runId,
       props.state.loadedSeq,
       props.state.active,
@@ -266,7 +269,7 @@ describe("useRunEvents", () => {
 
     expect(onProgress).toHaveBeenCalledTimes(1);
     expect(harness.invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.evolutionRun("run-1"),
+      queryKey: queryKeys.evolutionRun(workspaceId, "run-1"),
     });
   });
 
@@ -289,7 +292,7 @@ describe("useRunEvents", () => {
       expect.objectContaining({ blockedStage: "eval", retryAttempts: 1 }),
     );
     expect(harness.invalidate).toHaveBeenCalledWith({
-      queryKey: queryKeys.evolutionRun("run-1"),
+      queryKey: queryKeys.evolutionRun(workspaceId, "run-1"),
     });
     expect(harness.timers).toHaveLength(0);
   });

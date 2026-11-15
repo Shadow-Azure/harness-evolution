@@ -11,17 +11,18 @@ describe("bad-case IDs", () => {
   it("builds canonical description and attribution deep links", () => {
     expect(
       badCaseDeepLink(
+        "ws-test",
         "session/root",
         "case id",
         "desc",
       ),
     ).toBe(
-      "/sessions/session%2Froot/errors?case=case+id&tab=desc",
+      "/workspaces/ws-test/sessions/session%2Froot/errors?case=case+id&tab=desc",
     );
     expect(
-      badCaseDeepLink("root-1", "case-error", "attr"),
+      badCaseDeepLink("ws-test", "root-1", "case-error", "attr"),
     ).toBe(
-      "/sessions/root-1/errors?case=case-error&tab=attr",
+      "/workspaces/ws-test/sessions/root-1/errors?case=case-error&tab=attr",
     );
   });
 });

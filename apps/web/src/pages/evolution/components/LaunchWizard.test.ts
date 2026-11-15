@@ -11,6 +11,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../test/server";
 import LaunchWizard from "./LaunchWizard.vue";
 
+const workspaceId = "ws-test";
+const ws = `/workspaces/${workspaceId}`;
+const targetsBase = `/api/workspaces/${workspaceId}/evolution/targets`;
+const catalogsBase = `/api/workspaces/${workspaceId}/catalogs`;
+
 const wrappers: VueWrapper[] = [];
 
 const probeItem: ProbePreviewItem = {
@@ -52,6 +57,7 @@ async function mountWizard() {
   await router.push("/");
   await router.isReady();
   const wrapper = mount(LaunchWizard, {
+    props: { wid: workspaceId },
     global: {
       plugins: [
         [
@@ -81,7 +87,7 @@ afterAll(() => server.close());
 
 function useCatalogHandlers(): void {
   server.use(
-    http.get("/api/catalogs/targets", () =>
+    http.get(`${catalogsBase}/targets`, () =>
       HttpResponse.json({
         skill: [
           {
@@ -95,11 +101,11 @@ function useCatalogHandlers(): void {
         ],
         agent: [],
       })),
-    http.get("/api/catalogs/models", () =>
+    http.get(`${catalogsBase}/models`, () =>
       HttpResponse.json({
         items: [{ model: "glm-5.3", sessionCount: 12, agentCount: 20 }],
       })),
-    http.get("/api/evolution/targets/tgt-1/versions", () =>
+    http.get(`${targetsBase}/tgt-1/versions`, () =>
       HttpResponse.json({ versions: ["v2.0.0", "v1.9.0"], defaultRef: "v2.0.0" })),
   );
 }
@@ -134,7 +140,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
     await flushPromises();
     expect(wrapper.emitted("close")).toHaveLength(1);
     const router = wrapper.vm.$.appContext.config.globalProperties.$router;
-    expect(router.currentRoute.value.path).toBe("/evolution/targets");
+    expect(router.currentRoute.value.path).toBe(
+      `${ws}/evolution/targets`,
+    );
   });
 
   it("queries hits on the next step and shows the prototype statistics frame", async () => {
@@ -218,7 +226,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
   it("selects the target defaultRef version as soon as versions load", async () => {
     useCatalogHandlers();
     server.use(
-      http.get("/api/catalogs/targets", () =>
+      http.get(`${catalogsBase}/targets`, () =>
         HttpResponse.json({
           skill: [
             {
@@ -232,7 +240,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
           ],
           agent: [],
         })),
-      http.get("/api/evolution/targets/tgt-1/versions", () =>
+      http.get(`${targetsBase}/tgt-1/versions`, () =>
         HttpResponse.json({
           versions: ["v1.9.0", "v2.0.0"],
           defaultRef: "v2.0.0",
@@ -255,7 +263,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     useCatalogHandlers();
     let attempts = 0;
     server.use(
-      http.get("/api/catalogs/targets", () =>
+      http.get(`${catalogsBase}/targets`, () =>
         HttpResponse.json({
           skill: [
             {
@@ -269,7 +277,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
           ],
           agent: [],
         })),
-      http.get("/api/evolution/targets/tgt-1/versions", () => {
+      http.get(`${targetsBase}/tgt-1/versions`, () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json(
@@ -500,7 +508,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     const bodies: Record<string, unknown>[] = [];
     server.use(
       http.post("/api/evolution/probes/query", () => HttpResponse.json(preview)),
-      http.post("/api/evolution/cluster-previews", async ({ request }) => {
+      http.post(`/api/workspaces/${workspaceId}/evolution/cluster-previews`, async ({ request }) => {
         bodies.push((await request.json()) as Record<string, unknown>);
         return HttpResponse.json({
           runId: "evo-preview-1",
@@ -529,7 +537,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     useCatalogHandlers();
     server.use(
       http.post("/api/evolution/probes/query", () => HttpResponse.json(preview)),
-      http.post("/api/evolution/runs", () =>
+      http.post(`/api/workspaces/${workspaceId}/evolution/runs`, () =>
         HttpResponse.json(
           { runId: "evo-full-1", jobId: "job-2", status: "preparing" },
           { status: 202 },

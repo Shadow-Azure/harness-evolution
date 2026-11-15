@@ -18,6 +18,9 @@ import { getModelCatalog, getTargetCatalog } from "../../../api/catalogs";
 import { queryKeys } from "../../../api/queryKeys";
 import { formatApiError } from "../../../app/apiError";
 import { useEvolutionTargetVersions } from "../../../composables/useEvolutionTargets";
+import { workspacePath } from "../../../router/workspace";
+
+const props = defineProps<{ wid: string }>();
 
 const emit = defineEmits<{
   close: [];
@@ -93,9 +96,16 @@ onBeforeUnmount(() => {
   triggerElement = null;
 });
 
-const catalogs = useQuery({ queryKey: queryKeys.targetCatalog, queryFn: getTargetCatalog });
-const models = useQuery({ queryKey: queryKeys.modelCatalog, queryFn: getModelCatalog });
+const catalogs = useQuery({
+  queryKey: computed(() => queryKeys.targetCatalog(props.wid)),
+  queryFn: () => getTargetCatalog(props.wid),
+});
+const models = useQuery({
+  queryKey: computed(() => queryKeys.modelCatalog(props.wid)),
+  queryFn: () => getModelCatalog(props.wid),
+});
 const versions = useEvolutionTargetVersions(
+  computed(() => props.wid),
   computed(() => (step.value === 1 ? targetId.value : null)),
 );
 
@@ -279,7 +289,9 @@ async function launch(mode: "full" | "cluster_only"): Promise<void> {
   try {
     const body = { ...condition(), mode };
     const accepted =
-      mode === "full" ? await startEvolutionRun(body) : await startClusterPreview(body);
+      mode === "full"
+        ? await startEvolutionRun(props.wid, body)
+        : await startClusterPreview(props.wid, body);
     emit("launched", mode, accepted.runId);
   } catch (error) {
     launchError.value = formatApiError(error, "启动运行失败").message;
@@ -294,7 +306,7 @@ function openSourceCase(item: ProbePreviewItem): void {
     return;
   }
   window.open(
-    `/sessions/${encodeURIComponent(item.sessionId)}/errors?case=${encodeURIComponent(caseId)}&tab=attr`,
+    `${workspacePath(props.wid, `sessions/${encodeURIComponent(item.sessionId)}/errors`)}?case=${encodeURIComponent(caseId)}&tab=attr`,
     "_blank",
     "noopener",
   );
@@ -311,7 +323,7 @@ function shortId(id: string): string {
 /** Close the wizard and open the target configuration page. */
 function goTargetConfig(): void {
   emit("close");
-  void router.push("/evolution/targets");
+  void router.push(workspacePath(props.wid, "evolution/targets"));
 }
 
 const distribution = computed(() => {

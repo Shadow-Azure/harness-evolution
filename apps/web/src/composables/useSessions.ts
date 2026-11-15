@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/vue-query";
-import { computed, type Ref } from "vue";
+import { computed, toValue, type MaybeRefOrGetter, type Ref } from "vue";
 
 import {
   getSession,
@@ -11,64 +11,88 @@ import {
 import { queryKeys } from "../api/queryKeys";
 
 /**
- * Query root sessions with URL-derived filters.
+ * Query root sessions of one workspace with URL-derived filters.
+ * @param workspaceId Workspace route identifier.
  * @param filters Reactive server-side filters.
  * @returns Session-list query state.
  */
-export function useSessionList(filters: Ref<SessionFilters>) {
+export function useSessionList(
+  workspaceId: MaybeRefOrGetter<string>,
+  filters: Ref<SessionFilters>,
+) {
   return useQuery({
-    queryKey: computed(() => queryKeys.sessionList(filters.value)),
-    queryFn: () => listSessions(filters.value),
+    queryKey: computed(() =>
+      queryKeys.sessionList(toValue(workspaceId), filters.value),
+    ),
+    queryFn: () => listSessions(toValue(workspaceId), filters.value),
+    enabled: computed(() => toValue(workspaceId).length > 0),
   });
 }
 
 /**
  * Query one selected session overview.
+ * @param workspaceId Workspace route identifier.
  * @param sessionId Reactive root-session identifier, or null when unselected.
  * @returns Session-overview query state.
  */
-export function useSessionSummary(sessionId: Ref<string | null>) {
+export function useSessionSummary(
+  workspaceId: MaybeRefOrGetter<string>,
+  sessionId: Ref<string | null>,
+) {
   return useQuery({
-    enabled: computed(() => Boolean(sessionId.value)),
-    queryKey: computed(() =>
-      sessionId.value
-        ? queryKeys.session(sessionId.value)
-        : (["sessions", "detail", "empty"] as const),
+    enabled: computed(
+      () => Boolean(sessionId.value) && toValue(workspaceId).length > 0,
     ),
-    queryFn: () => getSession(sessionId.value as string),
+    queryKey: computed(() =>
+      queryKeys.session(toValue(workspaceId), sessionId.value ?? "empty"),
+    ),
+    queryFn: () => getSession(toValue(workspaceId), sessionId.value as string),
   });
 }
 
 /**
  * Query the Agent execution tree for a selected root session.
+ * @param workspaceId Workspace route identifier.
  * @param sessionId Reactive root-session identifier, or null when unselected.
  * @returns Session-tree query state.
  */
-export function useSessionTree(sessionId: Ref<string | null>) {
+export function useSessionTree(
+  workspaceId: MaybeRefOrGetter<string>,
+  sessionId: Ref<string | null>,
+) {
   return useQuery({
-    enabled: computed(() => Boolean(sessionId.value)),
-    queryKey: computed(() =>
-      sessionId.value
-        ? queryKeys.sessionTree(sessionId.value)
-        : (["sessions", "tree", "empty"] as const),
+    enabled: computed(
+      () => Boolean(sessionId.value) && toValue(workspaceId).length > 0,
     ),
-    queryFn: () => getSessionTree(sessionId.value as string),
+    queryKey: computed(() =>
+      queryKeys.sessionTree(toValue(workspaceId), sessionId.value ?? "empty"),
+    ),
+    queryFn: () =>
+      getSessionTree(toValue(workspaceId), sessionId.value as string),
   });
 }
 
 /**
  * Query the problem cards for one selected root session.
+ * @param workspaceId Workspace route identifier.
  * @param sessionId Reactive root-session identifier, or null when unselected.
  * @returns Session problem-list query state.
  */
-export function useSessionBadCases(sessionId: Ref<string | null>) {
+export function useSessionBadCases(
+  workspaceId: MaybeRefOrGetter<string>,
+  sessionId: Ref<string | null>,
+) {
   return useQuery({
-    enabled: computed(() => Boolean(sessionId.value)),
-    queryKey: computed(() =>
-      sessionId.value
-        ? queryKeys.sessionBadCases(sessionId.value)
-        : (["sessions", "bad-cases", "empty"] as const),
+    enabled: computed(
+      () => Boolean(sessionId.value) && toValue(workspaceId).length > 0,
     ),
-    queryFn: () => listSessionBadCases(sessionId.value as string),
+    queryKey: computed(() =>
+      queryKeys.sessionBadCases(
+        toValue(workspaceId),
+        sessionId.value ?? "empty",
+      ),
+    ),
+    queryFn: () =>
+      listSessionBadCases(toValue(workspaceId), sessionId.value as string),
   });
 }

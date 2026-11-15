@@ -22,6 +22,7 @@ import {
 const root = process.cwd();
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const secret = "m3-session-browser-signing-secret-with-sufficient-length";
+const workspaceBase = "/workspaces/ws-default";
 let api;
 let web;
 let dataDir;
@@ -268,7 +269,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       initial.cardIds.map((entry) => `根会话 ID · ${entry.id}`),
     );
     assert.equal(initial.overviewId, `根会话 ID · ${initial.selectedId}`);
-    assert.match(initial.path, /^\/sessions\/.+/);
+    assert.match(initial.path, /^\/workspaces\/ws-default\/sessions\/.+/);
     assert.ok(Math.abs(initial.sidebarWidth - 360) < 1, JSON.stringify(initial));
     assert.equal(initial.cardBackground, "rgb(255, 255, 255)");
     assert.equal(initial.bodyBackground, "rgb(244, 245, 247)");
@@ -348,7 +349,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         })()`,
         `Agent tree for session ${index + 1}`,
       );
-      assert.match(tree.path, /^\/sessions\/.+/);
+      assert.match(tree.path, /^\/workspaces\/ws-default\/sessions\/.+/);
       treeCounts.push(tree.agents);
       if (!keyboardCheck && tree.agents > 1) {
         const focusState = await page.session.send("Runtime.evaluate", {
@@ -782,7 +783,7 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
     await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
     const sessionPath = await waitForDocument(
       page.session,
-      `location.pathname.startsWith("/sessions/") &&
+      `location.pathname.startsWith("${workspaceBase}/sessions/") &&
         document.querySelectorAll("[data-testid='session-card']").length >= 1
         ? location.pathname
         : null`,
@@ -838,7 +839,7 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
     await page.session.send("Fetch.enable", {
       patterns: [
         {
-          urlPattern: "*://*/api/sessions/*/tree",
+          urlPattern: "*://*/api/workspaces/*/sessions/*/tree",
           requestStage: "Request",
         },
       ],
@@ -856,7 +857,7 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
 
     await installCookie(page, await sessionCookie());
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/sessions/${encodeURIComponent(sessionId)}?agent=child-9`,
+      url: `${baseUrl}${workspaceBase}/sessions/${encodeURIComponent(sessionId)}?agent=child-9`,
     });
     const restored = await waitForDocument(
       page.session,
@@ -961,7 +962,7 @@ test("m3-session-browser stays within performance budgets", async () => {
     const treeRequests = [];
     page.session.on("Network.requestWillBeSent", ({ request }) => {
       const match = new URL(request.url).pathname.match(
-        /^\/api\/sessions\/([^/]+)(\/tree)?$/,
+        /^\/api\/workspaces\/[^/]+\/sessions\/([^/]+)(\/tree)?$/,
       );
       if (!match) return;
       const entry = {

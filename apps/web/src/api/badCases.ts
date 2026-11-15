@@ -6,27 +6,35 @@ import type {
 
 import { request } from "./http";
 
-function ownedBadCasePath(
-  badCaseId: string,
-  sessionId?: string | null,
-  suffix = "",
-): string {
-  const path = `/api/bad-cases/${encodeURIComponent(badCaseId)}${suffix}`;
+/**
+ * Build the legacy attribution path for one problem.
+ *
+ * The attribution projection is still served by the compatibility endpoint,
+ * which filters by the caller's visible workspaces; the workspace id remains
+ * part of the cache key so two workspaces never share the row.
+ * @param badCaseId Stable external problem identifier.
+ * @param sessionId Optional route Session used for deep-link ownership.
+ * @returns Request path with the optional ownership guard.
+ */
+function analysisPath(badCaseId: string, sessionId?: string | null): string {
+  const path = `/api/bad-cases/${encodeURIComponent(badCaseId)}/analysis`;
   if (!sessionId) return path;
   return `${path}?sessionId=${encodeURIComponent(sessionId)}`;
 }
 
 /**
- * Read one problem and enforce its Session ownership when a Session is known.
+ * Read one problem only when it belongs to the route workspace.
+ * @param workspaceId Route workspace identifier.
  * @param badCaseId Stable external problem identifier.
- * @param sessionId Session identifier from the route.
  * @returns Complete public problem.
  */
 export function getBadCase(
+  workspaceId: string,
   badCaseId: string,
-  sessionId?: string | null,
 ): Promise<BadCase> {
-  return request<BadCase>(ownedBadCasePath(badCaseId, sessionId));
+  return request<BadCase>(
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/bad-cases/${encodeURIComponent(badCaseId)}`,
+  );
 }
 
 /**
@@ -39,9 +47,7 @@ export function getBadCaseAnalysis(
   badCaseId: string,
   sessionId?: string | null,
 ): Promise<BadCaseAnalysis> {
-  return request<BadCaseAnalysis>(
-    ownedBadCasePath(badCaseId, sessionId, "/analysis"),
-  );
+  return request<BadCaseAnalysis>(analysisPath(badCaseId, sessionId));
 }
 
 /**
