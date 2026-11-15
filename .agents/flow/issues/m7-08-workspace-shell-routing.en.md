@@ -16,6 +16,7 @@ scope:
   - apps/web/src/**
   - packages/contracts/**
   - tests/e2e/**
+  - tests/integration/**
   - .agents/flow/**
   - .agents/notes/**
   - plans/**
@@ -47,7 +48,7 @@ Every V2 page needs explicit workspace context.
 - Bootstrap from auth/session.
 - Prefix query keys with workspaceId.
 - Add the workspace picker.
-- Review records and the integration smoke report live in plans/ and reports/, so the scope covers both trees.
+- Review records and the integration smoke report live in plans/ and reports/; the cross-stack integration test also needs external-table bootstrap after the auth/session startup change, so the scope covers tests/integration.
 
 ## Implementation steps
 

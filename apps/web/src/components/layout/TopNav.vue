@@ -270,7 +270,7 @@ async function processNow() {
       await Promise.all([
         workspaceId.value
           ? queryClient.invalidateQueries({
-              queryKey: queryKeys.sessions(workspaceId.value),
+              queryKey: queryKeys.workspace(workspaceId.value),
             })
           : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: queryKeys.acquisitionStatus })

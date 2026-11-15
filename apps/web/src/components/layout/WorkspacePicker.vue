@@ -67,9 +67,11 @@ async function switchWorkspace(workspaceId: string): Promise<void> {
     });
   }
   rememberWorkspace(workspaceId);
+  const query = { ...route.query };
+  delete query.reason;
   await router.push({
     path: targetPath(workspaceId),
-    query: route.query,
+    query,
   });
 }
 </script>

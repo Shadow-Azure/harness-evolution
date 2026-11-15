@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m7-08-workspace-shell-routing.md
-m7-08-workspace-shell-routing.md: dfa7bc8f539267467bfe0e60ac61b768fc410e6d
-m7-08-workspace-shell-routing.en.md: c406d29403753b0d9aff822296dc750979d33f0d
+m7-08-workspace-shell-routing.md: 886b2e8039dfb0a7a82598ab2e97d445d3911246
+m7-08-workspace-shell-routing.en.md: 301f89dae74d1b9437915f0a08aca018838c3a33

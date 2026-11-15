@@ -16,6 +16,7 @@ scope:
   - apps/web/src/**
   - packages/contracts/**
   - tests/e2e/**
+  - tests/integration/**
   - .agents/flow/**
   - .agents/notes/**
   - plans/**
@@ -47,7 +48,7 @@ github:
 - bootstrap 只依赖 auth/session。
 - queryKeys 以 workspaceId 开头。
 - TopNav 增加空间切换器和用户菜单。
-- 产出检视记录与集成冒烟报告，落在 plans/ 与 reports/，故 scope 覆盖对应目录。
+- 产出检视记录与集成冒烟报告，落在 plans/ 与 reports/；启动改走 auth/session 后跨栈集成测试需初始化外部表，故 scope 覆盖 tests/integration。
 
 ## 实施步骤
 

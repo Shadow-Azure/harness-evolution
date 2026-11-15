@@ -90,6 +90,18 @@ describe("WorkspacePicker", () => {
     ).not.toBe(true);
   });
 
+  it("does not carry the chooser reason into the new workspace", async () => {
+    const { router, wrapper } = await mountPicker(
+      "/workspaces/ws-a/sessions?reason=forbidden",
+    );
+
+    await wrapper.get("[data-testid='workspace-option-ws-b']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe("/workspaces/ws-b/sessions");
+    expect(router.currentRoute.value.query.reason).toBeUndefined();
+  });
+
   it("drops a run id owned by the previous workspace", async () => {
     const { router, wrapper } = await mountPicker(
       "/workspaces/ws-a/evolution/runs/run-1",
