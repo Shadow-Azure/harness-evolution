@@ -8,7 +8,7 @@ id: m6-24
 milestone: m6
 depends: []
 priority: P1
-status: in-progress
+status: done
 scope:
   - plans/ui-prototype-v2/**
   - .agents/flow/**
