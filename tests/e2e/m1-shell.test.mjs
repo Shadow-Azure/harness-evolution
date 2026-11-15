@@ -292,7 +292,7 @@ test("m1-auth uses the prototype light cards and protected-page handoff", async 
   }
 });
 
-test("m1-shell exposes the prototype two-entry nav, demo state, and clean responsive rendering", async () => {
+test("m1-shell exposes the prototype navigation, demo state, and clean responsive rendering", async () => {
   const page = await createBrowserPage();
   try {
     const violations = browserViolations(page.session);
@@ -346,7 +346,11 @@ test("m1-shell exposes the prototype two-entry nav, demo state, and clean respon
       "authenticated M1 shell",
     );
     assert.equal(initial.path, `${workspaceBase}/sessions`);
-    assert.deepEqual(initial.links, ["Session 错误查看会话轨迹与归因", "自进化报告驱动的迭代优化"]);
+    assert.deepEqual(initial.links, [
+      "Session 错误查看会话轨迹与归因",
+      "自进化报告驱动的迭代优化",
+      "空间管理成员 · 上报 · 鉴权",
+    ]);
     assert.equal(initial.badge, "演示数据");
     assert.equal(initial.pending, "待处理 0");
     assert.match(initial.pendingDetail, /已处理/);
