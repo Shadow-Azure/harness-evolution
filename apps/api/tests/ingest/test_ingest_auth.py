@@ -159,6 +159,9 @@ async def test_unknown_workspace_is_not_found_after_credential_validation(
         ("GET", "/api/workspaces/{wid}/sessions"),
         ("GET", "/api/sessions"),
         ("GET", "/api/acquisition/status"),
+        ("GET", "/api/workspaces/{wid}/bad-cases"),
+        ("PUT", "/api/workspaces/{wid}/bad-cases"),
+        ("DELETE", "/api/workspaces/{wid}/bad-cases"),
         ("POST", "/api/workspaces/{wid}/bad-cases/"),
     ],
 )
@@ -176,6 +179,23 @@ async def test_workspace_credential_is_rejected_outside_the_ingest_route(
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+async def test_missing_credential_outranks_an_invalid_body(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Authentication resolves before body validation, so 401 precedes 422."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Ingest Order")
+
+    response = await client.post(
+        f"/api/workspaces/{workspace.workspace_id}/bad-cases",
+        json=ingest_body(workspaceId="ws-other", title=""),
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "CREDENTIAL_INVALID"
+    assert await count_cases(app.state.database, workspace.workspace_id) == 0
 
 
 async def test_admin_jwt_still_works_where_the_jwt_middleware_applies(
@@ -211,6 +231,51 @@ async def test_ingest_marks_the_credential_as_used(
     item = listed.json()["items"][0]
     assert item["id"] == credential_id
     assert item["lastUsedAt"] is not None
+
+
+async def test_service_touch_is_throttled_within_one_window(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Two service touches inside one window write once, not twice."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Ingest Touch Service")
+    credential_id = await _credential_id(app, workspace.workspace_id)
+    service = app.state.workspaces
+    repository = WorkspaceRepository(app.state.database)
+
+    await service.touch_credential(credential_id)
+    first = await repository.get_credential(workspace.workspace_id, credential_id)
+    await service.touch_credential(credential_id)
+    second = await repository.get_credential(workspace.workspace_id, credential_id)
+
+    assert first is not None
+    assert first.last_used_at is not None
+    assert second is not None
+    assert second.last_used_at == first.last_used_at
+
+
+async def test_service_touch_window_constant_controls_the_write(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero window makes the second touch write, so the constant is load-bearing."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Ingest Touch Zero")
+    credential_id = await _credential_id(app, workspace.workspace_id)
+    service = app.state.workspaces
+    repository = WorkspaceRepository(app.state.database)
+    monkeypatch.setattr("app.service.workspaces.service.CREDENTIAL_TOUCH_SECONDS", 0)
+
+    await service.touch_credential(credential_id)
+    first = await repository.get_credential(workspace.workspace_id, credential_id)
+    await service.touch_credential(credential_id)
+    second = await repository.get_credential(workspace.workspace_id, credential_id)
+
+    assert first is not None
+    assert first.last_used_at is not None
+    assert second is not None
+    assert second.last_used_at is not None
+    assert second.last_used_at > first.last_used_at
 
 
 async def test_last_used_writes_are_throttled_to_one_window(

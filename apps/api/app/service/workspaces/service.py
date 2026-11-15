@@ -459,6 +459,7 @@ class WorkspaceService:
             logger.warning(
                 "workspace credential last-used update failed",
                 extra={"credential_id": credential_id},
+                exc_info=True,
             )
 
     @staticmethod

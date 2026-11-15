@@ -6083,8 +6083,8 @@ export interface operations {
             /** @description The same workspace already owned badCaseId; upstream fields were replaced */
             200: {
                 headers: {
-                    /** @description Live count of bad cases owned by the workspace after this report. */
-                    "X-HE-Workspace-Used"?: number;
+                    /** @description Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings. */
+                    "X-HE-Workspace-Used"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6094,8 +6094,8 @@ export interface operations {
             /** @description A new bad case was created inside the workspace quota */
             201: {
                 headers: {
-                    /** @description Live count of bad cases owned by the workspace after this report. */
-                    "X-HE-Workspace-Used"?: number;
+                    /** @description Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings. */
+                    "X-HE-Workspace-Used"?: string;
                     [name: string]: unknown;
                 };
                 content: {

@@ -20,8 +20,11 @@ WORKSPACE_USED_HEADER = "X-HE-Workspace-Used"
 WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 
 _USED_HEADER_SCHEMA: dict[str, Any] = {
-    "description": "Live count of bad cases owned by the workspace after this report.",
-    "schema": {"type": "integer", "minimum": 0},
+    "description": (
+        "Live count of bad cases owned by the workspace after this report, as a "
+        "decimal integer in a string because HTTP header values are strings."
+    ),
+    "schema": {"type": "string", "pattern": "^[0-9]+$"},
 }
 
 _SUCCESS_RESPONSES: dict[int | str, dict[str, Any]] = {

@@ -79,6 +79,7 @@ async def test_repeat_report_updates_fields_without_consuming_quota(
     assert row["object_version"] == "v2.5.0"
     assert row["bad_case_type"] == "discovery"
     assert row["meta_data"] == {"file": "apps/server/src/search/index.ts", "line": 142}
+    assert row["workspace_id"] == workspace.workspace_id
     assert stored_created_at(row).isoformat() == "2026-11-10T09:00:00+08:00"
 
 
@@ -102,6 +103,7 @@ async def test_usage_counts_only_the_reported_workspace(
     "body",
     [
         pytest.param(ingest_body(workspaceId="ws-other"), id="extra-workspace-id"),
+        pytest.param(ingest_body(workspace_id="ws-other"), id="extra-snake-workspace-id"),
         pytest.param(
             {
                 "bad_case_id": "BC-HC-021",
@@ -125,6 +127,7 @@ async def test_usage_counts_only_the_reported_workspace(
         pytest.param(ingest_body(sessionId="x" * 37), id="long-session-id"),
         pytest.param(ingest_body(objectName="x" * 129), id="long-object-name"),
         pytest.param(ingest_body(createdAt="not-a-timestamp"), id="bad-timestamp"),
+        pytest.param(ingest_body(createdAt="2026-11-09T07:58:00"), id="naive-timestamp"),
         pytest.param(ingest_body(metaData="not-an-object"), id="bad-metadata"),
     ],
 )
@@ -141,6 +144,25 @@ async def test_body_contract_rejects_missing_or_foreign_fields(
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "VALIDATION_INVALID"
     assert await count_cases(app.state.database, workspace.workspace_id) == 0
+
+
+async def test_offset_timestamp_is_normalized_and_accepted(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """A timestamp with an offset is stored as Asia/Shanghai, not relabeled."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Ingest Offset")
+
+    response = await report(
+        client,
+        workspace,
+        ingest_body(badCaseId="BC-OFFSET-1", createdAt="2026-11-09T07:58:00Z"),
+    )
+
+    assert response.status_code == 201
+    row = await fetch_case(app.state.database, "BC-OFFSET-1")
+    assert row is not None
+    assert stored_created_at(row).isoformat() == "2026-11-09T15:58:00+08:00"
 
 
 async def test_response_never_echoes_server_owned_columns(

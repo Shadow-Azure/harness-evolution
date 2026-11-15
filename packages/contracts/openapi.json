@@ -9076,10 +9076,10 @@
             "description": "The same workspace already owned badCaseId; upstream fields were replaced",
             "headers": {
               "X-HE-Workspace-Used": {
-                "description": "Live count of bad cases owned by the workspace after this report.",
+                "description": "Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings.",
                 "schema": {
-                  "minimum": 0,
-                  "type": "integer"
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
                 }
               }
             }
@@ -9095,10 +9095,10 @@
             "description": "A new bad case was created inside the workspace quota",
             "headers": {
               "X-HE-Workspace-Used": {
-                "description": "Live count of bad cases owned by the workspace after this report.",
+                "description": "Live count of bad cases owned by the workspace after this report, as a decimal integer in a string because HTTP header values are strings.",
                 "schema": {
-                  "minimum": 0,
-                  "type": "integer"
+                  "pattern": "^[0-9]+$",
+                  "type": "string"
                 }
               }
             }

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.db.crud.bad_case_ingest import (
@@ -44,6 +44,14 @@ class BadCaseIngest(BaseModel):
     meta_data: dict[str, Any] | None = None
     source: str | None = Field(default=None, max_length=64)
     created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _require_offset(cls, value: datetime) -> datetime:
+        """Reject naive timestamps instead of silently reading them as +08:00."""
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("createdAt must carry a UTC offset, for example +08:00")
+        return value
 
 
 class BadCaseIngestResponse(WorkspaceModel):

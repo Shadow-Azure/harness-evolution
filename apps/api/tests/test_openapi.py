@@ -256,7 +256,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         assert success["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/BadCaseIngestResponse"
         }
-        assert success["headers"]["X-HE-Workspace-Used"]["schema"]["type"] == "integer"
+        used_schema = success["headers"]["X-HE-Workspace-Used"]["schema"]
+        assert used_schema["type"] == "string"
+        assert used_schema["pattern"] == "^[0-9]+$"
     assert ingest["requestBody"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/BadCaseIngest"
     }
