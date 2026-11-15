@@ -749,7 +749,7 @@ erDiagram
 | `sort` | `latest\|userTurns\|messages\|agents` | 默认 latest |
 | `limit` | int | 默认 100，最大 500 |
 
-响应 `{ "items": [SessionListItem] }`。**排序与计数全部后端做**，前端只渲染。
+响应 `{ "items": [SessionListItem], "total": 0, "pendingSessions": 0 }`。`total` 与 `pendingSessions` 是 additive 新增：`total` 是当前 `q`/`status` 下可见空间并集内已归一化根的去重数；`pendingSessions` 是同一可见空间并集内、被 bad case 提到但没有归一化轨迹的根数（跨空间按根去重，与 V2 的单空间口径不同）。请求参数、检索语义与默认 `limit` 不变。**排序与计数全部后端做**，前端只渲染。
 
 ### 4.3 会话概览（V1 兼容端点）
 
@@ -1190,8 +1190,11 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/sessions` | `q`、`status`、`sort`、`limit`（默认 10） | `{items:[SessionListItem], total, pendingSessions}` |
 
 - 筛选参数可全空（不限制）；`objects` 空 = 全部，>50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天或 `from > to` → `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
+- V2 Session 列表的 `q` 是完整 root session ID（trim 后大小写不敏感精确匹配；子串与标题不命中）；不传或全空白 `q` 返回最新 10 条。去掉 `limit` 的分页只影响 `items`，不影响 `total`。
+- `total` 的口径公式：只数当前 `q`/`status` 下已归一化的根，**不含 pending**。`pendingSessions` 与 `q`/`status`/`sort`/`limit` 无关，只按空间投影计算；两者不是同一集合的划分，`total + pendingSessions` 不等于「空间全部被上报的根」。
+- 共享 root：同一 root 被两个空间上报时，V2 的 `total` 与 `pendingSessions` 在每个空间各算一次（每个空间都需要自己的轨迹与计数）；V1 的可见空间并集对同一根去重，只算一次。
 - 趋势的 `attributed/nonTarget` 按归因时间落桶、`unanalyzed` 按上报时间落桶，差异在 `meta.bucketPolicy` 声明。
-- V1 无前缀的 `GET /api/sessions` 冻结保留一个版本（按当前用户全部可见空间过滤），下个大版本删除。
+- V1 无前缀的 `GET /api/sessions` 冻结保留一个版本（按当前用户全部可见空间过滤），下个大版本删除；本版本仅 additive 增加 `total`/`pendingSessions`（见 §4.2）。
 
 ### 4.19 归因读取（V2，错误详情）
 

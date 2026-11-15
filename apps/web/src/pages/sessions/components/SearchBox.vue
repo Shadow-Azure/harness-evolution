@@ -27,9 +27,9 @@ const emit = defineEmits<{
     <input
       data-testid="search-input"
       :value="modelValue"
-      aria-label="搜索 Session（标题、仓库或根会话 ID）"
+      aria-label="搜索 Session（完整 root Session ID）"
       autocomplete="off"
-      placeholder="搜索标题、仓库或根会话 ID"
+      placeholder="输入完整 root Session ID 查询"
       @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
     >
   </label>

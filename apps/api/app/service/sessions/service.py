@@ -46,7 +46,9 @@ class SessionFilters:
     query: str = ""
     status: SessionStatusFilter = "all"
     sort: SessionSort = "latest"
+    # Routes own the page size: V1 passes 100, V2 passes 10.
     limit: int = 100
+    exact_query: bool = False
 
 
 def _density(count: int, messages: int) -> float:
@@ -197,19 +199,31 @@ class SessionService:
         scope: WorkspaceReadScope,
     ) -> SessionListResponse:
         """Return one filtered and stably sorted session page."""
+        # The service owns q normalization; the repository consumes this value.
+        query = filters.query.strip() if filters.exact_query else filters.query
         records = await self._repository.list_sessions(
-            query=filters.query,
+            query=query,
             status=filters.status,
             sort=filters.sort,
             limit=filters.limit,
             scope=scope,
+            exact_query=filters.exact_query,
         )
         counts = await self._repository.bad_case_counts(
             [record.id for record in records],
             scope,
         )
+        total = await self._repository.count_sessions(
+            query=query,
+            status=filters.status,
+            scope=scope,
+            exact_query=filters.exact_query,
+        )
+        pending_sessions = await self._repository.count_pending_sessions(scope)
         return SessionListResponse(
             items=[_list_item(record, counts.get(record.id, 0)) for record in records],
+            total=total,
+            pending_sessions=pending_sessions,
         )
 
     async def get(

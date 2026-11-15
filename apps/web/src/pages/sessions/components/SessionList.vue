@@ -121,7 +121,7 @@ function handleKeydown(event: KeyboardEvent) {
       role="status"
     >
       <strong>没有匹配当前筛选的 session</strong>
-      <span>调整搜索词或状态筛选后重试。</span>
+      <span>请输入完整 root Session ID 查询；清空搜索可恢复最新列表。</span>
     </div>
     <template v-else>
       <SessionCard

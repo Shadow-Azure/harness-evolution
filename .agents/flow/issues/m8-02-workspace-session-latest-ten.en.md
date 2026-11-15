@@ -10,15 +10,18 @@ depends:
   - m7-06
   - m8-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/sessions.py
   - apps/api/app/service/sessions/**
   - apps/api/app/db/crud/sessions.py
+  - apps/api/tests/**
+  - apps/web/src/pages/sessions/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 232
@@ -43,7 +46,7 @@ The workspace session page should initially load only ten sessions and support e
 ## Implementation
 
 - Project sessions through workspace bad cases.
-- Use stable ordering.
+- Order stably by `started_at DESC, id ASC`.
 - Distinguish totals from pending sync.
 
 ## Implementation steps
