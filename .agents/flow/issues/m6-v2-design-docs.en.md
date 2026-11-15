@@ -11,6 +11,7 @@ priority: P1
 status: in-progress
 scope:
   - plans/fullstack-design/**
+  - plans/ui-prototype-v2/**
   - .agents/notes/**
   - .agents/flow/**
 adr: []
@@ -53,6 +54,7 @@ The V2 prototype (`plans/ui-prototype-v2/`) establishes four new capability clas
 - 07: normalization adds tree_index/triggered_at/object_version; seven-step prepare; potential matcher; attribution cache; preview endpoints; workspace service and dependency; auth seam; tests and slicing order.
 - 08: routes and redirects; api modules and queryKeys; workspace admin four tabs; latest 10 with enter-to-search; overview page; multi-attribution error detail; four-step wizard; seven-step detail; legacy V1 steps adapted by the server.
 - 15: current implementation vs V1, V2 vs V1, table-reuse rules, code-change map, implementation order, and acceptance focus.
+- Prototype: the error-detail execution flow defaults to a zoomable, pannable execution-order DAG with a switch back to the structure tree, validating the concurrency and trigger relationships this design relies on.
 - New Agent Note triple `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*` (decisions and trade-offs).
 
 ## Implementation steps
@@ -66,7 +68,7 @@ The V2 prototype (`plans/ui-prototype-v2/`) establishes four new capability clas
 ## Dependencies and boundary
 
 - Dependencies: none
-- Non-goals: no production code changes (`apps/api`, `apps/web`, `packages/contracts`); no V2 implementation issues; no V2 prototype HTML edits.
+- Non-goals: no production code changes (`apps/api`, `apps/web`, `packages/contracts`); no V2 implementation issues; V2 prototype edits are limited to the error-detail execution-flow view, and no other prototype pages are reworked.
 
 ## Verification
 
@@ -83,6 +85,7 @@ pnpm verify:flow; pnpm lint:docs
 - Historical run compatibility maps legacy runs into the same seven-step DTO on the server; the frontend does not maintain a second step schema.
 - The 05 error-code table covers every V2 code; 06 column definitions agree with references in 05/07; attribution and cluster tables keep V1 names and evolve in place rather than being added (consistent with D23).
 - The README decision table contains D21–D23; 02 contains F21–F27; the Agent Note bilingual triple has a complete pairing record.
+- The error-detail execution flow defaults to the execution-order DAG, supports zoom and pan, and can switch back to the structure tree.
 
 ## Gates and CI
 

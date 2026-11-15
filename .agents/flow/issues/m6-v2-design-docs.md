@@ -11,6 +11,7 @@ priority: P1
 status: in-progress
 scope:
   - plans/fullstack-design/**
+  - plans/ui-prototype-v2/**
   - .agents/notes/**
   - .agents/flow/**
 adr: []
@@ -53,6 +54,7 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 - 07：归一化补 tree_index/triggered_at/object_version；七步 prepare；潜在匹配；归因缓存；预览端点；空间服务与依赖；鉴权接缝；测试与切片顺序。
 - 08：路由与重定向；api 模块与 queryKeys；空间管理四 Tab；最新 10 条 + 回车；总览页；多归因错误详情；四步向导；七步详情；历史 V1 step 由服务端适配。
 - 15：记录当前实现 vs V1 原型、V2 vs V1 原型、数据库复用规则、代码改动地图、实施顺序与验收重点。
+- 原型：错误详情执行流默认展示可缩放、可平移的默认执行序 DAG，并可切回结构树，用于验证本设计依赖的并发与触发关系。
 - 新增 Agent Note 三件套 `.agents/notes/proposed/feature/2026-11-11-v2-design-docs.*`（决策与取舍）。
 
 ## 实施步骤
@@ -66,7 +68,7 @@ V2 原型（`plans/ui-prototype-v2/`）确立了四类新能力：多用户登�
 ## 依赖与交付边界
 
 - 依赖：无
-- 非目标：不改任何生产代码（`apps/api`、`apps/web`、`packages/contracts`）；不建 V2 实现 issue；不改 V2 原型 HTML。
+- 非目标：不改任何生产代码（`apps/api`、`apps/web`、`packages/contracts`）；不建 V2 实现 issue；V2 原型只补错误详情执行流视图，不重做其他原型页面。
 
 ## 独立验证
 
@@ -83,6 +85,7 @@ pnpm verify:flow; pnpm lint:docs
 - 历史 run 渲染兼容由服务端映射为统一七步 DTO，不在前端维护第二套步骤 schema。
 - 05 错误码表覆盖 V2 全部错误码；06 列定义与 05/07 引用一致；归因/簇表保留 V1 名称并在原表演进（与 D23 一致）。
 - README 决策表含 D21–D23；02 含 F21–F27；Agent Note 双语配对完整。
+- 错误详情执行流默认展示默认执行序 DAG，可缩放、平移并切回结构树。
 
 ## 门禁与 CI
 
