@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>m8-03 工作空间总览聚合 API 集成冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · M8 空间数据面与总览</p>
+    <h1>m8-03 工作空间总览聚合 API 集成冒烟报告</h1>
+    <p class="summary">在真实 API（SQLite + demo fixtures）中验证总览四个端点的聚合口径、时间窗与桶、对象筛选、分页和错误矩阵；本 issue 无 UI 边界，页面与截图对照由 m8-04 负责。</p>
+    <span class="meta">2026-11-16 · macOS · SQLite · 真实 HTTP</span>
+    <div class="metrics"><div class="metric"><b>10</b><span>API 场景</span></div><div class="metric"><b>0</b><span>未解决缺陷</span></div><div class="metric"><b>0</b><span>页面截图（无 UI 边界）</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-11-16 · macOS · SQLite · 真实 HTTP</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>分支</dt><dd>agent/develop-m8-03-786a50a364b0</dd></div><div class="fact"><dt>提交</dt><dd>d8693d0（PR #269 head）</dd></div><div class="fact"><dt>应用</dt><dd>harness-evolution api（sqlite, demo fixtures）</dd></div><div class="fact"><dt>测试方式</dt><dd>真实 HTTP + 独立临时数据目录</dd></div><div class="fact"><dt>数据</dt><dd>6 条窗内 case（3 天 × 2 对象 × 2 类型）+ 1 条对照空间 case</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>10 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>summary 手算对齐</td><td><span class="status pass">PASS</span></td><td>6/self3/discovery3/sessions6/sources2/quota20/used6。</td><td class="evidence">—</td></tr><tr><td class="num">02</td><td>日粒度连续桶</td><td><span class="status pass">PASS</span></td><td>11-10/11/12 三桶各 1 self + 1 discovery。</td><td class="evidence">—</td></tr><tr><td class="num">03</td><td>来源分布排序</td><td><span class="status pass">PASS</span></td><td>deep-research 与 Explore 各 3，按 total 降序、对象名排序。</td><td class="evidence">—</td></tr><tr><td class="num">04</td><td>列表分页与标签</td><td><span class="status pass">PASS</span></td><td>total=6，created_at DESC，discovery 标签「发现前置步骤问题」。</td><td class="evidence">—</td></tr><tr><td class="num">05</td><td>objects 单选取交集</td><td><span class="status pass">PASS</span></td><td>objects=deep-research → badCases=3、sessions=3。</td><td class="evidence">—</td></tr><tr><td class="num">06</td><td>objects 多选取并集</td><td><span class="status pass">PASS</span></td><td>两个对象逗号形式合计 6，证明并集。</td><td class="evidence">—</td></tr><tr><td class="num">07</td><td>&gt;92 天日粒度降级周</td><td><span class="status pass">PASS</span></td><td>108 天窗口 grain=day → 响应 grain=week。</td><td class="evidence">—</td></tr><tr><td class="num">08</td><td>空窗口与 used 口径</td><td><span class="status pass">PASS</span></td><td>2020 窗口 badCases=0，used 仍为 6（不受时间窗影响）。</td><td class="evidence">—</td></tr><tr><td class="num">09</td><td>跨空间隔离</td><td><span class="status pass">PASS</span></td><td>对照空间 summary badCases=1，不含主空间 6 条。</td><td class="evidence">—</td></tr><tr><td class="num">10</td><td>错误矩阵</td><td><span class="status pass">PASS</span></td><td>from&gt;to→WINDOW_INVALID；grain=year→GRAIN_INVALID；51 个 objects→OBJECT_FILTER_TOO_LARGE。</td><td class="evidence">—</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P3 本 issue 无页面，UI 与原型对照延后到 m8-04</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P3</span><h3>本 issue 无页面，UI 与原型对照延后到 m8-04</h3><dl><div><dt>实际</dt><dd>只有四个只读 JSON 端点。</dd></div><div><dt>预期</dt><dd>总览页、图表与筛选由 m8-04 按 08 §6 与原型实现。</dd></div><div><dt>根因</dt><dd>m8-03 交付边界明确不含前端。</dd></div></dl><div class="fixed">已记录 · 待 m8-04</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>no screenshots</small></div>
+    <div class="shots"><div class="empty">No screenshots were attached.</div></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>3 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>区域</th><th>覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>窗口与桶</td><td>单测 25 + API 44 + 本冒烟</td><td>边界、降级、连续补零均有覆盖。</td><td>m8-04 只消费返回的 grain 与 buckets。</td></tr><tr><td>筛选与分页</td><td>API 测试 + 本冒烟</td><td>空/单/多对象与分页并集正确。</td><td>m8-04 用 URL 保存同一组筛选。</td></tr><tr><td>跨空间</td><td>API 测试 + 本冒烟</td><td>所有响应只含当前空间。</td><td>保持 viewer 角色门禁。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过</small></div>
+    <article class="card conclusion pass"><p><strong>10 个真实 HTTP 场景全部通过；无 UI 截图是因为本 issue 无前端边界。</strong></p><ul><li>总览 UI、图表与原型对照由 m8-04 负责。</li><li>冒烟不写入仓库，报告仅本地保存。</li></ul></article>
+  </section>
+
+  <p class="foot">由 m8-03 集成冒烟生成；无页面截图，原因是该 issue 只交付 API。</p>
+</main>
+</body>
+</html>

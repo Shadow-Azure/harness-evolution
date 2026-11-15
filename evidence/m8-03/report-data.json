@@ -1,0 +1,216 @@
+{
+  "title": "m8-03 工作空间总览聚合 API 集成冒烟报告",
+  "eyebrow": "Harness Evolution · M8 空间数据面与总览",
+  "summary": "在真实 API（SQLite + demo fixtures）中验证总览四个端点的聚合口径、时间窗与桶、对象筛选、分页和错误矩阵；本 issue 无 UI 边界，页面与截图对照由 m8-04 负责。",
+  "meta": "2026-11-16 · macOS · SQLite · 真实 HTTP",
+  "metrics": [
+    {
+      "value": "10",
+      "label": "API 场景"
+    },
+    {
+      "value": "0",
+      "label": "未解决缺陷"
+    },
+    {
+      "value": "0",
+      "label": "页面截图（无 UI 边界）"
+    }
+  ],
+  "facts": [
+    {
+      "label": "分支",
+      "value": "agent/develop-m8-03-786a50a364b0"
+    },
+    {
+      "label": "提交",
+      "value": "d8693d0（PR #269 head）"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 HTTP + 独立临时数据目录"
+    },
+    {
+      "label": "数据",
+      "value": "6 条窗内 case（3 天 × 2 对象 × 2 类型）+ 1 条对照空间 case"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "summary 手算对齐",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "6/self3/discovery3/sessions6/sources2/quota20/used6。",
+        "evidence": []
+      },
+      {
+        "id": "02",
+        "name": "日粒度连续桶",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "11-10/11/12 三桶各 1 self + 1 discovery。",
+        "evidence": []
+      },
+      {
+        "id": "03",
+        "name": "来源分布排序",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "deep-research 与 Explore 各 3，按 total 降序、对象名排序。",
+        "evidence": []
+      },
+      {
+        "id": "04",
+        "name": "列表分页与标签",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "total=6，created_at DESC，discovery 标签「发现前置步骤问题」。",
+        "evidence": []
+      },
+      {
+        "id": "05",
+        "name": "objects 单选取交集",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "objects=deep-research → badCases=3、sessions=3。",
+        "evidence": []
+      },
+      {
+        "id": "06",
+        "name": "objects 多选取并集",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "两个对象逗号形式合计 6，证明并集。",
+        "evidence": []
+      },
+      {
+        "id": "07",
+        "name": ">92 天日粒度降级周",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "108 天窗口 grain=day → 响应 grain=week。",
+        "evidence": []
+      },
+      {
+        "id": "08",
+        "name": "空窗口与 used 口径",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "2020 窗口 badCases=0，used 仍为 6（不受时间窗影响）。",
+        "evidence": []
+      },
+      {
+        "id": "09",
+        "name": "跨空间隔离",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "对照空间 summary badCases=1，不含主空间 6 条。",
+        "evidence": []
+      },
+      {
+        "id": "10",
+        "name": "错误矩阵",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "from>to→WINDOW_INVALID；grain=year→GRAIN_INVALID；51 个 objects→OBJECT_FILTER_TOO_LARGE。",
+        "evidence": []
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P3",
+      "title": "本 issue 无页面，UI 与原型对照延后到 m8-04",
+      "facts": [
+        {
+          "label": "实际",
+          "value": "只有四个只读 JSON 端点。"
+        },
+        {
+          "label": "预期",
+          "value": "总览页、图表与筛选由 m8-04 按 08 §6 与原型实现。"
+        },
+        {
+          "label": "根因",
+          "value": "m8-03 交付边界明确不含前端。"
+        }
+      ],
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · 待 m8-04"
+      }
+    }
+  ],
+  "screenshots": [],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "窗口与桶",
+        "coverage": "单测 25 + API 44 + 本冒烟",
+        "conclusion": "边界、降级、连续补零均有覆盖。",
+        "recommendation": "m8-04 只消费返回的 grain 与 buckets。"
+      },
+      {
+        "area": "筛选与分页",
+        "coverage": "API 测试 + 本冒烟",
+        "conclusion": "空/单/多对象与分页并集正确。",
+        "recommendation": "m8-04 用 URL 保存同一组筛选。"
+      },
+      {
+        "area": "跨空间",
+        "coverage": "API 测试 + 本冒烟",
+        "conclusion": "所有响应只含当前空间。",
+        "recommendation": "保持 viewer 角色门禁。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "10 个真实 HTTP 场景全部通过；无 UI 截图是因为本 issue 无前端边界。",
+    "points": [
+      "总览 UI、图表与原型对照由 m8-04 负责。",
+      "冒烟不写入仓库，报告仅本地保存。"
+    ]
+  },
+  "footer": "由 m8-03 集成冒烟生成；无页面截图，原因是该 issue 只交付 API。"
+}
