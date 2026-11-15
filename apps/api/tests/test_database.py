@@ -1330,6 +1330,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         assert event_columns == {
             "id",
             "run_id",
+            "workspace_id",
             "seq",
             "event_type",
             "level",
@@ -1350,6 +1351,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_evolution_run_events_event_type",
             "ix_evolution_run_events_level",
             "ix_evolution_run_events_cluster_id",
+            "ix_evolution_run_events_workspace",
         }
         assert event_uniques == {("run_id", "seq")}
         assert (

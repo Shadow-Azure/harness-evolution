@@ -12,8 +12,10 @@ status: in-progress
 scope:
   - apps/api/app/db/**
   - apps/api/alembic/**
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr:
