@@ -10,7 +10,7 @@ depends:
   - m7-02
   - m7-03
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/identity/**
   - apps/api/app/api/auth.py
