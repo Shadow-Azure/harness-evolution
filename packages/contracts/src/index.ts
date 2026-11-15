@@ -283,3 +283,15 @@ export type {
   TimelineItemDetails,
   TimelineItemKind,
 } from "./session-family.js";
+
+export type {
+  SessionPayload,
+  SessionWorkspace,
+  Workspace,
+  WorkspaceAdmin,
+  WorkspaceCredential,
+  WorkspaceCredentialCreated,
+  WorkspaceMember,
+  WorkspaceMemberRole,
+  WorkspaceRole,
+} from "./workspaces.js";

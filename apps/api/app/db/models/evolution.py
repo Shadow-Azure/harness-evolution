@@ -25,6 +25,7 @@ from sqlalchemy import (
     false,
 )
 
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.utils.time import as_shanghai
 
 EVOLUTION_METADATA = MetaData()
@@ -33,6 +34,12 @@ evolution_runs = Table(
     "evolution_runs",
     EVOLUTION_METADATA,
     Column("id", String(36), primary_key=True),
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
+    ),
     Column("title", String(255), nullable=False),
     Column("mode", String(16), nullable=False),
     Column("engine_key", String(64), nullable=False),
@@ -111,6 +118,11 @@ evolution_runs = Table(
     Index("ix_evolution_runs_target_config", "target_config_id"),
 )
 Index("ix_evolution_runs_created_at", evolution_runs.c.created_at.desc())
+Index(
+    "ix_evolution_runs_workspace_created",
+    evolution_runs.c.workspace_id,
+    evolution_runs.c.created_at.desc(),
+)
 
 probe_clusters = Table(
     "probe_clusters",

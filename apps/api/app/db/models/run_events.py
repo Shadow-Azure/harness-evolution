@@ -19,6 +19,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+
 EVOLUTION_RUN_EVENT_METADATA = MetaData()
 
 evolution_run_events = Table(
@@ -35,6 +37,12 @@ evolution_run_events = Table(
         String(36),
         ForeignKey("evolution_runs.id", ondelete="CASCADE"),
         nullable=False,
+    ),
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
     ),
     Column("seq", Integer, nullable=False),
     Column("event_type", String(48), nullable=False),
@@ -59,6 +67,7 @@ evolution_run_events = Table(
     Index("ix_evolution_run_events_event_type", "event_type"),
     Index("ix_evolution_run_events_level", "level"),
     Index("ix_evolution_run_events_cluster_id", "cluster_id"),
+    Index("ix_evolution_run_events_workspace", "workspace_id"),
 )
 
 
