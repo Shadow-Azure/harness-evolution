@@ -6,7 +6,7 @@
 kind: milestone
 id: m7
 title: M7 身份与空间边界
-status: active
+status: done
 github:
   number: 17
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/17

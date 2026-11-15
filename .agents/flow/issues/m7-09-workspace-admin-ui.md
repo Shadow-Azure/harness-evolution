@@ -10,7 +10,7 @@ depends:
   - m7-05
   - m7-08
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/workspaces/**
   - apps/web/src/api/**
