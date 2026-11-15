@@ -1,0 +1,206 @@
+{
+  "title": "m7-09 空间管理四 Tab 集成冒烟报告",
+  "eyebrow": "Harness Evolution · M7 身份与空间边界",
+  "summary": "在真实 API + Vite proxy + 无头 Chrome 环境中验证空间管理四 Tab：全局空间表与创建空间、空间管理员额度与成员管理、space_admin 行锁定、上报凭据一次性明文、只读角色的写入口隐藏与 API 403。3 条新增 workspace-admin E2E 全部通过；同时修复了只读成员请求成员列表返回 403、以及管理弹窗因显式 import Element Plus 绕过按需样式导致定位失效两个问题。",
+  "meta": "2026-11-15 · macOS · Chrome headless · 1440×960",
+  "metrics": [
+    {
+      "value": "6",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "3/3",
+      "label": "新增管理页 E2E"
+    },
+    {
+      "value": "4",
+      "label": "管理 Tab"
+    },
+    {
+      "value": "0",
+      "label": "未解决缺陷"
+    }
+  ],
+  "facts": [
+    {
+      "label": "代码分支",
+      "value": "agent/develop-m7-09-f2bdc99eb37d"
+    },
+    {
+      "label": "基线",
+      "value": "main 101434e；原型 plans/ui-prototype-v2/harness-evolution.html"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution web + api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 API + Vite proxy + CDP 无头 Chrome"
+    },
+    {
+      "label": "数据",
+      "value": "fixtures:seed 与 E2E 临时创建的两个成员账号"
+    }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "全局空间表",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "全局管理员看到全部空间、额度条、管理员 chips、成员数与进入/成员/额度操作。",
+        "evidence": ["01-global-workspace-table.png"]
+      },
+      {
+        "id": "02",
+        "name": "创建空间",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "弹窗校验名称、额度与至少一名初始管理员，默认勾选当前账号；提交后新空间出现在表中。",
+        "evidence": ["02-create-workspace-dialog.png", "02b-workspace-created.png"]
+      },
+      {
+        "id": "03",
+        "name": "空间管理员额度",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空间管理员只看到当前空间额度与管理员，提供调整额度/管理成员，不出现创建入口。",
+        "evidence": ["03-space-admin-quota.png"]
+      },
+      {
+        "id": "04",
+        "name": "space_admin 行锁定",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空间管理员看到的 space_admin 行是只读 badge，不能改角色或移除；普通成员行仍可调整。",
+        "evidence": ["04-members-role-lock.png"]
+      },
+      {
+        "id": "05",
+        "name": "凭据一次性明文",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "轮换后弹窗展示 whk_ 明文与复制按钮；点击「我已保存」后明文从 DOM 移除，列表只保留前缀。",
+        "evidence": ["05-credential-once.png"]
+      },
+      {
+        "id": "06",
+        "name": "只读角色与 API 约束",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "viewer 页面显示只读 badge，成员/凭据写入口隐藏；直连 GET credentials 返回 403。",
+        "evidence": ["06-viewer-readonly.png"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "只读成员打开成员 Tab 时请求成员列表返回 403",
+      "facts": [
+        { "label": "实际", "value": "viewer 角色调用 GET /members 被服务端拒绝，页面显示错误态。" },
+        { "label": "预期", "value": "viewer 看到明确的只读说明，不发起无权限请求。" },
+        { "label": "根因", "value": "成员列表端点要求 member 及以上；前端按 canManage 关闭查询不够细。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · 按 role 关闭查询并渲染只读说明" }
+    },
+    {
+      "severity": "P2",
+      "title": "管理弹窗按静态布局铺满页面、未居中",
+      "facts": [
+        { "label": "实际", "value": "ElDialog 铺满 1440px 且贴顶，遮罩层与内容错位。" },
+        { "label": "预期", "value": "560px 居中弹窗，遮罩覆盖视口。" },
+        { "label": "根因", "value": "显式 import Element Plus 组件绕过 unplugin-vue-components 的按需样式注入，dialog 定位 CSS 未加载。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · 改用全局组件解析" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "00-prototype-admin.png",
+      "alt": "原型 HTML 中的空间管理页",
+      "label": "Baseline · 原型",
+      "caption": "plans/ui-prototype-v2/harness-evolution.html：空间管理四 Tab、全局空间表与创建空间入口。",
+      "variant": "wide"
+    },
+    {
+      "src": "01-global-workspace-table.png",
+      "alt": "实现后的全局空间表",
+      "label": "After · 全局空间表",
+      "caption": "同一信息架构在真实 API 数据下的实现：额度条、空间管理员 chips、成员数与操作列。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-create-workspace-dialog.png",
+      "alt": "创建工作空间弹窗",
+      "label": "After · 创建空间",
+      "caption": "名称/标识/额度/初始管理员；默认勾选当前全局管理员。",
+      "variant": "wide"
+    },
+    {
+      "src": "03-space-admin-quota.png",
+      "alt": "空间管理员额度页",
+      "label": "After · 空间管理员",
+      "caption": "空间管理员只看到当前空间，提供调整额度与管理成员。",
+      "variant": "wide"
+    },
+    {
+      "src": "04-members-role-lock.png",
+      "alt": "成员与角色表",
+      "label": "After · 成员锁定",
+      "caption": "space_admin 行只读，普通成员行可改角色/移除。",
+      "variant": "wide"
+    },
+    {
+      "src": "05-credential-once.png",
+      "alt": "凭据一次性明文弹窗",
+      "label": "After · 凭据一次性",
+      "caption": "明文只展示一次；关闭后列表只保留前缀。",
+      "variant": "wide"
+    },
+    {
+      "src": "06-viewer-readonly.png",
+      "alt": "只读成员的上报接入页",
+      "label": "After · 只读角色",
+      "caption": "viewer 页面无写按钮，凭据区域只显示权限说明。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "空间/成员/凭据 API",
+        "coverage": "UT + API",
+        "conclusion": "新增 6 条 Web API 测试覆盖路径、方法与请求体。",
+        "recommendation": "保持与 m7-05 后端测试共用契约。"
+      },
+      {
+        "area": "角色可见性",
+        "coverage": "UT + E2E",
+        "conclusion": "全局管理员/空间管理员/成员/viewer 的写入口与只读态均有断言。",
+        "recommendation": "新增写入口时同步补 403 API 断言。"
+      },
+      {
+        "area": "一次性凭据",
+        "coverage": "UT + E2E",
+        "conclusion": "创建后明文可见，关闭后 DOM 与文本均不再包含明文。",
+        "recommendation": "轮换窗口内保留旧凭据直到上游切换。"
+      },
+      {
+        "area": "静态门禁",
+        "coverage": "CI",
+        "conclusion": "typecheck/lint/flow/docs/contract/build/bundle/gates 全绿。",
+        "recommendation": "合并前保持同一套门禁。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready with follow-up gates",
+    "summary": "四 Tab 与原型信息架构一致，角色边界与一次性凭据行为在真实浏览器中通过；未发现未解决缺陷。",
+    "points": [
+      "PR 描述中使用原型截图作为 Before、实现截图作为 After。",
+      "成员列表对 viewer 不发起请求，避免无权限 403 噪音。",
+      "后续新增管理写入口时继续由服务端 403 兜底。"
+    ]
+  },
+  "footer": "Harness Evolution · m7-09 workspace admin smoke · 2026-11-15"
+}
