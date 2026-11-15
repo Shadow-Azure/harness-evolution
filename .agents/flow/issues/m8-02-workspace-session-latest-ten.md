@@ -16,6 +16,7 @@ scope:
   - apps/api/app/service/sessions/**
   - apps/api/app/db/crud/sessions.py
   - apps/api/tests/**
+  - apps/web/src/pages/sessions/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**
@@ -45,7 +46,7 @@ github:
 ## 实现内容
 
 - 空间 Session 集合来自 bad_cases 根会话投影。
-- 按 updated/started 规则稳定排序。
+- 按 `started_at DESC, id ASC` 稳定排序。
 - 响应区分 total 与待轨迹同步数量。
 
 ## 实施步骤
