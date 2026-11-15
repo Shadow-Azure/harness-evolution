@@ -1180,7 +1180,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | 端点 | 参数 | 响应 |
 |---|---|---|
 | `GET /api/workspaces/{wid}/overview/summary` | `from/to` 或 `range=7\|30\|90`、`objects[]` | `OverviewSummary` |
-| `GET /api/workspaces/{wid}/overview/trend` | 同上 + `grain=day\|week\|month` | `{window, buckets:[TrendBucket]}`（空桶补零；>92 天日粒度降级周） |
+| `GET /api/workspaces/{wid}/overview/trend` | 同上 + `grain=day\|week\|month`（默认 `day`） | `{window, grain, buckets:[TrendBucket]}`；`grain` 是本次实际生效的粒度（>92 天日粒度降级为 `week` 并如实返回），空桶补零 |
 | `GET /api/workspaces/{wid}/overview/sources` | 同上 | `{items:[{object,total,self,discovery,sessions}]}` |
 | `GET /api/workspaces/{wid}/bad-cases` | `from/to`、`objects[]`、`badCaseType`、`page`、`pageSize=8` | `{items:[BadCaseListItem], total, page, pageSize}`；`attributionCount` 为去重对象·版本数 |
 | `GET /api/workspaces/{wid}/overview/targets` | `from/to`、`page`、`pageSize=5` | `{summary:{targets,sessions,potential,attributed,nonTarget,unanalyzed}, items:[TargetOverviewItem], total, page, pageSize}`（按 `evolvable` 降序） |
@@ -1189,7 +1189,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/overview/targets/{targetId}/detail` | `versions[]`、`versionLimit∈{5,10,20,0}`、`from/to` | `{target, stats{sessions,potential,distinctCases,versions}, byVersion[], bySource[]}` |
 | `GET /api/workspaces/{wid}/sessions` | `q`、`status`、`sort`、`limit`（默认 10） | `{items:[SessionListItem], total, pendingSessions}` |
 
-- 筛选参数可全空（不限制）；`objects` 空 = 全部，>50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天或 `from > to` → `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
+- 筛选参数可全空（不限制）；`objects` 同时接受重复参数（`?objects=a&objects=b`）与逗号分隔值（`?objects=a,b`），两侧去空白后按首次出现去重，空 = 全部，去重后 >50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天、`from > to`、只给一个边界且没有 `range`、`range` 不是 7/30/90 → `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
 - V2 Session 列表的 `q` 是完整 root session ID（trim 后大小写不敏感精确匹配；子串与标题不命中）；不传或全空白 `q` 返回最新 10 条。去掉 `limit` 的分页只影响 `items`，不影响 `total`。
 - `total` 的口径公式：只数当前 `q`/`status` 下已归一化的根，**不含 pending**。`pendingSessions` 与 `q`/`status`/`sort`/`limit` 无关，只按空间投影计算；两者不是同一集合的划分，`total + pendingSessions` 不等于「空间全部被上报的根」。
 - 共享 root：同一 root 被两个空间上报时，V2 的 `total` 与 `pendingSessions` 在每个空间各算一次（每个空间都需要自己的轨迹与计数）；V1 的可见空间并集对同一根去重，只算一次。

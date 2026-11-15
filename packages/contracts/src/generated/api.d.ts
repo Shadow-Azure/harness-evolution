@@ -869,7 +869,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Workspace Bad Cases
+         * @description Return one filtered page of this workspace's reported cases.
+         */
+        get: operations["list_workspace_bad_cases_api_workspaces__wid__bad_cases_get"];
         put?: never;
         /**
          * Report one bad case with a workspace credential
@@ -1273,6 +1277,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/overview/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Sources
+         * @description Return the per-object distribution, sorted by total then object name.
+         */
+        get: operations["get_overview_sources_api_workspaces__wid__overview_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/overview/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Summary
+         * @description Return this workspace's overview totals, object options, and quota usage.
+         */
+        get: operations["get_overview_summary_api_workspaces__wid__overview_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/overview/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Trend
+         * @description Return the continuous self/discovery trend and its effective grain.
+         */
+        get: operations["get_overview_trend_api_workspaces__wid__overview_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/sessions": {
         parameters: {
             query?: never;
@@ -1583,6 +1647,43 @@ export interface components {
             workspaceUsed: number;
         };
         /**
+         * BadCaseListItem
+         * @description One row of the filtered overview list.
+         */
+        BadCaseListItem: {
+            /**
+             * Attributioncount
+             * @description Distinct (probe type, probe object, object version) attributions.
+             */
+            attributionCount: number;
+            /** Badcaseid */
+            badCaseId: string;
+            /**
+             * Badcasetype
+             * @enum {string}
+             */
+            badCaseType: "self" | "discovery";
+            /** Badcasetypelabel */
+            badCaseTypeLabel: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Objectname */
+            objectName: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Title */
+            title: string;
+            /**
+             * Triggerat
+             * Format: date-time
+             * @description Trigger timestamp. Until object trigger coordinates land in m9-04 this temporarily equals createdAt.
+             */
+            triggerAt: string;
+        };
+        /**
          * BadCaseListResponse
          * @description A Session's problems in external creation order.
          */
@@ -1728,7 +1829,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -2481,6 +2582,83 @@ export interface components {
             status: "analyzed_nonissue";
         };
         /**
+         * OverviewBadCaseListResponse
+         * @description One filtered page plus its authoritative total.
+         */
+        OverviewBadCaseListResponse: {
+            /** Items */
+            items: components["schemas"]["BadCaseListItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * OverviewSummary
+         * @description One workspace overview header: window, totals, and object options.
+         */
+        OverviewSummary: {
+            /**
+             * Objects
+             * @description Distinct object names in the window, ignoring the object filter, sorted case-insensitively by name.
+             */
+            objects: string[];
+            totals: components["schemas"]["OverviewTotals"];
+            window: components["schemas"]["OverviewWindow"];
+        };
+        /**
+         * OverviewTotals
+         * @description Summary counters; ``quota``/``used`` ignore the window and every filter.
+         */
+        OverviewTotals: {
+            /** Badcases */
+            badCases: number;
+            /** Discovery */
+            discovery: number;
+            /**
+             * Quota
+             * @description Workspace bad-case quota; independent of the window.
+             */
+            quota: number;
+            /** Self */
+            self: number;
+            /**
+             * Sessions
+             * @description Distinct root sessions in the window.
+             */
+            sessions: number;
+            /**
+             * Sources
+             * @description Distinct object names in the window.
+             */
+            sources: number;
+            /**
+             * Used
+             * @description Every bad case owned by the workspace; independent of the window.
+             */
+            used: number;
+        };
+        /**
+         * OverviewWindow
+         * @description The inclusive Asia/Shanghai window the response was computed over.
+         */
+        OverviewWindow: {
+            /**
+             * From
+             * Format: date
+             * @description Inclusive Asia/Shanghai start date.
+             */
+            from: string;
+            /**
+             * To
+             * Format: date
+             * @description Inclusive Asia/Shanghai end date.
+             */
+            to: string;
+        };
+        /**
          * ProbeHitSummary
          * @description Hit statistics shown by wizard step 2 before the probe table.
          */
@@ -2931,6 +3109,30 @@ export interface components {
             used: number;
         };
         /**
+         * SourceListResponse
+         * @description Source distribution ordered by total descending, then object name.
+         */
+        SourceListResponse: {
+            /** Items */
+            items: components["schemas"]["SourceRow"][];
+        };
+        /**
+         * SourceRow
+         * @description One object's share of the window, split by bad-case type.
+         */
+        SourceRow: {
+            /** Discovery */
+            discovery: number;
+            /** Object */
+            object: string;
+            /** Self */
+            self: number;
+            /** Sessions */
+            sessions: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * StepAttributionItem
          * @description One probe attribution entry with its cluster-level confidence.
          */
@@ -3289,6 +3491,43 @@ export interface components {
             topics: string[];
             /** Workspaceid */
             workspaceId?: string | null;
+        };
+        /**
+         * TrendBucket
+         * @description One continuous, zero-filled trend bucket.
+         */
+        TrendBucket: {
+            /**
+             * Bucket
+             * Format: date
+             */
+            bucket: string;
+            /** Discovery */
+            discovery: number;
+            /**
+             * Label
+             * @description MM-DD for day/week buckets, YYYY-MM for month buckets.
+             */
+            label: string;
+            /** Self */
+            self: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * TrendResponse
+         * @description The continuous trend series plus the grain actually used.
+         */
+        TrendResponse: {
+            /** Buckets */
+            buckets: components["schemas"]["TrendBucket"][];
+            /**
+             * Grain
+             * @description Effective grain: a day request longer than 92 days is served as week, and the response always states the grain its buckets use.
+             * @enum {string}
+             */
+            grain: "day" | "week" | "month";
+            window: components["schemas"]["OverviewWindow"];
         };
         /**
          * UnanalyzedBadCaseAnalysis
@@ -6075,6 +6314,79 @@ export interface operations {
             };
         };
     };
+    list_workspace_bad_cases_api_workspaces__wid__bad_cases_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
+                range?: number | null;
+                /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
+                objects?: string[] | null;
+                /** @description Restrict the list to one bad-case type. */
+                badCaseType?: "all" | "self" | "discovery";
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Page size; defaults to 8. */
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewBadCaseListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     ingest_bad_case_api_workspaces__wid__bad_cases_post: {
         parameters: {
             query?: never;
@@ -7650,6 +7962,209 @@ export interface operations {
                 };
             };
             /** @description Member id is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_sources_api_workspaces__wid__overview_sources_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
+                range?: number | null;
+                /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
+                objects?: string[] | null;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_summary_api_workspaces__wid__overview_summary_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
+                range?: number | null;
+                /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
+                objects?: string[] | null;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewSummary"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_trend_api_workspaces__wid__overview_trend_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
+                range?: number | null;
+                /** @description Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain. */
+                grain?: string;
+                /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
+                objects?: string[] | null;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
             422: {
                 headers: {
                     [name: string]: unknown;
