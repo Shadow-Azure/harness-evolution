@@ -8,15 +8,18 @@ id: m7-02
 milestone: m7
 depends: []
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/db/**
   - apps/api/alembic/**
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-v2-workspace-foundation-migration.md
 github:
   number: 223
   url: https://github.com/Shadow-Azure/harness-evolution/issues/223

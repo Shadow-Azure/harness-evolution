@@ -19,6 +19,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
 
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
+
 DOMAIN_METADATA = MetaData()
 
 
@@ -227,6 +229,12 @@ bad_cases = Table(
     "bad_cases",
     DOMAIN_METADATA,
     Column("bad_case_id", String(64), primary_key=True),
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
+    ),
     Column("bad_case_session_id", String(36), nullable=False),
     Column("bad_case_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),
@@ -242,6 +250,14 @@ bad_cases = Table(
     Index("ix_bad_cases_session", "bad_case_session_id"),
     Index("ix_bad_cases_agent", "bad_case_agent_id"),
     Index("ix_bad_cases_object", "object_type", "object_name", "object_version"),
+    Index("ix_bad_cases_workspace_created", "workspace_id", "created_at"),
+    Index(
+        "ix_bad_cases_workspace_session",
+        "workspace_id",
+        "bad_case_session_id",
+    ),
+    Index("ix_bad_cases_workspace_object", "workspace_id", "object_name"),
+    Index("ix_bad_cases_workspace_type", "workspace_id", "bad_case_type"),
 )
 
 
@@ -341,6 +357,12 @@ evolution_targets = Table(
     "evolution_targets",
     DOMAIN_METADATA,
     Column("id", String(36), primary_key=True),
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
+    ),
     Column("object_type", String(16), nullable=False),
     Column("object_name", String(128), nullable=False),
     Column("repo_url", String(1024), nullable=False),
@@ -363,9 +385,11 @@ evolution_targets = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint(
+        "workspace_id",
         "object_type",
         "object_name",
-        name="uq_evolution_targets_object",
+        name="uq_evolution_targets_workspace_object",
     ),
     Index("ix_evolution_targets_enabled", "enabled"),
+    Index("ix_evolution_targets_workspace", "workspace_id"),
 )

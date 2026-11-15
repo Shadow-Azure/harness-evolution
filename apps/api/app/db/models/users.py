@@ -4,7 +4,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Column, DateTime, MetaData, String, Table, true
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    true,
+)
 
 from app.utils.time import as_shanghai
 
@@ -24,6 +33,18 @@ users = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("last_login_at", DateTime(timezone=True), nullable=True),
     Column("password_changed_at", DateTime(timezone=True), nullable=True),
+    Column(
+        "auth_provider",
+        String(32),
+        nullable=False,
+        server_default="password",
+    ),
+    Column("external_subject", String(255), nullable=True),
+    UniqueConstraint(
+        "auth_provider",
+        "external_subject",
+        name="uq_users_auth_provider_external_subject",
+    ),
 )
 
 

@@ -25,6 +25,7 @@ from sqlalchemy import (
     select,
     text,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.pool import QueuePool
 
@@ -70,6 +71,7 @@ from app.db.models.evolution import (
     probe_clusters,
 )
 from app.db.models.jobs import job_runs
+from app.db.models.run_events import evolution_run_events
 from app.db.models.users import users
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
@@ -507,7 +509,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0013"
+        assert result.scalar_one() == "0014"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -525,6 +527,8 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "updated_at",
             "last_login_at",
             "password_changed_at",
+            "auth_provider",
+            "external_subject",
         }
         by_name = {column["name"]: column for column in columns}
         assert normalized_server_default(by_name["created_at"]) is None
@@ -606,6 +610,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         assert event_columns == {
             "id",
             "run_id",
+            "workspace_id",
             "seq",
             "event_type",
             "level",
@@ -626,6 +631,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
             "ix_evolution_run_events_event_type",
             "ix_evolution_run_events_level",
             "ix_evolution_run_events_cluster_id",
+            "ix_evolution_run_events_workspace",
         }
         assert event_uniques == {("run_id", "seq")}
         assert (
@@ -682,6 +688,307 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         assert bad_case_by_name["title"]["nullable"] is False
         assert bad_case_by_name["bad_case_description"]["nullable"] is False
         assert "reason" not in bad_case_by_name
+    finally:
+        await database.dispose()
+
+
+async def test_v2_workspace_foundation_backfills_default_workspace(
+    tmp_path: Path,
+) -> None:
+    """Revision 0014 seeds the default space, backfills scopes, and tightens keys."""
+    database = create_database(sqlite_settings(tmp_path))
+    now = datetime(2026, 11, 15, 9, tzinfo=UTC)
+    await database.start()
+    try:
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0013")
+        async with database.transaction() as session:
+            for user_id, username in (("u-admin", "admin"), ("u-viewer", "viewer")):
+                await session.execute(
+                    insert(users).values(
+                        id=user_id,
+                        username=username,
+                        password_hash="not-used",  # noqa: S106
+                        display_name=username,
+                        role="admin" if user_id == "u-admin" else "member",
+                        is_active=True,
+                        must_change_password=False,
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                )
+            for case_id, case_type in (("BC-1", "self"), ("BC-2", "discovery")):
+                await session.execute(
+                    insert(bad_cases).values(
+                        bad_case_id=case_id,
+                        bad_case_session_id="session-1",
+                        bad_case_type=case_type,
+                        object_name="deep-research",
+                        object_type="skill",
+                        title=case_id,
+                        bad_case_description=case_id,
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                )
+            await session.execute(
+                insert(evolution_targets).values(
+                    id="target-1",
+                    object_type="skill",
+                    object_name="deep-research",
+                    repo_url="https://example.invalid/skills.git",
+                    sub_dir="skills/deep-research",
+                    default_ref="v2.0.0",
+                    enabled=True,
+                    created_by=None,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+            await session.execute(
+                insert(evolution_runs).values(
+                    id="run-1",
+                    title="workspace foundation",
+                    mode="full",
+                    engine_key="full",
+                    eval_config={},
+                    target_config_id=None,
+                    target_type="skill",
+                    target_name="deep-research",
+                    target_version="v2.0.0",
+                    repo_url="https://example.invalid/skills.git",
+                    sub_dir="skills/deep-research",
+                    repo_path=None,
+                    base_ref="v2.0.0",
+                    base_commit=None,
+                    branch_name=None,
+                    workspace_path=None,
+                    remote_name="origin",
+                    push_status="pending",
+                    pushed_at=None,
+                    push_error=None,
+                    window_from=None,
+                    window_to=None,
+                    models=[],
+                    status="running",
+                    blocked_stage=None,
+                    retry_attempts=0,
+                    next_retry_at=None,
+                    eval_status="pending",
+                    error_stage=None,
+                    error_message=None,
+                    error_at=None,
+                    progress_unit=0,
+                    stats={},
+                    created_by=None,
+                    created_at=now,
+                    finished_at=None,
+                ),
+            )
+            await session.execute(
+                insert(evolution_run_events).values(
+                    run_id="run-1",
+                    seq=1,
+                    event_type="prepare_started",
+                    level="info",
+                    stage="prepare",
+                    message="started",
+                    created_at=now,
+                ),
+            )
+
+        await upgrade_database(database)
+        await upgrade_database(database)
+
+        async with database.session() as session:
+            revision: str = str(
+                (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one(),
+            )
+            assert revision == "0014"
+            workspace_rows = (
+                (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
+            )
+            assert [dict(row) for row in workspace_rows] == [
+                {
+                    "id": "ws-default",
+                    "name": "默认空间",
+                    "mark": "迁移回填：无空间上下文的存量数据",  # noqa: RUF001
+                    "quota": 52,
+                    "status": "active",
+                    "created_by": None,
+                    "created_at": workspace_rows[0]["created_at"],
+                    "updated_at": workspace_rows[0]["updated_at"],
+                },
+            ]
+            for table in (
+                "bad_cases",
+                "evolution_targets",
+                "evolution_runs",
+                "evolution_run_events",
+            ):
+                null_count: int = int(
+                    (
+                        await session.execute(
+                            text(f"SELECT COUNT(*) FROM {table} WHERE workspace_id IS NULL"),  # noqa: S608
+                        )
+                    ).scalar_one(),
+                )
+                assert null_count == 0
+            memberships = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT user_id, role FROM workspace_members "
+                            "WHERE workspace_id = 'ws-default' ORDER BY user_id",
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            assert [dict(row) for row in memberships] == [
+                {"user_id": "u-admin", "role": "viewer"},
+                {"user_id": "u-viewer", "role": "viewer"},
+            ]
+
+        async with database.engine.connect() as connection:
+            table_names = await connection.run_sync(
+                lambda sync_connection: set(inspect(sync_connection).get_table_names()),
+            )
+            user_columns = await connection.run_sync(
+                lambda sync_connection: {
+                    column["name"]: column
+                    for column in inspect(sync_connection).get_columns("users")
+                },
+            )
+            user_indexes = await connection.run_sync(
+                lambda sync_connection: {
+                    index["name"]: index for index in inspect(sync_connection).get_indexes("users")
+                },
+            )
+            table_indexes = await connection.run_sync(
+                lambda sync_connection: {
+                    (table, index["name"])
+                    for table in (
+                        "bad_cases",
+                        "evolution_targets",
+                        "evolution_runs",
+                        "evolution_run_events",
+                    )
+                    for index in inspect(sync_connection).get_indexes(table)
+                },
+            )
+
+        assert {
+            "workspaces",
+            "workspace_members",
+            "workspace_ingest_credentials",
+        } <= table_names
+        assert user_columns["auth_provider"]["nullable"] is False
+        assert user_columns["external_subject"]["nullable"] is True
+        assert "uq_users_auth_provider_external_subject" in user_indexes
+        assert {
+            ("bad_cases", "ix_bad_cases_workspace_created"),
+            ("bad_cases", "ix_bad_cases_workspace_session"),
+            ("bad_cases", "ix_bad_cases_workspace_object"),
+            ("bad_cases", "ix_bad_cases_workspace_type"),
+            ("evolution_targets", "ix_evolution_targets_workspace"),
+            ("evolution_runs", "ix_evolution_runs_workspace_created"),
+            ("evolution_run_events", "ix_evolution_run_events_workspace"),
+        } <= table_indexes
+
+        async with database.transaction() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO workspaces "
+                    "(id, name, mark, quota, status, created_by, created_at, updated_at) "
+                    "VALUES ('ws-other', '其它空间', '', 10, 'active', NULL, :now, :now)",
+                ),
+                {"now": now},
+            )
+            await session.execute(
+                insert(evolution_targets).values(
+                    id="target-other",
+                    workspace_id="ws-other",
+                    object_type="skill",
+                    object_name="deep-research",
+                    repo_url="https://example.invalid/other.git",
+                    sub_dir="skills/other",
+                    default_ref="v1",
+                    enabled=True,
+                    created_by=None,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+            defaulted_case: str = str(
+                (
+                    await session.execute(
+                        text(
+                            "INSERT INTO bad_cases "
+                            "(bad_case_id, bad_case_session_id, bad_case_type, object_name, "
+                            "object_type, title, bad_case_description, created_at, updated_at) "
+                            "VALUES ('BC-3', 'session-1', 'self', 'deep-research', 'skill', "
+                            "'BC-3', 'BC-3', :now, :now) RETURNING workspace_id",
+                        ),
+                        {"now": now},
+                    )
+                ).scalar_one(),
+            )
+            assert defaulted_case == "ws-default"
+
+        with pytest.raises(IntegrityError):
+            async with database.transaction() as session:
+                await session.execute(
+                    insert(evolution_targets).values(
+                        id="target-duplicate",
+                        workspace_id="ws-default",
+                        object_type="skill",
+                        object_name="deep-research",
+                        repo_url="https://example.invalid/duplicate.git",
+                        sub_dir="skills/duplicate",
+                        default_ref="v1",
+                        enabled=True,
+                        created_by=None,
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                )
+
+        async with database.transaction() as session:
+            await session.execute(
+                insert(users).values(
+                    id="u-oidc",
+                    username="oidc-one",
+                    password_hash="not-used",  # noqa: S106
+                    display_name="OIDC One",
+                    role="member",
+                    is_active=True,
+                    must_change_password=False,
+                    auth_provider="oidc",
+                    external_subject="subject-1",
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+        with pytest.raises(IntegrityError):
+            async with database.transaction() as session:
+                await session.execute(
+                    insert(users).values(
+                        id="u-oidc-duplicate",
+                        username="oidc-two",
+                        password_hash="not-used",  # noqa: S106
+                        display_name="OIDC Two",
+                        role="member",
+                        is_active=True,
+                        must_change_password=False,
+                        auth_provider="oidc",
+                        external_subject="subject-1",
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                )
     finally:
         await database.dispose()
 
@@ -751,7 +1058,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0013"
+        assert revision == "0014"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -922,7 +1229,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0013"
+        assert result.scalar_one() == "0014"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -940,6 +1247,8 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "updated_at",
             "last_login_at",
             "password_changed_at",
+            "auth_provider",
+            "external_subject",
         }
         by_name = {column["name"]: column for column in mysql_columns}
         assert normalized_server_default(by_name["created_at"]) is None
@@ -1021,6 +1330,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         assert event_columns == {
             "id",
             "run_id",
+            "workspace_id",
             "seq",
             "event_type",
             "level",
@@ -1041,6 +1351,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_evolution_run_events_event_type",
             "ix_evolution_run_events_level",
             "ix_evolution_run_events_cluster_id",
+            "ix_evolution_run_events_workspace",
         }
         assert event_uniques == {("run_id", "seq")}
         assert (
@@ -1081,6 +1392,9 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "evolution_finals",
             "sync_lock",
             "bad_case_root_sync",
+            "workspaces",
+            "workspace_members",
+            "workspace_ingest_credentials",
         } <= table_names
         assert {"root_session_id", "agent_id", "content_hash", "line_count"} <= payload_columns
         async with database.engine.connect() as connection:
@@ -1090,7 +1404,33 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         bad_case_by_name = {column["name"]: column for column in bad_case_columns}
         assert bad_case_by_name["title"]["nullable"] is False
         assert bad_case_by_name["bad_case_description"]["nullable"] is False
+        assert bad_case_by_name["workspace_id"]["nullable"] is False
         assert "reason" not in bad_case_by_name
+        async with database.session() as session:
+            default_workspace = (
+                (
+                    await session.execute(
+                        text("SELECT id, quota FROM workspaces WHERE id = 'ws-default'"),
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            for table in (
+                "bad_cases",
+                "evolution_targets",
+                "evolution_runs",
+                "evolution_run_events",
+            ):
+                null_count: int = int(
+                    (
+                        await session.execute(
+                            text(f"SELECT COUNT(*) FROM {table} WHERE workspace_id IS NULL"),  # noqa: S608
+                        )
+                    ).scalar_one(),
+                )
+                assert null_count == 0
+        assert dict(default_workspace) == {"id": "ws-default", "quota": 50}
     finally:
         await database.dispose()
 
