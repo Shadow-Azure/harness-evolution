@@ -9,13 +9,19 @@ milestone: m7
 depends:
   - m7-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/**
+  - apps/api/app/db/crud/workspaces.py
   - apps/api/app/service/workspaces/**
   - apps/api/app/service/identity/**
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/app/middleware/auth.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -44,6 +50,7 @@ github:
 - 实现 viewer < member < space_admin 等级比较。
 - 全局管理员直通但可写入真实空间成员行。
 - auth/session 使用批量查询返回 used、memberCount 和有效角色。
+- 仓储按设计落在 `app/db/crud/workspaces.py`；装配点（`main.py`、`errors.py`、`middleware/auth.py`）、`apps/api/tests` 与 `plans/` 检视记录一并纳入 scope。
 
 ## 实施步骤
 

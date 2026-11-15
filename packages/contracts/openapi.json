@@ -802,7 +802,9 @@
           "BAD_CASE_QUERY_TIMEOUT",
           "BAD_CASE_QUERY_REQUEST_FAILED",
           "BAD_CASE_CATALOG_SYNC_FAILED",
-          "BAD_CASE_CATALOG_SYNC_INTERRUPTED"
+          "BAD_CASE_CATALOG_SYNC_INTERRUPTED",
+          "WORKSPACE_NOT_FOUND",
+          "WORKSPACE_FORBIDDEN"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -3645,6 +3647,33 @@
         "title": "SessionListResponse",
         "type": "object"
       },
+      "SessionPayload": {
+        "additionalProperties": false,
+        "description": "Current user plus every workspace they can see for this session.",
+        "properties": {
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "user": {
+            "$ref": "#/components/schemas/PublicUser"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/SessionWorkspace"
+            },
+            "title": "Workspaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "user",
+          "workspaces",
+          "truncated"
+        ],
+        "title": "SessionPayload",
+        "type": "object"
+      },
       "SessionStats": {
         "additionalProperties": false,
         "description": "Backend-computed whole-tree card statistics.",
@@ -3738,6 +3767,62 @@
           "badCases"
         ],
         "title": "SessionTree",
+        "type": "object"
+      },
+      "SessionWorkspace": {
+        "additionalProperties": false,
+        "description": "One workspace visible to the current user with its live aggregates.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mark": {
+            "title": "Mark",
+            "type": "string"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quota": {
+            "title": "Quota",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "global_admin",
+              "space_admin",
+              "member",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "spaceAdminCount": {
+            "title": "Spaceadmincount",
+            "type": "integer"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mark",
+          "role",
+          "quota",
+          "used",
+          "memberCount",
+          "spaceAdminCount"
+        ],
+        "title": "SessionWorkspace",
         "type": "object"
       },
       "StepAttributionItem": {
@@ -5303,6 +5388,53 @@
           }
         },
         "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "description": "Return the current user with every workspace visible to this session.",
+        "operationId": "session_api_auth_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPayload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Session",
         "tags": [
           "auth"
         ]

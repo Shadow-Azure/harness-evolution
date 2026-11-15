@@ -34,6 +34,7 @@ from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
+from app.db.crud.workspaces import WorkspaceRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.jobs import JobRunRecord
@@ -92,6 +93,7 @@ from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
+from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
@@ -220,6 +222,7 @@ def create_app(
     )
     jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
+    workspaces = WorkspaceService(WorkspaceRepository(resolved_database))
     problems = ProblemService(
         ProblemRepository(resolved_database),
         BadCaseService(BadCaseRepository(resolved_database)),
@@ -451,6 +454,7 @@ def create_app(
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events
     app.state.sessions = sessions
+    app.state.workspaces = workspaces
     app.state.problems = problems
     app.state.evolution_targets = evolution_targets
     app.state.evolution_runs = evolution_runs
