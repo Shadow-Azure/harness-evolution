@@ -804,7 +804,16 @@
           "BAD_CASE_CATALOG_SYNC_FAILED",
           "BAD_CASE_CATALOG_SYNC_INTERRUPTED",
           "WORKSPACE_NOT_FOUND",
-          "WORKSPACE_FORBIDDEN"
+          "WORKSPACE_FORBIDDEN",
+          "WORKSPACE_EXISTS",
+          "MEMBER_EXISTS",
+          "MEMBER_NOT_FOUND",
+          "ROLE_INVALID",
+          "ROLE_LOCKED",
+          "QUOTA_INVALID",
+          "CREDENTIAL_NOT_FOUND",
+          "CREDENTIAL_INVALID",
+          "CREDENTIAL_LIMIT"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -4955,6 +4964,438 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "Workspace": {
+        "additionalProperties": false,
+        "description": "Full workspace returned by the management API.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mark": {
+            "title": "Mark",
+            "type": "string"
+          },
+          "memberCount": {
+            "title": "Membercount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quota": {
+            "title": "Quota",
+            "type": "integer"
+          },
+          "spaceAdmins": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceAdmin"
+            },
+            "title": "Spaceadmins",
+            "type": "array"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mark",
+          "quota",
+          "used",
+          "memberCount",
+          "spaceAdmins",
+          "createdAt"
+        ],
+        "title": "Workspace",
+        "type": "object"
+      },
+      "WorkspaceAdmin": {
+        "additionalProperties": false,
+        "description": "Minimal identity of one workspace administrator on a workspace card.",
+        "properties": {
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName"
+        ],
+        "title": "WorkspaceAdmin",
+        "type": "object"
+      },
+      "WorkspaceCreateRequest": {
+        "additionalProperties": false,
+        "description": "Administrator-provisioned workspace with at least one initial space admin.",
+        "properties": {
+          "mark": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Mark",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "quota": {
+            "title": "Quota",
+            "type": "integer"
+          },
+          "spaceAdminIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Spaceadminids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "quota",
+          "spaceAdminIds"
+        ],
+        "title": "WorkspaceCreateRequest",
+        "type": "object"
+      },
+      "WorkspaceCredential": {
+        "additionalProperties": false,
+        "description": "One ingest credential without its one-time plaintext secret.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastusedat"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revokedat"
+          }
+        },
+        "required": [
+          "id",
+          "prefix",
+          "createdAt",
+          "lastUsedAt",
+          "revokedAt"
+        ],
+        "title": "WorkspaceCredential",
+        "type": "object"
+      },
+      "WorkspaceCredentialCreated": {
+        "additionalProperties": false,
+        "description": "One-time credential creation response; the plaintext is never persisted.",
+        "properties": {
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "credentialId": {
+            "title": "Credentialid",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credentialId",
+          "prefix",
+          "credential"
+        ],
+        "title": "WorkspaceCredentialCreated",
+        "type": "object"
+      },
+      "WorkspaceCredentialListResponse": {
+        "additionalProperties": false,
+        "description": "Every credential row owned by one workspace, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceCredential"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceCredentialListResponse",
+        "type": "object"
+      },
+      "WorkspaceListResponse": {
+        "additionalProperties": false,
+        "description": "Every workspace visible to the current user, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceListResponse",
+        "type": "object"
+      },
+      "WorkspaceMember": {
+        "additionalProperties": false,
+        "description": "One membership row with the joined user's public identity.",
+        "properties": {
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "title": "Joinedat",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "viewer",
+              "member",
+              "space_admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "userId": {
+            "title": "Userid",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          },
+          "workspaceId": {
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId",
+          "username",
+          "displayName",
+          "role",
+          "joinedAt",
+          "updatedAt"
+        ],
+        "title": "WorkspaceMember",
+        "type": "object"
+      },
+      "WorkspaceMemberCandidate": {
+        "additionalProperties": false,
+        "description": "One non-member user returned by the server-side candidate search.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "displayName",
+          "active"
+        ],
+        "title": "WorkspaceMemberCandidate",
+        "type": "object"
+      },
+      "WorkspaceMemberCandidateListResponse": {
+        "additionalProperties": false,
+        "description": "Bounded candidate page that never exposes the global user directory.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMemberCandidate"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceMemberCandidateListResponse",
+        "type": "object"
+      },
+      "WorkspaceMemberCreateRequest": {
+        "additionalProperties": false,
+        "description": "Add one existing user to a workspace at an allowed role.",
+        "properties": {
+          "role": {
+            "enum": [
+              "viewer",
+              "member",
+              "space_admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "userId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Userid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "role"
+        ],
+        "title": "WorkspaceMemberCreateRequest",
+        "type": "object"
+      },
+      "WorkspaceMemberListResponse": {
+        "additionalProperties": false,
+        "description": "Members of one workspace ordered by role and join time.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMember"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "WorkspaceMemberListResponse",
+        "type": "object"
+      },
+      "WorkspaceMemberUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Change one existing membership's role.",
+        "properties": {
+          "role": {
+            "enum": [
+              "viewer",
+              "member",
+              "space_admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "WorkspaceMemberUpdateRequest",
+        "type": "object"
+      },
+      "WorkspaceUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Partial workspace update; field-level permission is enforced by the service.",
+        "properties": {
+          "mark": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota"
+          }
+        },
+        "title": "WorkspaceUpdateRequest",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -8108,6 +8549,1044 @@
         "summary": "Create User",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "description": "Return every workspace visible to the current user.",
+        "operationId": "list_workspaces_api_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Workspaces",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Create one workspace with at least one existing space administrator.",
+        "operationId": "create_workspace_api_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Administrator role is required"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace name already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quota or initial admin list is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}": {
+      "put": {
+        "description": "Update the workspace fields permitted for the caller's effective role.",
+        "operationId": "update_workspace_api_workspaces__wid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Role cannot change this field"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace name already exists"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Quota is below current usage"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/credentials": {
+      "get": {
+        "description": "Return every credential row, including revoked ones, without plaintext.",
+        "operationId": "list_credentials_api_workspaces__wid__credentials_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceCredentialListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Credentials",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Mint one credential and return its plaintext exactly once.",
+        "operationId": "create_credential_api_workspaces__wid__credentials_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceCredentialCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Three active credentials already exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Credential",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/credentials/{cid}": {
+      "delete": {
+        "description": "Revoke one credential; retries stay idempotent.",
+        "operationId": "revoke_credential_api_workspaces__wid__credentials__cid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "cid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Cid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Credential does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Credential id is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Revoke Credential",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/member-candidates": {
+      "get": {
+        "description": "Search non-member users without exposing the global user directory.",
+        "operationId": "list_member_candidates_api_workspaces__wid__member_candidates_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 64,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMemberCandidateListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Search limit is out of range"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Member Candidates",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/members": {
+      "get": {
+        "description": "Return the member table in role and join-time order.",
+        "operationId": "list_members_api_workspaces__wid__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMemberListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Members",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Add one existing user to the workspace.",
+        "operationId": "add_member_api_workspaces__wid__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceMemberCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Space admins cannot grant space_admin"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User is already a member"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "User or role is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Add Member",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/members/self-admin": {
+      "post": {
+        "description": "Write an idempotent real space-admin row for the global administrator.",
+        "operationId": "appoint_self_as_space_admin_api_workspaces__wid__members_self_admin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Only the global administrator may appoint itself"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Appoint Self As Space Admin",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/members/{userId}": {
+      "delete": {
+        "description": "Remove one workspace member while preserving a space administrator.",
+        "operationId": "remove_member_api_workspaces__wid__members__userId__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Userid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Space admins cannot remove space admins"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace or member does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The last space admin cannot be removed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Member id is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Remove Member",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "description": "Change one workspace member's role.",
+        "operationId": "update_member_api_workspaces__wid__members__userId__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Userid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceMemberUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMember"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Space admins cannot grant space_admin"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace or member does not exist"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Space-admin row or last admin is locked"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Role is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Update Member",
+        "tags": [
+          "workspaces"
         ]
       }
     }
