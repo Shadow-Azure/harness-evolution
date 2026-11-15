@@ -1,0 +1,198 @@
+{
+  "title": "m7-08 空间壳集成冒烟报告",
+  "eyebrow": "Harness Evolution · M7 身份与空间边界",
+  "summary": "在真实 API + Vite proxy + 无头 Chrome 环境中验证 /workspaces/:wid 空间壳、空间选择、跨空间缓存隔离、旧深链一次重定向与不可见空间回退。4 条新增浏览器用例、m1/m3/m4/m5/m6 回归与跨栈代理测试全部通过；发现并修复了移动端自进化页横向溢出与测试环境外部表未初始化两个问题。",
+  "meta": "2026-11-15 · macOS · Chrome headless · 1408×900 与 390×844",
+  "metrics": [
+    { "value": "6", "label": "冒烟场景" },
+    { "value": "4/4", "label": "新增空间壳 E2E" },
+    { "value": "6/6", "label": "跨栈代理集成" },
+    { "value": "0", "label": "未解决缺陷" }
+  ],
+  "facts": [
+    { "label": "代码提交", "value": "5519a9a（PR #261）" },
+    { "label": "分支", "value": "agent/develop-m7-08-b2e3bbf74fc0" },
+    { "label": "应用", "value": "harness-evolution web + api（sqlite, demo fixtures）" },
+    { "label": "测试方式", "value": "真实 API + Vite proxy + CDP 无头 Chrome" },
+    { "label": "数据", "value": "fixtures:seed（m2-synthetic）与独立临时数据目录" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "未登录访问空间路由",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "访问 /workspaces/ws-default/sessions 跳 /login，redirect 参数保留原路径。",
+        "evidence": ["01-anonymous-login-redirect.png"]
+      },
+      {
+        "id": "02",
+        "name": "空间选择页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "两个可见空间各展示名称、角色、used/quota 与成员数，卡片可进入。",
+        "evidence": ["02-workspace-chooser.png"]
+      },
+      {
+        "id": "03",
+        "name": "空间壳与顶栏切换器",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "Session 浏览器在空间壳内渲染，顶栏显示当前空间、角色与配额入口。",
+        "evidence": ["03-workspace-sessions.png", "04-workspace-picker.png"]
+      },
+      {
+        "id": "04",
+        "name": "切换空间后不复用旧缓存",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "从默认空间切到空空间后列表为空，不出现旧空间 Session；切回后重新拉取。",
+        "evidence": ["05-empty-workspace.png"]
+      },
+      {
+        "id": "05",
+        "name": "旧深链一次重定向",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "旧 /sessions/:sid/errors 替换为 /workspaces/ws-default/...，history.state.replaced=true。",
+        "evidence": ["06-legacy-deep-link.png"]
+      },
+      {
+        "id": "06",
+        "name": "不可见空间回选择页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "wid 不在 auth/session 可见空间内时进入 /workspaces?reason=forbidden，并显示无权限提示。",
+        "evidence": []
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "移动端自进化页横向溢出 12px",
+      "facts": [
+        { "label": "实际", "value": "390px 视口下 .evolution-page-frame scrollWidth=402。" },
+        { "label": "预期", "value": "scrollWidth 等于 clientWidth，顶栏与内容不横向滚动。" },
+        { "label": "根因", "value": "空间壳 main 改为全宽后，V1 的页面框仍按旧的 1280 居中列做 -12px/宽度 +24px 补偿。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 5519a9a" }
+    },
+    {
+      "severity": "P2",
+      "title": "auth/session 启动依赖外部 bad_cases 表",
+      "facts": [
+        { "label": "实际", "value": "未 seed 外部表的 E2E/集成环境启动后停在登录页。" },
+        { "label": "预期", "value": "空间壳启动前外部表已初始化；测试环境应显式 bootstrap。" },
+        { "label": "根因", "value": "auth/session 的 used 聚合读取外部引导表；m1 与跨栈代理测试原先未 seed。" }
+      ],
+      "state": { "kind": "fixed", "label": "已修复 · 5519a9a（测试 bootstrap）" }
+    },
+    {
+      "severity": "P3",
+      "title": "默认落地页暂为 Session 列表而非总览",
+      "facts": [
+        { "label": "实际", "value": "/workspaces/:wid 默认进入 sessions。" },
+        { "label": "预期", "value": "设计 08 §1 的默认落地页是 overview。" },
+        { "label": "根因", "value": "overview 属于 m8-04，尚未实现；m7-08 不新建占位页。" }
+      ],
+      "state": { "kind": "manual", "label": "已记录 · 待 m8-04" }
+    },
+    {
+      "severity": "P3",
+      "title": "归因/探针仍走可见空间并集兼容端点",
+      "facts": [
+        { "label": "实际", "value": "bad case 详情已空间化，/analysis 与 /probes 仍是兼容端点。" },
+        { "label": "预期", "value": "空间级归因端点落地后，同一 case 的多空间归因各自隔离。" },
+        { "label": "根因", "value": "m7-06 只提供可见空间并集；m7-08 scope 不含 apps/api。" }
+      ],
+      "state": { "kind": "manual", "label": "已记录 · Agent Note 欠账" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "01-anonymous-login-redirect.png",
+      "alt": "未登录访问空间路由跳到登录页",
+      "label": "01 · 未登录回退",
+      "caption": "redirect 参数保留原空间路径，登录后可直接回到目标页。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-workspace-chooser.png",
+      "alt": "空间选择页",
+      "label": "02 · 空间选择",
+      "caption": "两卡片并列展示角色、bad case 额度与成员数。",
+      "variant": "wide"
+    },
+    {
+      "src": "03-workspace-sessions.png",
+      "alt": "空间壳内的 Session 浏览器",
+      "label": "03 · 空间壳",
+      "caption": "顶栏显示当前空间与角色；页面全部带 wid。",
+      "variant": "wide"
+    },
+    {
+      "src": "04-workspace-picker.png",
+      "alt": "空间切换器展开",
+      "label": "04 · 切换器",
+      "caption": "切换器列出全部可见空间及配额进度。",
+      "variant": "issue"
+    },
+    {
+      "src": "05-empty-workspace.png",
+      "alt": "切换到空空间后列表为空",
+      "label": "05 · 缓存隔离",
+      "caption": "空空间不显示旧空间 Session，证明缓存未跨空间命中。",
+      "variant": "wide"
+    },
+    {
+      "src": "06-legacy-deep-link.png",
+      "alt": "旧深链重定向到空间错误详情",
+      "label": "06 · 旧深链",
+      "caption": "旧 /sessions/:sid/errors 已在空间壳内打开。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["区域", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "路由守卫与旧链接解析",
+        "coverage": "UT + E2E",
+        "conclusion": "router.test.ts 15 条 + auth-flow 3 条；空间壳 E2E 覆盖未登录、不可见空间与一次重定向。",
+        "recommendation": "保留；每次新增空间路由时补一条守卫断言。"
+      },
+      {
+        "area": "缓存隔离与页面状态重建",
+        "coverage": "UT + E2E",
+        "conclusion": "queryKeys 前缀、WorkspacePicker 切空间、App RouterView key 均有测试。",
+        "recommendation": "新增工作空间级资源时沿用 ['ws', wid] 前缀。"
+      },
+      {
+        "area": "数据端点空间化",
+        "coverage": "UT + E2E",
+        "conclusion": "Session/bad case/evolution/catalog/SSE ticket 均带 wid；m3/m4/m5 回归通过。",
+        "recommendation": "后端新增空间端点时同步 API 模块与 query key。"
+      },
+      {
+        "area": "视觉与响应式",
+        "coverage": "E2E + 截图",
+        "conclusion": "1408 与 390 两档通过；Before/After 截图已归档。",
+        "recommendation": "m8-04 总览页加入后重跑同一组视口。"
+      },
+      {
+        "area": "真实外部服务",
+        "coverage": "未覆盖",
+        "conclusion": "使用 sqlite + demo fixtures；未连接真实轨迹服务或生产数据库。",
+        "recommendation": "发布前按部署 issue 做一次真实环境冒烟。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready for review · follow-ups tracked",
+    "summary": "空间壳、守卫与缓存隔离在真实浏览器链路中按预期工作；没有未解决的阻断缺陷。两个已修复问题均通过自动化回归覆盖。",
+    "points": [
+      "m8-04 交付总览后，把默认落地页从 sessions 切到 overview 并重跑本报告。",
+      "空间级归因端点落地前，归因只做 wid 缓存隔离与 Session 归属校验。",
+      "发布前在真实部署上补一次外部表初始化与登录冒烟。"
+    ]
+  },
+  "footer": "由 dsh-superagent 在 ZTGolem 账号下生成；证据来自真实 API + Vite proxy + 无头 Chrome。"
+}
