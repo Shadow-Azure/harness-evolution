@@ -9,7 +9,7 @@ milestone: m8
 depends:
   - m8-02
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/overview.py
   - apps/api/app/service/overview/**
