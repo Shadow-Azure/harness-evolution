@@ -228,7 +228,7 @@ erDiagram
 - DB 列映射：`title` ↔ `bad_cases.title`，`reason` ↔ `bad_cases.bad_case_description`——存储层列名带 `bad_case_` 前缀，DTO 字段保留 `reason`（见 [06 §4.1](06-database-design.md)）。
 - `anchor` 是后端算出的挂载点：`anchor.agentId` 是宿主节点（可能是上报人的父节点），`anchor.eventIndex` 是该节点 `events[]` 下标；上报者 session 不对外暴露。
 - `metaData` 原样返回；前端按通用 KV 渲染成事实 chips（值过长截断）。
-- **归因状态（V2）**：`attributionCount` 是该 bad case 的去重「对象·版本」归因数；`hasAttribution = attributionCount > 0`。没有关联归因就是未归因；`BadCase` 不再内联单条 `analysis`，历史 `bad_case_analysis` 行保留并与多条 probe 归因关联。
+- **归因状态（V2）**：`attributionCount` 是该 bad case 的去重「对象·版本」归因数，唯一定义见 §3.10（经 `bad_case_analysis JOIN probe_reports` 去重 `(probe_type, probe_object, object_version)`，[06 §4.2.1](06-database-design.md)）；`hasAttribution = attributionCount > 0`。没有关联归因就是未归因；`BadCase` 不再内联单条 `analysis`，历史 `bad_case_analysis` 行保留并与多条 probe 归因关联。
 - 展示状态由归因子项决定：无归因 → 「尚未归因」；有 `attributed` → 「可归因」（附带 `category`：模型 / prompt / 错误）；只有 `non_target` → 「非该对象问题」。具体条数看 §4.19 的分页接口。
 
 ### 3.5 自进化运行
@@ -575,10 +575,14 @@ erDiagram
 { "badCaseId": "BC-HC-014", "sessionId": "a7d3e0f2-91b4-...",
   "objectName": "deep-research", "badCaseType": "self",
   "badCaseTypeLabel": "自身存在问题", "title": "输出缺少来源校验",
-  "triggerAt": "2026-11-09T15:50:00+08:00", "createdAt": "2026-11-09T15:58:00+08:00",
+  "triggerAt": "2026-11-09T15:58:00+08:00", "createdAt": "2026-11-09T15:58:00+08:00",
   "attributionCount": 3 }
 ```
 
+- `triggerAt` 当前临时等于 `createdAt`：m9-04 对象触发点坐标落地前不存独立触发时间，调用方不得把它当排序键或相等判断依据，也不得按「触发早于上报」做假设。
+- `attributionCount` 的唯一定义是经 `bad_case_analysis JOIN probe_reports` 去重的 `(probe_type, probe_object, object_version)` 三元组数（见 [06 §4.2.1](06-database-design.md)）；§3.4、§4.7 与 [07 §4.1](07-backend-implementation.md) 都引用该定义，不再各自表述。
+- `totals.sessions` 数的是窗口内被上报的 root（`COUNT(DISTINCT bad_case_session_id)`），**包含还没有归一化轨迹的 pending 根**；它不是 [06 §7.5](06-database-design.md) 的空间 Session 集合（JOIN `session_families` 的投影），也不等于 Session 页 `total + pendingSessions`，页面不能把三个数相加。
+- 所有 overview 读路径只统计 `bad_case_type IN ('self','discovery')` 的行：legacy 目录同步可能写入越界类型，这些行不计入 `badCases/self/discovery/sessions/sources/objects` 与趋势，但仍计入空间级 `used`，从而保持 `badCases = self + discovery` 与趋势总和一致。
 - 所有 overview 接口的 `objects[]` 空 = 全部，多选项取并集；时间窗按 `bad_cases.created_at`，Session 启动时间只用于 Session 页展示。
 - `GET …/sessions?q=` 在 V2 中把非空 `q` 当作 root session ID 精确查询；不传 `q` 返回最新 10 条，响应额外带 `total` 与 `pendingSessions`。
 
@@ -863,7 +867,7 @@ erDiagram
   "attributionCount": 3, "hasAttribution": true } ] }
 ```
 
-`attributionCount` = 该 case 的去重 `(object_type, object_name, object_version)` 行数；左栏据此显示「尚未归因 / N 条归因」并按 §4.19 分页取子项。
+`attributionCount` 按 §3.10 的唯一定义：经 `bad_case_analysis JOIN probe_reports` 去重的 `(probe_type, probe_object, object_version)` 三元组数（[06 §4.2.1](06-database-design.md)）；左栏据此显示「尚未归因 / N 条归因」并按 §4.19 分页取子项。
 
 ### 4.8 原始轨迹接入（acquisition）
 
@@ -1179,17 +1183,24 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 
 | 端点 | 参数 | 响应 |
 |---|---|---|
-| `GET /api/workspaces/{wid}/overview/summary` | `from/to` 或 `range=7\|30\|90`、`objects[]` | `OverviewSummary` |
+| `GET /api/workspaces/{wid}/overview/summary` | `from/to` 或 `range=7\|30\|90`（默认 90）、`objects[]` | `OverviewSummary` |
 | `GET /api/workspaces/{wid}/overview/trend` | 同上 + `grain=day\|week\|month`（默认 `day`） | `{window, grain, buckets:[TrendBucket]}`；`grain` 是本次实际生效的粒度（>92 天日粒度降级为 `week` 并如实返回），空桶补零 |
-| `GET /api/workspaces/{wid}/overview/sources` | 同上 | `{items:[{object,total,self,discovery,sessions}]}` |
-| `GET /api/workspaces/{wid}/bad-cases` | `from/to`、`objects[]`、`badCaseType`、`page`、`pageSize=8` | `{items:[BadCaseListItem], total, page, pageSize}`；`attributionCount` 为去重对象·版本数 |
+| `GET /api/workspaces/{wid}/overview/sources` | 同上 | `{items:[{object,total,self,discovery,sessions}]}`；`sessions` 含 pending 根 |
+| `GET /api/workspaces/{wid}/bad-cases` | `from/to`、`range=7\|30\|90`（默认 90）、`objects[]`、`badCaseType`、`page`、`pageSize=8` | `{items:[BadCaseListItem], total, page, pageSize}`；`attributionCount` 按 §3.10 的三元组定义；`triggerAt` 当前等于 `createdAt` |
 | `GET /api/workspaces/{wid}/overview/targets` | `from/to`、`page`、`pageSize=5` | `{summary:{targets,sessions,potential,attributed,nonTarget,unanalyzed}, items:[TargetOverviewItem], total, page, pageSize}`（按 `evolvable` 降序） |
 | `GET /api/workspaces/{wid}/overview/targets/trend` | `from/to`、`grain`、`targets[]`、`states[]` | `{window, buckets:[{bucket,label,attributed,nonTarget,unanalyzed,byTarget[]}], meta:{bucketPolicy}}` |
 | `GET /api/workspaces/{wid}/overview/targets/cases` | `targets[]`、`objects[]`、`states[]`、`from/to`、`page`、`pageSize=8` | `{items:[{badCaseId,objectType,objectName,objectVersion,source,state,badCaseType,title,createdAt,sessionId,attributionId,category}], total, page, pageSize}` |
 | `GET /api/workspaces/{wid}/overview/targets/{targetId}/detail` | `versions[]`、`versionLimit∈{5,10,20,0}`、`from/to` | `{target, stats{sessions,potential,distinctCases,versions}, byVersion[], bySource[]}` |
 | `GET /api/workspaces/{wid}/sessions` | `q`、`status`、`sort`、`limit`（默认 10） | `{items:[SessionListItem], total, pendingSessions}` |
 
-- 筛选参数可全空（不限制）；`objects` 同时接受重复参数（`?objects=a&objects=b`）与逗号分隔值（`?objects=a,b`），两侧去空白后按首次出现去重，空 = 全部，去重后 >50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天、`from > to`、只给一个边界且没有 `range`、`range` 不是 7/30/90 → `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
+- 筛选参数可全空（不限制）；`objects` 同时接受重复参数（`?objects=a&objects=b`）与逗号分隔值（`?objects=a,b`），两侧去空白后按首次出现去重，空 = 全部，去重后 >50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天、`from > to`、只给一个边界且没有 `range`、需要用 `range` 推导窗口而它不在 7/30/90 内、边界落在 1970-01-01..2999-12-31 之外（含日期运算溢出）→ `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
+- 四个总览读端点都接受 `range`（含列表）。同时给 `from` 与 `to` 时两者直接定义窗口，`range` 被忽略且**不校验**（`from/to/range=0` 合法）；默认窗口是 `[今天-89, 今天]`（90 天）。只有不带边界或只带单一边界时，`range` 才参与推导并要求是 7/30/90。
+- `pageSize` 默认 8、允许 1..50；`badCaseType` 默认 `all`。
+- 桶的 `label` 格式：日桶与周桶 `MM-DD`，月桶 `YYYY-MM`；`bucket` 始终是完整 ISO 日期，跨年周仍可从 `bucket` 读出年份。
+- `totals.sessions` 是窗口内 `COUNT(DISTINCT bad_case_session_id)`，**包含 pending 根**（已上报但还没有归一化轨迹）；它不是 06 §7.5 的空间 Session 集合，也不是 Session 页的 `total`，且不能与 `pendingSessions` 相加。
+- 所有 overview 聚合只统计 `bad_case_type IN ('self','discovery')`：legacy 目录同步写入的越界类型不计入 `badCases/self/discovery/sessions/sources/objects` 与趋势，但仍计入空间级 `used`。
+- `attributionCount` 的唯一口径见 §3.10：经 `bad_case_analysis JOIN probe_reports` 去重 `(probe_type, probe_object, object_version)`，当前一 case 至多一条归因，m10 放宽后仍按三元组去重。
+- `triggerAt` 当前临时等于 `createdAt`（m9-04 对象触发点坐标落地后才变真实时间），不得作为排序键；`badCaseTypeLabel` 由服务端给出。
 - V2 Session 列表的 `q` 是完整 root session ID（trim 后大小写不敏感精确匹配；子串与标题不命中）；不传或全空白 `q` 返回最新 10 条。去掉 `limit` 的分页只影响 `items`，不影响 `total`。
 - `total` 的口径公式：只数当前 `q`/`status` 下已归一化的根，**不含 pending**。`pendingSessions` 与 `q`/`status`/`sort`/`limit` 无关，只按空间投影计算；两者不是同一集合的划分，`total + pendingSessions` 不等于「空间全部被上报的根」。
 - 共享 root：同一 root 被两个空间上报时，V2 的 `total` 与 `pendingSessions` 在每个空间各算一次（每个空间都需要自己的轨迹与计数）；V1 的可见空间并集对同一根去重，只算一次。
