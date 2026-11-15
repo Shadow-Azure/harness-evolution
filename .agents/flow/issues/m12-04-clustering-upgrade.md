@@ -1,13 +1,13 @@
-# m6-04 clustering upgrade
+# 聚类算法升级
 
-[English](m6-04-clustering-upgrade.en.md) | 中文
+[English](m12-04-clustering-upgrade.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: m6-04
-milestone: m6
+id: m12-04
+milestone: m12
 depends:
-  - m5-11
+  - m10-04
 priority: P2
 status: backlog
 scope:
@@ -18,17 +18,19 @@ scope:
   - .agents/notes/**
 adr: []
 github:
-  number: 64
-  url: https://github.com/Shadow-Azure/harness-evolution/issues/64
+  number: 245
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/245
 ```
 
 ## 背景
 
-m6-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
+本 issue 承接原 M6 issue #64，并于 2026-11-15 迁入 M12。旧 issue 关闭只表示里程碑重排，工作没有取消；新实现入口是 `m12-04-clustering-upgrade`。
+
+m12-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullstack-design 章节为准，不能在 issue 中复制出第二套设计事实。
 
 ## 目标
 
-- 完成 m6-04 声明的交付边界，并让它可通过下列命令独立验收。
+- 完成 m12-04 声明的交付边界，并让它可通过下列命令独立验收。
 - 保持 contracts、数据库、前端与既有门禁一致。
 - 失败、空态和重复输入都有明确行为。
 
@@ -51,13 +53,13 @@ m6-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullsta
 
 ## 依赖与交付边界
 
-- 依赖：m5-11
+- 依赖：m10-04
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
 
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/m6-04-clustering-upgrade
+pnpm test:api -- tests/m12-04-clustering-upgrade
 pnpm test:db
 ```
 

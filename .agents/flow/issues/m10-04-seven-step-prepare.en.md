@@ -8,7 +8,6 @@ id: m10-04
 milestone: m10
 depends:
   - m10-03
-  - m6-04
 priority: P0
 status: backlog
 scope:
@@ -53,7 +52,7 @@ New runs flow from workspace cases through linking, potential, attribution, and 
 
 ## Dependencies and boundary
 
-- Dependencies: m10-03, m6-04
+- Dependencies: m10-03
 - Boundary: no real patch/eval replacement.
 
 ## Verification

@@ -1,17 +1,16 @@
-# Target configuration: explain validation failures and surface git output
+# Target configuration: actionable validation errors and git diagnostics
 
-English | [中文](m6-target-validation-errors.md)
+English | [中文](m12-06-target-validation-errors.md)
 
 ```yaml flow
 kind: issue
-id: m6-19
-milestone: m6
+id: m12-06
+milestone: m12
 depends:
-  - m5-02
-  - m5-03
-  - m6-07
+  - m7-07
+  - m7-09
 priority: P1
-status: ready
+status: backlog
 scope:
   - apps/api/**
   - apps/web/**
@@ -24,11 +23,13 @@ scope:
   - .agents/notes/**
 adr: []
 github:
-  number: 185
-  url: https://github.com/Shadow-Azure/harness-evolution/issues/185
+  number: 247
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/247
 ```
 
 ## Background
+
+This issue continues M6 issue #185 and moved to M12 on 2026-11-15. Closing the old issue only records the milestone rebalance; the work remains active through `m12-06-target-validation-errors`.
 
 ### What the problem is
 
@@ -120,7 +121,7 @@ The added fields leave the error code unchanged; the on-wire shape is:
 
 ## Dependencies and boundary
 
-- Dependencies: m5-02, m5-03, m6-07.
+- Dependencies: m7-07, m7-09
 - Delivery boundary: change only the structured detail of target-save errors, the frontend presentation, and related tests; do not change the git invocation, the error-code set, or the run-time subdirectory check.
 - Compatibility: `details` is additive; responses and tests without `details` continue to work.
 

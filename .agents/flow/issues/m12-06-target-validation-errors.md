@@ -1,17 +1,16 @@
 # 进化对象配置：展示具体校验原因、修改建议与 git 失败输出
 
-[English](m6-target-validation-errors.en.md) | 中文
+[English](m12-06-target-validation-errors.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: m6-19
-milestone: m6
+id: m12-06
+milestone: m12
 depends:
-  - m5-02
-  - m5-03
-  - m6-07
+  - m7-07
+  - m7-09
 priority: P1
-status: ready
+status: backlog
 scope:
   - apps/api/**
   - apps/web/**
@@ -24,11 +23,13 @@ scope:
   - .agents/notes/**
 adr: []
 github:
-  number: 185
-  url: https://github.com/Shadow-Azure/harness-evolution/issues/185
+  number: 247
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/247
 ```
 
 ## 背景
+
+本 issue 承接原 M6 issue #185，并于 2026-11-15 迁入 M12。旧 issue 关闭只表示里程碑重排，工作没有取消；新实现入口是 `m12-06-target-validation-errors`。
 
 ### 问题是什么
 
@@ -120,7 +121,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m5-02、m5-03、m6-07。
+- 依赖：m7-07、m7-09
 - 交付边界：只改 target 配置保存错误的结构化明细、前端展示和相应测试；不改 git 调用方式、错误码集合或子目录的运行时校验。
 - 兼容性：`details` 为增量字段；无 details 的旧响应和旧测试保持可用。
 

@@ -1,11 +1,11 @@
 # Windows 本地门禁假绿与 verify-web-style 兼容修复
 
-[English](m6-windows-gate-integrity.en.md) | 中文
+[English](m12-05-windows-gate-integrity.en.md) | 中文
 
 ```yaml flow
 kind: issue
-id: m6-11
-milestone: m6
+id: m12-05
+milestone: m12
 depends:
   - m6-05
 priority: P2
@@ -17,11 +17,13 @@ scope:
   - docs/**
 adr: []
 github:
-  number: 163
-  url: https://github.com/Shadow-Azure/harness-evolution/issues/163
+  number: 246
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/246
 ```
 
 ## 背景
+
+本 issue 承接原 M6 issue #163，并于 2026-11-15 迁入 M12。旧 issue 关闭只表示里程碑重排，工作没有取消；新实现入口是 `m12-05-windows-gate-integrity`。
 
 `scripts/` 下 22 个门禁/工具脚本的 CLI 入口守卫写成 ``if (import.meta.url === `file://${process.argv[1]}`)``。该比较是 POSIX-only：`import.meta.url` 是三斜杠正斜杠的 `file:///D:/...` 形态，模板串拼出的却是两斜杠反斜杠路径（`file://D:\...\x.mjs`），Windows 上恒假——直接 `node scripts/xxx.mjs` 时主块静默跳过、exit 0。于是 Windows 本机的 `pnpm verify:web-style`、`pnpm verify:docs`、`pnpm verify:flow` 等一律假绿（no-op exit 0），"本地跑过门禁"无法自证；CI 全部 `runs-on: ubuntu-latest`，守卫在 Linux 上成立，CI 结果不受影响，但 Windows 开发者的本地防线形同缺席。m6-05（GitHub #118）当年已记录该缺陷并在非目标里承诺"另立 issue"，至今没有落地。另有独立一层：`scripts/verify-web-style.mjs:22-28` 经 runner 修好入口后仍跑不了——主块用 `new URL(path, sourceRoot)` 拼文件 URL，而 Windows 上 `readdir(…, { recursive: true, withFileTypes: true })` 给出的 `entry.parentPath` 是带反斜杠的绝对路径，拼出的字符串以 `D:` 开头，被 URL 解析器当成 `d:` 协议，抛 `TypeError [ERR_INVALID_URL_SCHEME]`。
 
@@ -53,7 +55,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m6-05（Windows 开发入口已可用；本 issue 兑现其"另立 issue"承诺）。
+- 依赖：m6-05
 - 交付边界：仅 `scripts/` 的入口守卫与 Windows 路径兼容、相应自测试与流程文档同步；不改变任何门禁的判定语义与 CI 工作流。
 
 ## 独立验证

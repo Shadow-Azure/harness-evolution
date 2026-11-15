@@ -47,3 +47,7 @@ Deliver potential matching, attribution cache, candidates, the wizard and seven-
 ## M11 Multi-attribution experience and V2 cutover
 
 Deliver multi-attribution detail, target overview, cross-stack verification and compatibility retirement.
+
+## M12 Real integrations and algorithm delivery
+
+Deliver live upstream data, external contracts, patch/evaluation, clustering, and retained platform-quality debt.

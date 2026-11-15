@@ -8,7 +8,6 @@ id: m10-04
 milestone: m10
 depends:
   - m10-03
-  - m6-04
 priority: P0
 status: backlog
 scope:
@@ -53,7 +52,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m10-03、m6-04
+- 依赖：m10-03
 - 交付边界：不改 patch/eval 真实执行器。
 
 ## 独立验证

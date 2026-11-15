@@ -29,8 +29,8 @@ PR #209 merged the V2 target-state design, but the flow tree still stops at M6. 
 
 ## Goals
 
-- Add M7-M11 roadmap, milestone, and implementation issues.
-- Narrow M6 to its integration scope and move V2 implementation to M7-M11.
+- Add M7-M12 roadmap, milestone, and implementation issues.
+- Close delivered M6 work and move unfulfilled work to M12 with predecessor links.
 - Capture revision, relation, and knowledge-trigger requirements as an M9 gate.
 
 ## Design authority
@@ -40,8 +40,8 @@ PR #209 merged the V2 target-state design, but the flow tree still stops at M6. 
 
 ## Implementation
 
-- Extend the roadmap and create five milestones plus 31 issues.
-- Mark m6-25 done and clarify M6 boundaries.
+- Extend the roadmap with six milestones, 31 V2 issues, and 12 M12 migration issues.
+- Mark m6-23, m6-24, and m6-25 done; close M6 and move six unfinished items to M12.
 - Add a bilingual decision note and update the public roadmap.
 
 ## Implementation steps
@@ -67,8 +67,8 @@ pnpm verify:flow; pnpm lint:docs
 
 ## Acceptance
 
-- The full M7-M11 plan is traceable.
-- M6 no longer claims V2 implementation ownership.
+- The full M7-M12 plan is traceable.
+- Every open M6 item is either delivered or represented by an M12 migration record.
 
 ## Gates and CI
 

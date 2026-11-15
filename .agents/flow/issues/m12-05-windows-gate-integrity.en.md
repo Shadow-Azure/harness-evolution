@@ -1,11 +1,11 @@
-# Windows gate integrity: real main guards and web-style compat
+# Windows local gate integrity and verify-web-style compatibility
 
-English | [中文](m6-windows-gate-integrity.md)
+English | [中文](m12-05-windows-gate-integrity.md)
 
 ```yaml flow
 kind: issue
-id: m6-11
-milestone: m6
+id: m12-05
+milestone: m12
 depends:
   - m6-05
 priority: P2
@@ -17,11 +17,13 @@ scope:
   - docs/**
 adr: []
 github:
-  number: 163
-  url: https://github.com/Shadow-Azure/harness-evolution/issues/163
+  number: 246
+  url: https://github.com/Shadow-Azure/harness-evolution/issues/246
 ```
 
 ## Background
+
+This issue continues M6 issue #163 and moved to M12 on 2026-11-15. Closing the old issue only records the milestone rebalance; the work remains active through `m12-05-windows-gate-integrity`.
 
 The CLI entry guard in 22 gate/utility scripts under `scripts/` reads ``if (import.meta.url === `file://${process.argv[1]}`)``. The comparison is POSIX-only: `import.meta.url` is a three-slash forward-slash `file:///D:/...` URL, while the template literal yields a two-slash backslash path (`file://D:\...\x.mjs`), so on Windows the comparison is always false — running `node scripts/xxx.mjs` directly skips the main block silently and exits 0. As a result, `pnpm verify:web-style`, `pnpm verify:docs`, `pnpm verify:flow` and friends are fake-green on Windows (no-op exit 0) and "I ran the gates locally" proves nothing; CI runs entirely on `runs-on: ubuntu-latest` where the guard holds, so CI results are unaffected, but the local defense line for Windows developers is effectively absent. m6-05 (GitHub #118) recorded this defect and promised "a separate issue" in its non-goals, which never landed. One more independent layer: `scripts/verify-web-style.mjs:22-28` still cannot run on Windows even with the entry fixed — the main block builds file URLs via `new URL(path, sourceRoot)`, while `readdir(…, { recursive: true, withFileTypes: true })` on Windows reports an absolute backslash `entry.parentPath`; the joined string starts with `D:`, the URL parser treats it as the `d:` scheme, and it throws `TypeError [ERR_INVALID_URL_SCHEME]`.
 

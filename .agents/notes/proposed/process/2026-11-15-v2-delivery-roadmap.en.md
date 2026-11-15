@@ -10,7 +10,7 @@ PR #209 confirmed the V2 target state, but the flow tree had no implementation s
 
 ## Decision
 
-Keep M1-M6 and add M7-M11 for workspace boundaries, workspace data, session evidence, attribution pipelines, and multi-attribution cutover. M9 is a hard gate before M10 and owns revision resolution, relation confidence, execution completion, trigger coordinates, and knowledge-document evidence. M6 continues real upstream, evaluation, and clustering delivery rather than V2 implementation.
+Close M6 with its delivered integration foundation and runtime evidence, then add M7-M12. M7-M11 deliver workspace boundaries, workspace data, session evidence, attribution pipelines, and multi-attribution cutover; M12 owns live upstream, external contracts, patch/evaluation, clustering, and platform-quality debt. M9 remains the hard gate before M10 and owns revision resolution, relation confidence, execution completion, trigger coordinates, and knowledge-document evidence.
 
 ## Alternatives considered
 
@@ -18,4 +18,4 @@ Folding evidence work into attribution hides whether bad counts come from versio
 
 ## Consequences
 
-The V2 program has five milestones instead of four. M10 cannot start before M9 P0 evidence work. The attached raw session is not committed; only sanitized fixtures may be derived from its shape. Knowledge documents begin as evidence objects, with evolution support decided by a later explicit boundary.
+The V2 program has five milestones instead of four. M10 cannot start before M9 P0 evidence work. Unfulfilled M6 work moves to new M12 issues, while old GitHub issues become migration records with successor links. The attached raw session is not committed; only sanitized fixtures may be derived from its shape. Knowledge documents begin as evidence objects, with evolution support decided by a later explicit boundary.

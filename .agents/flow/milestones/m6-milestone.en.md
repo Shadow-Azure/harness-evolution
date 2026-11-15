@@ -6,7 +6,7 @@ English | [中文](m6-milestone.md)
 kind: milestone
 id: m6
 title: M6 真实接入与兑现
-status: planned
+status: done
 github:
   number: 14
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/14
@@ -14,16 +14,16 @@ github:
 
 ## Goals
 
-Replace placeholder trace, external problems, patch/eval, and clustering.
+Complete the pre-V2 integration foundation, scheduled sync, target configuration, and deployment prerequisites.
 
 ## Scope
 
-Real upstream, external contract integration, real execution, and clustering; V2 identity, workspaces, overview, and multi-attribution delivery live in M7-M11.
+M6 contains delivered integration, sync, configuration, and deployment slices; V2 product delivery lives in M7-M11, while unfulfilled real-integration work moves to M12.
 
 ## Acceptance
 
-At least one real problem completes the loop with unchanged frontend contracts.
+Historical slices have implementation or run evidence; open work has M12 migration records and backlinks.
 
 ## Non-goals
 
-No auto-merge to default branch or committed credentials; no V2 feature implementation or flow redesign.
+No auto-merge to default branch or committed credentials; no further live-upstream, patch/evaluation, or clustering work inside M6.

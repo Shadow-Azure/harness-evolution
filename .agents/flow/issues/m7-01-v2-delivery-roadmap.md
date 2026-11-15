@@ -29,8 +29,8 @@ PR #209 已合入 V2 目标态设计，但仓库流程树仍只有 M1–M6；真
 
 ## 目标
 
-- 新增 M7–M11 的完整 roadmap、milestone 与实现 issue。
-- 把 M6 的 V2 边界调整为实现工作下沉到 M7–M11。
+- 新增 M7–M12 的完整 roadmap、milestone 与实现 issue。
+- 收口已交付的 M6，把未兑现工作迁入 M12 并保留旧 issue 回链。
 - 将真实 Session 暴露的版本、关系和知识库触发需求固化为 M9 门禁。
 
 ## 设计依据
@@ -40,8 +40,8 @@ PR #209 已合入 V2 目标态设计，但仓库流程树仍只有 M1–M6；真
 
 ## 实现内容
 
-- roadmap 增加 m7–m11；新增五个 milestone 三件套与 31 个 issue 三件套。
-- m6-25 标记完成，m6 里程碑明确不承载 V2 实现。
+- roadmap 增加 m7–m12；新增六个 milestone 三件套、31 个 V2 issue 和 12 个 M12 迁移 issue。
+- m6-25、m6-23、m6-24 标记完成；M6 收口，未兑现的六项工作由 M12 承接。
 - 新增 Agent Note 记录证据门禁与知识库触发的取舍，并同步 docs/roadmap 双语。
 
 ## 实施步骤
@@ -67,8 +67,8 @@ pnpm verify:flow; pnpm lint:docs
 
 ## 验收标准
 
-- roadmap、五个 milestone 和全部 issue 可从 M7 连续追溯到 M11。
-- 既有 M6 文档不再宣称 V2 实现由设计 issue 承担。
+- roadmap、六个 milestone 和全部 issue 可从 M7 连续追溯到 M12。
+- 既有 M6 issue 要么已交付关闭，要么保留迁移记录并回链 M12。
 
 ## 门禁与 CI
 
