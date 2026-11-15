@@ -10,16 +10,25 @@ depends:
   - m7-02
   - m7-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/identity/**
   - apps/api/app/api/auth.py
   - apps/api/app/config.py
+  - apps/api/app/errors.py
+  - apps/api/app/db/crud/users.py
+  - apps/api/app/middleware/auth.py
+  - apps/api/app/middleware/rate_limit.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - docs/**
+  - deploy/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-auth-provider-seam.md
 github:
   number: 225
   url: https://github.com/Shadow-Azure/harness-evolution/issues/225
@@ -45,6 +54,7 @@ Future Cookie or SSO integration should replace identity plumbing without changi
 - Keep the password provider.
 - Fail fast for unimplemented providers.
 - Cover callback error codes.
+- A public callback, stable error codes, and startup validation touch API wiring, error codes, middleware, and API tests, so the scope covers them; configuration notes, OpenAPI, and the Agent Note change in the same PR.
 
 ## Implementation steps
 
