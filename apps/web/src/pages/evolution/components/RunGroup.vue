@@ -5,6 +5,7 @@ import { computed } from "vue";
 import RunCard from "./RunCard.vue";
 
 const props = defineProps<{
+  wid: string;
   kind: "running" | "history";
   runs: EvolutionRunCard[];
 }>();
@@ -39,6 +40,7 @@ const title = computed(() => props.kind === "running"
       <RunCard
         v-for="run in runs"
         :key="run.runId"
+        :wid="wid"
         :run="run"
         @open="emit('open', $event)"
       />

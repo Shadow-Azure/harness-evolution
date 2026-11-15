@@ -28,7 +28,7 @@ export async function bootstrapApp(options: BootstrapAppOptions): Promise<void> 
   }
   app.use(pinia);
   app.use(VueQueryPlugin, { queryClient });
-  installAuthRuntime(router, pinia);
+  installAuthRuntime(router, pinia, queryClient);
   app.use(router);
 
   const auth = useAuthStore(pinia);

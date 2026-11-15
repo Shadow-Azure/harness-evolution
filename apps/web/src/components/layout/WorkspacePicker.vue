@@ -43,7 +43,7 @@ function targetPath(workspaceId: string): string {
   if (!currentId.value) {
     return workspacePath(workspaceId, DEFAULT_WORKSPACE_PATH);
   }
-  const prefix = `/workspaces/${encodeURIComponent(currentId.value)}`;
+  const prefix = `/workspaces/${currentId.value}`;
   const child = route.path.startsWith(prefix)
     ? route.path.slice(prefix.length)
     : "";
@@ -72,6 +72,7 @@ async function switchWorkspace(workspaceId: string): Promise<void> {
   await router.push({
     path: targetPath(workspaceId),
     query,
+    hash: route.hash,
   });
 }
 </script>

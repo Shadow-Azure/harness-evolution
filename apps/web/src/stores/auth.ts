@@ -93,7 +93,15 @@ export const useAuthStore = defineStore("auth", () => {
   async function login(credentials: LoginRequest): Promise<PublicUser> {
     const response = await loginRequest(credentials);
     setSession(response);
-    await loadSession();
+    try {
+      await loadSession();
+    } catch (error) {
+      // A failed canonical session read must not leave a half-authenticated
+      // store that bounces the login page to an empty chooser.
+      clear();
+      isBootstrapped.value = true;
+      throw error;
+    }
     return response.user;
   }
 

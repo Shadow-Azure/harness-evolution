@@ -95,6 +95,33 @@ describe("auth store", () => {
     expect(store.sessionTruncated).toBe(false);
   });
 
+  it("clears a half-authenticated login when auth/session fails", async () => {
+    server.use(
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({
+          accessToken: "access-token",
+          expiresIn: 1_800,
+          user: initialUser,
+        }),
+      ),
+      http.get("/api/auth/session", () =>
+        HttpResponse.json(
+          { error: { code: "INTERNAL", message: "failed" } },
+          { status: 500 },
+        ),
+      ),
+    );
+    const store = useAuthStore();
+
+    await expect(
+      store.login({ username: "admin", password: "temporary-password" }),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(store.isAuthenticated).toBe(false);
+    expect(store.user).toBeNull();
+    expect(store.accessToken).toBeNull();
+    expect(store.isBootstrapped).toBe(true);
+  });
+
   it("clears stale state when refresh has no valid cookie", async () => {
     server.use(
       http.post("/api/auth/refresh", () =>

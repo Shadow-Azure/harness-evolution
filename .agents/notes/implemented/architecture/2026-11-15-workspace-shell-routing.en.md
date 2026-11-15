@@ -31,4 +31,6 @@ m7-04 through m7-07 isolated sessions, bad cases, evolution targets, runs, and S
 - The landing page is the session list instead of the designed overview; m8-04 only needs to change `DEFAULT_WORKSPACE_PATH` and the guard target.
 - Analysis and probe reads still use one compatibility endpoint scoped to all visible workspaces; until workspace attribution endpoints land, `wid` only isolates the cache and cannot stop the same attribution from being opened from two visible workspaces.
 - If a visible workspace is removed while a browser still sits on its URL, the guard returns to the chooser; a `404 WORKSPACE_NOT_FOUND` from the API renders the page error state instead of silently switching.
+- The launch wizard probe preview still uses the compatibility endpoint filtered by all visible workspaces; until a workspace-level preview endpoint lands, the wizard can show source rows from another visible workspace.
+- `/auth/session` returns at most 200 visible workspaces; above that cap the guard treats an unlisted `wid` as invisible, and fully supporting very large workspace sets needs a server-side lookup.
 - The legacy compatibility layer is kept for one migration version; removing it needs bookmarks, E2E, and external ingest links to stop using workspace-less paths.

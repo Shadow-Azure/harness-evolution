@@ -40,6 +40,7 @@ describe("RunGroup", () => {
   it("renders the active count, pulse, and cards", () => {
     const wrapper = mount(RunGroup, {
       props: {
+        wid: "ws-test",
         kind: "running",
         runs: [card],
       },
@@ -53,6 +54,7 @@ describe("RunGroup", () => {
   it("keeps the group count synchronized when the backend list refreshes", async () => {
     const wrapper = mount(RunGroup, {
       props: {
+        wid: "ws-test",
         kind: "running",
         runs: [card],
       },
@@ -69,18 +71,22 @@ describe("RunGroup", () => {
   it("forwards a card open intent to the page", async () => {
     const wrapper = mount(RunGroup, {
       props: {
+        wid: "ws-test",
         kind: "running",
         runs: [card],
       },
     });
 
     await wrapper.get(".run-card-link").trigger("click");
-    expect(wrapper.emitted("open")).toEqual([["/evolution/runs/run-1"]]);
+    expect(wrapper.emitted("open")).toEqual([
+      ["/workspaces/ws-test/evolution/runs/run-1"],
+    ]);
   });
 
   it("renders the history count without an active pulse", () => {
     const wrapper = mount(RunGroup, {
       props: {
+        wid: "ws-test",
         kind: "history",
         runs: [{ ...card, status: "completed" }],
       },
@@ -92,10 +98,10 @@ describe("RunGroup", () => {
 
   it("uses distinct required copy for the two empty groups", () => {
     const running = mount(RunGroup, {
-      props: { kind: "running", runs: [] },
+      props: { wid: "ws-test", kind: "running", runs: [] },
     });
     const history = mount(RunGroup, {
-      props: { kind: "history", runs: [] },
+      props: { wid: "ws-test", kind: "history", runs: [] },
     });
 
     expect(running.text()).toContain("当前没有正在执行的自进化");

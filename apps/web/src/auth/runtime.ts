@@ -1,3 +1,4 @@
+import type { QueryClient } from "@tanstack/vue-query";
 import type { Router } from "vue-router";
 import type { Pinia } from "pinia";
 
@@ -14,14 +15,20 @@ import { useAuthStore } from "../stores/auth";
  * Connect transport callbacks to the auth store and router.
  * @param router Application router receiving recovery navigation.
  * @param pinia Application Pinia instance, or the active test instance.
+ * @param queryClient Server-state cache cleared when refresh cannot recover.
  * @returns No value.
  */
-export function installAuthRuntime(router: Router, pinia?: Pinia): void {
+export function installAuthRuntime(
+  router: Router,
+  pinia?: Pinia,
+  queryClient?: Pick<QueryClient, "clear">,
+): void {
   const auth = useAuthStore(pinia);
   setAccessTokenProvider(() => auth.accessToken);
   setRefreshHandler(() => auth.refresh());
   setAuthExpiredHandler((redirect) => {
     auth.clear();
+    queryClient?.clear();
     void router.push({
       path: "/login",
       query: { redirect: safeRedirect(redirect) },

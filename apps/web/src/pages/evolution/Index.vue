@@ -56,7 +56,11 @@ async function onLaunched(
  * @returns A navigation promise after the route changes.
  */
 async function openRun(path: string): Promise<void> {
-  await router.push(workspacePath(workspaceId.value, path.replace(/^\/+/, "")));
+  await router.push(
+    path.startsWith("/workspaces/")
+      ? path
+      : workspacePath(workspaceId.value, path.replace(/^\/+/, "")),
+  );
 }
 </script>
 
@@ -98,11 +102,13 @@ async function openRun(path: string): Promise<void> {
     />
     <template v-else>
       <RunGroup
+        :wid="workspaceId"
         kind="running"
         :runs="running"
         @open="openRun"
       />
       <RunGroup
+        :wid="workspaceId"
         kind="history"
         :runs="history"
         @open="openRun"

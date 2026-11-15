@@ -61,8 +61,15 @@ const evolutionPath = computed(() =>
 );
 
 const activeSection = computed(() => {
-  if (route.path.includes("/sessions")) return "sessions";
-  if (route.path.includes("/evolution")) return "evo";
+  const name = typeof route.name === "string" ? route.name : "";
+  if (
+    name === "workspace-sessions" ||
+    name === "workspace-session" ||
+    name === "workspace-errors"
+  ) {
+    return "sessions";
+  }
+  if (name.startsWith("workspace-evolution")) return "evo";
   return "";
 });
 

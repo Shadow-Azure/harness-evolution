@@ -90,6 +90,19 @@ describe("WorkspacePicker", () => {
     ).not.toBe(true);
   });
 
+  it("keeps the URL hash when switching workspaces", async () => {
+    const { router, wrapper } = await mountPicker(
+      "/workspaces/ws-a/evolution#final",
+    );
+
+    await wrapper.get("[data-testid='workspace-option-ws-b']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      "/workspaces/ws-b/evolution#final",
+    );
+  });
+
   it("does not carry the chooser reason into the new workspace", async () => {
     const { router, wrapper } = await mountPicker(
       "/workspaces/ws-a/sessions?reason=forbidden",
