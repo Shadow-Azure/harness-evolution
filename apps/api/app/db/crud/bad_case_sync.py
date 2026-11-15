@@ -9,14 +9,16 @@ from typing import Any
 
 from sqlalchemy import and_, column, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
 
 from app.db.base import Database
+from app.db.crud.integrity import is_unique_violation
 from app.db.models.domain import bad_case_root_sync, bad_cases
-from app.utils.time import as_shanghai
+from app.utils.time import as_shanghai, now_shanghai
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +136,52 @@ def _missing_bad_cases(exc: OperationalError | ProgrammingError) -> bool:
     return "bad_cases" in str(exc).lower()
 
 
+async def insert_pending_root(
+    session: AsyncSession,
+    root_session_id: str,
+    *,
+    now: datetime,
+) -> bool:
+    """Insert a `pending` root-sync row unless any state row already exists.
+
+    This runs inside the caller's transaction so a committed bad case can never
+    lack its discoverable root. The insert is insert-if-absent, not an upsert:
+    `synced` is absorbing and a `failed` row keeps its retry backoff, so neither
+    may be reset by a later report. A concurrent claim or ingest that wins the
+    insert makes the loser keep the existing state.
+    """
+    existing = (
+        await session.execute(
+            select(bad_case_root_sync.c.root_session_id).where(
+                bad_case_root_sync.c.root_session_id == root_session_id,
+            ),
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return False
+    try:
+        await session.execute(
+            insert(bad_case_root_sync).values(
+                root_session_id=root_session_id,
+                status=_PENDING,
+                attempts=0,
+                last_error=None,
+                agent_count=0,
+                started_at=None,
+                synced_at=None,
+                next_retry_at=None,
+                lease_owner=None,
+                lease_expires_at=None,
+                updated_at=as_shanghai(now),
+            ),
+        )
+    except IntegrityError as exc:
+        if not is_unique_violation(exc):
+            raise
+        return False
+    return True
+
+
 class BadCaseRootSyncRepository:
     """Read and write root-sync state without touching external tables."""
 
@@ -156,6 +204,20 @@ class BadCaseRootSyncRepository:
                 .one_or_none()
             )
         return _to_row(row) if row is not None else None
+
+    async def ensure_pending(
+        self,
+        root_session_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Make one reported root discoverable without touching existing state."""
+        async with self._database.transaction() as session:
+            return await insert_pending_root(
+                session,
+                root_session_id,
+                now=now or now_shanghai(),
+            )
 
     async def list_candidates(self, now: datetime, *, limit: int) -> list[str]:
         """Return roots that are unclaimed, retry-due, or lease-expired."""

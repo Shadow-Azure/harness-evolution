@@ -1,5 +1,6 @@
 """Fail-closed bearer authentication boundary."""
 
+import re
 from http import HTTPStatus
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -30,6 +31,8 @@ _ADMIN_ROUTE_RULES = (
     (frozenset({"POST"}), "/api/acquisition/pull"),
     (frozenset({"POST", "PUT", "DELETE"}), "/api/evolution/targets"),
 )
+_CREDENTIAL_INGEST_ROUTE = re.compile(r"^/api/workspaces/[^/]+/bad-cases$")
+"""The only route that authenticates with a workspace ingest credential."""
 
 
 def _requires_admin(method: str, path: str) -> bool:
@@ -40,6 +43,16 @@ def _requires_admin(method: str, path: str) -> bool:
         method in methods and (path == prefix or path.startswith(f"{prefix}/"))
         for methods, prefix in _ADMIN_ROUTE_RULES
     )
+
+
+def _is_credential_route(method: str, path: str) -> bool:
+    """Return whether this method/path pair resolves its own credential.
+
+    Exactly one POST route is exempt from access-token decoding. The match is
+    anchored, so trailing slashes, extra segments, and other methods stay on the
+    JWT path and a leaked workspace credential cannot authenticate anywhere else.
+    """
+    return method == "POST" and _CREDENTIAL_INGEST_ROUTE.match(path) is not None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -53,6 +66,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path in public_paths or (path.startswith("/api/") and path in _DOC_PATHS):
             return await call_next(request)
         if not path.startswith("/api/"):
+            return await call_next(request)
+        if _is_credential_route(request.method, path):
             return await call_next(request)
 
         authorization = request.headers.get("authorization", "")

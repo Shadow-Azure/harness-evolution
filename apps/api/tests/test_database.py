@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Table,
     delete,
+    func,
     insert,
     inspect,
     select,
@@ -36,6 +37,14 @@ from app.db.crud.bad_case_catalog_sync import (
     BadCaseCatalogSyncRepository,
     CatalogCaseRow,
 )
+from app.db.crud.bad_case_ingest import (
+    BadCaseIdConflict,
+    BadCaseIngestRepository,
+    BadCaseIngestRow,
+    BadCaseIngestWrite,
+    QuotaExceeded,
+)
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import (
@@ -55,6 +64,7 @@ from app.db.models.domain import (
     agents,
     bad_case_analysis,
     bad_case_catalog_sync,
+    bad_case_root_sync,
     bad_cases,
     evolution_targets,
     probe_reports,
@@ -74,11 +84,14 @@ from app.db.models.evolution import (
 from app.db.models.jobs import job_runs
 from app.db.models.run_events import evolution_run_events
 from app.db.models.users import users
+from app.db.models.workspace import workspaces
 from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 from app.service.acquisition.replay import replay_pending_payloads
 from app.service.bad_cases.service import BadCaseService
 from app.service.problems.service import ProblemService
+from app.utils.ids import new_id
+from app.utils.time import now_shanghai
 
 
 class FailingHealthDatabase(SqlAlchemyDatabase):
@@ -2536,5 +2549,163 @@ async def test_mysql_catalog_sync_upserts_by_primary_key() -> None:
                 await session.execute(
                     delete(bad_case_catalog_sync).where(bad_case_catalog_sync.c.id == "bad_cases")
                 )
+        finally:
+            await database.dispose()
+
+
+async def _mysql_ingest_database() -> Database:
+    """Return a migrated MySQL database, or skip when the lane has no service."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("HE_DB_URL is not configured for MySQL")
+    database = create_database(Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url))
+    await database.start()
+    await upgrade_database(database)
+    return database
+
+
+async def _insert_ingest_workspace(database: Database, *, quota: int) -> str:
+    """Insert one uniquely named workspace for a MySQL ingest test."""
+    workspace_id = new_id()
+    now = now_shanghai()
+    async with database.transaction() as session:
+        await session.execute(
+            insert(workspaces).values(
+                id=workspace_id,
+                name=f"mysql-ingest-{workspace_id}",
+                mark="",
+                quota=quota,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+    return workspace_id
+
+
+def _mysql_ingest_row(
+    bad_case_id: str,
+    root_session_id: str,
+    *,
+    title: str = "mysql ingest",
+) -> BadCaseIngestRow:
+    """Build one normalized ingest row for the MySQL transaction tests."""
+    return BadCaseIngestRow(
+        bad_case_id=bad_case_id,
+        session_id=root_session_id,
+        bad_case_type="self",
+        object_name="deep-research",
+        object_type="skill",
+        object_version="v2.4.0",
+        bad_case_agent_id=None,
+        title=title,
+        reason="mysql ingest description",
+        meta_data={"file": "SKILL.md"},
+        source="mysql-test",
+        created_at=now_shanghai(),
+    )
+
+
+async def _drop_mysql_ingest_rows(
+    database: Database,
+    workspace_ids: list[str],
+    root_session_ids: list[str],
+) -> None:
+    """Remove every row one MySQL ingest test created."""
+    async with database.transaction() as session:
+        await session.execute(
+            delete(bad_cases).where(bad_cases.c.workspace_id.in_(workspace_ids)),
+        )
+        await session.execute(
+            delete(bad_case_root_sync).where(
+                bad_case_root_sync.c.root_session_id.in_(root_session_ids),
+            ),
+        )
+        await session.execute(
+            delete(workspaces).where(workspaces.c.id.in_(workspace_ids)),
+        )
+
+
+@pytest.mark.mysql
+async def test_mysql_ingest_enforces_quota_conflict_and_idempotency() -> None:
+    """The quota, conflict, and upsert rules hold inside one MySQL transaction."""
+    database = await _mysql_ingest_database()
+    workspace_id = await _insert_ingest_workspace(database, quota=1)
+    other_workspace_id = await _insert_ingest_workspace(database, quota=1)
+    root = new_id()
+    other_root = new_id()
+    try:
+        repository = BadCaseIngestRepository(database)
+        first = await repository.ingest(workspace_id, _mysql_ingest_row("BC-MYSQL-1", root))
+        repeated = await repository.ingest(
+            workspace_id,
+            _mysql_ingest_row("BC-MYSQL-1", root, title="mysql updated"),
+        )
+        with pytest.raises(QuotaExceeded) as quota_error:
+            await repository.ingest(workspace_id, _mysql_ingest_row("BC-MYSQL-2", root))
+        with pytest.raises(BadCaseIdConflict):
+            await repository.ingest(
+                other_workspace_id,
+                _mysql_ingest_row("BC-MYSQL-1", other_root),
+            )
+        state = await BadCaseRootSyncRepository(database).get(root)
+
+        assert (first.created, first.workspace_used) == (True, 1)
+        assert (repeated.created, repeated.workspace_used) == (False, 1)
+        assert (quota_error.value.quota, quota_error.value.used) == (1, 1)
+        assert state is not None
+        assert state.status == "pending"
+        stored = await repository.read("BC-MYSQL-1")
+        assert stored is not None
+        assert stored.workspace_id == workspace_id
+        assert stored.title == "mysql updated"
+    finally:
+        try:
+            await _drop_mysql_ingest_rows(
+                database,
+                [workspace_id, other_workspace_id],
+                [root, other_root],
+            )
+        finally:
+            await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_concurrent_ingest_never_oversells() -> None:
+    """The row lock serializes distinct ids so one quota slot admits one insert."""
+    database = await _mysql_ingest_database()
+    workspace_id = await _insert_ingest_workspace(database, quota=1)
+    roots = [new_id(), new_id()]
+    try:
+        repository = BadCaseIngestRepository(database)
+        results = await asyncio.gather(
+            repository.ingest(workspace_id, _mysql_ingest_row("BC-MYSQL-RACE-1", roots[0])),
+            repository.ingest(workspace_id, _mysql_ingest_row("BC-MYSQL-RACE-2", roots[1])),
+            return_exceptions=True,
+        )
+        writes = [result for result in results if isinstance(result, BadCaseIngestWrite)]
+        refusals = [result for result in results if isinstance(result, QuotaExceeded)]
+
+        assert len(writes) == 1
+        assert len(refusals) == 1
+        assert writes[0].workspace_used == 1
+        async with database.session() as session:
+            stored = int(
+                (
+                    await session.execute(
+                        select(func.count())
+                        .select_from(bad_cases)
+                        .where(
+                            bad_cases.c.workspace_id == workspace_id,
+                        ),
+                    )
+                ).scalar_one(),
+            )
+        assert stored == 1
+    finally:
+        try:
+            await _drop_mysql_ingest_rows(database, [workspace_id], roots)
         finally:
             await database.dispose()

@@ -9,6 +9,7 @@ from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.integrity import is_unique_violation
 from app.db.models.domain import agents, bad_cases, evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
@@ -49,16 +50,6 @@ class EvolutionTargetConflict(Exception):
 
 class EvolutionTargetInUse(Exception):
     """The target still has an active evolution run."""
-
-
-def _is_unique_violation(error: IntegrityError) -> bool:
-    """Recognize the one target object-pair uniqueness failure across dialects."""
-    message = str(error.orig).lower()
-    return (
-        "unique constraint failed" in message
-        or "duplicate entry" in message
-        or "uq_evolution_targets_workspace_object" in message
-    )
 
 
 def _scoped(statement: Any, workspace_ids: Sequence[str] | None) -> Any:
@@ -186,7 +177,7 @@ class EvolutionTargetRepository:
                     ),
                 )
             except IntegrityError as exc:
-                if not _is_unique_violation(exc):
+                if not is_unique_violation(exc):
                     raise
                 raise EvolutionTargetConflict from exc
         created = await self.get(target_id)
@@ -220,7 +211,7 @@ class EvolutionTargetRepository:
             try:
                 result = cast(CursorResult[object], await session.execute(statement))
             except IntegrityError as exc:
-                if not _is_unique_violation(exc):
+                if not is_unique_violation(exc):
                     raise
                 raise EvolutionTargetConflict from exc
         if result.rowcount != 1:
