@@ -11,7 +11,7 @@ depends:
   - m7-06
   - m7-07
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/src/**
   - packages/contracts/**
