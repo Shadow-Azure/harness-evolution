@@ -550,6 +550,70 @@
         "title": "BadCaseIngestResponse",
         "type": "object"
       },
+      "BadCaseListItem": {
+        "additionalProperties": false,
+        "description": "One row of the filtered overview list.",
+        "properties": {
+          "attributionCount": {
+            "description": "Distinct (probeType, probeObject, objectVersion) attributions reached through bad_case_analysis; the canonical definition is 06 §4.2.1.",
+            "minimum": 0.0,
+            "title": "Attributioncount",
+            "type": "integer"
+          },
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "badCaseTypeLabel": {
+            "title": "Badcasetypelabel",
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "triggerAt": {
+            "description": "Trigger timestamp. Until object trigger coordinates land in m9-04 this temporarily equals createdAt.",
+            "format": "date-time",
+            "title": "Triggerat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "sessionId",
+          "objectName",
+          "badCaseType",
+          "badCaseTypeLabel",
+          "title",
+          "triggerAt",
+          "createdAt",
+          "attributionCount"
+        ],
+        "title": "BadCaseListItem",
+        "type": "object"
+      },
       "BadCaseListResponse": {
         "additionalProperties": false,
         "description": "A Session's problems in external creation order.",
@@ -955,7 +1019,10 @@
           "CREDENTIAL_INVALID",
           "CREDENTIAL_LIMIT",
           "QUOTA_EXCEEDED",
-          "BAD_CASE_ID_CONFLICT"
+          "BAD_CASE_ID_CONFLICT",
+          "WINDOW_INVALID",
+          "GRAIN_INVALID",
+          "OBJECT_FILTER_TOO_LARGE"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -2847,6 +2914,149 @@
         "title": "NonIssueBadCaseAnalysis",
         "type": "object"
       },
+      "OverviewBadCaseListResponse": {
+        "additionalProperties": false,
+        "description": "One filtered page plus its authoritative total.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BadCaseListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "OverviewBadCaseListResponse",
+        "type": "object"
+      },
+      "OverviewSummary": {
+        "additionalProperties": false,
+        "description": "One workspace overview header: window, totals, and object options.",
+        "properties": {
+          "objects": {
+            "description": "Distinct object names in the window, ignoring the object filter, sorted case-insensitively by name.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Objects",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/OverviewTotals"
+          },
+          "window": {
+            "$ref": "#/components/schemas/OverviewWindow"
+          }
+        },
+        "required": [
+          "window",
+          "totals",
+          "objects"
+        ],
+        "title": "OverviewSummary",
+        "type": "object"
+      },
+      "OverviewTotals": {
+        "additionalProperties": false,
+        "description": "Summary counters; ``quota``/``used`` ignore the window and every filter.",
+        "properties": {
+          "badCases": {
+            "minimum": 0.0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "discovery": {
+            "minimum": 0.0,
+            "title": "Discovery",
+            "type": "integer"
+          },
+          "quota": {
+            "description": "Workspace bad-case quota; independent of the window.",
+            "minimum": 0.0,
+            "title": "Quota",
+            "type": "integer"
+          },
+          "self": {
+            "minimum": 0.0,
+            "title": "Self",
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Distinct root sessions reported in the window, including roots without a normalized trace. This is not the Session page total; pending roots are counted here and pendingSessions is a separate Session page figure.",
+            "minimum": 0.0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "sources": {
+            "description": "Distinct object names in the window.",
+            "minimum": 0.0,
+            "title": "Sources",
+            "type": "integer"
+          },
+          "used": {
+            "description": "Every bad case owned by the workspace; independent of the window.",
+            "minimum": 0.0,
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "badCases",
+          "self",
+          "discovery",
+          "sessions",
+          "sources",
+          "quota",
+          "used"
+        ],
+        "title": "OverviewTotals",
+        "type": "object"
+      },
+      "OverviewWindow": {
+        "additionalProperties": false,
+        "description": "The inclusive Asia/Shanghai window the response was computed over.",
+        "properties": {
+          "from": {
+            "description": "Inclusive Asia/Shanghai start date.",
+            "format": "date",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "description": "Inclusive Asia/Shanghai end date.",
+            "format": "date",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "OverviewWindow",
+        "type": "object"
+      },
       "ProbeHitSummary": {
         "additionalProperties": false,
         "description": "Hit statistics shown by wizard step 2 before the probe table.",
@@ -3990,6 +4200,63 @@
         "title": "SessionWorkspace",
         "type": "object"
       },
+      "SourceListResponse": {
+        "additionalProperties": false,
+        "description": "Source distribution ordered by total descending, then object name.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRow"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SourceListResponse",
+        "type": "object"
+      },
+      "SourceRow": {
+        "additionalProperties": false,
+        "description": "One object's share of the window, split by bad-case type.",
+        "properties": {
+          "discovery": {
+            "minimum": 0.0,
+            "title": "Discovery",
+            "type": "integer"
+          },
+          "object": {
+            "title": "Object",
+            "type": "string"
+          },
+          "self": {
+            "minimum": 0.0,
+            "title": "Self",
+            "type": "integer"
+          },
+          "sessions": {
+            "minimum": 0.0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object",
+          "total",
+          "self",
+          "discovery",
+          "sessions"
+        ],
+        "title": "SourceRow",
+        "type": "object"
+      },
       "StepAttributionItem": {
         "additionalProperties": false,
         "description": "One probe attribution entry with its cluster-level confidence.",
@@ -5017,6 +5284,79 @@
           "topics"
         ],
         "title": "TicketRequest",
+        "type": "object"
+      },
+      "TrendBucket": {
+        "additionalProperties": false,
+        "description": "One continuous, zero-filled trend bucket.",
+        "properties": {
+          "bucket": {
+            "format": "date",
+            "title": "Bucket",
+            "type": "string"
+          },
+          "discovery": {
+            "minimum": 0.0,
+            "title": "Discovery",
+            "type": "integer"
+          },
+          "label": {
+            "description": "MM-DD for day/week buckets, YYYY-MM for month buckets.",
+            "title": "Label",
+            "type": "string"
+          },
+          "self": {
+            "minimum": 0.0,
+            "title": "Self",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "label",
+          "self",
+          "discovery",
+          "total"
+        ],
+        "title": "TrendBucket",
+        "type": "object"
+      },
+      "TrendResponse": {
+        "additionalProperties": false,
+        "description": "The continuous trend series plus the grain actually used.",
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/TrendBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "grain": {
+            "description": "Effective grain: a day request longer than 92 days is served as week, and the response always states the grain its buckets use.",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Grain",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/OverviewWindow"
+          }
+        },
+        "required": [
+          "window",
+          "grain",
+          "buckets"
+        ],
+        "title": "TrendResponse",
         "type": "object"
       },
       "UnanalyzedBadCaseAnalysis": {
@@ -9052,6 +9392,210 @@
       }
     },
     "/api/workspaces/{wid}/bad-cases": {
+      "get": {
+        "description": "Return one filtered page of this workspace's reported cases.",
+        "operationId": "list_workspace_bad_cases_api_workspaces__wid__bad_cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+            "in": "query",
+            "name": "objects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+              "title": "Objects"
+            }
+          },
+          {
+            "description": "Restrict the list to one bad-case type.",
+            "in": "query",
+            "name": "badCaseType",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "description": "Restrict the list to one bad-case type.",
+              "enum": [
+                "all",
+                "self",
+                "discovery"
+              ],
+              "title": "Badcasetype",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1-based page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1-based page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size; defaults to 8.",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "Page size; defaults to 8.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewBadCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Workspace Bad Cases",
+        "tags": [
+          "overview"
+        ]
+      },
       "post": {
         "description": "Upsert one reported bad case as the workspace resolved from URL and credential.\n\nAuthentication is a workspace ingest credential\n(`Authorization: Bearer whk_…`), not the browser access token. The body may\nnever carry workspace identity: the workspace comes from the URL, and the\ncredential must belong to it. A new `badCaseId` answers `201`; re-reporting\nan id already owned by this workspace replaces its upstream fields and\nanswers `200` without consuming quota.",
         "operationId": "ingest_bad_case_api_workspaces__wid__bad_cases_post",
@@ -11423,6 +11967,509 @@
         "summary": "Update Member",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/sources": {
+      "get": {
+        "description": "Return the per-object distribution, sorted by total then object name.",
+        "operationId": "get_overview_sources_api_workspaces__wid__overview_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+            "in": "query",
+            "name": "objects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+              "title": "Objects"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Sources",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/summary": {
+      "get": {
+        "description": "Return this workspace's overview totals, object options, and quota usage.",
+        "operationId": "get_overview_summary_api_workspaces__wid__overview_summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+            "in": "query",
+            "name": "objects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+              "title": "Objects"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Summary",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/trend": {
+      "get": {
+        "description": "Return the continuous self/discovery trend and its effective grain.",
+        "operationId": "get_overview_trend_api_workspaces__wid__overview_trend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain.",
+            "in": "query",
+            "name": "grain",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "description": "Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Grain",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+            "in": "query",
+            "name": "objects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+              "title": "Objects"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Trend",
+        "tags": [
+          "overview"
         ]
       }
     },

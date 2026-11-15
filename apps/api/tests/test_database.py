@@ -6,7 +6,8 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator, Mapping
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -52,6 +53,7 @@ from app.db.crud.evolution_targets import (
     EvolutionTargetRepository,
     ModelUsageRecord,
 )
+from app.db.crud.overview import OverviewRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import SessionRepository
@@ -89,9 +91,10 @@ from app.db.mysql import MySqlDatabase
 from app.db.sqlite import SqliteDatabase
 from app.service.acquisition.replay import replay_pending_payloads
 from app.service.bad_cases.service import BadCaseService
+from app.service.overview.service import BadCaseListQuery, OverviewQuery, OverviewService
 from app.service.problems.service import ProblemService
 from app.utils.ids import new_id
-from app.utils.time import now_shanghai
+from app.utils.time import SHANGHAI, now_shanghai
 
 
 class FailingHealthDatabase(SqlAlchemyDatabase):
@@ -2864,5 +2867,86 @@ async def test_mysql_workspace_session_list_reports_total_and_pending() -> None:
                 [workspace_id],
                 [normalized_root, pending_root],
             )
+        finally:
+            await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_workspace_overview_aggregates_and_lists() -> None:
+    """The overview summary/trend/sources/list SQL stays correct on the MySQL lane."""
+    database = await _mysql_ingest_database()
+    workspace_id = await _insert_ingest_workspace(database, quota=5)
+    roots = [new_id(), new_id()]
+    first_day = now_shanghai().date() - timedelta(days=2)
+    second_day = first_day + timedelta(days=1)
+    try:
+        ingest = BadCaseIngestRepository(database)
+        await ingest.ingest(
+            workspace_id,
+            replace(
+                _mysql_ingest_row("BC-MYSQL-OV-1", roots[0]),
+                object_name="alpha",
+                created_at=datetime.combine(first_day, time(12, 0), tzinfo=SHANGHAI),
+            ),
+        )
+        await ingest.ingest(
+            workspace_id,
+            replace(
+                _mysql_ingest_row("BC-MYSQL-OV-2", roots[0]),
+                bad_case_type="discovery",
+                object_name="alpha",
+                created_at=datetime.combine(first_day, time(13, 0), tzinfo=SHANGHAI),
+            ),
+        )
+        await ingest.ingest(
+            workspace_id,
+            replace(
+                _mysql_ingest_row("BC-MYSQL-OV-3", roots[1]),
+                object_name="beta",
+                created_at=datetime.combine(second_day, time(12, 0), tzinfo=SHANGHAI),
+            ),
+        )
+
+        service = OverviewService(OverviewRepository(database))
+        query = OverviewQuery(date_from=first_day, date_to=second_day)
+        summary = await service.summary(workspace_id, query)
+        trend = await service.trend(workspace_id, query)
+        sources = await service.sources(workspace_id, query)
+        cases = await service.list_cases(
+            workspace_id,
+            BadCaseListQuery(window=query),
+        )
+        self_cases = await service.list_cases(
+            workspace_id,
+            BadCaseListQuery(window=query, bad_case_type="self"),
+        )
+
+        assert (
+            summary.totals.bad_cases,
+            summary.totals.self_cases,
+            summary.totals.discovery_cases,
+            summary.totals.sessions,
+            summary.totals.sources,
+        ) == (3, 2, 1, 2, 2)
+        assert (summary.totals.quota, summary.totals.used) == (5, 3)
+        assert summary.objects == ["alpha", "beta"]
+        assert [bucket.total for bucket in trend.buckets] == [2, 1]
+        assert [bucket.self_cases for bucket in trend.buckets] == [1, 1]
+        assert [bucket.discovery_cases for bucket in trend.buckets] == [1, 0]
+        assert [(row.object, row.total, row.sessions) for row in sources.items] == [
+            ("alpha", 2, 1),
+            ("beta", 1, 1),
+        ]
+        assert cases.total == 3
+        assert [item.bad_case_id for item in cases.items] == [
+            "BC-MYSQL-OV-3",
+            "BC-MYSQL-OV-2",
+            "BC-MYSQL-OV-1",
+        ]
+        assert {item.attribution_count for item in cases.items} == {0}
+        assert (self_cases.total, len(self_cases.items)) == (2, 2)
+    finally:
+        try:
+            await _drop_mysql_ingest_rows(database, [workspace_id], roots)
         finally:
             await database.dispose()

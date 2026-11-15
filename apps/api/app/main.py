@@ -22,6 +22,7 @@ from app.api.evolution_workspace import router as workspace_evolution_router
 from app.api.health import router as health_router
 from app.api.ingest import router as ingest_router
 from app.api.jobs import router as jobs_router
+from app.api.overview import router as overview_router
 from app.api.problems import router as problems_router
 from app.api.problems import workspace_router as workspace_problems_router
 from app.api.sessions import router as sessions_router
@@ -37,6 +38,7 @@ from app.db.crud.bad_cases import BadCaseRepository
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
+from app.db.crud.overview import OverviewRepository
 from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
@@ -98,6 +100,7 @@ from app.service.evolution.stages import EvolutionStageService
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
+from app.service.overview.service import OverviewService
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.service.workspaces.ingest import BadCaseIngestService
@@ -230,6 +233,7 @@ def create_app(
     )
     jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
+    overview = OverviewService(OverviewRepository(resolved_database))
     workspaces = WorkspaceService(WorkspaceRepository(resolved_database))
     bad_case_ingest = BadCaseIngestService(
         BadCaseIngestRepository(resolved_database),
@@ -466,6 +470,7 @@ def create_app(
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events
     app.state.sessions = sessions
+    app.state.overview = overview
     app.state.workspaces = workspaces
     app.state.bad_case_ingest = bad_case_ingest
     app.state.problems = problems
@@ -515,6 +520,7 @@ def create_app(
     app.include_router(workspace_sessions_router)
     app.include_router(problems_router)
     app.include_router(workspace_problems_router)
+    app.include_router(overview_router)
     app.include_router(evolution_runs_router)
     app.include_router(probe_router)
     app.include_router(preview_router)

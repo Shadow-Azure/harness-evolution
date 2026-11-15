@@ -100,6 +100,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/sessions/{sessionId}/tree",
         "/api/workspaces/{wid}/sessions/{sessionId}/bad-cases",
         "/api/workspaces/{wid}/bad-cases/{badCaseId}",
+        "/api/workspaces/{wid}/overview/summary",
+        "/api/workspaces/{wid}/overview/trend",
+        "/api/workspaces/{wid}/overview/sources",
     }
     assert {
         "HealthResponse",
@@ -172,6 +175,15 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "WorkspaceCredentialCreated",
         "BadCaseIngest",
         "BadCaseIngestResponse",
+        "OverviewSummary",
+        "OverviewTotals",
+        "OverviewWindow",
+        "TrendResponse",
+        "TrendBucket",
+        "SourceListResponse",
+        "SourceRow",
+        "OverviewBadCaseListResponse",
+        "BadCaseListItem",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -238,6 +250,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/workspaces/{wid}/credentials", "get"),
         ("/api/workspaces/{wid}/credentials", "post"),
         ("/api/workspaces/{wid}/credentials/{cid}", "delete"),
+        ("/api/workspaces/{wid}/overview/summary", "get"),
+        ("/api/workspaces/{wid}/overview/trend", "get"),
+        ("/api/workspaces/{wid}/overview/sources", "get"),
+        ("/api/workspaces/{wid}/bad-cases", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -460,6 +476,113 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert paths["/api/bad-cases/{badCaseId}"]["get"]["responses"]["409"]["content"][
         "application/json"
     ]["schema"] == {"$ref": "#/components/schemas/ErrorResponse"}
+    overview_parameters = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/workspaces/{wid}/overview/summary"]["get"]["parameters"]
+    }
+    assert set(overview_parameters) == {"wid", "from", "to", "range", "objects"}
+    assert overview_parameters["from"]["schema"]["anyOf"][0]["format"] == "date"
+    assert overview_parameters["to"]["schema"]["anyOf"][0]["format"] == "date"
+    assert overview_parameters["range"]["schema"]["enum"] == [7, 30, 90]
+    assert overview_parameters["objects"]["schema"]["anyOf"][0]["type"] == "array"
+    assert "comma-separated" in overview_parameters["objects"]["description"]
+    trend_parameters = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/workspaces/{wid}/overview/trend"]["get"]["parameters"]
+    }
+    assert trend_parameters["grain"]["schema"]["default"] == "day"
+    assert trend_parameters["grain"]["schema"]["enum"] == ["day", "week", "month"]
+    assert "effective grain" in trend_parameters["grain"]["description"]
+    list_parameters = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/workspaces/{wid}/bad-cases"]["get"]["parameters"]
+    }
+    assert set(list_parameters) == {
+        "wid",
+        "from",
+        "to",
+        "range",
+        "objects",
+        "badCaseType",
+        "page",
+        "pageSize",
+    }
+    assert list_parameters["page"]["schema"]["default"] == 1
+    assert list_parameters["range"]["schema"]["enum"] == [7, 30, 90]
+    assert list_parameters["pageSize"]["schema"]["default"] == 8
+    assert list_parameters["pageSize"]["schema"]["maximum"] == 50
+    assert list_parameters["badCaseType"]["schema"]["default"] == "all"
+    for path in (
+        "/api/workspaces/{wid}/overview/summary",
+        "/api/workspaces/{wid}/overview/trend",
+        "/api/workspaces/{wid}/overview/sources",
+        "/api/workspaces/{wid}/bad-cases",
+    ):
+        assert {"401", "403", "404", "422"} <= set(paths[path]["get"]["responses"])
+        assert paths[path]["get"]["responses"]["422"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/ErrorResponse"
+        }
+    assert paths["/api/workspaces/{wid}/bad-cases"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/OverviewBadCaseListResponse"}
+    assert paths["/api/workspaces/{wid}/overview/summary"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/OverviewSummary"}
+    assert paths["/api/workspaces/{wid}/overview/trend"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/TrendResponse"}
+    assert paths["/api/workspaces/{wid}/overview/sources"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"] == {"$ref": "#/components/schemas/SourceListResponse"}
+    assert components["OverviewTotals"]["properties"]["self"]["type"] == "integer"
+    assert components["OverviewTotals"]["properties"]["discovery"]["type"] == "integer"
+    assert set(components["OverviewTotals"]["properties"]) == {
+        "badCases",
+        "self",
+        "discovery",
+        "sessions",
+        "sources",
+        "quota",
+        "used",
+    }
+    assert (
+        "without a normalized trace"
+        in (components["OverviewTotals"]["properties"]["sessions"]["description"])
+    )
+    assert components["TrendResponse"]["properties"]["grain"]["enum"] == [
+        "day",
+        "week",
+        "month",
+    ]
+    assert set(components["TrendBucket"]["properties"]) == {
+        "bucket",
+        "label",
+        "self",
+        "discovery",
+        "total",
+    }
+    assert set(components["SourceRow"]["properties"]) == {
+        "object",
+        "total",
+        "self",
+        "discovery",
+        "sessions",
+    }
+    assert set(components["BadCaseListItem"]["properties"]) == {
+        "badCaseId",
+        "sessionId",
+        "objectName",
+        "badCaseType",
+        "badCaseTypeLabel",
+        "title",
+        "triggerAt",
+        "createdAt",
+        "attributionCount",
+    }
+    assert (
+        "temporarily equals createdAt"
+        in components["BadCaseListItem"]["properties"]["triggerAt"]["description"]
+    )
     error_codes = components["ErrorCode"]["enum"]
     assert {
         "BAD_CASE_NOT_FOUND",
@@ -476,6 +599,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "CREDENTIAL_LIMIT",
         "QUOTA_EXCEEDED",
         "BAD_CASE_ID_CONFLICT",
+        "WINDOW_INVALID",
+        "GRAIN_INVALID",
+        "OBJECT_FILTER_TOO_LARGE",
     } <= set(error_codes)
     assert "/api/sessions/{sessionId}/timeline" not in paths
     trigger_responses = paths["/api/acquisition/sync"]["post"]["responses"]

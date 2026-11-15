@@ -308,7 +308,7 @@ async def get_attribution(wid: str, case_id: str, at_id: str) -> AttributionDeta
 ```
 
 - 归因由两张既有表组成：`bad_case_analysis` 表达 case↔归因多行关联，`probe_reports` 保存对象·版本结论与缓存元数据；没有关联行 = 未归因，`probe_reports.conclusion` 决定「可归因 / 非该对象问题」。
-- `BadCase` 附带的 `attributionCount` 用 `COUNT(DISTINCT object_type, object_name, object_version)`，供左栏「尚未归因 / N 条归因」。
+- `BadCase` 附带的 `attributionCount` 按 [05 §3.10](05-api-design.md) 的唯一口径：经 `bad_case_analysis JOIN probe_reports` 去重的 `(probe_type, probe_object, object_version)` 三元组数（[06 §4.2.1](06-database-design.md)）；不是 case 自身 `object_type/object_name/object_version` 的行数。供左栏「尚未归因 / N 条归因」。
 - `triggerCompare` 取自该归因最近一次关联的候选（`evolution_run_candidates` 的 `object_trigger_at / case_trigger_at`）。
 
 ### 4.2 深链与归属校验

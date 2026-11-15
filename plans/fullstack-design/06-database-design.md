@@ -846,6 +846,9 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 |---|---|
 | 空间 bad case 集合 | `bad_cases WHERE workspace_id = :wid`；额度 `used` = 该集合 `COUNT(*)`（不带时间窗，§3.10） |
 | 空间 Session 集合 | 上述集合的 `DISTINCT bad_case_session_id` 与 `session_families` 的 JOIN；未命中的计入「待轨迹同步」，不进列表 |
+| 总览 `sessions` | 窗口内 `COUNT(DISTINCT bad_case_session_id)` 的上报根口径，**包含 pending 根**（没有归一化轨迹的根也计入）；它不是本表的空间 Session 集合（JOIN 口径），也不等于 Session 页 `total` 或 `pendingSessions`，三者不能相加 |
+| 总览统计范围 | summary/trend/sources/list 的共享谓词只收 `bad_case_type IN ('self','discovery')`；legacy 目录同步写入的越界类型不计入任何总览聚合，但仍计入空间级 `used` |
+| `attributionCount` | 经 `bad_case_analysis JOIN probe_reports` 去重的 `(probe_type, probe_object, object_version)` 三元组数；唯一定义见 §4.2.1，api 设计与实现都引用它 |
 | 共享 root 的 `total` | 按空间投影计数：同一 root 被两个空间上报时，每个空间的 `total` 各算一次；V1 的可见空间并集用 `IN` 半连接按根去重，只算一次 |
 | 共享 root 的 `pendingSessions` | 同样按空间各算一次：每个空间都需要自己的轨迹补齐；V1 在可见空间并集内按 root `COUNT(DISTINCT)`，同一根只算一次 |
 | 时间桶 | 按 `bad_cases.created_at`（上报时间）分桶，`day` / `week`（ISO 周一）/ `month`，边界 Asia/Shanghai；空桶由服务端补零 |
