@@ -2769,7 +2769,13 @@ async def test_mysql_workspace_session_list_reports_total_and_pending() -> None:
     now = now_shanghai()
     try:
         async with database.transaction() as session:
-            source_id = int(new_id().replace("-", "")[:8], 16)
+            source_id = int(
+                (
+                    await session.execute(
+                        select(func.coalesce(func.max(source_records.c.id), 0) + 1),
+                    )
+                ).scalar_one(),
+            )
             await session.execute(
                 insert(source_records).values(
                     id=source_id,
