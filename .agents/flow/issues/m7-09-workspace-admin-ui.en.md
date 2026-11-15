@@ -17,7 +17,9 @@ scope:
   - apps/web/src/composables/**
   - apps/web/src/stores/**
   - apps/web/src/router/**
+  - apps/web/src/router.test.ts
   - apps/web/src/components/**
+  - apps/web/src/components.d.ts
   - packages/contracts/**
   - tests/e2e/**
   - plans/**
