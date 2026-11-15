@@ -6,6 +6,7 @@ import logging
 
 from app.db.crud.bad_cases import AnalysisProgress
 from app.db.crud.problems import ProbeListSnapshot, ProblemRepository, ProblemSnapshot
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import EventRecord
 from app.errors import AppError, ErrorCode
 from app.service.bad_cases.schemas import BadCaseReadModel, ProbeReportReadModel
@@ -43,9 +44,13 @@ class ProblemService:
         """Return overall attribution progress for the sync popover."""
         return await self._bad_cases.analysis_progress()
 
-    async def list_for_session(self, session_id: str) -> BadCaseListResponse:
+    async def list_for_session(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> BadCaseListResponse:
         """Return all problems for one Session with tree-derived anchors."""
-        snapshot = await self._repository.session_snapshot(session_id)
+        snapshot = await self._repository.session_snapshot(session_id, scope)
         if snapshot is None:
             raise AppError(
                 status_code=404,
@@ -61,9 +66,14 @@ class ProblemService:
             items=self._public_cases(snapshot, merged.items),
         )
 
-    async def get_case(self, case_id: str, session_id: str | None) -> BadCase:
+    async def get_case(
+        self,
+        case_id: str,
+        session_id: str | None,
+        scope: WorkspaceReadScope,
+    ) -> BadCase:
         """Return one problem after enforcing optional Session ownership."""
-        snapshot = await self._repository.case_snapshot(case_id)
+        snapshot = await self._repository.case_snapshot(case_id, scope)
         if snapshot is None:
             raise AppError(
                 status_code=404,
@@ -88,15 +98,23 @@ class ProblemService:
         self,
         case_id: str,
         session_id: str | None,
+        scope: WorkspaceReadScope,
     ) -> BadCaseAnalysis:
         """Return the case's analysis placeholder without fetching a probe row."""
-        case = await self.get_case(case_id, session_id)
+        case = await self.get_case(case_id, session_id, scope)
         return case.analysis
 
-    async def get_probe(self, probe_id: str) -> ProbeReport:
+    async def get_probe(
+        self,
+        probe_id: str,
+        scope: WorkspaceReadScope,
+    ) -> ProbeReport:
         """Return one validated probe and its reverse source links."""
         result = await self._bad_cases.get_probe_result(probe_id)
-        if result.model is None:
+        if result.model is None or not await self._repository.session_visible(
+            result.model.session_id,
+            scope,
+        ):
             raise AppError(
                 status_code=404,
                 code=ErrorCode.PROBE_NOT_FOUND,
@@ -104,9 +122,13 @@ class ProblemService:
             )
         return self._public_probe(result.model)
 
-    async def list_probes(self, session_id: str) -> ProbeListResponse:
+    async def list_probes(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> ProbeListResponse:
         """Return every probe belonging to one Session."""
-        snapshot = await self._repository.session_probes(session_id)
+        snapshot = await self._repository.session_probes(session_id, scope)
         if snapshot is None:
             raise AppError(
                 status_code=404,

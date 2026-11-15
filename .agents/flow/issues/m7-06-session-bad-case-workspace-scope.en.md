@@ -10,18 +10,22 @@ depends:
   - m7-03
   - m7-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/sessions.py
   - apps/api/app/api/problems.py
   - apps/api/app/service/sessions/**
   - apps/api/app/service/problems/**
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-session-bad-case-workspace-scope.md
 github:
   number: 227
   url: https://github.com/Shadow-Azure/harness-evolution/issues/227
@@ -47,6 +51,7 @@ Workspace isolation requires every session and problem read to be workspace-scop
 - Add workspace-prefixed routes.
 - Project sessions through workspace bad cases.
 - Filter legacy routes by visible spaces.
+- Registering the workspace routers touches API wiring, and the cross-workspace tests plus the review record need API tests and plans, so the scope covers those files.
 
 ## Implementation steps
 

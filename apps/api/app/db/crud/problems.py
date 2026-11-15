@@ -19,6 +19,7 @@ from app.db.crud.bad_cases import (
     _row_probe,
     _text,
 )
+from app.db.crud.read_scope import WorkspaceReadScope, bad_cases_table_present
 from app.db.crud.sessions import (
     AgentRecord,
     EventRecord,
@@ -64,14 +65,27 @@ class ProblemRepository:
     def __init__(self, database: Database) -> None:
         """Bind the repository to one application database."""
         self._database = database
+        self._bad_cases_ready = False
 
-    async def session_snapshot(self, session_id: str) -> ProblemSnapshot | None:
+    async def _scoped_reads_available(self) -> bool:
+        """Return whether the external bad-case projection can be queried."""
+        if not self._bad_cases_ready:
+            self._bad_cases_ready = await bad_cases_table_present(self._database)
+        return self._bad_cases_ready
+
+    async def session_snapshot(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> ProblemSnapshot | None:
         """Return one coherent Session/problem version for a Session route."""
+        if not await self._scoped_reads_available():
+            return None
         async with self._database.session() as session:
-            family = await self._family(session, session_id)
+            family = await self._family(session, session_id, scope)
             if family is None:
                 return None
-            cases = await self._cases(session, session_id=session_id)
+            cases = await self._cases(session, session_id=session_id, scope=scope)
             analyses, probes = await self._related(session, tuple(row.bad_case_id for row in cases))
             return ProblemSnapshot(
                 session=family,
@@ -82,13 +96,19 @@ class ProblemRepository:
                 probes=probes,
             )
 
-    async def case_snapshot(self, case_id: str) -> ProblemSnapshot | None:
+    async def case_snapshot(
+        self,
+        case_id: str,
+        scope: WorkspaceReadScope,
+    ) -> ProblemSnapshot | None:
         """Return one coherent case, Session, tree, and external-row version."""
+        if not await self._scoped_reads_available():
+            return None
         async with self._database.session() as session:
-            case = await self._case(session, case_id)
+            case = await self._case(session, case_id, scope)
             if case is None:
                 return None
-            family = await self._family(session, case.bad_case_session_id)
+            family = await self._family(session, case.bad_case_session_id, scope)
             if family is None:
                 return None
             analyses, probes = await self._related(session, (case_id,))
@@ -101,10 +121,16 @@ class ProblemRepository:
                 probes=probes,
             )
 
-    async def session_probes(self, session_id: str) -> ProbeListSnapshot | None:
+    async def session_probes(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> ProbeListSnapshot | None:
         """Return one Session's probes with batched reverse links."""
+        if not await self._scoped_reads_available():
+            return None
         async with self._database.session() as session:
-            family = await self._family(session, session_id)
+            family = await self._family(session, session_id, scope)
             if family is None:
                 return None
             probes = tuple(
@@ -135,15 +161,42 @@ class ProblemRepository:
             )
             return ProbeListSnapshot(session=family, probes=probes, sources=sources)
 
+    async def session_visible(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> bool:
+        """Return whether the Session belongs to any workspace in the scope."""
+        if not await self._scoped_reads_available():
+            return False
+        async with self._database.session() as session:
+            row = (
+                await session.execute(
+                    select(session_families.c.id).where(
+                        session_families.c.id == session_id,
+                        session_families.c.id.in_(
+                            select(bad_cases.c.bad_case_session_id).where(
+                                scope.condition(bad_cases.c.workspace_id),
+                            ),
+                        ),
+                    ),
+                )
+            ).first()
+        return row is not None
+
     async def _family(
         self,
         session: AsyncSession,
         session_id: str,
+        scope: WorkspaceReadScope,
     ) -> SessionRecord | None:
         row = (
             (
                 await session.execute(
-                    select(session_families).where(session_families.c.id == session_id),
+                    select(session_families).where(
+                        session_families.c.id == session_id,
+                        scope.session_condition(),
+                    ),
                 )
             )
             .mappings()
@@ -188,11 +241,19 @@ class ProblemRepository:
         )
         return tuple(_event_record(row) for row in rows)
 
-    async def _case(self, session: AsyncSession, case_id: str) -> BadCaseRow | None:
+    async def _case(
+        self,
+        session: AsyncSession,
+        case_id: str,
+        scope: WorkspaceReadScope,
+    ) -> BadCaseRow | None:
         row = (
             (
                 await session.execute(
-                    select(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+                    select(bad_cases).where(
+                        bad_cases.c.bad_case_id == case_id,
+                        scope.condition(bad_cases.c.workspace_id),
+                    ),
                 )
             )
             .mappings()
@@ -205,12 +266,16 @@ class ProblemRepository:
         session: AsyncSession,
         *,
         session_id: str,
+        scope: WorkspaceReadScope,
     ) -> tuple[BadCaseRow, ...]:
         rows = (
             (
                 await session.execute(
                     select(bad_cases)
-                    .where(bad_cases.c.bad_case_session_id == session_id)
+                    .where(
+                        bad_cases.c.bad_case_session_id == session_id,
+                        scope.condition(bad_cases.c.workspace_id),
+                    )
                     .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id),
                 )
             )
