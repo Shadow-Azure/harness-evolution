@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m8-01-workspace-bad-case-ingest.md
-m8-01-workspace-bad-case-ingest.md: 516eaf543220a506701e34c8a920c8df18329f9b
-m8-01-workspace-bad-case-ingest.en.md: f19bd1a8b2ce56f7c09ff6be6f53d00f6b38a496
+m8-01-workspace-bad-case-ingest.md: 4a05bbf231755886df0f21df1918f984e117a2ab
+m8-01-workspace-bad-case-ingest.en.md: 7e07d1a1d60bad5451e28860c8f4bbf68669b54f

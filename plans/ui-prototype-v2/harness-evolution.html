@@ -6377,7 +6377,7 @@ function v2AdminIngest() {
     <div class="ingest-card">
       <h3>上报地址 <span class="v2-badge ok">已启用</span></h3>
       <div class="ingest-endpoint"><span class="method">POST</span><span class="url">${endpoint}</span><button class="btn sm" data-v2-copy="${endpoint}">复制</button></div>
-      <div style="margin-top:8px;font-size:10.5px;color:var(--text-faint)">服务端从 URL 解析 workspace，再校验 <code>Authorization</code> 凭据；body 中的 workspace 字段会被忽略。</div>
+      <div style="margin-top:8px;font-size:10.5px;color:var(--text-faint)">服务端从 URL 解析 workspace，再校验 <code>Authorization</code> 凭据；body 不接受 workspace 字段，多带会返回 422。</div>
     </div>
     <div class="ingest-grid">
       <div class="ingest-card">

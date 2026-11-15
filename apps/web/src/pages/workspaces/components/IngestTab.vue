@@ -182,7 +182,7 @@ function formatTime(value: string | null): string {
         </button>
       </div>
       <p class="field-help">
-        服务端从 URL 解析 workspace，再校验 <code>Authorization</code> 凭据；body 中的 workspace 字段会被忽略。
+        服务端从 URL 解析 workspace，再校验 <code>Authorization</code> 凭据；body 不接受 workspace 字段，多带会返回 <code>422</code>。
       </p>
     </div>
 

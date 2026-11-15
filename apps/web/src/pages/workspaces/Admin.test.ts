@@ -318,6 +318,9 @@ describe("workspace admin page", () => {
     expect(wrapper.get("[data-testid='ingest-endpoint']").text()).toContain(
       `/api/workspaces/${workspaceId}/bad-cases`,
     );
+    expect(wrapper.get("[data-testid='ingest-tab']").text()).toContain(
+      "body 不接受 workspace 字段，多带会返回",
+    );
     expect(wrapper.get("[data-testid='credential-row-cred-1']").text()).toContain(
       "whk_9f2e3a",
     );

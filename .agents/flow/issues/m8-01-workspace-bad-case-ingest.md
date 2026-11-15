@@ -19,6 +19,7 @@ scope:
   - apps/api/app/errors.py
   - apps/api/app/main.py
   - apps/api/tests/**
+  - apps/web/src/pages/workspaces/**
   - packages/contracts/**
   - plans/**
   - docs/**
