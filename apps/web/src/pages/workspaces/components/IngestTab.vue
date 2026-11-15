@@ -147,10 +147,11 @@ function formatTime(value: string | null): string {
         <button
           class="btn"
           data-testid="rotate-credential"
+          :disabled="mutations.isCreating.value"
           type="button"
           @click="rotateCredential"
         >
-          重新生成凭据
+          {{ mutations.isCreating.value ? "生成中…" : "重新生成凭据" }}
         </button>
       </div>
     </div>

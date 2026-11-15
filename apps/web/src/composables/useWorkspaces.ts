@@ -17,6 +17,7 @@ import {
 } from "vue";
 
 import { queryKeys } from "../api/queryKeys";
+import { useAuthStore } from "../stores/auth";
 import {
   addWorkspaceMember,
   appointSelfAsSpaceAdmin,
@@ -35,6 +36,15 @@ import { listUsers } from "../api/users";
 
 type QueryClient = ReturnType<typeof useQueryClient>;
 
+async function refreshAuthSession(): Promise<void> {
+  try {
+    await useAuthStore().loadSession();
+  } catch {
+    // The admin table already has the authoritative list; a failed session
+    // refresh must not turn a successful mutation into an error.
+  }
+}
+
 async function invalidateWorkspaceList(
   queryClient: QueryClient,
 ): Promise<void> {
@@ -42,6 +52,7 @@ async function invalidateWorkspaceList(
     queryClient.invalidateQueries({ queryKey: queryKeys.workspaces() }),
     queryClient.invalidateQueries({ queryKey: queryKeys.authSession }),
   ]);
+  await refreshAuthSession();
 }
 
 async function invalidateWorkspaceAdmin(
@@ -57,6 +68,7 @@ async function invalidateWorkspaceAdmin(
     }),
     queryClient.invalidateQueries({ queryKey: queryKeys.authSession }),
   ]);
+  await refreshAuthSession();
 }
 
 /**
