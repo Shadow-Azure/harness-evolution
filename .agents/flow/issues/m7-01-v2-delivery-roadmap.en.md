@@ -8,7 +8,7 @@ id: m7-01
 milestone: m7
 depends: []
 priority: P0
-status: in-progress
+status: done
 scope:
   - .agents/flow/**
   - .agents/notes/**
@@ -40,7 +40,7 @@ PR #209 merged the V2 target-state design, but the flow tree still stops at M6. 
 
 ## Implementation
 
-- Extend the roadmap with six milestones, 31 V2 issues, and 12 M12 migration issues.
+- Extend the roadmap with six milestones, 31 V2 issues, and 6 M12 migration issues.
 - Mark m6-23, m6-24, and m6-25 done; close M6 and move six unfinished items to M12.
 - Add a bilingual decision note and update the public roadmap.
 
