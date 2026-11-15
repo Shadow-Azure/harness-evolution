@@ -127,7 +127,7 @@ describe("auth composables", () => {
     expect(composables.login.data.value?.displayName).toBe("操作员");
     expect(useAuthStore(pinia).user?.displayName).toBe("操作员");
     expect(composables.currentUser.data.value?.displayName).toBe("操作员");
-    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
+    expect(router.currentRoute.value.path).toBe(`${ws}/overview`);
     wrapper.unmount();
   });
 

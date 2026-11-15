@@ -36,7 +36,7 @@ describe("workspace route helpers", () => {
 
   it("maps legacy paths without changing their suffix", () => {
     expect(legacyWorkspaceTarget("ws-1", "/")).toBe(
-      "/workspaces/ws-1/sessions",
+      "/workspaces/ws-1/overview",
     );
     expect(legacyWorkspaceTarget("ws-1", "/sessions")).toBe(
       "/workspaces/ws-1/sessions",
@@ -84,7 +84,7 @@ describe("workspace route helpers", () => {
   it("sends a landing path to the remembered workspace or the chooser", () => {
     expect(
       defaultLandingPath({ workspaces: [{ id: "ws-only" }] }),
-    ).toBe("/workspaces/ws-only/sessions");
+    ).toBe("/workspaces/ws-only/overview");
     expect(
       defaultLandingPath({
         workspaces: [{ id: "ws-a" }, { id: "ws-b" }],

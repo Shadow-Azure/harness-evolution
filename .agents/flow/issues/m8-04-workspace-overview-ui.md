@@ -10,11 +10,16 @@ depends:
   - m7-08
   - m8-03
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/overview/**
   - apps/web/src/api/**
-  - apps/web/src/components/**
+  - apps/web/src/components/layout/**
+  - apps/web/src/router/**
+  - apps/web/src/router.test.ts
+  - apps/web/src/ui-prototype.test.ts
+  - apps/web/src/composables/**
+  - packages/contracts/src/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
@@ -44,6 +49,12 @@ github:
 - 图表使用自研 SVG 和现有 token。
 - 时间窗口 >92 天时展示服务端降级粒度。
 - 空态区分无数据和筛选无命中。
+- URL 是筛选的唯一事实源：`tab=cases`、`range=7|30|90|custom`、`from`/`to`（仅自定义窗口）、`grain=day|week|month`、`objects`（逗号分隔，空 = 全部，多选取并集，chip 逐项移除）、`page`、`type`（自身 / 发现前置步骤统计格下钻）。默认 `range=90`、`grain=week`；非法或缺失值回落默认；切换空间重置筛选。
+- 统计条、趋势与来源分布、bad case 列表各自请求与三态；区块级重试，不整页 spinner。点击时间桶把列表窗口切到该桶的起止日期；bad case ID 新窗口打开 `/workspaces/:wid/sessions/:sid/errors?case=<id>&tab=desc`。
+- 总览成为空间默认落地页（`/workspaces/:wid` 重定向 `/overview`，登录与空间选择的默认目标同源）；顶栏新增「总览」且位于 Sessions 之前；Session 深链保持原路径。
+- `tab=targets` 重定向回 `tab=cases` 并提示：进化对象总览（F25）延后到 M11，页面保留禁用入口而不是死控件。
+- 已知缺口：m8-03 不提供「对象 × 时间桶」计数，本 issue 不伪造 SourceMatrix，来源分布以 top 6 + 其余折叠呈现；该矩阵需后续 API 字段，不在前端拼页面数据。
+- 契约类型由 m8-03 生成物经 `packages/contracts/src/overview.ts` 再导出，未新增或修改 HTTP 接口。
 
 ## 实施步骤
 
@@ -55,16 +66,18 @@ github:
 
 - 依赖：m7-08、m8-03
 - 交付边界：F25 进化对象总览延后到 M11。
+- 交付边界：SourceMatrix（对象 × 时间桶明细）随 m8-03 的聚合口径一起顺延，本 issue 不实现。
 
 ## 独立验证
 
 ```sh
-pnpm test:web; pnpm typecheck:web; pnpm test:e2e -- --pattern overview
+pnpm test:web; pnpm typecheck:web; pnpm test:e2e -- --pattern "m8-04 overview"; pnpm test:e2e -- --pattern "m1-shell|m7-08 workspace-shell"
 ```
 
-- 刷新后筛选不变。
-- 空 objects 表示全部。
-- 下钻 URL 选中正确 case。
+- 刷新后筛选不变，URL 与请求参数一致。
+- 空 objects 表示全部，并集与 chip 移除正确。
+- 下钻 URL 选中正确 case 的问题描述 Tab。
+- 390px 无横向溢出，控制台无报错。
 
 ## 验收标准
 

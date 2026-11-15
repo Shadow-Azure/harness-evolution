@@ -44,7 +44,12 @@ export function createAppRouter() {
           {
             path: "",
             name: "workspace-root",
-            redirect: (to) => workspacePath(String(to.params.wid), "sessions"),
+            redirect: (to) => workspacePath(String(to.params.wid), "overview"),
+          },
+          {
+            path: "overview",
+            name: "workspace-overview",
+            component: () => import("../pages/overview/Index.vue"),
           },
           {
             path: "sessions",

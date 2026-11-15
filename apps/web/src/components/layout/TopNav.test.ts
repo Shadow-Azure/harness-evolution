@@ -139,7 +139,7 @@ describe("top navigation user area", () => {
     });
   });
 
-  it("renders the prototype two-entry navigation and the optional demo badge", async () => {
+  it("renders the overview, sessions, and evolution entries plus the demo badge", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);
     useAuthStore().setSession({
@@ -164,7 +164,8 @@ describe("top navigation user area", () => {
       },
     });
 
-    expect(wrapper.findAll("nav .tn-item")).toHaveLength(2);
+    expect(wrapper.findAll("nav .tn-item")).toHaveLength(3);
+    expect(wrapper.find("nav").text()).toContain("总览");
     expect(wrapper.find("nav").text()).toContain("Session 错误查看");
     expect(wrapper.find("nav").text()).toContain("自进化");
     expect(wrapper.find("nav").text()).not.toContain("Errors");
@@ -204,12 +205,50 @@ describe("top navigation user area", () => {
     });
 
     const items = wrapper.findAll("nav .tn-item");
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
+    expect(wrapper.get("#tn-overview").classes("active")).toBe(false);
     expect(wrapper.get("#tn-sessions").classes("active")).toBe(true);
     expect(wrapper.get("#tn-sessions").text()).toContain("Session 错误查看");
     expect(wrapper.get("#tn-evo").classes("active")).toBe(false);
     expect(wrapper.findAll("nav .tn-item.active")).toHaveLength(1);
     expect(wrapper.get(".tn-note").text()).toContain("点击 ID 跨页溯源");
+  });
+
+  it("marks overview as the active section only on the overview route", async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const store = useAuthStore();
+    const user = {
+      id: "u-1",
+      username: "operator",
+      displayName: "操作员",
+      role: "member" as const,
+      mustChangePassword: false,
+    };
+    store.setSession({ accessToken: "access", expiresIn: 1_800, user });
+    store.setWorkspaceSession({
+      user,
+      workspaces: [testWorkspace({ role: "viewer" })],
+      truncated: false,
+    });
+    const router = createAppRouter();
+    await router.push(`${ws}/overview?range=30&grain=day`);
+    await router.isReady();
+
+    const wrapper = mount(TopNav, {
+      global: {
+        plugins: [
+          [VueQueryPlugin, { queryClient: new QueryClient() }],
+          pinia,
+          router,
+        ],
+      },
+    });
+
+    expect(wrapper.get("#tn-overview").classes("active")).toBe(true);
+    expect(wrapper.get("#tn-overview").text()).toContain("总览");
+    expect(wrapper.get("#tn-sessions").classes("active")).toBe(false);
+    expect(wrapper.findAll("nav .tn-item.active")).toHaveLength(1);
   });
 
   it("keeps the compact brand and demo state accessible", async () => {
@@ -690,8 +729,8 @@ describe("top navigation user area", () => {
   });
 
   it.each([
-    ["space_admin" as const, 3],
-    ["viewer" as const, 2],
+    ["space_admin" as const, 4],
+    ["viewer" as const, 3],
   ])(
     "shows the admin entry only to %s roles",
     async (role, expectedItems) => {

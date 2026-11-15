@@ -58,6 +58,9 @@ const currentRole = computed(() =>
 const sessionsPath = computed(() =>
   workspaceId.value ? workspacePath(workspaceId.value, "sessions") : "/workspaces",
 );
+const overviewPath = computed(() =>
+  workspaceId.value ? workspacePath(workspaceId.value, "overview") : "/workspaces",
+);
 const evolutionPath = computed(() =>
   workspaceId.value ? workspacePath(workspaceId.value, "evolution") : "/workspaces",
 );
@@ -70,6 +73,7 @@ const canManage = computed(() =>
 
 const activeSection = computed(() => {
   const name = typeof route.name === "string" ? route.name : "";
+  if (name === "workspace-overview") return "overview";
   if (
     name === "workspace-sessions" ||
     name === "workspace-session" ||
@@ -314,7 +318,7 @@ onBeforeUnmount(() => {
     <RouterLink
       aria-label="Harness Evolution"
       class="brand"
-      :to="sessionsPath"
+      :to="overviewPath"
     >
       <span
         class="brand-mark"
@@ -330,6 +334,14 @@ onBeforeUnmount(() => {
       class="primary-nav"
       aria-label="Primary"
     >
+      <RouterLink
+        id="tn-overview"
+        class="tn-item"
+        :class="{ active: activeSection === 'overview' }"
+        :to="overviewPath"
+      >
+        总览<span class="tn-sub">来源 · 趋势 · bad case</span>
+      </RouterLink>
       <RouterLink
         id="tn-sessions"
         class="tn-item"
