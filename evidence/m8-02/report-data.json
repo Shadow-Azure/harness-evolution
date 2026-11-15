@@ -1,0 +1,220 @@
+{
+  "title": "m8-02 空间 Session 投影集成冒烟报告",
+  "eyebrow": "Harness Evolution · M8 空间数据面与总览",
+  "summary": "在真实 API（SQLite + demo fixtures）+ Vite proxy + 无头 Chrome 中验证空间 Session 投影：默认列表、total/pendingSessions、完整 root ID 精确命中、子串不命中、跨空间不泄漏、V1 冻结端点仍支持标题模糊搜索，并核对 Session 页搜索文案与原型。",
+  "meta": "2026-11-16 · macOS · Chrome headless · 1440×980",
+  "metrics": [
+    {
+      "value": "5",
+      "label": "API 场景"
+    },
+    {
+      "value": "3",
+      "label": "页面状态截图"
+    },
+    {
+      "value": "0",
+      "label": "未解决缺陷"
+    }
+  ],
+  "facts": [
+    {
+      "label": "分支",
+      "value": "agent/develop-m8-02-140cb6e5db5d"
+    },
+    {
+      "label": "提交",
+      "value": "7bc6680（PR #267 head）"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution web + api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 API + Vite proxy + CDP 无头 Chrome"
+    },
+    {
+      "label": "数据",
+      "value": "fixtures:seed 4 个 Session + 1 个待同步根（2 条 case）"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "默认列表、total 与 pendingSessions",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "4 条已归一化 Session + 1 个待同步根（2 条 bad case）；默认 items=4、total=4、pendingSessions=1。",
+        "evidence": []
+      },
+      {
+        "id": "02",
+        "name": "完整 root ID 精确命中",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "q=完整 root ID → 1 条，total=1；pendingSessions 与查询无关，仍为 1。",
+        "evidence": []
+      },
+      {
+        "id": "03",
+        "name": "子串不命中",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "q=ID 前 8 位 → items=[]、total=0，证明 V2 是精确查询而非模糊搜索。",
+        "evidence": []
+      },
+      {
+        "id": "04",
+        "name": "跨空间精确查询不泄漏",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "在对照空间查询只属于工作空间的 root ID → items=[]、total=0。",
+        "evidence": []
+      },
+      {
+        "id": "05",
+        "name": "V1 冻结端点仍支持标题模糊搜索",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "V1 q=\"示例会话\" 仍按标题命中；响应新增 total/pendingSessions 为 additive。",
+        "evidence": []
+      },
+      {
+        "id": "06",
+        "name": "Session 页搜索文案",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "placeholder/aria 明确要求完整 root Session ID；未命中空态提示输入完整 ID 或清空恢复列表。",
+        "evidence": [
+          "01-session-page.png",
+          "02-search-miss.png"
+        ]
+      },
+      {
+        "id": "07",
+        "name": "完整 root ID 命中页面",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "输入完整 root ID 后左侧只剩 1 张卡片，与 API 精确查询一致。",
+        "evidence": [
+          "03-exact-hit.png"
+        ]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P3",
+      "title": "回车交互与「最新 10 条」标题留给 m8-05",
+      "facts": [
+        {
+          "label": "实际",
+          "value": "当前仍为 300ms 防抖查询；placeholder 已改为完整 root ID，但未要求回车。"
+        },
+        {
+          "label": "预期",
+          "value": "设计 08 §5.2.1：回车触发、标题显示「最新 10 / 总数 N」与待同步角标。"
+        },
+        {
+          "label": "根因",
+          "value": "m8-02 交付边界是 API 投影；m8-05 负责页面交互与标题。原型已按目标交互展示。"
+        }
+      ],
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · 待 m8-05"
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "01-session-page.png",
+      "alt": "Session 页搜索框要求完整 root Session ID",
+      "label": "01 · Session 页",
+      "caption": "搜索框 placeholder 与 aria-label 已改为完整 root Session ID，避免继续承诺标题/仓库搜索。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-search-miss.png",
+      "alt": "子串搜索未命中的空态",
+      "label": "02 · 未命中空态",
+      "caption": "子串查询返回空态，并提示输入完整 root Session ID 或清空恢复列表。",
+      "variant": "wide"
+    },
+    {
+      "src": "03-exact-hit.png",
+      "alt": "完整 root ID 命中一张 Session 卡片",
+      "label": "03 · 精确命中",
+      "caption": "完整 root ID 查询返回唯一 Session，与 V2 精确匹配契约一致。",
+      "variant": "wide"
+    },
+    {
+      "src": "04-prototype-session.png",
+      "alt": "原型的 Session 浏览器",
+      "label": "04 · 原型参考",
+      "caption": "原型使用「输入 root session ID，回车查询」并展示最新 10 条标题；回车与标题属 m8-05。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "投影与计数",
+        "coverage": "API 测试 + 本冒烟",
+        "conclusion": "items/total/pending 与种子数据一致，pending 按根去重。",
+        "recommendation": "保留 MySQL lane 的正确性用例。"
+      },
+      {
+        "area": "精确 vs 模糊",
+        "coverage": "API 测试 + 本冒烟",
+        "conclusion": "V2 完整 ID 命中、子串为空；V1 仍按标题模糊。",
+        "recommendation": "m8-05 把回车交互补齐后，再补页面级精确查询 E2E。"
+      },
+      {
+        "area": "页面文案",
+        "coverage": "本冒烟截图",
+        "conclusion": "过渡期文案已诚实，输入完整 ID 可查到目标 Session。",
+        "recommendation": "m8-05 落地回车与标题角标，回到原型交互。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过（含 1 项已记录后续）",
+    "summary": "5 个 API 场景与 3 个页面状态全部通过；回车/最新 10 条标题作为 m8-05 的明确后续。",
+    "points": [
+      "截图来自真实 API + 浏览器；原型截图仅作交互对照。",
+      "过渡期标题/仓库搜索不再被文案承诺；完整 root ID 可正常使用。"
+    ]
+  },
+  "footer": "由 m8-02 集成冒烟生成；不写入仓库。"
+}
