@@ -24,6 +24,9 @@ from app.utils.time import SHANGHAI
 
 BadCaseTypeFilter = Literal["all", "self", "discovery"]
 
+KNOWN_BAD_CASE_TYPES: tuple[str, ...] = ("self", "discovery")
+"""Types the overview aggregates; every other stored value is excluded consistently."""
+
 
 @dataclass(frozen=True, slots=True)
 class OverviewCounts:
@@ -96,6 +99,10 @@ def _case_conditions(
         bad_cases.c.workspace_id == workspace_id,
         bad_cases.c.created_at >= day_start(start),
         bad_cases.c.created_at < day_start(end + timedelta(days=1)),
+        # Legacy catalog sync only enforces the column length, so a row can carry
+        # a type outside the report contract. Excluding it here keeps
+        # badCases == self + discovery and the trend total on every read path.
+        bad_cases.c.bad_case_type.in_(KNOWN_BAD_CASE_TYPES),
     ]
     if objects:
         conditions.append(bad_cases.c.object_name.in_(objects))
