@@ -13,6 +13,7 @@ from app.db.base import Database
 from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.run_events import SqlRunEventStore
+from app.db.crud.workspaces import WorkspaceRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.evolution import evolution_runs
@@ -25,6 +26,7 @@ from app.service.evolution.events import (
     EvolutionRunTopicAuthorizer,
 )
 from app.service.jobs import JobRunner
+from app.service.workspaces.service import WorkspaceService
 
 NOW = datetime(2026, 10, 28, 8, 0, tzinfo=UTC)
 
@@ -308,13 +310,16 @@ async def test_topic_authorizer_rejects_missing_and_terminal_runs(
 ) -> None:
     """SSE tickets only target existing runs that are still active."""
     database, _, _ = service_environment
-    authorizer = EvolutionRunTopicAuthorizer(EvolutionRepository(database))
+    authorizer = EvolutionRunTopicAuthorizer(
+        EvolutionRepository(database),
+        WorkspaceService(WorkspaceRepository(database)),
+    )
 
-    await authorizer.authorize(("run:run-live",), user_id="user-1")
+    await authorizer.authorize(("run:run-live",), user_id="user-1", user_role="admin")
     with pytest.raises(AppError) as terminal:
-        await authorizer.authorize(("run:run-done",), user_id="user-1")
+        await authorizer.authorize(("run:run-done",), user_id="user-1", user_role="admin")
     with pytest.raises(AppError) as missing:
-        await authorizer.authorize(("run:missing",), user_id="user-1")
+        await authorizer.authorize(("run:missing",), user_id="user-1", user_role="admin")
 
     assert terminal.value.code == "TICKET_INVALID"
     assert missing.value.code == "TICKET_INVALID"

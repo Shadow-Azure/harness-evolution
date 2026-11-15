@@ -489,7 +489,7 @@ class EvolutionRunTopicAuthorizer:
     def __init__(
         self,
         runs: EvolutionRunStateWriter,
-        workspaces: WorkspaceService | None = None,
+        workspaces: WorkspaceService,
     ) -> None:
         """Bind the authorizer to durable runs and workspace membership rules."""
         self._runs = runs
@@ -531,8 +531,6 @@ class EvolutionRunTopicAuthorizer:
         user_role: str,
     ) -> None:
         """Map the shared workspace visibility errors onto the ticket error."""
-        if self._workspaces is None:
-            return
         try:
             await self._workspaces.authorize(
                 user_id=user_id,
