@@ -10,7 +10,7 @@ depends:
   - m7-05
   - m7-06
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/ingest.py
   - apps/api/app/service/workspaces/**
