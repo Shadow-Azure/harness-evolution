@@ -1,14 +1,18 @@
 """Read-only HTTP adapters for the workspace bad-case overview."""
 
+from collections.abc import Callable, Coroutine
 from datetime import date
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Security
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
+from starlette.responses import Response
 
 from app.api.deps import require_workspace_role
 from app.api.security import BEARER_AUTH
 from app.db.crud.overview import BadCaseTypeFilter
-from app.errors import ErrorResponse
+from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.overview.schemas import (
     OverviewBadCaseListResponse,
     OverviewSummary,
@@ -21,9 +25,57 @@ from app.service.overview.service import (
     OverviewService,
     parse_object_filter,
 )
+from app.service.overview.window import GRAINS, RANGE_CHOICES, Grain
 from app.service.workspaces.service import WorkspaceAccess
 
-router = APIRouter(prefix="/api/workspaces/{wid}", tags=["overview"])
+
+class OverviewRoute(APIRoute):
+    """Map an invalid trend grain back to the documented ``GRAIN_INVALID`` code.
+
+    ``grain`` is a ``Literal`` so OpenAPI exposes the allowed values and generated
+    clients get the union. FastAPI validates it before the handler, which would
+    otherwise turn ``?grain=hour`` into the generic ``VALIDATION_INVALID``; the
+    route wrapper restores the dedicated error the contract promises.
+    """
+
+    def get_route_handler(
+        self,
+    ) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        """Wrap the generated handler with the overview validation mapping."""
+        handler = super().get_route_handler()
+
+        async def handle(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                grain_error = next(
+                    (
+                        error
+                        for error in exc.errors()
+                        if tuple(error.get("loc", ()))[-1:] == ("grain",)
+                    ),
+                    None,
+                )
+                if grain_error is None:
+                    raise
+                raise AppError(
+                    status_code=422,
+                    code=ErrorCode.GRAIN_INVALID,
+                    message="grain must be one of day, week, month",
+                    details={
+                        "grain": grain_error.get("input"),
+                        "allowed": list(GRAINS),
+                    },
+                ) from exc
+
+        return handle
+
+
+router = APIRouter(
+    prefix="/api/workspaces/{wid}",
+    tags=["overview"],
+    route_class=OverviewRoute,
+)
 
 WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 WindowFrom = Annotated[
@@ -39,9 +91,11 @@ RangeDays = Annotated[
     Query(
         alias="range",
         description=(
-            "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 "
-            "when neither from nor to is supplied."
+            "Quick range in days; only 7, 30, and 90 are accepted when it derives a "
+            "boundary, and it is ignored when both from and to are supplied. Defaults "
+            "to 90 when neither from nor to is supplied."
         ),
+        json_schema_extra={"enum": list(RANGE_CHOICES)},
     ),
 ]
 ObjectFilter = Annotated[
@@ -55,7 +109,7 @@ ObjectFilter = Annotated[
     ),
 ]
 TrendGrainQuery = Annotated[
-    str,
+    Grain,
     Query(
         alias="grain",
         description=(

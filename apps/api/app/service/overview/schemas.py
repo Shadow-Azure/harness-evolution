@@ -36,7 +36,14 @@ class OverviewTotals(IdentityModel):
         serialization_alias="discovery",
         ge=0,
     )
-    sessions: int = Field(ge=0, description="Distinct root sessions in the window.")
+    sessions: int = Field(
+        ge=0,
+        description=(
+            "Distinct root sessions reported in the window, including roots without a "
+            "normalized trace. This is not the Session page total; pending roots are "
+            "counted here and pendingSessions is a separate Session page figure."
+        ),
+    )
     sources: int = Field(ge=0, description="Distinct object names in the window.")
     quota: int = Field(ge=0, description="Workspace bad-case quota; independent of the window.")
     used: int = Field(
@@ -123,7 +130,10 @@ class BadCaseListItem(IdentityModel):
     created_at: datetime
     attribution_count: int = Field(
         ge=0,
-        description="Distinct (probe type, probe object, object version) attributions.",
+        description=(
+            "Distinct (probeType, probeObject, objectVersion) attributions reached through "
+            "bad_case_analysis; the canonical definition is 06 §4.2.1."
+        ),
     )
 
 

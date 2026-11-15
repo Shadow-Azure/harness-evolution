@@ -555,7 +555,7 @@
         "description": "One row of the filtered overview list.",
         "properties": {
           "attributionCount": {
-            "description": "Distinct (probe type, probe object, object version) attributions.",
+            "description": "Distinct (probeType, probeObject, objectVersion) attributions reached through bad_case_analysis; the canonical definition is 06 §4.2.1.",
             "minimum": 0.0,
             "title": "Attributioncount",
             "type": "integer"
@@ -3003,7 +3003,7 @@
             "type": "integer"
           },
           "sessions": {
-            "description": "Distinct root sessions in the window.",
+            "description": "Distinct root sessions reported in the window, including roots without a normalized trace. This is not the Session page total; pending roots are counted here and pendingSessions is a separate Session page figure.",
             "minimum": 0.0,
             "title": "Sessions",
             "type": "integer"
@@ -9446,7 +9446,7 @@
             }
           },
           {
-            "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
             "in": "query",
             "name": "range",
             "required": false,
@@ -9459,7 +9459,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
               "title": "Range"
             }
           },
@@ -12020,7 +12025,7 @@
             }
           },
           {
-            "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
             "in": "query",
             "name": "range",
             "required": false,
@@ -12033,7 +12038,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
               "title": "Range"
             }
           },
@@ -12177,7 +12187,7 @@
             }
           },
           {
-            "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
             "in": "query",
             "name": "range",
             "required": false,
@@ -12190,7 +12200,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
               "title": "Range"
             }
           },
@@ -12334,7 +12349,7 @@
             }
           },
           {
-            "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
             "in": "query",
             "name": "range",
             "required": false,
@@ -12347,7 +12362,12 @@
                   "type": "null"
                 }
               ],
-              "description": "Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied.",
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
               "title": "Range"
             }
           },
@@ -12359,6 +12379,11 @@
             "schema": {
               "default": "day",
               "description": "Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
               "title": "Grain",
               "type": "string"
             }

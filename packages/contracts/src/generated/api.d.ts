@@ -1653,7 +1653,7 @@ export interface components {
         BadCaseListItem: {
             /**
              * Attributioncount
-             * @description Distinct (probe type, probe object, object version) attributions.
+             * @description Distinct (probeType, probeObject, objectVersion) attributions reached through bad_case_analysis; the canonical definition is 06 §4.2.1.
              */
             attributionCount: number;
             /** Badcaseid */
@@ -2626,7 +2626,7 @@ export interface components {
             self: number;
             /**
              * Sessions
-             * @description Distinct root sessions in the window.
+             * @description Distinct root sessions reported in the window, including roots without a normalized trace. This is not the Session page total; pending roots are counted here and pendingSessions is a separate Session page figure.
              */
             sessions: number;
             /**
@@ -6321,8 +6321,8 @@ export interface operations {
                 from?: string | null;
                 /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
                 to?: string | null;
-                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
-                range?: number | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
                 /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
                 objects?: string[] | null;
                 /** @description Restrict the list to one bad-case type. */
@@ -7979,8 +7979,8 @@ export interface operations {
                 from?: string | null;
                 /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
                 to?: string | null;
-                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
-                range?: number | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
                 /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
                 objects?: string[] | null;
             };
@@ -8046,8 +8046,8 @@ export interface operations {
                 from?: string | null;
                 /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
                 to?: string | null;
-                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
-                range?: number | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
                 /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
                 objects?: string[] | null;
             };
@@ -8113,10 +8113,10 @@ export interface operations {
                 from?: string | null;
                 /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
                 to?: string | null;
-                /** @description Quick range in days; only 7, 30, and 90 are accepted. Defaults to 90 when neither from nor to is supplied. */
-                range?: number | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
                 /** @description Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain. */
-                grain?: string;
+                grain?: "day" | "week" | "month";
                 /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
                 objects?: string[] | null;
             };
