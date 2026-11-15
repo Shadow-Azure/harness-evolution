@@ -69,14 +69,28 @@ class RunEventRecorder(Protocol):
 class RunTopicAuthorizer(Protocol):
     """Phase-owned resource authorization invoked before issuing SSE tickets."""
 
-    async def authorize(self, topics: tuple[str, ...], *, user_id: str) -> None:
+    async def authorize(
+        self,
+        topics: tuple[str, ...],
+        *,
+        user_id: str,
+        user_role: str = "member",
+        workspace_id: str | None = None,
+    ) -> None:
         """Reject topics whose resources are missing, complete, or not visible."""
 
 
 class ShapeRunTopicAuthorizer:
     """M1 fallback that leaves resource existence to the future evolution repository."""
 
-    async def authorize(self, topics: tuple[str, ...], *, user_id: str) -> None:
+    async def authorize(
+        self,
+        topics: tuple[str, ...],
+        *,
+        user_id: str,
+        user_role: str = "member",
+        workspace_id: str | None = None,
+    ) -> None:
         """Accept syntactically validated topics until m5 installs its authorizer."""
         return None
 

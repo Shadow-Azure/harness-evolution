@@ -12,7 +12,9 @@ from sqlalchemy import insert
 
 from app.config import DatabaseDialect, Settings
 from app.db.models.evolution import evolution_runs, probe_clusters
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.main import create_app
+from tests.workspaces.helpers import insert_member
 
 ADMIN_TEMP_PASSWORD = "run-list-admin-temp-password"
 ADMIN_PASSWORD = "run-list-admin-password"
@@ -96,11 +98,17 @@ async def run_api(tmp_path: Path) -> AsyncIterator[tuple[httpx.AsyncClient, http
     member = httpx.AsyncClient(transport=transport, base_url="http://testserver")
     try:
         async with app.router.lifespan_context(app):
-            await app.state.identity.create_user(
+            member_record = await app.state.identity.create_user(
                 username="member",
                 display_name="Member",
                 password=MEMBER_TEMP_PASSWORD,
                 role="member",
+            )
+            await insert_member(
+                app.state.database,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                user_id=member_record.id,
+                role="viewer",
             )
             await _login(admin, "admin", ADMIN_TEMP_PASSWORD, ADMIN_PASSWORD)
             await _login(member, "member", MEMBER_TEMP_PASSWORD, MEMBER_PASSWORD)

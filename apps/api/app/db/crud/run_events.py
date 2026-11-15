@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.models.evolution import evolution_runs
 from app.db.models.run_events import (
     RunEventPageRecord,
     RunEventRecord,
@@ -121,8 +122,18 @@ class SqlRunEventStore:
                 created_at = now_shanghai()
                 async with self._database.transaction() as session:
                     sequence = await self._next_sequence(session, run_id)
+                    workspace_id = (
+                        await session.execute(
+                            select(evolution_runs.c.workspace_id).where(
+                                evolution_runs.c.id == run_id,
+                            ),
+                        )
+                    ).scalar_one_or_none()
+                    if workspace_id is None:
+                        raise LookupError("evolution run not found for event append")
                     values = {
                         "run_id": run_id,
+                        "workspace_id": str(workspace_id),
                         "seq": sequence,
                         "event_type": event_type,
                         "level": level,
@@ -280,6 +291,7 @@ def _record_from_row(row: RowMapping) -> RunEventRecord:
         error_message=(str(row["error_message"]) if row["error_message"] is not None else None),
         error_detail=(str(row["error_detail"]) if row["error_detail"] is not None else None),
         created_at=as_shanghai(row["created_at"]),
+        workspace_id=str(row["workspace_id"]),
     )
 
 
@@ -310,4 +322,5 @@ def _record_from_values(values: Mapping[str, Any]) -> RunEventRecord:
             str(values["error_detail"]) if values.get("error_detail") is not None else None
         ),
         created_at=as_shanghai(values["created_at"]),
+        workspace_id=str(values["workspace_id"]),
     )

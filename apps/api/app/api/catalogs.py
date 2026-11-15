@@ -4,6 +4,7 @@ from typing import cast
 
 from fastapi import APIRouter, Request, Security
 
+from app.api.deps import visible_workspace_ids
 from app.api.security import BEARER_AUTH
 from app.errors import ErrorResponse
 from app.service.catalogs import CatalogModels, CatalogService, CatalogTargets
@@ -26,8 +27,10 @@ def catalogs_from(request: Request) -> CatalogService:
     },
 )
 async def get_target_catalog(request: Request) -> CatalogTargets:
-    """Return enabled evolution targets and their remote versions."""
-    return await catalogs_from(request).targets()
+    """Return enabled targets visible to the caller and their remote versions."""
+    return await catalogs_from(request).targets(
+        workspace_ids=await visible_workspace_ids(request),
+    )
 
 
 @router.get(
@@ -39,5 +42,7 @@ async def get_target_catalog(request: Request) -> CatalogTargets:
     },
 )
 async def get_model_catalog(request: Request) -> CatalogModels:
-    """Return normalized model usage from the Agent table."""
-    return await catalogs_from(request).models()
+    """Return normalized model usage from visible workspace sessions."""
+    return await catalogs_from(request).models(
+        workspace_ids=await visible_workspace_ids(request),
+    )

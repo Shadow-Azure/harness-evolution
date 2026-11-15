@@ -64,7 +64,14 @@ async def test_ticket_issue_uses_injected_run_topic_authorizer(tmp_path: Path) -
 
         calls: ClassVar[list[tuple[tuple[str, ...], str]]] = []
 
-        async def authorize(self, topics: tuple[str, ...], *, user_id: str) -> None:
+        async def authorize(
+            self,
+            topics: tuple[str, ...],
+            *,
+            user_id: str,
+            user_role: str = "member",
+            workspace_id: str | None = None,
+        ) -> None:
             """Require the run resource to exist in a future owning repository."""
             self.calls.append((topics, user_id))
             if topics == ("run:missing",):

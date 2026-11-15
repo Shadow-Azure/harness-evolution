@@ -61,9 +61,12 @@ async def issue_ticket(body: TicketRequest, request: Request) -> EventTicketResp
             message="event topics are invalid",
         )
     authorizer = cast(RunTopicAuthorizer, request.app.state.run_topic_authorizer)
+    principal = request.state.principal
     await authorizer.authorize(
         tuple(body.topics),
-        user_id=request.state.principal.user_id,
+        user_id=principal.user_id,
+        user_role=principal.role,
+        workspace_id=body.workspace_id,
     )
     ticket = identity_from(request).tickets.issue(
         user_id=request.state.principal.user_id,

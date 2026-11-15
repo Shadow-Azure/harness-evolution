@@ -111,6 +111,17 @@ class WorkspaceService:
             role=effective_role(membership.role),
         )
 
+    async def visible_ids(self, user_id: str, user_role: str) -> tuple[str, ...] | None:
+        """Return the caller's visible workspace ids, or ``None`` for a global admin.
+
+        Legacy unscoped endpoints use this to filter every workspace-owned row
+        without exposing spaces the caller must not see.
+        """
+        if user_role == "admin":
+            return None
+        visible = await self._repository.list_visible(user_id=user_id, include_all=False)
+        return tuple(row.workspace.id for row in visible)
+
     async def session_payload(self, user: PublicUser) -> SessionPayload:
         """Return the user plus their visible workspaces in one bounded payload."""
         visible = await self._repository.list_visible(

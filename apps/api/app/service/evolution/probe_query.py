@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Sequence
 from datetime import date
 from typing import Any, Literal, Protocol
 
@@ -136,8 +137,14 @@ class TargetConfigRecord(Protocol):
 class TargetConfigStore(Protocol):
     """Persistence operations consumed by the launch service."""
 
-    async def find(self, object_type: str, object_name: str) -> TargetConfigRecord | None:
-        """Return one configured object pair."""
+    async def find(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> TargetConfigRecord | None:
+        """Return one configured object pair inside the optional space scope."""
         ...
 
 
@@ -145,12 +152,14 @@ def normalized_query(
     body: ProbeQueryRequest,
     *,
     default_version: str | None = None,
+    workspace_ids: tuple[str, ...] | None = None,
 ) -> ProbeHitQuery:
     """Resolve the wizard condition into its repository form.
 
     Args:
         body: Validated wizard condition.
         default_version: Version used when the request carries none.
+        workspace_ids: Optional visible-workspace scope for legacy routes.
 
     Returns:
         Repository query with a non-null resolved version.
@@ -179,6 +188,7 @@ def normalized_query(
         window_from=body.window_from,
         window_to=body.window_to,
         models=tuple(body.models),
+        workspace_ids=workspace_ids,
     )
 
 
@@ -229,11 +239,17 @@ class ProbeQueryService:
         self._repository = repository
         self._targets = targets
 
-    async def preview(self, body: ProbeQueryRequest) -> ProbeQueryResult:
+    async def preview(
+        self,
+        body: ProbeQueryRequest,
+        *,
+        workspace_ids: tuple[str, ...] | None = None,
+    ) -> ProbeQueryResult:
         """Return hit statistics plus one page of matched probe rows.
 
         Args:
             body: Validated wizard condition.
+            workspace_ids: Optional visible-workspace scope for legacy routes.
 
         Returns:
             Backend-computed summary, paged items, and paging echo.
@@ -242,14 +258,22 @@ class ProbeQueryService:
             AppError: With `TARGET_NOT_CONFIGURED` when the target is missing or
                 disabled, and `NO_PROBES_MATCHED` when the probe count is zero.
         """
-        config = await self._targets.find(body.target_type, body.target_name)
+        config = await self._targets.find(
+            body.target_type,
+            body.target_name,
+            workspace_ids=workspace_ids,
+        )
         if config is None or not config.enabled:
             raise AppError(
                 status_code=409,
                 code=ErrorCode.TARGET_NOT_CONFIGURED,
                 message="target is not configured or enabled",
             )
-        query = normalized_query(body, default_version=config.default_ref)
+        query = normalized_query(
+            body,
+            default_version=config.default_ref,
+            workspace_ids=workspace_ids,
+        )
         rows = await self._repository.list_hit_rows(query)
 
         grouped: OrderedDict[str, list[ProbeHitRow]] = OrderedDict()

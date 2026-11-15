@@ -1,16 +1,17 @@
-"""Persistence and aggregate reads for evolution target configuration."""
+"""Persistence and aggregate reads for workspace-scoped target configuration."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from sqlalchemy import delete, distinct, func, insert, select, update
 from sqlalchemy.engine import CursorResult, RowMapping
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
-from app.db.models.domain import agents, evolution_targets
+from app.db.models.domain import agents, bad_cases, evolution_targets
 from app.db.models.evolution import evolution_runs
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -30,6 +31,7 @@ class EvolutionTargetRecord:
     validation_project_id: str
     test_project_id: str
     enabled: bool
+    workspace_id: str = DEFAULT_WORKSPACE_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +44,7 @@ class ModelUsageRecord:
 
 
 class EvolutionTargetConflict(Exception):
-    """The object type/name pair is already configured."""
+    """The object type/name pair is already configured in this workspace."""
 
 
 class EvolutionTargetInUse(Exception):
@@ -55,12 +57,20 @@ def _is_unique_violation(error: IntegrityError) -> bool:
     return (
         "unique constraint failed" in message
         or "duplicate entry" in message
-        or "uq_evolution_targets_object" in message
+        or "uq_evolution_targets_workspace_object" in message
     )
+
+
+def _scoped(statement: Any, workspace_ids: Sequence[str] | None) -> Any:
+    """Apply the optional visible-workspace filter to one target statement."""
+    if workspace_ids is None:
+        return statement
+    return statement.where(evolution_targets.c.workspace_id.in_(workspace_ids))
 
 
 def _record(row: RowMapping) -> EvolutionTargetRecord:
     """Translate one target row into an immutable boundary record."""
+    workspace_id = row["workspace_id"]
     return EvolutionTargetRecord(
         id=row["id"],
         object_type=cast(Literal["skill", "agent"], row["object_type"]),
@@ -71,6 +81,7 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         validation_project_id=row["validation_project_id"],
         test_project_id=row["test_project_id"],
         enabled=bool(row["enabled"]),
+        workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
 
@@ -81,66 +92,86 @@ class EvolutionTargetRepository:
         """Bind this repository to the application database."""
         self._database = database
 
-    async def list(self, *, enabled_only: bool = False) -> tuple[EvolutionTargetRecord, ...]:
-        """Return all targets, or only enabled targets, in stable display order."""
+    async def list(
+        self,
+        *,
+        enabled_only: bool = False,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return targets in stable display order, optionally scoped to spaces."""
         statement = select(evolution_targets)
         if enabled_only:
             statement = statement.where(evolution_targets.c.enabled.is_(True))
-        statement = statement.order_by(
+        statement = _scoped(statement, workspace_ids).order_by(
             evolution_targets.c.object_type,
             evolution_targets.c.object_name,
+            evolution_targets.c.workspace_id,
             evolution_targets.c.id,
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_record(row) for row in rows)
 
-    async def get(self, target_id: str) -> EvolutionTargetRecord | None:
-        """Return one target by stable identifier."""
+    async def get(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord | None:
+        """Return one target by stable identifier inside the optional space scope."""
+        statement = _scoped(
+            select(evolution_targets).where(evolution_targets.c.id == target_id),
+            workspace_ids,
+        )
         async with self._database.session() as session:
-            row = (
-                (
-                    await session.execute(
-                        select(evolution_targets).where(
-                            evolution_targets.c.id == target_id,
-                        ),
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
+            row = (await session.execute(statement)).mappings().one_or_none()
         return _record(row) if row is not None else None
 
     async def find(
         self,
         object_type: str,
         object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord | None:
-        """Return the target for one object type/name pair."""
+        """Return one target for an object pair inside the optional space scope."""
+        rows = await self.find_all(
+            object_type,
+            object_name,
+            workspace_ids=workspace_ids,
+        )
+        return rows[0] if rows else None
+
+    async def find_all(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return every configured pair match, ordered by workspace and id."""
+        statement = _scoped(
+            select(evolution_targets).where(
+                evolution_targets.c.object_type == object_type,
+                evolution_targets.c.object_name == object_name,
+            ),
+            workspace_ids,
+        ).order_by(evolution_targets.c.workspace_id, evolution_targets.c.id)
         async with self._database.session() as session:
-            row = (
-                (
-                    await session.execute(
-                        select(evolution_targets).where(
-                            evolution_targets.c.object_type == object_type,
-                            evolution_targets.c.object_name == object_name,
-                        ),
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
-        return _record(row) if row is not None else None
+            rows = (await session.execute(statement)).mappings().all()
+        return tuple(_record(row) for row in rows)
 
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
         """Insert one configured target and surface only the stable conflict type."""
         target_id = new_id()
         now = now_shanghai()
+        workspace_id = str(values.get("workspace_id", DEFAULT_WORKSPACE_ID))
         async with self._database.transaction() as session:
             try:
                 await session.execute(
                     insert(evolution_targets).values(
                         id=target_id,
+                        workspace_id=workspace_id,
                         object_type=values["object_type"],
                         object_name=values["object_name"],
                         repo_url=values["repo_url"],
@@ -167,28 +198,27 @@ class EvolutionTargetRepository:
         self,
         target_id: str,
         values: Mapping[str, object],
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord:
-        """Replace the editable fields of one existing target."""
+        """Replace the editable fields of one target inside the optional space scope."""
+        statement = _scoped(
+            update(evolution_targets).where(evolution_targets.c.id == target_id),
+            workspace_ids,
+        ).values(
+            object_type=values["object_type"],
+            object_name=values["object_name"],
+            repo_url=values["repo_url"],
+            sub_dir=values["sub_dir"],
+            default_ref=values["default_ref"],
+            validation_project_id=values["validation_project_id"],
+            test_project_id=values["test_project_id"],
+            enabled=values["enabled"],
+            updated_at=now_shanghai(),
+        )
         async with self._database.transaction() as session:
             try:
-                result = cast(
-                    CursorResult[object],
-                    await session.execute(
-                        update(evolution_targets)
-                        .where(evolution_targets.c.id == target_id)
-                        .values(
-                            object_type=values["object_type"],
-                            object_name=values["object_name"],
-                            repo_url=values["repo_url"],
-                            sub_dir=values["sub_dir"],
-                            default_ref=values["default_ref"],
-                            validation_project_id=values["validation_project_id"],
-                            test_project_id=values["test_project_id"],
-                            enabled=values["enabled"],
-                            updated_at=now_shanghai(),
-                        ),
-                    ),
-                )
+                result = cast(CursorResult[object], await session.execute(statement))
             except IntegrityError as exc:
                 if not _is_unique_violation(exc):
                     raise
@@ -200,15 +230,22 @@ class EvolutionTargetRepository:
             raise RuntimeError("updated evolution target disappeared")
         return updated
 
-    async def delete(self, target_id: str) -> bool:
+    async def delete(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> bool:
         """Delete an unused target under one row-locked transaction."""
         async with self._database.transaction() as session:
+            locked_statement = _scoped(
+                select(evolution_targets.c.id).where(
+                    evolution_targets.c.id == target_id,
+                ),
+                workspace_ids,
+            )
             locked = (
-                await session.execute(
-                    select(evolution_targets.c.id)
-                    .where(evolution_targets.c.id == target_id)
-                    .with_for_update(),
-                )
+                await session.execute(locked_statement.with_for_update())
             ).scalar_one_or_none()
             if locked is None:
                 return False
@@ -249,26 +286,31 @@ class EvolutionTargetRepository:
             ).scalar_one()
         return int(count) > 0
 
-    async def list_models(self) -> tuple[ModelUsageRecord, ...]:
-        """Aggregate distinct-session and Agent-row counts from normalized models."""
+    async def list_models(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[ModelUsageRecord, ...]:
+        """Aggregate model usage from normalized Agent rows in the given spaces."""
         session_count = func.count(distinct(agents.c.root_session_id))
         agent_count = func.count(agents.c.id)
-        statement = (
-            select(
-                agents.c.model,
-                session_count.label("session_count"),
-                agent_count.label("agent_count"),
+        statement = select(
+            agents.c.model,
+            session_count.label("session_count"),
+            agent_count.label("agent_count"),
+        ).where(
+            agents.c.model.is_not(None),
+            func.trim(agents.c.model) != "",
+        )
+        if workspace_ids is not None:
+            scoped_sessions = select(bad_cases.c.bad_case_session_id).where(
+                bad_cases.c.workspace_id.in_(workspace_ids),
             )
-            .where(
-                agents.c.model.is_not(None),
-                func.trim(agents.c.model) != "",
-            )
-            .group_by(agents.c.model)
-            .order_by(
-                session_count.desc(),
-                agent_count.desc(),
-                agents.c.model,
-            )
+            statement = statement.where(agents.c.root_session_id.in_(scoped_sessions))
+        statement = statement.group_by(agents.c.model).order_by(
+            session_count.desc(),
+            agent_count.desc(),
+            agents.c.model,
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Protocol
 
 from app.db.crud.evolution import EvolutionRepository
@@ -57,12 +57,22 @@ class LaunchTargetRecord(Protocol):
     def enabled(self) -> bool:
         """Return whether the target accepts launches."""
 
+    @property
+    def workspace_id(self) -> str:
+        """Return the workspace that owns this configuration."""
+
 
 class LaunchTargetStore(Protocol):
     """Persistence operations consumed by the launch service."""
 
-    async def find(self, object_type: str, object_name: str) -> LaunchTargetRecord | None:
-        """Return one configured object pair."""
+    async def enabled_config(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> LaunchTargetRecord:
+        """Return the one enabled pair inside the optional workspace scope."""
         ...
 
 
@@ -90,6 +100,7 @@ class EvolutionLaunchService:
         *,
         expected_mode: Literal["full", "cluster_only"],
         created_by: str | None,
+        workspace_ids: Sequence[str] | None = None,
     ) -> RunAccepted:
         """Validate one launch and admit its asynchronous preparation.
 
@@ -97,13 +108,14 @@ class EvolutionLaunchService:
             body: Validated wizard condition including the requested mode.
             expected_mode: Mode served by the calling endpoint.
             created_by: Authenticated principal that started the run.
+            workspace_ids: Visible or explicit workspace scope for the target.
 
         Returns:
             The accepted run identifier, job identifier, and preparing status.
 
         Raises:
-            AppError: On mode mismatch, inverted windows, disabled targets, or
-                when no analyzed probe matches the condition.
+            AppError: On mode mismatch, inverted windows, a disabled or
+                ambiguous target, or when no analyzed probe matches.
         """
         if body.mode != expected_mode:
             raise AppError(
@@ -119,14 +131,16 @@ class EvolutionLaunchService:
                 message="evolution engine is not registered",
                 details={"engineKey": engine_key},
             )
-        config = await self._targets.find(body.target_type, body.target_name)
-        if config is None or not config.enabled:
-            raise AppError(
-                status_code=409,
-                code=ErrorCode.TARGET_NOT_CONFIGURED,
-                message="target is not configured or enabled",
-            )
-        query = normalized_query(body, default_version=config.default_ref)
+        config = await self._targets.enabled_config(
+            body.target_type,
+            body.target_name,
+            workspace_ids=workspace_ids,
+        )
+        query = normalized_query(
+            body,
+            default_version=config.default_ref,
+            workspace_ids=(config.workspace_id,),
+        )
         await self._require_hits(query)
         run = await self._runs.create_run(
             self._run_values(body, query, config, created_by=created_by),
@@ -191,6 +205,7 @@ class EvolutionLaunchService:
         """
         return {
             "title": f"{query.target_name} {query.target_version} 自进化",
+            "workspace_id": config.workspace_id,
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
             "eval_config": _snapshot_eval(body.eval),

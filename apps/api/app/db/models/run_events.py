@@ -90,6 +90,7 @@ class RunEventRecord:
     error_message: str | None
     error_detail: str | None
     created_at: datetime
+    workspace_id: str = DEFAULT_WORKSPACE_ID
 
 
 @dataclass(frozen=True, slots=True)

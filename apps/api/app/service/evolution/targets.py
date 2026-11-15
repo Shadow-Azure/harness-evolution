@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath
 from typing import Literal, Protocol
 from urllib.parse import urlsplit
@@ -15,6 +15,7 @@ from app.db.crud.evolution_targets import (
     EvolutionTargetInUse,
     EvolutionTargetRecord,
 )
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import AppError, ErrorCode
 from app.service.identity.schemas import IdentityModel
 from app.third_party_api.git.remote import GitRemote, RepoInvalid
@@ -75,18 +76,39 @@ class EvolutionTargetVersions(IdentityModel):
 class EvolutionTargetStore(Protocol):
     """Persistence operations consumed by the target service."""
 
-    async def list(self, *, enabled_only: bool = False) -> tuple[EvolutionTargetRecord, ...]:
-        """Return configured targets."""
+    async def list(
+        self,
+        *,
+        enabled_only: bool = False,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return configured targets inside the optional workspace scope."""
 
-    async def get(self, target_id: str) -> EvolutionTargetRecord | None:
-        """Return one target."""
+    async def get(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord | None:
+        """Return one target inside the optional workspace scope."""
 
     async def find(
         self,
         object_type: str,
         object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord | None:
-        """Return one object pair."""
+        """Return one object pair inside the optional workspace scope."""
+
+    async def find_all(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return every matching object pair inside the optional workspace scope."""
 
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
         """Insert one target."""
@@ -95,11 +117,18 @@ class EvolutionTargetStore(Protocol):
         self,
         target_id: str,
         values: Mapping[str, object],
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord:
-        """Update one target."""
+        """Update one target inside the optional workspace scope."""
 
-    async def delete(self, target_id: str) -> bool:
-        """Delete one target."""
+    async def delete(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> bool:
+        """Delete one target inside the optional workspace scope."""
 
     async def has_active_runs(self, target_id: str) -> bool:
         """Return whether a target has a non-terminal run."""
@@ -245,20 +274,32 @@ class EvolutionTargetService:
         self._repository = repository
         self._git_remote = git_remote
 
-    async def list(self) -> EvolutionTargetList:
-        """Return all configured targets, including disabled rows."""
-        rows = await self._repository.list()
+    async def list(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetList:
+        """Return configured targets in one optional workspace scope."""
+        if workspace_ids is None:
+            rows = await self._repository.list()
+        else:
+            rows = await self._repository.list(workspace_ids=workspace_ids)
         return EvolutionTargetList(items=[_public(row) for row in rows])
 
     async def create(
         self,
         body: EvolutionTargetWrite,
         *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
         created_by: str | None,
     ) -> EvolutionTarget:
-        """Validate and create one target."""
+        """Validate and create one target inside the requested workspace."""
         values = _normalize_write(body)
-        if await self._repository.find(values.object_type, values.object_name):
+        if await self._repository.find(
+            values.object_type,
+            values.object_name,
+            workspace_ids=(workspace_id,),
+        ):
             raise AppError(
                 status_code=409,
                 code=ErrorCode.TARGET_EXISTS,
@@ -267,7 +308,11 @@ class EvolutionTargetService:
         await self._validate_remote(values)
         try:
             record = await self._repository.insert(
-                {**values.model_dump(), "created_by": created_by},
+                {
+                    **values.model_dump(),
+                    "workspace_id": workspace_id,
+                    "created_by": created_by,
+                },
             )
         except EvolutionTargetConflict:
             raise AppError(
@@ -281,12 +326,22 @@ class EvolutionTargetService:
         self,
         target_id: str,
         body: EvolutionTargetWrite,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTarget:
-        """Validate and replace one existing target."""
-        if await self._repository.get(target_id) is None:
+        """Validate and replace one target inside the optional workspace scope."""
+        if workspace_ids is None:
+            target = await self._repository.get(target_id)
+        else:
+            target = await self._repository.get(target_id, workspace_ids=workspace_ids)
+        if target is None:
             raise self._not_found()
         values = _normalize_write(body)
-        existing = await self._repository.find(values.object_type, values.object_name)
+        existing = await self._repository.find(
+            values.object_type,
+            values.object_name,
+            workspace_ids=(target.workspace_id,),
+        )
         if existing is not None and existing.id != target_id:
             raise AppError(
                 status_code=409,
@@ -295,7 +350,11 @@ class EvolutionTargetService:
             )
         await self._validate_remote(values)
         try:
-            record = await self._repository.update(target_id, values.model_dump())
+            record = await self._repository.update(
+                target_id,
+                values.model_dump(),
+                workspace_ids=workspace_ids,
+            )
         except EvolutionTargetConflict:
             raise AppError(
                 status_code=409,
@@ -306,10 +365,18 @@ class EvolutionTargetService:
             raise self._not_found() from None
         return _public(record)
 
-    async def delete(self, target_id: str) -> None:
-        """Delete one unused target."""
+    async def delete(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> None:
+        """Delete one unused target inside the optional workspace scope."""
         try:
-            deleted = await self._repository.delete(target_id)
+            deleted = await self._repository.delete(
+                target_id,
+                workspace_ids=workspace_ids,
+            )
         except EvolutionTargetInUse:
             raise AppError(
                 status_code=409,
@@ -319,9 +386,17 @@ class EvolutionTargetService:
         if not deleted:
             raise self._not_found()
 
-    async def versions(self, target_id: str) -> EvolutionTargetVersions:
+    async def versions(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetVersions:
         """Return sorted remote tags and the configured default reference."""
-        target = await self._repository.get(target_id)
+        if workspace_ids is None:
+            target = await self._repository.get(target_id)
+        else:
+            target = await self._repository.get(target_id, workspace_ids=workspace_ids)
         if target is None:
             raise self._not_found()
         try:
@@ -332,6 +407,48 @@ class EvolutionTargetService:
             versions=sorted(set(versions)),
             default_ref=target.default_ref,
         )
+
+    async def enabled_config(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord:
+        """Return the one enabled configuration for a launch condition.
+
+        Raises:
+            AppError: With ``TARGET_NOT_CONFIGURED`` when the pair is missing,
+                disabled, or ambiguous across the requested workspaces.
+        """
+        rows = await self._repository.find_all(
+            object_type,
+            object_name,
+            workspace_ids=workspace_ids,
+        )
+        enabled = [row for row in rows if row.enabled]
+        if not enabled:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.TARGET_NOT_CONFIGURED,
+                message="target is not configured or enabled",
+            )
+        if len(enabled) > 1:
+            default = next(
+                (row for row in enabled if row.workspace_id == DEFAULT_WORKSPACE_ID),
+                None,
+            )
+            if default is None:
+                raise AppError(
+                    status_code=409,
+                    code=ErrorCode.TARGET_NOT_CONFIGURED,
+                    message="target name is ambiguous across workspaces",
+                    details={
+                        "workspaces": sorted({row.workspace_id for row in enabled}),
+                    },
+                )
+            return default
+        return enabled[0]
 
     async def _validate_remote(self, values: EvolutionTargetWrite) -> None:
         """Run network/ref validation with one sanitized failure type."""

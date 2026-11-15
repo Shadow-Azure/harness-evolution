@@ -67,10 +67,11 @@ class UserListResponse(IdentityModel):
 
 
 class TicketRequest(IdentityModel):
-    """Run topics and optional replay cursor bound to an event ticket."""
+    """Run topics, optional workspace, and replay cursor bound to an event ticket."""
 
     topics: list[str] = Field(min_length=1, max_length=1)
     last_event_id: int = Field(default=0, ge=0)
+    workspace_id: str | None = Field(default=None, max_length=36)
 
 
 class EventTicketResponse(IdentityModel):

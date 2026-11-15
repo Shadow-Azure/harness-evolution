@@ -54,6 +54,7 @@ class ProbeHitQuery:
     window_from: date | None
     window_to: date | None
     models: tuple[str, ...]
+    workspace_ids: tuple[str, ...] | None = None
 
 
 class ProbeQueryRepository:
@@ -163,13 +164,16 @@ class ProbeQueryRepository:
             start and probe id, already narrowed by the probe session-time
             window and selected model chips.
         """
+        conditions = [
+            probe_reports.c.probe_object == query.target_name,
+            probe_reports.c.object_version == query.target_version,
+            probe_reports.c.probe_type == query.target_type,
+        ]
+        if query.workspace_ids is not None:
+            conditions.append(bad_cases.c.workspace_id.in_(query.workspace_ids))
         statement = (
             self._hit_selection()
-            .where(
-                probe_reports.c.probe_object == query.target_name,
-                probe_reports.c.object_version == query.target_version,
-                probe_reports.c.probe_type == query.target_type,
-            )
+            .where(*conditions)
             .order_by(session_families.c.started_at, probe_reports.c.probe_id)
         )
         async with self._database.session() as session:

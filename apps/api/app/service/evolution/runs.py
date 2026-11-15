@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Literal, Protocol, cast
 
@@ -187,11 +187,20 @@ class EvolutionRunList(IdentityModel):
 class EvolutionRunStore(Protocol):
     """Persistence contract consumed by the run-list service."""
 
-    async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
-        """Return all runs with batched list facts."""
+    async def list_summaries(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Return all in-scope runs with batched list facts."""
 
-    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
-        """Return one run with its batched list facts."""
+    async def get_summary(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunSummaryRecord | None:
+        """Return one in-scope run with its batched list facts."""
 
 
 class EvolutionRunEventSeqReader(Protocol):
@@ -370,17 +379,36 @@ class EvolutionRunService:
         self._store = store
         self._events = events
 
-    async def list(self) -> EvolutionRunList:
-        """Return repository-ordered running and history groups."""
-        cards = [_card(summary) for summary in await self._store.list_summaries()]
+    async def list(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunList:
+        """Return repository-ordered running and history groups in scope."""
+        if workspace_ids is None:
+            summaries = await self._store.list_summaries()
+        else:
+            summaries = await self._store.list_summaries(workspace_ids=workspace_ids)
+        cards = [_card(summary) for summary in summaries]
         return EvolutionRunList(
             running=[card for card in cards if card.status in _RUNNING_STATUSES],
             history=[card for card in cards if card.status not in _RUNNING_STATUSES],
         )
 
-    async def detail(self, run_id: str) -> EvolutionRunDetail | None:
-        """Return one run shell with workspace and backend-owned step states."""
-        summary = await self._store.get_summary(run_id)
+    async def detail(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunDetail | None:
+        """Return one in-scope run shell with workspace and backend-owned steps."""
+        if workspace_ids is None:
+            summary = await self._store.get_summary(run_id)
+        else:
+            summary = await self._store.get_summary(
+                run_id,
+                workspace_ids=workspace_ids,
+            )
         if summary is None:
             return None
         card = _card(summary)

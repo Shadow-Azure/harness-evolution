@@ -329,6 +329,18 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     }),
   });
   assert.equal(member.username, "m5-member");
+  const workspaces = await apiJson("/api/workspaces", admin.accessToken);
+  const defaultWorkspace = workspaces.items.find((item) => item.id === "ws-default");
+  assert.ok(defaultWorkspace);
+  await apiJson(
+    `/api/workspaces/${defaultWorkspace.id}/members`,
+    admin.accessToken,
+    {
+      expectedStatus: 201,
+      method: "POST",
+      body: JSON.stringify({ userId: member.id, role: "viewer" }),
+    },
+  );
   const memberAuth = await authenticate(
     "m5-member",
     memberInitialPassword,

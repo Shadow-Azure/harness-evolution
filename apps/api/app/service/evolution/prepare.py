@@ -410,6 +410,7 @@ def _query_from_payload(
         window_from=_date(query.get("from")) or run.window_from,
         window_to=_date(query.get("to")) or run.window_to,
         models=models,
+        workspace_ids=(run.workspace_id,),
     )
 
 
