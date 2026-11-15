@@ -23,6 +23,7 @@ _MCP_ALLOWED_PATHS = {
     "/api/auth/me",
     "/api/auth/session",
 }
+_ADMIN_EXACT_ROUTES = {("POST", "/api/workspaces")}
 _ADMIN_ROUTE_RULES = (
     (frozenset({"GET", "POST"}), "/api/users"),
     (frozenset({"POST"}), "/api/acquisition/sync"),
@@ -33,6 +34,8 @@ _ADMIN_ROUTE_RULES = (
 
 def _requires_admin(method: str, path: str) -> bool:
     """Return whether this method/path pair requires the administrator role."""
+    if (method, path) in _ADMIN_EXACT_ROUTES:
+        return True
     return any(
         method in methods and (path == prefix or path.startswith(f"{prefix}/"))
         for methods, prefix in _ADMIN_ROUTE_RULES

@@ -1305,6 +1305,7 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `WORKSPACE_FORBIDDEN` | 403 | 角色不足 / 空间管理员越权字段 / 凭据与 URL 空间不匹配 |
 | `WORKSPACE_EXISTS` | 409 | 同名空间已存在 |
 | `MEMBER_EXISTS` | 409 | 该用户已是空间成员 |
+| `MEMBER_NOT_FOUND` | 404 | PUT/DELETE 的成员目标不在该空间 |
 | `ROLE_INVALID` | 422 | 角色值非法；`POST /users` 创建 admin；初始管理员列表含不存在用户 |
 | `ROLE_LOCKED` | 409 | 空间管理员改/移除 `space_admin` 行，或移除最后一个空间管理员 |
 | `CREDENTIAL_NOT_FOUND` | 404 | 凭据不存在 |

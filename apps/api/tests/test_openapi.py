@@ -75,6 +75,14 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/evolution/targets/{targetId}/versions",
         "/api/catalogs/targets",
         "/api/catalogs/models",
+        "/api/workspaces",
+        "/api/workspaces/{wid}",
+        "/api/workspaces/{wid}/members",
+        "/api/workspaces/{wid}/member-candidates",
+        "/api/workspaces/{wid}/members/{userId}",
+        "/api/workspaces/{wid}/members/self-admin",
+        "/api/workspaces/{wid}/credentials",
+        "/api/workspaces/{wid}/credentials/{cid}",
     }
     assert {
         "HealthResponse",
@@ -131,6 +139,20 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "CatalogTargets",
         "CatalogModel",
         "CatalogModels",
+        "Workspace",
+        "WorkspaceAdmin",
+        "WorkspaceListResponse",
+        "WorkspaceCreateRequest",
+        "WorkspaceUpdateRequest",
+        "WorkspaceMember",
+        "WorkspaceMemberListResponse",
+        "WorkspaceMemberCandidate",
+        "WorkspaceMemberCandidateListResponse",
+        "WorkspaceMemberCreateRequest",
+        "WorkspaceMemberUpdateRequest",
+        "WorkspaceCredential",
+        "WorkspaceCredentialListResponse",
+        "WorkspaceCredentialCreated",
     } <= set(components)
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -185,6 +207,18 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/evolution/targets/{targetId}/versions", "get"),
         ("/api/catalogs/targets", "get"),
         ("/api/catalogs/models", "get"),
+        ("/api/workspaces", "get"),
+        ("/api/workspaces", "post"),
+        ("/api/workspaces/{wid}", "put"),
+        ("/api/workspaces/{wid}/members", "get"),
+        ("/api/workspaces/{wid}/members", "post"),
+        ("/api/workspaces/{wid}/member-candidates", "get"),
+        ("/api/workspaces/{wid}/members/{userId}", "put"),
+        ("/api/workspaces/{wid}/members/{userId}", "delete"),
+        ("/api/workspaces/{wid}/members/self-admin", "post"),
+        ("/api/workspaces/{wid}/credentials", "get"),
+        ("/api/workspaces/{wid}/credentials", "post"),
+        ("/api/workspaces/{wid}/credentials/{cid}", "delete"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]
@@ -352,6 +386,15 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "BAD_CASE_NOT_FOUND",
         "BAD_CASE_SESSION_MISMATCH",
         "PROBE_NOT_FOUND",
+        "WORKSPACE_EXISTS",
+        "MEMBER_EXISTS",
+        "MEMBER_NOT_FOUND",
+        "ROLE_INVALID",
+        "ROLE_LOCKED",
+        "QUOTA_INVALID",
+        "CREDENTIAL_NOT_FOUND",
+        "CREDENTIAL_INVALID",
+        "CREDENTIAL_LIMIT",
     } <= set(error_codes)
     assert "/api/sessions/{sessionId}/timeline" not in paths
     trigger_responses = paths["/api/acquisition/sync"]["post"]["responses"]
