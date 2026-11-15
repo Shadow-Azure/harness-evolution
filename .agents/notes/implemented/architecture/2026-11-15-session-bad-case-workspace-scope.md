@@ -14,7 +14,7 @@ m7-03 给请求装上了空间门禁，m7-05 给了空间管理与上报凭据�
 - Session 集合一律由 `bad_cases.workspace_id` 投影得到：列表条件、概览、Agent 树、问题列表都先要求 `session_families.id IN (该 scope 的 bad_case_session_id)`，再叠加原有过滤。未命中的 Session 在列表里不出现，直连时统一 `404 SESSION_NOT_FOUND`；空间不可见同样是 `404 WORKSPACE_NOT_FOUND`，不区分“存在但无权”。
 - 新增 V2 路由：`GET /api/workspaces/{wid}/sessions`、`/{sid}`、`/{sid}/tree`、`/{sid}/bad-cases` 与 `/bad-cases/{badCaseId}`，全部挂 `require_workspace_role(wid, viewer)`；固定空间后，同一根会话只返回本空间上报的 bad case，问题详情越界返回 `404 BAD_CASE_NOT_FOUND`。
 - V1 旧端点保持路径与 DTO 不变，只把可见性换成“当前用户全部可见空间”的并集：普通用户走成员子查询，全局管理员看全部。`GET /api/workspaces/{wid}/sessions` 本轮仍是 `{items}` 与 V1 同口径过滤，latest-ten 的 `total/pendingSessions` 语义留给 m8-02。
-- `probe_reports` 还没有 `workspace_id`（0015 归因迁移尚未落地），因此探针读取按“所属 Session 是否可见”继承边界：`/api/probes/{id}` 与 `/api/sessions/{sid}/probes` 都先过投影，不伪造空间列。
+- `probe_reports` 还没有 `workspace_id`（0015 归因迁移尚未落地），因此探针读取先要求“所属 Session 可见”，再要求“至少一条关联 bad case 可见”：同一根会话被两个空间上报时，另一空间 case 产出的探针不能借共享 Session 泄漏；没有任何归因关联的探针没有空间归属，仍随 Session 可读。V2 归因端点不在本 issue。
 - `bad_cases` 是外部引导表，安装尚未上报时可能不存在。仓储在首次读取时探测表是否存在，缺失时返回空投影（列表为空、直连 404），不让整个 Session 页 500；探测到存在后按仓储实例缓存，不做每请求元数据查询。
 
 ## Alternatives considered
@@ -30,5 +30,5 @@ m7-03 给请求装上了空间门禁，m7-05 给了空间管理与上报凭据�
 - 没有任何 bad case 的 Session 不再出现在列表，也无法直连；这是“空间 Session 集合 = 空间 bad case 根会话投影”的直接后果，需要先有上报或目录同步才能看到会话。
 - 全局管理员在旧端点看到全部空间，等价于未过滤；空间管理员只看到自己加入的空间，成员变更下一次请求生效。
 - 每次旧端点读取多一个成员子查询（`workspace_members` 上有 `(workspace_id, user_id)` 主键/索引方向），树与问题读取仍在单事务快照内完成。
-- 探针的边界只到“Session 可见”这一层；等 0015 给 `probe_reports` 补上 `workspace_id` 后，应按归因归属收紧到空间级。
+- 探针的边界是“Session 可见 + 至少一条可见归因关联”；等 0015 给 `probe_reports` 补上 `workspace_id` 后，可直接按空间列判断，不再依赖关联推导。
 - `WorkspaceReadScope` 的三种模式没有运行时互斥校验；新增读路径必须显式选一种，不允许 `None` 直接透传为“全部”。

@@ -111,7 +111,8 @@ class ProblemService:
     ) -> ProbeReport:
         """Return one validated probe and its reverse source links."""
         result = await self._bad_cases.get_probe_result(probe_id)
-        if result.model is None or not await self._repository.session_visible(
+        if result.model is None or not await self._repository.probe_visible(
+            result.model.probe_id,
             result.model.session_id,
             scope,
         ):

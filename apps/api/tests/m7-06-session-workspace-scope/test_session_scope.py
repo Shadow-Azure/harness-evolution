@@ -441,10 +441,10 @@ async def test_legacy_session_scoped_cases_merge_visible_workspaces(
     assert [case["badCaseId"] for case in alice_own.json()["items"]] == [CASE_S3_A]
 
 
-async def test_probe_reads_follow_session_visibility(
+async def test_probe_reads_require_a_visible_problem_link(
     scope_environment: ScopeEnvironment,
 ) -> None:
-    """Probes without a workspace column inherit the Session projection."""
+    """A probe from another workspace's case cannot leak through a shared Session."""
     environment = scope_environment
 
     alice = await environment.client.get(
@@ -452,6 +452,26 @@ async def test_probe_reads_follow_session_visibility(
         headers=environment.alice,
     )
     assert alice.status_code == 200
+
+    bob_shared_session = await environment.client.get(
+        "/api/probes/probe-synthetic-0001",
+        headers=environment.bob,
+    )
+    assert bob_shared_session.status_code == 404
+    assert bob_shared_session.json()["error"]["code"] == "PROBE_NOT_FOUND"
+
+    alice_other_case = await environment.client.get(
+        "/api/probes/probe-synthetic-0003",
+        headers=environment.alice,
+    )
+    assert alice_other_case.status_code == 404
+    assert alice_other_case.json()["error"]["code"] == "PROBE_NOT_FOUND"
+
+    admin_other_case = await environment.client.get(
+        "/api/probes/probe-synthetic-0003",
+        headers=environment.admin,
+    )
+    assert admin_other_case.status_code == 200
 
     bob_hidden = await environment.client.get(
         "/api/probes/probe-synthetic-0002",
@@ -466,6 +486,24 @@ async def test_probe_reads_follow_session_visibility(
     )
     assert outsider.status_code == 404
     assert outsider.json()["error"]["code"] == "PROBE_NOT_FOUND"
+
+    alice_list = await environment.client.get(
+        f"/api/sessions/{SESSION_1}/probes",
+        headers=environment.alice,
+    )
+    assert alice_list.status_code == 200
+    assert [item["probeId"] for item in alice_list.json()["items"]] == [
+        "probe-synthetic-0001",
+    ]
+
+    admin_list = await environment.client.get(
+        f"/api/sessions/{SESSION_1}/probes",
+        headers=environment.admin,
+    )
+    assert [item["probeId"] for item in admin_list.json()["items"]] == [
+        "probe-synthetic-0001",
+        "probe-synthetic-0003",
+    ]
 
     hidden_session = await environment.client.get(
         f"/api/sessions/{SESSION_3}/probes",

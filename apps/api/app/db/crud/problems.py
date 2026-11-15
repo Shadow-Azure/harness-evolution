@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -133,12 +133,32 @@ class ProblemRepository:
             family = await self._family(session, session_id, scope)
             if family is None:
                 return None
+            linked_probe_ids = select(bad_case_analysis.c.probe_id).where(
+                bad_case_analysis.c.probe_id.is_not(None),
+            )
+            visible_probe_ids = (
+                select(bad_case_analysis.c.probe_id)
+                .join(
+                    bad_cases,
+                    bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
+                )
+                .where(
+                    bad_case_analysis.c.probe_id.is_not(None),
+                    scope.condition(bad_cases.c.workspace_id),
+                )
+            )
             probes = tuple(
                 _row_probe(row)
                 for row in (
                     await session.execute(
                         select(probe_reports)
-                        .where(probe_reports.c.session_id == session_id)
+                        .where(
+                            probe_reports.c.session_id == session_id,
+                            or_(
+                                probe_reports.c.probe_id.in_(visible_probe_ids),
+                                ~probe_reports.c.probe_id.in_(linked_probe_ids),
+                            ),
+                        )
                         .order_by(probe_reports.c.created_at, probe_reports.c.probe_id),
                     )
                 )
@@ -161,27 +181,64 @@ class ProblemRepository:
             )
             return ProbeListSnapshot(session=family, probes=probes, sources=sources)
 
-    async def session_visible(
+    async def probe_visible(
         self,
+        probe_id: str,
         session_id: str,
         scope: WorkspaceReadScope,
     ) -> bool:
-        """Return whether the Session belongs to any workspace in the scope."""
+        """Return whether a probe may be read inside this workspace scope.
+
+        A probe inherits its Session's visibility because ``probe_reports`` has
+        no ``workspace_id`` yet. When the probe is linked to bad cases, at least
+        one link must be visible: otherwise a probe produced from another
+        workspace's case would leak through a shared root Session. Unlinked
+        probes have no workspace owner and stay readable with their Session.
+        """
         if not await self._scoped_reads_available():
             return False
         async with self._database.session() as session:
-            row = (
+            if not await self._session_visible(session, session_id, scope):
+                return False
+            linked = (
                 await session.execute(
-                    select(session_families.c.id).where(
-                        session_families.c.id == session_id,
-                        session_families.c.id.in_(
-                            select(bad_cases.c.bad_case_session_id).where(
-                                scope.condition(bad_cases.c.workspace_id),
-                            ),
-                        ),
-                    ),
+                    select(bad_case_analysis.c.bad_case_id)
+                    .where(bad_case_analysis.c.probe_id == probe_id)
+                    .limit(1),
                 )
             ).first()
+            if linked is None:
+                return True
+            visible = (
+                await session.execute(
+                    select(bad_case_analysis.c.bad_case_id)
+                    .join(
+                        bad_cases,
+                        bad_cases.c.bad_case_id == bad_case_analysis.c.bad_case_id,
+                    )
+                    .where(
+                        bad_case_analysis.c.probe_id == probe_id,
+                        scope.condition(bad_cases.c.workspace_id),
+                    )
+                    .limit(1),
+                )
+            ).first()
+        return visible is not None
+
+    @staticmethod
+    async def _session_visible(
+        session: AsyncSession,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> bool:
+        row = (
+            await session.execute(
+                select(session_families.c.id).where(
+                    session_families.c.id == session_id,
+                    scope.session_condition(),
+                ),
+            )
+        ).first()
         return row is not None
 
     async def _family(
