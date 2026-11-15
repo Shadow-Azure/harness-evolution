@@ -8,7 +8,7 @@ id: m7-01
 milestone: m7
 depends: []
 priority: P0
-status: in-progress
+status: done
 scope:
   - .agents/flow/**
   - .agents/notes/**
@@ -40,7 +40,7 @@ PR #209 已合入 V2 目标态设计，但仓库流程树仍只有 M1–M6；真
 
 ## 实现内容
 
-- roadmap 增加 m7–m12；新增六个 milestone 三件套、31 个 V2 issue 和 12 个 M12 迁移 issue。
+- roadmap 增加 m7–m12；新增六个 milestone 三件套、31 个 V2 issue 和 6 个 M12 迁移 issue。
 - m6-25、m6-23、m6-24 标记完成；M6 收口，未兑现的六项工作由 M12 承接。
 - 新增 Agent Note 记录证据门禁与知识库触发的取舍，并同步 docs/roadmap 双语。
 
