@@ -32,6 +32,12 @@ DEFAULT_RANGE_DAYS = 90
 MAX_SPAN_DAYS = 366
 """Largest inclusive window accepted; 367 days and beyond is a validation error."""
 
+MIN_SUPPORTED_DATE = date(1970, 1, 1)
+"""Earliest local boundary the overview accepts; earlier dates are out of contract."""
+
+MAX_SUPPORTED_DATE = date(2999, 12, 31)
+"""Latest local boundary; leaves room for the half-open ``end + 1 day`` predicate."""
+
 DAY_GRAIN_MAX_SPAN = 92
 """Longest inclusive window that keeps day grain; longer spans downgrade to week."""
 
@@ -82,10 +88,11 @@ def _resolve_bounds(
 ) -> tuple[date, date]:
     """Resolve inclusive boundaries from explicit dates or an anchored range.
 
-    Both boundaries win over ``range``. Exactly one boundary requires an
-    explicit ``range``: the supplied boundary anchors the window and the missing
-    side is derived so the inclusive length equals ``range_days``. With no
-    boundary at all the window ends today.
+    Both boundaries win over ``range``, which is then ignored even when it is not
+    one of the supported values. Exactly one boundary requires an explicit
+    ``range``: the supplied boundary anchors the window and the missing side is
+    derived so the inclusive length equals ``range_days``. With no boundary at
+    all the window ends today.
     """
     if date_from is not None and date_to is not None:
         return date_from, date_to
@@ -108,7 +115,9 @@ def resolve_window(
 
     ``grain="day"`` downgrades to ``"week"`` when the inclusive span exceeds 92
     days, so a long range never produces hundreds of day buckets. The downgraded
-    grain is what the trend response must expose.
+    grain is what the trend response must expose. Boundaries outside
+    ``MIN_SUPPORTED_DATE .. MAX_SUPPORTED_DATE`` and any date arithmetic overflow
+    are rejected with ``WINDOW_INVALID`` instead of surfacing a 500.
     """
     if grain not in GRAINS:
         raise AppError(
@@ -125,13 +134,31 @@ def resolve_window(
         )
     if (date_from is None) != (date_to is None) and range_days is None:
         raise _window_error("a single boundary requires an explicit range")
-    resolved_range = _resolve_range(range_days)
-    start, end = _resolve_bounds(
-        date_from=date_from,
-        date_to=date_to,
-        range_days=resolved_range,
-        today=today or now_shanghai().date(),
+    # An explicit pair is a complete window, so a leftover ``range`` from the
+    # client is ignored rather than validated; only a range that participates in
+    # deriving a boundary has to be one of the three supported values.
+    resolved_range = (
+        DEFAULT_RANGE_DAYS
+        if date_from is not None and date_to is not None
+        else _resolve_range(range_days)
     )
+    try:
+        start, end = _resolve_bounds(
+            date_from=date_from,
+            date_to=date_to,
+            range_days=resolved_range,
+            today=today or now_shanghai().date(),
+        )
+    except OverflowError:
+        raise _window_error("window is outside the supported date range") from None
+    if start < MIN_SUPPORTED_DATE or end > MAX_SUPPORTED_DATE:
+        raise _window_error(
+            "window is outside the supported date range",
+            from_date=start.isoformat(),
+            to_date=end.isoformat(),
+            minDate=MIN_SUPPORTED_DATE.isoformat(),
+            maxDate=MAX_SUPPORTED_DATE.isoformat(),
+        )
     span_days = (end - start).days + 1
     if span_days > MAX_SPAN_DAYS:
         raise _window_error(
