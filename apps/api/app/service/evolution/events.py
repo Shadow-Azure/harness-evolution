@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Literal, Protocol, cast
 
@@ -11,6 +11,7 @@ from app.db.models.run_events import RunEventPageRecord, RunEventRecord
 from app.errors import AppError, ErrorCode
 from app.service.events import EventBus
 from app.service.identity.schemas import IdentityModel
+from app.service.workspaces.service import WorkspaceService
 from app.utils.redaction import (
     sanitize_detail,
     sanitize_message,
@@ -175,8 +176,13 @@ class EvolutionRunEventStore(Protocol):
 class EvolutionRunStateWriter(Protocol):
     """Run state mutations needed at the job failure boundary."""
 
-    async def get_run(self, run_id: str) -> EvolutionRunRecord | None:
-        """Return one persisted run or None."""
+    async def get_run(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunRecord | None:
+        """Return one in-scope persisted run or None."""
 
     async def mark_failed(self, run_id: str, *, stage: str, message: str) -> None:
         """Persist terminal failure facts."""
@@ -290,9 +296,13 @@ class EvolutionRunEventService:
         after_seq: int,
         limit: int,
         level: EvolutionRunEventLevel | None,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionRunEventPage:
-        """Return one authenticated run's durable event page."""
-        run = await self._runs.get_run(run_id)
+        """Return one authenticated in-scope run's durable event page."""
+        if workspace_ids is None:
+            run = await self._runs.get_run(run_id)
+        else:
+            run = await self._runs.get_run(run_id, workspace_ids=workspace_ids)
         if run is None:
             raise AppError(
                 status_code=404,
@@ -474,15 +484,33 @@ class EvolutionRunEventService:
 
 
 class EvolutionRunTopicAuthorizer:
-    """Authorize SSE subscriptions for one existing active run."""
+    """Authorize SSE subscriptions for one existing active run in one space."""
 
-    def __init__(self, runs: EvolutionRunStateWriter) -> None:
-        """Bind the authorizer to the durable run repository."""
+    def __init__(
+        self,
+        runs: EvolutionRunStateWriter,
+        workspaces: WorkspaceService,
+    ) -> None:
+        """Bind the authorizer to durable runs and workspace membership rules."""
         self._runs = runs
+        self._workspaces = workspaces
 
-    async def authorize(self, topics: tuple[str, ...], *, user_id: str) -> None:
-        """Reject missing, terminal, or malformed topics with the stable ticket error."""
-        del user_id
+    async def authorize(
+        self,
+        topics: tuple[str, ...],
+        *,
+        user_id: str,
+        user_role: str = "member",
+        workspace_id: str | None = None,
+    ) -> None:
+        """Reject missing, terminal, foreign-space, or invisible run topics.
+
+        A ticket that names its workspace proves membership once and then every
+        topic must belong to that workspace. A legacy ticket without a
+        workspace is checked run by run, so it cannot cross a space boundary.
+        """
+        if workspace_id is not None:
+            await self._authorize_workspace(workspace_id, user_id, user_role)
         for topic in topics:
             run_id = topic.removeprefix("run:")
             if not topic.startswith("run:") or not run_id:
@@ -490,6 +518,28 @@ class EvolutionRunTopicAuthorizer:
             run = await self._runs.get_run(run_id)
             if run is None or run.status not in _ACTIVE_SSE_STATUSES:
                 raise _ticket_error()
+            if workspace_id is not None:
+                if run.workspace_id != workspace_id:
+                    raise _ticket_error()
+                continue
+            await self._authorize_workspace(run.workspace_id, user_id, user_role)
+
+    async def _authorize_workspace(
+        self,
+        workspace_id: str,
+        user_id: str,
+        user_role: str,
+    ) -> None:
+        """Map the shared workspace visibility errors onto the ticket error."""
+        try:
+            await self._workspaces.authorize(
+                user_id=user_id,
+                user_role=user_role,
+                workspace_id=workspace_id,
+                minimum="viewer",
+            )
+        except AppError as exc:
+            raise _ticket_error() from exc
 
 
 def _public_event(record: RunEventRecord) -> EvolutionRunEvent:

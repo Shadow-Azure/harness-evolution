@@ -10,14 +10,23 @@ depends:
   - m7-03
   - m7-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/evolution_*.py
   - apps/api/app/api/events.py
   - apps/api/app/service/evolution/**
   - apps/api/app/service/events.py
   - apps/api/app/db/crud/**
+  - apps/api/app/db/models/**
+  - apps/api/app/api/catalogs.py
+  - apps/api/app/api/deps.py
+  - apps/api/app/main.py
+  - apps/api/app/service/catalogs.py
+  - apps/api/app/service/identity/schemas.py
+  - apps/api/app/service/workspaces/service.py
+  - apps/api/tests/**
   - packages/contracts/**
+  - plans/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
@@ -47,6 +56,8 @@ Targets, runs, events, and SSE tickets are workspace resources.
 - Change the target uniqueness key.
 - Filter run and event APIs.
 - Add workspaceId to tickets.
+- The routing, ticket-field, catalog, and visible-space filtering work also extends assembly (`main`, `deps`), catalogs, identity contracts, and workspace service scope; those edits only serve this issue's space boundary and do not change their existing responsibilities.
+- Produce the structured PR review document in `plans/` according to `docs/review.md`.
 
 ## Implementation steps
 

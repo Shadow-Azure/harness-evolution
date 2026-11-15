@@ -10,14 +10,23 @@ depends:
   - m7-03
   - m7-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/evolution_*.py
   - apps/api/app/api/events.py
   - apps/api/app/service/evolution/**
   - apps/api/app/service/events.py
   - apps/api/app/db/crud/**
+  - apps/api/app/db/models/**
+  - apps/api/app/api/catalogs.py
+  - apps/api/app/api/deps.py
+  - apps/api/app/main.py
+  - apps/api/app/service/catalogs.py
+  - apps/api/app/service/identity/schemas.py
+  - apps/api/app/service/workspaces/service.py
+  - apps/api/tests/**
   - packages/contracts/**
+  - plans/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
@@ -47,6 +56,8 @@ github:
 - target 唯一键改为 (workspace_id, object_type, object_name)。
 - run 列表、详情、重试和事件按空间过滤。
 - events/ticket 绑定 workspaceId。
+- 装配 V2 路由、票据字段、空间清单与可见空间过滤，同时扩展装配层（`main`、`deps`）、清单、身份契约与空间服务的 scope；这些改动只服务于本 issue 的空间边界，不改变它们的既有职责。
+- 按 `docs/review.md` 产出本 PR 的结构化检视文档，落在 `plans/`。
 
 ## 实施步骤
 

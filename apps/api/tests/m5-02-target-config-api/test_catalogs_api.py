@@ -15,10 +15,13 @@ from sqlalchemy import insert
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.evolution_targets import EvolutionTargetRepository
-from app.db.models.domain import agents, session_families, source_records
+from app.db.crud.fixtures import ensure_fixture_external_tables
+from app.db.models.domain import agents, bad_cases, session_families, source_records
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.main import create_app
 from app.service.catalogs import CatalogService
 from app.third_party_api.git.remote import RepoInvalid
+from tests.workspaces.helpers import insert_member
 
 CATALOG_ADMIN_TEMP_PASSWORD = "catalog-admin-temp-password"
 CATALOG_ADMIN_PASSWORD = "catalog-admin-password"
@@ -126,11 +129,18 @@ async def catalog_api(tmp_path: Path) -> AsyncIterator[CatalogApiEnvironment]:
     member = httpx.AsyncClient(transport=transport, base_url="http://testserver")
     try:
         async with app.router.lifespan_context(app):
-            await app.state.identity.create_user(
+            await ensure_fixture_external_tables(app.state.database)
+            member_record = await app.state.identity.create_user(
                 username="member",
                 display_name="Member",
                 password=CATALOG_MEMBER_TEMP_PASSWORD,
                 role="member",
+            )
+            await insert_member(
+                app.state.database,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                user_id=member_record.id,
+                role="viewer",
             )
             await _complete_login(
                 admin,
@@ -304,6 +314,21 @@ async def test_model_catalog_uses_normalized_agents(
                     source_type="jsonl",
                     main_record_id=index,
                     imported_at=now,
+                    updated_at=now,
+                ),
+            )
+        for index, session_id in enumerate(("s1", "s2"), start=1):
+            await session.execute(
+                insert(bad_cases).values(
+                    bad_case_id=f"catalog-case-{index}",
+                    workspace_id=DEFAULT_WORKSPACE_ID,
+                    bad_case_session_id=session_id,
+                    bad_case_type="self",
+                    object_name="deep-research",
+                    object_type="skill",
+                    title=session_id,
+                    bad_case_description="Seeded for the space model catalog.",
+                    created_at=now,
                     updated_at=now,
                 ),
             )

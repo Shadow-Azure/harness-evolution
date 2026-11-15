@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Request, Security, status
 
+from app.api.deps import authorize_workspace, visible_workspace_ids
 from app.api.security import BEARER_AUTH
 from app.errors import ErrorResponse
 from app.service.evolution.launch import EvolutionLaunchService
@@ -13,6 +14,7 @@ from app.service.evolution.probe_query import (
     ProbeQueryService,
     RunAccepted,
 )
+from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.principals import Principal
 
 probe_router = APIRouter(prefix="/api/evolution/probes", tags=["evolution-launch"])
@@ -32,9 +34,28 @@ def launch_service_from(request: Request) -> EvolutionLaunchService:
     return cast(EvolutionLaunchService, request.app.state.evolution_launch)
 
 
+def targets_from(request: Request) -> EvolutionTargetService:
+    """Return the application-scoped target configuration service."""
+    return cast(EvolutionTargetService, request.app.state.evolution_targets)
+
+
 def _principal_id(request: Request) -> str | None:
     """Return the authenticated principal's user id."""
     return cast(Principal, request.state.principal).user_id
+
+
+async def _launch_workspace(
+    request: Request,
+    body: ProbeQueryRequest,
+) -> str:
+    """Resolve the launch target's workspace and enforce the write role."""
+    config = await targets_from(request).enabled_config(
+        body.target_type,
+        body.target_name,
+        workspace_ids=await visible_workspace_ids(request),
+    )
+    await authorize_workspace(request, config.workspace_id, "space_admin")
+    return config.workspace_id
 
 
 LAUNCH_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -60,7 +81,10 @@ async def query_probe_hits(
     request: Request,
 ) -> ProbeQueryResult:
     """Return hit statistics and the first probe page for wizard step 2."""
-    return await probe_service_from(request).preview(body)
+    return await probe_service_from(request).preview(
+        body,
+        workspace_ids=await visible_workspace_ids(request),
+    )
 
 
 @preview_router.post(
@@ -76,9 +100,11 @@ async def create_cluster_preview(
     body: ProbeQueryRequest,
     request: Request,
 ) -> RunAccepted:
-    """Admit a cluster-only preview run without workspace or evaluation."""
+    """Admit a cluster-only preview run in the resolved target workspace."""
+    workspace_id = await _launch_workspace(request, body)
     return await launch_service_from(request).request_run(
         body,
         expected_mode="cluster_only",
         created_by=_principal_id(request),
+        workspace_ids=(workspace_id,),
     )

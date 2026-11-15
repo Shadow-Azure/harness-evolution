@@ -17,6 +17,8 @@ from app.api.events import router as events_router
 from app.api.evolution_launch import preview_router, probe_router
 from app.api.evolution_runs import router as evolution_runs_router
 from app.api.evolution_targets import router as evolution_targets_router
+from app.api.evolution_workspace import catalog_router as workspace_catalogs_router
+from app.api.evolution_workspace import router as workspace_evolution_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.problems import router as problems_router
@@ -237,7 +239,7 @@ def create_app(
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     evolution_stages = EvolutionStageService(evolution_repository, probe_query_repository)
     evolution_launch = EvolutionLaunchService(
-        target_repository,
+        evolution_targets,
         probe_query_repository,
         evolution_repository,
         jobs,
@@ -459,6 +461,7 @@ def create_app(
     app.state.sessions = sessions
     app.state.workspaces = workspaces
     app.state.problems = problems
+    app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
@@ -477,6 +480,7 @@ def create_app(
     app.state.run_event_replay = run_event_store
     app.state.run_topic_authorizer = EvolutionRunTopicAuthorizer(
         evolution_repository,
+        workspaces,
     )
     app.state.login_rate_limiter = LoginRateLimiter()
     app.state.database_start_error = None
@@ -506,7 +510,9 @@ def create_app(
     app.include_router(probe_router)
     app.include_router(preview_router)
     app.include_router(evolution_targets_router)
+    app.include_router(workspace_evolution_router)
     app.include_router(catalogs_router)
+    app.include_router(workspace_catalogs_router)
     app.include_router(events_router)
     app.include_router(acquisition_router)
     return app

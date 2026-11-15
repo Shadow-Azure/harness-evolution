@@ -293,6 +293,7 @@ class EvolutionRunRecord:
     finished_at: datetime | None
     validation_project_id: str = ""
     test_project_id: str = ""
+    workspace_id: str = DEFAULT_WORKSPACE_ID
 
 
 @dataclass(frozen=True, slots=True)
@@ -483,6 +484,7 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         created_by=_optional_text(row["created_by"]),
         created_at=_timestamp(row["created_at"]),
         finished_at=_optional_timestamp(row["finished_at"]),
+        workspace_id=(_optional_text(row.get("workspace_id")) or DEFAULT_WORKSPACE_ID),
     )
 
 

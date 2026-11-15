@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -90,13 +91,34 @@ class FakeRunStore:
 
     rows: tuple[EvolutionRunSummaryRecord, ...]
 
-    async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
-        """Return the preordered summaries."""
-        return self.rows
+    async def list_summaries(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Return the preordered summaries in the optional scope."""
+        return tuple(
+            row
+            for row in self.rows
+            if workspace_ids is None or row.run.workspace_id in workspace_ids
+        )
 
-    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
-        """Return one preordered summary by run id."""
-        return next((row for row in self.rows if row.run.id == run_id), None)
+    async def get_summary(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunSummaryRecord | None:
+        """Return one preordered in-scope summary by run id."""
+        return next(
+            (
+                row
+                for row in self.rows
+                if row.run.id == run_id
+                and (workspace_ids is None or row.run.workspace_id in workspace_ids)
+            ),
+            None,
+        )
 
 
 async def test_run_list_groups_by_status_without_reordering_repository_rows() -> None:

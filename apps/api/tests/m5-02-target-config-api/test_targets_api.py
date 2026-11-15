@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +26,7 @@ from app.db.crud.evolution_targets import (
 )
 from app.db.models.domain import evolution_targets
 from app.db.models.evolution import evolution_runs
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import AppError, ErrorCode
 from app.main import create_app
 from app.service.evolution.targets import (
@@ -37,6 +38,7 @@ from app.third_party_api.git.remote import (
     RepoInvalid,
     SubprocessGitRemote,
 )
+from tests.workspaces.helpers import insert_member
 
 TARGET_ADMIN_TEMP_PASSWORD = "admin-target-temp-password"
 TARGET_ADMIN_PASSWORD = "admin-target-password"
@@ -53,7 +55,12 @@ class FakeRepository:
         self.active = False
         self.next_id = 1
 
-    async def list(self, *, enabled_only: bool = False) -> tuple[EvolutionTargetRecord, ...]:
+    async def list(
+        self,
+        *,
+        enabled_only: bool = False,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
         """Return rows using the production order."""
         rows = sorted(
             self.rows.values(),
@@ -61,26 +68,53 @@ class FakeRepository:
         )
         if enabled_only:
             rows = [row for row in rows if row.enabled]
+        if workspace_ids is not None:
+            rows = [row for row in rows if row.workspace_id in workspace_ids]
         return tuple(rows)
 
-    async def get(self, target_id: str) -> EvolutionTargetRecord | None:
-        """Return one stored row."""
-        return self.rows.get(target_id)
+    async def get(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionTargetRecord | None:
+        """Return one stored row inside the optional workspace scope."""
+        row = self.rows.get(target_id)
+        if row is None or workspace_ids is None:
+            return row
+        return row if row.workspace_id in workspace_ids else None
 
     async def find(
         self,
         object_type: str,
         object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord | None:
-        """Find a row by the unique object pair."""
-        return next(
-            (
-                row
-                for row in self.rows.values()
-                if row.object_type == object_type and row.object_name == object_name
-            ),
-            None,
+        """Find a row by the unique object pair inside the optional scope."""
+        rows = await self.find_all(
+            object_type,
+            object_name,
+            workspace_ids=workspace_ids,
         )
+        return rows[0] if rows else None
+
+    async def find_all(
+        self,
+        object_type: str,
+        object_name: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionTargetRecord, ...]:
+        """Return every matching pair inside the optional scope."""
+        rows = [
+            row
+            for row in self.rows.values()
+            if row.object_type == object_type
+            and row.object_name == object_name
+            and (workspace_ids is None or row.workspace_id in workspace_ids)
+        ]
+        return tuple(sorted(rows, key=lambda row: (row.workspace_id, row.id)))
 
     async def insert(self, values: Mapping[str, object]) -> EvolutionTargetRecord:
         """Insert or raise the production conflict type."""
@@ -96,21 +130,36 @@ class FakeRepository:
         self,
         target_id: str,
         values: Mapping[str, object],
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetRecord:
         """Replace editable fields or raise the production missing/conflict errors."""
-        if target_id not in self.rows:
+        row = self.rows.get(target_id)
+        if row is None or (workspace_ids is not None and row.workspace_id not in workspace_ids):
             raise LookupError("missing")
-        existing = await self.find(str(values["object_type"]), str(values["object_name"]))
+        existing = await self.find(
+            str(values["object_type"]),
+            str(values["object_name"]),
+            workspace_ids=(row.workspace_id,),
+        )
         if existing is not None and existing.id != target_id:
             raise EvolutionTargetConflict
         row = _record(target_id, values)
         self.rows[target_id] = row
         return row
 
-    async def delete(self, target_id: str) -> bool:
-        """Delete and report whether the row existed."""
+    async def delete(
+        self,
+        target_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> bool:
+        """Delete and report whether an in-scope row existed."""
         if self.active:
             raise EvolutionTargetInUse
+        row = self.rows.get(target_id)
+        if row is None or (workspace_ids is not None and row.workspace_id not in workspace_ids):
+            return False
         return self.rows.pop(target_id, None) is not None
 
     async def has_active_runs(self, target_id: str) -> bool:
@@ -130,6 +179,7 @@ def _record(target_id: str, values: Mapping[str, object]) -> EvolutionTargetReco
         validation_project_id=str(values["validation_project_id"]),
         test_project_id=str(values["test_project_id"]),
         enabled=bool(values["enabled"]),
+        workspace_id=str(values.get("workspace_id", DEFAULT_WORKSPACE_ID)),
     )
 
 
@@ -243,11 +293,17 @@ async def target_http(tmp_path: Path) -> AsyncIterator[TargetHttpEnvironment]:
     member = httpx.AsyncClient(transport=transport, base_url="http://testserver")
     try:
         async with app.router.lifespan_context(app):
-            await app.state.identity.create_user(
+            member_record = await app.state.identity.create_user(
                 username="member",
                 display_name="Member",
                 password=TARGET_MEMBER_TEMP_PASSWORD,
                 role="member",
+            )
+            await insert_member(
+                app.state.database,
+                workspace_id=DEFAULT_WORKSPACE_ID,
+                user_id=member_record.id,
+                role="viewer",
             )
             await _complete_login(
                 admin,

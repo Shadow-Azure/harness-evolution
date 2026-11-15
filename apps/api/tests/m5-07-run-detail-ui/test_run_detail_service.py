@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -68,13 +69,28 @@ class FakeRunStore:
 
     summary: EvolutionRunSummaryRecord
 
-    async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
-        """Return the deterministic summary tuple."""
+    async def list_summaries(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Return the deterministic summary tuple in the optional scope."""
+        if workspace_ids is not None and self.summary.run.workspace_id not in workspace_ids:
+            return ()
         return (self.summary,)
 
-    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
-        """Return the deterministic summary when its id matches."""
-        return self.summary if self.summary.run.id == run_id else None
+    async def get_summary(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunSummaryRecord | None:
+        """Return the deterministic in-scope summary when its id matches."""
+        if self.summary.run.id != run_id:
+            return None
+        if workspace_ids is not None and self.summary.run.workspace_id not in workspace_ids:
+            return None
+        return self.summary
 
 
 async def test_detail_returns_workspace_and_backend_owned_step_states() -> None:

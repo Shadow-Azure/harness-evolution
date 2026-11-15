@@ -300,12 +300,19 @@ class EvolutionStageService:
         self._runs = runs
         self._probes = probes
 
-    async def step(self, run_id: str, key: StepKey) -> EvolutionStep:
+    async def step(
+        self,
+        run_id: str,
+        key: StepKey,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionStep:
         """Return one readable step or fail with the documented 404 codes.
 
         Args:
             run_id: Stable run identifier from the URL path.
             key: Requested step key inside the closed six-key vocabulary.
+            workspace_ids: Optional visible-workspace filter for legacy routes.
 
         Returns:
             The key-discriminated step envelope with its payload.
@@ -315,7 +322,7 @@ class EvolutionStageService:
                 `STEP_NOT_READY` when the step has not been reached or the run
                 mode hides it (cluster_only keeps only the first two steps).
         """
-        run = await self._runs.get_run(run_id)
+        run = await self._runs.get_run(run_id, workspace_ids=workspace_ids)
         if run is None:
             raise AppError(
                 status_code=404,

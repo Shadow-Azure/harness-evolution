@@ -4,7 +4,9 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, Path, Request, Response, Security, status
 
+from app.api.deps import visible_workspace_ids
 from app.api.security import BEARER_AUTH
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import ErrorResponse
 from app.service.evolution.targets import (
     EvolutionTarget,
@@ -34,8 +36,10 @@ def targets_from(request: Request) -> EvolutionTargetService:
     },
 )
 async def list_targets(request: Request) -> EvolutionTargetList:
-    """Return every configured target, including disabled rows."""
-    return await targets_from(request).list()
+    """Return targets visible to the caller, including disabled rows."""
+    return await targets_from(request).list(
+        workspace_ids=await visible_workspace_ids(request),
+    )
 
 
 @router.post(
@@ -56,9 +60,13 @@ async def create_target(
     body: EvolutionTargetWrite,
     request: Request,
 ) -> EvolutionTarget:
-    """Validate and create one administrator-managed target."""
+    """Validate and create one target in the legacy default workspace."""
     principal = cast(Principal, request.state.principal)
-    return await targets_from(request).create(body, created_by=principal.user_id)
+    return await targets_from(request).create(
+        body,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        created_by=principal.user_id,
+    )
 
 
 @router.put(

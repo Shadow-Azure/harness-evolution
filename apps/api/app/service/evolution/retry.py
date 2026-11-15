@@ -131,9 +131,11 @@ class EvolutionRetryService:
         self,
         run_id: str,
         created_by: str | None,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionRetryAccepted:
-        """Admit one manual retry after restarting the run's backoff ladder."""
-        run = await self._runs.get_run(run_id)
+        """Admit one manual retry for an in-scope blocked run."""
+        run = await self._runs.get_run(run_id, workspace_ids=workspace_ids)
         if run is None:
             raise AppError(
                 status_code=404,

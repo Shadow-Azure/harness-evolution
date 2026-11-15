@@ -1,6 +1,7 @@
 """Member-readable evolution target and normalized model catalogs."""
 
 import asyncio
+from collections.abc import Sequence
 
 from app.db.crud.evolution_targets import (
     EvolutionTargetRecord,
@@ -60,9 +61,16 @@ class CatalogService:
         self._git_remote = git_remote
         self._remote_slots = asyncio.Semaphore(max_remote_concurrency)
 
-    async def targets(self) -> CatalogTargets:
-        """Return enabled targets grouped by object type with remote tags."""
-        rows = await self._repository.list(enabled_only=True)
+    async def targets(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> CatalogTargets:
+        """Return enabled in-scope targets grouped by type with remote tags."""
+        rows = await self._repository.list(
+            enabled_only=True,
+            workspace_ids=workspace_ids,
+        )
         versions = await asyncio.gather(
             *(self._versions(row.repo_url) for row in rows),
         )
@@ -71,9 +79,13 @@ class CatalogService:
             grouped[row.object_type].append(_catalog_target(row, tags))
         return CatalogTargets(skill=grouped["skill"], agent=grouped["agent"])
 
-    async def models(self) -> CatalogModels:
-        """Return normalized model counts without parsing trace payloads."""
-        rows = await self._repository.list_models()
+    async def models(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> CatalogModels:
+        """Return in-scope normalized model counts without parsing payloads."""
+        rows = await self._repository.list_models(workspace_ids=workspace_ids)
         return CatalogModels(
             items=[
                 CatalogModel(

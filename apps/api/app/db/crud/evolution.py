@@ -30,6 +30,7 @@ from app.db.models.evolution import (
     record_from_probe_cluster_link,
 )
 from app.db.models.users import users
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.service.evolution.state import StageConflict, validate_transition
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
@@ -47,6 +48,7 @@ class EvolutionRepository:
         now = now_shanghai()
         payload = {
             "id": values.get("id", new_id()),
+            "workspace_id": values.get("workspace_id", DEFAULT_WORKSPACE_ID),
             "title": values["title"],
             "mode": values["mode"],
             "engine_key": values["engine_key"],
@@ -92,18 +94,18 @@ class EvolutionRepository:
             raise RuntimeError("created evolution run disappeared")
         return created
 
-    async def get_run(self, run_id: str) -> EvolutionRunRecord | None:
-        """Return one run by stable id."""
+    async def get_run(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunRecord | None:
+        """Return one run by stable id inside the optional workspace scope."""
+        statement = select(evolution_runs).where(evolution_runs.c.id == run_id)
+        if workspace_ids is not None:
+            statement = statement.where(evolution_runs.c.workspace_id.in_(workspace_ids))
         async with self._database.session() as session:
-            row = (
-                (
-                    await session.execute(
-                        select(evolution_runs).where(evolution_runs.c.id == run_id),
-                    )
-                )
-                .mappings()
-                .one_or_none()
-            )
+            row = (await session.execute(statement)).mappings().one_or_none()
         return record_from_evolution_run(cast(Mapping[str, Any], row)) if row is not None else None
 
     async def mark_failed(
@@ -407,20 +409,31 @@ class EvolutionRepository:
                 .values(progress_unit=target),
             )
 
-    async def list_summaries(self) -> tuple[EvolutionRunSummaryRecord, ...]:
-        """Return every run with batched creator, cluster, round, and final facts."""
-        return await self._summaries()
+    async def list_summaries(
+        self,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> tuple[EvolutionRunSummaryRecord, ...]:
+        """Return every run in scope with batched creator, cluster, and round facts."""
+        return await self._summaries(workspace_ids=workspace_ids)
 
-    async def get_summary(self, run_id: str) -> EvolutionRunSummaryRecord | None:
-        """Return one run with batched creator, cluster, round, and final facts."""
-        summaries = await self._summaries(run_id)
+    async def get_summary(
+        self,
+        run_id: str,
+        *,
+        workspace_ids: Sequence[str] | None = None,
+    ) -> EvolutionRunSummaryRecord | None:
+        """Return one scoped run with batched creator, cluster, and final facts."""
+        summaries = await self._summaries(run_id, workspace_ids=workspace_ids)
         return summaries[0] if summaries else None
 
     async def _summaries(
         self,
         run_id: str | None = None,
+        *,
+        workspace_ids: Sequence[str] | None = None,
     ) -> tuple[EvolutionRunSummaryRecord, ...]:
-        """Load summary facts for every run or one requested run."""
+        """Load summary facts for every in-scope run or one requested run."""
         async with self._database.session() as session:
             statement = (
                 select(
@@ -438,6 +451,10 @@ class EvolutionRepository:
                     evolution_runs.c.id.desc(),
                 )
             )
+            if workspace_ids is not None:
+                statement = statement.where(
+                    evolution_runs.c.workspace_id.in_(workspace_ids),
+                )
             if run_id is not None:
                 statement = statement.where(evolution_runs.c.id == run_id)
             rows = (await session.execute(statement)).mappings().all()
