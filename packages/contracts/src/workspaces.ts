@@ -1,12 +1,13 @@
 /**
  * Workspace and auth/session contracts from the V2 design.
  *
- * These types stay explicit until the workspace API slice is generated into
- * the OpenAPI snapshot; field names and optionality mirror `plans/fullstack-design/05-api-design.md`
- * §3.7 so the later generated types can replace them without a UI rewrite.
+ * `SessionPayload` and `SessionWorkspace` are generated from the FastAPI
+ * OpenAPI snapshot after m7-03. The remaining management types stay explicit
+ * until their endpoints land; field names mirror `plans/fullstack-design/05-api-design.md`
+ * §3.7 so the generated types can replace them without a UI rewrite.
  */
 
-import type { PublicUser } from "./index.js";
+import type { components } from "./generated/api.js";
 
 /** Effective role of the current user inside one workspace. */
 export type WorkspaceRole = "global_admin" | "space_admin" | "member" | "viewer";
@@ -33,16 +34,7 @@ export interface Workspace {
 }
 
 /** Workspace summary embedded in the auth/session payload. */
-export interface SessionWorkspace {
-  id: string;
-  name: string;
-  mark: string;
-  role: WorkspaceRole;
-  quota: number;
-  used: number;
-  memberCount: number;
-  spaceAdminCount: number;
-}
+export type SessionWorkspace = components["schemas"]["SessionWorkspace"];
 
 /** One membership row returned by the workspace member endpoints. */
 export interface WorkspaceMember {
@@ -72,8 +64,4 @@ export interface WorkspaceCredentialCreated {
 }
 
 /** Current user plus every workspace they can see for this session. */
-export interface SessionPayload {
-  user: PublicUser;
-  workspaces: SessionWorkspace[];
-  truncated: boolean;
-}
+export type SessionPayload = components["schemas"]["SessionPayload"];

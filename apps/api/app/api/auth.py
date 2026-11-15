@@ -16,6 +16,8 @@ from app.service.identity.schemas import (
     RefreshResponse,
 )
 from app.service.identity.service import IdentityService
+from app.service.workspaces.schemas import SessionPayload
+from app.service.workspaces.service import WorkspaceService
 
 REFRESH_COOKIE = "refresh_token"
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -24,6 +26,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 def identity_from(request: Request) -> IdentityService:
     """Return the application-scoped identity service."""
     return cast(IdentityService, request.app.state.identity)
+
+
+def workspaces_from(request: Request) -> WorkspaceService:
+    """Return the application-scoped workspace service."""
+    return cast(WorkspaceService, request.app.state.workspaces)
 
 
 def public_user(record: UserRecord) -> PublicUser:
@@ -149,3 +156,24 @@ async def me(request: Request) -> PublicUser:
             message="authentication is required",
         )
     return public_user(user)
+
+
+@router.get(
+    "/session",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Password change is required"},
+    },
+)
+async def session(request: Request) -> SessionPayload:
+    """Return the current user with every workspace visible to this session."""
+    principal = request.state.principal
+    user = await identity_from(request).get_user(principal.user_id)
+    if user is None:
+        raise AppError(
+            status_code=401,
+            code=ErrorCode.AUTH_REQUIRED,
+            message="authentication is required",
+        )
+    return await workspaces_from(request).session_payload(public_user(user))

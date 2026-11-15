@@ -15,6 +15,7 @@ _MCP_ALLOWED_PATHS = {
     "/api/auth/change-password",
     "/api/auth/logout",
     "/api/auth/me",
+    "/api/auth/session",
 }
 _ADMIN_ROUTE_RULES = (
     (frozenset({"GET", "POST"}), "/api/users"),

@@ -9,13 +9,19 @@ milestone: m7
 depends:
   - m7-02
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/**
+  - apps/api/app/db/crud/workspaces.py
   - apps/api/app/service/workspaces/**
   - apps/api/app/service/identity/**
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/app/middleware/auth.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -44,6 +50,7 @@ Authentication alone is insufficient; every business request must authorize the 
 - Implement the role order.
 - Let global admins pass while retaining real member rows.
 - Batch usage and membership data.
+- The repository lands at `app/db/crud/workspaces.py`; wiring (`main.py`, `errors.py`, `middleware/auth.py`), `apps/api/tests`, and the `plans/` review record stay in scope.
 
 ## Implementation steps
 
