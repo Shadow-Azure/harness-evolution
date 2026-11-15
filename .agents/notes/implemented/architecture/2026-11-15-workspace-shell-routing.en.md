@@ -27,6 +27,7 @@ m7-04 through m7-07 isolated sessions, bad cases, evolution targets, runs, and S
 
 ## Consequences
 
+- The `used` aggregate in `auth/session` reads the externally bootstrapped `bad_cases` table; a fresh deployment must initialize that schema first or the workspace shell stalls at login.
 - The landing page is the session list instead of the designed overview; m8-04 only needs to change `DEFAULT_WORKSPACE_PATH` and the guard target.
 - Analysis and probe reads still use one compatibility endpoint scoped to all visible workspaces; until workspace attribution endpoints land, `wid` only isolates the cache and cannot stop the same attribution from being opened from two visible workspaces.
 - If a visible workspace is removed while a browser still sits on its URL, the guard returns to the chooser; a `404 WORKSPACE_NOT_FOUND` from the API renders the page error state instead of silently switching.

@@ -70,6 +70,15 @@ async function enterWorkspace(workspaceId: string): Promise<void> {
     </p>
 
     <p
+      v-if="auth.sessionTruncated"
+      class="chooser-notice"
+      role="status"
+      data-testid="workspace-chooser-truncated"
+    >
+      可见空间过多，列表只显示前 200 个；请联系管理员确认成员关系。
+    </p>
+
+    <p
       v-if="workspaces.length === 0"
       class="chooser-empty"
       data-testid="workspace-chooser-empty"
