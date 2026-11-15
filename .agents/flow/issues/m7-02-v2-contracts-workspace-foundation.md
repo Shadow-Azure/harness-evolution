@@ -8,7 +8,7 @@ id: m7-02
 milestone: m7
 depends: []
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/db/**
   - apps/api/alembic/**
