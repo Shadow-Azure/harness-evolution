@@ -34,4 +34,6 @@ class PasswordProvider:
             password_matches = False
         if user is None or not password_matches:
             return None
+        if user.auth_provider != self.name.value:
+            return None
         return ProviderIdentity(provider=self.name, subject=user.id)

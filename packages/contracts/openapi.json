@@ -8211,7 +8211,7 @@
                 }
               }
             },
-            "description": "Request validation failed"
+            "description": "Request validation failed or the admin role is not assignable"
           }
         },
         "security": [

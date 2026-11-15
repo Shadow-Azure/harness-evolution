@@ -14,9 +14,11 @@ status: in-progress
 scope:
   - apps/api/app/service/identity/**
   - apps/api/app/api/auth.py
+  - apps/api/app/api/users.py
   - apps/api/app/config.py
   - apps/api/app/errors.py
   - apps/api/app/db/crud/users.py
+  - apps/api/app/db/models/users.py
   - apps/api/app/middleware/auth.py
   - apps/api/app/middleware/rate_limit.py
   - apps/api/tests/**

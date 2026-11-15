@@ -1312,7 +1312,7 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `CREDENTIAL_LIMIT` | 409 | 空间有效上报凭据超过 3 个 |
 | `QUOTA_EXCEEDED` | 409 | 空间 bad case 达到额度上限 |
 | `QUOTA_INVALID` | 422 | 额度 < 0，或小于当前已用量 |
-| `AUTH_NO_MAPPING` | 403 | SSO 回调按 sub/email 匹配不到用户（不自动建号） |
+| `AUTH_NO_MAPPING` | 403 | SSO 回调按 sub 匹配不到用户（email 仅作上下文，不参与自动关联；不自动建号） |
 | `AUTH_STATE_INVALID` | 400 | OIDC `state` 缺失、过期或与 cookie 不匹配 |
 | `AUTH_PROVIDER_ERROR` | 502 | IdP 换取 token 失败 |
 | `AUTH_PROVIDER_NOT_CONFIGURED` | 501 | IdP 未配置时访问 `/api/auth/callback` |

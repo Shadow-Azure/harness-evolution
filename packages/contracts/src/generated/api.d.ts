@@ -5099,7 +5099,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Request validation failed */
+            /** @description Request validation failed or the admin role is not assignable */
             422: {
                 headers: {
                     [name: string]: unknown;

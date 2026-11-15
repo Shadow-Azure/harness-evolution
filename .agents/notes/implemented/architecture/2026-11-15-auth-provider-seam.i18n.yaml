@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-15-auth-provider-seam.md
-2026-11-15-auth-provider-seam.md: 494142297e6fd80762cd6a70dadbb372cd31c612
-2026-11-15-auth-provider-seam.en.md: 55d1645d2d4280eb32a4b29a27892846d5c12c12
+2026-11-15-auth-provider-seam.md: 3b002efc85893429667c9d61023aa7fd111c6136
+2026-11-15-auth-provider-seam.en.md: 0f5b3f1615012e4a41dc8029c180d409996878e6

@@ -32,7 +32,7 @@ class SessionBridge:
         """Map an identity to an existing active user without ever creating one."""
         if identity.provider is AuthProviderName.PASSWORD:
             user = await self._users.get_by_id(identity.subject)
-            if user is None:
+            if user is None or user.auth_provider != AuthProviderName.PASSWORD.value:
                 raise AppError(
                     status_code=HTTPStatus.UNAUTHORIZED,
                     code=ErrorCode.AUTH_INVALID,

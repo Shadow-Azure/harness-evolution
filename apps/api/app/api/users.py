@@ -32,7 +32,10 @@ async def list_users(request: Request) -> UserListResponse:
         401: {"model": ErrorResponse, "description": "Authentication is required"},
         403: {"model": ErrorResponse, "description": "Administrator role is required"},
         409: {"model": ErrorResponse, "description": "Username already exists"},
-        422: {"model": ErrorResponse, "description": "Request validation failed"},
+        422: {
+            "model": ErrorResponse,
+            "description": "Request validation failed or the admin role is not assignable",
+        },
     },
 )
 async def create_user(body: CreateUserRequest, request: Request) -> PublicUser:

@@ -10,10 +10,11 @@ from sqlalchemy import update
 
 from app.config import AuthProviderName, Settings
 from app.db.models.users import users
-from app.errors import ErrorCode
+from app.errors import AppError, ErrorCode
 from app.main import create_app
 from app.service.identity.callback import (
     CALLBACK_STATE_COOKIE,
+    CALLBACK_STATE_PATH,
     CallbackService,
     CallbackStateStore,
 )
@@ -82,7 +83,8 @@ def set_state_cookie(client: httpx.AsyncClient, callback: CallbackService) -> st
     client.cookies.set(
         CALLBACK_STATE_COOKIE,
         challenge.value,
-        path="/api/auth",
+        domain="testserver.local",
+        path=challenge.path,
     )
     return challenge.value
 
@@ -236,10 +238,17 @@ async def test_state_challenge_describes_the_cookie_writer(tmp_path: Path) -> No
             secure_challenge = production.state.identity.callback.state_challenge()
 
     assert challenge.cookie_name == CALLBACK_STATE_COOKIE
+    assert challenge.path == CALLBACK_STATE_PATH == "/api/auth"
     assert challenge.max_age == 600
     assert challenge.samesite == "lax"
     assert challenge.secure is False
     assert secure_challenge.secure is True
+    with pytest.raises(AppError) as unicode_cookie:
+        CallbackStateStore(settings.jwt_secret.get_secret_value()).verify(
+            value="state-value",
+            cookie="状态",
+        )
+    assert unicode_cookie.value.code == ErrorCode.AUTH_STATE_INVALID
 
 
 async def test_callback_success_issues_the_same_session_pair(tmp_path: Path) -> None:
@@ -272,7 +281,7 @@ async def test_callback_success_issues_the_same_session_pair(tmp_path: Path) -> 
     assert response.status_code == 302
     assert response.headers["location"] == "https://harness.example"
     assert response.cookies.get("refresh_token")
-    assert CALLBACK_STATE_COOKIE not in response.cookies
+    assert client.cookies.get(CALLBACK_STATE_COOKIE) is None
     assert provider.calls == 1
     assert provider.credentials == Credentials(code="authorization-code")
     assert user is not None and user.last_login_at is not None
@@ -334,7 +343,14 @@ async def test_callback_rejects_missing_mismatched_forged_and_expired_state(
             params={"code": "code-1", "state": state},
         )
 
-    for response in (without_cookie, mismatched, forged, forged_cookie, unicode_state, expired):
+    for response in (
+        without_cookie,
+        mismatched,
+        forged,
+        forged_cookie,
+        unicode_state,
+        expired,
+    ):
         assert response.status_code == 400
         assert response.json()["error"]["code"] == ErrorCode.AUTH_STATE_INVALID
     assert provider.calls == 0
@@ -439,6 +455,68 @@ async def test_callback_maps_provider_exchange_failure_to_502(tmp_path: Path) ->
     assert response.json()["error"]["code"] == ErrorCode.AUTH_PROVIDER_ERROR
 
 
+async def test_password_login_is_limited_to_password_provider_accounts(
+    tmp_path: Path,
+) -> None:
+    """An externally mapped account cannot fall back to its local password."""
+    settings = identity_settings(
+        tmp_path,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        await map_user(app, "admin")
+        password_login = await login(client)
+        callback = install_callback(
+            app,
+            settings,
+            StubExternalProvider(ProviderIdentity(AuthProviderName.OIDC, "subject-1")),
+        )
+        state = set_state_cookie(client, callback)
+        callback_login = await client.get(
+            "/api/auth/callback",
+            params={"code": "code-1", "state": state},
+        )
+
+    assert password_login.status_code == 401
+    assert password_login.json()["error"]["code"] == ErrorCode.AUTH_INVALID
+    assert callback_login.status_code == 302
+
+
+async def test_callback_redirects_to_root_when_no_web_base_url(tmp_path: Path) -> None:
+    """The default redirect stays relative when HE_WEB_BASE_URL is unset."""
+    settings = identity_settings(
+        tmp_path,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        await map_user(app, "admin")
+        callback = install_callback(
+            app,
+            settings,
+            StubExternalProvider(ProviderIdentity(AuthProviderName.OIDC, "subject-1")),
+        )
+        state = set_state_cookie(client, callback)
+        response = await client.get(
+            "/api/auth/callback",
+            params={"code": "code-1", "state": state},
+        )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/"
+
+
 async def test_callback_shares_the_login_rate_limit(tmp_path: Path) -> None:
     """Repeated callback attempts consume the same per-IP login budget."""
     settings = identity_settings(tmp_path)
@@ -451,6 +529,24 @@ async def test_callback_shares_the_login_rate_limit(tmp_path: Path) -> None:
         responses = [await client.get("/api/auth/callback") for _ in range(11)]
 
     assert [response.status_code for response in responses[:10]] == [501] * 10
+    assert responses[10].status_code == 429
+    assert responses[10].json()["error"]["code"] == ErrorCode.RATE_LIMITED
+
+
+async def test_post_callback_also_consumes_the_login_rate_limit(
+    tmp_path: Path,
+) -> None:
+    """A method change cannot bypass the callback's shared per-IP budget."""
+    settings = identity_settings(tmp_path)
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        responses = [await client.post("/api/auth/callback") for _ in range(11)]
+
+    assert [response.status_code for response in responses[:10]] == [405] * 10
     assert responses[10].status_code == 429
     assert responses[10].json()["error"]["code"] == ErrorCode.RATE_LIMITED
 

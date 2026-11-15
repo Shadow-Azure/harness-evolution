@@ -57,11 +57,7 @@ class LoginRateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Return a stable 429 response when an IP exhausts the sliding window."""
-        attempt = (request.method, request.url.path)
-        if attempt in {
-            ("POST", "/api/auth/login"),
-            ("GET", "/api/auth/callback"),
-        }:
+        if request.url.path in {"/api/auth/login", "/api/auth/callback"}:
             client = request.client.host if request.client else "unknown"
             delay = await request.app.state.login_rate_limiter.retry_after(client)
             if delay:

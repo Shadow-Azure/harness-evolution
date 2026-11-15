@@ -1,5 +1,6 @@
 """Identity-provider callback orchestration with a cookie-bound state challenge."""
 
+import hashlib
 import hmac
 import secrets
 import time
@@ -20,6 +21,7 @@ from app.service.identity.providers import (
 from app.service.identity.session_bridge import AuthenticationResult, SessionBridge
 
 CALLBACK_STATE_COOKIE = "he_oidc_state"
+CALLBACK_STATE_PATH = "/api/auth"
 CALLBACK_STATE_TTL_SECONDS = 600
 
 
@@ -29,6 +31,7 @@ class CallbackStateChallenge:
 
     value: str
     cookie_name: str
+    path: str
     max_age: int
     secure: bool
     samesite: Literal["lax"] = "lax"
@@ -44,8 +47,12 @@ class CallbackStateStore:
         ttl_seconds: int = CALLBACK_STATE_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        """Create a store bound to the JWT signing key and an injectable clock."""
-        self._secret = secret
+        """Create a store bound to a state-specific key and an injectable clock."""
+        self._secret = hmac.new(
+            secret.encode("utf-8"),
+            b"harness-evolution-auth-state-v1",
+            hashlib.sha256,
+        ).hexdigest()
         self._ttl_seconds = ttl_seconds
         self._clock = clock
 
@@ -127,6 +134,7 @@ class CallbackService:
         return CallbackStateChallenge(
             value=self._state.issue(),
             cookie_name=CALLBACK_STATE_COOKIE,
+            path=CALLBACK_STATE_PATH,
             max_age=self._state.ttl_seconds,
             secure=self._settings.is_production,
         )

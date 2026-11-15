@@ -9,7 +9,7 @@ from app.api.security import BEARER_AUTH
 from app.config import Settings
 from app.db.models.users import UserRecord
 from app.errors import AppError, ErrorCode, ErrorResponse
-from app.service.identity.callback import CALLBACK_STATE_COOKIE
+from app.service.identity.callback import CALLBACK_STATE_COOKIE, CALLBACK_STATE_PATH
 from app.service.identity.schemas import (
     ChangePasswordRequest,
     LoginRequest,
@@ -126,7 +126,7 @@ async def callback(
     set_refresh_cookie(response, request, authenticated.refresh_token)
     response.delete_cookie(
         CALLBACK_STATE_COOKIE,
-        path="/api/auth",
+        path=CALLBACK_STATE_PATH,
         httponly=True,
         samesite="lax",
         secure=request.app.state.settings.is_production,
