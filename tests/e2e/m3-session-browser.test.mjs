@@ -446,17 +446,27 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
       mobile: false,
     });
 
+    const searchId =
+      initial.cardIds.find((entry) => entry.id !== initial.selectedId)?.id ??
+      initial.selectedId;
     await page.session.send("Runtime.evaluate", {
       expression: `(async () => {
         const input = document.querySelector("[data-testid='search-input']");
-        input.value = "example-repo";
+        input.value = ${JSON.stringify(searchId)};
         input.dispatchEvent(new Event("input", { bubbles: true }));
       })()`,
     });
     const searched = await waitForDocument(
       page.session,
-      `Boolean(location.search.includes("q=example-repo") && document.querySelector("[data-testid='session-card']"))`,
-      "debounced URL search",
+      `(() => {
+        const cards = [...document.querySelectorAll("[data-testid='session-card']")];
+        return Boolean(
+          location.search.includes("q=${searchId}") &&
+          cards.length === 1 &&
+          cards[0].dataset.sessionId === ${JSON.stringify(searchId)}
+        );
+      })()`,
+      "exact root ID URL search",
     );
     assert.equal(searched, true);
 
