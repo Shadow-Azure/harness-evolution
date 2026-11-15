@@ -19,6 +19,17 @@ workspace_router = APIRouter(prefix="/api/workspaces/{wid}/sessions", tags=["ses
 WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 
 SessionQuery = Annotated[str, Query(max_length=512)]
+WorkspaceSessionQuery = Annotated[
+    str,
+    Query(
+        max_length=512,
+        description=(
+            "Complete root Session ID. Surrounding whitespace is trimmed and the "
+            "match is exact but case-insensitive; ID substrings and titles return "
+            "an empty list."
+        ),
+    ),
+]
 SessionStatus = Annotated[
     Literal["all", "ok", "partial", "fail", "problem"],
     Query(alias="status"),
@@ -120,7 +131,7 @@ async def list_workspace_sessions(
     wid: WorkspaceId,
     request: Request,
     access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
-    q: SessionQuery = "",
+    q: WorkspaceSessionQuery = "",
     status_filter: SessionStatus = "all",
     sort: SessionSortQuery = "latest",
     limit: SessionLimit = 10,
@@ -128,7 +139,7 @@ async def list_workspace_sessions(
     """Return the root sessions projected from one workspace's bad cases."""
     return await sessions_from(request).list(
         SessionFilters(
-            query=q.strip(),
+            query=q,
             status=status_filter,
             sort=sort,
             limit=limit,

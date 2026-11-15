@@ -205,12 +205,15 @@ def _session_conditions(
     exact_query: bool,
     scope: WorkspaceReadScope,
 ) -> list[ColumnElement[bool]]:
-    """Build the one predicate set shared by listing and counting."""
+    """Build the one predicate set shared by listing and counting.
+
+    ``query`` arrives already normalized by the session service; this function
+    only interpolates it into the exact or fuzzy predicate.
+    """
     conditions: list[ColumnElement[bool]] = [scope.session_condition()]
     if exact_query:
-        exact = query.strip()
-        if exact:
-            conditions.append(func.lower(session_families.c.id) == exact.lower())
+        if query:
+            conditions.append(func.lower(session_families.c.id) == query.lower())
     elif query:
         pattern = f"%{_escape_like(query.lower())}%"
         conditions.append(

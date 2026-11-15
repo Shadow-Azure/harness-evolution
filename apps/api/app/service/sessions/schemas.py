@@ -43,11 +43,23 @@ class SessionListItem(IdentityModel):
 
 
 class SessionListResponse(IdentityModel):
-    """Current-page session cards plus workspace-wide counters."""
+    """One current page plus counters."""
 
     items: list[SessionListItem]
-    total: int = Field(ge=0)
-    pending_sessions: int = Field(ge=0)
+    total: int = Field(
+        ge=0,
+        description=(
+            "Normalized sessions matching q and status across the whole scope; "
+            "pending roots are excluded."
+        ),
+    )
+    pending_sessions: int = Field(
+        ge=0,
+        description=(
+            "Distinct roots reported inside the scope that have no normalized "
+            "session yet; independent of q and status."
+        ),
+    )
 
 
 class SessionEvent(IdentityModel):

@@ -2842,14 +2842,20 @@ export interface components {
         };
         /**
          * SessionListResponse
-         * @description Current-page session cards plus workspace-wide counters.
+         * @description One current page plus counters.
          */
         SessionListResponse: {
             /** Items */
             items: components["schemas"]["SessionListItem"][];
-            /** Pendingsessions */
+            /**
+             * Pendingsessions
+             * @description Distinct roots reported inside the scope that have no normalized session yet; independent of q and status.
+             */
             pendingSessions: number;
-            /** Total */
+            /**
+             * Total
+             * @description Normalized sessions matching q and status across the whole scope; pending roots are excluded.
+             */
             total: number;
         };
         /**
@@ -7657,6 +7663,7 @@ export interface operations {
     list_workspace_sessions_api_workspaces__wid__sessions_get: {
         parameters: {
             query?: {
+                /** @description Complete root Session ID. Surrounding whitespace is trimmed and the match is exact but case-insensitive; ID substrings and titles return an empty list. */
                 q?: string;
                 status?: "all" | "ok" | "partial" | "fail" | "problem";
                 sort?: "latest" | "userTurns" | "messages" | "agents";

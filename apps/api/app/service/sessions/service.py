@@ -46,6 +46,7 @@ class SessionFilters:
     query: str = ""
     status: SessionStatusFilter = "all"
     sort: SessionSort = "latest"
+    # Routes own the page size: V1 passes 100, V2 passes 10.
     limit: int = 100
     exact_query: bool = False
 
@@ -198,6 +199,7 @@ class SessionService:
         scope: WorkspaceReadScope,
     ) -> SessionListResponse:
         """Return one filtered and stably sorted session page."""
+        # The service owns q normalization; the repository consumes this value.
         query = filters.query.strip() if filters.exact_query else filters.query
         records = await self._repository.list_sessions(
             query=query,

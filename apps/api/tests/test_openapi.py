@@ -310,6 +310,11 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert set(session_list_parameters) == {"wid", "q", "status", "sort", "limit"}
     assert session_list_parameters["limit"]["schema"]["default"] == 10
     assert legacy_list_parameters["limit"]["schema"]["default"] == 100
+    assert "Complete root Session ID" in session_list_parameters["q"]["description"]
+    assert "description" not in legacy_list_parameters["q"]
+    counters = components["SessionListResponse"]["properties"]
+    assert "pending roots are excluded" in counters["total"]["description"]
+    assert "independent of q and status" in counters["pendingSessions"]["description"]
     session_task_kind = components["SessionAgent"]["properties"]["taskKind"]
     assert session_task_kind["anyOf"][0]["enum"] == [
         "in_process_teammate",

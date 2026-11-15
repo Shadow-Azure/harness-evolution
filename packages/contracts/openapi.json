@@ -3782,7 +3782,7 @@
       },
       "SessionListResponse": {
         "additionalProperties": false,
-        "description": "Current-page session cards plus workspace-wide counters.",
+        "description": "One current page plus counters.",
         "properties": {
           "items": {
             "items": {
@@ -3792,11 +3792,13 @@
             "type": "array"
           },
           "pendingSessions": {
+            "description": "Distinct roots reported inside the scope that have no normalized session yet; independent of q and status.",
             "minimum": 0.0,
             "title": "Pendingsessions",
             "type": "integer"
           },
           "total": {
+            "description": "Normalized sessions matching q and status across the whole scope; pending roots are excluded.",
             "minimum": 0.0,
             "title": "Total",
             "type": "integer"
@@ -11441,11 +11443,13 @@
             }
           },
           {
+            "description": "Complete root Session ID. Surrounding whitespace is trimmed and the match is exact but case-insensitive; ID substrings and titles return an empty list.",
             "in": "query",
             "name": "q",
             "required": false,
             "schema": {
               "default": "",
+              "description": "Complete root Session ID. Surrounding whitespace is trimmed and the match is exact but case-insensitive; ID substrings and titles return an empty list.",
               "maxLength": 512,
               "title": "Q",
               "type": "string"
