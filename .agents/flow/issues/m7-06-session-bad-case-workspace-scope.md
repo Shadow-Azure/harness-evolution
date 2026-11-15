@@ -10,18 +10,22 @@ depends:
   - m7-03
   - m7-05
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/sessions.py
   - apps/api/app/api/problems.py
   - apps/api/app/service/sessions/**
   - apps/api/app/service/problems/**
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
-adr: []
+adr:
+  - ../../notes/implemented/architecture/2026-11-15-session-bad-case-workspace-scope.md
 github:
   number: 227
   url: https://github.com/Shadow-Azure/harness-evolution/issues/227
@@ -47,6 +51,7 @@ github:
 - 新增 /workspaces/{wid}/sessions 与 bad-case 路由。
 - Session 集合由空间 bad case 根会话投影得到。
 - 旧端点按用户全部可见空间过滤。
+- 注册空间路由需要 API 装配，跨空间测试与检视记录需要 API 测试与 plans，故 scope 覆盖这些文件。
 
 ## 实施步骤
 

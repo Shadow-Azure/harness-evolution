@@ -22,7 +22,9 @@ from app.api.evolution_workspace import router as workspace_evolution_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.problems import router as problems_router
+from app.api.problems import workspace_router as workspace_problems_router
 from app.api.sessions import router as sessions_router
+from app.api.sessions import workspace_router as workspace_sessions_router
 from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
@@ -501,7 +503,9 @@ def create_app(
     app.include_router(workspaces_router)
     app.include_router(jobs_router)
     app.include_router(sessions_router)
+    app.include_router(workspace_sessions_router)
     app.include_router(problems_router)
+    app.include_router(workspace_problems_router)
     app.include_router(evolution_runs_router)
     app.include_router(probe_router)
     app.include_router(preview_router)

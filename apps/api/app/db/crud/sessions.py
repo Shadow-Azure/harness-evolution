@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
+from app.db.crud.read_scope import WorkspaceReadScope, bad_cases_table_present
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -203,6 +204,13 @@ class SessionRepository:
     def __init__(self, database: Database) -> None:
         """Bind this repository to the application database."""
         self._database = database
+        self._bad_cases_ready = False
+
+    async def _scoped_reads_available(self) -> bool:
+        """Return whether the external bad-case projection can be queried."""
+        if not self._bad_cases_ready:
+            self._bad_cases_ready = await bad_cases_table_present(self._database)
+        return self._bad_cases_ready
 
     async def list_sessions(
         self,
@@ -211,9 +219,12 @@ class SessionRepository:
         status: SessionStatusFilter,
         sort: SessionSort,
         limit: int,
+        scope: WorkspaceReadScope,
     ) -> list[SessionRecord]:
         """List current session aggregates with stable server-side ordering."""
-        conditions: list[ColumnElement[bool]] = []
+        if not await self._scoped_reads_available():
+            return []
+        conditions: list[ColumnElement[bool]] = [scope.session_condition()]
         if query:
             pattern = f"%{_escape_like(query.lower())}%"
             conditions.append(
@@ -247,14 +258,21 @@ class SessionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return [_session_record(row) for row in rows]
 
-    async def get(self, session_id: str) -> SessionRecord | None:
+    async def get(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> SessionRecord | None:
         """Return one canonical session aggregate by root id."""
+        if not await self._scoped_reads_available():
+            return None
         async with self._database.session() as session:
             row = (
                 (
                     await session.execute(
                         select(session_families).where(
                             session_families.c.id == session_id,
+                            scope.session_condition(),
                         ),
                     )
                 )
@@ -263,14 +281,21 @@ class SessionRepository:
             )
         return _session_record(row) if row is not None else None
 
-    async def tree_snapshot(self, session_id: str) -> SessionTreeSnapshot | None:
+    async def tree_snapshot(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> SessionTreeSnapshot | None:
         """Read one complete tree version from a single database snapshot."""
+        if not await self._scoped_reads_available():
+            return None
         async with self._database.session() as session:
             family_row = (
                 (
                     await session.execute(
                         select(session_families).where(
                             session_families.c.id == session_id,
+                            scope.session_condition(),
                         ),
                     )
                 )
@@ -316,7 +341,10 @@ class SessionRepository:
                 (
                     await session.execute(
                         select(bad_cases)
-                        .where(bad_cases.c.bad_case_session_id == session_id)
+                        .where(
+                            bad_cases.c.bad_case_session_id == session_id,
+                            scope.condition(bad_cases.c.workspace_id),
+                        )
                         .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id),
                     )
                 )
@@ -331,16 +359,23 @@ class SessionRepository:
                 bad_cases=tuple(_bad_case_record(row) for row in bad_case_rows),
             )
 
-    async def bad_case_counts(self, session_ids: list[str]) -> dict[str, int]:
+    async def bad_case_counts(
+        self,
+        session_ids: list[str],
+        scope: WorkspaceReadScope,
+    ) -> dict[str, int]:
         """Aggregate external bad-case counts once for the current page."""
-        if not session_ids:
+        if not session_ids or not await self._scoped_reads_available():
             return {}
         statement = (
             select(
                 bad_cases.c.bad_case_session_id,
                 func.count().label("count"),
             )
-            .where(bad_cases.c.bad_case_session_id.in_(session_ids))
+            .where(
+                bad_cases.c.bad_case_session_id.in_(session_ids),
+                scope.condition(bad_cases.c.workspace_id),
+            )
             .group_by(bad_cases.c.bad_case_session_id)
         )
         async with self._database.session() as session:
@@ -371,11 +406,20 @@ class SessionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return [_event_record(row) for row in rows]
 
-    async def list_bad_cases(self, session_id: str) -> list[BadCaseRecord]:
+    async def list_bad_cases(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> list[BadCaseRecord]:
         """Return externally owned problems in stable creation order."""
+        if not await self._scoped_reads_available():
+            return []
         statement = (
             select(bad_cases)
-            .where(bad_cases.c.bad_case_session_id == session_id)
+            .where(
+                bad_cases.c.bad_case_session_id == session_id,
+                scope.condition(bad_cases.c.workspace_id),
+            )
             .order_by(bad_cases.c.created_at, bad_cases.c.bad_case_id)
         )
         async with self._database.session() as session:

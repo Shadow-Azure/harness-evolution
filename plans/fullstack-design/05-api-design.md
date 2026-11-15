@@ -783,6 +783,8 @@ erDiagram
 }
 ```
 
+> V1 会话与问题端点保留一个版本：`GET /api/sessions`、`/api/sessions/{sid}`、`/api/sessions/{sid}/tree`、`/api/sessions/{sid}/bad-cases`、`/api/sessions/{sid}/probes`、`/api/bad-cases/{id}`、`/api/bad-cases/{id}/analysis` 与 `/api/probes/{id}` 都按当前用户全部可见空间过滤；Session 或 bad case 不在可见空间投影内时统一返回 `404`。空间前缀版本见 §4.7 与 §4.18。
+
 ### 4.7 问题与归因读取
 
 | 端点 | 返回 |

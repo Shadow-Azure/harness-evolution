@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, cast
 
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import (
     AgentRecord,
     BadCaseRecord,
@@ -190,34 +191,50 @@ class SessionService:
         """Bind the service to its read-only persistence boundary."""
         self._repository = repository
 
-    async def list(self, filters: SessionFilters) -> SessionListResponse:
+    async def list(
+        self,
+        filters: SessionFilters,
+        scope: WorkspaceReadScope,
+    ) -> SessionListResponse:
         """Return one filtered and stably sorted session page."""
         records = await self._repository.list_sessions(
             query=filters.query,
             status=filters.status,
             sort=filters.sort,
             limit=filters.limit,
+            scope=scope,
         )
-        counts = await self._repository.bad_case_counts([record.id for record in records])
+        counts = await self._repository.bad_case_counts(
+            [record.id for record in records],
+            scope,
+        )
         return SessionListResponse(
             items=[_list_item(record, counts.get(record.id, 0)) for record in records],
         )
 
-    async def get(self, session_id: str) -> SessionListItem:
+    async def get(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> SessionListItem:
         """Return the same card shape used by the list response."""
-        record = await self._repository.get(session_id)
+        record = await self._repository.get(session_id, scope)
         if record is None:
             raise AppError(
                 status_code=404,
                 code=ErrorCode.SESSION_NOT_FOUND,
                 message="session not found",
             )
-        counts = await self._repository.bad_case_counts([session_id])
+        counts = await self._repository.bad_case_counts([session_id], scope)
         return _list_item(record, counts.get(session_id, 0))
 
-    async def tree(self, session_id: str) -> SessionTree:
+    async def tree(
+        self,
+        session_id: str,
+        scope: WorkspaceReadScope,
+    ) -> SessionTree:
         """Return a flat Agent tree with server-computed labels and anchors."""
-        snapshot = await self._repository.tree_snapshot(session_id)
+        snapshot = await self._repository.tree_snapshot(session_id, scope)
         if snapshot is None:
             raise AppError(
                 status_code=404,

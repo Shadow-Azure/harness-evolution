@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy import update
 
+from app.db.crud.read_scope import WorkspaceReadScope
 from app.db.crud.sessions import SessionRepository
 from app.db.models.domain import agent_events, agents, bad_cases, session_families
 from app.service.sessions.service import SessionService
@@ -440,7 +441,7 @@ async def test_tree_uses_one_repository_session_for_a_consistent_snapshot(
     monkeypatch.setattr(session_query.database, "session", counted_session)
     service = SessionService(SessionRepository(session_query.database))
 
-    tree = await service.tree(SESSION_1)
+    tree = await service.tree(SESSION_1, WorkspaceReadScope.all_workspaces())
 
     assert tree.session_id == SESSION_1
     assert len(tree.agents) == 2
