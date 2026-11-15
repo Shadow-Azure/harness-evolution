@@ -24,7 +24,7 @@
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新和票据 SSE 公开；其余 API 需 Bearer JWT，用户管理、手动 sync 与上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用边界。
+仅健康、登录、刷新、IdP 回调与票据 SSE 公开；其余需 Bearer JWT，用户管理、sync 与上游 pull 仅管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用边界。
 
 Web 先恢复会话再挂路由；token 与用户只留内存。守卫处理登录与强改密，并发 401 单飞刷新，退出清 query cache。
 

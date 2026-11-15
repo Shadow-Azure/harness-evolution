@@ -755,10 +755,15 @@
           "AUTH_REQUIRED",
           "AUTH_INVALID",
           "AUTH_EXPIRED",
+          "AUTH_PROVIDER_NOT_CONFIGURED",
+          "AUTH_STATE_INVALID",
+          "AUTH_PROVIDER_ERROR",
+          "AUTH_NO_MAPPING",
           "TICKET_INVALID",
           "TICKET_EXPIRED",
           "FORBIDDEN",
           "PASSWORD_CHANGE_REQUIRED",
+          "ROLE_INVALID",
           "USERNAME_CONFLICT",
           "SESSION_NOT_FOUND",
           "BAD_CASE_NOT_FOUND",
@@ -5149,6 +5154,115 @@
         "summary": "Trigger Sync",
         "tags": [
           "acquisition"
+        ]
+      }
+    },
+    "/api/auth/callback": {
+      "get": {
+        "description": "Complete an external provider callback without exposing provider details.",
+        "operationId": "callback_api_auth_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to the web application with a refresh cookie"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication state is invalid"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The provider rejected the grant"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No local user is mapped"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No external identity provider is configured"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The identity provider exchange failed"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "auth"
         ]
       }
     },

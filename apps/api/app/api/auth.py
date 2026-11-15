@@ -3,11 +3,13 @@
 from typing import cast
 
 from fastapi import APIRouter, Request, Response, Security, status
+from fastapi.responses import RedirectResponse
 
 from app.api.security import BEARER_AUTH
 from app.config import Settings
 from app.db.models.users import UserRecord
 from app.errors import AppError, ErrorCode, ErrorResponse
+from app.service.identity.callback import CALLBACK_STATE_COOKIE
 from app.service.identity.schemas import (
     ChangePasswordRequest,
     LoginRequest,
@@ -94,6 +96,42 @@ async def refresh(request: Request, response: Response) -> RefreshResponse:
         access_token=authenticated.access_token,
         expires_in=request.app.state.settings.access_ttl_seconds,
     )
+
+
+@router.get(
+    "/callback",
+    status_code=status.HTTP_302_FOUND,
+    response_class=RedirectResponse,
+    responses={
+        302: {"description": "Redirect to the web application with a refresh cookie"},
+        400: {"model": ErrorResponse, "description": "Authentication state is invalid"},
+        401: {"model": ErrorResponse, "description": "The provider rejected the grant"},
+        403: {"model": ErrorResponse, "description": "No local user is mapped"},
+        501: {"model": ErrorResponse, "description": "No external identity provider is configured"},
+        502: {"model": ErrorResponse, "description": "The identity provider exchange failed"},
+    },
+)
+async def callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+) -> RedirectResponse:
+    """Complete an external provider callback without exposing provider details."""
+    authenticated, redirect_url = await identity_from(request).callback.complete(
+        code=code,
+        state=state,
+        state_cookie=request.cookies.get(CALLBACK_STATE_COOKIE),
+    )
+    response = RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    set_refresh_cookie(response, request, authenticated.refresh_token)
+    response.delete_cookie(
+        CALLBACK_STATE_COOKIE,
+        path="/api/auth",
+        httponly=True,
+        samesite="lax",
+        secure=request.app.state.settings.is_production,
+    )
+    return response
 
 
 @router.post(

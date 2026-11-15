@@ -1,7 +1,5 @@
 """Authentication, user administration, and event-ticket business rules."""
 
-from dataclasses import dataclass
-
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
@@ -10,22 +8,18 @@ from app.db.base import Database
 from app.db.crud.users import UserRepository
 from app.db.models.users import UserRecord
 from app.errors import AppError, ErrorCode
+from app.service.identity.callback import CallbackService
+from app.service.identity.providers import Credentials, ProviderRegistry
 from app.service.identity.revocations import RefreshRevocationStore
+from app.service.identity.session_bridge import AuthenticationResult, SessionBridge
 from app.service.identity.tickets import TicketStore
 from app.service.identity.tokens import TokenService
 
-
-@dataclass(frozen=True, slots=True)
-class AuthenticationResult:
-    """One successful login or refresh with its rotating token pair."""
-
-    user: UserRecord
-    access_token: str
-    refresh_token: str
+__all__ = ["AuthenticationResult", "IdentityService"]
 
 
 class IdentityService:
-    """Own password verification, token rotation, user records, and tickets."""
+    """Own provider selection, token rotation, user records, and tickets."""
 
     def __init__(self, settings: Settings, database: Database) -> None:
         """Compose identity collaborators around a database transaction boundary."""
@@ -34,8 +28,10 @@ class IdentityService:
         self.tickets = TicketStore(settings.event_ticket_ttl_seconds)
         self.users = UserRepository(database)
         self._hasher = PasswordHasher()
-        self._dummy_hash = self._hasher.hash("timing-equalization-dummy")
         self.revocations = RefreshRevocationStore()
+        self.providers = ProviderRegistry.from_settings(settings, self.users)
+        self.bridge = SessionBridge(self.users, self.tokens)
+        self.callback = CallbackService(settings, self.providers, self.bridge)
 
     async def seed_admin_if_empty(self) -> None:
         """Create one forced-change administrator only for a brand-new deployment."""
@@ -53,28 +49,18 @@ class IdentityService:
         )
 
     async def login(self, *, username: str, password: str) -> AuthenticationResult:
-        """Authenticate a canonical username and issue a new token pair."""
-        user = await self.users.get_by_username(username)
-        stored_hash = user.password_hash if user else self._dummy_hash
-        password_matches: bool
-        try:
-            password_matches = self._hasher.verify(stored_hash, password)
-        except VerifyMismatchError:
-            password_matches = False
-        if user is None or not password_matches:
+        """Authenticate through the password provider and issue a new token pair."""
+        identity = await self.providers.password.authenticate(
+            Credentials(username=username, password=password),
+        )
+        if identity is None:
             raise AppError(
                 status_code=401,
                 code=ErrorCode.AUTH_INVALID,
                 message="username or password is invalid",
             )
-        if not user.is_active:
-            raise AppError(
-                status_code=403,
-                code=ErrorCode.FORBIDDEN,
-                message="account is disabled",
-            )
-        await self.users.touch_last_login(user.id)
-        return self._issue_tokens(user)
+        user = await self.bridge.resolve(identity)
+        return await self.bridge.complete_login(user)
 
     async def refresh(self, refresh_token: str | None) -> AuthenticationResult:
         """Rotate one valid refresh token and re-read the latest user claims."""
@@ -95,7 +81,7 @@ class IdentityService:
             expires_at=grant.expires_at.timestamp(),
         ):
             raise self._refresh_error()
-        return self._issue_tokens(user)
+        return self.bridge.issue(user)
 
     async def logout(self, refresh_token: str | None) -> None:
         """Revoke a presented refresh token; logout remains idempotent."""
@@ -152,23 +138,23 @@ class IdentityService:
         role: str,
     ) -> UserRecord:
         """Create an administrator-provisioned user with forced first change."""
+        if role == "admin":
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.ROLE_INVALID,
+                message="the seeded administrator is the only account allowed to be admin",
+            )
+        if role not in {"admin", "member"}:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.ROLE_INVALID,
+                message="role must be member",
+            )
         return await self.users.create(
             username=username.lower(),
             password_hash=self._hasher.hash(password),
             display_name=display_name,
             role=role,
-        )
-
-    def _issue_tokens(self, user: UserRecord) -> AuthenticationResult:
-        """Issue an access and refresh pair after authentication succeeds."""
-        return AuthenticationResult(
-            user=user,
-            access_token=self.tokens.create_access_token(
-                user_id=user.id,
-                role=user.role,
-                must_change_password=user.must_change_password,
-            ),
-            refresh_token=self.tokens.create_refresh_token(user_id=user.id),
         )
 
     def _refresh_error(self) -> AppError:

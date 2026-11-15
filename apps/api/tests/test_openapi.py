@@ -38,6 +38,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/health",
         "/api/auth/login",
         "/api/auth/refresh",
+        "/api/auth/callback",
         "/api/auth/logout",
         "/api/auth/change-password",
         "/api/auth/me",
@@ -136,6 +137,9 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     paths = schema["paths"]
     assert {"200", "401", "403", "422", "429"} <= set(paths["/api/auth/login"]["post"]["responses"])
     assert {"200", "401", "403"} <= set(paths["/api/auth/refresh"]["post"]["responses"])
+    assert {"302", "400", "401", "403", "501", "502"} <= set(
+        paths["/api/auth/callback"]["get"]["responses"],
+    )
     assert {"201", "401", "403", "409", "422"} <= set(paths["/api/users"]["post"]["responses"])
     assert {"200", "401", "403", "422"} <= set(paths["/api/events/ticket"]["post"]["responses"])
     login_401 = paths["/api/auth/login"]["post"]["responses"]["401"]
@@ -188,6 +192,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/health", "get"),
         ("/api/auth/login", "post"),
         ("/api/auth/refresh", "post"),
+        ("/api/auth/callback", "get"),
     ]:
         assert "security" not in paths[path][method]
 
