@@ -18,7 +18,7 @@ Replace placeholder trace, external problems, patch/eval, and clustering.
 
 ## Scope
 
-Real upstream, external contract integration, real execution, and clustering
+Real upstream, external contract integration, real execution, and clustering; V2 identity, workspaces, overview, and multi-attribution delivery live in M7-M11.
 
 ## Acceptance
 
@@ -26,4 +26,4 @@ At least one real problem completes the loop with unchanged frontend contracts.
 
 ## Non-goals
 
-No auto-merge to default branch or committed credentials.
+No auto-merge to default branch or committed credentials; no V2 feature implementation or flow redesign.

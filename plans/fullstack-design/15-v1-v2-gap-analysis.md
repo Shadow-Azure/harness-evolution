@@ -139,3 +139,36 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 - 向导预览、运行 prepare 和总览使用同一潜在匹配实现，三处数量一致。
 - 缓存关闭时重算并覆盖同键结果，缓存开启时复用最近成功结论并增加复用计数；“非该对象问题”不进入簇但出现在错误详情。
 - 错误详情一个 case 的多条归因可分页、可通过 `case/tab/at` 深链恢复，切换空间不会复用旧空间缓存。
+
+## 9. 真实会话证据门禁
+
+2026-11-14 的 `ccbdb2f0` Session 暴露了潜在匹配之前必须解决的数据完整性问题：根会话停在未返回的 `Agent` tool_use，最后派发的 `code-quality-reviewer` 没有 `end_turn` 和最终报告，任务快照仍有 1 个 in-progress 与 2 个 pending，但当前整树状态只因普通工具错误被派生为 `partial`。V2 因此把“轨迹解析健康”和“工作流执行闭环”分开：前者描述文件与结构是否可解析，后者描述 root、子 Agent、tool call 和任务是否真正完成。
+
+### 9.1 父子关系证据
+
+- 关系证据分级为 `authoritative`、`derived`、`synthetic`、`unresolved`；`authoritative` 要求父 `Agent` tool_use、对应 tool result 与子 Agent metadata 的 `toolUseId` 一致。
+- 父 `Agent` tool_use 与子 metadata 的 `toolUseId` 一致但缺少 tool result 时记为 `derived`，仍挂入树并显示“子 Agent 未返回最终报告”，不得静默丢弃。
+- `parentAgentId` 等弱证据只可生成 `synthetic` 关系；没有任何父工具身份时保留 `unresolved` 节点并进入诊断计数，不能从空间中消失。
+
+### 9.2 对象 revision 与模型身份
+
+- 真实 Skill 列表只提供名称与内容摘要时，对象身份使用 `object_revision=digest:<sha>`；有明确 tag 时使用 `object_revision=tag:<tag>`；两者都缺失才是 `unknown`。
+- API 的 `targetVersion` 保留为选择入口，服务端必须解析为规范化 `objectRevision` 后再做 Session 关联与缓存键计算，不能只比较名称。
+- `runtime_version`、`parser_version`、`requested_model`、`reported_model` 分列保存；模型口径冲突作为 evidence warning 返回，不用任一字段覆盖另一字段。
+
+### 9.3 Skill、Agent 与知识库触发
+
+- 显式 `Skill`、`Agent`、`Workflow` tool call 继续分别映射 `kind=skill|agent|workflow`；模型消息上的 `attributionSkill` 作为补充证据，不能替代显式触发事件。
+- 知识库文档使用 `kind=knowledge`，只识别工作空间配置的知识库根目录、知识库 Provider 或 Collection 返回的文档；普通源码 `Read` 不自动算作知识库触发。
+- 知识事件保存 `document_id`、`document_revision`、`source_path`、`retrieval_kind`、`tool_use_id` 与触发坐标；不保存文档全文或完整检索 chunk。
+- `object_type` 从 `skill|agent` 扩为 `skill|agent|knowledge` 只在知识事件、target 配置与 PotentialMatcher 同一切片内生效，避免某一层先写入不可查询的枚举值。
+
+### 9.4 完成状态与任务快照
+
+- 归一化器必须识别未配对的 tool_use、没有 `end_turn` 的子 Agent、最后任务快照中的 pending/in-progress 项，并输出稳定诊断码。
+- `session_families` 的展示状态继续表达整树健康；执行完成度由独立 `execution_outcome` 表达，外部 attempt 的 `failed|interrupted` 不得被解析成功覆盖。
+- 金样 fixture 必须覆盖“文件全部归档、根会话工具链未完成”的真实形状，并使用脱敏内容；不得提交附件原文。
+
+### 9.5 里程碑落点
+
+M9 只建立证据、revision、完成状态和知识触发契约；M10 才消费这些字段实现 PotentialMatcher、归因缓存与七步 run；M11 负责多归因页面、兼容退役和跨栈验收。任何 M10 实现不得绕过 M9 的 evidence warning 或对 `unknown` revision 做名称级猜测。
