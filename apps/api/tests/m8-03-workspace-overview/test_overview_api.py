@@ -1467,3 +1467,167 @@ async def test_window_bounds_are_inclusive_on_both_ends(
         "a-explore-self-3",
         "a-workflow-discovery-4",
     }
+
+
+async def test_object_options_are_isolated_per_workspace(
+    overview: OverviewEnvironment,
+) -> None:
+    """Each workspace's options list only its own objects, even when names are shared."""
+    environment = overview
+    params = _in_window(environment)
+    async with environment.database.transaction() as session:
+        await session.execute(
+            insert(bad_cases),
+            [
+                _case(
+                    case_id="b-only-self-3",
+                    workspace_id=environment.workspace_b,
+                    session_id=REMOTE_SESSION_2,
+                    bad_case_type="self",
+                    object_name="b-only",
+                    created_at=_at(environment.day0, 11, 0),
+                ),
+            ],
+        )
+
+    own = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/summary",
+        environment.alice,
+        params=params,
+    )
+    remote = await _get(
+        environment,
+        environment.workspace_b,
+        "overview/summary",
+        environment.bob,
+        params=params,
+    )
+
+    assert own.json()["objects"] == ["deep-research", "Explore", "workflow"]
+    assert own.json()["totals"]["badCases"] == 6
+    assert remote.json()["objects"] == ["b-only", "deep-research", "Explore"]
+    assert remote.json()["totals"]["badCases"] == 3
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        [("from", "9999-12-31"), ("range", "7")],
+        [("to", "0001-01-01"), ("range", "7")],
+        [("from", "9999-01-01"), ("to", "9999-12-31")],
+    ],
+)
+async def test_extreme_dates_report_window_invalid(
+    overview: OverviewEnvironment,
+    params: list[tuple[str, str]],
+) -> None:
+    """Unrepresentable boundaries are a documented 422 instead of an OverflowError 500."""
+    environment = overview
+
+    response = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/summary",
+        environment.alice,
+        params=params,
+    )
+
+    assert response.status_code == 422
+    assert _error_code(response) == "WINDOW_INVALID"
+
+
+@pytest.mark.parametrize("range_days", [0, 7, 14])
+async def test_explicit_boundaries_ignore_a_leftover_range(
+    overview: OverviewEnvironment,
+    range_days: int,
+) -> None:
+    """from/to fully define the window, so an ignored range is never validated."""
+    environment = overview
+    params = [
+        *_params(date_from=environment.day2, date_to=environment.day0),
+        ("range", str(range_days)),
+    ]
+
+    response = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/summary",
+        environment.alice,
+        params=params,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["totals"]["badCases"] == 6
+
+
+async def test_unknown_bad_case_type_rows_are_excluded_consistently(
+    overview: OverviewEnvironment,
+) -> None:
+    """A legacy out-of-contract type never desyncs summary, trend, sources, or list."""
+    environment = overview
+    params = _in_window(environment)
+    async with environment.database.transaction() as session:
+        await session.execute(
+            insert(bad_cases),
+            [
+                _case(
+                    case_id="a-regression-unknown-8",
+                    workspace_id=environment.workspace_a,
+                    session_id=SESSION_3,
+                    bad_case_type="regression",
+                    object_name="legacy-object",
+                    created_at=_at(environment.day0, 11, 0),
+                ),
+            ],
+        )
+
+    summary = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/summary",
+        environment.alice,
+        params=params,
+    )
+    trend = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/trend",
+        environment.alice,
+        params=params,
+    )
+    sources = await _get(
+        environment,
+        environment.workspace_a,
+        "overview/sources",
+        environment.alice,
+        params=params,
+    )
+    cases = await _get(
+        environment,
+        environment.workspace_a,
+        "bad-cases",
+        environment.alice,
+        params=params,
+    )
+
+    assert summary.status_code == 200
+    assert summary.json()["totals"] == {
+        "badCases": 6,
+        "self": 4,
+        "discovery": 2,
+        "sessions": 3,
+        "sources": 3,
+        "quota": 60,
+        "used": 8,
+    }
+    assert summary.json()["objects"] == ["deep-research", "Explore", "workflow"]
+    buckets = trend.json()["buckets"]
+    assert [bucket["total"] for bucket in buckets] == [2, 2, 2]
+    assert sum(bucket["self"] for bucket in buckets) == 4
+    assert sum(bucket["discovery"] for bucket in buckets) == 2
+    assert sum(row["total"] for row in sources.json()["items"]) == 6
+    assert cases.status_code == 200
+    assert cases.json()["total"] == 6
+    assert "a-regression-unknown-8" not in {item["badCaseId"] for item in cases.json()["items"]}

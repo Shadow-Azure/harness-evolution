@@ -83,16 +83,58 @@ def test_unsupported_range_is_a_window_error(range_days: int) -> None:
 
 
 def test_explicit_boundaries_are_inclusive_and_win_over_range() -> None:
-    """from/to define the window; a range value is ignored but still validated."""
+    """from/to define the window and a leftover range is ignored, even when invalid."""
     window = _window(
         date_from=date(2026, 3, 1),
         date_to=date(2026, 3, 31),
         range_days=7,
     )
+    ignored_zero = _window(
+        date_from=date(2026, 3, 1),
+        date_to=date(2026, 3, 31),
+        range_days=0,
+    )
 
     assert window.start == date(2026, 3, 1)
     assert window.end == date(2026, 3, 31)
     assert window.span_days == 31
+    assert ignored_zero.start == date(2026, 3, 1)
+    assert ignored_zero.end == date(2026, 3, 31)
+
+
+@pytest.mark.parametrize(
+    ("date_from", "date_to", "range_days"),
+    [
+        (date(9999, 12, 31), None, 7),
+        (None, date(1, 1, 1), 7),
+        (date(9999, 1, 1), date(9999, 12, 31), None),
+    ],
+)
+def test_extreme_dates_are_a_window_error(
+    date_from: date | None,
+    date_to: date | None,
+    range_days: int | None,
+) -> None:
+    """Dates whose arithmetic overflows or fall outside the contract are a 422, not a 500."""
+    error = _error(date_from=date_from, date_to=date_to, range_days=range_days)
+
+    assert error.code is ErrorCode.WINDOW_INVALID
+    assert error.status_code == 422
+    assert error.details["reason"] == "window is outside the supported date range"
+
+
+def test_supported_date_range_boundaries_are_inclusive() -> None:
+    """The documented 1970..2999 contract accepts windows at both endpoints."""
+    earliest = _window(date_from=date(1970, 1, 1), date_to=date(1970, 1, 7))
+    latest = _window(
+        date_from=date(2999, 12, 25),
+        date_to=date(2999, 12, 31),
+        grain="month",
+    )
+
+    assert (earliest.start, earliest.end) == (date(1970, 1, 1), date(1970, 1, 7))
+    assert (latest.start, latest.end) == (date(2999, 12, 25), date(2999, 12, 31))
+    assert latest.grain == "month"
 
 
 def test_single_day_window_has_one_bucket() -> None:

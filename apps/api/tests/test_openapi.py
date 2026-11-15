@@ -483,6 +483,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert set(overview_parameters) == {"wid", "from", "to", "range", "objects"}
     assert overview_parameters["from"]["schema"]["anyOf"][0]["format"] == "date"
     assert overview_parameters["to"]["schema"]["anyOf"][0]["format"] == "date"
+    assert overview_parameters["range"]["schema"]["enum"] == [7, 30, 90]
     assert overview_parameters["objects"]["schema"]["anyOf"][0]["type"] == "array"
     assert "comma-separated" in overview_parameters["objects"]["description"]
     trend_parameters = {
@@ -490,6 +491,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         for parameter in paths["/api/workspaces/{wid}/overview/trend"]["get"]["parameters"]
     }
     assert trend_parameters["grain"]["schema"]["default"] == "day"
+    assert trend_parameters["grain"]["schema"]["enum"] == ["day", "week", "month"]
     assert "effective grain" in trend_parameters["grain"]["description"]
     list_parameters = {
         parameter["name"]: parameter
@@ -506,6 +508,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "pageSize",
     }
     assert list_parameters["page"]["schema"]["default"] == 1
+    assert list_parameters["range"]["schema"]["enum"] == [7, 30, 90]
     assert list_parameters["pageSize"]["schema"]["default"] == 8
     assert list_parameters["pageSize"]["schema"]["maximum"] == 50
     assert list_parameters["badCaseType"]["schema"]["default"] == "all"
@@ -542,6 +545,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "quota",
         "used",
     }
+    assert (
+        "without a normalized trace"
+        in (components["OverviewTotals"]["properties"]["sessions"]["description"])
+    )
     assert components["TrendResponse"]["properties"]["grain"]["enum"] == [
         "day",
         "week",
