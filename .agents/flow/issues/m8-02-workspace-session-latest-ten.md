@@ -10,11 +10,12 @@ depends:
   - m7-06
   - m8-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/sessions.py
   - apps/api/app/service/sessions/**
   - apps/api/app/db/crud/sessions.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**

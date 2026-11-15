@@ -43,9 +43,11 @@ class SessionListItem(IdentityModel):
 
 
 class SessionListResponse(IdentityModel):
-    """Current-page session cards."""
+    """Current-page session cards plus workspace-wide counters."""
 
     items: list[SessionListItem]
+    total: int = Field(ge=0)
+    pending_sessions: int = Field(ge=0)
 
 
 class SessionEvent(IdentityModel):

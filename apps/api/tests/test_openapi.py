@@ -290,6 +290,26 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "sort",
         "limit",
     }
+    assert set(components["SessionListResponse"]["properties"]) == {
+        "items",
+        "total",
+        "pendingSessions",
+    }
+    assert set(components["SessionListResponse"]["required"]) == {
+        "items",
+        "total",
+        "pendingSessions",
+    }
+    legacy_list_parameters = {
+        parameter["name"]: parameter for parameter in paths["/api/sessions"]["get"]["parameters"]
+    }
+    session_list_parameters = {
+        parameter["name"]: parameter
+        for parameter in paths["/api/workspaces/{wid}/sessions"]["get"]["parameters"]
+    }
+    assert set(session_list_parameters) == {"wid", "q", "status", "sort", "limit"}
+    assert session_list_parameters["limit"]["schema"]["default"] == 10
+    assert legacy_list_parameters["limit"]["schema"]["default"] == 100
     session_task_kind = components["SessionAgent"]["properties"]["taskKind"]
     assert session_task_kind["anyOf"][0]["enum"] == [
         "in_process_teammate",

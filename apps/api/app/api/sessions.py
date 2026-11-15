@@ -64,6 +64,7 @@ async def list_sessions(
             status=status_filter,
             sort=sort,
             limit=limit,
+            exact_query=False,
         ),
         read_scope(request),
     )
@@ -122,15 +123,16 @@ async def list_workspace_sessions(
     q: SessionQuery = "",
     status_filter: SessionStatus = "all",
     sort: SessionSortQuery = "latest",
-    limit: SessionLimit = 100,
+    limit: SessionLimit = 10,
 ) -> SessionListResponse:
     """Return the root sessions projected from one workspace's bad cases."""
     return await sessions_from(request).list(
         SessionFilters(
-            query=q,
+            query=q.strip(),
             status=status_filter,
             sort=sort,
             limit=limit,
+            exact_query=True,
         ),
         WorkspaceReadScope.for_workspace(access.workspace_id),
     )

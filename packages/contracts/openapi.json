@@ -3782,7 +3782,7 @@
       },
       "SessionListResponse": {
         "additionalProperties": false,
-        "description": "Current-page session cards.",
+        "description": "Current-page session cards plus workspace-wide counters.",
         "properties": {
           "items": {
             "items": {
@@ -3790,10 +3790,22 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "pendingSessions": {
+            "minimum": 0.0,
+            "title": "Pendingsessions",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
-          "items"
+          "items",
+          "total",
+          "pendingSessions"
         ],
         "title": "SessionListResponse",
         "type": "object"
@@ -11477,7 +11489,7 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 100,
+              "default": 10,
               "maximum": 500,
               "minimum": 1,
               "title": "Limit",

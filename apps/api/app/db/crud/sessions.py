@@ -198,6 +198,34 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+def _session_conditions(
+    *,
+    query: str,
+    status: SessionStatusFilter,
+    exact_query: bool,
+    scope: WorkspaceReadScope,
+) -> list[ColumnElement[bool]]:
+    """Build the one predicate set shared by listing and counting."""
+    conditions: list[ColumnElement[bool]] = [scope.session_condition()]
+    if exact_query:
+        exact = query.strip()
+        if exact:
+            conditions.append(func.lower(session_families.c.id) == exact.lower())
+    elif query:
+        pattern = f"%{_escape_like(query.lower())}%"
+        conditions.append(
+            or_(
+                session_families.c.search_text.like(pattern, escape="\\"),
+                func.lower(session_families.c.id).like(pattern, escape="\\"),
+            ),
+        )
+    if status == "problem":
+        conditions.append(session_families.c.status.in_(("partial", "fail")))
+    elif status != "all":
+        conditions.append(session_families.c.status == status)
+    return conditions
+
+
 class SessionRepository:
     """Run the SQL-backed read paths behind the session service."""
 
@@ -220,23 +248,17 @@ class SessionRepository:
         sort: SessionSort,
         limit: int,
         scope: WorkspaceReadScope,
+        exact_query: bool = False,
     ) -> list[SessionRecord]:
         """List current session aggregates with stable server-side ordering."""
         if not await self._scoped_reads_available():
             return []
-        conditions: list[ColumnElement[bool]] = [scope.session_condition()]
-        if query:
-            pattern = f"%{_escape_like(query.lower())}%"
-            conditions.append(
-                or_(
-                    session_families.c.search_text.like(pattern, escape="\\"),
-                    func.lower(session_families.c.id).like(pattern, escape="\\"),
-                ),
-            )
-        if status == "problem":
-            conditions.append(session_families.c.status.in_(("partial", "fail")))
-        elif status != "all":
-            conditions.append(session_families.c.status == status)
+        conditions = _session_conditions(
+            query=query,
+            status=status,
+            exact_query=exact_query,
+            scope=scope,
+        )
         sort_columns = {
             "latest": session_families.c.started_at,
             "userTurns": session_families.c.user_turns_count,
@@ -257,6 +279,49 @@ class SessionRepository:
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return [_session_record(row) for row in rows]
+
+    async def count_sessions(
+        self,
+        *,
+        query: str,
+        status: SessionStatusFilter,
+        scope: WorkspaceReadScope,
+        exact_query: bool = False,
+    ) -> int:
+        """Count every matching session without applying the page limit."""
+        if not await self._scoped_reads_available():
+            return 0
+        statement = (
+            select(func.count())
+            .select_from(session_families)
+            .where(
+                *_session_conditions(
+                    query=query,
+                    status=status,
+                    exact_query=exact_query,
+                    scope=scope,
+                )
+            )
+        )
+        async with self._database.session() as session:
+            return int((await session.execute(statement)).scalar_one())
+
+    async def count_pending_sessions(self, scope: WorkspaceReadScope) -> int:
+        """Count distinct scoped roots whose traces are not normalized yet."""
+        if not await self._scoped_reads_available():
+            return 0
+        statement = (
+            select(func.count(func.distinct(bad_cases.c.bad_case_session_id)))
+            .select_from(bad_cases)
+            .where(
+                scope.condition(bad_cases.c.workspace_id),
+                ~select(session_families.c.id)
+                .where(session_families.c.id == bad_cases.c.bad_case_session_id)
+                .exists(),
+            )
+        )
+        async with self._database.session() as session:
+            return int((await session.execute(statement)).scalar_one())
 
     async def get(
         self,

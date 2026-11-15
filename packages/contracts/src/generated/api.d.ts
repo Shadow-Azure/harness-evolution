@@ -2842,11 +2842,15 @@ export interface components {
         };
         /**
          * SessionListResponse
-         * @description Current-page session cards.
+         * @description Current-page session cards plus workspace-wide counters.
          */
         SessionListResponse: {
             /** Items */
             items: components["schemas"]["SessionListItem"][];
+            /** Pendingsessions */
+            pendingSessions: number;
+            /** Total */
+            total: number;
         };
         /**
          * SessionPayload
