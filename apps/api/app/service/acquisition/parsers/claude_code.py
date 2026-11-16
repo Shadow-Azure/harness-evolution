@@ -351,6 +351,15 @@ def _file_evidence(
     )
 
 
+def _provider_object_revision(revision: str) -> str:
+    """Normalize one provider revision into the shared object-revision vocabulary."""
+    if revision == "unknown":
+        return "unknown"
+    if revision.startswith(("tag:", "digest:", "provider:")):
+        return revision[:96]
+    return f"provider:{revision}"[:96]
+
+
 def _document_name(path: str | None) -> str | None:
     """Use the document file name as the user-facing trigger name."""
     if path is None:
@@ -569,11 +578,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         if adapter is None:
             return
         for document in adapter.parse(_tool_result_text(block)):
-            object_revision = (
-                "unknown"
-                if document.revision == "unknown"
-                else f"provider:{document.revision}"[:96]
-            )
+            object_revision = _provider_object_revision(document.revision)
             ctx.record_knowledge_event(
                 tool_use_id=tool_use_id,
                 document_id=document.document_id,

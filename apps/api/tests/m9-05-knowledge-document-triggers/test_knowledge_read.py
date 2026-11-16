@@ -14,6 +14,7 @@ from app.utils.knowledge_paths import (
     MAX_KNOWLEDGE_ROOTS,
     KnowledgeRootError,
     canonical_knowledge_path,
+    decode_knowledge_roots,
     knowledge_document_id,
     match_knowledge_root,
     merge_knowledge_roots,
@@ -180,6 +181,14 @@ def test_merge_knowledge_roots_ignores_invalid_values() -> None:
     assert merge_knowledge_roots(
         ["/kb/team", "relative", "/workspace/../secrets", 42, None, "/kb/team/"],
     ) == ("/kb/team",)
+
+
+def test_decode_knowledge_roots_canonicalizes_stored_values() -> None:
+    """A legacy row never returns non-canonical or invalid roots."""
+    assert decode_knowledge_roots(["/kb/", "relative", "/kb", "/", 7, None]) == ("/kb",)
+    assert decode_knowledge_roots('["/kb//team/"]') == ("/kb/team",)
+    assert decode_knowledge_roots("not-json") == ()
+    assert decode_knowledge_roots(None) == ()
 
 
 def test_canonical_knowledge_path_normalizes_spelling() -> None:

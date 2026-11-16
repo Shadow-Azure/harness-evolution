@@ -100,7 +100,12 @@ def merge_knowledge_roots(values: Iterable[object] | None) -> tuple[str, ...]:
 
 
 def decode_knowledge_roots(value: object) -> tuple[str, ...]:
-    """Decode one stored JSON root array, tolerating a JSON string payload."""
+    """Decode one stored JSON root array into canonical, deduplicated roots.
+
+    Tolerates a JSON string payload and drops legacy or hand-edited values that no
+    longer satisfy the write-side rules, so a stale row never reaches matching or
+    the API DTO in a spelling that can never match.
+    """
     if isinstance(value, str):
         try:
             value = json.loads(value)
@@ -108,7 +113,7 @@ def decode_knowledge_roots(value: object) -> tuple[str, ...]:
             return ()
     if not isinstance(value, list):
         return ()
-    return tuple(item for item in value if isinstance(item, str))
+    return merge_knowledge_roots(value)
 
 
 def canonical_knowledge_path(path: str | None) -> str | None:

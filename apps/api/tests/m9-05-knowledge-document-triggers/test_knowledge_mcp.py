@@ -398,6 +398,34 @@ def test_provider_revision_and_object_revision_use_distinct_vocabularies() -> No
     assert by_id["doc-b"].object_revision == "unknown"
 
 
+def test_prefixed_provider_revisions_keep_their_own_vocabulary() -> None:
+    """A provider that already returns tag:/digest:/provider: is not double-wrapped."""
+    parsed = parse(
+        (
+            user(),
+            mcp_call("tool-search", "mcp__knowledge__search"),
+            mcp_result(
+                "tool-search",
+                json.dumps(
+                    {
+                        "documents": [
+                            {"id": "doc-digest", "revision": "digest:abc123"},
+                            {"id": "doc-tag", "revision": "tag:v9"},
+                            {"id": "doc-provider", "revision": "provider:raw"},
+                        ],
+                    },
+                ),
+            ),
+        ),
+    )
+
+    by_id = {event.document_id: event for event in parsed.events}
+    assert by_id["doc-digest"].object_revision == "digest:abc123"
+    assert by_id["doc-tag"].object_revision == "tag:v9"
+    assert by_id["doc-provider"].object_revision == "provider:raw"
+    assert by_id["doc-digest"].document_revision == "digest:abc123"
+
+
 def test_multiple_documents_from_one_call_are_not_ambiguous_tool_uses() -> None:
     """One retrieval call owning several document events stays free of issues."""
     payload = json.dumps(
