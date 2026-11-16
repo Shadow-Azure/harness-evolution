@@ -11,6 +11,7 @@ depends:
   - m10-06
   - m11-02
   - m11-04
+  - m11-07
 priority: P0
 status: backlog
 scope:
@@ -45,7 +46,7 @@ V2 spans identity, workspaces, ingest, evidence, attribution, and UI.
 ## Implementation
 
 - Seed multiple spaces and derived relations.
-- Add end-to-end flows.
+- Add end-to-end flows, including lane DAG and structure-tree switching.
 - Archive sanitized evidence.
 
 ## Implementation steps
@@ -56,7 +57,7 @@ V2 spans identity, workspaces, ingest, evidence, attribution, and UI.
 
 ## Dependencies and boundary
 
-- Dependencies: m8-05, m10-06, m11-02, m11-04
+- Dependencies: m8-05, m10-06, m11-02, m11-04, m11-07
 - Boundary: product fixes return to owning issues.
 
 ## Verification

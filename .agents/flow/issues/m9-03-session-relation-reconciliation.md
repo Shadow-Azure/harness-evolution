@@ -27,7 +27,7 @@ github:
 
 ## 背景
 
-父 Agent tool_use 与子 metadata 的 toolUseId 一致但缺少 tool result 时，真实导出会误判 unlinked，而当前内部解析器却能关联。
+父 Agent tool_use 与子 metadata 的 toolUseId 一致但缺少 tool result 时，真实导出会误判 unlinked，而当前内部解析器却能关联。2026-11-15 的 5 个子 Agent 导出已经能提供 relation_evidence+metadata 的 authoritative 关系；本 issue 仍要覆盖缺 tool result、synthetic 和 unresolved 的降级路径。
 
 ## 目标
 
@@ -64,6 +64,7 @@ pnpm test:api -- tests/acquisition tests/sessions; pnpm test:web
 ```
 
 - ccbdb2f0 四子 Agent 全部挂入。
+- 2026-11-15 五子 Agent 导出保持 authoritative 关系，并保留 derived/unresolved 降级样本。
 - 最后复审为 derived 且标记缺最终报告。
 - 无父工具身份节点为 unresolved。
 

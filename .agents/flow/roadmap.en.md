@@ -33,9 +33,9 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m6 Real integration and delivery**: real upstream, contracts, execution, and clustering upgrades.
 - **m7 Identity and workspace boundary**: one global admin, workspace roles, auth-provider seam, routing, and administration.
 - **m8 Workspace data plane and overview**: ingest, quota, latest sessions, overview, and time filters.
-- **m9 Session evidence and object revisions**: relations, completion, revisions, trigger coordinates, and knowledge-document evidence.
+- **m9 Session evidence and object revisions**: runtime identity, parser factory, relations, completion, revisions, definition/file evidence, trigger coordinates, and knowledge-document evidence.
 - **m10 Attribution pipeline and seven-step evolution**: potential matching, cache, candidates, wizard, and run detail.
-- **m11 Multi-attribution experience and V2 cutover**: multi-attribution detail, target overview, cross-stack verification, and retirement.
+- **m11 Multi-attribution experience and V2 cutover**: lane DAG execution flow, multi-attribution detail, target overview, cross-stack verification, and retirement.
 - **m12 Real integrations and algorithm delivery**: live upstream, contracts, patch/evaluation, clustering, and platform-quality debt.
 
 ## Delivery rules

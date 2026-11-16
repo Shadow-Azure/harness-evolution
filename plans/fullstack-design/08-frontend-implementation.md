@@ -31,7 +31,7 @@ router
 └── /workspaces/:wid ─────────────► 空间壳（守卫：成员关系 + 角色）
     ├── /overview ────────────────► overview/Index（双 Tab）
     ├── /sessions ────────────────► sessions/Index
-    │                                 ├──► agent-tree/AgentTree
+    │                                 ├──► agent-tree/AgentFlow（DAG / 结构树）
     │                                 └──► bad-cases/BadCaseList
     ├── /sessions/:sid/errors ────► errors/Index（多归因）
     ├── /evolution ───────────────► evolution/Index
@@ -270,73 +270,65 @@ export function useRunEvents(rid: Ref<string>, loadedSeq: Ref<number>, isActive:
 
 ```text
 agent-tree/
-  AgentTree.vue           # 画布容器：VueFlow、fitView、focus、Teleport 问题列表
-  layout.ts               # 纯函数：chainOf / buildGraph / 布局常量（移植自原型）
-  layout.spec.ts          # 布局单测（demo-nested 用例）
-  nodes/AgentNode.vue  nodes/BadCaseNode.vue  nodes/CollapseNode.vue
-  edges/OrthEdge.vue  edges/BadCaseEdge.vue  edges/DiscoveryEdge.vue  edges/TriggerEdge.vue
-  types.ts                # TreeNode / TreeEvent / TreeEdge / BadCaseAnchor
+  AgentFlow.vue           # 视图容器：lane DAG / 结构树切换、选中态、问题列表 Teleport
+  lane/LaneDag.vue        # 小窗口 canvas：缩放、平移、适应、1:1
+  lane/laneModel.ts       # tree -> lane/bars/depth/concurrency/case marker 纯函数
+  lane/viewport.ts        # transform、指针拖拽、滚轮缩放、fit
+  tree/AgentTree.vue      # 结构树视图（Vue Flow），保留为切换视图
+  tree/layout.ts          # 旧树的 chainOf/buildGraph；只服务结构树
+  types.ts                # SessionTree / TreeEvent / Lane / Bar / BadCaseAnchor
 ```
 
 - `TreeEvent`：`line`、`kind`、`name?`、`desc?`、`toolUseId?`、`messageOffset`。
-- `TreeNode`：`agentId`、`parentAgentId`、`kind`、`agentType`、`taskKind`、`spawnDepth`、`label`、`messagesCount`、`events`。
-- 节点标题直接用后端 `label`，不在前端按 `agentType` / skill 名重算；普通 skill 只是 `events[]` 里的触发点，没有自己的节点。
+- `TreeNode`：`agentId`、`parentAgentId`、`kind`、`agentType`、`taskKind`、`spawnDepth`、`label`、`lines`、`messagesCount`、`events`。
+- `runtimeKey` 来自根级 Session；`executionOutcome` / `endReason` 来自 M9 字段，前端不推导。
+- 普通 skill 只是 `events[]` 里的触发点；forked skill 仍有独立节点。
 
-### 3.2 布局核心（对原型逻辑的保留与简化）
+### 3.2 lane DAG 模型
 
-保留（布局结构原样移植；`×N` 口径改为 message 间隔）：
+默认视图是 lane DAG，不再把整棵树画成 Vue Flow 节点图：
 
-- `chainOf(events, messagesCount)`：按 `messageOffset` 排序事件 → 触发点药丸 + `×N` 间隔药丸 → 返回 `{ items, offsets, width }`；宽度用 canvas `measureText` 精测（字体与 CSS 一致）。
-- `×N` 的 N 是 **assistant message 间隔**，不是 JSONL 行号差：
-  - 首个触发点之前：`first.messageOffset`
-  - 两个触发点之间：`next.messageOffset - current.messageOffset`
-  - 尾部：`messagesCount - last.messageOffset`
-  - 无事件时：整段作为一个尾部间隔，N=`messagesCount`
-  - `line` 仍用于显示 `L30`、排序 tie-break 和调试，不参与 N 的计算。
-- 布局常量：`LINK_W=10 / PILL_PAD=18 / CDOT=10 / BOX_PAD=10 / BOX_EDGE=1 / AGENT_BOX_H=80 / ROW_STEP=124 / INDENT=46 / MIN_STEP=38`。
-- 兄弟分支的竖直通道聚合（24px 内的触发点共用一个 trunk）、问题卡左右侧判定（检测是否与兄弟分支竖直段相交）。
-- 折叠规则：子节点 > 8 且未展开 → 生成 `collapse` 节点。
-
-简化（因为后端给了显式归属）：
-
-- 不再需要 `findingsBudget` 与"最后一个 agent"兜底：后端返回的每个 bad_case 带 `anchor {agentId, eventIndex}`；`badCaseType` 决定挂载方向。
-- 锚定规则（`self` / `discovery` 两类 + 无锚点兜底）：
-  1. **`self`（对象自身问题）**：`anchor.agentId` 就是上报人 A；skill 卡挂在 A 的该 skill 触发药丸下方（`TriggerEdge`），agent 卡挂在 A 节点右侧/左侧（`BadCaseEdge`，按相交检测选边）。
-  2. **`discovery`（发现前置步骤问题）**：卡挂在发现者的触发点正上方（`DiscoveryEdge`）。发现者是 skill 时触发点在 A 内；发现者是 subagent A 时，触发点是**父节点 P 中调用 A 的 Agent 药丸**，`anchor.agentId = P`，不等于 `badCaseAgent.agentId`。
-  3. 无锚点（`anchor.eventIndex = -1`）：挂在 `anchor.agentId` 节点右侧，避免卡片漂浮。
-- 前端只用 `anchor` 定位，不用 `badCaseAgent` 反推宿主；`badCaseAgent` 用于展示"谁上报"。
-- 同一触发点有多张问题卡时保持 pill 的 x 中心成列：`self-skill` 向下串联，`discovery` 向上串联；第一张由 pill 的上/下锚点连接，后续卡由上一张卡的同向锚点继续连接。
+- 一条 lane = 一次 agent invocation；`path` 用 `A1`、`A1.1`、`A1.1.1` 表示深度，视觉用缩进 + 深度 badge。
+- 一条 bar = 一个触发事件或 `×N 无触发` 行区间；`left = lineStart`，`width = lineEnd - lineStart`，逻辑轴 0–100 对应完整日志行。
+- 同一 lane 的 bar 不重叠；不同 lane 横向重叠 = 并发。跨多行 lane 用 spawn/join 虚线表达父子关系。
+- 主链最多完整展示，超出视口用缩放/平移浏览；不再生成 `>8` 折叠节点。
+- BC marker 固定在 bar 上方独立 marker 行，选中的 BC 只加粗定位线并高亮对应 bar/lane。
 
 ```ts
-// layout.ts 关键签名
-export function buildGraph(tree: SessionTree, expanded: Set<string>): { nodes: TreeVNode[]; edges: TreeVEdge[] }
-export function chainOf(events: TreeEvent[], messagesCount: number): Chain
-export function badCaseAnchors(cases: BadCase[], tree: SessionTree): BadCaseAnchor[]
+export type Lane = {
+  id: string; path: string; depth: number; label: string;
+  start: number; end: number; top: number;
+  bars: Bar[]; events: TreeEvent[]; cases: BadCaseAnchor[];
+};
+
+export type LaneModel = {
+  lanes: Lane[]; height: number; width: number;
+  caseMarkers: CaseMarker[]; concurrencyBands: Band[];
+};
+
+export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): LaneModel;
 ```
 
-### 3.3 Vue Flow 集成
+- `line` 是 lane DAG 的唯一横轴；`messageOffset` 只保留给结构树的 message gap，两种 N 不能混用。
+- `triggered_at` 存在时可由后端回填更精确的区间；缺失时用 `line` 的逻辑序，脚注明确“非真实耗时”。
+- 宽度按 `mainBars.length` 和最大深度增长，最小 1100px；高度按 lane 数增长。
+
+### 3.3 小窗口、缩放和平移
 
 ```vue
-<VueFlow
-  :nodes="nodes" :edges="edges"
-  :node-types="nodeTypes" :edge-types="edgeTypes"
-  :nodes-draggable="false" :nodes-connectable="false"
-  :min-zoom="0.2" :max-zoom="2.5"
-  @node-click="onNodeClick"
-  @nodes-initialized="onNodesInitialized"
->
-  <Background :gap="22" color="#e6e9ef" />
-  <Controls position="bottom-right" :show-interactive="false" />
-</VueFlow>
+<LaneDag
+  :model="laneModel"
+  :selected-case-id="selectedCaseId"
+  @locate="locate"
+/>
 ```
 
-要点：
-
-- `fitView` 必须等节点测量完成后执行（原型 `FitTree` 的教训）：监听 `onNodesInitialized` 再调 `fitView({ padding: 0.12 })`。
-- 定位问题（从问题列表点击）→ `setCenter(node.x + w/2, node.y + h/2, { zoom: max(current, 0.85), duration: 260 })`，并给目标 bad_case 节点加 `active` class（红色描边）。
-- 节点只为真实边占用的方向创建 Handle：`h{i}` 从 pill 下沿连接子 Agent 或 `self-skill` 卡，`rep{i}` 从 pill 上沿连接 `discovery` 卡，另有 `in`、`finding-left/right` 与问题卡的上下/堆叠锚点；不再用 Agent 节点内的 stub 补画连接。
-- 画布内问题列表用 `<Teleport to="#bad-case-list">`（原型用 `createPortal`）。
-- 折叠节点点击 → 更新 `expanded` Set → 重新 `buildGraph`（纯函数重算，节点数少，不需要增量更新）。
+- `LaneDag.vue` 固定高度 `clamp(360px, 48vh, 520px)`，内部 `.viewport` 为 `overflow:hidden`，`.canvas` 用 `translate(x,y) scale(k)`。
+- 滚轮以指针为中心缩放，范围 `0.08–3`；拖拽平移；双击/「适应」fit；「1:1」重置。
+- 初始视图对 `laneCount <= 8` 自动 fit；更大 Session 先 fit 到全览，再用缩放查看。
+- 底部显示逻辑序脚注：“bar 长度=日志行区间，非真实耗时；跨 lane 重叠=并发”。
+- 结构树通过同一 `AgentFlow.vue` 的切换按钮进入，复用 `tree/AgentTree.vue`，不改变选中 case 和 URL 深链。
+- 选中 case 时 lane DAG 保留全部分支，只高亮对应 BC；不从视图过滤其它分支。
 
 ### 3.4 问题列表联动
 
@@ -420,7 +412,7 @@ Index.vue
 └── SessionOverview.vue（右栏）
     ├── SummaryHeader.vue（标题/状态/meta/CTA）
     ├── StatStrip.vue（9 项）
-    ├── AgentTree.vue（画布）
+    ├── AgentFlow.vue（lane DAG / 结构树切换）
     └── BadCaseList.vue（Teleport 目标）
 ```
 
@@ -535,7 +527,7 @@ Index.vue（grid: 340px 1fr）
 │   └── 空态 / 骨架
 └── main.error-main
     ├── header.error-head（meta + 返回 Session）
-    ├── section.flow-panel（Vue Flow，复用 components/agent-tree/AgentTree.vue，仅过滤 bad_case 节点）
+    ├── section.flow-panel（LaneDag + 结构树切换；保留全部并发分支，只高亮选中 BC）
     └── section.detail-panel
         ├── components/ProblemDescription.vue（问题描述 tab：title 短标题作标题行 + reason 描述正文作正文块 + metaData）
         └── components/AttributionReport.vue（重写：归因集合 + 多条导航 + 触发点对照）
@@ -549,12 +541,12 @@ Index.vue（grid: 340px 1fr）
 
 | 行为 | 实现 |
 |---|---|
-| 选中 bad case | URL `?case={badCaseId}&tab=desc`；本地选中由 URL 派生（刷新可恢复）；同时自动展开该组 |
+| 选中 bad case | URL `?case={badCaseId}&tab=desc`；本地选中由 URL 派生（刷新可恢复）；DAG 保留全部并发分支，只高亮对应 BC；结构树定位并高亮对应节点，不过滤其它分支 |
 | 展开/折叠 | 本地 `Set<string>`；展开时若归因数 > 2 显示组内分页（`pageSize=2`） |
 | 点归因子项 | `?case=&tab=attr&at={attributionId}`；左右切换（`N / total`）同步更新 `at` |
 | 深链解析优先级 | `at` 命中用它 → 只有 `case` 取第一条 → `obj={objectName}`（原型兼容）取该对象第一条 → 回落第一条 |
-| 执行流过滤 | 选中时只保留该 `badCaseId` 对应的节点及其边；相关 agent 节点与其触发点保留 |
-| 全部错误 | `case`/`at` 参数移除，恢复完整执行流 + 空态详情 |
+| 执行流选中态 | DAG：全部 lane/分支保留，只高亮 `badCaseId` 对应的 BC marker 和 bar；结构树：定位并高亮对应节点。两者都不裁剪其它分支 |
+| 全部错误 | `case`/`at` 参数移除，取消高亮，恢复完整执行流 + 空态详情 |
 | 筛选 chips | 全部 / 有归因（`attributionCount>0`）/ 待归因；只过滤左侧列表，不改变展开态 |
 | 再点已选中卡 | 保持选中，不取消 |
 | 归属不符 | `sid` 与 bad case 归属不一致 → 整页错误态「该问题不属于当前 Session」（服务端 409 `BAD_CASE_SESSION_MISMATCH`） |

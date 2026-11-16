@@ -14,16 +14,16 @@ github:
 
 ## Goals
 
-Deliver multi-attribution UX, target overview, compatibility retirement, and V2 cross-stack acceptance.
+Deliver lane DAG execution flow, multi-attribution UX, target overview, compatibility retirement, and V2 cross-stack acceptance.
 
 ## Scope
 
-Attribution reads and UI, target overview, fixtures, migration, compatibility, and docs.
+Execution-flow lane DAG with structure-tree fallback, attribution reads and UI, error-detail sidebar, target overview, fixtures, migration, compatibility, and docs.
 
 ## Acceptance
 
-All seven V2 goals have automated evidence; legacy routes, schemas, and data backfills have a retirement plan.
+All seven V2 goals have automated evidence; the execution flow defaults to lane DAG, expands all lanes, and keeps concurrent branches when a case is selected; legacy routes, schemas, and data backfills have a retirement plan.
 
 ## Non-goals
 
-No new object types beyond those captured by M9.
+No new object types beyond those captured by M9, and no reintroduction of the execution-flow timeline.

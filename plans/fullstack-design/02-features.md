@@ -57,10 +57,10 @@
 |---|---|---|---|---|---|---|
 | F3 | Session 列表：搜索（标题/仓库）、状态 chips（全部/完成/有失败）、排序（最新/用户轮次/消息/子 agent）、卡片密度条（失败/百消息、问题/百消息） | [浏览器页](../14-15-ui-prototype/harness-evolution.html) | 真实 | `GET /api/sessions` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionList.vue` |
 | F4 | 会话概览：标题、meta、状态徽章、9 项统计条、CTA（打开错误详情） | 同上 | 真实 | `GET /api/sessions/{sid}` | `session_families`（轨迹聚合列）+ `bad_cases`（问题数查询时聚合） | `pages/sessions/SessionOverview.vue` |
-| F5 | Agent 执行流图：主会话/子 agent/workflow/forked skill 节点、节点链（skill/subagent/workflow 触发 + ×N message 间隔）、问题卡（`self` / `discovery` 两类锚定）、折叠组 | 同上 | **真实**：结构来自轨迹表，问题卡来自空间上报的 `bad_cases` | `GET …/sessions/{sid}/tree` | `agents`、`agent_events`、`bad_cases` | `components/agent-tree/*` |
+| F5 | Agent 执行流图：默认小窗口 lane DAG（一条 lane = 一次 agent invocation；bar = 日志行区间；跨 lane 重叠 = 并发），`A1/A1.1` 深度、BC marker、全部 lane 展开、滚轮缩放/拖拽平移；结构树保留为切换视图 | 同上 | **真实**：结构来自轨迹表，问题卡来自空间上报的 `bad_cases` | `GET …/sessions/{sid}/tree` | `agents`、`agent_events`、`bad_cases` | `components/agent-tree/*` |
 | F6 | 会话内问题列表：bad_case 列表（title 短标题、reason 描述正文、归因数、上报对象、metaData 事实）、定位联动、`badCaseId` 深链 | 同上 | 真实（空间上报；归因由 run 写） | `GET …/sessions/{sid}/bad-cases` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `components/bad-cases/BadCaseList.vue` |
 | ~~F7~~ | ~~时间线：用户轮次分组、类型过滤、消息卡、展开/折叠~~ **已裁撤（2026-10-22）：完整时间线由外部平台承担**；本服务只保留 `user_turns` 作为用户输入锚点（prompt + 行号/message 偏移），供未来执行流展示；消息/内容块不落库 | — | — | —（不提供读接口） | `user_turns`（内部） | — |
-| F8 | 错误详情与多归因：左栏可折叠 bad_case 组 + 归因子项分页（3 种状态：尚未归因 / 可归因 / 非该对象问题）、执行流按问题过滤、问题描述/归因分析双 Tab、结论横幅、对象·版本、推导过程（Markdown） | 同上 | 真实（`bad_cases` 经 `bad_case_analysis` 关联多条 `probe_reports`，归因由 run 生成） | `GET …/bad-cases/{badCaseId}/attributions`、`GET …/attributions/{attributionId}` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `pages/errors/*` |
+| F8 | 错误详情与多归因：左栏可折叠 bad_case 组 + 归因子项分页（3 种状态：尚未归因 / 可归因 / 非该对象问题）、执行流保留全部并发分支并高亮选中 case、问题描述/归因分析双 Tab、结论横幅、对象·版本、推导过程（Markdown） | 同上 | 真实（`bad_cases` 经 `bad_case_analysis` 关联多条 `probe_reports`，归因由 run 生成） | `GET …/bad-cases/{badCaseId}/attributions`、`GET …/attributions/{attributionId}` | `bad_cases`、`bad_case_analysis`、`probe_reports` | `pages/errors/*` |
 
 ### 2.2 自进化域
 
@@ -83,7 +83,7 @@
 |---|---|---|---|---|---|---|
 | F1 | 顶部导览：两大视图切换、品牌、ID 串联网提示 | 全局 | 真实 | — | — | `App.vue` / `TopNav.vue` |
 | F2 | ID 体系：URL 直接用 `badCaseId` / `attributionId` / `clusterId` / `runId`（真实 ID），UI 显示截短 ID；深链到 session 错误详情并指定 tab / 归因 | 全局 | 真实 | 随 bad-case / attributions 返回 | `bad_cases`、`probe_reports` | `utils/badCaseId.ts` + 深链 |
-| F9 | 轨迹接入与归一化：第三方脚本只写 `trajectory_payloads`（原始 JSONL）；本服务后台定时读取、归一化、幂等写入业务表；保留上游 pull | design.md §7 + SaaS 前提 | 真实 | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` | `trajectory_payloads`（只读）、`source_records`、`sync_runs` + `session_families/agents/user_turns/agent_events` | 顶栏状态角标（admin 可立即处理） |
+| F9 | 轨迹接入与归一化：第三方脚本只写 `trajectory_payloads`（原始 JSONL）；本服务按 `runtime_key` 选择 parser、归一化、幂等写入业务表；保留上游 pull | design.md §7 + SaaS 前提 | 真实 | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` | `trajectory_payloads`（只读）、`source_records`、`sync_runs` + `session_families/agents/user_turns/agent_events` | 顶栏状态角标（admin 可立即处理） |
 | F14 | 进度推送：**页面级 SSE**，仅 `preparing/running` 的 run 订阅；ticket 绑定 topics 与 cursor、完成/阻塞即关闭；已完成任务和轨迹归一化都走普通 REST | — | 真实（机制） | `POST /api/events/ticket`、`GET /api/events` | `evolution_run_events` | `composables/useRunEvents.ts` |
 | F15 | 对象/模型清单：可进化对象/版本（来自 `evolution_targets` 配置 + 远端仓库 tag）、模型 chips（来自归一化后的 `agents.model`） | 向导 | 真实（只读聚合） | `GET /api/catalogs/targets`、`GET /api/catalogs/models` | `evolution_targets`、`agents`、`session_families` | `composables/useTargets.ts` / `useCatalogs.ts` |
 | F16 | ~~模拟推进：对运行中的 run 推进一步~~ **已取消（2026-10-23）**：改为后台自动逐轮推进，生产 UI 不再提供按钮 | 详情页按钮 | — | — | — | — |
@@ -162,14 +162,14 @@
 
 - **F3**：四个 session 一屏放得下；搜索/筛选/排序都是纯前端状态 + 查询参数；空列表显示空态而不是空白。
 - **F4**：9 项统计数字与后端口径一致（问题数来自 `bad_cases` 按会话实时聚合，其余来自整树聚合列）；密度分母 = `messages_count`（整棵树口径，design.md §7），满格 3/百消息。
-- **F5**：问题卡归属由后端 `anchor.agentId + anchor.eventIndex` 决定，不按"最后一个 agent"猜测；`self + agent` 挂上报人节点，skill 挂最后一次触发，`discovery + agent` 挂父节点调用该 subagent 的触发点；子 agent 超过 8 个折叠。
+- **F5**：默认 lane DAG；同一 lane bar 不重叠，跨 lane 重叠表达并发；全部 lane 展开，缩放/平移浏览；结构树切换保留；问题卡由后端 `anchor` 定位。子 agent 超过 8 个不再折叠。
 - **F6**：bad_case 按 `createdAt` 升序；`badCaseId` 截短显示、tooltip 全量；点击新窗口打开对应 session 的对应问题；定位会滚动并高亮问题卡。
 - **F7（裁撤）**：不做时间线页面，完整时间线由外部平台承担。本服务只保留 `user_turns` 用户输入锚点，消息/内容块不落库；不提供任何时间线读接口，Agent 执行流图上"打开时间线"入口一并移除。
-- **F8**：3 种归因状态（尚未归因 / 可归因（附 category）/ 非该对象问题）；"全部错误"恢复完整执行流；选中单个错误时只保留该问题卡；归因 tab 顺序固定（结论 → 对象·版本与来源 run → 置信度与策略 → 触发点对照 → 说明 → 推导 bad_case）。
+- **F8**：3 种归因状态；选中单个错误时执行流保留全部并发分支并高亮对应 BC，不过滤整棵树；归因 tab 顺序固定（结论 → 对象·版本与来源 run → 置信度与策略 → 触发点对照 → 说明 → 推导 bad_case）。
 - **F10–F13**：真实 bad case / 归因 + 占位聚类；stepper 未到达节点不可点；进度百分比与阶段文案由后端给出；run 有独立 workspace 与 `evo/{YYYYMMDD}-{run_id}` 分支；每个 candidate 先 push 临时 ref 再评测，接纳后 fast-forward run 分支、拒绝删除 candidate。
 - **F19**：只有配置且启用的对象出现在向导；配置校验 repoUrl/defaultRef/subDir，非法值返回 422；删除被 run 引用的配置返回 409。
 - **F20**：每个 run 的阶段、candidate、评测、推送都有 `evolution_run_events` 行；`failed/interrupted` 有错误摘要与脱敏详情；刷新后日志仍可查。
 - **F14**：断线 3 秒内自动重连；重连后进度不倒退。
-- **F9**：同一 `(root_session_id, agent_id)` + 相同 hash/parser_version 重复处理零副作用；payload 变化或 parser 升级仅重放对应 agent；单条失败不毁整批（进 `sync_runs.errors`）；定时与手动并发只产生一个 sync job（`sync_lock`）。
+- **F9**：同一 `(runtime_key, root_session_id, agent_id)` + 相同 hash/per-runtime parser_version 重复处理零副作用；payload 变化或该 runtime 的 parser 升级仅重放对应 agent；新增 runtime 只注册 parser 子类；单条失败不毁整批（进 `sync_runs.errors`）；定时与手动并发只产生一个 sync job（`sync_lock`）。
 - **F18**：未登录访问任意页面跳登录页；access 过期自动 refresh 一次，refresh 失效回登录页；SSE 票据一次性、60 秒有效、绑定 topics。
 - **F2**：所有深链在新窗口打开后能恢复到同样的选中状态（session + case + tab / run + step）。
