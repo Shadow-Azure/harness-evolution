@@ -14,16 +14,16 @@ github:
 
 ## Goals
 
-Turn relations, completion, revisions, and skill, agent, or knowledge triggers into stable evidence.
+Establish an extensible multi-agent trace parsing boundary and turn runtime, relations, completion, object revisions, definition fingerprints, and skill, agent, or knowledge triggers into stable evidence.
 
 ## Scope
 
-Metadata compatibility, relation confidence, execution completion, trigger coordinates, revisions, knowledge documents, and replay.
+Runtime identity and parser factory, metadata compatibility, relation confidence, execution completion, trigger coordinates, object revisions, agent/skill definition fingerprints, file-read evidence, knowledge documents, and replay.
 
 ## Acceptance
 
-A sanitized ccbdb2f0-shaped fixture reconstructs evidence, and unknown revisions never become exact matches.
+A sanitized Claude Code root/subagent fixture reconstructs relations, completion, skill bodies, and agent prompts; a new runtime only registers a parser subclass; unknown revisions and unknown runtimes never become exact matches.
 
 ## Non-goals
 
-No potential matcher, attribution engine, or seven-step run.
+No potential matcher, attribution engine, seven-step run, or multi-runtime frontend presentation.

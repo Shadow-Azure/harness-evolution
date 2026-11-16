@@ -94,7 +94,8 @@ apps/api/
       workspaces/            # V2：空间、成员、额度、凭据
       overview/              # V2：总览口径与聚合
       sessions/              # 列表/会话概览/Agent 会话树
-      acquisition/           # 读 payload、归一化、Agent 会话树组装、定时调度（scheduler.py）
+      acquisition/           # 读 payload、按 runtime 选 parser、归一化、Agent 会话树组装、定时调度（scheduler.py）
+        parsers/             # BaseTraceParser + TraceParserFactory + ClaudeCodeTraceParser；新 runtime 只加子类
       bad_cases/             # 问题列表/详情
       evolution/             # run、七步管线、潜在匹配、归因与缓存、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
@@ -114,6 +115,8 @@ alembic/                     # 迁移（项目根，与 app 平级）
 ```
 
 **路由只在 `main.py` 注册**（沿用仓库现有约定），各域提供 `router = APIRouter(prefix=...)`。
+
+**轨迹 parser 扩展点**：`acquisition/parsers/` 的 `BaseTraceParser` 用模板方法固定 JSONL 帧、坏行、隐私边界、计数和 finalize；`ClaudeCodeTraceParser` 只解释 Claude record/meta。`TraceParserFactory` 以 `runtime_key` 选 parser，子类用 `@TraceParserFactory.register` 自注册，包启动时自动发现。新增 runtime 不改 replay、agent_tree 或公共 normalize；未知 runtime 生成 `UNSUPPORTED_RUNTIME`，不能 fallback 到 Claude。
 
 ## 4. 数据库设计：MySQL 主库 / SQLite 测试
 

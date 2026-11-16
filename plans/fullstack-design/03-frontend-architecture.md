@@ -1,6 +1,6 @@
 # 03 · 前端架构与组件选型
 
-> 本文回答：前端用什么技术搭、怎么分层、组件如何组织、状态放哪、Agent 执行流图怎么从 React Flow 迁到 Vue。
+> 本文回答：前端用什么技术搭、怎么分层、组件如何组织、状态放哪、Agent 执行流图怎么用 lane DAG + 结构树双视图落地。
 > 参考基线：[无线 AI 极客汇前端架构分析报告](../../../wireless-ai-forum/docs/reports/frontend-architecture-report-2026-10-22.md)（Vue 3 项目，借鉴其**架构模式**而非照搬实现）。
 > 下游：[05 接口设计](05-api-design.md) · [08 前端实现设计](08-frontend-implementation.md)。
 
@@ -21,7 +21,7 @@
 | UI 控件 | Element Plus | ^2.11 | 表单控件、弹窗、日期、分页、消息 | 参考报告同选型；"控件用库、结构自研"的分工 |
 | 样式 | Tailwind CSS 3 + CSS 变量设计令牌 | ^3.4 | 布局与视觉 | 原型已是 CSS 变量体系，令牌直接移植 |
 | 图标 | lucide-vue-next | latest | 统一图标门面 | 参考报告同选型 |
-| 图/树 | **Vue Flow（@vue-flow/core）** | ^1.4x | Agent 执行流图 | xyflow 官方 Vue 移植，Handle/自定义节点/边语义与 React Flow 对齐；备选 AntV G6 太重、自研 SVG 要重写缩放与命中测试 |
+| 图/树 | **Vue Flow（@vue-flow/core）** | ^1.4x | 结构树切换视图 | lane DAG 用纯 TS + DOM/SVG transform；Vue Flow 只保留结构树，避免把 56 个 lane 变成节点图 |
 | 测试 | Vitest + Vue Test Utils + MSW（node） | ^3 / ^2 | 单元、组件、契约 | 参考报告同栈 |
 | 契约生成 | openapi-typescript | ^7 | `apps/api` OpenAPI → TS 类型 | 比 orval/hey-api 轻，只生成类型不绑定客户端实现，传输层自写更可控 |
 
@@ -64,7 +64,7 @@
 └───────────────────────────┬───────────────────────────────────┘
                             ▼
 ┌─ 共享组件层 ──────────────────────────────────────────────────┐
-│ components/agent-tree（Vue Flow Agent 执行流图）                │
+│ components/agent-tree（lane DAG + 结构树）                       │
 │ components/bad-cases        components/ui + layout            │
 │                              （含 IconRenderer）              │
 └───────────────────────────┬───────────────────────────────────┘
@@ -195,7 +195,7 @@ App.vue
 ├── TopNav.vue
 └── router-view
     └── pages/*
-        ├── agent-tree/                 （Vue Flow Agent 执行流图）
+        ├── agent-tree/                 （lane DAG + 结构树）
         ├── bad-cases/                   （问题卡）
         └── pages/evolution/components/  （向导/七步/簇卡/日志）
                 └── 共用 ui/
@@ -216,7 +216,8 @@ App.vue
 
 | 组件 | 对应原型 | 备注 |
 |---|---|---|
-| `agent-tree/AgentTree.vue` | React 岛 `<App sid findingsBudget>` | Vue Flow 画布容器，负责挂载、fitView、筛选 |
+| `agent-tree/AgentFlow.vue` | 原型执行流容器 | lane DAG / 结构树切换、选中态与深链 |
+| `agent-tree/tree/AgentTree.vue` | 结构树视图 | Vue Flow 画布容器，负责挂载、fitView、筛选 |
 | `agent-tree/AgentNode.vue` | `AgentNode` | 节点外框 + 标签 + 节点链 + 按真实边占用生成的 pill 上下锚点 |
 | `agent-tree/BadCaseNode.vue` | `FindingNode` | 问题卡（主文本 `title` 短标题 + badCaseId 截短） |
 | `agent-tree/CollapseNode.vue` | `GroupNode` | "N 个子 agent · 点击展开" |
@@ -241,30 +242,24 @@ App.vue
 - `IconName` 用 union 类型收敛，图标映射集中在一个文件；新增图标只改这一处。
 - 统一 `size` / `stroke-width` / `currentColor`，避免每个组件各写一套。
 
-### 8.3 Agent 执行流图：React Flow → Vue Flow 的迁移方案
+### 8.3 Agent 执行流图：lane DAG + 结构树双视图
 
-这是 D1 决策下最大的单项工作量，拆开看并不大：
+V2 默认执行流不是 Vue Flow 节点树，而是小窗口 lane DAG；Vue Flow 只保留给结构树切换视图。这样并发和深度都用几何表达，不需要把 56 个子 agent 折叠成节点。
 
-| 部分 | 原型位置 | 迁移方式 |
-|---|---|---|
-| 布局几何（链式计算、节点定位、trunk 聚合、问题卡左右侧判定） | `chainOf` / `buildGraph` / `place` / `pickFindingSide` 等，约 600 行 | 结构参考原型移到 `agent-tree/layout.ts`，补类型与单测；`chainOf` 的 `×N` 改为 `messagesCount/messageOffset` 口径 |
-| 4 条自定义边的 path 生成 | `FindingEdge` / `TriggerEdge` / `ReportEdge` / `OrthEdge` | 纯 SVG path 字符串函数；Vue 版命名 `BadCaseEdge` / `TriggerEdge` / `DiscoveryEdge` / `OrthEdge` |
-| 自定义节点渲染 | `AgentNode` / `GroupNode` / `FindingNode`（htm 模板） | 改写为 SFC；Vue Flow 的 `<Handle>` API 与 React Flow 语义一致（`type/position/id`） |
-| 画布与交互 | `<ReactFlow fitView nodesDraggable=false …>` | `AgentTree.vue` 用 `<VueFlow>`；`fitView` 在节点测量完成后执行（沿用原型 `FitTree` 的等待逻辑） |
-| 画布内 portal 到页面的问题列表 | `createPortal(..., findingList)` | Vue 用 `<Teleport to="#bad-case-list">` |
+| 部分 | 实现 |
+|---|---|
+| lane DAG 布局 | `agent-tree/lane/laneModel.ts`：tree → lane、`A1/A1.1` 深度、bar 区间、并发 band、BC marker；纯 TS + 单测 |
+| lane 画布 | `lane/LaneDag.vue` + `lane/viewport.ts`：固定高度视口、`translate/scale`、滚轮缩放、拖拽、fit/1:1 |
+| 结构树 | `tree/AgentTree.vue` 继续用 Vue Flow；`tree/layout.ts` 保留 `chainOf/buildGraph`，只服务结构树 |
+| 选中与深链 | `AgentFlow.vue` 统一管理 `badCaseId`、`locate` 和 URL；DAG 保留全部分支并高亮 BC，结构树定位节点 |
+| 问题列表 | 继续用 Teleport 挂载到页面；两种视图共享选中态 |
 
-```text
-原样保留（纯 TS）                          改写为 Vue
-┌──────────────────────────────┐      ┌──────────────────────────┐
-│ chainOf / gapPillW / trigPillW│      │ AgentNode.vue            │
-│ buildGraph 布局与问题卡锚定  │ ───► │ BadCaseNode.vue          │
-│ 4 条边的 path 函数           │      │ CollapseNode.vue         │
-│ 测量文字宽度的 canvas 逻辑    │      │ AgentTree.vue（画布）    │
-└──────────────────────────────┘      │ Teleport 问题列表        │
-                                      └──────────────────────────┘
-```
+- **不再有 `>8` 折叠**：lane 数量多时通过视口缩放/平移浏览；结构树仍可展开。
+- **`×N` 口径分离**：lane DAG 的 `×N 无触发` 用日志行区间；结构树的 message gap 用 `messageOffset`，两者不能混用。
+- **视觉基线**：`plans/ui-prototype-v2/harness-evolution.html` 的默认 DAG、小窗口、右下角缩放控件、选中 BC 高亮。
+- **时间线裁撤**：执行流页面不保留时间线入口或 `打开时间线` CTA；需要完整时间线时由外部平台承担。
 
-**验收方式**：先迁移 `demo-nested` 最小树（design.md §8 的嵌套示例），验证"问题归属、子 agent 内触发、折叠组、连线从 pill 锚点直达且不穿兄弟分支"四件事，再切真实会话数据。
+**验收方式**：以 `demo-nested` 验证深度、并发 band、同 lane 不重叠、跨 lane 重叠和 BC 定位；以 56 子 agent Session 验证 fit/zoom/pan 与全 lane 展开。
 
 ## 9. 样式体系
 
@@ -328,7 +323,7 @@ apps/web/src/
     useRunEvents.ts       run 页面的 SSE 票据 + 连接 + 事件追加（preparing/running）
   stores/
     auth.ts               登录态（access token 内存 + 当前用户）
-    preferences.ts        折叠/缩放偏好（localStorage）
+    preferences.ts        执行流视图/缩放偏好（localStorage）
   pages/
     login/  workspaces/  overview/  sessions/  errors/  evolution/  evolution/targets/
     evolution/components/ Stepper / Step*（七步）/ ClusterCard / DiffView / EvalCompare / RunLogPanel / LaunchWizard

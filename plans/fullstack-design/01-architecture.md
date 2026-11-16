@@ -11,9 +11,10 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
 
 - **输入**（三类来源，见 §4.1）：
   1. **原始轨迹表 `trajectory_payloads`**：第三方脚本把"有问题的 session 轨迹"（每 agent 一份 JSONL）写入 MySQL，本服务读取并归一化；采集不归本服务。
-  2. **轨迹查询接口**：上游提供"Claude Code 轨迹 + 元数据"的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表。
+  2. **轨迹查询接口**：上游提供“AI agent 轨迹 + 元数据”的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表；当前只有 Claude Code 实现，后续 runtime 通过 parser 子类接入。
   3. **空间上报接口（V2）**：`POST /api/workspaces/{wid}/bad-cases`，POST body 即 `bad_cases` 表类型，凭据 + 额度管控（[05 §4.17](05-api-design.md)）；bad case 主通道，目录同步默认停用。
-- **处理**：读取 payload → 归一化 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+- **runtime 边界**：`runtime_key` 是 AI agent 类型（`claude-code` / `codex` / ...），与 `source_type` 接入通道分开；`TraceParserFactory` 按 `runtime_key` 选择 `BaseTraceParser` 子类，所有 runtime 归一化成同一个 `ParsedTranscript`。新增 runtime 只新增 parser 子类并注册，不修改公共 replay/agent_tree。
+- **处理**：读取 payload → 按 runtime 选 parser → 归一化 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
 - **输出**：浏览器里的视图（V2：工作空间总览 + Session 错误查看 + 自进化 + 空间管理），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**按工作空间隔离 bad case 与权限**（[06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md)；轨迹归一化仍全局共享）。
 - **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做公网注册、不做空间删除与跨空间汇总（V2 非目标）；多租户语义止于工作空间（bad case 归属 + 成员权限），不做计费/配额通知。
 
@@ -166,10 +167,10 @@ apps/web/
 
 | 来源 | 触发方式 | 读取内容 | 幂等键 |
 |---|---|---|---|
-| 第三方脚本写入的 `trajectory_payloads` | 后台定时（默认 60s）/ admin 手动 | 按 `(root_session_id, agent_id)` 取 JSONL 原文 | `(root_session_id, agent_id)` + `content_hash` + `parser_version` |
+| 第三方脚本写入的 `trajectory_payloads` | 后台定时（默认 60s）/ admin 手动 | 按 `(runtime_key, root_session_id, agent_id)` 取 JSONL 原文 | `(runtime_key, root_session_id, agent_id)` + `content_hash` + per-runtime `parser_version` |
 | 轨迹查询接口（上游待实现） | 用户手动 pull | 按 [05 §10](05-api-design.md) 契约返回的 payload | 同上 |
 
-- **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `(root_session_id, agent_id)` 回查。
+- **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `(runtime_key, root_session_id, agent_id)` 回查。
 - 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
 - 归一化规则不变（[06 §7.1](06-database-design.md)）：用户轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
 
@@ -417,7 +418,7 @@ pnpm --filter web build                            # 前端构建产物由 FastA
 |---|---|---|
 | 鉴权 | 自建账号 + JWT；access 30min（内存）+ refresh 14d（httpOnly cookie）；SSE 一次性票据 | 不依赖外部 SSO；EventSource 不能带头的限制用票据绕开 |
 | 首次启动 | users 表为空时用 `HE_ADMIN_USERNAME`/`HE_ADMIN_PASSWORD` 播种初始管理员 | 不自注册；后续用户由管理员创建 |
-| 同步幂等 | `(root_session_id, agent_id)` + content hash + parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
+| 同步幂等 | `(runtime_key, root_session_id, agent_id)` + content hash + per-runtime parser_version，重复处理零副作用 | 上游重推/重拉不得产生重复数据 |
 | 大轨迹 | Agent 会话树触发点处理时预计算；轨迹聚合统计入库时冗余（跨写入方的派生值如问题数除外，查询时聚合）；payload 原文单独表（外部写） | 375 条消息 / 57 个子 agent 的会话存在，不能查询时重算 |
 | 契约防漂移 | OpenAPI 生成物进 `packages/contracts`，CI 校验"重新生成 = 无 diff" | D3 决策的执行保障 |
 | 错误模型 | 全 API 统一 `{error:{code,message,details}}`；401/403 有独立 code | 前端一个拦截器处理所有失败态 |

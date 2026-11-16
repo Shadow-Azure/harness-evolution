@@ -30,7 +30,7 @@
 V2 的**写入方变化**：`bad_cases` 的主通道改为空间上报接口（凭据鉴权，§4.1），目录同步默认停用；`bad_case_analysis` / `probe_reports` / `evolution_run_candidates` / `probe_clusters` / `probe_cluster_probes` 由自进化 run 写；空间三表由空间管理端点写。`session_families` / `agents` / `agent_events` / `user_turns` / `trajectory_payloads` / `source_records` **不加空间列**——轨迹归一化是全局管线，一个空间的 Session 集合是「该空间 bad case 涉及的根会话」投影（§7.5）。
 
 - **原始层与归一化层分离**：`trajectory_payloads` 存原始 JSONL（外部写入/pull），`source_records` 存处理索引（不存 payload），其余轨迹表是归一化视图；解析规则升级时按 `parser_version` 从 payload 重放。
-- **明细层不落库**：`messages` / `content_blocks` 只在解析期存在，用于统计、usage 去重和状态判定；业务表不存消息与工具原文，需要原文时按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读。`user_turns` 是唯一保留的轨迹明细表，只存用户输入锚点。
+- **明细层不落库**：`messages` / `content_blocks` 只在解析期存在，用于统计、usage 去重和状态判定；业务表不存消息与工具原文，需要原文时按 `(runtime_key, root_session_id, agent_id)` 从 `trajectory_payloads` 回读。`user_turns` 是唯一保留的轨迹明细表，只存用户输入锚点。
 - **问题侧写入边界**：`bad_cases` 由空间上报接口（凭据 + 额度）与目录同步共同写入，本服务按主键 upsert 上游字段、不删除行；`bad_case_analysis` 维护 bad case 与归因报告的多对多关联，`probe_reports` 按缓存键 upsert 对象·版本级结论。三张表都在本服务写入边界内，表结构变更按本文评审。
 - **跨写入方的派生值不落列**：轨迹侧表只存本服务归一化算得出的聚合；依赖问题侧（外部写入）的计数随上游随时变化，一律查询时聚合，不物化——会话问题数即属此类（见 §3.2、§7.3）。
 
@@ -127,31 +127,41 @@ erDiagram
 
 ### 3.0 `trajectory_payloads` —— 原始 JSONL（外部写入，本服务只读）
 
-> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，按 `(root_session_id, agent_id)` 读取。`root_session_id` 是 Claude Code 的根 `sessionId`；`agent_id` 主 agent 用根 session id，子 agent 用真实 `agentId`。
+> 由第三方脚本/上游接口写入；本服务**不保存第二份 payload**，按 `(runtime_key, root_session_id, agent_id)` 读取。`runtime_key` 是 AI agent 类型（`claude-code`、`codex`、...），与接入通道 `source_type` 分开；`root_session_id` 是该 runtime 的根 session id；`agent_id` 主 agent 用根 session id，子 agent 用真实 `agentId`。
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
+| `runtime_key` | `VARCHAR(32)` | PK 组成，DEFAULT `claude-code` | AI agent runtime；历史行回填 `claude-code` |
 | `root_session_id` | `VARCHAR(36)` | PK 组成 | 主 agent 的 session id；同一会话的主/子 agent 相同 |
 | `agent_id` | `VARCHAR(64)` | PK 组成 | 主 agent = root session id；子 agent = provider `agentId` |
 | `agent_kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
 | `payload` | `LONGTEXT` | NOT NULL | 该 agent 的原始 JSONL 全文 |
-| `agent_meta` | `JSON` | NULL | 子 agent 的 `*.meta.json`（`toolUseId/agentType/spawnDepth/taskKind/teamName/model`） |
+| `agent_meta` | `JSON` | NULL | 该 runtime 的 agent 元数据；Claude 为 `*.meta.json` |
 | `content_hash` | `CHAR(64)` | NOT NULL | payload 哈希 |
 | `line_count` | `INTEGER` | NOT NULL | 行数 |
-| `source_type` | `VARCHAR(16)` | NOT NULL | `script` / `http_api` |
+| `source_type` | `VARCHAR(16)` | NOT NULL | 接入通道：`script` / `http_api` |
 | `updated_at` | `DATETIME` | NOT NULL | 脚本/接口最近写入时间 |
 
-主键：`PRIMARY KEY(root_session_id, agent_id)`；索引：`INDEX(updated_at)`。
+主键：`PRIMARY KEY(runtime_key, root_session_id, agent_id)`；索引：`INDEX(runtime_key, updated_at)`。
 
 - 主 agent 行：`agent_id == root_session_id`。
 - 子 agent 行：`agent_id` 是 JSONL 行和 meta 文件里的真实 `agentId`。
 - 本服务只读；pull 路径由本服务写入（见 [07 §2](07-backend-implementation.md)）。
+- `agent_meta` 的字段形状按 runtime 不同，公共证据字段由 parser 归一化，不要求所有 runtime 使用 Claude meta。
+
+### 3.0.1 runtime 身份与 parser 版本
+
+- `runtime_key` 是 parser 选择的唯一键；`TraceParserFactory.create(runtime_key)` 决定使用哪个 `BaseTraceParser` 子类。
+- `parser_version` 按 runtime 解释：`source_records.parser_version` 只与该 runtime 的当前 parser version 比较；升级 Claude 不影响 Codex，反之亦然。
+- 未知 `runtime_key` 产生 `UNSUPPORTED_RUNTIME`，不得 fallback 到 Claude。
+- `source_type` 只记录 `script` / `http_api` 等接入方式，不参与 parser 选择。
 
 ### 3.1 `source_records` —— 处理索引（不存 payload）
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | `BIGINT` | PK AUTOINCREMENT | 代理主键 |
+| `runtime_key` | `VARCHAR(32)` | NOT NULL，DEFAULT `claude-code` | AI agent runtime |
 | `root_session_id` | `VARCHAR(36)` | NOT NULL | 主 agent 的 session id |
 | `agent_id` | `VARCHAR(64)` | NOT NULL | 主 agent = root session id；子 agent = 真实 `agentId` |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` |
@@ -160,12 +170,12 @@ erDiagram
 | `received_at` | `DATETIME` | NOT NULL | 首次发现该 payload 的时间 |
 | `processed_at` | `DATETIME` | NULL | 最近一次归一化完成时间；NULL = 待处理 |
 | `processed_hash` | `CHAR(64)` | NULL | 已归一化时的 payload 哈希 |
-| `parser_version` | `INTEGER` | NULL | 已使用的解析器版本 |
+| `parser_version` | `INTEGER` | NULL | 该 runtime 已使用的解析器版本 |
 | `last_sync_run_id` | `VARCHAR(36)` | NULL FK → `sync_runs.id` | 最近一次归一化批次 |
 
-索引：`UNIQUE(root_session_id, agent_id)`、`INDEX(processed_at)`、`INDEX(parser_version)`。
+索引：`UNIQUE(runtime_key, root_session_id, agent_id)`、`INDEX(processed_at)`、`INDEX(runtime_key, parser_version)`。
 
-**待处理判定**：`processed_hash IS NULL`，或 `processed_hash != trajectory_payloads.content_hash`，或 `parser_version < 当前解析器版本`。
+**待处理判定**：`processed_hash IS NULL`，或 `processed_hash != trajectory_payloads.content_hash`，或 `parser_version < 当前 runtime 的解析器版本`。不同 runtime 的 parser version 不互相比较。
 
 **幂等规则**：hash 未变且解析器版本未升级 → 跳过；hash 变化 → 事务内删除该记录派生的行并重放；payload 侧删除 → 保留业务数据并记日志（首版不级联删除）。
 
@@ -174,19 +184,22 @@ erDiagram
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | `VARCHAR(36)` | PK | 根会话 id |
+| `runtime_key` | `VARCHAR(32)` | NOT NULL，DEFAULT `claude-code` | 产生该 Session 的 AI agent runtime |
 | `short_title` | `VARCHAR(255)` | NOT NULL | 列表卡标题 |
 | `title` | `TEXT` | NOT NULL | 完整标题 |
 | `search_text` | `VARCHAR(512)` | NOT NULL | `lower(title + repo)`，标题/仓库搜索用；根会话 ID 直接匹配 `id`，不进此列（[13](13-root-session-id.md)） |
 | `repo_name` | `VARCHAR(255)` | NOT NULL | 仓库名 |
-| `project_path` | `TEXT` | NOT NULL | 项目路径（Claude Code `cwd`） |
-| `git_branch` | `VARCHAR(255)` | NULL | Claude Code `gitBranch` |
-| `cli_version` | `VARCHAR(32)` | NULL | Claude Code `version` |
+| `project_path` | `TEXT` | NOT NULL | runtime 提供的项目路径；Claude Code 为 `cwd` |
+| `git_branch` | `VARCHAR(255)` | NULL | runtime 提供的分支；Claude Code 为 `gitBranch` |
+| `cli_version` | `VARCHAR(32)` | NULL | runtime/CLI 版本；Claude Code 为 `version` |
 | `entrypoint` | `VARCHAR(16)` | NULL | `cli` / `sdk` 等 |
 | `model` | `VARCHAR(64)` | NULL | 主 agent 模型 |
 | `models` | `JSON` | NOT NULL | 整棵 Agent 会话树去重后的模型列表（含子 agent） |
 | `started_at` / `ended_at` | `DATETIME` | NOT NULL | 首末事件时间（Asia/Shanghai） |
 | `duration_seconds` | `INTEGER` | NOT NULL | 真实跨度 |
 | `status` | `VARCHAR(16)` | NOT NULL | `ok` / `partial` / `fail`（规则见 §7.2） |
+| `execution_outcome` | `VARCHAR(16)` | NOT NULL DEFAULT `legacy_unknown` | M9：执行闭环 `completed` / `interrupted` / `failed` / `legacy_unknown`，不覆盖解析 `status` |
+| `end_reason` | `VARCHAR(32)` | NULL | M9：`end_turn` / `tool_use_open` / `missing_report` / `external_failed` / `external_interrupted` |
 | `skill_names` | `JSON` | NOT NULL | 递归聚合的 skill 名（来自 `agent_events(kind=skill)`，含 forked skill 的父 skill 事件） |
 | `user_turns_count` / `messages_count` / `tools_count` / `errors_count` / `agents_count` | `INTEGER` | NOT NULL | 冗余聚合；整棵树口径。`messages_count / tools_count / errors_count / tokens_total` 按 agent 求和；`user_turns_count` 取轮次行数；`agents_count` 只数 `kind=subagent` 且 `task_kind != forked_skill` 的节点（含 workflow-subagent / teammate），不含 main、workflow 合成节点与 skill fork |
 | `tokens_total` | `BIGINT` | NOT NULL | 整棵 Agent 会话树 token |
@@ -205,6 +218,7 @@ erDiagram
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | `VARCHAR(64)` | PK | 节点 id：主 agent = root session id；子 agent = 真实 `agentId`；workflow = 合成 `wf_...` |
+| `runtime_key` | `VARCHAR(32)` | NOT NULL，DEFAULT `claude-code` | 继承根会话的 AI agent runtime |
 | `root_session_id` | `VARCHAR(36)` | FK → `session_families.id` ON DELETE CASCADE | 根会话 |
 | `parent_agent_id` | `VARCHAR(64)` | FK → `agents.id` NULL | 根为 NULL；workflow-subagent 指向 workflow |
 | `kind` | `VARCHAR(16)` | NOT NULL | `main` / `subagent` / `workflow`；forked skill 落在 `subagent`，由 `task_kind` 区分 |
@@ -215,6 +229,10 @@ erDiagram
 | `skill_name` | `VARCHAR(255)` | NULL | forked skill 的 `skillName`（来自 `.forked-skill.json`）；其他节点为 NULL |
 | `model` | `VARCHAR(64)` | NULL | 实际 assistant `message.model`；主/子 agent 可不同 |
 | `requested_model` | `VARCHAR(64)` | NULL | meta.model 请求别名，如 `sonnet` |
+| `execution_outcome` | `VARCHAR(16)` | NOT NULL DEFAULT `legacy_unknown` | M9：节点执行闭环 |
+| `end_reason` | `VARCHAR(32)` | NULL | M9：节点结束原因 |
+| `agent_definition_hash` | `CHAR(64)` | NULL | M9：agent 定义 body 的稳定 hash；内置 agent 为空 |
+| `definition_source` | `VARCHAR(32)` | NULL | M9：`prompt_snapshot` / `api_request_shape` / `builtin` / `unknown` |
 | `description` | `TEXT` | NULL | 触发它的 Agent 调用描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 父会话里触发该节点的调用 id；workflow 填父 workflow 调用；teammate/forked skill 可为 NULL |
 | `spawn_depth` | `INTEGER` | NOT NULL | meta.spawnDepth；根=0 |
@@ -246,6 +264,11 @@ erDiagram
 | `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` |
 | `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 |
 | `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空，关联与归因按 §7.5 的版本规则处理 |
+| `object_revision` | `VARCHAR(96)` | NULL | M9：`tag:<tag>` / `digest:<sha256>` / `unknown` |
+| `definition_hash` | `CHAR(64)` | NULL | M9：skill/agent 定义 body hash |
+| `file_read_hash` | `CHAR(64)` | NULL | M9：文件读取内容 hash；仅完整读取时非空 |
+| `read_complete` | `BOOLEAN` | NULL | M9：文件读取是否完整；partial/truncated 为 false |
+| `relation_confidence` | `VARCHAR(16)` | NULL | M9：`authoritative` / `derived` / `synthetic` / `unresolved` |
 | `description` | `TEXT` | NULL | 子 agent / workflow 描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 触发调用 id |
 | `triggered_at` | `DATETIME` | NULL | 触发事件所在 assistant message 的时间戳（归一化从 JSONL 写入）；触发点比较主坐标，缺失时回退 `(tree_index, event_index)`（§7.5） |
@@ -793,7 +816,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | `workspace_members` | 10²–10³ | 每空间 1–20 人 |
 | `workspace_ingest_credentials` | 10² | 每空间 1–3 条（轮换期并存） |
 
-`trajectory_payloads.payload` 使该表成为最大表，按"外部写、本服务只读"设计；查询只走归一化表与问题侧表。消息/内容块不落库，需要原文时按 `(root_session_id, agent_id)` 从 payload 回读。
+`trajectory_payloads.payload` 使该表成为最大表，按"外部写、本服务只读"设计；查询只走归一化表与问题侧表。消息/内容块不落库，需要原文时按 `(runtime_key, root_session_id, agent_id)` 从 payload 回读。
 
 ## 7. 数据口径
 
@@ -805,7 +828,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 工具结果内联在 user 记录 | 按 `tool_use_id` 回填到对应工具块，不切用户轮次 |
 | 元记录 | `last-prompt` / `queue-operation` 不参与轮次切分与统计；`attachment.queued_command` 的 `origin.kind=human` 可作候选 |
 | assistant 记录带 `message.id` 与 usage | 消息 = 唯一 `message.id`；同一 id 的多行 usage 只取一次，不按 content block 行重复求和；仅解析期使用，不落表 |
-| 子 agent 共享 root session | 子 agent JSONL 的 `sessionId` 与主 session 相同；`agentId` 才是子 agent 身份；`trajectory_payloads` 用 `(root_session_id, agent_id)` 区分 |
+| 子 agent 共享 root session | 子 agent JSONL 的 `sessionId` 与主 session 相同；`agentId` 才是子 agent 身份；`trajectory_payloads` 用 `(runtime_key, root_session_id, agent_id)` 区分 |
 | 父 agent 关系 | 子 agent 的 `*.meta.json.toolUseId` 指向父 Agent 调用；teammate/forked skill 可为 NULL |
 | 普通 skill 与 forked skill | 普通 `Skill` 调用只产生 `agent_events(kind=skill)`，不建 `agents` 行；forked skill 有独立 JSONL，建 `agents` 行（`task_kind=forked_skill`、`skill_name` 非空、`name` 为空），并用 `skill_name` 关联父 skill 事件 |
 | 会话跨多天 | 存储绝对时刻，不假设连续时长 |
@@ -906,10 +929,18 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
    + potential_policy / cache_enabled / attribution_engine、evolution_run_events.workspace_id
    agents.tree_index、agent_events.triggered_at / object_version
    users.auth_provider（默认 password）、users.external_subject
+   runtime_key（trajectory_payloads / source_records / session_families / agents，
+   默认 claude-code）；source_records 唯一键扩为
+   (runtime_key, root_session_id, agent_id)
+   M9 evidence：session_families.execution_outcome/end_reason；
+   agents.execution_outcome/end_reason/agent_definition_hash/definition_source；
+   agent_events.object_revision/definition_hash/file_read_hash/read_complete/
+   relation_confidence
 4) 默认空间行（幂等）：id = HE_DEFAULT_WORKSPACE_ID（默认 ws-default），
    quota = COUNT(bad_cases) + 50
 5) 回填：bad_cases / evolution_targets / evolution_runs / evolution_run_events
-   的 workspace_id = 默认空间；probe_reports.workspace_id = 默认空间
+   的 workspace_id = 默认空间；probe_reports.workspace_id = 默认空间；
+   所有 runtime_key = claude-code；M9 evidence 默认 legacy_unknown / NULL
 6) 收紧 NOT NULL + 建 FK/索引；evolution_targets 唯一键
    (object_type, object_name) → (workspace_id, object_type, object_name)；
    users 增加 UNIQUE(auth_provider, external_subject)，external_subject 为空的行不参与外部映射

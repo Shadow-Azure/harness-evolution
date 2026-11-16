@@ -27,7 +27,7 @@ github:
 
 ## Background
 
-A matching parent toolUseId and child metadata can coexist with a missing tool result, producing inconsistent linked state.
+A matching parent toolUseId and child metadata can coexist with a missing tool result, producing inconsistent linked state. The 2026-11-15 five-subagent export already supplies authoritative relation_evidence+metadata; this issue still covers degraded paths with missing tool results, synthetic links, and unresolved nodes.
 
 ## Goals
 
@@ -63,7 +63,8 @@ A matching parent toolUseId and child metadata can coexist with a missing tool r
 pnpm test:api -- tests/acquisition tests/sessions; pnpm test:web
 ```
 
-- All four children link.
+- All four ccbdb2f0 children link.
+- The five-subagent 2026-11-15 export keeps authoritative relations and includes derived/unresolved fixtures.
 - The final review is derived.
 - Unknown parents remain unresolved.
 

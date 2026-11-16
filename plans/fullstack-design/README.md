@@ -1,7 +1,7 @@
 # Harness Evolution 前后端整体设计方案
 
 > 目标：以 [V1 原型](../14-15-ui-prototype/harness-evolution.html) 为基线，把 [V2 原型](../ui-prototype-v2/harness-evolution.html) 的工作空间、总览、上报、多归因与七步自进化落成一套**可逐步实现、打桩位清晰、后续可快速接入真实实现**的前后端系统。
-> 状态：V1 已实现；**V2 关键设计决策已确认（2026-11-11）**，milestone / roadmap / issue 排期仍需确认 [10 §5](10-roadmap-draft.md)。
+> 状态：V1 已实现；**V2 关键设计决策已确认（2026-11-11）**；M7–M12 的 milestone / roadmap / issue 已落在 `.agents/flow/`，当前排期以 [roadmap](../../.agents/flow/roadmap.md) 为准，10 号文档为历史草案。
 >
 > 术语：用户可见文案统一为 **Agent 会话树**（对象）、**会话概览**（摘要）、**Agent 执行流图**（图）。数据模型统一为 `session_families` / `agents` / `user_turns` / `agent_events`；消息与内容块只在解析期用于统计，不落库；前端组件为 `agent-tree/`、`AgentTree.vue`、`SessionOverview.vue`，API 类型 `SessionTree` 保留。
 
@@ -33,7 +33,7 @@
 | [07 后端接口的实现设计](07-backend-implementation.md) | 每个功能域的路由/服务/数据访问/任务怎么落地 | 写后端时 |
 | [08 前端的实现设计](08-frontend-implementation.md) | 每个页面的组件树、数据流、交互与打桩接入点 | 写前端时 |
 | [09 Review 指南与已决问题](09-review-guide.md) | 原型→功能点→设计位置的追溯矩阵、Q1–Q6 决策记录、评审重点 | **review 时先看这篇** |
-| [10 Milestone/Roadmap/Issue 重排草案（待确认）](10-roadmap-draft.md) | 排期方案：6 个 milestone、约 36 个 issue 草案、5 个待拍板问题 | 讨论排期时 |
+| [10 Milestone/Roadmap/Issue 历史草案（superseded）](10-roadmap-draft.md) | V1→V2 排期的历史讨论稿；当前排期见 [`.agents/flow/roadmap.md`](../../.agents/flow/roadmap.md) | 查历史决策时 |
 | [11 bad_cases 根会话轨迹定时同步](11-bad-case-session-sync.md) | 自动补齐策略、外部查询服务契约、状态表、重叠处理与前端统计 | 做 m6-15 前 |
 | [12 bad_cases 目录数据定时同步](12-bad-case-catalog-sync.md) | 上游分页查询契约、游标翻页、upsert、状态表与前端统计 | 做 m6-16 前 |
 | [13 根会话 ID 的展示与检索](13-root-session-id.md) | 错误页两处展示、会话搜索匹配 `id`、契约与性能边界 | 做 m6-18 前 |
@@ -81,7 +81,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D9 | 数据库可替换（2026-10-22） | **MySQL 是默认主库**；存储层提供统一 `Database` 接口，SQLite 适配器保留用于测试与本地开发 | 表结构按跨库通用类型设计；生产连 MySQL，测试用 SQLite，业务代码与前端零改动。见 [04 §4](04-backend-architecture.md) |
 | D10 | 租户模型（2026-10-22，V2 由 D21 取代） | **V1 单组织共享；V2 改为工作空间级隔离** | V2 以 `workspace_id + workspace_members` 收口 bad case 与权限；轨迹表仍全局共享，通过 bad case 投影空间 Session |
 | D11 | 鉴权（2026-10-22） | **自建账号 + JWT**（users 表 + argon2 + access/refresh token） | 不依赖外部 SSO；初始管理员由 env 播种；后续用户由管理员创建 |
-| D12 | 轨迹来源（2026-10-24 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL）；本服务后台定时（默认 60s）+ 单飞锁读取并归一化，admin 可手动立即处理，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；手动 sync 复用运行中的任务；幂等靠 `(root_session_id, agent_id)` + hash + `parser_version` |
+| D12 | 轨迹来源（2026-10-24 修订） | **第三方脚本只写 `trajectory_payloads`（每 agent 一行原始 JSONL，带 `runtime_key`）；本服务后台定时（默认 60s）+ 单飞锁读取并归一化，admin 可手动立即处理，不采集/扫描外部源表**；上游接口 pull 保留，拉到后写同一张 payload 表 | payload 只存一份；`source_records` 只是处理索引；定时 + 单飞锁避免并发；手动 sync 复用运行中的任务；幂等靠 `(runtime_key, root_session_id, agent_id)` + hash + per-runtime `parser_version` |
 | D13 | 进化对象配置（2026-10-23；V2 按空间） | **只有当前空间配置且启用的 skill/agent 才能自进化**；配置含 repoUrl/subDir/defaultRef/enabled；入口在向导提示文案内的「配置页」链接 → 配置页 | 从远端仓库拉取并按分支/tag 取基线；版本列表来自远端 tag；V2 向导不再做模型多选 |
 | D14 | 自进化 git 流程（2026-10-23） | **candidate commit → push 临时 candidate ref → 评测 → 接纳 amend + fast-forward run 分支 / 拒绝删 candidate；push 是评测前置条件** | run 分支只含已接纳 commit，评测用 `.../candidate/r{n}`；push 失败 run 进入 blocked，3 次立即 + 1/5/15min 退避，`/retry` 恢复 |
 | D15 | 执行过程与异常（2026-10-23） | **所有阶段/候选/评测/推送事件与异常写 `evolution_run_events`**；Web UI 读库展示，SSE 只做实时通知 | 刷新/重进不丢执行历史；失败与中断可定位；异常脱敏后入库 |
@@ -94,10 +94,12 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 | D21 | 多工作空间（2026-11-11，V2） | **工作空间是 bad case 的归属与权限单元**：`workspaces` / `workspace_members` / `workspace_ingest_credentials` 三表；空间 Session 集合 = 空间 bad case 涉及的根会话投影，轨迹表不加空间列；bad_cases / evolution_targets / evolution_runs / evolution_run_events 加 `workspace_id` | 全局管理员唯一（禁建 admin、可自任空间管理员）；空间角色 `space_admin/member/viewer` 服务端收口。见 [06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md) |
 | D22 | 鉴权接入预留（2026-11-11，V2） | **身份栈不变（JWT + refresh cookie），鉴权接入收敛为 `AuthProvider` 协议 + 会话桥 + `GET /api/auth/callback` 占位**；新增 `GET /api/auth/session` 返回 user + workspaces；不开放注册，SSO 按 sub 匹配（email 不参与匹配）不自动建号 | 接入 Cookie/SSO 只改 provider/桥/callback 三处，业务与前端契约不变。见 [07 §8.2.1](07-backend-implementation.md) · [05 §4.16](05-api-design.md) |
 | D23 | 归因进自进化（2026-11-11，V2） | **归因由本服务在 run 内按「对象 · 版本」生成**：`bad_case_analysis` 去掉 case 唯一键并扩为一 case 多归因；`probe_reports` 原位增加空间、结论、缓存与复用字段，`probe_id` 继续作为 `attributionId`；自进化输入改为「空间 bad case → Session 关联 → 潜在 bad case（默认/自定义策略）→ 归因 → 聚类」；`probe_clusters` / `probe_cluster_probes` 保留原名；错误详情承载一个 bad case × 多条归因 | 七步流程；缓存键哈希由 workspace+bad case+对象身份+版本+策略版本+归因引擎生成；「非该对象问题」是一等结论。见 [07 §5.11–5.14](07-backend-implementation.md) · [06 §4.2/§5.8](06-database-design.md) |
+| D24 | 多 AI agent 轨迹（2026-11-16，V2） | **`runtime_key`（AI agent 类型）与 `source_type`（接入通道）分离；`TraceParserFactory` + `BaseTraceParser` 子类负责解析；`parser_version` 按 runtime 解释**。新增 runtime 只新增 parser 子类并注册；未知 runtime fail fast，不回退 Claude | 公共 normalization/replay/agent_tree 不因新增 runtime 修改；payload、source cursor、Session 和 API 都带 `runtime_key`。见 [07 §2.6](07-backend-implementation.md) · [06 §3.0.1](06-database-design.md) |
+| D25 | 执行流双视图（2026-11-16，V2） | **默认小窗口 lane DAG，结构树保留为切换视图**；bar=日志行区间、`A1/A1.1` 深度、跨 lane 重叠=并发、全部 lane 展开、缩放/平移；选中 case 保留全部分支并高亮，不过滤；时间线不恢复 | 替代旧 Vue Flow 节点树/`>8` 折叠/按问题过滤。见 [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
 
 ## Review 前必看：结论状态
 
-原 6 个 review 问题已固化：模拟推进见 D6，轨迹归一化触发见 D12，其余四项见 D16–D19。唯一外部边界是 [05 §10](05-api-design.md) 只是我方客户端契约；排期问题仍以 [10 §5](10-roadmap-draft.md) 为准。
+原 6 个 review 问题已固化：模拟推进见 D6，轨迹归一化触发见 D12，其余四项见 D16–D19。唯一外部边界是 [05 §10](05-api-design.md) 只是我方客户端契约；V2 排期已由 M7–M12 的 flow 树承接，不再以 10 号草案为准。
 
 ## 数据边界与演示数据（全局最重要的设计约束）
 
@@ -112,9 +114,9 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 
 ## 与仓库现状的关系
 
-- 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹接入与归一化）+ M4（问题与归因，外部表只读）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；当前 M1（纯前端原型）已由 [plans/14-15-ui-prototype](../14-15-ui-prototype/) 完成。
-- **V2 目标态**（2026-11-11 起）：多用户鉴权接入 + 多工作空间 + 总览 + 归因进自进化，按域并入 01–08：空间与鉴权见 [01 §4.4](01-architecture.md) · [05 §3.7/§4.16–§4.17](05-api-design.md) · [06 §3.10–3.12](06-database-design.md) · [07 §5.15/§8.2.1](07-backend-implementation.md) · [08 §4.2](08-frontend-implementation.md)；总览与 Session 列表见 [05 §3.10/§4.18](05-api-design.md) · [06 §7.5](06-database-design.md) · [08 §5.2.1/§6](08-frontend-implementation.md)；归因与七步流程见 [05 §3.6.2/§4.19–§4.20](05-api-design.md) · [06 §4.2/§5.8–5.10/§7.5](06-database-design.md) · [07 §5.11–5.14](07-backend-implementation.md) · [08 §7/§9/§10](08-frontend-implementation.md)。原型基线为 [plans/ui-prototype-v2](../ui-prototype-v2/)；D10（单组织共享）与 D6/D13/D14 中与 probe 输入相关的表述以 D21–D23 为准修订；当前实现与两代原型的差距见 [15](15-v1-v2-gap-analysis.md)。
+- 本方案对应 roadmap 的 **M2（平台骨架 + 登录鉴权）+ M3（轨迹接入与归一化）+ M4（问题与归因）+ M5（自进化，占位聚类/执行）+ M6（接真）** 的目标态设计；M7–M12 是 V2 的工作空间、证据、归因与 lane DAG 交付段，当前状态见 `.agents/flow/roadmap.md`。
+- **V2 目标态**（2026-11-11 起）：多用户鉴权接入 + 多工作空间 + 总览 + 归因进自进化，按域并入 01–08：空间与鉴权见 [01 §4.4](01-architecture.md) · [05 §3.7/§4.16–§4.17](05-api-design.md) · [06 §3.10–3.12](06-database-design.md) · [07 §5.15/§8.2.1](07-backend-implementation.md) · [08 §4.2](08-frontend-implementation.md)；总览与 Session 列表见 [05 §3.10/§4.18](05-api-design.md) · [06 §7.5](06-database-design.md) · [08 §5.2.1/§6](08-frontend-implementation.md)；归因与七步流程见 [05 §3.6.2/§4.19–§4.20](05-api-design.md) · [06 §4.2/§5.8–5.10/§7.5](06-database-design.md) · [07 §5.11–5.14](07-backend-implementation.md) · [08 §7/§9/§10](08-frontend-implementation.md)；多 runtime parser 见 [07 §2.6](07-backend-implementation.md) · [06 §3.0.1](06-database-design.md)；lane DAG 见 [08 §3](08-frontend-implementation.md) · [03 §8.3](03-frontend-architecture.md)。原型基线为 [plans/ui-prototype-v2](../ui-prototype-v2/)；D10（单组织共享）与 D6/D13/D14 中与 probe 输入相关的表述以 D21–D25 为准修订；当前实现与两代原型的差距见 [15](15-v1-v2-gap-analysis.md)。
 - 当前仓库已使用 `apps/web` Vue 3 + `apps/api` FastAPI + `packages/contracts` OpenAPI 生成物；V2 设计直接在当前实现上增量演进。
-- 本次 V2 设计落地后，`docs/architecture.md` 中单组织共享、归因单条与两层向导的现状描述需按 D21–D23 同步。
-- 文档确认后的后续动作：重排 roadmap / milestone / issue（`.agents/flow/`），把 `docs/architecture.md` 的技术栈表述同步为新架构，再逐 issue 实现。
+- 本次 V2 设计落地后，`docs/architecture.md` 中单组织共享、归因单条与两层向导的现状描述需按 D21–D25 同步。
+- 文档确认后的后续动作：M7–M12 已排入 `.agents/flow/`，按 issue 实现；本 PR 只更新设计与流程草案，`flow:sync` 在 review 后执行。
 - V1 截图继续作为既有页面基线；V2 新增页面与交互以 [V2 harness-evolution.html](../ui-prototype-v2/harness-evolution.html) 和 [design-v2.md](../ui-prototype-v2/design-v2.md) 为验收基准。

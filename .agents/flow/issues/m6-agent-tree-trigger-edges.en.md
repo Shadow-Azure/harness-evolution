@@ -36,7 +36,7 @@ The Agent execution graph renders permanent stubs from every trigger pill to the
 
 ## Design authority
 
-- [plans/fullstack-design/03-frontend-architecture.md §8.3](../../../plans/fullstack-design/03-frontend-architecture.md#83-agent-执行流图react-flow--vue-flow-的迁移方案): Vue Flow handles and edge paths keep the prototype semantics.
+- [plans/fullstack-design/03-frontend-architecture.md §8.3](../../../plans/fullstack-design/03-frontend-architecture.md#83-agent-执行流图lane-dag--结构树双视图): Vue Flow handles and edge paths keep the prototype semantics.
 - [plans/fullstack-design/08-frontend-implementation.md §3](../../../plans/fullstack-design/08-frontend-implementation.md#3-agent-执行流图componentsagent-tree): self and discovery problem cards use trigger-point anchors.
 - [plans/14-15-ui-prototype/harness-evolution.html](../../../plans/14-15-ui-prototype/harness-evolution.html): trigger pills are edge sources and problem cards stack vertically.
 - The linked sections and the confirmed prototype take precedence if implementation details conflict.

@@ -55,7 +55,7 @@ One case can now have multiple revision-scoped attributions.
 ## Dependencies and boundary
 
 - Dependencies: m7-08, m10-05, m11-01
-- Boundary: no graph layout changes.
+- Boundary: execution-flow DAG/structure-tree layout is owned by m11-07; this issue does not change it.
 
 ## Verification
 

@@ -33,15 +33,17 @@ def create_app(settings: Settings) -> FastAPI:
 **边界（2026-10-23）**：
 
 - 第三方脚本只负责把有问题的 session 轨迹写进 MySQL 的 `trajectory_payloads`（每个 agent 一行，JSONL 原文）。
-- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `(root_session_id, agent_id)` 关联 payload。
+- 本服务**不再扫描 `he_src_*` 源表、不存第二份 payload**；`source_records` 只是处理索引，通过 `(runtime_key, root_session_id, agent_id)` 关联 payload。
 - 上游接口 pull 仍保留：拉到 payload 后先 upsert 到 `trajectory_payloads`，再走同一条归一化管线。
 
 ### 2.1 职责划分
 
 | 文件 | 职责 |
 |---|---|
-| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload + `agent_meta`；按 `(root_session_id, agent_id)` 取原文 |
-| `normalize.py` | JSONL 行数组 → 用户输入锚点 / 节点统计 / Agent 会话树触发点（消息与内容块只在内存中） |
+| `payloads.py` | 读 `trajectory_payloads`；pull 时 upsert payload + `agent_meta`；按 `(runtime_key, root_session_id, agent_id)` 取原文 |
+| `parsers/base.py` | `BaseTraceParser` 模板方法：JSONL 帧、坏行 issue、隐私边界、统一计数与 finalize |
+| `parsers/factory.py` | `TraceParserFactory`：runtime_key → parser 子类，fail-fast 注册与未知 runtime 错误 |
+| `parsers/claude_code.py` | `ClaudeCodeTraceParser`：Claude 的 record/meta/event/evidence 解释 |
 | `agent_tree.py` | 子转录与主会话关联（meta.toolUseId / `agentId`），组装 agent 树、`agent_events` 与会话统计 |
 | `service.py` | 找出待处理 payload → 逐条归一化 → 幂等写业务表 → 更新 `source_records.processed_*` 与 `job_runs.progress` |
 | `scheduler.py` | 每 `HE_SYNC_INTERVAL_SECONDS` 检查 pending；抢 `sync_lock` 后提交 `sync` 任务；与手动触发共用锁 |
@@ -53,12 +55,13 @@ def create_app(settings: Settings) -> FastAPI:
 SELECT tp.*
 FROM trajectory_payloads tp
 LEFT JOIN source_records sr
-  ON sr.root_session_id = tp.root_session_id
+  ON sr.runtime_key = tp.runtime_key
+ AND sr.root_session_id = tp.root_session_id
  AND sr.agent_id = tp.agent_id
 WHERE sr.id IS NULL
    OR sr.processed_hash IS NULL
    OR sr.processed_hash <> tp.content_hash
-   OR sr.parser_version < :current_parser_version
+   OR sr.parser_version < :current_parser_version_for_runtime
 ORDER BY tp.updated_at
 ```
 
@@ -66,13 +69,13 @@ ORDER BY tp.updated_at
 
 | 条件 | 动作 |
 |---|---|
-| `source_records` 无该 `(root_session_id, agent_id)` | 插入处理索引，归一化并写业务表 |
-| `processed_hash = content_hash` 且 `parser_version` 相同 | 跳过（累加 `skipped`） |
+| `source_records` 无该 `(runtime_key, root_session_id, agent_id)` | 插入处理索引，归一化并写业务表 |
+| `processed_hash = content_hash` 且该 runtime 的 `parser_version` 相同 | 跳过（累加 `skipped`） |
 | hash 不同 | 删除该 agent 派生的行（`agent_events→agents`；主 agent 另删 `user_turns`），重新归一化并重算会话统计 |
-| 解析器版本升级 | 即使 hash 相同也重放 |
+| 该 runtime 的解析器版本升级 | 即使 hash 相同也重放 |
 | payload 侧删除 | 首版保留业务数据并记日志（不级联删除） |
 
-- 不再维护 `sync_state.watermark`；`source_records` 的 `processed_hash/parser_version` 就是游标。
+- 不再维护 `sync_state.watermark`；`source_records` 的 `processed_hash/parser_version` 就是游标，`parser_version` 按 runtime 解释。
 - `semantics`：一个 agent 一行；`root_session_id` 相同即同一棵 Agent 会话树；子 agent 的 `sessionId` 也是 root，`agent_id` 才是区分键。
 
 ### 2.2.1 定时触发与单飞锁
@@ -113,6 +116,8 @@ async def trigger_sync(source: str) -> TriggerResult:
 - 多实例：`sync_lock` 表承担跨进程互斥；当前单实例再加 `asyncio.Lock`。
 
 ### 2.3 归一化（行数组 → 中间结构）
+
+`source_records.runtime_key` 决定使用的 parser；`ClaudeCodeTraceParser` 是当前唯一生产实现。`ParsedTranscript` 的公共字段必须 runtime 无关，provider 私有字段只放 `agent_meta`。
 
 ```python
 @dataclass
@@ -199,15 +204,16 @@ agent 写入时一并落 `model` / `requested_model` / `name` / `skill_name` / `
 
 ```python
 async def run_sync(job_id: str) -> SyncResult:
-    pending = await payloads.list_pending(CURRENT_PARSER_VERSION)  # §2.2 查询
+    pending = await payloads.list_pending(parser_versions_by_runtime())  # §2.2 查询
     for i, p in enumerate(pending):
         async with db.transaction():
             sr = await source_records.ensure(p)             # 无则插入处理索引
-            raw = await payloads.get(p.root_session_id, p.agent_id)  # 从另一张表取 JSONL
-            parsed = normalize(raw)                         # 纯 CPU，线程池
+            raw = await payloads.get(p.runtime_key, p.root_session_id, p.agent_id)
+            parser = TraceParserFactory.create(p.runtime_key)
+            parsed = parser.normalize(raw)                  # 纯 CPU，线程池
             upsert_derived(sr, parsed)                      # 业务表
             await source_records.mark_processed(
-                sr.id, p.content_hash, CURRENT_PARSER_VERSION, job_id)
+                sr.id, p.content_hash, parser.parser_version, job_id)
         await jobs.update_progress(job_id, (i + 1) / max(len(pending), 1))
 
 async def pull(job_id: str, session_ids: list[str] | None = None,
@@ -224,11 +230,92 @@ async def pull(job_id: str, session_ids: list[str] | None = None,
 - 归一化与 `source_records` 更新同事务；业务表只写 `session_families / agents / user_turns / agent_events`，消息与内容块不落库；payload 是外部只读表，不在事务里改（pull 的 upsert 除外）。
 - 大 payload 不经过 SSE/日志。
 
-### 2.6 测试点
+### 2.6 多 runtime parser 工厂
+
+`runtime_key` 是 AI agent 类型（`claude-code`、`codex`、...），与 `source_type`（`http_api` / `script` 接入通道）分开。`trajectory_payloads`、`source_records`、`session_families` 都带 `runtime_key`；历史行回填 `claude-code`。
+
+```text
+app/service/acquisition/parsers/
+  __init__.py       # 自动发现并 import 子模块，触发注册
+  base.py           # BaseTraceParser + ParseContext + TracePayload
+  factory.py        # TraceParserFactory
+  claude_code.py    # ClaudeCodeTraceParser
+  <runtime>.py      # 新 runtime 只加这一文件
+```
+
+```python
+class BaseTraceParser(ABC):
+    runtime_key: ClassVar[str]
+    parser_version: ClassVar[int]
+
+    def normalize(self, payload: TracePayload) -> ParsedTranscript:
+        ctx = ParseContext(payload)
+        for line_no, line in enumerate(self.iter_lines(payload.content), 1):
+            record = self.decode_record(line, ctx, line_no)
+            if record is not None:
+                self.consume_record(record, ctx, line_no)
+        return self.finalize(ctx)
+
+    @abstractmethod
+    def consume_record(self, record, ctx, line_no): ...
+
+    @abstractmethod
+    def parse_agent_meta(self, meta) -> AgentMetaFacts: ...
+
+    def extract_evidence(self, payload: TracePayload) -> tuple[TraceEvidence, ...]:
+        return ()
+```
+
+```python
+class TraceParserFactory:
+    _parsers: ClassVar[dict[str, type[BaseTraceParser]]] = {}
+
+    @classmethod
+    def register(cls, parser_cls):
+        key = parser_cls.runtime_key
+        if key in cls._parsers:
+            raise RuntimeError(f"duplicate trace runtime: {key}")
+        cls._parsers[key] = parser_cls
+        return parser_cls
+
+    @classmethod
+    def create(cls, runtime_key: str) -> BaseTraceParser:
+        try:
+            return cls._parsers[runtime_key]()
+        except KeyError as exc:
+            raise UnsupportedTraceRuntime(runtime_key) from exc
+```
+
+```python
+@TraceParserFactory.register
+class ClaudeCodeTraceParser(BaseTraceParser):
+    runtime_key = "claude-code"
+    parser_version = 1
+
+    def consume_record(self, record, ctx, line_no):
+        ...  # 现有 Claude normalize 主体
+
+    def parse_agent_meta(self, meta):
+        ...  # Claude meta.json
+```
+
+- `BaseTraceParser` 负责 JSONL 帧、坏行 issue、隐私边界、计数与 finalize；子类只解释 record/meta/event/evidence。
+- 子类用 `@TraceParserFactory.register` 自注册；`parsers/__init__.py` 自动 import 子模块，新增文件不需要改工厂。
+- 未知 runtime 产生稳定 `UNSUPPORTED_RUNTIME`，不能静默 fallback 到 Claude。
+- `parser_version` 来自 parser 类；`source_records.parser_version` 只与同一 `runtime_key` 比较。升级一个 runtime 不重放另一个。
+- `normalize_transcript(...)` 保留为兼容 facade，默认 `claude-code`；新调用方应显式传 `runtime_key`。
+- `extract_evidence()` 是 M9 的可选接口：Claude 返回 agent prompt、Skill body、文件读取 hash；其他 runtime 可先返回空元组。
+
+新增 runtime 的完整步骤：新增 `parsers/<runtime>.py`，继承 `BaseTraceParser`，声明 `runtime_key/parser_version`，实现 `consume_record`/`parse_agent_meta`，加 `@TraceParserFactory.register`，补 fixture 与 factory/replay 测试。公共 normalization、replay、agent_tree 不改。
+
+### 2.7 测试点
 
 - 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。
+- 同一 runtime 的 parser_version 升级 → 只重放该 runtime；另一个 runtime 不受影响。
+- 新增 fake runtime 子类并注册 → factory/replay 能选中，公共 normalizer 无改动。
+- 未知 runtime → `UNSUPPORTED_RUNTIME`，不进入 Claude parser。
 - 统计四列（`messages_count / tokens_total / tools_count / errors_count`）与 payload 实际内容一致；会话值为各 agent 求和。
-- `trajectory_payloads` 新增一行 → 只处理该 `(root_session_id, agent_id)`，其他 agent/session 不受影响。
+- `trajectory_payloads` 新增一行 → 只处理该 `(runtime_key, root_session_id, agent_id)`，其他 agent/session 不受影响。
 - payload 内容变化 → 该 agent 派生的行被重写，`processed_hash` 更新。
 - `parser_version` 升级 → 全部重放，业务表结果一致。
 - 子 payload 缺 `parent_tool_use_id` → agent 仍入库，警告可见。
@@ -237,12 +324,12 @@ async def pull(job_id: str, session_ids: list[str] | None = None,
 - 坏行 → 其余行入库，`errors` 有记录。
 - pull 返回的 payload 先落 `trajectory_payloads` 再归一化，不重复存。
 
-### 2.7 跨库与外部表注意
+### 2.8 跨库与外部表注意
 
 - `trajectory_payloads` 由外部脚本/pull 写入；本服务除 pull 外**只读**，不在 DDL 里建外键指向它（跨服务边界）。
 - 所有写操作走 `Database.transaction()`；幂等更新用事务内先删后写。
 - 时间戳应用生成 Asia/Shanghai（UTC+8）；不在 DDL 用 `NOW()` 默认值；API 序列化带 `+08:00`。
-- `source_records.id` 用 BIGINT 自增（外部 payload 表按 `(root_session_id, agent_id)` 关联，不需要应用生成 id）。
+- `source_records.id` 用 BIGINT 自增（外部 payload 表按 `(runtime_key, root_session_id, agent_id)` 关联，不需要应用生成 id）。
 
 ## 3. 会话查询（`service/sessions`）
 
@@ -283,7 +370,7 @@ async def aggregate_session_stats(root_session_id: str) -> SessionStats:
 
 - 增量重放：单个 agent 重新归一化后，更新它自己的四列统计，再重算该会话汇总；不需要读取其他 agent 的 payload。
 - `user_turns` 只保留用户输入锚点（`prompt_text` + `line_no`/`message_offset`），供未来在 Agent 执行流图展示用户输入；不含轮级统计。
-- 证据原文按 `(root_session_id, agent_id)` 从 `trajectory_payloads` 回读；不恢复消息/内容块明细表。
+- 证据原文按 `(runtime_key, root_session_id, agent_id)` 从 `trajectory_payloads` 回读；不恢复消息/内容块明细表。
 
 ## 4. 问题与归因（`service/bad_cases`，归因读自 `bad_case_analysis` + `probe_reports`）
 
@@ -1343,7 +1430,7 @@ Session 列表最新 10 + total/pendingSessions                （05 §4.18 / 08
 | potential | 默认策略两支并集、custom 5 种合法组合、`sameObjectOnly`、命中原因优先级、关联 Session 只含有触发点的 |
 | attribution | 规则引擎四类结论、缓存命中/关闭、并发同键 upsert、`reused_count` 递增、`non_target` 不进簇 |
 | evolution | 状态机边界（七 step）、占位聚类确定性、簇与成员落库、step 不可读 404、自动逐轮、终评字段、`/retry` 仅 blocked；engine 工厂 fail fast（未知 `engine_key`）、stages 契约（`ClusterOnlyEngine` 收到 `evolution_advance/apply/finalize/retry` → `ConfigError`；每个引擎 `stages()` 与 `KIND_TO_METHOD` 键一致）、`gateway()` 默认值来自 `run.eval_config`、迭代钩子可用 fake 子类单测 |
-| acquisition | 待处理判定（hash/parser_version）、坏行隔离、按 `(root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话、普通 skill 不建 `agents` 行、forked skill 恰好一行且 `skill_name` 正确、整树统计四列与 payload 一致 |
+| acquisition | 待处理判定（runtime + hash + per-runtime parser_version）、坏行隔离、按 `(runtime_key, root_session_id, agent_id)` 取 payload、子转录挂接、145h 会话、普通 skill 不建 `agents` 行、forked skill 恰好一行且 `skill_name` 正确、整树统计四列与 payload 一致 |
 | sync scheduler | 单飞锁：scheduler 与手动并发只产生一个 job；TTL 过期回收；无 pending 不提交；完成后释放 |
 | session_families | 4 种排序、状态筛选、根会话 ID 精确查询、整树聚合统计（各 agent 求和）；问题数按会话聚合（无记录=0、上报后列表立即可见） |
 | bad_cases | 列表/详情、session 归属 409、`metaData` 原样返回、未分析占位 |

@@ -34,12 +34,11 @@
 | 右栏头：状态点 + 标题 + meta（开始时间/根会话 ID/repo/时长/模型/状态徽章） | F4 | [05 §3.1](05-api-design.md) · [13 §3.4](13-root-session-id.md) |
 | 右栏 CTA：打开错误详情（原「打开时间线」随 F7 裁撤移除） | F4 | [08 §1](08-frontend-implementation.md) · [08 §5.4](08-frontend-implementation.md) |
 | 9 项统计条（用户轮次/消息/工具/失败/子 agent/Skill/Token/失败密度/问题密度） | F4 | [05 §3.1](05-api-design.md) |
-| Agent 执行流图：图例（主会话/子 agent/Workflow/Skill 触发/Subagent 触发/×N message 间隔/问题） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
-| Agent 执行流图：主会话与子 agent 节点、节点链、Skill/Subagent/Workflow 触发药丸 | F5 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
-| Agent 执行流图：×N message 间隔节点（`messagesCount` + `messageOffset`） | F5 | [08 §3.2](08-frontend-implementation.md)（`chainOf`） |
-| Agent 执行流图：问题卡（`#badCaseId 截短 + reason`）`self` / `discovery` 两类锚定规则 | F5 | [08 §3.2](08-frontend-implementation.md)（锚定规则） |
-| Agent 执行流图：>8 子 agent 折叠为"N 个子 agent · 点击展开" | F5 | [08 §3.2](08-frontend-implementation.md)（折叠规则） |
-| Agent 执行流图：滚轮缩放 / 拖拽平移 / 右下角 Controls / 自适应 | F5 | [08 §3.3](08-frontend-implementation.md) |
+| Agent 执行流图：默认 lane DAG（bar=日志行区间、A1/A1.1 深度、跨 lane 并发、BC marker） | F5 | [03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md) |
+| Agent 执行流图：全部 lane 展开，小窗口滚轮缩放 / 拖拽平移 / 适应 / 1:1 | F5 | [08 §3](08-frontend-implementation.md) |
+| Agent 执行流图：结构树切换、选中态与深链共享 | F5 | [08 §3](08-frontend-implementation.md) |
+| Agent 执行流图：问题卡 `self` / `discovery` 锚定，DAG 高亮 BC 而不裁剪分支 | F5/F8 | [05 §3.2](05-api-design.md)（`events`）· [08 §3.2](08-frontend-implementation.md) |
+| 时间线页与 `打开时间线` 入口 | ~~F7~~ | **已裁撤**：V2 不实现时间线；执行流只保留 DAG/结构树 |
 | 问题列表：`badCaseId` 截短、reason、状态、上报对象、metaData 事实 chips | F6 | [05 §3.4](05-api-design.md) · [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：点击「定位 ↗」→ 画布滚动 + 高亮 + 聚焦 | F6 | [08 §3.4](08-frontend-implementation.md) |
 | 问题列表：`badCaseId` 点击新窗口打开问题描述 tab | F2/F6 | [05 §5](05-api-design.md) |
@@ -47,7 +46,7 @@
 | 错误详情左栏：错误数量、session 标题/根会话 ID、返回 Session | F8 | [08 §7](08-frontend-implementation.md) · [13 §3.1](13-root-session-id.md) |
 | 错误详情左栏：可折叠 bad case 组（ID/状态/上报对象/归因数）+ 组内归因子项分页 | F8/F27 | [05 §3.9/§4.19](05-api-design.md) · [08 §7.2](08-frontend-implementation.md) |
 | 错误详情右栏头：meta（含根会话 ID）、返回 Session（原「打开时间线」移除） | F8 | [08 §7.1](08-frontend-implementation.md) · [13 §3.2](13-root-session-id.md) |
-| 执行流面板：未选时显示全部问题，选中时只留该问题卡 | F8 | [08 §7.2](08-frontend-implementation.md) |
+| 执行流面板：未选时完整；选中时保留全部并发分支并高亮对应 BC/节点，不过滤整棵树 | F8 | [08 §7.2](08-frontend-implementation.md) |
 | 双 Tab：问题描述 / 归因分析 | F8 | [08 §7.3](08-frontend-implementation.md) |
 | 问题描述：badCaseId、reason、状态 chip、metaData facts、上报对象 | F8 | [05 §3.4](05-api-design.md) |
 | 归因：可归因 / 非该对象问题 / 尚未归因 | F8/F27 | [05 §3.9/§4.19](05-api-design.md) · [08 §7.3](08-frontend-implementation.md) |
@@ -129,22 +128,23 @@
 
 | # | 风险点 | 为什么重要 | 设计中的对策 |
 |---|---|---|---|
-| R1 | React Flow → Vue Flow 迁移 | Agent 执行流图是原型最复杂的部分；Handle/边 API 有差异 | 布局几何纯 TS 迁移；先做 `demo-nested` 最小树验收；`×N` 改为 message 口径（[03 §8.3](03-frontend-architecture.md)） |
+| R1 | lane DAG 与结构树双视图 | 原型默认已是 lane DAG，旧 Vue Flow 节点树/折叠/过滤会偏离目标 | DAG 用纯 TS laneModel + transform 画布；Vue Flow 只保留结构树；全部 lane 展开，选中只高亮（[03 §8.3](03-frontend-architecture.md) · [08 §3](08-frontend-implementation.md)） |
 | R2 | 多归因关联与缓存 | 1:1 残留会丢失对象版本结论，错误缓存键会跨空间串结果 | `bad_case_analysis` 一对多 + `probe_reports.cache_key` 唯一；迁移与并发 upsert 测试（[06 §4.2](06-database-design.md)） |
 | R3 | SSE 与 REST 的一致性 | 事件与查询结果可能短暂不一致 | 事件只做通知/追加；run 事件从 `evolution_run_events` 回放，REST 是事实源（[04 §7.3](04-backend-architecture.md)） |
 | R4 | 七步状态机 | 前端推算会与后端漂移 | 状态由后端算，`status/clickable` 直出（[07 §5.1](07-backend-implementation.md)） |
 | R5 | 契约生成物 | 手工同步必漂移 | OpenAPI 快照 + `contract:check` CI（[05 §6](05-api-design.md)） |
 | R6 | 深链 ID 校验 | 前缀猜 session 会串会话 | 解析后用 `sessionId` 校验，不匹配报 409（[05 §5](05-api-design.md)） |
-| R7 | 归一化幂等与重放 | 重复处理会脏数据 | `(root_session_id, agent_id)` + payload hash + `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
+| R7 | 归一化幂等、runtime 与重放 | 重复处理会脏数据；不同 runtime 的版本不能混比 | `(runtime_key, root_session_id, agent_id)` + payload hash + per-runtime `parser_version`；事务内先删后写（[07 §2.2](07-backend-implementation.md)） |
 | R8 | SQLite / MySQL 行为差异 | 本地绿、切库红 | 双库 CI（`-m mysql`）+ SQL 纪律（不用方言语法、索引列 VARCHAR、JSON 不查 SQL），见 [06 §1.1](06-database-design.md) |
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
-| R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置（[07 §2.6](07-backend-implementation.md)） |
+| R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置；parser 工厂按 runtime 选择（[07 §2.7](07-backend-implementation.md)） |
 | R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend + fast-forward、拒绝删 candidate（run 分支不 reset）；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |
 | R15 | 异常详情泄露密钥/环境/密码 | 安全风险 | `error.detail` 脱敏（HE_*、token、URL 凭据、`password`/`password_hash`）并截断 8KB；接口只返回脱敏内容；密码与哈希不写任何 payload 列；commit message 同样脱敏且只含 ID（[06 §3.8](06-database-design.md) · [07 §5.8](07-backend-implementation.md)） |
 | R16 | 定时与手动同时触发同步 | 重复处理/并发写同一 session | `sync_lock` 单飞 + TTL；手动幂等返回已有 `jobId`；`job_runs` 仅一个活跃 sync |
+| R17 | 多 AI agent runtime 接入 | 把新 agent 结构塞进 Claude normalizer 会形成不可维护的 if/else，并混用版本 | `TraceParserFactory` + `BaseTraceParser` 子类；`runtime_key` 全链路；per-runtime parser version；未知 runtime fail fast（[07 §2.6](07-backend-implementation.md)） |
 | R17 | 评测接口长时间不返回/超时 | 单 worker 被占、页面误以为卡死 | `eval_poller` 每 5min 轮询、`next_poll_at` 落库、超时置 `blocked(eval)`；`/retry` 重新提交 |
 
 ## 4. 确认后的下一步

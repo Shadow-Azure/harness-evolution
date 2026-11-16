@@ -17,7 +17,7 @@
 |---|---|
 | 应用壳 | 亮色设计令牌、顶栏双入口、数据同步浮层、Session 与自进化的信息密度一致 |
 | Session 页 | 左侧列表、筛选、排序、状态点、统计条、双密度条、右侧概览与 Agent 执行流均保留 |
-| 错误详情 | 左右分栏、执行流按问题过滤、问题描述与归因分析双 Tab、深链恢复选中态均保留 |
+| 错误详情 | 左右分栏、执行流问题定位、问题描述与归因分析双 Tab、深链恢复选中态均保留 |
 | 自进化 | 运行分组、目标/版本/时间段筛选、命中确认、仅聚类入口、六步详情、对象配置和执行日志均有实现骨架 |
 | 权限 | 登录、首登改密、access/refresh token、路由守卫与管理员操作边界已实现 |
 
@@ -25,7 +25,7 @@
 
 | 差异 | 当前实现 | 原因 |
 |---|---|---|
-| 时间线 | 原型保留“打开时间线”按钮；当前实现不提供 | V1 设计已裁撤完整时间线，只保留 `user_turns` 输入锚点 |
+| 时间线 | 原型保留“打开时间线”按钮；当前实现不提供 | V1 设计已裁撤完整时间线，只保留 `user_turns` 输入锚点；V2 原型入口应删除 |
 | ID 展示 | 原型使用 `I-*` / `R-*` 展示号；当前使用真实 ID 并截短 | 真实 ID 深链避免展示号与业务主键双轨 |
 | 根会话 ID | 当前列表卡与概览均展示 root session ID | `13-root-session-id.md` 的增补要求 |
 | 模拟推进 | 原型有演示按钮；当前不提供 | 生产流程由后台任务自动推进 |
@@ -38,7 +38,8 @@
 | 归因粒度 | 一个 bad case 仍只有一条 `bad_case_analysis → probe_reports` 结果 | `bad_case_analysis` 改为多行关联，错误详情承载多条对象版本归因 |
 | Session 首屏 | 默认请求 `limit=100`，搜索为防抖查询 | 默认最新 10，只有回车才重新查询 |
 | 密度文案 | 当前 UI 显示“/百消息”，V1 原型显示“/百步” | V2 统一用户文案为“步骤”，后端字段可继续使用现有 message 分母；若产品决定改口径，必须同时改设计、API 字段和迁移，不能只改标签 |
-| 目标目录容错 | 一个不可访问仓库会让 `GET /catalogs/targets` 整体 422 | 对象配置列表与版本读取拆开；单个版本失败只影响对应对象的版本控件 |
+| 执行流视图 | 当前是 Vue Flow 节点树，`>8` 子 agent 折叠，选中 case 过滤分支 | V2 默认 lane DAG：日志行区间、`A1/A1.1` 深度、跨 lane 并发、全部 lane 展开、小窗口缩放/平移；结构树保留为切换；选中只高亮不裁剪 |
+| 多 runtime parser | 只有 Claude normalizer，`source_type` 与全局 parser_version | `TraceParserFactory` + `BaseTraceParser` 子类；`runtime_key` + per-runtime parser_version；新 runtime 只注册子类 |
 | 用户与权限界面 | 当前只有用户 API 与顶部用户菜单 | V2 增加空间成员和角色管理；全局用户目录仍不开放注册 |
 | 占位执行能力 | patch 内容、评测和终评为占位；Git candidate 链路为真实骨架 | V2 不改变占位边界，但 run 输入、候选、归因和聚类改为真实持久化 |
 
@@ -152,13 +153,15 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 
 ### 9.2 对象 revision 与模型身份
 
-- 真实 Skill 列表只提供名称与内容摘要时，对象身份使用 `object_revision=digest:<sha>`；有明确 tag 时使用 `object_revision=tag:<tag>`；两者都缺失才是 `unknown`。
+- 真实 Skill 列表可能只提供名称、内容摘要和 16 位不透明 digest；Skill body 以 `isMeta + sourceToolUseID` 注入。对象身份优先使用 `path + body hash`，digest 只作 fallback；有明确 tag 时使用 `object_revision=tag:<tag>`，两者都缺失才是 `unknown`。
+- Agent 定义从 subagent 的 `prompt_snapshot.systemPrompt[0]` / `api-request-shape.system` 提取 body；`agentType + isBuiltIn + body hash` 构成 agent revision。通用权限提示、Notes、token budget 必须从 hash 中排除。
 - API 的 `targetVersion` 保留为选择入口，服务端必须解析为规范化 `objectRevision` 后再做 Session 关联与缓存键计算，不能只比较名称。
-- `runtime_version`、`parser_version`、`requested_model`、`reported_model` 分列保存；模型口径冲突作为 evidence warning 返回，不用任一字段覆盖另一字段。
+- `runtime_key`、`parser_version`、`runtime_version`、`requested_model`、`reported_model` 分列保存；`parser_version` 按 runtime 解释，模型口径冲突作为 evidence warning 返回，不用任一字段覆盖另一字段。
 
 ### 9.3 Skill、Agent 与知识库触发
 
 - 显式 `Skill`、`Agent`、`Workflow` tool call 继续分别映射 `kind=skill|agent|workflow`；模型消息上的 `attributionSkill` 作为补充证据，不能替代显式触发事件。
+- Skill body 与 agent 定义是版本证据，不是可进化对象正文；只保存 path/hash/sourceToolUseID，不保存全文。
 - 知识库文档使用 `kind=knowledge`，只识别工作空间配置的知识库根目录、知识库 Provider 或 Collection 返回的文档；普通源码 `Read` 不自动算作知识库触发。
 - 知识事件保存 `document_id`、`document_revision`、`source_path`、`retrieval_kind`、`tool_use_id` 与触发坐标；不保存文档全文或完整检索 chunk。
 - `object_type` 从 `skill|agent` 扩为 `skill|agent|knowledge` 只在知识事件、target 配置与 PotentialMatcher 同一切片内生效，避免某一层先写入不可查询的枚举值。

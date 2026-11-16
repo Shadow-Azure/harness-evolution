@@ -78,10 +78,12 @@ erDiagram
   "short": "AI agent + 视频播放结合的开源产品",
   "title": "AI agent + 视频播放结合的开源产品调研",
   "repo": "llm-wiki",
+  "runtimeKey": "claude-code",
   "model": "glm-5.3",
   "startedAt": "2026-09-05T17:17:53+08:00",
   "durationSeconds": 63420,
   "status": "partial",
+  "executionOutcome": "completed",
   "skills": ["deep-research"],
   "stats": {
     "userTurns": 12, "messages": 1103, "tools": 197, "errors": 4,
@@ -92,6 +94,7 @@ erDiagram
 ```
 
 - `status`：`ok`（完成）/ `partial`（有失败）/ `fail`（整体失败）。密度只由后端计算，前端不算（避免口径漂移）。
+- `runtimeKey`：产生该 Session 的 AI agent runtime；`sourceType` 不入 Session DTO。`executionOutcome` 是 M9 的执行闭环，独立于解析 `status`。
 - `short`：列表卡标题（截断展示）；`title`：完整标题。两者都由首个用户提问派生，`short` 允许为空（前端回退到 title）。
 - `stats.badCases` 是**查询时**按会话聚合 `bad_cases` 的计数（问题侧外部写入、随上报/删除实时变化），不落 `session_families` 列；`stats` 中其余计数来自同步聚合列（整棵树口径，见 [06 §3.2](06-database-design.md)）。
 - 示例的 `agents[]` 是节选，`stats` 为整树口径（含未展示节点），数值仅示意，不要用可见行手算。
@@ -101,11 +104,13 @@ erDiagram
 ```json
 {
   "sessionId": "cb819c5b-...",
+  "runtimeKey": "claude-code",
   "agents": [
     {
       "agentId": "cb819c5b-...",
       "parentAgentId": null, "kind": "main", "agentType": null,
       "taskKind": null, "spawnDepth": 0,
+      "executionOutcome": "completed", "endReason": "end_turn",
       "label": "主会话", "lines": 765, "messagesCount": 375,
       "events": [
         { "line": 24, "kind": "skill", "name": "deep-research", "messageOffset": 0 },
@@ -179,14 +184,12 @@ erDiagram
 - **`agents` 是扁平列表**，不再有 `main/subs/children` 嵌套；前端用 `parentAgentId` 建树。`main` 也作为一行，`parentAgentId=null`。
 - **结构关系**：`parentAgentId` 指向父节点；`toolUseId` 指向父节点中触发该节点的调用，用于画布边锚点。workflow 的 `toolUseId` 填父级 workflow 调用；workflow-subagent 允许为 `null`。
 - **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / 自定义 teammate / workflow / workflow-subagent`；`taskKind` 是 `in_process_teammate / forked_skill / null`；`spawnDepth` 来自 meta.spawnDepth。workflow 节点没有独立 transcript，`lines=0`；forked skill 是 `kind=subagent` + `taskKind=forked_skill`、`agentType=null`，靠 `label` 显示 skill 名。
+- **runtime 与执行闭环**：`runtimeKey` 在根级出现；`executionOutcome/endReason` 在 agent 级出现，分别表达 runtime 和 M9 的执行闭环。定义/文件证据字段（`objectRevision`、`definitionHash`）只在存在时返回，不在前端拼接。
 - **普通 skill 不是节点**：只以父节点 `events[]`（`kind=skill`）出现；forked skill 同时有父节点的 skill 事件和自己的节点。
 - **`label` 必填、由后端算**：主节点固定“主会话”；其余按 `name` → `skill_name`（forked skill）→ `agentType` → `kind` 取。前端不重算显示名。
 - `events[].name` 是触发调用名，不是类型；workflow 名可以与 skill 同名（原型 line 30 的 `deep-research` 就是 workflow 名，line 24 的 `deep-research` 是 skill 名）。
-- **`×N` 间隔**：`messagesCount` 是该节点自己的 assistant message 总数；`events[].messageOffset` 是该触发点之前已经出现的 assistant message 数。前端计算：
-  - 首个触发点之前：`first.messageOffset`
-  - 两个触发点之间：`next.messageOffset - current.messageOffset`
-  - 尾部：`messagesCount - last.messageOffset`
-- `line` 仍保留，用于显示 `L30`、定位/调试；`×N` 不再用行号差。
+- **`×N` 双口径**：`line` 与 `messageOffset` 都保留。V2 lane DAG 的 `×N 无触发` 是**日志行区间**，用 `line` 计算 bar 宽度；结构树的 message gap 仍用 `messageOffset`，不得把两者混为同一个 N。
+- `line` 用于 lane DAG 的 0–100 逻辑轴、`L30` 标签和定位；`messageOffset` 只服务结构树的 message gap。
 - 示例只展示 workflow 的 1 个 `workflow-subagent`，实际原型有 56 个；扁平列表省略其余。
 - **问题卡锚点**：API 只暴露 `anchor.agentId + anchor.eventIndex`，不暴露上报者 session。服务端以 `bad_case_agent_id`（上报人 A）为起点计算宿主：`self + agent` → A 节点（`eventIndex=-1`）；`self/discovery + skill` → A 中该 skill 的最后一次触发；`discovery + agent` → A 的父节点 P 中调用 A 的 `agent` 事件（用 `A.toolUseId` 匹配）。`eventIndex=-1` 表示未匹配到触发点，前端挂到宿主节点本身。
 - `anchor.eventIndex` 是目标 agent `events[]` 的 0-based 下标，不是 line，也不是 messageOffset。
@@ -898,7 +901,7 @@ erDiagram
 - 归因进度改由 `bad_case_analysis JOIN probe_reports` 聚合（关联数、`attributed` / `non_target` 数）；V1 字段 `badCaseAnalysis` 保留一个兼容版本后删除。
 - 前端“数据同步”浮层按问题数量 → 问题轨迹 → 会话归一化 → 归因分析排列，只消费本接口。
 
-- 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads` 的 `(root_session_id, agent_id)` 表达，待处理状态由 `source_records.processed_*` 表达。
+- 不再有 `watermark` / `sourceType` / `GET /acquisition/sources`：来源由 `trajectory_payloads` 的 `(runtime_key, root_session_id, agent_id)` 表达，待处理状态由 `source_records.processed_*` 表达。
 - `GET /api/jobs/{jobId}` → 通用任务状态：
 
 ```json

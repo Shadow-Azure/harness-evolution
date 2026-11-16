@@ -36,7 +36,7 @@ Agent 执行流图把每个触发 pill 到 Agent 盒边的装饰线作为常驻 
 
 ## 设计依据
 
-- [plans/fullstack-design/03-frontend-architecture.md §8.3](../../../plans/fullstack-design/03-frontend-architecture.md#83-agent-执行流图react-flow--vue-flow-的迁移方案)：Vue Flow handle 与边路径保持原型语义。
+- [plans/fullstack-design/03-frontend-architecture.md §8.3](../../../plans/fullstack-design/03-frontend-architecture.md#83-agent-执行流图lane-dag--结构树双视图)：Vue Flow handle 与边路径保持原型语义。
 - [plans/fullstack-design/08-frontend-implementation.md §3](../../../plans/fullstack-design/08-frontend-implementation.md#3-agent-执行流图componentsagent-tree)：self 与 discovery 问题卡按触发点锚定。
 - [plans/14-15-ui-prototype/harness-evolution.html](../../../plans/14-15-ui-prototype/harness-evolution.html)：触发 pill 是真实边的源锚点，问题卡纵向堆叠。
 - 实现冲突时以上链接章节和已确认原型为准。
