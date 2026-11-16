@@ -73,6 +73,19 @@ function shanghaiDate(offsetDays = 0) {
   }).format(now);
 }
 
+function shiftDate(day, offsetDays) {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, date + offsetDays))
+    .toISOString()
+    .slice(0, 10);
+}
+
+function weekStart(day) {
+  const [year, month, date] = day.split("-").map(Number);
+  const weekday = (new Date(Date.UTC(year, month - 1, date)).getUTCDay() + 6) % 7;
+  return shiftDate(day, -weekday);
+}
+
 async function loginCookie() {
   const response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
@@ -420,8 +433,8 @@ test("m8-04 overview lands on the workspace overview by default", async () => {
         "自身存在问题",
         "发现前置步骤问题",
         "关联 Session",
-        "上报来源",
-        "空间额度",
+        "来源数",
+        "额度",
       ],
     );
     assert.equal(landing.navActive, true);
@@ -692,6 +705,8 @@ test("m8-04 overview renders an empty workspace and a block-level error state", 
           statstrip: Boolean(document.querySelector("[data-testid='ov-statstrip']")),
           rows: rows.length,
           hasChart: Boolean(document.querySelector("[data-testid='ov-chart']")),
+          realCode: text.includes("INTERNAL"),
+          pseudoCode: text.includes("OVERVIEW_SUMMARY_UNAVAILABLE"),
         };
       })()`,
       "summary block error with live chart and list",
@@ -699,7 +714,252 @@ test("m8-04 overview renders an empty workspace and a block-level error state", 
     assert.equal(failed.statstrip, false);
     assert.equal(failed.rows, 8);
     assert.equal(failed.hasChart, true);
+    assert.equal(failed.realCode, true);
+    assert.equal(failed.pseudoCode, false);
     await page.session.send("Fetch.disable");
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m8-04 overview filters a downgraded week bucket to the whole week", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    const monday = weekStart(day0);
+    const sunday = shiftDate(monday, 6);
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=custom&from=2026-01-01&to=${day0}&grain=day`,
+    });
+    await waitForCaseRows(page, 8);
+
+    const chart = await waitForDocument(
+      page.session,
+      `(() => {
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        const badge = document.querySelector("[data-testid='ov-grain-downgraded']")
+          ?.textContent?.trim() ?? "";
+        const bucket = document.querySelector("[data-bucket='${monday}']");
+        if (!bucket || !hint.includes("按周聚合")) return null;
+        return { badge, hint };
+      })()`,
+      "week downgrade chart",
+    );
+    assert.match(chart.badge, /已按周展示/);
+
+    const expected =
+      (day0 >= monday && day0 <= sunday ? 6 : 0) +
+      (day1 >= monday && day1 <= sunday ? 5 : 0);
+    assert.ok(expected > 0, `${monday}..${sunday} must contain seeded days`);
+
+    await click(page, `[data-bucket='${monday}']`);
+    const filtered = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("from") !== ${JSON.stringify(monday)}) return null;
+        if (search.get("to") !== ${JSON.stringify(sunday)}) return null;
+        const rows = document.querySelectorAll("[data-testid='ov-case-row']");
+        if (rows.length !== ${expected}) return null;
+        return {
+          rows: rows.length,
+          range: search.get("range"),
+          grain: search.get("grain"),
+          from: search.get("from"),
+          to: search.get("to"),
+          total: document.querySelector("[data-testid='ov-case-total']")
+            ?.textContent ?? "",
+        };
+      })()`,
+      "downgraded week bucket window",
+    );
+    assert.equal(filtered.range, "custom");
+    assert.equal(filtered.grain, "day");
+    assert.equal(filtered.rows, expected);
+    assert.equal(filtered.total, `共 ${expected} 条`);
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m8-04 overview switches workspace with default filters and restores them on back", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    const requests = [];
+    page.session.on("Network.requestWillBeSent", ({ request }) => {
+      if (request.url.includes("/api/workspaces/")) requests.push(request.url);
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=7&objects=m8-04-alpha&type=self`,
+    });
+    await waitForCaseRows(page, 4);
+    requests.length = 0;
+
+    await waitForDocument(
+      page.session,
+      `(() => {
+        const picker = document.querySelector("[data-testid='workspace-picker']");
+        if (!picker) return null;
+        picker.open = true;
+        return true;
+      })()`,
+      "workspace picker",
+    );
+    await click(page, `[data-testid='workspace-option-${emptyWorkspaceId}']`);
+    const switched = await waitForDocument(
+      page.session,
+      `(() => {
+        if (!location.pathname.includes(${JSON.stringify(emptyWorkspaceId)})) return null;
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "90" || search.get("grain") !== "week") return null;
+        if (search.get("objects") || search.get("type") || search.get("page")) return null;
+        return { path: location.pathname, search: location.search };
+      })()`,
+      "workspace switch with default filters",
+    );
+    assert.equal(
+      switched.path,
+      `/workspaces/${emptyWorkspaceId}/overview`,
+    );
+
+    const foreign = requests.filter((url) =>
+      url.includes(`/workspaces/${emptyWorkspaceId}/`),
+    );
+    assert.ok(foreign.length > 0, "new workspace must fetch overview data");
+    for (const url of foreign) {
+      const parsed = new URL(url);
+      assert.equal(parsed.searchParams.get("range"), "90");
+      assert.equal(parsed.searchParams.has("objects"), false);
+      assert.equal(parsed.searchParams.has("badCaseType"), false);
+      assert.equal(parsed.searchParams.has("type"), false);
+    }
+
+    await page.session.send("Runtime.evaluate", {
+      expression: "history.back()",
+    });
+    const restored = await waitForDocument(
+      page.session,
+      `(() => {
+        if (!location.pathname.includes(${JSON.stringify(dataWorkspaceId)})) return null;
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "7") return null;
+        if (search.get("objects") !== "m8-04-alpha") return null;
+        if (search.get("type") !== "self") return null;
+        const rows = document.querySelectorAll("[data-testid='ov-case-row']");
+        if (rows.length !== 4) return null;
+        return { rows: rows.length, search: location.search };
+      })()`,
+      "browser back restores previous workspace filters",
+    );
+    assert.equal(restored.rows, 4);
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m8-04 overview clamps an out-of-range page to the last page", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?page=99`,
+    });
+    const clamped = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("page") !== "2") return null;
+        const rows = document.querySelectorAll("[data-testid='ov-case-row']");
+        if (rows.length !== 3) return null;
+        const pager = document.querySelector("[data-testid='ov-pager']")
+          ?.textContent ?? "";
+        if (!pager.includes("第 2 / 2 页")) return null;
+        return {
+          rows: rows.length,
+          page: search.get("page"),
+          body: document.body.innerText,
+        };
+      })()`,
+      "clamped overview page",
+    );
+    assert.equal(clamped.rows, 3);
+    assert.equal(clamped.page, "2");
+    assert.ok(!clamped.body.includes("这个空间还没有 bad case"));
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m8-04 overview keeps four nav items on one line at 1440px", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await openOverview(page);
+    await waitForCaseRows(page, 8);
+
+    const nav = await waitForDocument(
+      page.session,
+      `(() => {
+        const items = [...document.querySelectorAll("nav .tn-item")];
+        if (items.length !== 4) return null;
+        const measured = items.map((item) => {
+          const range = document.createRange();
+          range.selectNodeContents(item);
+          const rect = range.getBoundingClientRect();
+          const style = getComputedStyle(item);
+          const sub = item.querySelector(".tn-sub");
+          return {
+            text: item.textContent.trim(),
+            contentHeight: rect.height,
+            fontSize: parseFloat(style.fontSize),
+            whiteSpace: style.whiteSpace,
+            subText: sub?.textContent?.trim() ?? "",
+            subDisplay: sub ? getComputedStyle(sub).display : "none",
+          };
+        });
+        return {
+          items: measured,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        };
+      })()`,
+      "1440px single-line navigation",
+    );
+    assert.ok(nav.items[0].text.startsWith("总览"));
+    assert.equal(nav.items[0].subText, "bad case 趋势");
+    for (const item of nav.items) {
+      assert.equal(item.whiteSpace, "nowrap", JSON.stringify(item));
+      assert.equal(item.subDisplay, "none", JSON.stringify(item));
+      assert.ok(
+        item.contentHeight <= item.fontSize * 1.6,
+        `nav item wrapped: ${JSON.stringify(item)}`,
+      );
+    }
+    assert.equal(nav.scrollWidth, nav.clientWidth);
     assert.deepEqual(violations, []);
   } finally {
     await page.close();
