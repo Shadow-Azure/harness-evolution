@@ -48,17 +48,25 @@ EVENT_EVIDENCE_COLUMNS: tuple[sa.Column[Any], ...] = (
 )
 
 
-def _column_names(table: str) -> set[str]:
-    """Return the columns present on one table in the target database."""
-    return {str(column["name"]) for column in inspect(op.get_bind()).get_columns(table)}
+def _existing_columns(table: str) -> dict[str, Any]:
+    """Return the reflected columns on one table keyed by column name."""
+    return {str(column["name"]): column for column in inspect(op.get_bind()).get_columns(table)}
 
 
 def _add_columns(table: str, columns: tuple[sa.Column[Any], ...]) -> None:
-    """Add only missing columns so a retry after partial DDL can resume."""
-    existing = _column_names(table)
+    """Add missing columns and reject an existing column with wrong nullability."""
+    existing = _existing_columns(table)
     for column in columns:
-        if column.name not in existing:
+        current = existing.get(str(column.name))
+        if current is None:
             op.add_column(table, column)
+            continue
+        if bool(current["nullable"]) != bool(column.nullable):
+            raise RuntimeError(
+                f"{table}.{column.name} already exists with "
+                f"nullable={bool(current['nullable'])}, expected "
+                f"nullable={bool(column.nullable)}; repair the column before retrying 0016",
+            )
 
 
 def upgrade() -> None:
@@ -75,7 +83,7 @@ def upgrade() -> None:
 
 def _drop_columns(table: str, columns: tuple[sa.Column[Any], ...]) -> None:
     """Drop evidence columns that are still present, recreating SQLite tables."""
-    existing = _column_names(table)
+    existing = _existing_columns(table)
     present = tuple(column.name for column in columns if column.name in existing)
     if not present:
         return

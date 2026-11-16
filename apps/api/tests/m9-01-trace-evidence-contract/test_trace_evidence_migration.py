@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
+import pytest
 from alembic.config import Config
 from sqlalchemy import String, inspect, text
 
@@ -295,5 +296,27 @@ async def test_evidence_migration_resumes_after_partial_ddl(tmp_path: Path) -> N
             "read_complete",
             "relation_confidence",
         } <= columns
+    finally:
+        await database.dispose()
+
+
+async def test_evidence_migration_rejects_wrong_existing_definition(
+    tmp_path: Path,
+) -> None:
+    """An out-of-band nullable execution_outcome fails loudly instead of 500ing later."""
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0015")
+        await insert_legacy_evidence_rows(database)
+        async with database.transaction() as session:
+            await session.execute(
+                text(
+                    "ALTER TABLE session_families ADD COLUMN execution_outcome VARCHAR(16)",
+                ),
+            )
+
+        with pytest.raises(RuntimeError, match=r"session_families\.execution_outcome"):
+            await upgrade_database(database)
     finally:
         await database.dispose()
