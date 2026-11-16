@@ -35,6 +35,10 @@ class FakeRepository:
         )
         self.last_run: datetime | None = None
         self.error: str | None = None
+        self.report_source = False
+
+    async def has_report_source(self) -> bool:
+        return self.report_source
 
     async def count_candidates(self, now: datetime) -> int:
         return self.candidates
@@ -115,6 +119,23 @@ async def test_trigger_is_unavailable_without_query_service() -> None:
 
     assert result.status == "unavailable"
     assert jobs.submitted == []
+
+
+@pytest.mark.asyncio
+async def test_trigger_is_available_with_only_a_report_source() -> None:
+    jobs = FakeJobs()
+    repository = FakeRepository()
+    repository.report_source = True
+    coordinator = _coordinator(
+        jobs,
+        repository,
+        _settings(session_query_base_url=None),
+    )
+
+    result = await coordinator.trigger("scheduler")
+
+    assert result.status == "queued"
+    assert len(jobs.submitted) == 1
 
 
 @pytest.mark.asyncio

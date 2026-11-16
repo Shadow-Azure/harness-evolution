@@ -100,6 +100,16 @@ Accept: application/x-ndjson
 - 响应不符合契约 → `SESSION_QUERY_INVALID_RESPONSE`；接口版本头（若提供）主版本不匹配 → `SESSION_QUERY_VERSION_INCOMPATIBLE`。
 - 每个 agent 的失败只影响该 root；root 标记 `failed`，不中断整批。
 
+### 3.4 上报绑定的 envelope（M9-07）
+
+`bad_cases.session_source` 存在时，该 root 不再调用上面两个全局接口，而是把 `sessionUrlTemplate` 代入 sessionId 后 GET 一次，拿到 [05 §10.5](05-api-design.md) 定义的 envelope。语义：
+
+- envelope 同时给出 `childSessionIds` 与 `trajectory`，相当于接口 1 + 接口 2 的合并；HTTP 超时、重试、401/403 与坏响应的稳定码映射到 `SESSION_SOURCE_*`。
+- 未知 `runtime` 直接失败（`UNSUPPORTED_RUNTIME`）；`schemaVersion` 主版本不匹配、`sessionId` 回显不符、subagent 的 `parentSessionId` 不等于遍历父节点分别记稳定错误码，不静默回退全局源。
+- 每个 root 首次 claim 时把 `{kind:"report", runtime, session_url_template}` 固化进 `source_snapshot`；重试不换源。没有 per-report source 的 root 仍走全局两接口，`source_kind=global`。
+- 调度可用性不再只看全局查询是否配置：存在任一 `bad_cases.session_source` 时 coordinator 也允许触发；全局未配置但只处理 per-report root 的部署可以独立工作。
+- 响应体与轨迹沿用 64 MiB / 单行 1 MiB / 100 万行上限；envelope 的 `agentMeta` 由 runtime 专属 adapter 的 closed schema 解释。
+
 ## 4. 遍历与 payload 写入
 
 ### 4.1 遍历算法
@@ -126,16 +136,17 @@ while queue:
 - `max_depth`、`max_agents` 可配置；超限把 root 标记失败并记录 `TRAVERSAL_LIMIT_EXCEEDED`，避免上游异常导致无限展开。
 - API 1 失败时该 root 失败；已写入的 payload 保留，下次重试幂等覆盖。
 - API 2 失败时该 agent 失败，root 失败；是否继续遍历其子节点由实现选择“失败即停”或“继续其他分支”，推荐失败即停，减少无效调用。
-- 主 agent 的 `agent_id = root_session_id`，`agent_kind=main`，`agent_meta=NULL`；subagent 的 `agent_id = 查询用的 sessionId`，`agent_kind=subagent`。
+- 全局源下主 agent 的 `agent_id = root_session_id`，`agent_kind=main`，`agent_meta=NULL`；subagent 的 `agent_id = 查询用的 sessionId`，`agent_kind=subagent`。
+- 有 per-report source 时，每层从 envelope 的 `childSessionIds` 入队；`agent_kind`、`runtime_key`、`agent_meta` 来自 envelope 投影，不按“是否等于 root”猜 runtime。
 
 ### 4.2 `agent_meta` 与父子边
 
 接口 2 只返回轨迹正文，没有 `agent_meta`，也没有触发子 agent 的 `tool_use_id`。本特性只能从接口 1 的父子 sessionId 关系构造边：
 
-- 主 agent：`agent_meta = NULL`。
-- subagent：`agent_meta = {"parentAgentId": parent_id}`；不写 `toolUseId`、`agentType` 等无法从接口获得的信息。
+- 全局两接口路径：主 agent `agent_meta = NULL`；subagent `agent_meta = {"parentAgentId": parent_id}`，不写 `toolUseId`、`agentType` 等无法从接口获得的信息。
+- per-report envelope 路径：主 agent 存 envelope `agentMeta`（可为空）；subagent 在 envelope `agentMeta` 上补 `parentAgentId`，若上游给了真实 `toolUseId` 则原样保留，锚边可精确到具体 Agent 触发点。
 
-现有组树逻辑优先用 `agent_meta.toolUseId` 匹配父 agent 的 Agent 触发事件；本特性没有这个值，因此需要一条受控回退：
+现有组树逻辑优先用 `agent_meta.toolUseId` 匹配父 agent 的 Agent 触发事件；全局两接口路径没有这个值，因此需要一条受控回退：
 
 1. 若 `parent_tool_use_id` 存在，维持现有逻辑，锚到具体 Agent 触发事件。
 2. 若没有 `parent_tool_use_id`，但有 `parentAgentId` 且对应父 agent 已存在：把子节点挂到父 agent 节点，锚到父节点最后一个事件，并记录 `PARENT_ANCHORED_BY_AGENT` 诊断（不作为失败）。
@@ -155,11 +166,12 @@ while queue:
 
 | 列 | 值 |
 |---|---|
+| `runtime_key` | envelope 的 `runtime`；全局源固定 `claude-code` |
 | `root_session_id` | bad_cases 的根 sessionId |
-| `agent_id` | 主 agent = root；subagent = 接口 1 返回的 sessionId |
+| `agent_id` | 主 agent = root；subagent = 接口 1 或 envelope 返回的 sessionId |
 | `agent_kind` | `main` / `subagent` |
 | `payload` | 规范化 JSONL |
-| `agent_meta` | 主 agent NULL；subagent 为 `{"parentAgentId": parent_id}` |
+| `agent_meta` | 主 agent NULL 或 envelope `agentMeta`；subagent 至少含 `parentAgentId` |
 | `content_hash` | 规范化 payload 的 sha256 |
 | `line_count` | object 数 |
 | `source_type` | `http_api` |
@@ -175,6 +187,8 @@ while queue:
 |---|---|---|---|
 | `root_session_id` | `VARCHAR(36)` | PK | bad_cases 根会话 id |
 | `status` | `VARCHAR(16)` | NOT NULL | `pending` / `syncing` / `synced` / `failed` |
+| `source_kind` | `VARCHAR(16)` | NOT NULL | `report` / `global`；存量回填 `global` |
+| `source_snapshot` | `JSON` | NULL | 首次 claim 固化的来源快照：report 为 `{kind, runtime, sessionUrlTemplate}`，global 为 `{kind:"global"}`；重试不换源 |
 | `attempts` | `INTEGER` | NOT NULL | 已尝试次数 |
 | `last_error` | `TEXT` | NULL | 脱敏后的稳定 code + message |
 | `agent_count` | `INTEGER` | NOT NULL | 该 root 在 `trajectory_payloads` 的实际行数（含 main）；失败时为已写入的部分值，成功时 ≥1 |
@@ -219,8 +233,9 @@ LIMIT :batch_size
 claim 在事务内先查后写，避免依赖方言 upsert：
 
 1. `SELECT ... FOR UPDATE`（MySQL）或条件更新（SQLite）确认当前状态可 claim；
-2. 写 `status=syncing`、`attempts += 1`、`started_at=now`、`lease_owner`、`lease_expires_at`；
-3. 失败/成功分别写 `failed` / `synced`。
+2. 首次 claim 选择来源：同一 root 取 `created_at` 最新且 `session_source` 非空的 bad case（并列取最大 `bad_case_id`），没有则回退全局；把选择写入 `source_kind/source_snapshot`，已有快照时不覆盖；
+3. 写 `status=syncing`、`attempts += 1`、`started_at=now`、`lease_owner`、`lease_expires_at`；
+4. 失败/成功分别写 `failed` / `synced`。
 
 ### 5.4 bad_cases 与状态表关联不上的两种情况
 

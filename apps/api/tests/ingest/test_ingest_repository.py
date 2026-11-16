@@ -71,6 +71,8 @@ class _InterleavedRootSyncRepository(BadCaseRootSyncRepository):
         owner: str,
         now_value: datetime,
         expires_at: datetime,
+        source_kind: str | None,
+        source_snapshot: dict[str, object] | None,
     ) -> bool:
         """Commit the pending row first, then let the claim's insert collide."""
         await insert_pending_root(session, root_session_id, now=now_shanghai())
@@ -80,6 +82,8 @@ class _InterleavedRootSyncRepository(BadCaseRootSyncRepository):
             owner=owner,
             now_value=now_value,
             expires_at=expires_at,
+            source_kind=source_kind,
+            source_snapshot=source_snapshot,
         )
 
 
@@ -97,6 +101,7 @@ def ingest_row(**overrides: object) -> BadCaseIngestRow:
         "reason": "仓储层描述",
         "meta_data": {"file": "SKILL.md"},
         "source": "repo-test",
+        "session_source": None,
         "created_at": now_shanghai(),
     }
     values.update(overrides)

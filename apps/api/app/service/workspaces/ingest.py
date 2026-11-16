@@ -4,8 +4,9 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 from app.db.crud.bad_case_ingest import (
@@ -20,6 +21,38 @@ from app.service.workspaces.schemas import WorkspaceModel
 from app.service.workspaces.service import WorkspaceCredentialAccess, WorkspaceService
 
 logger = logging.getLogger(__name__)
+
+
+class BadCaseSessionSource(BaseModel):
+    """One report's optional session download contract.
+
+    The template is a plain URL with exactly one ``{sessionId}`` placeholder.
+    Credentials are deliberately absent: authorization is the template's own
+    short-lived signature, and the report body can never smuggle headers.
+    """
+
+    model_config = ConfigDict(alias_generator=to_camel, extra="forbid")
+
+    runtime: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9][a-z0-9-]{0,31}$",
+    )
+    session_url_template: str = Field(min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def _validate_template(self) -> "BadCaseSessionSource":
+        """Require one HTTP(S) placeholder and reject embedded credentials."""
+        template = self.session_url_template
+        if template.count("{sessionId}") != 1:
+            raise ValueError("sessionUrlTemplate must contain {sessionId} exactly once")
+        parsed = urlsplit(template.replace("{sessionId}", "session"))
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("sessionUrlTemplate must be an absolute http(s) URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("sessionUrlTemplate must not contain credentials")
+        if parsed.fragment:
+            raise ValueError("sessionUrlTemplate must not contain a fragment")
+        return self
 
 
 class BadCaseIngest(BaseModel):
@@ -43,6 +76,7 @@ class BadCaseIngest(BaseModel):
     reason: str = Field(min_length=1)
     meta_data: dict[str, Any] | None = None
     source: str | None = Field(default=None, max_length=64)
+    session_source: BadCaseSessionSource | None = None
     created_at: datetime
 
     @field_validator("created_at")
@@ -148,6 +182,11 @@ class BadCaseIngestService:
             reason=body.reason,
             meta_data=body.meta_data,
             source=body.source,
+            session_source=(
+                body.session_source.model_dump(by_alias=True)
+                if body.session_source is not None
+                else None
+            ),
             created_at=body.created_at,
         )
 

@@ -154,6 +154,7 @@ erDiagram
 - `runtime_key` 是 parser 选择的唯一键；`TraceParserFactory.create(runtime_key)` 决定使用哪个 `BaseTraceParser` 子类。
 - `parser_version` 按 runtime 解释：`source_records.parser_version` 只与该 runtime 的当前 parser version 比较；升级 Claude 不影响 Codex，反之亦然。
 - 未知 `runtime_key` 产生 `UNSUPPORTED_RUNTIME`，不得 fallback 到 Claude。
+- per-report envelope 的 `runtime` 与 parser 共用这一词汇表：`session_source` adapter 只解释 runtime 专属 `agentMeta`，最终 parser 仍由 envelope 的 `runtime_key` 选择，身份不出现第二个 home。
 - `source_type` 只记录 `script` / `http_api` 等接入方式，不参与 parser 选择。
 
 ### 3.1 `source_records` —— 处理索引（不存 payload）
@@ -438,6 +439,7 @@ erDiagram
 | `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示）；对外 DTO 字段名是 `reason` |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
+| `session_source` | `JSON` | NULL | 上报绑定的下载契约 `{runtime?, sessionUrlTemplate}`；root-sync 首次 claim 时据此固化来源 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | — |
 
 索引：`INDEX(workspace_id, bad_case_session_id)`、`INDEX(bad_case_session_id)`、`INDEX(bad_case_agent_id)`、`INDEX(object_type, object_name, object_version)`、`INDEX(workspace_id, created_at)`、`INDEX(workspace_id, object_name)`、`INDEX(workspace_id, bad_case_type)`。

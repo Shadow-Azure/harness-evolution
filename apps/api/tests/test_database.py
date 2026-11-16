@@ -526,7 +526,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0016"
+        assert result.scalar_one() == "0017"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -822,7 +822,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0016"
+            assert revision == "0017"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1075,7 +1075,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0016"
+        assert revision == "0017"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1246,7 +1246,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0016"
+        assert result.scalar_one() == "0017"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -2635,6 +2635,7 @@ def _mysql_ingest_row(
         reason="mysql ingest description",
         meta_data={"file": "SKILL.md"},
         source="mysql-test",
+        session_source=None,
         created_at=now_shanghai(),
     )
 
@@ -2978,3 +2979,59 @@ async def test_mysql_workspace_overview_aggregates_and_lists() -> None:
             await _drop_mysql_ingest_rows(database, [workspace_id], roots)
         finally:
             await database.dispose()
+
+
+async def test_per_report_source_migration_adds_columns_and_backfills(
+    tmp_path: Path,
+) -> None:
+    """Revision 0017 adds per-report sources and freezes legacy roots as global."""
+    database = create_database(sqlite_settings(tmp_path))
+    await database.start()
+    try:
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0016")
+        now = datetime(2026, 11, 16, 9, tzinfo=UTC)
+        async with database.transaction() as session:
+            await session.execute(
+                text(
+                    "INSERT INTO bad_case_root_sync ("
+                    "root_session_id, status, attempts, agent_count, updated_at"
+                    ") VALUES (:root, 'synced', 1, 2, :now)",
+                ),
+                {"root": "10000000-0000-4000-8000-000000000002", "now": now},
+            )
+
+        await upgrade_database(database)
+
+        async with database.engine.connect() as connection:
+            bad_case_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns("bad_cases"),
+            )
+            root_columns = await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).get_columns(
+                    "bad_case_root_sync",
+                ),
+            )
+        assert "session_source" in {column["name"] for column in bad_case_columns}
+        by_name = {column["name"]: column for column in root_columns}
+        assert by_name["source_kind"]["nullable"] is False
+        assert normalized_server_default(by_name["source_kind"]) == "global"
+        assert by_name["source_snapshot"]["nullable"] is True
+
+        async with database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT source_kind, source_snapshot "
+                            "FROM bad_case_root_sync WHERE root_session_id = :root"
+                        ),
+                        {"root": "10000000-0000-4000-8000-000000000002"},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+        assert row["source_kind"] == "global"
+        assert row["source_snapshot"] is None
+    finally:
+        await database.dispose()

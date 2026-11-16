@@ -67,12 +67,18 @@ class BadCaseRootSyncCoordinator:
 
     @property
     def available(self) -> bool:
-        """Return whether the query service is configured."""
+        """Return whether the global query service is configured."""
         return self._settings.session_query_configured
+
+    async def _sources_available(self) -> bool:
+        """Return whether any root can be synced by a global or report source."""
+        if self.available:
+            return True
+        return await self._repository.has_report_source()
 
     async def trigger(self, source: str) -> BadCaseSyncTriggerResult:
         """Submit one job unless unavailable, already active, or idle."""
-        if not self.available:
+        if not await self._sources_available():
             return BadCaseSyncTriggerResult("unavailable", None, False)
         active = await self._jobs.repository.find_active_kind(KIND)
         if active is not None:
@@ -125,7 +131,7 @@ class BadCaseRootSyncCoordinator:
         stats: BadCaseRootSyncStats = await self._repository.stats()
         last_run_at = await self._repository.last_run_at()
         last_error = await self._repository.last_error()
-        if not self.available:
+        if not await self._sources_available():
             return _status(stats, "unavailable", last_run_at, last_error)
         active = await self._jobs.repository.find_active_kind(KIND)
         if active is not None:
