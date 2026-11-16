@@ -333,6 +333,7 @@ async def list_workspace_knowledge_roots(
             ),
         )
         .where(bad_cases.c.bad_case_session_id == root_session_id)
+        .order_by(workspaces.c.id)
     )
     async with database.session() as session:
         rows = (await session.execute(statement)).all()
