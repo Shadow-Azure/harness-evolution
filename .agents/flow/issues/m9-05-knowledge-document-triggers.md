@@ -11,14 +11,21 @@ depends:
   - m9-02
   - m9-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - apps/api/alembic/**
   - apps/api/app/service/acquisition/**
+  - apps/api/app/service/sessions/**
+  - apps/api/app/service/workspaces/**
   - apps/api/app/db/**
   - apps/api/app/api/**
+  - apps/api/app/utils/**
+  - apps/api/app/errors.py
   - packages/contracts/**
   - fixtures/**
   - tests/**
+  - apps/api/tests/**
+  - plans/fullstack-design/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -44,9 +51,10 @@ github:
 
 ## 实现内容
 
-- 增加 kind=knowledge 与 object_type=knowledge 的同一迁移。
-- Read 需命中工作空间知识根才转换。
-- MCP 知识工具按 adapter 白名单识别。
+- 迁移 0019：`agent_events` 增加 document id/revision/path/retrieval kind/scope 五列与 `(agent_id, kind, document_id)` 索引；`workspaces` 增加 `knowledge_roots` JSON 配置。知识事件不扩 `bad_cases.object_type` / `evolution_targets.object_type`。
+- Read 需命中工作空间知识根才转换成 `kind=knowledge`；Edit/Bash 不生成。
+- MCP 知识工具按 adapter 显式白名单识别，只存 id/revision/path/kind/scope/hash，不存正文、chunk 与原始响应。
+- Session API 暴露 knowledge 事件与文档证据；parser 4 → 5 重放 claude-code 存量。
 
 ## 实施步骤
 
@@ -62,7 +70,7 @@ github:
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/acquisition tests/knowledge; pnpm contract:check
+pnpm test:api -- tests/m9-05-knowledge-document-triggers; pnpm contract:check
 ```
 
 - 知识根内 Read 生成 knowledge 事件。

@@ -25,7 +25,7 @@
 | 归因（演进） | `bad_case_analysis`、`probe_reports` | `bad_case_analysis` 去掉一 case 唯一约束并扩为一 case 多归因；`probe_reports` 增加空间、结论、缓存与复用字段（§4.2） |
 | 簇与成员（演进） | `probe_clusters`、`probe_cluster_probes` | 保留表名；成员继续指向 `probe_reports.probe_id`，V2 的归因结论由同名 probe 承载（§5.3–§5.4） |
 | 自进化侧（新） | `evolution_run_candidates` | run 候选快照（触发点 / 策略命中 / 缓存标记）；全新粒度 `(run, bad_case)`，无既有表可继承（§5.9） |
-| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at / object_version`；`probe_reports.workspace_id / conclusion / confidence / policy_version / attribution_engine / cache_key / created_run_id / last_reused_run_id / reused_count` | 定义见 §3.3、§3.4、§3.8、§4.1–§4.2、§5.2；迁移见 §9 |
+| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at / object_version`；M9：`agent_events.object_revision / definition_hash / file_read_hash / read_complete / relation_confidence`、`agent_events.document_id / document_revision / source_path / retrieval_kind / retrieval_scope`、`workspaces.knowledge_roots`；`probe_reports.workspace_id / conclusion / confidence / policy_version / attribution_engine / cache_key / created_run_id / last_reused_run_id / reused_count` | 定义见 §3.3、§3.4、§3.8、§4.1–§4.2、§5.2；迁移见 §9 |
 
 V2 的**写入方变化**：`bad_cases` 的主通道改为空间上报接口（凭据鉴权，§4.1），目录同步默认停用；`bad_case_analysis` / `probe_reports` / `evolution_run_candidates` / `probe_clusters` / `probe_cluster_probes` 由自进化 run 写；空间三表由空间管理端点写。`session_families` / `agents` / `agent_events` / `user_turns` / `trajectory_payloads` / `source_records` **不加空间列**——轨迹归一化是全局管线，一个空间的 Session 集合是「该空间 bad case 涉及的根会话」投影（§7.5）。
 
@@ -262,21 +262,28 @@ erDiagram
 | `event_index` | `INTEGER` | NOT NULL | agent 内顺序 |
 | `line_no` | `INTEGER` | NOT NULL | 转录行号 |
 | `message_offset` | `INTEGER` | NOT NULL | 该触发点之前已经出现的 assistant message 数 |
-| `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` |
+| `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` / `knowledge` |
 | `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 |
 | `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空，关联与归因按 §7.5 的版本规则处理 |
 | `object_revision` | `VARCHAR(96)` | NULL | M9：`tag:<tag>` / `digest:<sha256>` / `unknown` |
 | `definition_hash` | `CHAR(64)` | NULL | M9：skill/agent 定义 body hash |
 | `file_read_hash` | `CHAR(64)` | NULL | M9：文件读取内容 hash；仅完整读取时非空 |
+| `document_id` | `VARCHAR(255)` | NULL | M9-05：知识文档稳定身份；文件读为 `doc:<sha256(根相对路径)[:32]>`，Provider 结果用其返回 id |
+| `document_revision` | `VARCHAR(96)` | NULL | M9-05：`digest:<sha256>`（完整文件读）/ Provider revision / `unknown`（不完整读取或未提供） |
+| `source_path` | `VARCHAR(1024)` | NULL | M9-05：文档路径；只存路径，不存正文或 chunk |
+| `retrieval_kind` | `VARCHAR(32)` | NULL | M9-05：`file_read` / `mcp_search` / `mcp_retrieve` |
+| `retrieval_scope` | `VARCHAR(255)` | NULL | M9-05：命中的知识根或 Provider collection |
 | `read_complete` | `BOOLEAN` | NULL | M9：文件读取是否完整；partial/truncated 为 false |
 | `relation_confidence` | `VARCHAR(16)` | NULL | M9：`authoritative` / `derived` / `synthetic` / `unresolved` |
 | `description` | `TEXT` | NULL | 子 agent / workflow 描述 |
 | `tool_use_id` | `VARCHAR(128)` | NULL | 触发调用 id |
 | `triggered_at` | `DATETIME` | NULL | 触发事件所在 assistant message 的时间戳（归一化从 JSONL 写入）；触发点比较主坐标，缺失时回退 `(tree_index, event_index)`（§7.5） |
 
-索引：`UNIQUE(agent_id, event_index)`、`INDEX(agent_id, line_no)`、`INDEX(agent_id, message_offset)`、`INDEX(agent_id, triggered_at)`、`INDEX(agent_id, kind, name, object_version)`。
+索引：`UNIQUE(agent_id, event_index)`、`INDEX(agent_id, line_no)`、`INDEX(agent_id, message_offset)`、`INDEX(agent_id, triggered_at)`、`INDEX(agent_id, kind, name, object_version)`、`INDEX(agent_id, kind, document_id)`。
 
 > `kind=skill` 只是触发事件，不是节点：普通 skill 只有这一条事件；forked skill 额外有 `agents` 行（`tool_use_id` 可空），装配时用 `skill_name` 关联回该事件。
+
+> `kind=knowledge` 同样是证据行，不是可进化对象：只有配置知识根内的 `Read` 与白名单 MCP 知识工具返回的文档才写入；正文、chunk 与 MCP 原始响应不落库。`event_index` 在 finalize 按 `(line_no, event_index)` 稳定重排，跨结果到达顺序不影响坐标。
 
 ### 3.5 `user_turns` —— 用户输入锚点（主 agent）
 
@@ -380,10 +387,13 @@ erDiagram
 | `mark` | `VARCHAR(255)` | NOT NULL DEFAULT '' | 说明/备注，前端空间卡片副标题 |
 | `quota` | `INTEGER` | NOT NULL | bad case 累计数量上限；创建时设置，之后可调 |
 | `status` | `VARCHAR(16)` | NOT NULL DEFAULT 'active' | 预留；V2 只有 `active`（无归档/删除） |
+| `knowledge_roots` | `JSON` | NULL | 空间级知识库根字符串数组：绝对路径、≤20 条、每条 ≤512 字符；NULL 与 `[]` 等价（应用层给默认值，不设 server default） |
 | `created_by` | `VARCHAR(36)` | NULL FK → `users.id` ON DELETE SET NULL | 创建人 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | 应用写入 Asia/Shanghai |
 
 约束与索引：`UNIQUE(name)`（重名拦截走 DB 而非先查后写，避免并发漏判）、`INDEX(created_at DESC)`。
+
+**`knowledge_roots` 语义**：只有路径命中这些根的普通 `Read` 才归一化为 `kind=knowledge`（§3.4）；配置由空间管理员经 `PUT /api/workspaces/{wid}` 写入，读取方在归一化时按 `bad_cases.workspace_id` 取上报该根会话的所有空间 roots 并集（§7.5），查询层的空间过滤留给 M10。
 
 **`used` 不落列**：额度使用量 = `COUNT(bad_cases WHERE workspace_id = :wid)`，查询时聚合。理由同 §3.2 的会话问题数——bad case 由上报路径随时插入，物化计数没有失效通知，必然陈旧；额度检查是低频写路径（每次上报一次 COUNT，走 `INDEX(workspace_id, created_at)` 最左前缀），代价可接受。
 
@@ -883,6 +893,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
 | 对象「出现」的版本口径 | 只有 `agent_events.object_version == 所选 target_version` 才建立关联；版本为空的 Session 计入 `versionUnresolvedSessions` 并跳过，不做名称级猜测。重放补齐后可重新启动 run |
+| 知识事件证据口径 | 归一化一个根会话时，取该根在 `bad_cases` 里所有上报空间的 `workspaces.knowledge_roots` 并集作为证据范围；没有 bad case 的本地根为空集合，不产生知识事件。空间过滤是查询层职责，M10 前不按空间裁剪roots |
 
 ## 8. 与功能点的映射
 
