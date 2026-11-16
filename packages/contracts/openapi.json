@@ -135,6 +135,157 @@
         "title": "AttributeStats",
         "type": "object"
       },
+      "AttributionPreviewRequest": {
+        "additionalProperties": false,
+        "description": "Attribution stage condition; never executes the requested engine.",
+        "properties": {
+          "cacheEnabled": {
+            "default": true,
+            "title": "Cacheenabled",
+            "type": "boolean"
+          },
+          "engineKey": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enginekey"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 5,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PotentialPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetversion"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName"
+        ],
+        "title": "AttributionPreviewRequest",
+        "type": "object"
+      },
+      "AttributionPreviewResult": {
+        "additionalProperties": false,
+        "description": "Read-only attribution preview; it has no paged rows.",
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/AttributionPreviewSummary"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "title": "AttributionPreviewResult",
+        "type": "object"
+      },
+      "AttributionPreviewSummary": {
+        "additionalProperties": false,
+        "description": "Cache reuse preview and the historical non-target reference count.",
+        "properties": {
+          "fresh": {
+            "minimum": 0.0,
+            "title": "Fresh",
+            "type": "integer"
+          },
+          "nonTargetKnown": {
+            "minimum": 0.0,
+            "title": "Nontargetknown",
+            "type": "integer"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "reused": {
+            "minimum": 0.0,
+            "title": "Reused",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "potential",
+          "reused",
+          "fresh",
+          "nonTargetKnown"
+        ],
+        "title": "AttributionPreviewSummary",
+        "type": "object"
+      },
       "BadCase": {
         "additionalProperties": false,
         "description": "Complete public problem card used by list and detail routes.\n\n``title`` is the short display title and ``reason`` the description body;\n``reason`` maps from the ``bad_cases.bad_case_description`` column.",
@@ -1020,6 +1171,9 @@
           "TARGET_IN_USE",
           "TARGET_NOT_CONFIGURED",
           "NO_PROBES_MATCHED",
+          "POLICY_INVALID",
+          "NO_ASSOCIATED_SESSIONS",
+          "NO_POTENTIAL_MATCHED",
           "INTERNAL",
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
@@ -2450,7 +2604,8 @@
           "objectType": {
             "enum": [
               "skill",
-              "agent"
+              "agent",
+              "knowledge"
             ],
             "title": "Objecttype",
             "type": "string"
@@ -2552,7 +2707,8 @@
           "objectType": {
             "enum": [
               "skill",
-              "agent"
+              "agent",
+              "knowledge"
             ],
             "title": "Objecttype",
             "type": "string"
@@ -3101,6 +3257,303 @@
           "to"
         ],
         "title": "OverviewWindow",
+        "type": "object"
+      },
+      "PotentialPolicy": {
+        "additionalProperties": false,
+        "description": "Raw policy switches accepted by the preview and launch contracts.",
+        "properties": {
+          "includeAfterObject": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includeafterobject"
+          },
+          "includeSelfReport": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Includeselfreport"
+          },
+          "preset": {
+            "default": "default",
+            "enum": [
+              "default",
+              "custom"
+            ],
+            "title": "Preset",
+            "type": "string"
+          },
+          "sameObjectOnly": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sameobjectonly"
+          }
+        },
+        "title": "PotentialPolicy",
+        "type": "object"
+      },
+      "PotentialPreviewItem": {
+        "additionalProperties": false,
+        "description": "One included bad case row in wizard step 3.",
+        "properties": {
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "hitReason": {
+            "enum": [
+              "self_report",
+              "after_object",
+              "both",
+              "policy_excluded",
+              "order_unknown"
+            ],
+            "title": "Hitreason",
+            "type": "string"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "orderState": {
+            "enum": [
+              "comparable",
+              "unknown"
+            ],
+            "title": "Orderstate",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "triggerAt": {
+            "format": "date-time",
+            "title": "Triggerat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "objectName",
+          "badCaseType",
+          "triggerAt",
+          "sessionId",
+          "hitReason",
+          "orderState"
+        ],
+        "title": "PotentialPreviewItem",
+        "type": "object"
+      },
+      "PotentialPreviewRequest": {
+        "additionalProperties": false,
+        "description": "Potential stage condition: pagination plus the optional policy.",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 5,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PotentialPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetversion"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName"
+        ],
+        "title": "PotentialPreviewRequest",
+        "type": "object"
+      },
+      "PotentialPreviewResult": {
+        "additionalProperties": false,
+        "description": "Paged potential rows; excluded rows stay in the summary only.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PotentialPreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/PotentialPreviewSummary"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "PotentialPreviewResult",
+        "type": "object"
+      },
+      "PotentialPreviewSummary": {
+        "additionalProperties": false,
+        "description": "Evaluated cases, included potential, and reason distribution.",
+        "properties": {
+          "badCases": {
+            "minimum": 0.0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "byReason": {
+            "$ref": "#/components/schemas/PotentialReasonCounts"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "badCases",
+          "potential",
+          "byReason"
+        ],
+        "title": "PotentialPreviewSummary",
+        "type": "object"
+      },
+      "PotentialReasonCounts": {
+        "additionalProperties": false,
+        "description": "Every closed hit reason, zero-filled for a stable contract.",
+        "properties": {
+          "afterObject": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Afterobject",
+            "type": "integer"
+          },
+          "both": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Both",
+            "type": "integer"
+          },
+          "orderUnknown": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Orderunknown",
+            "type": "integer"
+          },
+          "policyExcluded": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Policyexcluded",
+            "type": "integer"
+          },
+          "selfReport": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Selfreport",
+            "type": "integer"
+          }
+        },
+        "title": "PotentialReasonCounts",
         "type": "object"
       },
       "ProbeHitSummary": {
@@ -4306,6 +4759,124 @@
         "title": "SessionPayload",
         "type": "object"
       },
+      "SessionPreviewItem": {
+        "additionalProperties": false,
+        "description": "One associated Session row in wizard step 2.",
+        "properties": {
+          "badCaseCount": {
+            "minimum": 0.0,
+            "title": "Badcasecount",
+            "type": "integer"
+          },
+          "objectTriggerAt": {
+            "format": "date-time",
+            "title": "Objecttriggerat",
+            "type": "string"
+          },
+          "potentialCount": {
+            "minimum": 0.0,
+            "title": "Potentialcount",
+            "type": "integer"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "title",
+          "objectTriggerAt",
+          "badCaseCount",
+          "potentialCount"
+        ],
+        "title": "SessionPreviewItem",
+        "type": "object"
+      },
+      "SessionPreviewResult": {
+        "additionalProperties": false,
+        "description": "Paged associated Session projection.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionPreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SessionPreviewSummary"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "SessionPreviewResult",
+        "type": "object"
+      },
+      "SessionPreviewSummary": {
+        "additionalProperties": false,
+        "description": "Non-overlapping Session partition for wizard step 2.",
+        "properties": {
+          "associated": {
+            "minimum": 0.0,
+            "title": "Associated",
+            "type": "integer"
+          },
+          "pending": {
+            "minimum": 0.0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "reported": {
+            "minimum": 0.0,
+            "title": "Reported",
+            "type": "integer"
+          },
+          "skipped": {
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "versionUnresolved": {
+            "minimum": 0.0,
+            "title": "Versionunresolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reported",
+          "associated",
+          "skipped",
+          "versionUnresolved",
+          "pending"
+        ],
+        "title": "SessionPreviewSummary",
+        "type": "object"
+      },
       "SessionStats": {
         "additionalProperties": false,
         "description": "Backend-computed whole-tree card statistics.",
@@ -4460,6 +5031,82 @@
           "spaceAdminCount"
         ],
         "title": "SessionWorkspace",
+        "type": "object"
+      },
+      "SessionsPreviewRequest": {
+        "additionalProperties": false,
+        "description": "Common condition for the session preview and its later stages.",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "page": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 4,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "targetName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetversion"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName"
+        ],
+        "title": "SessionsPreviewRequest",
         "type": "object"
       },
       "SourceListResponse": {
@@ -10597,6 +11244,306 @@
           }
         ],
         "summary": "Create Cluster Preview",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/preview/attribution": {
+      "post": {
+        "description": "Return cache reuse counts without executing attribution.",
+        "operationId": "preview_attribution_api_workspaces__wid__evolution_preview_attribution_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttributionPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionPreviewResult"
+                }
+              }
+            },
+            "description": "Read-only cache reuse preview"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace is unknown or invisible to the caller"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target is not configured, or no Session/potential matched"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Window, policy, version, or engine is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Preview Attribution",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/preview/potential": {
+      "post": {
+        "description": "Return one page of policy-included potential cases.",
+        "operationId": "preview_potential_api_workspaces__wid__evolution_preview_potential_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PotentialPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PotentialPreviewResult"
+                }
+              }
+            },
+            "description": "Potential case page"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace is unknown or invisible to the caller"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target is not configured, or no Session/potential matched"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Window, policy, version, or engine is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Preview Potential",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/preview/sessions": {
+      "post": {
+        "description": "Return one page of Sessions whose trace contains the target version.",
+        "operationId": "preview_sessions_api_workspaces__wid__evolution_preview_sessions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionsPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionPreviewResult"
+                }
+              }
+            },
+            "description": "Associated Session page"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace is unknown or invisible to the caller"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Target is not configured, or no Session/potential matched"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Window, policy, version, or engine is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Preview Sessions",
         "tags": [
           "workspace-evolution"
         ]

@@ -5,12 +5,13 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath
-from typing import Literal, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 
 from app.db.crud.evolution_targets import (
+    EvolutionObjectType,
     EvolutionTargetConflict,
     EvolutionTargetInUse,
     EvolutionTargetRecord,
@@ -31,7 +32,7 @@ _SCP_REMOTE = re.compile(
 class EvolutionTargetWrite(IdentityModel):
     """Mutable target configuration accepted by create and update."""
 
-    object_type: Literal["skill", "agent"]
+    object_type: EvolutionObjectType
     object_name: str = Field(max_length=128)
     repo_url: str = Field(max_length=1024)
     sub_dir: str = Field(max_length=512)

@@ -1123,21 +1123,36 @@ async def prepare(self, job) -> None:
 ### 5.12 潜在匹配（`service/evolution/potential.py`）
 
 ```python
+@dataclass(frozen=True)
+class MatchCondition:
+    workspace_id: str
+    target_type: Literal["skill", "agent", "knowledge"]
+    target_name: str
+    target_version: str
+    window_start: datetime
+    window_end: datetime
+
 class PotentialMatcher:
     """Single implementation shared by wizard preview, run prepare and overview."""
 
-    async def associated_sessions(self, run, cond) -> tuple[AssociatedSession, ...]:
-        """Return Sessions in the window whose trace contains the object trigger."""
+    async def associated_sessions(self, condition: MatchCondition) -> SessionAssociation: ...
 
-    async def potential_cases(self, run, sessions, policy) -> tuple[Candidate, ...]:
-        """Apply the policy to every bad case of the associated Sessions."""
+    async def potential_cases(
+        self, condition: MatchCondition, association: SessionAssociation, policy: ResolvedPolicy
+    ) -> PotentialMatch: ...
+
+    async def attribution_preview(
+        self, condition: MatchCondition, match: PotentialMatch, *, cache_enabled: bool
+    ) -> AttributionPreviewCounts: ...
 ```
 
-判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取并集，`sameObjectOnly` 再过滤。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行。
+判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行；`orderState` 单独表达 `comparable / unknown`。
 
-- 查询形态：一次取空间窗口内 bad case 的会话集合；一次取这些会话的对象触发事件（按 session 分组取最早）；一次取关联会话内全部 bad case（含锚点列）并批量取坐标——避免 per-case 查询。
-- 触发点坐标：对象进入点 = 该 Session 内 `kind` 映射 `object_type`、`name == object_name` 且 `object_version == target_version` 的最早 `agent_events`；bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
-- 版本口径：只有 `agent_events.object_version == target_version` 才建立 Session 关联；版本为空的历史事件不计为关联，只进 `versionUnresolvedSessions` 统计。该规则在向导、run 与总览共用，不做名称级猜测。
+- 查询形态：一次取空间窗口内 bad case（`bad_case_type IN ('self','discovery')`）；一次取这些根的 `session_families` 元数据；一次取已归一化根的 `agent_events JOIN agents` 对象触发事件（按 session 取最早）；一次取关联 Session 的全部 agents；一次取锚点所需的 `kind=skill|agent` 事件；一次按批量 cache key 读既有 probe；一次统计历史 `non_target`。全部按 500 个标识分块，不做 per-case 查询。
+- 触发点坐标：对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）、`name == target_name` 且 `object_version == target_version` 的最早 `agent_events`；`triggered_at` 优先，缺失时按 `(tree_index, event_index)` 排序。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点；上报 agent 无法解析时保持 unknown）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
+- 版本口径：只有 `agent_events.object_version == target_version` 才建立 Session 关联；版本为空的历史事件不计为关联，只进 `versionUnresolved` 统计。该规则在向导、run 与总览共用，不做名称级猜测。knowledge 事件同样只比较 `object_version`，不拿 `document_revision` 代替。
+- Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。
+- policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`；归因预览缓存键使用首版归因引擎 `rule-v1`。
 
 ### 5.13 归因生成与缓存（`service/evolution/attribution.py`）
 
@@ -1164,15 +1179,18 @@ class AttributionRunner:
 - **簇级 confidence 与归因 confidence 是两回事**：`probe_reports.confidence` 是引擎对该 bad case 的结论置信度；聚类步写入的 `probe_clusters.confidence` 是簇级占位值（按 `probe_cluster_type`：error 0.82 / prompt 0.74 / model 0.66），`severity = round(min(10, 簇 confidence × impact × reportWeight), 1)`。两者不互相推导，避免把「单条归因的把握」误当成「整个簇的把握」。
 - `non_target` 候选保留在候选表、`probe_reports` 与 `bad_case_analysis`（错误详情可见），不进簇。
 
-### 5.14 预览端点（`service/evolution/preview.py`）
+### 5.14 预览端点（`service/evolution/potential.py` + `api/evolution_workspace.py`）
 
 | 端点 | 服务实现 | 说明 |
 |---|---|---|
-| `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列对象出现过的 Session；跳过数进 summary |
-| `preview/potential` | `matcher.potential_cases` + 分页（5/页） | 含 `hitReason`/`orderState`；0 → `NO_POTENTIAL_MATCHED` |
-| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值 |
+| `preview/sessions` | `matcher.associated_sessions` + 默认策略计数 + 分页（4/页） | 只列版本匹配的 Session；`reported/associated/skipped/versionUnresolved/pending` 互不重叠；`potentialCount` 用默认策略 |
+| `preview/potential` | `matcher.potential_cases` + 分页（5/页） | `items` 只含纳入行，`total=potential`；`byReason` 含被排除行；0 → `NO_POTENTIAL_MATCHED` |
+| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值；`cacheEnabled=false` 时 `reused=0` |
 
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
+- 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。
+- 窗口按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
+- 预览只读：只查 `probe_reports.cache_key`、`bad_case_analysis` 计数与历史 case，不写 probe、归因关联或候选行；`engineKey` 仅做注册校验，不执行引擎。
 - `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。
 
 ### 5.15 空间隔离与工作空间服务（`service/workspaces` + 依赖）

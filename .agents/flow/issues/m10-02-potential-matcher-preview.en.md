@@ -12,15 +12,21 @@ depends:
   - m9-05
   - m10-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/evolution/**
-  - apps/api/app/api/evolution_launch.py
+  - apps/api/app/service/catalogs.py
+  - apps/api/app/api/**
+  - apps/api/conftest.py
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 211

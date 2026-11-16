@@ -66,11 +66,20 @@ class CatalogService:
         *,
         workspace_ids: Sequence[str] | None = None,
     ) -> CatalogTargets:
-        """Return enabled in-scope targets grouped by type with remote tags."""
-        rows = await self._repository.list(
-            enabled_only=True,
-            workspace_ids=workspace_ids,
-        )
+        """Return enabled in-scope skill/agent targets with remote tags.
+
+        Knowledge targets are configurable and matchable by the potential
+        matcher, but the wizard has no knowledge selector yet, so they are not
+        offered here (m10-04 owns the run wiring).
+        """
+        rows = [
+            row
+            for row in await self._repository.list(
+                enabled_only=True,
+                workspace_ids=workspace_ids,
+            )
+            if row.object_type in {"skill", "agent"}
+        ]
         versions = await asyncio.gather(
             *(self._versions(row.repo_url) for row in rows),
         )
