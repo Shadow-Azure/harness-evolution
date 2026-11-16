@@ -13,8 +13,8 @@
       "label": "截图"
     },
     {
-      "value": "0",
-      "label": "未解决缺陷"
+      "value": "1",
+      "label": "待修缺陷"
     }
   ],
   "facts": [
@@ -111,6 +111,28 @@
   },
   "issues": [
     {
+      "severity": "P2",
+      "title": "1440px 顶栏导航文字换行，与原型不一致",
+      "facts": [
+        {
+          "label": "实际",
+          "value": "总览、自进化、空间管理在 1440px 下折成两行，原型保持单行。"
+        },
+        {
+          "label": "预期",
+          "value": "1440px 下四个导航项单行显示，子标题不挤压主标题。"
+        },
+        {
+          "label": "根因",
+          "value": "新增总览项后 .tn-item 没有 white-space: nowrap，且顶部信息总量超过可用宽度。"
+        }
+      ],
+      "state": {
+        "kind": "fail",
+        "label": "待修复"
+      }
+    },
+    {
       "severity": "P3",
       "title": "对象×时间矩阵与进化对象 Tab 未交付",
       "facts": [
@@ -192,9 +214,9 @@
     ]
   },
   "conclusion": {
-    "kind": "pass",
-    "label": "通过（含 2 项已知后续）",
-    "summary": "5 个页面场景全部通过；对象×时间矩阵与 targets Tab 作为已知后续记录。",
+    "kind": "warn",
+    "label": "通过（含 1 项待修 + 2 项已知后续）",
+    "summary": "5 个页面场景通过；发现 1 个 1440px 导航换行缺陷，修复后复测；对象×时间矩阵与 targets Tab 作为已知后续记录。",
     "points": [
       "截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。",
       "默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。"

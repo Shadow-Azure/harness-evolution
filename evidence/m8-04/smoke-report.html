@@ -79,7 +79,7 @@
     <h1>m8-04 工作空间总览页面集成冒烟报告</h1>
     <p class="summary">在真实 API（SQLite + demo fixtures）+ Vite proxy + 无头 Chrome 中验证总览页默认落地、六格指标、时间/粒度/来源筛选写入 URL、bad case 深链，并与 plans/ui-prototype-v2 的总览页做视觉对照。空空间、刷新恢复与 390px 布局由 m8-04 E2E 覆盖，本报告不重复截图。</p>
     <span class="meta">2026-11-16 · macOS · Chrome headless · 1440×1000 与 390×844</span>
-    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>6</b><span>截图</span></div><div class="metric"><b>0</b><span>未解决缺陷</span></div></div>
+    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>6</b><span>截图</span></div><div class="metric"><b>1</b><span>待修缺陷</span></div></div>
   </header>
 
   <section>
@@ -93,8 +93,8 @@
   </section>
 
   <section>
-    <div class="head"><h2>Issues and Observations</h2><small>P3 对象×时间矩阵与进化对象 Tab 未交付</small></div>
-    <div class="issues"><article class="issueCard"><span class="tag">P3</span><h3>对象×时间矩阵与进化对象 Tab 未交付</h3><dl><div><dt>实际</dt><dd>总览页只渲染 bad case Tab；来源×时间矩阵省略。</dd></div><div><dt>预期</dt><dd>原型有可折叠矩阵；m8-03 未提供对象×桶聚合，targets Tab 属 M11。</dd></div><div><dt>根因</dt><dd>避免用分页数据伪造矩阵；targets 总览按里程碑延后。</dd></div></dl><div class="fixed">已记录 · 待后续 API / M11</div></article></div>
+    <div class="head"><h2>Issues and Observations</h2><small>P2 1440px 顶栏导航文字换行，与原型不一致<br>P3 对象×时间矩阵与进化对象 Tab 未交付</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>1440px 顶栏导航文字换行，与原型不一致</h3><dl><div><dt>实际</dt><dd>总览、自进化、空间管理在 1440px 下折成两行，原型保持单行。</dd></div><div><dt>预期</dt><dd>1440px 下四个导航项单行显示，子标题不挤压主标题。</dd></div><div><dt>根因</dt><dd>新增总览项后 .tn-item 没有 white-space: nowrap，且顶部信息总量超过可用宽度。</dd></div></dl><div class="fixed">待修复</div></article><article class="issueCard"><span class="tag">P3</span><h3>对象×时间矩阵与进化对象 Tab 未交付</h3><dl><div><dt>实际</dt><dd>总览页只渲染 bad case Tab；来源×时间矩阵省略。</dd></div><div><dt>预期</dt><dd>原型有可折叠矩阵；m8-03 未提供对象×桶聚合，targets Tab 属 M11。</dd></div><div><dt>根因</dt><dd>避免用分页数据伪造矩阵；targets 总览按里程碑延后。</dd></div></dl><div class="fixed">已记录 · 待后续 API / M11</div></article></div>
   </section>
 
   <section>
@@ -108,8 +108,8 @@
   </section>
 
   <section>
-    <div class="head"><h2>Conclusion</h2><small>通过（含 2 项已知后续）</small></div>
-    <article class="card conclusion pass"><p><strong>5 个页面场景全部通过；对象×时间矩阵与 targets Tab 作为已知后续记录。</strong></p><ul><li>截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。</li><li>默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。</li></ul></article>
+    <div class="head"><h2>Conclusion</h2><small>通过（含 1 项待修 + 2 项已知后续）</small></div>
+    <article class="card conclusion warn"><p><strong>5 个页面场景通过；发现 1 个 1440px 导航换行缺陷，修复后复测；对象×时间矩阵与 targets Tab 作为已知后续记录。</strong></p><ul><li>截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。</li><li>默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。</li></ul></article>
   </section>
 
   <p class="foot">由 m8-04 集成冒烟生成；不写入仓库。</p>
