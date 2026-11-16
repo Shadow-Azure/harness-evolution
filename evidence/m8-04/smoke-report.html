@@ -79,7 +79,7 @@
     <h1>m8-04 工作空间总览页面集成冒烟报告</h1>
     <p class="summary">在真实 API（SQLite + demo fixtures）+ Vite proxy + 无头 Chrome 中验证总览页默认落地、六格指标、时间/粒度/来源筛选写入 URL、bad case 深链，并与 plans/ui-prototype-v2 的总览页做视觉对照。空空间、刷新恢复与 390px 布局由 m8-04 E2E 覆盖，本报告不重复截图。</p>
     <span class="meta">2026-11-16 · macOS · Chrome headless · 1440×1000 与 390×844</span>
-    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>6</b><span>截图</span></div><div class="metric"><b>1</b><span>待修缺陷</span></div></div>
+    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>6</b><span>截图</span></div><div class="metric"><b>1</b><span>已修缺陷</span></div></div>
   </header>
 
   <section>
@@ -88,18 +88,18 @@
   </section>
 
   <section>
-    <div class="head"><h2>Scenario Matrix</h2><small>5 pass</small></div>
-    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>默认落地总览与六格指标</td><td><span class="status pass">PASS</span></td><td>裸 /workspaces/ws-default 进入 /overview；六格 statstrip、趋势 SVG、bad case 表均渲染。</td><td class="evidence">01-overview.png</td></tr><tr><td class="num">02</td><td>时间窗与粒度写入 URL</td><td><span class="status pass">PASS</span></td><td>点击近 30 天与日粒度后 URL 为 range=30&amp;grain=day，图表重新请求。</td><td class="evidence">02-filtered.png</td></tr><tr><td class="num">03</td><td>来源多选写入 URL</td><td><span class="status pass">PASS</span></td><td>勾选来源「claude」后 URL 带 objects=，图表与列表按来源收窄。</td><td class="evidence">03-object-filter.png</td></tr><tr><td class="num">04</td><td>bad case 下钻深链</td><td><span class="status pass">PASS</span></td><td>行内 ID 链接指向 /workspaces/ws-default/sessions/10000000-0000-4000-8000-000000000004/errors，target=_blank，带 case 与 tab=desc。</td><td class="evidence">—</td></tr><tr><td class="num">05</td><td>与原型信息架构对照</td><td><span class="status pass">PASS</span></td><td>页头、六格 statstrip、时间/粒度/来源筛选、趋势图 + 来源条、bad case 表与原型同构；视觉沿用相同 token 与卡片布局，390px 无溢出。</td><td class="evidence">01-overview.png<br>06-prototype-overview.png</td></tr></tbody></table></div>
+    <div class="head"><h2>Scenario Matrix</h2><small>5 pass · 1 fixed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>默认落地总览与六格指标</td><td><span class="status pass">PASS</span></td><td>裸 /workspaces/ws-default 进入 /overview；六格 statstrip、趋势 SVG、bad case 表均渲染。</td><td class="evidence">01-overview.png</td></tr><tr><td class="num">02</td><td>1440px 顶栏单行</td><td><span class="status fixed">FIXED</span></td><td>四个导航项均为 nowrap、单行；页面无横向溢出（修复前总览/自进化/空间管理折行）。</td><td class="evidence">00-nav-wrap-before.png<br>01-overview.png</td></tr><tr><td class="num">03</td><td>时间窗与粒度写入 URL</td><td><span class="status pass">PASS</span></td><td>点击近 30 天与日粒度后 URL 为 range=30&amp;grain=day，图表重新请求。</td><td class="evidence">02-filtered.png</td></tr><tr><td class="num">04</td><td>来源多选写入 URL</td><td><span class="status pass">PASS</span></td><td>勾选来源「claude」后 URL 带 objects=，图表与列表按来源收窄。</td><td class="evidence">03-object-filter.png</td></tr><tr><td class="num">05</td><td>bad case 下钻深链</td><td><span class="status pass">PASS</span></td><td>行内 ID 链接指向 /workspaces/ws-default/sessions/10000000-0000-4000-8000-000000000004/errors，target=_blank，带 case 与 tab=desc。</td><td class="evidence">—</td></tr><tr><td class="num">06</td><td>与原型信息架构对照</td><td><span class="status pass">PASS</span></td><td>页头、六格 statstrip、时间/粒度/来源筛选、趋势图 + 来源条、bad case 表与原型同构；视觉沿用相同 token 与卡片布局，390px 无溢出。</td><td class="evidence">01-overview.png<br>06-prototype-overview.png</td></tr></tbody></table></div>
   </section>
 
   <section>
     <div class="head"><h2>Issues and Observations</h2><small>P2 1440px 顶栏导航文字换行，与原型不一致<br>P3 对象×时间矩阵与进化对象 Tab 未交付</small></div>
-    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>1440px 顶栏导航文字换行，与原型不一致</h3><dl><div><dt>实际</dt><dd>总览、自进化、空间管理在 1440px 下折成两行，原型保持单行。</dd></div><div><dt>预期</dt><dd>1440px 下四个导航项单行显示，子标题不挤压主标题。</dd></div><div><dt>根因</dt><dd>新增总览项后 .tn-item 没有 white-space: nowrap，且顶部信息总量超过可用宽度。</dd></div></dl><div class="fixed">待修复</div></article><article class="issueCard"><span class="tag">P3</span><h3>对象×时间矩阵与进化对象 Tab 未交付</h3><dl><div><dt>实际</dt><dd>总览页只渲染 bad case Tab；来源×时间矩阵省略。</dd></div><div><dt>预期</dt><dd>原型有可折叠矩阵；m8-03 未提供对象×桶聚合，targets Tab 属 M11。</dd></div><div><dt>根因</dt><dd>避免用分页数据伪造矩阵；targets 总览按里程碑延后。</dd></div></dl><div class="fixed">已记录 · 待后续 API / M11</div></article></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>1440px 顶栏导航文字换行，与原型不一致</h3><dl><div><dt>实际</dt><dd>总览、自进化、空间管理在 1440px 下折成两行，原型保持单行。</dd></div><div><dt>预期</dt><dd>1440px 下四个导航项单行显示，子标题不挤压主标题。</dd></div><div><dt>根因</dt><dd>新增总览项后 .tn-item 没有 white-space: nowrap，且顶部信息总量超过可用宽度。</dd></div></dl><div class="fixed">已修复 · be0a968</div></article><article class="issueCard"><span class="tag">P3</span><h3>对象×时间矩阵与进化对象 Tab 未交付</h3><dl><div><dt>实际</dt><dd>总览页只渲染 bad case Tab；来源×时间矩阵省略。</dd></div><div><dt>预期</dt><dd>原型有可折叠矩阵；m8-03 未提供对象×桶聚合，targets Tab 属 M11。</dd></div><div><dt>根因</dt><dd>避免用分页数据伪造矩阵；targets 总览按里程碑延后。</dd></div></dl><div class="fixed">已记录 · 待后续 API / M11</div></article></div>
   </section>
 
   <section>
-    <div class="head"><h2>Evidence</h2><small>4 screenshots</small></div>
-    <div class="shots"><figure class="wide"><img loading="lazy" src="01-overview.png" alt="工作空间总览页"><figcaption><b>01 · 总览</b><span>六格指标、趋势、来源条与 bad case 表同时可见。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="02-filtered.png" alt="近 30 天与日粒度筛选"><figcaption><b>02 · 筛选</b><span>range=30&amp;grain=day 写入 URL，图表与列表重算。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="03-object-filter.png" alt="来源多选筛选"><figcaption><b>03 · 来源</b><span>勾选来源后 objects= 写入 URL，chip 可移除。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="06-prototype-overview.png" alt="原型总览页"><figcaption><b>05 · 原型</b><span>plans/ui-prototype-v2 的总览页，用作 IA 与视觉对照。</span></figcaption></figure></div>
+    <div class="head"><h2>Evidence</h2><small>5 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="00-nav-wrap-before.png" alt="修复前 1440px 顶栏换行"><figcaption><b>00 · 修复前</b><span>总览/自进化/空间管理逐字折行，与原型单行不一致。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="01-overview.png" alt="工作空间总览页"><figcaption><b>01 · 总览</b><span>六格指标、趋势、来源条与 bad case 表同时可见。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="02-filtered.png" alt="近 30 天与日粒度筛选"><figcaption><b>02 · 筛选</b><span>range=30&amp;grain=day 写入 URL，图表与列表重算。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="03-object-filter.png" alt="来源多选筛选"><figcaption><b>03 · 来源</b><span>勾选来源后 objects= 写入 URL，chip 可移除。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="06-prototype-overview.png" alt="原型总览页"><figcaption><b>06 · 原型</b><span>plans/ui-prototype-v2 的总览页，用作 IA 与视觉对照。</span></figcaption></figure></div>
   </section>
 
   <section>
@@ -108,8 +108,8 @@
   </section>
 
   <section>
-    <div class="head"><h2>Conclusion</h2><small>通过（含 1 项待修 + 2 项已知后续）</small></div>
-    <article class="card conclusion warn"><p><strong>5 个页面场景通过；发现 1 个 1440px 导航换行缺陷，修复后复测；对象×时间矩阵与 targets Tab 作为已知后续记录。</strong></p><ul><li>截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。</li><li>默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。</li></ul></article>
+    <div class="head"><h2>Conclusion</h2><small>通过（含 2 项已知后续）</small></div>
+    <article class="card conclusion pass"><p><strong>6 个页面场景通过；冒烟发现的 1440px 导航换行已修复并复测；对象×时间矩阵与 targets Tab 作为已知后续记录。</strong></p><ul><li>1440px 顶栏换行已在同一 PR 修复，修复前后截图均保留。</li><li>截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。</li><li>默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。</li></ul></article>
   </section>
 
   <p class="foot">由 m8-04 集成冒烟生成；不写入仓库。</p>

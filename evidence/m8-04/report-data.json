@@ -14,7 +14,7 @@
     },
     {
       "value": "1",
-      "label": "待修缺陷"
+      "label": "已修缺陷"
     }
   ],
   "facts": [
@@ -62,6 +62,19 @@
       },
       {
         "id": "02",
+        "name": "1440px 顶栏单行",
+        "status": {
+          "kind": "fixed",
+          "label": "FIXED"
+        },
+        "detail": "四个导航项均为 nowrap、单行；页面无横向溢出（修复前总览/自进化/空间管理折行）。",
+        "evidence": [
+          "00-nav-wrap-before.png",
+          "01-overview.png"
+        ]
+      },
+      {
+        "id": "03",
         "name": "时间窗与粒度写入 URL",
         "status": {
           "kind": "pass",
@@ -73,7 +86,7 @@
         ]
       },
       {
-        "id": "03",
+        "id": "04",
         "name": "来源多选写入 URL",
         "status": {
           "kind": "pass",
@@ -85,7 +98,7 @@
         ]
       },
       {
-        "id": "04",
+        "id": "05",
         "name": "bad case 下钻深链",
         "status": {
           "kind": "pass",
@@ -95,7 +108,7 @@
         "evidence": []
       },
       {
-        "id": "05",
+        "id": "06",
         "name": "与原型信息架构对照",
         "status": {
           "kind": "pass",
@@ -128,8 +141,8 @@
         }
       ],
       "state": {
-        "kind": "fail",
-        "label": "待修复"
+        "kind": "fixed",
+        "label": "已修复 · be0a968"
       }
     },
     {
@@ -157,6 +170,13 @@
   ],
   "screenshots": [
     {
+      "src": "00-nav-wrap-before.png",
+      "alt": "修复前 1440px 顶栏换行",
+      "label": "00 · 修复前",
+      "caption": "总览/自进化/空间管理逐字折行，与原型单行不一致。",
+      "variant": "wide"
+    },
+    {
       "src": "01-overview.png",
       "alt": "工作空间总览页",
       "label": "01 · 总览",
@@ -180,7 +200,7 @@
     {
       "src": "06-prototype-overview.png",
       "alt": "原型总览页",
-      "label": "05 · 原型",
+      "label": "06 · 原型",
       "caption": "plans/ui-prototype-v2 的总览页，用作 IA 与视觉对照。",
       "variant": "wide"
     }
@@ -214,10 +234,11 @@
     ]
   },
   "conclusion": {
-    "kind": "warn",
-    "label": "通过（含 1 项待修 + 2 项已知后续）",
-    "summary": "5 个页面场景通过；发现 1 个 1440px 导航换行缺陷，修复后复测；对象×时间矩阵与 targets Tab 作为已知后续记录。",
+    "kind": "pass",
+    "label": "通过（含 2 项已知后续）",
+    "summary": "6 个页面场景通过；冒烟发现的 1440px 导航换行已修复并复测；对象×时间矩阵与 targets Tab 作为已知后续记录。",
     "points": [
+      "1440px 顶栏换行已在同一 PR 修复，修复前后截图均保留。",
       "截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。",
       "默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。"
     ]
