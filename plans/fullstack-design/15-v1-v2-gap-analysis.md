@@ -98,8 +98,8 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 ### 6.1 契约与数据库
 
 - `packages/contracts` 先加入 Workspace、Member、Credential、Overview、Ingest、Attribution、PotentialPolicy、AttributionPreview 与 V2 七步类型。
-- Alembic 分两次迁移：先空间与关联列，再归因/缓存、候选和触发点列；每个迁移都必须支持 SQLite batch 与 MySQL。
-- `bad_cases` 加 `workspace_id` 后先回填默认空间再收紧 NOT NULL；`bad_case_analysis` 先建 `(case, probe)` 唯一索引，再删除 case 唯一约束。
+- Alembic 分两次迁移（`0014_v2_workspaces`、`0020_v2_attribution_schema`）：先空间与关联列，再归因/缓存、候选和触发点列；`0020` 必须排在 `0019` 之后，每个迁移都必须支持 SQLite batch 与 MySQL，并在外部表缺失时安全跳过。
+- `bad_cases` 加 `workspace_id` 后先回填默认空间再收紧 NOT NULL；`bad_case_analysis` 先建 `(case, probe)` 唯一索引，再删除 case 唯一约束；V1 遗留行可能没有 probe，`probe_id` 与 `cache_key` 保持可空，V2 repository 写入时强制非空。
 - `probe_reports.cache_key` 由服务计算并用于原子 upsert；不能用 case 之外的字段拼接后产生跨空间冲突。
 
 ### 6.2 后端

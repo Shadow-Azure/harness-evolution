@@ -1,11 +1,13 @@
 """Dialect-neutral trajectory, issue, and evolution configuration tables."""
 
 from sqlalchemy import (
+    CHAR,
     JSON,
     BigInteger,
     Boolean,
     Column,
     DateTime,
+    Double,
     Float,
     ForeignKey,
     Index,
@@ -15,6 +17,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    text,
     true,
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -329,13 +332,38 @@ probe_reports = Table(
     "probe_reports",
     DOMAIN_METADATA,
     Column("probe_id", String(64), primary_key=True),
+    # The migration owns the workspace foreign key; workspace scope columns stay
+    # plain strings here so external-table bootstrap never needs the workspace
+    # metadata (the same convention as ``bad_cases.workspace_id``).
+    Column(
+        "workspace_id",
+        String(36),
+        nullable=False,
+        server_default=DEFAULT_WORKSPACE_ID,
+    ),
     Column("session_id", String(36), nullable=False),
     Column("probe_type", String(16), nullable=False),
     Column("probe_object", String(128), nullable=False),
     Column("object_version", String(64), nullable=True),
-    Column("attribute_type", String(16), nullable=False),
+    Column("attribute_type", String(16), nullable=True),
+    Column("conclusion", String(16), nullable=False, server_default="attributed"),
+    Column("confidence", Double, nullable=False, server_default=text("0.8")),
     Column("probe_description", Text, nullable=False),
     Column("probe_analysis", Text, nullable=False),
+    Column("policy_version", String(16), nullable=False, server_default="v1"),
+    Column(
+        "attribution_engine",
+        String(64),
+        nullable=False,
+        server_default="legacy-probe-import",
+    ),
+    Column("cache_key", CHAR(64), nullable=True),
+    # ``created_run_id`` / ``last_reused_run_id`` carry migration-owned foreign
+    # keys. Declaring them here would require the evolution metadata during
+    # external-table bootstrap, so they stay plain strings in the query model.
+    Column("created_run_id", String(36), nullable=True),
+    Column("last_reused_run_id", String(36), nullable=True),
+    Column("reused_count", Integer, nullable=False, server_default="0"),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Index("ix_probe_reports_session", "session_id"),
@@ -346,6 +374,10 @@ probe_reports = Table(
         "object_version",
     ),
     Index("ix_probe_reports_attribute", "attribute_type"),
+    Index("ix_probe_reports_workspace_object", "workspace_id", "object_version"),
+    Index("ix_probe_reports_workspace_updated", "workspace_id", "updated_at"),
+    Index("ix_probe_reports_conclusion", "conclusion"),
+    Index("uq_probe_reports_cache_key", "cache_key", unique=True),
 )
 
 
@@ -364,7 +396,7 @@ bad_case_analysis = Table(
         ForeignKey("bad_cases.bad_case_id", ondelete="CASCADE"),
         nullable=False,
     ),
-    Column("analysis_status", String(32), nullable=False),
+    Column("analysis_status", String(32), nullable=True),
     Column(
         "probe_id",
         String(64),
@@ -373,9 +405,14 @@ bad_case_analysis = Table(
     ),
     Column("analysis_result", JSON, nullable=True),
     Column("updated_at", DateTime(timezone=True), nullable=False),
-    UniqueConstraint("bad_case_id", name="uq_bad_case_analysis_case"),
+    UniqueConstraint(
+        "bad_case_id",
+        "probe_id",
+        name="uq_bad_case_analysis_case_probe",
+    ),
     Index("ix_bad_case_analysis_probe", "probe_id"),
     Index("ix_bad_case_analysis_status", "analysis_status"),
+    Index("ix_bad_case_analysis_case_updated", "bad_case_id", "updated_at"),
 )
 
 

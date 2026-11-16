@@ -35,7 +35,7 @@ class ProbeHitRow:
     probe_type: str
     probe_object: str
     object_version: str | None
-    attribute_type: str
+    attribute_type: str | None
     probe_description: str
     probe_analysis: str
     session_title: str | None
@@ -104,6 +104,7 @@ class ProbeQueryRepository:
                 probe_reports.c.probe_object,
                 probe_reports.c.object_version,
                 probe_reports.c.attribute_type,
+                probe_reports.c.conclusion,
                 probe_reports.c.probe_description,
                 probe_reports.c.probe_analysis,
                 session_families.c.title.label("session_title"),
@@ -193,15 +194,20 @@ class ProbeQueryRepository:
 
 def _row_hit(row: Mapping[str, Any]) -> ProbeHitRow:
     """Convert one joined hit mapping into the boundary DTO."""
+    analysis_status = _text(row["analysis_status"])
+    if analysis_status is None:
+        analysis_status = (
+            "analyzed_nonissue" if row.get("conclusion") == "non_target" else "analyzed_issue"
+        )
     return ProbeHitRow(
         bad_case_id=str(row["bad_case_id"]),
-        analysis_status=str(row["analysis_status"]),
+        analysis_status=analysis_status,
         probe_id=str(row["probe_id"]),
         probe_session_id=str(row["probe_session_id"]),
         probe_type=str(row["probe_type"]),
         probe_object=str(row["probe_object"]),
         object_version=_text(row["object_version"]),
-        attribute_type=str(row["attribute_type"]),
+        attribute_type=_text(row["attribute_type"]),
         probe_description=str(row["probe_description"]),
         probe_analysis=str(row["probe_analysis"]),
         session_title=_text(row["session_title"]),

@@ -10,14 +10,19 @@ depends:
   - m9-01
   - m9-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/db/**
+  - apps/api/app/service/bad_cases/**
+  - apps/api/app/service/problems/**
+  - apps/api/app/service/evolution/**
   - apps/api/alembic/**
   - packages/contracts/**
   - tests/**
+  - apps/api/tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 210
@@ -49,7 +54,7 @@ Multiple attributions, cache metadata, and explainable candidates require in-pla
 
 1. Write migration tests.
 2. Implement repositories.
-3. Update contracts.
+3. Update OpenAPI and snapshots: this slice has no DTO change, so `contract:check` stays current (contract changes belong to m11-01).
 
 ## Dependencies and boundary
 

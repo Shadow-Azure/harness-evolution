@@ -96,12 +96,17 @@ class RepositoryProbeReader:
         probes: list[PrepareProbe] = []
         for probe_id, probe_rows in grouped.items():
             first = probe_rows[0]
-            if first.attribute_type not in TYPE_IMPACT:
+            attribute_type = first.attribute_type
+            if (
+                first.analysis_status == "analyzed_nonissue"
+                or attribute_type is None
+                or attribute_type not in TYPE_IMPACT
+            ):
                 continue
             probes.append(
                 PrepareProbe(
                     probe_id=probe_id,
-                    attribute_type=first.attribute_type,
+                    attribute_type=attribute_type,
                     session_id=first.probe_session_id,
                     bad_case_ids=tuple(dict.fromkeys(row.bad_case_id for row in probe_rows)),
                     description=first.probe_description,

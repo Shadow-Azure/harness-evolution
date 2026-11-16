@@ -34,6 +34,11 @@ from sqlalchemy.pool import QueuePool
 from alembic import command
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.attributions import (
+    AttributionRepository,
+    ProbeWrite,
+    attribution_cache_key,
+)
 from app.db.crud.bad_case_catalog_sync import (
     BadCaseCatalogSyncRepository,
     CatalogCaseRow,
@@ -526,7 +531,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0019"
+        assert result.scalar_one() == "0020"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -822,7 +827,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0019"
+            assert revision == "0020"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1076,7 +1081,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0019"
+        assert revision == "0020"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1247,7 +1252,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0019"
+        assert result.scalar_one() == "0020"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -3057,5 +3062,190 @@ async def test_per_report_source_migration_adds_columns_and_backfills(
             )
         assert row["source_kind"] == "global"
         assert row["source_snapshot"] is None
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_attribution_repository_upsert_is_atomic() -> None:
+    """The MySQL on-duplicate branch converges on one probe and the 0020 schema holds."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url)
+    database = MySqlDatabase(settings)
+    run_id = "run-mysql-attribution"
+    case_id = "bc-mysql-attribution"
+    session_id = "98000000-0000-4000-8000-000000000001"
+    now = now_shanghai()
+    await database.start()
+    try:
+        await upgrade_database(database)
+        async with database.transaction() as session:
+            await session.execute(
+                delete(bad_case_analysis).where(
+                    bad_case_analysis.c.bad_case_id == case_id,
+                ),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.session_id == session_id),
+            )
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+            )
+            await session.execute(
+                delete(evolution_runs).where(evolution_runs.c.id == run_id),
+            )
+            await session.execute(
+                insert(evolution_runs).values(
+                    id=run_id,
+                    title="MySQL attribution",
+                    mode="full",
+                    engine_key="full",
+                    eval_config={},
+                    target_type="skill",
+                    target_name="deep-research",
+                    target_version="v2.0.0",
+                    repo_url="https://example.invalid/skills.git",
+                    sub_dir="skills/deep-research",
+                    status="running",
+                    created_at=now,
+                ),
+            )
+            await session.execute(
+                insert(bad_cases).values(
+                    bad_case_id=case_id,
+                    bad_case_session_id=session_id,
+                    bad_case_type="self",
+                    object_name="deep-research",
+                    object_type="skill",
+                    object_version="v2.0.0",
+                    bad_case_agent_id=None,
+                    title=case_id,
+                    bad_case_description="reason",
+                    meta_data=None,
+                    source="fixtures",
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+
+        first = ProbeWrite(
+            probe_id="probe-mysql-a",
+            workspace_id="ws-default",
+            session_id=session_id,
+            bad_case_id=case_id,
+            probe_type="skill",
+            probe_object="deep-research",
+            object_version="v2.0.0",
+            attribute_type="prompt",
+            conclusion="attributed",
+            confidence=0.8,
+            probe_description="first write",
+            probe_analysis="analysis",
+            policy_version="v1",
+            attribution_engine="engine-a",
+            created_run_id=run_id,
+            created_at=now,
+            updated_at=now,
+        )
+        repository = AttributionRepository(database)
+        assert await repository.upsert_probe(first) == "probe-mysql-a"
+        second = replace(
+            first,
+            probe_id="probe-mysql-b",
+            probe_description="refreshed by the duplicate key branch",
+        )
+        assert await repository.upsert_probe(second) == "probe-mysql-a"
+
+        cache_key = attribution_cache_key(
+            "ws-default",
+            case_id,
+            "skill",
+            "deep-research",
+            "v2.0.0",
+            "v1",
+            "engine-a",
+        )
+        async with database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(probe_reports).where(
+                            probe_reports.c.cache_key == cache_key,
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert len(rows) == 1
+        assert rows[0]["probe_id"] == "probe-mysql-a"
+        assert rows[0]["probe_description"] == "refreshed by the duplicate key branch"
+
+        async with database.engine.connect() as connection:
+            (
+                probe_columns,
+                probe_indexes,
+                analysis_uniques,
+                candidate_columns,
+            ) = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_columns("probe_reports"),
+                    inspect(sync_connection).get_indexes("probe_reports"),
+                    inspect(sync_connection).get_unique_constraints(
+                        "bad_case_analysis",
+                    ),
+                    inspect(sync_connection).get_columns(
+                        "evolution_run_candidates",
+                    ),
+                ),
+            )
+        probe_by_name = {column["name"]: column for column in probe_columns}
+        assert {
+            "workspace_id",
+            "conclusion",
+            "confidence",
+            "policy_version",
+            "attribution_engine",
+            "cache_key",
+            "created_run_id",
+            "last_reused_run_id",
+            "reused_count",
+        } <= set(probe_by_name)
+        assert "DOUBLE" in str(probe_by_name["confidence"]["type"]).upper()
+        indexes = {index["name"]: index for index in probe_indexes if index["name"] is not None}
+        assert indexes["uq_probe_reports_cache_key"]["unique"] == 1
+        assert {
+            "ix_probe_reports_workspace_object",
+            "ix_probe_reports_workspace_updated",
+            "ix_probe_reports_conclusion",
+        } <= set(indexes)
+        unique_names = {
+            constraint["name"] for constraint in analysis_uniques if constraint["name"] is not None
+        }
+        assert "uq_bad_case_analysis_case_probe" in unique_names
+        assert "uq_bad_case_analysis_case" not in unique_names
+        assert {
+            "id",
+            "run_id",
+            "workspace_id",
+            "session_id",
+            "bad_case_id",
+            "object_trigger_agent_id",
+            "object_trigger_event_index",
+            "object_trigger_at",
+            "case_trigger_agent_id",
+            "case_trigger_event_index",
+            "case_trigger_at",
+            "order_state",
+            "included",
+            "included_reason",
+            "probe_id",
+            "is_cached",
+            "created_at",
+        } == {column["name"] for column in candidate_columns}
     finally:
         await database.dispose()

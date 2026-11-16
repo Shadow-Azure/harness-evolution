@@ -10,14 +10,19 @@ depends:
   - m9-01
   - m9-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/db/**
+  - apps/api/app/service/bad_cases/**
+  - apps/api/app/service/problems/**
+  - apps/api/app/service/evolution/**
   - apps/api/alembic/**
   - packages/contracts/**
   - tests/**
+  - apps/api/tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 210
@@ -49,7 +54,7 @@ github:
 
 1. 先写一对多与缓存 upsert 测试。
 2. 实现第二组迁移和 repository。
-3. 更新 OpenAPI 与快照。
+3. 更新 OpenAPI 与快照：本切片无 DTO 变化，`contract:check` 保持 current 即可（契约变更留给 m11-01）。
 
 ## 依赖与交付边界
 

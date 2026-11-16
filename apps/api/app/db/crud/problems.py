@@ -354,7 +354,11 @@ class ProblemRepository:
                 await session.execute(
                     select(bad_case_analysis)
                     .where(bad_case_analysis.c.bad_case_id.in_(case_ids))
-                    .order_by(bad_case_analysis.c.bad_case_id),
+                    .order_by(
+                        bad_case_analysis.c.bad_case_id,
+                        bad_case_analysis.c.updated_at,
+                        bad_case_analysis.c.id,
+                    ),
                 )
             )
             .mappings()

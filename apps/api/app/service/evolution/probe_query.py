@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Sequence
 from datetime import date
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from pydantic import Field, field_validator
 
@@ -195,7 +195,7 @@ def normalized_query(
 def _attribute_of(row: ProbeHitRow) -> Literal["model", "prompt", "error"] | None:
     """Map one probe row to its distribution key, ignoring foreign values."""
     if row.attribute_type in _ATTRIBUTE_TYPES:
-        return row.attribute_type
+        return cast(Literal["model", "prompt", "error"], row.attribute_type)
     return None
 
 
@@ -209,6 +209,8 @@ def probe_row_of(rows: list[ProbeHitRow]) -> ProbePreviewItem | None:
         The shared ProbeRow DTO, or None when the attribute type is foreign.
     """
     first = rows[0]
+    if first.analysis_status == "analyzed_nonissue":
+        return None
     attribute = _attribute_of(first)
     if attribute is None:
         return None
