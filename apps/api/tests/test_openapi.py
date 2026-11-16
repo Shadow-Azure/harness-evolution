@@ -291,6 +291,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "reason",
         "metaData",
         "source",
+        "sessionSource",
         "createdAt",
     }
     assert "workspaceId" not in ingest_properties

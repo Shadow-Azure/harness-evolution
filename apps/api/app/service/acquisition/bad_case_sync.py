@@ -10,17 +10,25 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.config import Settings
 from app.db.base import Database
-from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository, BadCaseRootSyncRow
 from app.db.crud.local_sessions import write_local_payloads
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.local_sessions import LocalAgentPayload
+from app.service.acquisition.parsers import UnsupportedTraceRuntime
 from app.service.acquisition.replay import replay_pending_payloads
 from app.third_party_api.session_query.models import (
     SessionQuerySource,
     SessionTrajectory,
+)
+from app.third_party_api.session_source import (
+    SessionInfo,
+    SessionSourceFetcher,
+    SessionSourceSnapshot,
 )
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
@@ -65,6 +73,8 @@ def _stable_error(exc: Exception) -> str:
     """Keep only a stable code in the durable status row."""
     if isinstance(exc, AppError):
         return exc.code.value
+    if isinstance(exc, UnsupportedTraceRuntime):
+        return "UNSUPPORTED_RUNTIME"
     return ErrorCode.BAD_CASE_SYNC_FAILED.value
 
 
@@ -77,6 +87,7 @@ class BadCaseRootSyncService:
         repository: BadCaseRootSyncRepository,
         source: SessionQuerySource | None,
         *,
+        session_source_fetcher: SessionSourceFetcher | None = None,
         batch_size: int = 20,
         time_budget_seconds: float = 600.0,
         max_agents: int = 200,
@@ -88,6 +99,7 @@ class BadCaseRootSyncService:
         self._database = database
         self._repository = repository
         self._source = source
+        self._session_source_fetcher = session_source_fetcher
         self._batch_size = max(1, batch_size)
         self._time_budget_seconds = max(0.0, time_budget_seconds)
         self._max_agents = max(1, max_agents)
@@ -102,12 +114,14 @@ class BadCaseRootSyncService:
         repository: BadCaseRootSyncRepository,
         source: SessionQuerySource | None,
         settings: Settings,
+        session_source_fetcher: SessionSourceFetcher | None = None,
     ) -> BadCaseRootSyncService:
         """Build the service from environment-backed bounds."""
         return cls(
             database,
             repository,
             source,
+            session_source_fetcher=session_source_fetcher,
             batch_size=settings.bad_case_sync_batch_size,
             time_budget_seconds=settings.bad_case_sync_time_budget_seconds,
             max_agents=settings.bad_case_sync_max_agents,
@@ -157,11 +171,14 @@ class BadCaseRootSyncService:
                 roots_skipped += len(candidates) - index
                 break
             root_now = now or self._clock()
+            source_kind, source_snapshot = await self._select_source(root_session_id)
             claimed = await self._repository.claim(
                 root_session_id,
                 owner=owner,
                 lease_seconds=self._root_lease_seconds,
                 now=root_now,
+                source_kind=source_kind,
+                source_snapshot=source_snapshot,
             )
             if not claimed:
                 roots_skipped += 1
@@ -169,12 +186,15 @@ class BadCaseRootSyncService:
 
             progress = RootSyncProgress()
             try:
+                state = await self._repository.get(root_session_id)
+                selection = self._selection(state)
                 await self._sync_root(
                     root_session_id,
                     root_now,
                     progress,
                     owner=owner,
                     deadline=deadline,
+                    selection=selection,
                 )
                 inserted += progress.inserted
                 updated += progress.updated
@@ -232,7 +252,83 @@ class BadCaseRootSyncService:
         row = await self._repository.get(root_session_id)
         return row.attempts if row is not None else 1
 
+    async def _select_source(
+        self,
+        root_session_id: str,
+    ) -> tuple[str, dict[str, object]]:
+        """Choose the first-claim source without rebuilding an existing choice."""
+        state = await self._repository.get(root_session_id)
+        if state is not None and state.source_snapshot is not None:
+            return state.source_kind, state.source_snapshot
+        if state is not None and state.attempts > 0:
+            return "global", {"kind": "global"}
+        report = await self._repository.latest_report_source(root_session_id)
+        if report is not None:
+            return "report", report.snapshot()
+        return "global", {"kind": "global"}
+
+    @staticmethod
+    def _selection(state: BadCaseRootSyncRow | None) -> SessionSourceSnapshot:
+        """Read the frozen claim snapshot and reject a corrupted state row."""
+        if state is None:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync state disappeared after its claim",
+            )
+        if state.source_snapshot is None:
+            if state.source_kind != "global":
+                raise AppError(
+                    status_code=502,
+                    code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                    message="root sync state is missing its frozen source snapshot",
+                )
+            return SessionSourceSnapshot(kind="global")
+        try:
+            snapshot = SessionSourceSnapshot.model_validate(state.source_snapshot)
+        except ValidationError as exc:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync source snapshot is invalid",
+            ) from exc
+        if snapshot.kind != state.source_kind:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync source snapshot disagrees with its kind",
+            )
+        return snapshot
+
     async def _sync_root(
+        self,
+        root_session_id: str,
+        now: datetime,
+        progress: RootSyncProgress,
+        *,
+        owner: str,
+        deadline: float,
+        selection: SessionSourceSnapshot,
+    ) -> None:
+        if selection.kind == "report":
+            await self._sync_report_root(
+                root_session_id,
+                now,
+                progress,
+                owner=owner,
+                deadline=deadline,
+                selection=selection,
+            )
+            return
+        await self._sync_global_root(
+            root_session_id,
+            now,
+            progress,
+            owner=owner,
+            deadline=deadline,
+        )
+
+    async def _sync_global_root(
         self,
         root_session_id: str,
         now: datetime,
@@ -251,19 +347,9 @@ class BadCaseRootSyncService:
         queue: deque[tuple[str, str | None, int]] = deque([(root_session_id, None, 0)])
         visited: set[str] = {root_session_id}
         while queue:
-            if time.monotonic() >= deadline:
-                raise AppError(
-                    status_code=502,
-                    code=ErrorCode.BAD_CASE_SYNC_TIME_BUDGET,
-                    message="root sync exceeded the batch time budget",
-                )
+            self._check_deadline(deadline)
             session_id, parent_id, depth = queue.popleft()
-            if depth > self._max_depth or progress.agent_count >= self._max_agents:
-                raise AppError(
-                    status_code=502,
-                    code=ErrorCode.TRAVERSAL_LIMIT_EXCEEDED,
-                    message="session traversal exceeded its configured limit",
-                )
+            self._check_limits(depth, progress)
             trajectory = await source.fetch_trajectory(session_id)
             written = await write_local_payloads(
                 self._database,
@@ -287,18 +373,116 @@ class BadCaseRootSyncService:
                 lease_seconds=self._root_lease_seconds,
                 now=self._clock(),
             )
-            children = await source.list_children(session_id)
-            for child in children:
-                if not child or child in visited:
-                    continue
-                if depth + 1 > self._max_depth:
-                    raise AppError(
-                        status_code=502,
-                        code=ErrorCode.TRAVERSAL_LIMIT_EXCEEDED,
-                        message="session traversal exceeded its configured depth",
-                    )
-                visited.add(child)
-                queue.append((child, session_id, depth + 1))
+            self._enqueue_children(
+                queue,
+                visited,
+                await source.list_children(session_id),
+                parent_id=session_id,
+                depth=depth,
+            )
+
+    async def _sync_report_root(
+        self,
+        root_session_id: str,
+        now: datetime,
+        progress: RootSyncProgress,
+        *,
+        owner: str,
+        deadline: float,
+        selection: SessionSourceSnapshot,
+    ) -> None:
+        fetcher = self._session_source_fetcher
+        template = selection.session_url_template
+        if fetcher is None:
+            raise AppError(
+                status_code=503,
+                code=ErrorCode.SESSION_QUERY_UNAVAILABLE,
+                message="session source client is not configured",
+            )
+        if template is None:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.SESSION_SOURCE_INVALID_RESPONSE,
+                message="root sync source snapshot has no session URL template",
+            )
+        queue: deque[tuple[str, str | None, int]] = deque([(root_session_id, None, 0)])
+        visited: set[str] = {root_session_id}
+        while queue:
+            self._check_deadline(deadline)
+            session_id, parent_id, depth = queue.popleft()
+            self._check_limits(depth, progress)
+            info = await fetcher.fetch(
+                session_url_template=template,
+                session_id=session_id,
+                expected_parent_id=parent_id,
+                declared_runtime=selection.runtime,
+            )
+            written = await write_local_payloads(
+                self._database,
+                (
+                    _payload_from_info(
+                        root_session_id=root_session_id,
+                        session_id=session_id,
+                        info=info,
+                        now=now,
+                    ),
+                ),
+                source_type="http_api",
+            )
+            progress.agent_count += 1
+            progress.inserted += written.inserted_payloads
+            progress.updated += written.updated_payloads
+            await self._repository.renew_lease(
+                root_session_id,
+                owner=owner,
+                lease_seconds=self._root_lease_seconds,
+                now=self._clock(),
+            )
+            self._enqueue_children(
+                queue,
+                visited,
+                info.child_session_ids,
+                parent_id=session_id,
+                depth=depth,
+            )
+
+    @staticmethod
+    def _check_deadline(deadline: float) -> None:
+        if time.monotonic() >= deadline:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.BAD_CASE_SYNC_TIME_BUDGET,
+                message="root sync exceeded the batch time budget",
+            )
+
+    def _check_limits(self, depth: int, progress: RootSyncProgress) -> None:
+        if depth > self._max_depth or progress.agent_count >= self._max_agents:
+            raise AppError(
+                status_code=502,
+                code=ErrorCode.TRAVERSAL_LIMIT_EXCEEDED,
+                message="session traversal exceeded its configured limit",
+            )
+
+    def _enqueue_children(
+        self,
+        queue: deque[tuple[str, str | None, int]],
+        visited: set[str],
+        children: tuple[str, ...],
+        *,
+        parent_id: str,
+        depth: int,
+    ) -> None:
+        for child in children:
+            if not child or child in visited:
+                continue
+            if depth + 1 > self._max_depth:
+                raise AppError(
+                    status_code=502,
+                    code=ErrorCode.TRAVERSAL_LIMIT_EXCEEDED,
+                    message="session traversal exceeded its configured depth",
+                )
+            visited.add(child)
+            queue.append((child, parent_id, depth + 1))
 
 
 def _payload(
@@ -320,4 +504,27 @@ def _payload(
         agent_meta=None if session_id == root_session_id else {"parentAgentId": parent_id},
         source_updated_at=now,
         discovered_at=now,
+    )
+
+
+def _payload_from_info(
+    *,
+    root_session_id: str,
+    session_id: str,
+    info: SessionInfo,
+    now: datetime,
+) -> LocalAgentPayload:
+    """Project one session-source envelope onto the raw payload row."""
+    encoded = info.trajectory.content.encode("utf-8")
+    return LocalAgentPayload(
+        root_session_id=root_session_id,
+        agent_id=session_id,
+        agent_kind=info.agent_kind,
+        content=info.trajectory.content,
+        content_hash=hashlib.sha256(encoded).hexdigest(),
+        line_count=info.trajectory.line_count,
+        agent_meta=dict(info.agent_meta) if info.agent_meta is not None else None,
+        source_updated_at=now,
+        discovered_at=now,
+        runtime_key=info.runtime_key,
     )

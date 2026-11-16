@@ -111,6 +111,7 @@ from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
 from app.third_party_api.session_query.http import HttpSessionQuerySource
 from app.third_party_api.session_query.models import SessionQuerySource
+from app.third_party_api.session_source import HttpSessionSourceClient
 from app.third_party_api.trajectory.http import HttpTrajectorySource
 from app.third_party_api.trajectory.source import TrajectorySource
 
@@ -183,12 +184,22 @@ def create_app(
             max_retries=resolved_settings.session_query_retry_attempts,
             backoff_seconds=resolved_settings.session_query_retry_backoff_seconds,
         )
+    session_source_http_client = httpx.AsyncClient(
+        timeout=resolved_settings.session_query_timeout_seconds,
+        follow_redirects=False,
+    )
+    session_source_fetcher = HttpSessionSourceClient(
+        session_source_http_client,
+        max_retries=resolved_settings.session_query_retry_attempts,
+        backoff_seconds=resolved_settings.session_query_retry_backoff_seconds,
+    )
     bad_case_sync_repository = BadCaseRootSyncRepository(resolved_database)
     bad_case_sync_service = BadCaseRootSyncService.from_settings(
         resolved_database,
         bad_case_sync_repository,
         resolved_session_query_source,
         resolved_settings,
+        session_source_fetcher=session_source_fetcher,
     )
     bad_case_sync = BadCaseRootSyncCoordinator(
         jobs,
@@ -444,9 +455,12 @@ def create_app(
                                                     await resolved_catalog_source.close()
                                             finally:
                                                 try:
-                                                    await event_bus.close()
+                                                    await session_source_http_client.aclose()
                                                 finally:
-                                                    await resolved_database.dispose()
+                                                    try:
+                                                        await event_bus.close()
+                                                    finally:
+                                                        await resolved_database.dispose()
 
     docs_url = "/api/docs" if resolved_settings.docs_enabled else None
     openapi_url = "/api/openapi.json" if resolved_settings.docs_enabled else None

@@ -498,6 +498,16 @@
             "title": "Sessionid",
             "type": "string"
           },
+          "sessionSource": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BadCaseSessionSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "anyOf": [
               {
@@ -630,6 +640,35 @@
           "items"
         ],
         "title": "BadCaseListResponse",
+        "type": "object"
+      },
+      "BadCaseSessionSource": {
+        "additionalProperties": false,
+        "description": "One report's optional session download contract.\n\nThe template is a plain URL with exactly one ``{sessionId}`` placeholder.\nCredentials are deliberately absent: authorization is the template's own\nshort-lived signature, and the report body can never smuggle headers.",
+        "properties": {
+          "runtime": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime"
+          },
+          "sessionUrlTemplate": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Sessionurltemplate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionUrlTemplate"
+        ],
+        "title": "BadCaseSessionSource",
         "type": "object"
       },
       "BadCaseSyncSummary": {
@@ -996,6 +1035,12 @@
           "SESSION_QUERY_INVALID_RESPONSE",
           "SESSION_QUERY_TIMEOUT",
           "SESSION_QUERY_REQUEST_FAILED",
+          "SESSION_SOURCE_UNAUTHORIZED",
+          "SESSION_SOURCE_INVALID_RESPONSE",
+          "SESSION_SOURCE_TIMEOUT",
+          "SESSION_SOURCE_REQUEST_FAILED",
+          "SESSION_SOURCE_VERSION_INCOMPATIBLE",
+          "SESSION_SOURCE_SESSION_MISMATCH",
           "TRAVERSAL_LIMIT_EXCEEDED",
           "TRAJECTORY_EMPTY",
           "BAD_CASE_SYNC_FAILED",

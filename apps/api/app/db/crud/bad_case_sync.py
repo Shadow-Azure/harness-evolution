@@ -34,6 +34,8 @@ class BadCaseRootSyncRow:
 
     root_session_id: str
     status: str
+    source_kind: str
+    source_snapshot: dict[str, object] | None
     attempts: int
     last_error: str | None
     agent_count: int
@@ -43,6 +45,22 @@ class BadCaseRootSyncRow:
     lease_owner: str | None
     lease_expires_at: datetime | None
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class BadCaseReportSource:
+    """The newest per-report download contract for one root session."""
+
+    runtime: str | None
+    session_url_template: str
+
+    def snapshot(self) -> dict[str, object]:
+        """Return the durable frozen form stored on the root-sync row."""
+        return {
+            "kind": "report",
+            "runtime": self.runtime,
+            "session_url_template": self.session_url_template,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,9 +79,16 @@ class BadCaseRootSyncStats:
 
 
 def _to_row(values: RowMapping) -> BadCaseRootSyncRow:
+    snapshot = values["source_snapshot"]
     return BadCaseRootSyncRow(
         root_session_id=str(values["root_session_id"]),
         status=str(values["status"]),
+        source_kind=str(values["source_kind"]),
+        source_snapshot=(
+            {str(key): value for key, value in snapshot.items()}
+            if isinstance(snapshot, dict)
+            else None
+        ),
         attempts=int(values["attempts"]),
         last_error=values["last_error"] if isinstance(values["last_error"], str) else None,
         agent_count=int(values["agent_count"]),
@@ -164,6 +189,8 @@ async def insert_pending_root(
             insert(bad_case_root_sync).values(
                 root_session_id=root_session_id,
                 status=_PENDING,
+                source_kind="global",
+                source_snapshot=None,
                 attempts=0,
                 last_error=None,
                 agent_count=0,
@@ -245,6 +272,51 @@ class BadCaseRootSyncRepository:
             raise
         return int(value)
 
+    async def has_report_source(self) -> bool:
+        """Return whether any report carries a session source to sync."""
+        statement = (
+            select(bad_cases.c.bad_case_id).where(bad_cases.c.session_source.is_not(None)).limit(1)
+        )
+        try:
+            async with self._database.session() as session:
+                return (await session.execute(statement)).scalar_one_or_none() is not None
+        except (OperationalError, ProgrammingError) as exc:
+            if _missing_bad_cases(exc):
+                return False
+            raise
+
+    async def latest_report_source(
+        self,
+        root_session_id: str,
+    ) -> BadCaseReportSource | None:
+        """Return the newest non-empty report source for one root session."""
+        statement = (
+            select(
+                bad_cases.c.session_source,
+                bad_cases.c.created_at,
+                bad_cases.c.bad_case_id,
+            )
+            .where(
+                bad_cases.c.bad_case_session_id == root_session_id,
+                bad_cases.c.session_source.is_not(None),
+            )
+            .order_by(bad_cases.c.created_at.desc(), bad_cases.c.bad_case_id.desc())
+            .limit(1)
+        )
+        async with self._database.session() as session:
+            row = (await session.execute(statement)).mappings().one_or_none()
+        if row is None or not isinstance(row["session_source"], dict):
+            return None
+        source = row["session_source"]
+        template = source.get("sessionUrlTemplate")
+        runtime = source.get("runtime")
+        if not isinstance(template, str) or not template:
+            return None
+        return BadCaseReportSource(
+            runtime=runtime if isinstance(runtime, str) else None,
+            session_url_template=template,
+        )
+
     async def claim(
         self,
         root_session_id: str,
@@ -252,6 +324,8 @@ class BadCaseRootSyncRepository:
         owner: str,
         lease_seconds: int,
         now: datetime,
+        source_kind: str | None = None,
+        source_snapshot: dict[str, object] | None = None,
     ) -> bool:
         """Atomically claim one root unless it is terminal or leased."""
         now_value = as_shanghai(now)
@@ -275,6 +349,8 @@ class BadCaseRootSyncRepository:
                     owner=owner,
                     now_value=now_value,
                     expires_at=expires_at,
+                    source_kind=source_kind,
+                    source_snapshot=source_snapshot,
                 )
 
             status = str(row["status"])
@@ -289,18 +365,22 @@ class BadCaseRootSyncRepository:
                 if isinstance(retry_at, datetime) and as_shanghai(retry_at) > now_value:
                     return False
 
+            values: dict[str, object] = {
+                "status": _SYNCING,
+                "attempts": int(row["attempts"]) + 1,
+                "started_at": now_value,
+                "next_retry_at": None,
+                "lease_owner": owner,
+                "lease_expires_at": expires_at,
+                "updated_at": now_value,
+            }
+            if row["source_snapshot"] is None:
+                values["source_kind"] = source_kind or str(row["source_kind"])
+                values["source_snapshot"] = source_snapshot
             await session.execute(
                 update(bad_case_root_sync)
                 .where(bad_case_root_sync.c.root_session_id == root_session_id)
-                .values(
-                    status=_SYNCING,
-                    attempts=int(row["attempts"]) + 1,
-                    started_at=now_value,
-                    next_retry_at=None,
-                    lease_owner=owner,
-                    lease_expires_at=expires_at,
-                    updated_at=now_value,
-                ),
+                .values(**values),
             )
             return True
 
@@ -312,6 +392,8 @@ class BadCaseRootSyncRepository:
         owner: str,
         now_value: datetime,
         expires_at: datetime,
+        source_kind: str | None,
+        source_snapshot: dict[str, object] | None,
     ) -> bool:
         """Insert the first state row for a root that had none when read.
 
@@ -325,6 +407,8 @@ class BadCaseRootSyncRepository:
                 insert(bad_case_root_sync).values(
                     root_session_id=root_session_id,
                     status=_SYNCING,
+                    source_kind=source_kind or "global",
+                    source_snapshot=source_snapshot,
                     attempts=1,
                     last_error=None,
                     agent_count=0,

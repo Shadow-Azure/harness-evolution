@@ -505,6 +505,7 @@ erDiagram
 - `badCaseType` 仅 `self|discovery`，`objectType` 仅 `skill|agent`；body 不接受 `workspaceId`。
 - `metaData` 必须是 JSON object，可为 `null`；数组、字符串等标量一律 `422 VALIDATION_INVALID`（与读模型 `Record<string, unknown>` 一致）。
 - `createdAt` 必须带时区偏移（如 `2026-11-09T15:58:00+08:00` 或 `...Z`）；无偏移的 naive 时间戳一律 `422 VALIDATION_INVALID`，不会按 `+08:00` 静默解释。
+- `sessionSource` 可选，形状为 `{ runtime?, sessionUrlTemplate }`：模板必须是 http(s) 绝对 URL、长度 ≤ 2048、恰好包含一个 `{sessionId}` 占位符；body 不接受 headers/token 等凭据字段，授权由模板自带的短时签名承担。`runtime` 只是预声明（`^[a-z0-9][a-z0-9-]{0,31}$`），最终以 envelope 回报为准，不一致只记诊断不失败。不传该字段时后端行为与旧版完全一致。
 
 ### 3.9 归因
 
@@ -1348,6 +1349,18 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `NO_POTENTIAL_MATCHED` | 409 | 关联存在但潜在 bad case 为 0 |
 | `ATTRIBUTION_NOT_FOUND` | 404 | attributionId 不存在或不属于该 bad case |
 
+root-sync 状态表的 `last_error` 直接保存稳定码，per-report source 失败使用：
+
+| code | 触发场景 |
+|---|---|
+| `SESSION_SOURCE_UNAUTHORIZED` | 上报模板 URL 返回 401/403 |
+| `SESSION_SOURCE_INVALID_RESPONSE` | envelope JSON、schema、轨迹或 lineCount 非法 |
+| `SESSION_SOURCE_TIMEOUT` | 下载 envelope 超时 |
+| `SESSION_SOURCE_REQUEST_FAILED` | 非重试的 4xx/5xx、连接失败 |
+| `SESSION_SOURCE_VERSION_INCOMPATIBLE` | `schemaVersion` 主版本不匹配 |
+| `SESSION_SOURCE_SESSION_MISMATCH` | `sessionId` 回显或 subagent 的 `parentSessionId` 不一致 |
+| `UNSUPPORTED_RUNTIME` | envelope runtime 未注册 parser/adapter，不回退 Claude |
+
 ## 9. 与原型字段的映射对照
 
 | 原型字段 | 接口字段 | 说明 |
@@ -1430,3 +1443,28 @@ V2 新增映射（2026-11-11）：
 - 鉴权：`Authorization: Bearer {HE_UPSTREAM_TOKEN}`（env 注入）。
 - 错误：`404` session 不存在；`429` 限流（我们指数退避）；`5xx` 重试 3 次后按条隔离（记 `sync_runs.errors`，不毁整批）。
 - 版本：上游在响应头 `X-Trajectory-Api-Version` 声明；主版本不兼容时 `HttpApiSource` 拒绝启动并在日志给出明确错误。
+
+### 10.5 上报绑定的会话信息 envelope（M9-07）
+
+`sessionSource.sessionUrlTemplate` 代入 sessionId 后 GET 一次，返回下述 JSON。它把“子会话列表 + 单 agent 轨迹 + runtime 身份”收进一个响应，避免 per-report 场景继续依赖全局查询服务：
+
+```json
+{
+  "schemaVersion": 1,
+  "sessionId": "0ab6…",
+  "runtime": "claude-code",
+  "runtimeVersion": "2.0.14",
+  "agentKind": "main",
+  "parentSessionId": null,
+  "childSessionIds": ["agent-a1", "agent-b2"],
+  "agentMeta": { "agentType": "general-purpose", "spawnDepth": 1 },
+  "trajectory": { "format": "ndjson", "lineCount": 812, "content": "…" },
+  "updatedAt": "2026-11-16T18:00:00+08:00"
+}
+```
+
+- `runtime` 与 parser 的 `runtime_key` 同一词汇表，决定 `agentMeta` 的闭集解释；未知 runtime 直接失败，不回退 Claude。
+- `trajectory.content` 按 §10.1 的 NDJSON 规则规范化（重序列化、重复 key 拒绝、64 MiB / 单行 1 MiB / 100 万行上限）；`lineCount` 必须与规范化后的 object 数一致。
+- `schemaVersion` 主版本不匹配是稳定错误；`sessionId` 回显、`agentKind=subagent` 时的 `parentSessionId` 必须与请求和遍历父节点一致。
+- `childSessionIds` 只给一层直接子会话；BFS 的 visited、深度、数量与时间预算沿用现有 root-sync 限额。
+- `agentMeta` 每种 runtime 一套 closed schema，解释内聚在 session-source adapter 子类；adapter 只投影 runtime 无关字段，parser 仍由 `runtime_key` 选择。

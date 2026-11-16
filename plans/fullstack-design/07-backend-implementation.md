@@ -308,6 +308,25 @@ class ClaudeCodeTraceParser(BaseTraceParser):
 
 新增 runtime 的完整步骤：新增 `parsers/<runtime>.py`，继承 `BaseTraceParser`，声明 `runtime_key/parser_version`，实现 `consume_record`/`parse_agent_meta`，加 `@TraceParserFactory.register`，补 fixture 与 factory/replay 测试。公共 normalization、replay、agent_tree 不改。
 
+### 2.6.1 会话来源适配器工厂（M9-07）
+
+上报可携带 per-session 下载契约后，轨迹来源不再只有全局查询服务。`third_party_api/session_source/` 用与 parser 相同的扩展模式：
+
+```text
+third_party_api/session_source/
+  __init__.py       # 自动发现并 import 子模块，触发注册
+  base.py           # BaseSessionSourceAdapter + SessionInfo + envelope 模型
+  factory.py        # SessionSourceFactory
+  client.py         # 共享 HTTP 取数、严格校验、进程级串行锁
+  claude_code.py    # ClaudeCodeSessionSourceAdapter
+  <runtime>.py      # 新 agent 只加这一文件
+```
+
+- `HttpSessionSourceClient.fetch` 负责模板代入、超时/重试、401→`SESSION_SOURCE_UNAUTHORIZED`、坏 JSON/坏 envelope→`SESSION_SOURCE_INVALID_RESPONSE`、版本/回显/parent 校验；所有请求共享一把进程级串行锁。
+- 取到 envelope 后按其中的 `runtime` 调 `SessionSourceFactory.create()`；未知 runtime 抛 `UnsupportedTraceRuntime`，root 记 `UNSUPPORTED_RUNTIME`，不回退 Claude。
+- 子类只实现 `parse_agent_meta`：用 closed schema 解释 `agentMeta`，再由基类 `project` 生成 runtime 无关的 `SessionInfo`（runtime_key、agentKind、parentAgentId、childSessionIds、agent_meta、规范化 trajectory）。
+- 新 runtime 只新增 `session_source/<runtime>.py` 与 `parsers/<runtime>.py` 并注册；公共 root-sync/authorization/normalize 不改。
+
 ### 2.7 测试点
 
 - 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。

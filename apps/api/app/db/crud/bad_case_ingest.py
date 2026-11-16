@@ -32,6 +32,7 @@ _UPSTREAM_COLUMNS = (
     "bad_case_description",
     "meta_data",
     "source",
+    "session_source",
     "created_at",
 )
 
@@ -51,6 +52,7 @@ class BadCaseIngestRow:
     reason: str
     meta_data: Mapping[str, Any] | None
     source: str | None
+    session_source: Mapping[str, Any] | None
     created_at: datetime
 
 
@@ -104,6 +106,7 @@ def _values(row: BadCaseIngestRow) -> dict[str, Any]:
         "bad_case_description": row.reason,
         "meta_data": dict(row.meta_data) if row.meta_data is not None else None,
         "source": row.source,
+        "session_source": (dict(row.session_source) if row.session_source is not None else None),
         "created_at": as_shanghai(row.created_at),
     }
 
