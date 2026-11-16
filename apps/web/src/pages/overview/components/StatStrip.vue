@@ -17,6 +17,10 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  code: {
+    type: String,
+    default: "OVERVIEW_SUMMARY_UNAVAILABLE",
+  },
 });
 
 const emit = defineEmits<{
@@ -25,13 +29,22 @@ const emit = defineEmits<{
   "focus-sources": [];
 }>();
 
+type StatCell = {
+  key: "badcases" | "self" | "discovery" | "sessions" | "sources" | "quota";
+  label: string;
+  value: string;
+  tone: string;
+  interactive: boolean;
+  title?: string;
+};
+
 const quotaRatio = computed(() => {
   const totals = props.totals;
   if (!totals || totals.quota <= 0) return 0;
   return totals.used / totals.quota;
 });
 
-const cells = computed(() => {
+const cells = computed<StatCell[]>(() => {
   const totals = props.totals;
   return [
     {
@@ -39,45 +52,64 @@ const cells = computed(() => {
       label: "bad case 总数",
       value: totals ? String(totals.badCases) : "—",
       tone: "",
+      interactive: false,
     },
     {
       key: "self",
       label: "自身存在问题",
       value: totals ? String(totals.self) : "—",
       tone: "self",
+      interactive: true,
+      title: "只看自身存在问题",
     },
     {
       key: "discovery",
       label: "发现前置步骤问题",
       value: totals ? String(totals.discovery) : "—",
       tone: "discovery",
+      interactive: true,
+      title: "只看发现前置步骤问题",
     },
     {
       key: "sessions",
       label: "关联 Session",
       value: totals ? String(totals.sessions) : "—",
       tone: "",
+      interactive: false,
     },
     {
       key: "sources",
-      label: "上报来源",
+      label: "来源数",
       value: totals ? String(totals.sources) : "—",
       tone: "",
+      interactive: true,
+      title: "聚焦来源筛选",
     },
     {
       key: "quota",
-      label: "空间额度",
+      label: "额度",
       value: totals ? `${totals.used} / ${totals.quota}` : "—",
       tone: quotaRatio.value > 0.8 ? "bad" : "",
+      interactive: false,
     },
   ];
 });
+
+function activate(cell: StatCell): void {
+  if (cell.key === "self" || cell.key === "discovery") {
+    emit("select-type", cell.key);
+    return;
+  }
+  if (cell.key === "sources") {
+    emit("focus-sources");
+  }
+}
 </script>
 
 <template>
   <ErrorState
     v-if="error"
-    code="OVERVIEW_SUMMARY_UNAVAILABLE"
+    :code="code"
     message="总览统计加载失败，请重试；趋势与列表仍可独立查看。"
     @retry="emit('retry')"
   />
@@ -89,36 +121,19 @@ const cells = computed(() => {
     data-testid="ov-statstrip"
   >
     <component
-      :is="cell.key === 'self' || cell.key === 'discovery' ? 'button' : 'div'"
+      :is="cell.interactive ? 'button' : 'div'"
       v-for="cell in cells"
       :key="cell.key"
       class="ss"
       :class="cell.tone"
       :data-testid="`ov-stat-${cell.key}`"
-      :type="cell.key === 'self' || cell.key === 'discovery' ? 'button' : undefined"
-      :title="
-        cell.key === 'self' || cell.key === 'discovery'
-          ? `只看${cell.label}`
-          : undefined
-      "
-      @click="
-        cell.key === 'self' || cell.key === 'discovery'
-          ? emit('select-type', cell.key)
-          : undefined
-      "
+      :type="cell.interactive ? 'button' : undefined"
+      :title="cell.title"
+      @click="cell.interactive ? activate(cell) : undefined"
     >
       <b>{{ cell.value }}</b>
       <span>{{ cell.label }}</span>
     </component>
-    <button
-      class="ss-sources-focus"
-      data-testid="ov-stat-sources-focus"
-      type="button"
-      title="聚焦来源筛选"
-      @click="emit('focus-sources')"
-    >
-      来源筛选
-    </button>
   </section>
 </template>
 
@@ -184,23 +199,6 @@ button.ss:hover b {
   color: var(--red);
 }
 
-.ss-sources-focus {
-  align-self: center;
-  margin: 0 8px;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--text-dim);
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.ss-sources-focus:hover {
-  border-color: var(--blue);
-  color: var(--text);
-}
-
 @media (max-width: 640px) {
   .statstrip {
     display: grid;
@@ -209,11 +207,6 @@ button.ss:hover b {
 
   .ss {
     border-left: 0;
-  }
-
-  .ss-sources-focus {
-    grid-column: 1 / -1;
-    justify-self: center;
   }
 }
 </style>

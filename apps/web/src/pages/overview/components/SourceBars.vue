@@ -20,6 +20,10 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  code: {
+    type: String,
+    default: "OVERVIEW_SOURCES_UNAVAILABLE",
+  },
 });
 
 const emit = defineEmits<{ retry: [] }>();
@@ -68,7 +72,7 @@ function width(value: number): string {
     />
     <ErrorState
       v-else-if="error"
-      code="OVERVIEW_SOURCES_UNAVAILABLE"
+      :code="code"
       data-testid="ov-source-bars-error"
       message="来源分布加载失败，请重试；趋势与列表不受影响。"
       @retry="emit('retry')"

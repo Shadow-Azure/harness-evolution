@@ -34,6 +34,10 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  code: {
+    type: String,
+    default: "OVERVIEW_TREND_UNAVAILABLE",
+  },
 });
 
 const emit = defineEmits<{
@@ -137,7 +141,7 @@ function select(bar: Bar): void {
     />
     <ErrorState
       v-else-if="error"
-      code="OVERVIEW_TREND_UNAVAILABLE"
+      :code="code"
       data-testid="ov-chart-error"
       message="趋势加载失败，请重试；列表不受影响。"
       @retry="emit('retry')"

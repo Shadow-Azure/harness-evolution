@@ -44,6 +44,10 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  code: {
+    type: String,
+    default: "OVERVIEW_CASES_UNAVAILABLE",
+  },
 });
 
 const emit = defineEmits<{
@@ -57,6 +61,10 @@ const pages = computed(() =>
 );
 const currentPage = computed(() =>
   Math.min(Math.max(1, props.page), pages.value),
+);
+const outOfRange = computed(
+  () =>
+    props.total > 0 && props.items.length === 0 && props.page > pages.value,
 );
 const emptyTitle = computed(() =>
   props.filtered
@@ -145,10 +153,17 @@ function caseHref(item: BadCaseListItem): string {
     <ErrorState
       v-else-if="error"
       class="table-state"
-      code="OVERVIEW_CASES_UNAVAILABLE"
+      :code="code"
       data-testid="ov-case-error"
       message="bad case 列表加载失败，请重试；趋势与统计不受影响。"
       @retry="emit('retry')"
+    />
+    <EmptyState
+      v-else-if="outOfRange"
+      class="table-state"
+      data-testid="ov-case-page-out-of-range"
+      :description="`当前筛选只有 ${pages} 页，可用下方分页返回有效页。`"
+      :title="`第 ${page} 页没有数据`"
     />
     <EmptyState
       v-else-if="items.length === 0"
@@ -239,7 +254,7 @@ function caseHref(item: BadCaseListItem): string {
     </div>
 
     <div
-      v-if="!loading && !error && items.length > 0"
+      v-if="!loading && !error && (items.length > 0 || outOfRange)"
       class="pager"
       data-testid="ov-pager"
     >

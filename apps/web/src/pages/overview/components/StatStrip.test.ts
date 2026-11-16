@@ -22,7 +22,7 @@ function mountStrip(props: Record<string, unknown> = {}) {
 }
 
 describe("overview stat strip", () => {
-  it("renders the six prototype cells from the summary totals", () => {
+  it("renders the six design 08 cells from the summary totals", () => {
     const wrapper = mountStrip();
 
     expect(wrapper.get("[data-testid='ov-stat-badcases']").text()).toContain("25");
@@ -33,7 +33,9 @@ describe("overview stat strip", () => {
     expect(wrapper.get("[data-testid='ov-stat-discovery']").text()).toContain("9");
     expect(wrapper.get("[data-testid='ov-stat-sessions']").text()).toContain("10");
     expect(wrapper.get("[data-testid='ov-stat-sources']").text()).toContain("6");
+    expect(wrapper.get("[data-testid='ov-stat-sources']").text()).toContain("来源数");
     expect(wrapper.get("[data-testid='ov-stat-quota']").text()).toContain("25 / 60");
+    expect(wrapper.get("[data-testid='ov-stat-quota']").text()).toContain("额度");
     expect(wrapper.findAll("[data-testid='ov-statstrip'] .ss")).toHaveLength(6);
   });
 
@@ -52,22 +54,26 @@ describe("overview stat strip", () => {
     expect(wrapper.get("[data-testid='ov-stat-badcases']").text()).toContain("—");
   });
 
-  it("emits list metrics and the source shortcut", async () => {
+  it("emits list metrics and focuses sources from the source cell", async () => {
     const wrapper = mountStrip();
 
     await wrapper.get("[data-testid='ov-stat-self']").trigger("click");
     await wrapper.get("[data-testid='ov-stat-discovery']").trigger("click");
-    await wrapper.get("[data-testid='ov-stat-sources-focus']").trigger("click");
+    await wrapper.get("[data-testid='ov-stat-sources']").trigger("click");
 
     expect(wrapper.emitted("select-type")).toEqual([["self"], ["discovery"]]);
     expect(wrapper.emitted("focus-sources")).toHaveLength(1);
+    expect(
+      wrapper.find("[data-testid='ov-stat-sources-focus']").exists(),
+    ).toBe(false);
   });
 
-  it("replaces the strip with a retryable block error", async () => {
-    const wrapper = mountStrip({ error: new Error("boom") });
+  it("replaces the strip with a retryable block error carrying the real code", async () => {
+    const wrapper = mountStrip({ error: new Error("boom"), code: "INTERNAL" });
 
     expect(wrapper.find("[data-testid='ov-statstrip']").exists()).toBe(false);
     expect(wrapper.text()).toContain("总览统计加载失败");
+    expect(wrapper.text()).toContain("INTERNAL");
     await wrapper.get("button").trigger("click");
     expect(wrapper.emitted("retry")).toHaveLength(1);
   });

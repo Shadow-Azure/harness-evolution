@@ -92,12 +92,28 @@ describe("overview bad-case table", () => {
     expect(filtered.emitted("clear-filters")).toHaveLength(1);
   });
 
+  it("shows a distinct page-out-of-range state with the pager", async () => {
+    const wrapper = mountTable({ items: [], total: 17, page: 99 });
+
+    const state = wrapper.get("[data-testid='ov-case-page-out-of-range']");
+    expect(state.text()).toContain("第 99 页");
+    expect(wrapper.find("[data-testid='ov-case-empty']").exists()).toBe(false);
+    expect(wrapper.get("[data-testid='ov-pager']").text()).toContain("第 3 / 3 页");
+    await wrapper.get("[data-testid='ov-page-prev']").trigger("click");
+    expect(wrapper.emitted("update:page")).toEqual([[2]]);
+  });
+
   it("renders the loading skeleton and the retryable block error", async () => {
     const loading = mountTable({ loading: true, items: [] });
     expect(loading.find("[data-testid='ov-case-loading']").exists()).toBe(true);
 
-    const failed = mountTable({ error: new Error("boom"), items: [] });
+    const failed = mountTable({
+      error: new Error("boom"),
+      items: [],
+      code: "INTERNAL",
+    });
     expect(failed.find("[data-testid='ov-case-error']").exists()).toBe(true);
+    expect(failed.text()).toContain("INTERNAL");
     await failed.get("button").trigger("click");
     expect(failed.emitted("retry")).toHaveLength(1);
   });

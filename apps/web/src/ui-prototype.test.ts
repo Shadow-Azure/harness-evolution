@@ -77,7 +77,7 @@ describe("prototype visual system", () => {
     const items = wrapper.findAll("nav .tn-item");
     expect(items).toHaveLength(3);
     expect(items.map((item) => item.text())).toEqual([
-      "总览来源 · 趋势 · bad case",
+      "总览bad case 趋势",
       "Session 错误查看会话轨迹与归因",
       "自进化报告驱动的迭代优化",
     ]);

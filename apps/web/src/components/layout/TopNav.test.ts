@@ -251,6 +251,17 @@ describe("top navigation user area", () => {
     expect(wrapper.findAll("nav .tn-item.active")).toHaveLength(1);
   });
 
+  it("keeps the four nav labels on one line and uses the prototype subtitle", async () => {
+    const wrapper = await mountWithStatus(statusPayload());
+
+    expect(wrapper.get("#tn-overview .tn-sub").text()).toBe("bad case 趋势");
+    expect(TopNavSource).toMatch(/\.tn-item \{[^}]*white-space: nowrap;/);
+    expect(TopNavSource).toMatch(/\.tn-item \{[^}]*flex: 0 0 auto;/);
+    expect(TopNavSource).toMatch(
+      /@media \(max-width: 1500px\) \{[\s\S]*?\.tn-sub/,
+    );
+  });
+
   it("keeps the compact brand and demo state accessible", async () => {
     const pinia = createPinia();
     setActivePinia(pinia);

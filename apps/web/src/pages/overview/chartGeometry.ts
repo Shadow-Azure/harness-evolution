@@ -37,7 +37,7 @@ export type BucketShare = {
 const DEFAULT_TICK_COUNT = 4;
 const MAX_BAR_WIDTH = 28;
 const BAR_SLOT_RATIO = 0.6;
-const DENSE_BUCKET_COUNT = 26;
+const DENSE_BUCKET_COUNT = 60;
 const MIN_BAR_HEIGHT = 3;
 
 function decimalsFor(step: number): number {

@@ -340,7 +340,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeSection === 'overview' }"
         :to="overviewPath"
       >
-        总览<span class="tn-sub">来源 · 趋势 · bad case</span>
+        总览<span class="tn-sub">bad case 趋势</span>
       </RouterLink>
       <RouterLink
         id="tn-sessions"
@@ -557,10 +557,12 @@ onBeforeUnmount(() => {
 .primary-nav {
   display: flex;
   align-items: stretch;
+  min-width: 0;
 }
 
 .tn-item {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   margin-bottom: -1px;
   padding: 0 18px;
@@ -569,6 +571,7 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .tn-sub {
@@ -791,6 +794,18 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
+@media (max-width: 1700px) {
+  .tn-note {
+    display: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  .tn-sub {
+    display: none;
+  }
+}
+
 @media (max-width: 1100px) {
   .brand-copy small {
     display: none;
@@ -827,6 +842,16 @@ onBeforeUnmount(() => {
   .tn-item {
     padding-inline: 7px;
     font-size: 12.5px;
+  }
+
+  .primary-nav {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .primary-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .actions {

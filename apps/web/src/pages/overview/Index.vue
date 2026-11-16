@@ -4,6 +4,7 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { OVERVIEW_PAGE_SIZE } from "../../api/overview";
+import { ApiError } from "../../api/http";
 import {
   useOverviewCases,
   useOverviewSources,
@@ -18,6 +19,7 @@ import SourceBars from "./components/SourceBars.vue";
 import StackedBucketChart from "./components/StackedBucketChart.vue";
 import StatStrip from "./components/StatStrip.vue";
 import {
+  bucketWindow,
   DEFAULT_OVERVIEW_STATE,
   overviewQuery,
   overviewWindowFilters,
@@ -73,6 +75,13 @@ const caseTotal = computed(() => casesQuery.data.value?.total ?? 0);
 const grainEffective = computed<OverviewGrain | null>(
   () => trendQuery.data.value?.grain ?? null,
 );
+/** Bucket grain the server actually used, which may be coarser than requested. */
+const activeGrain = computed<OverviewGrain>(
+  () => grainEffective.value ?? state.value.grain,
+);
+const casePages = computed(() =>
+  Math.max(1, Math.ceil(caseTotal.value / OVERVIEW_PAGE_SIZE)),
+);
 const filterWindow = computed(() => {
   if (state.value.range === "custom") {
     return { from: state.value.from, to: state.value.to };
@@ -90,6 +99,29 @@ const grainLabels: Record<OverviewGrain, string> = {
   week: "周",
   month: "月",
 };
+
+/**
+ * Show the API's own error code, falling back only when it carries none.
+ * @param error Block-level query failure, if any.
+ * @param fallback Page-owned pseudo code used for non-API failures.
+ * @returns Stable code rendered by `ErrorState`.
+ */
+function blockErrorCode(error: Error | null, fallback: string): string {
+  return error instanceof ApiError && error.code ? error.code : fallback;
+}
+
+const summaryCode = computed(() =>
+  blockErrorCode(summaryQuery.error.value, "OVERVIEW_SUMMARY_UNAVAILABLE"),
+);
+const trendCode = computed(() =>
+  blockErrorCode(trendQuery.error.value, "OVERVIEW_TREND_UNAVAILABLE"),
+);
+const sourcesCode = computed(() =>
+  blockErrorCode(sourcesQuery.error.value, "OVERVIEW_SOURCES_UNAVAILABLE"),
+);
+const casesCode = computed(() =>
+  blockErrorCode(casesQuery.error.value, "OVERVIEW_CASES_UNAVAILABLE"),
+);
 
 /**
  * Return today's Asia/Shanghai calendar date as `YYYY-MM-DD`.
@@ -120,10 +152,10 @@ async function replaceState(patch: Partial<OverviewUrlState>): Promise<void> {
 function setRange(value: OverviewRangeChoice): void {
   if (value === "custom") {
     if (state.value.range === "custom") return;
-    const { from, to } =
-      summary.value?.window && state.value.range === DEFAULT_OVERVIEW_STATE.range
-        ? summary.value.window
-        : defaultCustomWindow();
+    // Prefill from the window currently on screen (server-confirmed), so
+    // switching from 7/30/90 days keeps the same boundaries instead of
+    // jumping to the 90-day fallback.
+    const { from, to } = summary.value?.window ?? defaultCustomWindow();
     void replaceState({ range: "custom", from, to, page: 1 });
     return;
   }
@@ -159,11 +191,14 @@ function setPage(page: number): void {
   });
 }
 
-function selectBucket(value: { from: string; to: string }): void {
+function selectBucket(value: { bucket: string; from: string; to: string }): void {
+  // Resolve the window against the grain the server actually used: a day
+  // request downgraded to weeks must still filter Monday..Sunday.
+  const window = bucketWindow(value.bucket, activeGrain.value) ?? value;
   void replaceState({
     range: "custom",
-    from: value.from,
-    to: value.to,
+    from: window.from,
+    to: window.to,
     page: 1,
   });
 }
@@ -186,23 +221,19 @@ watch(
 );
 
 /**
- * Keep the URL canonical and reset foreign filters when the workspace changes.
+ * Keep the URL canonical without touching the workspace's own filters.
  *
- * One watcher owns both jobs: two independent watchers raced when a workspace
- * switch and a canonicalization replace landed in the same tick, and the
- * canonicalization navigation cancelled the reset.
+ * The workspace picker is responsible for opening another workspace with the
+ * default overview query; this watcher only normalizes the current URL. That
+ * keeps browser back/forward honest: returning to workspace A restores A's
+ * range/objects/type instead of rewriting the history entry to the defaults.
  */
 watch(
   [workspaceId, parsed],
   ([wid]) => {
+    if (route.name !== "workspace-overview") return;
     if (lastWorkspaceId !== null && wid !== lastWorkspaceId) {
-      lastWorkspaceId = wid;
       targetsNotice.value = false;
-      void router.replace({
-        path: route.path,
-        query: overviewQuery(DEFAULT_OVERVIEW_STATE),
-      });
-      return;
     }
     lastWorkspaceId = wid;
     if (sameOverviewQuery(route.query, overviewQuery(parsed.value.state))) return;
@@ -212,6 +243,50 @@ watch(
     });
   },
   { immediate: true, flush: "post" },
+);
+
+/**
+ * Clamp a URL page beyond the last page returned by the API.
+ *
+ * The list endpoint still reports the authoritative filtered total on an empty
+ * page, so the page can redirect to the last valid page instead of showing the
+ * "workspace has no bad cases" empty state.
+ */
+watch(
+  () => casesQuery.data.value,
+  (data) => {
+    if (!data || route.name !== "workspace-overview") return;
+    if (state.value.page <= casePages.value) return;
+    void router.replace({
+      path: route.path,
+      query: overviewQuery({ ...state.value, page: casePages.value }),
+    });
+  },
+  { immediate: true },
+);
+
+/**
+ * A missing workspace is a whole-page condition: send the person to the chooser
+ * instead of rendering four block-level errors whose retry can never succeed.
+ */
+let redirectingToChooser = false;
+watch(
+  [summaryQuery.error, trendQuery.error, sourcesQuery.error, casesQuery.error],
+  (errors) => {
+    if (redirectingToChooser) return;
+    const missing = errors.some(
+      (error) =>
+        error instanceof ApiError &&
+        (error.status === 404 || error.code === "WORKSPACE_NOT_FOUND"),
+    );
+    if (!missing) return;
+    redirectingToChooser = true;
+    void router.replace({
+      path: "/workspaces",
+      query: { reason: "forbidden" },
+    });
+  },
+  { immediate: true },
 );
 </script>
 
@@ -268,6 +343,7 @@ watch(
     </div>
 
     <StatStrip
+      :code="summaryCode"
       :error="summaryQuery.error.value"
       :loading="summaryQuery.isPending.value"
       :totals="summary?.totals ?? null"
@@ -300,7 +376,7 @@ watch(
         <div>
           <h2>bad case 趋势</h2>
           <div class="hint">
-            按{{ grainLabels[state.grain] }}聚合 · 悬停查看自身存在问题 /
+            按{{ grainLabels[activeGrain] }}聚合 · 悬停查看自身存在问题 /
             发现前置步骤问题明细 · 点击时间桶按该桶过滤列表
           </div>
         </div>
@@ -312,14 +388,16 @@ watch(
       </div>
       <StackedBucketChart
         :buckets="buckets"
+        :code="trendCode"
         :error="trendQuery.error.value"
-        :grain="state.grain"
+        :grain="activeGrain"
         :loading="trendQuery.isPending.value"
         @clear-filters="clearFilters"
         @retry="trendQuery.refetch()"
         @select-bucket="selectBucket"
       />
       <SourceBars
+        :code="sourcesCode"
         :error="sourcesQuery.error.value"
         :loading="sourcesQuery.isPending.value"
         :sources="sources"
@@ -329,6 +407,7 @@ watch(
 
     <div ref="listAnchor">
       <BadCaseTable
+        :code="casesCode"
         :error="casesQuery.error.value"
         :filtered="isFiltered"
         :items="caseItems"

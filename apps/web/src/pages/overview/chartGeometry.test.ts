@@ -38,12 +38,15 @@ describe("overview chart geometry", () => {
     expect(barLayout(3, 0)).toEqual({ slot: 0, barWidth: 0, dense: false });
   });
 
-  it("marks dense series and keeps narrow bars inside their slot", () => {
-    const layout = barLayout(60, 720);
-    expect(layout.dense).toBe(true);
-    expect(layout.slot).toBeCloseTo(12);
-    expect(layout.barWidth).toBeCloseTo(7.2);
+  it("enters dense mode only beyond sixty buckets", () => {
     expect(barLayout(26, 720).dense).toBe(false);
+    expect(barLayout(60, 720).dense).toBe(false);
+
+    const layout = barLayout(61, 720);
+    expect(layout.dense).toBe(true);
+    expect(layout.slot).toBeCloseTo(720 / 61);
+    expect(layout.barWidth).toBeCloseTo((720 / 61) * 0.6);
+    expect(layout.barWidth).toBeLessThanOrEqual(28);
   });
 
   it("stacks self below discovery and clamps to the axis maximum", () => {

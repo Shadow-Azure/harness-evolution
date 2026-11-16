@@ -77,21 +77,35 @@ describe("overview stacked bucket chart", () => {
     const loading = mountChart({ loading: true, buckets: [] });
     expect(loading.find("[data-testid='ov-chart-loading']").exists()).toBe(true);
 
-    const failed = mountChart({ error: new Error("boom") });
+    const failed = mountChart({ error: new Error("boom"), code: "INTERNAL" });
     expect(failed.find("[data-testid='ov-chart-error']").exists()).toBe(true);
+    expect(failed.text()).toContain("INTERNAL");
     await failed.get("button").trigger("click");
     expect(failed.emitted("retry")).toHaveLength(1);
+  });
 
-    const dense = mountChart({
-      buckets: Array.from({ length: 40 }, (_, index) => ({
-        bucket: `2026-11-${String((index % 28) + 1).padStart(2, "0")}`,
-        label: `11-${String((index % 28) + 1).padStart(2, "0")}`,
-        self: 1,
-        discovery: 0,
-        total: 1,
-      })),
-    });
-    expect(dense.find("[data-testid='ov-chart-dense-hint']").exists()).toBe(true);
+  it("keeps sixty buckets out of dense mode and enters it at sixty-one", () => {
+    const series = (count: number) =>
+      Array.from({ length: count }, (_, index) => {
+        const bucket = new Date(Date.UTC(2026, 0, 1 + index))
+          .toISOString()
+          .slice(0, 10);
+        return {
+          bucket,
+          label: bucket.slice(5),
+          self: 1,
+          discovery: 0,
+          total: 1,
+        };
+      });
+
+    const sixty = mountChart({ buckets: series(60) });
+    expect(sixty.find("[data-testid='ov-chart-dense-hint']").exists()).toBe(false);
+
+    const sixtyOne = mountChart({ buckets: series(61) });
+    expect(sixtyOne.find("[data-testid='ov-chart-dense-hint']").exists()).toBe(
+      true,
+    );
   });
 
   it("labels the y axis with integer ticks", () => {

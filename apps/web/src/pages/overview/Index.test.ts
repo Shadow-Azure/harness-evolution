@@ -84,6 +84,19 @@ type RequestLog = {
 let requests: RequestLog;
 const mounted: VueWrapper[] = [];
 
+function apiError(status: number, code: string, message = "boom") {
+  return HttpResponse.json(
+    { error: { code, message, details: {} } },
+    { status },
+  );
+}
+
+function requestPaths(log: string[], wid: string): URL[] {
+  return log
+    .filter((url) => new URL(url).pathname.startsWith(`/api/workspaces/${wid}/`))
+    .map((url) => new URL(url));
+}
+
 function mockOverviewApi(overrides: Record<string, unknown> = {}) {
   server.use(
     http.get("/api/workspaces/:wid/overview/summary", ({ request }) => {
@@ -197,7 +210,9 @@ describe("workspace overview page", () => {
   });
 
   it("restores filters from a deep link and sends them to every request", async () => {
-    mockOverviewApi();
+    mockOverviewApi({
+      cases: { items: [caseRow(1)], total: 17, page: 2, pageSize: 8 },
+    });
     const { router, wrapper } = await mountPage(
       `${ws}/overview?tab=cases&range=30&grain=day&objects=deep-research,workflow&page=2&type=self`,
     );
@@ -342,27 +357,206 @@ describe("workspace overview page", () => {
     );
   });
 
-  it("resets foreign filters when the workspace changes", async () => {
+  it("requests the new workspace with default filters before anything else", async () => {
+    mockOverviewApi();
+    const { router } = await mountPage(
+      `${ws}/overview?range=7&objects=deep-research&type=self`,
+      [testWorkspace(), testWorkspace({ id: "ws-other", name: "其他空间" })],
+    );
+
+    expect(router.currentRoute.value.query.range).toBe("7");
+
+    // The workspace picker navigates with the canonical default query, so the
+    // page never renders the new workspace under the previous filters.
+    await router.push(
+      "/workspaces/ws-other/overview?tab=cases&range=90&grain=week",
+    );
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe("/workspaces/ws-other/overview");
+    await vi.waitFor(() => {
+      expect(requests.summary.some((url) => url.includes("/ws-other/"))).toBe(
+        true,
+      );
+    });
+
+    const foreign = [
+      ...requestPaths(requests.summary, "ws-other"),
+      ...requestPaths(requests.trend, "ws-other"),
+      ...requestPaths(requests.sources, "ws-other"),
+      ...requestPaths(requests.cases, "ws-other"),
+    ];
+    expect(foreign.length).toBeGreaterThan(0);
+    for (const url of foreign) {
+      expect(url.searchParams.get("range")).toBe("90");
+      expect(url.searchParams.has("objects")).toBe(false);
+      expect(url.searchParams.has("badCaseType")).toBe(false);
+    }
+  });
+
+  it("restores the previous workspace filters on browser back", async () => {
     mockOverviewApi();
     const { router } = await mountPage(
       `${ws}/overview?range=7&objects=deep-research`,
       [testWorkspace(), testWorkspace({ id: "ws-other", name: "其他空间" })],
     );
 
-    expect(router.currentRoute.value.query.range).toBe("7");
-
     await router.push(
-      "/workspaces/ws-other/overview?range=7&objects=deep-research",
+      "/workspaces/ws-other/overview?tab=cases&range=90&grain=week",
     );
     await flushPromises();
-
     expect(router.currentRoute.value.path).toBe("/workspaces/ws-other/overview");
+
+    router.back();
     await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe(`${ws}/overview`);
       expect(router.currentRoute.value.query).toEqual({
         tab: "cases",
-        range: "90",
+        range: "7",
         grain: "week",
+        objects: "deep-research",
       });
+    });
+    await vi.waitFor(() => {
+      const urls = requestPaths(requests.cases, workspaceId);
+      expect(
+        urls.some(
+          (url) =>
+            url.searchParams.get("range") === "7" &&
+            url.searchParams.get("objects") === "deep-research",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("uses the effective week grain when a day request is downgraded", async () => {
+    mockOverviewApi({
+      trend: {
+        window: { from: "2026-08-01", to: "2026-11-16" },
+        grain: "week",
+        buckets: [
+          {
+            bucket: "2026-08-17",
+            label: "08-17",
+            self: 2,
+            discovery: 1,
+            total: 3,
+          },
+        ],
+      },
+    });
+    const { router, wrapper } = await mountPage(
+      `${ws}/overview?range=custom&from=2026-08-01&to=2026-11-16&grain=day`,
+    );
+
+    expect(wrapper.get("[data-testid='ov-grain-downgraded']").text()).toBe(
+      "已按周展示",
+    );
+    expect(wrapper.get("[data-testid='ov-chart-card'] .hint").text()).toContain(
+      "按周聚合",
+    );
+
+    await wrapper.get("[data-bucket='2026-08-17']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "custom",
+      grain: "day",
+      from: "2026-08-17",
+      to: "2026-08-23",
+    });
+    const casesUrl = new URL(requests.cases.at(-1) as string);
+    expect(casesUrl.searchParams.get("from")).toBe("2026-08-17");
+    expect(casesUrl.searchParams.get("to")).toBe("2026-08-23");
+  });
+
+  it("clamps an out-of-range page to the last valid page", async () => {
+    mockOverviewApi();
+    server.use(
+      http.get("/api/workspaces/:wid/bad-cases", ({ request }) => {
+        requests.cases.push(request.url);
+        const page = Number(
+          new URL(request.url).searchParams.get("page") ?? "1",
+        );
+        return HttpResponse.json({
+          items:
+            page === 1
+              ? [caseRow(1), caseRow(2), caseRow(3)]
+              : page === 3
+                ? [caseRow(3)]
+                : [],
+          total: 17,
+          page,
+          pageSize: 8,
+        });
+      }),
+    );
+
+    const { router, wrapper } = await mountPage(`${ws}/overview?page=99`);
+
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.query.page).toBe("3");
+      expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(1);
+    });
+    expect(
+      wrapper.find("[data-testid='ov-case-page-out-of-range']").exists(),
+    ).toBe(false);
+    expect(wrapper.get("[data-testid='ov-pager']").text()).toContain("第 3 / 3 页");
+  });
+
+  it("redirects the whole page to the chooser when the workspace is gone", async () => {
+    for (const path of [
+      "/api/workspaces/:wid/overview/summary",
+      "/api/workspaces/:wid/overview/trend",
+      "/api/workspaces/:wid/overview/sources",
+      "/api/workspaces/:wid/bad-cases",
+    ]) {
+      server.use(
+        http.get(path, () =>
+          apiError(404, "WORKSPACE_NOT_FOUND", "workspace is gone"),
+        ),
+      );
+    }
+    const { router } = await mountPage();
+
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe("/workspaces");
+      expect(router.currentRoute.value.query.reason).toBe("forbidden");
+    });
+  });
+
+  it("shows the real API error code in a block error", async () => {
+    mockOverviewApi();
+    server.use(
+      http.get("/api/workspaces/:wid/overview/summary", () =>
+        apiError(422, "OBJECT_FILTER_TOO_LARGE", "too many objects"),
+      ),
+    );
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain("OBJECT_FILTER_TOO_LARGE");
+    expect(wrapper.text()).not.toContain("OVERVIEW_SUMMARY_UNAVAILABLE");
+  });
+
+  it("prefills the custom window from the current range window", async () => {
+    mockOverviewApi({
+      summary: {
+        ...summary,
+        window: { from: "2026-11-10", to: "2026-11-16" },
+      },
+    });
+    const { router, wrapper } = await mountPage(`${ws}/overview?range=7`);
+
+    await wrapper.get("[data-testid='ov-range-custom']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "custom",
+      grain: "week",
+      from: "2026-11-10",
+      to: "2026-11-16",
     });
   });
 });
