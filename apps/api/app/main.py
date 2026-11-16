@@ -495,7 +495,7 @@ def create_app(
         evolution_repository,
         workspaces,
     )
-    app.state.login_rate_limiter = LoginRateLimiter()
+    app.state.login_rate_limiter = LoginRateLimiter(limit=resolved_settings.login_rate_limit)
     app.state.database_start_error = None
 
     app.add_middleware(AuthMiddleware)

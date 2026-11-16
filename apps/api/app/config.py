@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     production: bool = False
     jwt_secret: SecretStr = SecretStr("")
     access_token_ttl_min: int = Field(default=30, gt=0)
+    login_rate_limit: int = Field(default=10, ge=1, le=10_000)
     refresh_token_ttl_days: int = Field(default=14, gt=0)
     event_ticket_ttl_seconds: int = Field(default=60, gt=0)
     sse_heartbeat_seconds: float = Field(default=15, gt=0)

@@ -19,8 +19,13 @@ scope:
   - apps/web/src/router.test.ts
   - apps/web/src/ui-prototype.test.ts
   - apps/web/src/composables/**
+  - apps/api/app/config.py
+  - apps/api/app/main.py
   - packages/contracts/src/**
   - tests/e2e/**
+  - scripts/**
+  - .github/**
+  - plans/**
   - plans/**
   - .agents/flow/**
   - .agents/notes/**

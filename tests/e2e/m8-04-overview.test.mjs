@@ -322,6 +322,7 @@ before(async () => {
     HE_DATA_DIR: dataDir,
     HE_DB_DIALECT: "sqlite",
     HE_JWT_SECRET: secret,
+    HE_LOGIN_RATE_LIMIT: "100",
     HE_PHASE: "demo",
   };
   const seed = spawnSync(pnpm, ["fixtures:seed"], {
