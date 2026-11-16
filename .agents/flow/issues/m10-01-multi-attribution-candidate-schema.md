@@ -10,7 +10,7 @@ depends:
   - m9-01
   - m9-04
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/db/**
   - apps/api/app/service/bad_cases/**
