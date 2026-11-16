@@ -39,13 +39,23 @@ const relationLabel = computed(() =>
     ? RELATION_LABELS[props.data.relationConfidence]
     : "",
 );
+const ariaLabel = computed(() => {
+  const parts = [props.data.label];
+  if (props.data.relationConfidence) {
+    parts.push(`关系证据 ${props.data.relationConfidence}`);
+  }
+  if (props.data.completionWarning) {
+    parts.push(props.data.completionWarning);
+  }
+  return parts.join("，");
+});
 </script>
 
 <template>
   <button
     class="rf-agent"
     :class="[data.kind, { active: data.active }]"
-    :aria-label="data.label"
+    :aria-label="ariaLabel"
     :aria-pressed="Boolean(data.active)"
     :style="{ width: `${data.boxW}px` }"
     type="button"

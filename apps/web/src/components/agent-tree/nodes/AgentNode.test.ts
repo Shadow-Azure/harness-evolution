@@ -197,5 +197,8 @@ describe("AgentNode", () => {
     expect(wrapper.get(".rf-evidence").text()).toBe("派生");
     expect(wrapper.get(".rf-evidence").classes()).toContain("derived");
     expect(wrapper.get(".rf-warn").text()).toBe("未返回最终报告");
+    expect(wrapper.get("button.rf-agent").attributes("aria-label")).toBe(
+      "主会话，关系证据 derived，未返回最终报告",
+    );
   });
 });
