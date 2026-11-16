@@ -49,6 +49,10 @@ skip_covered = true
 python_version = "3.12"
 strict = true
 files = ["app", "tests"]
+# The m10-02 directory name is hyphenated, so mypy maps its conftest to the
+# same top-level module as the existing m2-06 conftest. The file only re-exports
+# pytest fixtures; keep the surrounding suite type checked.
+exclude = '(^|/)tests/m10-02-potential-matcher/conftest\.py$'
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"

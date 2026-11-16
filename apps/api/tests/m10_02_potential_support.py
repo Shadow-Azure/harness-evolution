@@ -38,6 +38,7 @@ from app.service.evolution.potential import (
     POLICY_VERSION,
     MatchCondition,
     PotentialMatcher,
+    resolve_target_revision,
 )
 from app.utils.time import SHANGHAI, now_shanghai
 from tests.identity.helpers import identity_settings
@@ -52,6 +53,7 @@ WORKSPACE_A = "ws-m10-02-a"
 WORKSPACE_B = "ws-m10-02-b"
 TARGET_NAME = "deep-research"
 TARGET_VERSION = "v2.0.0"
+TARGET_REVISION = f"tag:{TARGET_VERSION}"
 NOW = datetime(2026, 11, 17, 9, 0, tzinfo=SHANGHAI)
 LATER = datetime(2026, 11, 17, 10, 0, tzinfo=SHANGHAI)
 
@@ -91,11 +93,13 @@ class Harness:
             window_from or date(2026, 11, 1),
             window_to or date(2026, 11, 30),
         )
+        resolved_version, resolved_revision = resolve_target_revision(target_version)
         return MatchCondition(
             workspace_id=workspace_id,
             target_type=target_type,
             target_name=target_name,
-            target_version=target_version,
+            target_version=resolved_version,
+            target_revision=resolved_revision,
             window_start=start,
             window_end=end,
         )
@@ -284,6 +288,7 @@ async def seed_event(
     kind: str,
     name: str | None = None,
     object_version: str | None = None,
+    object_revision: str | None = None,
     triggered_at: datetime | None = NOW,
     tool_use_id: str | None = None,
 ) -> None:
@@ -298,6 +303,7 @@ async def seed_event(
                 kind=kind,
                 name=name,
                 object_version=object_version,
+                object_revision=object_revision,
                 triggered_at=triggered_at,
                 tool_use_id=tool_use_id,
             ),
@@ -345,7 +351,7 @@ async def seed_probe(
     workspace_id: str = WORKSPACE_A,
     probe_type: str = "skill",
     probe_object: str = TARGET_NAME,
-    object_version: str = TARGET_VERSION,
+    object_version: str = TARGET_REVISION,
     conclusion: str = "attributed",
     engine: str = ATTRIBUTION_ENGINE,
     policy: str = POLICY_VERSION,

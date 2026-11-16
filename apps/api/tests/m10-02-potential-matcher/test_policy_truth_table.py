@@ -366,3 +366,22 @@ def test_window_rejects_dates_outside_the_supported_range() -> None:
         resolve_window(None, date(9999, 12, 31), today=date(2026, 11, 17))
 
     assert raised.value.code is ErrorCode.WINDOW_INVALID
+
+
+def test_resolved_policy_snapshot_uses_camel_case() -> None:
+    """The shared snapshot is ready for a future run's policy column."""
+    resolved = resolve_policy(
+        PotentialPolicy(
+            preset="custom",
+            include_self_report=True,
+            include_after_object=False,
+            same_object_only=True,
+        ),
+    )
+
+    assert resolved.snapshot() == {
+        "preset": "custom",
+        "includeSelfReport": True,
+        "includeAfterObject": False,
+        "sameObjectOnly": True,
+    }

@@ -1129,6 +1129,7 @@ class MatchCondition:
     target_type: Literal["skill", "agent", "knowledge"]
     target_name: str
     target_version: str
+    target_revision: str
     window_start: datetime
     window_end: datetime
 
@@ -1146,12 +1147,12 @@ class PotentialMatcher:
     ) -> AttributionPreviewCounts: ...
 ```
 
-判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行；`orderState` 单独表达 `comparable / unknown`。
+判定（[06 §7.5](06-database-design.md) 的口径）：`includeSelfReport` 命中 `object_name == target.name AND bad_case_type='self'`；`includeAfterObject` 命中「bad case 触发点 > 对象进入点」；custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。`self` 与 `sameObjectOnly` 都只比较名称，不比较 `bad_cases.object_type` 或 `object_version`；同名 skill/agent 与跨版本 self 会被纳入。命中原因优先级与封闭集合 `self_report / after_object / both / policy_excluded / order_unknown` 写进候选行；`orderState` 单独表达 `comparable / unknown`。
 
-- 查询形态：一次取空间窗口内 bad case（`bad_case_type IN ('self','discovery')`）；一次取这些根的 `session_families` 元数据；一次取已归一化根的 `agent_events JOIN agents` 对象触发事件（按 session 取最早）；一次取关联 Session 的全部 agents；一次取锚点所需的 `kind=skill|agent` 事件；一次按批量 cache key 读既有 probe；一次统计历史 `non_target`。全部按 500 个标识分块，不做 per-case 查询。
-- 触发点坐标：对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）、`name == target_name` 且 `object_version == target_version` 的最早 `agent_events`；`triggered_at` 优先，缺失时按 `(tree_index, event_index)` 排序。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点；上报 agent 无法解析时保持 unknown）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
-- 版本口径：只有 `agent_events.object_version == target_version` 才建立 Session 关联；版本为空的历史事件不计为关联，只进 `versionUnresolved` 统计。该规则在向导、run 与总览共用，不做名称级猜测。knowledge 事件同样只比较 `object_version`，不拿 `document_revision` 代替。
-- Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。
+- 查询形态：一次取空间窗口内 bad case（`bad_case_type IN ('self','discovery')`）；一次取这些根的 `session_families` 元数据；一次取已归一化根的 `agent_events JOIN agents` 对象触发事件（同时 select `object_version` 与 `object_revision`，按 session 取最早）；一次取关联 Session 的全部 agents；一次取锚点所需的 `kind=skill|agent` 事件；一次按批量 cache key 读既有 probe；一次统计历史 `non_target`。全部按 500 个标识分块，不做 per-case 查询。
+- 触发点身份：`targetRevision` = `targetVersion` 已带 `tag:`/`digest:`/`provider:` 时原样，否则补 `tag:`；候选集 = `{targetVersion, targetRevision, tag 裸值}`。对象进入点 = 该 Session 内 `kind` 映射 `object_type`（skill/agent/knowledge）、`name == target_name` 且 `object_version` 或 `object_revision` 命中候选集的最早 `agent_events`；取最早时与比较同口径：双方都有 `triggered_at` 才比时间，否则按 `(tree_index, event_index)`。bad case 触发点 = [06 §7.4](06-database-design.md) 的锚点事件（缺失时退化到上报 agent 的出生点；上报 agent 无法解析或父关系 unresolved 时保持 unknown）。比较规则见 [06 §7.5](06-database-design.md)；`unknown` 不满足「之后」。
+- 版本口径：事件 `object_version` 或 `object_revision` 命中候选集才建立 Session 关联；既无 `object_version` 也无可用 `object_revision`（NULL/`unknown`）才进 `versionUnresolved`，有 digest/tag/provider 但不匹配算 `skipped`。该规则在向导、run 与总览共用，不做名称级猜测。knowledge 事件通常只有 `object_revision=digest:...`，按 revision 关联；不拿文档名或 `document_revision` 代替 identity。
+- Session 关联输出五个互不重叠的计数（`reported = associated + versionUnresolved + skipped + pending`）；`pending` 是没有归一化轨迹的根。`badCases` 是关联 Session 内的候选数，`potential` 是纳入数；`byReason` 五键零填充，排除行只进 summary。第 2 步只做关联、不再计算 `potentialCount`。
 - policy 校验：default 携带任一开关、custom 缺任一开关、custom 同时关闭两条规则 → `422 POLICY_INVALID`。policy 语义版本固定 `v1`；归因预览缓存键使用首版归因引擎 `rule-v1`。
 
 ### 5.13 归因生成与缓存（`service/evolution/attribution.py`）
@@ -1171,7 +1172,7 @@ class AttributionRunner:
             await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。
+- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。V2 归因以解析后的 `targetRevision` 作为该分量；`probe_reports.object_version` 列仍为 64，`digest:<sha256>` 的 71 字符写入边界（扩列或映射）归 m10-03，预览只读既有键。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
 - `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
@@ -1183,14 +1184,15 @@ class AttributionRunner:
 
 | 端点 | 服务实现 | 说明 |
 |---|---|---|
-| `preview/sessions` | `matcher.associated_sessions` + 默认策略计数 + 分页（4/页） | 只列版本匹配的 Session；`reported/associated/skipped/versionUnresolved/pending` 互不重叠；`potentialCount` 用默认策略 |
+| `preview/sessions` | `matcher.associated_sessions` + 分页（4/页） | 只列 identity 匹配的 Session；`reported/associated/skipped/versionUnresolved/pending` 互不重叠；只做关联，不算 potential |
 | `preview/potential` | `matcher.potential_cases` + 分页（5/页） | `items` 只含纳入行，`total=potential`；`byReason` 含被排除行；0 → `NO_POTENTIAL_MATCHED` |
-| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值；`cacheEnabled=false` 时 `reused=0` |
+| `preview/attribution` | `probe_reports.cache_key IN (...)` 查询既有结论 | **不执行归因**：`reused` 精确、`fresh = potential - reused`、`nonTargetKnown` 为历史参考值；`cacheEnabled=false` 时 `reused=0`；不接收 `engineKey` 或分页 |
 
 - 预览与启动共用同一条件归一化（target 空间内 enabled、版本缺省 `defaultRef`、窗口合法、policy 合法）；启动再判 `NO_ASSOCIATED_SESSIONS`/`NO_POTENTIAL_MATCHED`。
-- 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。
+- 三条端点最低 `viewer`；无关联 Session → `409 NO_ASSOCIATED_SESSIONS`（三段都触发），`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`；有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`（潜在段与归因段）。
 - 窗口按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
-- 预览只读：只查 `probe_reports.cache_key`、`bad_case_analysis` 计数与历史 case，不写 probe、归因关联或候选行；`engineKey` 仅做注册校验，不执行引擎。
+- 预览只读：只查 `probe_reports.cache_key`、`bad_case_analysis` 计数与历史 case，不写 probe、归因关联或候选行；归因预览不接收 `engineKey`，缓存键固定 `rule-v1`。
+- target 版本缺省 `defaultRef`，最长 96；knowledge target 的 `defaultRef` 接受 revision 形式，创建/更新跳过 git `ls-remote`、`versions` 返回空列表；catalog 与 target 表单暂不展示 knowledge（仅 API 配置，选择器与 run 接线归 m10-04）。
 - `cluster_only` 也走 0–4 步（聚类依赖归因），只有 `mode=full` 才建 rounds 与进入迭代。
 
 ### 5.15 空间隔离与工作空间服务（`service/workspaces` + 依赖）

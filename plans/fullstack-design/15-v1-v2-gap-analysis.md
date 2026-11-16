@@ -155,7 +155,8 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 
 - 真实 Skill 列表可能只提供名称、内容摘要和 16 位不透明 digest；Skill body 以 `isMeta + sourceToolUseID` 注入。对象身份优先使用 `path + body hash`，digest 只作 fallback；有明确 tag 时使用 `object_revision=tag:<tag>`，两者都缺失才是 `unknown`。
 - Agent 定义从 subagent 的 `prompt_snapshot.systemPrompt[0]` / `api-request-shape.system` 提取 body；`agentType + isBuiltIn + body hash` 构成 agent revision。通用权限提示、Notes、token budget 必须从 hash 中排除。
-- API 的 `targetVersion` 保留为选择入口，服务端必须解析为规范化 `objectRevision` 后再做 Session 关联与缓存键计算，不能只比较名称。
+- API 的 `targetVersion` 保留为选择入口，服务端解析为规范化 `objectRevision` 后再做 Session 关联与缓存键计算，不能只比较名称：已带 `tag:` / `digest:` / `provider:` 前缀的值原样使用，否则按 git tag 补 `tag:`；匹配同时接受该 revision、原始 `targetVersion` 与 `tag:` 去掉前缀后的裸值，因此历史 `object_version` 与 M9 的 `object_revision` 都能命中。
+- `probe_reports.object_version` 列仍为 64 字符；`digest:<sha256>` 是 71 字符，预览阶段只读既有缓存键、不写 probe，知识归因的写入边界（扩列或截断/映射规则）归 m10-03。
 - `runtime_key`、`parser_version`、`runtime_version`、`requested_model`、`reported_model` 分列保存；`parser_version` 按 runtime 解释，模型口径冲突作为 evidence warning 返回，不用任一字段覆盖另一字段。
 
 ### 9.3 Skill、Agent 与知识库触发

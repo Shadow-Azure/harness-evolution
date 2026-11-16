@@ -201,6 +201,25 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "OverviewBadCaseListResponse",
         "BadCaseListItem",
     } <= set(components)
+    assert set(components["SessionPreviewItem"]["properties"]) == {
+        "sessionId",
+        "title",
+        "objectTriggerAt",
+        "badCaseCount",
+    }
+    assert set(components["AttributionPreviewRequest"]["properties"]) == {
+        "targetType",
+        "targetName",
+        "targetVersion",
+        "from",
+        "to",
+        "policy",
+        "cacheEnabled",
+    }
+    assert (
+        components["SessionsPreviewRequest"]["properties"]["targetVersion"]["anyOf"][0]["maxLength"]
+        == 96
+    )
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
     paths = schema["paths"]

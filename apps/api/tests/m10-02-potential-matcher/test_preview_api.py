@@ -203,7 +203,6 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         "title",
         "objectTriggerAt",
         "badCaseCount",
-        "potentialCount",
     }
     assert second.status_code == 200
     assert len(second.json()["items"]) == 2
@@ -449,7 +448,7 @@ async def test_no_associated_sessions_returns_409(preview_api: PreviewApi) -> No
         event_index=0,
         kind="skill",
         name="another-object",
-        object_version=TARGET_VERSION,
+        object_revision=f"tag:{TARGET_VERSION}",
         triggered_at=OBJECT_ENTRY,
     )
     await seed_case(
@@ -469,6 +468,13 @@ async def test_no_associated_sessions_returns_409(preview_api: PreviewApi) -> No
         )
         assert response.status_code == 409
         assert error_code(response) == "NO_ASSOCIATED_SESSIONS"
+        assert response.json()["error"]["details"]["summary"] == {
+            "reported": 1,
+            "associated": 0,
+            "skipped": 1,
+            "versionUnresolved": 0,
+            "pending": 0,
+        }
 
 
 async def test_no_potential_matched_returns_409(preview_api: PreviewApi) -> None:
@@ -508,14 +514,14 @@ async def test_no_potential_matched_returns_409(preview_api: PreviewApi) -> None
     )
 
     assert sessions.status_code == 200
-    assert sessions.json()["items"][0]["potentialCount"] == 0
+    assert sessions.json()["items"][0]["badCaseCount"] == 1
     for response in (potential, attribution):
         assert response.status_code == 409
         assert error_code(response) == "NO_POTENTIAL_MATCHED"
 
 
-async def test_unknown_custom_policy_edge_and_engine_are_422(preview_api: PreviewApi) -> None:
-    """An unregistered engine key is rejected before association or cache reads."""
+async def test_removed_engine_key_is_a_validation_error(preview_api: PreviewApi) -> None:
+    """Attribution preview no longer accepts a run-engine selector."""
     response = await preview_api.client.post(
         path(preview_api, "attribution"),
         headers=preview_api.reader,
@@ -523,11 +529,14 @@ async def test_unknown_custom_policy_edge_and_engine_are_422(preview_api: Previe
     )
 
     assert response.status_code == 422
-    assert error_code(response) == "ENGINE_INVALID"
+    assert error_code(response) == "VALIDATION_INVALID"
 
 
-async def test_knowledge_target_is_configurable_and_previewable(preview_api: PreviewApi) -> None:
-    """The target API accepts knowledge and the matcher associates its events."""
+async def test_knowledge_target_accepts_digest_and_previews_without_version(
+    preview_api: PreviewApi,
+) -> None:
+    """A knowledge target stores a digest defaultRef; the parser event has no object_version."""
+    revision = "digest:" + "a" * 64
     created = await preview_api.client.post(
         f"/api/workspaces/{preview_api.workspace_id}/evolution/targets",
         headers=preview_api.admin,
@@ -536,7 +545,7 @@ async def test_knowledge_target_is_configurable_and_previewable(preview_api: Pre
             "objectName": "Runbook",
             "repoUrl": "https://example.invalid/kb.git",
             "subDir": "knowledge",
-            "defaultRef": "rev-1",
+            "defaultRef": revision,
             "validationProjectId": "validation",
             "testProjectId": "test",
             "enabled": True,
@@ -554,7 +563,8 @@ async def test_knowledge_target_is_configurable_and_previewable(preview_api: Pre
         event_index=0,
         kind="knowledge",
         name="Runbook",
-        object_version="rev-1",
+        object_version=None,
+        object_revision=revision,
         triggered_at=OBJECT_ENTRY,
     )
     await seed_case(
@@ -569,13 +579,230 @@ async def test_knowledge_target_is_configurable_and_previewable(preview_api: Pre
     preview = await preview_api.client.post(
         path(preview_api, "potential"),
         headers=preview_api.reader,
-        json=body(target_type="knowledge", target_name="Runbook", target_version="rev-1"),
+        json=body(target_type="knowledge", target_name="Runbook", target_version=None),
     )
 
     assert created.status_code == 201
     assert created.json()["objectType"] == "knowledge"
+    assert created.json()["defaultRef"] == revision
+    versions = await preview_api.client.get(
+        f"/api/workspaces/{preview_api.workspace_id}/evolution/targets/"
+        f"{created.json()['id']}/versions",
+        headers=preview_api.reader,
+    )
+    assert versions.status_code == 200
+    assert versions.json() == {"versions": [], "defaultRef": revision}
     assert preview.status_code == 200
     assert preview.json()["summary"]["potential"] == 1
+
+    updated = await preview_api.client.put(
+        f"/api/workspaces/{preview_api.workspace_id}/evolution/targets/{created.json()['id']}",
+        headers=preview_api.admin,
+        json={
+            "objectType": "knowledge",
+            "objectName": "Runbook",
+            "repoUrl": "https://example.invalid/kb.git",
+            "subDir": "knowledge",
+            "defaultRef": "tag:release-7",
+            "validationProjectId": "validation",
+            "testProjectId": "test",
+            "enabled": True,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["defaultRef"] == "tag:release-7"
+
+
+async def test_target_default_ref_is_used_when_version_is_omitted_or_blank(
+    preview_api: PreviewApi,
+) -> None:
+    """The wizard's normal defaultRef path works for omitted and blank versions."""
+    session_id = "session-default-ref"
+    await seed_associated(preview_api, session_id=session_id)
+    await seed_case(
+        preview_api.database,
+        case_id="case-default-ref",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    omitted = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(target_version=None),
+    )
+    blank = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(target_version=""),
+    )
+
+    for response in (omitted, blank):
+        assert response.status_code == 200
+        assert response.json()["summary"]["potential"] == 1
+
+
+async def test_preview_pages_allow_out_of_range_and_enforce_page_size_bounds(
+    preview_api: PreviewApi,
+) -> None:
+    """A page past the end is empty; pageSize must stay within 1..50."""
+    session_id = "session-page-bounds"
+    await seed_associated(preview_api, session_id=session_id)
+    await seed_case(
+        preview_api.database,
+        case_id="case-page-bounds",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    future_page = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(page=999),
+    )
+    max_page_size = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(pageSize=50),
+    )
+    too_large = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(pageSize=51),
+    )
+    sessions_future = await preview_api.client.post(
+        path(preview_api, "sessions"),
+        headers=preview_api.reader,
+        json=body(page=999),
+    )
+
+    assert future_page.status_code == 200
+    assert future_page.json()["items"] == []
+    assert future_page.json()["total"] == 1
+    assert max_page_size.status_code == 200
+    assert too_large.status_code == 422
+    assert error_code(too_large) == "VALIDATION_INVALID"
+    assert sessions_future.status_code == 200
+    assert sessions_future.json()["items"] == []
+
+
+async def test_too_long_version_or_default_ref_is_a_validation_error(
+    preview_api: PreviewApi,
+) -> None:
+    """Both explicit versions and stored defaultRefs are bounded to 96 chars."""
+    await seed_target(
+        preview_api.database,
+        target_id="target-long-ref",
+        object_name="long-ref-target",
+        default_ref="a" * 97,
+    )
+    explicit = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(target_version="a" * 97),
+    )
+    from_default = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(target_name="long-ref-target", target_version=None),
+    )
+
+    for response in (explicit, from_default):
+        assert response.status_code == 422
+        assert error_code(response) == "VALIDATION_INVALID"
+
+
+async def test_target_name_is_trimmed_before_lookup(preview_api: PreviewApi) -> None:
+    """A pasted name with surrounding whitespace still resolves the target."""
+    session_id = "session-name-trim"
+    await seed_associated(preview_api, session_id=session_id)
+    await seed_case(
+        preview_api.database,
+        case_id="case-name-trim",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    response = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(target_name=f"  {TARGET_NAME}  "),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["potential"] == 1
+
+
+async def test_catalog_keeps_knowledge_targets_out_of_the_wizard(
+    preview_api: PreviewApi,
+) -> None:
+    """Knowledge targets are API-configurable but not offered in the wizard catalog."""
+    revision = "digest:" + "c" * 64
+    created = await preview_api.client.post(
+        f"/api/workspaces/{preview_api.workspace_id}/evolution/targets",
+        headers=preview_api.admin,
+        json={
+            "objectType": "knowledge",
+            "objectName": "Runbook",
+            "repoUrl": "https://example.invalid/kb.git",
+            "subDir": "knowledge",
+            "defaultRef": revision,
+            "validationProjectId": "validation",
+            "testProjectId": "test",
+            "enabled": True,
+        },
+    )
+    catalog = await preview_api.client.get(
+        f"/api/workspaces/{preview_api.workspace_id}/catalogs/targets",
+        headers=preview_api.reader,
+    )
+
+    assert created.status_code == 201
+    assert catalog.status_code == 200
+    assert set(catalog.json()) == {"skill", "agent"}
+    assert [item["name"] for item in catalog.json()["skill"]] == [TARGET_NAME]
+
+
+async def test_same_target_name_in_another_workspace_does_not_leak(
+    preview_api: PreviewApi,
+) -> None:
+    """A duplicate target name in another workspace cannot satisfy this preview."""
+    await seed_target(
+        preview_api.database,
+        workspace_id=WORKSPACE_B,
+        target_id="target-other-workspace",
+    )
+    session_id = "session-other-workspace-target"
+    await seed_associated(preview_api, session_id=session_id)
+    await seed_case(
+        preview_api.database,
+        case_id="case-other-workspace",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    readable = await preview_api.client.post(
+        path(preview_api, "potential"),
+        headers=preview_api.reader,
+        json=body(),
+    )
+    other_workspace = await preview_api.client.post(
+        path(preview_api, "potential", WORKSPACE_B),
+        headers=preview_api.reader,
+        json=body(),
+    )
+
+    assert readable.status_code == 200
+    assert readable.json()["summary"]["potential"] == 1
+    assert other_workspace.status_code == 404
 
 
 async def test_preview_endpoints_are_read_only(preview_api: PreviewApi) -> None:

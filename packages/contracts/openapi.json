@@ -137,24 +137,12 @@
       },
       "AttributionPreviewRequest": {
         "additionalProperties": false,
-        "description": "Attribution stage condition; never executes the requested engine.",
+        "description": "Attribution stage condition; preview never executes an engine.",
         "properties": {
           "cacheEnabled": {
             "default": true,
             "title": "Cacheenabled",
             "type": "boolean"
-          },
-          "engineKey": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enginekey"
           },
           "from": {
             "anyOf": [
@@ -167,19 +155,6 @@
               }
             ],
             "title": "From"
-          },
-          "page": {
-            "default": 1,
-            "minimum": 1.0,
-            "title": "Page",
-            "type": "integer"
-          },
-          "pageSize": {
-            "default": 5,
-            "maximum": 50.0,
-            "minimum": 1.0,
-            "title": "Pagesize",
-            "type": "integer"
           },
           "policy": {
             "anyOf": [
@@ -209,7 +184,7 @@
           "targetVersion": {
             "anyOf": [
               {
-                "maxLength": 64,
+                "maxLength": 96,
                 "type": "string"
               },
               {
@@ -3423,7 +3398,7 @@
           "targetVersion": {
             "anyOf": [
               {
-                "maxLength": 64,
+                "maxLength": 96,
                 "type": "string"
               },
               {
@@ -4769,14 +4744,10 @@
             "type": "integer"
           },
           "objectTriggerAt": {
+            "description": "Object entry instant; falls back to the Session startedAt when the entry event has no triggeredAt. Comparison still uses coordinates when either side lacks a timestamp.",
             "format": "date-time",
             "title": "Objecttriggerat",
             "type": "string"
-          },
-          "potentialCount": {
-            "minimum": 0.0,
-            "title": "Potentialcount",
-            "type": "integer"
           },
           "sessionId": {
             "title": "Sessionid",
@@ -4791,8 +4762,7 @@
           "sessionId",
           "title",
           "objectTriggerAt",
-          "badCaseCount",
-          "potentialCount"
+          "badCaseCount"
         ],
         "title": "SessionPreviewItem",
         "type": "object"
@@ -5035,7 +5005,7 @@
       },
       "SessionsPreviewRequest": {
         "additionalProperties": false,
-        "description": "Common condition for the session preview and its later stages.",
+        "description": "Session stage condition with 4 rows per page.",
         "properties": {
           "from": {
             "anyOf": [
@@ -5080,7 +5050,7 @@
           "targetVersion": {
             "anyOf": [
               {
-                "maxLength": 64,
+                "maxLength": 96,
                 "type": "string"
               },
               {

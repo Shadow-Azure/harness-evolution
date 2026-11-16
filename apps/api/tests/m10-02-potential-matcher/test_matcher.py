@@ -153,8 +153,8 @@ async def test_default_policy_unions_self_report_and_after_object(harness: Harne
     }
 
 
-async def test_self_report_matches_name_not_case_object_version(harness: Harness) -> None:
-    """The self branch only checks object name and bad_case_type."""
+async def test_self_report_matches_name_only(harness: Harness) -> None:
+    """The self branch ignores the case object type and object version."""
     session_id = "session-self-version"
     await seed_object_session(harness, session_id=session_id)
     await seed_case(
@@ -166,13 +166,22 @@ async def test_self_report_matches_name_not_case_object_version(harness: Harness
         object_version="v1.0.0",
         created_at=EARLY,
     )
+    await seed_case(
+        harness.database,
+        case_id="case-self-other-type",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        object_type="agent",
+        created_at=EARLY,
+    )
 
     condition = harness.condition()
     association = await harness.matcher.associated_sessions(condition)
     match = await harness.matcher.potential_cases(condition, association, default_policy())
 
-    assert match.potential == 1
-    assert match.included[0].hit_reason == "self_report"
+    assert match.potential == 2
+    assert {item.hit_reason for item in match.included} == {"self_report"}
 
 
 async def test_skill_anchor_uses_the_last_named_trigger(harness: Harness) -> None:
@@ -353,6 +362,15 @@ async def test_custom_same_object_only_filters_the_union(harness: Harness) -> No
         object_name="other-skill",
         created_at=LATER,
     )
+    await seed_case(
+        harness.database,
+        case_id="case-same-name-other-type",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        object_type="agent",
+        created_at=EARLY,
+    )
     policy = resolve_policy(
         PotentialPolicy(
             preset="custom",
@@ -370,8 +388,9 @@ async def test_custom_same_object_only_filters_the_union(harness: Harness) -> No
         "case-same-self": "both",
         "case-same-after": "after_object",
         "case-other-after": "policy_excluded",
+        "case-same-name-other-type": "self_report",
     }
-    assert match.potential == 2
+    assert match.potential == 3
 
 
 async def test_missing_reporter_leaves_order_unknown(harness: Harness) -> None:
@@ -447,14 +466,15 @@ async def test_session_partition_pending_unresolved_skipped(harness: Harness) ->
     assert [item.bad_case_id for item in match.cases] == [f"case-{associated}"]
 
 
-async def test_knowledge_target_uses_the_same_entry_point_and_order(harness: Harness) -> None:
-    """knowledge maps to kind=knowledge and shares entry/anchor comparison."""
+async def test_knowledge_real_shape_associates_by_object_revision(harness: Harness) -> None:
+    """A parser-shaped knowledge event has a digest revision and no object_version."""
+    revision = "digest:" + "a" * 64
     await seed_target(
         harness.database,
         target_id="target-knowledge-m10-02",
         object_type="knowledge",
         object_name="Runbook",
-        default_ref="rev-1",
+        default_ref=revision,
     )
     session_id = "session-knowledge"
     main_id = await seed_session(harness.database, session_id=session_id, started_at=NOW)
@@ -464,7 +484,8 @@ async def test_knowledge_target_uses_the_same_entry_point_and_order(harness: Har
         event_index=0,
         kind="knowledge",
         name="Runbook",
-        object_version="rev-1",
+        object_version=None,
+        object_revision=revision,
         triggered_at=OBJECT_ENTRY,
     )
     await seed_event(
@@ -494,14 +515,99 @@ async def test_knowledge_target_uses_the_same_entry_point_and_order(harness: Har
     condition = harness.condition(
         target_type="knowledge",
         target_name="Runbook",
-        target_version="rev-1",
+        target_version=revision,
     )
     association = await harness.matcher.associated_sessions(condition)
     match = await harness.matcher.potential_cases(condition, association, default_policy())
 
     assert association.associated == 1
+    assert association.version_unresolved == 0
     assert hits_of(match)["case-knowledge-after"] == "after_object"
     assert hits_of(match)["case-knowledge-self"] == "self_report"
+
+
+async def test_tag_only_skill_event_associates_by_object_revision(harness: Harness) -> None:
+    """A skill event with only tag:<ref> is associated by its normalized revision."""
+    session_id = "session-tag-only"
+    main_id = await seed_session(harness.database, session_id=session_id, started_at=NOW)
+    await seed_event(
+        harness.database,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=None,
+        object_revision="tag:v1",
+        triggered_at=OBJECT_ENTRY,
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-tag-only",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    condition = harness.condition(target_version="v1")
+    association = await harness.matcher.associated_sessions(condition)
+    match = await harness.matcher.potential_cases(condition, association, default_policy())
+
+    assert association.associated == 1
+    assert association.sessions[0].object_entry.triggered_at == OBJECT_ENTRY
+    assert match.potential == 1
+
+
+async def test_unknown_and_nonmatching_revisions_are_skipped(harness: Harness) -> None:
+    """A non-matching digest is skipped; only a missing revision is unresolved."""
+    unresolved = "session-revision-unresolved"
+    nonmatching = "session-revision-nonmatching"
+    unresolved_main = await seed_session(
+        harness.database,
+        session_id=unresolved,
+        started_at=NOW,
+    )
+    await seed_event(
+        harness.database,
+        agent_id=unresolved_main,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=None,
+        object_revision="unknown",
+        triggered_at=OBJECT_ENTRY,
+    )
+    nonmatching_main = await seed_session(
+        harness.database,
+        session_id=nonmatching,
+        started_at=NOW,
+    )
+    await seed_event(
+        harness.database,
+        agent_id=nonmatching_main,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=None,
+        object_revision="digest:" + "b" * 64,
+        triggered_at=OBJECT_ENTRY,
+    )
+    for session_id in (unresolved, nonmatching):
+        await seed_case(
+            harness.database,
+            case_id=f"case-{session_id}",
+            session_id=session_id,
+            case_type="self",
+            object_name=TARGET_NAME,
+            created_at=LATER,
+        )
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+
+    assert association.reported == 2
+    assert association.associated == 0
+    assert association.version_unresolved == 1
+    assert association.skipped == 1
 
 
 async def test_window_filters_by_shanghai_day(harness: Harness) -> None:
@@ -605,6 +711,169 @@ async def test_object_entry_is_the_earliest_matching_version(harness: Harness) -
 
     assert match.included[0].hit_reason == "after_object"
     assert match.included[0].object_trigger.triggered_at == OBJECT_ENTRY
+
+
+async def test_object_trigger_display_falls_back_to_session_start(harness: Harness) -> None:
+    """A missing entry timestamp keeps coordinates for comparison and start for display."""
+    session_id = "session-display-fallback"
+    main_id = await seed_session(harness.database, session_id=session_id, started_at=NOW)
+    await seed_event(
+        harness.database,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_revision="tag:v2.0.0",
+        triggered_at=None,
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-display-fallback",
+        session_id=session_id,
+        case_type="self",
+        object_name=TARGET_NAME,
+        created_at=LATER,
+    )
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+
+    assert association.sessions[0].object_entry.triggered_at is None
+    assert association.sessions[0].object_trigger_at == NOW
+
+
+async def test_mixed_timestamp_entries_use_coordinates(harness: Harness) -> None:
+    """Mixed entry timestamps fall back to coordinates instead of time-first sorting."""
+    session_id = "session-mixed-timestamps"
+    main_id = await seed_session(harness.database, session_id=session_id, started_at=NOW)
+    await seed_event(
+        harness.database,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_revision="tag:v2.0.0",
+        triggered_at=None,
+    )
+    await seed_event(
+        harness.database,
+        agent_id=main_id,
+        event_index=1,
+        kind="skill",
+        name=TARGET_NAME,
+        object_revision="tag:v2.0.0",
+        triggered_at=CASE_AFTER,
+    )
+    await seed_event(
+        harness.database,
+        agent_id=main_id,
+        event_index=2,
+        kind="skill",
+        name="other-skill",
+        triggered_at=LATER,
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-mixed-entry",
+        session_id=session_id,
+        object_name="other-skill",
+        created_at=LATER,
+    )
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+    match = await harness.matcher.potential_cases(
+        harness.condition(),
+        association,
+        default_policy(),
+    )
+
+    assert association.sessions[0].object_entry.event_index == 0
+    assert hits_of(match)["case-mixed-entry"] == "after_object"
+
+
+async def test_unresolved_parent_relation_stays_unknown(harness: Harness) -> None:
+    """A subagent without a parent is not treated as a main Agent born at start."""
+    session_id = "session-unresolved-parent"
+    main_id = await seed_object_session(harness, session_id=session_id)
+    await seed_agent(
+        harness.database,
+        session_id=session_id,
+        agent_id="agent-orphan",
+        parent_agent_id=None,
+        tool_use_id="tool-orphan",
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-orphan",
+        session_id=session_id,
+        object_name="other-skill",
+        object_type="agent",
+        agent_id="agent-orphan",
+        created_at=LATER,
+    )
+    assert main_id
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+    match = await harness.matcher.potential_cases(
+        harness.condition(),
+        association,
+        default_policy(),
+    )
+
+    assert hits_of(match)["case-orphan"] == "order_unknown"
+    assert match.cases[0].order_state == "unknown"
+    assert match.cases[0].case_trigger is None
+
+
+async def test_blank_reporter_falls_back_to_main_agent(harness: Harness) -> None:
+    """A legacy empty bad_case_agent_id is treated as missing, not as unknown."""
+    session_id = "session-blank-reporter"
+    await seed_object_session(harness, session_id=session_id)
+    await seed_case(
+        harness.database,
+        case_id="case-blank-reporter",
+        session_id=session_id,
+        object_name="other-skill",
+        agent_id="",
+        created_at=LATER,
+    )
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+    match = await harness.matcher.potential_cases(
+        harness.condition(),
+        association,
+        default_policy(),
+    )
+
+    assert match.cases[0].order_state == "comparable"
+    assert match.cases[0].case_trigger is not None
+
+
+async def test_reporter_from_another_session_is_not_used(harness: Harness) -> None:
+    """An Agent id owned by another root is invalid evidence for this case."""
+    session_id = "session-foreign-reporter"
+    await seed_object_session(harness, session_id=session_id)
+    other_main = await seed_session(
+        harness.database,
+        session_id="session-foreign-owner",
+        started_at=NOW,
+    )
+    await seed_case(
+        harness.database,
+        case_id="case-foreign-reporter",
+        session_id=session_id,
+        object_name="other-skill",
+        agent_id=other_main,
+        created_at=LATER,
+    )
+
+    association = await harness.matcher.associated_sessions(harness.condition())
+    match = await harness.matcher.potential_cases(
+        harness.condition(),
+        association,
+        default_policy(),
+    )
+
+    assert match.cases[0].order_state == "unknown"
 
 
 async def test_attribution_preview_counts_existing_keys_and_non_target(harness: Harness) -> None:

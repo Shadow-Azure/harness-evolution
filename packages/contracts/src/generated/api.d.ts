@@ -1544,7 +1544,7 @@ export interface components {
         };
         /**
          * AttributionPreviewRequest
-         * @description Attribution stage condition; never executes the requested engine.
+         * @description Attribution stage condition; preview never executes an engine.
          */
         AttributionPreviewRequest: {
             /**
@@ -1552,20 +1552,8 @@ export interface components {
              * @default true
              */
             cacheEnabled: boolean;
-            /** Enginekey */
-            engineKey?: string | null;
             /** From */
             from?: string | null;
-            /**
-             * Page
-             * @default 1
-             */
-            page: number;
-            /**
-             * Pagesize
-             * @default 5
-             */
-            pageSize: number;
             policy?: components["schemas"]["PotentialPolicy"] | null;
             /** Targetname */
             targetName: string;
@@ -3398,10 +3386,9 @@ export interface components {
             /**
              * Objecttriggerat
              * Format: date-time
+             * @description Object entry instant; falls back to the Session startedAt when the entry event has no triggeredAt. Comparison still uses coordinates when either side lacks a timestamp.
              */
             objectTriggerAt: string;
-            /** Potentialcount */
-            potentialCount: number;
             /** Sessionid */
             sessionId: string;
             /** Title */
@@ -3503,7 +3490,7 @@ export interface components {
         };
         /**
          * SessionsPreviewRequest
-         * @description Common condition for the session preview and its later stages.
+         * @description Session stage condition with 4 rows per page.
          */
         SessionsPreviewRequest: {
             /** From */

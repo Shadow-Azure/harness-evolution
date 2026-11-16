@@ -44,7 +44,6 @@ class WindowCaseRecord:
     bad_case_type: str
     object_name: str
     object_type: str
-    object_version: str | None
     bad_case_agent_id: str | None
     created_at: datetime
 
@@ -67,6 +66,7 @@ class ObjectEventRecord:
     event_index: int
     tree_index: int
     object_version: str | None
+    object_revision: str | None
     triggered_at: datetime | None
 
 
@@ -125,7 +125,6 @@ class PotentialRepository:
                 bad_cases.c.bad_case_type,
                 bad_cases.c.object_name,
                 bad_cases.c.object_type,
-                bad_cases.c.object_version,
                 bad_cases.c.bad_case_agent_id,
                 bad_cases.c.created_at,
             )
@@ -146,9 +145,6 @@ class PotentialRepository:
                 bad_case_type=str(row["bad_case_type"]),
                 object_name=str(row["object_name"]),
                 object_type=str(row["object_type"]),
-                object_version=(
-                    str(row["object_version"]) if row["object_version"] is not None else None
-                ),
                 bad_case_agent_id=(
                     str(row["bad_case_agent_id"]) if row["bad_case_agent_id"] is not None else None
                 ),
@@ -202,6 +198,7 @@ class PotentialRepository:
                     agent_events.c.event_index,
                     agents.c.tree_index,
                     agent_events.c.object_version,
+                    agent_events.c.object_revision,
                     agent_events.c.triggered_at,
                 )
                 .select_from(agent_events)
@@ -227,6 +224,9 @@ class PotentialRepository:
                     tree_index=int(row["tree_index"]),
                     object_version=(
                         str(row["object_version"]) if row["object_version"] is not None else None
+                    ),
+                    object_revision=(
+                        str(row["object_revision"]) if row["object_revision"] is not None else None
                     ),
                     triggered_at=_time(row["triggered_at"]),
                 )
@@ -345,7 +345,7 @@ class PotentialRepository:
         workspace_id: str,
         probe_type: ObjectType,
         probe_object: str,
-        object_version: str,
+        object_versions: Sequence[str],
     ) -> int:
         """Count distinct cases this object/version historically judged non-target."""
         statement = (
@@ -359,7 +359,7 @@ class PotentialRepository:
                 probe_reports.c.workspace_id == workspace_id,
                 probe_reports.c.probe_type == probe_type,
                 probe_reports.c.probe_object == probe_object,
-                probe_reports.c.object_version == object_version,
+                probe_reports.c.object_version.in_(tuple(dict.fromkeys(object_versions))),
                 probe_reports.c.conclusion == "non_target",
             )
         )

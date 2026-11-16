@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from functools import cmp_to_key
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -27,7 +28,6 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
-from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
 from app.utils.time import now_shanghai
@@ -65,6 +65,12 @@ SESSIONS_PAGE_SIZE = 4
 POTENTIAL_PAGE_SIZE = 5
 """Wizard step 3 page size from design 05 §4.20."""
 
+MAX_TARGET_VERSION_LENGTH = 96
+"""Longest target version/revision accepted; a digest revision is 71 chars."""
+
+REVISION_PREFIXES: tuple[str, ...] = ("tag:", "digest:", "provider:")
+"""Normalized revision prefixes persisted in `agent_events.object_revision`."""
+
 REASONS: tuple[HitReason, ...] = (
     "self_report",
     "after_object",
@@ -72,6 +78,26 @@ REASONS: tuple[HitReason, ...] = (
     "policy_excluded",
     "order_unknown",
 )
+
+
+def resolve_target_revision(value: str) -> tuple[str, str]:
+    """Resolve one wizard version input into its persisted revision identity.
+
+    A value already carrying a normalized prefix is used as-is; otherwise a git
+    tag is assumed and ``tag:`` is prefixed. The pair is returned as
+    ``(target_version, target_revision)`` so the matcher can accept both the
+    legacy ``object_version`` and the canonical ``object_revision``.
+
+    Args:
+        value: Trimmed ``targetVersion``, ``defaultRef``, or digest revision.
+
+    Returns:
+        The raw version and the normalized revision.
+    """
+    normalized = value.strip()
+    if normalized.startswith(REVISION_PREFIXES):
+        return normalized, normalized
+    return normalized, f"tag:{normalized}"
 
 
 class PotentialPolicy(IdentityModel):
@@ -157,22 +183,35 @@ def resolve_policy(policy: PotentialPolicy | None) -> ResolvedPolicy:
     )
 
 
-class SessionsPreviewRequest(IdentityModel):
-    """Common condition for the session preview and its later stages."""
+class PreviewCondition(IdentityModel):
+    """Target and window condition shared by the three preview stages."""
 
     target_type: ObjectType
     target_name: str = Field(min_length=1, max_length=128)
-    target_version: str | None = Field(default=None, max_length=64)
+    target_version: str | None = Field(default=None, max_length=MAX_TARGET_VERSION_LENGTH)
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
+
+    @field_validator("target_name", mode="before")
+    @classmethod
+    def _strip_name(cls, value: object) -> object:
+        """Trim a pasted object name before length validation."""
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("target_version", mode="before")
+    @classmethod
+    def _strip_version(cls, value: object) -> object:
+        """Treat a blank explicit version as omitted so defaultRef applies."""
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
+
+
+class SessionsPreviewRequest(PreviewCondition):
+    """Session stage condition with 4 rows per page."""
+
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=SESSIONS_PAGE_SIZE, ge=1, le=50)
-
-    @field_validator("target_version")
-    @classmethod
-    def _strip_version(cls, value: str | None) -> str | None:
-        """Treat a blank explicit version as omitted so defaultRef applies."""
-        return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 class PotentialPreviewRequest(SessionsPreviewRequest):
@@ -182,11 +221,11 @@ class PotentialPreviewRequest(SessionsPreviewRequest):
     policy: PotentialPolicy | None = None
 
 
-class AttributionPreviewRequest(PotentialPreviewRequest):
-    """Attribution stage condition; never executes the requested engine."""
+class AttributionPreviewRequest(PreviewCondition):
+    """Attribution stage condition; preview never executes an engine."""
 
+    policy: PotentialPolicy | None = None
     cache_enabled: bool = True
-    engine_key: str | None = Field(default=None, max_length=64)
 
 
 class SessionPreviewItem(IdentityModel):
@@ -194,9 +233,14 @@ class SessionPreviewItem(IdentityModel):
 
     session_id: str
     title: str
-    object_trigger_at: datetime
+    object_trigger_at: datetime = Field(
+        description=(
+            "Object entry instant; falls back to the Session startedAt when the "
+            "entry event has no triggeredAt. Comparison still uses coordinates "
+            "when either side lacks a timestamp."
+        ),
+    )
     bad_case_count: int = Field(ge=0)
-    potential_count: int = Field(ge=0)
 
 
 class SessionPreviewSummary(IdentityModel):
@@ -282,8 +326,18 @@ class MatchCondition:
     target_type: ObjectType
     target_name: str
     target_version: str
+    target_revision: str
     window_start: datetime
     window_end: datetime
+
+    @property
+    def revision_candidates(self) -> frozenset[str]:
+        """Return every persisted identity form accepted for this target."""
+        candidates = {self.target_version, self.target_revision}
+        for value in (self.target_version, self.target_revision):
+            if value.startswith("tag:"):
+                candidates.add(value[4:])
+        return frozenset(candidates)
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,9 +398,7 @@ class PotentialCase:
     bad_case_id: str
     session_id: str
     object_name: str
-    object_type: str
     bad_case_type: str
-    created_at: datetime
     trigger_at: datetime
     hit_reason: HitReason
     order_state: OrderState
@@ -509,10 +561,10 @@ class PotentialMatcher:
         self._repository = repository
 
     async def associated_sessions(self, condition: MatchCondition) -> SessionAssociation:
-        """Return Sessions whose trace contains the requested object version.
+        """Return Sessions whose trace contains the requested object identity.
 
         Args:
-            condition: Normalized workspace, object, version, and window.
+            condition: Normalized workspace, object, version, revision, and window.
 
         Returns:
             The non-overlapping Session partition plus the window case snapshot.
@@ -545,18 +597,15 @@ class PotentialMatcher:
             events_by_session.setdefault(event.session_id, []).append(event)
         case_counts = Counter(case.session_id for case in cases)
 
+        candidates = condition.revision_candidates
         associated: list[AssociatedSession] = []
         version_unresolved: list[str] = []
         skipped: list[str] = []
         for session_id in traced:
             session_events = events_by_session.get(session_id, [])
-            matching = [
-                event
-                for event in session_events
-                if event.object_version == condition.target_version
-            ]
+            matching = [event for event in session_events if _event_matches(event, candidates)]
             if matching:
-                entry = min(matching, key=_entry_order_key)
+                entry = min(matching, key=cmp_to_key(_compare_entry_order))
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
@@ -576,7 +625,7 @@ class PotentialMatcher:
                         bad_case_count=case_counts.get(session_id, 0),
                     ),
                 )
-            elif any(event.object_version is None for event in session_events):
+            elif any(_event_revision_unresolved(event) for event in session_events):
                 version_unresolved.append(session_id)
             else:
                 skipped.append(session_id)
@@ -671,9 +720,7 @@ class PotentialMatcher:
                     bad_case_id=case.bad_case_id,
                     session_id=case.session_id,
                     object_name=case.object_name,
-                    object_type=case.object_type,
                     bad_case_type=case.bad_case_type,
-                    created_at=case.created_at,
                     trigger_at=(
                         case_trigger.triggered_at
                         if case_trigger is not None and case_trigger.triggered_at is not None
@@ -722,7 +769,7 @@ class PotentialMatcher:
                     item.bad_case_id,
                     condition.target_type,
                     condition.target_name,
-                    condition.target_version,
+                    condition.target_revision,
                     POLICY_VERSION,
                     ATTRIBUTION_ENGINE,
                 )
@@ -733,7 +780,7 @@ class PotentialMatcher:
             workspace_id=condition.workspace_id,
             probe_type=condition.target_type,
             probe_object=condition.target_name,
-            object_version=condition.target_version,
+            object_versions=tuple(sorted(condition.revision_candidates)),
         )
         return AttributionPreviewCounts(
             potential=match.potential,
@@ -765,20 +812,13 @@ class PotentialPreviewService:
         condition = await self._condition(body, workspace_id=workspace_id)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
-            raise _no_associated_sessions()
-        match = await self._matcher.potential_cases(
-            condition,
-            association,
-            resolve_policy(None),
-        )
-        potential_by_session = Counter(item.session_id for item in match.included)
+            raise _no_associated_sessions(association)
         items = [
             SessionPreviewItem(
                 session_id=session.session_id,
                 title=session.title,
                 object_trigger_at=session.object_trigger_at,
                 bad_case_count=session.bad_case_count,
-                potential_count=potential_by_session.get(session.session_id, 0),
             )
             for session in association.sessions
         ]
@@ -808,7 +848,7 @@ class PotentialPreviewService:
         policy = resolve_policy(body.policy)
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
-            raise _no_associated_sessions()
+            raise _no_associated_sessions(association)
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
@@ -845,16 +885,9 @@ class PotentialPreviewService:
         """Return cache reuse counts without executing or writing attribution."""
         condition = await self._condition(body, workspace_id=workspace_id)
         policy = resolve_policy(body.policy)
-        if body.engine_key is not None and not EngineFactory.is_registered(body.engine_key):
-            raise AppError(
-                status_code=422,
-                code=ErrorCode.ENGINE_INVALID,
-                message="evolution engine is not registered",
-                details={"engineKey": body.engine_key},
-            )
         association = await self._matcher.associated_sessions(condition)
         if not association.sessions:
-            raise _no_associated_sessions()
+            raise _no_associated_sessions(association)
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
@@ -874,7 +907,7 @@ class PotentialPreviewService:
 
     async def _condition(
         self,
-        body: SessionsPreviewRequest,
+        body: PreviewCondition,
         *,
         workspace_id: str,
     ) -> MatchCondition:
@@ -884,20 +917,32 @@ class PotentialPreviewService:
             body.target_name,
             workspace_ids=(workspace_id,),
         )
-        version = body.target_version or config.default_ref
+        version = (body.target_version or config.default_ref or "").strip()
         if not version:
             raise AppError(
                 status_code=422,
                 code=ErrorCode.VALIDATION_INVALID,
                 message="target version is required",
             )
+        if len(version) > MAX_TARGET_VERSION_LENGTH:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.VALIDATION_INVALID,
+                message="target version is too long",
+                details={
+                    "field": "targetVersion",
+                    "maxLength": MAX_TARGET_VERSION_LENGTH,
+                },
+            )
+        target_version, target_revision = resolve_target_revision(version)
         start, end = resolve_window(body.window_from, body.window_to)
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
             workspace_id=workspace_id,
             target_type=body.target_type,
             target_name=body.target_name,
-            target_version=version,
+            target_version=target_version,
+            target_revision=target_revision,
             window_start=window_start,
             window_end=window_end,
         )
@@ -921,9 +966,16 @@ def _reporter_for(
     agents_by_id: Mapping[str, AgentNodeRecord],
     mains: Mapping[str, AgentNodeRecord],
 ) -> AgentNodeRecord | None:
-    """Resolve the reporting Agent, defaulting an absent id to the main Agent."""
-    if case.bad_case_agent_id is not None:
-        return agents_by_id.get(case.bad_case_agent_id)
+    """Resolve the reporting Agent, defaulting an absent id to the main Agent.
+
+    A blank id counts as absent. A non-empty id that resolves to another Session
+    is invalid evidence, so it stays unresolved instead of being reassigned.
+    """
+    if case.bad_case_agent_id:
+        reporter = agents_by_id.get(case.bad_case_agent_id)
+        if reporter is None or reporter.root_session_id != case.session_id:
+            return None
+        return reporter
     return mains.get(case.session_id)
 
 
@@ -977,14 +1029,20 @@ def _birth_point(
     events_by_agent: Mapping[str, Sequence[AnchorEventRecord]],
     session_started_at: datetime,
 ) -> TriggerPoint | None:
-    """Return the reporter birth instant: session start or the parent Agent call."""
-    if reporter.kind == "main" or reporter.parent_agent_id is None:
+    """Return the reporter birth instant: session start or the parent Agent call.
+
+    An unresolved parent relation is not evidence that the node is main, so it
+    stays unknown instead of borrowing the Session start.
+    """
+    if reporter.kind == "main":
         return TriggerPoint(
             agent_id=reporter.id,
             event_index=-1,
             triggered_at=session_started_at,
             tree_index=reporter.tree_index,
         )
+    if reporter.parent_agent_id is None:
+        return None
     parent = agents_by_id.get(reporter.parent_agent_id)
     call = _parent_call_event(parent, reporter, events_by_agent)
     if parent is None or call is None:
@@ -1013,17 +1071,39 @@ def _parent_call_event(
     return min(matches, key=lambda event: event.event_index) if matches else None
 
 
-def _entry_order_key(event: ObjectEventRecord) -> tuple[int, float, int, int]:
-    """Sort object entry events, preferring wall-clock time over coordinates."""
-    if event.triggered_at is not None:
-        return (0, event.triggered_at.timestamp(), event.tree_index, event.event_index)
-    return (1, 0.0, event.tree_index, event.event_index)
+def _compare_entry_order(left: ObjectEventRecord, right: ObjectEventRecord) -> int:
+    """Order entry events with the same time-vs-coordinate rule as comparisons."""
+    if (
+        left.triggered_at is not None
+        and right.triggered_at is not None
+        and left.triggered_at != right.triggered_at
+    ):
+        return -1 if left.triggered_at < right.triggered_at else 1
+    left_key = (left.tree_index, left.event_index)
+    right_key = (right.tree_index, right.event_index)
+    return (left_key > right_key) - (left_key < right_key)
+
+
+def _event_matches(event: ObjectEventRecord, candidates: frozenset[str]) -> bool:
+    """Return whether either persisted identity form matches the target."""
+    return (event.object_version is not None and event.object_version in candidates) or (
+        event.object_revision is not None and event.object_revision in candidates
+    )
+
+
+def _event_revision_unresolved(event: ObjectEventRecord) -> bool:
+    """Return whether an event carries no usable version or normalized revision."""
+    return event.object_version is None and (
+        event.object_revision is None
+        or not event.object_revision
+        or event.object_revision == "unknown"
+    )
 
 
 def _associated_order_key(
     session: AssociatedSession,
 ) -> tuple[int, float, str]:
-    """Sort associated Sessions newest object entry first, nulls last."""
+    """Sort associated Sessions newest object entry first."""
     return (0, -session.object_trigger_at.timestamp(), session.session_id)
 
 
@@ -1032,12 +1112,21 @@ def _empty_reasons() -> dict[HitReason, int]:
     return {reason: 0 for reason in REASONS}
 
 
-def _no_associated_sessions() -> AppError:
-    """Return the stable 409 for a target with no associated Session."""
+def _no_associated_sessions(association: SessionAssociation) -> AppError:
+    """Return the stable 409 plus the Session partition that explains the empty page."""
     return AppError(
         status_code=409,
         code=ErrorCode.NO_ASSOCIATED_SESSIONS,
         message="no session is associated with the target in this window",
+        details={
+            "summary": {
+                "reported": association.reported,
+                "associated": association.associated,
+                "skipped": association.skipped,
+                "versionUnresolved": association.version_unresolved,
+                "pending": association.pending,
+            },
+        },
     )
 
 
