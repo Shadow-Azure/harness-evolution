@@ -9,6 +9,9 @@ import type {
 /** Measures rendered text width for deterministic pill geometry. */
 export type MeasureText = (text: string, font: string) => number;
 
+/** Parent relation evidence exposed on one Agent trigger event. */
+export type RelationConfidence = NonNullable<SessionEvent["relationConfidence"]>;
+
 /** One compressed-message or trigger item in an Agent chain. */
 export type ChainItem =
   | {
@@ -53,6 +56,8 @@ export interface AgentLayoutNodeData {
   active?: boolean;
   activeEvidence?: number | null;
   triggerConnections?: Record<number, TriggerConnection>;
+  relationConfidence?: RelationConfidence | null;
+  completionWarning?: string | null;
 }
 
 /** DOM-independent Vue Flow-compatible node. */

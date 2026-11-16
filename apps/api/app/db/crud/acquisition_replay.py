@@ -736,6 +736,7 @@ async def replace_normalized_root(
                         definition_hash=event.definition_hash,
                         description=event.description,
                         tool_use_id=event.tool_use_id,
+                        relation_confidence=event.relation_confidence,
                     ),
                 )
         for turn in tree.user_turns:

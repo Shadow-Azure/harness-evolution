@@ -48,7 +48,7 @@ The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed t
 - `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.
 - Raw payloads are uniquely stored by `(runtime_key, root_session_id, agent_id)`; fixtures idempotently seed the same tables.
 - Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
-- Normalization selects a parser subclass by runtime through `TraceParserFactory`, keeps messages and content blocks in memory, and emits user-input anchors, triggers, and statistics.
+- Normalization selects a parser subclass by runtime through `TraceParserFactory`, keeps messages and content blocks in memory, and emits user-input anchors, triggers, relation confidence, and statistics.
 - Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
 - External problem tables sync by primary key: credential ingest upserts `bad_cases` idempotently, the catalog task is limited to the default workspace, and attribution stays read-only.
 - Secrets enter only through environment variables, never repo or database.

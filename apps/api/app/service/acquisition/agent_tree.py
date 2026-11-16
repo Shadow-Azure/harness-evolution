@@ -20,6 +20,7 @@ from app.service.acquisition.parsers.base import (
     DefinitionSource,
     EndReason,
     ExecutionOutcome,
+    RelationConfidence,
 )
 
 AgentKind = Literal["main", "subagent", "workflow"]
@@ -158,6 +159,30 @@ def _workflow_id(root_session_id: str, tool_use_id: str) -> str:
 def _event_anchor(event: ParsedEvent) -> tuple[int, int, str]:
     """Use provider source position as the first sibling-order key."""
     return (event.line_no, event.event_index, event.tool_use_id or "")
+
+
+def _returned_tool_ids(transcript: ParsedTranscript) -> frozenset[str]:
+    """Return tool calls whose results are present in one transcript."""
+    return frozenset(
+        block.tool_use_id
+        for block in transcript.blocks_outside_user_turns
+        if block.kind == "tool_result" and block.tool_use_id is not None
+    )
+
+
+def _with_relation(
+    node: AssembledAgentNode,
+    tool_use_id: str,
+    confidence: RelationConfidence,
+) -> AssembledAgentNode:
+    """Attach relation evidence to the Agent trigger that owns one edge."""
+    events = tuple(
+        replace(event, relation_confidence=confidence)
+        if event.kind == "agent" and event.tool_use_id == tool_use_id
+        else event
+        for event in node.events
+    )
+    return replace(node, events=events)
 
 
 def _skill_definition_hashes(transcript: ParsedTranscript) -> dict[str, str]:
@@ -430,6 +455,9 @@ def _assemble_root(
     nodes: dict[str, AssembledAgentNode] = {
         transcript.agent_id: _transcript_node(transcript) for transcript in transcripts
     }
+    returned_tool_ids = {
+        transcript.agent_id: _returned_tool_ids(transcript) for transcript in transcripts
+    }
     anchors: dict[str, tuple[int, int, str]] = {
         transcript.agent_id: (
             transcript.user_turns[0].line_no if transcript.user_turns else 0,
@@ -510,8 +538,13 @@ def _assemble_root(
                 ),
             )
 
-    def append_missing_parent_event(transcript: ParsedTranscript) -> None:
-        main = nodes[main_id]
+    def append_synthetic_parent_event(
+        transcript: ParsedTranscript,
+        *,
+        owner_id: str,
+        confidence: RelationConfidence,
+    ) -> None:
+        owner = nodes[owner_id]
         tool_use_id = _synthetic_tool_use_id(root_session_id, transcript.agent_id)
         suffix = 0
         while tool_use_id in tool_events:
@@ -520,20 +553,23 @@ def _assemble_root(
         event = _synthetic_agent_event(
             root_session_id=root_session_id,
             agent_id=transcript.agent_id,
-            event_index=len(main.events),
-            message_offset=main.messages_count,
-            line_no=max((item.line_no for item in main.events), default=0) + 1,
+            event_index=len(owner.events),
+            message_offset=owner.messages_count,
+            line_no=max((item.line_no for item in owner.events), default=0) + 1,
         )
-        if suffix:
-            event = replace(event, tool_use_id=f"{event.tool_use_id}-{suffix}")
-        nodes[main_id] = replace(main, events=(*main.events, event))
+        event = replace(
+            event,
+            tool_use_id=tool_use_id,
+            relation_confidence=confidence,
+        )
+        nodes[owner_id] = replace(owner, events=(*owner.events, event))
         nodes[transcript.agent_id] = replace(
             nodes[transcript.agent_id],
-            parent_agent_id=main_id,
-            tool_use_id=event.tool_use_id,
+            parent_agent_id=owner_id,
+            tool_use_id=tool_use_id,
         )
         anchors[transcript.agent_id] = _event_anchor(event)
-        tool_events[event.tool_use_id or ""] = (main_id, event)
+        tool_events[tool_use_id] = (owner_id, event)
 
     for transcript in sorted(
         (item for item in transcripts if item.agent_kind == "subagent"),
@@ -610,25 +646,22 @@ def _assemble_root(
         if parent_tool is None:
             parent_agent = transcript.parent_agent_id
             if parent_agent is not None and parent_agent in nodes:
-                nodes[transcript.agent_id] = replace(
-                    nodes[transcript.agent_id],
-                    parent_agent_id=parent_agent,
+                append_synthetic_parent_event(
+                    transcript,
+                    owner_id=parent_agent,
+                    confidence="synthetic",
                 )
-                parent_node = nodes[parent_agent]
-                parent_anchor = (
-                    _event_anchor(parent_node.events[-1])
-                    if parent_node.events
-                    else anchors.get(parent_agent)
-                )
-                if parent_anchor is not None:
-                    anchors[transcript.agent_id] = parent_anchor
                 continue
             fallback_to_main(
                 transcript,
                 "MISSING_PARENT_TOOL_USE_ID",
                 "Subagent has no parent tool-use identity",
             )
-            append_missing_parent_event(transcript)
+            append_synthetic_parent_event(
+                transcript,
+                owner_id=main_id,
+                confidence="unresolved",
+            )
             continue
         if parent_tool in ambiguous_tool_ids:
             fallback_to_main(
@@ -636,7 +669,11 @@ def _assemble_root(
                 "AMBIGUOUS_PARENT_TOOL_USE_ID",
                 "Subagent parent tool-use identity is ambiguous",
             )
-            append_missing_parent_event(transcript)
+            append_synthetic_parent_event(
+                transcript,
+                owner_id=main_id,
+                confidence="unresolved",
+            )
             continue
         matched = tool_events.get(parent_tool)
         if matched is None or matched[1].kind != "agent":
@@ -645,9 +682,19 @@ def _assemble_root(
                 "UNKNOWN_PARENT_TOOL_USE_ID",
                 "Subagent parent tool-use identity has no Agent trigger",
             )
-            append_missing_parent_event(transcript)
+            append_synthetic_parent_event(
+                transcript,
+                owner_id=main_id,
+                confidence="unresolved",
+            )
             continue
         owner_id, event = matched
+        confidence: RelationConfidence = (
+            "authoritative"
+            if parent_tool in returned_tool_ids.get(owner_id, frozenset())
+            else "derived"
+        )
+        nodes[owner_id] = _with_relation(nodes[owner_id], parent_tool, confidence)
         nodes[transcript.agent_id] = replace(
             nodes[transcript.agent_id],
             parent_agent_id=owner_id,
