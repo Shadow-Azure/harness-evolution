@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-16-multi-runtime-parser-factory.md
+2026-11-16-multi-runtime-parser-factory.md: 3dcf84f99ab1356828e0ccc6ce7147716acc0481
+2026-11-16-multi-runtime-parser-factory.en.md: dfba8d2d2bf2c7fdac7b49244342502a267cfff6

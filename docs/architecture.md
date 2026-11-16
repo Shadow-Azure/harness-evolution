@@ -46,9 +46,9 @@ lifespan 先恢复任务与 sync_lock 再调度；手动/定时共用单飞锁�
 - `job_runs` 是任务真值；串行 worker 写 run 事件，总线只做有界通知。
 - 自进化：`progress_unit`/`EngineFactory`、admin target、git ref/tag、`agents.model`。
 - `sync_lock` 是单飞真值；job 与锁同事务创建，异常 `sync_runs` 先终结再释放匹配锁。
-- 原始 payload 按 `(root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
+- 原始 payload 按 `(runtime_key, root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
 - 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放。CI 只用 mock。
-- 归一化按 payload 独立解析，消息与内容块只存内存；输出用户输入锚点、Agent/Skill/Workflow 触发点和统计。
+- 归一化由 `TraceParserFactory` 按 runtime 选子类，消息与内容块只存内存；输出用户输入锚点、触发点与统计。
 - 重放按 root 原子：先组装，再事务重写并推进 source 游标。
 - 外部问题表按主键同步：凭据上报幂等 upsert `bad_cases`，目录任务限默认空间；归因只读。
 - 密钥只从环境变量注入，不入仓库或数据库。
@@ -67,5 +67,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## 状态与边界
 
 - 已具备：双库 API、鉴权、任务/SSE、会话查询、问题/归因 API、错误详情、sync 调度、上游 pull、外部问题模型、目标配置/目录 API、自进化运行列表/详情与事件日志（六步、blocked/retry、lastEventSeq）、prepare/Git candidate、占位评测闭环、启动/预览与六步只读 API、fixtures、数据链、E2E/门禁。
-- 未具备：真实评测、真实 patch、用户停用界面。
-- 明确不做：多租户、生产密钥读取、无评测证据的自动改代码。
+- 未具备：真实评测与 patch、用户停用界面。
+- 明确不做：多租户、读生产密钥、无证据自动改代码。

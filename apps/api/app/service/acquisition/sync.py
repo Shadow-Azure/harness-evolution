@@ -22,7 +22,7 @@ from app.db.crud.jobs import JobRepository
 from app.db.crud.sync import SyncLockConflict, SyncLockRepository
 from app.db.models.jobs import JobRunRecord
 from app.errors import AppError
-from app.service.acquisition.normalize import CURRENT_PARSER_VERSION
+from app.service.acquisition.parsers import TraceParserFactory
 from app.service.acquisition.replay import ReplayResult, replay_pending_payloads
 from app.service.jobs import JobRunner
 from app.utils.ids import new_id
@@ -132,7 +132,7 @@ class SyncCoordinator:
 
             pending = await count_pending_payloads(
                 self.database,
-                CURRENT_PARSER_VERSION,
+                TraceParserFactory.versions(),
             )
             if pending == 0:
                 return SyncTriggerResult("idle", None, False)
@@ -162,7 +162,7 @@ class SyncCoordinator:
         """Read pending counts, the active job, and the latest durable batch."""
         snapshot = await read_sync_status_snapshot(
             self.database,
-            CURRENT_PARSER_VERSION,
+            TraceParserFactory.versions(),
         )
         active = snapshot.active_job
         batch = snapshot.batch

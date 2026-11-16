@@ -27,6 +27,13 @@ DOMAIN_METADATA = MetaData()
 trajectory_payloads = Table(
     "trajectory_payloads",
     DOMAIN_METADATA,
+    Column(
+        "runtime_key",
+        String(32),
+        primary_key=True,
+        nullable=False,
+        server_default="claude-code",
+    ),
     Column("root_session_id", String(36), primary_key=True),
     Column("agent_id", String(64), primary_key=True),
     Column("agent_kind", String(16), nullable=False),
@@ -36,7 +43,7 @@ trajectory_payloads = Table(
     Column("line_count", Integer, nullable=False),
     Column("source_type", String(16), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
-    Index("ix_trajectory_payloads_updated_at", "updated_at"),
+    Index("ix_trajectory_payloads_updated_at", "runtime_key", "updated_at"),
 )
 
 
@@ -65,6 +72,12 @@ source_records = Table(
         primary_key=True,
         autoincrement=True,
     ),
+    Column(
+        "runtime_key",
+        String(32),
+        nullable=False,
+        server_default="claude-code",
+    ),
     Column("root_session_id", String(36), nullable=False),
     Column("agent_id", String(64), nullable=False),
     Column("kind", String(16), nullable=False),
@@ -81,12 +94,13 @@ source_records = Table(
         nullable=True,
     ),
     UniqueConstraint(
+        "runtime_key",
         "root_session_id",
         "agent_id",
-        name="uq_source_records_root_agent",
+        name="uq_source_records_runtime_root_agent",
     ),
     Index("ix_source_records_processed_at", "processed_at"),
-    Index("ix_source_records_parser_version", "parser_version"),
+    Index("ix_source_records_parser_version", "runtime_key", "parser_version"),
 )
 
 
@@ -94,6 +108,12 @@ session_families = Table(
     "session_families",
     DOMAIN_METADATA,
     Column("id", String(36), primary_key=True),
+    Column(
+        "runtime_key",
+        String(32),
+        nullable=False,
+        server_default="claude-code",
+    ),
     Column("short_title", String(255), nullable=False),
     Column("title", Text, nullable=False),
     Column("search_text", String(512), nullable=False),
@@ -134,6 +154,12 @@ agents = Table(
     "agents",
     DOMAIN_METADATA,
     Column("id", String(64), primary_key=True),
+    Column(
+        "runtime_key",
+        String(32),
+        nullable=False,
+        server_default="claude-code",
+    ),
     Column(
         "root_session_id",
         String(36),

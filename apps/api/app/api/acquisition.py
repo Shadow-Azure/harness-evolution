@@ -35,6 +35,8 @@ _SYNC_ERROR_MESSAGES: dict[str, str] = {
     "MISSING_SESSION_TIMESTAMP": "Session timestamp was missing",
     "INVALID_ROOT_SESSION_ID": "Root session id was invalid",
     "MISSING_PAYLOAD_SOURCE": "Source payload was missing",
+    "UNSUPPORTED_RUNTIME": "Trace payload runtime is not supported",
+    "MIXED_TRACE_RUNTIME": "Root session mixes multiple trace runtimes",
     "SYNC_PROGRESS_FAILED": "Sync progress reporting failed",
     "SYNC_JOB_FAILED": "Sync job failed",
     "SYNC_JOB_INTERRUPTED": "Sync job was interrupted",
