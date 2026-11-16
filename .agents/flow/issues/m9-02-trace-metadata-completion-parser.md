@@ -9,12 +9,15 @@ milestone: m9
 depends:
   - m9-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/acquisition/**
+  - apps/api/app/db/**
   - apps/api/app/fixture_corpus.py
+  - apps/api/tests/**
   - fixtures/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -59,7 +62,7 @@ github:
 ## 依赖与交付边界
 
 - 依赖：m9-01
-- 交付边界：不建立父子关系；不实现第二个 runtime。
+- 交付边界：不建立父子关系；不实现第二个 runtime。为把解析结果写入既有证据列，scope 增加 `apps/api/app/db/**`、`apps/api/tests/**` 与 `plans/**`（检视文档）；对象 revision、触发坐标与关系分级仍归 M9-03/M9-04。
 
 ## 独立验证
 

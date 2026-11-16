@@ -325,7 +325,7 @@ async def test_parser_upgrade_replays_only_that_runtime(
                 for source in (await session.execute(select(source_records))).mappings().all()
             }
         assert claude_after["updated_at"] == claude_before["updated_at"]
-        assert versions == {("claude-code", 1), ("fake-runtime", 2)}
+        assert versions == {("claude-code", 2), ("fake-runtime", 2)}
     finally:
         await database.dispose()
 

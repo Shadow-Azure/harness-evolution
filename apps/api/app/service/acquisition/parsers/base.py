@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Mapping
@@ -12,6 +14,17 @@ from types import MappingProxyType
 from typing import ClassVar, Literal, cast
 
 from app.utils.time import as_shanghai
+
+ExecutionOutcome = Literal["completed", "interrupted", "failed", "legacy_unknown"]
+EndReason = Literal[
+    "end_turn",
+    "tool_use_open",
+    "missing_report",
+    "external_failed",
+    "external_interrupted",
+]
+DefinitionSource = Literal["prompt_snapshot", "api_request_shape", "builtin", "unknown"]
+ModelEvidence = Literal["reported", "requested_only", "unknown"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +80,7 @@ class ParsedEvent:
     name: str | None
     description: str | None
     tool_use_id: str | None
+    definition_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +115,9 @@ class AgentMetaFacts:
     name: str | None = None
     skill_name: str | None = None
     requested_model: str | None = None
+    picked_effort_model: str | None = None
+    is_builtin: bool | None = None
+    finished: bool | None = None
     parent_tool_use_id: str | None = None
     parent_agent_id: str | None = None
     spawn_depth: int = 0
@@ -110,10 +127,15 @@ class AgentMetaFacts:
 class TraceEvidence:
     """One evidence identity that never contains provider source text."""
 
-    kind: str
+    kind: Literal["agent_definition", "skill_definition", "file_read"]
     tool_use_id: str | None = None
     source_path: str | None = None
     content_hash: str | None = None
+    name: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    complete: bool | None = None
+    source: DefinitionSource | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +173,13 @@ class ParsedTranscript:
     ended_with_assistant: bool
     fatal_error_unrecovered: bool
     parent_agent_id: str | None = None
+    reported_model: str | None = None
+    model_evidence: ModelEvidence = "unknown"
+    execution_outcome: ExecutionOutcome = "legacy_unknown"
+    end_reason: EndReason | None = None
+    agent_definition_hash: str | None = None
+    definition_source: DefinitionSource | None = None
+    evidence: tuple[TraceEvidence, ...] = ()
 
     def agent_meta_dict(self) -> dict[str, object]:
         """Return a detached JSON-compatible copy of provider metadata."""
@@ -178,6 +207,14 @@ class ParseContext:
     errors_count: int = 0
     ended_with_assistant: bool = False
     fatal_error_unrecovered: bool = False
+    last_stop_reason: str | None = None
+    open_tool_uses: dict[str, int] = field(default_factory=dict)
+    tool_inputs: dict[str, tuple[str | None, dict[str, object]]] = field(default_factory=dict)
+    evidence: list[TraceEvidence] = field(default_factory=list)
+    agent_definition_hash: str | None = None
+    definition_source: DefinitionSource | None = None
+    task_pending: int = 0
+    task_in_progress: int = 0
 
     def issue(self, line_no: int, code: str, message: str) -> None:
         """Record one stable issue for the current payload identity."""
@@ -244,10 +281,59 @@ class ParseContext:
         """Reset the terminal-shape flag after any user-facing record."""
         self.ended_with_assistant = False
 
-    def mark_assistant_record(self, *, fatal_error_unrecovered: bool) -> None:
-        """Remember that the latest assistant record closed the transcript."""
+    def mark_assistant_record(
+        self,
+        *,
+        fatal_error_unrecovered: bool,
+        stop_reason: str | None = None,
+    ) -> None:
+        """Remember the latest assistant record and its explicit stop reason."""
         self.ended_with_assistant = True
         self.fatal_error_unrecovered = fatal_error_unrecovered
+        self.last_stop_reason = stop_reason
+
+    def remember_tool_use(
+        self,
+        tool_use_id: str | None,
+        *,
+        name: str | None,
+        tool_input: Mapping[str, object] | None,
+        line_no: int,
+    ) -> None:
+        """Retain one pending tool call identity without its source text."""
+        if tool_use_id is None:
+            return
+        self.tool_inputs[tool_use_id] = (name, dict(tool_input or {}))
+        self.open_tool_uses[tool_use_id] = line_no
+
+    def record_tool_result(self, tool_use_id: str | None) -> None:
+        """Close one pending tool call when its result arrives."""
+        if tool_use_id is None:
+            return
+        self.open_tool_uses.pop(tool_use_id, None)
+
+    def record_task_snapshot(self, *, pending: int, in_progress: int) -> None:
+        """Keep the latest bounded task snapshot counts."""
+        self.task_pending = max(0, pending)
+        self.task_in_progress = max(0, in_progress)
+
+    def add_evidence(self, evidence: TraceEvidence) -> None:
+        """Append one privacy-safe evidence identity."""
+        self.evidence.append(evidence)
+
+    def set_agent_definition(
+        self,
+        *,
+        content_hash: str | None,
+        source: DefinitionSource,
+    ) -> None:
+        """Keep the strongest agent-definition evidence seen so far."""
+        if self.definition_source in {"prompt_snapshot", "builtin"}:
+            return
+        if content_hash is None and source != "builtin":
+            return
+        self.agent_definition_hash = content_hash
+        self.definition_source = source
 
     def record_block(
         self,
@@ -302,9 +388,16 @@ class ParseContext:
         name: str | None,
         trigger_kind: Literal["skill", "agent", "workflow"] | None,
         description: str | None,
+        tool_input: Mapping[str, object] | None = None,
     ) -> None:
         """Count a tool call and retain a trigger event when recognized."""
         self.tools_count += 1
+        self.remember_tool_use(
+            tool_use_id,
+            name=name,
+            tool_input=tool_input,
+            line_no=line_no,
+        )
         if trigger_kind is None:
             return
         self.events.append(
@@ -334,6 +427,8 @@ class BaseTraceParser(ABC):
             facts=self.parse_agent_meta(meta),
             physical_lines=self.iter_lines(payload.content),
         )
+        for code, message in self.metadata_warnings(meta):
+            ctx.issue(0, code, message)
         for line_no, line in enumerate(ctx.physical_lines, start=1):
             if not line.strip():
                 continue
@@ -372,6 +467,15 @@ class BaseTraceParser(ABC):
     def finalize(self, ctx: ParseContext) -> ParsedTranscript:
         """Build the runtime-agnostic result from accumulated context."""
         payload = ctx.payload
+        reported_model = _most_frequent_model(ctx.transcript_models)
+        execution_outcome, end_reason = _execution_state(ctx)
+        _append_completion_issues(ctx, end_reason=end_reason)
+        if _model_conflict(ctx.facts.requested_model, reported_model):
+            ctx.issue(
+                0,
+                "MODEL_EVIDENCE_CONFLICT",
+                "Requested and reported models disagree; both were kept separately",
+            )
         return ParsedTranscript(
             root_session_id=payload.root_session_id,
             agent_id=payload.agent_id,
@@ -383,7 +487,7 @@ class BaseTraceParser(ABC):
             team_name=ctx.facts.team_name,
             name=ctx.facts.name,
             skill_name=ctx.facts.skill_name,
-            model=_most_frequent_model(ctx.transcript_models),
+            model=reported_model,
             requested_model=ctx.facts.requested_model,
             models=tuple(ctx.model_sequence),
             parent_tool_use_id=ctx.facts.parent_tool_use_id,
@@ -407,7 +511,21 @@ class BaseTraceParser(ABC):
             ended_at=max(ctx.observed_timestamps, default=None),
             ended_with_assistant=ctx.ended_with_assistant,
             fatal_error_unrecovered=ctx.fatal_error_unrecovered,
+            reported_model=reported_model,
+            model_evidence=_model_evidence(ctx.facts.requested_model, reported_model),
+            execution_outcome=execution_outcome,
+            end_reason=end_reason,
+            agent_definition_hash=ctx.agent_definition_hash,
+            definition_source=ctx.definition_source,
+            evidence=tuple(ctx.evidence),
         )
+
+    def metadata_warnings(
+        self,
+        meta: Mapping[str, object],
+    ) -> tuple[tuple[str, str], ...]:
+        """Return stable warnings for provider metadata that was sanitized."""
+        return ()
 
     @abstractmethod
     def consume_record(
@@ -443,6 +561,97 @@ def _physical_lines(content: str) -> tuple[str, ...]:
     if lines and lines[-1] == "":
         lines.pop()
     return tuple(line[:-1] if line.endswith("\r") else line for line in lines)
+
+
+_COMMON_DEFINITION_SUFFIX = re.compile(
+    r"^\s*(?:#{1,6}\s*)?"
+    r"(?:subagent\s+permissions?|permission\s+notes?|agent\s+notes?|notes|token\s+budget)\b",
+    re.IGNORECASE,
+)
+
+
+def normalize_definition_body(text: str) -> str | None:
+    """Strip runtime-added common suffixes before hashing a definition body."""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
+    lines = normalized.split("\n")
+    cut = len(lines)
+    for index, line in enumerate(lines):
+        if _COMMON_DEFINITION_SUFFIX.match(line):
+            cut = index
+            break
+    body = "\n".join(lines[:cut]).rstrip()
+    return body or None
+
+
+def definition_hash(text: str) -> str | None:
+    """Hash a normalized definition body without retaining its source text."""
+    body = normalize_definition_body(text)
+    if body is None:
+        return None
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _execution_state(ctx: ParseContext) -> tuple[ExecutionOutcome, EndReason | None]:
+    """Derive completion only from explicit provider evidence."""
+    if ctx.fatal_error_unrecovered:
+        return "failed", "external_failed"
+    reason = ctx.last_stop_reason
+    if reason == "end_turn":
+        return "completed", "end_turn"
+    if reason in {"interrupted", "user_interrupt"}:
+        return "interrupted", "external_interrupted"
+    if reason == "tool_use":
+        if ctx.open_tool_uses:
+            return "interrupted", "tool_use_open"
+        return "interrupted", "missing_report"
+    return "legacy_unknown", None
+
+
+def _append_completion_issues(
+    ctx: ParseContext,
+    *,
+    end_reason: EndReason | None,
+) -> None:
+    """Expose stable completion diagnostics without changing the outcome."""
+    if end_reason == "tool_use_open":
+        ctx.issue(
+            max(ctx.open_tool_uses.values(), default=0),
+            "TOOL_USE_OPEN",
+            f"{len(ctx.open_tool_uses)} tool call(s) did not return before the transcript ended",
+        )
+    elif end_reason == "missing_report":
+        ctx.issue(
+            0,
+            "MISSING_FINAL_REPORT",
+            "Transcript ended without an end_turn final report",
+        )
+    if ctx.task_pending or ctx.task_in_progress:
+        ctx.issue(
+            0,
+            "TASK_SNAPSHOT_PENDING",
+            "Final task snapshot still has "
+            f"{ctx.task_pending} pending and {ctx.task_in_progress} in-progress item(s)",
+        )
+
+
+def _model_evidence(requested: str | None, reported: str | None) -> ModelEvidence:
+    """Describe which independent model source is available."""
+    if reported is not None:
+        return "reported"
+    if requested is not None:
+        return "requested_only"
+    return "unknown"
+
+
+def _model_conflict(requested: str | None, reported: str | None) -> bool:
+    """Warn only when two concrete model identities disagree."""
+    if requested is None or reported is None:
+        return False
+    left = requested.casefold()
+    right = reported.casefold()
+    if left == right or left.startswith(right) or right.startswith(left):
+        return False
+    return "-" in left and "-" in right
 
 
 def _dict(value: object) -> dict[str, object]:
