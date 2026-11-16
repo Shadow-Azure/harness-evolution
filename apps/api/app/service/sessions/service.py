@@ -20,6 +20,10 @@ from app.errors import AppError, ErrorCode
 from app.service.bad_cases.title import derive_title
 from app.service.problems.anchor import resolve_problem_anchor
 from app.service.sessions.schemas import (
+    DEFINITION_SOURCES,
+    END_REASONS,
+    EXECUTION_OUTCOMES,
+    RELATION_CONFIDENCES,
     AgentKind,
     BadCaseAgent,
     BadCaseAnchor,
@@ -134,26 +138,6 @@ def _optional_closed(
     return None if value is None else _closed(value, allowed, field)
 
 
-EXECUTION_OUTCOMES = frozenset(
-    {"completed", "interrupted", "failed", "legacy_unknown"},
-)
-END_REASONS = frozenset(
-    {
-        "end_turn",
-        "tool_use_open",
-        "missing_report",
-        "external_failed",
-        "external_interrupted",
-    },
-)
-DEFINITION_SOURCES = frozenset(
-    {"prompt_snapshot", "api_request_shape", "builtin", "unknown"},
-)
-RELATION_CONFIDENCES = frozenset(
-    {"authoritative", "derived", "synthetic", "unresolved"},
-)
-
-
 def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
     """Map one canonical Agent and its trigger events."""
     return SessionAgent(
@@ -178,7 +162,7 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
             EndReason | None,
             _optional_closed(agent.end_reason, END_REASONS, "end reason"),
         ),
-        definition_hash=agent.agent_definition_hash,
+        agent_definition_hash=agent.agent_definition_hash,
         definition_source=cast(
             DefinitionSource | None,
             _optional_closed(

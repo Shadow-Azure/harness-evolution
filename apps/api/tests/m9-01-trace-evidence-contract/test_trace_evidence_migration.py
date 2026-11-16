@@ -102,10 +102,10 @@ async def insert_legacy_evidence_rows(database: Database) -> None:
         )
 
 
-async def test_evidence_migration_backfills_legacy_states_and_keeps_runtime(
+async def test_evidence_migration_defaults_legacy_states_and_keeps_runtime(
     tmp_path: Path,
 ) -> None:
-    """Legacy rows get legacy_unknown while runtime and parser evidence survives."""
+    """Legacy rows read legacy_unknown while runtime and parser evidence survives."""
     database = create_database(settings_for(tmp_path))
     await database.start()
     try:
@@ -237,5 +237,63 @@ async def test_evidence_migration_backfills_legacy_states_and_keeps_runtime(
                 )
             ).scalar_one()
         assert outcome == "legacy_unknown"
+    finally:
+        await database.dispose()
+
+
+async def test_evidence_migration_resumes_after_partial_ddl(tmp_path: Path) -> None:
+    """A retry after a half-applied MySQL DDL attempt adds only what is missing."""
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0015")
+        await insert_legacy_evidence_rows(database)
+        async with database.transaction() as session:
+            await session.execute(
+                text("ALTER TABLE agents ADD COLUMN end_reason VARCHAR(32)"),
+            )
+
+        await upgrade_database(database)
+
+        async with database.session() as session:
+            revision = str(
+                (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one(),
+            )
+            outcome: str = (
+                await session.execute(
+                    text(
+                        "SELECT execution_outcome FROM agents WHERE id = :root_id",
+                    ),
+                    {"root_id": ROOT_ID},
+                )
+            ).scalar_one()
+            relation: str | None = (
+                await session.execute(
+                    text(
+                        "SELECT relation_confidence FROM agent_events WHERE agent_id = :root_id",
+                    ),
+                    {"root_id": ROOT_ID},
+                )
+            ).scalar_one()
+
+        assert revision == "0016"
+        assert outcome == "legacy_unknown"
+        assert relation is None
+        async with database.engine.connect() as connection:
+            columns = await connection.run_sync(
+                lambda sync_connection: {
+                    column["name"]
+                    for column in inspect(sync_connection).get_columns("agent_events")
+                },
+            )
+        assert {
+            "object_revision",
+            "definition_hash",
+            "file_read_hash",
+            "read_complete",
+            "relation_confidence",
+        } <= columns
     finally:
         await database.dispose()

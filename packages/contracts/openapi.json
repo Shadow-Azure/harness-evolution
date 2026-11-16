@@ -3652,6 +3652,19 @@
         "additionalProperties": false,
         "description": "One flat Agent node consumed directly by the execution-flow graph.",
         "properties": {
+          "agentDefinitionHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable body hash of this agent's definition when it has one.",
+            "title": "Agentdefinitionhash"
+          },
           "agentId": {
             "title": "Agentid",
             "type": "string"
@@ -3666,19 +3679,6 @@
               }
             ],
             "title": "Agenttype"
-          },
-          "definitionHash": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Stable body hash of this agent's definition when it has one.",
-            "title": "Definitionhash"
           },
           "definitionSource": {
             "anyOf": [

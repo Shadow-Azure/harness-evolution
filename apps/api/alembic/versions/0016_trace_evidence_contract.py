@@ -5,7 +5,10 @@ Revises: 0015
 Create Date: 2026-11-16
 """
 
+from typing import Any
+
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 from alembic import op
 
@@ -16,100 +19,72 @@ depends_on: str | None = None
 
 LEGACY_EXECUTION_OUTCOME = "legacy_unknown"
 
-SESSION_EVIDENCE_COLUMNS = ("execution_outcome", "end_reason")
-AGENT_EVIDENCE_COLUMNS = (
-    "execution_outcome",
-    "end_reason",
-    "agent_definition_hash",
-    "definition_source",
+SESSION_EVIDENCE_COLUMNS: tuple[sa.Column[Any], ...] = (
+    sa.Column(
+        "execution_outcome",
+        sa.String(length=16),
+        nullable=False,
+        server_default=LEGACY_EXECUTION_OUTCOME,
+    ),
+    sa.Column("end_reason", sa.String(length=32), nullable=True),
 )
-EVENT_EVIDENCE_COLUMNS = (
-    "object_revision",
-    "definition_hash",
-    "file_read_hash",
-    "read_complete",
-    "relation_confidence",
+AGENT_EVIDENCE_COLUMNS: tuple[sa.Column[Any], ...] = (
+    sa.Column(
+        "execution_outcome",
+        sa.String(length=16),
+        nullable=False,
+        server_default=LEGACY_EXECUTION_OUTCOME,
+    ),
+    sa.Column("end_reason", sa.String(length=32), nullable=True),
+    sa.Column("agent_definition_hash", sa.String(length=64), nullable=True),
+    sa.Column("definition_source", sa.String(length=32), nullable=True),
+)
+EVENT_EVIDENCE_COLUMNS: tuple[sa.Column[Any], ...] = (
+    sa.Column("object_revision", sa.String(length=96), nullable=True),
+    sa.Column("definition_hash", sa.String(length=64), nullable=True),
+    sa.Column("file_read_hash", sa.String(length=64), nullable=True),
+    sa.Column("read_complete", sa.Boolean(), nullable=True),
+    sa.Column("relation_confidence", sa.String(length=16), nullable=True),
 )
 
 
-def _backfill_execution_outcome(table: str) -> None:
-    """Backfill legacy rows that predate the non-null execution outcome default."""
-    op.execute(
-        sa.text(
-            f"UPDATE {table} SET execution_outcome = :outcome "  # noqa: S608
-            "WHERE execution_outcome IS NULL",
-        ).bindparams(outcome=LEGACY_EXECUTION_OUTCOME),
-    )
+def _column_names(table: str) -> set[str]:
+    """Return the columns present on one table in the target database."""
+    return {str(column["name"]) for column in inspect(op.get_bind()).get_columns(table)}
+
+
+def _add_columns(table: str, columns: tuple[sa.Column[Any], ...]) -> None:
+    """Add only missing columns so a retry after partial DDL can resume."""
+    existing = _column_names(table)
+    for column in columns:
+        if column.name not in existing:
+            op.add_column(table, column)
 
 
 def upgrade() -> None:
-    """Add the M9 evidence contract without touching runtime identity columns."""
-    op.add_column(
-        "session_families",
-        sa.Column(
-            "execution_outcome",
-            sa.String(length=16),
-            nullable=False,
-            server_default=LEGACY_EXECUTION_OUTCOME,
-        ),
-    )
-    op.add_column(
-        "session_families",
-        sa.Column("end_reason", sa.String(length=32), nullable=True),
-    )
-    op.add_column(
-        "agents",
-        sa.Column(
-            "execution_outcome",
-            sa.String(length=16),
-            nullable=False,
-            server_default=LEGACY_EXECUTION_OUTCOME,
-        ),
-    )
-    op.add_column(
-        "agents",
-        sa.Column("end_reason", sa.String(length=32), nullable=True),
-    )
-    op.add_column(
-        "agents",
-        sa.Column("agent_definition_hash", sa.String(length=64), nullable=True),
-    )
-    op.add_column(
-        "agents",
-        sa.Column("definition_source", sa.String(length=32), nullable=True),
-    )
-    op.add_column(
-        "agent_events",
-        sa.Column("object_revision", sa.String(length=96), nullable=True),
-    )
-    op.add_column(
-        "agent_events",
-        sa.Column("definition_hash", sa.String(length=64), nullable=True),
-    )
-    op.add_column(
-        "agent_events",
-        sa.Column("file_read_hash", sa.String(length=64), nullable=True),
-    )
-    op.add_column(
-        "agent_events",
-        sa.Column("read_complete", sa.Boolean(), nullable=True),
-    )
-    op.add_column(
-        "agent_events",
-        sa.Column("relation_confidence", sa.String(length=16), nullable=True),
-    )
-    _backfill_execution_outcome("session_families")
-    _backfill_execution_outcome("agents")
+    """Add the M9 evidence contract without touching runtime identity columns.
+
+    Existing rows read the ``legacy_unknown`` server default after the column is
+    added; MySQL DDL auto-commits, so each column addition is guarded to make a
+    retry after a partial failure resume instead of failing on a duplicate.
+    """
+    _add_columns("session_families", SESSION_EVIDENCE_COLUMNS)
+    _add_columns("agents", AGENT_EVIDENCE_COLUMNS)
+    _add_columns("agent_events", EVENT_EVIDENCE_COLUMNS)
 
 
-def _drop_columns(table: str, columns: tuple[str, ...]) -> None:
-    """Drop evidence columns, recreating SQLite tables through batch mode."""
+def _drop_columns(table: str, columns: tuple[sa.Column[Any], ...]) -> None:
+    """Drop evidence columns that are still present, recreating SQLite tables."""
+    existing = _column_names(table)
+    present = tuple(column.name for column in columns if column.name in existing)
+    if not present:
+        return
     if op.get_bind().dialect.name == "sqlite":
         with op.batch_alter_table(table) as batch_op:
-            for column in columns:
+            for column in present:
                 batch_op.drop_column(column)
         return
-    for column in columns:
+    for column in present:
         op.drop_column(table, column)
 
 

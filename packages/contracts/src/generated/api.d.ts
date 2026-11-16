@@ -2903,15 +2903,15 @@ export interface components {
          * @description One flat Agent node consumed directly by the execution-flow graph.
          */
         SessionAgent: {
+            /**
+             * Agentdefinitionhash
+             * @description Stable body hash of this agent's definition when it has one.
+             */
+            agentDefinitionHash?: string | null;
             /** Agentid */
             agentId: string;
             /** Agenttype */
             agentType: string | null;
-            /**
-             * Definitionhash
-             * @description Stable body hash of this agent's definition when it has one.
-             */
-            definitionHash?: string | null;
             /**
              * Definitionsource
              * @description Where the agent definition body was recovered from.

@@ -331,7 +331,7 @@ async def test_tree_exposes_closed_m9_evidence_fields(session_query: Any) -> Non
     main = tree.json()["agents"][0]
     assert main["executionOutcome"] == "completed"
     assert main["endReason"] == "end_turn"
-    assert main["definitionHash"] == "a" * 64
+    assert main["agentDefinitionHash"] == "a" * 64
     assert main["definitionSource"] == "prompt_snapshot"
     assert main["events"][0] == {
         "line": 2,

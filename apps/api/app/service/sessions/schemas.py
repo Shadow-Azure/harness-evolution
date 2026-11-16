@@ -1,7 +1,7 @@
 """Public session list, overview, and execution-tree contracts."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast, get_args
 
 from pydantic import Field
 
@@ -21,6 +21,17 @@ EndReason = Literal[
 ]
 DefinitionSource = Literal["prompt_snapshot", "api_request_shape", "builtin", "unknown"]
 RelationConfidence = Literal["authoritative", "derived", "synthetic", "unresolved"]
+
+EXECUTION_OUTCOMES: frozenset[str] = frozenset(
+    cast(tuple[str, ...], get_args(ExecutionOutcome)),
+)
+END_REASONS: frozenset[str] = frozenset(cast(tuple[str, ...], get_args(EndReason)))
+DEFINITION_SOURCES: frozenset[str] = frozenset(
+    cast(tuple[str, ...], get_args(DefinitionSource)),
+)
+RELATION_CONFIDENCES: frozenset[str] = frozenset(
+    cast(tuple[str, ...], get_args(RelationConfidence)),
+)
 
 
 def _missing(value: object) -> bool:
@@ -136,7 +147,7 @@ class SessionAgent(IdentityModel):
     messages_count: int = Field(ge=0)
     execution_outcome: ExecutionOutcome
     end_reason: EndReason | None = Field(default=None, exclude_if=_missing)
-    definition_hash: str | None = Field(
+    agent_definition_hash: str | None = Field(
         default=None,
         max_length=64,
         exclude_if=_missing,
