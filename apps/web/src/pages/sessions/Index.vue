@@ -138,8 +138,13 @@ const listTotal = computed(
 const pendingSessions = computed(
   () => listQuery.data.value?.pendingSessions ?? 0,
 );
+const isListEmpty = computed(
+  () => isListSuccess.value && items.value.length === 0,
+);
 const countLabel = computed(() => {
-  if (!listQuery.data.value) return "加载中…";
+  if (isListPending.value) return "加载中…";
+  if (listQuery.isError.value) return "加载失败";
+  if (!listQuery.data.value) return "—";
   return isSearchActive.value
     ? `命中 ${listTotal.value} 个`
     : `最新 ${items.value.length} / 总数 ${listTotal.value}`;
@@ -287,11 +292,12 @@ async function submitSearch() {
   const nextQuery = searchInput.value.trim();
   searchInput.value = nextQuery;
   if (nextQuery === (filters.value.q ?? "").trim()) return;
+  if (!nextQuery) {
+    await restoreLatest();
+    return;
+  }
   pendingNotice.value = false;
   deepLinkNotice.value = "";
-  if (!nextQuery) {
-    forgetCachedLatest(filters.value.status ?? "all", filters.value.sort ?? "latest");
-  }
   await router.push({
     path: sessionPath(null),
     query: routeWithFilters({ q: nextQuery }, false),
@@ -668,6 +674,7 @@ onBeforeUnmount(() => {
               class="pending-badge"
               type="button"
               data-testid="session-pending-badge"
+              :aria-controls="pendingNotice ? 'session-pending-hint' : undefined"
               :aria-expanded="pendingNotice"
               @click="pendingNotice = !pendingNotice"
             >
@@ -682,11 +689,12 @@ onBeforeUnmount(() => {
         />
         <p
           v-if="pendingNotice && pendingSessions > 0"
+          id="session-pending-hint"
           class="pending-hint"
           data-testid="session-pending-hint"
         >
           待同步表示 bad case 已上报但轨迹尚未归一化；列表只展示已归一化
-          Session，补齐后会自动出现。
+          Session，补齐后刷新页面可见。
         </p>
         <div class="filters">
           <div class="filter-row">
@@ -737,6 +745,9 @@ onBeforeUnmount(() => {
       :problems="problems"
       :problems-error="problemsError"
       :problems-loading="isProblemsPending"
+      :list-empty="isListEmpty"
+      :filter-active="filters.status !== 'all'"
+      :pending-sessions="pendingSessions"
       :search-active="isSearchActive"
       :tree="sessionTree"
       :tree-error="treeError"

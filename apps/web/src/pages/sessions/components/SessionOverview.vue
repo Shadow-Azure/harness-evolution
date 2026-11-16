@@ -80,6 +80,18 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  listEmpty: {
+    type: Boolean,
+    default: false,
+  },
+  filterActive: {
+    type: Boolean,
+    default: false,
+  },
+  pendingSessions: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits<{
@@ -300,6 +312,18 @@ const stats = computed<Array<{
       <template v-if="searchActive">
         <strong>未找到该 Session</strong>
         <span>输入完整 root session ID 后回车重新查询；清空输入并回车可恢复最新 10 个 Session。</span>
+      </template>
+      <template v-else-if="listEmpty && filterActive">
+        <strong>没有匹配当前筛选的 session</strong>
+        <span>调整状态筛选，或清空输入后回车恢复最新 10 个 Session。</span>
+      </template>
+      <template v-else-if="listEmpty && pendingSessions > 0">
+        <strong>该工作空间暂无可展示的 Session</strong>
+        <span>{{ pendingSessions }} 个待同步根会话的轨迹仍在补齐，补齐后刷新页面可见。</span>
+      </template>
+      <template v-else-if="listEmpty">
+        <strong>该工作空间还没有上报 bad case</strong>
+        <span>上报 bad case 后，这里会显示最新 10 个 Session。</span>
       </template>
       <template v-else>
         <strong>未选择 Session</strong>

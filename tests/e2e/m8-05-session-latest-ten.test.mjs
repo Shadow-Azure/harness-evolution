@@ -30,6 +30,8 @@ let webLogs = "";
 let adminCookie = "";
 let adminToken = "";
 let otherWorkspaceId = "";
+let otherCredential = "";
+const normalizedRootId = "10000000-0000-4000-8000-000000000001";
 const otherRootId = "10000000-0000-4000-8000-000000000905";
 const otherTitle = "其他空间待同步会话";
 
@@ -214,7 +216,7 @@ async function click(page, selector) {
   );
 }
 
-async function seedOtherWorkspace() {
+async function createOtherWorkspace() {
   const session = await apiJson("/api/auth/session", adminToken);
   const created = await apiJson("/api/workspaces", adminToken, {
     method: "POST",
@@ -231,12 +233,16 @@ async function seedOtherWorkspace() {
     adminToken,
     { method: "POST" },
   );
+  otherCredential = credential.credential;
+}
+
+async function ingestOtherPendingCase() {
   const response = await fetch(
     `${baseUrl}/api/workspaces/${otherWorkspaceId}/bad-cases`,
     {
       method: "POST",
       headers: {
-        authorization: `Bearer ${credential.credential}`,
+        authorization: `Bearer ${otherCredential}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -323,7 +329,7 @@ before(async () => {
   await waitFor(baseUrl, web, () => webLogs);
 
   await login();
-  await seedOtherWorkspace();
+  await createOtherWorkspace();
 });
 
 after(cleanupRuntime);
@@ -432,7 +438,7 @@ test("m8-05 session-latest-ten submits a root ID on Enter and restores the list"
   }
 });
 
-test("m8-05 session-latest-ten isolates workspaces and shows pending sessions", async () => {
+test("m8-05 session-latest-ten scopes sessions to their workspace and shows pending sessions", async () => {
   const page = await createBrowserPage();
   const violations = browserViolations(page.session);
   try {
@@ -440,43 +446,59 @@ test("m8-05 session-latest-ten isolates workspaces and shows pending sessions", 
     const first = await openSessionList(page);
     assert.equal(first.cards, 4, JSON.stringify(first));
 
-    await setSearchValue(page, otherRootId);
+    const emptyOther = await openSessionList(page, otherWorkspaceId);
+    assert.equal(emptyOther.cards, 0, JSON.stringify(emptyOther));
+    assert.equal(emptyOther.path, `/workspaces/${otherWorkspaceId}/sessions`);
+    assert.equal(emptyOther.count, "最新 0 / 总数 0");
+    const emptyOtherState = await waitForDocument(
+      page.session,
+      `(() => {
+        const list = document.querySelector("[data-testid='session-list-empty']")?.textContent.trim() ?? "";
+        const overview = document.querySelector("[data-testid='session-overview-empty']")?.textContent.trim() ?? "";
+        const badge = Boolean(document.querySelector("[data-testid='session-pending-badge']"));
+        return { list, overview, badge };
+      })()`,
+      "empty other workspace",
+    );
+    assert.equal(emptyOtherState.badge, false);
+    assert.match(emptyOtherState.list, /还没有上报 bad case/);
+    assert.match(emptyOtherState.overview, /还没有上报 bad case/);
+
+    await setSearchValue(page, normalizedRootId);
     await pressEnter(page);
-    const miss = await waitForDocument(
+    const normalizedMiss = await waitForDocument(
       page.session,
       `(() => {
         const count = document.querySelector("[data-testid='session-browser-count']");
-        const empty = document.querySelector("[data-testid='session-overview-empty']");
-        if (!count || !empty || count.textContent.trim() === "加载中…") return null;
+        if (count?.textContent.trim() !== "命中 0 个") return null;
         return {
           path: location.pathname,
           search: location.search,
-          count: count.textContent.trim(),
-          overview: empty.textContent.trim(),
-          cards: document.querySelectorAll("[data-testid='session-card']").length,
+          empty: document.querySelector("[data-testid='session-list-empty']")?.textContent.trim() ?? "",
+          overview: document.querySelector("[data-testid='session-overview-empty']")?.textContent.trim() ?? "",
         };
       })()`,
-      "cross-workspace query miss",
+      "normalized root scoped out of the other workspace",
     );
-    assert.equal(miss.path, `/workspaces/${dataWorkspace}/sessions`);
-    assert.equal(new URLSearchParams(miss.search).get("q"), otherRootId);
-    assert.equal(miss.count, "命中 0 个");
-    assert.equal(miss.cards, 0);
-    assert.match(miss.overview, /未找到该 Session/);
+    assert.equal(normalizedMiss.path, `/workspaces/${otherWorkspaceId}/sessions`);
+    assert.equal(new URLSearchParams(normalizedMiss.search).get("q"), normalizedRootId);
+    assert.match(normalizedMiss.empty, /未找到匹配/);
+    assert.match(normalizedMiss.overview, /未找到该 Session/);
 
-    const other = await openSessionList(page, otherWorkspaceId);
-    assert.equal(other.cards, 0, JSON.stringify(other));
-    assert.equal(other.path, `/workspaces/${otherWorkspaceId}/sessions`);
+    await ingestOtherPendingCase();
+    await openSessionList(page, otherWorkspaceId);
     const pending = await waitForDocument(
       page.session,
       `(() => {
         const badge = document.querySelector("[data-testid='session-pending-badge']");
         const empty = document.querySelector("[data-testid='session-list-empty']");
+        const overview = document.querySelector("[data-testid='session-overview-empty']");
         const count = document.querySelector("[data-testid='session-browser-count']");
-        if (!badge || !empty || !count || count.textContent.trim() === "加载中…") return null;
+        if (!badge || !empty || !overview || !count || count.textContent.trim() === "加载中…") return null;
         return {
           badge: badge.textContent.trim(),
           empty: empty.textContent.trim(),
+          overview: overview.textContent.trim(),
           count: count.textContent.trim(),
           cards: document.querySelectorAll("[data-testid='session-card']").length,
         };
@@ -488,6 +510,8 @@ test("m8-05 session-latest-ten isolates workspaces and shows pending sessions", 
     assert.equal(pending.cards, 0);
     assert.match(pending.empty, /暂无可展示的 Session/);
     assert.match(pending.empty, /1 个待同步/);
+    assert.match(pending.empty, /刷新页面可见/);
+    assert.match(pending.overview, /1 个待同步/);
 
     await click(page, "[data-testid='session-pending-badge']");
     const explained = await waitForDocument(
@@ -501,44 +525,47 @@ test("m8-05 session-latest-ten isolates workspaces and shows pending sessions", 
       "pending explanation",
     );
     assert.match(explained, /轨迹尚未归一化/);
+    assert.match(explained, /刷新页面可见/);
 
-    await setSearchValue(page, "10000000-0000-4000-8000-000000000001");
+    const data = await openSessionList(page);
+    assert.equal(data.cards, 4, JSON.stringify(data));
+    await setSearchValue(page, otherRootId);
     await pressEnter(page);
     const otherMiss = await waitForDocument(
       page.session,
       `(() => {
         const count = document.querySelector("[data-testid='session-browser-count']");
-        if (!count || count.textContent.trim() !== "命中 0 个") return null;
+        if (count?.textContent.trim() !== "命中 0 个") return null;
         return {
           path: location.pathname,
           empty: document.querySelector("[data-testid='session-list-empty']")?.textContent.trim() ?? "",
+          overview: document.querySelector("[data-testid='session-overview-empty']")?.textContent.trim() ?? "",
         };
       })()`,
-      "other workspace miss",
+      "other workspace pending root scoped out of ws-default",
     );
-    assert.equal(otherMiss.path, `/workspaces/${otherWorkspaceId}/sessions`);
+    assert.equal(otherMiss.path, `/workspaces/${dataWorkspace}/sessions`);
     assert.match(otherMiss.empty, /未找到匹配/);
+    assert.match(otherMiss.overview, /未找到该 Session/);
 
     await click(page, ".empty-action");
     const reset = await waitForDocument(
       page.session,
       `(() => {
-        const badge = document.querySelector("[data-testid='session-pending-badge']");
+        const cards = [...document.querySelectorAll("[data-testid='session-card']")];
         const count = document.querySelector("[data-testid='session-browser-count']");
-        if (!badge || !count || count.textContent.trim() === "加载中…") return null;
+        if (cards.length !== 4 || count?.textContent.trim() === "加载中…") return null;
         return {
           path: location.pathname,
           search: location.search,
           count: count.textContent.trim(),
-          badge: badge.textContent.trim(),
         };
       })()`,
-      "reset to latest ten",
+      "restore latest ten after cross-workspace miss",
     );
-    assert.equal(reset.path, `/workspaces/${otherWorkspaceId}/sessions`);
+    assert.match(reset.path, new RegExp(`^/workspaces/${dataWorkspace}/sessions/.+`));
     assert.equal(reset.search, "");
-    assert.equal(reset.count, "最新 0 / 总数 0");
-    assert.equal(reset.badge, "1 个待同步");
+    assert.equal(reset.count, "最新 4 / 总数 4");
 
     assert.deepEqual(violations, []);
   } finally {

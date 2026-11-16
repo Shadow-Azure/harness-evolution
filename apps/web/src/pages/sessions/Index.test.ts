@@ -327,7 +327,9 @@ describe("session browser", () => {
         });
       }),
     );
-    const { router, wrapper } = await mountPage(`${ws}/sessions?q=missing`);
+    const { router, wrapper } = await mountPage(
+      `${ws}/sessions?q=missing&status=problem`,
+    );
     await flushPromises();
     expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
       "命中 0 个",
@@ -341,7 +343,7 @@ describe("session browser", () => {
     await vi.waitFor(() => {
       expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
     });
-    expect(router.currentRoute.value.query.q).toBeUndefined();
+    expect(router.currentRoute.value.query).toEqual({});
     expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
       "最新 2 / 总数 2",
     );
@@ -1021,7 +1023,7 @@ describe("session browser", () => {
       empty.wrapper.find("[data-testid='session-overview']").text(),
     ).toContain("未找到该 Session");
     expect(empty.wrapper.find("[role='listbox']").exists()).toBe(false);
-    expect(empty.wrapper.get(".empty-list").attributes("role")).toBe("status");
+    expect(empty.wrapper.get(".empty-copy").attributes("role")).toBe("status");
 
     server.use(
       http.get(sessionsBase, () =>
@@ -1035,8 +1037,38 @@ describe("session browser", () => {
     await flushPromises();
 
     expect(failed.wrapper.text()).toContain("Session 列表加载失败");
+    expect(
+      failed.wrapper.get("[data-testid='session-browser-count']").text(),
+    ).toBe("加载失败");
     expect(failed.wrapper.get("[role='alert'] button").text()).toContain("重试");
     expect(failed.wrapper.find("[role='listbox']").exists()).toBe(false);
+  });
+
+  it("repeats the filter and pending empty reasons in the overview", async () => {
+    mockSessionApi([]);
+    let pending = 0;
+    server.use(
+      http.get(sessionsBase, () =>
+        HttpResponse.json({
+          items: [],
+          total: 0,
+          pendingSessions: pending,
+        }),
+      ),
+    );
+
+    const filtered = await mountPage(`${ws}/sessions?status=problem`);
+    await flushPromises();
+    expect(
+      filtered.wrapper.get("[data-testid='session-overview-empty']").text(),
+    ).toContain("没有匹配当前筛选的 session");
+
+    pending = 2;
+    const pendingPage = await mountPage(`${ws}/sessions`);
+    await flushPromises();
+    expect(
+      pendingPage.wrapper.get("[data-testid='session-overview-empty']").text(),
+    ).toContain("2 个待同步根会话");
   });
 
   it("shows a distinct empty state for a workspace without bad cases", async () => {
@@ -1049,6 +1081,6 @@ describe("session browser", () => {
     );
     expect(
       wrapper.get("[data-testid='session-overview-empty']").text(),
-    ).toContain("未选择 Session");
+    ).toContain("该工作空间还没有上报 bad case");
   });
 });
