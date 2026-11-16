@@ -6,6 +6,8 @@ import math
 import re
 from collections.abc import Mapping
 
+from app.utils.redaction import is_sensitive_key, redact_text
+
 CLAUDE_AGENT_META_KEYS = frozenset(
     {
         "agentType",
@@ -62,6 +64,8 @@ def sanitize_unknown_metadata(meta: Mapping[str, object]) -> dict[str, object]:
     """Keep bounded unknown scalar metadata without nested or provider bodies."""
     result: dict[str, object] = {}
     for key in unknown_metadata_fields(meta):
+        if is_sensitive_key(key):
+            continue
         value = _scalar(meta[key])
         if value is _DROP:
             continue
@@ -87,7 +91,7 @@ def _scalar(value: object) -> object:
     if isinstance(value, float):
         return value if math.isfinite(value) else _DROP
     if isinstance(value, str):
-        cleaned = _CONTROL.sub("", value).strip()
+        cleaned = _CONTROL.sub("", redact_text(value)).strip()
         if not cleaned:
             return _DROP
         return cleaned[:MAX_UNKNOWN_META_STRING]

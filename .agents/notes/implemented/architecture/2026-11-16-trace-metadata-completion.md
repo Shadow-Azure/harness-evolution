@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-- 元数据校验改为“已知字段严格、未知字段降级”：`agentType`、`description`、`spawnDepth`、`model` 等已知字段继续按类型与列长校验；未知标量经去控制字符、长度截断后进入 `agents.meta`，未知对象/数组丢弃，并产生稳定 `UNKNOWN_AGENT_METADATA` 警告。`isBuiltIn`、`pickedEffortModel`、`finished` 提升为已知字段。
+- 元数据校验改为“已知字段严格、未知字段降级”：`agentType`、`description`、`spawnDepth`、`model` 等已知字段继续按类型与列长校验；未知标量经凭据脱敏、去控制字符、长度截断后进入 `agents.meta`，未知对象/数组丢弃，并产生稳定 `UNKNOWN_AGENT_METADATA` 警告。`isBuiltIn`、`pickedEffortModel`、`finished` 提升为已知字段。
 - 执行完成度只从显式证据推导：assistant `message.stop_reason` 为 `end_turn` 记 `completed/end_turn`；为 `tool_use` 且仍有未配对调用记 `interrupted/tool_use_open`，无未配对调用记 `interrupted/missing_report`；`interrupted` 类停止原因记 `external_interrupted`；API 错误消息记 `failed/external_failed`。没有 `stop_reason` 的旧载荷保持 `legacy_unknown`，不从“最后一条是 assistant”猜测完成。
 - 稳定诊断码 `TOOL_USE_OPEN`、`MISSING_FINAL_REPORT`、`TASK_SNAPSHOT_PENDING` 只在对应用显式证据存在时产生；任务快照从 `task_reminder` 或 `toolUseResult.task` 的 pending/in-progress 计数读取，不保存任务文本。
 - Agent 定义从 `prompt_snapshot.systemPrompt[0]` 或 `api-request-shape.system` 提取；通用权限提示、Notes、token budget 段落在 hash 前剥离。`isBuiltIn` 为真时只记 `definition_source=builtin`，不产生 body hash。

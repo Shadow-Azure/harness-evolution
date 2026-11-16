@@ -212,6 +212,8 @@ def _file_evidence(
     )
     if tool_name == "Edit":
         original = _text(result.get("originalFile"))
+        if path is None and original is None:
+            return None
         return TraceEvidence(
             kind="file_read",
             source_path=path,
@@ -223,6 +225,8 @@ def _file_evidence(
     if content is None:
         content = _text(result.get("content"))
     if content is None and tool_name == "Bash":
+        return None
+    if path is None and content is None:
         return None
     start_line, end_line, complete = _read_line_range(result_file)
     return TraceEvidence(

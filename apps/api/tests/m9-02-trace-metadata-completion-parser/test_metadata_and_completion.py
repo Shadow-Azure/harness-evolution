@@ -132,6 +132,26 @@ def test_task_snapshot_and_open_tool_use_are_explicit() -> None:
     assert "tool-open" not in repr(parsed.issues)
 
 
+def test_child_with_open_tool_use_reports_both_diagnostics() -> None:
+    """A child stopped on a tool call is both open and missing its final report."""
+    payload = jsonl(
+        assistant(
+            "message-1",
+            stop_reason="tool_use",
+            tools=(("tool-open", "Agent", {"subagent_type": "Explore"}),),
+        ),
+    )
+
+    parsed = parse(payload, agent_kind="subagent")
+
+    assert parsed.execution_outcome == "interrupted"
+    assert parsed.end_reason == "tool_use_open"
+    assert [issue.code for issue in parsed.issues] == [
+        "TOOL_USE_OPEN",
+        "MISSING_FINAL_REPORT",
+    ]
+
+
 def test_missing_stop_reason_stays_legacy_unknown() -> None:
     """Legacy payloads without explicit stop evidence are not guessed complete."""
     parsed = parse(jsonl(assistant("message-1", stop_reason=None)))
@@ -294,6 +314,8 @@ def test_unknown_scalar_metadata_is_sanitized_and_imported(tmp_path: Path) -> No
             "futureNested": {"hidden": "drop me"},
             "futureList": [1, 2],
             "futureLongText": "x" * 400,
+            "apiKey": "sk-super-secret-value",
+            "futureLabel": "Bearer abc.def.ghi",
         },
     )
 
@@ -306,6 +328,8 @@ def test_unknown_scalar_metadata_is_sanitized_and_imported(tmp_path: Path) -> No
     assert child.agent_meta["futureFlag"] is True
     assert "futureNested" not in child.agent_meta
     assert "futureList" not in child.agent_meta
+    assert "apiKey" not in child.agent_meta
+    assert child.agent_meta["futureLabel"] == "Bearer <redacted>"
     assert len(cast(str, child.agent_meta["futureLongText"])) == 256
 
 

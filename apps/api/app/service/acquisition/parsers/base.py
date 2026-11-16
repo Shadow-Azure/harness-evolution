@@ -619,7 +619,9 @@ def _append_completion_issues(
             "TOOL_USE_OPEN",
             f"{len(ctx.open_tool_uses)} tool call(s) did not return before the transcript ended",
         )
-    elif end_reason == "missing_report":
+    if end_reason == "missing_report" or (
+        ctx.payload.agent_kind == "subagent" and end_reason == "tool_use_open"
+    ):
         ctx.issue(
             0,
             "MISSING_FINAL_REPORT",
