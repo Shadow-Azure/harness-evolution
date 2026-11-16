@@ -12,7 +12,7 @@ depends:
   - m9-05
   - m10-01
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/service/catalogs.py
