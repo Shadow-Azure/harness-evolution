@@ -10,7 +10,7 @@ depends:
   - m9-01
   - m9-02
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/acquisition/agent_tree.py
   - apps/api/app/service/acquisition/**
