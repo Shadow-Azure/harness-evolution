@@ -9,7 +9,7 @@ milestone: m9
 depends:
   - m9-06
 priority: P1
-status: ready
+status: done
 scope:
   - apps/api/app/third_party_api/session_source/**
   - apps/api/app/third_party_api/session_query/**
