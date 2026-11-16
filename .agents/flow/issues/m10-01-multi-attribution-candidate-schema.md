@@ -15,6 +15,7 @@ scope:
   - apps/api/app/db/**
   - apps/api/app/service/bad_cases/**
   - apps/api/app/service/problems/**
+  - apps/api/app/service/evolution/**
   - apps/api/alembic/**
   - packages/contracts/**
   - tests/**
