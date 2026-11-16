@@ -12,15 +12,21 @@ depends:
   - m9-05
   - m10-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/evolution/**
-  - apps/api/app/api/evolution_launch.py
+  - apps/api/app/service/catalogs.py
+  - apps/api/app/api/**
+  - apps/api/pyproject.toml
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 211
@@ -62,12 +68,12 @@ github:
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/evolution tests/potential; pnpm contract:check
+pnpm test:api -- tests/m10-02-potential-matcher; pnpm contract:check
 ```
 
-- 默认策略两支并集正确。
-- unknown revision 不计命中。
-- 预览与 prepare 对同输入一致。
+- 默认策略两支并集正确；custom 三开关与 `sameObjectOnly` 正确。
+- revision 命中：knowledge digest 与 tag-only skill 可关联，unknown/不匹配 revision 分别进 `versionUnresolved`/`skipped`。
+- 预览只读，不写 probe、归因关联或候选行。
 
 ## 验收标准
 

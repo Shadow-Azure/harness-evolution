@@ -91,7 +91,7 @@ class ProbeWrite:
         for field_name in ("probe_id", "workspace_id", "bad_case_id", "session_id"):
             if not getattr(self, field_name):
                 raise ValueError(f"{field_name} must not be empty")
-        if self.probe_type not in {"skill", "agent"}:
+        if self.probe_type not in {"skill", "agent", "knowledge"}:
             raise ValueError(f"unknown probe_type: {self.probe_type}")
         if self.conclusion not in {"attributed", "non_target"}:
             raise ValueError(f"unknown conclusion: {self.conclusion}")

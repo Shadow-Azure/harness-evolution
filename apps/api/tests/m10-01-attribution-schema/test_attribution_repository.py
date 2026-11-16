@@ -295,6 +295,14 @@ async def test_probe_write_validates_identity_and_normalizes_version(
     assert blank.cache_key == missing.cache_key
 
 
+def test_probe_write_accepts_knowledge_for_m10_03() -> None:
+    """The m10-03 knowledge attribution writer can use the same cache identity."""
+    knowledge = replace(probe_write(), probe_type="knowledge")
+
+    assert knowledge.probe_type == "knowledge"
+    assert knowledge.cache_key != probe_write().cache_key
+
+
 async def test_attribution_count_distincts_the_object_identity(
     attribution_repository: tuple[Database, AttributionRepository],
 ) -> None:

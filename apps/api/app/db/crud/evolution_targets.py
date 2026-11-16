@@ -18,13 +18,16 @@ from app.utils.time import now_shanghai
 
 ACTIVE_RUN_STATUSES = ("preparing", "running", "blocked")
 
+EvolutionObjectType = Literal["skill", "agent", "knowledge"]
+"""Every object kind a target configuration and the matcher accept."""
+
 
 @dataclass(frozen=True, slots=True)
 class EvolutionTargetRecord:
     """One configurable skill or agent target."""
 
     id: str
-    object_type: Literal["skill", "agent"]
+    object_type: EvolutionObjectType
     object_name: str
     repo_url: str
     sub_dir: str
@@ -64,7 +67,7 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
     workspace_id = row["workspace_id"]
     return EvolutionTargetRecord(
         id=row["id"],
-        object_type=cast(Literal["skill", "agent"], row["object_type"]),
+        object_type=cast(EvolutionObjectType, row["object_type"]),
         object_name=row["object_name"],
         repo_url=row["repo_url"],
         sub_dir=row["sub_dir"],

@@ -922,12 +922,14 @@ erDiagram
 
 ### 4.9 向导预览（V2，见 §4.20）
 
-V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用，下个大版本删除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。
+V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用，下个大版本删除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。`targetType` 在预览与 target 配置中取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`。
 
-- 响应 `summary` 用 `sessions / badCases / potential / byReason` 表达，替代 V1 的 `probes / usedProbes / byAttributeType`。
-- 行结构用 `PotentialRow`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），替代 V1 的 `ProbeRow`。
-- 时间窗按 bad case 的 `created_at` 过滤，不再按 probe 所属 Session 的启动时间。
-- 零命中：无关联 Session → `409 NO_ASSOCIATED_SESSIONS`；有关联但潜在为 0 → `409 NO_POTENTIAL_MATCHED`；向导把 409 映射为空态并禁用出口。
+- 三段 `summary` 各管一段：Session 段用 `reported/associated/skipped/versionUnresolved/pending`，潜在段用 `badCases/potential/byReason`，归因段用 `potential/reused/fresh/nonTargetKnown`；不再有 `probes / usedProbes / byAttributeType`。
+- 行结构用 `PotentialRow`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），替代 V1 的 `ProbeRow`；`hitReason ∈ self_report|after_object|both|policy_excluded|order_unknown`，`orderState ∈ comparable|unknown`。
+- 时间窗按 bad case 的 `created_at` 过滤，Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或超过 366 天 → `422 WINDOW_INVALID`。
+- 版本口径：`targetVersion` 是选择入口，服务端解析为规范化 revision 后再关联：已带 `tag:`/`digest:`/`provider:` 前缀的值原样使用，否则补 `tag:`；匹配同时接受 revision、原始版本与裸 tag，因此历史 `object_version` 与 M9 的 `object_revision` 都能命中。
+- 零命中：无关联 Session → `409 NO_ASSOCIATED_SESSIONS`，`details.summary` 带 `reported/associated/skipped/versionUnresolved/pending`，让向导能解释“为什么没有关联”；有关联但潜在为 0 → `409 NO_POTENTIAL_MATCHED`。向导把 409 映射为空态并禁用出口。
+- 三段预览只读：不写 `probe_reports`、`bad_case_analysis`、`evolution_run_candidates`，也不执行归因引擎。
 
 ### 4.10 自进化运行（异步任务）
 
@@ -1230,16 +1232,23 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 
 | 端点 | 用途 | 关键参数 |
 |---|---|---|
-| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion,from,to,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items,total,page,pageSize}` |
-| `POST …/evolution/preview/potential` | 第 3 步：潜在 bad case 分页 | 同上 + `policy`、`pageSize=5` → `{summary{badCases,potential,byReason},items[{…,hitReason,orderState}],total,…}` |
-| `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同上 + `cacheEnabled` → `{summary{potential,reused,fresh,nonTargetKnown}}` |
+| `POST …/evolution/preview/sessions` | 第 2 步：关联 Session 分页 | `{targetType,targetName,targetVersion?,from?,to?,page,pageSize=4}` → `{summary:{reported,associated,skipped,versionUnresolved,pending},items:[{sessionId,title,objectTriggerAt,badCaseCount}],total,page,pageSize}`；第 2 步只做关联，不算潜在 |
+| `POST …/evolution/preview/potential` | 第 3 步：潜在 bad case 分页 | 同上 + `policy`、`pageSize=5` → `{summary{badCases,potential,byReason},items:[PotentialRow],total,page,pageSize}`；`items` 只含纳入潜在的 case |
+| `POST …/evolution/preview/attribution` | 第 4 步：归因预览（**不执行归因**） | 同条件 + `policy`、`cacheEnabled=true` → `{summary{potential,reused,fresh,nonTargetKnown}}`；不接收 `engineKey` 或分页 |
 | `POST …/evolution/runs` | 启动完整自进化 | 条件 + `policy` + `cacheEnabled` + `mode:"full"` + 可选 `engineKey`/`eval` → `202 {runId,jobId,status:"preparing"}` |
 | `POST …/evolution/cluster-previews` | 仅聚类 | 同上 `mode:"cluster_only"` → `202` |
 | `POST …/evolution/runs/{rid}/retry` | blocked 恢复 | 按 `blockedStage`（含 `attribution`）重入 |
 
-- 同步校验（失败不建 run）：`TARGET_NOT_CONFIGURED`（空间内）、`422 VALIDATION_INVALID`（版本/窗口）、`422 POLICY_INVALID`（custom 未启用规则 / default 携带开关）、`409 NO_ASSOCIATED_SESSIONS`（无 Session 关联）、`409 NO_POTENTIAL_MATCHED`（潜在为 0）、`422 ENGINE_INVALID`。
-- 第 4 步预览的四数语义：`reused` = 潜在集合中缓存键已存在的精确数；`fresh = potential - reused`；`nonTargetKnown` = 该对象历史 `non_target` 去重数（参考值，不是本次预计结果）。
-- `policy` 结构：`{preset:"default"}` 或 `{preset:"custom", includeSelfReport, includeAfterObject, sameObjectOnly}`；policy 全量快照进 `evolution_runs.potential_policy`。
+- `targetType ∈ skill|agent|knowledge`；未配置或已停用（必须在 URL 空间内）→ `409 TARGET_NOT_CONFIGURED`。未带 `targetVersion` 时取 target 的 `defaultRef`。`targetVersion` / `defaultRef` 最长 96（digest revision 71 字符）；服务端解析为 `targetRevision`：已带 `tag:`/`digest:`/`provider:` 原样使用，否则补 `tag:`。关联同时接受 `{targetVersion, targetRevision, tag 裸值}`，所以历史 `object_version` 与 M9 的 `object_revision` 都能命中。
+- Session 段五个计数互不重叠：`reported = associated + versionUnresolved + skipped + pending`。`associated` 才进 `items`；`pending` 是没有归一化轨迹的上报根；`versionUnresolved` 是命中名称但事件既无 `object_version` 也无可用 `object_revision`（NULL/`unknown`）；`skipped` 是其余已归一化但没有任何 identity 匹配的 Session，包括有 digest/tag/provider 但不匹配目标 revision。`objectTriggerAt` 取对象进入点时间，进入事件无 `triggered_at` 时回退 Session `startedAt`；混合时间戳时比较与取最早都按“双方都有时间才比时间，否则坐标”口径。
+- 潜在段：`badCases` 是关联 Session 内的候选 case 数（含被策略排除的行），`potential` 是纳入数，`total = potential`；`byReason` 是封闭集合五键的零填充计数。`triggerAt` 取 bad case 锚点时间，锚点缺失时退化为 `createdAt`；行序按 `triggerAt` 倒序、`badCaseId` 升序。
+- `self` 与 `sameObjectOnly` 只按 `object_name` 判定，不比较 `bad_cases.object_type` 或 `object_version`：同名 skill/agent 或跨版本 self 会被纳入，这是明确的过渡语义；`object_type` 扩到 knowledge 后如需收紧，另开切片。
+- `policy` 结构：`{preset:"default"}` 或 `{preset:"custom", includeSelfReport, includeAfterObject, sameObjectOnly}`。default 携带任一开关、custom 缺任一开关、或 custom 同时关闭两条匹配规则 → `422 POLICY_INVALID`。custom 先取启用规则的并集，`sameObjectOnly` 再过滤；启动 run 时 policy 全量快照进 `evolution_runs.potential_policy`（m10-04）。
+- `orderState` 由两个触发点比较得出：双方 `triggered_at` 非空按时间严格大于；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；锚点缺失或坐标不全 → `unknown`，且不满足“之后”。
+- 第 4 步预览的四数语义：`reused` = 潜在集合中既有 `probe_reports.cache_key` 的精确数（`cacheEnabled=false` 时为 0）；`fresh = potential - reused`；`nonTargetKnown` = 该对象历史 `non_target` 去重 case 数（参考值，不是本次预计结果，可能与 `reused` 重叠，UI 不得把四数相加）。缓存键用解析后的 `targetRevision`、`policy_version=v1` 与归因引擎 `rule-v1` 计算；预览只读，不写 `probe_reports`、`bad_case_analysis` 或 `evolution_run_candidates`。
+- 三段预览共用同一条件归一化：target 空间内 enabled、版本缺省 `defaultRef`、窗口合法（无边界默认最近 90 天）、policy 合法。归因预览不接收 `engineKey`，也不执行归因引擎。
+- knowledge target 只通过 target CRUD API 配置，`defaultRef` 接受 `tag:`/`digest:`/`provider:` revision；创建/更新跳过 git `ls-remote`，`versions` 返回空列表 + `defaultRef`。向导 catalog 与 target 表单暂不展示 knowledge（无选择器），run 启动也不接受 knowledge（m10-04）。
+- 零命中：无关联 Session（三段都触发）→ `409 NO_ASSOCIATED_SESSIONS`，`details.summary` 带五个分区计数；潜在段与归因段有关联但 `potential=0` → `409 NO_POTENTIAL_MATCHED`。第 2 步不返回 200 空页，而是同一个 409 + summary，向导据 `details.summary` 解释空态。
 - `models` 字段保留可选（向导不再收集，默认空 = 全部模型）；`probes/query` 只保留兼容入口，不进入 V2 页面。
 - `cluster_only` 同样执行 0–4 步（聚类依赖归因），只是不建 rounds、不迭代、不终评。
 

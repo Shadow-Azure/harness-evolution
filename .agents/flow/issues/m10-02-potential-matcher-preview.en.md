@@ -12,15 +12,21 @@ depends:
   - m9-05
   - m10-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/evolution/**
-  - apps/api/app/api/evolution_launch.py
+  - apps/api/app/service/catalogs.py
+  - apps/api/app/api/**
+  - apps/api/pyproject.toml
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 211
@@ -62,12 +68,12 @@ Wizard, runs, and overview must share one potential matcher.
 ## Verification
 
 ```sh
-pnpm test:api -- tests/evolution tests/potential; pnpm contract:check
+pnpm test:api -- tests/m10-02-potential-matcher; pnpm contract:check
 ```
 
-- Default policy is correct.
-- Unknown revisions do not match.
-- Preview and prepare agree.
+- Default policy is correct; custom switches and `sameObjectOnly` are correct.
+- Revision matches work for knowledge digests and tag-only skills; unknown/non-matching revisions split into `versionUnresolved`/`skipped`.
+- Preview is read-only and writes no probe, attribution link, or candidate row.
 
 ## Acceptance
 

@@ -15,6 +15,15 @@ from app.service.evolution.events import (
     EvolutionRunEventService,
 )
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.potential import (
+    AttributionPreviewRequest,
+    AttributionPreviewResult,
+    PotentialPreviewRequest,
+    PotentialPreviewResult,
+    PotentialPreviewService,
+    SessionPreviewResult,
+    SessionsPreviewRequest,
+)
 from app.service.evolution.probe_query import ProbeQueryRequest, RunAccepted
 from app.service.evolution.retry import (
     EvolutionRetryAccepted,
@@ -64,6 +73,23 @@ STEP_RESPONSES: dict[int | str, dict[str, Any]] = {
     },
 }
 
+PREVIEW_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: LAUNCH_RESPONSES[401],
+    403: LAUNCH_RESPONSES[403],
+    404: {
+        "model": ErrorResponse,
+        "description": "Workspace is unknown or invisible to the caller",
+    },
+    409: {
+        "model": ErrorResponse,
+        "description": "Target is not configured, or no Session/potential matched",
+    },
+    422: {
+        "model": ErrorResponse,
+        "description": "Window, policy, version, or engine is invalid",
+    },
+}
+
 
 def targets_from(request: Request) -> EvolutionTargetService:
     """Return the application-scoped target configuration service."""
@@ -78,6 +104,11 @@ def runs_from(request: Request) -> EvolutionRunService:
 def launch_from(request: Request) -> EvolutionLaunchService:
     """Return the application-scoped launch service."""
     return cast(EvolutionLaunchService, request.app.state.evolution_launch)
+
+
+def preview_from(request: Request) -> PotentialPreviewService:
+    """Return the application-scoped read-only preview service."""
+    return cast(PotentialPreviewService, request.app.state.potential_preview)
 
 
 def stages_from(request: Request) -> EvolutionStageService:
@@ -219,6 +250,66 @@ async def read_versions(
     """Return sorted remote tags for one workspace target."""
     del access
     return await targets_from(request).versions(targetId, workspace_ids=(wid,))
+
+
+@router.post(
+    "/preview/sessions",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        **PREVIEW_RESPONSES,
+        200: {"model": SessionPreviewResult, "description": "Associated Session page"},
+    },
+)
+async def preview_sessions(
+    request: Request,
+    wid: WorkspaceId,
+    body: SessionsPreviewRequest,
+    access: ViewerAccess,
+) -> SessionPreviewResult:
+    """Return one page of Sessions whose trace contains the target version."""
+    del access
+    return await preview_from(request).sessions(body, workspace_id=wid)
+
+
+@router.post(
+    "/preview/potential",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        **PREVIEW_RESPONSES,
+        200: {"model": PotentialPreviewResult, "description": "Potential case page"},
+    },
+)
+async def preview_potential(
+    request: Request,
+    wid: WorkspaceId,
+    body: PotentialPreviewRequest,
+    access: ViewerAccess,
+) -> PotentialPreviewResult:
+    """Return one page of policy-included potential cases."""
+    del access
+    return await preview_from(request).potential(body, workspace_id=wid)
+
+
+@router.post(
+    "/preview/attribution",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        **PREVIEW_RESPONSES,
+        200: {
+            "model": AttributionPreviewResult,
+            "description": "Read-only cache reuse preview",
+        },
+    },
+)
+async def preview_attribution(
+    request: Request,
+    wid: WorkspaceId,
+    body: AttributionPreviewRequest,
+    access: ViewerAccess,
+) -> AttributionPreviewResult:
+    """Return cache reuse counts without executing attribution."""
+    del access
+    return await preview_from(request).attribution(body, workspace_id=wid)
 
 
 @router.get(

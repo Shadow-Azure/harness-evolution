@@ -39,6 +39,7 @@ from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.overview import OverviewRepository
+from app.db.crud.potential import PotentialRepository
 from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
@@ -88,6 +89,7 @@ from app.service.evolution.events import (
 )
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
 from app.service.evolution.prepare import (
     EvolutionPrepareService,
     RepositoryProbeReader,
@@ -257,6 +259,10 @@ def create_app(
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    potential_preview = PotentialPreviewService(
+        evolution_targets,
+        PotentialMatcher(PotentialRepository(resolved_database)),
+    )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     evolution_stages = EvolutionStageService(evolution_repository, probe_query_repository)
@@ -490,6 +496,7 @@ def create_app(
     app.state.problems = problems
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
+    app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates

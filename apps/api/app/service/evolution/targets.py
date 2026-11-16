@@ -5,12 +5,13 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath
-from typing import Literal, Protocol
+from typing import Protocol
 from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 
 from app.db.crud.evolution_targets import (
+    EvolutionObjectType,
     EvolutionTargetConflict,
     EvolutionTargetInUse,
     EvolutionTargetRecord,
@@ -31,7 +32,7 @@ _SCP_REMOTE = re.compile(
 class EvolutionTargetWrite(IdentityModel):
     """Mutable target configuration accepted by create and update."""
 
-    object_type: Literal["skill", "agent"]
+    object_type: EvolutionObjectType
     object_name: str = Field(max_length=128)
     repo_url: str = Field(max_length=1024)
     sub_dir: str = Field(max_length=512)
@@ -167,18 +168,38 @@ def _validate_project_id(value: str, *, field: str) -> str:
     return normalized
 
 
-def _normalize_text(value: str, *, field: str, maximum: int) -> str:
-    """Trim one input and reject empty, control-bearing, or overlong text."""
+def _normalize_text(
+    value: str,
+    *,
+    field: str,
+    maximum: int,
+    revision: bool = False,
+) -> str:
+    """Trim one input and reject empty, control-bearing, or overlong text.
+
+    Knowledge targets accept normalized ``tag:`` / ``digest:`` / ``provider:``
+    revisions as their ``defaultRef``. That form bypasses the git-ref regex but
+    still rejects whitespace, traversal markers, and trailing separators.
+    """
     normalized = value.strip()
     if not normalized or len(normalized) > maximum or _CONTROL.search(normalized):
         raise _repo_invalid()
-    if field == "default_ref" and (
-        not _REF.fullmatch(normalized)
-        or ".." in normalized
-        or "@{" in normalized
-        or normalized.endswith((".", "/"))
-    ):
-        raise _repo_invalid()
+    if field == "default_ref":
+        if revision:
+            if (
+                any(character.isspace() for character in normalized)
+                or ".." in normalized
+                or "@{" in normalized
+                or normalized.endswith((".", "/"))
+            ):
+                raise _repo_invalid()
+        elif (
+            not _REF.fullmatch(normalized)
+            or ".." in normalized
+            or "@{" in normalized
+            or normalized.endswith((".", "/"))
+        ):
+            raise _repo_invalid()
     return normalized
 
 
@@ -238,6 +259,7 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
             body.default_ref,
             field="default_ref",
             maximum=128,
+            revision=body.object_type == "knowledge",
         ),
         validation_project_id=_validate_project_id(
             body.validation_project_id,
@@ -392,13 +414,19 @@ class EvolutionTargetService:
         *,
         workspace_ids: Sequence[str] | None = None,
     ) -> EvolutionTargetVersions:
-        """Return sorted remote tags and the configured default reference."""
+        """Return sorted remote tags and the configured default reference.
+
+        Knowledge targets are document/Provider identities rather than git
+        objects, so they return no tag list and keep their configured revision.
+        """
         if workspace_ids is None:
             target = await self._repository.get(target_id)
         else:
             target = await self._repository.get(target_id, workspace_ids=workspace_ids)
         if target is None:
             raise self._not_found()
+        if target.object_type == "knowledge":
+            return EvolutionTargetVersions(versions=[], default_ref=target.default_ref)
         try:
             versions = await self._git_remote.list_tags(target.repo_url)
         except RepoInvalid:
@@ -451,7 +479,13 @@ class EvolutionTargetService:
         return enabled[0]
 
     async def _validate_remote(self, values: EvolutionTargetWrite) -> None:
-        """Run network/ref validation with one sanitized failure type."""
+        """Run network/ref validation with one sanitized failure type.
+
+        Knowledge documents are not necessarily git objects, so the git
+        ``ls-remote`` check is skipped for that object type.
+        """
+        if values.object_type == "knowledge":
+            return
         try:
             await self._git_remote.validate(values.repo_url, values.default_ref)
         except RepoInvalid:

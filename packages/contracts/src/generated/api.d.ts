@@ -1017,6 +1017,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/preview/attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Attribution
+         * @description Return cache reuse counts without executing attribution.
+         */
+        post: operations["preview_attribution_api_workspaces__wid__evolution_preview_attribution_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/preview/potential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Potential
+         * @description Return one page of policy-included potential cases.
+         */
+        post: operations["preview_potential_api_workspaces__wid__evolution_preview_potential_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/preview/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Sessions
+         * @description Return one page of Sessions whose trace contains the target version.
+         */
+        post: operations["preview_sessions_api_workspaces__wid__evolution_preview_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/runs": {
         parameters: {
             query?: never;
@@ -1483,6 +1543,52 @@ export interface components {
             prompt: number;
         };
         /**
+         * AttributionPreviewRequest
+         * @description Attribution stage condition; preview never executes an engine.
+         */
+        AttributionPreviewRequest: {
+            /**
+             * Cacheenabled
+             * @default true
+             */
+            cacheEnabled: boolean;
+            /** From */
+            from?: string | null;
+            policy?: components["schemas"]["PotentialPolicy"] | null;
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent" | "knowledge";
+            /** Targetversion */
+            targetVersion?: string | null;
+            /** To */
+            to?: string | null;
+        };
+        /**
+         * AttributionPreviewResult
+         * @description Read-only attribution preview; it has no paged rows.
+         */
+        AttributionPreviewResult: {
+            summary: components["schemas"]["AttributionPreviewSummary"];
+        };
+        /**
+         * AttributionPreviewSummary
+         * @description Cache reuse preview and the historical non-target reference count.
+         */
+        AttributionPreviewSummary: {
+            /** Fresh */
+            fresh: number;
+            /** Nontargetknown */
+            nonTargetKnown: number;
+            /** Potential */
+            potential: number;
+            /** Reused */
+            reused: number;
+        };
+        /**
          * BadCase
          * @description Complete public problem card used by list and detail routes.
          *
@@ -1844,7 +1950,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -2400,7 +2506,7 @@ export interface components {
              * Objecttype
              * @enum {string}
              */
-            objectType: "skill" | "agent";
+            objectType: "skill" | "agent" | "knowledge";
             /** Repourl */
             repoUrl: string;
             /** Subdir */
@@ -2446,7 +2552,7 @@ export interface components {
              * Objecttype
              * @enum {string}
              */
-            objectType: "skill" | "agent";
+            objectType: "skill" | "agent" | "knowledge";
             /** Repourl */
             repoUrl: string;
             /** Subdir */
@@ -2672,6 +2778,140 @@ export interface components {
              * @description Inclusive Asia/Shanghai end date.
              */
             to: string;
+        };
+        /**
+         * PotentialPolicy
+         * @description Raw policy switches accepted by the preview and launch contracts.
+         */
+        PotentialPolicy: {
+            /** Includeafterobject */
+            includeAfterObject?: boolean | null;
+            /** Includeselfreport */
+            includeSelfReport?: boolean | null;
+            /**
+             * Preset
+             * @default default
+             * @enum {string}
+             */
+            preset: "default" | "custom";
+            /** Sameobjectonly */
+            sameObjectOnly?: boolean | null;
+        };
+        /**
+         * PotentialPreviewItem
+         * @description One included bad case row in wizard step 3.
+         */
+        PotentialPreviewItem: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Badcasetype */
+            badCaseType: string;
+            /**
+             * Hitreason
+             * @enum {string}
+             */
+            hitReason: "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
+            /** Objectname */
+            objectName: string;
+            /**
+             * Orderstate
+             * @enum {string}
+             */
+            orderState: "comparable" | "unknown";
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * Triggerat
+             * Format: date-time
+             */
+            triggerAt: string;
+        };
+        /**
+         * PotentialPreviewRequest
+         * @description Potential stage condition: pagination plus the optional policy.
+         */
+        PotentialPreviewRequest: {
+            /** From */
+            from?: string | null;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pagesize
+             * @default 5
+             */
+            pageSize: number;
+            policy?: components["schemas"]["PotentialPolicy"] | null;
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent" | "knowledge";
+            /** Targetversion */
+            targetVersion?: string | null;
+            /** To */
+            to?: string | null;
+        };
+        /**
+         * PotentialPreviewResult
+         * @description Paged potential rows; excluded rows stay in the summary only.
+         */
+        PotentialPreviewResult: {
+            /** Items */
+            items: components["schemas"]["PotentialPreviewItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            summary: components["schemas"]["PotentialPreviewSummary"];
+            /** Total */
+            total: number;
+        };
+        /**
+         * PotentialPreviewSummary
+         * @description Evaluated cases, included potential, and reason distribution.
+         */
+        PotentialPreviewSummary: {
+            /** Badcases */
+            badCases: number;
+            byReason: components["schemas"]["PotentialReasonCounts"];
+            /** Potential */
+            potential: number;
+        };
+        /**
+         * PotentialReasonCounts
+         * @description Every closed hit reason, zero-filled for a stable contract.
+         */
+        PotentialReasonCounts: {
+            /**
+             * Afterobject
+             * @default 0
+             */
+            afterObject: number;
+            /**
+             * Both
+             * @default 0
+             */
+            both: number;
+            /**
+             * Orderunknown
+             * @default 0
+             */
+            orderUnknown: number;
+            /**
+             * Policyexcluded
+             * @default 0
+             */
+            policyExcluded: number;
+            /**
+             * Selfreport
+             * @default 0
+             */
+            selfReport: number;
         };
         /**
          * ProbeHitSummary
@@ -3137,6 +3377,55 @@ export interface components {
             workspaces: components["schemas"]["SessionWorkspace"][];
         };
         /**
+         * SessionPreviewItem
+         * @description One associated Session row in wizard step 2.
+         */
+        SessionPreviewItem: {
+            /** Badcasecount */
+            badCaseCount: number;
+            /**
+             * Objecttriggerat
+             * Format: date-time
+             * @description Object entry instant; falls back to the Session startedAt when the entry event has no triggeredAt. Comparison still uses coordinates when either side lacks a timestamp.
+             */
+            objectTriggerAt: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * SessionPreviewResult
+         * @description Paged associated Session projection.
+         */
+        SessionPreviewResult: {
+            /** Items */
+            items: components["schemas"]["SessionPreviewItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            summary: components["schemas"]["SessionPreviewSummary"];
+            /** Total */
+            total: number;
+        };
+        /**
+         * SessionPreviewSummary
+         * @description Non-overlapping Session partition for wizard step 2.
+         */
+        SessionPreviewSummary: {
+            /** Associated */
+            associated: number;
+            /** Pending */
+            pending: number;
+            /** Reported */
+            reported: number;
+            /** Skipped */
+            skipped: number;
+            /** Versionunresolved */
+            versionUnresolved: number;
+        };
+        /**
          * SessionStats
          * @description Backend-computed whole-tree card statistics.
          */
@@ -3198,6 +3487,35 @@ export interface components {
             spaceAdminCount: number;
             /** Used */
             used: number;
+        };
+        /**
+         * SessionsPreviewRequest
+         * @description Session stage condition with 4 rows per page.
+         */
+        SessionsPreviewRequest: {
+            /** From */
+            from?: string | null;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pagesize
+             * @default 4
+             */
+            pageSize: number;
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent" | "knowledge";
+            /** Targetversion */
+            targetVersion?: string | null;
+            /** To */
+            to?: string | null;
         };
         /**
          * SourceListResponse
@@ -6977,6 +7295,219 @@ export interface operations {
                 };
             };
             /** @description Launch condition is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_attribution_api_workspaces__wid__evolution_preview_attribution_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Read-only cache reuse preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionPreviewResult"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace is unknown or invisible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target is not configured, or no Session/potential matched */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Window, policy, version, or engine is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_potential_api_workspaces__wid__evolution_preview_potential_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PotentialPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Potential case page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PotentialPreviewResult"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace is unknown or invisible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target is not configured, or no Session/potential matched */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Window, policy, version, or engine is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_sessions_api_workspaces__wid__evolution_preview_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionsPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Associated Session page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPreviewResult"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace is unknown or invisible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target is not configured, or no Session/potential matched */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Window, policy, version, or engine is invalid */
             422: {
                 headers: {
                     [name: string]: unknown;
