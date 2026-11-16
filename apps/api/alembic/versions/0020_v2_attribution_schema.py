@@ -457,6 +457,13 @@ def _evolve_bad_case_analysis() -> None:
     """Replace the per-case unique rule with the per-link unique rule."""
     if not _has_table("bad_case_analysis"):
         return
+    # MySQL uses the legacy unique index to support the bad_case_id foreign key,
+    # so an FK-supporting index (and the replacement unique rule) must exist
+    # before the old index is dropped.
+    _create_indexes(
+        "bad_case_analysis",
+        (("ix_bad_case_analysis_case_updated", ("bad_case_id", "updated_at"), False),),
+    )
     uniques = _existing_uniques("bad_case_analysis")
     column = _existing_columns("bad_case_analysis")["analysis_status"]
     drop_legacy = "uq_bad_case_analysis_case" in uniques
@@ -465,6 +472,11 @@ def _evolve_bad_case_analysis() -> None:
     if op.get_bind().dialect.name == "sqlite":
         if drop_legacy or add_link or relax_status:
             with op.batch_alter_table("bad_case_analysis") as batch_op:
+                if add_link:
+                    batch_op.create_unique_constraint(
+                        "uq_bad_case_analysis_case_probe",
+                        ["bad_case_id", "probe_id"],
+                    )
                 if drop_legacy:
                     batch_op.drop_constraint(
                         "uq_bad_case_analysis_case",
@@ -476,23 +488,18 @@ def _evolve_bad_case_analysis() -> None:
                         existing_type=sa.String(length=32),
                         nullable=True,
                     )
-                if add_link:
-                    batch_op.create_unique_constraint(
-                        "uq_bad_case_analysis_case_probe",
-                        ["bad_case_id", "probe_id"],
-                    )
     else:
-        if drop_legacy:
-            op.drop_constraint(
-                "uq_bad_case_analysis_case",
-                "bad_case_analysis",
-                type_="unique",
-            )
         if add_link:
             op.create_unique_constraint(
                 "uq_bad_case_analysis_case_probe",
                 "bad_case_analysis",
                 ["bad_case_id", "probe_id"],
+            )
+        if drop_legacy:
+            op.drop_constraint(
+                "uq_bad_case_analysis_case",
+                "bad_case_analysis",
+                type_="unique",
             )
         if relax_status:
             op.alter_column(
@@ -501,10 +508,6 @@ def _evolve_bad_case_analysis() -> None:
                 existing_type=sa.String(length=32),
                 nullable=True,
             )
-    _create_indexes(
-        "bad_case_analysis",
-        (("ix_bad_case_analysis_case_updated", ("bad_case_id", "updated_at"), False),),
-    )
 
 
 def upgrade() -> None:
@@ -621,10 +624,6 @@ def _restore_bad_case_analysis() -> None:
         return
     _restore_analysis_status_not_null()
     _dedupe_analysis_links()
-    _drop_indexes(
-        "bad_case_analysis",
-        ("ix_bad_case_analysis_case_updated",),
-    )
     uniques = _existing_uniques("bad_case_analysis")
     drop_link = "uq_bad_case_analysis_case_probe" in uniques
     add_legacy = "uq_bad_case_analysis_case" not in uniques
@@ -633,6 +632,11 @@ def _restore_bad_case_analysis() -> None:
     if op.get_bind().dialect.name == "sqlite":
         if drop_link or add_legacy or tighten_status:
             with op.batch_alter_table("bad_case_analysis") as batch_op:
+                if add_legacy:
+                    batch_op.create_unique_constraint(
+                        "uq_bad_case_analysis_case",
+                        ["bad_case_id"],
+                    )
                 if drop_link:
                     batch_op.drop_constraint(
                         "uq_bad_case_analysis_case_probe",
@@ -644,12 +648,13 @@ def _restore_bad_case_analysis() -> None:
                         existing_type=sa.String(length=32),
                         nullable=False,
                     )
-                if add_legacy:
-                    batch_op.create_unique_constraint(
-                        "uq_bad_case_analysis_case",
-                        ["bad_case_id"],
-                    )
     else:
+        if add_legacy:
+            op.create_unique_constraint(
+                "uq_bad_case_analysis_case",
+                "bad_case_analysis",
+                ["bad_case_id"],
+            )
         if drop_link:
             op.drop_constraint(
                 "uq_bad_case_analysis_case_probe",
@@ -663,12 +668,10 @@ def _restore_bad_case_analysis() -> None:
                 existing_type=sa.String(length=32),
                 nullable=False,
             )
-        if add_legacy:
-            op.create_unique_constraint(
-                "uq_bad_case_analysis_case",
-                "bad_case_analysis",
-                ["bad_case_id"],
-            )
+    _drop_indexes(
+        "bad_case_analysis",
+        ("ix_bad_case_analysis_case_updated",),
+    )
 
 
 def _drop_probe_columns() -> None:
