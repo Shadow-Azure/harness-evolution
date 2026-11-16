@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
+import pytest_asyncio
+from pydantic import SecretStr
 from sqlalchemy import select
 
+from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.factory import create_database
+from app.db.migrate import upgrade_database
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.models.domain import bad_cases, trajectory_payloads
 from app.errors import AppError, ErrorCode
@@ -79,6 +85,23 @@ class FakeTraceParser(BaseTraceParser):
 
     def parse_agent_meta(self, meta: Mapping[str, object]) -> AgentMetaFacts:
         return AgentMetaFacts(spawn_depth=0)
+
+
+@pytest_asyncio.fixture
+async def database(tmp_path: Path) -> AsyncIterator[Database]:
+    """Provide one migrated SQLite database isolated per test."""
+    settings = Settings(
+        db_dialect=DatabaseDialect.SQLITE,
+        data_dir=tmp_path,
+        jwt_secret=SecretStr("m9-07-source-test-secret"),
+    )
+    database = create_database(settings)
+    await database.start()
+    await upgrade_database(database)
+    try:
+        yield database
+    finally:
+        await database.dispose()
 
 
 @pytest.fixture(autouse=True)

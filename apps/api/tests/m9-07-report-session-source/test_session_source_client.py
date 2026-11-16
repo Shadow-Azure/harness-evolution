@@ -58,11 +58,14 @@ def envelope(**overrides: object) -> dict[str, object]:
 
 def _client(
     handler: Callable[[httpx.Request], Awaitable[httpx.Response]],
-    **kwargs: object,
+    *,
+    max_retries: int = 2,
+    backoff_seconds: float = 0.25,
 ) -> HttpSessionSourceClient:
     return HttpSessionSourceClient(
         httpx.AsyncClient(transport=httpx.MockTransport(handler)),  # type: ignore[arg-type]
-        **kwargs,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
     )
 
 
