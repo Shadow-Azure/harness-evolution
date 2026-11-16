@@ -34,6 +34,7 @@ from app.service.acquisition.normalize import (
     aggregate_transcripts,
     normalize_transcript,
 )
+from app.service.acquisition.parsers._claude_meta import sanitize_unknown_metadata
 from app.utils.time import as_shanghai
 
 MAX_LOCAL_PAYLOAD_BYTES = 64 * 1024 * 1024
@@ -48,20 +49,28 @@ class LocalSessionSourceError(ValueError):
 
 
 class ClaudeSubagentMeta(BaseModel):
-    """Closed metadata schema emitted beside a Claude subagent transcript."""
+    """Known Claude subagent metadata, validated strictly.
+
+    Provider metadata drifts, so unknown scalar fields are retained after
+    sanitization instead of rejecting the whole Session. Known fields keep their
+    strict type and length contracts.
+    """
 
     model_config = ConfigDict(
         alias_generator=to_camel,
-        extra="forbid",
+        extra="allow",
         populate_by_name=True,
     )
 
     agent_type: str = Field(min_length=1, max_length=64)
     color: str | None = Field(default=None, max_length=64)
     description: str = Field(min_length=1, max_length=4_000)
+    finished: bool | None = None
+    is_builtin: bool | None = Field(default=None, alias="isBuiltIn")
     model: str | None = Field(default=None, max_length=64)
     name: str | None = Field(default=None, max_length=255)
     permission_mode: str | None = Field(default=None, max_length=64)
+    picked_effort_model: str | None = Field(default=None, max_length=64)
     plan_mode_required: bool | None = None
     request_non_interactive: bool | None = None
     request_shape: str | None = Field(default=None, max_length=128)
@@ -237,7 +246,7 @@ def _validate_subagent_pair(
     root_session_id: str,
     discovered_at: datetime,
 ) -> LocalAgentPayload:
-    """Cross-check subagent JSONL identity, filename, and closed metadata."""
+    """Cross-check subagent JSONL identity, filename, and metadata."""
     expected_agent_id = payload_path.name.removeprefix(SUBAGENT_PREFIX).removesuffix(".jsonl")
     if not expected_agent_id:
         raise LocalSessionSourceError("subagent filename is missing an agent id")
@@ -255,7 +264,10 @@ def _validate_subagent_pair(
     try:
         meta = ClaudeSubagentMeta.model_validate(raw_meta)
     except ValidationError as exc:
-        raise LocalSessionSourceError("subagent metadata does not match the closed schema") from exc
+        raise LocalSessionSourceError("subagent metadata does not match the known schema") from exc
+    extras = set(meta.model_extra or {})
+    stored_meta = meta.model_dump(by_alias=True, exclude_none=True, exclude=extras)
+    stored_meta.update(sanitize_unknown_metadata(raw_meta))
     data = content.encode("utf-8")
     return LocalAgentPayload(
         root_session_id=root_session_id,
@@ -264,7 +276,7 @@ def _validate_subagent_pair(
         content=content,
         content_hash=hashlib.sha256(data).hexdigest(),
         line_count=len(_jsonl_lines(content, label="subagent transcript")),
-        agent_meta=meta.model_dump(by_alias=True, exclude_none=True),
+        agent_meta=stored_meta,
         source_updated_at=_source_updated_at(payload_path),
         discovered_at=discovered_at,
     )

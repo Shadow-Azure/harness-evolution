@@ -9,7 +9,7 @@ milestone: m9
 depends:
   - m9-06
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/db/**
   - apps/api/app/service/sessions/**

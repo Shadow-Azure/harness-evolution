@@ -1,3 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-m9-02-trace-metadata-completion-parser.md: cc8072ba7c46aa11bb44b4b874617402e4d24954
-m9-02-trace-metadata-completion-parser.en.md: 9d33f22c7217bfb6b319bc50d2a3085b6ee5d33f
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m9-02-trace-metadata-completion-parser.md
+m9-02-trace-metadata-completion-parser.md: dd4286b443cc98d2afaae1d8e3669c9549b44c3e
+m9-02-trace-metadata-completion-parser.en.md: c26987e9dfd055e0734baa6f91e94b41c4db2f1b

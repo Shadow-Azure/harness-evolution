@@ -9,12 +9,15 @@ milestone: m9
 depends:
   - m9-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/acquisition/**
+  - apps/api/app/db/**
   - apps/api/app/fixture_corpus.py
+  - apps/api/tests/**
   - fixtures/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -59,7 +62,7 @@ Real metadata now contains isBuiltIn, pickedEffortModel, and finished, while sub
 ## Dependencies and boundary
 
 - Dependency: m9-01
-- Boundary: do not assemble relations; do not implement a second runtime.
+- Boundary: do not assemble relations; do not implement a second runtime. The scope adds `apps/api/app/db/**`, `apps/api/tests/**`, and `plans/**` (review records) so parsed evidence can reach the existing columns; object revisions, trigger coordinates, and relation grading remain in M9-03/M9-04.
 
 ## Verification
 

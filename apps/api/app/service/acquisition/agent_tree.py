@@ -16,6 +16,11 @@ from app.service.acquisition.normalize import (
     ParsedUserTurn,
     RootMetadata,
 )
+from app.service.acquisition.parsers.base import (
+    DefinitionSource,
+    EndReason,
+    ExecutionOutcome,
+)
 
 AgentKind = Literal["main", "subagent", "workflow"]
 SessionStatus = Literal["ok", "partial", "fail"]
@@ -44,6 +49,10 @@ class AssembledAgentNode:
     tokens_total: int
     tools_count: int
     errors_count: int
+    execution_outcome: ExecutionOutcome
+    end_reason: EndReason | None
+    agent_definition_hash: str | None
+    definition_source: DefinitionSource | None
     sort_key: float
     events: tuple[ParsedEvent, ...]
     user_turns: tuple[ParsedUserTurn, ...]
@@ -65,6 +74,8 @@ class AssembledSessionTree:
     models: tuple[str, ...]
     skill_names: tuple[str, ...]
     status: SessionStatus
+    execution_outcome: ExecutionOutcome
+    end_reason: EndReason | None
     user_turns_count: int
     messages_count: int
     tools_count: int
@@ -149,8 +160,28 @@ def _event_anchor(event: ParsedEvent) -> tuple[int, int, str]:
     return (event.line_no, event.event_index, event.tool_use_id or "")
 
 
+def _skill_definition_hashes(transcript: ParsedTranscript) -> dict[str, str]:
+    """Map a Skill call identity to the injected skill body hash."""
+    return {
+        evidence.tool_use_id: evidence.content_hash
+        for evidence in transcript.evidence
+        if evidence.kind == "skill_definition"
+        and evidence.tool_use_id is not None
+        and evidence.content_hash is not None
+    }
+
+
 def _transcript_node(transcript: ParsedTranscript) -> AssembledAgentNode:
     """Project one normalized transcript into a parentless node candidate."""
+    skill_hashes = _skill_definition_hashes(transcript)
+    events = tuple(
+        replace(event, definition_hash=skill_hashes[event.tool_use_id])
+        if event.kind == "skill"
+        and event.tool_use_id is not None
+        and event.tool_use_id in skill_hashes
+        else event
+        for event in transcript.events
+    )
     return AssembledAgentNode(
         id=transcript.agent_id,
         root_session_id=transcript.root_session_id,
@@ -171,8 +202,12 @@ def _transcript_node(transcript: ParsedTranscript) -> AssembledAgentNode:
         tokens_total=transcript.tokens_total,
         tools_count=transcript.tools_count,
         errors_count=transcript.errors_count,
+        execution_outcome=transcript.execution_outcome,
+        end_reason=transcript.end_reason,
+        agent_definition_hash=transcript.agent_definition_hash,
+        definition_source=transcript.definition_source,
         sort_key=0.0,
-        events=transcript.events,
+        events=events,
         user_turns=transcript.user_turns,
         agent_meta=transcript.agent_meta,
     )
@@ -207,6 +242,10 @@ def _workflow_node(
         tokens_total=0,
         tools_count=0,
         errors_count=0,
+        execution_outcome="legacy_unknown",
+        end_reason=None,
+        agent_definition_hash=None,
+        definition_source=None,
         sort_key=0.0,
         events=(),
         user_turns=(),
@@ -313,6 +352,25 @@ def _session_status(
     if any(node.errors_count > 0 for node in nodes):
         return "partial"
     return "ok"
+
+
+def _session_execution_state(
+    nodes: tuple[AssembledAgentNode, ...],
+    main: AssembledAgentNode,
+) -> tuple[ExecutionOutcome, EndReason | None]:
+    """Aggregate explicit node completion without treating workflow wrappers as work."""
+    real_nodes = tuple(node for node in nodes if node.kind != "workflow")
+    for node in real_nodes:
+        if node.execution_outcome == "failed":
+            return "failed", node.end_reason or "external_failed"
+    for node in real_nodes:
+        if node.execution_outcome == "interrupted":
+            if main.execution_outcome == "interrupted" and main.end_reason is not None:
+                return "interrupted", main.end_reason
+            return "interrupted", node.end_reason or "missing_report"
+    if any(node.execution_outcome == "legacy_unknown" for node in real_nodes):
+        return "legacy_unknown", None
+    return "completed", "end_turn"
 
 
 def _assemble_root(
@@ -661,6 +719,7 @@ def _assemble_root(
         )
     started = min(starts)
     ended = max(ends)
+    execution_outcome, end_reason = _session_execution_state(ordered_nodes, main)
     tree = AssembledSessionTree(
         id=root_session_id,
         runtime_key=main_transcript.runtime_key,
@@ -686,6 +745,8 @@ def _assemble_root(
             ),
         ),
         status=_session_status(main, main_transcript, ordered_nodes, transcripts),
+        execution_outcome=execution_outcome,
+        end_reason=end_reason,
         user_turns_count=len(main.user_turns),
         messages_count=sum(node.messages_count for node in ordered_nodes),
         tools_count=sum(node.tools_count for node in ordered_nodes),

@@ -515,7 +515,7 @@ def test_scan_rejects_metadata_beyond_downstream_column_limits(
     meta[field] = value
     write_subagent(source, SESSION_A, "bounded-meta", meta=meta)
 
-    with pytest.raises(LocalSessionSourceError, match="closed schema"):
+    with pytest.raises(LocalSessionSourceError, match="known schema"):
         scan_local_sessions(source)
 
 
