@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import ServicePhase, Settings
 from app.db.base import Database
+from app.db.crud.attributions import attribution_cache_key
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.domain import (
@@ -25,6 +26,7 @@ from app.db.models.domain import (
     trajectory_payloads,
     user_turns,
 )
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.fixture_corpus import FixtureCorpus
 from app.utils.time import as_shanghai
 
@@ -62,7 +64,10 @@ _UPSERT_KEYS: dict[Table, tuple[Column[Any], ...]] = {
     user_turns: (user_turns.c.id,),
     probe_reports: (probe_reports.c.probe_id,),
     bad_cases: (bad_cases.c.bad_case_id,),
-    bad_case_analysis: (bad_case_analysis.c.bad_case_id,),
+    bad_case_analysis: (
+        bad_case_analysis.c.bad_case_id,
+        bad_case_analysis.c.probe_id,
+    ),
     evolution_targets: (evolution_targets.c.id,),
 }
 
@@ -355,19 +360,51 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                     inserted += turn_writes[0]
                     changed += turn_writes[1]
 
+        cases_by_id = {case.bad_case_id: case for case in corpus.manifest.bad_cases}
+        analyses_by_probe = {
+            analysis.probe_id: analysis
+            for analysis in corpus.manifest.bad_case_analyses
+            if analysis.probe_id is not None
+        }
         for probe in corpus.manifest.probe_reports:
+            analysis = analyses_by_probe.get(probe.probe_id)
+            case = cases_by_id.get(analysis.bad_case_id) if analysis is not None else None
+            conclusion = (
+                "non_target"
+                if analysis is not None and analysis.analysis_status == "analyzed_nonissue"
+                else "attributed"
+            )
+            cache_key = (
+                attribution_cache_key(
+                    DEFAULT_WORKSPACE_ID,
+                    case.bad_case_id,
+                    probe.probe_type,
+                    probe.probe_object,
+                    probe.object_version,
+                    "v1",
+                    "legacy-probe-import",
+                )
+                if case is not None
+                else None
+            )
             probe_writes = await _upsert(
                 session,
                 probe_reports,
                 {
                     "probe_id": probe.probe_id,
+                    "workspace_id": DEFAULT_WORKSPACE_ID,
                     "session_id": probe.session_id,
                     "probe_type": probe.probe_type,
                     "probe_object": probe.probe_object,
                     "object_version": probe.object_version,
                     "attribute_type": probe.attribute_type,
+                    "conclusion": conclusion,
+                    "confidence": 0.8,
                     "probe_description": probe.probe_description,
                     "probe_analysis": probe.probe_analysis,
+                    "policy_version": "v1",
+                    "attribution_engine": "legacy-probe-import",
+                    "cache_key": cache_key,
                     "created_at": as_shanghai(probe.created_at),
                     "updated_at": as_shanghai(probe.updated_at),
                 },

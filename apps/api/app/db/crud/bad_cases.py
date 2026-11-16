@@ -47,7 +47,7 @@ class BadCaseAnalysisRow:
     """One externally owned attribution-state row."""
 
     bad_case_id: str
-    analysis_status: str
+    analysis_status: str | None
     probe_id: str | None
     analysis_result: object | None
     updated_at: datetime
@@ -62,11 +62,18 @@ class ProbeReportRow:
     probe_type: str
     probe_object: str
     object_version: str | None
-    attribute_type: str
+    attribute_type: str | None
     probe_description: str
     probe_analysis: str
     created_at: datetime
     updated_at: datetime
+    workspace_id: str = "ws-default"
+    conclusion: str = "attributed"
+    confidence: float = 0.8
+    policy_version: str = "v1"
+    attribution_engine: str = "legacy-probe-import"
+    cache_key: str | None = None
+    reused_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +81,7 @@ class ProbeSourceCandidate:
     """One reverse probe link with nullable joined identities for validation."""
 
     case_id: str
-    analysis_status: str
+    analysis_status: str | None
     case_session_id: str | None
     probe_session_id: str | None
     probe_id: str | None = None
@@ -182,7 +189,7 @@ def _row_analysis(mapping: RowMapping) -> BadCaseAnalysisRow:
     """Convert one selected attribution mapping into a boundary DTO."""
     return BadCaseAnalysisRow(
         bad_case_id=mapping["bad_case_id"],
-        analysis_status=mapping["analysis_status"],
+        analysis_status=_text(mapping["analysis_status"]),
         probe_id=_text(mapping["probe_id"]),
         analysis_result=mapping["analysis_result"],
         updated_at=as_shanghai(mapping["updated_at"]),
@@ -197,11 +204,18 @@ def _row_probe(mapping: RowMapping) -> ProbeReportRow:
         probe_type=mapping["probe_type"],
         probe_object=mapping["probe_object"],
         object_version=_text(mapping["object_version"]),
-        attribute_type=mapping["attribute_type"],
+        attribute_type=_text(mapping["attribute_type"]),
         probe_description=mapping["probe_description"],
         probe_analysis=mapping["probe_analysis"],
         created_at=as_shanghai(mapping["created_at"]),
         updated_at=as_shanghai(mapping["updated_at"]),
+        workspace_id=_text(mapping.get("workspace_id")) or "ws-default",
+        conclusion=_text(mapping.get("conclusion")) or "attributed",
+        confidence=float(mapping["confidence"]) if "confidence" in mapping else 0.8,
+        policy_version=_text(mapping.get("policy_version")) or "v1",
+        attribution_engine=(_text(mapping.get("attribution_engine")) or "legacy-probe-import"),
+        cache_key=_text(mapping.get("cache_key")),
+        reused_count=int(mapping["reused_count"]) if "reused_count" in mapping else 0,
     )
 
 
@@ -320,16 +334,31 @@ class BadCaseRepository:
         statement = (
             select(bad_case_analysis)
             .where(bad_case_analysis.c.bad_case_id.in_(case_ids))
-            .order_by(bad_case_analysis.c.bad_case_id)
+            .order_by(
+                bad_case_analysis.c.bad_case_id,
+                bad_case_analysis.c.updated_at,
+                bad_case_analysis.c.id,
+            )
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_analysis(row) for row in rows)
 
     async def get_analysis(self, case_id: str) -> BadCaseAnalysisRow | None:
-        """Return one case's attribution state."""
-        statement = select(bad_case_analysis).where(
-            bad_case_analysis.c.bad_case_id == case_id,
+        """Return one case's newest attribution row for legacy readers.
+
+        V2 allows several attributions per case, so the legacy single-row read
+        selects the latest link deterministically instead of raising
+        ``MultipleResultsFound``.
+        """
+        statement = (
+            select(bad_case_analysis)
+            .where(bad_case_analysis.c.bad_case_id == case_id)
+            .order_by(
+                bad_case_analysis.c.updated_at.desc(),
+                bad_case_analysis.c.id.desc(),
+            )
+            .limit(1)
         )
         async with self._database.session() as session:
             row = (await session.execute(statement)).mappings().one_or_none()
@@ -369,7 +398,7 @@ class BadCaseRepository:
         return tuple(
             ProbeSourceCandidate(
                 case_id=row["bad_case_id"],
-                analysis_status=row["analysis_status"],
+                analysis_status=_text(row["analysis_status"]),
                 case_session_id=_text(row["bad_case_session_id"]),
                 probe_session_id=_text(row["session_id"]),
             )
@@ -391,7 +420,7 @@ class BadCaseRepository:
             sources=tuple(
                 ProbeSourceCandidate(
                     case_id=row["bad_case_id"],
-                    analysis_status=row["analysis_status"],
+                    analysis_status=_text(row["analysis_status"]),
                     case_session_id=_text(row["bad_case_session_id"]),
                     probe_session_id=_text(row["session_id"]),
                 )
@@ -411,7 +440,11 @@ class BadCaseRepository:
         analysis_statement = (
             select(bad_case_analysis)
             .where(bad_case_analysis.c.bad_case_id.in_(case_ids))
-            .order_by(bad_case_analysis.c.bad_case_id)
+            .order_by(
+                bad_case_analysis.c.bad_case_id,
+                bad_case_analysis.c.updated_at,
+                bad_case_analysis.c.id,
+            )
         )
         analyses = tuple(
             _row_analysis(row)

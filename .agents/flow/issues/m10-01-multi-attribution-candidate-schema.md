@@ -10,14 +10,16 @@ depends:
   - m9-01
   - m9-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/db/**
   - apps/api/alembic/**
   - packages/contracts/**
   - tests/**
+  - apps/api/tests/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 210

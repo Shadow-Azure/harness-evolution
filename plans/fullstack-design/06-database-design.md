@@ -491,13 +491,15 @@ erDiagram
 | `id` | BIGINT | PK AUTOINCREMENT | 保留 V1 代理主键 |
 | `bad_case_id` | `VARCHAR(64)` | NOT NULL FK → `bad_cases.bad_case_id` ON DELETE CASCADE | 一个 case 可有多行 |
 | `analysis_status` | `VARCHAR(32)` | NULL | 仅 V1 行保留 `analyzed_issue` / `analyzed_nonissue`；V2 新行留空，结论以 `probe_reports.conclusion` 为唯一真相 |
-| `probe_id` | `VARCHAR(64)` | NOT NULL FK → `probe_reports.probe_id` | 归因明细；对外别名 `attributionId` |
+| `probe_id` | `VARCHAR(64)` | NULL FK → `probe_reports.probe_id` | 归因明细；对外别名 `attributionId`。V2 新行必填；V1 `unanalyzed` 与历史 `analyzed_nonissue` 兼容行可能为空（见下方兼容例外） |
 | `analysis_result` | JSON | NULL | 仅兼容 V1 非问题原因/推导；V2 新行留空，明细以 `probe_reports` 为准 |
 | `updated_at` | `DATETIME` | NOT NULL | 关联更新时间 |
 
 约束：`UNIQUE(bad_case_id, probe_id)`（同一 case 不重复关联同一归因）；删除 V1 的 `UNIQUE(bad_case_id)`。索引：`INDEX(bad_case_id, updated_at)`、`INDEX(probe_id)`、`INDEX(analysis_status)`。
 
 > `analysis_status` / `analysis_result` 仅服务 V1 兼容读取，V2 新行不写这两列，避免与 `probe_reports.conclusion` 形成双真相。一个 case 有多行时，API 的 `attributionCount = COUNT(DISTINCT probe_type, probe_object, object_version)`；无关联行才表示“尚未归因”。
+>
+> **兼容例外（M10-01）**：V1 的 `unanalyzed` / `analyzed_nonissue` 行可能没有 `probe_id`，历史 probe 也可能算不出 `cache_key`；因此 `bad_case_analysis.probe_id` 与 `probe_reports.cache_key` 在存储层保持可空，V2 repository 写入时强制非空，孤立 probe 不伪造缓存键。M11 兼容退役时再收紧为 NOT NULL。
 
 #### 4.2.2 `probe_reports` —— 对象·版本级归因明细与缓存
 
@@ -508,7 +510,7 @@ erDiagram
 | `session_id` | `VARCHAR(36)` | NOT NULL | 归因所属根会话，与 bad case 的 session 一致 |
 | `probe_type` | `VARCHAR(16)` | NOT NULL | 归因目标类型 `skill` / `agent` |
 | `probe_object` | `VARCHAR(128)` | NOT NULL | 归因目标名 |
-| `object_version` | `VARCHAR(64)` | NOT NULL | 归因只作用于「对象 · 版本」 |
+| `object_version` | `VARCHAR(64)` | NULL | 归因只作用于「对象 · 版本」；历史行可能没有版本，保持 NULL 而不伪造 |
 | `attribute_type` | `VARCHAR(16)` | NULL | `model` / `prompt` / `error`；`non_target` 时为空 |
 | `conclusion` | `VARCHAR(16)` | NOT NULL DEFAULT 'attributed' | `attributed` / `non_target` |
 | `confidence` | `DOUBLE` | NOT NULL DEFAULT 0.8 | 单条归因置信度 |
@@ -516,7 +518,7 @@ erDiagram
 | `probe_analysis` | `TEXT` | NOT NULL | Markdown 推导过程；前端禁用裸 HTML |
 | `policy_version` | `VARCHAR(16)` | NOT NULL DEFAULT 'v1' | 潜在策略语义版本 |
 | `attribution_engine` | `VARCHAR(64)` | NOT NULL DEFAULT 'legacy-probe-import' | 归因引擎标识；历史行标 `legacy-probe-import` |
-| `cache_key` | `CHAR(64)` | NOT NULL UNIQUE | `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；case 维度由关联行保证 |
+| `cache_key` | `CHAR(64)` | NULL UNIQUE | `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`；case 维度由关联行保证。V2 写入时必填；孤立历史 probe 保持 NULL（见下方兼容例外） |
 | `created_run_id` | `VARCHAR(36)` | NULL FK → `evolution_runs.id` ON DELETE SET NULL | 首次生成该结论的 run |
 | `last_reused_run_id` | `VARCHAR(36)` | NULL FK | 最近一次复用的 run |
 | `reused_count` | `INTEGER` | NOT NULL DEFAULT 0 | 复用次数 |
@@ -922,11 +924,11 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 
 ## 9. V2 迁移与回填
 
-单版本迁移（语义上一组；引擎里 `0014_v2_workspaces` + `0015_v2_attribution` 两个文件），顺序固定；所有既有表保留原名：
+单版本迁移（语义上一组；引擎里 `0014_v2_workspaces` 与 `0020_v2_attribution_schema` 两个文件），顺序固定为 `0014` → … → `0019` → `0020`；所有既有表保留原名：
 
 ```text
-1) 建新表：workspaces / workspace_members / workspace_ingest_credentials /
-          evolution_run_candidates
+1) 建新表：workspaces / workspace_members / workspace_ingest_credentials（0014）；
+          evolution_run_candidates（0020，与归因表演进同一版本）
 2) 就地演进既有表（不改表名，SQLite 用 batch 模式）：
    bad_case_analysis
          删除 UNIQUE(bad_case_id)；新增 UNIQUE(bad_case_id, probe_id)；
@@ -953,7 +955,8 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 4) 默认空间行（幂等）：id = HE_DEFAULT_WORKSPACE_ID（默认 ws-default），
    quota = COUNT(bad_cases) + 50
 5) 回填：bad_cases / evolution_targets / evolution_runs / evolution_run_events
-   的 workspace_id = 默认空间；probe_reports.workspace_id = 默认空间；
+   的 workspace_id = 默认空间；probe_reports.workspace_id 优先取关联
+   bad_cases.workspace_id，否则默认空间；
    所有 runtime_key = claude-code；M9 evidence 默认 legacy_unknown / NULL
 6) 收紧 NOT NULL + 建 FK/索引；evolution_targets 唯一键
    (object_type, object_name) → (workspace_id, object_type, object_name)；
@@ -963,5 +966,6 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 
 - **幂等**：可重复执行（`WHERE NOT EXISTS` + 回填只看 NULL），SQLite 测试库与 MySQL 生产库都能二次跑。
 - **回滚**：删除新增列和外键，恢复 `bad_case_analysis` 的 `UNIQUE(bad_case_id)`；若已存在一 case 多归因，降级前只保留 `updated_at` 最新的一行并记录导出文件，实际生产回滚以「回退应用版本 + 保留新结构」为主。
-- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` = 默认空间；`conclusion` 按 `analysis_status`（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、`unanalyzed` 无行）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`object_version` 为空的历史行回填 `legacy-unknown`；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；重新计算 `cache_key` 并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
+- **存量归因映射**（仅开发库与 fixtures；生产无数据）：`probe_id` 保持原值；`workspace_id` 取关联 `bad_cases.workspace_id`，孤立 probe 用默认空间；`conclusion` 按关联行的最新 `analysis_status` 映射（`analyzed_issue → attributed`、`analyzed_nonissue → non_target`、其它 → `attributed`）；`attribute_type` 为 `nonissue` 或空的历史行置 NULL；`object_version` 为空的历史行保持 NULL（不伪造版本）；`confidence=0.8`；`probe_description/probe_analysis` 原样保留；`created_run_id=NULL`、`attribution_engine='legacy-probe-import'`；能关联到 case 的历史 probe 按七元组重新计算 `cache_key`，孤立 probe 留 NULL，并建立 `bad_case_analysis (bad_case_id, probe_id)` 关联。
+- **迁移顺序与守卫**：`0020` 排在 `0019` 之后；`bad_case_analysis` / `probe_reports` 缺失时跳过对应演进，`bad_cases` 缺失时候选表仍建但不加 FK；每个列、索引、外键与回填都按存在性判定，MySQL 半途 DDL 失败后可直接重试。
 - **触发点补齐**：`triggered_at / tree_index / object_version` 依赖 `parser_version` 递增后的重放（`pnpm data:replay:sessions`）才对齐存量；未重放的对象事件版本为空，按 §7.5 跳过并计数，不能静默当作版本精确命中。

@@ -24,6 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     false,
 )
+from sqlalchemy.engine import RowMapping
 
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.utils.time import as_shanghai
@@ -123,6 +124,57 @@ Index(
     evolution_runs.c.workspace_id,
     evolution_runs.c.created_at.desc(),
 )
+
+evolution_run_candidates = Table(
+    "evolution_run_candidates",
+    EVOLUTION_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "run_id",
+        String(36),
+        ForeignKey("evolution_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("workspace_id", String(36), nullable=False),
+    Column("session_id", String(36), nullable=False),
+    Column(
+        "bad_case_id",
+        String(64),
+        ForeignKey("bad_cases.bad_case_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("object_trigger_agent_id", String(64), nullable=True),
+    Column("object_trigger_event_index", Integer, nullable=True),
+    Column("object_trigger_at", DateTime(timezone=True), nullable=True),
+    Column("case_trigger_agent_id", String(64), nullable=True),
+    Column("case_trigger_event_index", Integer, nullable=True),
+    Column("case_trigger_at", DateTime(timezone=True), nullable=True),
+    Column("order_state", String(16), nullable=False),
+    Column("included", Boolean, nullable=False),
+    Column("included_reason", String(16), nullable=False),
+    Column(
+        "probe_id",
+        String(64),
+        ForeignKey("probe_reports.probe_id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("is_cached", Boolean, nullable=False, server_default=false()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "run_id",
+        "bad_case_id",
+        name="uq_evolution_run_candidates_run_case",
+    ),
+    Index(
+        "ix_evolution_run_candidates_run_included",
+        "run_id",
+        "included",
+    ),
+    Index("ix_evolution_run_candidates_case", "bad_case_id"),
+    Index("ix_evolution_run_candidates_probe", "probe_id"),
+    Index("ix_evolution_run_candidates_session", "session_id"),
+)
+
 
 probe_clusters = Table(
     "probe_clusters",
@@ -322,6 +374,29 @@ class ProbeClusterLinkRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class EvolutionRunCandidateRecord:
+    """One run-scoped bad-case candidate snapshot."""
+
+    id: str
+    run_id: str
+    workspace_id: str
+    session_id: str
+    bad_case_id: str
+    object_trigger_agent_id: str | None
+    object_trigger_event_index: int | None
+    object_trigger_at: datetime | None
+    case_trigger_agent_id: str | None
+    case_trigger_event_index: int | None
+    case_trigger_at: datetime | None
+    order_state: str
+    included: bool
+    included_reason: str
+    probe_id: str | None
+    is_cached: bool
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class EvolutionRoundRecord:
     """One durable candidate/evaluation round."""
 
@@ -515,6 +590,39 @@ def record_from_probe_cluster_link(
         id=int(row["id"]),
         probe_cluster_id=_required_text(row["probe_cluster_id"]),
         probe_id=_required_text(row["probe_id"]),
+    )
+
+
+def record_from_evolution_run_candidate(
+    row: RowMapping,
+) -> EvolutionRunCandidateRecord:
+    """Translate one candidate row mapping into an immutable boundary record."""
+    return EvolutionRunCandidateRecord(
+        id=_required_text(row["id"]),
+        run_id=_required_text(row["run_id"]),
+        workspace_id=_required_text(row["workspace_id"]),
+        session_id=_required_text(row["session_id"]),
+        bad_case_id=_required_text(row["bad_case_id"]),
+        object_trigger_agent_id=_optional_text(row["object_trigger_agent_id"]),
+        object_trigger_event_index=(
+            int(row["object_trigger_event_index"])
+            if row["object_trigger_event_index"] is not None
+            else None
+        ),
+        object_trigger_at=_optional_timestamp(row["object_trigger_at"]),
+        case_trigger_agent_id=_optional_text(row["case_trigger_agent_id"]),
+        case_trigger_event_index=(
+            int(row["case_trigger_event_index"])
+            if row["case_trigger_event_index"] is not None
+            else None
+        ),
+        case_trigger_at=_optional_timestamp(row["case_trigger_at"]),
+        order_state=_required_text(row["order_state"]),
+        included=bool(row["included"]),
+        included_reason=_required_text(row["included_reason"]),
+        probe_id=_optional_text(row["probe_id"]),
+        is_cached=bool(row["is_cached"]),
+        created_at=_timestamp(row["created_at"]),
     )
 
 
