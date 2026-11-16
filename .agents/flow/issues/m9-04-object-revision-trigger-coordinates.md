@@ -10,7 +10,7 @@ depends:
   - m9-02
   - m9-03
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/acquisition/**
   - apps/api/app/db/**
