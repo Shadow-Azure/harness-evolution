@@ -253,7 +253,7 @@ agent_events = Table(
     Column("document_revision", String(96), nullable=True),
     Column("source_path", String(1024), nullable=True),
     Column("retrieval_kind", String(32), nullable=True),
-    Column("retrieval_scope", String(255), nullable=True),
+    Column("retrieval_scope", String(512), nullable=True),
     UniqueConstraint("agent_id", "event_index", name="uq_agent_events_agent_index"),
     Index("ix_agent_events_agent_line", "agent_id", "line_no"),
     Index("ix_agent_events_agent_message", "agent_id", "message_offset"),

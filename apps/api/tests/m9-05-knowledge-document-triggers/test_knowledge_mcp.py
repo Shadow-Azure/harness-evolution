@@ -283,7 +283,7 @@ def test_mcp_documents_emit_one_event_each_with_the_call_coordinates() -> None:
     assert event.name == "Runbook"
     assert event.document_id == "doc-runbook"
     assert event.document_revision == "r7"
-    assert event.object_revision == "r7"
+    assert event.object_revision == "provider:r7"
     assert event.source_path == "/knowledge/runbook.md"
     assert event.retrieval_kind == "mcp_search"
     assert event.retrieval_scope == "handbook"
@@ -374,6 +374,28 @@ def test_multiple_documents_keep_a_stable_order_across_out_of_order_results() ->
         (3, "doc-m"),
     ]
     assert [event.event_index for event in parsed.events] == [0, 1, 2]
+
+
+def test_provider_revision_and_object_revision_use_distinct_vocabularies() -> None:
+    """documentRevision keeps the provider value; objectRevision is prefixed."""
+    parsed = parse(
+        (
+            user(),
+            mcp_call("tool-search", "mcp__knowledge__search"),
+            mcp_result(
+                "tool-search",
+                json.dumps({"documents": [{"id": "doc-a", "revision": "2026.11"}]}),
+            ),
+            mcp_call("tool-unknown", "mcp__kb__search"),
+            mcp_result("tool-unknown", json.dumps({"documents": [{"id": "doc-b"}]})),
+        ),
+    )
+
+    by_id = {event.document_id: event for event in parsed.events}
+    assert by_id["doc-a"].document_revision == "2026.11"
+    assert by_id["doc-a"].object_revision == "provider:2026.11"
+    assert by_id["doc-b"].document_revision == "unknown"
+    assert by_id["doc-b"].object_revision == "unknown"
 
 
 def test_multiple_documents_from_one_call_are_not_ambiguous_tool_uses() -> None:

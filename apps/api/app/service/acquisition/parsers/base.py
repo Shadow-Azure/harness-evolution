@@ -469,8 +469,14 @@ class ParseContext:
         name: str | None,
         retrieval_kind: str,
         retrieval_scope: str,
+        object_revision: str | None = None,
     ) -> bool:
-        """Append one document event using its call's trigger coordinates."""
+        """Append one document event using its call's trigger coordinates.
+
+        ``document_revision`` keeps the provider's raw revision while
+        ``object_revision`` follows the shared ``tag:``/``digest:``/``provider:``
+        /``unknown`` vocabulary; when omitted they are the same value.
+        """
         position = self.tool_call_positions.get(tool_use_id) if tool_use_id is not None else None
         if position is None:
             return False
@@ -483,7 +489,7 @@ class ParseContext:
                 name=name,
                 description=None,
                 tool_use_id=tool_use_id,
-                object_revision=document_revision,
+                object_revision=object_revision or document_revision,
                 triggered_at=position.triggered_at,
                 document_id=document_id,
                 document_revision=document_revision,
@@ -706,7 +712,13 @@ def _agent_revision(ctx: ParseContext) -> str | None:
 
 
 def _ordered_events(events: tuple[ParsedEvent, ...]) -> tuple[ParsedEvent, ...]:
-    """Sort triggers by call position and reindex them deterministically."""
+    """Sort triggers by call position and reindex them deterministically.
+
+    Sorting all kinds is safe today: skill/agent/workflow events are appended in
+    record order, so only knowledge events (appended when their tool result
+    arrives) can move. A future kind that also arrives late must keep the same
+    ``(line_no, event_index)`` contract.
+    """
     ordered = sorted(events, key=lambda event: (event.line_no, event.event_index))
     return tuple(replace(event, event_index=index) for index, event in enumerate(ordered))
 

@@ -1,6 +1,5 @@
 """Dialect-neutral persistence for workspaces, members, and session aggregates."""
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,8 +10,9 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.acquisition_replay import bad_cases_table_present
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_cases
+from app.db.models.domain import bad_cases, source_records
 from app.db.models.users import users
 from app.db.models.workspace import (
     workspace_ingest_credentials,
@@ -20,6 +20,7 @@ from app.db.models.workspace import (
     workspaces,
 )
 from app.utils.ids import new_id
+from app.utils.knowledge_paths import decode_knowledge_roots
 from app.utils.time import as_shanghai, now_shanghai
 
 
@@ -130,18 +131,6 @@ class MemberAlreadyExists(Exception):
     """The user already owns a membership row in this workspace."""
 
 
-def _knowledge_roots(value: object) -> tuple[str, ...]:
-    """Normalize a JSON string array read from a workspace row."""
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except json.JSONDecodeError:
-            return ()
-    if not isinstance(value, list):
-        return ()
-    return tuple(item for item in value if isinstance(item, str))
-
-
 def _workspace_from_row(row: Any) -> WorkspaceRecord:
     """Translate one workspace row mapping into its record."""
     return WorkspaceRecord(
@@ -150,7 +139,7 @@ def _workspace_from_row(row: Any) -> WorkspaceRecord:
         mark=row["mark"],
         quota=row["quota"],
         status=row["status"],
-        knowledge_roots=_knowledge_roots(row["knowledge_roots"]),
+        knowledge_roots=decode_knowledge_roots(row["knowledge_roots"]),
         created_at=as_shanghai(row["created_at"]),
         updated_at=as_shanghai(row["updated_at"]),
     )
@@ -430,6 +419,28 @@ class WorkspaceRepository:
                         raise
                     raise WorkspaceNameConflict from exc
         return await self.get(workspace_id)
+
+    async def invalidate_reported_root_parsers(self, workspace_id: str) -> int:
+        """Mark this workspace's reported root sessions for the next replay.
+
+        Configuration is not part of a payload hash, so a workspace that changes
+        its knowledge roots must clear the parser cursor of the roots it reported;
+        otherwise parser-5 sessions would never be re-evaluated. Returns the
+        number of cleared cursors and skips silently when the problem-side table
+        is absent.
+        """
+        if not await bad_cases_table_present(self._database):
+            return 0
+        root_ids = select(bad_cases.c.bad_case_session_id).where(
+            bad_cases.c.workspace_id == workspace_id,
+        )
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(source_records)
+                .where(source_records.c.root_session_id.in_(root_ids))
+                .values(parser_version=None),
+            )
+        return int(cast(CursorResult[Any], result).rowcount or 0)
 
     async def list_members(self, workspace_id: str) -> list[WorkspaceMemberRecord]:
         """Return members ordered by role rank, then join time."""

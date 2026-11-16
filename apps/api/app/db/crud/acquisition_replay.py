@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import and_, delete, false, func, or_, select
+from sqlalchemy import and_, delete, false, func, inspect, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import ColumnElement
@@ -28,7 +28,7 @@ from app.db.models.domain import (
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
 from app.db.models.workspace import workspaces
 from app.service.acquisition.agent_tree import AssembledSessionTree
-from app.utils.knowledge_paths import normalize_knowledge_roots
+from app.utils.knowledge_paths import decode_knowledge_roots, merge_knowledge_roots
 from app.utils.time import as_shanghai
 
 
@@ -295,9 +295,21 @@ async def list_missing_payload_sources(
     )
 
 
+async def bad_cases_table_present(database: Database) -> bool:
+    """Return whether the externally owned problem-side table exists."""
+    async with database.engine.connect() as connection:
+        return bool(
+            await connection.run_sync(
+                lambda sync_connection: inspect(sync_connection).has_table("bad_cases"),
+            ),
+        )
+
+
 async def list_workspace_knowledge_roots(
     database: Database,
     root_session_id: str,
+    *,
+    bad_cases_present: bool = True,
 ) -> tuple[str, ...]:
     """Return the union of knowledge roots from every workspace reporting one root.
 
@@ -305,7 +317,13 @@ async def list_workspace_knowledge_roots(
     than one workspace, and each report's space owns its own configured roots.
     A local root with no bad case has no workspace roots and therefore no
     knowledge events. Workspace-scoped query filtering is deferred to M10.
+
+    The union is normalized without the write-side per-workspace count limit, and
+    an absent problem-side schema degrades to an empty root set so internal-only
+    environments can still replay trajectory evidence.
     """
+    if not bad_cases_present:
+        return ()
     statement = (
         select(workspaces.c.id, workspaces.c.knowledge_roots)
         .select_from(
@@ -315,16 +333,16 @@ async def list_workspace_knowledge_roots(
             ),
         )
         .where(bad_cases.c.bad_case_session_id == root_session_id)
-        .distinct()
-        .order_by(workspaces.c.id)
     )
     async with database.session() as session:
         rows = (await session.execute(statement)).all()
+    by_workspace: dict[str, object] = {}
+    for workspace_id, roots in rows:
+        by_workspace.setdefault(str(workspace_id), roots)
     values: list[object] = []
-    for _workspace_id, roots in rows:
-        if isinstance(roots, list):
-            values.extend(roots)
-    return normalize_knowledge_roots(values)
+    for roots in by_workspace.values():
+        values.extend(decode_knowledge_roots(roots))
+    return merge_knowledge_roots(values)
 
 
 async def count_payloads(database: Database) -> int:

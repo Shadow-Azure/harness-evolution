@@ -185,8 +185,8 @@ erDiagram
 - **结构关系**：`parentAgentId` 指向父节点；`toolUseId` 指向父节点中触发该节点的调用，用于画布边锚点。workflow 的 `toolUseId` 填父级 workflow 调用；workflow-subagent 允许为 `null`。
 - **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / 自定义 teammate / workflow / workflow-subagent`；`taskKind` 是 `in_process_teammate / forked_skill / null`；`spawnDepth` 来自 meta.spawnDepth。workflow 节点没有独立 transcript，`lines=0`；forked skill 是 `kind=subagent` + `taskKind=forked_skill`、`agentType=null`，靠 `label` 显示 skill 名。
 - **runtime 与执行闭环**：`runtimeKey` 在根级出现；`executionOutcome/endReason` 在 agent 级出现，分别表达 runtime 和 M9 的执行闭环。`executionOutcome` 是 `completed / interrupted / failed / legacy_unknown`，`endReason` 是 `end_turn / tool_use_open / missing_report / external_failed / external_interrupted`。Agent 节点自身的定义证据用 `agentDefinitionHash`（body hash）与 `definitionSource`（`prompt_snapshot / api_request_shape / builtin / unknown`）。
-- **触发对象证据**：事件可选返回 `objectRevision`（`tag:<tag>` / `digest:<hash>` / `unknown`）、`definitionHash`（skill/agent 定义 body hash）、`fileReadHash`、`readComplete` 与 `relationConfidence`（`authoritative / derived / synthetic / unresolved`）；这些字段只在存在时返回，前端不拼接、不猜测。
-- **知识库触发证据**：事件 `kind` 增加 `knowledge`，并可选返回 `documentId`（稳定文档身份）、`documentRevision`（`digest:<hash>` / Provider revision / `unknown`）、`sourcePath`（知识根内的文档路径）、`retrievalKind`（`file_read / mcp_search / mcp_retrieve`）与 `retrievalScope`（命中的知识根或 Provider collection）。文档正文、chunk 与 MCP 原始响应不进入 DTO，也不落库；知识事件与 skill/agent 事件共用同一 `line / messageOffset / eventIndex` 坐标口径，普通源码 `Read` 不产生该事件。
+- **触发对象证据**：事件可选返回 `objectRevision`（`tag:<tag>` / `digest:<hash>` / `provider:<value>` / `unknown`；`provider:` 只用于知识文档的 Provider 原始 revision）、`definitionHash`（skill/agent 定义 body hash）、`fileReadHash`、`readComplete` 与 `relationConfidence`（`authoritative / derived / synthetic / unresolved`）；这些字段只在存在时返回，前端不拼接、不猜测。
+- **知识库触发证据**：事件 `kind` 增加 `knowledge`，并可选返回 `documentId`（稳定文档身份）、`documentRevision`（`digest:<hash>` / Provider 原始 revision / `unknown`；与 `objectRevision` 语义不同）、`sourcePath`（知识根内的文档路径）、`retrievalKind`（`file_read / mcp_search / mcp_retrieve`）与 `retrievalScope`（命中的知识根或 Provider collection）。文档正文、chunk 与 MCP 原始响应不进入 DTO，也不落库；知识事件与 skill/agent 事件共用同一 `line / messageOffset / eventIndex` 坐标口径，普通源码 `Read` 不产生该事件。
 - **普通 skill 不是节点**：只以父节点 `events[]`（`kind=skill`）出现；forked skill 同时有父节点的 skill 事件和自己的节点。
 - **`label` 必填、由后端算**：主节点固定“主会话”；其余按 `name` → `skill_name`（forked skill）→ `agentType` → `kind` 取。前端不重算显示名。
 - `events[].name` 是触发调用名，不是类型；workflow 名可以与 skill 同名（原型 line 30 的 `deep-research` 就是 workflow 名，line 24 的 `deep-research` 是 skill 名）。
@@ -471,7 +471,8 @@ erDiagram
 - `role` ∈ `space_admin|member|viewer`；一个空间可有多个 `space_admin`，创建时必须至少一个。
 - 空间管理员只能授予 `member|viewer`，不能修改或移除 `space_admin` 行；全局管理员可任命/撤销空间管理员。
 - 成员与只读角色能读取空间业务数据；只有空间管理员及以上能改额度、成员、凭据、对象配置和启动自进化。
-- `knowledgeRoots` 是空间级知识库根配置：绝对路径、每空间最多 20 条、每条 ≤512 字符，拒绝 `..` 与 NUL；写入前归一化为正斜杠、去尾斜杠并去重，非法值返回 `422 KNOWLEDGE_ROOTS_INVALID`（details 带 `{reason}`）。普通 `Read` 只有命中这些根才成为 `kind=knowledge` 事件；未配置的空间不做知识识别。
+- `knowledgeRoots` 是空间级知识库根配置：必须是绝对路径且不能是文件系统根 `/`，每空间最多 20 条、每条 ≤512 字符，拒绝 `..` 与 NUL；写入前归一化为正斜杠、去尾斜杠并去重，非法值返回 `422 KNOWLEDGE_ROOTS_INVALID`（details 带 `{reason}`）。清空配置请传 `[]`（显式 `null` 等同未提供）。普通 `Read` 只有命中这些根才成为 `kind=knowledge` 事件；未配置的空间不做知识识别。
+- `knowledgeRoots` 的**读权限**：`GET /api/workspaces` 对空间管理员与全局管理员返回真实路径；member / viewer 返回 `[]`。它是部署拓扑信息，普通成员无需知道；`GET /api/auth/session` 从不携带 roots。
 
 `WorkspaceCredential`：
 

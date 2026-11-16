@@ -12,6 +12,7 @@ from app.db.base import Database
 from app.db.crud.acquisition_replay import (
     PendingPayload,
     RootPayload,
+    bad_cases_table_present,
     count_payloads,
     create_sync_run,
     finish_sync_run,
@@ -150,6 +151,8 @@ async def replay_pending_payloads(
     ]
     rebuilt_roots = 0
     processed_candidates = 0
+
+    bad_cases_present = await bad_cases_table_present(database)
     progress_callback = on_progress
 
     async def notify_progress(
@@ -205,7 +208,11 @@ async def replay_pending_payloads(
             continue
         try:
             payloads = await list_root_payloads(database, runtime_key, root_session_id)
-            knowledge_roots = await list_workspace_knowledge_roots(database, root_session_id)
+            knowledge_roots = await list_workspace_knowledge_roots(
+                database,
+                root_session_id,
+                bad_cases_present=bad_cases_present,
+            )
             parsed = tuple(
                 _normalize_payload(payload, parser, knowledge_roots) for payload in payloads
             )

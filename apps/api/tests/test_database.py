@@ -1306,6 +1306,25 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             "ix_job_runs_kind_created_at",
             "ix_job_runs_ref_id",
         }.issubset({index["name"] for index in job_indexes if index["name"] is not None})
+        async with database.engine.connect() as connection:
+            knowledge_columns, knowledge_indexes, workspace_columns = await connection.run_sync(
+                lambda sync_connection: (
+                    inspect(sync_connection).get_columns("agent_events"),
+                    inspect(sync_connection).get_indexes("agent_events"),
+                    inspect(sync_connection).get_columns("workspaces"),
+                ),
+            )
+        assert {
+            "document_id",
+            "document_revision",
+            "source_path",
+            "retrieval_kind",
+            "retrieval_scope",
+        } <= {column["name"] for column in knowledge_columns}
+        assert "ix_agent_events_knowledge_document" in {
+            index["name"] for index in knowledge_indexes if index["name"] is not None
+        }
+        assert "knowledge_roots" in {column["name"] for column in workspace_columns}
         assert {
             foreign_key["name"]
             for foreign_key in job_foreign_keys

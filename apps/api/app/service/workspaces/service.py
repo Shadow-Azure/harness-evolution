@@ -178,6 +178,10 @@ class WorkspaceService:
                     else 0
                 ),
                 space_admins=[self._admin_dto(admin) for admin in admins.get(row.workspace.id, [])],
+                include_knowledge_roots=(
+                    user.role == "admin"
+                    or self._effective_role(row.role) in {"global_admin", "space_admin"}
+                ),
             )
             for row in visible
         ]
@@ -253,6 +257,9 @@ class WorkspaceService:
             updates["mark"] = mark
         if quota is not None:
             updates["quota"] = quota
+        roots_changed = knowledge_roots is not None and set(knowledge_roots) != set(
+            workspace.knowledge_roots
+        )
         if knowledge_roots is not None:
             updates["knowledge_roots"] = list(knowledge_roots)
         try:
@@ -264,6 +271,17 @@ class WorkspaceService:
             raise self._workspace_exists() from exc
         if updated is None:
             raise self._not_found()
+        if roots_changed:
+            cleared = await self._repository.invalidate_reported_root_parsers(
+                access.workspace_id,
+            )
+            logger.info(
+                "knowledge roots changed",
+                extra={
+                    "workspace_id": access.workspace_id,
+                    "replay_cursors_cleared": cleared,
+                },
+            )
         member_counts = await self._repository.member_counts([access.workspace_id])
         admins = await self._repository.list_space_admins([access.workspace_id])
         counts = member_counts.get(access.workspace_id)
@@ -499,8 +517,13 @@ class WorkspaceService:
         used: int,
         member_count: int,
         space_admins: list[WorkspaceAdmin],
+        include_knowledge_roots: bool = True,
     ) -> Workspace:
-        """Assemble the full workspace response from one row and its aggregates."""
+        """Assemble the full workspace response from one row and its aggregates.
+
+        Knowledge roots are absolute host paths, so member/viewer listings return
+        an empty list while space admins and the global administrator see them.
+        """
         return Workspace(
             id=workspace.id,
             name=workspace.name,
@@ -509,7 +532,7 @@ class WorkspaceService:
             used=used,
             member_count=member_count,
             space_admins=space_admins,
-            knowledge_roots=list(workspace.knowledge_roots),
+            knowledge_roots=(list(workspace.knowledge_roots) if include_knowledge_roots else []),
             created_at=workspace.created_at,
         )
 

@@ -22,7 +22,7 @@ EVENT_KNOWLEDGE_COLUMNS: tuple[sa.Column[Any], ...] = (
     sa.Column("document_revision", sa.String(length=96), nullable=True),
     sa.Column("source_path", sa.String(length=1024), nullable=True),
     sa.Column("retrieval_kind", sa.String(length=32), nullable=True),
-    sa.Column("retrieval_scope", sa.String(length=255), nullable=True),
+    sa.Column("retrieval_scope", sa.String(length=512), nullable=True),
 )
 WORKSPACE_KNOWLEDGE_COLUMNS: tuple[sa.Column[Any], ...] = (
     sa.Column("knowledge_roots", sa.JSON(), nullable=True),

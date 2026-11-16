@@ -13,8 +13,10 @@ from app.utils.knowledge_paths import (
     MAX_KNOWLEDGE_ROOT_LENGTH,
     MAX_KNOWLEDGE_ROOTS,
     KnowledgeRootError,
+    canonical_knowledge_path,
     knowledge_document_id,
     match_knowledge_root,
+    merge_knowledge_roots,
     normalize_knowledge_roots,
 )
 
@@ -138,10 +140,14 @@ def test_normalize_knowledge_roots_canonicalizes_dedupes_and_keeps_order() -> No
     )
 
 
-def test_normalize_knowledge_roots_accepts_the_filesystem_root() -> None:
-    """The filesystem root stays absolute and is not reduced to an empty string."""
-    assert normalize_knowledge_roots(["/"]) == ("/",)
-    assert match_knowledge_root("/anywhere/file.md", ("/",)) == "/"
+def test_normalize_knowledge_roots_rejects_the_filesystem_root() -> None:
+    """A root must be absolute and narrower than the whole filesystem."""
+    with pytest.raises(KnowledgeRootError) as too_broad:
+        normalize_knowledge_roots(["/"])
+    with pytest.raises(KnowledgeRootError) as trailing:
+        normalize_knowledge_roots(["///"])
+    assert too_broad.value.reason == "too_broad"
+    assert trailing.value.reason == "too_broad"
 
 
 def test_normalize_knowledge_roots_rejects_relative_parent_and_nul_paths() -> None:
@@ -155,6 +161,34 @@ def test_normalize_knowledge_roots_rejects_relative_parent_and_nul_paths() -> No
     assert relative.value.reason == "not_absolute"
     assert traversal.value.reason == "parent_traversal"
     assert nul.value.reason == "nul_byte"
+
+
+def test_merge_knowledge_roots_has_no_per_workspace_count_limit() -> None:
+    """The read-side union normalizes and dedupes without the write-side limit."""
+    first = [f"/kb-a/{index}" for index in range(11)]
+    second = [f"/kb-b/{index}" for index in range(11)]
+
+    merged = merge_knowledge_roots([*first, *second, "/kb-a/0/", "relative/ignored", "/"])
+
+    assert len(merged) == 22
+    assert merged[:11] == tuple(first)
+    assert merged[11:] == tuple(second)
+
+
+def test_merge_knowledge_roots_ignores_invalid_values() -> None:
+    """One bad stored value never breaks the read-side union."""
+    assert merge_knowledge_roots(
+        ["/kb/team", "relative", "/workspace/../secrets", 42, None, "/kb/team/"],
+    ) == ("/kb/team",)
+
+
+def test_canonical_knowledge_path_normalizes_spelling() -> None:
+    """The public canonical path is the single identity input."""
+    assert canonical_knowledge_path("/kb//guides/a.md/") == "/kb/guides/a.md"
+    assert canonical_knowledge_path("\\kb\\guides\\a.md") == "/kb/guides/a.md"
+    assert canonical_knowledge_path("relative/a.md") is None
+    assert canonical_knowledge_path("/kb/../a.md") is None
+    assert canonical_knowledge_path("/kb/a\x00.md") is None
 
 
 def test_normalize_knowledge_roots_enforces_count_and_length_limits() -> None:
@@ -183,7 +217,7 @@ def test_match_knowledge_root_uses_longest_boundary_matched_prefix() -> None:
 
 
 def test_knowledge_document_id_is_stable_and_root_relative() -> None:
-    """The document id hashes the root-relative path, not the body."""
+    """The document id hashes the canonical root-relative path, not the body."""
     first = knowledge_document_id("/workspace/knowledge/guides/a.md", KNOWLEDGE_ROOT)
     repeat = knowledge_document_id("/workspace/knowledge/guides/a.md", KNOWLEDGE_ROOT)
     other = knowledge_document_id("/workspace/knowledge/guides/b.md", KNOWLEDGE_ROOT)
@@ -192,6 +226,17 @@ def test_knowledge_document_id_is_stable_and_root_relative() -> None:
     assert first != other
     assert first.startswith("doc:")
     assert first == "doc:" + hashlib.sha256(b"guides/a.md").hexdigest()[:32]
+
+
+def test_knowledge_document_id_folds_path_spelling() -> None:
+    """Windows slashes, duplicate slashes, and trailing slashes share one identity."""
+    canonical = knowledge_document_id("/workspace/knowledge/guides/a.md", KNOWLEDGE_ROOT)
+
+    assert knowledge_document_id("/workspace/knowledge//guides/a.md", KNOWLEDGE_ROOT) == canonical
+    assert knowledge_document_id("/workspace/knowledge/guides/a.md/", KNOWLEDGE_ROOT) == canonical
+    assert (
+        knowledge_document_id("\\workspace\\knowledge\\guides\\a.md", KNOWLEDGE_ROOT) == canonical
+    )
 
 
 def test_read_inside_a_knowledge_root_emits_a_document_event() -> None:
@@ -423,6 +468,52 @@ def test_knowledge_event_coordinates_follow_the_read_call() -> None:
     assert event.triggered_at is not None
     assert event.triggered_at.hour == 9
     assert event.triggered_at.minute == 5
+
+
+def test_read_path_spelling_is_canonicalized_in_the_event() -> None:
+    """The event stores the canonical path and one document identity."""
+    records = (
+        user(),
+        read_call("tool-double", f"{KNOWLEDGE_ROOT}//guides/a.md"),
+        read_result("tool-double", f"{KNOWLEDGE_ROOT}//guides/a.md", "body"),
+        read_call("tool-windows", "\\workspace\\knowledge\\guides\\b.md"),
+        read_result(
+            "tool-windows",
+            "\\workspace\\knowledge\\guides\\b.md",
+            "body",
+        ),
+        read_call("tool-trailing", f"{KNOWLEDGE_ROOT}/guides/c.md/"),
+        read_result("tool-trailing", f"{KNOWLEDGE_ROOT}/guides/c.md/", "body"),
+    )
+    parsed = parse(records)
+
+    assert [event.source_path for event in parsed.events] == [
+        f"{KNOWLEDGE_ROOT}/guides/a.md",
+        f"{KNOWLEDGE_ROOT}/guides/b.md",
+        f"{KNOWLEDGE_ROOT}/guides/c.md",
+    ]
+    assert parsed.events[0].document_id == knowledge_document_id(
+        f"{KNOWLEDGE_ROOT}/guides/a.md",
+        KNOWLEDGE_ROOT,
+    )
+
+
+def test_very_long_document_path_is_truncated_to_the_column() -> None:
+    """A path longer than the 1024 column is stored as a bounded prefix."""
+    long_path = f"{KNOWLEDGE_ROOT}/" + "x" * 1500 + ".md"
+    parsed = parse(
+        (
+            user(),
+            read_call("tool-long", long_path),
+            read_result("tool-long", long_path, "body"),
+        ),
+    )
+
+    event = parsed.events[0]
+    assert event.source_path is not None
+    assert len(event.source_path) == 1024
+    assert event.source_path == long_path[:1024]
+    assert event.document_id == knowledge_document_id(long_path, KNOWLEDGE_ROOT)
 
 
 def test_subagent_reads_also_use_the_payload_knowledge_roots() -> None:

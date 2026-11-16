@@ -26,7 +26,12 @@ from app.service.acquisition.parsers.base import (
     normalize_definition_body,
 )
 from app.service.acquisition.parsers.factory import TraceParserFactory
-from app.utils.knowledge_paths import knowledge_document_id, match_knowledge_root
+from app.utils.knowledge_paths import (
+    MAX_DOCUMENT_PATH_LENGTH,
+    canonical_knowledge_path,
+    knowledge_document_id,
+    match_knowledge_root,
+)
 
 _CONTROL_PREFIXES = (
     "<local-command-caveat>",
@@ -526,8 +531,13 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             )
 
     def _record_file_knowledge(self, evidence: TraceEvidence, ctx: ParseContext) -> None:
-        """Emit one knowledge event only when a Read lands inside a configured root."""
-        path = evidence.source_path
+        """Emit one knowledge event only when a Read lands inside a configured root.
+
+        The path is canonicalized before matching and identity derivation so
+        Windows separators, duplicate slashes, and trailing slashes share one
+        document. Relative paths never match and the cwd is never guessed.
+        """
+        path = canonical_knowledge_path(evidence.source_path)
         if not ctx.payload.knowledge_roots or path is None:
             return
         root = match_knowledge_root(path, ctx.payload.knowledge_roots)
@@ -539,7 +549,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             tool_use_id=evidence.tool_use_id,
             document_id=knowledge_document_id(path, root),
             document_revision=revision,
-            source_path=path,
+            source_path=path[:MAX_DOCUMENT_PATH_LENGTH],
             name=_document_name(path),
             retrieval_kind="file_read",
             retrieval_scope=root,
@@ -559,16 +569,26 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         if adapter is None:
             return
         for document in adapter.parse(_tool_result_text(block)):
+            object_revision = (
+                "unknown"
+                if document.revision == "unknown"
+                else f"provider:{document.revision}"[:96]
+            )
             ctx.record_knowledge_event(
                 tool_use_id=tool_use_id,
                 document_id=document.document_id,
                 document_revision=document.revision,
-                source_path=document.source_path,
+                source_path=(
+                    document.source_path[:MAX_DOCUMENT_PATH_LENGTH]
+                    if document.source_path is not None
+                    else None
+                ),
                 name=(
                     document.title or _document_name(document.source_path) or document.document_id
                 ),
                 retrieval_kind=document.retrieval_kind,
                 retrieval_scope=document.collection or adapter.default_scope,
+                object_revision=object_revision,
             )
 
     def _record_agent_definition(

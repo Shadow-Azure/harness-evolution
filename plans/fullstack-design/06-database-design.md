@@ -263,16 +263,16 @@ erDiagram
 | `line_no` | `INTEGER` | NOT NULL | 转录行号 |
 | `message_offset` | `INTEGER` | NOT NULL | 该触发点之前已经出现的 assistant message 数 |
 | `kind` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` / `workflow` / `knowledge` |
-| `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 |
+| `name` | `VARCHAR(255)` | NULL | 触发对象名：skill 名 / agent 类型 / workflow 名 / 知识文档名（title → 文件名 → `document_id`） |
 | `object_version` | `VARCHAR(64)` | NULL | 触发时从事件元数据解析出的对象版本；源数据没有版本时为空，关联与归因按 §7.5 的版本规则处理 |
-| `object_revision` | `VARCHAR(96)` | NULL | M9：`tag:<tag>` / `digest:<sha256>` / `unknown` |
+| `object_revision` | `VARCHAR(96)` | NULL | M9：`tag:<tag>` / `digest:<sha256>` / `provider:<value>` / `unknown`；knowledge 事件用 `provider:` 承载 Provider 原始 revision，与 `document_revision` 的原始值语义不同 |
 | `definition_hash` | `CHAR(64)` | NULL | M9：skill/agent 定义 body hash |
 | `file_read_hash` | `CHAR(64)` | NULL | M9：文件读取内容 hash；仅完整读取时非空 |
 | `document_id` | `VARCHAR(255)` | NULL | M9-05：知识文档稳定身份；文件读为 `doc:<sha256(根相对路径)[:32]>`，Provider 结果用其返回 id |
 | `document_revision` | `VARCHAR(96)` | NULL | M9-05：`digest:<sha256>`（完整文件读）/ Provider revision / `unknown`（不完整读取或未提供） |
 | `source_path` | `VARCHAR(1024)` | NULL | M9-05：文档路径；只存路径，不存正文或 chunk |
 | `retrieval_kind` | `VARCHAR(32)` | NULL | M9-05：`file_read` / `mcp_search` / `mcp_retrieve` |
-| `retrieval_scope` | `VARCHAR(255)` | NULL | M9-05：命中的知识根或 Provider collection |
+| `retrieval_scope` | `VARCHAR(512)` | NULL | M9-05：命中的知识根（配置上限 512）或 Provider collection |
 | `read_complete` | `BOOLEAN` | NULL | M9：文件读取是否完整；partial/truncated 为 false |
 | `relation_confidence` | `VARCHAR(16)` | NULL | M9：`authoritative` / `derived` / `synthetic` / `unresolved` |
 | `description` | `TEXT` | NULL | 子 agent / workflow 描述 |
@@ -387,13 +387,13 @@ erDiagram
 | `mark` | `VARCHAR(255)` | NOT NULL DEFAULT '' | 说明/备注，前端空间卡片副标题 |
 | `quota` | `INTEGER` | NOT NULL | bad case 累计数量上限；创建时设置，之后可调 |
 | `status` | `VARCHAR(16)` | NOT NULL DEFAULT 'active' | 预留；V2 只有 `active`（无归档/删除） |
-| `knowledge_roots` | `JSON` | NULL | 空间级知识库根字符串数组：绝对路径、≤20 条、每条 ≤512 字符；NULL 与 `[]` 等价（应用层给默认值，不设 server default） |
+| `knowledge_roots` | `JSON` | NULL | 空间级知识库根字符串数组：绝对路径且不能是 `/`、≤20 条、每条 ≤512 字符；NULL 与 `[]` 等价（应用层给默认值，不设 server default） |
 | `created_by` | `VARCHAR(36)` | NULL FK → `users.id` ON DELETE SET NULL | 创建人 |
 | `created_at` / `updated_at` | `DATETIME` | NOT NULL | 应用写入 Asia/Shanghai |
 
 约束与索引：`UNIQUE(name)`（重名拦截走 DB 而非先查后写，避免并发漏判）、`INDEX(created_at DESC)`。
 
-**`knowledge_roots` 语义**：只有路径命中这些根的普通 `Read` 才归一化为 `kind=knowledge`（§3.4）；配置由空间管理员经 `PUT /api/workspaces/{wid}` 写入，读取方在归一化时按 `bad_cases.workspace_id` 取上报该根会话的所有空间 roots 并集（§7.5），查询层的空间过滤留给 M10。
+**`knowledge_roots` 语义**：只有路径命中这些根的普通 `Read` 才归一化为 `kind=knowledge`（§3.4）；配置由空间管理员经 `PUT /api/workspaces/{wid}` 写入，读取方在归一化时按 `bad_cases.workspace_id` 取上报该根会话的所有空间 roots 并集（§7.5），查询层的空间过滤留给 M10。并集只做去重归一化、不套每空间 20 条上限。`GET /api/workspaces` 只对空间管理员与全局管理员回读真实路径，member/viewer 得到 `[]`（05 §3.7）。
 
 **`used` 不落列**：额度使用量 = `COUNT(bad_cases WHERE workspace_id = :wid)`，查询时聚合。理由同 §3.2 的会话问题数——bad case 由上报路径随时插入，物化计数没有失效通知，必然陈旧；额度检查是低频写路径（每次上报一次 COUNT，走 `INDEX(workspace_id, created_at)` 最左前缀），代价可接受。
 
@@ -893,7 +893,8 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 潜在 bad case（默认策略） | `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；custom 三开关取并集 + `sameObjectOnly` 过滤，合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 归因三态 | 潜在集合中按 `bad_case_analysis JOIN probe_reports`（对象·版本）判断：`conclusion=attributed` → 是该对象；`non_target` → 非该对象；无关联行 → 未归因 |
 | 对象「出现」的版本口径 | 只有 `agent_events.object_version == 所选 target_version` 才建立关联；版本为空的 Session 计入 `versionUnresolvedSessions` 并跳过，不做名称级猜测。重放补齐后可重新启动 run |
-| 知识事件证据口径 | 归一化一个根会话时，取该根在 `bad_cases` 里所有上报空间的 `workspaces.knowledge_roots` 并集作为证据范围；没有 bad case 的本地根为空集合，不产生知识事件。空间过滤是查询层职责，M10 前不按空间裁剪roots |
+| 知识事件证据口径 | 归一化一个根会话时，取该根在 `bad_cases` 里所有上报空间的 `workspaces.knowledge_roots` 并集作为证据范围（只去重归一化，不套每空间 20 条上限）；没有 bad case 的本地根为空集合，不产生知识事件。`bad_cases` 表缺失时按空 roots 降级，不让整根重放失败。 |
+| 知识事件的跨空间可见性 | `agent_events` 没有空间列，同一根会话被 A/B 两空间上报时，B 的成员能看到 A 配置根下的 `sourcePath` 与 `retrievalScope`（泄露的是路径与文档存在性，不是正文）。这是 M9 只建证据、查询层裁剪留 M10 的结构性后果 |
 
 ## 8. 与功能点的映射
 

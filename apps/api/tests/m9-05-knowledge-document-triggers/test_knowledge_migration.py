@@ -9,7 +9,7 @@ from typing import cast
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import inspect, text
+from sqlalchemy import String, inspect, text
 
 from alembic import command
 from app.config import DatabaseDialect, Settings
@@ -182,6 +182,14 @@ async def test_knowledge_migration_adds_columns_index_and_workspace_default(
             )
         assert columns >= KNOWLEDGE_COLUMNS
         assert "ix_agent_events_knowledge_document" in indexes
+        async with database.engine.connect() as connection:
+            scope_type = await connection.run_sync(
+                lambda sync_connection: {
+                    column["name"]: column
+                    for column in inspect(sync_connection).get_columns("agent_events")
+                }["retrieval_scope"]["type"],
+            )
+        assert cast(String, scope_type).length == 512
     finally:
         await database.dispose()
 
@@ -263,8 +271,18 @@ async def test_knowledge_migration_downgrade_removes_columns_and_index(
                     index["name"] for index in inspect(sync_connection).get_indexes("agent_events")
                 },
             )
+        async with database.engine.connect() as connection:
+            unique_constraints = await connection.run_sync(
+                lambda sync_connection: {
+                    constraint["name"]
+                    for constraint in inspect(sync_connection).get_unique_constraints(
+                        "agent_events",
+                    )
+                },
+            )
         assert not KNOWLEDGE_COLUMNS & event_columns
         assert "knowledge_roots" not in workspace_columns
         assert "ix_agent_events_knowledge_document" not in indexes
+        assert "uq_agent_events_agent_index" in unique_constraints
     finally:
         await database.dispose()

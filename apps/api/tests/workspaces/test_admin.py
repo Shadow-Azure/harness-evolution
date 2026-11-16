@@ -3,7 +3,11 @@
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import select, update
 
+from app.db.base import Database
+from app.db.models.domain import bad_cases, source_records
+from app.utils.time import now_shanghai
 from tests.workspaces.helpers import (
     access_token,
     bearer,
@@ -616,6 +620,7 @@ async def test_workspace_knowledge_roots_default_round_trip_and_validation(
     app, client = workspace_client
     database = app.state.database
     space_admin_id = await create_user(database, username="knowledge-admin")
+    member_id = await create_user(database, username="knowledge-member")
     initial_admin_id = await create_user(database, username="knowledge-owner")
     _, admin_header = await _admin(app)
 
@@ -644,7 +649,14 @@ async def test_workspace_knowledge_roots_default_round_trip_and_validation(
         user_id=space_admin_id,
         role="space_admin",
     )
+    await insert_member(
+        database,
+        workspace_id=workspace_id,
+        user_id=member_id,
+        role="member",
+    )
     space_header = bearer(access_token(app, user_id=space_admin_id))
+    member_header = bearer(access_token(app, user_id=member_id))
 
     updated = await client.put(
         f"/api/workspaces/{workspace_id}",
@@ -661,6 +673,11 @@ async def test_workspace_knowledge_roots_default_round_trip_and_validation(
         headers=space_header,
         json={"knowledgeRoots": ["/workspace/../etc"]},
     )
+    too_broad = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=space_header,
+        json={"knowledgeRoots": ["/"]},
+    )
     too_many = await client.put(
         f"/api/workspaces/{workspace_id}",
         headers=space_header,
@@ -674,9 +691,125 @@ async def test_workspace_knowledge_roots_default_round_trip_and_validation(
     assert relative.json()["error"]["details"] == {"reason": "not_absolute"}
     assert traversal.status_code == 422
     assert traversal.json()["error"]["details"] == {"reason": "parent_traversal"}
+    assert too_broad.status_code == 422
+    assert too_broad.json()["error"]["details"] == {"reason": "too_broad"}
     assert too_many.status_code == 422
     assert too_many.json()["error"]["details"] == {"reason": "too_many"}
 
     listed = await client.get("/api/workspaces", headers=admin_header)
     listed_item = next(item for item in listed.json()["items"] if item["id"] == workspace_id)
     assert listed_item["knowledgeRoots"] == ["/workspace/knowledge", "/workspace/shared/kb"]
+    as_space_admin = await client.get("/api/workspaces", headers=space_header)
+    admin_item = next(item for item in as_space_admin.json()["items"] if item["id"] == workspace_id)
+    assert admin_item["knowledgeRoots"] == ["/workspace/knowledge", "/workspace/shared/kb"]
+    as_member = await client.get("/api/workspaces", headers=member_header)
+    member_item = next(item for item in as_member.json()["items"] if item["id"] == workspace_id)
+    assert member_item["knowledgeRoots"] == []
+
+
+async def test_knowledge_root_change_marks_reported_roots_for_replay(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """Changing roots invalidates that workspace's reported root cursors only."""
+    app, client = workspace_client
+    database = app.state.database
+    space_admin_id = await create_user(database, username="root-admin")
+    workspace_id = await insert_workspace(database, name="Roots stale")
+    await insert_member(
+        database,
+        workspace_id=workspace_id,
+        user_id=space_admin_id,
+        role="space_admin",
+    )
+    header = bearer(access_token(app, user_id=space_admin_id))
+    first_root = "/workspace/knowledge"
+    other_root = "/workspace/other"
+    next_root = "/workspace/knowledge-next"
+    root_session_id = "94000000-0000-4000-8000-000000000001"
+    now = now_shanghai()
+    async with database.transaction() as session:
+        await session.execute(
+            bad_cases.insert().values(
+                bad_case_id="bc-root-stale",
+                workspace_id=workspace_id,
+                bad_case_session_id=root_session_id,
+                bad_case_type="self",
+                object_name="knowledge-doc",
+                object_type="skill",
+                title="Root stale",
+                bad_case_description="Synthetic reported root.",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        await session.execute(
+            source_records.insert().values(
+                runtime_key="claude-code",
+                root_session_id=root_session_id,
+                agent_id=root_session_id,
+                kind="main",
+                source_type="script",
+                line_count=1,
+                received_at=now,
+                processed_at=now,
+                processed_hash="d" * 64,
+                parser_version=5,
+                last_sync_run_id=None,
+            ),
+        )
+
+    first = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=header,
+        json={"knowledgeRoots": [first_root, other_root]},
+    )
+    invalidated = await _parser_versions(database, root_session_id)
+
+    async with database.transaction() as session:
+        await session.execute(
+            update(source_records)
+            .where(source_records.c.root_session_id == root_session_id)
+            .values(parser_version=5),
+        )
+    reordered = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=header,
+        json={"knowledgeRoots": [other_root, first_root]},
+    )
+    repeated = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=header,
+        json={"knowledgeRoots": [other_root, first_root]},
+    )
+    kept = await _parser_versions(database, root_session_id)
+
+    changed_again = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=header,
+        json={"knowledgeRoots": [next_root]},
+    )
+
+    assert first.status_code == 200
+    assert invalidated == [None]
+    assert reordered.status_code == 200
+    assert repeated.status_code == 200
+    assert kept == [5]
+    assert changed_again.status_code == 200
+    assert await _parser_versions(database, root_session_id) == [None]
+
+
+async def _parser_versions(database: Database, root_session_id: str) -> list[int | None]:
+    """Read the reported root's source cursor parser versions."""
+    async with database.session() as session:
+        rows: list[int | None] = list(
+            (
+                await session.execute(
+                    select(source_records.c.parser_version).where(
+                        source_records.c.root_session_id == root_session_id,
+                    ),
+                )
+            )
+            .scalars()
+            .all(),
+        )
+    return rows

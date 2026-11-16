@@ -91,7 +91,7 @@ class SessionListResponse(IdentityModel):
 
 
 class SessionEvent(IdentityModel):
-    """One skill, Agent, or workflow trigger within an Agent node."""
+    """One skill, Agent, workflow, or knowledge-document trigger within an Agent node."""
 
     line: int = Field(ge=1)
     kind: EventKind
@@ -103,7 +103,10 @@ class SessionEvent(IdentityModel):
         default=None,
         max_length=96,
         exclude_if=_missing,
-        description="tag:<tag> / digest:<hash> / unknown evidence for the triggered object.",
+        description=(
+            "tag:<tag> / digest:<hash> / provider:<value> / unknown evidence "
+            "for the triggered object."
+        ),
     )
     definition_hash: str | None = Field(
         default=None,
@@ -137,7 +140,10 @@ class SessionEvent(IdentityModel):
         default=None,
         max_length=96,
         exclude_if=_missing,
-        description="Document revision evidence: digest:<hash> / provider revision / unknown.",
+        description=(
+            "Raw document revision evidence: digest:<hash> / provider revision / "
+            "unknown; differs from objectRevision for provider documents."
+        ),
     )
     source_path: str | None = Field(
         default=None,
@@ -153,7 +159,7 @@ class SessionEvent(IdentityModel):
     )
     retrieval_scope: str | None = Field(
         default=None,
-        max_length=255,
+        max_length=512,
         exclude_if=_missing,
         description="Matched knowledge root or provider collection scope.",
     )

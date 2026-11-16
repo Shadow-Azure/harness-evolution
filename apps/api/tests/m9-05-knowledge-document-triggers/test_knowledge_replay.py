@@ -9,7 +9,7 @@ from pathlib import Path
 
 import httpx
 from pydantic import SecretStr
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
@@ -321,6 +321,149 @@ async def test_parser_version_five_replays_an_already_processed_payload(
         assert source["parser_version"] == 5
     finally:
         await database.dispose()
+
+
+async def test_replay_unions_more_than_twenty_roots_across_workspaces(
+    tmp_path: Path,
+) -> None:
+    """Two workspaces with eleven roots each exceed the write-side limit, not replay."""
+    roots_a = [f"/kb-a/{index}" for index in range(11)]
+    roots_b = [f"/kb-b/{index}" for index in range(11)]
+    content = jsonl(
+        user(),
+        read_call("tool-read", "/kb-b/10/guide.md"),
+        read_result("tool-read", "/kb-b/10/guide.md", "body\n"),
+    )
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await upgrade_database(database)
+        await seed_payload(database, content)
+        await seed_workspace(
+            database,
+            workspace_id=WORKSPACE_A,
+            name="Knowledge A",
+            knowledge_roots=roots_a,
+            bad_case_id="bc-knowledge-a",
+        )
+        await seed_workspace(
+            database,
+            workspace_id=WORKSPACE_B,
+            name="Knowledge B",
+            knowledge_roots=roots_b,
+            bad_case_id="bc-knowledge-b",
+        )
+
+        result = await replay_pending_payloads(database)
+
+        async with database.session() as session:
+            rows = (await session.execute(select(agent_events))).mappings().all()
+        knowledge = [row for row in rows if row["kind"] == "knowledge"]
+        assert result.failed == 0
+        assert result.imported == 1
+        assert len(knowledge) == 1
+        assert knowledge[0]["retrieval_scope"] == "/kb-b/10"
+        assert knowledge[0]["source_path"] == "/kb-b/10/guide.md"
+    finally:
+        await database.dispose()
+
+
+async def test_replay_survives_a_missing_bad_cases_table(tmp_path: Path) -> None:
+    """An internal-only schema degrades to empty roots instead of failing the root."""
+    database = create_database(settings_for(tmp_path))
+    await database.start()
+    try:
+        await upgrade_database(database)
+        await seed_payload(database)
+        async with database.transaction() as session:
+            await session.execute(text("DROP TABLE bad_cases"))
+
+        result = await replay_pending_payloads(database)
+
+        async with database.session() as session:
+            rows = (await session.execute(select(agent_events))).mappings().all()
+            parser_version: int = int(
+                (
+                    await session.execute(
+                        select(source_records.c.parser_version).where(
+                            source_records.c.root_session_id == ROOT_ID,
+                        ),
+                    )
+                ).scalar_one(),
+            )
+        assert result.failed == 0
+        assert result.imported == 1
+        assert rows == []
+        assert parser_version == 5
+    finally:
+        await database.dispose()
+
+
+async def test_a_304_character_root_round_trips_through_the_session_tree(
+    tmp_path: Path,
+) -> None:
+    """A root within the 512 config limit is stored and returned unchanged."""
+    long_root = "/" + "k" * 303
+    assert len(long_root) == 304
+    content = jsonl(
+        user(),
+        read_call("tool-read", f"{long_root}/guides/runbook.md"),
+        read_result("tool-read", f"{long_root}/guides/runbook.md", "body\n"),
+    )
+    settings = settings_for(tmp_path)
+    database = create_database(settings)
+    await database.start()
+    try:
+        await upgrade_database(database)
+        await seed_payload(database, content)
+        await seed_workspace(
+            database,
+            workspace_id=WORKSPACE_A,
+            name="Knowledge A",
+            knowledge_roots=[long_root],
+            bad_case_id="bc-knowledge-a",
+        )
+        await replay_pending_payloads(database)
+    finally:
+        await database.dispose()
+
+    events = await session_tree_events(settings)
+
+    knowledge = [event for event in events if event["kind"] == "knowledge"]
+    assert len(knowledge) == 1
+    assert knowledge[0]["retrievalScope"] == long_root
+    assert knowledge[0]["sourcePath"] == f"{long_root}/guides/runbook.md"
+
+
+async def session_tree_events(settings: Settings) -> list[dict[str, object]]:
+    """Query the Session tree as a global administrator and flatten its events."""
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        login = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "initial-password"},
+        )
+        token = login.json()["accessToken"]
+        changed = await client.post(
+            "/api/auth/change-password",
+            headers=bearer(token),
+            json={"oldPassword": "initial-password", "newPassword": "replacement-password"},
+        )
+        assert changed.status_code == 204
+        authenticated = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "replacement-password"},
+        )
+        detail = await client.get(
+            f"/api/sessions/{ROOT_ID}/tree",
+            headers=bearer(authenticated.json()["accessToken"]),
+        )
+    assert detail.status_code == 200
+    return [event for agent in detail.json()["agents"] for event in agent["events"]]
 
 
 async def test_session_tree_api_exposes_knowledge_document_evidence(tmp_path: Path) -> None:

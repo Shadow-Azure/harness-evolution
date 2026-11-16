@@ -19,7 +19,6 @@ from sqlalchemy import func, select, update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
-from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.models.domain import sync_runs, trajectory_payloads
 from app.db.models.jobs import job_runs, sync_lock
 from app.main import create_app
@@ -86,7 +85,6 @@ async def sync_environment(tmp_path: Path) -> AsyncIterator[SyncEnvironment]:
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
-        await ensure_fixture_external_tables(app.state.database)
         headers = await authenticate_admin(client)
         yield SyncEnvironment(
             app=app,

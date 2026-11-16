@@ -27,7 +27,7 @@ scope:
   - apps/api/tests/**
   - apps/web/src/api/**
   - apps/web/src/pages/workspaces/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

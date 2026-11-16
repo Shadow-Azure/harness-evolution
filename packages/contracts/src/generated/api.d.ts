@@ -3000,7 +3000,7 @@ export interface components {
         };
         /**
          * SessionEvent
-         * @description One skill, Agent, or workflow trigger within an Agent node.
+         * @description One skill, Agent, workflow, or knowledge-document trigger within an Agent node.
          */
         SessionEvent: {
             /**
@@ -3017,7 +3017,7 @@ export interface components {
             documentId?: string | null;
             /**
              * Documentrevision
-             * @description Document revision evidence: digest:<hash> / provider revision / unknown.
+             * @description Raw document revision evidence: digest:<hash> / provider revision / unknown; differs from objectRevision for provider documents.
              */
             documentRevision?: string | null;
             /**
@@ -3038,7 +3038,7 @@ export interface components {
             name: string | null;
             /**
              * Objectrevision
-             * @description tag:<tag> / digest:<hash> / unknown evidence for the triggered object.
+             * @description tag:<tag> / digest:<hash> / provider:<value> / unknown evidence for the triggered object.
              */
             objectRevision?: string | null;
             /**
