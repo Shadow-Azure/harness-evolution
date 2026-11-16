@@ -248,20 +248,51 @@ async def test_concurrent_cache_upserts_converge_on_one_probe(
     assert count == 1
 
 
-async def test_reuse_increments_counter_and_tracks_last_run(
+async def test_reuse_is_idempotent_per_run_and_tracks_last_run(
     attribution_repository: tuple[Database, AttributionRepository],
 ) -> None:
-    """Cache hits accumulate reuse facts without replacing the probe."""
+    """A repeated hit from the same run is not counted twice."""
     database, repository = attribution_repository
     await repository.upsert_probe(probe_write("probe-a"))
-    await repository.reuse("probe-a", RUN_ID, NOW)
-    await repository.reuse("probe-a", OTHER_RUN_ID, LATER)
+    assert await repository.reuse("probe-a", RUN_ID, NOW) == 1
+    assert await repository.reuse("probe-a", RUN_ID, LATER) == 0
+    assert await repository.reuse("probe-a", OTHER_RUN_ID, LATER) == 1
+    assert await repository.reuse("probe-missing", OTHER_RUN_ID, LATER) == 0
 
     async with database.session() as session:
         row = (await session.execute(select(probe_reports))).mappings().one()
     assert row["reused_count"] == 2
     assert row["last_reused_run_id"] == OTHER_RUN_ID
     assert row["updated_at"] == LATER.replace(tzinfo=None)
+
+
+async def test_probe_write_validates_identity_and_normalizes_version(
+    attribution_repository: tuple[Database, AttributionRepository],
+) -> None:
+    """Malformed V2 identities fail before SQL instead of degrading at runtime."""
+    _database, _repository = attribution_repository
+    base = probe_write()
+    with pytest.raises(ValueError, match="probe_id"):
+        replace(base, probe_id="")
+    with pytest.raises(ValueError, match="workspace_id"):
+        replace(base, workspace_id="")
+    with pytest.raises(ValueError, match="bad_case_id"):
+        replace(base, bad_case_id="")
+    with pytest.raises(ValueError, match="session_id"):
+        replace(base, session_id="")
+    with pytest.raises(ValueError, match="probe_type"):
+        replace(base, probe_type="workflow")
+    with pytest.raises(ValueError, match="conclusion"):
+        replace(base, conclusion="maybe")
+    with pytest.raises(ValueError, match="confidence"):
+        replace(base, confidence=1.5)
+    with pytest.raises(ValueError, match="confidence"):
+        replace(base, confidence=-0.1)
+
+    blank = replace(base, object_version="")
+    missing = replace(base, object_version=None)
+    assert blank.object_version is None
+    assert blank.cache_key == missing.cache_key
 
 
 async def test_attribution_count_distincts_the_object_identity(

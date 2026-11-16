@@ -153,6 +153,8 @@ async def test_candidates_persist_included_and_excluded_rows(
     )
 
     records = await repository.list(RUN_ID)
+    assert await repository.count(RUN_ID) == 2
+    assert await repository.count("run-candidate-missing") == 0
     assert [record.bad_case_id for record in records] == [CASE_A, CASE_B]
     assert records[0].included is True
     assert records[0].included_reason == "self_report"

@@ -35,16 +35,6 @@ INCLUDED_REASONS: frozenset[str] = frozenset(
     {"self_report", "after_object", "both", "policy_excluded", "order_unknown"},
 )
 
-CACHE_KEY_FIELDS = (
-    "workspace_id",
-    "bad_case_id",
-    "probe_type",
-    "probe_object",
-    "object_version",
-    "policy_version",
-    "attribution_engine",
-)
-
 
 def attribution_cache_key(
     workspace_id: str,
@@ -95,6 +85,20 @@ class ProbeWrite:
     created_run_id: str | None
     created_at: datetime
     updated_at: datetime
+
+    def __post_init__(self) -> None:
+        """Reject malformed identities and normalize an empty object version."""
+        for field_name in ("probe_id", "workspace_id", "bad_case_id", "session_id"):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must not be empty")
+        if self.probe_type not in {"skill", "agent"}:
+            raise ValueError(f"unknown probe_type: {self.probe_type}")
+        if self.conclusion not in {"attributed", "non_target"}:
+            raise ValueError(f"unknown conclusion: {self.conclusion}")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(f"confidence must be within [0, 1]: {self.confidence}")
+        if self.object_version == "":
+            object.__setattr__(self, "object_version", None)
 
     @property
     def cache_key(self) -> str:
@@ -333,11 +337,20 @@ class AttributionRepository:
         async with self._database.transaction() as session:
             await session.execute(statement)
 
-    async def reuse(self, probe_id: str, run_id: str, now: datetime) -> None:
-        """Record one cache hit without replacing the reused probe."""
+    async def reuse(self, probe_id: str, run_id: str, now: datetime) -> int:
+        """Record one cache hit, at most once per run.
+
+        Returns:
+            The number of updated rows: 0 for an unknown probe or a repeated hit
+            from the same run, 1 when the counter advanced.
+        """
         statement = (
             update(probe_reports)
-            .where(probe_reports.c.probe_id == probe_id)
+            .where(
+                probe_reports.c.probe_id == probe_id,
+                (probe_reports.c.last_reused_run_id.is_(None))
+                | (probe_reports.c.last_reused_run_id != run_id),
+            )
             .values(
                 reused_count=probe_reports.c.reused_count + 1,
                 last_reused_run_id=run_id,
@@ -345,7 +358,8 @@ class AttributionRepository:
             )
         )
         async with self._database.transaction() as session:
-            await session.execute(statement)
+            result = await session.execute(statement)
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def list_attributions(
         self,
@@ -485,3 +499,21 @@ class EvolutionRunCandidateRepository:
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(record_from_evolution_run_candidate(row) for row in rows)
+
+    async def count(self, run_id: str) -> int:
+        """Count persisted candidates so prepare can audit the full snapshot.
+
+        Args:
+            run_id: Evolution run whose candidate rows are counted.
+
+        Returns:
+            The number of candidate rows currently stored for the run.
+        """
+        statement = (
+            select(func.count())
+            .select_from(evolution_run_candidates)
+            .where(evolution_run_candidates.c.run_id == run_id)
+        )
+        async with self._database.session() as session:
+            count = (await session.execute(statement)).scalar_one()
+        return int(count)

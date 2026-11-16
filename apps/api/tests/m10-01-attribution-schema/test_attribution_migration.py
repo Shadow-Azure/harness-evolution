@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -299,6 +300,7 @@ async def test_attribution_migration_backfills_legacy_rows_and_evolves_schema(
 
         assert set(probe_schema["columns"]) >= PROBE_ADDED_COLUMNS
         assert probe_schema["columns"]["attribute_type"]["nullable"] is True
+        assert "DOUBLE" in str(probe_schema["columns"]["confidence"]["type"]).upper()
         assert probe_schema["columns"]["cache_key"]["nullable"] is True
         assert probe_schema["columns"]["object_version"]["nullable"] is True
         assert not probe_schema["columns"]["workspace_id"]["nullable"]
@@ -547,3 +549,77 @@ async def test_attribution_migration_skips_missing_external_tables(tmp_path: Pat
         assert "fk_evolution_run_candidates_run" in candidate_schema["foreign_keys"]
     finally:
         await database.dispose()
+
+
+def load_migration_module() -> object:
+    """Load revision 0020 as an importable module for a pure helper contract."""
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "alembic"
+        / "versions"
+        / "0020_v2_attribution_schema.py"
+    )
+    spec = importlib.util.spec_from_file_location("revision_0020", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_cache_key_backfill_plan_skips_duplicate_and_orphan_rows() -> None:
+    """Duplicate identities and orphan probes are counted, not silently dropped."""
+    module = load_migration_module()
+    rows = [
+        {
+            "probe_id": "probe-a",
+            "workspace_id": WORKSPACE_ID,
+            "probe_type": "skill",
+            "probe_object": "deep-research",
+            "object_version": "v2.0.0",
+            "policy_version": "v1",
+            "attribution_engine": "legacy-probe-import",
+            "bad_case_id": ISSUE_CASE_ID,
+        },
+        {
+            "probe_id": "probe-b",
+            "workspace_id": WORKSPACE_ID,
+            "probe_type": "skill",
+            "probe_object": "deep-research",
+            "object_version": "v2.0.0",
+            "policy_version": "v1",
+            "attribution_engine": "legacy-probe-import",
+            "bad_case_id": ISSUE_CASE_ID,
+        },
+        {
+            "probe_id": "probe-orphan",
+            "workspace_id": DEFAULT_WORKSPACE_ID,
+            "probe_type": "skill",
+            "probe_object": "orphan",
+            "object_version": None,
+            "policy_version": "v1",
+            "attribution_engine": "legacy-probe-import",
+            "bad_case_id": None,
+        },
+    ]
+
+    updates, skipped = module._cache_key_backfill_plan(rows, set())  # type: ignore[attr-defined]
+
+    assert [probe_id for probe_id, _key in updates] == ["probe-a"]
+    assert skipped == 2
+    expected = attribution_cache_key(
+        WORKSPACE_ID,
+        ISSUE_CASE_ID,
+        "skill",
+        "deep-research",
+        "v2.0.0",
+        "v1",
+        "legacy-probe-import",
+    )
+    assert updates[0][1] == expected
+
+    retry_updates, retry_skipped = module._cache_key_backfill_plan(  # type: ignore[attr-defined]
+        rows[1:],
+        {expected},
+    )
+    assert retry_updates == []
+    assert retry_skipped == 2

@@ -166,6 +166,11 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _float(value: object, fallback: float) -> float:
+    """Read a numeric column and degrade absent legacy-column values."""
+    return float(value) if isinstance(value, (int, float)) else fallback
+
+
 def _row_bad_case(mapping: RowMapping) -> BadCaseRow:
     """Convert one selected bad-case mapping into a boundary DTO."""
     return BadCaseRow(
@@ -211,11 +216,11 @@ def _row_probe(mapping: RowMapping) -> ProbeReportRow:
         updated_at=as_shanghai(mapping["updated_at"]),
         workspace_id=_text(mapping.get("workspace_id")) or "ws-default",
         conclusion=_text(mapping.get("conclusion")) or "attributed",
-        confidence=float(mapping["confidence"]) if "confidence" in mapping else 0.8,
+        confidence=_float(mapping.get("confidence"), 0.8),
         policy_version=_text(mapping.get("policy_version")) or "v1",
         attribution_engine=(_text(mapping.get("attribution_engine")) or "legacy-probe-import"),
         cache_key=_text(mapping.get("cache_key")),
-        reused_count=int(mapping["reused_count"]) if "reused_count" in mapping else 0,
+        reused_count=int(mapping["reused_count"]) if mapping.get("reused_count") is not None else 0,
     )
 
 

@@ -8,6 +8,8 @@ Create Date: 2026-11-17
 from __future__ import annotations
 
 import hashlib
+import logging
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import sqlalchemy as sa
@@ -19,6 +21,8 @@ revision: str = "0020"
 down_revision: str | None = "0019"
 branch_labels: str | None = None
 depends_on: str | None = None
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_WORKSPACE_ID = "ws-default"
 DEFAULT_CONCLUSION = "attributed"
@@ -41,7 +45,7 @@ PROBE_ADDED_COLUMNS: tuple[sa.Column[Any], ...] = (
     ),
     sa.Column(
         "confidence",
-        sa.Float(),
+        sa.Double(),
         nullable=False,
         server_default=sa.text("0.8"),
     ),
@@ -338,10 +342,51 @@ def _backfill_cache_keys() -> None:
         .mappings()
         .all()
     )
-    seen: set[str] = set()
+    existing_keys = {
+        str(value)
+        for value in bind.execute(
+            sa.text("SELECT cache_key FROM probe_reports WHERE cache_key IS NOT NULL"),
+        ).scalars()
+    }
+    updates, skipped = _cache_key_backfill_plan(rows, existing_keys)
+    for probe_id, cache_key in updates:
+        bind.execute(
+            sa.text(
+                "UPDATE probe_reports SET cache_key = :cache_key "
+                "WHERE probe_id = :probe_id AND cache_key IS NULL",
+            ),
+            {"cache_key": cache_key, "probe_id": probe_id},
+        )
+    if skipped:
+        logger.warning(
+            "0020 left %s probes with duplicate cache identity unkeyed",
+            skipped,
+        )
+
+
+def _cache_key_backfill_plan(
+    rows: Iterable[Mapping[str, Any]],
+    existing_keys: set[str],
+) -> tuple[list[tuple[str, str]], int]:
+    """Plan cache-key updates while counting skipped duplicate identities.
+
+    Args:
+        rows: Probe rows selected with ``cache_key IS NULL`` and their newest
+            linked bad case.
+        existing_keys: Cache keys already present, so a retry never duplicates
+            an existing unique key.
+
+    Returns:
+        ``(probe_id, cache_key)`` updates and the number of skipped rows whose
+        identity already had a key (or an orphan row with no linked case).
+    """
+    seen = set(existing_keys)
+    updates: list[tuple[str, str]] = []
+    skipped = 0
     for row in rows:
         bad_case_id = row["bad_case_id"]
         if bad_case_id is None:
+            skipped += 1
             continue
         workspace_id = row["workspace_id"] or DEFAULT_WORKSPACE_ID
         cache_key = _cache_key(
@@ -354,15 +399,11 @@ def _backfill_cache_keys() -> None:
             str(row["attribution_engine"]),
         )
         if cache_key in seen:
+            skipped += 1
             continue
         seen.add(cache_key)
-        bind.execute(
-            sa.text(
-                "UPDATE probe_reports SET cache_key = :cache_key "
-                "WHERE probe_id = :probe_id AND cache_key IS NULL",
-            ),
-            {"cache_key": cache_key, "probe_id": row["probe_id"]},
-        )
+        updates.append((str(row["probe_id"]), cache_key))
+    return updates, skipped
 
 
 def _normalize_reused_count() -> None:

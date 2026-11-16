@@ -327,6 +327,10 @@ class BadCaseService:
             ("unanalyzed", "analyzed_nonissue", "analyzed_issue"),
         )
         probe_id = _safe_text(row.probe_id)
+        if status is None and probe_id is not None:
+            v2 = self._v2_analysis_model(case_id, session_id, probe_id, probes, warnings)
+            if v2 is not None:
+                return v2
         if status is None:
             warnings.append(
                 _warning(
@@ -412,6 +416,74 @@ class BadCaseService:
             probe_id=probe_id,
             attribute_type=attribute_type,
             result=result,
+            display_state=_display_state(attribute_type),
+        )
+
+    def _v2_analysis_model(
+        self,
+        case_id: str,
+        session_id: str,
+        probe_id: str,
+        probes: Mapping[str, ProbeReportRow],
+        warnings: list[ExternalReadWarning],
+    ) -> BadCaseAnalysisReadModel | None:
+        """Map a V2 NULL-status link onto the legacy three-state vocabulary.
+
+        ``bad_case_analysis.analysis_status`` stays empty for V2 rows; the probe
+        conclusion is the source of truth. A missing probe or a session mismatch
+        still falls back to the original validation warnings.
+        """
+        probe = probes.get(probe_id)
+        if probe is None:
+            warnings.append(
+                _warning(
+                    "PROBE_NOT_FOUND",
+                    "external analysis references a missing probe",
+                    bad_case_id=case_id,
+                    probe_id=probe_id,
+                ),
+            )
+            return _empty_analysis()
+        if _safe_text(probe.session_id) != session_id:
+            warnings.append(
+                _warning(
+                    "PROBE_SESSION_MISMATCH",
+                    "external probe belongs to a different session",
+                    bad_case_id=case_id,
+                    probe_id=probe_id,
+                ),
+            )
+            return _empty_analysis()
+        if probe.conclusion == "non_target":
+            return BadCaseAnalysisReadModel(
+                status="analyzed_nonissue",
+                probe_id=None,
+                attribute_type=None,
+                result=MappingProxyType(
+                    {"reason": probe.probe_description, "reasoning": []},
+                ),
+                display_state="analyzed_nonissue",
+            )
+        attribute_type: AttributeType | None = _literal(
+            probe.attribute_type,
+            ("model", "prompt", "error"),
+        )
+        if attribute_type is None:
+            warnings.append(
+                _warning(
+                    "INVALID_ATTRIBUTE_TYPE",
+                    "external probe attribute type is invalid",
+                    bad_case_id=case_id,
+                    probe_id=probe_id,
+                    field="attribute_type",
+                ),
+            )
+            return _empty_analysis()
+        return BadCaseAnalysisReadModel(
+            status="analyzed_issue",
+            probe_id=probe_id,
+            attribute_type=attribute_type,
+            result=MappingProxyType({"summary": probe.probe_description}),
             display_state=_display_state(attribute_type),
         )
 
