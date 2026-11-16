@@ -454,6 +454,12 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         const input = document.querySelector("[data-testid='search-input']");
         input.value = ${JSON.stringify(searchId)};
         input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }));
       })()`,
     });
     const searched = await waitForDocument(
@@ -505,6 +511,12 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         const input = document.querySelector("[data-testid='search-input']");
         input.value = ${JSON.stringify(initial.selectedId)};
         input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }));
       })()`,
     });
     const byId = await waitForDocument(

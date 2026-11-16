@@ -22,10 +22,23 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  searchQuery: {
+    type: String,
+    default: "",
+  },
+  filterActive: {
+    type: Boolean,
+    default: false,
+  },
+  pendingSessions: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits<{
   retry: [];
+  reset: [];
   select: [sessionId: string];
 }>();
 
@@ -119,9 +132,38 @@ function handleKeydown(event: KeyboardEvent) {
       v-else-if="items.length === 0"
       class="empty-list"
       role="status"
+      data-testid="session-list-empty"
     >
-      <strong>没有匹配当前筛选的 session</strong>
-      <span>请输入完整 root Session ID 查询；清空搜索可恢复最新列表。</span>
+      <template v-if="searchQuery">
+        <strong>未找到匹配 “{{ searchQuery }}” 的 Session</strong>
+        <span>请检查完整 root session ID；查询只按完整 ID 精确匹配。</span>
+        <button
+          class="empty-action"
+          type="button"
+          @click="emit('reset')"
+        >
+          恢复最新 10
+        </button>
+      </template>
+      <template v-else-if="filterActive">
+        <strong>没有匹配当前筛选的 session</strong>
+        <span>调整状态筛选，或恢复最新 10 个 Session。</span>
+        <button
+          class="empty-action"
+          type="button"
+          @click="emit('reset')"
+        >
+          恢复最新 10
+        </button>
+      </template>
+      <template v-else-if="pendingSessions > 0">
+        <strong>该工作空间暂无可展示的 Session</strong>
+        <span>{{ pendingSessions }} 个待同步根会话的轨迹仍在补齐，完成后会自动出现。</span>
+      </template>
+      <template v-else>
+        <strong>该工作空间还没有上报 bad case</strong>
+        <span>上报 bad case 后，这里会显示最新 10 个 Session。</span>
+      </template>
     </div>
     <template v-else>
       <SessionCard
@@ -200,5 +242,23 @@ function handleKeydown(event: KeyboardEvent) {
   margin-top: 4px;
   color: var(--text-faint);
   font-size: 11.5px;
+}
+
+.empty-action {
+  justify-self: center;
+  margin-top: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.empty-action:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 </style>
