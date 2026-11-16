@@ -58,6 +58,9 @@ const currentRole = computed(() =>
 const sessionsPath = computed(() =>
   workspaceId.value ? workspacePath(workspaceId.value, "sessions") : "/workspaces",
 );
+const overviewPath = computed(() =>
+  workspaceId.value ? workspacePath(workspaceId.value, "overview") : "/workspaces",
+);
 const evolutionPath = computed(() =>
   workspaceId.value ? workspacePath(workspaceId.value, "evolution") : "/workspaces",
 );
@@ -70,6 +73,7 @@ const canManage = computed(() =>
 
 const activeSection = computed(() => {
   const name = typeof route.name === "string" ? route.name : "";
+  if (name === "workspace-overview") return "overview";
   if (
     name === "workspace-sessions" ||
     name === "workspace-session" ||
@@ -314,7 +318,7 @@ onBeforeUnmount(() => {
     <RouterLink
       aria-label="Harness Evolution"
       class="brand"
-      :to="sessionsPath"
+      :to="overviewPath"
     >
       <span
         class="brand-mark"
@@ -330,6 +334,14 @@ onBeforeUnmount(() => {
       class="primary-nav"
       aria-label="Primary"
     >
+      <RouterLink
+        id="tn-overview"
+        class="tn-item"
+        :class="{ active: activeSection === 'overview' }"
+        :to="overviewPath"
+      >
+        总览<span class="tn-sub">bad case 趋势</span>
+      </RouterLink>
       <RouterLink
         id="tn-sessions"
         class="tn-item"
@@ -545,10 +557,12 @@ onBeforeUnmount(() => {
 .primary-nav {
   display: flex;
   align-items: stretch;
+  min-width: 0;
 }
 
 .tn-item {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   margin-bottom: -1px;
   padding: 0 18px;
@@ -557,6 +571,7 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .tn-sub {
@@ -779,6 +794,18 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 
+@media (max-width: 1700px) {
+  .tn-note {
+    display: none;
+  }
+}
+
+@media (max-width: 1500px) {
+  .tn-sub {
+    display: none;
+  }
+}
+
 @media (max-width: 1100px) {
   .brand-copy small {
     display: none;
@@ -815,6 +842,16 @@ onBeforeUnmount(() => {
   .tn-item {
     padding-inline: 7px;
     font-size: 12.5px;
+  }
+
+  .primary-nav {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .primary-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .actions {

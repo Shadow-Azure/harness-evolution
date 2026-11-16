@@ -52,6 +52,29 @@ afterEach(() => {
 });
 
 describe("web router", () => {
+  it("routes the workspace root to the lazy overview page", async () => {
+    const router = createAppRouter();
+    const shell = router.options.routes.find(
+      (route) => route.path === "/workspaces/:wid",
+    );
+    const overview = shell?.children?.find(
+      (route) => route.path === "overview",
+    );
+
+    expect(overview?.name).toBe("workspace-overview");
+    expect(typeof overview?.component).toBe("function");
+    const component = await (
+      overview?.component as () => Promise<{ default: { name: string } }>
+    )();
+    expect(component.default.name).toBe("OverviewPage");
+
+    signIn();
+    const ready = createAppRouter();
+    await ready.push(ws);
+    await ready.isReady();
+    expect(ready.currentRoute.value.path).toBe(`${ws}/overview`);
+  });
+
   it("mounts the synchronous session list inside the workspace shell", () => {
     const router = createAppRouter();
     const shell = router.options.routes.find(
@@ -224,7 +247,7 @@ describe("web router", () => {
     await router.push("/");
     await router.isReady();
 
-    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
+    expect(router.currentRoute.value.path).toBe(`${ws}/overview`);
   });
 
   it("keeps login public and sends authenticated users to a safe redirect", async () => {
@@ -242,7 +265,7 @@ describe("web router", () => {
     await router.push("/login?redirect=//evil.example");
     await router.isReady();
 
-    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions`);
+    expect(router.currentRoute.value.fullPath).toBe(`${ws}/overview`);
   });
 
   it("forces a first-login password change while preserving the destination", async () => {

@@ -58,6 +58,41 @@ describe("workspace query keys", () => {
       workspaceId,
       "catalogs",
     ]);
+    expect(queryKeys.overview(workspaceId)).toEqual([
+      "ws",
+      workspaceId,
+      "overview",
+    ]);
+    expect(
+      queryKeys.overviewSummary(workspaceId, { range: 30, objects: ["a"] }),
+    ).toEqual([
+      "ws",
+      workspaceId,
+      "overview",
+      "summary",
+      { range: 30, objects: ["a"] },
+    ]);
+    expect(
+      queryKeys.overviewTrend(workspaceId, { range: 30, grain: "week" }),
+    ).toEqual([
+      "ws",
+      workspaceId,
+      "overview",
+      "trend",
+      { range: 30, grain: "week" },
+    ]);
+    expect(
+      queryKeys.overviewSources(workspaceId, { objects: [] }),
+    ).toEqual(["ws", workspaceId, "overview", "sources", { objects: [] }]);
+    expect(
+      queryKeys.overviewCases(workspaceId, { page: 2, pageSize: 8 }),
+    ).toEqual([
+      "ws",
+      workspaceId,
+      "overview",
+      "cases",
+      { page: 2, pageSize: 8 },
+    ]);
     expect(queryKeys.adminMembers(workspaceId)).toEqual([
       "ws",
       workspaceId,

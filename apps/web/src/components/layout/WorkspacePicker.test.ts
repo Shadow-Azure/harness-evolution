@@ -39,6 +39,7 @@ async function mountPicker(path = "/workspaces/ws-a/sessions") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/workspaces/:wid/overview", component: { template: "<div />" } },
       { path: "/workspaces/:wid/sessions", component: { template: "<div />" } },
       { path: "/workspaces/:wid/evolution", component: { template: "<div />" } },
       {
@@ -95,6 +96,19 @@ describe("WorkspacePicker", () => {
     expect(
       queryClient.getQueryState(queryKeys.sessions("ws-b"))?.isInvalidated,
     ).not.toBe(true);
+  });
+
+  it("opens the overview in another workspace with default filters", async () => {
+    const { router, wrapper } = await mountPicker(
+      "/workspaces/ws-a/overview?tab=cases&range=7&grain=day&objects=deep-research&type=self&page=2",
+    );
+
+    await wrapper.get("[data-testid='workspace-option-ws-b']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      "/workspaces/ws-b/overview?tab=cases&range=90&grain=week",
+    );
   });
 
   it("keeps the URL hash when switching workspaces", async () => {

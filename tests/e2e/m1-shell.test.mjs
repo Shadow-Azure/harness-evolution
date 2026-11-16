@@ -347,6 +347,7 @@ test("m1-shell exposes the prototype navigation, demo state, and clean responsiv
     );
     assert.equal(initial.path, `${workspaceBase}/sessions`);
     assert.deepEqual(initial.links, [
+      "总览bad case 趋势",
       "Session 错误查看会话轨迹与归因",
       "自进化报告驱动的迭代优化",
       "空间管理成员 · 上报 · 鉴权",

@@ -4,6 +4,10 @@ import { computed, ref } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import { queryKeys } from "../../api/queryKeys";
+import {
+  DEFAULT_OVERVIEW_STATE,
+  overviewQuery,
+} from "../../pages/overview/overviewUrl";
 import { useAuthStore } from "../../stores/auth";
 import {
   canManageWorkspace,
@@ -69,11 +73,18 @@ async function switchWorkspace(workspaceId: string): Promise<void> {
     });
   }
   rememberWorkspace(workspaceId);
+  const path = targetPath(workspaceId);
   const query = { ...route.query };
   delete query.reason;
+  // The overview owns its filters in the URL; opening another workspace starts
+  // from the canonical defaults so the first requests never carry the previous
+  // workspace's range/objects/type.
+  const nextQuery = path.endsWith("/overview")
+    ? overviewQuery(DEFAULT_OVERVIEW_STATE)
+    : query;
   await router.push({
-    path: targetPath(workspaceId),
-    query,
+    path,
+    query: nextQuery,
     hash: route.hash,
   });
 }

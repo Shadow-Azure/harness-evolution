@@ -86,6 +86,6 @@ describe("MSW-driven auth guard branches", () => {
     await router.push("/login?redirect=//evil.example");
     await router.isReady();
 
-    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions`);
+    expect(router.currentRoute.value.fullPath).toBe(`${ws}/overview`);
   });
 });

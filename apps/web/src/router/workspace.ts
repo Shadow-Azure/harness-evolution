@@ -3,8 +3,11 @@ import type { SessionWorkspace } from "@harness/contracts";
 /** localStorage key remembering the last workspace the person opened. */
 export const LAST_WORKSPACE_KEY = "harness.lastWorkspaceId";
 
-/** Default child page inside a workspace until the overview page lands. */
-export const DEFAULT_WORKSPACE_PATH = "sessions";
+/** Default child page inside a workspace: the bad-case overview. */
+export const DEFAULT_WORKSPACE_PATH = "overview";
+
+/** Session browser child page; the landing page for legacy session links. */
+export const SESSIONS_WORKSPACE_PATH = "sessions";
 
 /**
  * Read the remembered workspace id without throwing in private or test contexts.
@@ -104,7 +107,7 @@ export function defaultLandingPath(session: {
  */
 export function switchableWorkspaceChild(child: string): string {
   if (child.startsWith("/sessions")) {
-    return `/${DEFAULT_WORKSPACE_PATH}`;
+    return `/${SESSIONS_WORKSPACE_PATH}`;
   }
   if (
     child.startsWith("/evolution/runs") ||
@@ -117,13 +120,20 @@ export function switchableWorkspaceChild(child: string): string {
 
 /**
  * Map one legacy workspace-less path onto the shell.
+ *
+ * `/` is the retired application root and lands on the new overview, while
+ * `/sessions` and `/errors` were session-browser links and must keep opening
+ * the Session list instead of being reinterpreted as an overview request.
  * @param workspaceId Resolved workspace identifier.
  * @param path Legacy path such as `/sessions/s-1` or `/evolution`.
  * @returns The equivalent workspace path without the query string.
  */
 export function legacyWorkspaceTarget(workspaceId: string, path: string): string {
-  if (path === "/" || path === "/errors" || path === "/sessions") {
+  if (path === "/") {
     return workspacePath(workspaceId, DEFAULT_WORKSPACE_PATH);
+  }
+  if (path === "/errors" || path === "/sessions") {
+    return workspacePath(workspaceId, SESSIONS_WORKSPACE_PATH);
   }
   return workspacePath(workspaceId, path);
 }

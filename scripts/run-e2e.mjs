@@ -43,7 +43,9 @@ nodeArguments.push(...selectedFiles);
 
 const result = spawnSync(process.execPath, nodeArguments, {
   stdio: "inherit",
-  timeout: Number(process.env.HE_E2E_TIMEOUT_MS ?? 180_000),
+  // The real-browser suite now covers 35 cases (M1-M8). Keep a bounded budget
+  // but leave room for cold Vite/Chrome starts on shared CI runners.
+  timeout: Number(process.env.HE_E2E_TIMEOUT_MS ?? 600_000),
   killSignal: "SIGTERM",
 });
 if (result.error?.code === "ETIMEDOUT") {
