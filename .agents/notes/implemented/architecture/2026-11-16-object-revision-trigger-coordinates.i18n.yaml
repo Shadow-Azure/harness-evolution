@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-16-object-revision-trigger-coordinates.md
+2026-11-16-object-revision-trigger-coordinates.md: 676e96cf222925883072beee54de9761d559ca5a
+2026-11-16-object-revision-trigger-coordinates.en.md: d1587c8d6ed2ce078857af37b7228de51d52b484

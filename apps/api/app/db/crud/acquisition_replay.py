@@ -721,6 +721,7 @@ async def replace_normalized_root(
                     errors_count=node.errors_count,
                     meta=_json_value(node.agent_meta),
                     sort_key=node.sort_key,
+                    tree_index=node.tree_index,
                 ),
             )
         for node in tree.nodes:
@@ -733,9 +734,12 @@ async def replace_normalized_root(
                         message_offset=event.message_offset,
                         kind=event.kind,
                         name=event.name,
+                        object_version=event.object_version,
+                        object_revision=event.object_revision,
                         definition_hash=event.definition_hash,
                         description=event.description,
                         tool_use_id=event.tool_use_id,
+                        triggered_at=event.triggered_at,
                         relation_confidence=event.relation_confidence,
                     ),
                 )

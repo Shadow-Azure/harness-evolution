@@ -1445,10 +1445,14 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
             cast(String, evidence_columns["agents"]["agent_definition_hash"]["type"]).length == 64
         )
         assert evidence_columns["agents"]["definition_source"]["nullable"] is True
+        assert evidence_columns["agents"]["tree_index"]["nullable"] is False
+        assert normalized_server_default(evidence_columns["agents"]["tree_index"]) == "0"
         assert (
             cast(String, evidence_columns["agent_events"]["object_revision"]["type"]).length == 96
         )
         assert cast(String, evidence_columns["agent_events"]["file_read_hash"]["type"]).length == 64
+        assert cast(String, evidence_columns["agent_events"]["object_version"]["type"]).length == 64
+        assert evidence_columns["agent_events"]["triggered_at"]["nullable"] is True
         assert evidence_columns["agent_events"]["read_complete"]["nullable"] is True
         assert evidence_columns["agent_events"]["relation_confidence"]["nullable"] is True
         async with database.session() as session:

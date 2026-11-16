@@ -212,6 +212,7 @@ agents = Table(
     Column("errors_count", Integer, nullable=False),
     Column("meta", JSON, nullable=True),
     Column("sort_key", Float, nullable=False),
+    Column("tree_index", Integer, nullable=False, server_default="0"),
     UniqueConstraint("root_session_id", "id", name="uq_agents_root_id"),
     Index("ix_agents_parent_agent_id", "parent_agent_id"),
     Index("ix_agents_task_kind", "task_kind"),
@@ -240,6 +241,8 @@ agent_events = Table(
     Column("kind", String(16), nullable=False),
     Column("name", String(255), nullable=True),
     Column("object_revision", String(96), nullable=True),
+    Column("object_version", String(64), nullable=True),
+    Column("triggered_at", DateTime(timezone=True), nullable=True),
     Column("definition_hash", String(64), nullable=True),
     Column("file_read_hash", String(64), nullable=True),
     Column("read_complete", Boolean, nullable=True),
@@ -249,6 +252,8 @@ agent_events = Table(
     UniqueConstraint("agent_id", "event_index", name="uq_agent_events_agent_index"),
     Index("ix_agent_events_agent_line", "agent_id", "line_no"),
     Index("ix_agent_events_agent_message", "agent_id", "message_offset"),
+    Index("ix_agent_events_agent_triggered", "agent_id", "triggered_at"),
+    Index("ix_agent_events_object_version", "agent_id", "kind", "name", "object_version"),
 )
 
 

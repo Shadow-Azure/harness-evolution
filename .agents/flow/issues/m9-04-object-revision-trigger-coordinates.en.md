@@ -10,13 +10,15 @@ depends:
   - m9-02
   - m9-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/acquisition/**
   - apps/api/app/db/**
   - apps/api/alembic/**
   - packages/contracts/**
   - tests/**
+  - apps/api/tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

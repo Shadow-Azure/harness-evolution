@@ -55,6 +55,7 @@ class AssembledAgentNode:
     agent_definition_hash: str | None
     definition_source: DefinitionSource | None
     sort_key: float
+    tree_index: int
     events: tuple[ParsedEvent, ...]
     user_turns: tuple[ParsedUserTurn, ...]
     agent_meta: Mapping[str, object]
@@ -185,28 +186,8 @@ def _with_relation(
     return replace(node, events=events)
 
 
-def _skill_definition_hashes(transcript: ParsedTranscript) -> dict[str, str]:
-    """Map a Skill call identity to the injected skill body hash."""
-    return {
-        evidence.tool_use_id: evidence.content_hash
-        for evidence in transcript.evidence
-        if evidence.kind == "skill_definition"
-        and evidence.tool_use_id is not None
-        and evidence.content_hash is not None
-    }
-
-
 def _transcript_node(transcript: ParsedTranscript) -> AssembledAgentNode:
     """Project one normalized transcript into a parentless node candidate."""
-    skill_hashes = _skill_definition_hashes(transcript)
-    events = tuple(
-        replace(event, definition_hash=skill_hashes[event.tool_use_id])
-        if event.kind == "skill"
-        and event.tool_use_id is not None
-        and event.tool_use_id in skill_hashes
-        else event
-        for event in transcript.events
-    )
     return AssembledAgentNode(
         id=transcript.agent_id,
         root_session_id=transcript.root_session_id,
@@ -232,7 +213,8 @@ def _transcript_node(transcript: ParsedTranscript) -> AssembledAgentNode:
         agent_definition_hash=transcript.agent_definition_hash,
         definition_source=transcript.definition_source,
         sort_key=0.0,
-        events=events,
+        tree_index=0,
+        events=transcript.events,
         user_turns=transcript.user_turns,
         agent_meta=transcript.agent_meta,
     )
@@ -272,6 +254,7 @@ def _workflow_node(
         agent_definition_hash=None,
         definition_source=None,
         sort_key=0.0,
+        tree_index=0,
         events=(),
         user_turns=(),
         agent_meta={},
@@ -314,6 +297,71 @@ def _depths(nodes: dict[str, AssembledAgentNode], main_id: str) -> dict[str, int
             depth += 1
         depths[node_id] = depth
     return depths
+
+
+def _apply_agent_revisions(
+    nodes: dict[str, AssembledAgentNode],
+    transcripts: tuple[ParsedTranscript, ...],
+) -> dict[str, AssembledAgentNode]:
+    """Attach child Agent definition revisions to their parent trigger events.
+
+    The revision belongs to the parent's ``kind=agent`` event, but its body and
+    builtin marker are only available in the child transcript. A parent tag from
+    explicit call metadata always wins; a missing child revision stays unknown.
+    """
+    for transcript in transcripts:
+        if transcript.agent_revision is None:
+            continue
+        child = nodes.get(transcript.agent_id)
+        if child is None or child.parent_agent_id is None:
+            continue
+        owner = nodes.get(child.parent_agent_id)
+        if owner is None:
+            continue
+        events = []
+        for event in owner.events:
+            if event.kind == "agent" and event.tool_use_id == child.tool_use_id:
+                revision = event.object_revision
+                if revision is None or not revision.startswith("tag:"):
+                    revision = transcript.agent_revision or revision
+                event = replace(
+                    event,
+                    definition_hash=event.definition_hash or transcript.agent_definition_hash,
+                    object_revision=revision,
+                )
+            events.append(event)
+        nodes[owner.id] = replace(owner, events=tuple(events))
+    for node_id, node in nodes.items():
+        if any(event.object_revision is None for event in node.events):
+            nodes[node_id] = replace(
+                node,
+                events=tuple(
+                    replace(event, object_revision=event.object_revision or "unknown")
+                    for event in node.events
+                ),
+            )
+    return nodes
+
+
+def _assign_tree_indices(
+    nodes: dict[str, AssembledAgentNode],
+    main_id: str,
+) -> dict[str, int]:
+    """Assign one DFS preorder index per Agent, siblings in ``sort_key`` order."""
+    children: dict[str | None, list[AssembledAgentNode]] = {}
+    for node in nodes.values():
+        children.setdefault(node.parent_agent_id, []).append(node)
+    for group in children.values():
+        group.sort(key=lambda node: (node.sort_key, node.id))
+    indices: dict[str, int] = {}
+    stack = [nodes[main_id]]
+    while stack:
+        node = stack.pop()
+        indices[node.id] = len(indices)
+        stack.extend(reversed(children.get(node.id, [])))
+    if len(indices) != len(nodes):
+        raise ValueError("Agent tree contains unreachable nodes")
+    return indices
 
 
 def _canonical_order(
@@ -764,7 +812,10 @@ def _assemble_root(
             ],
         )
 
+    nodes = _apply_agent_revisions(nodes, transcripts)
     ordered_nodes = _canonical_order(nodes, anchors, depths, main_id)
+    tree_indices = _assign_tree_indices({node.id: node for node in ordered_nodes}, main_id)
+    ordered_nodes = tuple(replace(node, tree_index=tree_indices[node.id]) for node in ordered_nodes)
     main = next(node for node in ordered_nodes if node.id == main_id)
     first_turn = main_transcript.user_turns[0].prompt_text if main_transcript.user_turns else ""
     title = (first_turn or main.name or root_session_id).strip()
