@@ -4,77 +4,153 @@
   "summary": "在真实 API（SQLite + demo fixtures）+ Vite 代理 + 无头 Chrome 中验证 Session 页首屏最新 10 条、Enter 精确命中、未命中清空右侧、清空恢复最新 10 条、跨空间隔离与待同步角标，并与 plans/ui-prototype-v2 的 Session 页做视觉对照。全部场景通过。",
   "meta": "2026-11-16 · macOS · Chrome headless · 1408×900",
   "metrics": [
-    { "value": "8", "label": "冒烟场景" },
-    { "value": "8", "label": "通过" },
-    { "value": "0", "label": "缺陷" },
-    { "value": "2+1", "label": "E2E 用例" }
+    {
+      "value": "8",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "8",
+      "label": "通过"
+    },
+    {
+      "value": "0",
+      "label": "缺陷"
+    },
+    {
+      "value": "2+1",
+      "label": "E2E 用例"
+    }
   ],
   "facts": [
-    { "label": "仓库", "value": "Shadow-Azure/harness-evolution" },
-    { "label": "PR", "value": "#273" },
-    { "label": "基线", "value": "86ef309 (main)" },
-    { "label": "改动", "value": "138e5f6 (agent/develop-m8-05-r2-993a4c834ceb)" },
-    { "label": "环境", "value": "SQLite · demo fixtures · Vite proxy · 无头 Chrome" },
-    { "label": "视口", "value": "1408×900 · 浅色主题" }
+    {
+      "label": "仓库",
+      "value": "Shadow-Azure/harness-evolution"
+    },
+    {
+      "label": "PR",
+      "value": "#273"
+    },
+    {
+      "label": "基线",
+      "value": "86ef309 (main)"
+    },
+    {
+      "label": "改动",
+      "value": "a35f118 (agent/develop-m8-05-r2-993a4c834ceb)"
+    },
+    {
+      "label": "环境",
+      "value": "SQLite · demo fixtures · Vite proxy · 无头 Chrome"
+    },
+    {
+      "label": "视口",
+      "value": "1408×900 · 浅色主题"
+    }
   ],
   "matrix": {
-    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
     "rows": [
       {
         "id": "01",
         "name": "首屏最新 10 条与计数",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "ws-default 4 条 fixture 会话；标题「最新 4 / 总数 4」；请求 limit=10。",
-        "evidence": ["screenshots/01-after-default.png"]
+        "evidence": [
+          "screenshots/01-after-default.png"
+        ]
       },
       {
         "id": "02",
         "name": "输入不触发列表请求",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "CDP Network 计数：输入后等待 350ms，列表请求数仍为 0。",
-        "evidence": ["screenshots/02-after-query-hit.png"]
+        "evidence": [
+          "screenshots/02-after-query-hit.png"
+        ]
       },
       {
         "id": "03",
         "name": "Enter 精确命中完整 root ID",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "输入最后一条完整 ID 后 Enter；恰好 1 次请求，命中并选中，标题「命中 1 个」。",
-        "evidence": ["screenshots/02-after-query-hit.png"]
+        "evidence": [
+          "screenshots/02-after-query-hit.png"
+        ]
       },
       {
         "id": "04",
         "name": "未命中清空双侧空态",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "输入不存在的 ID 后回车；左栏「未找到匹配…」，右栏「未找到该 Session」，不保留旧会话。",
-        "evidence": ["screenshots/03-after-query-miss.png"]
+        "evidence": [
+          "screenshots/03-after-query-miss.png"
+        ]
       },
       {
         "id": "05",
         "name": "清空再 Enter 恢复最新 10 条",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "清空输入并回车；恢复 4 条最新会话并自动选中第一条，列表请求 q 为空、limit=10。",
-        "evidence": ["screenshots/04-after-restored.png"]
+        "evidence": [
+          "screenshots/04-after-restored.png"
+        ]
       },
       {
         "id": "06",
         "name": "跨空间隔离",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "第二个空间上报 pending root；在 ws-default 查询该 ID 为空，不跨空间泄漏。",
-        "evidence": ["screenshots/03-after-query-miss.png"]
+        "evidence": [
+          "screenshots/03-after-query-miss.png"
+        ]
       },
       {
         "id": "07",
         "name": "待同步角标与空态",
-        "status": { "kind": "pass", "label": "PASS" },
-        "detail": "空空间显示「最新 0 / 总数 0」「1 个待同步」；点击展开“轨迹尚未归一化”的说明。",
-        "evidence": ["screenshots/05-after-pending-workspace.png"]
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "空空间显示「最新 0 / 总数 0」「1 个待同步」；左右空态都说明轨迹仍在补齐，补齐后刷新页面可见。",
+        "evidence": [
+          "screenshots/05-after-pending-workspace.png"
+        ]
       },
       {
         "id": "08",
         "name": "与原型 Session 页对照",
-        "status": { "kind": "pass", "label": "PASS" },
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
         "detail": "计数、搜索占位符、Enter 提示、空态信息架构一致；H1 与当前空间展示位置为既有应用壳差异。",
-        "evidence": ["screenshots/06-prototype-session-list.png"]
+        "evidence": [
+          "screenshots/06-prototype-session-list.png"
+        ]
       }
     ]
   },
@@ -83,11 +159,23 @@
       "severity": "P3",
       "title": "侧栏 H1 与原型文案不同（有意差异）",
       "facts": [
-        { "label": "Actual", "value": "侧栏标题为「Session 浏览器」。" },
-        { "label": "Expected", "value": "原型侧栏标题为「Session」。" },
-        { "label": "Root cause", "value": "该文案被应用级导航与既有 E2E 断言引用；本 issue 不扩散到全局导航。" }
+        {
+          "label": "Actual",
+          "value": "侧栏标题为「Session 浏览器」。"
+        },
+        {
+          "label": "Expected",
+          "value": "原型侧栏标题为「Session」。"
+        },
+        {
+          "label": "Root cause",
+          "value": "该文案被应用级导航与既有 E2E 断言引用；本 issue 不扩散到全局导航。"
+        }
       ],
-      "state": { "kind": "manual", "label": "已记录 · 不在 m8-05 范围" }
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · 不在 m8-05 范围"
+      }
     }
   ],
   "screenshots": [
@@ -101,7 +189,7 @@
     {
       "src": "screenshots/01-after-default.png",
       "alt": "改动后默认 Session 列表",
-      "label": "After · 138e5f6",
+      "label": "After · a35f118",
       "caption": "改动后：标题显示「最新 4 / 总数 4」，搜索框下增加 Enter 提示，首屏 limit=10。",
       "variant": "wide"
     },
@@ -130,7 +218,7 @@
       "src": "screenshots/05-after-pending-workspace.png",
       "alt": "只有待同步根的空间",
       "label": "After · 待同步空间",
-      "caption": "待同步根只贡献角标，不进入列表；空态说明轨迹仍在补齐。",
+      "caption": "待同步根只贡献角标，不进入列表；左右空态都说明轨迹仍在补齐，补齐后刷新页面可见。",
       "variant": "wide"
     },
     {
@@ -142,7 +230,12 @@
     }
   ],
   "coverage": {
-    "columns": ["范围", "自动化覆盖", "结论", "建议"],
+    "columns": [
+      "范围",
+      "自动化覆盖",
+      "结论",
+      "建议"
+    ],
     "rows": [
       {
         "area": "请求次数与 limit",
