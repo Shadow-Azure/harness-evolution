@@ -11,14 +11,23 @@ depends:
   - m9-02
   - m9-04
 priority: P0
-status: backlog
+status: in-progress
 scope:
+  - apps/api/alembic/**
   - apps/api/app/service/acquisition/**
+  - apps/api/app/service/sessions/**
+  - apps/api/app/service/workspaces/**
   - apps/api/app/db/**
   - apps/api/app/api/**
+  - apps/api/app/utils/**
+  - apps/api/app/errors.py
   - packages/contracts/**
   - fixtures/**
   - tests/**
+  - apps/api/tests/**
+  - apps/web/src/api/**
+  - apps/web/src/pages/workspaces/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -44,9 +53,10 @@ Only Skill, Agent, and Workflow calls are normalized today; knowledge reads and 
 
 ## Implementation
 
-- Add knowledge event and object types together.
-- Require a configured knowledge root.
-- Use provider adapters.
+- Migration 0019 adds document id/revision/path/retrieval kind/scope columns and an `(agent_id, kind, document_id)` index to `agent_events`, plus the `workspaces.knowledge_roots` JSON configuration. Knowledge events do not extend `bad_cases.object_type` / `evolution_targets.object_type`.
+- Only a Read inside a configured knowledge root becomes `kind=knowledge`; Edit/Bash never do.
+- MCP knowledge tools are recognized through an explicit adapter whitelist; only id/revision/path/kind/scope/hash are stored, never bodies, chunks, or raw responses.
+- The Session API exposes knowledge events and document evidence; parser 4 → 5 replays claude-code history.
 
 ## Implementation steps
 
@@ -62,7 +72,7 @@ Only Skill, Agent, and Workflow calls are normalized today; knowledge reads and 
 ## Verification
 
 ```sh
-pnpm test:api -- tests/acquisition tests/knowledge; pnpm contract:check
+pnpm test:api -- tests/m9-05-knowledge-document-triggers; pnpm contract:check
 ```
 
 - Knowledge reads emit events.

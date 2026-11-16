@@ -185,7 +185,8 @@ erDiagram
 - **结构关系**：`parentAgentId` 指向父节点；`toolUseId` 指向父节点中触发该节点的调用，用于画布边锚点。workflow 的 `toolUseId` 填父级 workflow 调用；workflow-subagent 允许为 `null`。
 - **节点类型**：`kind` 是 `main / subagent / workflow`；`agentType` 是 `general-purpose / Explore / 自定义 teammate / workflow / workflow-subagent`；`taskKind` 是 `in_process_teammate / forked_skill / null`；`spawnDepth` 来自 meta.spawnDepth。workflow 节点没有独立 transcript，`lines=0`；forked skill 是 `kind=subagent` + `taskKind=forked_skill`、`agentType=null`，靠 `label` 显示 skill 名。
 - **runtime 与执行闭环**：`runtimeKey` 在根级出现；`executionOutcome/endReason` 在 agent 级出现，分别表达 runtime 和 M9 的执行闭环。`executionOutcome` 是 `completed / interrupted / failed / legacy_unknown`，`endReason` 是 `end_turn / tool_use_open / missing_report / external_failed / external_interrupted`。Agent 节点自身的定义证据用 `agentDefinitionHash`（body hash）与 `definitionSource`（`prompt_snapshot / api_request_shape / builtin / unknown`）。
-- **触发对象证据**：事件可选返回 `objectRevision`（`tag:<tag>` / `digest:<hash>` / `unknown`）、`definitionHash`（skill/agent 定义 body hash）、`fileReadHash`、`readComplete` 与 `relationConfidence`（`authoritative / derived / synthetic / unresolved`）；这些字段只在存在时返回，前端不拼接、不猜测。
+- **触发对象证据**：事件可选返回 `objectRevision`（`tag:<tag>` / `digest:<hash>` / `provider:<value>` / `unknown`；`provider:` 只用于知识文档的 Provider 原始 revision）、`definitionHash`（skill/agent 定义 body hash）、`fileReadHash`、`readComplete` 与 `relationConfidence`（`authoritative / derived / synthetic / unresolved`）；这些字段只在存在时返回，前端不拼接、不猜测。
+- **知识库触发证据**：事件 `kind` 增加 `knowledge`，并可选返回 `documentId`（稳定文档身份）、`documentRevision`（`digest:<hash>` / Provider 原始 revision / `unknown`；与 `objectRevision` 语义不同）、`sourcePath`（知识根内的文档路径）、`retrievalKind`（`file_read / mcp_search / mcp_retrieve`）与 `retrievalScope`（命中的知识根或 Provider collection）。文档正文、chunk 与 MCP 原始响应不进入 DTO，也不落库；知识事件与 skill/agent 事件共用同一 `line / messageOffset / eventIndex` 坐标口径，普通源码 `Read` 不产生该事件。
 - **普通 skill 不是节点**：只以父节点 `events[]`（`kind=skill`）出现；forked skill 同时有父节点的 skill 事件和自己的节点。
 - **`label` 必填、由后端算**：主节点固定“主会话”；其余按 `name` → `skill_name`（forked skill）→ `agentType` → `kind` 取。前端不重算显示名。
 - `events[].name` 是触发调用名，不是类型；workflow 名可以与 skill 同名（原型 line 30 的 `deep-research` 就是 workflow 名，line 24 的 `deep-research` 是 skill 名）。
@@ -455,6 +456,7 @@ erDiagram
 { "id": "ws-harness", "name": "Harness 核心研发", "mark": "HC",
   "quota": 60, "used": 25, "memberCount": 4,
   "spaceAdmins": [ { "id": "u-admin", "displayName": "管理员" } ],
+  "knowledgeRoots": [ "/workspace/knowledge" ],
   "createdAt": "2026-09-12T10:00:00+08:00" }
 ```
 
@@ -469,6 +471,8 @@ erDiagram
 - `role` ∈ `space_admin|member|viewer`；一个空间可有多个 `space_admin`，创建时必须至少一个。
 - 空间管理员只能授予 `member|viewer`，不能修改或移除 `space_admin` 行；全局管理员可任命/撤销空间管理员。
 - 成员与只读角色能读取空间业务数据；只有空间管理员及以上能改额度、成员、凭据、对象配置和启动自进化。
+- `knowledgeRoots` 是空间级知识库根配置：必须是绝对路径且不能是文件系统根 `/`，每空间最多 20 条、每条 ≤512 字符，拒绝 `..` 与 NUL；写入前归一化为正斜杠、去尾斜杠并去重，非法值返回 `422 KNOWLEDGE_ROOTS_INVALID`（details 带 `{reason}`）。清空配置请传 `[]`（显式 `null` 等同未提供）。普通 `Read` 只有命中这些根才成为 `kind=knowledge` 事件；未配置的空间不做知识识别。
+- `knowledgeRoots` 的**读权限**：`GET /api/workspaces` 对空间管理员与全局管理员返回真实路径；member / viewer 返回 `[]`。它是部署拓扑信息，普通成员无需知道；`GET /api/auth/session` 从不携带 roots。
 
 `WorkspaceCredential`：
 
@@ -1138,8 +1142,8 @@ data: {"runId":"evo-20261019-01","unit":7,"total":10,"percent":70,"status":"runn
 | `GET /api/auth/session` | 登录（含 `mustChangePassword`） | — | §3.7 `SessionPayload`；`workspaces` 超 200 条时截断并带 `truncated: true` |
 | `GET /api/auth/callback` | 公开（IdP 回调） | `?code=&state=` | `302` 回前端；未配置 IdP `501 AUTH_PROVIDER_NOT_CONFIGURED`；`state` 失效 `400 AUTH_STATE_INVALID`；换取失败 `502 AUTH_PROVIDER_ERROR`；匹配不到用户 `403 AUTH_NO_MAPPING` |
 | `GET /api/workspaces` | 登录 | — | `{items:[Workspace]}`：普通用户=所在空间；全局管理员=全部空间 |
-| `POST /api/workspaces` | 全局管理员 | `{name, mark, quota, spaceAdminIds[]}` | `201 Workspace`；`409 WORKSPACE_EXISTS`、`422 QUOTA_INVALID`、`422 ROLE_INVALID` |
-| `PUT /api/workspaces/{wid}` | 全局管理员（全字段）/ 空间管理员（仅 `quota`） | `{name?, mark?, quota?}` | `200 Workspace`；空间管理员改 `name/mark` → `403`；`quota < used` → `422 QUOTA_INVALID`（details 带 `{quota, used}`） |
+| `POST /api/workspaces` | 全局管理员 | `{name, mark, quota, spaceAdminIds[], knowledgeRoots?}` | `201 Workspace`；`409 WORKSPACE_EXISTS`、`422 QUOTA_INVALID`、`422 ROLE_INVALID`、`422 KNOWLEDGE_ROOTS_INVALID` |
+| `PUT /api/workspaces/{wid}` | 全局管理员（全字段）/ 空间管理员（仅 `quota`/`knowledgeRoots`） | `{name?, mark?, quota?, knowledgeRoots?}` | `200 Workspace`；空间管理员改 `name/mark` → `403`；`quota < used` → `422 QUOTA_INVALID`（details 带 `{quota, used}`）；知识根非法 → `422 KNOWLEDGE_ROOTS_INVALID`（details 带 `{reason}`） |
 | `GET /api/workspaces/{wid}/members` | 成员及以上 | — | `{items:[WorkspaceMember]}`（角色降序、再按 `joinedAt`） |
 | `GET /api/workspaces/{wid}/member-candidates` | 空间管理员 / 全局管理员 | `q`、`limit≤20` | `{items:[{id,username,displayName,active}]}`；排除已是成员的账号，供“添加成员”搜索，不暴露全局用户目录 |
 | `POST /api/workspaces/{wid}/members` | 空间管理员 / 全局管理员 | `{userId, role}` | `201 WorkspaceMember`；`409 MEMBER_EXISTS`；空间管理员授 `space_admin` → `403` |
@@ -1337,6 +1341,7 @@ V2 新增错误码（2026-11-11；契约见 §4.16–§4.20）：
 | `CREDENTIAL_LIMIT` | 409 | 空间有效上报凭据超过 3 个 |
 | `QUOTA_EXCEEDED` | 409 | 空间 bad case 达到额度上限 |
 | `QUOTA_INVALID` | 422 | 额度 < 0，或小于当前已用量 |
+| `KNOWLEDGE_ROOTS_INVALID` | 422 | 知识根非绝对路径、超过 20 条/512 字符、含 `..` 或 NUL |
 | `AUTH_NO_MAPPING` | 403 | SSO 回调按 sub 匹配不到用户（email 仅作上下文，不参与自动关联；不自动建号） |
 | `AUTH_STATE_INVALID` | 400 | OIDC `state` 缺失、过期或与 cookie 不匹配 |
 | `AUTH_PROVIDER_ERROR` | 502 | IdP 换取 token 失败 |

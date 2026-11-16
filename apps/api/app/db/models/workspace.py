@@ -2,6 +2,7 @@
 
 from sqlalchemy import (
     CHAR,
+    JSON,
     Column,
     DateTime,
     ForeignKey,
@@ -26,6 +27,7 @@ workspaces = Table(
     Column("mark", String(255), nullable=False, server_default=""),
     Column("quota", Integer, nullable=False),
     Column("status", String(16), nullable=False, server_default="active"),
+    Column("knowledge_roots", JSON, nullable=True),
     Column(
         "created_by",
         String(36),

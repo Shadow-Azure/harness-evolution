@@ -480,8 +480,16 @@ def normalize_local_sessions(
 def normalize_local_transcripts(
     settings: Settings,
     source_root: Path,
+    *,
+    knowledge_roots: tuple[str, ...] = (),
 ) -> tuple[ParsedTranscript, ...]:
-    """Parse every local payload without writing or retaining source paths."""
+    """Parse every local payload without writing or retaining source paths.
+
+    Local diagnostics read files directly and do not resolve workspace
+    configuration, so knowledge roots stay empty by default: the local tree view
+    intentionally omits knowledge events that the API would show for the same
+    payload. Callers may pass roots explicitly when they want parity.
+    """
     _ensure_local_environment(settings)
     corpus = scan_local_sessions(source_root)
     return tuple(
@@ -492,6 +500,7 @@ def normalize_local_transcripts(
             agent_kind=payload.agent_kind,
             agent_meta=payload.agent_meta,
             runtime_key=payload.runtime_key,
+            knowledge_roots=knowledge_roots,
         )
         for payload in corpus.payloads
     )

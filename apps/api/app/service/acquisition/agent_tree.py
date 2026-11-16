@@ -524,6 +524,10 @@ def _assemble_root(
         for event in node.events:
             if event.tool_use_id is None:
                 continue
+            if event.kind == "knowledge":
+                # One retrieval call legitimately yields several document events,
+                # so knowledge identity is not part of parent-tool bookkeeping.
+                continue
             if event.tool_use_id in tool_events:
                 ambiguous_tool_ids.add(event.tool_use_id)
                 issues.append(

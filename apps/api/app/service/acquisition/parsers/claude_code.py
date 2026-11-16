@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Literal
 
+from app.service.acquisition.knowledge import knowledge_adapter_for
 from app.service.acquisition.parsers._claude_meta import unknown_metadata_fields
 from app.service.acquisition.parsers.base import (
     AgentMetaFacts,
@@ -25,6 +26,12 @@ from app.service.acquisition.parsers.base import (
     normalize_definition_body,
 )
 from app.service.acquisition.parsers.factory import TraceParserFactory
+from app.utils.knowledge_paths import (
+    MAX_DOCUMENT_PATH_LENGTH,
+    canonical_knowledge_path,
+    knowledge_document_id,
+    match_knowledge_root,
+)
 
 _CONTROL_PREFIXES = (
     "<local-command-caveat>",
@@ -300,6 +307,8 @@ def _file_evidence(
     tool_name: str | None,
     tool_input: dict[str, object],
     result: dict[str, object],
+    *,
+    tool_use_id: str | None = None,
 ) -> TraceEvidence | None:
     """Extract a privacy-safe file identity from one Read or Edit result."""
     if tool_name not in {"Read", "Edit", "Bash"}:
@@ -316,6 +325,7 @@ def _file_evidence(
             return None
         return TraceEvidence(
             kind="file_read",
+            tool_use_id=tool_use_id,
             source_path=path,
             content_hash=_sha256(original),
             name=tool_name,
@@ -331,6 +341,7 @@ def _file_evidence(
     start_line, end_line, complete = _read_line_range(result_file)
     return TraceEvidence(
         kind="file_read",
+        tool_use_id=tool_use_id,
         source_path=path,
         content_hash=_sha256(content),
         name=tool_name,
@@ -340,12 +351,46 @@ def _file_evidence(
     )
 
 
+def _provider_object_revision(revision: str) -> str:
+    """Normalize one provider revision into the shared object-revision vocabulary."""
+    if revision == "unknown":
+        return "unknown"
+    if revision.startswith(("tag:", "digest:", "provider:")):
+        return revision[:96]
+    return f"provider:{revision}"[:96]
+
+
+def _document_name(path: str | None) -> str | None:
+    """Use the document file name as the user-facing trigger name."""
+    if path is None:
+        return None
+    name = path.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    return name[:255] or None
+
+
+def _tool_result_text(block: dict[str, object]) -> str | None:
+    """Concatenate one tool result's text blocks without retaining them."""
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return None
+    texts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        text = item.get("text")
+        if isinstance(text, str):
+            texts.append(text)
+    return "".join(texts) or None
+
+
 @TraceParserFactory.register
 class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 4
+    parser_version = 5
 
     def consume_record(
         self,
@@ -429,12 +474,12 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         ):
             ctx.mark_user_input()
 
-        tool_results: list[str] = []
+        tool_results: list[tuple[str, dict[str, object]]] = []
         for block in _content_blocks(message):
             block_type = str(block.get("type", "unknown"))
             tool_use_id = _string(block.get("tool_use_id" if block_type == "tool_result" else "id"))
             if block_type == "tool_result" and tool_use_id is not None:
-                tool_results.append(tool_use_id)
+                tool_results.append((tool_use_id, block))
                 ctx.record_tool_result(tool_use_id)
             ctx.record_block(
                 kind=block_type,
@@ -446,12 +491,21 @@ class ClaudeCodeTraceParser(BaseTraceParser):
 
         if tool_results:
             result = _dict(record.get("toolUseResult"))
-            if result:
-                for tool_use_id in tool_results:
-                    tool_name, tool_input = ctx.tool_inputs.get(tool_use_id, (None, {}))
-                    evidence = _file_evidence(tool_name, tool_input, result)
+            for tool_use_id, block in tool_results:
+                tool_name, tool_input = ctx.tool_inputs.get(tool_use_id, (None, {}))
+                if result:
+                    evidence = _file_evidence(
+                        tool_name,
+                        tool_input,
+                        result,
+                        tool_use_id=tool_use_id,
+                    )
                     if evidence is not None:
                         ctx.add_evidence(evidence)
+                        if tool_name == "Read":
+                            self._record_file_knowledge(evidence, ctx)
+                if tool_use_id in ctx.knowledge_tool_ids:
+                    self._record_mcp_knowledge(tool_use_id, block, ctx)
 
         if record_type != "assistant":
             return
@@ -466,13 +520,16 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             block_name = _string(block.get("name"))
             kind = _TRIGGER_KINDS.get((block_name or "").casefold())
             tool_input = _dict(block.get("input"))
+            tool_use_id = _string(block.get("id"))
+            if kind is None and knowledge_adapter_for(block_name) is not None:
+                ctx.mark_knowledge_tool(tool_use_id)
             object_version = _object_version(kind, tool_input) if kind is not None else None
             tag = _object_tag(tool_input) if kind is not None else None
             tag = tag or object_version
             ctx.record_tool_use(
                 line_no=line_no,
                 message_offset=message_offset,
-                tool_use_id=_string(block.get("id")),
+                tool_use_id=tool_use_id,
                 name=_event_name(kind, tool_input, block) if kind is not None else block_name,
                 trigger_kind=kind,
                 description=_string(tool_input.get("description")),
@@ -480,6 +537,63 @@ class ClaudeCodeTraceParser(BaseTraceParser):
                 object_version=object_version,
                 object_revision=f"tag:{tag}" if tag is not None else None,
                 triggered_at=_timestamp(record.get("timestamp")),
+            )
+
+    def _record_file_knowledge(self, evidence: TraceEvidence, ctx: ParseContext) -> None:
+        """Emit one knowledge event only when a Read lands inside a configured root.
+
+        The path is canonicalized before matching and identity derivation so
+        Windows separators, duplicate slashes, and trailing slashes share one
+        document. Relative paths never match and the cwd is never guessed.
+        """
+        path = canonical_knowledge_path(evidence.source_path)
+        if not ctx.payload.knowledge_roots or path is None:
+            return
+        root = match_knowledge_root(path, ctx.payload.knowledge_roots)
+        if root is None:
+            return
+        complete = evidence.complete is True and evidence.content_hash is not None
+        revision = f"digest:{evidence.content_hash}" if complete else "unknown"
+        ctx.record_knowledge_event(
+            tool_use_id=evidence.tool_use_id,
+            document_id=knowledge_document_id(path, root),
+            document_revision=revision,
+            source_path=path[:MAX_DOCUMENT_PATH_LENGTH],
+            name=_document_name(path),
+            retrieval_kind="file_read",
+            retrieval_scope=root,
+        )
+
+    def _record_mcp_knowledge(
+        self,
+        tool_use_id: str,
+        block: dict[str, object],
+        ctx: ParseContext,
+    ) -> None:
+        """Emit one knowledge event per document returned by a whitelisted tool."""
+        if block.get("is_error") is True:
+            return
+        tool_name, _tool_input = ctx.tool_inputs.get(tool_use_id, (None, {}))
+        adapter = knowledge_adapter_for(tool_name)
+        if adapter is None:
+            return
+        for document in adapter.parse(_tool_result_text(block)):
+            object_revision = _provider_object_revision(document.revision)
+            ctx.record_knowledge_event(
+                tool_use_id=tool_use_id,
+                document_id=document.document_id,
+                document_revision=document.revision,
+                source_path=(
+                    document.source_path[:MAX_DOCUMENT_PATH_LENGTH]
+                    if document.source_path is not None
+                    else None
+                ),
+                name=(
+                    document.title or _document_name(document.source_path) or document.document_id
+                ),
+                retrieval_kind=document.retrieval_kind,
+                retrieval_scope=document.collection or adapter.default_scope,
+                object_revision=object_revision,
             )
 
     def _record_agent_definition(

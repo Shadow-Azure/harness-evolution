@@ -191,6 +191,11 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
                         "relation confidence",
                     ),
                 ),
+                document_id=event.document_id,
+                document_revision=event.document_revision,
+                source_path=event.source_path,
+                retrieval_kind=event.retrieval_kind,
+                retrieval_scope=event.retrieval_scope,
             )
             for event in events
         ],

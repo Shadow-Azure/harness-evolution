@@ -159,6 +159,13 @@ class ParsedTranscript:
 10. **模型**：从 assistant 消息的 `model` 字段取该 agent 的实际模型，写 `agents.model`；`meta.model` 写 `requested_model`；主 agent 同时写 `session_families.model`；整棵树去重写 `session_families.models`。
 11. **会话元数据**：主 payload 的 `cwd` / `gitBranch` / `version` / `entrypoint` 写 `session_families.project_path/git_branch/cli_version/entrypoint`。
 12. **V2 触发点坐标与对象版本**：每条 `agent_events` 额外写 `triggered_at`——取该触发事件 `tool_use` 所在 assistant 消息的 `timestamp`（转换到 Asia/Shanghai；取不到留 NULL，不猜测）；同时给每个 `agents` 节点写 `tree_index`——Session 内 DFS 先序遍历（父先于子，兄弟按 `sort_key`）赋的全局递增整数。另从 skill/agent 调用的显式 `version` / `skillVersion` / `agentVersion` 元数据写 `object_version`，不得从名称或仓库默认分支猜测。上述列是自进化“对象版本进入点 vs bad case 触发点”的坐标（[06 §7.5](06-database-design.md)）：版本必须精确匹配；时间戳缺失时用 `(tree_index, event_index)` 字典序，双缺失记 `unknown`。`parser_version` 递增后由下一次归一化或 `pnpm data:replay:sessions` 重放补齐存量。
+13. **知识库文档触发（M9-05，parser 5）**：只有两类证据生成 `kind=knowledge`——配置知识根内的普通 `Read`，以及白名单 MCP 知识工具（`mcp__knowledge__search` / `mcp__knowledge__retrieve` / `mcp__knowledge-base__search` / `mcp__knowledge_base__search` / `mcp__kb__search` / `mcp__kb__retrieve`）返回的文档。`Read` 的路径优先级是 **result `filePath` 优先、`tool_input.file_path` 回退**（结果里的真实路径更可信），之后做规范化再与 roots 做最长前缀、段边界匹配（`/kb` 不匹配 `/kb2`），命中才写事件；`Edit`/`Bash` 永不生成。相对路径不匹配、也不解析 cwd，因此工具侧必须以绝对路径上报。
+
+    每条文档写 `document_id`（`doc:` + sha256(规范化根相对路径)[:32]）、`document_revision`（Provider 原始 revision 或 `digest:<sha256>` / `unknown`）、`source_path`（规范化后截断到 1024）、`retrieval_kind`、`retrieval_scope`（配置上限 512）与调用坐标（`line_no/message_offset/triggered_at` 取 `tool_use` 所在 assistant 记录）。`object_revision` 走共享封闭词汇：文件读为 `digest:<sha256>` 或 `unknown`，MCP 为 `provider:<原始 revision>` 或 `unknown`，所以它与 `document_revision` 语义不同。完整文件读的 revision 为 `digest:<sha256>`，不完整或内容缺失为 `unknown`。`event_index` 在 finalize 按 `(line_no, event_index)` 稳定重排，所以结果到达顺序不影响事件顺序。文档正文、chunk 与 MCP 原始响应不进入中间结构，也不落库。
+
+知识根来自空间配置 `workspaces.knowledge_roots`（[06 §3.10](06-database-design.md)）：必须是绝对路径且不能是 `/`；重放一个根会话时，按 `bad_cases WHERE bad_case_session_id = :root` 的所有 `workspace_id` 取 roots **并集**，用 `merge_knowledge_roots` 去重归一化（不套每空间 20 条写侧上限）后传入 parser；没有 bad case 的本地根 roots 为空，不产生知识事件（查询层空间过滤留待 M10）。`bad_cases` 表缺失时先探测并降级为空 roots，不再让整根记 `ROOT_REPLAY_FAILED`。
+
+空间管理员修改 `knowledge_roots` 且集合实际变化时，服务把该空间上报根（`bad_cases.bad_case_session_id`）对应的 `source_records.parser_version` 置 NULL，下一次 sync/replay 会重新归一化这些根；roots 未变化（含仅顺序变化）不触发。
 
 ```python
 def assign_tree_index(nodes: list[ParsedTranscript]) -> dict[str, int]:
@@ -327,12 +334,38 @@ third_party_api/session_source/
 - 子类只实现 `parse_agent_meta`：用 closed schema 解释 `agentMeta`，再由基类 `project` 生成 runtime 无关的 `SessionInfo`（runtime_key、agentKind、parentAgentId、childSessionIds、agent_meta、规范化 trajectory）。
 - 新 runtime 只新增 `session_source/<runtime>.py` 与 `parsers/<runtime>.py` 并注册；公共 root-sync/authorization/normalize 不改。
 
+### 2.6.2 知识库文档适配器（M9-05）
+
+`service/acquisition/knowledge.py` 是 MCP 知识工具的显式适配层：
+
+```text
+knowledge.py
+  KnowledgeDocument        # document_id / revision / source_path / title / collection / retrieval_kind
+  McpKnowledgeAdapter      # tool_names + retrieval_kind + default_scope + parse(text)
+  MCP_KNOWLEDGE_TOOL_NAMES # 6 个显式白名单工具名，不做模糊匹配
+```
+
+- 白名单按**精确工具名**匹配，`knowledge` 子串或前缀相似的调用一律不算知识触发。
+- `parse()` 接受单 JSON、`{documents|results|items}` 信封与 NDJSON；字段别名覆盖 `id/documentId/document_id`、`path/sourcePath/source_path`、`revision/version/digest/contentHash`、`title/name`、`collection/collectionId`；只读身份字段，正文与 chunk 永不读取。
+- 结果最多保留 100 条，按 `(document_id, source_path, revision)` 去重并稳定排序；空结果、坏 JSON、非对象记录返回空 tuple，不抛异常、不生成 issue 噪声。
+- `_file_evidence` 额外带 `tool_use_id`，`ParseContext` 用 `tool_call_positions` 复用调用坐标；`knowledge_tool_ids` 记录调用时命中的白名单工具，结果到达时再按 adapter 解析。
+- `service/acquisition/replay.py` 每个 root 只查一次 roots 并传给全部 payload；`db/crud/acquisition_replay.py` 的 `replace_normalized_root` 写 5 个新列。任何 provider 正文都不写 `agent_events`。
+- 一次检索调用可以产出多条文档事件，所以 `agent_tree` 的父工具 bookkeeping 跳过 `kind=knowledge`：否则共享 `tool_use_id` 会被误判为 `DUPLICATE_TOOL_USE_ID`。代价是知识调用的重复 tool id 不再纳入该诊断。
+- 知识根读取统一走 `utils/knowledge_paths.decode_knowledge_roots`（兼容 JSON list / JSON 字符串），并集查询按 workspace id 在 Python 去重，不用 `SELECT DISTINCT`，避免 MySQL 对 JSON 列参与 `DISTINCT` 的方言差异。
+- 本地诊断（`normalize_local_transcripts`）直接读本地文件、不解析空间配置，默认 `knowledge_roots=()`，所以同一份 payload 在本地 tree 视图里没有知识事件；需要对齐时显式传入 roots。
+
 ### 2.7 测试点
 
 - 同一 payload 连续处理两次 → 第二次 `imported=0, skipped=N`，业务表行数不变。
 - 同一 runtime 的 parser_version 升级 → 只重放该 runtime；另一个 runtime 不受影响。
 - 新增 fake runtime 子类并注册 → factory/replay 能选中，公共 normalizer 无改动。
 - 未知 runtime → `UNSUPPORTED_RUNTIME`，不进入 Claude parser。
+- 知识根内 `Read` → 一条 `kind=knowledge`（坐标取调用行）；知识根外 `Read`、`Edit`、`Bash` → 0 条；partial read 的 `document_revision=unknown`。
+- MCP 白名单工具多文档 → 每文档一条事件并稳定排序；非白名单工具、坏 JSON、错误结果 → 0 条且不抛异常。
+- `workspaces.knowledge_roots` 经 `PUT /api/workspaces/{wid}` 配置 → 非法路径或 `/` 返回 `KNOWLEDGE_ROOTS_INVALID`；replay 取上报空间 roots 并集且不受 20 条写侧上限限制；无 bad case 的本地根不产生知识事件；`bad_cases` 缺失时 replay 仍成功。
+- 空间管理员修改 roots → 上报根的 `source_records.parser_version` 置 NULL，下一次 replay 补齐知识事件；roots 未变不触发。
+- `GET /api/workspaces` 对 member/viewer 返回 `knowledgeRoots: []`，空间管理员/全局管理员返回真实值。
+- 304 字符合法根 → `retrievalScope` 原样回读（列与 DTO 均为 512）。
 - 统计四列（`messages_count / tokens_total / tools_count / errors_count`）与 payload 实际内容一致；会话值为各 agent 求和。
 - `trajectory_payloads` 新增一行 → 只处理该 `(runtime_key, root_session_id, agent_id)`，其他 agent/session 不受影响。
 - payload 内容变化 → 该 agent 派生的行被重写，`processed_hash` 更新。

@@ -53,6 +53,7 @@ class Workspace(WorkspaceModel):
     used: int
     member_count: int
     space_admins: list[WorkspaceAdmin]
+    knowledge_roots: list[str]
     created_at: datetime
 
 
@@ -69,6 +70,7 @@ class WorkspaceCreateRequest(WorkspaceModel):
     mark: str = Field(default="", max_length=255)
     quota: int
     space_admin_ids: list[str]
+    knowledge_roots: list[str] = Field(default_factory=list)
 
 
 class WorkspaceUpdateRequest(WorkspaceModel):
@@ -77,6 +79,7 @@ class WorkspaceUpdateRequest(WorkspaceModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     mark: str | None = Field(default=None, max_length=255)
     quota: int | None = None
+    knowledge_roots: list[str] | None = None
 
 
 class WorkspaceMember(WorkspaceModel):

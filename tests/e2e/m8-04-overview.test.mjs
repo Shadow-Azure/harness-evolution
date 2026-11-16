@@ -758,6 +758,9 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
       (day1 >= monday && day1 <= sunday ? 5 : 0);
     assert.ok(expected > 0, `${monday}..${sunday} must contain seeded days`);
 
+    // The list is paginated at eight rows, so the week bucket's window total and
+    // its first page can differ once both seeded days fall in the same week.
+    const visibleRows = Math.min(expected, 8);
     await click(page, `[data-bucket='${monday}']`);
     const filtered = await waitForDocument(
       page.session,
@@ -766,7 +769,7 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
         if (search.get("from") !== ${JSON.stringify(monday)}) return null;
         if (search.get("to") !== ${JSON.stringify(sunday)}) return null;
         const rows = document.querySelectorAll("[data-testid='ov-case-row']");
-        if (rows.length !== ${expected}) return null;
+        if (rows.length !== ${visibleRows}) return null;
         return {
           rows: rows.length,
           range: search.get("range"),
@@ -781,7 +784,7 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
     );
     assert.equal(filtered.range, "custom");
     assert.equal(filtered.grain, "day");
-    assert.equal(filtered.rows, expected);
+    assert.equal(filtered.rows, visibleRows);
     assert.equal(filtered.total, `共 ${expected} 条`);
     assert.deepEqual(violations, []);
   } finally {

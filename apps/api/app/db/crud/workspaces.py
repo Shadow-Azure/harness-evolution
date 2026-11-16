@@ -10,8 +10,9 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
+from app.db.crud.acquisition_replay import bad_cases_table_present
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_cases
+from app.db.models.domain import bad_cases, source_records
 from app.db.models.users import users
 from app.db.models.workspace import (
     workspace_ingest_credentials,
@@ -19,6 +20,7 @@ from app.db.models.workspace import (
     workspaces,
 )
 from app.utils.ids import new_id
+from app.utils.knowledge_paths import decode_knowledge_roots
 from app.utils.time import as_shanghai, now_shanghai
 
 
@@ -31,6 +33,7 @@ class WorkspaceRecord:
     mark: str
     quota: int
     status: str
+    knowledge_roots: tuple[str, ...]
     created_at: datetime
     updated_at: datetime
 
@@ -136,6 +139,7 @@ def _workspace_from_row(row: Any) -> WorkspaceRecord:
         mark=row["mark"],
         quota=row["quota"],
         status=row["status"],
+        knowledge_roots=decode_knowledge_roots(row["knowledge_roots"]),
         created_at=as_shanghai(row["created_at"]),
         updated_at=as_shanghai(row["updated_at"]),
     )
@@ -358,6 +362,7 @@ class WorkspaceRepository:
         quota: int,
         created_by: str,
         space_admin_ids: Sequence[str],
+        knowledge_roots: Sequence[str] = (),
     ) -> WorkspaceRecord:
         """Insert one workspace and its initial administrators atomically."""
         workspace_id = new_id()
@@ -371,6 +376,7 @@ class WorkspaceRepository:
                         mark=mark,
                         quota=quota,
                         status="active",
+                        knowledge_roots=list(knowledge_roots),
                         created_by=created_by,
                         created_at=now,
                         updated_at=now,
@@ -413,6 +419,28 @@ class WorkspaceRepository:
                         raise
                     raise WorkspaceNameConflict from exc
         return await self.get(workspace_id)
+
+    async def invalidate_reported_root_parsers(self, workspace_id: str) -> int:
+        """Mark this workspace's reported root sessions for the next replay.
+
+        Configuration is not part of a payload hash, so a workspace that changes
+        its knowledge roots must clear the parser cursor of the roots it reported;
+        otherwise parser-5 sessions would never be re-evaluated. Returns the
+        number of cleared cursors and skips silently when the problem-side table
+        is absent.
+        """
+        if not await bad_cases_table_present(self._database):
+            return 0
+        root_ids = select(bad_cases.c.bad_case_session_id).where(
+            bad_cases.c.workspace_id == workspace_id,
+        )
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(source_records)
+                .where(source_records.c.root_session_id.in_(root_ids))
+                .values(parser_version=None),
+            )
+        return int(cast(CursorResult[Any], result).rowcount or 0)
 
     async def list_members(self, workspace_id: str) -> list[WorkspaceMemberRecord]:
         """Return members ordered by role rank, then join time."""

@@ -9,7 +9,7 @@ from app.service.identity.schemas import IdentityModel
 
 SessionStatus = Literal["ok", "partial", "fail"]
 AgentKind = Literal["main", "subagent", "workflow"]
-EventKind = Literal["skill", "agent", "workflow"]
+EventKind = Literal["skill", "agent", "workflow", "knowledge"]
 TaskKind = Literal["in_process_teammate", "forked_skill"]
 ExecutionOutcome = Literal["completed", "interrupted", "failed", "legacy_unknown"]
 EndReason = Literal[
@@ -91,7 +91,7 @@ class SessionListResponse(IdentityModel):
 
 
 class SessionEvent(IdentityModel):
-    """One skill, Agent, or workflow trigger within an Agent node."""
+    """One skill, Agent, workflow, or knowledge-document trigger within an Agent node."""
 
     line: int = Field(ge=1)
     kind: EventKind
@@ -103,7 +103,10 @@ class SessionEvent(IdentityModel):
         default=None,
         max_length=96,
         exclude_if=_missing,
-        description="tag:<tag> / digest:<hash> / unknown evidence for the triggered object.",
+        description=(
+            "tag:<tag> / digest:<hash> / provider:<value> / unknown evidence "
+            "for the triggered object."
+        ),
     )
     definition_hash: str | None = Field(
         default=None,
@@ -126,6 +129,39 @@ class SessionEvent(IdentityModel):
         default=None,
         exclude_if=_missing,
         description="Strength of the parent-child evidence for an agent trigger.",
+    )
+    document_id: str | None = Field(
+        default=None,
+        max_length=255,
+        exclude_if=_missing,
+        description="Stable knowledge-document identity for a knowledge trigger.",
+    )
+    document_revision: str | None = Field(
+        default=None,
+        max_length=96,
+        exclude_if=_missing,
+        description=(
+            "Raw document revision evidence: digest:<hash> / provider revision / "
+            "unknown; differs from objectRevision for provider documents."
+        ),
+    )
+    source_path: str | None = Field(
+        default=None,
+        max_length=1024,
+        exclude_if=_missing,
+        description="Configured-root path of the knowledge document; never its body.",
+    )
+    retrieval_kind: str | None = Field(
+        default=None,
+        max_length=32,
+        exclude_if=_missing,
+        description="file_read / mcp_search / mcp_retrieve.",
+    )
+    retrieval_scope: str | None = Field(
+        default=None,
+        max_length=512,
+        exclude_if=_missing,
+        description="Matched knowledge root or provider collection scope.",
     )
 
 

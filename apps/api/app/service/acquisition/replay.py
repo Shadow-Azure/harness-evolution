@@ -12,12 +12,14 @@ from app.db.base import Database
 from app.db.crud.acquisition_replay import (
     PendingPayload,
     RootPayload,
+    bad_cases_table_present,
     count_payloads,
     create_sync_run,
     finish_sync_run,
     list_missing_payload_sources,
     list_pending_payloads,
     list_root_payloads,
+    list_workspace_knowledge_roots,
     replace_normalized_root,
 )
 from app.db.factory import create_database
@@ -69,7 +71,11 @@ class LocalReplayResult:
     errors: int
 
 
-def _normalize_payload(payload: RootPayload, parser: BaseTraceParser) -> ParsedTranscript:
+def _normalize_payload(
+    payload: RootPayload,
+    parser: BaseTraceParser,
+    knowledge_roots: tuple[str, ...],
+) -> ParsedTranscript:
     """Normalize one stored payload through its runtime parser."""
     return parser.normalize(
         TracePayload(
@@ -79,6 +85,7 @@ def _normalize_payload(payload: RootPayload, parser: BaseTraceParser) -> ParsedT
             agent_kind=cast(Literal["main", "subagent"], payload.agent_kind),
             runtime_key=payload.runtime_key,
             agent_meta=payload.agent_meta,
+            knowledge_roots=knowledge_roots,
         ),
     )
 
@@ -144,6 +151,8 @@ async def replay_pending_payloads(
     ]
     rebuilt_roots = 0
     processed_candidates = 0
+
+    bad_cases_present = await bad_cases_table_present(database)
     progress_callback = on_progress
 
     async def notify_progress(
@@ -199,7 +208,14 @@ async def replay_pending_payloads(
             continue
         try:
             payloads = await list_root_payloads(database, runtime_key, root_session_id)
-            parsed = tuple(_normalize_payload(payload, parser) for payload in payloads)
+            knowledge_roots = await list_workspace_knowledge_roots(
+                database,
+                root_session_id,
+                bad_cases_present=bad_cases_present,
+            )
+            parsed = tuple(
+                _normalize_payload(payload, parser, knowledge_roots) for payload in payloads
+            )
             assembled = assemble_agent_trees(parsed)
             root_issues = [_issue.as_sync_error() for _issue in assembled.issues]
             if not assembled.trees:

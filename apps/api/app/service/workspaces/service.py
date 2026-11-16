@@ -38,6 +38,7 @@ from app.service.workspaces.schemas import (
     WorkspaceMemberUpdateRequest,
     WorkspaceUpdateRequest,
 )
+from app.utils.knowledge_paths import KnowledgeRootError, normalize_knowledge_roots
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,10 @@ class WorkspaceService:
                     else 0
                 ),
                 space_admins=[self._admin_dto(admin) for admin in admins.get(row.workspace.id, [])],
+                include_knowledge_roots=(
+                    user.role == "admin"
+                    or self._effective_role(row.role) in {"global_admin", "space_admin"}
+                ),
             )
             for row in visible
         ]
@@ -192,6 +197,7 @@ class WorkspaceService:
         mark = body.mark
         quota = body.quota
         space_admin_ids = list(dict.fromkeys(body.space_admin_ids))
+        knowledge_roots = self._validated_knowledge_roots(body.knowledge_roots)
         if quota < 0:
             raise self._quota_invalid(quota=quota, used=0)
         if not space_admin_ids:
@@ -206,6 +212,7 @@ class WorkspaceService:
                 quota=quota,
                 created_by=created_by,
                 space_admin_ids=space_admin_ids,
+                knowledge_roots=knowledge_roots,
             )
         except WorkspaceNameConflict as exc:
             raise self._workspace_exists() from exc
@@ -234,6 +241,11 @@ class WorkspaceService:
         name = body.name
         mark = body.mark
         quota = body.quota
+        knowledge_roots = (
+            self._validated_knowledge_roots(body.knowledge_roots)
+            if body.knowledge_roots is not None
+            else None
+        )
         if access.role != "global_admin" and (name is not None or mark is not None):
             raise self._forbidden("only the global administrator may rename a workspace")
         if quota is not None and (quota < 0 or quota < used):
@@ -245,6 +257,11 @@ class WorkspaceService:
             updates["mark"] = mark
         if quota is not None:
             updates["quota"] = quota
+        roots_changed = knowledge_roots is not None and set(knowledge_roots) != set(
+            workspace.knowledge_roots
+        )
+        if knowledge_roots is not None:
+            updates["knowledge_roots"] = list(knowledge_roots)
         try:
             updated = await self._repository.update_workspace(
                 access.workspace_id,
@@ -254,6 +271,17 @@ class WorkspaceService:
             raise self._workspace_exists() from exc
         if updated is None:
             raise self._not_found()
+        if roots_changed:
+            cleared = await self._repository.invalidate_reported_root_parsers(
+                access.workspace_id,
+            )
+            logger.info(
+                "knowledge roots changed",
+                extra={
+                    "workspace_id": access.workspace_id,
+                    "replay_cursors_cleared": cleared,
+                },
+            )
         member_counts = await self._repository.member_counts([access.workspace_id])
         admins = await self._repository.list_space_admins([access.workspace_id])
         counts = member_counts.get(access.workspace_id)
@@ -463,6 +491,19 @@ class WorkspaceService:
             )
 
     @staticmethod
+    def _validated_knowledge_roots(values: list[str]) -> tuple[str, ...]:
+        """Canonicalize configured roots or fail with one stable public code."""
+        try:
+            return normalize_knowledge_roots(values)
+        except KnowledgeRootError as exc:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.KNOWLEDGE_ROOTS_INVALID,
+                message="knowledge roots are invalid",
+                details={"reason": exc.reason},
+            ) from exc
+
+    @staticmethod
     def _effective_role(stored_role: str | None) -> WorkspaceRole:
         """Derive the public role for a visible workspace row."""
         if stored_role is None:
@@ -476,8 +517,13 @@ class WorkspaceService:
         used: int,
         member_count: int,
         space_admins: list[WorkspaceAdmin],
+        include_knowledge_roots: bool = True,
     ) -> Workspace:
-        """Assemble the full workspace response from one row and its aggregates."""
+        """Assemble the full workspace response from one row and its aggregates.
+
+        Knowledge roots are absolute host paths, so member/viewer listings return
+        an empty list while space admins and the global administrator see them.
+        """
         return Workspace(
             id=workspace.id,
             name=workspace.name,
@@ -486,6 +532,7 @@ class WorkspaceService:
             used=used,
             member_count=member_count,
             space_admins=space_admins,
+            knowledge_roots=(list(workspace.knowledge_roots) if include_knowledge_roots else []),
             created_at=workspace.created_at,
         )
 
