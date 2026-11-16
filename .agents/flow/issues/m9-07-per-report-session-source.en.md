@@ -17,7 +17,7 @@ scope:
   - apps/api/app/service/workspaces/**
   - apps/api/app/api/ingest.py
   - apps/api/app/db/**
-  - apps/api/app/alembic/**
+  - apps/api/alembic/**
   - apps/api/app/errors.py
   - apps/api/app/main.py
   - packages/contracts/**
