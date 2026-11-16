@@ -33,14 +33,14 @@ github:
 
 ## Background
 
-Today a bad-case report (`POST /api/workspaces/{wid}/bad-cases`) carries only problem fields plus `sessionId`; trajectory backfill depends on the single globally configured query service (`HE_SESSION_QUERY_BASE_URL` plus a service token, two endpoints: children and trajectory), and that contract implicitly assumes Claude Code: `BadCaseRootSyncService` writes payloads with the default `runtime_key` of `claude-code`, and the reporter has no channel to declare which AI agent produced the session or where to download it.
+Today a bad-case report (`POST /api/workspaces/{wid}/bad-cases`) carries only problem fields plus `sessionId`; trace backfill depends on the single globally configured query service (`HE_SESSION_QUERY_BASE_URL` plus a service token, two endpoints: `children` and `trajectory`), and that contract implicitly assumes Claude Code: `BadCaseRootSyncService` writes payloads with the default `runtime_key` of `claude-code`, and the reporter has no channel to declare which AI agent produced the session or where to download it.
 
 That assumption breaks with multiple upstreams: different teams use different agents (Claude Code, opencode, and later ones) whose session stores differ fundamentally — Claude Code is JSONL lines plus `*.meta.json`; opencode is session/message/part objects (`parent_id` for parentage, `modelID/providerID` for models, tool parts for calls). A single global URL can neither route a report to the right upstream nor hand the m9-06 `TraceParserFactory` the real `runtime_key`.
 
 ## Goals
 
 - Add an optional `sessionSource` field (dict) to the report API: it carries the URL template for downloading session info by sessionId, plus an optional runtime pre-declaration.
-- Define a single-endpoint "session info envelope": one call returns runtime identity, agent metadata, parent/child relations, and the canonicalized trajectory; the `runtime` field decides how the key-value content is interpreted.
+- Define a single-endpoint "session info envelope": one call returns runtime identity, agent metadata, parent/child relations, and the canonicalized trace; the `runtime` field decides how the key-value content is interpreted.
 - Build `SessionSourceFactory`, `BaseSessionSourceAdapter`, and `ClaudeCodeSessionSourceAdapter`, mirroring the m9-06 parser factory: a new agent adds exactly one subclass file plus registration, with no changes to shared root-sync/normalize code.
 - Root-sync picks a source per root: per-report source first, global configured source as fallback; a source snapshot lands on the state table so retries keep the same source.
 - Keep runtime identity single-homed: envelope `runtime` → source adapter → `TraceParserFactory` selects the parser; unknown runtimes fail stably and never fall back to Claude.
@@ -48,7 +48,7 @@ That assumption breaks with multiple upstreams: different teams use different ag
 ## Design authority
 
 - [05 §3.8 bad case ingest](../../../plans/fullstack-design/05-api-design.md#38-bad-case-上报): report body contract and where the new field lands.
-- [05 §10.1 session trajectory package](../../../plans/fullstack-design/05-api-design.md#101-会话轨迹包核心): the existing single-endpoint session package draft; this issue generalizes it into per-report binding with runtime typing.
+- [05 §10.1 session trace package](../../../plans/fullstack-design/05-api-design.md#101-会话轨迹包核心): the existing single-endpoint session package draft; this issue generalizes it into per-report binding with runtime typing.
 - [06 §3.0.1 runtime identity](../../../plans/fullstack-design/06-database-design.md#301-runtime-身份与-parser-版本): the runtime_key vocabulary and the parser selection key.
 - [06 §4.1 bad_cases](../../../plans/fullstack-design/06-database-design.md): problem table column evolution.
 - [07 §2.6 multi-runtime parser factory](../../../plans/fullstack-design/07-backend-implementation.md#26-多-runtime-parser-工厂): factory, base class, self-registration, and fail-fast patterns.
@@ -69,7 +69,7 @@ That assumption breaks with multiple upstreams: different teams use different ag
 ```
 
 - `sessionUrlTemplate` is required: http/https only, length ≤ 2048, and the `{sessionId}` placeholder appears exactly once; no headers/token credential fields are accepted — authorization rides on short-lived signatures embedded in the template itself.
-- `runtime` is optional: `^[a-z0-9][a-z0-9-]{0,31}$`, a pre-declaration only; the envelope wins, and a mismatch records a diagnostic instead of failing.
+- `runtime` is optional: `^[a-z0-9][a-z0-9-]{0,31}$`, a pre-declaration only; the envelope wins, and a mismatch records a diagnosis instead of failing.
 - Reports without `sessionSource` behave exactly as today (backward compatible).
 
 **Session info envelope** (single endpoint: substitute sessionId into the template and GET, JSON):
@@ -106,7 +106,7 @@ apps/api/app/third_party_api/session_source/
   <runtime>.py      # new agent adds only this file
 ```
 
-- `BaseSessionSourceAdapter` is a template method: strict envelope validation and HTTP concerns (timeout, retries, process-wide serial lock, semantics aligned with 11 §3) live in the base class and a shared client; subclasses implement only `parse_agent_meta` and `project`, mapping runtime-specific key-value content onto the runtime-agnostic `SessionInfo` (runtime_key, agentKind, parentAgentId, childSessionIds, agent_meta, canonicalized trajectory).
+- `BaseSessionSourceAdapter` is a template method: strict envelope validation and HTTP concerns (timeout, retries, process-wide serial lock, semantics aligned with 11 §3) live in the base class and a shared client; subclasses implement only `parse_agent_meta` and `project`, mapping runtime-specific key-value content onto the runtime-agnostic `SessionInfo` (runtime_key, agentKind, parentAgentId, childSessionIds, agent_meta, canonicalized trace).
 - `@SessionSourceFactory.register` self-registers: duplicate `runtime_key` fails fast; unknown runtimes raise `UnsupportedTraceRuntime` (reusing the m9-06 semantics).
 - An adapter's `runtime_key` must match a registered parser; `SessionInfo.runtime_key` is the selection key for `TraceParserFactory.create`, so runtime identity never gains a second home.
 - A fake runtime subclass exercises the extension path in tests (aligned with the m9-06 fake parser test).
@@ -123,7 +123,7 @@ apps/api/app/third_party_api/session_source/
 ## Implementation steps
 
 1. Failing tests first: ingest `sessionSource` validation (missing/duplicated placeholder, overlong, non-http(s), extra credential fields); envelope parsing (version mismatch, echo mismatch, unknown runtime, malformed NDJSON, `agentMeta` violating the subclass closed schema).
-2. Implement the `third_party_api/session_source/` package: base class, factory, strict envelope model, and the Claude subclass; extract the shared trajectory canonicalization.
+2. Implement the `third_party_api/session_source/` package: base class, factory, strict envelope model, and the Claude subclass; extract the shared trace canonicalization.
 3. Dual-dialect migration: `bad_cases.session_source`, `bad_case_root_sync.source_kind/source_snapshot`, and backfills.
 4. Root-sync source selection, snapshotting, and per-report traversal; verify `runtime_key` flows through replay.
 5. Regenerate contracts; fake-runtime extension test; docs and the Agent Note.
@@ -165,5 +165,5 @@ pnpm verify:flow
 - No full parsing for a second real runtime (e.g. opencode); only the extension point and a test fake.
 - No changes to the catalog-sync (bad_case_query upstream) contract.
 - No reporter credential fields and no authentication material persisted in the database.
-- No incremental trajectory change detection or automatic re-pull.
+- No incremental trace change detection or automatic re-pull.
 - No frontend changes and no multi-instance cross-process locking.
