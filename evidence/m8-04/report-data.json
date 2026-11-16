@@ -1,0 +1,204 @@
+{
+  "title": "m8-04 工作空间总览页面集成冒烟报告",
+  "eyebrow": "Harness Evolution · M8 空间数据面与总览",
+  "summary": "在真实 API（SQLite + demo fixtures）+ Vite proxy + 无头 Chrome 中验证总览页默认落地、六格指标、时间/粒度/来源筛选写入 URL、bad case 深链，并与 plans/ui-prototype-v2 的总览页做视觉对照。空空间、刷新恢复与 390px 布局由 m8-04 E2E 覆盖，本报告不重复截图。",
+  "meta": "2026-11-16 · macOS · Chrome headless · 1440×1000 与 390×844",
+  "metrics": [
+    {
+      "value": "8",
+      "label": "冒烟场景"
+    },
+    {
+      "value": "6",
+      "label": "截图"
+    },
+    {
+      "value": "0",
+      "label": "未解决缺陷"
+    }
+  ],
+  "facts": [
+    {
+      "label": "分支",
+      "value": "agent/develop-m8-04-97779822a682"
+    },
+    {
+      "label": "提交",
+      "value": "98999b9（PR #271 head）"
+    },
+    {
+      "label": "应用",
+      "value": "harness-evolution web + api（sqlite, demo fixtures）"
+    },
+    {
+      "label": "测试方式",
+      "value": "真实 API + Vite proxy + CDP 无头 Chrome"
+    },
+    {
+      "label": "数据",
+      "value": "fixtures:seed + 运行时创建的空空间"
+    }
+  ],
+  "matrix": {
+    "columns": [
+      "#",
+      "场景",
+      "结果",
+      "说明",
+      "证据"
+    ],
+    "rows": [
+      {
+        "id": "01",
+        "name": "默认落地总览与六格指标",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "裸 /workspaces/ws-default 进入 /overview；六格 statstrip、趋势 SVG、bad case 表均渲染。",
+        "evidence": [
+          "01-overview.png"
+        ]
+      },
+      {
+        "id": "02",
+        "name": "时间窗与粒度写入 URL",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "点击近 30 天与日粒度后 URL 为 range=30&grain=day，图表重新请求。",
+        "evidence": [
+          "02-filtered.png"
+        ]
+      },
+      {
+        "id": "03",
+        "name": "来源多选写入 URL",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "勾选来源「claude」后 URL 带 objects=，图表与列表按来源收窄。",
+        "evidence": [
+          "03-object-filter.png"
+        ]
+      },
+      {
+        "id": "04",
+        "name": "bad case 下钻深链",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "行内 ID 链接指向 /workspaces/ws-default/sessions/10000000-0000-4000-8000-000000000004/errors，target=_blank，带 case 与 tab=desc。",
+        "evidence": []
+      },
+      {
+        "id": "05",
+        "name": "与原型信息架构对照",
+        "status": {
+          "kind": "pass",
+          "label": "PASS"
+        },
+        "detail": "页头、六格 statstrip、时间/粒度/来源筛选、趋势图 + 来源条、bad case 表与原型同构；视觉沿用相同 token 与卡片布局，390px 无溢出。",
+        "evidence": [
+          "01-overview.png",
+          "06-prototype-overview.png"
+        ]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P3",
+      "title": "对象×时间矩阵与进化对象 Tab 未交付",
+      "facts": [
+        {
+          "label": "实际",
+          "value": "总览页只渲染 bad case Tab；来源×时间矩阵省略。"
+        },
+        {
+          "label": "预期",
+          "value": "原型有可折叠矩阵；m8-03 未提供对象×桶聚合，targets Tab 属 M11。"
+        },
+        {
+          "label": "根因",
+          "value": "避免用分页数据伪造矩阵；targets 总览按里程碑延后。"
+        }
+      ],
+      "state": {
+        "kind": "manual",
+        "label": "已记录 · 待后续 API / M11"
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "01-overview.png",
+      "alt": "工作空间总览页",
+      "label": "01 · 总览",
+      "caption": "六格指标、趋势、来源条与 bad case 表同时可见。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-filtered.png",
+      "alt": "近 30 天与日粒度筛选",
+      "label": "02 · 筛选",
+      "caption": "range=30&grain=day 写入 URL，图表与列表重算。",
+      "variant": "wide"
+    },
+    {
+      "src": "03-object-filter.png",
+      "alt": "来源多选筛选",
+      "label": "03 · 来源",
+      "caption": "勾选来源后 objects= 写入 URL，chip 可移除。",
+      "variant": "wide"
+    },
+    {
+      "src": "06-prototype-overview.png",
+      "alt": "原型总览页",
+      "label": "05 · 原型",
+      "caption": "plans/ui-prototype-v2 的总览页，用作 IA 与视觉对照。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": [
+      "区域",
+      "覆盖",
+      "结论",
+      "建议"
+    ],
+    "rows": [
+      {
+        "area": "URL 与筛选",
+        "coverage": "Web 单测 + E2E + 本冒烟",
+        "conclusion": "range/grain/objects/page 可恢复，清除回到默认。",
+        "recommendation": "新增筛选维度时同步 overviewUrl 与 E2E。"
+      },
+      {
+        "area": "三态与布局",
+        "coverage": "m8-04 E2E",
+        "conclusion": "独立加载/空/错误态与 390px 无溢出由 E2E 覆盖；本冒烟只保留主视觉截图。",
+        "recommendation": "错误态继续用区块级 ErrorState。"
+      },
+      {
+        "area": "深链",
+        "coverage": "E2E + 本冒烟",
+        "conclusion": "case ID 新窗口打开错误详情描述 Tab。",
+        "recommendation": "保持 case/tab 参数契约。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过（含 2 项已知后续）",
+    "summary": "5 个页面场景全部通过；对象×时间矩阵与 targets Tab 作为已知后续记录。",
+    "points": [
+      "截图来自真实 API + 浏览器，原型截图仅作 IA/视觉对照。",
+      "默认落地已切换为总览；旧 /sessions 深链仍可进入 Session 页。"
+    ]
+  },
+  "footer": "由 m8-04 集成冒烟生成；不写入仓库。"
+}
