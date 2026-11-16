@@ -101,8 +101,8 @@ def parse(
 
 
 def test_parser_version_advances_with_new_evidence() -> None:
-    """The parser version changes because normalization semantics changed."""
-    assert CURRENT_PARSER_VERSION == 2
+    """The parser version changes when persisted evidence semantics change."""
+    assert CURRENT_PARSER_VERSION == 3
 
 
 def test_task_snapshot_and_open_tool_use_are_explicit() -> None:

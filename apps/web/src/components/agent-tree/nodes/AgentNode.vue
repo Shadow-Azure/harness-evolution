@@ -8,6 +8,7 @@ import {
   TRIGGER_HANDLE_BOTTOM,
   TRIGGER_HANDLE_TOP,
 } from "../layout";
+import { RELATION_LABELS } from "../labels";
 import type { AgentLayoutNodeData } from "../types";
 
 const props = defineProps<{
@@ -33,13 +34,28 @@ const sourceHandles = computed(() =>
 const discoveryHandles = computed(() =>
   handles.value.filter((handle) => handle.above),
 );
+const relationLabel = computed(() =>
+  props.data.relationConfidence
+    ? RELATION_LABELS[props.data.relationConfidence]
+    : "",
+);
+const ariaLabel = computed(() => {
+  const parts = [props.data.label];
+  if (props.data.relationConfidence) {
+    parts.push(`关系证据 ${relationLabel.value}`);
+  }
+  if (props.data.completionWarning) {
+    parts.push(props.data.completionWarning);
+  }
+  return parts.join("，");
+});
 </script>
 
 <template>
   <button
     class="rf-agent"
     :class="[data.kind, { active: data.active }]"
-    :aria-label="data.label"
+    :aria-label="ariaLabel"
     :aria-pressed="Boolean(data.active)"
     :style="{ width: `${data.boxW}px` }"
     type="button"
@@ -78,7 +94,7 @@ const discoveryHandles = computed(() =>
                 data.activeEvidence === item.evIdx,
             },
           ]"
-          :title="`L${item.line} · ${item.name}`"
+          :title="item.synthetic ? `合成触发点 · L${item.line} · ${item.name}` : `L${item.line} · ${item.name}`"
         >
           <span class="rf-cdot" />
           {{ item.name }}
@@ -86,7 +102,21 @@ const discoveryHandles = computed(() =>
       </template>
     </div>
     <div class="rf-lines">
-      {{ data.lines }} 行
+      <span>{{ data.lines }} 行</span>
+      <span
+        v-if="data.relationConfidence"
+        class="rf-evidence"
+        :class="data.relationConfidence"
+        :title="`关系证据：${relationLabel}`"
+      >
+        {{ relationLabel }}
+      </span>
+      <span
+        v-if="data.completionWarning"
+        class="rf-warn"
+      >
+        {{ data.completionWarning }}
+      </span>
     </div>
     <Handle
       id="in"
@@ -279,9 +309,48 @@ const discoveryHandles = computed(() =>
 }
 
 .rf-lines {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 3px;
+  overflow: hidden;
   color: var(--text-faint);
   font-size: 10px;
+  white-space: nowrap;
+}
+
+.rf-evidence {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 13px;
+}
+
+.rf-evidence.authoritative {
+  border-color: color-mix(in srgb, var(--green) 38%, transparent);
+  color: var(--green);
+}
+
+.rf-evidence.derived {
+  border-color: color-mix(in srgb, var(--orange) 45%, transparent);
+  color: var(--orange);
+}
+
+.rf-evidence.synthetic {
+  border-color: color-mix(in srgb, var(--purple) 45%, transparent);
+  color: var(--purple);
+}
+
+.rf-evidence.unresolved {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  color: var(--red);
+}
+
+.rf-warn {
+  flex-shrink: 0;
+  color: var(--red);
 }
 
 .hidden-handle {

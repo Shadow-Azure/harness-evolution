@@ -25,6 +25,7 @@ EndReason = Literal[
 ]
 DefinitionSource = Literal["prompt_snapshot", "api_request_shape", "builtin", "unknown"]
 ModelEvidence = Literal["reported", "requested_only", "unknown"]
+RelationConfidence = Literal["authoritative", "derived", "synthetic", "unresolved"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +82,7 @@ class ParsedEvent:
     description: str | None
     tool_use_id: str | None
     definition_hash: str | None = None
+    relation_confidence: RelationConfidence | None = None
 
 
 @dataclass(frozen=True, slots=True)

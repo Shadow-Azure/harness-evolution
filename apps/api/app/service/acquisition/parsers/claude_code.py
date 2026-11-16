@@ -245,7 +245,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 2
+    parser_version = 3
 
     def consume_record(
         self,

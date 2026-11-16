@@ -2,6 +2,7 @@ import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
 import { shortBadCaseId } from "../../utils/badCaseId";
 
+import { MISSING_REPORT_WARNING, RELATION_LABELS } from "./labels";
 import type {
   AgentChain,
   AgentGraphLayout,
@@ -17,6 +18,7 @@ import type {
   LayoutDiagnostic,
   LayoutTree,
   MeasureText,
+  RelationConfidence,
   TriggerConnection,
 } from "./types";
 
@@ -185,12 +187,16 @@ export function chainOf(
         ? event.name || "skill"
         : clipName(event.desc || event.name || event.kind);
     const width = triggerPillWidth(text, measure);
+    const synthetic =
+      event.relationConfidence === "synthetic" ||
+      event.relationConfidence === "unresolved";
     items.push({
       kind: event.kind,
       name: text,
       evIdx: originalIndex,
       line: event.line,
       w: width,
+      ...(synthetic ? { synthetic: true } : {}),
     });
     offsets[originalIndex] = push(width);
     previousOffset = event.messageOffset;
@@ -231,6 +237,50 @@ function childSortKey(parent: SessionAgent, child: SessionAgent) {
     line: event?.line ?? Number.MAX_SAFE_INTEGER,
     agentId: child.agentId,
   };
+}
+
+function relationOf(
+  parent: SessionAgent,
+  child: SessionAgent,
+): RelationConfidence | null {
+  const index = agentEventIndex(parent, child);
+  if (index < 0) {
+    return null;
+  }
+  return parent.events[index]?.relationConfidence ?? null;
+}
+
+function completionWarningOf(
+  agent: SessionAgent,
+  relation: RelationConfidence | null,
+): string | null {
+  if (agent.kind === "main") {
+    return null;
+  }
+  if (relation === "derived") {
+    return MISSING_REPORT_WARNING;
+  }
+  if (
+    agent.executionOutcome === "interrupted" &&
+    (agent.endReason === "missing_report" || agent.endReason === "tool_use_open")
+  ) {
+    return MISSING_REPORT_WARNING;
+  }
+  return null;
+}
+
+function metaText(
+  lines: number,
+  relation: RelationConfidence | null,
+  warning: string | null,
+): string {
+  return [
+    `${lines} 行`,
+    relation ? RELATION_LABELS[relation] : null,
+    warning,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 }
 
 function hasParentCycle(agent: SessionAgent, byId: Map<string, SessionAgent>): boolean {
@@ -832,9 +882,11 @@ export function buildGraph(
     main.lines,
   );
   const mainLabelWidth = measure(main.label, FONT_AGENT_LABEL);
+  const mainMetaWidth = measure(metaText(main.lines, null, null), FONT_PILL);
   const mainBoxW = Math.max(
     mainChain.width + 2 * (BOX_PAD + BOX_EDGE),
     mainLabelWidth + 2 * (BOX_PAD + BOX_EDGE) + 16,
+    mainMetaWidth + 2 * (BOX_PAD + BOX_EDGE),
   );
   nodes.push({
     id: main.agentId,
@@ -973,11 +1025,18 @@ export function buildGraph(
         item.agent.lines,
       );
       const labelWidth = measure(item.agent.label, FONT_AGENT_LABEL);
+      const relation = relationOf(parentAgent, item.agent);
+      const warning = completionWarningOf(item.agent, relation);
+      const nodeMetaWidth = measure(
+        metaText(item.agent.lines, relation, warning),
+        FONT_PILL,
+      );
       const boxW = Math.max(
         chain.width + 2 * (BOX_PAD + BOX_EDGE),
         labelWidth + 2 * (BOX_PAD + BOX_EDGE) + 16,
+        nodeMetaWidth + 2 * (BOX_PAD + BOX_EDGE),
       );
-      const visualW = Math.max(boxW, labelWidth + 60);
+      const visualW = Math.max(boxW, labelWidth + 60, nodeMetaWidth + 24);
       const node: AgentLayoutNode = {
         id: item.agent.agentId,
         type: "agent",
@@ -993,6 +1052,8 @@ export function buildGraph(
           chain,
           agentId: item.agent.agentId,
           parentAgentId: item.agent.parentAgentId,
+          relationConfidence: relation,
+          completionWarning: warning,
         },
       };
       nodes.push(node);
