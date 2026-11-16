@@ -1,3 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-m9-01-trace-evidence-contract.md: 87b8e91055da257ec4346e3e1c33777da6f07485
-m9-01-trace-evidence-contract.en.md: 427b6a2cc187ceb7f04cdf960f3bc16be7591eda
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m9-01-trace-evidence-contract.md
+m9-01-trace-evidence-contract.md: 08c4f340ab93562a42b2ed1c64bffa237a711cdf
+m9-01-trace-evidence-contract.en.md: 81b3dd3db8f810700feb80924126afb01f011c05

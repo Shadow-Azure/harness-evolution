@@ -48,6 +48,7 @@ function agent(overrides: Partial<SessionAgent> = {}): SessionAgent {
     toolUseId: null,
     skillName: null,
     teamName: null,
+    executionOutcome: "legacy_unknown",
     events: [],
     ...overrides,
   };
@@ -136,6 +137,7 @@ describe("agent-tree graph layout", () => {
   it("does not group distant sibling triggers merely because their messages are adjacent", () => {
     const tree: SessionTree = {
       sessionId: "trunks",
+      runtimeKey: "claude-code",
       agents: [
         agent({
           events: [
@@ -160,6 +162,7 @@ describe("agent-tree graph layout", () => {
   it("routes a child branch outside a self-skill card sharing its trigger", () => {
     const tree: SessionTree = {
       sessionId: "shared-trigger",
+      runtimeKey: "claude-code",
       agents: [
         agent({
           events: [
@@ -212,6 +215,7 @@ describe("agent-tree graph layout", () => {
   it("does not attach an unknown ordinary child to a workflow trigger", () => {
     const tree: SessionTree = {
       sessionId: "unknown-tool",
+      runtimeKey: "claude-code",
       agents: [
         agent({
           events: [
@@ -257,6 +261,7 @@ describe("agent-tree graph layout", () => {
     }));
     const tree: SessionTree = {
       sessionId: "wide-chain",
+      runtimeKey: "claude-code",
       agents: [
         agent({
           events: [
@@ -342,6 +347,7 @@ describe("agent-tree graph layout", () => {
   it("does not mutate input Agents while reconciling missing parent edges", () => {
     const input: SessionTree = {
       sessionId: "pure",
+      runtimeKey: "claude-code",
       agents: [
         agent({ events: [] }),
         agent({
@@ -363,6 +369,7 @@ describe("agent-tree graph layout", () => {
   it("fails closed instead of rendering duplicate Agent identities", () => {
     const duplicate: SessionTree = {
       sessionId: "duplicates",
+      runtimeKey: "claude-code",
       agents: [
         agent({ events: [] }),
         agent({ agentId: "same", parentAgentId: "main", kind: "subagent" }),
@@ -380,6 +387,7 @@ describe("agent-tree graph layout", () => {
   it("fails closed when a tree contains multiple main Agents", () => {
     const duplicateMains: SessionTree = {
       sessionId: "duplicate-mains",
+      runtimeKey: "claude-code",
       agents: [
         agent({ events: [] }),
         agent({ agentId: "main-2", events: [] }),
@@ -430,6 +438,7 @@ describe("agent-tree graph layout", () => {
   it("creates a deterministic parent event when a child trigger is missing", () => {
     const tree: SessionTree = {
       sessionId: "missing-event",
+      runtimeKey: "claude-code",
       agents: [
         agent({ events: [], lines: 4, messagesCount: 9 }),
         agent({
@@ -730,6 +739,7 @@ describe("agent-tree graph layout", () => {
   it("keeps a problem visible but emits no orphan edge when its anchor host is missing", () => {
     const missingHost: SessionTree = {
       sessionId: "missing-host",
+      runtimeKey: "claude-code",
       agents: [agent()],
       badCases: [
         {
@@ -1020,6 +1030,7 @@ describe("agent-tree graph layout", () => {
   it("degrades an out-of-range event anchor to the host fallback handle", () => {
     const outOfRange: SessionTree = {
       sessionId: "out-of-range",
+      runtimeKey: "claude-code",
       agents: demoNestedTree.agents,
       badCases: [
         {

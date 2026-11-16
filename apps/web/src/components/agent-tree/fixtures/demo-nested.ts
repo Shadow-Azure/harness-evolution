@@ -5,9 +5,11 @@ import type { SessionTree } from "@harness/contracts";
  */
 export const demoNestedTree = {
   sessionId: "demo-nested",
+  runtimeKey: "claude-code",
   agents: [
     {
       agentId: "main",
+      executionOutcome: "completed",
       parentAgentId: null,
       kind: "main",
       agentType: null,
@@ -57,6 +59,7 @@ export const demoNestedTree = {
     },
     {
       agentId: "agent-a",
+      executionOutcome: "completed",
       parentAgentId: "main",
       kind: "subagent",
       agentType: "general-purpose",
@@ -90,6 +93,7 @@ export const demoNestedTree = {
     },
     {
       agentId: "agent-b",
+      executionOutcome: "completed",
       parentAgentId: "main",
       kind: "subagent",
       agentType: "general-purpose",
@@ -115,6 +119,7 @@ export const demoNestedTree = {
     },
     {
       agentId: "agent-c",
+      executionOutcome: "completed",
       parentAgentId: "agent-a",
       kind: "subagent",
       agentType: "Explore",
@@ -131,6 +136,7 @@ export const demoNestedTree = {
     },
     {
       agentId: "workflow-1",
+      executionOutcome: "completed",
       parentAgentId: "main",
       kind: "workflow",
       agentType: null,
@@ -147,6 +153,7 @@ export const demoNestedTree = {
     },
     {
       agentId: "agent-forked-skill",
+      executionOutcome: "completed",
       parentAgentId: "main",
       kind: "subagent",
       agentType: null,
@@ -164,6 +171,7 @@ export const demoNestedTree = {
     ...Array.from({ length: 7 }, (_, index) => {
       return {
         agentId: `agent-extra-${index + 1}`,
+        executionOutcome: "completed" as const,
         parentAgentId: "main",
         kind: "subagent" as const,
         agentType: "general-purpose",
