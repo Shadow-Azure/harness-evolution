@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M8-05 Session 最新 10 条与回车精确查询 · 冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Computer Use Smoke</p>
+    <h1>M8-05 Session 最新 10 条与回车精确查询 · 冒烟报告</h1>
+    <p class="summary">在真实 API（SQLite + demo fixtures）+ Vite 代理 + 无头 Chrome 中验证 Session 页首屏最新 10 条、Enter 精确命中、未命中清空右侧、清空恢复最新 10 条、跨空间隔离与待同步角标，并与 plans/ui-prototype-v2 的 Session 页做视觉对照。全部场景通过。</p>
+    <span class="meta">2026-11-16 · macOS · Chrome headless · 1408×900</span>
+    <div class="metrics"><div class="metric"><b>8</b><span>冒烟场景</span></div><div class="metric"><b>8</b><span>通过</span></div><div class="metric"><b>0</b><span>缺陷</span></div><div class="metric"><b>2+1</b><span>E2E 用例</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-11-16 · macOS · Chrome headless · 1408×900</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>仓库</dt><dd>Shadow-Azure/harness-evolution</dd></div><div class="fact"><dt>PR</dt><dd>#273</dd></div><div class="fact"><dt>基线</dt><dd>86ef309 (main)</dd></div><div class="fact"><dt>改动</dt><dd>138e5f6 (agent/develop-m8-05-r2-993a4c834ceb)</dd></div><div class="fact"><dt>环境</dt><dd>SQLite · demo fixtures · Vite proxy · 无头 Chrome</dd></div><div class="fact"><dt>视口</dt><dd>1408×900 · 浅色主题</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>8 pass</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>说明</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>首屏最新 10 条与计数</td><td><span class="status pass">PASS</span></td><td>ws-default 4 条 fixture 会话；标题「最新 4 / 总数 4」；请求 limit=10。</td><td class="evidence">screenshots/01-after-default.png</td></tr><tr><td class="num">02</td><td>输入不触发列表请求</td><td><span class="status pass">PASS</span></td><td>CDP Network 计数：输入后等待 350ms，列表请求数仍为 0。</td><td class="evidence">screenshots/02-after-query-hit.png</td></tr><tr><td class="num">03</td><td>Enter 精确命中完整 root ID</td><td><span class="status pass">PASS</span></td><td>输入最后一条完整 ID 后 Enter；恰好 1 次请求，命中并选中，标题「命中 1 个」。</td><td class="evidence">screenshots/02-after-query-hit.png</td></tr><tr><td class="num">04</td><td>未命中清空双侧空态</td><td><span class="status pass">PASS</span></td><td>输入不存在的 ID 后回车；左栏「未找到匹配…」，右栏「未找到该 Session」，不保留旧会话。</td><td class="evidence">screenshots/03-after-query-miss.png</td></tr><tr><td class="num">05</td><td>清空再 Enter 恢复最新 10 条</td><td><span class="status pass">PASS</span></td><td>清空输入并回车；恢复 4 条最新会话并自动选中第一条，列表请求 q 为空、limit=10。</td><td class="evidence">screenshots/04-after-restored.png</td></tr><tr><td class="num">06</td><td>跨空间隔离</td><td><span class="status pass">PASS</span></td><td>第二个空间上报 pending root；在 ws-default 查询该 ID 为空，不跨空间泄漏。</td><td class="evidence">screenshots/03-after-query-miss.png</td></tr><tr><td class="num">07</td><td>待同步角标与空态</td><td><span class="status pass">PASS</span></td><td>空空间显示「最新 0 / 总数 0」「1 个待同步」；点击展开“轨迹尚未归一化”的说明。</td><td class="evidence">screenshots/05-after-pending-workspace.png</td></tr><tr><td class="num">08</td><td>与原型 Session 页对照</td><td><span class="status pass">PASS</span></td><td>计数、搜索占位符、Enter 提示、空态信息架构一致；H1 与当前空间展示位置为既有应用壳差异。</td><td class="evidence">screenshots/06-prototype-session-list.png</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P3 侧栏 H1 与原型文案不同（有意差异）</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P3</span><h3>侧栏 H1 与原型文案不同（有意差异）</h3><dl><div><dt>Actual</dt><dd>侧栏标题为「Session 浏览器」。</dd></div><div><dt>Expected</dt><dd>原型侧栏标题为「Session」。</dd></div><div><dt>Root cause</dt><dd>该文案被应用级导航与既有 E2E 断言引用；本 issue 不扩散到全局导航。</dd></div></dl><div class="fixed">已记录 · 不在 m8-05 范围</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>7 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="screenshots/00-before-default.png" alt="改动前默认 Session 列表"><figcaption><b>Before · 基线 86ef309</b><span>基线：标题只显示「4 个会话」，搜索仍是防抖实时查询，limit=100。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/01-after-default.png" alt="改动后默认 Session 列表"><figcaption><b>After · 138e5f6</b><span>改动后：标题显示「最新 4 / 总数 4」，搜索框下增加 Enter 提示，首屏 limit=10。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/02-after-query-hit.png" alt="回车命中完整 root ID"><figcaption><b>After · 精确命中</b><span>完整 root ID 回车后左侧只剩命中项并选中，标题「命中 1 个」。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/03-after-query-miss.png" alt="查询未命中的双侧空态"><figcaption><b>After · 未命中</b><span>查询不存在的 ID：左栏给出恢复入口，右栏不保留旧会话。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/04-after-restored.png" alt="清空再回车恢复最新列表"><figcaption><b>After · 恢复</b><span>清空输入再回车，恢复最新 10 条并自动选中第一条。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/05-after-pending-workspace.png" alt="只有待同步根的空间"><figcaption><b>After · 待同步空间</b><span>待同步根只贡献角标，不进入列表；空态说明轨迹仍在补齐。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="screenshots/06-prototype-session-list.png" alt="原型 Session 页"><figcaption><b>原型 · plans/ui-prototype-v2</b><span>原型 Session 页：计数「最新 10 / 13」、Enter 提示与搜索占位符是本次对齐基线。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>4 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>范围</th><th>自动化覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>请求次数与 limit</td><td>E2E + UT</td><td>输入不发请求、Enter 一次请求、limit=10 均有断言。</td><td>保持 CDP 计数，避免只看 UI 误判。</td></tr><tr><td>计数与待同步</td><td>UT</td><td>total/pendingSessions 缺失回退、角标展开均有单测。</td><td>真实 pending 数据由本报告 07 场景覆盖。</td></tr><tr><td>空态与恢复</td><td>UT + E2E</td><td>搜索未命中、筛选无结果、待同步、无 case 四类空态均覆盖。</td><td>后续新增空态时同步补分支断言。</td></tr><tr><td>跨空间隔离</td><td>E2E + API 测试</td><td>UI 用 pending 根证明不泄漏；归一化根的跨空间隔离由 m8-02 API 用例承重。</td><td>如需 UI 级归一化跨空间，可另建第二空间 replay 数据。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>通过 · 可进入评审</small></div>
+    <article class="card conclusion pass"><p><strong>8 个冒烟场景全部通过；未发现阻断缺陷。唯一差异是侧栏 H1 文案，已记录为不在 m8-05 范围。</strong></p><ul><li>PR 描述中保留 Before/After 与原型截图对照。</li><li>空空间上报链接属于空间管理页，不在本 issue 放权限入口。</li></ul></article>
+  </section>
+
+  <p class="foot">Evidence generated from a real API + Vite proxy + headless Chrome run; screenshots are full-window 1408×900 PNGs.</p>
+</main>
+</body>
+</html>

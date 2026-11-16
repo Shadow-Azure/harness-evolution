@@ -1,0 +1,183 @@
+{
+  "title": "M8-05 Session 最新 10 条与回车精确查询 · 冒烟报告",
+  "eyebrow": "Computer Use Smoke",
+  "summary": "在真实 API（SQLite + demo fixtures）+ Vite 代理 + 无头 Chrome 中验证 Session 页首屏最新 10 条、Enter 精确命中、未命中清空右侧、清空恢复最新 10 条、跨空间隔离与待同步角标，并与 plans/ui-prototype-v2 的 Session 页做视觉对照。全部场景通过。",
+  "meta": "2026-11-16 · macOS · Chrome headless · 1408×900",
+  "metrics": [
+    { "value": "8", "label": "冒烟场景" },
+    { "value": "8", "label": "通过" },
+    { "value": "0", "label": "缺陷" },
+    { "value": "2+1", "label": "E2E 用例" }
+  ],
+  "facts": [
+    { "label": "仓库", "value": "Shadow-Azure/harness-evolution" },
+    { "label": "PR", "value": "#273" },
+    { "label": "基线", "value": "86ef309 (main)" },
+    { "label": "改动", "value": "138e5f6 (agent/develop-m8-05-r2-993a4c834ceb)" },
+    { "label": "环境", "value": "SQLite · demo fixtures · Vite proxy · 无头 Chrome" },
+    { "label": "视口", "value": "1408×900 · 浅色主题" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "说明", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "首屏最新 10 条与计数",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "ws-default 4 条 fixture 会话；标题「最新 4 / 总数 4」；请求 limit=10。",
+        "evidence": ["screenshots/01-after-default.png"]
+      },
+      {
+        "id": "02",
+        "name": "输入不触发列表请求",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "CDP Network 计数：输入后等待 350ms，列表请求数仍为 0。",
+        "evidence": ["screenshots/02-after-query-hit.png"]
+      },
+      {
+        "id": "03",
+        "name": "Enter 精确命中完整 root ID",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "输入最后一条完整 ID 后 Enter；恰好 1 次请求，命中并选中，标题「命中 1 个」。",
+        "evidence": ["screenshots/02-after-query-hit.png"]
+      },
+      {
+        "id": "04",
+        "name": "未命中清空双侧空态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "输入不存在的 ID 后回车；左栏「未找到匹配…」，右栏「未找到该 Session」，不保留旧会话。",
+        "evidence": ["screenshots/03-after-query-miss.png"]
+      },
+      {
+        "id": "05",
+        "name": "清空再 Enter 恢复最新 10 条",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "清空输入并回车；恢复 4 条最新会话并自动选中第一条，列表请求 q 为空、limit=10。",
+        "evidence": ["screenshots/04-after-restored.png"]
+      },
+      {
+        "id": "06",
+        "name": "跨空间隔离",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "第二个空间上报 pending root；在 ws-default 查询该 ID 为空，不跨空间泄漏。",
+        "evidence": ["screenshots/03-after-query-miss.png"]
+      },
+      {
+        "id": "07",
+        "name": "待同步角标与空态",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空空间显示「最新 0 / 总数 0」「1 个待同步」；点击展开“轨迹尚未归一化”的说明。",
+        "evidence": ["screenshots/05-after-pending-workspace.png"]
+      },
+      {
+        "id": "08",
+        "name": "与原型 Session 页对照",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "计数、搜索占位符、Enter 提示、空态信息架构一致；H1 与当前空间展示位置为既有应用壳差异。",
+        "evidence": ["screenshots/06-prototype-session-list.png"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P3",
+      "title": "侧栏 H1 与原型文案不同（有意差异）",
+      "facts": [
+        { "label": "Actual", "value": "侧栏标题为「Session 浏览器」。" },
+        { "label": "Expected", "value": "原型侧栏标题为「Session」。" },
+        { "label": "Root cause", "value": "该文案被应用级导航与既有 E2E 断言引用；本 issue 不扩散到全局导航。" }
+      ],
+      "state": { "kind": "manual", "label": "已记录 · 不在 m8-05 范围" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/00-before-default.png",
+      "alt": "改动前默认 Session 列表",
+      "label": "Before · 基线 86ef309",
+      "caption": "基线：标题只显示「4 个会话」，搜索仍是防抖实时查询，limit=100。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/01-after-default.png",
+      "alt": "改动后默认 Session 列表",
+      "label": "After · 138e5f6",
+      "caption": "改动后：标题显示「最新 4 / 总数 4」，搜索框下增加 Enter 提示，首屏 limit=10。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-after-query-hit.png",
+      "alt": "回车命中完整 root ID",
+      "label": "After · 精确命中",
+      "caption": "完整 root ID 回车后左侧只剩命中项并选中，标题「命中 1 个」。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-after-query-miss.png",
+      "alt": "查询未命中的双侧空态",
+      "label": "After · 未命中",
+      "caption": "查询不存在的 ID：左栏给出恢复入口，右栏不保留旧会话。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/04-after-restored.png",
+      "alt": "清空再回车恢复最新列表",
+      "label": "After · 恢复",
+      "caption": "清空输入再回车，恢复最新 10 条并自动选中第一条。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/05-after-pending-workspace.png",
+      "alt": "只有待同步根的空间",
+      "label": "After · 待同步空间",
+      "caption": "待同步根只贡献角标，不进入列表；空态说明轨迹仍在补齐。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/06-prototype-session-list.png",
+      "alt": "原型 Session 页",
+      "label": "原型 · plans/ui-prototype-v2",
+      "caption": "原型 Session 页：计数「最新 10 / 13」、Enter 提示与搜索占位符是本次对齐基线。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "自动化覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "请求次数与 limit",
+        "coverage": "E2E + UT",
+        "conclusion": "输入不发请求、Enter 一次请求、limit=10 均有断言。",
+        "recommendation": "保持 CDP 计数，避免只看 UI 误判。"
+      },
+      {
+        "area": "计数与待同步",
+        "coverage": "UT",
+        "conclusion": "total/pendingSessions 缺失回退、角标展开均有单测。",
+        "recommendation": "真实 pending 数据由本报告 07 场景覆盖。"
+      },
+      {
+        "area": "空态与恢复",
+        "coverage": "UT + E2E",
+        "conclusion": "搜索未命中、筛选无结果、待同步、无 case 四类空态均覆盖。",
+        "recommendation": "后续新增空态时同步补分支断言。"
+      },
+      {
+        "area": "跨空间隔离",
+        "coverage": "E2E + API 测试",
+        "conclusion": "UI 用 pending 根证明不泄漏；归一化根的跨空间隔离由 m8-02 API 用例承重。",
+        "recommendation": "如需 UI 级归一化跨空间，可另建第二空间 replay 数据。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过 · 可进入评审",
+    "summary": "8 个冒烟场景全部通过；未发现阻断缺陷。唯一差异是侧栏 H1 文案，已记录为不在 m8-05 范围。",
+    "points": [
+      "PR 描述中保留 Before/After 与原型截图对照。",
+      "空空间上报链接属于空间管理页，不在本 issue 放权限入口。"
+    ]
+  },
+  "footer": "Evidence generated from a real API + Vite proxy + headless Chrome run; screenshots are full-window 1408×900 PNGs."
+}
