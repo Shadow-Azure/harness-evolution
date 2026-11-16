@@ -47,10 +47,15 @@ class CorpusSeedResult:
 
 _UPSERT_KEYS: dict[Table, tuple[Column[Any], ...]] = {
     trajectory_payloads: (
+        trajectory_payloads.c.runtime_key,
         trajectory_payloads.c.root_session_id,
         trajectory_payloads.c.agent_id,
     ),
-    source_records: (source_records.c.root_session_id, source_records.c.agent_id),
+    source_records: (
+        source_records.c.runtime_key,
+        source_records.c.root_session_id,
+        source_records.c.agent_id,
+    ),
     session_families: (session_families.c.id,),
     agents: (agents.c.id,),
     agent_events: (agent_events.c.agent_id, agent_events.c.event_index),
@@ -131,6 +136,7 @@ async def _source_record_id(
     value: int = (
         await session.execute(
             select(source_records.c.id).where(
+                source_records.c.runtime_key == "claude-code",
                 source_records.c.root_session_id == root_session_id,
                 source_records.c.agent_id == agent_id,
             ),
@@ -152,6 +158,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                     session,
                     trajectory_payloads,
                     {
+                        "runtime_key": "claude-code",
                         "root_session_id": session_fixture.id,
                         "agent_id": agent.record.id,
                         "agent_kind": agent.record.kind,
@@ -169,6 +176,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                     session,
                     source_records,
                     {
+                        "runtime_key": "claude-code",
                         "root_session_id": session_fixture.id,
                         "agent_id": agent.record.id,
                         "kind": agent.record.kind,
@@ -217,6 +225,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                 session_families,
                 {
                     "id": record.id,
+                    "runtime_key": "claude-code",
                     "short_title": record.short_title,
                     "title": record.title,
                     "search_text": f"{record.title} {record.repo_name}".lower(),
@@ -283,6 +292,7 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                     agents,
                     {
                         "id": agent.record.id,
+                        "runtime_key": "claude-code",
                         "root_session_id": session_fixture.id,
                         "parent_agent_id": agent.record.parent_agent_id,
                         "kind": agent.record.kind,

@@ -1,3 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-m9-06-runtime-parser-factory.md: 58ea594bce4e40070eaa5b61e4cd40778aaded21
-m9-06-runtime-parser-factory.en.md: ec20af64de4d66337d93df69dbccdf80d36936f4
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m9-06-runtime-parser-factory.md
+m9-06-runtime-parser-factory.md: bd85ba398516edd502a2b58d6d16aa74f193c741
+m9-06-runtime-parser-factory.en.md: 52f0efe06c3b695911cbeef349140a7c09841162

@@ -84,6 +84,7 @@ class LocalAgentPayload:
     agent_meta: dict[str, object] | None
     source_updated_at: datetime
     discovered_at: datetime
+    runtime_key: str = "claude-code"
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,7 +433,10 @@ async def verify_local_sessions(
             raise LocalSessionSourceError(
                 "local session database is not initialized",
             ) from exc
-        expected_keys = {(payload.root_session_id, payload.agent_id) for payload in corpus.payloads}
+        expected_keys = {
+            (payload.runtime_key, payload.root_session_id, payload.agent_id)
+            for payload in corpus.payloads
+        }
         if missing := expected_keys - payload_keys:
             raise LocalSessionSourceError(
                 f"payload identities missing from database: {len(missing)}",
@@ -475,6 +479,7 @@ def normalize_local_transcripts(
             agent_id=payload.agent_id,
             agent_kind=payload.agent_kind,
             agent_meta=payload.agent_meta,
+            runtime_key=payload.runtime_key,
         )
         for payload in corpus.payloads
     )

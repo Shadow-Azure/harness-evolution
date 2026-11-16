@@ -55,6 +55,7 @@ class AssembledSessionTree:
     """A flat, canonically ordered Agent tree plus session aggregates."""
 
     id: str
+    runtime_key: str
     short_title: str
     title: str
     search_text: str
@@ -357,6 +358,16 @@ def _assemble_root(
                 "Root session contains duplicate Agent identities",
             ),
         )
+    if len({transcript.runtime_key for transcript in transcripts}) != 1:
+        return None, (
+            _issue(
+                root_session_id,
+                main_id,
+                0,
+                "MIXED_TRACE_RUNTIME",
+                "Root session mixes multiple trace runtimes",
+            ),
+        )
 
     nodes: dict[str, AssembledAgentNode] = {
         transcript.agent_id: _transcript_node(transcript) for transcript in transcripts
@@ -652,6 +663,7 @@ def _assemble_root(
     ended = max(ends)
     tree = AssembledSessionTree(
         id=root_session_id,
+        runtime_key=main_transcript.runtime_key,
         short_title=short_title,
         title=title,
         search_text=f"{title} {repo_name}".strip().lower()[:512],

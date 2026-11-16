@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.selectable import Join
 
 from app.db.base import Database
 from app.db.models.domain import (
@@ -31,6 +33,7 @@ from app.utils.time import as_shanghai
 class PendingPayload:
     """One raw payload whose processing cursor needs attention."""
 
+    runtime_key: str
     root_session_id: str
     agent_id: str
     agent_kind: str
@@ -46,6 +49,7 @@ class PendingPayload:
 class RootPayload:
     """One current payload plus its durable processing cursor metadata."""
 
+    runtime_key: str
     root_session_id: str
     agent_id: str
     agent_kind: str
@@ -63,6 +67,7 @@ class RootPayload:
 class MissingPayloadSource:
     """One source identity whose raw payload no longer exists."""
 
+    runtime_key: str
     root_session_id: str
     agent_id: str
 
@@ -95,6 +100,7 @@ def _payload_values(row: object) -> PendingPayload:
     values = cast(dict[str, object], row)
     metadata = values["agent_meta"]
     return PendingPayload(
+        runtime_key=str(values["runtime_key"]),
         root_session_id=str(values["root_session_id"]),
         agent_id=str(values["agent_id"]),
         agent_kind=str(values["agent_kind"]),
@@ -114,6 +120,7 @@ def _root_payload_values(row: object) -> RootPayload:
     source_id = values.get("source_id")
     received_at = values.get("received_at")
     return RootPayload(
+        runtime_key=payload.runtime_key,
         root_session_id=payload.root_session_id,
         agent_id=payload.agent_id,
         agent_kind=payload.agent_kind,
@@ -131,6 +138,7 @@ def _root_payload_values(row: object) -> RootPayload:
 def _joined_payload_query() -> Select[tuple[object, ...]]:
     """Select raw payload columns with optional processing cursor columns."""
     return select(
+        trajectory_payloads.c.runtime_key,
         trajectory_payloads.c.root_session_id,
         trajectory_payloads.c.agent_id,
         trajectory_payloads.c.agent_kind,
@@ -145,32 +153,69 @@ def _joined_payload_query() -> Select[tuple[object, ...]]:
     ).select_from(
         trajectory_payloads.outerjoin(
             source_records,
-            (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+            (source_records.c.runtime_key == trajectory_payloads.c.runtime_key)
+            & (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
             & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
         ),
     )
 
 
+def _cursor_join() -> Join:
+    """Join payload identity to its per-runtime processing cursor."""
+    return trajectory_payloads.outerjoin(
+        source_records,
+        (source_records.c.runtime_key == trajectory_payloads.c.runtime_key)
+        & (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
+    )
+
+
+def _pending_condition(parser_versions: Mapping[str, int]) -> ColumnElement[bool]:
+    """Require a missing cursor, changed hash, or stale runtime parser version."""
+    stale = [
+        and_(
+            trajectory_payloads.c.runtime_key == runtime_key,
+            source_records.c.parser_version < parser_version,
+        )
+        for runtime_key, parser_version in parser_versions.items()
+    ]
+    return or_(
+        source_records.c.id.is_(None),
+        source_records.c.processed_hash.is_(None),
+        source_records.c.processed_hash != trajectory_payloads.c.content_hash,
+        source_records.c.parser_version.is_(None),
+        *(stale or [false()]),
+    )
+
+
+def _processed_condition(parser_versions: Mapping[str, int]) -> ColumnElement[bool]:
+    """Require a current hash and the matching runtime's current parser version."""
+    current = [
+        and_(
+            trajectory_payloads.c.runtime_key == runtime_key,
+            source_records.c.parser_version >= parser_version,
+        )
+        for runtime_key, parser_version in parser_versions.items()
+    ]
+    return and_(
+        source_records.c.processed_hash == trajectory_payloads.c.content_hash,
+        or_(*(current or [false()])),
+    )
+
+
 async def list_pending_payloads(
     database: Database,
-    parser_version: int,
+    parser_versions: Mapping[str, int],
 ) -> tuple[PendingPayload, ...]:
-    """Return payloads without a current hash/parser processing cursor."""
+    """Return payloads without a current hash or runtime parser cursor."""
     async with database.session() as session:
         rows = (
             (
                 await session.execute(
                     _joined_payload_query()
-                    .where(
-                        or_(
-                            source_records.c.id.is_(None),
-                            source_records.c.processed_hash.is_(None),
-                            source_records.c.processed_hash != trajectory_payloads.c.content_hash,
-                            source_records.c.parser_version.is_(None),
-                            source_records.c.parser_version < parser_version,
-                        ),
-                    )
+                    .where(_pending_condition(parser_versions))
                     .order_by(
+                        trajectory_payloads.c.runtime_key,
                         trajectory_payloads.c.root_session_id,
                         trajectory_payloads.c.agent_id,
                     ),
@@ -184,15 +229,19 @@ async def list_pending_payloads(
 
 async def list_root_payloads(
     database: Database,
+    runtime_key: str,
     root_session_id: str,
 ) -> tuple[RootPayload, ...]:
-    """Return every persisted payload for one root, independent of cursor state."""
+    """Return every persisted payload for one runtime root, regardless of cursor."""
     async with database.session() as session:
         rows = (
             (
                 await session.execute(
                     _joined_payload_query()
-                    .where(trajectory_payloads.c.root_session_id == root_session_id)
+                    .where(
+                        trajectory_payloads.c.runtime_key == runtime_key,
+                        trajectory_payloads.c.root_session_id == root_session_id,
+                    )
                     .order_by(trajectory_payloads.c.agent_id),
                 )
             )
@@ -210,18 +259,24 @@ async def list_missing_payload_sources(
         rows = (
             await session.execute(
                 select(
+                    source_records.c.runtime_key,
                     source_records.c.root_session_id,
                     source_records.c.agent_id,
                 )
                 .select_from(
                     source_records.outerjoin(
                         trajectory_payloads,
-                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
+                        (source_records.c.runtime_key == trajectory_payloads.c.runtime_key)
+                        & (
+                            source_records.c.root_session_id
+                            == trajectory_payloads.c.root_session_id
+                        )
                         & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
                     ),
                 )
                 .where(trajectory_payloads.c.root_session_id.is_(None))
                 .order_by(
+                    source_records.c.runtime_key,
                     source_records.c.root_session_id,
                     source_records.c.agent_id,
                 ),
@@ -229,10 +284,11 @@ async def list_missing_payload_sources(
         ).all()
     return tuple(
         MissingPayloadSource(
+            runtime_key=str(runtime_key),
             root_session_id=str(root_session_id),
             agent_id=str(agent_id),
         )
-        for root_session_id, agent_id in rows
+        for runtime_key, root_session_id, agent_id in rows
     )
 
 
@@ -247,29 +303,15 @@ async def count_payloads(database: Database) -> int:
 
 async def count_pending_payloads(
     database: Database,
-    parser_version: int,
+    parser_versions: Mapping[str, int],
 ) -> int:
     """Count raw identities whose processing cursor is absent or stale."""
     async with database.session() as session:
         value = (
             await session.execute(
                 select(func.count())
-                .select_from(
-                    trajectory_payloads.outerjoin(
-                        source_records,
-                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
-                        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
-                    ),
-                )
-                .where(
-                    or_(
-                        source_records.c.id.is_(None),
-                        source_records.c.processed_hash.is_(None),
-                        source_records.c.processed_hash != trajectory_payloads.c.content_hash,
-                        source_records.c.parser_version.is_(None),
-                        source_records.c.parser_version < parser_version,
-                    ),
-                ),
+                .select_from(_cursor_join())
+                .where(_pending_condition(parser_versions)),
             )
         ).scalar_one()
     return int(value)
@@ -277,24 +319,15 @@ async def count_pending_payloads(
 
 async def count_processed_payloads(
     database: Database,
-    parser_version: int,
+    parser_versions: Mapping[str, int],
 ) -> int:
-    """Count raw identities with a current hash and parser cursor."""
+    """Count raw identities with a current hash and runtime parser cursor."""
     async with database.session() as session:
         value = (
             await session.execute(
                 select(func.count())
-                .select_from(
-                    trajectory_payloads.join(
-                        source_records,
-                        (source_records.c.root_session_id == trajectory_payloads.c.root_session_id)
-                        & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
-                    ),
-                )
-                .where(
-                    source_records.c.processed_hash == trajectory_payloads.c.content_hash,
-                    source_records.c.parser_version >= parser_version,
-                ),
+                .select_from(_cursor_join())
+                .where(_processed_condition(parser_versions)),
             )
         ).scalar_one()
     return int(value)
@@ -338,7 +371,7 @@ def _batch_snapshot(row: Mapping[str, object]) -> SyncBatchSnapshot:
 
 async def read_sync_status_snapshot(
     database: Database,
-    parser_version: int,
+    parser_versions: Mapping[str, int],
 ) -> SyncStatusSnapshot:
     """Read all acquisition status facts through one consistent DB transaction."""
     async with database.session() as session:
@@ -346,25 +379,8 @@ async def read_sync_status_snapshot(
             (
                 await session.execute(
                     select(func.count())
-                    .select_from(
-                        trajectory_payloads.outerjoin(
-                            source_records,
-                            (
-                                source_records.c.root_session_id
-                                == trajectory_payloads.c.root_session_id
-                            )
-                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
-                        ),
-                    )
-                    .where(
-                        or_(
-                            source_records.c.id.is_(None),
-                            source_records.c.processed_hash.is_(None),
-                            source_records.c.processed_hash != trajectory_payloads.c.content_hash,
-                            source_records.c.parser_version.is_(None),
-                            source_records.c.parser_version < parser_version,
-                        ),
-                    ),
+                    .select_from(_cursor_join())
+                    .where(_pending_condition(parser_versions)),
                 )
             ).scalar_one(),
         )
@@ -372,20 +388,8 @@ async def read_sync_status_snapshot(
             (
                 await session.execute(
                     select(func.count())
-                    .select_from(
-                        trajectory_payloads.join(
-                            source_records,
-                            (
-                                source_records.c.root_session_id
-                                == trajectory_payloads.c.root_session_id
-                            )
-                            & (source_records.c.agent_id == trajectory_payloads.c.agent_id),
-                        ),
-                    )
-                    .where(
-                        source_records.c.processed_hash == trajectory_payloads.c.content_hash,
-                        source_records.c.parser_version >= parser_version,
-                    ),
+                    .select_from(_cursor_join())
+                    .where(_processed_condition(parser_versions)),
                 )
             ).scalar_one(),
         )
@@ -552,13 +556,14 @@ async def _ensure_sources(
     payloads: tuple[RootPayload, ...],
     *,
     discovered_at: datetime,
-) -> dict[tuple[str, str], int]:
+) -> dict[tuple[str, str, str], int]:
     """Create missing source cursors and return the complete identity map."""
     for payload in payloads:
         if payload.source_id is not None:
             continue
         await session.execute(
             source_records.insert().values(
+                runtime_key=payload.runtime_key,
                 root_session_id=payload.root_session_id,
                 agent_id=payload.agent_id,
                 kind=payload.agent_kind,
@@ -575,14 +580,19 @@ async def _ensure_sources(
         await session.execute(
             select(
                 source_records.c.id,
+                source_records.c.runtime_key,
                 source_records.c.root_session_id,
                 source_records.c.agent_id,
             ).where(
+                source_records.c.runtime_key == payloads[0].runtime_key,
                 source_records.c.root_session_id == payloads[0].root_session_id,
             ),
         )
     ).all()
-    return {(str(root), str(agent)): int(str(source_id)) for source_id, root, agent in rows}
+    return {
+        (str(runtime_key), str(root), str(agent)): int(str(source_id))
+        for source_id, runtime_key, root, agent in rows
+    }
 
 
 async def _delete_root_tree(session: AsyncSession, root_session_id: str) -> None:
@@ -629,7 +639,10 @@ async def replace_normalized_root(
         source_rows = (
             (
                 await session.execute(
-                    select(source_records).where(source_records.c.root_session_id == tree.id),
+                    select(source_records).where(
+                        source_records.c.runtime_key == tree.runtime_key,
+                        source_records.c.root_session_id == tree.id,
+                    ),
                 )
             )
             .mappings()
@@ -643,6 +656,7 @@ async def replace_normalized_root(
         await session.execute(
             session_families.insert().values(
                 id=tree.id,
+                runtime_key=tree.runtime_key,
                 short_title=tree.short_title,
                 title=tree.title,
                 search_text=tree.search_text,
@@ -668,7 +682,7 @@ async def replace_normalized_root(
                 agents_count=tree.agents_count,
                 tokens_total=tree.tokens_total,
                 source_type=source_type,
-                main_record_id=source_ids[(tree.id, main_node.id)],
+                main_record_id=source_ids[(tree.runtime_key, tree.id, main_node.id)],
                 imported_at=imported_at,
                 updated_at=as_shanghai(completed_at),
             ),
@@ -677,6 +691,7 @@ async def replace_normalized_root(
             await session.execute(
                 agents.insert().values(
                     id=node.id,
+                    runtime_key=tree.runtime_key,
                     root_session_id=tree.id,
                     parent_agent_id=node.parent_agent_id,
                     kind=node.kind,
@@ -690,7 +705,9 @@ async def replace_normalized_root(
                     description=node.description,
                     tool_use_id=node.tool_use_id,
                     spawn_depth=node.spawn_depth,
-                    transcript_record_id=source_ids.get((tree.id, node.id)),
+                    transcript_record_id=source_ids.get(
+                        (tree.runtime_key, tree.id, node.id),
+                    ),
                     lines=node.lines,
                     messages_count=node.messages_count,
                     tokens_total=node.tokens_total,
@@ -732,6 +749,7 @@ async def replace_normalized_root(
             await session.execute(
                 source_records.update()
                 .where(
+                    source_records.c.runtime_key == payload.runtime_key,
                     source_records.c.root_session_id == tree.id,
                     source_records.c.agent_id == payload.agent_id,
                 )

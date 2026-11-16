@@ -50,6 +50,7 @@ async def write_local_payloads(
     async with database.transaction() as session:
         for payload in payloads:
             key = (
+                trajectory_payloads.c.runtime_key == payload.runtime_key,
                 trajectory_payloads.c.root_session_id == payload.root_session_id,
                 trajectory_payloads.c.agent_id == payload.agent_id,
             )
@@ -59,6 +60,7 @@ async def write_local_payloads(
                 .one_or_none()
             )
             values = {
+                "runtime_key": payload.runtime_key,
                 "root_session_id": payload.root_session_id,
                 "agent_id": payload.agent_id,
                 "agent_kind": payload.agent_kind,
@@ -76,7 +78,7 @@ async def write_local_payloads(
                 changed = {
                     name: value
                     for name, value in values.items()
-                    if name not in {"root_session_id", "agent_id"}
+                    if name not in {"runtime_key", "root_session_id", "agent_id"}
                     and _comparable(existing[name]) != _comparable(value)
                 }
                 if changed:
@@ -88,6 +90,7 @@ async def write_local_payloads(
                     unchanged_payloads += 1
 
             source_key = (
+                source_records.c.runtime_key == payload.runtime_key,
                 source_records.c.root_session_id == payload.root_session_id,
                 source_records.c.agent_id == payload.agent_id,
             )
@@ -99,6 +102,7 @@ async def write_local_payloads(
             if existing_source is None:
                 await session.execute(
                     source_records.insert().values(
+                        runtime_key=payload.runtime_key,
                         root_session_id=payload.root_session_id,
                         agent_id=payload.agent_id,
                         kind=payload.agent_kind,
@@ -116,6 +120,7 @@ async def write_local_payloads(
                 source_changes = {
                     name: value
                     for name, value in {
+                        "runtime_key": payload.runtime_key,
                         "kind": payload.agent_kind,
                         "source_type": source_type,
                         "line_count": payload.line_count,
@@ -136,29 +141,31 @@ async def write_local_payloads(
     )
 
 
-async def list_local_session_keys(database: Database) -> set[tuple[str, str]]:
+async def list_local_session_keys(database: Database) -> set[tuple[str, str, str]]:
     """Return all persisted payload identities."""
     async with database.session() as session:
         rows = (
             await session.execute(
                 select(
+                    trajectory_payloads.c.runtime_key,
                     trajectory_payloads.c.root_session_id,
                     trajectory_payloads.c.agent_id,
                 ),
             )
         ).all()
-    return {(str(row[0]), str(row[1])) for row in rows}
+    return {(str(row[0]), str(row[1]), str(row[2])) for row in rows}
 
 
-async def list_local_source_record_keys(database: Database) -> set[tuple[str, str]]:
+async def list_local_source_record_keys(database: Database) -> set[tuple[str, str, str]]:
     """Return all processing-index identities."""
     async with database.session() as session:
         rows = (
             await session.execute(
                 select(
+                    source_records.c.runtime_key,
                     source_records.c.root_session_id,
                     source_records.c.agent_id,
                 ),
             )
         ).all()
-    return {(str(row[0]), str(row[1])) for row in rows}
+    return {(str(row[0]), str(row[1]), str(row[2])) for row in rows}

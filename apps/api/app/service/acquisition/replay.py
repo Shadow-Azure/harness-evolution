@@ -27,12 +27,14 @@ from app.service.acquisition.local_sessions import (
     import_local_sessions,
     scan_local_sessions,
 )
-from app.service.acquisition.normalize import (
-    CURRENT_PARSER_VERSION,
-    ParsedIssue,
+from app.service.acquisition.normalize import ParsedIssue
+from app.service.acquisition.parsers import (
+    BaseTraceParser,
     ParsedTranscript,
-    normalize_transcript,
+    TraceParserFactory,
+    TracePayload,
 )
+from app.service.acquisition.parsers.factory import UnsupportedTraceRuntime
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -67,14 +69,17 @@ class LocalReplayResult:
     errors: int
 
 
-def _normalize_payload(payload: RootPayload) -> ParsedTranscript:
-    """Normalize one stored payload without retaining message detail."""
-    return normalize_transcript(
-        payload.payload,
-        root_session_id=payload.root_session_id,
-        agent_id=payload.agent_id,
-        agent_kind=cast(Literal["main", "subagent"], payload.agent_kind),
-        agent_meta=payload.agent_meta,
+def _normalize_payload(payload: RootPayload, parser: BaseTraceParser) -> ParsedTranscript:
+    """Normalize one stored payload through its runtime parser."""
+    return parser.normalize(
+        TracePayload(
+            content=payload.payload,
+            root_session_id=payload.root_session_id,
+            agent_id=payload.agent_id,
+            agent_kind=cast(Literal["main", "subagent"], payload.agent_kind),
+            runtime_key=payload.runtime_key,
+            agent_meta=payload.agent_meta,
+        ),
     )
 
 
@@ -97,13 +102,12 @@ def _issue_record(
 async def replay_pending_payloads(
     database: Database,
     *,
-    parser_version: int = CURRENT_PARSER_VERSION,
     on_progress: Callable[[int, int], Awaitable[None]] | None = None,
     sync_run_id: str | None = None,
     source_type: str | None = None,
 ) -> ReplayResult:
     """Replay every pending root atomically and return aggregate-only counts."""
-    pending = await list_pending_payloads(database, parser_version)
+    pending = await list_pending_payloads(database, TraceParserFactory.versions())
     total_payloads = await count_payloads(database)
     started_at = now_shanghai()
     resolved_sync_run_id = sync_run_id or new_id()
@@ -115,14 +119,17 @@ async def replay_pending_payloads(
         records_total=total_payloads,
     )
 
-    grouped: dict[str, list[PendingPayload]] = {}
+    grouped: dict[tuple[str, str], list[PendingPayload]] = {}
     for payload in pending:
-        grouped.setdefault(payload.root_session_id, []).append(payload)
+        grouped.setdefault((payload.runtime_key, payload.root_session_id), []).append(payload)
 
     missing_sources = await list_missing_payload_sources(database)
-    missing_by_root: dict[str, list[str]] = {}
+    missing_by_root: dict[tuple[str, str], list[str]] = {}
     for source in missing_sources:
-        missing_by_root.setdefault(source.root_session_id, []).append(source.agent_id)
+        missing_by_root.setdefault(
+            (source.runtime_key, source.root_session_id),
+            [],
+        ).append(source.agent_id)
 
     imported = 0
     failed = 0
@@ -160,9 +167,9 @@ async def replay_pending_payloads(
             )
             progress_callback = None
 
-    for root_session_id in sorted(grouped):
-        root_pending = tuple(grouped[root_session_id])
-        if root_session_id in missing_by_root:
+    for runtime_key, root_session_id in sorted(grouped):
+        root_pending = tuple(grouped[(runtime_key, root_session_id)])
+        if (runtime_key, root_session_id) in missing_by_root:
             failed += len(root_pending)
             processed_candidates += len(root_pending)
             await notify_progress(
@@ -172,8 +179,27 @@ async def replay_pending_payloads(
             )
             continue
         try:
-            payloads = await list_root_payloads(database, root_session_id)
-            parsed = tuple(_normalize_payload(payload) for payload in payloads)
+            parser = TraceParserFactory.create(runtime_key)
+        except UnsupportedTraceRuntime:
+            errors.append(
+                _issue_record(
+                    root_session_id,
+                    root_pending[0].agent_id,
+                    "UNSUPPORTED_RUNTIME",
+                    f"Unsupported trace runtime: {runtime_key}",
+                ),
+            )
+            failed += len(root_pending)
+            processed_candidates += len(root_pending)
+            await notify_progress(
+                root_session_id,
+                root_pending[0].agent_id,
+                processed_candidates,
+            )
+            continue
+        try:
+            payloads = await list_root_payloads(database, runtime_key, root_session_id)
+            parsed = tuple(_normalize_payload(payload, parser) for payload in payloads)
             assembled = assemble_agent_trees(parsed)
             root_issues = [_issue.as_sync_error() for _issue in assembled.issues]
             if not assembled.trees:
@@ -217,7 +243,7 @@ async def replay_pending_payloads(
                 tree=assembled.trees[0],
                 payloads=payloads,
                 pending_agent_ids=frozenset(payload.agent_id for payload in root_pending),
-                parser_version=parser_version,
+                parser_version=parser.parser_version,
                 sync_run_id=resolved_sync_run_id,
                 completed_at=now_shanghai(),
             )

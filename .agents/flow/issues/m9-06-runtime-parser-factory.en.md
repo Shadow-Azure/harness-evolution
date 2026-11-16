@@ -12,10 +12,14 @@ priority: P0
 status: in-progress
 scope:
   - apps/api/app/service/acquisition/**
+  - apps/api/app/api/acquisition.py
   - apps/api/app/db/**
   - apps/api/alembic/**
   - packages/contracts/**
+  - apps/api/tests/**
   - tests/**
+  - docs/**
+  - plans/**
   - plans/fullstack-design/**
   - plans/ui-prototype-v2/**
   - .agents/flow/**
