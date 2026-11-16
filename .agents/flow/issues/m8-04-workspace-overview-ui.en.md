@@ -10,7 +10,7 @@ depends:
   - m7-08
   - m8-03
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/overview/**
   - apps/web/src/api/**
