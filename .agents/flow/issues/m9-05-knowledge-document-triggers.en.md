@@ -25,6 +25,8 @@ scope:
   - fixtures/**
   - tests/**
   - apps/api/tests/**
+  - apps/web/src/api/**
+  - apps/web/src/pages/workspaces/**
   - plans/fullstack-design/**
   - .agents/flow/**
   - .agents/notes/**

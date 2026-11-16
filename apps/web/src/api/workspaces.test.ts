@@ -31,6 +31,7 @@ const workspace = {
   used: 12,
   memberCount: 2,
   spaceAdmins: [{ id: "u-admin", displayName: "管理员" }],
+  knowledgeRoots: [],
   createdAt: "2026-11-01T10:00:00+08:00",
 };
 
