@@ -32,3 +32,4 @@ M9-01/M9-02 已经能解析真实元数据、tool result 与执行完成度，�
 - `unresolved` 节点在结构上仍挂到主 Agent，但关系证据明确为未解析；调用方应以 `relationConfidence` 而不是父链接是否存在来判断证据强度。
 - 前端节点新增关系标签与完成警告；`authoritative` 之外的标签使用状态色，关系为空的历史会话不显示标签。
 - 潜在匹配、按开始时间猜父级和隐藏未解析节点仍不在本切片内。
+- 关系分级覆盖 Agent tool 触发的子 Agent；forked skill、workflow-subagent 与 in-process teammate 的边不是父 Agent tool 调用，`relation_confidence` 保持 NULL，不能据此区分“未重放”与“从未分类”。

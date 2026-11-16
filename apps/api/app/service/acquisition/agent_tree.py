@@ -516,6 +516,23 @@ def _assemble_root(
 
     workflow_ids = tuple(sorted(node.id for node in nodes.values() if node.kind == "workflow"))
 
+    def record_issue(
+        transcript: ParsedTranscript,
+        code: str,
+        message: str,
+        *,
+        line_no: int = 0,
+    ) -> None:
+        issues.append(
+            _issue(
+                root_session_id,
+                transcript.agent_id,
+                line_no,
+                code,
+                message,
+            ),
+        )
+
     def fallback_to_main(
         transcript: ParsedTranscript,
         code: str,
@@ -528,15 +545,7 @@ def _assemble_root(
             parent_agent_id=main_id,
         )
         if code:
-            issues.append(
-                _issue(
-                    root_session_id,
-                    transcript.agent_id,
-                    line_no,
-                    code,
-                    message,
-                ),
-            )
+            record_issue(transcript, code, message, line_no=line_no)
 
     def append_synthetic_parent_event(
         transcript: ParsedTranscript,
@@ -643,12 +652,19 @@ def _assemble_root(
             continue
 
         parent_tool = transcript.parent_tool_use_id
+        weak_parent = transcript.parent_agent_id
+        weak_parent_id = (
+            weak_parent
+            if weak_parent is not None
+            and weak_parent != transcript.agent_id
+            and weak_parent in nodes
+            else None
+        )
         if parent_tool is None:
-            parent_agent = transcript.parent_agent_id
-            if parent_agent is not None and parent_agent in nodes:
+            if weak_parent_id is not None:
                 append_synthetic_parent_event(
                     transcript,
-                    owner_id=parent_agent,
+                    owner_id=weak_parent_id,
                     confidence="synthetic",
                 )
                 continue
@@ -664,29 +680,45 @@ def _assemble_root(
             )
             continue
         if parent_tool in ambiguous_tool_ids:
-            fallback_to_main(
+            record_issue(
                 transcript,
                 "AMBIGUOUS_PARENT_TOOL_USE_ID",
                 "Subagent parent tool-use identity is ambiguous",
             )
-            append_synthetic_parent_event(
-                transcript,
-                owner_id=main_id,
-                confidence="unresolved",
-            )
+            if weak_parent_id is not None:
+                append_synthetic_parent_event(
+                    transcript,
+                    owner_id=weak_parent_id,
+                    confidence="synthetic",
+                )
+            else:
+                fallback_to_main(transcript, "", "")
+                append_synthetic_parent_event(
+                    transcript,
+                    owner_id=main_id,
+                    confidence="unresolved",
+                )
             continue
         matched = tool_events.get(parent_tool)
         if matched is None or matched[1].kind != "agent":
-            fallback_to_main(
+            record_issue(
                 transcript,
                 "UNKNOWN_PARENT_TOOL_USE_ID",
                 "Subagent parent tool-use identity has no Agent trigger",
             )
-            append_synthetic_parent_event(
-                transcript,
-                owner_id=main_id,
-                confidence="unresolved",
-            )
+            if weak_parent_id is not None:
+                append_synthetic_parent_event(
+                    transcript,
+                    owner_id=weak_parent_id,
+                    confidence="synthetic",
+                )
+            else:
+                fallback_to_main(transcript, "", "")
+                append_synthetic_parent_event(
+                    transcript,
+                    owner_id=main_id,
+                    confidence="unresolved",
+                )
             continue
         owner_id, event = matched
         confidence: RelationConfidence = (

@@ -32,3 +32,4 @@ M9-01/M9-02 can now parse real metadata, tool results, and execution completion,
 - An `unresolved` node is still structurally attached to the main Agent, while its relation evidence says unresolved; callers must read `relationConfidence` rather than parent-link presence to judge strength.
 - Frontend nodes gain relation labels and a completion warning; non-authoritative levels use state colors, and historical sessions with NULL relation show no label.
 - Potential matching, guessing parents from start time, and hiding unresolved nodes remain out of this slice.
+- Classification covers Agent-tool-triggered children; forked-skill, workflow-subagent, and in-process-teammate edges are not parent Agent tool calls and keep `relation_confidence` NULL, so NULL cannot distinguish "not replayed" from "never classified".

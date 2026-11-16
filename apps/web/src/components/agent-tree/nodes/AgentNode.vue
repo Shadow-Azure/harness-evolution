@@ -42,7 +42,7 @@ const relationLabel = computed(() =>
 const ariaLabel = computed(() => {
   const parts = [props.data.label];
   if (props.data.relationConfidence) {
-    parts.push(`关系证据 ${props.data.relationConfidence}`);
+    parts.push(`关系证据 ${relationLabel.value}`);
   }
   if (props.data.completionWarning) {
     parts.push(props.data.completionWarning);
@@ -94,7 +94,7 @@ const ariaLabel = computed(() => {
                 data.activeEvidence === item.evIdx,
             },
           ]"
-          :title="`L${item.line} · ${item.name}`"
+          :title="item.synthetic ? `合成触发点 · L${item.line} · ${item.name}` : `L${item.line} · ${item.name}`"
         >
           <span class="rf-cdot" />
           {{ item.name }}
@@ -107,7 +107,7 @@ const ariaLabel = computed(() => {
         v-if="data.relationConfidence"
         class="rf-evidence"
         :class="data.relationConfidence"
-        :title="`关系证据：${data.relationConfidence}`"
+        :title="`关系证据：${relationLabel}`"
       >
         {{ relationLabel }}
       </span>

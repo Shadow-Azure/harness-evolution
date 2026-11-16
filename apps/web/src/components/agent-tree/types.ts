@@ -25,6 +25,7 @@ export type ChainItem =
       evIdx: number;
       line: number;
       w: number;
+      synthetic?: boolean;
     };
 
 /** Horizontal trigger chain rendered inside one Agent node. */

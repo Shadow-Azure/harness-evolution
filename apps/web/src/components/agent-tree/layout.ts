@@ -187,12 +187,16 @@ export function chainOf(
         ? event.name || "skill"
         : clipName(event.desc || event.name || event.kind);
     const width = triggerPillWidth(text, measure);
+    const synthetic =
+      event.relationConfidence === "synthetic" ||
+      event.relationConfidence === "unresolved";
     items.push({
       kind: event.kind,
       name: text,
       evIdx: originalIndex,
       line: event.line,
       w: width,
+      ...(synthetic ? { synthetic: true } : {}),
     });
     offsets[originalIndex] = push(width);
     previousOffset = event.messageOffset;

@@ -26,6 +26,7 @@ from app.service.sessions.service import SessionService
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 FIXTURE_ROOT = REPOSITORY_ROOT / "fixtures" / "m9-real-shape"
 ROOT_ID = "50000000-0000-4000-8000-000000000001"
+FIXTURE_ROOT_ID = "40000000-0000-4000-8000-000000000001"
 CHILD_ID = "agent-relation-child"
 PARENT_TOOL_ID = "call-agent-parent"
 
@@ -252,6 +253,63 @@ def test_unknown_parent_identity_stays_unresolved_and_visible() -> None:
     assert tree.parent_by_id()[CHILD_ID] == ROOT_ID
 
 
+def test_unmatched_tool_use_with_weak_parent_is_synthetic() -> None:
+    """A known parentAgentId still lowers an unknown tool id to synthetic."""
+    main = parse(
+        (user("synthetic prompt"), assistant("main-final")),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    child_transcript = child(
+        {
+            "agentType": "Explore",
+            "description": "synthetic child",
+            "toolUseId": "call-not-in-parent",
+            "parentAgentId": ROOT_ID,
+        },
+    )
+
+    result = assemble_agent_trees((main, child_transcript))
+    tree = result.trees[0]
+
+    node = next(item for item in tree.nodes if item.id == CHILD_ID)
+    assert node.parent_agent_id == ROOT_ID
+    assert relation_event(tree, CHILD_ID).relation_confidence == "synthetic"
+    assert "UNKNOWN_PARENT_TOOL_USE_ID" in {issue.code for issue in result.issues}
+
+
+def test_ambiguous_tool_use_with_weak_parent_is_synthetic() -> None:
+    """A known parentAgentId survives an ambiguous tool identity."""
+    main = parse(
+        (
+            user("synthetic prompt"),
+            assistant(
+                "main-tool",
+                tools=(("duplicate-tool", "Agent"), ("duplicate-tool", "Agent")),
+                stop_reason="tool_use",
+            ),
+        ),
+        agent_id=ROOT_ID,
+        kind="main",
+    )
+    child_transcript = child(
+        {
+            "agentType": "Explore",
+            "description": "synthetic child",
+            "toolUseId": "duplicate-tool",
+            "parentAgentId": ROOT_ID,
+        },
+    )
+
+    result = assemble_agent_trees((main, child_transcript))
+    tree = result.trees[0]
+
+    node = next(item for item in tree.nodes if item.id == CHILD_ID)
+    assert node.parent_agent_id == ROOT_ID
+    assert relation_event(tree, CHILD_ID).relation_confidence == "synthetic"
+    assert "AMBIGUOUS_PARENT_TOOL_USE_ID" in {issue.code for issue in result.issues}
+
+
 async def test_replay_persists_relation_confidence_and_api_exposes_it(tmp_path: Path) -> None:
     """Replay writes parent relation evidence and the tree DTO returns it."""
     database = create_database(
@@ -264,7 +322,7 @@ async def test_replay_persists_relation_confidence_and_api_exposes_it(tmp_path: 
     try:
         await _run_replay(database, payloads)
         rows = await _select_relations(database)
-        assert ("authoritative",) in rows
+        assert (ROOT_ID, 0, PARENT_TOOL_ID, "authoritative") in rows
         await _insert_bad_case(database)
 
         service = SessionService(SessionRepository(database))
@@ -307,7 +365,7 @@ async def test_real_shape_fixture_reports_derived_relation(tmp_path: Path) -> No
         ]
         await _run_replay(database, payloads)
         rows = await _select_relations(database)
-        assert ("derived",) in rows
+        assert (FIXTURE_ROOT_ID, 1, "tool-agent-1", "derived") in rows
     finally:
         await database.dispose()
 
@@ -387,14 +445,27 @@ async def _insert_bad_case(database: Any) -> None:
         )
 
 
-async def _select_relations(database: Any) -> list[tuple[str]]:
-    """Read stored relation confidence from the canonical event table."""
+async def _select_relations(
+    database: Any,
+) -> list[tuple[str, int, str | None, str]]:
+    """Read stored relation confidence with its owning event identity."""
     async with database.session() as session:
         rows = (
             await session.execute(
-                select(agent_events.c.relation_confidence).where(
-                    agent_events.c.relation_confidence.is_not(None),
-                ),
+                select(
+                    agent_events.c.agent_id,
+                    agent_events.c.event_index,
+                    agent_events.c.tool_use_id,
+                    agent_events.c.relation_confidence,
+                ).where(agent_events.c.relation_confidence.is_not(None)),
             )
         ).all()
-    return [(str(row[0]),) for row in rows]
+    return [
+        (
+            str(agent_id),
+            int(event_index),
+            str(tool_use_id) if tool_use_id is not None else None,
+            str(relation),
+        )
+        for agent_id, event_index, tool_use_id, relation in rows
+    ]
