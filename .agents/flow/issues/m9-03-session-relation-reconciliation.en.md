@@ -10,13 +10,17 @@ depends:
   - m9-01
   - m9-02
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/app/service/acquisition/agent_tree.py
   - apps/api/app/service/acquisition/**
   - apps/api/app/api/sessions.py
+  - apps/api/app/db/crud/acquisition_replay.py
+  - apps/api/tests/**
   - apps/web/src/**
   - tests/**
+  - plans/**
+  - docs/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

@@ -122,6 +122,44 @@ describe("agent-tree graph layout", () => {
     });
   });
 
+  it("passes relation evidence and the missing-report warning to nodes", () => {
+    const tree = {
+      sessionId: "relation",
+      agents: [
+        agent({
+          agentId: "main",
+          events: [
+            {
+              kind: "agent",
+              line: 20,
+              messageOffset: 20,
+              name: "子 Agent",
+              desc: "子任务",
+              toolUseId: "tool-a",
+              relationConfidence: "derived",
+            },
+          ],
+        }),
+        agent({
+          agentId: "agent-a",
+          parentAgentId: "main",
+          kind: "subagent",
+          label: "子 Agent",
+          toolUseId: "tool-a",
+          executionOutcome: "interrupted",
+          endReason: "missing_report",
+        }),
+      ],
+      badCases: [],
+    };
+
+    const nodes = nodeMap(buildGraph(tree, new Set(["main"]), measure));
+
+    expect(nodes.get("agent-a")?.data.relationConfidence).toBe("derived");
+    expect(nodes.get("agent-a")?.data.completionWarning).toBe("未返回最终报告");
+    expect(nodes.get("main")?.data.relationConfidence ?? null).toBeNull();
+  });
+
   it("collapses more than eight siblings until the parent is expanded", () => {
     const collapsed = buildGraph(demoNestedTree, new Set(), measure);
     const collapsedNodes = nodeMap(collapsed);

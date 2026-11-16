@@ -48,7 +48,7 @@ lifespan 先恢复任务与 sync_lock 再调度；手动/定时共用单飞锁�
 - `sync_lock` 是单飞真值；job 与锁同事务创建，异常 `sync_runs` 先终结再释放匹配锁。
 - 原始 payload 按 `(runtime_key, root_session_id, agent_id)` 唯一保存；fixtures 幂等写同构表。
 - 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放。CI 只用 mock。
-- 归一化由 `TraceParserFactory` 按 runtime 选子类，消息与内容块只存内存；输出用户输入锚点、触发点与统计。
+- 归一化由 `TraceParserFactory` 按 runtime 选子类，消息与内容不落库；输出用户输入锚点、触发点、关系置信度与统计。
 - 重放按 root 原子：先组装，再事务重写并推进 source 游标。
 - 外部问题表按主键同步：凭据上报幂等 upsert `bad_cases`，目录任务限默认空间；归因只读。
 - 密钥只从环境变量注入，不入仓库或数据库。

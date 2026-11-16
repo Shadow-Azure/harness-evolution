@@ -181,4 +181,24 @@ describe("AgentNode", () => {
     expect(wrapper.find('[data-handle-id="rep0"]').exists()).toBe(false);
     expect(wrapper.find('[data-handle-id="h0"]').exists()).toBe(false);
   });
+
+  it("shows relation evidence and the missing-report warning", () => {
+    const wrapper = mount(AgentNode, {
+      props: {
+        data: {
+          ...data,
+          kind: "sub",
+          relationConfidence: "derived",
+          completionWarning: "未返回最终报告",
+        },
+      },
+    });
+
+    expect(wrapper.get(".rf-evidence").text()).toBe("派生");
+    expect(wrapper.get(".rf-evidence").classes()).toContain("derived");
+    expect(wrapper.get(".rf-warn").text()).toBe("未返回最终报告");
+    expect(wrapper.get("button.rf-agent").attributes("aria-label")).toBe(
+      "主会话，关系证据 派生，未返回最终报告",
+    );
+  });
 });
