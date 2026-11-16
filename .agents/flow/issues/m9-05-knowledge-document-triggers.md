@@ -11,7 +11,7 @@ depends:
   - m9-02
   - m9-04
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/alembic/**
   - apps/api/app/service/acquisition/**
