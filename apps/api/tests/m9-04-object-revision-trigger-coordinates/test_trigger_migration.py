@@ -1,4 +1,4 @@
-"""Revision 0017 trigger-coordinate columns and legacy backfill contracts."""
+"""Revision 0018 trigger-coordinate columns and legacy backfill contracts."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def alembic_config(database: Database) -> Config:
 
 
 async def insert_legacy_coordinate_rows(database: Database) -> None:
-    """Write a pre-0017 Session, Agent, event, and source cursor."""
+    """Write a pre-0018 Session, Agent, event, and source cursor."""
     async with database.transaction() as session:
         await session.execute(
             text(
@@ -107,7 +107,7 @@ async def test_coordinate_migration_defaults_legacy_rows_and_is_idempotent(
     database = create_database(settings_for(tmp_path))
     await database.start()
     try:
-        await asyncio.to_thread(command.upgrade, alembic_config(database), "0016")
+        await asyncio.to_thread(command.upgrade, alembic_config(database), "0017")
         await insert_legacy_coordinate_rows(database)
 
         await upgrade_database(database)
@@ -144,7 +144,7 @@ async def test_coordinate_migration_defaults_legacy_rows_and_is_idempotent(
                 .mappings()
                 .one()
             )
-        assert revision == "0017"
+        assert revision == "0018"
         assert agent["tree_index"] == 0
         assert event["triggered_at"] is None
         assert event["object_version"] is None
@@ -156,7 +156,7 @@ async def test_coordinate_migration_defaults_legacy_rows_and_is_idempotent(
 async def test_coordinate_migration_downgrade_removes_columns_and_indexes(
     tmp_path: Path,
 ) -> None:
-    """Downgrading to 0016 removes only the coordinate columns and indexes."""
+    """Downgrading to 0017 removes only the coordinate columns and indexes."""
     database = create_database(settings_for(tmp_path))
     await database.start()
     try:
@@ -171,7 +171,7 @@ async def test_coordinate_migration_downgrade_removes_columns_and_indexes(
             assert "ix_agent_events_agent_triggered" in indexes
             assert "ix_agent_events_object_version" in indexes
 
-        await asyncio.to_thread(command.downgrade, alembic_config(database), "0016")
+        await asyncio.to_thread(command.downgrade, alembic_config(database), "0017")
 
         async with database.engine.connect() as connection:
             inspection = await connection.run_sync(

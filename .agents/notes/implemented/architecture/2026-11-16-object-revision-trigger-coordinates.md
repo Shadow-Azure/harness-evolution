@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-- 迁移 `0017` 只加坐标列：`agents.tree_index`（非空、默认 0）、`agent_events.triggered_at`、`agent_events.object_version`，并补 `(agent_id, triggered_at)` 与 `(agent_id, kind, name, object_version)` 索引。沿用 0016 的列存在性守卫，MySQL 部分 DDL 失败后可重跑；SQLite 降级用 batch 模式。
+- 迁移 `0018` 只加坐标列：`agents.tree_index`（非空、默认 0）、`agent_events.triggered_at`、`agent_events.object_version`，并补 `(agent_id, triggered_at)` 与 `(agent_id, kind, name, object_version)` 索引。排在 `0017_per_report_session_source` 之后，沿用 0016 的列存在性守卫，MySQL 部分 DDL 失败后可重跑；SQLite 降级用 batch 模式。
 - 对象 revision 只有三种形态：`tag:<tag>`、`digest:<sha256>`、`unknown`。显式 `tag` 或 `version/skillVersion/agentVersion` 元数据产生 tag，tag 永远优先；没有 tag 时才使用 body 或 listing digest；三者都没有就是显式 `unknown`，不从名称、描述或默认分支猜测。
 - Skill revision 的 digest 绑定 `source_path + 归一化 body hash`，而不是只有 body hash：同一个 Skill body 复制到不同路径会被视为不同对象；同一路径同一 body 跨会话、跨任务稳定。`definition_hash` 继续只表达 body hash，两者不互相覆盖。
 - Agent revision 由 `agentType + isBuiltIn + systemPrompt[0] body hash` 组合成 digest，内置 agent 没有 body 但仍保留类型与 builtin 标记；非内置且没有 body 时为 `unknown`。父 `kind=agent` 事件在树组装阶段拿到子 transcript 的 revision，父调用自身带 tag 时仍以 tag 为准。
