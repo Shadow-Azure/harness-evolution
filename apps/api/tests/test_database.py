@@ -526,7 +526,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0015"
+        assert result.scalar_one() == "0016"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -822,7 +822,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0015"
+            assert revision == "0016"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1075,7 +1075,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0015"
+        assert revision == "0016"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1246,7 +1246,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0015"
+        assert result.scalar_one() == "0016"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -1423,6 +1423,34 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         assert bad_case_by_name["bad_case_description"]["nullable"] is False
         assert bad_case_by_name["workspace_id"]["nullable"] is False
         assert "reason" not in bad_case_by_name
+        async with database.engine.connect() as connection:
+            evidence_columns = await connection.run_sync(
+                lambda sync_connection: {
+                    table: {
+                        column["name"]: column
+                        for column in inspect(sync_connection).get_columns(table)
+                    }
+                    for table in ("session_families", "agents", "agent_events")
+                },
+            )
+        assert evidence_columns["session_families"]["execution_outcome"]["nullable"] is False
+        assert (
+            normalized_server_default(
+                evidence_columns["session_families"]["execution_outcome"],
+            )
+            == "legacy_unknown"
+        )
+        assert evidence_columns["agents"]["end_reason"]["nullable"] is True
+        assert (
+            cast(String, evidence_columns["agents"]["agent_definition_hash"]["type"]).length == 64
+        )
+        assert evidence_columns["agents"]["definition_source"]["nullable"] is True
+        assert (
+            cast(String, evidence_columns["agent_events"]["object_revision"]["type"]).length == 96
+        )
+        assert cast(String, evidence_columns["agent_events"]["file_read_hash"]["type"]).length == 64
+        assert evidence_columns["agent_events"]["read_complete"]["nullable"] is True
+        assert evidence_columns["agent_events"]["relation_confidence"]["nullable"] is True
         async with database.session() as session:
             default_workspace = (
                 (

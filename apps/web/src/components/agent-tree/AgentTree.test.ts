@@ -125,9 +125,11 @@ describe("AgentTree", () => {
   it("keeps layout diagnostics out of the visible user interface", () => {
     const tree = {
       sessionId: "missing-parent-event",
+      runtimeKey: "claude-code",
       agents: [
         {
           agentId: "main",
+          executionOutcome: "legacy_unknown",
           parentAgentId: null,
           kind: "main",
           agentType: null,
@@ -144,6 +146,7 @@ describe("AgentTree", () => {
         },
         {
           agentId: "Agent-without-trigger",
+          executionOutcome: "legacy_unknown",
           parentAgentId: "main",
           kind: "subagent",
           agentType: "Explore",
@@ -174,9 +177,11 @@ describe("AgentTree", () => {
       props: {
         tree: {
           sessionId: "missing-main",
+          runtimeKey: "claude-code",
           agents: [
             {
               agentId: "orphan",
+              executionOutcome: "legacy_unknown",
               parentAgentId: null,
               kind: "subagent",
               agentType: "Explore",

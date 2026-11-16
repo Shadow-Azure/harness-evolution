@@ -20,10 +20,18 @@ from app.errors import AppError, ErrorCode
 from app.service.bad_cases.title import derive_title
 from app.service.problems.anchor import resolve_problem_anchor
 from app.service.sessions.schemas import (
+    DEFINITION_SOURCES,
+    END_REASONS,
+    EXECUTION_OUTCOMES,
+    RELATION_CONFIDENCES,
     AgentKind,
     BadCaseAgent,
     BadCaseAnchor,
+    DefinitionSource,
+    EndReason,
     EventKind,
+    ExecutionOutcome,
+    RelationConfidence,
     SessionAgent,
     SessionBadCase,
     SessionEvent,
@@ -65,10 +73,15 @@ def _list_item(record: SessionRecord, bad_cases: int) -> SessionListItem:
         short=record.short_title,
         title=record.title,
         repo=record.repo_name,
+        runtime_key=record.runtime_key,
         model=record.model,
         started_at=as_shanghai(record.started_at),
         duration_seconds=record.duration_seconds,
         status=cast(SessionStatus, record.status),
+        execution_outcome=cast(
+            ExecutionOutcome,
+            _closed(record.execution_outcome, EXECUTION_OUTCOMES, "execution outcome"),
+        ),
         skills=list(record.skill_names),
         stats=SessionStats(
             user_turns=record.user_turns_count,
@@ -105,6 +118,26 @@ def _task_kind(value: str | None) -> TaskKind | None:
     )
 
 
+def _closed(value: str, allowed: frozenset[str], field: str) -> str:
+    """Reject a persisted value outside the public closed state set."""
+    if value not in allowed:
+        raise AppError(
+            status_code=500,
+            code=ErrorCode.INTERNAL,
+            message=f"session tree has an unsupported {field}",
+        )
+    return value
+
+
+def _optional_closed(
+    value: str | None,
+    allowed: frozenset[str],
+    field: str,
+) -> str | None:
+    """Apply the closed-set rule only when the evidence value is present."""
+    return None if value is None else _closed(value, allowed, field)
+
+
 def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
     """Map one canonical Agent and its trigger events."""
     return SessionAgent(
@@ -121,6 +154,23 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
         spawn_depth=agent.spawn_depth,
         lines=agent.lines,
         messages_count=agent.messages_count,
+        execution_outcome=cast(
+            ExecutionOutcome,
+            _closed(agent.execution_outcome, EXECUTION_OUTCOMES, "execution outcome"),
+        ),
+        end_reason=cast(
+            EndReason | None,
+            _optional_closed(agent.end_reason, END_REASONS, "end reason"),
+        ),
+        agent_definition_hash=agent.agent_definition_hash,
+        definition_source=cast(
+            DefinitionSource | None,
+            _optional_closed(
+                agent.definition_source,
+                DEFINITION_SOURCES,
+                "definition source",
+            ),
+        ),
         events=[
             SessionEvent(
                 line=event.line_no,
@@ -129,6 +179,18 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
                 desc=event.description or "",
                 tool_use_id=event.tool_use_id,
                 message_offset=event.message_offset,
+                object_revision=event.object_revision,
+                definition_hash=event.definition_hash,
+                file_read_hash=event.file_read_hash,
+                read_complete=event.read_complete,
+                relation_confidence=cast(
+                    RelationConfidence | None,
+                    _optional_closed(
+                        event.relation_confidence,
+                        RELATION_CONFIDENCES,
+                        "relation confidence",
+                    ),
+                ),
             )
             for event in events
         ],
@@ -273,6 +335,7 @@ class SessionService:
             )
         return SessionTree(
             session_id=session_id,
+            runtime_key=snapshot.session.runtime_key,
             agents=[
                 _agent(agent, events_by_agent.get(agent.id, []))
                 for agent in sorted(

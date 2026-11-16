@@ -30,11 +30,13 @@ class SessionRecord:
     short_title: str
     title: str
     repo_name: str
+    runtime_key: str
     model: str | None
     models: tuple[str, ...]
     started_at: datetime
     duration_seconds: int
     status: str
+    execution_outcome: str
     skill_names: tuple[str, ...]
     user_turns_count: int
     messages_count: int
@@ -62,6 +64,10 @@ class AgentRecord:
     spawn_depth: int
     lines: int
     messages_count: int
+    execution_outcome: str
+    end_reason: str | None
+    agent_definition_hash: str | None
+    definition_source: str | None
     sort_key: float
 
 
@@ -77,6 +83,11 @@ class EventRecord:
     name: str | None
     description: str | None
     tool_use_id: str | None
+    object_revision: str | None
+    definition_hash: str | None
+    file_read_hash: str | None
+    read_complete: bool | None
+    relation_confidence: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,11 +133,13 @@ def _session_record(row: Any) -> SessionRecord:
         short_title=str(row["short_title"]),
         title=str(row["title"]),
         repo_name=str(row["repo_name"]),
+        runtime_key=str(row["runtime_key"]),
         model=str(row["model"]) if row["model"] is not None else None,
         models=_strings(row["models"]),
         started_at=row["started_at"],
         duration_seconds=int(row["duration_seconds"]),
         status=str(row["status"]),
+        execution_outcome=str(row["execution_outcome"]),
         skill_names=_strings(row["skill_names"]),
         user_turns_count=int(row["user_turns_count"]),
         messages_count=int(row["messages_count"]),
@@ -156,6 +169,14 @@ def _agent_record(row: Any) -> AgentRecord:
         spawn_depth=int(row["spawn_depth"]),
         lines=int(row["lines"]),
         messages_count=int(row["messages_count"]),
+        execution_outcome=str(row["execution_outcome"]),
+        end_reason=str(row["end_reason"]) if row["end_reason"] is not None else None,
+        agent_definition_hash=(
+            str(row["agent_definition_hash"]) if row["agent_definition_hash"] is not None else None
+        ),
+        definition_source=(
+            str(row["definition_source"]) if row["definition_source"] is not None else None
+        ),
         sort_key=float(row["sort_key"]),
     )
 
@@ -171,6 +192,17 @@ def _event_record(row: Any) -> EventRecord:
         name=str(row["name"]) if row["name"] is not None else None,
         description=str(row["description"]) if row["description"] is not None else None,
         tool_use_id=str(row["tool_use_id"]) if row["tool_use_id"] is not None else None,
+        object_revision=(
+            str(row["object_revision"]) if row["object_revision"] is not None else None
+        ),
+        definition_hash=(
+            str(row["definition_hash"]) if row["definition_hash"] is not None else None
+        ),
+        file_read_hash=(str(row["file_read_hash"]) if row["file_read_hash"] is not None else None),
+        read_complete=(bool(row["read_complete"]) if row["read_complete"] is not None else None),
+        relation_confidence=(
+            str(row["relation_confidence"]) if row["relation_confidence"] is not None else None
+        ),
     )
 
 

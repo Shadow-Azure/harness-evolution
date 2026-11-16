@@ -3652,6 +3652,19 @@
         "additionalProperties": false,
         "description": "One flat Agent node consumed directly by the execution-flow graph.",
         "properties": {
+          "agentDefinitionHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable body hash of this agent's definition when it has one.",
+            "title": "Agentdefinitionhash"
+          },
           "agentId": {
             "title": "Agentid",
             "type": "string"
@@ -3667,9 +3680,45 @@
             ],
             "title": "Agenttype"
           },
+          "definitionSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "prompt_snapshot",
+                  "api_request_shape",
+                  "builtin",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the agent definition body was recovered from.",
+            "title": "Definitionsource"
+          },
           "desc": {
             "title": "Desc",
             "type": "string"
+          },
+          "endReason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "end_turn",
+                  "tool_use_open",
+                  "missing_report",
+                  "external_failed",
+                  "external_interrupted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endreason"
           },
           "events": {
             "items": {
@@ -3677,6 +3726,16 @@
             },
             "title": "Events",
             "type": "array"
+          },
+          "executionOutcome": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed",
+              "legacy_unknown"
+            ],
+            "title": "Executionoutcome",
+            "type": "string"
           },
           "kind": {
             "enum": [
@@ -3780,6 +3839,7 @@
           "spawnDepth",
           "lines",
           "messagesCount",
+          "executionOutcome",
           "events"
         ],
         "title": "SessionAgent",
@@ -3857,9 +3917,35 @@
         "additionalProperties": false,
         "description": "One skill, Agent, or workflow trigger within an Agent node.",
         "properties": {
+          "definitionHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable body hash of the triggered skill or agent definition.",
+            "title": "Definitionhash"
+          },
           "desc": {
             "title": "Desc",
             "type": "string"
+          },
+          "fileReadHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Content hash for a complete file read that supplied the evidence.",
+            "title": "Filereadhash"
           },
           "kind": {
             "enum": [
@@ -3890,6 +3976,49 @@
               }
             ],
             "title": "Name"
+          },
+          "objectRevision": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "tag:<tag> / digest:<hash> / unknown evidence for the triggered object.",
+            "title": "Objectrevision"
+          },
+          "readComplete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whether the evidence source file was read in full.",
+            "title": "Readcomplete"
+          },
+          "relationConfidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "authoritative",
+                  "derived",
+                  "synthetic",
+                  "unresolved"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Strength of the parent-child evidence for an agent trigger.",
+            "title": "Relationconfidence"
           },
           "toolUseId": {
             "anyOf": [
@@ -3923,6 +4052,16 @@
             "title": "Durationseconds",
             "type": "integer"
           },
+          "executionOutcome": {
+            "enum": [
+              "completed",
+              "interrupted",
+              "failed",
+              "legacy_unknown"
+            ],
+            "title": "Executionoutcome",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -3940,6 +4079,10 @@
           },
           "repo": {
             "title": "Repo",
+            "type": "string"
+          },
+          "runtimeKey": {
+            "title": "Runtimekey",
             "type": "string"
           },
           "short": {
@@ -3980,10 +4123,12 @@
           "short",
           "title",
           "repo",
+          "runtimeKey",
           "model",
           "startedAt",
           "durationSeconds",
           "status",
+          "executionOutcome",
           "skills",
           "stats"
         ],
@@ -4131,6 +4276,10 @@
             "title": "Badcases",
             "type": "array"
           },
+          "runtimeKey": {
+            "title": "Runtimekey",
+            "type": "string"
+          },
           "sessionId": {
             "title": "Sessionid",
             "type": "string"
@@ -4138,6 +4287,7 @@
         },
         "required": [
           "sessionId",
+          "runtimeKey",
           "agents",
           "badCases"
         ],

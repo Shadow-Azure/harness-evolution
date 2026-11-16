@@ -42,10 +42,12 @@ async def test_list_requires_auth_and_returns_backend_aggregates(
         "short": "示例最小会话",
         "title": "示例会话四：最小主会话",  # noqa: RUF001
         "repo": "minimal-repo",
+        "runtimeKey": "claude-code",
         "model": "claude-sonnet-synthetic",
         "startedAt": "2026-10-23T12:00:00+08:00",
         "durationSeconds": 60,
         "status": "ok",
+        "executionOutcome": "legacy_unknown",
         "skills": [],
         "stats": {
             "userTurns": 1,
@@ -201,6 +203,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
     assert response.status_code == 200
     payload = response.json()
     assert payload["sessionId"] == SESSION_1
+    assert payload["runtimeKey"] == "claude-code"
     assert [agent["agentId"] for agent in payload["agents"]] == [SESSION_1, AGENT_1]
 
     main, child = payload["agents"]
@@ -218,6 +221,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
         "spawnDepth": 0,
         "lines": 2,
         "messagesCount": 1,
+        "executionOutcome": "legacy_unknown",
         "events": [
             {
                 "line": 2,
@@ -279,6 +283,82 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
         "sessionId": SESSION_2,
         "agentId": WORKFLOW_AGENT,
     }
+
+
+async def test_tree_exposes_closed_m9_evidence_fields(session_query: Any) -> None:
+    """Evidence columns surface as camelCase fields and invalid states fail closed."""
+    async with session_query.database.transaction() as session:
+        await session.execute(
+            update(session_families)
+            .where(session_families.c.id == SESSION_1)
+            .values(execution_outcome="completed", end_reason="end_turn"),
+        )
+        await session.execute(
+            update(agents)
+            .where(agents.c.id == SESSION_1)
+            .values(
+                execution_outcome="completed",
+                end_reason="end_turn",
+                agent_definition_hash="a" * 64,
+                definition_source="prompt_snapshot",
+            ),
+        )
+        await session.execute(
+            update(agent_events)
+            .where(
+                agent_events.c.agent_id == SESSION_1,
+                agent_events.c.event_index == 0,
+            )
+            .values(
+                object_revision="tag:v1.2.3",
+                definition_hash="b" * 64,
+                file_read_hash="c" * 64,
+                read_complete=True,
+                relation_confidence="authoritative",
+            ),
+        )
+
+    headers = session_query.authorization
+    listed = await session_query.client.get("/api/sessions", headers=headers)
+    tree = await session_query.client.get(
+        f"/api/sessions/{SESSION_1}/tree",
+        headers=headers,
+    )
+
+    assert listed.status_code == 200
+    assert listed.json()["items"][-1]["executionOutcome"] == "completed"
+    assert tree.status_code == 200
+    main = tree.json()["agents"][0]
+    assert main["executionOutcome"] == "completed"
+    assert main["endReason"] == "end_turn"
+    assert main["agentDefinitionHash"] == "a" * 64
+    assert main["definitionSource"] == "prompt_snapshot"
+    assert main["events"][0] == {
+        "line": 2,
+        "kind": "agent",
+        "name": "Explore",
+        "desc": "检查合成路径",
+        "toolUseId": "tool-agent-1",
+        "messageOffset": 0,
+        "objectRevision": "tag:v1.2.3",
+        "definitionHash": "b" * 64,
+        "fileReadHash": "c" * 64,
+        "readComplete": True,
+        "relationConfidence": "authoritative",
+    }
+
+    async with session_query.database.transaction() as session:
+        await session.execute(
+            update(agent_events)
+            .where(agent_events.c.agent_id == SESSION_1)
+            .values(relation_confidence="guess"),
+        )
+    rejected = await session_query.client.get(
+        f"/api/sessions/{SESSION_1}/tree",
+        headers=headers,
+    )
+    assert rejected.status_code == 500
+    assert rejected.json()["error"]["code"] == "INTERNAL"
 
 
 async def test_tree_missing_session_and_timeline_endpoint_are_absent(

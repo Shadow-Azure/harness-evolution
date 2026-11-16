@@ -8,9 +8,11 @@ const childCount = 60;
  */
 export const demoStressTree = {
   sessionId: "demo-stress",
+  runtimeKey: "claude-code",
   agents: [
     {
       agentId: "main",
+      executionOutcome: "completed" as const,
       parentAgentId: null,
       kind: "main",
       agentType: null,
@@ -34,6 +36,7 @@ export const demoStressTree = {
     },
     ...Array.from({ length: childCount }, (_, index) => ({
       agentId: `stress-agent-${index + 1}`,
+      executionOutcome: "completed" as const,
       parentAgentId: "main",
       kind: "subagent" as const,
       agentType: "general-purpose",

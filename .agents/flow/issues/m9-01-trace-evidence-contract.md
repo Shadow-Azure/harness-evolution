@@ -9,11 +9,15 @@ milestone: m9
 depends:
   - m9-06
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/db/**
+  - apps/api/app/service/sessions/**
   - apps/api/alembic/**
+  - apps/api/tests/**
+  - apps/web/src/**
   - packages/contracts/**
+  - plans/**
   - tests/**
   - .agents/flow/**
   - .agents/notes/**

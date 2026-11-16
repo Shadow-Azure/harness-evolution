@@ -2903,14 +2903,31 @@ export interface components {
          * @description One flat Agent node consumed directly by the execution-flow graph.
          */
         SessionAgent: {
+            /**
+             * Agentdefinitionhash
+             * @description Stable body hash of this agent's definition when it has one.
+             */
+            agentDefinitionHash?: string | null;
             /** Agentid */
             agentId: string;
             /** Agenttype */
             agentType: string | null;
+            /**
+             * Definitionsource
+             * @description Where the agent definition body was recovered from.
+             */
+            definitionSource?: ("prompt_snapshot" | "api_request_shape" | "builtin" | "unknown") | null;
             /** Desc */
             desc: string;
+            /** Endreason */
+            endReason?: ("end_turn" | "tool_use_open" | "missing_report" | "external_failed" | "external_interrupted") | null;
             /** Events */
             events: components["schemas"]["SessionEvent"][];
+            /**
+             * Executionoutcome
+             * @enum {string}
+             */
+            executionOutcome: "completed" | "interrupted" | "failed" | "legacy_unknown";
             /**
              * Kind
              * @enum {string}
@@ -2971,8 +2988,18 @@ export interface components {
          * @description One skill, Agent, or workflow trigger within an Agent node.
          */
         SessionEvent: {
+            /**
+             * Definitionhash
+             * @description Stable body hash of the triggered skill or agent definition.
+             */
+            definitionHash?: string | null;
             /** Desc */
             desc: string;
+            /**
+             * Filereadhash
+             * @description Content hash for a complete file read that supplied the evidence.
+             */
+            fileReadHash?: string | null;
             /**
              * Kind
              * @enum {string}
@@ -2984,6 +3011,21 @@ export interface components {
             messageOffset: number;
             /** Name */
             name: string | null;
+            /**
+             * Objectrevision
+             * @description tag:<tag> / digest:<hash> / unknown evidence for the triggered object.
+             */
+            objectRevision?: string | null;
+            /**
+             * Readcomplete
+             * @description Whether the evidence source file was read in full.
+             */
+            readComplete?: boolean | null;
+            /**
+             * Relationconfidence
+             * @description Strength of the parent-child evidence for an agent trigger.
+             */
+            relationConfidence?: ("authoritative" | "derived" | "synthetic" | "unresolved") | null;
             /** Tooluseid */
             toolUseId: string | null;
         };
@@ -2994,12 +3036,19 @@ export interface components {
         SessionListItem: {
             /** Durationseconds */
             durationSeconds: number;
+            /**
+             * Executionoutcome
+             * @enum {string}
+             */
+            executionOutcome: "completed" | "interrupted" | "failed" | "legacy_unknown";
             /** Id */
             id: string;
             /** Model */
             model: string | null;
             /** Repo */
             repo: string;
+            /** Runtimekey */
+            runtimeKey: string;
             /** Short */
             short: string;
             /** Skills */
@@ -3080,6 +3129,8 @@ export interface components {
             agents: components["schemas"]["SessionAgent"][];
             /** Badcases */
             badCases: components["schemas"]["SessionBadCase"][];
+            /** Runtimekey */
+            runtimeKey: string;
             /** Sessionid */
             sessionId: string;
         };
