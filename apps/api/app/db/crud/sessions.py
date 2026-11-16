@@ -88,6 +88,11 @@ class EventRecord:
     file_read_hash: str | None
     read_complete: bool | None
     relation_confidence: str | None
+    document_id: str | None
+    document_revision: str | None
+    source_path: str | None
+    retrieval_kind: str | None
+    retrieval_scope: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +207,15 @@ def _event_record(row: Any) -> EventRecord:
         read_complete=(bool(row["read_complete"]) if row["read_complete"] is not None else None),
         relation_confidence=(
             str(row["relation_confidence"]) if row["relation_confidence"] is not None else None
+        ),
+        document_id=str(row["document_id"]) if row["document_id"] is not None else None,
+        document_revision=(
+            str(row["document_revision"]) if row["document_revision"] is not None else None
+        ),
+        source_path=str(row["source_path"]) if row["source_path"] is not None else None,
+        retrieval_kind=(str(row["retrieval_kind"]) if row["retrieval_kind"] is not None else None),
+        retrieval_scope=(
+            str(row["retrieval_scope"]) if row["retrieval_scope"] is not None else None
         ),
     )
 

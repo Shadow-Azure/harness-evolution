@@ -249,11 +249,22 @@ agent_events = Table(
     Column("relation_confidence", String(16), nullable=True),
     Column("description", Text, nullable=True),
     Column("tool_use_id", String(128), nullable=True),
+    Column("document_id", String(255), nullable=True),
+    Column("document_revision", String(96), nullable=True),
+    Column("source_path", String(1024), nullable=True),
+    Column("retrieval_kind", String(32), nullable=True),
+    Column("retrieval_scope", String(255), nullable=True),
     UniqueConstraint("agent_id", "event_index", name="uq_agent_events_agent_index"),
     Index("ix_agent_events_agent_line", "agent_id", "line_no"),
     Index("ix_agent_events_agent_message", "agent_id", "message_offset"),
     Index("ix_agent_events_agent_triggered", "agent_id", "triggered_at"),
     Index("ix_agent_events_object_version", "agent_id", "kind", "name", "object_version"),
+    Index(
+        "ix_agent_events_knowledge_document",
+        "agent_id",
+        "kind",
+        "document_id",
+    ),
 )
 
 

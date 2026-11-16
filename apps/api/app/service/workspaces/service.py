@@ -38,6 +38,7 @@ from app.service.workspaces.schemas import (
     WorkspaceMemberUpdateRequest,
     WorkspaceUpdateRequest,
 )
+from app.utils.knowledge_paths import KnowledgeRootError, normalize_knowledge_roots
 from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -192,6 +193,7 @@ class WorkspaceService:
         mark = body.mark
         quota = body.quota
         space_admin_ids = list(dict.fromkeys(body.space_admin_ids))
+        knowledge_roots = self._validated_knowledge_roots(body.knowledge_roots)
         if quota < 0:
             raise self._quota_invalid(quota=quota, used=0)
         if not space_admin_ids:
@@ -206,6 +208,7 @@ class WorkspaceService:
                 quota=quota,
                 created_by=created_by,
                 space_admin_ids=space_admin_ids,
+                knowledge_roots=knowledge_roots,
             )
         except WorkspaceNameConflict as exc:
             raise self._workspace_exists() from exc
@@ -234,6 +237,11 @@ class WorkspaceService:
         name = body.name
         mark = body.mark
         quota = body.quota
+        knowledge_roots = (
+            self._validated_knowledge_roots(body.knowledge_roots)
+            if body.knowledge_roots is not None
+            else None
+        )
         if access.role != "global_admin" and (name is not None or mark is not None):
             raise self._forbidden("only the global administrator may rename a workspace")
         if quota is not None and (quota < 0 or quota < used):
@@ -245,6 +253,8 @@ class WorkspaceService:
             updates["mark"] = mark
         if quota is not None:
             updates["quota"] = quota
+        if knowledge_roots is not None:
+            updates["knowledge_roots"] = list(knowledge_roots)
         try:
             updated = await self._repository.update_workspace(
                 access.workspace_id,
@@ -463,6 +473,19 @@ class WorkspaceService:
             )
 
     @staticmethod
+    def _validated_knowledge_roots(values: list[str]) -> tuple[str, ...]:
+        """Canonicalize configured roots or fail with one stable public code."""
+        try:
+            return normalize_knowledge_roots(values)
+        except KnowledgeRootError as exc:
+            raise AppError(
+                status_code=422,
+                code=ErrorCode.KNOWLEDGE_ROOTS_INVALID,
+                message="knowledge roots are invalid",
+                details={"reason": exc.reason},
+            ) from exc
+
+    @staticmethod
     def _effective_role(stored_role: str | None) -> WorkspaceRole:
         """Derive the public role for a visible workspace row."""
         if stored_role is None:
@@ -486,6 +509,7 @@ class WorkspaceService:
             used=used,
             member_count=member_count,
             space_admins=space_admins,
+            knowledge_roots=list(workspace.knowledge_roots),
             created_at=workspace.created_at,
         )
 

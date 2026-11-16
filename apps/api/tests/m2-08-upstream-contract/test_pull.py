@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.config import DatabaseDialect, Settings
+from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.models.domain import source_records, sync_runs, trajectory_payloads
 from app.errors import AppError, ErrorCode
 from app.main import create_app
@@ -142,6 +143,7 @@ async def pull_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
+        await ensure_fixture_external_tables(app.state.database)
         yield client
 
 
@@ -300,6 +302,7 @@ async def test_admin_pull_upserts_upstream_payload_and_replays(tmp_path: Path) -
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
+        await ensure_fixture_external_tables(app.state.database)
         headers = await admin_headers(client)
         response = await client.post(
             "/api/acquisition/pull",
@@ -395,6 +398,7 @@ async def test_upstream_item_issue_is_isolated_and_sanitized(tmp_path: Path) -> 
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
+        await ensure_fixture_external_tables(app.state.database)
         headers = await admin_headers(client)
         response = await client.post(
             "/api/acquisition/pull",
@@ -431,6 +435,7 @@ async def test_version_mismatch_fails_job_and_writes_no_payload(tmp_path: Path) 
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
+        await ensure_fixture_external_tables(app.state.database)
         headers = await admin_headers(client)
         response = await client.post(
             "/api/acquisition/pull",

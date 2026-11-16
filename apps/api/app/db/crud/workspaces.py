@@ -1,5 +1,6 @@
 """Dialect-neutral persistence for workspaces, members, and session aggregates."""
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +32,7 @@ class WorkspaceRecord:
     mark: str
     quota: int
     status: str
+    knowledge_roots: tuple[str, ...]
     created_at: datetime
     updated_at: datetime
 
@@ -128,6 +130,18 @@ class MemberAlreadyExists(Exception):
     """The user already owns a membership row in this workspace."""
 
 
+def _knowledge_roots(value: object) -> tuple[str, ...]:
+    """Normalize a JSON string array read from a workspace row."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return ()
+    if not isinstance(value, list):
+        return ()
+    return tuple(item for item in value if isinstance(item, str))
+
+
 def _workspace_from_row(row: Any) -> WorkspaceRecord:
     """Translate one workspace row mapping into its record."""
     return WorkspaceRecord(
@@ -136,6 +150,7 @@ def _workspace_from_row(row: Any) -> WorkspaceRecord:
         mark=row["mark"],
         quota=row["quota"],
         status=row["status"],
+        knowledge_roots=_knowledge_roots(row["knowledge_roots"]),
         created_at=as_shanghai(row["created_at"]),
         updated_at=as_shanghai(row["updated_at"]),
     )
@@ -358,6 +373,7 @@ class WorkspaceRepository:
         quota: int,
         created_by: str,
         space_admin_ids: Sequence[str],
+        knowledge_roots: Sequence[str] = (),
     ) -> WorkspaceRecord:
         """Insert one workspace and its initial administrators atomically."""
         workspace_id = new_id()
@@ -371,6 +387,7 @@ class WorkspaceRepository:
                         mark=mark,
                         quota=quota,
                         status="active",
+                        knowledge_roots=list(knowledge_roots),
                         created_by=created_by,
                         created_at=now,
                         updated_at=now,

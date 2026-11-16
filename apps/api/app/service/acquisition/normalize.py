@@ -61,6 +61,7 @@ def normalize_transcript(
     agent_kind: Literal["main", "subagent"],
     agent_meta: dict[str, object] | None,
     runtime_key: str = "claude-code",
+    knowledge_roots: tuple[str, ...] = (),
 ) -> ParsedTranscript:
     """Normalize one payload through its runtime parser.
 
@@ -76,6 +77,7 @@ def normalize_transcript(
             agent_kind=agent_kind,
             runtime_key=runtime_key,
             agent_meta=agent_meta,
+            knowledge_roots=knowledge_roots,
         ),
     )
 

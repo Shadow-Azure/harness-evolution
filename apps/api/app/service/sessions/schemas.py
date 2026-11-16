@@ -9,7 +9,7 @@ from app.service.identity.schemas import IdentityModel
 
 SessionStatus = Literal["ok", "partial", "fail"]
 AgentKind = Literal["main", "subagent", "workflow"]
-EventKind = Literal["skill", "agent", "workflow"]
+EventKind = Literal["skill", "agent", "workflow", "knowledge"]
 TaskKind = Literal["in_process_teammate", "forked_skill"]
 ExecutionOutcome = Literal["completed", "interrupted", "failed", "legacy_unknown"]
 EndReason = Literal[
@@ -126,6 +126,36 @@ class SessionEvent(IdentityModel):
         default=None,
         exclude_if=_missing,
         description="Strength of the parent-child evidence for an agent trigger.",
+    )
+    document_id: str | None = Field(
+        default=None,
+        max_length=255,
+        exclude_if=_missing,
+        description="Stable knowledge-document identity for a knowledge trigger.",
+    )
+    document_revision: str | None = Field(
+        default=None,
+        max_length=96,
+        exclude_if=_missing,
+        description="Document revision evidence: digest:<hash> / provider revision / unknown.",
+    )
+    source_path: str | None = Field(
+        default=None,
+        max_length=1024,
+        exclude_if=_missing,
+        description="Configured-root path of the knowledge document; never its body.",
+    )
+    retrieval_kind: str | None = Field(
+        default=None,
+        max_length=32,
+        exclude_if=_missing,
+        description="file_read / mcp_search / mcp_retrieve.",
+    )
+    retrieval_scope: str | None = Field(
+        default=None,
+        max_length=255,
+        exclude_if=_missing,
+        description="Matched knowledge root or provider collection scope.",
     )
 
 

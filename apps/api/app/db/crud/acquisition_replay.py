@@ -18,6 +18,7 @@ from app.db.base import Database
 from app.db.models.domain import (
     agent_events,
     agents,
+    bad_cases,
     session_families,
     source_records,
     sync_runs,
@@ -25,7 +26,9 @@ from app.db.models.domain import (
     user_turns,
 )
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
+from app.db.models.workspace import workspaces
 from app.service.acquisition.agent_tree import AssembledSessionTree
+from app.utils.knowledge_paths import normalize_knowledge_roots
 from app.utils.time import as_shanghai
 
 
@@ -290,6 +293,38 @@ async def list_missing_payload_sources(
         )
         for runtime_key, root_session_id, agent_id in rows
     )
+
+
+async def list_workspace_knowledge_roots(
+    database: Database,
+    root_session_id: str,
+) -> tuple[str, ...]:
+    """Return the union of knowledge roots from every workspace reporting one root.
+
+    This is the evidence scope for replay: a root session may be reported by more
+    than one workspace, and each report's space owns its own configured roots.
+    A local root with no bad case has no workspace roots and therefore no
+    knowledge events. Workspace-scoped query filtering is deferred to M10.
+    """
+    statement = (
+        select(workspaces.c.id, workspaces.c.knowledge_roots)
+        .select_from(
+            bad_cases.join(
+                workspaces,
+                workspaces.c.id == bad_cases.c.workspace_id,
+            ),
+        )
+        .where(bad_cases.c.bad_case_session_id == root_session_id)
+        .distinct()
+        .order_by(workspaces.c.id)
+    )
+    async with database.session() as session:
+        rows = (await session.execute(statement)).all()
+    values: list[object] = []
+    for _workspace_id, roots in rows:
+        if isinstance(roots, list):
+            values.extend(roots)
+    return normalize_knowledge_roots(values)
 
 
 async def count_payloads(database: Database) -> int:
@@ -741,6 +776,11 @@ async def replace_normalized_root(
                         tool_use_id=event.tool_use_id,
                         triggered_at=event.triggered_at,
                         relation_confidence=event.relation_confidence,
+                        document_id=event.document_id,
+                        document_revision=event.document_revision,
+                        source_path=event.source_path,
+                        retrieval_kind=event.retrieval_kind,
+                        retrieval_scope=event.retrieval_scope,
                     ),
                 )
         for turn in tree.user_turns:

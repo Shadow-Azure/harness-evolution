@@ -72,12 +72,12 @@ class ParsedUserTurn:
 
 @dataclass(frozen=True, slots=True)
 class ParsedEvent:
-    """One Skill, Agent, or Workflow trigger."""
+    """One Skill, Agent, Workflow, or knowledge-document trigger."""
 
     event_index: int
     line_no: int
     message_offset: int
-    kind: Literal["skill", "agent", "workflow"]
+    kind: Literal["skill", "agent", "workflow", "knowledge"]
     name: str | None
     description: str | None
     tool_use_id: str | None
@@ -86,6 +86,20 @@ class ParsedEvent:
     object_version: str | None = None
     object_revision: str | None = None
     triggered_at: datetime | None = None
+    document_id: str | None = None
+    document_revision: str | None = None
+    source_path: str | None = None
+    retrieval_kind: str | None = None
+    retrieval_scope: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallPosition:
+    """One tool call's trigger coordinates, captured when the call is seen."""
+
+    line_no: int
+    message_offset: int
+    triggered_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +122,7 @@ class TracePayload:
     agent_kind: Literal["main", "subagent"]
     runtime_key: str = "claude-code"
     agent_meta: Mapping[str, object] | None = None
+    knowledge_roots: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +233,8 @@ class ParseContext:
     last_stop_reason: str | None = None
     open_tool_uses: dict[str, int] = field(default_factory=dict)
     tool_inputs: dict[str, tuple[str | None, dict[str, object]]] = field(default_factory=dict)
+    tool_call_positions: dict[str, ToolCallPosition] = field(default_factory=dict)
+    knowledge_tool_ids: set[str] = field(default_factory=set)
     evidence: list[TraceEvidence] = field(default_factory=list)
     skill_digests: dict[str, str] = field(default_factory=dict)
     attribution_skills: list[str] = field(default_factory=list)
@@ -309,12 +326,19 @@ class ParseContext:
         name: str | None,
         tool_input: Mapping[str, object] | None,
         line_no: int,
+        message_offset: int,
+        triggered_at: datetime | None = None,
     ) -> None:
-        """Retain one pending tool call identity without its source text."""
+        """Retain one pending tool call identity and its trigger coordinates."""
         if tool_use_id is None:
             return
         self.tool_inputs[tool_use_id] = (name, dict(tool_input or {}))
         self.open_tool_uses[tool_use_id] = line_no
+        self.tool_call_positions[tool_use_id] = ToolCallPosition(
+            line_no=line_no,
+            message_offset=message_offset,
+            triggered_at=triggered_at,
+        )
 
     def record_tool_result(self, tool_use_id: str | None) -> None:
         """Close one pending tool call when its result arrives."""
@@ -396,7 +420,7 @@ class ParseContext:
         message_offset: int,
         tool_use_id: str | None,
         name: str | None,
-        trigger_kind: Literal["skill", "agent", "workflow"] | None,
+        trigger_kind: Literal["skill", "agent", "workflow", "knowledge"] | None,
         description: str | None,
         tool_input: Mapping[str, object] | None = None,
         object_version: str | None = None,
@@ -410,6 +434,8 @@ class ParseContext:
             name=name,
             tool_input=tool_input,
             line_no=line_no,
+            message_offset=message_offset,
+            triggered_at=triggered_at,
         )
         if trigger_kind is None:
             return
@@ -427,6 +453,46 @@ class ParseContext:
                 triggered_at=triggered_at,
             ),
         )
+
+    def mark_knowledge_tool(self, tool_use_id: str | None) -> None:
+        """Remember one call whose name is an explicitly whitelisted knowledge tool."""
+        if tool_use_id is not None:
+            self.knowledge_tool_ids.add(tool_use_id)
+
+    def record_knowledge_event(
+        self,
+        *,
+        tool_use_id: str | None,
+        document_id: str,
+        document_revision: str,
+        source_path: str | None,
+        name: str | None,
+        retrieval_kind: str,
+        retrieval_scope: str,
+    ) -> bool:
+        """Append one document event using its call's trigger coordinates."""
+        position = self.tool_call_positions.get(tool_use_id) if tool_use_id is not None else None
+        if position is None:
+            return False
+        self.events.append(
+            ParsedEvent(
+                event_index=len(self.events),
+                line_no=position.line_no,
+                message_offset=position.message_offset,
+                kind="knowledge",
+                name=name,
+                description=None,
+                tool_use_id=tool_use_id,
+                object_revision=document_revision,
+                triggered_at=position.triggered_at,
+                document_id=document_id,
+                document_revision=document_revision,
+                source_path=source_path,
+                retrieval_kind=retrieval_kind,
+                retrieval_scope=retrieval_scope,
+            ),
+        )
+        return True
 
 
 class BaseTraceParser(ABC):
@@ -492,7 +558,7 @@ class BaseTraceParser(ABC):
                 "MODEL_EVIDENCE_CONFLICT",
                 "Requested and reported models disagree; both were kept separately",
             )
-        events = _resolve_event_revisions(tuple(ctx.events), ctx)
+        events = _resolve_event_revisions(_ordered_events(tuple(ctx.events)), ctx)
         return ParsedTranscript(
             root_session_id=payload.root_session_id,
             agent_id=payload.agent_id,
@@ -637,6 +703,12 @@ def _agent_revision(ctx: ParseContext) -> str | None:
         return None
     seed = f"{agent_type}\0{'builtin' if builtin else 'custom'}\0{body_hash or ''}"
     return "digest:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def _ordered_events(events: tuple[ParsedEvent, ...]) -> tuple[ParsedEvent, ...]:
+    """Sort triggers by call position and reindex them deterministically."""
+    ordered = sorted(events, key=lambda event: (event.line_no, event.event_index))
+    return tuple(replace(event, event_index=index) for index, event in enumerate(ordered))
 
 
 def _resolve_event_revisions(

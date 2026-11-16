@@ -607,3 +607,76 @@ async def test_invisible_workspaces_never_leak_membership(
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "WORKSPACE_NOT_FOUND"
+
+
+async def test_workspace_knowledge_roots_default_round_trip_and_validation(
+    workspace_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """knowledgeRoots is a configurable, validated, and readable space field."""
+    app, client = workspace_client
+    database = app.state.database
+    space_admin_id = await create_user(database, username="knowledge-admin")
+    initial_admin_id = await create_user(database, username="knowledge-owner")
+    _, admin_header = await _admin(app)
+
+    created = await client.post(
+        "/api/workspaces",
+        headers=admin_header,
+        json=_workspace_payload(
+            spaceAdminIds=[initial_admin_id],
+            knowledgeRoots=["/workspace/knowledge"],
+        ),
+    )
+    defaulted = await client.post(
+        "/api/workspaces",
+        headers=admin_header,
+        json=_workspace_payload(name="No knowledge", spaceAdminIds=[initial_admin_id]),
+    )
+    assert created.status_code == 201
+    assert defaulted.status_code == 201
+    assert created.json()["knowledgeRoots"] == ["/workspace/knowledge"]
+    assert defaulted.json()["knowledgeRoots"] == []
+
+    workspace_id = created.json()["id"]
+    await insert_member(
+        database,
+        workspace_id=workspace_id,
+        user_id=space_admin_id,
+        role="space_admin",
+    )
+    space_header = bearer(access_token(app, user_id=space_admin_id))
+
+    updated = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=space_header,
+        json={"knowledgeRoots": ["/workspace/knowledge/", "\\workspace\\shared\\kb"]},
+    )
+    relative = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=space_header,
+        json={"knowledgeRoots": ["relative/knowledge"]},
+    )
+    traversal = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=space_header,
+        json={"knowledgeRoots": ["/workspace/../etc"]},
+    )
+    too_many = await client.put(
+        f"/api/workspaces/{workspace_id}",
+        headers=space_header,
+        json={"knowledgeRoots": [f"/kb/{index}" for index in range(21)]},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["knowledgeRoots"] == ["/workspace/knowledge", "/workspace/shared/kb"]
+    assert relative.status_code == 422
+    assert relative.json()["error"]["code"] == "KNOWLEDGE_ROOTS_INVALID"
+    assert relative.json()["error"]["details"] == {"reason": "not_absolute"}
+    assert traversal.status_code == 422
+    assert traversal.json()["error"]["details"] == {"reason": "parent_traversal"}
+    assert too_many.status_code == 422
+    assert too_many.json()["error"]["details"] == {"reason": "too_many"}
+
+    listed = await client.get("/api/workspaces", headers=admin_header)
+    listed_item = next(item for item in listed.json()["items"] if item["id"] == workspace_id)
+    assert listed_item["knowledgeRoots"] == ["/workspace/knowledge", "/workspace/shared/kb"]

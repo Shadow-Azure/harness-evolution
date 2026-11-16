@@ -1067,7 +1067,8 @@
           "BAD_CASE_ID_CONFLICT",
           "WINDOW_INVALID",
           "GRAIN_INVALID",
-          "OBJECT_FILTER_TOO_LARGE"
+          "OBJECT_FILTER_TOO_LARGE",
+          "KNOWLEDGE_ROOTS_INVALID"
         ],
         "title": "ErrorCode",
         "type": "string"
@@ -3979,6 +3980,32 @@
             "title": "Desc",
             "type": "string"
           },
+          "documentId": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable knowledge-document identity for a knowledge trigger.",
+            "title": "Documentid"
+          },
+          "documentRevision": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Document revision evidence: digest:<hash> / provider revision / unknown.",
+            "title": "Documentrevision"
+          },
           "fileReadHash": {
             "anyOf": [
               {
@@ -3996,7 +4023,8 @@
             "enum": [
               "skill",
               "agent",
-              "workflow"
+              "workflow",
+              "knowledge"
             ],
             "title": "Kind",
             "type": "string"
@@ -4064,6 +4092,45 @@
             ],
             "description": "Strength of the parent-child evidence for an agent trigger.",
             "title": "Relationconfidence"
+          },
+          "retrievalKind": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "file_read / mcp_search / mcp_retrieve.",
+            "title": "Retrievalkind"
+          },
+          "retrievalScope": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Matched knowledge root or provider collection scope.",
+            "title": "Retrievalscope"
+          },
+          "sourcePath": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Configured-root path of the knowledge document; never its body.",
+            "title": "Sourcepath"
           },
           "toolUseId": {
             "anyOf": [
@@ -5681,6 +5748,13 @@
             "title": "Id",
             "type": "string"
           },
+          "knowledgeRoots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Knowledgeroots",
+            "type": "array"
+          },
           "mark": {
             "title": "Mark",
             "type": "string"
@@ -5717,6 +5791,7 @@
           "used",
           "memberCount",
           "spaceAdmins",
+          "knowledgeRoots",
           "createdAt"
         ],
         "title": "Workspace",
@@ -5746,6 +5821,13 @@
         "additionalProperties": false,
         "description": "Administrator-provisioned workspace with at least one initial space admin.",
         "properties": {
+          "knowledgeRoots": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Knowledgeroots",
+            "type": "array"
+          },
           "mark": {
             "default": "",
             "maxLength": 255,
@@ -6060,6 +6142,20 @@
         "additionalProperties": false,
         "description": "Partial workspace update; field-level permission is enforced by the service.",
         "properties": {
+          "knowledgeRoots": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledgeroots"
+          },
           "mark": {
             "anyOf": [
               {
