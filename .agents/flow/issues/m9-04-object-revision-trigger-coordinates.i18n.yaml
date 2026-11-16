@@ -1,3 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-m9-04-object-revision-trigger-coordinates.md: 112ba961c46602dcf725f75d25383c4d64e88be6
-m9-04-object-revision-trigger-coordinates.en.md: bb98f3fb535d299a00b9761197c034ecdc3963b0
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m9-04-object-revision-trigger-coordinates.md
+m9-04-object-revision-trigger-coordinates.md: 53421bb76f7658e7e49ec35ce7d95fd71c72e64d
+m9-04-object-revision-trigger-coordinates.en.md: 35123d99900b19b42d4a9fcb15f2595fb1d49aa7

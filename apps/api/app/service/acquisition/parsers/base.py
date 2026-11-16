@@ -8,7 +8,7 @@ import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from types import MappingProxyType
 from typing import ClassVar, Literal, cast
@@ -83,6 +83,9 @@ class ParsedEvent:
     tool_use_id: str | None
     definition_hash: str | None = None
     relation_confidence: RelationConfidence | None = None
+    object_version: str | None = None
+    object_revision: str | None = None
+    triggered_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +184,9 @@ class ParsedTranscript:
     end_reason: EndReason | None = None
     agent_definition_hash: str | None = None
     definition_source: DefinitionSource | None = None
+    is_builtin: bool | None = None
+    agent_revision: str | None = None
+    attribution_skills: tuple[str, ...] = ()
     evidence: tuple[TraceEvidence, ...] = ()
 
     def agent_meta_dict(self) -> dict[str, object]:
@@ -213,6 +219,8 @@ class ParseContext:
     open_tool_uses: dict[str, int] = field(default_factory=dict)
     tool_inputs: dict[str, tuple[str | None, dict[str, object]]] = field(default_factory=dict)
     evidence: list[TraceEvidence] = field(default_factory=list)
+    skill_digests: dict[str, str] = field(default_factory=dict)
+    attribution_skills: list[str] = field(default_factory=list)
     agent_definition_hash: str | None = None
     definition_source: DefinitionSource | None = None
     task_pending: int = 0
@@ -391,6 +399,9 @@ class ParseContext:
         trigger_kind: Literal["skill", "agent", "workflow"] | None,
         description: str | None,
         tool_input: Mapping[str, object] | None = None,
+        object_version: str | None = None,
+        object_revision: str | None = None,
+        triggered_at: datetime | None = None,
     ) -> None:
         """Count a tool call and retain a trigger event when recognized."""
         self.tools_count += 1
@@ -411,6 +422,9 @@ class ParseContext:
                 name=name,
                 description=description,
                 tool_use_id=tool_use_id,
+                object_version=object_version,
+                object_revision=object_revision,
+                triggered_at=triggered_at,
             ),
         )
 
@@ -478,6 +492,7 @@ class BaseTraceParser(ABC):
                 "MODEL_EVIDENCE_CONFLICT",
                 "Requested and reported models disagree; both were kept separately",
             )
+        events = _resolve_event_revisions(tuple(ctx.events), ctx)
         return ParsedTranscript(
             root_session_id=payload.root_session_id,
             agent_id=payload.agent_id,
@@ -502,7 +517,7 @@ class BaseTraceParser(ABC):
             errors_count=ctx.errors_count,
             user_turns=tuple(ctx.user_turns),
             blocks_outside_user_turns=tuple(ctx.blocks_outside_user_turns),
-            events=tuple(ctx.events),
+            events=events,
             issues=tuple(ctx.issues),
             agent_meta=cast(
                 Mapping[str, object],
@@ -519,6 +534,9 @@ class BaseTraceParser(ABC):
             end_reason=end_reason,
             agent_definition_hash=ctx.agent_definition_hash,
             definition_source=ctx.definition_source,
+            is_builtin=ctx.facts.is_builtin,
+            agent_revision=_agent_revision(ctx),
+            attribution_skills=tuple(dict.fromkeys(ctx.attribution_skills)),
             evidence=tuple(ctx.evidence),
         )
 
@@ -591,6 +609,80 @@ def definition_hash(text: str) -> str | None:
     if body is None:
         return None
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _tag_revision(version: str | None) -> str | None:
+    """Return an explicit tag revision, never inferred from a name."""
+    if version is None:
+        return None
+    return f"tag:{version}"
+
+
+def _skill_revision(source_path: str | None, body_hash: str | None) -> str | None:
+    """Bind a Skill body hash to its source path without retaining either body."""
+    if body_hash is None:
+        return None
+    seed = f"{source_path or ''}\0{body_hash}"
+    return "digest:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def _agent_revision(ctx: ParseContext) -> str | None:
+    """Build an Agent revision from type, builtin marker, and definition hash."""
+    agent_type = ctx.facts.agent_type
+    if agent_type is None:
+        return None
+    builtin = ctx.facts.is_builtin is True or ctx.definition_source == "builtin"
+    body_hash = ctx.agent_definition_hash
+    if not builtin and body_hash is None:
+        return None
+    seed = f"{agent_type}\0{'builtin' if builtin else 'custom'}\0{body_hash or ''}"
+    return "digest:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+
+
+def _resolve_event_revisions(
+    events: tuple[ParsedEvent, ...],
+    ctx: ParseContext,
+) -> tuple[ParsedEvent, ...]:
+    """Resolve one revision per trigger from tag, body, digest, or explicit unknown.
+
+    A tag always wins. Skill body evidence is bound by tool-use identity so the
+    injection record that arrives after the call still resolves the same event.
+    The opaque listing digest is only used when neither a tag nor a body hash is
+    available; no algorithm is inferred from it.
+    """
+    definitions: dict[str, TraceEvidence] = {}
+    for item in ctx.evidence:
+        if (
+            item.kind == "skill_definition"
+            and item.tool_use_id is not None
+            and item.content_hash is not None
+        ):
+            definitions.setdefault(item.tool_use_id, item)
+    resolved: list[ParsedEvent] = []
+    for event in events:
+        definition_hash = event.definition_hash
+        revision = event.object_revision
+        if event.kind == "skill" and event.tool_use_id is not None:
+            definition = definitions.get(event.tool_use_id)
+            if definition is not None:
+                if definition_hash is None:
+                    definition_hash = definition.content_hash
+                if revision is None:
+                    revision = _skill_revision(definition.source_path, definition.content_hash)
+        if revision is None and event.kind == "skill" and event.name is not None:
+            digest = ctx.skill_digests.get(event.name)
+            if digest is not None:
+                revision = f"digest:{digest}"
+        if revision is None and event.object_version is not None:
+            revision = _tag_revision(event.object_version)
+        resolved.append(
+            replace(
+                event,
+                definition_hash=definition_hash,
+                object_revision=revision or "unknown",
+            ),
+        )
+    return tuple(resolved)
 
 
 def _execution_state(ctx: ParseContext) -> tuple[ExecutionOutcome, EndReason | None]:

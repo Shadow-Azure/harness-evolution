@@ -43,6 +43,106 @@ _SKILL_PATH = re.compile(
 )
 _TASK_STATUS_PENDING = frozenset({"pending", "queued", "todo"})
 _TASK_STATUS_IN_PROGRESS = frozenset({"in_progress", "in-progress", "running", "started"})
+_KIND_VERSION_KEYS: dict[str, tuple[str, ...]] = {
+    "skill": ("skillVersion", "skill_version"),
+    "agent": ("agentVersion", "agent_version"),
+    "workflow": (),
+}
+_GENERIC_VERSION_KEYS = ("objectVersion", "object_version", "version")
+_TAG_KEYS = ("tag", "objectTag", "object_tag")
+_LISTING_DIGEST = re.compile(r"(?:digest|hash)\s*[:=]\s*([0-9a-fA-F]{16})\b")
+_OPAQUE_DIGEST = re.compile(r"^[0-9a-fA-F]{16}$")
+
+
+def _bounded_version(value: object) -> str | None:
+    """Read an explicit object version without guessing or exceeding the column."""
+    text = _string(value)
+    if text is None:
+        return None
+    return text.strip()[:64] or None
+
+
+def _object_version(
+    kind: Literal["skill", "agent", "workflow"],
+    tool_input: dict[str, object],
+) -> str | None:
+    """Read explicit version metadata for one trigger kind."""
+    for key in (*_KIND_VERSION_KEYS[kind], *_GENERIC_VERSION_KEYS):
+        version = _bounded_version(tool_input.get(key))
+        if version is not None:
+            return version
+    return None
+
+
+def _object_tag(tool_input: dict[str, object]) -> str | None:
+    """Read an explicit object tag, if the provider supplied one."""
+    for key in _TAG_KEYS:
+        tag = _bounded_version(tool_input.get(key))
+        if tag is not None:
+            return tag
+    return None
+
+
+def _listing_digest(value: object) -> str | None:
+    """Read one opaque 16-hex Skill listing digest without interpreting it."""
+    text = _string(value)
+    if text is None:
+        return None
+    candidate = text.strip()
+    if _OPAQUE_DIGEST.fullmatch(candidate):
+        return candidate.lower()
+    match = _LISTING_DIGEST.search(candidate)
+    return match.group(1).lower() if match is not None else None
+
+
+def _skill_listing_digests(attachment: dict[str, object]) -> dict[str, str]:
+    """Extract name -> opaque digest pairs from one Skill listing attachment."""
+    if attachment.get("type") != "skill_listing":
+        return {}
+    raw_names = attachment.get("names")
+    names = (
+        [name for name in raw_names if isinstance(name, str) and name.strip()]
+        if isinstance(raw_names, list)
+        else []
+    )
+    digests: dict[str, str] = {}
+    top_level = _listing_digest(attachment.get("digest"))
+    if top_level is not None and len(names) == 1:
+        digests[names[0]] = top_level
+    digests_value = attachment.get("digests")
+    if isinstance(digests_value, dict):
+        for name, value in digests_value.items():
+            if not isinstance(name, str) or not name.strip():
+                continue
+            digest = _listing_digest(value)
+            if digest is not None:
+                digests[name] = digest
+    elif isinstance(digests_value, list):
+        for name, value in zip(names, digests_value, strict=False):
+            digest = _listing_digest(value)
+            if digest is not None:
+                digests[name] = digest
+    skills = attachment.get("skills")
+    if isinstance(skills, list):
+        for item in skills:
+            if not isinstance(item, dict):
+                continue
+            name = _string(item.get("name"))
+            digest = _listing_digest(item.get("digest"))
+            if name is not None and digest is not None:
+                digests[name] = digest
+    content = _string(attachment.get("content"))
+    if content is not None:
+        current: str | None = None
+        for line in content.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- "):
+                current = stripped[2:].split(":", 1)[0].strip() or None
+            if current is not None:
+                digest = _listing_digest(line)
+                if digest is not None:
+                    digests[current] = digest
+    return digests
 
 
 def _event_name(
@@ -245,7 +345,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 3
+    parser_version = 4
 
     def consume_record(
         self,
@@ -273,6 +373,14 @@ class ClaudeCodeTraceParser(BaseTraceParser):
                 ctx.last_stop_reason = stop_reason
         elif record_type in {"prompt_snapshot", "api-request-shape", "api_request_shape"}:
             self._record_agent_definition(record, record_type, ctx)
+
+        attribution = _string(record.get("attributionSkill"))
+        if attribution is not None:
+            ctx.attribution_skills.append(attribution.strip()[:255])
+        if record_type == "attachment":
+            attachment = _dict(record.get("attachment"))
+            if attachment:
+                ctx.skill_digests.update(_skill_listing_digests(attachment))
 
         if payload.agent_kind == "main":
             ctx.record_root_metadata(
@@ -358,6 +466,9 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             block_name = _string(block.get("name"))
             kind = _TRIGGER_KINDS.get((block_name or "").casefold())
             tool_input = _dict(block.get("input"))
+            object_version = _object_version(kind, tool_input) if kind is not None else None
+            tag = _object_tag(tool_input) if kind is not None else None
+            tag = tag or object_version
             ctx.record_tool_use(
                 line_no=line_no,
                 message_offset=message_offset,
@@ -366,6 +477,9 @@ class ClaudeCodeTraceParser(BaseTraceParser):
                 trigger_kind=kind,
                 description=_string(tool_input.get("description")),
                 tool_input=tool_input,
+                object_version=object_version,
+                object_revision=f"tag:{tag}" if tag is not None else None,
+                triggered_at=_timestamp(record.get("timestamp")),
             )
 
     def _record_agent_definition(
