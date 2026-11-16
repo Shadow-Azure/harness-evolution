@@ -76,6 +76,22 @@ const props = defineProps({
     type: Number as () => number | null,
     default: null,
   },
+  searchActive: {
+    type: Boolean,
+    default: false,
+  },
+  listEmpty: {
+    type: Boolean,
+    default: false,
+  },
+  filterActive: {
+    type: Boolean,
+    default: false,
+  },
+  pendingSessions: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits<{
@@ -291,8 +307,28 @@ const stats = computed<Array<{
     <div
       v-else
       class="overview-empty"
+      data-testid="session-overview-empty"
     >
-      从左侧选择一个 Session 查看概览。
+      <template v-if="searchActive">
+        <strong>未找到该 Session</strong>
+        <span>输入完整 root session ID 后回车重新查询；清空输入并回车可恢复最新 10 个 Session。</span>
+      </template>
+      <template v-else-if="listEmpty && filterActive">
+        <strong>没有匹配当前筛选的 session</strong>
+        <span>调整状态筛选，或清空输入后回车恢复最新 10 个 Session。</span>
+      </template>
+      <template v-else-if="listEmpty && pendingSessions > 0">
+        <strong>该工作空间暂无可展示的 Session</strong>
+        <span>{{ pendingSessions }} 个待同步根会话的轨迹仍在补齐，补齐后刷新页面可见。</span>
+      </template>
+      <template v-else-if="listEmpty">
+        <strong>该工作空间还没有上报 bad case</strong>
+        <span>上报 bad case 后，这里会显示最新 10 个 Session。</span>
+      </template>
+      <template v-else>
+        <strong>未选择 Session</strong>
+        <span>从左侧选择一个会话查看家族树。</span>
+      </template>
     </div>
   </section>
 </template>
@@ -542,10 +578,23 @@ const stats = computed<Array<{
 
 .overview-empty {
   display: grid;
-  place-items: center;
+  place-content: center;
   min-height: 320px;
+  padding: 20px;
   color: var(--text-faint);
   font-size: 12px;
+  text-align: center;
+}
+
+.overview-empty strong {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.overview-empty span {
+  margin-top: 5px;
+  max-width: 360px;
+  line-height: 1.6;
 }
 
 @media (max-width: 860px) {

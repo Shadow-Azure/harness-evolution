@@ -322,7 +322,7 @@ test("m1-shell exposes the prototype navigation, demo state, and clean responsiv
           !document.querySelector("[data-testid='demo-badge']") ||
           !sync ||
           !document.querySelector(".session-browser") ||
-          !document.body.textContent.includes("没有匹配当前筛选的 session")
+          !document.body.textContent.includes("该工作空间还没有上报 bad case")
         ) return null;
         return {
           path: location.pathname,
@@ -330,7 +330,7 @@ test("m1-shell exposes the prototype navigation, demo state, and clean responsiv
           badge: document.querySelector("[data-testid='demo-badge']").textContent.trim(),
           pending: sync.querySelector(".sync-summary")?.textContent.trim() ?? "",
           pendingDetail: sync.getAttribute("aria-label"),
-          hasEmpty: document.body.textContent.includes("没有匹配当前筛选的 session"),
+          hasEmpty: document.body.textContent.includes("该工作空间还没有上报 bad case"),
           bodyBackground: getComputedStyle(document.body).backgroundColor,
           topbarBackground: getComputedStyle(document.querySelector(".topbar")).backgroundColor,
           topbarHeight: document.querySelector(".topbar").getBoundingClientRect().height,

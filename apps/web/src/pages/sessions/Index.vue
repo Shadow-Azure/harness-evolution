@@ -9,6 +9,7 @@ import {
   watch,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useQueryClient } from "@tanstack/vue-query";
 
 import {
   useSessionBadCases,
@@ -16,6 +17,7 @@ import {
   useSessionSummary,
   useSessionTree,
 } from "../../composables/useSessions";
+import { queryKeys } from "../../api/queryKeys";
 import { parseSessionDeepLink } from "../../router/deepLink";
 import { workspacePath } from "../../router/workspace";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
@@ -30,16 +32,16 @@ defineOptions({ name: "SessionsPage" });
 
 const route = useRoute();
 const router = useRouter();
+const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
 const pageRoot = ref<HTMLElement | null>(null);
 const scrollMemory = new SessionScrollMemory();
 const searchInput = ref(typeof route.query.q === "string" ? route.query.q : "");
 const deepLinkNotice = ref("");
+const pendingNotice = ref(false);
 let noticeOwnedPath: string | null = null;
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
 let scrollRestoreTimer: ReturnType<typeof setTimeout> | undefined;
 let scrollRestoreSequence = 0;
-let searchRevision = 0;
 let autoSelectionRevision = 0;
 let listPanel: HTMLElement | null = null;
 let overviewPanel: HTMLElement | null = null;
@@ -73,7 +75,7 @@ const filters = computed<SessionFilters>(() => {
     q: typeof route.query.q === "string" ? route.query.q : "",
     status,
     sort,
-    limit: 100,
+    limit: 10,
   };
 });
 
@@ -127,6 +129,26 @@ const selectedItem = computed(
 const isListPending = computed(() => listQuery.isPending.value);
 const isListSuccess = computed(() => listQuery.isSuccess.value);
 const listError = computed(() => listQuery.error.value);
+const isSearchActive = computed(
+  () => (filters.value.q ?? "").trim().length > 0,
+);
+const listTotal = computed(
+  () => listQuery.data.value?.total ?? items.value.length,
+);
+const pendingSessions = computed(
+  () => listQuery.data.value?.pendingSessions ?? 0,
+);
+const isListEmpty = computed(
+  () => isListSuccess.value && items.value.length === 0,
+);
+const countLabel = computed(() => {
+  if (isListPending.value) return "加载中…";
+  if (listQuery.isError.value) return "加载失败";
+  if (!listQuery.data.value) return "—";
+  return isSearchActive.value
+    ? `命中 ${listTotal.value} 个`
+    : `最新 ${items.value.length} / 总数 ${listTotal.value}`;
+});
 const isSummaryPending = computed(
   () => summaryQuery.isPending.value && Boolean(selectedId.value),
 );
@@ -252,13 +274,45 @@ async function updateFilter(overrides: Partial<SessionFilters>) {
 
 function updateSearch(value: string) {
   searchInput.value = value;
-  clearTimeout(searchTimer);
-  const revision = ++searchRevision;
-  searchTimer = setTimeout(() => {
-    searchTimer = undefined;
-    if (revision !== searchRevision) return;
-    void updateFilter({ q: value.trim() });
-  }, 300);
+}
+
+function forgetCachedLatest(status: SessionStatusFilter, sort: SessionSort) {
+  queryClient.removeQueries({
+    queryKey: queryKeys.sessionList(workspaceId.value, {
+      q: "",
+      status,
+      sort,
+      limit: 10,
+    }),
+    exact: true,
+  });
+}
+
+async function submitSearch() {
+  const nextQuery = searchInput.value.trim();
+  searchInput.value = nextQuery;
+  if (nextQuery === (filters.value.q ?? "").trim()) return;
+  if (!nextQuery) {
+    await restoreLatest();
+    return;
+  }
+  pendingNotice.value = false;
+  deepLinkNotice.value = "";
+  await router.push({
+    path: sessionPath(null),
+    query: routeWithFilters({ q: nextQuery }, false),
+  });
+}
+
+async function restoreLatest() {
+  searchInput.value = "";
+  pendingNotice.value = false;
+  deepLinkNotice.value = "";
+  forgetCachedLatest("all", "latest");
+  await router.push({
+    path: sessionPath(null),
+    query: {},
+  });
 }
 
 function updateStatus(value: SessionStatusFilter) {
@@ -435,9 +489,6 @@ watch(
 watch(
   () => route.query.q,
   (value) => {
-    searchRevision += 1;
-    clearTimeout(searchTimer);
-    searchTimer = undefined;
     searchInput.value = typeof value === "string" ? value : "";
   },
 );
@@ -598,9 +649,6 @@ onBeforeUnmount(() => {
   initialResetTimers = [];
   cancelInitialReset?.();
   cancelInitialReset = null;
-  searchRevision += 1;
-  clearTimeout(searchTimer);
-  searchTimer = undefined;
 });
 </script>
 
@@ -614,17 +662,40 @@ onBeforeUnmount(() => {
       <header class="sidebar-head">
         <div class="sidebar-title">
           <h1>Session 浏览器</h1>
-          <span
-            class="count"
-            data-testid="session-browser-count"
-          >
-            {{ items.length }} 个会话
-          </span>
+          <div class="sidebar-meta">
+            <span
+              class="count"
+              data-testid="session-browser-count"
+            >
+              {{ countLabel }}
+            </span>
+            <button
+              v-if="pendingSessions > 0"
+              class="pending-badge"
+              type="button"
+              data-testid="session-pending-badge"
+              :aria-controls="pendingNotice ? 'session-pending-hint' : undefined"
+              :aria-expanded="pendingNotice"
+              @click="pendingNotice = !pendingNotice"
+            >
+              {{ pendingSessions }} 个待同步
+            </button>
+          </div>
         </div>
         <SearchBox
           :model-value="searchInput"
+          @submit="submitSearch"
           @update:model-value="updateSearch"
         />
+        <p
+          v-if="pendingNotice && pendingSessions > 0"
+          id="session-pending-hint"
+          class="pending-hint"
+          data-testid="session-pending-hint"
+        >
+          待同步表示 bad case 已上报但轨迹尚未归一化；列表只展示已归一化
+          Session，补齐后刷新页面可见。
+        </p>
         <div class="filters">
           <div class="filter-row">
             <span class="filter-label">状态</span>
@@ -655,6 +726,10 @@ onBeforeUnmount(() => {
         :selected-id="selectedId"
         :loading="isListPending"
         :error="listError"
+        :search-query="filters.q ?? ''"
+        :filter-active="filters.status !== 'all'"
+        :pending-sessions="pendingSessions"
+        @reset="restoreLatest"
         @retry="listQuery.refetch"
         @select="selectSession"
       />
@@ -670,6 +745,10 @@ onBeforeUnmount(() => {
       :problems="problems"
       :problems-error="problemsError"
       :problems-loading="isProblemsPending"
+      :list-empty="isListEmpty"
+      :filter-active="filters.status !== 'all'"
+      :pending-sessions="pendingSessions"
+      :search-active="isSearchActive"
       :tree="sessionTree"
       :tree-error="treeError"
       :tree-loading="isTreePending"
@@ -739,6 +818,42 @@ onBeforeUnmount(() => {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.sidebar-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pending-badge {
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--orange) 38%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--orange) 8%, var(--bg-card));
+  color: var(--orange);
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pending-badge:hover,
+.pending-badge[aria-expanded="true"] {
+  border-color: var(--orange);
+}
+
+.pending-hint {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--orange) 30%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--orange) 6%, var(--bg-card));
+  color: var(--text-dim);
+  font-size: 10.5px;
+  line-height: 1.5;
 }
 
 .filters {

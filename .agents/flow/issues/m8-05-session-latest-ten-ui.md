@@ -10,13 +10,14 @@ depends:
   - m7-08
   - m8-02
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/sessions/**
   - apps/web/src/api/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 235

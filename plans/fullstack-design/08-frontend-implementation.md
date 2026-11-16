@@ -441,16 +441,16 @@ Index.vue
 
 - 接口 `GET /api/workspaces/{wid}/sessions?q=&status=&sort=&limit=10`，响应带 `total` 与 `pendingSessions`；标题区显示「最新 10 / 总数 N」，`pendingSessions>0` 时追加「N 个待同步」角标（点击只看已归一化，说明轨迹补齐中）。
 - 计数口径公式：`total` 只数当前 `q`/`status` 下已归一化的根，**不含 pending**；`pendingSessions` 与 `q`/`status` 无关，只按空间统计。两者不是同一集合的划分，不能相加为「空间全部被上报的根」；需要全部根语义时应新增字段，而不是把 pending 加进 `total`。
-- m8-05 之前是过渡期：现有页面仍用 300ms 防抖把输入原样当作 `q`，所以搜索框只承诺「完整 root Session ID」，标题/仓库检索在回车交互落地前不开放。
+- 搜索框与空态只承诺「完整 root Session ID」；标题/仓库检索不开放。
 - 未命中/空空间：
 
 | 场景 | 左栏 | 右栏 |
 |---|---|---|
-| 搜索无结果 | 「未找到匹配 'xxx' 的 Session」+「恢复最新 10」 | 「选择左侧 Session 查看详情」 |
-| 空间无 bad case | 「该工作空间还没有上报 bad case」+ 上报接入链接（管理员可见） | 同左说明 |
+| 搜索无结果 | 「未找到匹配 'xxx' 的 Session」+「恢复最新 10」 | 「未找到该 Session」+ 重新查询提示 |
+| 空间无 bad case | 「该工作空间还没有上报 bad case」+ 说明上报后出现（上报入口在空间管理页） | 同左说明 |
 | Session 不属于本空间 | 跳回列表 + toast「该 Session 不在当前空间」 | 同 |
 
-- 输入框 placeholder：「输入完整 root Session ID 查询」（m8-05 改为回车触发后为「输入 root Session ID，回车查询」）；V2 的 `q` 精确匹配 session ID，可与 `status`/`sort` 组合。
+- 输入框 placeholder：「输入 root session ID，回车查询」；V2 的 `q` 精确匹配 session ID，可与 `status`/`sort` 组合。
 
 ### 5.3 密度条
 

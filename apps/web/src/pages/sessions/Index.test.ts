@@ -200,46 +200,211 @@ describe("session browser", () => {
     expect(detail.text()).toBe("打开错误详情");
   });
 
-  it("debounces search and persists the final status filter in the URL", async () => {
-    const requestedQueries: string[] = [];
+  it("queries only on Enter and selects the exact root ID hit", async () => {
+    const listRequests: URLSearchParams[] = [];
+    mockSessionApi([
+      session(),
+      session({ id: "root-2", title: "Second" }),
+    ]);
     server.use(
       http.get(sessionsBase, ({ request }) => {
-        requestedQueries.push(new URL(request.url).searchParams.get("q") ?? "");
-        return HttpResponse.json({ items: [session()] });
+        const query = new URL(request.url).searchParams;
+        listRequests.push(query);
+        if (query.get("q") === "root-2") {
+          return HttpResponse.json({
+            items: [session({ id: "root-2", title: "Second" })],
+            total: 1,
+            pendingSessions: 0,
+          });
+        }
+        return HttpResponse.json({
+          items: [session()],
+          total: 12,
+          pendingSessions: 2,
+        });
       }),
-      http.get(`${sessionsBase}/:id`, () => HttpResponse.json(session())),
-      http.get(`${sessionsBase}/:id/tree`, () =>
-        HttpResponse.json({ ...demoCoreTree, sessionId: "root-1" }),
-      ),
     );
     const { router, wrapper } = await mountPage(`${ws}/sessions`);
     await flushPromises();
-    requestedQueries.length = 0;
-    vi.useFakeTimers();
+    listRequests.length = 0;
 
-    try {
-      const input = wrapper.get("[data-testid='search-input']");
-      expect(input.attributes("placeholder")).toBe(
-        "输入完整 root Session ID 查询",
-      );
-      expect(input.attributes("aria-label")).toBe(
-        "搜索 Session（完整 root Session ID）",
-      );
-      await input.setValue("a");
-      await input.setValue("ab");
-      await input.setValue("abc");
-      expect(requestedQueries).toEqual([]);
+    const input = wrapper.get("[data-testid='search-input']");
+    expect(input.attributes("placeholder")).toBe(
+      "输入 root session ID，回车查询",
+    );
+    expect(input.attributes("aria-label")).toBe(
+      "搜索 Session（完整 root Session ID）",
+    );
+    expect(wrapper.text()).toContain("Enter 精确查询 · 清空后回车恢复最新 10 个");
 
-      await vi.advanceTimersByTimeAsync(299);
-      expect(router.currentRoute.value.query.q).toBeUndefined();
-      await vi.advanceTimersByTimeAsync(1);
-      await flushPromises();
+    await input.setValue("root-2");
+    await flushPromises();
+    expect(listRequests).toEqual([]);
+    expect(router.currentRoute.value.query.q).toBeUndefined();
 
-      expect(router.currentRoute.value.query.q).toBe("abc");
-      expect(requestedQueries).toEqual(["abc"]);
-    } finally {
-      vi.useRealTimers();
-    }
+    await input.trigger("keydown.enter");
+    await flushPromises();
+    expect(router.currentRoute.value.query.q).toBe("root-2");
+    expect(listRequests).toHaveLength(1);
+    expect(listRequests[0]?.get("q")).toBe("root-2");
+    expect(listRequests[0]?.get("limit")).toBe("10");
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-2`);
+    });
+    expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
+      "命中 1 个",
+    );
+
+    await input.setValue("root-1");
+    await wrapper.get("[aria-label='查询 Session']").trigger("click");
+    await flushPromises();
+    expect(listRequests).toHaveLength(2);
+    expect(listRequests[1]?.get("q")).toBe("root-1");
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
+    });
+  });
+
+  it("clears the old selection and both panels when a query misses", async () => {
+    mockSessionApi([session()]);
+    server.use(
+      http.get(sessionsBase, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        if (query.get("q") === "missing") {
+          return HttpResponse.json({
+            items: [],
+            total: 0,
+            pendingSessions: 2,
+          });
+        }
+        return HttpResponse.json({
+          items: [session()],
+          total: 12,
+          pendingSessions: 2,
+        });
+      }),
+    );
+    const { router, wrapper } = await mountPage(
+      `${ws}/sessions/root-1`,
+    );
+    await flushPromises();
+
+    const input = wrapper.get("[data-testid='search-input']");
+    await input.setValue("missing");
+    await input.trigger("keydown.enter");
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions`);
+    expect(router.currentRoute.value.query.q).toBe("missing");
+    expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
+      "命中 0 个",
+    );
+    expect(wrapper.get("[data-testid='session-pending-badge']").text()).toBe(
+      "2 个待同步",
+    );
+    expect(wrapper.get("[data-testid='session-overview-empty']").text()).toContain(
+      "未找到该 Session",
+    );
+    expect(wrapper.get("[data-testid='session-overview']").text()).not.toContain(
+      session().title,
+    );
+  });
+
+  it("restores the latest ten with clear plus Enter", async () => {
+    const listRequests: URLSearchParams[] = [];
+    mockSessionApi([session()]);
+    server.use(
+      http.get(sessionsBase, ({ request }) => {
+        const query = new URL(request.url).searchParams;
+        listRequests.push(query);
+        if (query.get("q") === "missing") {
+          return HttpResponse.json({ items: [], total: 0, pendingSessions: 0 });
+        }
+        return HttpResponse.json({
+          items: [session(), session({ id: "root-2", title: "Second" })],
+          total: 2,
+          pendingSessions: 0,
+        });
+      }),
+    );
+    const { router, wrapper } = await mountPage(
+      `${ws}/sessions?q=missing&status=problem`,
+    );
+    await flushPromises();
+    expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
+      "命中 0 个",
+    );
+
+    const input = wrapper.get("[data-testid='search-input']");
+    await input.setValue("");
+    await input.trigger("keydown.enter");
+    await flushPromises();
+
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
+    });
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
+      "最新 2 / 总数 2",
+    );
+    const restored = listRequests.at(-1);
+    expect(restored?.get("q")).toBeNull();
+    expect(restored?.get("limit")).toBe("10");
+  });
+
+  it("shows the latest total and a pending badge with its explanation", async () => {
+    mockSessionApi([session()]);
+    server.use(
+      http.get(sessionsBase, () =>
+        HttpResponse.json({
+          items: [session()],
+          total: 12,
+          pendingSessions: 3,
+        }),
+      ),
+    );
+    const { wrapper } = await mountPage(`${ws}/sessions/root-1`);
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='session-browser-count']").text()).toBe(
+      "最新 1 / 总数 12",
+    );
+    const badge = wrapper.get("[data-testid='session-pending-badge']");
+    expect(badge.text()).toBe("3 个待同步");
+    expect(badge.attributes("aria-expanded")).toBe("false");
+    expect(wrapper.find("[data-testid='session-pending-hint']").exists()).toBe(
+      false,
+    );
+
+    await badge.trigger("click");
+    expect(badge.attributes("aria-expanded")).toBe("true");
+    expect(wrapper.get("[data-testid='session-pending-hint']").text()).toContain(
+      "轨迹尚未归一化",
+    );
+  });
+
+  it("keeps input changes local when the route query changes", async () => {
+    mockSessionApi([session()]);
+    const { router, wrapper } = await mountPage(`${ws}/sessions`);
+    await flushPromises();
+
+    await wrapper.get("[data-testid='search-input']").setValue("stale");
+    await router.push({
+      path: `${ws}/sessions/root-1`,
+      query: { q: "server" },
+    });
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.q).toBe("server");
+    expect(
+      wrapper.get("[data-testid='search-input']").element,
+    ).toHaveProperty("value", "server");
+  });
+
+  it("persists the status filter in the URL without touching the query", async () => {
+    mockSessionApi([session()]);
+    const { router, wrapper } = await mountPage(`${ws}/sessions/root-1`);
+    await flushPromises();
 
     const completed = wrapper
       .findAll("button")
@@ -247,29 +412,10 @@ describe("session browser", () => {
     expect(completed).toBeDefined();
     await completed?.trigger("click");
     await flushPromises();
+
     expect(router.currentRoute.value.query.status).toBe("ok");
-  });
-
-  it("cancels a pending debounced search when navigation changes the query", async () => {
-    mockSessionApi([session()]);
-    const { router, wrapper } = await mountPage(`${ws}/sessions`);
-    await flushPromises();
-    vi.useFakeTimers();
-
-    try {
-      await wrapper.get("[data-testid='search-input']").setValue("stale");
-      await router.push({
-        path: `${ws}/sessions/root-1`,
-        query: { q: "server" },
-      });
-      await flushPromises();
-      await vi.advanceTimersByTimeAsync(300);
-      await flushPromises();
-
-      expect(router.currentRoute.value.query.q).toBe("server");
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(router.currentRoute.value.query.q).toBeUndefined();
+    expect(router.currentRoute.value.path).toBe(`${ws}/sessions/root-1`);
   });
 
   it("renders prototype cards and automatically selects the first session", async () => {
@@ -870,14 +1016,14 @@ describe("session browser", () => {
     const empty = await mountPage(`${ws}/sessions?q=none`);
     await flushPromises();
 
-    expect(empty.wrapper.text()).toContain("没有匹配当前筛选的 session");
-    expect(empty.wrapper.text()).toContain("完整 root Session ID");
-    expect(empty.wrapper.text()).toContain("清空搜索可恢复最新列表");
-    expect(empty.wrapper.find("[data-testid='session-overview']").text()).toContain(
-      "从左侧选择",
-    );
+    expect(empty.wrapper.text()).toContain("未找到匹配 “none” 的 Session");
+    expect(empty.wrapper.text()).toContain("完整 root session ID");
+    expect(empty.wrapper.text()).toContain("恢复最新 10");
+    expect(
+      empty.wrapper.find("[data-testid='session-overview']").text(),
+    ).toContain("未找到该 Session");
     expect(empty.wrapper.find("[role='listbox']").exists()).toBe(false);
-    expect(empty.wrapper.get(".empty-list").attributes("role")).toBe("status");
+    expect(empty.wrapper.get(".empty-copy").attributes("role")).toBe("status");
 
     server.use(
       http.get(sessionsBase, () =>
@@ -891,7 +1037,50 @@ describe("session browser", () => {
     await flushPromises();
 
     expect(failed.wrapper.text()).toContain("Session 列表加载失败");
+    expect(
+      failed.wrapper.get("[data-testid='session-browser-count']").text(),
+    ).toBe("加载失败");
     expect(failed.wrapper.get("[role='alert'] button").text()).toContain("重试");
     expect(failed.wrapper.find("[role='listbox']").exists()).toBe(false);
+  });
+
+  it("repeats the filter and pending empty reasons in the overview", async () => {
+    mockSessionApi([]);
+    let pending = 0;
+    server.use(
+      http.get(sessionsBase, () =>
+        HttpResponse.json({
+          items: [],
+          total: 0,
+          pendingSessions: pending,
+        }),
+      ),
+    );
+
+    const filtered = await mountPage(`${ws}/sessions?status=problem`);
+    await flushPromises();
+    expect(
+      filtered.wrapper.get("[data-testid='session-overview-empty']").text(),
+    ).toContain("没有匹配当前筛选的 session");
+
+    pending = 2;
+    const pendingPage = await mountPage(`${ws}/sessions`);
+    await flushPromises();
+    expect(
+      pendingPage.wrapper.get("[data-testid='session-overview-empty']").text(),
+    ).toContain("2 个待同步根会话");
+  });
+
+  it("shows a distinct empty state for a workspace without bad cases", async () => {
+    mockSessionApi([]);
+    const { wrapper } = await mountPage(`${ws}/sessions`);
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='session-list-empty']").text()).toContain(
+      "该工作空间还没有上报 bad case",
+    );
+    expect(
+      wrapper.get("[data-testid='session-overview-empty']").text(),
+    ).toContain("该工作空间还没有上报 bad case");
   });
 });

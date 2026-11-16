@@ -22,10 +22,23 @@ const props = defineProps({
     type: Object as () => Error | null,
     default: null,
   },
+  searchQuery: {
+    type: String,
+    default: "",
+  },
+  filterActive: {
+    type: Boolean,
+    default: false,
+  },
+  pendingSessions: {
+    type: Number,
+    default: 0,
+  },
 });
 
 const emit = defineEmits<{
   retry: [];
+  reset: [];
   select: [sessionId: string];
 }>();
 
@@ -33,6 +46,31 @@ const activeIndex = ref(0);
 const hasOptions = computed(
   () => !props.loading && !props.error && props.items.length > 0,
 );
+const canRestore = computed(
+  () => Boolean(props.searchQuery) || props.filterActive,
+);
+const emptyTitle = computed(() => {
+  if (props.searchQuery) {
+    return `未找到匹配 “${props.searchQuery}” 的 Session`;
+  }
+  if (props.filterActive) return "没有匹配当前筛选的 session";
+  if (props.pendingSessions > 0) {
+    return "该工作空间暂无可展示的 Session";
+  }
+  return "该工作空间还没有上报 bad case";
+});
+const emptyDescription = computed(() => {
+  if (props.searchQuery) {
+    return "请检查完整 root session ID；查询只按完整 ID 精确匹配。";
+  }
+  if (props.filterActive) {
+    return "调整状态筛选，或恢复最新 10 个 Session。";
+  }
+  if (props.pendingSessions > 0) {
+    return `${props.pendingSessions} 个待同步根会话的轨迹仍在补齐，补齐后刷新页面可见。`;
+  }
+  return "上报 bad case 后，这里会显示最新 10 个 Session。";
+});
 
 function syncActiveIndex() {
   if (props.items.length === 0) {
@@ -118,10 +156,23 @@ function handleKeydown(event: KeyboardEvent) {
     <div
       v-else-if="items.length === 0"
       class="empty-list"
-      role="status"
+      data-testid="session-list-empty"
     >
-      <strong>没有匹配当前筛选的 session</strong>
-      <span>请输入完整 root Session ID 查询；清空搜索可恢复最新列表。</span>
+      <div
+        class="empty-copy"
+        role="status"
+      >
+        <strong>{{ emptyTitle }}</strong>
+        <span>{{ emptyDescription }}</span>
+      </div>
+      <button
+        v-if="canRestore"
+        class="empty-action"
+        type="button"
+        @click="emit('reset')"
+      >
+        恢复最新 10
+      </button>
     </div>
     <template v-else>
       <SessionCard
@@ -191,6 +242,10 @@ function handleKeydown(event: KeyboardEvent) {
   text-align: center;
 }
 
+.empty-copy {
+  display: grid;
+}
+
 .empty-list strong {
   color: var(--text);
   font-size: 12.5px;
@@ -200,5 +255,23 @@ function handleKeydown(event: KeyboardEvent) {
   margin-top: 4px;
   color: var(--text-faint);
   font-size: 11.5px;
+}
+
+.empty-action {
+  justify-self: center;
+  margin-top: 10px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.empty-action:hover {
+  border-color: var(--blue);
+  color: var(--blue);
 }
 </style>
