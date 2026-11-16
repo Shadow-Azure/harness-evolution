@@ -298,7 +298,7 @@ test("m7-08 workspace-shell switches spaces and never reuses the old cache", asy
     await waitForDocument(
       page.session,
       `location.pathname === "/workspaces/${extraWorkspace.id}/sessions" &&
-        document.body.innerText.includes("没有匹配")`,
+        document.body.innerText.includes("该工作空间还没有上报 bad case")`,
       "empty workspace session list",
     );
     const emptyState = await waitForDocument(
