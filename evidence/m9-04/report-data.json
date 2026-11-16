@@ -1,0 +1,113 @@
+{
+  "title": "M9-04 对象 revision 与触发坐标 · Session 冒烟",
+  "eyebrow": "Harness Evolution · M9-04",
+  "summary": "在种子 SQLite 数据库上重放 fixtures/m9-real-shape，启动 FastAPI 与 Vite，用真实 Chrome 打开 Session 页，确认 Agent 树正常渲染、两个显式触发事件返回 digest revision，且没有浏览器控制台错误。",
+  "meta": "2026-11-16 · macOS · Chrome headless · 1408×960",
+  "metrics": [
+    { "value": "5", "label": "冒烟场景" },
+    { "value": "2", "label": "对象 revision" },
+    { "value": "0", "label": "控制台错误" }
+  ],
+  "facts": [
+    { "label": "Commit", "value": "faf0c17" },
+    { "label": "数据", "value": "fixtures/m9-real-shape + ws-default bad case" },
+    { "label": "服务", "value": "FastAPI + Vite（本地 SQLite）" },
+    { "label": "视图", "value": "1408×960，亮色主题" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "细节", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "Session 页打开",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "直接访问 /workspaces/ws-default/sessions/40000000-0000-4000-8000-000000000001，Agent 树与 bad case 正常渲染。",
+        "evidence": ["01-app-session.png"]
+      },
+      {
+        "id": "02",
+        "name": "Skill revision",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "synthetic-review 事件返回 digest:b97288…，来自注入 body 与 path 的组合 hash。",
+        "evidence": ["01-app-session.png"]
+      },
+      {
+        "id": "03",
+        "name": "Agent revision",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "synthetic-reviewer 事件返回 digest:e04b58…，来自子 Agent 定义与类型。",
+        "evidence": ["01-app-session.png"]
+      },
+      {
+        "id": "04",
+        "name": "浏览器控制台",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "页面加载与交互期间没有 console error 或未捕获异常。",
+        "evidence": ["01-app-session.png"]
+      },
+      {
+        "id": "05",
+        "name": "原型对照",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "与 V2 原型 Session 页对照；m9-04 不修改前端，执行流 DAG/结构树差异属于既有 V2 迁移范围。",
+        "evidence": ["02-prototype-session.png", "03-prototype-tree.png"]
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "src": "01-app-session.png",
+      "alt": "M9-04 冒烟中的 Session 页",
+      "label": "01 · App Session",
+      "caption": "Session 树渲染 synthetic-review 与 synthetic-reviewer 两个触发点，bad case 正常挂载。",
+      "variant": "wide"
+    },
+    {
+      "src": "02-prototype-session.png",
+      "alt": "V2 原型 Session 页（执行序 DAG）",
+      "label": "02 · Prototype DAG",
+      "caption": "原型默认执行序 DAG；该视图迁移不属于 m9-04。",
+      "variant": "wide"
+    },
+    {
+      "src": "03-prototype-tree.png",
+      "alt": "V2 原型 Session 页（结构树）",
+      "label": "03 · Prototype Tree",
+      "caption": "原型切到结构树后与当前 Session 页的节点链、×N、问题卡布局一致。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "对象 revision 解析",
+        "coverage": "UT",
+        "conclusion": "tag/body/digest/unknown 与 agent 定义组合 hash 均有测试。",
+        "recommendation": "保持 parser version 重放后的回归。"
+      },
+      {
+        "area": "触发坐标持久化",
+        "coverage": "UT + SQLite",
+        "conclusion": "迁移、DFS tree_index、triggered_at、object_version 与重放均验证。",
+        "recommendation": "CI 的 MySQL lane 覆盖双方言迁移。"
+      },
+      {
+        "area": "真实页面",
+        "coverage": "Smoke",
+        "conclusion": "真实 Chrome 打开 Session 页，事件 revision 可从 API 读到。",
+        "recommendation": "发布前保留一次同场景冒烟。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过",
+    "summary": "Session 页正常渲染，两个显式触发事件都返回预期 revision，浏览器无错误。",
+    "points": [
+      "m9-04 为后端/解析层变更，前端视觉未改动。",
+      "原型执行序 DAG 与当前页面的差异属于既有 V2 迁移，不在本 issue 范围。"
+    ]
+  },
+  "footer": "由 dsh-superagent 生成；证据位于 evidence/m9-04/。"
+}
