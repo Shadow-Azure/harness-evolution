@@ -16,9 +16,9 @@ from sqlalchemy import select
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
-from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
 from app.db.models.domain import bad_cases, trajectory_payloads
 from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_sync import BadCaseRootSyncService
