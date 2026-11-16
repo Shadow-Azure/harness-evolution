@@ -368,6 +368,7 @@ async def test_unknown_runtime_fails_without_writing_tree_or_fallback(
         assert sources == []
         assert run["status"] == "completed"
         assert run["errors"][0]["code"] == "UNSUPPORTED_RUNTIME"
-        assert "unknown-runtime" not in repr(run["errors"])
+        assert run["errors"][0]["message"] == "Unsupported trace runtime: unknown-runtime"
+        assert "fake runtime prompt" not in repr(run["errors"])
     finally:
         await database.dispose()

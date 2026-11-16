@@ -186,7 +186,7 @@ async def replay_pending_payloads(
                     root_session_id,
                     root_pending[0].agent_id,
                     "UNSUPPORTED_RUNTIME",
-                    "Trace payload runtime is not supported",
+                    f"Unsupported trace runtime: {runtime_key}",
                 ),
             )
             failed += len(root_pending)
