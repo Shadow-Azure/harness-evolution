@@ -1,7 +1,7 @@
 """Add object trigger coordinates: tree index, triggered time, and object version.
 
-Revision ID: 0017
-Revises: 0016
+Revision ID: 0018
+Revises: 0017
 Create Date: 2026-11-16
 """
 
@@ -12,8 +12,8 @@ from sqlalchemy import inspect
 
 from alembic import op
 
-revision: str = "0017"
-down_revision: str | None = "0016"
+revision: str = "0018"
+down_revision: str | None = "0017"
 branch_labels: str | None = None
 depends_on: str | None = None
 
@@ -56,7 +56,7 @@ def _add_columns(table: str, columns: tuple[sa.Column[Any], ...]) -> None:
             raise RuntimeError(
                 f"{table}.{column.name} already exists with "
                 f"nullable={bool(current['nullable'])}, expected "
-                f"nullable={bool(column.nullable)}; repair the column before retrying 0017",
+                f"nullable={bool(column.nullable)}; repair the column before retrying 0018",
             )
 
 
