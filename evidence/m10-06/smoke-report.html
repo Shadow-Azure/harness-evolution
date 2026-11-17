@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>M10-06 七步运行详情 GUI 冒烟报告</title>
+  <style>
+    :root{
+      color-scheme:light;
+      --bg:#f4f7fb;--card:#fff;--ink:#16202f;--ink2:#55637a;--ink3:#7b869b;
+      --line:#dde4ee;--accent:#2563eb;--accent-wash:#e8efff;--good:#157347;
+      --good-wash:#e7f6ee;--warn:#b45309;--warn-wash:#fff2dd;--bad:#c9282e;
+      --bad-wash:#ffeded;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 8% 0,#dbe9ff 0,transparent 32rem),radial-gradient(circle at 92% 4%,#e7f1ff 0,transparent 28rem),var(--bg);color:var(--ink);font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Sans CJK SC",sans-serif}
+    main{max-width:1220px;margin:auto;padding:36px 28px 72px}
+    .hero{padding:30px 34px;border:1px solid #dbe3ee;border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px #17202f12}
+    .eyebrow{margin:0;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+    h1{margin:10px 0 8px;font-size:clamp(28px,4vw,44px);letter-spacing:-.04em}
+    .summary{margin:0;max-width:850px;color:var(--ink2);font-size:15px}
+    .meta{display:block;margin-top:8px;color:var(--ink3);font-size:12px}
+    .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:26px}
+    .metric{padding:16px 18px;border:1px solid var(--line);border-radius:16px;background:#fafbfd}
+    .metric b{display:block;font-size:30px;letter-spacing:-.04em}
+    .metric span{display:block;margin-top:2px;color:var(--ink3);font-size:12px}
+    section{margin-top:28px}
+    .head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:0 4px 14px}
+    h2{margin:0;font-size:21px;letter-spacing:-.03em}
+    .head small{color:var(--ink3);white-space:nowrap}
+    .card{padding:22px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:0}
+    .fact{padding:13px 16px;border:1px solid #eceff5;border-radius:12px;background:#fafbfd}
+    .fact dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .fact dd{margin:3px 0 0;overflow-wrap:anywhere}
+    code{font-family:var(--mono);font-size:.9em;color:#29456d;overflow-wrap:anywhere}
+    .status{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#eef1f6;color:var(--ink2)}
+    .status.pass,.status.fixed{background:var(--good-wash);color:var(--good)}
+    .status.warn,.status.manual{background:var(--warn-wash);color:var(--warn)}
+    .status.fail{background:var(--bad-wash);color:var(--bad)}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:18px;background:var(--card);box-shadow:0 5px 22px #17202f08}
+    table{width:100%;min-width:920px;border-collapse:collapse}
+    th,td{padding:12px 15px;border-bottom:1px solid #edf0f5;text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:#fafbfe;color:var(--ink2);font-size:12px}
+    tr:last-child td{border-bottom:0}
+    tr:hover{background:#fcfdff}
+    .num{color:var(--ink3);font-family:var(--mono);font-size:12px}
+    .evidence{color:var(--ink3);font-size:12px}
+    .issues{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .issueCard{padding:18px 21px;border:1px solid #ffcece;border-left:5px solid var(--bad);border-radius:16px;background:#fffbfb}
+    .issueCard h3{margin:0;color:#b91c1c;font-size:16px}
+    .issueCard p{margin:8px 0;color:var(--ink2)}
+    .issueCard dt{color:var(--ink3);font-size:11px;font-weight:700}
+    .issueCard dd{margin:2px 0 0;color:var(--ink2)}
+    .tag{float:right;padding:3px 8px;border-radius:999px;background:#fee4e4;color:#9a1b21;font-size:11px;font-weight:800}
+    .fixed{display:inline-flex;gap:5px;align-items:center;margin-top:11px;padding:6px 10px;border-radius:999px;background:var(--good-wash);color:var(--good);font-size:12px;font-weight:800}
+    .shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+    figure{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 6px 22px #17202f08}
+    figure.wide{grid-column:1/-1}
+    img{display:block;width:100%;max-height:500px;object-fit:contain;background:#eef2f7}
+    figcaption{display:flex;gap:9px;align-items:flex-start;padding:11px 14px;border-top:1px solid #edf0f5;background:#fafbfd;color:var(--ink2);font-size:12.5px}
+    figcaption b{flex:none;color:var(--ink)}
+    .issue-shot{border-color:#ffcece}
+    .conclusion{border:1px solid #c8e5d2;border-radius:20px;background:linear-gradient(135deg,#f2fbf6,white 54%)}
+    .conclusion.warn{border-color:#f1d9a4;background:linear-gradient(135deg,#fff8e8,white 54%)}
+    .conclusion.fail{border-color:#ffc9c9;background:linear-gradient(135deg,#fff5f5,white 54%)}
+    .conclusion ul{margin:12px 0 0;padding-left:20px;color:#344155}
+    .conclusion li+li{margin-top:7px}
+    .empty{padding:20px;text-align:center;color:var(--ink3);background:#fafbfd;border:1px dashed var(--line);border-radius:12px}
+    .foot{margin-top:24px;color:var(--ink3);font-size:12px;text-align:center}
+    @media(max-width:860px){main{padding:22px 14px 52px}.hero{padding:23px}.shots{grid-template-columns:1fr}.head{align-items:flex-start;flex-direction:column;gap:4px}}
+    @media print{body{background:white}main{max-width:none;padding:0}.card,.issueCard,figure,.tableWrap{box-shadow:none;break-inside:avoid}img{max-height:420px}}
+  </style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <p class="eyebrow">Harness Evolution · M10-06</p>
+    <h1>M10-06 七步运行详情 GUI 冒烟报告</h1>
+    <p class="summary">真实浏览器经 Web → Vite proxy → FastAPI → SQLite，验证新 V2 run 与历史 legacy run 的七步详情、Session/潜在大 case 分页、cached/fresh/non_target 归因、按 severity 降序的簇与首簇展开、blocked attribution 的自动/人工重试、未到达 step 不发请求，以及执行日志到 step/cluster/error 的联动。全部场景通过；基线 blocked attribution 显示“未知阶段”的文案缺口已修复。</p>
+    <span class="meta">2026-11-17 · Asia/Shanghai · 1408×960 · Chromium headless</span>
+    <div class="metrics"><div class="metric"><b>6</b><span>冒烟场景</span></div><div class="metric"><b>6/6</b><span>PASS</span></div><div class="metric"><b>0</b><span>未解决缺陷</span></div><div class="metric"><b>5</b><span>关键截图</span></div></div>
+  </header>
+
+  <section>
+    <div class="head"><h2>Environment and Artifact</h2><small>2026-11-17 · Asia/Shanghai · 1408×960 · Chromium headless</small></div>
+    <article class="card"><dl class="facts"><div class="fact"><dt>Branch</dt><dd>agent/develop-m10-06-9156edcd5b40</dd></div><div class="fact"><dt>Fixture runs</dt><dd>run-v2-completed / run-v2-blocked-attribution / run-v2-legacy</dd></div><div class="fact"><dt>Data</dt><dd>V2 candidates + probes + clusters + turns + events；SQLite</dd></div><div class="fact"><dt>Browser</dt><dd>Headless Chrome，1408×960，桌面主题</dd></div></dl></article>
+  </section>
+
+  <section>
+    <div class="head"><h2>Scenario Matrix</h2><small>5 pass · 1 fixed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>#</th><th>场景</th><th>结果</th><th>细节</th><th>证据</th></tr></thead><tbody><tr><td class="num">01</td><td>V2 完成 run 的七步导航与会话分页</td><td><span class="status pass">PASS</span></td><td>7 个 step 全部 done；Session 4 条/页，第 2 页 1 条；默认选中 final。</td><td class="evidence">01-after-sessions.png</td></tr><tr><td class="num">02</td><td>潜在 bad case 分页与命中原因</td><td><span class="status pass">PASS</span></td><td>5 条/页；第 2 页为第 6 条；orderState=unknown 显示“触发点顺序待轨迹时间戳重放”。</td><td class="evidence">02-after-potential.png</td></tr><tr><td class="num">03</td><td>归因来源与 non_target</td><td><span class="status pass">PASS</span></td><td>summary 四数为 6/2/4/1；cached/fresh 标签正确；category=null 显示为非该对象问题。</td><td class="evidence">03-after-attribution.png</td></tr><tr><td class="num">04</td><td>聚类 severity 排序、首簇展开、non_target 不进簇</td><td><span class="status pass">PASS</span></td><td>第 1 簇 severity 9.1 默认展开；第 2 簇 7.8 折叠；v2-case-6（non_target）只出现在 Step 4。</td><td class="evidence">04-after-clusters.png</td></tr><tr><td class="num">05</td><td>blocked attribution 自动/人工重试</td><td><span class="status fixed">FIXED</span></td><td>基线显示“运行在未知阶段阻塞”；修复后显示“归因（attribution）阶段阻塞”，并展示自动重试 2 次、下一次重试时间与“重试”按钮。</td><td class="evidence">before-06-blocked-attribution.png<br>06-after-blocked-attribution.png</td></tr><tr><td class="num">06</td><td>执行日志 step/cluster/error 联动与未到达 step 不请求</td><td><span class="status pass">PASS</span></td><td>事件跳转 step、跳转并高亮簇、展开脱敏错误详情；blocked attribution 只请求 attribution step，未请求 clusters/iteration/final。</td><td class="evidence">05-after-logs.png</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Issues and Observations</h2><small>P2 blocked attribution 阶段显示为“未知阶段”</small></div>
+    <div class="issues"><article class="issueCard"><span class="tag">P2</span><h3>blocked attribution 阶段显示为“未知阶段”</h3><dl><div><dt>Actual</dt><dd>基线 banner 显示“运行在未知阶段阻塞”。</dd></div><div><dt>Expected</dt><dd>显示“运行在归因（attribution）阶段阻塞”。</dd></div><div><dt>Fix</dt><dd>RunDetail 的 blockedStageLabel 增加 attribution 分支，并补充组件测试与真实浏览器回归。</dd></div></dl><div class="fixed">Fixed · branch head</div></article></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Evidence</h2><small>5 screenshots</small></div>
+    <div class="shots"><figure class="wide"><img loading="lazy" src="before-06-blocked-attribution.png" alt="基线 blocked attribution"><figcaption><b>Before · 未知阶段</b><span>基线 main：blockedStage=attribution 被兜底成“未知阶段”。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="06-after-blocked-attribution.png" alt="修复后的 blocked attribution"><figcaption><b>After · 归因阶段</b><span>修复后：阶段、错误、自动重试次数、下一次重试时间与人工重试按钮齐全。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="03-after-attribution.png" alt="对象归因步骤"><figcaption><b>After · Step 4</b><span>cached/fresh 与 non_target 可见；备注说明 non_target 不进入聚类。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="04-after-clusters.png" alt="聚类与严重度步骤"><figcaption><b>After · Step 5</b><span>severity 9.1 的首簇默认展开；7.8 的次簇折叠；non_target 不在簇内。</span></figcaption></figure><figure class="wide"><img loading="lazy" src="05-after-logs.png" alt="执行日志"><figcaption><b>After · 执行日志</b><span>REST 事件分页渲染，带 step/cluster 跳转与脱敏错误详情。</span></figcaption></figure></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Automated Coverage Assessment</h2><small>5 areas reviewed</small></div>
+    <div class="tableWrap"><table><thead><tr><th>范围</th><th>自动化覆盖</th><th>结论</th><th>建议</th></tr></thead><tbody><tr><td>七步状态与未到达 step</td><td>UT + E2E</td><td>组件测试断言只请求 range；mock 断言 preparing 只发 range；E2E 断言 blocked 只发 attribution。</td><td>保持后端口径。</td></tr><tr><td>Session/潜在分页</td><td>UT + E2E</td><td>E2E 覆盖 4/5 条每页与第 2 页内容。</td><td>服务端分页参数变更时同步 E2E。</td></tr><tr><td>归因来源与 non_target</td><td>UT + E2E</td><td>UT 覆盖 cached/fresh 与非该对象问题；E2E 覆盖 non_target 不进簇。</td><td>聚类算法升级时保留该断言。</td></tr><tr><td>blocked attribution 重试</td><td>UT + E2E</td><td>UT 覆盖阶段文案、自动重试与人工按钮；E2E 覆盖真实 run。</td><td>新增 blocked stage 时同步文案与测试。</td></tr><tr><td>执行日志联动</td><td>UT + E2E</td><td>UT 覆盖 step/cluster 跳转；E2E 覆盖真实事件与错误详情。</td><td>新增事件坐标时复用现有跳转。</td></tr></tbody></table></div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Conclusion</h2><small>Ready for review</small></div>
+    <article class="card conclusion pass"><p><strong>六个场景全部通过；发现的 blocked attribution 文案缺口已修复并在基线/修复后截图中对照。</strong></p><ul><li>与 prototype 的差异属于设计口径：Step 2 不展示“对象出现”列，Step 4 使用 05 §3.6 的四数统计，符合 08 §10 / 05 §3.6。</li><li>截图与报告不进入 PR 分支；证据放在独立 evidence 分支，PR 只链接。</li><li>合并由人工完成（本环境没有授权的 merge CLI）。</li></ul></article>
+  </section>
+
+  <p class="foot">Harness Evolution · M10-06 · 证据由真实 Web/API/SQLite 链路的 headless Chrome 生成</p>
+</main>
+</body>
+</html>

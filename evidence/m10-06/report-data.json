@@ -1,0 +1,105 @@
+{
+  "title": "M10-06 七步运行详情 GUI 冒烟报告",
+  "eyebrow": "Harness Evolution · M10-06",
+  "summary": "真实浏览器经 Web → Vite proxy → FastAPI → SQLite，验证新 V2 run 与历史 legacy run 的七步详情、Session/潜在大 case 分页、cached/fresh/non_target 归因、按 severity 降序的簇与首簇展开、blocked attribution 的自动/人工重试、未到达 step 不发请求，以及执行日志到 step/cluster/error 的联动。全部场景通过；基线 blocked attribution 显示“未知阶段”的文案缺口已修复。",
+  "meta": "2026-11-17 · Asia/Shanghai · 1408×960 · Chromium headless",
+  "metrics": [
+    { "value": "6", "label": "冒烟场景" },
+    { "value": "6/6", "label": "PASS" },
+    { "value": "0", "label": "未解决缺陷" },
+    { "value": "5", "label": "关键截图" }
+  ],
+  "facts": [
+    { "label": "Branch", "value": "agent/develop-m10-06-9156edcd5b40" },
+    { "label": "Fixture runs", "value": "run-v2-completed / run-v2-blocked-attribution / run-v2-legacy" },
+    { "label": "Data", "value": "V2 candidates + probes + clusters + turns + events；SQLite" },
+    { "label": "Browser", "value": "Headless Chrome，1408×960，桌面主题" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "细节", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "V2 完成 run 的七步导航与会话分页",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "7 个 step 全部 done；Session 4 条/页，第 2 页 1 条；默认选中 final。",
+        "evidence": ["01-after-sessions.png"]
+      },
+      {
+        "id": "02",
+        "name": "潜在 bad case 分页与命中原因",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "5 条/页；第 2 页为第 6 条；orderState=unknown 显示“触发点顺序待轨迹时间戳重放”。",
+        "evidence": ["02-after-potential.png"]
+      },
+      {
+        "id": "03",
+        "name": "归因来源与 non_target",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "summary 四数为 6/2/4/1；cached/fresh 标签正确；category=null 显示为非该对象问题。",
+        "evidence": ["03-after-attribution.png"]
+      },
+      {
+        "id": "04",
+        "name": "聚类 severity 排序、首簇展开、non_target 不进簇",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "第 1 簇 severity 9.1 默认展开；第 2 簇 7.8 折叠；v2-case-6（non_target）只出现在 Step 4。",
+        "evidence": ["04-after-clusters.png"]
+      },
+      {
+        "id": "05",
+        "name": "blocked attribution 自动/人工重试",
+        "status": { "kind": "fixed", "label": "FIXED" },
+        "detail": "基线显示“运行在未知阶段阻塞”；修复后显示“归因（attribution）阶段阻塞”，并展示自动重试 2 次、下一次重试时间与“重试”按钮。",
+        "evidence": ["before-06-blocked-attribution.png", "06-after-blocked-attribution.png"]
+      },
+      {
+        "id": "06",
+        "name": "执行日志 step/cluster/error 联动与未到达 step 不请求",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "事件跳转 step、跳转并高亮簇、展开脱敏错误详情；blocked attribution 只请求 attribution step，未请求 clusters/iteration/final。",
+        "evidence": ["05-after-logs.png"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "blocked attribution 阶段显示为“未知阶段”",
+      "facts": [
+        { "label": "Actual", "value": "基线 banner 显示“运行在未知阶段阻塞”。" },
+        { "label": "Expected", "value": "显示“运行在归因（attribution）阶段阻塞”。" },
+        { "label": "Fix", "value": "RunDetail 的 blockedStageLabel 增加 attribution 分支，并补充组件测试与真实浏览器回归。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · branch head" }
+    }
+  ],
+  "screenshots": [
+    { "src": "before-06-blocked-attribution.png", "alt": "基线 blocked attribution", "label": "Before · 未知阶段", "caption": "基线 main：blockedStage=attribution 被兜底成“未知阶段”。", "variant": "wide" },
+    { "src": "06-after-blocked-attribution.png", "alt": "修复后的 blocked attribution", "label": "After · 归因阶段", "caption": "修复后：阶段、错误、自动重试次数、下一次重试时间与人工重试按钮齐全。", "variant": "wide" },
+    { "src": "03-after-attribution.png", "alt": "对象归因步骤", "label": "After · Step 4", "caption": "cached/fresh 与 non_target 可见；备注说明 non_target 不进入聚类。", "variant": "wide" },
+    { "src": "04-after-clusters.png", "alt": "聚类与严重度步骤", "label": "After · Step 5", "caption": "severity 9.1 的首簇默认展开；7.8 的次簇折叠；non_target 不在簇内。", "variant": "wide" },
+    { "src": "05-after-logs.png", "alt": "执行日志", "label": "After · 执行日志", "caption": "REST 事件分页渲染，带 step/cluster 跳转与脱敏错误详情。", "variant": "wide" }
+  ],
+  "coverage": {
+    "columns": ["范围", "自动化覆盖", "结论", "建议"],
+    "rows": [
+      { "area": "七步状态与未到达 step", "coverage": "UT + E2E", "conclusion": "组件测试断言只请求 range；mock 断言 preparing 只发 range；E2E 断言 blocked 只发 attribution。", "recommendation": "保持后端口径。" },
+      { "area": "Session/潜在分页", "coverage": "UT + E2E", "conclusion": "E2E 覆盖 4/5 条每页与第 2 页内容。", "recommendation": "服务端分页参数变更时同步 E2E。" },
+      { "area": "归因来源与 non_target", "coverage": "UT + E2E", "conclusion": "UT 覆盖 cached/fresh 与非该对象问题；E2E 覆盖 non_target 不进簇。", "recommendation": "聚类算法升级时保留该断言。" },
+      { "area": "blocked attribution 重试", "coverage": "UT + E2E", "conclusion": "UT 覆盖阶段文案、自动重试与人工按钮；E2E 覆盖真实 run。", "recommendation": "新增 blocked stage 时同步文案与测试。" },
+      { "area": "执行日志联动", "coverage": "UT + E2E", "conclusion": "UT 覆盖 step/cluster 跳转；E2E 覆盖真实事件与错误详情。", "recommendation": "新增事件坐标时复用现有跳转。" }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready for review",
+    "summary": "六个场景全部通过；发现的 blocked attribution 文案缺口已修复并在基线/修复后截图中对照。",
+    "points": [
+      "与 prototype 的差异属于设计口径：Step 2 不展示“对象出现”列，Step 4 使用 05 §3.6 的四数统计，符合 08 §10 / 05 §3.6。",
+      "截图与报告不进入 PR 分支；证据放在独立 evidence 分支，PR 只链接。",
+      "合并由人工完成（本环境没有授权的 merge CLI）。"
+    ]
+  },
+  "footer": "Harness Evolution · M10-06 · 证据由真实 Web/API/SQLite 链路的 headless Chrome 生成"
+}
