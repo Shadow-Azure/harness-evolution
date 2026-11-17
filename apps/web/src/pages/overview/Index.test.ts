@@ -74,11 +74,145 @@ const cases = {
   pageSize: 8,
 };
 
+const targetItems = [
+  {
+    targetId: "target-1",
+    objectType: "skill",
+    objectName: "synthetic-review",
+    versions: ["v2", "main"],
+    sessions: 3,
+    potential: 3,
+    attributed: 1,
+    nonTarget: 1,
+    unanalyzed: 1,
+    evolvable: 2,
+  },
+  {
+    targetId: "target-2",
+    objectType: "agent",
+    objectName: "review-agent",
+    versions: ["2026.11.2"],
+    sessions: 2,
+    potential: 1,
+    attributed: 1,
+    nonTarget: 0,
+    unanalyzed: 0,
+    evolvable: 1,
+  },
+];
+
+const targetSummary = {
+  targets: 2,
+  sessions: 5,
+  potential: 4,
+  attributed: 2,
+  nonTarget: 1,
+  unanalyzed: 1,
+};
+
+const targetOverview = {
+  summary: targetSummary,
+  items: targetItems,
+  total: 2,
+  page: 1,
+  pageSize: 50,
+};
+
+const targetTrend = {
+  window: { from: "2026-08-19", to: "2026-11-16" },
+  grain: "week",
+  buckets: [
+    {
+      bucket: "2026-11-09",
+      label: "11-09",
+      attributed: 1,
+      nonTarget: 1,
+      unanalyzed: 1,
+      byTarget: [
+        {
+          targetId: "target-1",
+          objectType: "skill",
+          objectName: "synthetic-review",
+          attributed: 1,
+          nonTarget: 1,
+          unanalyzed: 1,
+        },
+        {
+          targetId: "target-2",
+          objectType: "agent",
+          objectName: "review-agent",
+          attributed: 0,
+          nonTarget: 0,
+          unanalyzed: 0,
+        },
+      ],
+    },
+  ],
+  meta: { bucketPolicy: "attributed and nonTarget rows bucket by attribution createdAt; unanalyzed rows bucket by badCase createdAt" },
+};
+
+const targetDetail = {
+  target: {
+    targetId: "target-1",
+    objectType: "skill",
+    objectName: "synthetic-review",
+    defaultRef: "main",
+    versions: ["v2", "main"],
+  },
+  stats: { sessions: 3, potential: 3, distinctCases: 2, versions: 2 },
+  byVersion: [
+    {
+      version: "v2",
+      potential: 2,
+      attributed: 1,
+      nonTarget: 1,
+      unanalyzed: 0,
+    },
+    {
+      version: "main",
+      potential: 1,
+      attributed: 0,
+      nonTarget: 0,
+      unanalyzed: 1,
+    },
+  ],
+  bySource: [{ source: "Explore", total: 2, distinctCases: 2 }],
+};
+
+const targetCases = {
+  items: [
+    {
+      badCaseId: "badcase-synthetic-0001",
+      objectType: "skill",
+      objectName: "synthetic-review",
+      objectVersion: "v2",
+      source: "Explore",
+      state: "attributed",
+      badCaseType: "self",
+      title: "检查结论缺少目标文件",
+      createdAt: "2026-10-20T09:03:00+08:00",
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      attributionId: "probe-synthetic-0002",
+      category: "prompt",
+    },
+  ],
+  total: 1,
+  page: 1,
+  pageSize: 8,
+};
+
+const evolutionTargets = { items: [] };
+
 type RequestLog = {
   summary: string[];
   trend: string[];
   sources: string[];
   cases: string[];
+  targets: string[];
+  targetTrend: string[];
+  targetCases: string[];
+  targetDetail: string[];
+  evolutionTargets: string[];
 };
 
 let requests: RequestLog;
@@ -114,6 +248,29 @@ function mockOverviewApi(overrides: Record<string, unknown> = {}) {
     http.get("/api/workspaces/:wid/bad-cases", ({ request }) => {
       requests.cases.push(request.url);
       return HttpResponse.json(overrides.cases ?? cases);
+    }),
+    http.get("/api/workspaces/:wid/overview/targets", ({ request }) => {
+      requests.targets.push(request.url);
+      return HttpResponse.json(overrides.targets ?? targetOverview);
+    }),
+    http.get("/api/workspaces/:wid/overview/targets/trend", ({ request }) => {
+      requests.targetTrend.push(request.url);
+      return HttpResponse.json(overrides.targetTrend ?? targetTrend);
+    }),
+    http.get("/api/workspaces/:wid/overview/targets/cases", ({ request }) => {
+      requests.targetCases.push(request.url);
+      return HttpResponse.json(overrides.targetCases ?? targetCases);
+    }),
+    http.get(
+      "/api/workspaces/:wid/overview/targets/:targetId/detail",
+      ({ request }) => {
+        requests.targetDetail.push(request.url);
+        return HttpResponse.json(overrides.targetDetail ?? targetDetail);
+      },
+    ),
+    http.get("/api/workspaces/:wid/evolution/targets", ({ request }) => {
+      requests.evolutionTargets.push(request.url);
+      return HttpResponse.json(overrides.evolutionTargets ?? evolutionTargets);
     }),
   );
 }
@@ -158,7 +315,17 @@ afterAll(() => server.close());
 
 describe("workspace overview page", () => {
   beforeEach(() => {
-    requests = { summary: [], trend: [], sources: [], cases: [] };
+    requests = {
+      summary: [],
+      trend: [],
+      sources: [],
+      cases: [],
+      targets: [],
+      targetTrend: [],
+      targetCases: [],
+      targetDetail: [],
+      evolutionTargets: [],
+    };
   });
 
   it("canonicalizes the landing URL and renders all six stats", async () => {
@@ -278,18 +445,104 @@ describe("workspace overview page", () => {
     expect(casesUrl.searchParams.has("range")).toBe(false);
   });
 
-  it("guards the M11 targets tab by redirecting to the cases tab", async () => {
+  it("opens the evolution-target view from a deep link", async () => {
     mockOverviewApi();
     const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
 
-    expect(router.currentRoute.value.query.tab).toBe("cases");
-    expect(wrapper.find("[data-testid='ov-targets-notice']").exists()).toBe(true);
-    expect(
-      wrapper.get("[data-testid='ov-tab-targets']").attributes("disabled"),
-    ).toBeDefined();
-    expect(wrapper.get("[data-testid='ov-tab-cases']").classes()).toContain(
+    expect(router.currentRoute.value.query.tab).toBe("targets");
+    expect(wrapper.get("[data-testid='ov-tab-targets']").classes()).toContain(
       "active",
     );
+    expect(wrapper.get("[data-testid='ov-target-stat-targets']").text()).toBe(
+      "2",
+    );
+    expect(wrapper.get("[data-testid='ov-target-stat-sessions']").text()).toBe(
+      "5",
+    );
+    expect(wrapper.get("[data-testid='ov-target-stat-attributed']").text()).toBe(
+      "2",
+    );
+    expect(wrapper.findAll("[data-testid='ov-target-side-item-target-1']")).toHaveLength(1);
+    expect(wrapper.findAll("[data-testid='ov-target-side-item-target-2']")).toHaveLength(1);
+    expect(wrapper.findAll("[data-testid='ov-target-case-row']")).toHaveLength(1);
+    expect(wrapper.get("[data-testid='ov-target-detail-sessions']").text()).toBe(
+      "3",
+    );
+    expect(wrapper.find("[data-testid='ov-target-chart']").exists()).toBe(true);
+
+    const casesUrl = new URL(requests.targetCases.at(-1) as string);
+    expect(casesUrl.searchParams.get("pageSize")).toBe("8");
+    const targetsUrl = new URL(requests.targets.at(-1) as string);
+    expect(targetsUrl.searchParams.get("pageSize")).toBe("50");
+  });
+
+  it("keeps the shared window and grain when switching overview tabs", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage(
+      `${ws}/overview?tab=cases&range=30&grain=day`,
+    );
+
+    await wrapper.get("[data-testid='ov-tab-targets']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toMatchObject({
+      tab: "targets",
+      range: "30",
+      grain: "day",
+    });
+    const trendUrl = new URL(requests.targetTrend.at(-1) as string);
+    expect(trendUrl.searchParams.get("range")).toBe("30");
+    expect(trendUrl.searchParams.get("grain")).toBe("day");
+
+    await wrapper.get("[data-testid='ov-tab-cases']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "30",
+      grain: "day",
+    });
+  });
+
+  it("writes target, state, detail, and list filters into the target URL", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    await wrapper.get("[data-testid='ov-target-option-target-2']").setValue(true);
+    await flushPromises();
+    expect(router.currentRoute.value.query.targets).toBe("target-2");
+    expect(wrapper.find("[data-testid='ov-target-chip-target-2']").exists()).toBe(true);
+
+    await wrapper.get("[data-testid='ov-target-metric-unanalyzed']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.states).toBe("attributed,nonTarget");
+
+    await wrapper.get("[data-testid='ov-target-case-target']").setValue("target-1");
+    await flushPromises();
+    expect(router.currentRoute.value.query.ctarget).toBe("target-1");
+    const casesUrl = new URL(requests.targetCases.at(-1) as string);
+    expect(casesUrl.searchParams.get("targets")).toBe("target-1");
+
+    await wrapper.get("[data-testid='ov-target-case-state']").setValue("nonTarget");
+    await flushPromises();
+    expect(router.currentRoute.value.query.cstate).toBe("nonTarget");
+    const filteredUrl = new URL(requests.targetCases.at(-1) as string);
+    expect(filteredUrl.searchParams.get("states")).toBe("nonTarget");
+
+    await wrapper.get("[data-testid='ov-target-detail-target']").setValue("target-2");
+    await flushPromises();
+    expect(router.currentRoute.value.query.dtarget).toBe("target-2");
+
+    await wrapper.get("[data-testid='ov-target-detail-limit-all']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.dlimit).toBe("all");
+
+    await wrapper.get("[data-testid='ov-target-detail-from']").setValue("2026-11-01");
+    await flushPromises();
+    await wrapper.get("[data-testid='ov-target-detail-to']").setValue("2026-11-10");
+    await flushPromises();
+    expect(router.currentRoute.value.query.dfrom).toBe("2026-11-01");
+    expect(router.currentRoute.value.query.dto).toBe("2026-11-10");
   });
 
   it("keeps the chart alive when the list fails", async () => {
@@ -537,6 +790,111 @@ describe("workspace overview page", () => {
 
     expect(wrapper.text()).toContain("OBJECT_FILTER_TOO_LARGE");
     expect(wrapper.text()).not.toContain("OVERVIEW_SUMMARY_UNAVAILABLE");
+  });
+
+
+  it("paginates the evolution-target side list five per page", async () => {
+    const six = Array.from({ length: 6 }, (_, index) => ({
+      ...targetItems[0],
+      targetId: `target-page-${index + 1}`,
+      objectName: `target-${index + 1}`,
+      evolvable: 6 - index,
+    }));
+    mockOverviewApi({
+      targets: { ...targetOverview, items: six, total: six.length },
+      targetDetail: {
+        ...targetDetail,
+        target: {
+          ...targetDetail.target,
+          targetId: "target-page-1",
+          objectName: "target-1",
+        },
+      },
+    });
+    const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    expect(wrapper.findAll("[data-testid^='ov-target-side-item-']")).toHaveLength(5);
+    await wrapper.get("[data-testid='ov-target-side-next']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.tpage).toBe("2");
+    expect(wrapper.findAll("[data-testid^='ov-target-side-item-']")).toHaveLength(1);
+  });
+
+  it("paginates potential cases eight per page", async () => {
+    mockOverviewApi();
+    server.use(
+      http.get("/api/workspaces/:wid/overview/targets/cases", ({ request }) => {
+        requests.targetCases.push(request.url);
+        const page = Number(
+          new URL(request.url).searchParams.get("page") ?? "1",
+        );
+        return HttpResponse.json({
+          items: page === 2 ? targetCases.items : [],
+          total: 9,
+          page,
+          pageSize: 8,
+        });
+      }),
+    );
+    const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    await wrapper.get("[data-testid='ov-target-case-next']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.page).toBe("2");
+    expect(wrapper.findAll("[data-testid='ov-target-case-row']")).toHaveLength(1);
+    const casesUrl = new URL(requests.targetCases.at(-1) as string);
+    expect(casesUrl.searchParams.get("page")).toBe("2");
+  });
+
+  it("filters the potential list by a clicked target bucket", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    await wrapper.get("[data-bucket='2026-11-09']").trigger("click");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.cfrom).toBe("2026-11-09");
+    expect(router.currentRoute.value.query.cto).toBe("2026-11-15");
+    expect(router.currentRoute.value.query.range).toBe("90");
+    const casesUrl = new URL(requests.targetCases.at(-1) as string);
+    expect(casesUrl.searchParams.get("from")).toBe("2026-11-09");
+    expect(casesUrl.searchParams.get("to")).toBe("2026-11-15");
+  });
+
+  it("keeps the detail card filter independent from the shared trend", async () => {
+    mockOverviewApi({
+      targetDetail: {
+        ...targetDetail,
+        target: {
+          ...targetDetail.target,
+          targetId: "target-2",
+          objectName: "review-agent",
+          versions: ["2026.11.2"],
+        },
+      },
+    });
+    const { router, wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    await wrapper
+      .get("[data-testid='ov-target-detail-version-2026.11.2']")
+      .setValue(true);
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.dversions).toBe("2026.11.2");
+    const detailUrl = new URL(requests.targetDetail.at(-1) as string);
+    expect(detailUrl.searchParams.get("versions")).toBe("2026.11.2");
+    expect(detailUrl.searchParams.get("versionLimit")).toBe("5");
+    const trendUrl = new URL(requests.targetTrend.at(-1) as string);
+    expect(trendUrl.searchParams.has("versions")).toBe(false);
+
+    await wrapper.get("[data-testid='ov-target-detail-target']").setValue("target-2");
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.dtarget).toBe("target-2");
+    expect(router.currentRoute.value.query.dversions).toBeUndefined();
+    expect(router.currentRoute.value.query.range).toBe("90");
   });
 
   it("prefills the custom window from the current range window", async () => {

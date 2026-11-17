@@ -379,6 +379,22 @@ export type {
   OverviewTrendBucket,
   OverviewTrendResponse,
   OverviewWindow,
+  TargetCaseItem,
+  TargetCaseListResponse,
+  TargetDetailResponse,
+  TargetDetailSource,
+  TargetDetailStats,
+  TargetDetailTarget,
+  TargetDetailVersion,
+  TargetObjectType,
+  TargetOverviewItem,
+  TargetOverviewListResponse,
+  TargetOverviewSummary,
+  TargetState,
+  TargetTrendBucket,
+  TargetTrendByTarget,
+  TargetTrendMeta,
+  TargetTrendResponse,
 } from "./overview.js";
 
 export type {

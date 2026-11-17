@@ -164,3 +164,53 @@ export function percent(self: number, discovery: number): BucketShare {
     discovery: (safeDiscovery / total) * 100,
   };
 }
+
+/** Vertical geometry of an N-segment stacked bar, bottom segment first. */
+export type SegmentGeometry = {
+  /** Top edge of the bar in local chart pixels. */
+  y: number;
+  /** Total bar height including every segment. */
+  totalHeight: number;
+  /** Segment heights in input order, from the baseline upward. */
+  heights: number[];
+};
+
+/**
+ * Stack any number of non-negative segments from the chart baseline.
+ * @param values Segment values in input order; non-positive values become 0.
+ * @param top Chart drawing top in pixels.
+ * @param height Chart drawing height in pixels.
+ * @param max Axis maximum; bars are clamped to it.
+ * @returns Bar y, total height, and one height per input segment.
+ */
+export function stackSegments(
+  values: number[],
+  top: number,
+  height: number,
+  max: number,
+): SegmentGeometry {
+  const safe = values.map((value) =>
+    Number.isFinite(value) && value > 0 ? value : 0,
+  );
+  const total = safe.reduce((sum, value) => sum + value, 0);
+  if (
+    total <= 0 ||
+    !Number.isFinite(height) ||
+    height <= 0 ||
+    !Number.isFinite(max) ||
+    max <= 0
+  ) {
+    return {
+      y: top + (Number.isFinite(height) ? Math.max(0, height) : 0),
+      totalHeight: 0,
+      heights: safe.map(() => 0),
+    };
+  }
+  const scaled = Math.min(height, (total / max) * height);
+  const totalHeight = Math.max(MIN_BAR_HEIGHT, scaled);
+  return {
+    y: top + height - totalHeight,
+    totalHeight,
+    heights: safe.map((value) => (totalHeight * value) / total),
+  };
+}

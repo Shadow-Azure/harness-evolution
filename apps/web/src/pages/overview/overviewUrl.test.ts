@@ -14,7 +14,6 @@ describe("overview URL model", () => {
     const parsed = parseOverviewQuery({});
 
     expect(parsed.state).toEqual(DEFAULT_OVERVIEW_STATE);
-    expect(parsed.targetsRequested).toBe(false);
     expect(parsed.sanitized).toBe(true);
     expect(overviewQuery(DEFAULT_OVERVIEW_STATE)).toEqual({
       tab: "cases",
@@ -112,7 +111,7 @@ describe("overview URL model", () => {
     expect(parsed.state.page).toBe(1);
     expect(parsed.state.type).toBe("all");
     expect(parsed.state.objects).toEqual([]);
-    expect(parsed.targetsRequested).toBe(true);
+    expect(parsed.state.tab).toBe("targets");
     expect(parsed.sanitized).toBe(true);
   });
 
@@ -157,6 +156,90 @@ describe("overview URL model", () => {
         objects: ["a"],
       }),
     ).toEqual({ from: "2026-10-01", to: "2026-10-31", objects: ["a"] });
+  });
+
+  it("round-trips the target view selection and paging", () => {
+    const state = {
+      ...DEFAULT_OVERVIEW_STATE,
+      tab: "targets" as const,
+      targets: ["target-a", "target-b"],
+      states: ["attributed", "unanalyzed"] as const,
+      targetPage: 2,
+      caseTarget: "target-a",
+      caseSource: "Explore",
+      caseState: "nonTarget" as const,
+      caseFrom: "2026-10-01",
+      caseTo: "2026-10-31",
+      page: 3,
+      detailTarget: "target-b",
+      detailVersions: ["v2", "v1"],
+      detailFrom: "2026-11-01",
+      detailTo: "2026-11-10",
+      detailLimit: "all" as const,
+    };
+    const query = overviewQuery({ ...state, states: [...state.states] });
+
+    expect(query).toEqual({
+      tab: "targets",
+      range: "90",
+      grain: "week",
+      targets: "target-a,target-b",
+      states: "attributed,unanalyzed",
+      tpage: "2",
+      ctarget: "target-a",
+      csource: "Explore",
+      cstate: "nonTarget",
+      cfrom: "2026-10-01",
+      cto: "2026-10-31",
+      page: "3",
+      dtarget: "target-b",
+      dversions: "v2,v1",
+      dfrom: "2026-11-01",
+      dto: "2026-11-10",
+      dlimit: "all",
+    });
+    const parsed = parseOverviewQuery(query);
+    expect(parsed.state.tab).toBe("targets");
+    expect(parsed.state.targets).toEqual(["target-a", "target-b"]);
+    expect(parsed.state.states).toEqual(["attributed", "unanalyzed"]);
+    expect(parsed.state.targetPage).toBe(2);
+    expect(parsed.state.caseState).toBe("nonTarget");
+    expect(parsed.state.detailVersions).toEqual(["v2", "v1"]);
+    expect(parsed.state.detailLimit).toBe("all");
+    expect(parsed.sanitized).toBe(false);
+  });
+
+  it("drops invalid target-view values and keeps case-tab keys out of the target URL", () => {
+    const parsed = parseOverviewQuery({
+      tab: "targets",
+      states: "attributed,bogus",
+      dlimit: "7",
+      cstate: "unknown",
+      cfrom: "2026-10-31",
+      cto: "2026-10-01",
+      detailTarget: " ",
+      dversions: " , v1 , v1 ",
+    });
+
+    expect(parsed.state.states).toEqual(["attributed"]);
+    expect(parsed.state.detailLimit).toBe(5);
+    expect(parsed.state.caseState).toBe("all");
+    expect(parsed.state.caseFrom).toBe("");
+    expect(parsed.state.caseTo).toBe("");
+    expect(parsed.state.detailTarget).toBe("");
+    expect(parsed.state.detailVersions).toEqual(["v1"]);
+    expect(overviewQuery(parsed.state)).toEqual({
+      tab: "targets",
+      range: "90",
+      grain: "week",
+      states: "attributed",
+      dversions: "v1",
+    });
+    expect(overviewQuery({ ...parsed.state, tab: "cases" })).toEqual({
+      tab: "cases",
+      range: "90",
+      grain: "week",
+    });
   });
 
   it("turns a clicked bucket into an inclusive window", () => {
