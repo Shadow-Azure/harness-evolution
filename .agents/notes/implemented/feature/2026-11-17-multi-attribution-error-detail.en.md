@@ -33,4 +33,4 @@ m11-01 made a bad case's attributions readable per object/revision, but error de
 - The sidebar page follows the selected `at` and switches to the page that contains it. The page number is driven only by the selection and is not written to the URL; refresh and copied links still follow `at`.
 - Conclusions are still written only by evolution; error detail is read-only and never performs manual attribution or mutates the bad case.
 - Execution-flow layout and keeping all concurrent branches when a case is selected remain m11-07's work; this page still filters the flow to the selected case.
-- V1 `/analysis`, `/probes/{id}`, and `BadCase.analysis` remain for lists and compatibility pages; m11-06 retirement must also remove the old error-detail reads.
+- V1 `/analysis`, `/probes/{id}`, and `BadCase.analysis` remain for lists and compatibility pages; the V3 retirement must also remove the old error-detail reads and frontend dead code, following [compatibility.en.md](../../../../docs/compatibility.en.md).

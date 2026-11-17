@@ -809,7 +809,7 @@ erDiagram
 | `GET /api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}` | 单条归因详情（§4.19，含触发点对照） |
 | `GET /api/workspaces/{wid}/sessions/{sid}/bad-cases` | 会话内问题列表（结构见 §3.4） |
 
-> `/api/bad-cases/{id}/analysis` 与 `/api/sessions/{sid}/probes` 作为 V1 兼容端点保留一个版本；前者只返回最新一条关联的 legacy 形状，后者返回该 Session 的全部归因明细。V2 页面只调用归因分页/详情端点。`/api/probes/{id}` 继续可读，但响应中的 `probeId` 是兼容别名，值等于 V2 `attributionId`。
+> `/api/bad-cases/{id}/analysis` 与 `/api/sessions/{sid}/probes` 作为 V1 兼容端点保留至 V3（条件见 [docs/compatibility.md](../../docs/compatibility.md)）；前者只返回最新一条关联的 legacy 形状，后者返回该 Session 的全部归因明细。V2 页面只调用归因分页/详情端点。`/api/probes/{id}` 继续可读，但响应中的 `probeId` 是兼容别名，值等于 V2 `attributionId`。
 
 `GET /bad-cases/{badCaseId}` 示例：
 
@@ -922,7 +922,7 @@ erDiagram
 
 ### 4.9 向导预览（V2，见 §4.20）
 
-V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用，下个大版本删除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。`targetType` 在预览与 target 配置中取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`。
+V1 的 `POST /api/evolution/probes/query` 进入兼容期，V2 页面不调用，按 [docs/compatibility.md](../../docs/compatibility.md) 的 V3 条件删除。向导预演由三个端点承担（§4.20）：`preview/sessions`（第 2 步）、`preview/potential`（第 3 步）、`preview/attribution`（第 4 步）。命中源从 probe 换成「空间 bad case → Session 关联 → 潜在 bad case」。`targetType` 在预览与 target 配置中取 `skill|agent|knowledge`；`bad_cases.object_type` 仍只有 `skill|agent`。
 
 - 三段 `summary` 各管一段：Session 段用 `reported/associated/skipped/versionUnresolved/pending`，潜在段用 `badCases/potential/byReason`，归因段用 `potential/reused/fresh/nonTargetKnown`；不再有 `probes / usedProbes / byAttributeType`。
 - 行结构用 `PotentialRow`（badCaseId/objectName/badCaseType/triggerAt/sessionId/hitReason/orderState），替代 V1 的 `ProbeRow`；`hitReason ∈ self_report|after_object|both|policy_excluded|order_unknown`，`orderState ∈ comparable|unknown`。
@@ -1216,7 +1216,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 - `total` 的口径公式：只数当前 `q`/`status` 下已归一化的根，**不含 pending**。`pendingSessions` 与 `q`/`status`/`sort`/`limit` 无关，只按空间投影计算；两者不是同一集合的划分，`total + pendingSessions` 不等于「空间全部被上报的根」。
 - 共享 root：同一 root 被两个空间上报时，V2 的 `total` 与 `pendingSessions` 在每个空间各算一次（每个空间都需要自己的轨迹与计数）；V1 的可见空间并集对同一根去重，只算一次。
 - 趋势的 `attributed/nonTarget` 按归因时间落桶、`unanalyzed` 按上报时间落桶，差异在 `meta.bucketPolicy` 声明。
-- V1 无前缀的 `GET /api/sessions` 冻结保留一个版本（按当前用户全部可见空间过滤），下个大版本删除；本版本仅 additive 增加 `total`/`pendingSessions`（见 §4.2）。
+- V1 无前缀的 `GET /api/sessions` 冻结保留（按当前用户全部可见空间过滤），按 [docs/compatibility.md](../../docs/compatibility.md) 的 V3 条件删除；本版本仅 additive 增加 `total`/`pendingSessions`（见 §4.2）。
 
 ### 4.19 归因读取（V2，错误详情）
 

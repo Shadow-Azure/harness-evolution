@@ -9,7 +9,7 @@ milestone: m11
 depends:
   - m11-05
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - docs/**
   - plans/**
@@ -18,6 +18,7 @@ scope:
   - packages/contracts/**
   - .agents/flow/**
   - .agents/notes/**
+  - scripts/doc-budgets.manifest.json
 adr: []
 github:
   number: 221

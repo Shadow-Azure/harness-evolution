@@ -6,7 +6,7 @@ Records service boundaries, data flow and storage; slice rationale lives in `.ag
 
 ## Product boundary
 
-The service contains fixtures, local import, JSONL normalization, Agent-tree assembly, session queries, read-only problem attribution queries, and error-detail browsing.
+Contains workspaces and members, credential ingest, fixtures/local import, normalization, the Agent tree, workspace Sessions and overview, multi-attribution error details, seven-step evolution and the lane DAG. V1 read endpoints and workspace-less routes remain in the compatibility window; see [compatibility.en.md](compatibility.en.md).
 
 ## Service split
 
@@ -24,38 +24,28 @@ Routes are registered only in `apps/api/app/main.py`; dependency direction is `a
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, the IdP callback, and ticket-authenticated SSE are public; other requests require bearer JWTs, and `/api/users`, sync, and upstream pull are admin-only. Access lasts 30 minutes; the refresh cookie lasts 14 days with `httpOnly`, `SameSite=Strict`, `/api/auth` scope, and production `Secure`; authentication and failures share one boundary.
+Only health, login, refresh, the IdP callback, ticket SSE, and credential ingest are public; everything else uses a bearer JWT, and workspace creation, user management, sync, and upstream pull are global-admin only. Access lasts 30 minutes; the refresh cookie lasts 14 days with httpOnly, SameSite=Strict; authentication and failures share one boundary.
 
-Web restores the session before mounting routes; tokens and users stay in memory. Guards handle login and forced password change, concurrent 401s share one refresh, and logout clears the query cache.
+Web restores `auth/session` before mounting routes; tokens and users stay in memory, concurrent 401s share one refresh, and logout clears the query cache. Pages live under `/workspaces/:wid` and scope every resource by `wid` and member role; `/`, `/sessions/**`, `/errors`, and `/evolution/**` redirect to the remembered visible workspace, the only visible workspace, or the chooser.
 
-The session page uses a 360px list plus overview. Search, status, sort, selection, and evidence live in the URL.
-
-Target configuration is member-readable and admin-writable; it includes disabled rows, the wizard catalog includes enabled rows only, and the backend owns errors.
-
-Run lists are backend-grouped with backend-generated display facts.
-
-Error details combine a problem sidebar, execution flow and two tabs; selection lives in the URL, cross-session ownership returns 409, panels remember scroll offsets, and asynchronous flow remains subject to gates.
-
-The lifespan recovers jobs and `sync_lock` before scheduling; manual and timed triggers share the single-flight lock, and no pending work creates no job.
+The session page uses a 360px list plus overview, defaults to the latest 10 and searches on Enter; error details group by case with `case/tab/at` deep links; target configuration and the four-step wizard are workspace-scoped, run details use seven steps, and lifespan recovers jobs and `sync_lock` before scheduling.
 
 ## Data-layer strategy
 
-- Production uses MySQL 8 while local runs and tests use SQLite; `HE_DB_DIALECT` is the only selection point.
-- The `Database` interface owns connection lifecycle, read sessions, write transactions and health; `api/service` code never creates engines directly.
-- Alembic maintains one dual-dialect tree; business code depends on `db/crud/` and `Database` and never concatenates SQL.
-- `job_runs` is the task source of truth; a serial worker writes run-scoped `evolution_run_events`, the event bus carries bounded notifications, and interruptions persist first.
-- Evolution: `progress_unit`/`EngineFactory`, admin targets, git refs/tags, and `agents.model`.
-- `sync_lock` is the single-flight source; job and lock share one transaction, and abnormal `sync_runs` finalize before the matching lock is released. Restart recovery retains the interrupted audit and uses a fresh replay run id.
-- Raw payloads are uniquely stored by `(runtime_key, root_session_id, agent_id)`; fixtures idempotently seed the same tables.
-- Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay. CI uses mock transport only.
-- Normalization selects a parser subclass by runtime through `TraceParserFactory`, keeps messages and content blocks in memory, and emits user-input anchors, triggers, relation confidence, and statistics.
-- Replay is atomic per root: assemble, then transactionally rewrite and advance source cursors.
-- External problem tables sync by primary key: credential ingest upserts `bad_cases` idempotently, the catalog task is limited to the default workspace, and attribution stays read-only.
-- Secrets enter only through environment variables, never repo or database.
+- Production MySQL 8, local/test SQLite; `HE_DB_DIALECT` is the only selection point. `Database` owns connections, read sessions, write transactions, and health; Alembic maintains dual-dialect migrations, and business code depends only on `db/crud/` and `Database`.
+- Workspaces: `workspaces`, `workspace_members`, `workspace_ingest_credentials`; bad cases, target configuration, and runs carry `workspace_id`. Traces are global, and workspace Sessions are projected from bad cases.
+- Ingest: a credential writes only the URL workspace, quota is checked inside the write transaction, and re-reporting an ID upserts idempotently without double counting.
+- Attribution: `bad_case_analysis` links multiple rows by `(bad_case_id, probe_id)`; `probe_reports` stores the conclusion, cache key, and reuse count; the cache key covers workspace, case, object identity, version, policy, and engine.
+- Evidence: parent/child relations are `authoritative/derived/synthetic/unresolved`; `execution_outcome` is independent of parse status; object revision comes from `path + body hash` or a tag, and an unknown revision is never guessed by name.
+- Knowledge triggers: `kind=knowledge` accepts only documents under a workspace knowledge root or returned by a knowledge Provider/Collection, storing `document_id`, revision, source path, retrieval kind, and tool_use, never the body.
+- Jobs: `job_runs` is the task source of truth; a serial worker writes run events, the bus sends bounded notifications, and `sync_lock` is single-flight with the job in one transaction, so an abnormal `sync_runs` finalizes before the lock is released; raw payloads are unique by `(runtime_key, root_session_id, agent_id)`, fixtures seed the same tables idempotently, and replay assembles atomically per root before one transactional rewrite.
+- Upstream uses a versioned outbound contract; pull writes `http_api` payloads before shared replay; normalization picks a parser subclass by runtime through `TraceParserFactory`, keeping messages and content out of storage.
+- Compatibility: unprefixed read endpoints filter by the union of visible workspaces; V1 runs are read-only mapped to seven steps; `bad_case_analysis.probe_id` and `probe_reports.cache_key` stay nullable. Deletion conditions live in [compatibility.en.md](compatibility.en.md).
+- Secrets enter only through environment variables, never the repo or database.
 
 ## Shared contract
 
-FastAPI OpenAPI is the sole contract source for inbound APIs covering health, identity, users, sessions, jobs, acquisition, and events. The upstream query is a client-side outbound contract whose strict Pydantic models export an independent JSON Schema and fixture snapshot. `contract:check` compares both byte-for-byte to reject drift.
+FastAPI OpenAPI is the sole inbound contract source; the upstream query exports an independent JSON Schema and fixture through strict Pydantic models, and `contract:check` rejects drift in both snapshots.
 
 The health response makes API and database state independently observable:
 
@@ -66,6 +56,6 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 
 ## State and boundaries
 
-- Present: dual-dialect API, identity, jobs/SSE, session queries, problem/attribution APIs, error details, sync/upstream pull, external issue models, target configuration, evolution run/detail/event logs (six steps, blocked/retry, lastEventSeq), real prepare/Git candidates, placeholder evaluation closure, launch/preview and read-only step APIs, fixtures, data chains, E2E, and contract gates.
-- Missing: real evaluation, real patches, and user deactivation UI.
-- Explicitly out: multi-tenancy, production credential access and automatic code changes without evaluation evidence.
+- Present: dual-dialect API, authentication and workspace roles, credential ingest and quota, workspace Session and overview, multi-attribution error details, four-step wizard, seven-step runs and lane DAG, evidence gates and knowledge triggers, jobs/SSE, target configuration, fixtures, cross-stack API/E2E, and docs/flow/contract gates.
+- Missing: real evaluation and patches, a real clustering algorithm, and user deactivation UI.
+- Explicitly out: production credential access, automatic code changes without evidence, and deleting V1 surfaces inside the compatibility window.
