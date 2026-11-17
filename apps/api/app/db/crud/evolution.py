@@ -125,12 +125,22 @@ class EvolutionRepository:
         stage: str,
         message: str,
     ) -> None:
-        """Persist one terminal failure while retaining its user-safe reason."""
+        """Persist one terminal failure while retaining its user-safe reason.
+
+        Already-terminal runs (and runs still blocked with an open retry entry)
+        keep their existing facts: a late generic job failure must not rewrite
+        the first writer's ``error_stage`` or destroy recoverable state.
+        """
         now = now_shanghai()
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status.notin_(
+                        ("failed", "completed", "interrupted", "blocked"),
+                    ),
+                )
                 .values(
                     status="failed",
                     error_stage=stage,
@@ -929,6 +939,62 @@ class EvolutionRepository:
             )
         return result.rowcount == 1
 
+    async def mark_round_failed(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        stage: str,
+        message: str,
+    ) -> EvolutionRoundRecord:
+        """Fail one unrecoverable round and its run with a safe sub-step stage."""
+        finished_at = now_shanghai()
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "patching",
+                    )
+                    .values(
+                        status="failed",
+                        error_message=message,
+                        finished_at=finished_at,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round cannot fail from the patching state",
+                )
+            # Symmetric with the round-side guard: a run already terminal
+            # (failed/completed/interrupted) or still blocked (keep the /retry
+            # entry) is never overwritten by a late patch failure, so terminal
+            # facts belong to the first writer and error_stage cannot drift.
+            await session.execute(
+                update(evolution_runs)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status.notin_(
+                        ("failed", "completed", "interrupted", "blocked"),
+                    ),
+                )
+                .values(
+                    status="failed",
+                    error_stage=stage,
+                    error_message=message,
+                    error_at=finished_at,
+                    finished_at=finished_at,
+                ),
+            )
+        return await self._required_round(round_id)
+
     async def mark_round_candidate(
         self,
         round_id: str,
@@ -1637,7 +1703,14 @@ class EvolutionRepository:
         return round_
 
     async def write_final(self, values: Mapping[str, Any]) -> EvolutionFinalRecord:
-        """Insert or replace a run's single final-evaluation row."""
+        """Insert or replace a run's single final-evaluation row.
+
+        The design state machine (07 §5.1) ends the run at unit ``5+M+1`` when
+        the terminal evaluation lands, which is also the readability threshold
+        of the ``final`` step, so the cursor advances in the same transaction.
+        Re-entering finalize after that advance (retry path) keeps updating the
+        row without touching the cursor again.
+        """
         run_id = str(values["run_id"])
         payload = {
             "best_version": values["best_version"],
@@ -1658,7 +1731,8 @@ class EvolutionRepository:
                 ).scalar_one(),
             )
             expected = 5 + cluster_count
-            if current != expected or status != "running":
+            advancing = current == expected and status == "running"
+            if not advancing and current != expected + 1:
                 raise StageConflict(
                     status_code=409,
                     current=current,
@@ -1681,6 +1755,15 @@ class EvolutionRepository:
                     update(evolution_finals)
                     .where(evolution_finals.c.run_id == run_id)
                     .values(**payload),
+                )
+            if advancing:
+                await session.execute(
+                    update(evolution_runs)
+                    .where(
+                        evolution_runs.c.id == run_id,
+                        evolution_runs.c.status == "running",
+                    )
+                    .values(progress_unit=expected + 1),
                 )
         async with self._database.session() as session:
             row = (

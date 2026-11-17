@@ -6555,7 +6555,7 @@
       },
       "StepRoundPatch": {
         "additionalProperties": false,
-        "description": "Placeholder patch preview stored with the round.",
+        "description": "Patch preview stored with the round.\n\n``note`` carries the patch source's one-line change description (for the\nminimal-config source it starts with \"最小配置变更\"). Rounds published\nbefore the patch-source seam persist only ``file``/``lines``, so the field\nstays optional and older snapshots keep rendering unchanged.",
         "properties": {
           "file": {
             "title": "File",
@@ -6567,6 +6567,17 @@
             },
             "title": "Lines",
             "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "required": [

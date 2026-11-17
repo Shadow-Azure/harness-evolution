@@ -39,6 +39,10 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 
 Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`.
 
+## Evaluation config injection
+
+Evaluation-platform secrets reach the server `.env` via GitHub Secrets (`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`); `apiKeyRef` stores an environment-variable name only, and the injection step is skipped when secrets are absent. Values travel base64-encoded, are decoded server-side, and are written atomically by `deploy/inject-eval-config.py`; a decode failure warns and skips, a disk-write failure aborts the release, and the playbook carries the details. Steps: [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md); template: [deploy/env.production.example](../deploy/env.production.example).
+
 ## Release and rollback
 
 - Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.

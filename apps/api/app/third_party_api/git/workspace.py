@@ -70,10 +70,16 @@ class PreparedWorkspace:
 
 @dataclass(frozen=True, slots=True)
 class Patch:
-    """One deterministic patch applied inside an isolated workspace."""
+    """One deterministic patch applied inside an isolated workspace.
+
+    Append mode (default) keeps the V1 documentation-patch behavior.
+    ``overwrite=True`` replaces the destination with exactly these lines, which
+    is what real config-file changes need.
+    """
 
     file: str
     lines: tuple[str, ...]
+    overwrite: bool = False
 
     @property
     def sha256(self) -> str:
@@ -1089,6 +1095,9 @@ class GitWorkspaceManager:
         except ValueError:
             raise GitOperationError("patch path escapes the workspace", stage="patch") from None
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if patch.overwrite:
+            destination.write_text("\n".join(patch.lines) + "\n", encoding="utf-8")
+            return
         existing = destination.read_text(encoding="utf-8") if destination.exists() else ""
         separator = "\n" if existing and not existing.endswith("\n") else ""
         destination.write_text(
