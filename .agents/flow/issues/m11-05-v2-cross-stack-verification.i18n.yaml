@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m11-05-v2-cross-stack-verification.md
-m11-05-v2-cross-stack-verification.md: b72a6416acfc645347afb90e03529c55891d014f
-m11-05-v2-cross-stack-verification.en.md: 34fa390224506fe901b9ecd6b94212a6e0d1c3c4
+m11-05-v2-cross-stack-verification.md: bc2b8e4d47d3a4c6eb1b3404b0bbb31539dbe495
+m11-05-v2-cross-stack-verification.en.md: 6d3255df7134aa72baf0df2791ee3c04142c57ef

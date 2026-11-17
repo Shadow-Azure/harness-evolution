@@ -22,6 +22,7 @@ scope:
   - apps/api/**
   - apps/web/**
   - scripts/run-api.mjs
+  - .github/workflows/ci.yml
   - .agents/flow/**
   - .agents/notes/**
 adr: []
