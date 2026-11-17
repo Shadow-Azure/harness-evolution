@@ -100,6 +100,6 @@
 **Files:**
 - Modify: only files inside the issue scope union.
 
-- [ ] Run: `pnpm test:api -- tests/m12-03-real-patch-eval`, `pnpm test:db`, `pnpm contract:check`, `pnpm lint:api`, `pnpm typecheck:api`, `pnpm verify:flow --diff main`, plus the existing evolution test directories.
-- [ ] Walk through §5.6–5.8/§5.8.1 and §4.3 conformance item by item; fix code (not design) where they disagree.
-- [ ] Commit locally with `(#244)` in the subject; no push, no PR.
+- [x] Run: `pnpm test:api -- tests/m12-03-real-patch-eval`, `pnpm test:db`, `pnpm contract:check`, `pnpm lint:api`, `pnpm typecheck:api`, `pnpm verify:flow --diff main`, plus the existing evolution test directories.
+- [x] Walk through §5.6–5.8/§5.8.1 and §4.3 conformance item by item; fix code (not design) where they disagree.
+- [x] Commit locally with `(#244)` in the subject; no push, no PR.
