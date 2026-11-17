@@ -95,6 +95,10 @@ class ProbeWrite:
     created_run_id: str | None
     created_at: datetime
     updated_at: datetime
+    report_schema_version: str | None = None
+    report_payload: Mapping[str, object] | None = None
+    execution_manifest: Mapping[str, object] | None = None
+    execution_manifest_hash: str | None = None
 
     def __post_init__(self) -> None:
         """Reject malformed identities and normalize an empty object version."""
@@ -103,7 +107,7 @@ class ProbeWrite:
                 raise ValueError(f"{field_name} must not be empty")
         if self.probe_type not in {"skill", "agent", "knowledge"}:
             raise ValueError(f"unknown probe_type: {self.probe_type}")
-        if self.conclusion not in {"attributed", "non_target"}:
+        if self.conclusion not in {"attributed", "non_target", "inconclusive"}:
             raise ValueError(f"unknown conclusion: {self.conclusion}")
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be within [0, 1]: {self.confidence}")
@@ -113,6 +117,8 @@ class ProbeWrite:
     @property
     def cache_key(self) -> str:
         """Derive the cache key from the persisted identity fields."""
+        if self.execution_manifest_hash is not None:
+            return self.execution_manifest_hash
         return attribution_cache_key(
             self.workspace_id,
             self.bad_case_id,
@@ -148,6 +154,10 @@ class ProbeCacheRecord:
     policy_version: str
     attribution_engine: str
     cache_key: str
+    report_schema_version: str | None
+    report_payload: Mapping[str, object] | None
+    execution_manifest: Mapping[str, object] | None
+    execution_manifest_hash: str | None
     created_run_id: str | None
     last_reused_run_id: str | None
     reused_count: int
@@ -197,6 +207,10 @@ class AttributionRecord:
     policy_version: str
     attribution_engine: str
     cache_key: str | None
+    report_schema_version: str | None
+    report_payload: Mapping[str, object] | None
+    execution_manifest: Mapping[str, object] | None
+    execution_manifest_hash: str | None
     created_run_id: str | None
     last_reused_run_id: str | None
     reused_count: int
@@ -259,6 +273,11 @@ def _text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _mapping(value: object) -> Mapping[str, object] | None:
+    """Copy one JSON object while rejecting arrays and scalar drift."""
+    return dict(value) if isinstance(value, Mapping) else None
+
+
 def _row_attribution(mapping: RowMapping) -> AttributionRecord:
     """Convert one joined attribution mapping into a boundary record."""
     return AttributionRecord(
@@ -277,6 +296,10 @@ def _row_attribution(mapping: RowMapping) -> AttributionRecord:
         policy_version=mapping["policy_version"],
         attribution_engine=mapping["attribution_engine"],
         cache_key=_text(mapping["cache_key"]),
+        report_schema_version=_text(mapping["report_schema_version"]),
+        report_payload=_mapping(mapping["report_payload"]),
+        execution_manifest=_mapping(mapping["execution_manifest"]),
+        execution_manifest_hash=_text(mapping["execution_manifest_hash"]),
         created_run_id=_text(mapping["created_run_id"]),
         last_reused_run_id=_text(mapping["last_reused_run_id"]),
         reused_count=int(mapping["reused_count"]),
@@ -304,6 +327,10 @@ def _row_probe_cache(mapping: RowMapping) -> ProbeCacheRecord:
         policy_version=mapping["policy_version"],
         attribution_engine=mapping["attribution_engine"],
         cache_key=mapping["cache_key"],
+        report_schema_version=_text(mapping["report_schema_version"]),
+        report_payload=_mapping(mapping["report_payload"]),
+        execution_manifest=_mapping(mapping["execution_manifest"]),
+        execution_manifest_hash=_text(mapping["execution_manifest_hash"]),
         created_run_id=_text(mapping["created_run_id"]),
         last_reused_run_id=_text(mapping["last_reused_run_id"]),
         reused_count=int(mapping["reused_count"]),
@@ -591,6 +618,14 @@ class AttributionRepository:
             "policy_version": write.policy_version,
             "attribution_engine": write.attribution_engine,
             "cache_key": write.cache_key,
+            "report_schema_version": write.report_schema_version,
+            "report_payload": (
+                dict(write.report_payload) if write.report_payload is not None else None
+            ),
+            "execution_manifest": (
+                dict(write.execution_manifest) if write.execution_manifest is not None else None
+            ),
+            "execution_manifest_hash": write.execution_manifest_hash,
             "created_run_id": write.created_run_id,
             "last_reused_run_id": None,
             "reused_count": 0,
@@ -605,6 +640,14 @@ class AttributionRepository:
             "probe_analysis": write.probe_analysis,
             "policy_version": write.policy_version,
             "attribution_engine": write.attribution_engine,
+            "report_schema_version": write.report_schema_version,
+            "report_payload": (
+                dict(write.report_payload) if write.report_payload is not None else None
+            ),
+            "execution_manifest": (
+                dict(write.execution_manifest) if write.execution_manifest is not None else None
+            ),
+            "execution_manifest_hash": write.execution_manifest_hash,
             "updated_at": write.updated_at,
         }
         if write.created_run_id is not None:

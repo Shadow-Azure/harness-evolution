@@ -17,7 +17,6 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from app.db.crud.attributions import attribution_cache_key
 from app.db.crud.potential import (
     AgentNodeRecord,
     AnchorEventRecord,
@@ -28,6 +27,7 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
 from app.utils.time import now_shanghai
@@ -764,15 +764,22 @@ class PotentialMatcher:
         reused = 0
         if cache_enabled and match.included:
             keys = tuple(
-                attribution_cache_key(
-                    condition.workspace_id,
-                    item.bad_case_id,
-                    condition.target_type,
-                    condition.target_name,
-                    condition.target_revision,
-                    POLICY_VERSION,
-                    ATTRIBUTION_ENGINE,
-                )
+                default_execution_manifest(
+                    workspace_id=condition.workspace_id,
+                    bad_case_id=item.bad_case_id,
+                    target_type=condition.target_type,
+                    target_name=condition.target_name,
+                    target_version=condition.target_revision,
+                    policy_version=POLICY_VERSION,
+                    engine=ATTRIBUTION_ENGINE,
+                    session_id=item.session_id,
+                    hit_reason=item.hit_reason,
+                    order_state=item.order_state,
+                    object_trigger_at=item.object_trigger.triggered_at,
+                    case_trigger_at=(
+                        item.case_trigger.triggered_at if item.case_trigger is not None else None
+                    ),
+                ).content_hash
                 for item in match.included
             )
             reused = len(await self._repository.existing_cache_keys(keys))

@@ -74,9 +74,10 @@ def _probe(
     created_run_id: str | None = None,
     last_reused_run_id: str | None = None,
     reused_count: int = 0,
+    structured: bool = False,
 ) -> dict[str, object]:
     """Build one probe row with a deterministic attribution identity."""
-    return {
+    row: dict[str, object] = {
         "probe_id": probe_id,
         "workspace_id": "ws-default",
         "session_id": SESSION,
@@ -91,12 +92,61 @@ def _probe(
         "policy_version": "v1",
         "attribution_engine": attribution_engine,
         "cache_key": (probe_id + "-cache-key").ljust(64, "0")[:64],
+        "report_schema_version": None,
+        "report_payload": None,
+        "execution_manifest": None,
+        "execution_manifest_hash": None,
         "created_run_id": created_run_id,
         "last_reused_run_id": last_reused_run_id,
         "reused_count": reused_count,
         "created_at": NOW,
         "updated_at": updated_at,
     }
+    if structured:
+        row.update(
+            {
+                "report_schema_version": "probe-report/v2",
+                "report_payload": {
+                    "schemaVersion": "probe-report/v2",
+                    "target": {
+                        "objectType": probe_type,
+                        "objectName": probe_object,
+                        "objectVersion": object_version,
+                    },
+                    "conclusion": conclusion,
+                    "category": attribute_type,
+                    "evidence": [],
+                    "analysis": {
+                        "summary": f"{probe_id} reason",
+                        "reasoning": f"{probe_id} reasoning",
+                    },
+                    "suggestionClues": [],
+                    "warnings": [],
+                },
+                "execution_manifest": {
+                    "manifestVersion": "attribution-execution/v1",
+                    "workspaceId": "ws-default",
+                    "badCaseId": CASE,
+                    "target": {
+                        "objectType": probe_type,
+                        "objectName": probe_object,
+                        "objectVersion": object_version,
+                    },
+                    "policyVersion": "v1",
+                    "engine": attribution_engine,
+                    "skill": {
+                        "key": "platform-default",
+                        "revision": "builtin-v1",
+                        "contentHash": "a" * 64,
+                    },
+                    "modelConfigFingerprint": "none",
+                    "contextSnapshotHash": "b" * 64,
+                    "outputSchemaVersion": "probe-report/v2",
+                },
+                "execution_manifest_hash": "c" * 64,
+            },
+        )
+    return row
 
 
 def _case(case_id: str, *, workspace_id: str = "ws-default") -> dict[str, object]:
@@ -239,6 +289,7 @@ async def attribution_api(tmp_path: Path) -> AsyncIterator[AttributionApiEnviron
                         created_run_id=RUN_ID,
                         last_reused_run_id=RUN_ID,
                         reused_count=2,
+                        structured=True,
                     ),
                     _probe(PROBE_CROSS, updated_at=NOW, object_version="v3.0.0"),
                     _probe(PROBE_OTHER_WS, updated_at=NOW, object_version="v4.0.0"),
@@ -457,6 +508,10 @@ async def test_attribution_detail_returns_reasoning_and_trigger_compare(
     assert payload["reasoning"] == f"{PROBE_NEW} reasoning"
     assert payload["policyVersion"] == "v1"
     assert payload["attributionEngine"] == "rule-v1"
+    assert payload["reportSchemaVersion"] == "probe-report/v2"
+    assert payload["report"]["target"]["objectVersion"] == "v2.0.0"
+    assert payload["executionManifest"]["skill"]["key"] == "platform-default"
+    assert payload["executionManifestHash"] == "c" * 64
     assert payload["triggerCompare"]["order"] == "after"
     assert payload["triggerCompare"]["versionState"] == "exact"
     assert payload["triggerCompare"]["objectTriggerAt"] is not None

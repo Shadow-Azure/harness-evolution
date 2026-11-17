@@ -1683,6 +1683,16 @@ export interface components {
             prompt: number;
         };
         /**
+         * AttributionAnalysis
+         * @description Human-readable summary and detailed reasoning produced by the engine.
+         */
+        AttributionAnalysis: {
+            /** Reasoning */
+            reasoning: string;
+            /** Summary */
+            summary: string;
+        };
+        /**
          * AttributionDetail
          * @description One attribution with its reasoning, evidence warnings, and trigger compare.
          */
@@ -1699,7 +1709,7 @@ export interface components {
              * Conclusion
              * @enum {string}
              */
-            conclusion: "attributed" | "non_target";
+            conclusion: "attributed" | "non_target" | "inconclusive";
             /** Confidence */
             confidence: number;
             /**
@@ -1707,6 +1717,9 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            executionManifest?: components["schemas"]["AttributionExecutionManifest"] | null;
+            /** Executionmanifesthash */
+            executionManifestHash?: string | null;
             /** Iscached */
             isCached: boolean;
             /** Objectname */
@@ -1724,6 +1737,9 @@ export interface components {
             reason: string;
             /** Reasoning */
             reasoning: string;
+            report?: components["schemas"]["AttributionReportV2"] | null;
+            /** Reportschemaversion */
+            reportSchemaVersion?: string | null;
             /** Reusedcount */
             reusedCount: number;
             /** Runid */
@@ -1736,6 +1752,53 @@ export interface components {
             updatedAt: string;
             /** Warnings */
             warnings: components["schemas"]["AttributionWarning"][];
+        };
+        /**
+         * AttributionEvidence
+         * @description One structured, non-raw evidence reference used by the analysis.
+         */
+        AttributionEvidence: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "bad_case" | "knowledge" | "trace" | "warning";
+            /** Reference */
+            reference?: string | null;
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * AttributionExecutionManifest
+         * @description Immutable inputs that determine one attribution report and cache identity.
+         */
+        AttributionExecutionManifest: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Contextsnapshothash */
+            contextSnapshotHash: string;
+            /** Engine */
+            engine: string;
+            /**
+             * Manifestversion
+             * @default attribution-execution/v1
+             * @constant
+             */
+            manifestVersion: "attribution-execution/v1";
+            /** Modelconfigfingerprint */
+            modelConfigFingerprint: string;
+            /**
+             * Outputschemaversion
+             * @default probe-report/v2
+             * @constant
+             */
+            outputSchemaVersion: "probe-report/v2";
+            /** Policyversion */
+            policyVersion: string;
+            skill: components["schemas"]["AttributionSkillRevision"];
+            target: components["schemas"]["AttributionTargetRef"];
+            /** Workspaceid */
+            workspaceId: string;
         };
         /**
          * AttributionItem
@@ -1756,7 +1819,7 @@ export interface components {
              * Conclusion
              * @enum {string}
              */
-            conclusion: "attributed" | "non_target";
+            conclusion: "attributed" | "non_target" | "inconclusive";
             /** Confidence */
             confidence: number;
             /**
@@ -1798,6 +1861,16 @@ export interface components {
             pageSize: number;
             /** Total */
             total: number;
+        };
+        /**
+         * AttributionPoint
+         * @description A bounded introduction or detection point in the selected Session.
+         */
+        AttributionPoint: {
+            /** Label */
+            label: string;
+            /** Occurredat */
+            occurredAt?: string | null;
         };
         /**
          * AttributionPreviewRequest
@@ -1844,6 +1917,62 @@ export interface components {
             potential: number;
             /** Reused */
             reused: number;
+        };
+        /**
+         * AttributionReportV2
+         * @description Structured V2 payload stored beside legacy report text columns.
+         */
+        AttributionReportV2: {
+            analysis: components["schemas"]["AttributionAnalysis"];
+            /** Category */
+            category?: ("model" | "prompt" | "error") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            detectionPoint?: components["schemas"]["AttributionPoint"] | null;
+            /** Evidence */
+            evidence?: components["schemas"]["AttributionEvidence"][];
+            introductionPoint?: components["schemas"]["AttributionPoint"] | null;
+            /**
+             * Schemaversion
+             * @default probe-report/v2
+             * @constant
+             */
+            schemaVersion: "probe-report/v2";
+            /** Suggestionclues */
+            suggestionClues?: string[];
+            target: components["schemas"]["AttributionTargetRef"];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * AttributionSkillRevision
+         * @description Resolved Skill identity that can invalidate cached attribution output.
+         */
+        AttributionSkillRevision: {
+            /** Contenthash */
+            contentHash: string;
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: string;
+        };
+        /**
+         * AttributionTargetRef
+         * @description The exact evolution object revision evaluated by one report.
+         */
+        AttributionTargetRef: {
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Objectversion */
+            objectVersion?: string | null;
         };
         /**
          * AttributionTriggerCompare

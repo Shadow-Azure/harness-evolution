@@ -23,6 +23,10 @@ from app.service.bad_cases.attribution_schemas import (
     AttributionWarning,
     VersionState,
 )
+from app.service.evolution.attribution_contracts import (
+    AttributionExecutionManifest,
+    AttributionReportV2,
+)
 
 TriggerOrder = Literal["before", "after", "same", "unknown"]
 
@@ -126,6 +130,18 @@ class AttributionReadService:
             reasoning=record.probe_analysis,
             policy_version=record.policy_version,
             attribution_engine=record.attribution_engine,
+            report_schema_version=record.report_schema_version,
+            report=(
+                AttributionReportV2.model_validate(record.report_payload)
+                if record.report_payload is not None
+                else None
+            ),
+            execution_manifest=(
+                AttributionExecutionManifest.model_validate(record.execution_manifest)
+                if record.execution_manifest is not None
+                else None
+            ),
+            execution_manifest_hash=record.execution_manifest_hash,
             trigger_compare=AttributionTriggerCompare(
                 object_trigger_at=(candidate.object_trigger_at if candidate is not None else None),
                 case_trigger_at=(candidate.case_trigger_at if candidate is not None else None),

@@ -358,6 +358,10 @@ probe_reports = Table(
         server_default="legacy-probe-import",
     ),
     Column("cache_key", CHAR(64), nullable=True),
+    Column("report_schema_version", String(32), nullable=True),
+    Column("report_payload", JSON, nullable=True),
+    Column("execution_manifest", JSON, nullable=True),
+    Column("execution_manifest_hash", CHAR(64), nullable=True),
     # ``created_run_id`` / ``last_reused_run_id`` carry migration-owned foreign
     # keys. Declaring them here would require the evolution metadata during
     # external-table bootstrap, so they stay plain strings in the query model.
@@ -377,6 +381,7 @@ probe_reports = Table(
     Index("ix_probe_reports_workspace_object", "workspace_id", "object_version"),
     Index("ix_probe_reports_workspace_updated", "workspace_id", "updated_at"),
     Index("ix_probe_reports_conclusion", "conclusion"),
+    Index("ix_probe_reports_manifest_hash", "execution_manifest_hash"),
     Index("uq_probe_reports_cache_key", "cache_key", unique=True),
 )
 

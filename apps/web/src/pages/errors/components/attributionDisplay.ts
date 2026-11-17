@@ -20,6 +20,11 @@ const CONCLUSION_PRESENTATION: Record<
     badge: "非本对象",
     tone: "orange",
   },
+  inconclusive: {
+    label: "证据不足",
+    badge: "待补证据",
+    tone: "orange",
+  },
 };
 
 const CATEGORY_LABELS: Record<

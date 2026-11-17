@@ -135,6 +135,26 @@
         "title": "AttributeStats",
         "type": "object"
       },
+      "AttributionAnalysis": {
+        "additionalProperties": false,
+        "description": "Human-readable summary and detailed reasoning produced by the engine.",
+        "properties": {
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "reasoning"
+        ],
+        "title": "AttributionAnalysis",
+        "type": "object"
+      },
       "AttributionDetail": {
         "additionalProperties": false,
         "description": "One attribution with its reasoning, evidence warnings, and trigger compare.",
@@ -173,7 +193,8 @@
           "conclusion": {
             "enum": [
               "attributed",
-              "non_target"
+              "non_target",
+              "inconclusive"
             ],
             "title": "Conclusion",
             "type": "string"
@@ -188,6 +209,28 @@
             "format": "date-time",
             "title": "Createdat",
             "type": "string"
+          },
+          "executionManifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionExecutionManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executionManifestHash": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executionmanifesthash"
           },
           "isCached": {
             "title": "Iscached",
@@ -232,6 +275,28 @@
           "reasoning": {
             "title": "Reasoning",
             "type": "string"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionReportV2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reportSchemaVersion": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportschemaversion"
           },
           "reusedCount": {
             "minimum": 0.0,
@@ -288,6 +353,118 @@
         "title": "AttributionDetail",
         "type": "object"
       },
+      "AttributionEvidence": {
+        "additionalProperties": false,
+        "description": "One structured, non-raw evidence reference used by the analysis.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "bad_case",
+              "knowledge",
+              "trace",
+              "warning"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "summary": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "summary"
+        ],
+        "title": "AttributionEvidence",
+        "type": "object"
+      },
+      "AttributionExecutionManifest": {
+        "additionalProperties": false,
+        "description": "Immutable inputs that determine one attribution report and cache identity.",
+        "properties": {
+          "badCaseId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "contextSnapshotHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Contextsnapshothash",
+            "type": "string"
+          },
+          "engine": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Engine",
+            "type": "string"
+          },
+          "manifestVersion": {
+            "const": "attribution-execution/v1",
+            "default": "attribution-execution/v1",
+            "title": "Manifestversion",
+            "type": "string"
+          },
+          "modelConfigFingerprint": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Modelconfigfingerprint",
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "const": "probe-report/v2",
+            "default": "probe-report/v2",
+            "title": "Outputschemaversion",
+            "type": "string"
+          },
+          "policyVersion": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Policyversion",
+            "type": "string"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/AttributionSkillRevision"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AttributionTargetRef"
+          },
+          "workspaceId": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "badCaseId",
+          "target",
+          "policyVersion",
+          "engine",
+          "skill",
+          "modelConfigFingerprint",
+          "contextSnapshotHash"
+        ],
+        "title": "AttributionExecutionManifest",
+        "type": "object"
+      },
       "AttributionItem": {
         "additionalProperties": false,
         "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row.",
@@ -321,7 +498,8 @@
           "conclusion": {
             "enum": [
               "attributed",
-              "non_target"
+              "non_target",
+              "inconclusive"
             ],
             "title": "Conclusion",
             "type": "string"
@@ -441,6 +619,35 @@
           "pageSize"
         ],
         "title": "AttributionPage",
+        "type": "object"
+      },
+      "AttributionPoint": {
+        "additionalProperties": false,
+        "description": "A bounded introduction or detection point in the selected Session.",
+        "properties": {
+          "label": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "occurredAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurredat"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "AttributionPoint",
         "type": "object"
       },
       "AttributionPreviewRequest": {
@@ -567,6 +774,167 @@
           "nonTargetKnown"
         ],
         "title": "AttributionPreviewSummary",
+        "type": "object"
+      },
+      "AttributionReportV2": {
+        "additionalProperties": false,
+        "description": "Structured V2 payload stored beside legacy report text columns.",
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/AttributionAnalysis"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target",
+              "inconclusive"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "detectionPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "introductionPoint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttributionPoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schemaVersion": {
+            "const": "probe-report/v2",
+            "default": "probe-report/v2",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "suggestionClues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestionclues",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AttributionTargetRef"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "target",
+          "conclusion",
+          "analysis"
+        ],
+        "title": "AttributionReportV2",
+        "type": "object"
+      },
+      "AttributionSkillRevision": {
+        "additionalProperties": false,
+        "description": "Resolved Skill identity that can invalidate cached attribution output.",
+        "properties": {
+          "contentHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Key",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "revision",
+          "contentHash"
+        ],
+        "title": "AttributionSkillRevision",
+        "type": "object"
+      },
+      "AttributionTargetRef": {
+        "additionalProperties": false,
+        "description": "The exact evolution object revision evaluated by one report.",
+        "properties": {
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          }
+        },
+        "required": [
+          "objectType",
+          "objectName"
+        ],
+        "title": "AttributionTargetRef",
         "type": "object"
       },
       "AttributionTriggerCompare": {

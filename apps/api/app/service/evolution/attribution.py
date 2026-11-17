@@ -18,9 +18,19 @@ from app.db.crud.attributions import (
     KnowledgeEvidenceRecord,
     ProbeCacheRecord,
     ProbeWrite,
-    attribution_cache_key,
 )
 from app.db.models.evolution import EvolutionRunRecord
+from app.service.evolution.attribution_contracts import (
+    REPORT_SCHEMA_VERSION,
+    AttributionAnalysis,
+    AttributionConclusion,
+    AttributionEvidence,
+    AttributionExecutionManifest,
+    AttributionPoint,
+    AttributionReportV2,
+    AttributionTargetRef,
+    default_execution_manifest,
+)
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.potential import (
     POLICY_VERSION,
@@ -34,7 +44,6 @@ from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
 
-AttributionConclusion = Literal["attributed", "non_target"]
 AttributionCategory = Literal["model", "prompt", "error"]
 AttributionEngineKey = str
 
@@ -84,15 +93,25 @@ class AttributionInput:
 
     @property
     def cache_key(self) -> str:
-        """Return the seven-part probe identity hash for this input."""
-        return attribution_cache_key(
-            self.workspace_id,
-            self.bad_case_id,
-            self.probe_type,
-            self.probe_object,
-            self.object_version,
-            self.policy_version,
-            self.attribution_engine,
+        """Return the canonical execution-manifest hash for this input."""
+        return self.execution_manifest.content_hash
+
+    @property
+    def execution_manifest(self) -> AttributionExecutionManifest:
+        """Resolve the current built-in engine into an immutable V2 manifest."""
+        return default_execution_manifest(
+            workspace_id=self.workspace_id,
+            bad_case_id=self.bad_case_id,
+            target_type=self.probe_type,  # type: ignore[arg-type]
+            target_name=self.probe_object,
+            target_version=self.object_version,
+            policy_version=self.policy_version,
+            engine=self.attribution_engine,
+            session_id=self.session_id,
+            hit_reason=self.hit_reason,
+            order_state=self.order_state,
+            object_trigger_at=self.object_trigger_at,
+            case_trigger_at=self.case_trigger_at,
         )
 
 
@@ -108,13 +127,13 @@ class AttributionResult:
 
     def __post_init__(self) -> None:
         """Reject conclusions that cannot satisfy the table's closed sets."""
-        if self.conclusion not in {"attributed", "non_target"}:
+        if self.conclusion not in {"attributed", "non_target", "inconclusive"}:
             raise ValueError(f"unknown attribution conclusion: {self.conclusion}")
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be within [0, 1]: {self.confidence}")
-        if self.conclusion == "non_target":
+        if self.conclusion in {"non_target", "inconclusive"}:
             if self.category is not None:
-                raise ValueError("non_target attributions must not carry a category")
+                raise ValueError(f"{self.conclusion} attributions must not carry a category")
             return
         if self.category not in {"model", "prompt", "error"}:
             raise ValueError("attributed conclusions require category model, prompt, or error")
@@ -130,7 +149,7 @@ class RuleBasedEngine:
         self_match = item.hit_reason in {"self_report", "both"}
         if self_match:
             if not (item.title.strip() or item.description.strip()):
-                return self._non_target(item, "证据不足")
+                return self._inconclusive(item, "证据不足")
             error = _error_evidence(item.metadata)
             category: AttributionCategory = "error" if error is not None else "prompt"
             evidence = (
@@ -157,7 +176,7 @@ class RuleBasedEngine:
                 reason=f"对象进入点之后发现：{_headline(item)}；按 error 归类",  # noqa: RUF001
                 lead="bad case 触发点严格晚于对象进入点",
             )
-        return self._non_target(
+        return self._inconclusive(
             item,
             "顺序不可比或证据不足",
         )
@@ -211,6 +230,20 @@ class RuleBasedEngine:
             reasoning="\n".join(lines),
         )
 
+    def _inconclusive(self, item: AttributionInput, why: str) -> AttributionResult:
+        """Keep insufficient evidence distinct from a confident non-target result."""
+        return AttributionResult(
+            conclusion="inconclusive",
+            category=None,
+            confidence=0.0,
+            reason=f"归因证据不足：{_headline(item)}；{why}",  # noqa: RUF001
+            reasoning=(
+                f"1. 命中原因：{item.hit_reason}；orderState={item.order_state}。\n"  # noqa: RUF001
+                f"2. 当前证据不足以判断是否归属于 {item.probe_object}@{item.object_version}。\n"
+                "3. inconclusive 保留明细但不进入聚类。"
+            ),
+        )
+
 
 def _headline(item: AttributionInput) -> str:
     """Pick a bounded one-line human summary from the reported evidence."""
@@ -252,6 +285,46 @@ def _knowledge_lines(evidence: Sequence[KnowledgeEvidence]) -> list[str]:
             parts.append(item.retrieval_kind)
         lines.append(f"  - {'；'.join(parts)}")  # noqa: RUF001
     return lines
+
+
+def _report_payload(item: AttributionInput, result: AttributionResult) -> AttributionReportV2:
+    """Project one engine result into the stable V2 report payload."""
+    evidence = [
+        AttributionEvidence(
+            kind="bad_case",
+            summary=_headline(item),
+            reference=item.bad_case_id,
+        ),
+    ]
+    evidence.extend(
+        AttributionEvidence(
+            kind="knowledge",
+            summary=knowledge.source_path or "Knowledge document evidence",
+            reference=knowledge.document_id,
+        )
+        for knowledge in item.knowledge_evidence
+    )
+    warnings = ["ATTRIBUTION_EVIDENCE_INSUFFICIENT"] if result.conclusion == "inconclusive" else []
+    return AttributionReportV2(
+        target=AttributionTargetRef(
+            object_type=item.probe_type,  # type: ignore[arg-type]
+            object_name=item.probe_object,
+            object_version=item.object_version,
+        ),
+        conclusion=result.conclusion,
+        category=result.category,
+        introduction_point=AttributionPoint(
+            occurred_at=item.object_trigger_at,
+            label="object_entry",
+        ),
+        detection_point=AttributionPoint(
+            occurred_at=item.case_trigger_at,
+            label="bad_case_report",
+        ),
+        evidence=evidence,
+        analysis=AttributionAnalysis(summary=result.reason, reasoning=result.reasoning),
+        warnings=warnings,
+    )
 
 
 _ENGINE_FACTORIES: dict[str, Callable[[], AttributionEngine]] = {
@@ -424,6 +497,8 @@ class AttributionRunner:
                             non_target += 1
                         continue
                 result = await engine.attribute(item)
+                manifest = item.execution_manifest
+                report = _report_payload(item, result)
                 await self._store.write_probe_and_link(
                     ProbeWrite(
                         probe_id=new_id(),
@@ -440,6 +515,10 @@ class AttributionRunner:
                         probe_analysis=result.reasoning,
                         policy_version=POLICY_VERSION,
                         attribution_engine=engine.key,
+                        report_schema_version=REPORT_SCHEMA_VERSION,
+                        report_payload=report.model_dump(mode="json", by_alias=True),
+                        execution_manifest=manifest.model_dump(mode="json", by_alias=True),
+                        execution_manifest_hash=manifest.content_hash,
                         created_run_id=run.id,
                         created_at=now,
                         updated_at=now,

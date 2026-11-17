@@ -12,7 +12,6 @@ from app.db.base import Database
 from app.db.crud.attributions import (
     AttributionRepository,
     EvolutionRunCandidateRepository,
-    attribution_cache_key,
 )
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.domain import probe_reports
@@ -22,6 +21,7 @@ from app.service.evolution.attribution import (
     AttributionResult,
     AttributionRunner,
 )
+from app.service.evolution.attribution_contracts import default_execution_manifest
 from app.service.evolution.engine.contracts import RunBlocked
 from app.utils.time import SHANGHAI
 from tests.attribution.support import (
@@ -93,6 +93,25 @@ async def candidate(
     return next(record for record in records if record.bad_case_id == case_id)
 
 
+def runner_cache_key(case_id: str = CASE_ID) -> str:
+    """Return the V2 manifest cache identity for one seeded candidate."""
+    item = potential_case(case_id)
+    return default_execution_manifest(
+        workspace_id="ws-default",
+        bad_case_id=case_id,
+        target_type="skill",
+        target_name="deep-research",
+        target_version=TARGET_REVISION,
+        policy_version="v1",
+        engine="rule-v1",
+        session_id=item.session_id,
+        hit_reason=item.hit_reason,
+        order_state=item.order_state,
+        object_trigger_at=item.object_trigger.triggered_at,
+        case_trigger_at=(item.case_trigger.triggered_at if item.case_trigger is not None else None),
+    ).content_hash
+
+
 async def test_runner_writes_revision_scoped_probe_and_candidate(
     attribution_harness: Harness,
     attribution_repository: AttributionRepository,
@@ -116,19 +135,14 @@ async def test_runner_writes_revision_scoped_probe_and_candidate(
     assert summary.non_target == 1
     assert summary.skipped == 0
     first = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            TARGET_REVISION,
-            "v1",
-            "rule-v1",
-        ),
+        runner_cache_key(),
     )
     assert first is not None
     assert first.created_run_id == RUN_ID
     assert first.conclusion == "attributed"
+    assert first.report_schema_version == "probe-report/v2"
+    assert first.report_payload is not None
+    assert first.execution_manifest_hash == first.cache_key
     linked = await attribution_repository.linked_probe_ids(RUN_ID)
     assert set(linked) == {CASE_ID, OTHER_CASE_ID}
     assert linked[CASE_ID] == first.probe_id
@@ -150,15 +164,7 @@ async def test_second_run_reuses_the_cache_and_counts_once(
     assert summary.reused == 1
     assert summary.created == 0
     cached = await attribution_repository.get_probe_by_cache_key(
-        attribution_cache_key(
-            "ws-default",
-            CASE_ID,
-            "skill",
-            "deep-research",
-            TARGET_REVISION,
-            "v1",
-            "rule-v1",
-        ),
+        runner_cache_key(),
     )
     assert cached is not None
     assert cached.reused_count == 1
