@@ -740,6 +740,11 @@ async def test_start_run_accepts_and_snapshots_query(
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []
     assert row["cache_enabled"] is True
+    assert row["attribution_skill_key"] == "platform-default"
+    assert row["attribution_skill_revision"] == 1
+    assert row["attribution_skill_content_hash"] == (
+        "7e30d5d3721030420842f9e1f1b08e9a1c33644eb7a78eca82bbd06abbca525d"
+    )
     assert row["potential_policy"] == {
         "preset": "default",
         "includeSelfReport": True,

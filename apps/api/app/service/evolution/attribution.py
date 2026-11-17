@@ -86,6 +86,9 @@ class AttributionInput:
     description: str
     hit_reason: HitReason
     order_state: OrderState
+    attribution_skill_key: str | None = None
+    attribution_skill_revision: str | None = None
+    attribution_skill_content_hash: str | None = None
     metadata: Mapping[str, object] = field(default_factory=dict)
     object_trigger_at: datetime | None = None
     case_trigger_at: datetime | None = None
@@ -112,6 +115,9 @@ class AttributionInput:
             order_state=self.order_state,
             object_trigger_at=self.object_trigger_at,
             case_trigger_at=self.case_trigger_at,
+            skill_key=self.attribution_skill_key,
+            skill_revision=self.attribution_skill_revision,
+            skill_content_hash=self.attribution_skill_content_hash,
         )
 
 
@@ -565,6 +571,13 @@ class AttributionRunner:
             object_version=object_version,
             policy_version=POLICY_VERSION,
             attribution_engine=run.attribution_engine,
+            attribution_skill_key=run.attribution_skill_key,
+            attribution_skill_revision=(
+                str(run.attribution_skill_revision)
+                if run.attribution_skill_revision is not None
+                else None
+            ),
+            attribution_skill_content_hash=run.attribution_skill_content_hash,
             bad_case_type=candidate.bad_case_type,
             title=evidence.title,
             description=evidence.description,

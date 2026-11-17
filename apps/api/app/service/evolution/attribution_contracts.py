@@ -156,8 +156,20 @@ def default_execution_manifest(
     order_state: str,
     object_trigger_at: datetime | None,
     case_trigger_at: datetime | None,
+    skill_key: str | None = None,
+    skill_revision: str | None = None,
+    skill_content_hash: str | None = None,
 ) -> AttributionExecutionManifest:
-    """Build the current platform-default manifest from candidate coordinates."""
+    """Build a manifest from candidate coordinates and a frozen Skill snapshot."""
+    skill = (
+        AttributionSkillRevision(
+            key=skill_key,
+            revision=skill_revision,
+            content_hash=skill_content_hash,
+        )
+        if skill_key and skill_revision and skill_content_hash
+        else default_skill_revision(engine)
+    )
     return AttributionExecutionManifest(
         workspace_id=workspace_id,
         bad_case_id=bad_case_id,
@@ -168,7 +180,7 @@ def default_execution_manifest(
         ),
         policy_version=policy_version,
         engine=engine,
-        skill=default_skill_revision(engine),
+        skill=skill,
         model_config_fingerprint=NO_MODEL_FINGERPRINT,
         context_snapshot_hash=context_snapshot_hash(
             session_id=session_id,

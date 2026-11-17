@@ -85,6 +85,22 @@ class LaunchTargetStore(Protocol):
         ...
 
 
+class LaunchAttributionSkill(Protocol):
+    """Resolved immutable Skill facts frozen into a run."""
+
+    skill_key: str
+    revision: int
+    content_hash: str
+
+
+class LaunchAttributionSkillResolver(Protocol):
+    """Resolve the effective Skill for a configured target."""
+
+    async def resolve(self, workspace_id: str, target_id: str) -> LaunchAttributionSkill:
+        """Return target, workspace, or platform fallback resolution."""
+        ...
+
+
 class EvolutionLaunchService:
     """Validate wizard conditions, snapshot the run, and enqueue preparation."""
 
@@ -95,6 +111,8 @@ class EvolutionLaunchService:
         runs: EvolutionRepository,
         jobs: JobRunner,
         events: EvolutionRunEventService | None = None,
+        *,
+        attribution_skills: LaunchAttributionSkillResolver | None = None,
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
@@ -102,6 +120,7 @@ class EvolutionLaunchService:
         self._runs = runs
         self._jobs = jobs
         self._events = events
+        self._attribution_skills = attribution_skills
 
     async def request_run(
         self,
@@ -146,6 +165,11 @@ class EvolutionLaunchService:
             body.target_name,
             workspace_ids=workspace_ids,
         )
+        effective_skill = (
+            await self._attribution_skills.resolve(config.workspace_id, config.id)
+            if self._attribution_skills is not None
+            else None
+        )
         query = normalized_query(
             body,
             default_version=config.default_ref,
@@ -161,6 +185,7 @@ class EvolutionLaunchService:
                 config,
                 policy=policy,
                 created_by=created_by,
+                effective_skill=effective_skill,
             ),
         )
         if self._events is not None:
@@ -238,6 +263,7 @@ class EvolutionLaunchService:
         *,
         policy: ResolvedPolicy,
         created_by: str | None,
+        effective_skill: LaunchAttributionSkill | None,
     ) -> Mapping[str, Any]:
         """Build the immutable run snapshot inserted before enqueueing.
 
@@ -260,6 +286,15 @@ class EvolutionLaunchService:
             "potential_policy": policy.snapshot(),
             "cache_enabled": body.cache_enabled,
             "attribution_engine": DEFAULT_ATTRIBUTION_ENGINE,
+            "attribution_skill_key": (
+                effective_skill.skill_key if effective_skill is not None else None
+            ),
+            "attribution_skill_revision": (
+                effective_skill.revision if effective_skill is not None else None
+            ),
+            "attribution_skill_content_hash": (
+                effective_skill.content_hash if effective_skill is not None else None
+            ),
             "target_config_id": config.id,
             "target_type": query.target_type,
             "target_name": query.target_name,

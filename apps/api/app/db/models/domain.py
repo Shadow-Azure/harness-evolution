@@ -501,3 +501,68 @@ evolution_targets = Table(
     Index("ix_evolution_targets_enabled", "enabled"),
     Index("ix_evolution_targets_workspace", "workspace_id"),
 )
+
+
+attribution_skills = Table(
+    "attribution_skills",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=True),
+    Column("skill_key", String(128), nullable=False),
+    Column("display_name", String(255), nullable=False),
+    Column("description", Text, nullable=False),
+    Column("built_in", Boolean, nullable=False, server_default=text("0")),
+    Column("enabled", Boolean, nullable=False, server_default=true()),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("skill_key", name="uq_attribution_skills_key"),
+    Index("ix_attribution_skills_workspace", "workspace_id"),
+)
+
+
+attribution_skill_revisions = Table(
+    "attribution_skill_revisions",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column(
+        "skill_id",
+        String(36),
+        ForeignKey("attribution_skills.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("revision", Integer, nullable=False),
+    Column("content", JSON, nullable=False),
+    Column("content_hash", CHAR(64), nullable=False),
+    Column("executor_type", String(32), nullable=False),
+    Column("output_schema_version", String(32), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("skill_id", "revision", name="uq_attribution_skill_revision"),
+    UniqueConstraint("skill_id", "content_hash", name="uq_attribution_skill_content"),
+    Index("ix_attribution_skill_revisions_status", "skill_id", "status"),
+)
+
+
+attribution_skill_bindings = Table(
+    "attribution_skill_bindings",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column("binding_key", String(64), nullable=False),
+    Column(
+        "target_id",
+        String(36),
+        ForeignKey("evolution_targets.id", ondelete="CASCADE"),
+        nullable=True,
+    ),
+    Column(
+        "skill_revision_id",
+        String(36),
+        ForeignKey("attribution_skill_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint("workspace_id", "binding_key", name="uq_attribution_skill_binding"),
+    Index("ix_attribution_skill_bindings_target", "target_id"),
+)

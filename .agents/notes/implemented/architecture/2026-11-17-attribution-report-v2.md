@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`probe_reports` 继续作为唯一报告事实源，以可空 JSON 列增量保存 `probe-report/v2` 结构化 payload 和 `attribution-execution/v1` 不可变执行清单。V2 新写入以清单的规范 JSON SHA-256 作为 `cache_key`，清单覆盖 workspace、Badcase、目标 revision、策略、引擎、Skill revision/content hash、模型配置指纹、上下文 snapshot hash 和输出 schema；旧行与未提供清单的写入继续使用七元缓存键。结论扩为 `attributed|non_target|inconclusive`，其中证据不足是 `inconclusive` 且不进入聚类，执行异常仍阻塞 run 而不生成报告。当前规则引擎以 `platform-default@builtin-v1` 和 `model=none` 形成可替换占位，后续 Skill 注册、上下文快照和 Agent 执行器只替换清单输入。
+`probe_reports` 继续作为唯一报告事实源，以可空 JSON 列增量保存 `probe-report/v2` 结构化 payload 和 `attribution-execution/v1` 不可变执行清单。V2 新写入以清单的规范 JSON SHA-256 作为 `cache_key`，清单覆盖 workspace、Badcase、目标 revision、策略、引擎、Skill revision/content hash、模型配置指纹、上下文 snapshot hash 和输出 schema；旧行与未提供清单的写入继续使用七元缓存键。结论扩为 `attributed|non_target|inconclusive`，其中证据不足是 `inconclusive` 且不进入聚类，执行异常仍阻塞 run 而不生成报告。当前规则引擎使用注册表解析出的不可变 Skill revision，并以 `model=none` 作为模型占位；后续上下文快照和 Agent 执行器只替换其余清单输入。
 
 ## Alternatives considered
 

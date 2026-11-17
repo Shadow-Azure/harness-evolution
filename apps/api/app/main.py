@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.acquisition import router as acquisition_router
+from app.api.attribution_skills import router as attribution_skills_router
 from app.api.auth import router as auth_router
 from app.api.catalogs import router as catalogs_router
 from app.api.events import router as events_router
@@ -31,6 +32,7 @@ from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.attribution_skills import AttributionSkillRepository
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_case_ingest import BadCaseIngestRepository
@@ -80,6 +82,7 @@ from app.service.evolution.apply_final import (
     EvolutionFinalizeService,
 )
 from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
+from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
@@ -265,6 +268,9 @@ def create_app(
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
+    attribution_skills = AttributionSkillService(
+        AttributionSkillRepository(resolved_database),
+    )
     potential_preview = PotentialPreviewService(
         evolution_targets,
         PotentialMatcher(PotentialRepository(resolved_database)),
@@ -292,6 +298,7 @@ def create_app(
         evolution_repository,
         jobs,
         evolution_events,
+        attribution_skills=attribution_skills,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
     default_workspace_manager = GitWorkspaceManager(
@@ -521,6 +528,7 @@ def create_app(
     app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
+    app.state.attribution_skills = attribution_skills
     app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
@@ -571,6 +579,7 @@ def create_app(
     app.include_router(probe_router)
     app.include_router(preview_router)
     app.include_router(evolution_targets_router)
+    app.include_router(attribution_skills_router)
     app.include_router(workspace_evolution_router)
     app.include_router(catalogs_router)
     app.include_router(workspace_catalogs_router)

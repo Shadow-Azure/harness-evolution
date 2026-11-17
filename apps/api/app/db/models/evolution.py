@@ -53,6 +53,9 @@ evolution_runs = Table(
         nullable=False,
         server_default="legacy-probe-import",
     ),
+    Column("attribution_skill_key", String(128), nullable=True),
+    Column("attribution_skill_revision", Integer, nullable=True),
+    Column("attribution_skill_content_hash", String(64), nullable=True),
     Column(
         "target_config_id",
         String(36),
@@ -357,6 +360,9 @@ class EvolutionRunRecord:
     potential_policy: dict[str, Any] | None = None
     cache_enabled: bool = False
     attribution_engine: str = "legacy-probe-import"
+    attribution_skill_key: str | None = None
+    attribution_skill_revision: int | None = None
+    attribution_skill_content_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,6 +583,15 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         potential_policy=_optional_json_dict(row.get("potential_policy")),
         cache_enabled=bool(row.get("cache_enabled", False)),
         attribution_engine=(_optional_text(row.get("attribution_engine")) or "legacy-probe-import"),
+        attribution_skill_key=_optional_text(row.get("attribution_skill_key")),
+        attribution_skill_revision=(
+            int(row["attribution_skill_revision"])
+            if row.get("attribution_skill_revision") is not None
+            else None
+        ),
+        attribution_skill_content_hash=_optional_text(
+            row.get("attribution_skill_content_hash"),
+        ),
     )
 
 
