@@ -4270,13 +4270,20 @@ export interface components {
         };
         /**
          * StepRoundPatch
-         * @description Placeholder patch preview stored with the round.
+         * @description Patch preview stored with the round.
+         *
+         *     ``note`` carries the patch source's one-line change description (for the
+         *     minimal-config source it starts with "最小配置变更"). Rounds published
+         *     before the patch-source seam persist only ``file``/``lines``, so the field
+         *     stays optional and older snapshots keep rendering unchanged.
          */
         StepRoundPatch: {
             /** File */
             file: string;
             /** Lines */
             lines: string[];
+            /** Note */
+            note?: string | null;
         };
         /**
          * StepRoundPush
