@@ -32,14 +32,10 @@ async def test_first_report_creates_the_row_and_reports_usage(
     assert response.status_code == 201
     assert response.json() == {"badCaseId": "BC-HC-021", "workspaceUsed": 1}
     assert response.headers["x-he-workspace-used"] == "1"
-    ingested = [
-        record
-        for record in caplog.records
-        if record.name == "app.db.crud.bad_case_ingest"
-    ]
+    ingested = [record for record in caplog.records if record.name == "app.db.crud.bad_case_ingest"]
     assert len(ingested) == 1
-    assert ingested[0].inserted is True
-    assert ingested[0].bad_case_id == "BC-HC-021"
+    assert ingested[0].__dict__["inserted"] is True
+    assert ingested[0].__dict__["bad_case_id"] == "BC-HC-021"
 
     row = await fetch_case(app.state.database, "BC-HC-021")
     assert row is not None
