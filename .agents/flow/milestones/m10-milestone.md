@@ -6,7 +6,7 @@
 kind: milestone
 id: m10
 title: M10 归因管线与七步自进化
-status: planned
+status: done
 github:
   number: 15
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/15
