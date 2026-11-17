@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-17-real-patch-eval-seams.md
-2026-11-17-real-patch-eval-seams.md: 1837e451e62adffed94e933789e383113a23e395
-2026-11-17-real-patch-eval-seams.en.md: 78ec8954d429913dd86edc72f7e9da54841a4c43
+2026-11-17-real-patch-eval-seams.md: a25c285f615f5180c33fd45ade63169aa87e55f1
+2026-11-17-real-patch-eval-seams.en.md: 31955c92abcd6f8414d0bb8ba9555b1cf0be5e18
