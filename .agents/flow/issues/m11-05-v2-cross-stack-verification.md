@@ -13,13 +13,14 @@ depends:
   - m11-04
   - m11-07
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - tests/**
   - fixtures/**
   - reports/**
   - apps/api/**
   - apps/web/**
+  - scripts/run-api.mjs
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -78,6 +79,7 @@ pnpm test:all; pnpm verify:docs; pnpm verify:bundle; pnpm verify:web-style
 ## 门禁与 CI
 
 - 全仓测试、双库、E2E、docs、bundle、style 与 flow 门禁。
+- MySQL lane 通过 `test:db:mysql` 执行 V2 迁移验收用例。
 
 ## 非目标
 
