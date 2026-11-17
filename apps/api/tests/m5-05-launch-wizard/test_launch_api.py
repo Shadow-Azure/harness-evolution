@@ -767,7 +767,7 @@ async def test_start_run_snapshots_custom_policy_and_cache_switch(
             mode="full",
             policy={
                 "preset": "custom",
-                "includeSelfReport": False,
+                "includeSelfReport": True,
                 "includeAfterObject": True,
                 "sameObjectOnly": True,
             },
@@ -790,7 +790,7 @@ async def test_start_run_snapshots_custom_policy_and_cache_switch(
     assert row["cache_enabled"] is False
     assert row["potential_policy"] == {
         "preset": "custom",
-        "includeSelfReport": False,
+        "includeSelfReport": True,
         "includeAfterObject": True,
         "sameObjectOnly": True,
     }
