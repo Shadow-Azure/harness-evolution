@@ -8,6 +8,8 @@ from app.api.deps import require_workspace_role
 from app.api.security import BEARER_AUTH
 from app.db.crud.read_scope import WorkspaceReadScope
 from app.errors import ErrorResponse
+from app.service.bad_cases.attribution import AttributionReadService
+from app.service.bad_cases.attribution_schemas import AttributionDetail, AttributionPage
 from app.service.identity.principals import Principal
 from app.service.problems.schemas import (
     BadCase,
@@ -25,6 +27,10 @@ workspace_router = APIRouter(prefix="/api/workspaces/{wid}", tags=["problems"])
 WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 SessionId = Annotated[str, Path(alias="sessionId", min_length=1, max_length=36)]
 BadCaseId = Annotated[str, Path(alias="badCaseId", min_length=1, max_length=64)]
+AttributionId = Annotated[
+    str,
+    Path(alias="attributionId", min_length=1, max_length=64),
+]
 OptionalSessionId = Annotated[
     str | None,
     Query(alias="sessionId", min_length=1, max_length=36),
@@ -34,6 +40,11 @@ OptionalSessionId = Annotated[
 def problems_from(request: Request) -> ProblemService:
     """Return the application-scoped read-only problem service."""
     return cast(ProblemService, request.app.state.problems)
+
+
+def attribution_read_from(request: Request) -> AttributionReadService:
+    """Return the application-scoped paged attribution read service."""
+    return cast(AttributionReadService, request.app.state.attribution_read)
 
 
 def read_scope(request: Request) -> WorkspaceReadScope:
@@ -187,5 +198,60 @@ async def get_workspace_bad_case(
     return await problems_from(request).get_case(
         bad_case_id,
         None,
+        WorkspaceReadScope.for_workspace(access.workspace_id),
+    )
+
+
+@workspace_router.get(
+    "/bad-cases/{badCaseId}/attributions",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Workspace role is insufficient"},
+        404: {"model": ErrorResponse, "description": "Workspace or problem does not exist"},
+        422: {"model": ErrorResponse, "description": "Request validation failed"},
+    },
+)
+async def list_workspace_case_attributions(
+    wid: WorkspaceId,
+    bad_case_id: BadCaseId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=50)] = 2,
+) -> AttributionPage:
+    """Return one problem's attributions newest first, two per page by default."""
+    return await attribution_read_from(request).page(
+        bad_case_id,
+        WorkspaceReadScope.for_workspace(access.workspace_id),
+        page,
+        page_size,
+    )
+
+
+@workspace_router.get(
+    "/bad-cases/{badCaseId}/attributions/{attributionId}",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        401: {"model": ErrorResponse, "description": "Authentication is required"},
+        403: {"model": ErrorResponse, "description": "Workspace role is insufficient"},
+        404: {
+            "model": ErrorResponse,
+            "description": "Workspace, problem, or attribution does not exist",
+        },
+        422: {"model": ErrorResponse, "description": "Request validation failed"},
+    },
+)
+async def get_workspace_case_attribution(
+    wid: WorkspaceId,
+    bad_case_id: BadCaseId,
+    attribution_id: AttributionId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+) -> AttributionDetail:
+    """Return one attribution only while it is linked to the requested problem."""
+    return await attribution_read_from(request).detail(
+        bad_case_id,
+        attribution_id,
         WorkspaceReadScope.for_workspace(access.workspace_id),
     )

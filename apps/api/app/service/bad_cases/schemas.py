@@ -64,12 +64,18 @@ class BadCaseReadModel:
     created_at: datetime
     updated_at: datetime
     analysis: BadCaseAnalysisReadModel
+    attribution_count: int
     warnings: tuple[ExternalReadWarning, ...]
 
     @property
     def display_state(self) -> DisplayState:
         """Expose the list-item display state used by the prototype."""
         return self.analysis.display_state
+
+    @property
+    def has_attribution(self) -> bool:
+        """Expose whether the case reached at least one object/revision object."""
+        return self.attribution_count > 0
 
 
 @dataclass(frozen=True, slots=True)

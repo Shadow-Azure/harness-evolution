@@ -121,6 +121,13 @@ class ProblemRepository:
                 probes=probes,
             )
 
+    async def case_visible(self, case_id: str, scope: WorkspaceReadScope) -> bool:
+        """Return whether one case exists inside the caller's workspace scope."""
+        if not await self._scoped_reads_available():
+            return False
+        async with self._database.session() as session:
+            return await self._case(session, case_id, scope) is not None
+
     async def session_probes(
         self,
         session_id: str,

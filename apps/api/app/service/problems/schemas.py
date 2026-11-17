@@ -139,6 +139,14 @@ class BadCase(IdentityModel):
     title: str
     reason: str
     meta_data: dict[str, Any] | None
+    attribution_count: int = Field(
+        ge=0,
+        description=(
+            "Distinct (probeType, probeObject, objectVersion) attributions reached through "
+            "bad_case_analysis; the canonical definition is 06 §4.2.1."
+        ),
+    )
+    has_attribution: bool
     analysis: BadCaseAnalysis
     degraded: bool = False
     diagnostic_code: str | None = None

@@ -12,6 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.orm import aliased
 
 from app.db.base import Database
 from app.db.models.domain import (
@@ -203,6 +204,24 @@ class AttributionRecord:
     analysis_result: object | None
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateTriggerRecord:
+    """One attribution's newest candidate trigger coordinates.
+
+    ``order_state`` records whether prepare could compare the two trigger
+    points at all; the wall-clock and coordinate columns are kept raw so the
+    read service can apply the documented time-first comparison.
+    """
+
+    order_state: str
+    object_trigger_at: datetime | None
+    case_trigger_at: datetime | None
+    object_trigger_tree_index: int | None
+    object_trigger_event_index: int | None
+    case_trigger_tree_index: int | None
+    case_trigger_event_index: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -764,17 +783,90 @@ class AttributionRepository:
         offset: int = 0,
         limit: int = 100,
     ) -> tuple[AttributionRecord, ...]:
-        """Return one case's attributions in the documented page order."""
+        """Return one case's attributions in stable newest-first page order."""
         statement = (
             self._attribution_statement()
             .where(bad_case_analysis.c.bad_case_id == case_id)
-            .order_by(probe_reports.c.updated_at.desc(), probe_reports.c.probe_id)
+            .order_by(probe_reports.c.updated_at.desc(), probe_reports.c.probe_id.desc())
             .offset(offset)
             .limit(limit)
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
+
+    async def count_links(self, case_id: str) -> int:
+        """Count linked attributions, the pagination total rather than objects.
+
+        Legacy rows without a probe cannot be projected as an ``AttributionItem``
+        and are therefore excluded, keeping ``total`` equal to the reachable
+        rows for a page.
+        """
+        statement = (
+            select(func.count())
+            .select_from(self._attribution_join())
+            .where(bad_case_analysis.c.bad_case_id == case_id)
+        )
+        async with self._database.session() as session:
+            return int((await session.execute(statement)).scalar_one())
+
+    async def latest_candidate_trigger(
+        self,
+        probe_id: str,
+    ) -> CandidateTriggerRecord | None:
+        """Return the newest run candidate that pointed at one attribution.
+
+        The coordinate lookup joins both trigger agents so the read service can
+        compare ``(tree_index, event_index)`` when wall-clock times are not
+        available on both sides. Candidates without a probe never match.
+        """
+        object_agent = aliased(agents)
+        case_agent = aliased(agents)
+        statement = (
+            select(
+                evolution_run_candidates.c.order_state,
+                evolution_run_candidates.c.object_trigger_at,
+                evolution_run_candidates.c.case_trigger_at,
+                object_agent.c.tree_index.label("object_tree_index"),
+                evolution_run_candidates.c.object_trigger_event_index,
+                case_agent.c.tree_index.label("case_tree_index"),
+                evolution_run_candidates.c.case_trigger_event_index,
+            )
+            .select_from(
+                evolution_run_candidates.outerjoin(
+                    object_agent,
+                    object_agent.c.id == evolution_run_candidates.c.object_trigger_agent_id,
+                ).outerjoin(
+                    case_agent,
+                    case_agent.c.id == evolution_run_candidates.c.case_trigger_agent_id,
+                ),
+            )
+            .where(evolution_run_candidates.c.probe_id == probe_id)
+            .order_by(
+                evolution_run_candidates.c.created_at.desc(),
+                evolution_run_candidates.c.id.desc(),
+            )
+            .limit(1)
+        )
+        async with self._database.session() as session:
+            row = (await session.execute(statement)).mappings().one_or_none()
+        if row is None:
+            return None
+        return CandidateTriggerRecord(
+            order_state=row["order_state"],
+            object_trigger_at=(
+                as_shanghai(row["object_trigger_at"])
+                if row["object_trigger_at"] is not None
+                else None
+            ),
+            case_trigger_at=(
+                as_shanghai(row["case_trigger_at"]) if row["case_trigger_at"] is not None else None
+            ),
+            object_trigger_tree_index=row["object_tree_index"],
+            object_trigger_event_index=row["object_trigger_event_index"],
+            case_trigger_tree_index=row["case_tree_index"],
+            case_trigger_event_index=row["case_trigger_event_index"],
+        )
 
     async def attribution_count(self, case_id: str) -> int:
         """Count distinct ``(probe_type, probe_object, object_version)`` rows."""

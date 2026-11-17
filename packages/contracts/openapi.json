@@ -135,6 +135,314 @@
         "title": "AttributeStats",
         "type": "object"
       },
+      "AttributionDetail": {
+        "additionalProperties": false,
+        "description": "One attribution with its reasoning, evidence warnings, and trigger compare.",
+        "properties": {
+          "attributionEngine": {
+            "maxLength": 64,
+            "title": "Attributionengine",
+            "type": "string"
+          },
+          "attributionId": {
+            "maxLength": 64,
+            "title": "Attributionid",
+            "type": "string"
+          },
+          "badCaseId": {
+            "maxLength": 64,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "isCached": {
+            "title": "Iscached",
+            "type": "boolean"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "policyVersion": {
+            "maxLength": 16,
+            "title": "Policyversion",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "reusedCount": {
+            "minimum": 0.0,
+            "title": "Reusedcount",
+            "type": "integer"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          },
+          "triggerCompare": {
+            "$ref": "#/components/schemas/AttributionTriggerCompare"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "attributionId",
+          "badCaseId",
+          "objectType",
+          "objectName",
+          "conclusion",
+          "category",
+          "confidence",
+          "isCached",
+          "reusedCount",
+          "createdAt",
+          "updatedAt",
+          "reason",
+          "reasoning",
+          "policyVersion",
+          "attributionEngine",
+          "triggerCompare",
+          "warnings"
+        ],
+        "title": "AttributionDetail",
+        "type": "object"
+      },
+      "AttributionItem": {
+        "additionalProperties": false,
+        "description": "One object/revision-scoped attribution shown in the error-detail list.\n\n``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;\n``runId`` prefers the last run that reused the conclusion so a deep link\nopens the run that produced the currently displayed row.",
+        "properties": {
+          "attributionId": {
+            "maxLength": 64,
+            "title": "Attributionid",
+            "type": "string"
+          },
+          "badCaseId": {
+            "maxLength": 64,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "conclusion": {
+            "enum": [
+              "attributed",
+              "non_target"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "isCached": {
+            "title": "Iscached",
+            "type": "boolean"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "anyOf": [
+              {
+                "maxLength": 96,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectversion"
+          },
+          "reusedCount": {
+            "minimum": 0.0,
+            "title": "Reusedcount",
+            "type": "integer"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attributionId",
+          "badCaseId",
+          "objectType",
+          "objectName",
+          "conclusion",
+          "category",
+          "confidence",
+          "isCached",
+          "reusedCount",
+          "createdAt",
+          "updatedAt"
+        ],
+        "title": "AttributionItem",
+        "type": "object"
+      },
+      "AttributionPage": {
+        "additionalProperties": false,
+        "description": "One deterministic newest-first page of a case's attributions.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "AttributionPage",
+        "type": "object"
+      },
       "AttributionPreviewRequest": {
         "additionalProperties": false,
         "description": "Attribution stage condition; preview never executes an engine.",
@@ -261,6 +569,84 @@
         "title": "AttributionPreviewSummary",
         "type": "object"
       },
+      "AttributionTriggerCompare": {
+        "additionalProperties": false,
+        "description": "Trigger-point comparison for one attribution detail.\n\n``order`` compares the case trigger against the object entry point; a\nmissing or incomparable anchor stays ``unknown``. ``versionState`` is\n``unknown`` when the attribution has no pinned object version, so clients\nmust not present it as an exact revision hit.",
+        "properties": {
+          "caseTriggerAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Casetriggerat"
+          },
+          "objectTriggerAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttriggerat"
+          },
+          "order": {
+            "enum": [
+              "before",
+              "after",
+              "same",
+              "unknown"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "versionState": {
+            "enum": [
+              "exact",
+              "unknown"
+            ],
+            "title": "Versionstate",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objectTriggerAt",
+          "caseTriggerAt",
+          "order",
+          "versionState"
+        ],
+        "title": "AttributionTriggerCompare",
+        "type": "object"
+      },
+      "AttributionWarning": {
+        "additionalProperties": false,
+        "description": "One fixed, non-sensitive evidence gap on an attribution detail.",
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 500,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AttributionWarning",
+        "type": "object"
+      },
       "BadCase": {
         "additionalProperties": false,
         "description": "Complete public problem card used by list and detail routes.\n\n``title`` is the short display title and ``reason`` the description body;\n``reason`` maps from the ``bad_cases.bad_case_description`` column.",
@@ -270,6 +656,12 @@
           },
           "anchor": {
             "$ref": "#/components/schemas/BadCaseAnchor"
+          },
+          "attributionCount": {
+            "description": "Distinct (probeType, probeObject, objectVersion) attributions reached through bad_case_analysis; the canonical definition is 06 §4.2.1.",
+            "minimum": 0.0,
+            "title": "Attributioncount",
+            "type": "integer"
           },
           "badCaseAgent": {
             "$ref": "#/components/schemas/BadCaseAgent"
@@ -301,6 +693,10 @@
               }
             ],
             "title": "Diagnosticcode"
+          },
+          "hasAttribution": {
+            "title": "Hasattribution",
+            "type": "boolean"
           },
           "metaData": {
             "anyOf": [
@@ -367,6 +763,8 @@
           "title",
           "reason",
           "metaData",
+          "attributionCount",
+          "hasAttribution",
           "analysis"
         ],
         "title": "BadCase",
@@ -1132,6 +1530,7 @@
           "SESSION_NOT_FOUND",
           "BAD_CASE_NOT_FOUND",
           "BAD_CASE_SESSION_MISMATCH",
+          "ATTRIBUTION_NOT_FOUND",
           "PROBE_NOT_FOUND",
           "JOB_NOT_FOUND",
           "RUN_NOT_FOUND",
@@ -11082,6 +11481,222 @@
           }
         ],
         "summary": "Get Workspace Bad Case",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions": {
+      "get": {
+        "description": "Return one problem's attributions newest first, two per page by default.",
+        "operationId": "list_workspace_case_attributions_api_workspaces__wid__bad_cases__badCaseId__attributions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "badCaseId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Badcaseid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace or problem does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Workspace Case Attributions",
+        "tags": [
+          "problems"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}": {
+      "get": {
+        "description": "Return one attribution only while it is linked to the requested problem.",
+        "operationId": "get_workspace_case_attribution_api_workspaces__wid__bad_cases__badCaseId__attributions__attributionId__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "badCaseId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Badcaseid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attributionId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Attributionid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace, problem, or attribution does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Workspace Case Attribution",
         "tags": [
           "problems"
         ]

@@ -130,6 +130,8 @@ async def test_session_problem_list_has_full_public_shape_and_anchor(
         "title": "检查结论缺少目标文件",
         "reason": "合成示例：检查结论缺少目标文件。",  # noqa: RUF001
         "metaData": {"fixture": True},
+        "attributionCount": 1,
+        "hasAttribution": True,
         "analysis": {
             "status": "analyzed_issue",
             "probeId": PROBE_1,
