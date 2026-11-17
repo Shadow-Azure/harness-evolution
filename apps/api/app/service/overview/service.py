@@ -9,6 +9,7 @@ from typing import cast
 
 from app.db.crud.overview import BadCasePageRow, BadCaseTypeFilter, OverviewRepository
 from app.errors import AppError, ErrorCode
+from app.service.bad_cases.session_status import classify_trace_status
 from app.service.overview.schemas import (
     BadCaseListItem,
     BadCaseType,
@@ -116,6 +117,7 @@ def _item(row: BadCasePageRow) -> BadCaseListItem:
     without inventing a schema column.
     """
     created_at = as_shanghai(row.created_at)
+    trace = classify_trace_status(row.sync_state, session_ready=row.session_present)
     return BadCaseListItem(
         bad_case_id=row.bad_case_id,
         session_id=row.bad_case_session_id,
@@ -125,6 +127,11 @@ def _item(row: BadCasePageRow) -> BadCaseListItem:
         title=row.title,
         trigger_at=created_at,
         created_at=created_at,
+        sync_status=trace.status,
+        session_ready=trace.session_ready,
+        last_error=trace.last_error,
+        retryable=trace.retryable,
+        next_retry_at=trace.next_retry_at,
         attribution_count=row.attribution_count,
     )
 

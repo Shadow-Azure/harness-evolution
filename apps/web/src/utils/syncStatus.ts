@@ -120,6 +120,8 @@ export function catalogSyncErrorLabel(code: string | null): string {
  */
 export function badCaseSyncErrorLabel(code: string | null): string {
   switch (code) {
+    case "SESSION_QUERY_UNAVAILABLE":
+      return "轨迹查询服务未配置";
     case "SESSION_QUERY_TIMEOUT":
       return "轨迹查询超时";
     case "SESSION_QUERY_UNAUTHORIZED":

@@ -511,6 +511,12 @@ erDiagram
 - `createdAt` 必须带时区偏移（如 `2026-11-09T15:58:00+08:00` 或 `...Z`）；无偏移的 naive 时间戳一律 `422 VALIDATION_INVALID`，不会按 `+08:00` 静默解释。
 - `sessionSource` 可选，形状为 `{ runtime?, sessionUrlTemplate }`：模板必须是 http(s) 绝对 URL、长度 ≤ 2048、恰好包含一个 `{sessionId}` 占位符；body 不接受 headers/token 等凭据字段，授权由模板自带的短时签名承担。`runtime` 只是预声明（`^[a-z0-9][a-z0-9-]{0,31}$`），最终以 envelope 回报为准，不一致只记诊断不失败。不传该字段时后端行为与旧版完全一致。
 
+### 3.8.1 bad case 轨迹状态
+
+bad case 行与 Session 投影是两种存在：前者由上报写入，后者由 root-sync 补齐。总览列表项增加 `syncStatus ∈ ready|pending|syncing|failed|unavailable`、`sessionReady`、`lastError`、`retryable`、`nextRetryAt`，由 `bad_case_root_sync` 与 Session 是否可读批量派生，列表不为每行额外查询。
+
+详情只在 `bad_cases` 行不存在时返回 `404 BAD_CASE_NOT_FOUND`；行存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `badCaseId/sessionId/title/objectName/createdAt/sessionReady/syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt`。确定性失败（如没有 `sessionSource` 且全局轨迹查询未配置）`retryable=false`，自动重试停止；进程启动且可用 source 存在时复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义不变。
+
 ### 3.9 归因
 
 `AttributionItem`：
@@ -1317,6 +1323,8 @@ FastAPI /api/openapi.json
 | `PASSWORD_CHANGE_REQUIRED` | 403 | 已登录但 `mustChangePassword=true`；除改密、登出与 `GET /api/auth/me` 外一律拒绝（前端跳改密页） |
 | `SESSION_NOT_FOUND` | 404 | sid 不存在 |
 | `BAD_CASE_NOT_FOUND` | 404 | badCaseId 不存在 |
+| `BAD_CASE_SESSION_PENDING` | 409 | badCaseId 存在，但对应 Session 轨迹仍在待同步/同步中 |
+| `BAD_CASE_SESSION_UNAVAILABLE` | 503 | badCaseId 存在，但轨迹同步失败或没有可用轨迹 |
 | `BAD_CASE_ID_CONFLICT` | 409 | 上报的 badCaseId 已属于其它工作空间 |
 | `BAD_CASE_SESSION_MISMATCH` | 409 | badCaseId 存在但不属于 URL 里的 sid |
 | `STEP_NOT_READY` | 404 | 请求的 step 尚未到达 |

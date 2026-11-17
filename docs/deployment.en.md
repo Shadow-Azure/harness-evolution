@@ -2,7 +2,7 @@
 
 English | [中文](deployment.md)
 
-Production is a single-instance Alibaba Cloud SaaS: nginx serves the built frontend and reverse-proxies `/api` to a local uvicorn (127.0.0.1:8787, resident under systemd), with MySQL 8 on the same host. Releases run through GitHub Actions: after a push to main with CI green (`ci-ok`), the `Deploy` workflow builds the frontend, rsyncs a release to the ECS host, runs migrations, atomically switches the `current` symlink, and restarts the service, rolling back when the probe fails. The design authority is [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md).
+Production is a single-instance Alibaba Cloud SaaS: nginx serves the built frontend and reverse-proxies `/api` to a local uvicorn (127.0.0.1:8787), with MySQL 8 on the same host. Releases run through GitHub Actions: after main's CI is green (`ci-ok`), `Deploy` builds the frontend, pushes the release, migrates, switches the `current` symlink, and restarts, rolling back when the probe fails. The design authority is [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md).
 
 ## Cloud resources
 
@@ -10,8 +10,8 @@ Production is a single-instance Alibaba Cloud SaaS: nginx serves the built front
 |---|---|
 | ECS | Single instance, Ubuntu 22.04/24.04, 2 vCPU/4 GiB (2 GiB needs swap), bandwidth ≥3 Mbps |
 | MySQL 8 | Same host (apt install), database `harness_evolution`, user `harness@127.0.0.1` |
-| Security group | Open 22/80/443; 8787 never exposed publicly |
-| Domain | Optional; IP + HTTP until bound, then add HTTPS and ICP filing |
+| Security group | Open 22/80/443; 8787 never public |
+| Domain | Optional; IP + HTTP first, then HTTPS and ICP filing |
 
 ## Server layout
 
@@ -37,15 +37,19 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 | `ALIYUN_SSH_PORT` | Variable | SSH port (default 22) |
 | `production` | Environment | Protective environment for the deploy job; can require approval |
 
-Only the private key lives in GitHub; its public half sits in the `deploy` user's `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`.
+Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`.
 
 ## Release and rollback
 
-- Trigger: push to main → CI green → `Deploy`; manual `workflow_dispatch` supported.
-- Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → `systemctl restart harness-api` → probes `/api/health` (up to 60 seconds).
+- Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
+- Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe the symlink returns to the previous release and the service restarts; the server keeps the latest 5 releases.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.
 
 ## Upstream health and drift logs
 
 With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit `upstream.health` / `version_drift` / `contract_drift` logs with `key='value'` fields containing only enums, counts, and major numbers, never bodies, session ids, or credentials. Per-session failures stay in `sync_runs.errors`; the scheduler only replays stored payloads, so a failed fetch needs `POST /api/acquisition/pull` with `sessionIds`.
+
+## Troubleshooting
+
+- A bad-case detail response of 409 `BAD_CASE_SESSION_PENDING` or 503 `BAD_CASE_SESSION_UNAVAILABLE` means the case was reported but its trace is not ready; it is not data loss. Check the trace-query configuration, or ask the reporter to supply `sessionSource`.

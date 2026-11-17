@@ -1115,13 +1115,52 @@
             "title": "Createdat",
             "type": "string"
           },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable root-sync failure code while the trace is not ready.",
+            "title": "Lasterror"
+          },
+          "nextRetryAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled automatic retry, when one is planned.",
+            "title": "Nextretryat"
+          },
           "objectName": {
             "title": "Objectname",
             "type": "string"
           },
+          "retryable": {
+            "description": "Whether automatic sync can still make progress. Deterministic failures report false until their source configuration changes.",
+            "title": "Retryable",
+            "type": "boolean"
+          },
           "sessionId": {
             "title": "Sessionid",
             "type": "string"
+          },
+          "sessionReady": {
+            "description": "Whether the normalized Session projection can already be read.",
+            "title": "Sessionready",
+            "type": "boolean"
+          },
+          "syncStatus": {
+            "$ref": "#/components/schemas/BadCaseTraceStatus",
+            "description": "Derived trace readiness: ready, pending, syncing, failed, or unavailable. The case itself exists whenever it appears in this list."
           },
           "title": {
             "title": "Title",
@@ -1143,6 +1182,11 @@
           "title",
           "triggerAt",
           "createdAt",
+          "syncStatus",
+          "sessionReady",
+          "lastError",
+          "retryable",
+          "nextRetryAt",
           "attributionCount"
         ],
         "title": "BadCaseListItem",
@@ -1266,6 +1310,18 @@
         ],
         "title": "BadCaseSyncSummary",
         "type": "object"
+      },
+      "BadCaseTraceStatus": {
+        "description": "Public trace state shared by the overview list and detail error body.",
+        "enum": [
+          "ready",
+          "pending",
+          "syncing",
+          "failed",
+          "unavailable"
+        ],
+        "title": "BadCaseTraceStatus",
+        "type": "string"
       },
       "CatalogModel": {
         "additionalProperties": false,
@@ -1529,6 +1585,8 @@
           "USERNAME_CONFLICT",
           "SESSION_NOT_FOUND",
           "BAD_CASE_NOT_FOUND",
+          "BAD_CASE_SESSION_PENDING",
+          "BAD_CASE_SESSION_UNAVAILABLE",
           "BAD_CASE_SESSION_MISMATCH",
           "ATTRIBUTION_NOT_FOUND",
           "PROBE_NOT_FOUND",
@@ -8784,6 +8842,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [
@@ -8892,6 +8960,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [
@@ -12102,6 +12180,16 @@
             },
             "description": "Workspace or problem does not exist"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is still syncing"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -12111,6 +12199,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [

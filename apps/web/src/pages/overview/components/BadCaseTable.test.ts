@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
-import { mount } from "@vue/test-utils";
+import { mount, RouterLinkStub } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
 import BadCaseTable from "./BadCaseTable.vue";
 
-function row(index: number) {
+function row(index: number, overrides: Record<string, unknown> = {}) {
   return {
     badCaseId: `BC-HC-00${index}`,
     sessionId: `session-${index}`,
@@ -16,6 +16,12 @@ function row(index: number) {
     triggerAt: `2026-11-0${index}T08:00:00+08:00`,
     createdAt: `2026-11-0${index}T09:00:00+08:00`,
     attributionCount: index,
+    syncStatus: "ready" as const,
+    sessionReady: true,
+    lastError: null,
+    retryable: false,
+    nextRetryAt: null,
+    ...overrides,
   };
 }
 
@@ -32,6 +38,9 @@ function mountTable(overrides: Record<string, unknown> = {}) {
       loading: false,
       error: null,
       ...overrides,
+    },
+    global: {
+      stubs: { RouterLink: RouterLinkStub },
     },
   });
 }
@@ -51,6 +60,38 @@ describe("overview bad-case table", () => {
     expect(rows[0]?.text()).toContain("Case title 1");
     expect(rows[0]?.text()).toContain("发现前置步骤问题");
     expect(rows[0]?.text()).toContain("deep-research");
+    expect(wrapper.get("[data-testid='ov-trace-BC-HC-001']").text()).toBe("就绪");
+  });
+
+  it("keeps a non-ready case out of the deep link and shows its trace state", () => {
+    const wrapper = mountTable({
+      items: [
+        row(3, { syncStatus: "pending", sessionReady: false, retryable: true }),
+        row(4, {
+          syncStatus: "unavailable",
+          sessionReady: false,
+          retryable: false,
+          lastError: "SESSION_QUERY_UNAVAILABLE",
+        }),
+      ],
+      total: 2,
+    });
+
+    expect(
+      wrapper.find("[data-testid='ov-case-link-BC-HC-003']").exists(),
+    ).toBe(false);
+    expect(wrapper.get("[data-testid='ov-trace-BC-HC-003']").text()).toBe(
+      "未同步",
+    );
+    expect(wrapper.get("[data-testid='ov-trace-BC-HC-004']").text()).toBe(
+      "无可用轨迹",
+    );
+    expect(
+      wrapper.get("[data-testid='ov-trace-BC-HC-004']").attributes("title"),
+    ).toBe("SESSION_QUERY_UNAVAILABLE");
+    expect(
+      wrapper.get("[data-testid='ov-case-view-BC-HC-003']").text(),
+    ).toBe("查看");
   });
 
   it("paginates at the page size and disables boundary buttons", async () => {

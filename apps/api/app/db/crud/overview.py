@@ -18,7 +18,14 @@ from sqlalchemy import case, func, inspect, select
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
-from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
+from app.db.crud.bad_case_sync import BadCaseRootSyncRow, _to_row
+from app.db.models.domain import (
+    bad_case_analysis,
+    bad_case_root_sync,
+    bad_cases,
+    probe_reports,
+    session_families,
+)
 from app.db.models.workspace import workspaces
 from app.utils.time import SHANGHAI
 
@@ -60,7 +67,7 @@ class TrendPoint:
 
 @dataclass(frozen=True, slots=True)
 class BadCasePageRow:
-    """One row of the filtered overview list."""
+    """One row of the filtered overview list plus its derived trace state."""
 
     bad_case_id: str
     bad_case_session_id: str
@@ -69,6 +76,8 @@ class BadCasePageRow:
     title: str
     created_at: datetime
     attribution_count: int
+    sync_state: BadCaseRootSyncRow | None
+    session_present: bool
 
 
 def day_start(day: date) -> datetime:
@@ -388,7 +397,38 @@ class OverviewRepository:
         )
         async with self._database.session() as session:
             rows = (await session.execute(statement)).mappings().all()
-        counts = await self._attribution_counts([str(row["bad_case_id"]) for row in rows])
+            roots = tuple(dict.fromkeys(str(row["bad_case_session_id"]) for row in rows))
+            sync_states: dict[str, BadCaseRootSyncRow] = {}
+            present_roots: set[str] = set()
+            if roots:
+                state_rows = (
+                    (
+                        await session.execute(
+                            select(bad_case_root_sync).where(
+                                bad_case_root_sync.c.root_session_id.in_(roots),
+                            ),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                sync_states = {
+                    str(state["root_session_id"]): _to_row(state) for state in state_rows
+                }
+                present_rows: Sequence[object] = (
+                    (
+                        await session.execute(
+                            select(session_families.c.id).where(
+                                session_families.c.id.in_(roots),
+                            ),
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                present_roots = {str(root) for root in present_rows}
+        case_ids = [str(row["bad_case_id"]) for row in rows]
+        counts = await self._attribution_counts(case_ids)
         return [
             BadCasePageRow(
                 bad_case_id=str(row["bad_case_id"]),
@@ -398,6 +438,8 @@ class OverviewRepository:
                 title=str(row["title"]),
                 created_at=row["created_at"],
                 attribution_count=counts.get(str(row["bad_case_id"]), 0),
+                sync_state=sync_states.get(str(row["bad_case_session_id"])),
+                session_present=str(row["bad_case_session_id"]) in present_roots,
             )
             for row in rows
         ]

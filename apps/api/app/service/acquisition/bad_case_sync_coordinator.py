@@ -107,7 +107,12 @@ class BadCaseRootSyncCoordinator:
         return await self.trigger("scheduler")
 
     async def start(self) -> None:
-        """Start the periodic loop when an interval is configured."""
+        """Re-arm deterministic failures when a source can now progress, then start."""
+        # Parked rows stay unavailable while no source can run. Once a global
+        # query or a per-report source exists, one fresh claim is worth it: the
+        # configuration change may be exactly what unblocks them.
+        if await self._sources_available():
+            await self._repository.reset_deterministic_failures()
         if self._scheduler_task is not None or self._settings.bad_case_sync_interval_seconds == 0:
             return
         self._stop.clear()

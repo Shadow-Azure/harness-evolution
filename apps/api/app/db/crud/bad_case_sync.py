@@ -27,6 +27,19 @@ _SYNCING = "syncing"
 _FAILED = "failed"
 _PENDING = "pending"
 
+_NON_RETRYABLE_ERRORS: frozenset[str] = frozenset(
+    {
+        "SESSION_QUERY_UNAVAILABLE",
+        "SESSION_QUERY_UNAUTHORIZED",
+        "SESSION_QUERY_VERSION_INCOMPATIBLE",
+        "SESSION_SOURCE_UNAUTHORIZED",
+        "SESSION_SOURCE_VERSION_INCOMPATIBLE",
+        "TRAJECTORY_EMPTY",
+        "UNSUPPORTED_RUNTIME",
+    },
+)
+"""Stable failures that automatic retries cannot fix without a configuration change."""
+
 
 @dataclass(frozen=True, slots=True)
 class BadCaseRootSyncRow:
@@ -45,6 +58,16 @@ class BadCaseRootSyncRow:
     lease_owner: str | None
     lease_expires_at: datetime | None
     updated_at: datetime
+
+    @property
+    def deterministic_failure(self) -> bool:
+        """Return whether retrying cannot help until the source configuration changes."""
+        return self.status == _FAILED and self.last_error in _NON_RETRYABLE_ERRORS
+
+    @property
+    def retryable(self) -> bool:
+        """Return whether the scheduler can still make progress on its own."""
+        return self.status != _SYNCED and not self.deterministic_failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +138,14 @@ def _to_row(values: RowMapping) -> BadCaseRootSyncRow:
     )
 
 
+def _retryable_failure_condition() -> ColumnElement[bool]:
+    """Exclude failed rows whose stable error cannot change by retrying."""
+    return or_(
+        bad_case_root_sync.c.last_error.is_(None),
+        bad_case_root_sync.c.last_error.not_in(tuple(_NON_RETRYABLE_ERRORS)),
+    )
+
+
 def _candidate_condition(now: datetime) -> ColumnElement[bool]:
     """Return the SQL predicate shared by list/count candidate queries."""
     return or_(
@@ -126,6 +157,7 @@ def _candidate_condition(now: datetime) -> ColumnElement[bool]:
                 bad_case_root_sync.c.next_retry_at.is_(None),
                 bad_case_root_sync.c.next_retry_at <= now,
             ),
+            _retryable_failure_condition(),
         ),
         and_(
             bad_case_root_sync.c.status == _SYNCING,
@@ -231,6 +263,67 @@ class BadCaseRootSyncRepository:
                 .one_or_none()
             )
         return _to_row(row) if row is not None else None
+
+    async def states_for_roots(
+        self,
+        root_session_ids: tuple[str, ...],
+    ) -> dict[str, BadCaseRootSyncRow]:
+        """Batch-read durable sync state for one page of reported roots.
+
+        A root without a state row is absent from the result and is classified
+        as ``pending`` by the read model, so callers never issue a query per row.
+        """
+        roots = tuple(dict.fromkeys(root_id for root_id in root_session_ids if root_id))
+        if not roots:
+            return {}
+        async with self._database.session() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(bad_case_root_sync).where(
+                            bad_case_root_sync.c.root_session_id.in_(roots),
+                        ),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return {str(row["root_session_id"]): _to_row(row) for row in rows}
+
+    async def reset_deterministic_failures(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Re-arm roots whose stable failure may now be fixable.
+
+        The scheduler skips these rows instead of burning its retry ladder.
+        A process start (or a source configuration change) calls this once so a
+        newly configured global query or a newly reported session source gets a
+        fresh chance; the frozen first-claim snapshot is cleared for re-selection.
+        """
+        now_value = as_shanghai(now or now_shanghai())
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(bad_case_root_sync)
+                .where(
+                    bad_case_root_sync.c.status == _FAILED,
+                    bad_case_root_sync.c.last_error.in_(tuple(_NON_RETRYABLE_ERRORS)),
+                )
+                .values(
+                    status=_PENDING,
+                    source_kind="global",
+                    source_snapshot=None,
+                    attempts=0,
+                    last_error=None,
+                    started_at=None,
+                    next_retry_at=None,
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    updated_at=now_value,
+                ),
+            )
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def ensure_pending(
         self,

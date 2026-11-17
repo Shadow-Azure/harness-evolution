@@ -64,6 +64,11 @@ function caseRow(index: number) {
     triggerAt: `2026-11-0${index}T08:00:00+08:00`,
     createdAt: `2026-11-0${index}T09:00:00+08:00`,
     attributionCount: index,
+    syncStatus: "ready",
+    sessionReady: true,
+    lastError: null,
+    retryable: false,
+    nextRetryAt: null,
   };
 }
 

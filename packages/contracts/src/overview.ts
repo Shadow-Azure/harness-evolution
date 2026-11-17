@@ -41,6 +41,10 @@ export type OverviewSourceListResponse =
 /** One row of the filtered workspace bad-case list. */
 export type BadCaseListItem = components["schemas"]["BadCaseListItem"];
 
+/** Derived trace readiness for one reported bad case. */
+export type BadCaseTraceStatus =
+  components["schemas"]["BadCaseTraceStatus"];
+
 /** One filtered page of this workspace's reported cases. */
 export type OverviewBadCaseListResponse =
   components["schemas"]["OverviewBadCaseListResponse"];

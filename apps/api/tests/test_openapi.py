@@ -655,7 +655,19 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "triggerAt",
         "createdAt",
         "attributionCount",
+        "syncStatus",
+        "sessionReady",
+        "lastError",
+        "retryable",
+        "nextRetryAt",
     }
+    assert components["BadCaseTraceStatus"]["enum"] == [
+        "ready",
+        "pending",
+        "syncing",
+        "failed",
+        "unavailable",
+    ]
     assert (
         "temporarily equals createdAt"
         in components["BadCaseListItem"]["properties"]["triggerAt"]["description"]
@@ -663,6 +675,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     error_codes = components["ErrorCode"]["enum"]
     assert {
         "BAD_CASE_NOT_FOUND",
+        "BAD_CASE_SESSION_PENDING",
+        "BAD_CASE_SESSION_UNAVAILABLE",
         "BAD_CASE_SESSION_MISMATCH",
         "PROBE_NOT_FOUND",
         "WORKSPACE_EXISTS",
