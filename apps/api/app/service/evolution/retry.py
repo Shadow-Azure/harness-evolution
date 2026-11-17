@@ -34,6 +34,7 @@ _BLOCKED_STAGE_TO_EVENT_STAGE: dict[str, EvolutionRunEventStage] = {
     "patch": "candidate",
     "push": "push",
     "eval": "eval",
+    "attribution": "prepare",
 }
 _HandlerT = TypeVar("_HandlerT")
 

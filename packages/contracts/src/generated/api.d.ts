@@ -2047,7 +2047,7 @@ export interface components {
          */
         EvolutionRunDetail: {
             /** Blockedstage */
-            blockedStage: ("patch" | "push" | "eval") | null;
+            blockedStage: ("patch" | "push" | "eval" | "attribution") | null;
             /**
              * Createdat
              * Format: date-time

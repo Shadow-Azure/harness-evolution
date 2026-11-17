@@ -392,7 +392,7 @@ class EvolutionRunEventService:
         run_id: str,
         *,
         stage: EvolutionRunEventStage,
-        blocked_stage: Literal["patch", "push", "eval"] | None = None,
+        blocked_stage: Literal["patch", "push", "eval", "attribution"] | None = None,
         message: str,
         job_id: str | None = None,
         next_retry_at: datetime | None = None,
@@ -402,7 +402,7 @@ class EvolutionRunEventService:
         """Persist one retryable failure and enter blocked state."""
         resolved_blocked_stage = blocked_stage or (stage if stage in {"push", "eval"} else None)
         if resolved_blocked_stage is None:
-            raise ValueError("blocked events require patch, push, or eval stage")
+            raise ValueError("blocked events require patch, push, eval, or attribution stage")
         declared_error_stage = getattr(error, "error_stage", None)
         if not isinstance(declared_error_stage, str) or not declared_error_stage:
             declared_error_stage = getattr(error, "stage", None)

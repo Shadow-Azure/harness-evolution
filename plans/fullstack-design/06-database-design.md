@@ -510,7 +510,7 @@ erDiagram
 | `session_id` | `VARCHAR(36)` | NOT NULL | 归因所属根会话，与 bad case 的 session 一致 |
 | `probe_type` | `VARCHAR(16)` | NOT NULL | 归因目标类型 `skill` / `agent` |
 | `probe_object` | `VARCHAR(128)` | NOT NULL | 归因目标名 |
-| `object_version` | `VARCHAR(64)` | NULL | 归因只作用于「对象 · 版本」；历史行可能没有版本，保持 NULL 而不伪造 |
+| `object_version` | `VARCHAR(96)` | NULL | 归因只作用于「对象 · 版本」；历史行可能没有版本，保持 NULL 而不伪造。96 容纳 `digest:<sha256>`（71 字符）与 `tag:` / `provider:` revision |
 | `attribute_type` | `VARCHAR(16)` | NULL | `model` / `prompt` / `error`；`non_target` 时为空 |
 | `conclusion` | `VARCHAR(16)` | NOT NULL DEFAULT 'attributed' | `attributed` / `non_target` |
 | `confidence` | `DOUBLE` | NOT NULL DEFAULT 0.8 | 单条归因置信度 |
@@ -929,7 +929,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 
 ## 9. V2 迁移与回填
 
-单版本迁移（语义上一组；引擎里 `0014_v2_workspaces` 与 `0020_v2_attribution_schema` 两个文件），顺序固定为 `0014` → … → `0019` → `0020`；所有既有表保留原名：
+单版本迁移（语义上一组；引擎里 `0014_v2_workspaces`、`0020_v2_attribution_schema` 与 `0021_attribution_run_snapshot` 三个文件），顺序固定为 `0014` → … → `0019` → `0020` → `0021`；所有既有表保留原名：
 
 ```text
 1) 建新表：workspaces / workspace_members / workspace_ingest_credentials（0014）；
@@ -968,6 +968,8 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
    users 增加 UNIQUE(auth_provider, external_subject)，external_subject 为空的行不参与外部映射
 7) 现有用户全部加入默认空间（viewer；全局管理员不写也可见，写入仅为成员列表完整性）
 ```
+
+- `0021` 落地归因引擎需要的 run 快照列与 revision 宽度：补 `evolution_runs.potential_policy / cache_enabled / attribution_engine`（旧 run 取 `NULL / false / legacy-probe-import`），并把 `probe_reports.object_version` 从 64 扩到 96，使 `digest:<sha256>` 的 71 字符 identity 可直接落库；两步都按存在性守卫，可重复执行。
 
 - **幂等**：可重复执行（`WHERE NOT EXISTS` + 回填只看 NULL），SQLite 测试库与 MySQL 生产库都能二次跑。
 - **回滚**：删除新增列和外键，恢复 `bad_case_analysis` 的 `UNIQUE(bad_case_id)`。降级**有损**：一 case 多归因时只保留 `updated_at` 最新的一行，其余关联直接删除且不生成导出文件；`attribute_type` 的 NULL 会折成 `nonissue`。实际生产回滚以「回退应用版本 + 保留新结构」为主。

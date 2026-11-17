@@ -53,6 +53,16 @@ class EvolutionRepository:
             "mode": values["mode"],
             "engine_key": values["engine_key"],
             "eval_config": deepcopy(dict(values["eval_config"])),
+            "potential_policy": (
+                deepcopy(dict(values["potential_policy"]))
+                if isinstance(values.get("potential_policy"), Mapping)
+                else None
+            ),
+            "cache_enabled": values.get("cache_enabled", False),
+            "attribution_engine": values.get(
+                "attribution_engine",
+                "legacy-probe-import",
+            ),
             "target_config_id": values["target_config_id"],
             "target_type": values["target_type"],
             "target_name": values["target_name"],

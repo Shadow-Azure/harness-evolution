@@ -344,7 +344,7 @@ probe_reports = Table(
     Column("session_id", String(36), nullable=False),
     Column("probe_type", String(16), nullable=False),
     Column("probe_object", String(128), nullable=False),
-    Column("object_version", String(64), nullable=True),
+    Column("object_version", String(96), nullable=True),
     Column("attribute_type", String(16), nullable=True),
     Column("conclusion", String(16), nullable=False, server_default="attributed"),
     Column("confidence", Double, nullable=False, server_default=text("0.8")),

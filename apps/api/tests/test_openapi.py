@@ -417,6 +417,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "patch",
         "push",
         "eval",
+        "attribution",
     ]
     assert components["EvolutionRunWorkspace"]["properties"]["pushStatus"]["enum"] == [
         "pending",

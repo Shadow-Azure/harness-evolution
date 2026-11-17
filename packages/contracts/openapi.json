@@ -1408,7 +1408,8 @@
                 "enum": [
                   "patch",
                   "push",
-                  "eval"
+                  "eval",
+                  "attribution"
                 ],
                 "type": "string"
               },

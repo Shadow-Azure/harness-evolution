@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -13,13 +14,21 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import RowMapping
 
 from app.db.base import Database
-from app.db.models.domain import bad_case_analysis, probe_reports
+from app.db.models.domain import (
+    agent_events,
+    agents,
+    bad_case_analysis,
+    bad_cases,
+    probe_reports,
+)
 from app.db.models.evolution import (
     EvolutionRunCandidateRecord,
     evolution_run_candidates,
     record_from_evolution_run_candidate,
 )
 from app.utils.time import as_shanghai
+
+_QUERY_CHUNK = 500
 
 OrderState = Literal["comparable", "unknown"]
 IncludedReason = Literal[
@@ -114,6 +123,60 @@ class ProbeWrite:
         )
 
 
+def _chunks(values: Sequence[str], size: int = _QUERY_CHUNK) -> Iterator[tuple[str, ...]]:
+    """Yield stable identifier chunks so one IN predicate stays bounded."""
+    for start in range(0, len(values), size):
+        yield tuple(values[start : start + size])
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeCacheRecord:
+    """One cached probe row keyed by its seven-part identity."""
+
+    probe_id: str
+    workspace_id: str
+    session_id: str
+    probe_type: str
+    probe_object: str
+    object_version: str | None
+    attribute_type: str | None
+    conclusion: str
+    confidence: float
+    probe_description: str
+    probe_analysis: str
+    policy_version: str
+    attribution_engine: str
+    cache_key: str
+    created_run_id: str | None
+    last_reused_run_id: str | None
+    reused_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class BadCaseEvidenceRecord:
+    """The bad-case fields a pure attribution engine may use."""
+
+    bad_case_id: str
+    session_id: str
+    bad_case_type: str
+    title: str
+    description: str
+    metadata: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class KnowledgeEvidenceRecord:
+    """One knowledge document trigger found in a case's root session."""
+
+    session_id: str
+    document_id: str | None
+    document_revision: str | None
+    source_path: str | None
+    retrieval_kind: str | None
+
+
 @dataclass(frozen=True, slots=True)
 class AttributionRecord:
     """One case-to-probe attribution joined with its probe detail."""
@@ -205,6 +268,31 @@ def _row_attribution(mapping: RowMapping) -> AttributionRecord:
     )
 
 
+def _row_probe_cache(mapping: RowMapping) -> ProbeCacheRecord:
+    """Convert one probe-only mapping into the cache boundary record."""
+    return ProbeCacheRecord(
+        probe_id=mapping["probe_id"],
+        workspace_id=mapping["workspace_id"],
+        session_id=mapping["session_id"],
+        probe_type=mapping["probe_type"],
+        probe_object=mapping["probe_object"],
+        object_version=_text(mapping["object_version"]),
+        attribute_type=_text(mapping["attribute_type"]),
+        conclusion=mapping["conclusion"],
+        confidence=float(mapping["confidence"]),
+        probe_description=mapping["probe_description"],
+        probe_analysis=mapping["probe_analysis"],
+        policy_version=mapping["policy_version"],
+        attribution_engine=mapping["attribution_engine"],
+        cache_key=mapping["cache_key"],
+        created_run_id=_text(mapping["created_run_id"]),
+        last_reused_run_id=_text(mapping["last_reused_run_id"]),
+        reused_count=int(mapping["reused_count"]),
+        created_at=as_shanghai(mapping["created_at"]),
+        updated_at=as_shanghai(mapping["updated_at"]),
+    )
+
+
 class AttributionRepository:
     """Write attributions atomically and read one case's current attributions."""
 
@@ -220,6 +308,218 @@ class AttributionRepository:
         without a read-before-write check. The existing probe id wins; every
         mutable conclusion field is refreshed.
         """
+        values, updates = self._probe_upsert_parts(write)
+        statement = self._probe_upsert_statement(values, updates)
+        async with self._database.transaction() as session:
+            await session.execute(statement)
+            return await self._select_probe_id(session, write.cache_key)
+
+    async def get_probe_by_cache_key(self, cache_key: str) -> ProbeCacheRecord | None:
+        """Return the one probe owning a cache key, or ``None`` on a miss."""
+        statement = select(probe_reports).where(probe_reports.c.cache_key == cache_key).limit(1)
+        async with self._database.session() as session:
+            row = (await session.execute(statement)).mappings().one_or_none()
+        return _row_probe_cache(row) if row is not None else None
+
+    async def write_probe_and_link(
+        self,
+        write: ProbeWrite,
+        run_id: str,
+        now: datetime,
+    ) -> str:
+        """Write a fresh probe, its case link, and its candidate pointer atomically.
+
+        The candidate snapshot must already exist: prepare inserts it in the
+        potential step, and a missing row means the attribution step is out of
+        order. Rolling the probe and link back keeps the cache and the run
+        snapshot consistent after that programming error.
+
+        Args:
+            write: Dialect-neutral probe payload.
+            run_id: Run whose candidate row receives the probe pointer.
+            now: Link timestamp shared by the three writes.
+
+        Returns:
+            The probe id that owns the cache key after the upsert.
+
+        Raises:
+            LookupError: When the run has no candidate row for this bad case.
+        """
+        values, updates = self._probe_upsert_parts(write)
+        statement = self._probe_upsert_statement(values, updates)
+        async with self._database.transaction() as session:
+            await session.execute(statement)
+            probe_id = await self._select_probe_id(session, write.cache_key)
+            await session.execute(self._link_statement(write.bad_case_id, probe_id, now))
+            result = await session.execute(
+                self._candidate_update_statement(
+                    run_id,
+                    write.bad_case_id,
+                    probe_id,
+                    is_cached=False,
+                ),
+            )
+            if int(getattr(result, "rowcount", 0) or 0) == 0:
+                await self._require_candidate(session, run_id, write.bad_case_id)
+        return probe_id
+
+    async def reuse_probe_and_link(
+        self,
+        probe_id: str,
+        run_id: str,
+        bad_case_id: str,
+        now: datetime,
+    ) -> bool:
+        """Count one cache hit and link it to the run in one transaction.
+
+        Args:
+            probe_id: Existing probe selected by cache key.
+            run_id: Run that consumed the cached conclusion.
+            bad_case_id: Case whose candidate row receives the pointer.
+            now: Reuse and link timestamp.
+
+        Returns:
+            ``True`` when this run advanced ``reused_count``; ``False`` for a
+            repeated hit from the same run.
+
+        Raises:
+            LookupError: When the run has no candidate row for this bad case.
+        """
+        async with self._database.transaction() as session:
+            result = await session.execute(self._reuse_statement(probe_id, run_id, now))
+            await session.execute(self._link_statement(bad_case_id, probe_id, now))
+            updated = await session.execute(
+                self._candidate_update_statement(
+                    run_id,
+                    bad_case_id,
+                    probe_id,
+                    is_cached=True,
+                ),
+            )
+            if int(getattr(updated, "rowcount", 0) or 0) == 0:
+                await self._require_candidate(session, run_id, bad_case_id)
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
+    async def linked_probe_ids(self, run_id: str) -> dict[str, str]:
+        """Return the candidates of one run that already carry a probe pointer."""
+        statement = select(
+            evolution_run_candidates.c.bad_case_id,
+            evolution_run_candidates.c.probe_id,
+        ).where(
+            evolution_run_candidates.c.run_id == run_id,
+            evolution_run_candidates.c.probe_id.is_not(None),
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).all()
+        return {str(row[0]): str(row[1]) for row in rows}
+
+    async def list_clusterable_probe_ids(self, run_id: str) -> tuple[str, ...]:
+        """Return included, attributed probes in stable bad-case order.
+
+        ``non_target`` and policy-excluded candidates never reach the cluster
+        step, so this is the exact input projection m10-04 should consume.
+        """
+        statement = (
+            select(evolution_run_candidates.c.probe_id)
+            .select_from(
+                evolution_run_candidates.join(
+                    probe_reports,
+                    probe_reports.c.probe_id == evolution_run_candidates.c.probe_id,
+                ),
+            )
+            .where(
+                evolution_run_candidates.c.run_id == run_id,
+                evolution_run_candidates.c.included.is_(True),
+                probe_reports.c.conclusion == "attributed",
+            )
+            .order_by(evolution_run_candidates.c.bad_case_id)
+        )
+        async with self._database.session() as session:
+            rows: Sequence[object] = (await session.execute(statement)).scalars().all()
+        return tuple(str(row) for row in rows if row is not None)
+
+    async def load_bad_case_evidence(
+        self,
+        case_ids: Sequence[str],
+    ) -> dict[str, BadCaseEvidenceRecord]:
+        """Load titles, descriptions, and metadata for a bounded case set."""
+        found: dict[str, BadCaseEvidenceRecord] = {}
+        for chunk in _chunks(tuple(dict.fromkeys(case_ids))):
+            statement = select(
+                bad_cases.c.bad_case_id,
+                bad_cases.c.bad_case_session_id,
+                bad_cases.c.bad_case_type,
+                bad_cases.c.title,
+                bad_cases.c.bad_case_description,
+                bad_cases.c.meta_data,
+            ).where(bad_cases.c.bad_case_id.in_(chunk))
+            async with self._database.session() as session:
+                rows = (await session.execute(statement)).mappings().all()
+            for row in rows:
+                metadata = row["meta_data"]
+                found[str(row["bad_case_id"])] = BadCaseEvidenceRecord(
+                    bad_case_id=str(row["bad_case_id"]),
+                    session_id=str(row["bad_case_session_id"]),
+                    bad_case_type=str(row["bad_case_type"]),
+                    title=str(row["title"]),
+                    description=str(row["bad_case_description"]),
+                    metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+                )
+        return found
+
+    async def load_knowledge_evidence(
+        self,
+        session_ids: Sequence[str],
+    ) -> dict[str, tuple[KnowledgeEvidenceRecord, ...]]:
+        """Load knowledge document triggers for a bounded set of root sessions."""
+        grouped: dict[str, list[KnowledgeEvidenceRecord]] = {}
+        for chunk in _chunks(tuple(dict.fromkeys(session_ids))):
+            statement = (
+                select(
+                    agents.c.root_session_id,
+                    agent_events.c.document_id,
+                    agent_events.c.document_revision,
+                    agent_events.c.source_path,
+                    agent_events.c.retrieval_kind,
+                )
+                .select_from(agent_events)
+                .join(agents, agents.c.id == agent_events.c.agent_id)
+                .where(
+                    agents.c.root_session_id.in_(chunk),
+                    agent_events.c.kind == "knowledge",
+                )
+                .order_by(
+                    agents.c.root_session_id,
+                    agents.c.tree_index,
+                    agent_events.c.event_index,
+                )
+            )
+            async with self._database.session() as session:
+                rows = (await session.execute(statement)).mappings().all()
+            for row in rows:
+                session_id = str(row["root_session_id"])
+                event = KnowledgeEvidenceRecord(
+                    session_id=session_id,
+                    document_id=_text(row["document_id"]),
+                    document_revision=_text(row["document_revision"]),
+                    source_path=_text(row["source_path"]),
+                    retrieval_kind=_text(row["retrieval_kind"]),
+                )
+                bucket = grouped.setdefault(session_id, [])
+                identity = (event.document_id, event.document_revision, event.source_path)
+                if any(
+                    (item.document_id, item.document_revision, item.source_path) == identity
+                    for item in bucket
+                ):
+                    continue
+                bucket.append(event)
+        return {session_id: tuple(events) for session_id, events in grouped.items()}
+
+    def _probe_upsert_parts(
+        self,
+        write: ProbeWrite,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Build the insert and conflict-update payloads for one probe."""
         values: dict[str, object] = {
             "probe_id": write.probe_id,
             "workspace_id": write.workspace_id,
@@ -253,19 +553,7 @@ class AttributionRepository:
         }
         if write.created_run_id is not None:
             updates["created_run_id"] = write.created_run_id
-        statement = self._probe_upsert_statement(values, updates)
-        async with self._database.transaction() as session:
-            await session.execute(statement)
-            probe_id = str(
-                (
-                    await session.execute(
-                        select(probe_reports.c.probe_id).where(
-                            probe_reports.c.cache_key == write.cache_key,
-                        ),
-                    )
-                ).scalar_one(),
-            )
-        return probe_id
+        return values, updates
 
     def _probe_upsert_statement(
         self,
@@ -293,18 +581,20 @@ class AttributionRepository:
             )
         raise ValueError(f"unsupported database dialect for attribution upsert: {dialect}")
 
-    async def upsert_link(
-        self,
-        bad_case_id: str,
-        probe_id: str,
-        now: datetime,
-    ) -> None:
-        """Link a case and probe once, keeping legacy compatibility columns.
+    async def _select_probe_id(self, session: Any, cache_key: str) -> str:
+        """Read the winning probe id after an insert-or-update statement."""
+        return str(
+            (
+                await session.execute(
+                    select(probe_reports.c.probe_id).where(
+                        probe_reports.c.cache_key == cache_key,
+                    ),
+                )
+            ).scalar_one(),
+        )
 
-        V2 rows leave ``analysis_status`` / ``analysis_result`` empty: the probe
-        conclusion is the single source of truth. A conflicting legacy row only
-        refreshes ``updated_at`` so its historical status remains readable.
-        """
+    def _link_statement(self, bad_case_id: str, probe_id: str, now: datetime) -> Any:
+        """Compile the dialect-specific idempotent case-to-probe link."""
         values: dict[str, object] = {
             "bad_case_id": bad_case_id,
             "analysis_status": None,
@@ -313,9 +603,8 @@ class AttributionRepository:
             "updated_at": now,
         }
         dialect = self._database.dialect
-        statement: Any
         if dialect == "sqlite":
-            statement = (
+            return (
                 sqlite_insert(bad_case_analysis)
                 .values(**values)
                 .on_conflict_do_update(
@@ -326,25 +615,17 @@ class AttributionRepository:
                     set_={"updated_at": now},
                 )
             )
-        elif dialect == "mysql":
-            statement = (
+        if dialect == "mysql":
+            return (
                 mysql_insert(bad_case_analysis)
                 .values(**values)
                 .on_duplicate_key_update(updated_at=now)
             )
-        else:
-            raise ValueError(f"unsupported database dialect for attribution link: {dialect}")
-        async with self._database.transaction() as session:
-            await session.execute(statement)
+        raise ValueError(f"unsupported database dialect for attribution link: {dialect}")
 
-    async def reuse(self, probe_id: str, run_id: str, now: datetime) -> int:
-        """Record one cache hit, at most once per run.
-
-        Returns:
-            The number of updated rows: 0 for an unknown probe or a repeated hit
-            from the same run, 1 when the counter advanced.
-        """
-        statement = (
+    def _reuse_statement(self, probe_id: str, run_id: str, now: datetime) -> Any:
+        """Compile one cache-hit counter update, at most once per run."""
+        return (
             update(probe_reports)
             .where(
                 probe_reports.c.probe_id == probe_id,
@@ -357,8 +638,69 @@ class AttributionRepository:
                 updated_at=now,
             )
         )
+
+    def _candidate_update_statement(
+        self,
+        run_id: str,
+        bad_case_id: str,
+        probe_id: str,
+        *,
+        is_cached: bool,
+    ) -> Any:
+        """Point one run candidate at the probe that now owns its conclusion."""
+        return (
+            update(evolution_run_candidates)
+            .where(
+                evolution_run_candidates.c.run_id == run_id,
+                evolution_run_candidates.c.bad_case_id == bad_case_id,
+            )
+            .values(probe_id=probe_id, is_cached=is_cached)
+        )
+
+    async def _require_candidate(
+        self,
+        session: Any,
+        run_id: str,
+        bad_case_id: str,
+    ) -> None:
+        """Reject a no-op candidate update only when the row is really absent."""
+        found = (
+            await session.execute(
+                select(evolution_run_candidates.c.id)
+                .where(
+                    evolution_run_candidates.c.run_id == run_id,
+                    evolution_run_candidates.c.bad_case_id == bad_case_id,
+                )
+                .limit(1),
+            )
+        ).scalar_one_or_none()
+        if found is None:
+            raise LookupError(f"run candidate not found: {run_id}/{bad_case_id}")
+
+    async def upsert_link(
+        self,
+        bad_case_id: str,
+        probe_id: str,
+        now: datetime,
+    ) -> None:
+        """Link a case and probe once, keeping legacy compatibility columns.
+
+        V2 rows leave ``analysis_status`` / ``analysis_result`` empty: the probe
+        conclusion is the single source of truth. A conflicting legacy row only
+        refreshes ``updated_at`` so its historical status remains readable.
+        """
         async with self._database.transaction() as session:
-            result = await session.execute(statement)
+            await session.execute(self._link_statement(bad_case_id, probe_id, now))
+
+    async def reuse(self, probe_id: str, run_id: str, now: datetime) -> int:
+        """Record one cache hit, at most once per run.
+
+        Returns:
+            The number of updated rows: 0 for an unknown probe or a repeated hit
+            from the same run, 1 when the counter advanced.
+        """
+        async with self._database.transaction() as session:
+            result = await session.execute(self._reuse_statement(probe_id, run_id, now))
         return int(getattr(result, "rowcount", 0) or 0)
 
     async def list_attributions(

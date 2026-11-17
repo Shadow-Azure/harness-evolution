@@ -39,6 +39,7 @@ _BLOCKED_STAGE_TO_EVENT_STAGE = {
     "patch": "candidate",
     "push": "push",
     "eval": "eval",
+    "attribution": "prepare",
 }
 
 
