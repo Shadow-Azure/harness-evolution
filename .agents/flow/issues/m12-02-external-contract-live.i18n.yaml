@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-02-external-contract-live.md
-m12-02-external-contract-live.md: 1f141fec1ebc267dad81ca2d3a6b2478dbc4ccec
-m12-02-external-contract-live.en.md: 6a51809d13cafe456bafb323d39f3cd18bbd6e71
+m12-02-external-contract-live.md: fcae3633d37478980992a465b88c58a83f490abd
+m12-02-external-contract-live.en.md: bd73a29e96ebb5387c254a50192f09e56f866b76
