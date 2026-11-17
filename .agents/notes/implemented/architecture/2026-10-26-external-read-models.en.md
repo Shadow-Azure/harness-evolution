@@ -20,4 +20,4 @@ Continuing to assemble issues inside the session service would blur tree and ext
 
 ## Consequences
 
-m4-02 must consume this service and add HTTP error mapping. Drift degrades instead of crashing, and warnings now reach logs both individually and as one per-read summary. External-table owners create the schema before deployment and grant the service account SELECT on the three tables; a missing privilege returns a stable 503 with a sanitized diagnosis in the deployment log. m4-01 provides neither problem HTTP APIs nor an error-detail page.
+m4-02 must consume this service and add HTTP error mapping. Drift degrades instead of crashing, and warnings now reach logs both individually and as one per-read summary. External-table owners create the schema before deployment and grant the read path SELECT on the three tables plus INSERT/UPDATE for the writer paths; a missing privilege returns a stable 503 with a sanitized diagnosis in the deployment log. m4-01 provides neither problem HTTP APIs nor an error-detail page.

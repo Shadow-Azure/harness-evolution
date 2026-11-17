@@ -13,8 +13,13 @@ from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
-from app.db.external_contract import classify_external_failure, read_only_guard
+from app.db.external_contract import (
+    classify_external_failure,
+    classify_external_read_error,
+    read_only_guard,
+)
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
+from app.errors import ErrorCode
 from app.utils.time import as_shanghai
 
 logger = logging.getLogger(__name__)
@@ -296,11 +301,17 @@ class BadCaseRepository:
                 ).all()
         except (OperationalError, ProgrammingError, DBAPIError) as exc:
             code = classify_external_failure(exc)
+            if code is ErrorCode.EXTERNAL_READ_FORBIDDEN:
+                raise classify_external_read_error(
+                    exc,
+                    table="bad_cases,bad_case_analysis",
+                    dialect=getattr(self._database, "dialect", "unknown"),
+                ) from None
             logger.warning(
                 "external problem table analysis progress degraded",
                 extra={
                     "event": "external.read_failed",
-                    "table": "bad_cases",
+                    "table": "bad_cases,bad_case_analysis",
                     "dialect": getattr(self._database, "dialect", "unknown"),
                     "error_class": type(exc).__name__,
                     "code": code.value,
@@ -407,7 +418,7 @@ class BadCaseRepository:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_probe(row) if row is not None else None
 
-    @read_only_guard("bad_case_analysis")
+    @read_only_guard("probe_reports,bad_case_analysis")
     async def probe_source_candidates(
         self,
         probe_id: str,
@@ -427,7 +438,7 @@ class BadCaseRepository:
             if _text(row["bad_case_id"]) is not None
         )
 
-    @read_only_guard("probe_reports")
+    @read_only_guard("probe_reports,bad_case_analysis")
     async def get_probe_snapshot(self, probe_id: str) -> ProbeSnapshot:
         """Read one probe and reverse links in one database session."""
         probe_statement = select(probe_reports).where(

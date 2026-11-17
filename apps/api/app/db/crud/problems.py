@@ -76,7 +76,7 @@ class ProblemRepository:
             self._bad_cases_ready = await bad_cases_table_present(self._database)
         return self._bad_cases_ready
 
-    @read_only_guard("bad_cases")
+    @read_only_guard("bad_cases", strict=False)
     async def session_snapshot(
         self,
         session_id: str,
@@ -100,7 +100,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
-    @read_only_guard("bad_cases")
+    @read_only_guard("bad_cases", strict=False)
     async def case_snapshot(
         self,
         case_id: str,
@@ -126,7 +126,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
-    @read_only_guard("bad_cases")
+    @read_only_guard("bad_cases", strict=False)
     async def case_visible(self, case_id: str, scope: WorkspaceReadScope) -> bool:
         """Return whether one case exists inside the caller's workspace scope."""
         if not await self._scoped_reads_available():
@@ -219,7 +219,7 @@ class ProblemRepository:
             )
             return ProbeListSnapshot(session=family, probes=probes, sources=sources)
 
-    @read_only_guard("probe_reports")
+    @read_only_guard("probe_reports,bad_case_analysis", strict=False)
     async def probe_visible(
         self,
         probe_id: str,

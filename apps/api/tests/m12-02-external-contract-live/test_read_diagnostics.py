@@ -88,9 +88,9 @@ async def test_bad_case_repository_and_attribution_reads_are_guarded(
             await attributions.count_links(CASE_1)
     assert case_error.value.code is ErrorCode.EXTERNAL_READ_FORBIDDEN
     assert count_error.value.code is ErrorCode.EXTERNAL_READ_FORBIDDEN
-    assert {failure.table for failure in _failure_events(caplog)} == {
+    assert {cast(Any, failure).table for failure in _failure_events(caplog)} == {
         "bad_cases",
-        "bad_case_analysis",
+        "bad_case_analysis,probe_reports",
     }
 
 
@@ -111,20 +111,13 @@ async def test_analysis_progress_degrades_to_zero_when_tables_are_missing(
     assert failures and cast(Any, failures[-1]).code == "EXTERNAL_SCHEMA_DRIFT"
 
 
-async def test_analysis_progress_degrades_on_permission_denied(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A SELECT-denied account degrades the popover with the permission code."""
+async def test_analysis_progress_raises_on_permission_denied() -> None:
+    """A SELECT-denied account is a diagnosable 503, not a silent zero."""
     repository = BadCaseRepository(as_database(FailingDatabase(permission_error())))
-    with caplog.at_level(logging.WARNING, logger="app.db.crud.bad_cases"):
-        progress = await repository.analysis_progress()
-    assert progress.total == 0
-    failures = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "external.read_failed"
-    ]
-    assert failures and cast(Any, failures[-1]).code == "EXTERNAL_READ_FORBIDDEN"
+    with pytest.raises(AppError) as captured:
+        await repository.analysis_progress()
+    assert captured.value.code is ErrorCode.EXTERNAL_READ_FORBIDDEN
+    assert captured.value.status_code == 503
 
 
 async def test_app_error_is_not_rewrapped() -> None:
@@ -185,3 +178,26 @@ def test_classifier_treats_missing_table_as_schema_drift() -> None:
     )
     result = classify_external_read_error(error, table="bad_cases", dialect="sqlite")
     assert result.code is ErrorCode.EXTERNAL_SCHEMA_DRIFT
+
+
+async def test_read_guard_classifies_pool_timeout_to_a_stable_503() -> None:
+    """A pool checkout timeout is an external read failure, not a 500."""
+    from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+
+    repository = BadCaseRepository(as_database(FailingDatabase(PoolTimeoutError("pool"))))
+    with pytest.raises(AppError) as captured:
+        await repository.get_case(CASE_1)
+    assert captured.value.code is ErrorCode.EXTERNAL_READ_FAILED
+    assert captured.value.status_code == 503
+
+
+async def test_mixed_read_reraises_internal_table_failures() -> None:
+    """A missing internal table is not mislabelled as external schema drift."""
+    internal = OperationalError(
+        "SELECT * FROM session_families",
+        {},
+        Exception("no such table: session_families"),
+    )
+    repository = ProblemRepository(as_database(FailingDatabase(internal)))
+    with pytest.raises(OperationalError):
+        await repository.session_snapshot(SESSION_1, SCOPE)

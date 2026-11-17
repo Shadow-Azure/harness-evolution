@@ -276,6 +276,8 @@ async def test_start_and_stop_are_idempotent(
     task = monitor._task
     await monitor.start()
     assert monitor._task is task
+    for _ in range(3):
+        await asyncio.sleep(0)
     await monitor.stop()
     assert calls == 1
 
@@ -331,10 +333,11 @@ def test_type_drift_rejects_a_narrowed_column() -> None:
 
 def test_type_family_accepts_mysql_text_and_case_insensitive_names() -> None:
     """MySQL reflection and case-insensitive DDL must not create false drift."""
-    from sqlalchemy.dialects.mysql import LONGTEXT, MEDIUMTEXT
+    from sqlalchemy.dialects.mysql import LONGTEXT, MEDIUMTEXT, TINYTEXT
 
     assert contract._family(LONGTEXT()) == "text"
     assert contract._family(MEDIUMTEXT()) == "text"
+    assert contract._family(TINYTEXT()) == "varchar"
     assert contract._family(String(64)) == "varchar"
 
 

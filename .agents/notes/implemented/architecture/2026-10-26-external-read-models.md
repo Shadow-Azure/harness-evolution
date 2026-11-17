@@ -20,4 +20,4 @@ Status: implemented
 
 ## Consequences
 
-m4-02 必须通过这个 service 消费问题并补充 HTTP 错误映射。外部字段继续漂移时页面会降级而不是崩溃；warning 现在同时以单条 warning 与一次读取的汇总事件进入日志。外部表所有者在部署前创建 schema，并给服务账号授予三表 SELECT；缺少权限时 API 返回稳定 503，部署日志给出脱敏后的权限诊断。m4-01 不提供问题 API 或前端页面。
+m4-02 必须通过这个 service 消费问题并补充 HTTP 错误映射。外部字段继续漂移时页面会降级而不是崩溃；warning 现在同时以单条 warning 与一次读取的汇总事件进入日志。外部表所有者在部署前创建 schema，并给服务账号授予读路径所需的三表 SELECT、写入路径所需的 INSERT/UPDATE；缺少权限时 API 返回稳定 503，部署日志给出脱敏后的权限诊断。m4-01 不提供问题 API 或前端页面。

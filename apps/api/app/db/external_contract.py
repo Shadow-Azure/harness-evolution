@@ -31,6 +31,7 @@ from sqlalchemy import (
     String,
     Text,
     inspect,
+    text,
 )
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -177,7 +178,7 @@ class ExternalContractReport:
         return len(self.drifts)
 
 
-_TEXT_TYPE_NAMES = frozenset({"TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT"})
+_TEXT_TYPE_NAMES = frozenset({"TEXT", "MEDIUMTEXT", "LONGTEXT"})
 _INTEGER_TYPE_NAMES = frozenset(
     {"TINYINT", "SMALLINT", "MEDIUMINT", "INTEGER", "BIGINT"},
 )
@@ -256,6 +257,16 @@ def _inspect_schema(sync_connection: Any) -> list[ExternalContractDrift]:
     drifts: list[ExternalContractDrift] = []
     for table in EXTERNAL_TABLES:
         if not inspector.has_table(table.name):
+            # information_schema hides tables the account cannot read. Probe with
+            # a zero-row SELECT so a missing privilege surfaces as forbidden
+            # instead of a false "not provisioned" report.
+            try:
+                sync_connection.execute(
+                    text(f"SELECT 1 FROM {table.name} LIMIT 0"),  # noqa: S608
+                )
+            except (OperationalError, ProgrammingError) as exc:
+                if _classify_failure(exc) is ErrorCode.EXTERNAL_READ_FORBIDDEN:
+                    raise
             drifts.append(
                 ExternalContractDrift(
                     table=table.name,
@@ -393,13 +404,31 @@ def classify_external_read_error(
     return AppError(status_code=503, code=code, message=_FAILURE_MESSAGES[code])
 
 
+def _mentions_external_table(exc: BaseException) -> bool:
+    """Return whether a database error names one of the external tables.
+
+    The driver message may omit the table (for example a missing column), so the
+    failing statement is included for detection and never written to the log.
+    """
+    statement = str(getattr(exc, "statement", "") or "")
+    text = f"{_error_text(exc)} {statement}".lower()
+    return any(table.name in text for table in EXTERNAL_TABLES)
+
+
 def read_only_guard(
     table: str,
+    *,
+    strict: bool = True,
 ) -> Callable[
     [Callable[_P, Coroutine[Any, Any, _R]]],
     Callable[_P, Coroutine[Any, Any, _R]],
 ]:
-    """Decorate one read method with the external table error boundary."""
+    """Decorate one read method with the external table error boundary.
+
+    ``strict`` is for methods that only read the three external tables. Mixed
+    reads (session tree plus problem rows) pass ``strict=False`` so a missing or
+    mis-granted internal table is not mislabelled as external-table drift.
+    """
 
     def decorate(
         operation: Callable[_P, Coroutine[Any, Any, _R]],
@@ -411,6 +440,23 @@ def read_only_guard(
             except AppError:
                 raise
             except (OperationalError, ProgrammingError, DBAPIError) as exc:
+                if not strict and not (
+                    isinstance(exc, TimeoutError) or _mentions_external_table(exc)
+                ):
+                    raise
+                repository = args[0] if args else None
+                database = getattr(repository, "_database", None)
+                dialect = getattr(database, "dialect", "unknown")
+                raise classify_external_read_error(
+                    exc,
+                    table=table,
+                    dialect=dialect,
+                ) from None
+            except SQLAlchemyError as exc:
+                if not strict and not (
+                    isinstance(exc, TimeoutError) or _mentions_external_table(exc)
+                ):
+                    raise
                 repository = args[0] if args else None
                 database = getattr(repository, "_database", None)
                 dialect = getattr(database, "dialect", "unknown")
@@ -488,7 +534,7 @@ def _log_report(
 ) -> None:
     """Emit one aggregate check record and bounded per-drift warnings."""
     missing_tables = [drift for drift in report.drifts if drift.kind == "missing_table"]
-    only_missing_tables = len(missing_tables) == len(report.drifts) and bool(missing_tables)
+    only_missing_tables = bool(missing_tables) and len(missing_tables) == len(EXTERNAL_TABLES)
     extra = {
         "event": "external.contract_check",
         "status": report.status,
@@ -567,15 +613,10 @@ class ExternalContractMonitor:
             return self._report
 
     async def start(self) -> None:
-        """Run one check at startup and schedule the periodic loop."""
+        """Schedule the first check and the periodic loop without blocking startup."""
         if self._task is not None:
             return
-        try:
-            await self.refresh()
-        except Exception:
-            # Monitoring must never turn a failed check into a startup outage.
-            logger.exception("external contract monitor startup check failed")
-        self._task = asyncio.create_task(self._loop())
+        self._task = asyncio.create_task(self._loop(initial=True))
 
     async def stop(self) -> None:
         """Cancel the periodic loop without failing application shutdown."""
@@ -601,7 +642,15 @@ class ExternalContractMonitor:
         )
         return report
 
-    async def _loop(self) -> None:
+    async def _loop(self, *, initial: bool = False) -> None:
+        if initial:
+            try:
+                await self.refresh()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Monitoring must never turn a failed check into a startup outage.
+                logger.exception("external contract monitor startup check failed")
         while True:
             try:
                 await self._sleep(self._interval)
