@@ -10,13 +10,16 @@ depends:
   - m10-02
   - m10-03
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/overview.py
   - apps/api/app/service/overview/**
   - apps/api/app/db/crud/**
+  - apps/api/app/main.py
+  - apps/api/tests/**
   - packages/contracts/**
   - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

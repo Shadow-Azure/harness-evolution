@@ -1437,6 +1437,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/overview/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Targets
+         * @description Return target summary totals and one evolvable-sorted page.
+         */
+        get: operations["get_overview_targets_api_workspaces__wid__overview_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/overview/targets/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Target Cases
+         * @description Return one filtered page of potential cases under their target versions.
+         */
+        get: operations["get_overview_target_cases_api_workspaces__wid__overview_targets_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/overview/targets/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Targets Trend
+         * @description Return the selected targets' three-state trend, zero-filled per bucket.
+         */
+        get: operations["get_overview_targets_trend_api_workspaces__wid__overview_targets_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/overview/targets/{targetId}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Overview Target Detail
+         * @description Return one target's independent version and source analysis.
+         */
+        get: operations["get_overview_target_detail_api_workspaces__wid__overview_targets__targetId__detail_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/overview/trend": {
         parameters: {
             query?: never;
@@ -4292,6 +4372,290 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "reused" | "idle";
+        };
+        /**
+         * TargetCaseItem
+         * @description One potential case under one target version, with its attribution state.
+         */
+        TargetCaseItem: {
+            /**
+             * Attributionid
+             * @description The probe id of the newest attribution for this target version.
+             */
+            attributionId?: string | null;
+            /** Badcaseid */
+            badCaseId: string;
+            /**
+             * Badcasetype
+             * @enum {string}
+             */
+            badCaseType: "self" | "discovery";
+            /**
+             * Category
+             * @description Attribution category; only present for the attributed state.
+             */
+            category?: ("model" | "prompt" | "error") | null;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Objectversion */
+            objectVersion: string;
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * Source
+             * @description The object name the bad case was reported against.
+             */
+            source: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "attributed" | "nonTarget" | "unanalyzed";
+            /** Title */
+            title: string;
+        };
+        /**
+         * TargetCaseListResponse
+         * @description One filtered page of potential cases plus its authoritative total.
+         */
+        TargetCaseListResponse: {
+            /** Items */
+            items: components["schemas"]["TargetCaseItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /**
+         * TargetDetailResponse
+         * @description One target's version and source analysis under an independent filter.
+         */
+        TargetDetailResponse: {
+            /** Bysource */
+            bySource: components["schemas"]["TargetDetailSource"][];
+            /** Byversion */
+            byVersion: components["schemas"]["TargetDetailVersion"][];
+            stats: components["schemas"]["TargetDetailStats"];
+            target: components["schemas"]["TargetDetailTarget"];
+        };
+        /**
+         * TargetDetailSource
+         * @description One reported source and its potential cases inside the selected scope.
+         */
+        TargetDetailSource: {
+            /** Distinctcases */
+            distinctCases: number;
+            /** Source */
+            source: string;
+            /** Total */
+            total: number;
+        };
+        /**
+         * TargetDetailStats
+         * @description The detail card's four counters.
+         */
+        TargetDetailStats: {
+            /** Distinctcases */
+            distinctCases: number;
+            /** Potential */
+            potential: number;
+            /** Sessions */
+            sessions: number;
+            /** Versions */
+            versions: number;
+        };
+        /**
+         * TargetDetailTarget
+         * @description The configured target a detail card is about and every version it has.
+         */
+        TargetDetailTarget: {
+            /** Defaultref */
+            defaultRef: string;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Targetid */
+            targetId: string;
+            /** Versions */
+            versions: string[];
+        };
+        /**
+         * TargetDetailVersion
+         * @description One version's contribution inside the selected detail scope.
+         */
+        TargetDetailVersion: {
+            /** Attributed */
+            attributed: number;
+            /** Nontarget */
+            nonTarget: number;
+            /** Potential */
+            potential: number;
+            /** Unanalyzed */
+            unanalyzed: number;
+            /** Version */
+            version: string;
+        };
+        /**
+         * TargetOverviewItem
+         * @description One target's potential cases and their three-state attribution split.
+         *
+         *     ``potential`` counts one row per ``(badCaseId, targetVersion)`` pair, so the
+         *     same bad case may contribute once for each version it is potential under;
+         *     ``attributed + nonTarget + unanalyzed`` therefore always equals ``potential``.
+         */
+        TargetOverviewItem: {
+            /** Attributed */
+            attributed: number;
+            /**
+             * Evolvable
+             * @description Attributed plus unanalyzed potential rows; the list sort key.
+             */
+            evolvable: number;
+            /** Nontarget */
+            nonTarget: number;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Potential */
+            potential: number;
+            /** Sessions */
+            sessions: number;
+            /** Targetid */
+            targetId: string;
+            /** Unanalyzed */
+            unanalyzed: number;
+            /**
+             * Versions
+             * @description Versions this target was observed at inside the window, plus its configured defaultRef, ordered by descending natural version.
+             */
+            versions: string[];
+        };
+        /**
+         * TargetOverviewListResponse
+         * @description One target page plus the workspace-wide summary.
+         */
+        TargetOverviewListResponse: {
+            /** Items */
+            items: components["schemas"]["TargetOverviewItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            summary: components["schemas"]["TargetOverviewSummary"];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TargetOverviewSummary
+         * @description Totals across every enabled target in the workspace and the window.
+         */
+        TargetOverviewSummary: {
+            /** Attributed */
+            attributed: number;
+            /** Nontarget */
+            nonTarget: number;
+            /** Potential */
+            potential: number;
+            /**
+             * Sessions
+             * @description Sum of each target's associated Session count; a Session that contains several targets is counted once per target.
+             */
+            sessions: number;
+            /** Targets */
+            targets: number;
+            /** Unanalyzed */
+            unanalyzed: number;
+        };
+        /**
+         * TargetTrendBucket
+         * @description One continuous, zero-filled target trend bucket.
+         */
+        TargetTrendBucket: {
+            /** Attributed */
+            attributed: number;
+            /**
+             * Bucket
+             * Format: date
+             */
+            bucket: string;
+            /** Bytarget */
+            byTarget: components["schemas"]["TargetTrendByTarget"][];
+            /**
+             * Label
+             * @description MM-DD for day/week buckets, YYYY-MM for month buckets.
+             */
+            label: string;
+            /** Nontarget */
+            nonTarget: number;
+            /** Unanalyzed */
+            unanalyzed: number;
+        };
+        /**
+         * TargetTrendByTarget
+         * @description One target's contribution to one trend bucket.
+         */
+        TargetTrendByTarget: {
+            /** Attributed */
+            attributed: number;
+            /** Nontarget */
+            nonTarget: number;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Targetid */
+            targetId: string;
+            /** Unanalyzed */
+            unanalyzed: number;
+        };
+        /**
+         * TargetTrendMeta
+         * @description The bucket-time policy the response actually applied.
+         */
+        TargetTrendMeta: {
+            /**
+             * Bucketpolicy
+             * @description attributed and nonTarget rows use probe updatedAt; unanalyzed rows use the bad case createdAt.
+             */
+            bucketPolicy: string;
+        };
+        /**
+         * TargetTrendResponse
+         * @description The continuous target trend series and its effective grain.
+         */
+        TargetTrendResponse: {
+            /** Buckets */
+            buckets: components["schemas"]["TargetTrendBucket"][];
+            /**
+             * Grain
+             * @enum {string}
+             */
+            grain: "day" | "week" | "month";
+            meta: components["schemas"]["TargetTrendMeta"];
+            window: components["schemas"]["OverviewWindow"];
         };
         /**
          * TicketRequest
@@ -9311,6 +9675,291 @@ export interface operations {
                 };
             };
             /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_targets_api_workspaces__wid__overview_targets_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Page size; defaults to 5. */
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetOverviewListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_target_cases_api_workspaces__wid__overview_targets_cases_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
+                /** @description Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target. */
+                targets?: string[] | null;
+                /** @description Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed. */
+                objects?: string[] | null;
+                /** @description Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all. */
+                states?: "attributed" | "nonTarget" | "unanalyzed";
+                /** @description 1-based page number. */
+                page?: number;
+                /** @description Page size; defaults to 8. */
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetCaseListResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_targets_trend_api_workspaces__wid__overview_targets_trend_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
+                /** @description Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target. */
+                targets?: string[] | null;
+                /** @description Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all. */
+                states?: "attributed" | "nonTarget" | "unanalyzed";
+                /** @description Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain. */
+                grain?: "day" | "week" | "month";
+            };
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetTrendResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_overview_target_detail_api_workspaces__wid__overview_targets__targetId__detail_get: {
+        parameters: {
+            query?: {
+                /** @description Inclusive Asia/Shanghai start date (YYYY-MM-DD). */
+                from?: string | null;
+                /** @description Inclusive Asia/Shanghai end date (YYYY-MM-DD). */
+                to?: string | null;
+                /** @description Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied. */
+                range?: 7 | 30 | 90;
+                /** @description Target versions for one detail card. Repeat the parameter or pass a comma-separated value; empty selects the highest versionLimit versions. */
+                versions?: string[] | null;
+                /** @description Version count when versions is empty: 5, 10, 20, or 0 for all. */
+                versionLimit?: 0 | 5 | 10 | 20;
+            };
+            header?: never;
+            path: {
+                wid: string;
+                targetId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TargetDetailResponse"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace or target does not exist */
             404: {
                 headers: {
                     [name: string]: unknown;

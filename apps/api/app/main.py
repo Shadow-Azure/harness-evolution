@@ -40,6 +40,7 @@ from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.evolution_targets import EvolutionTargetRepository
 from app.db.crud.jobs import JobRepository
 from app.db.crud.overview import OverviewRepository
+from app.db.crud.overview_targets import TargetOverviewRepository
 from app.db.crud.potential import PotentialRepository
 from app.db.crud.probe_query import ProbeQueryRepository
 from app.db.crud.problems import ProblemRepository
@@ -102,6 +103,7 @@ from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
 from app.service.overview.service import OverviewService
+from app.service.overview.targets import TargetOverviewService
 from app.service.problems.service import ProblemService
 from app.service.sessions.service import SessionService
 from app.service.workspaces.ingest import BadCaseIngestService
@@ -272,6 +274,11 @@ def create_app(
     attribution_repository = AttributionRepository(resolved_database)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
     potential_matcher = PotentialMatcher(PotentialRepository(resolved_database))
+    target_overview = TargetOverviewService(
+        target_repository,
+        TargetOverviewRepository(resolved_database),
+        potential_matcher,
+    )
     attribution_runner = AttributionRunner(attribution_repository)
     evolution_stages = EvolutionStageService(
         evolution_repository,
@@ -507,6 +514,7 @@ def create_app(
     app.state.evolution_events = evolution_events
     app.state.sessions = sessions
     app.state.overview = overview
+    app.state.target_overview = target_overview
     app.state.workspaces = workspaces
     app.state.bad_case_ingest = bad_case_ingest
     app.state.problems = problems
