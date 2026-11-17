@@ -3,7 +3,7 @@ import { Handle, Position } from "@vue-flow/core";
 import { inject } from "vue";
 
 import { BAD_CASE_SELECT_KEY } from "../interactions";
-import type { BadCaseLayoutNodeData } from "../types";
+import type { BadCaseLayoutNodeData } from "../../types";
 
 const props = defineProps<{
   data: BadCaseLayoutNodeData;

@@ -15,7 +15,7 @@ import type {
 } from "@harness/contracts";
 
 import ErrorsPage from "./Index.vue";
-import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
+import { demoCoreTree } from "../../components/agent-tree/tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
@@ -26,17 +26,20 @@ const ws = `/workspaces/${workspaceId}`;
 const sessionsBase = `/api/workspaces/${workspaceId}/sessions`;
 const badCasesBase = `/api/workspaces/${workspaceId}/bad-cases`;
 
-vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
+vi.mock("../../components/agent-tree/AgentFlow.vue", async () => {
   const { defineComponent, h } = await import("vue");
-  const AgentTree = defineComponent({
-    name: "AgentTree",
+  const AgentFlow = defineComponent({
+    name: "AgentFlow",
     props: {
       tree: { type: Object, required: true },
       expanded: { type: Array, default: () => [] },
       activeBadCaseId: { type: String, default: null },
       problems: { type: Array, default: () => [] },
+      dagHeight: { type: String, default: "" },
+      treeHeight: { type: String, default: "" },
+      defaultMode: { type: String, default: "dag" },
     },
-    emits: ["badcase-select", "toggle-expanded"],
+    emits: ["badcase-select", "toggle-expanded", "collapse-all"],
     setup(props, { emit }) {
       return () => h("div", { "data-testid": "errors-agent-tree" }, [
         h("span", `badcases:${props.problems.length}`),
@@ -59,7 +62,7 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
     __esModule: true,
     __isKeepAlive: false,
     __isTeleport: false,
-    default: AgentTree,
+    default: AgentFlow,
   };
 });
 
@@ -394,7 +397,7 @@ describe("error detail page", () => {
     expect(group.text()).toContain("1 / 2");
     expect(wrapper.get("#attr-tab").text()).toBe("归因分析 (4)");
     expect(wrapper.get(".flow-head span").text()).toBe(
-      "仅显示 #2 · 索引读取失败",
+      "保留全部并发分支，高亮 #2 · 索引读取失败",
     );
   });
 

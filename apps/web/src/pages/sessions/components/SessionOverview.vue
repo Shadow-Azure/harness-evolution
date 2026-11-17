@@ -19,8 +19,8 @@ import {
   formatTokens,
 } from "../../../utils/sessionDisplay";
 
-const AgentTree = defineAsyncComponent(
-  () => import("../../../components/agent-tree/AgentTree.vue"),
+const AgentFlow = defineAsyncComponent(
+  () => import("../../../components/agent-tree/AgentFlow.vue"),
 );
 
 const props = defineProps({
@@ -104,8 +104,8 @@ const emit = defineEmits<{
   "badcase-select": [badCaseId: string];
 }>();
 
-const agentTreeRef = ref<{
-  locateBadCase: (badCaseId: string) => Promise<void>;
+const agentFlowRef = ref<{
+  locateBadCase: (badCaseId: string) => void | Promise<void>;
 } | null>(null);
 const badCaseListRef = ref<{
   scrollToProblem: (badCaseId: string) => void;
@@ -137,7 +137,7 @@ async function selectBadCase(badCaseId: string) {
   activeBadCaseId.value = badCaseId;
   emit("badcase-select", badCaseId);
   await nextTick();
-  await agentTreeRef.value?.locateBadCase(badCaseId);
+  await agentFlowRef.value?.locateBadCase(badCaseId);
   await nextTick();
   badCaseListRef.value?.scrollToProblem(badCaseId);
 }
@@ -239,16 +239,7 @@ const stats = computed<Array<{
       >
         <header class="tree-head">
           <strong id="agent-tree-title">Agent 执行流</strong>
-          <span>横条长度表示轨迹行数，状态记号定位 Skill、Agent 与 Workflow 触发点。</span>
-          <button
-            v-if="expandedAgentIds.length"
-            class="collapse-tree"
-            data-testid="collapse-tree"
-            type="button"
-            @click="emit('collapse-all')"
-          >
-            收起分支
-          </button>
+          <span>默认执行序 lane DAG；结构树保留为切换视图。</span>
         </header>
         <LoadingSkeleton
           v-if="treeLoading"
@@ -262,8 +253,8 @@ const stats = computed<Array<{
           @retry="emit('tree-retry')"
         />
         <template v-else-if="tree">
-          <AgentTree
-            ref="agentTreeRef"
+          <AgentFlow
+            ref="agentFlowRef"
             :active-bad-case-id="activeBadCaseId"
             :active-agent-id="activeAgentId"
             :active-event-index="activeEventIndex"
@@ -271,18 +262,10 @@ const stats = computed<Array<{
             :problems="problems"
             :tree="tree"
             @badcase-select="selectBadCase"
+            @collapse-all="emit('collapse-all')"
             @node-select="emit('node-select', $event)"
             @toggle-expanded="emit('toggle-expanded', $event)"
           />
-          <div
-            class="tree-legend"
-            aria-label="执行流图例"
-          >
-            <span class="skill">◆ Skill</span>
-            <span class="subagent">◆ Subagent</span>
-            <span class="workflow">◆ Workflow</span>
-            <span class="gap">×N 消息</span>
-          </div>
         </template>
         <div
           v-else
@@ -482,6 +465,11 @@ const stats = computed<Array<{
   box-shadow: var(--shadow-card);
 }
 
+.tree-panel :deep(.agent-flow) {
+  min-width: 0;
+}
+
+.tree-panel :deep(.ld-view),
 .tree-panel :deep(.agent-tree) {
   border: 0;
   border-radius: 0;
@@ -503,53 +491,6 @@ const stats = computed<Array<{
 .tree-head span {
   color: var(--text-faint);
   font-size: 10.5px;
-}
-
-.tree-legend {
-  position: absolute;
-  bottom: 17px;
-  left: 18px;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 96px);
-  padding: 4px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-  color: var(--text-faint);
-  font-size: 10px;
-  flex-wrap: wrap;
-}
-
-.tree-legend .skill {
-  color: var(--cyan);
-}
-
-.tree-legend .subagent {
-  color: var(--purple);
-}
-
-.tree-legend .workflow {
-  color: var(--orange);
-}
-
-.collapse-tree {
-  margin-left: 4px;
-  padding: 3px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-card);
-  color: var(--text-dim);
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-}
-
-.collapse-tree:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
 }
 
 .tree-placeholder {
@@ -598,8 +539,7 @@ const stats = computed<Array<{
 }
 
 @media (max-width: 860px) {
-  .tree-placeholder,
-  .tree-panel :deep(.agent-tree) {
+  .tree-placeholder {
     min-height: 420px;
   }
 

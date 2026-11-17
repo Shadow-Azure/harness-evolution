@@ -31,7 +31,7 @@ import OrthEdge from "./edges/OrthEdge.vue";
 import TriggerEdge from "./edges/TriggerEdge.vue";
 import { BAD_CASE_SELECT_KEY } from "./interactions";
 import { buildGraph } from "./layout";
-import type { AgentLayoutNode, MeasureText } from "./types";
+import type { AgentLayoutNode, MeasureText } from "../types";
 
 defineOptions({ name: "AgentTree" });
 

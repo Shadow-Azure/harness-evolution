@@ -30,7 +30,7 @@ vi.mock("@vue-flow/core", async () => {
 });
 
 import AgentNode from "./AgentNode.vue";
-import type { AgentLayoutNodeData } from "../types";
+import type { AgentLayoutNodeData } from "../../types";
 
 const data: AgentLayoutNodeData = {
   label: "主会话",

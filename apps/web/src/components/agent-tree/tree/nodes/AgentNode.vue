@@ -9,7 +9,7 @@ import {
   TRIGGER_HANDLE_TOP,
 } from "../layout";
 import { RELATION_LABELS } from "../labels";
-import type { AgentLayoutNodeData } from "../types";
+import type { AgentLayoutNodeData } from "../../types";
 
 const props = defineProps<{
   data: AgentLayoutNodeData;
