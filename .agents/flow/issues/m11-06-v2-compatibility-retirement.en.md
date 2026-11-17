@@ -9,7 +9,7 @@ milestone: m11
 depends:
   - m11-05
 priority: P1
-status: in-progress
+status: done
 scope:
   - docs/**
   - plans/**
