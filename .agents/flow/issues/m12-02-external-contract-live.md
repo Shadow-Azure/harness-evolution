@@ -16,6 +16,7 @@ scope:
   - apps/api/alembic/**
   - plans/**
   - scripts/doc-budgets.manifest.json
+  - packages/contracts/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
