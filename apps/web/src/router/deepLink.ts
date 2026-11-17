@@ -7,6 +7,10 @@ export interface SessionDeepLinkState {
   agentId: string | null;
   eventIndex: number | null;
   badCaseId: string | null;
+  /** Selected attribution deep link on the error surface. */
+  attributionId: string | null;
+  /** Prototype-compatible object fallback when no attribution id resolves. */
+  objectName: string | null;
   tab: DeepLinkTab;
 }
 
@@ -45,6 +49,8 @@ export type BadCaseSessionResolution =
 const SESSION_ID_MAX = 36;
 const AGENT_ID_MAX = 64;
 const BAD_CASE_ID_MAX = 64;
+const ATTRIBUTION_ID_MAX = 64;
+const OBJECT_NAME_MAX = 128;
 const SAFE_ID = /^[A-Za-z0-9_.:@-]+$/;
 
 function hasControlCharacter(value: string): boolean {
@@ -104,6 +110,18 @@ function validQueryId(
   );
 }
 
+function validQueryText(
+  value: string,
+  maxLength: number,
+): boolean {
+  return (
+    value.trim() === value &&
+    value.length > 0 &&
+    value.length <= maxLength &&
+    !hasControlCharacter(value)
+  );
+}
+
 /**
  * Parse and canonicalize Session deep-link state.
  * @param rawSessionId Session id taken from the already-decoded Vue Router path segment.
@@ -152,6 +170,14 @@ export function parseSessionDeepLink(
     ok: true,
     value: null,
   };
+  let attributionValue: { ok: true; value: string | null } | { ok: false } = {
+    ok: true,
+    value: null,
+  };
+  let objectValue: { ok: true; value: string | null } | { ok: false } = {
+    ok: true,
+    value: null,
+  };
   if (surface === "error") {
     caseValue = queryString(query, "case");
     if (
@@ -166,9 +192,36 @@ export function parseSessionDeepLink(
     if (!tabValue.ok) {
       return invalid("tab", "链接中的详情页签无效");
     }
+
+    attributionValue = queryString(query, "at");
+    if (
+      !attributionValue.ok ||
+      (attributionValue.value !== null &&
+        !validQueryId(attributionValue.value, ATTRIBUTION_ID_MAX))
+    ) {
+      return invalid("at", "链接中的归因无效");
+    }
+    if (attributionValue.value !== null && caseValue.value === null) {
+      return invalid("at", "归因链接必须同时指定问题");
+    }
+
+    objectValue = queryString(query, "obj");
+    if (
+      !objectValue.ok ||
+      (objectValue.value !== null &&
+        !validQueryText(objectValue.value, OBJECT_NAME_MAX))
+    ) {
+      return invalid("obj", "链接中的对象无效");
+    }
+    if (objectValue.value !== null && caseValue.value === null) {
+      return invalid("obj", "对象定位必须同时指定问题");
+    }
   }
   const tab: DeepLinkTab =
     caseValue.value !== null && tabValue.value === "attr" ? "attr" : "desc";
+  const attributionId =
+    tab === "attr" ? attributionValue.value : null;
+  const objectName = tab === "attr" ? objectValue.value : null;
 
   const canonicalQuery: Record<string, string> = {};
   if (agent.value !== null) {
@@ -182,6 +235,11 @@ export function parseSessionDeepLink(
     if (tab === "attr") {
       canonicalQuery.tab = "attr";
     }
+    if (attributionId !== null) {
+      canonicalQuery.at = attributionId;
+    } else if (objectName !== null) {
+      canonicalQuery.obj = objectName;
+    }
   }
 
   return {
@@ -191,6 +249,8 @@ export function parseSessionDeepLink(
       agentId: agent.value,
       eventIndex,
       badCaseId: caseValue.value,
+      attributionId,
+      objectName,
       tab,
     },
     canonicalQuery,

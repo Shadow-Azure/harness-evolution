@@ -19,6 +19,8 @@ describe("session deep links", () => {
         agentId: "agent-1",
         eventIndex: 2,
         badCaseId: null,
+        attributionId: null,
+        objectName: null,
         tab: "desc",
       },
       canonicalQuery: {
@@ -110,6 +112,98 @@ describe("session deep links", () => {
         tab: "attr",
       },
     });
+  });
+
+  it("parses the at attribution and obj fallback on the error surface", () => {
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        {
+          case: "case-1",
+          tab: "attr",
+          at: "AT-0001",
+        },
+        "error",
+      ),
+    ).toMatchObject({
+      ok: true,
+      state: {
+        badCaseId: "case-1",
+        attributionId: "AT-0001",
+        objectName: null,
+        tab: "attr",
+      },
+      canonicalQuery: {
+        case: "case-1",
+        tab: "attr",
+        at: "AT-0001",
+      },
+    });
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        {
+          case: "case-1",
+          tab: "attr",
+          obj: "review agent",
+        },
+        "error",
+      ),
+    ).toMatchObject({
+      ok: true,
+      state: { attributionId: null, objectName: "review agent" },
+      canonicalQuery: { obj: "review agent" },
+    });
+  });
+
+  it("drops at and obj when the tab is not the attribution tab", () => {
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        {
+          case: "case-1",
+          tab: "desc",
+          at: "AT-0001",
+          obj: "review-agent",
+        },
+        "error",
+      ),
+    ).toMatchObject({
+      ok: true,
+      state: {
+        attributionId: null,
+        objectName: null,
+        tab: "desc",
+      },
+      canonicalQuery: { case: "case-1" },
+    });
+  });
+
+  it("rejects attribution links without a problem and invalid values", () => {
+    expect(
+      parseSessionDeepLink("root-1", { tab: "attr", at: "AT-1" }, "error"),
+    ).toMatchObject({ ok: false, field: "at" });
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        { case: "case-1", tab: "attr", at: "AT 1" },
+        "error",
+      ),
+    ).toMatchObject({ ok: false, field: "at" });
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        { case: "case-1", tab: "attr", obj: "  leading" },
+        "error",
+      ),
+    ).toMatchObject({ ok: false, field: "obj" });
+    expect(
+      parseSessionDeepLink(
+        "root-1",
+        { case: "case-1", tab: "attr", obj: "bad\u001fobject" },
+        "error",
+      ),
+    ).toMatchObject({ ok: false, field: "obj" });
   });
 
   it("defaults an unknown tab to description and drops tab without case", () => {

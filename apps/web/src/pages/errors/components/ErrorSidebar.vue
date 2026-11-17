@@ -1,34 +1,131 @@
 <script setup lang="ts">
 import type { BadCase, SessionListItem } from "@harness/contracts";
+import { computed, ref, watch } from "vue";
 
-import BadCaseList from "../../../components/bad-cases/BadCaseList.vue";
+import EmptyState from "../../../components/ui/EmptyState.vue";
+import ErrorState from "../../../components/ui/ErrorState.vue";
+import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import { workspacePath } from "../../../router/workspace";
+import CaseGroup from "./CaseGroup.vue";
 
-defineProps<{
+type Filter = "all" | "attr" | "none";
+
+const props = defineProps<{
   wid: string;
   problems: BadCase[];
   session: SessionListItem | null;
   sessionId: string;
   activeBadCaseId: string | null;
+  selectedAttributionId: string | null;
+  selectedAttributionPage: number | null;
   loading: boolean;
   error: Error | null;
+  canStart: boolean;
 }>();
 
 const emit = defineEmits<{
-  all: [];
   retry: [];
-  select: [badCaseId: string];
+  start: [badCaseId: string];
 }>();
+
+const filter = ref<Filter>("all");
+const expanded = ref<Set<string>>(new Set());
+const pages = ref<Record<string, number>>({});
+
+const attributedCount = computed(
+  () => props.problems.filter((problem) => problem.attributionCount > 0).length,
+);
+const pendingCount = computed(
+  () => props.problems.length - attributedCount.value,
+);
+const problemIndex = computed(
+  () =>
+    new Map(
+      props.problems.map((problem, index) => [problem.badCaseId, index + 1]),
+    ),
+);
+const visibleProblems = computed(() =>
+  props.problems.filter((problem) => {
+    if (filter.value === "attr") return problem.attributionCount > 0;
+    if (filter.value === "none") return problem.attributionCount === 0;
+    return true;
+  }),
+);
+const allErrorsLink = computed(() =>
+  workspacePath(
+    props.wid,
+    `sessions/${encodeURIComponent(props.sessionId)}/errors`,
+  ),
+);
+
+watch(
+  [() => props.activeBadCaseId, () => props.selectedAttributionPage],
+  ([badCaseId, selectedPage]) => {
+    if (!badCaseId) return;
+    if (!expanded.value.has(badCaseId)) {
+      const next = new Set(expanded.value);
+      next.add(badCaseId);
+      expanded.value = next;
+    }
+    if (
+      selectedPage !== null &&
+      pages.value[badCaseId] !== selectedPage
+    ) {
+      pages.value = { ...pages.value, [badCaseId]: selectedPage };
+    } else if (pages.value[badCaseId] === undefined) {
+      pages.value = { ...pages.value, [badCaseId]: 1 };
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.wid,
+  () => {
+    filter.value = "all";
+    expanded.value = new Set();
+    pages.value = {};
+  },
+);
+
+function isExpanded(badCaseId: string): boolean {
+  return expanded.value.has(badCaseId);
+}
+
+function toggle(badCaseId: string): void {
+  const next = new Set(expanded.value);
+  if (next.has(badCaseId)) {
+    next.delete(badCaseId);
+  } else {
+    next.add(badCaseId);
+    if (pages.value[badCaseId] === undefined) {
+      pages.value = { ...pages.value, [badCaseId]: 1 };
+    }
+  }
+  expanded.value = next;
+}
+
+function pageOf(badCaseId: string): number {
+  return pages.value[badCaseId] ?? 1;
+}
+
+function setPage(badCaseId: string, page: number): void {
+  pages.value = { ...pages.value, [badCaseId]: Math.max(1, page) };
+}
+
+function setFilter(next: Filter): void {
+  filter.value = next;
+}
 </script>
 
 <template>
   <aside
     class="error-sidebar"
-    aria-label="问题列表"
+    aria-label="bad case 列表"
   >
     <header class="sidebar-heading">
       <div class="sidebar-title">
-        <h1>错误</h1>
+        <h1>bad case</h1>
         <span class="count">{{ problems.length }} 个</span>
       </div>
       <div
@@ -51,27 +148,85 @@ const emit = defineEmits<{
         ← 返回 Session
       </RouterLink>
     </header>
-    <div class="sidebar-list">
+
+    <div
+      class="sidebar-filter"
+      role="group"
+      aria-label="筛选 bad case"
+    >
       <button
+        type="button"
+        class="chip"
+        :class="{ active: filter === 'all' }"
+        :aria-pressed="filter === 'all'"
+        @click="setFilter('all')"
+      >
+        全部
+      </button>
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: filter === 'attr' }"
+        :aria-pressed="filter === 'attr'"
+        @click="setFilter('attr')"
+      >
+        有归因 {{ attributedCount }}
+      </button>
+      <button
+        type="button"
+        class="chip"
+        :class="{ active: filter === 'none' }"
+        :aria-pressed="filter === 'none'"
+        @click="setFilter('none')"
+      >
+        待归因 {{ pendingCount }}
+      </button>
+    </div>
+
+    <div class="sidebar-list">
+      <RouterLink
         class="all-errors"
         :class="{ active: activeBadCaseId === null }"
-        type="button"
-        @click="emit('all')"
+        :to="allErrorsLink"
+        data-testid="all-bad-cases"
       >
-        <span>全部错误</span>
+        <span>全部 bad case</span>
         <b>{{ problems.length }}</b>
-      </button>
-      <BadCaseList
-        compact
-        :wid="wid"
-        :active-bad-case-id="activeBadCaseId"
-        :error="error"
-        :loading="loading"
-        :problems="problems"
-        :show-header="false"
-        @retry="emit('retry')"
-        @select="emit('select', $event)"
+      </RouterLink>
+      <LoadingSkeleton
+        v-if="loading"
+        label="正在读取 bad case"
+        :rows="3"
       />
+      <ErrorState
+        v-else-if="error"
+        code="BAD_CASES_UNAVAILABLE"
+        message="bad case 列表读取失败，请重试。"
+        @retry="emit('retry')"
+      />
+      <EmptyState
+        v-else-if="visibleProblems.length === 0"
+        description="当前筛选条件下没有 bad case。"
+        title="没有匹配的 bad case"
+      />
+      <template v-else>
+        <CaseGroup
+          v-for="(problem, index) in visibleProblems"
+          :key="problem.badCaseId"
+          :wid="wid"
+          :session-id="sessionId"
+          :problem="problem"
+          :index="problemIndex.get(problem.badCaseId) ?? index + 1"
+          :expanded="isExpanded(problem.badCaseId)"
+          :page="pageOf(problem.badCaseId)"
+          :active="problem.badCaseId === activeBadCaseId"
+          :selected-attribution-id="selectedAttributionId"
+          :can-start="canStart"
+          @toggle="toggle(problem.badCaseId)"
+          @page="setPage(problem.badCaseId, $event)"
+          @start="emit('start', problem.badCaseId)"
+        />
+      </template>
     </div>
   </aside>
 </template>
@@ -139,6 +294,33 @@ const emit = defineEmits<{
   text-decoration: underline;
 }
 
+.sidebar-filter {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+}
+
+.chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.chip.active,
+.chip:hover {
+  border-color: var(--blue);
+  color: var(--text);
+}
+
+.chip.active {
+  background: color-mix(in srgb, var(--blue) 9%, var(--bg-card));
+}
+
 .sidebar-list {
   display: flex;
   min-height: 0;
@@ -160,8 +342,8 @@ const emit = defineEmits<{
   background: var(--bg-card);
   color: var(--text-dim);
   cursor: pointer;
-  font: inherit;
   font-size: 12px;
+  text-decoration: none;
 }
 
 .all-errors.active,

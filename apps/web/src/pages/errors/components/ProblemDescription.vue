@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import type { BadCase } from "@harness/contracts";
+import type { AttributionItem, BadCase } from "@harness/contracts";
 import { computed } from "vue";
 
-import { badCaseFactEntries, badCaseState } from "../../../components/bad-cases/badCaseDisplay";
+import { badCaseFactEntries } from "../../../components/bad-cases/badCaseDisplay";
 import {
   badCaseDeepLink,
   shortBadCaseId,
 } from "../../../utils/badCaseId";
 
-const props = defineProps<{
-  wid: string;
-  problem: BadCase;
-  index: number | null;
+const props = withDefaults(
+  defineProps<{
+    wid: string;
+    problem: BadCase;
+    index: number | null;
+    attributions?: AttributionItem[];
+  }>(),
+  { attributions: () => [] },
+);
+
+const emit = defineEmits<{
+  openAttribution: [];
 }>();
 
 const facts = computed(() => badCaseFactEntries(props.problem.metaData));
@@ -20,10 +28,23 @@ const reporter = computed(() =>
     ? `${props.problem.badCaseType} · ${props.problem.badCaseAgent.agentId}`
     : `${props.problem.badCaseType} · 主 Agent`,
 );
-const reportId = computed(() =>
-  props.problem.analysis.status === "analyzed_issue"
-    ? props.problem.analysis.probeId
-    : null,
+const attributedCount = computed(
+  () =>
+    props.attributions.filter(
+      (attribution) => attribution.conclusion === "attributed",
+    ).length,
+);
+const nonTargetCount = computed(
+  () => props.attributions.length - attributedCount.value,
+);
+const hasAttributions = computed(() => props.problem.attributionCount > 0);
+const descriptionLink = computed(() =>
+  badCaseDeepLink(
+    props.wid,
+    props.problem.sessionId,
+    props.problem.badCaseId,
+    "desc",
+  ),
 );
 </script>
 
@@ -39,12 +60,7 @@ const reportId = computed(() =>
       >#{{ index }}</span>
       <a
         class="problem-id"
-        :href="badCaseDeepLink(
-          wid,
-          problem.sessionId,
-          problem.badCaseId,
-          'desc',
-        )"
+        :href="descriptionLink"
         :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
         rel="noopener noreferrer"
         target="_blank"
@@ -56,28 +72,10 @@ const reportId = computed(() =>
         id="problem-description-title"
         class="problem-title"
       >{{ problem.title }}</span>
-      <a
-        v-if="reportId"
-        class="report-id"
-        :href="badCaseDeepLink(
-          wid,
-          problem.sessionId,
-          problem.badCaseId,
-          'attr',
-        )"
-        :aria-label="`归因报告 ${shortBadCaseId(reportId)}，在新窗口打开归因分析`"
-        rel="noopener noreferrer"
-        target="_blank"
-        :title="reportId"
-      >
-        {{ shortBadCaseId(reportId) }}
-      </a>
       <span
-        class="state-chip"
-        :class="badCaseState(problem.analysis.displayState).tone"
-      >
-        {{ badCaseState(problem.analysis.displayState).label }}
-      </span>
+        class="type-badge"
+        :class="problem.badCaseType"
+      >{{ problem.badCaseType }}</span>
       <span
         v-if="problem.degraded"
         class="degraded-chip"
@@ -85,6 +83,37 @@ const reportId = computed(() =>
         数据降级
       </span>
     </header>
+
+    <div class="problem-meta">
+      <span class="meta-chip">
+        object_name · {{ problem.objectName }}
+        <template v-if="problem.objectVersion">
+          @{{ problem.objectVersion }}
+        </template>
+      </span>
+      <span class="meta-chip">{{ problem.objectType }}</span>
+      <button
+        v-if="hasAttributions"
+        type="button"
+        class="attribution-summary"
+        data-testid="problem-attribution-summary"
+        @click="emit('openAttribution')"
+      >
+        已生成 {{ problem.attributionCount }} 条归因
+        <template v-if="attributions.length === problem.attributionCount">
+          · {{ attributedCount }} 可归因<template v-if="nonTargetCount">
+            / {{ nonTargetCount }} 非该对象
+          </template>
+        </template>
+        →
+      </button>
+      <span
+        v-else
+        class="attribution-summary empty"
+        data-testid="problem-attribution-summary"
+      >尚未归因</span>
+    </div>
+
     <div
       class="problem-detail"
       data-testid="problem-detail"
@@ -142,8 +171,7 @@ const reportId = computed(() =>
 }
 
 .problem-number,
-.problem-id,
-.report-id {
+.problem-id {
   flex-shrink: 0;
   font-family: var(--mono);
   font-weight: 700;
@@ -169,48 +197,64 @@ const reportId = computed(() =>
   border-bottom-style: solid;
 }
 
-.report-id {
-  color: var(--purple);
-  font-size: 10.5px;
-  border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent);
-  text-decoration: none;
-}
-
-.report-id:hover {
-  border-bottom-style: solid;
-}
-
 .problem-title {
   color: var(--text);
   font-size: 15px;
   font-weight: 650;
 }
 
-.state-chip {
-  padding: 1px 8px;
+.type-badge {
+  padding: 1px 7px;
   border: 1px solid currentColor;
   border-radius: 999px;
   font-size: 10px;
 }
 
-.state-chip.neutral {
-  color: var(--text-faint);
-}
-
-.state-chip.green {
-  color: var(--green);
-}
-
-.state-chip.purple {
+.type-badge.self {
   color: var(--purple);
 }
 
-.state-chip.orange {
-  color: var(--orange);
+.type-badge.discovery {
+  color: var(--blue);
 }
 
-.state-chip.red {
-  color: var(--red);
+.problem-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+
+.meta-chip {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-inset);
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.attribution-summary {
+  padding: 1px 7px;
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--green) 7%, var(--bg-card));
+  color: var(--green);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.attribution-summary:hover {
+  background: color-mix(in srgb, var(--green) 13%, var(--bg-card));
+}
+
+.attribution-summary.empty {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 7%, var(--bg-card));
+  color: var(--orange);
+  cursor: default;
 }
 
 .degraded-chip {

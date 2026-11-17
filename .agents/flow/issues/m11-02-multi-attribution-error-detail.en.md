@@ -11,11 +11,17 @@ depends:
   - m10-05
   - m11-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/errors/**
   - apps/web/src/components/**
   - apps/web/src/api/**
+  - apps/web/src/composables/**
+  - apps/web/src/router/**
+  - apps/web/src/utils/**
+  - apps/web/src/test/**
+  - packages/contracts/**
+  - plans/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
@@ -56,6 +62,7 @@ One case can now have multiple revision-scoped attributions.
 
 - Dependencies: m7-08, m10-05, m11-01
 - Boundary: execution-flow DAG/structure-tree layout is owned by m11-07; this issue does not change it.
+- This issue consumes the m11-01 attribution contracts and `at` deep links, so its scope includes `apps/web/src/{router,utils,composables,test}/**`, `packages/contracts/**`, and `plans/**` for the review record.
 
 ## Verification
 

@@ -3,7 +3,7 @@
 import { mount, type VueWrapper } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { BadCase } from "@harness/contracts";
+import type { AttributionItem, BadCase } from "@harness/contracts";
 
 import { badCaseFixture } from "../../../test/badCases";
 import ProblemDescription from "./ProblemDescription.vue";
@@ -55,6 +55,27 @@ const variants: Array<{ state: string; problem: BadCase }> = [
   },
 ];
 
+function attributionFixture(
+  overrides: Partial<AttributionItem> = {},
+): AttributionItem {
+  return {
+    attributionId: "probe-error",
+    badCaseId: "case-issue",
+    objectType: "agent",
+    objectName: "Explore",
+    objectVersion: "synthetic-1",
+    conclusion: "attributed",
+    category: "error",
+    confidence: 0.86,
+    runId: null,
+    isCached: false,
+    reusedCount: 0,
+    createdAt: "2026-10-20T09:03:30+08:00",
+    updatedAt: "2026-10-20T09:03:30+08:00",
+    ...overrides,
+  };
+}
+
 /**
  * Collect the description blocks in rendered document order.
  * @param wrapper Mounted problem description.
@@ -63,7 +84,7 @@ const variants: Array<{ state: string; problem: BadCase }> = [
 function blockOrder(wrapper: VueWrapper): string[] {
   return wrapper
     .findAll(
-      ".problem-heading, .problem-detail, .facts, .association, .diagnostic",
+      ".problem-heading, .problem-meta, .problem-detail, .facts, .association, .diagnostic",
     )
     .map((node) => node.element.className.split(" ")[0] ?? "");
 }
@@ -85,13 +106,14 @@ describe("ProblemDescription", () => {
     },
   );
 
-  it("keeps the heading chips and orders body, facts and association after it", () => {
+  it("keeps the heading and meta before the body, facts and association", () => {
     const wrapper = mount(ProblemDescription, {
       props: { wid: "ws-test", problem: variants[2]!.problem, index: 2 },
     });
 
     expect(blockOrder(wrapper)).toEqual([
       "problem-heading",
+      "problem-meta",
       "problem-detail",
       "facts",
       "association",
@@ -99,9 +121,50 @@ describe("ProblemDescription", () => {
     expect(wrapper.get(".problem-title").attributes("id")).toBe(
       "problem-description-title",
     );
-    expect(wrapper.get(".state-chip").text()).toBe("是问题-错误");
-    expect(wrapper.get(".report-id").text()).toBe("probe-er");
+    expect(wrapper.get(".type-badge").text()).toBe("self");
+    expect(wrapper.get(".meta-chip").text()).toContain("Explore");
     expect(wrapper.find(".degraded-chip").exists()).toBe(false);
+  });
+
+  it("summarizes generated attributions and opens the analysis tab on request", async () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: { ...variants[2]!.problem, attributionCount: 3 },
+        index: 2,
+        attributions: [
+          attributionFixture(),
+          attributionFixture({
+            attributionId: "probe-two",
+            conclusion: "non_target",
+            category: null,
+          }),
+          attributionFixture({ attributionId: "probe-three" }),
+        ],
+      },
+    });
+
+    const summary = wrapper.get("[data-testid='problem-attribution-summary']");
+    expect(summary.text()).toContain("已生成 3 条归因");
+    expect(summary.text()).toContain("2 可归因");
+    expect(summary.text()).toContain("1 非该对象");
+    await summary.trigger("click");
+    expect(wrapper.emitted("openAttribution")).toHaveLength(1);
+  });
+
+  it("keeps an explicitly unanalyzed case distinct from a non-target conclusion", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: { ...variants[0]!.problem, attributionCount: 0 },
+        index: 1,
+      },
+    });
+
+    expect(
+      wrapper.get("[data-testid='problem-attribution-summary']").text(),
+    ).toBe("尚未归因");
+    expect(wrapper.text()).not.toContain("非该对象问题");
   });
 
   it("keeps the degraded chip and diagnostic without collapsing the two text levels", () => {
@@ -121,6 +184,7 @@ describe("ProblemDescription", () => {
 
     expect(blockOrder(wrapper)).toEqual([
       "problem-heading",
+      "problem-meta",
       "problem-detail",
       "association",
       "diagnostic",
