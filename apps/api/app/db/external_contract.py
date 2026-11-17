@@ -648,14 +648,20 @@ class ExternalContractMonitor:
                 await self.refresh()
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
                 # Monitoring must never turn a failed check into a startup outage.
-                logger.exception("external contract monitor startup check failed")
+                logger.error(
+                    "external contract monitor startup check failed",
+                    extra={"error_class": type(exc).__name__},
+                )
         while True:
             try:
                 await self._sleep(self._interval)
                 await self.report()
             except asyncio.CancelledError:
                 raise
-            except Exception:
-                logger.exception("external contract monitor iteration failed")
+            except Exception as exc:
+                logger.error(
+                    "external contract monitor iteration failed",
+                    extra={"error_class": type(exc).__name__},
+                )
