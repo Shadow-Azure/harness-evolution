@@ -281,6 +281,198 @@ describe("target configuration page", () => {
     ).toBe("https://example.com/skills.git");
   });
 
+  it("anchors structured REPO_INVALID details to the failing field", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "REPO_INVALID",
+              message: "repository or ref is invalid",
+              details: {
+                field: "repoUrl",
+                reason: "repo_url_credentials",
+              },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://user:secret@example.com/skills.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain(
+      "仓库地址不能包含用户名或密码",
+    );
+    expect(wrapper.get("#target-repoUrl-error").text()).toContain(
+      "移除 URL 中的凭据",
+    );
+    const input = wrapper.get('input[name="repoUrl"]');
+    expect(input.attributes("aria-invalid")).toBe("true");
+    expect(input.attributes("aria-describedby")).toBe("target-repoUrl-error");
+    expect((input.element as HTMLInputElement).value).toBe(
+      "https://user:secret@example.com/skills.git",
+    );
+    expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
+  it("shows the exit code and redacted output for an unreachable remote", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "REPO_INVALID",
+              message: "repository or ref is invalid",
+              details: {
+                field: "repoUrl",
+                reason: "repo_unreachable",
+                command: { name: "git ls-remote", exitCode: 128 },
+                output:
+                  "fatal: unable to access 'https://git.example.com/repo.git/': Could not resolve host",
+              },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://git.example.com/repo.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain("无法访问仓库");
+    const block = wrapper.get("[data-testid='target-git-output']");
+    expect(block.text()).toContain("git ls-remote");
+    expect(block.text()).toContain("退出码 128");
+    expect(block.get("pre").text()).toContain("Could not resolve host");
+  });
+
+  it("keeps a missing baseline distinct from an unreachable repository", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "REPO_INVALID",
+              message: "repository or ref is invalid",
+              details: {
+                field: "defaultRef",
+                reason: "ref_not_found",
+                command: { name: "git ls-remote", exitCode: 2 },
+                output: "fatal: couldn't find remote ref feature/missing",
+              },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://git.example.com/repo.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("feature/missing");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("#target-defaultRef-error").text()).toContain(
+      "仓库可达，但找不到该 ref",
+    );
+    expect(wrapper.get("[role='alert']").text()).not.toContain(
+      "检查地址、子目录与基线",
+    );
+    expect(wrapper.get("[data-testid='target-git-output']").text()).toContain(
+      "退出码 2",
+    );
+  });
+
+  it("falls back to shared guidance for an unknown REPO_INVALID reason", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "REPO_INVALID",
+              message: "repository or ref is invalid",
+              details: { field: "repoUrl", reason: "future_reason" },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/skills.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("main");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.get("[role='alert']").text()).toContain(
+      "仓库或 ref 无效，请检查地址、子目录与基线",
+    );
+  });
+
   it("maps PROJECT_ID_INVALID into the open form", async () => {
     server.use(
       http.get(base, () =>
@@ -320,8 +512,16 @@ describe("target configuration page", () => {
     await flushPromises();
 
     expect(wrapper.get("[role='alert']").text()).toContain(
-      "测试工程 ID 无效，请检查是否为空、超长或包含空格",
+      "测试工程 ID 无效",
     );
+    expect(wrapper.get("#target-validationProjectId-error").text()).toContain(
+      "测试工程 ID 无效",
+    );
+    expect(
+      wrapper
+        .get('input[name="validationProjectId"]')
+        .attributes("aria-invalid"),
+    ).toBe("true");
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
   });
 

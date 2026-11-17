@@ -3030,7 +3030,6 @@
         "description": "Persisted target returned to clients.",
         "properties": {
           "defaultRef": {
-            "maxLength": 128,
             "title": "Defaultref",
             "type": "string"
           },
@@ -3044,7 +3043,6 @@
             "type": "string"
           },
           "objectName": {
-            "maxLength": 128,
             "title": "Objectname",
             "type": "string"
           },
@@ -3058,12 +3056,10 @@
             "type": "string"
           },
           "repoUrl": {
-            "maxLength": 1024,
             "title": "Repourl",
             "type": "string"
           },
           "subDir": {
-            "maxLength": 512,
             "title": "Subdir",
             "type": "string"
           },
@@ -3137,7 +3133,6 @@
         "description": "Mutable target configuration accepted by create and update.",
         "properties": {
           "defaultRef": {
-            "maxLength": 128,
             "title": "Defaultref",
             "type": "string"
           },
@@ -3147,7 +3142,6 @@
             "type": "boolean"
           },
           "objectName": {
-            "maxLength": 128,
             "title": "Objectname",
             "type": "string"
           },
@@ -3161,12 +3155,10 @@
             "type": "string"
           },
           "repoUrl": {
-            "maxLength": 1024,
             "title": "Repourl",
             "type": "string"
           },
           "subDir": {
-            "maxLength": 512,
             "title": "Subdir",
             "type": "string"
           },

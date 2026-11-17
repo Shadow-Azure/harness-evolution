@@ -15,12 +15,30 @@ class DeterministicGitRemote:
     """Validate test remotes without external network access."""
 
     async def validate(self, repo_url: str, ref: str) -> None:
-        if "invalid.example.com" in repo_url or ref == "bad-ref":
-            raise RepoInvalid("invalid test remote")
+        if "invalid.example.com" in repo_url:
+            raise RepoInvalid(
+                reason="repo_unreachable",
+                exit_code=128,
+                stderr=(
+                    "fatal: unable to access "
+                    "'https://invalid.example.com/repo.git/': Could not resolve host\n"
+                    "error: could not read /Users/e2e/private-key"
+                ),
+            )
+        if ref == "bad-ref":
+            raise RepoInvalid(
+                reason="ref_not_found",
+                exit_code=2,
+                stderr="fatal: couldn't find remote ref bad-ref",
+            )
 
     async def list_tags(self, repo_url: str) -> tuple[str, ...]:
         if "invalid.example.com" in repo_url:
-            raise RepoInvalid("invalid test remote")
+            raise RepoInvalid(
+                reason="repo_unreachable",
+                exit_code=128,
+                stderr="fatal: unable to access: Could not resolve host",
+            )
         return ("v2.0.0", "v1.9.0")
 
 

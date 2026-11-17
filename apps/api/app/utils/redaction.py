@@ -45,6 +45,15 @@ _PROVIDER_CREDENTIAL_PATTERNS = (
 )
 _CONTROL_PATTERN = re.compile(r"[\x00-\x1f\x7f]+")
 _DETAIL_CONTROL_PATTERN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+")
+_COMMAND_CONTROL_PATTERN = re.compile(r"[\x00-\x09\x0b-\x1f\x7f]+")
+_COMMAND_REMOTE_OR_PATH_PATTERN = re.compile(
+    r"(?i)(?P<remote>"
+    r"\b(?:[a-z][a-z0-9+.-]*://[^\s\"'<>]+|[a-z0-9._-]+@[a-z0-9.-]+:[^\s\"'<>]+)"
+    r")"
+    r"|(?P<unc>(?<![\w])\\\\[^\s\"'<>]+)"
+    r"|(?P<windows>(?<![\w])[A-Za-z]:[\\/][^\s\"'<>]*)"
+    r"|(?P<posix>(?<![\w.~:/\\-])/[^\s\"'<>]*)",
+)
 _SENSITIVE_KEY_SUFFIXES = (
     "password",
     "passwordhash",
@@ -155,3 +164,41 @@ def truncate_utf8(value: str, *, limit: int) -> str:
     if len(encoded) <= limit:
         return value
     return encoded[:limit].decode(errors="ignore")
+
+
+def redact_command_output(
+    value: str,
+    *,
+    max_lines: int = 40,
+    max_bytes: int = 4_096,
+) -> str:
+    """Redact and bound one git command output for an administrator.
+
+    Credentials are removed by :func:`redact_text`. Local POSIX, Windows, and
+    UNC absolute paths become ``<path>`` while remote URLs and SCP remotes keep
+    their own paths. Control characters are dropped, only the last
+    ``max_lines`` lines are kept, and the result is capped to the trailing
+    ``max_bytes`` of UTF-8 so the failure at the end survives truncation.
+    """
+    if max_lines < 0 or max_bytes < 0:
+        raise ValueError("limits must be non-negative")
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    redacted = redact_text(normalized)
+    redacted = _COMMAND_REMOTE_OR_PATH_PATTERN.sub(
+        lambda match: match.group("remote") or "<path>",
+        redacted,
+    )
+    redacted = _COMMAND_CONTROL_PATTERN.sub("", redacted)
+    lines = redacted.splitlines()
+    if len(lines) > max_lines:
+        lines = lines[-max_lines:]
+    bounded = "\n".join(lines).strip()
+    return _truncate_utf8_tail(bounded, limit=max_bytes)
+
+
+def _truncate_utf8_tail(value: str, *, limit: int) -> str:
+    """Return the longest whole-character suffix whose UTF-8 encoding fits the cap."""
+    encoded = value.encode()
+    if len(encoded) <= limit:
+        return value
+    return encoded[-limit:].decode(errors="ignore")

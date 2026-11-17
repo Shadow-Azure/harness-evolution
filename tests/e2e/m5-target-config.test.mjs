@@ -538,7 +538,7 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
     );
     await fillTargetForm(page, {
       name: "m5-e2e-target",
-      repoUrl: "https://invalid.example.com/repo.git",
+      repoUrl: "http://invalid.example.com/repo.git",
       subDir: "skills/m5-e2e-target",
       defaultRef: "main",
     });
@@ -546,18 +546,85 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       page,
       `document.querySelector(".target-form-dialog .el-button--primary").click()`,
     );
-    const invalidMessage = await waitForDocument(
+    const localError = await waitForDocument(
       page.session,
-      `document.querySelector(".target-form-dialog .server-error")?.textContent.trim()`,
-      "inline invalid repository error",
+      `document.querySelector("#target-repoUrl-error")?.textContent.trim()`,
+      "field-level repository format error",
     );
-    assert.match(invalidMessage, /仓库或 ref 无效/);
+    assert.match(localError, /仓库地址格式不正确/);
+    assert.match(localError, /HTTPS/);
+    assert.equal(
+      await evaluate(
+        page,
+        `Boolean(document.querySelector("[data-testid='target-git-output']"))`,
+      ),
+      false,
+    );
     assert.equal(
       await evaluate(
         page,
         `document.querySelector("input[name='objectName']").value`,
       ),
       "m5-e2e-target",
+    );
+    assert.equal(
+      await evaluate(page, `document.activeElement?.getAttribute("name")`),
+      "repoUrl",
+    );
+
+    await setInput(
+      page,
+      "input[name='repoUrl']",
+      "https://invalid.example.com/repo.git",
+    );
+    await evaluate(
+      page,
+      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".server-error")?.textContent.includes("无法访问仓库")`,
+      "inline unreachable repository error",
+    );
+    const remoteOutput = await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='target-git-output']")?.textContent.trim()`,
+      "git command output",
+    );
+    assert.match(remoteOutput, /git ls-remote/);
+    assert.match(remoteOutput, /退出码 128/);
+    assert.match(remoteOutput, /Could not resolve host/);
+    assert.doesNotMatch(remoteOutput, /\/Users\/e2e/);
+
+    await setInput(
+      page,
+      "input[name='repoUrl']",
+      "https://git.example.com/agent-skills.git",
+    );
+    await setInput(page, "input[name='defaultRef']", "bad-ref");
+    await evaluate(
+      page,
+      `document.querySelector(".target-form-dialog .el-button--primary").click()`,
+    );
+    const refError = await waitForDocument(
+      page.session,
+      `document.querySelector("#target-defaultRef-error")?.textContent.trim()`,
+      "missing remote ref error",
+    );
+    assert.match(refError, /仓库可达，但找不到该 ref/);
+    assert.doesNotMatch(
+      await evaluate(
+        page,
+        `document.querySelector(".target-form-dialog .server-error")?.textContent ?? ""`,
+      ),
+      /检查地址、子目录与基线/,
+    );
+    assert.match(
+      await evaluate(
+        page,
+        `document.querySelector("[data-testid='target-git-output']")?.textContent ?? ""`,
+      ),
+      /退出码 2/,
     );
     await clickText(page, ".target-form-dialog button", "取消");
 

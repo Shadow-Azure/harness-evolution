@@ -1036,8 +1036,11 @@ POST /runs（同步校验）
 `POST` → `201` 创建后的 target；`PUT` → `200` 更新后的 target；`DELETE` → `204`。
 
 - `repoUrl` 支持 https/ssh；**不要**把 token 写进 URL（用 SSH agent / 凭据助手），错误信息脱敏。
-- `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存和创建 run 前都校验。
+- `subDir` 必须是仓库内相对路径，禁止 `..` 越界；保存时只校验格式，目录存在性在创建 run 的准备阶段校验。
 - `validationProjectId` / `testProjectId` 是不透明字符串，trim 后非空、不含空白或控制字符；超过 128 由请求校验返回 `422 VALIDATION_INVALID`（前端 `maxlength` 拦截），空值与空白/控制字符失败返回 `422 PROJECT_ID_INVALID`，`details` 为 `{ "field": "validationProjectId" | "testProjectId", "reason": "project_id_required" | "project_id_format" }`。本服务不校验工程是否存在。
+- `REPO_INVALID` 的 `details` 只出现在 admin 的 create/update 响应：`{ "field": "objectName" | "repoUrl" | "subDir" | "defaultRef", "reason": "<见下表>", "command"?: { "name": "git ls-remote", "exitCode": 128 }, "output"?: "<有界脱敏输出>" }`。member 可读的 versions 接口继续返回空 `details`，不暴露命令输出。
+- `reason` 取值：`object_name_invalid`、`repo_url_format`、`repo_url_credentials`、`sub_dir_format`、`ref_format`、`ref_not_found`、`repo_unreachable`、`git_timeout`、`git_unavailable`。本地格式失败不带 `command`/`output`；远端失败在 `command` 给出命令名与退出码（超时/无法启动 git 时无退出码），`output` 为 git stderr 的末 40 行、最多 4096 字节，经运行日志同一链路脱敏并替换本机绝对路径，保留远端 URL 路径。
+- 示例：`{"error": {"code": "REPO_INVALID", "message": "repository or ref is invalid", "details": {"field": "defaultRef", "reason": "ref_not_found", "command": {"name": "git ls-remote", "exitCode": 2}, "output": "fatal: couldn't find remote ref v9.9.9"}}}`。
 - 创建 run 时把两个 project ID 从 target 快照到 `evolution_runs`；run API 响应不变。
 - 只有 `enabled=true` 的配置出现在向导的“对象/版本”下拉里。
 - 配置页入口在向导 Step1 提示文案内的「配置页」链接（[08 §9.2](08-frontend-implementation.md)）。
