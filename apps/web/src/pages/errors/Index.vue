@@ -179,11 +179,6 @@ const flowTree = computed<SessionTree | null>(() => {
     ),
   };
 });
-const flowProblems = computed(() =>
-  selectedBadCaseId.value && selectedProblem.value
-    ? [selectedProblem.value]
-    : problems.value,
-);
 const selectedIndex = computed(() => {
   const index = problems.value.findIndex(
     (problem) => problem.badCaseId === selectedBadCaseId.value,
@@ -516,7 +511,7 @@ function collapseAll() {
               v-else-if="flowTree"
               :active-bad-case-id="selectedBadCaseId"
               :expanded="expandedAgentIds"
-              :problems="flowProblems"
+              :problems="problems"
               :tree="flowTree"
               :tree-height="'413px'"
               @badcase-select="selectBadCase"

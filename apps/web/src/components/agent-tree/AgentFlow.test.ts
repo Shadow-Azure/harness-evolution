@@ -164,6 +164,25 @@ describe("AgentFlow", () => {
     wrapper.unmount();
   });
 
+  it("remembers the last selected view in localStorage", async () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      removeItem: (key: string) => store.delete(key),
+    };
+    vi.stubGlobal("localStorage", storage);
+    store.set("he:flow-mode", "tree");
+    const wrapper = mount(AgentFlow, {
+      props: { tree: demoCoreTree },
+    });
+    expect(wrapper.find("[data-testid='agent-tree']").exists()).toBe(true);
+    await wrapper.get("[data-testid='flow-mode-dag']").trigger("click");
+    expect(store.get("he:flow-mode")).toBe("dag");
+    vi.unstubAllGlobals();
+    wrapper.unmount();
+  });
+
   it("accepts an explicit tree default for the visual fixture", async () => {
     const tree: SessionTree = demoCoreTree;
     const wrapper = mount(AgentFlow, {

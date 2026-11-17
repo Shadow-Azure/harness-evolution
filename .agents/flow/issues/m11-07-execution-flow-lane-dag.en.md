@@ -19,6 +19,7 @@ scope:
   - apps/web/src/pages/errors/**
   - tests/e2e/**
   - plans/fullstack-design/**
+  - plans/*-review.md
   - plans/ui-prototype-v2/**
   - .agents/flow/**
   - .agents/notes/**

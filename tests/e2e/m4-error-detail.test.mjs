@@ -105,6 +105,13 @@ async function apiGet(pathname, accessToken) {
   return response.json();
 }
 
+
+async function defaultToTree(page) {
+  await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("he:flow-mode", "tree"); } catch {}`,
+  });
+}
+
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m4-errors-e2e-"));
   const seedEnv = {
@@ -182,7 +189,7 @@ before(async () => {
 after(cleanup);
 
 
-test("m4 error detail restores five states, folded attributions, tabs, filtered flow and ownership", async () => {
+test("m4 error detail restores five states, folded attributions, tabs, unfiltered flow and ownership", async () => {
   const auth = await loginSession();
   const sessions = await apiGet("/api/sessions", auth.accessToken);
   assert.equal(sessions.items.length, 4);
@@ -231,6 +238,7 @@ test("m4 error detail restores five states, folded attributions, tabs, filtered 
   assert.ok(otherSession);
 
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session, {
       isExpectedLogEntry: (entry) =>

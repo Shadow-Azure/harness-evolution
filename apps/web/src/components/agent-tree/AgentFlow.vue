@@ -10,6 +10,25 @@ defineOptions({ name: "AgentFlow" });
 
 type FlowMode = "dag" | "tree";
 
+const MODE_STORAGE_KEY = "he:flow-mode";
+
+function readStoredMode(): FlowMode | null {
+  try {
+    const value = localStorage.getItem(MODE_STORAGE_KEY);
+    return value === "dag" || value === "tree" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeMode(mode: FlowMode) {
+  try {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // Storage can be unavailable in private mode; the in-memory mode still works.
+  }
+}
+
 const props = withDefaults(
   defineProps<{
     tree: SessionTree;
@@ -41,7 +60,7 @@ const emit = defineEmits<{
   "collapse-all": [];
 }>();
 
-const mode = ref<FlowMode>(props.defaultMode);
+const mode = ref<FlowMode>(readStoredMode() ?? props.defaultMode);
 const laneDagRef = ref<{
   locateBadCase: (badCaseId: string) => void;
   locateLane: (agentId: string) => void;
@@ -73,6 +92,7 @@ function setMode(next: FlowMode) {
     return;
   }
   mode.value = next;
+  storeMode(next);
 }
 
 watch(

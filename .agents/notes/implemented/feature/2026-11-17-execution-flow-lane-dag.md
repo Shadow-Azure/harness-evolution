@@ -15,6 +15,7 @@ V1 的执行流把整棵 Agent 树画成 Vue Flow 节点图：并发只能靠节
 - 横轴只用日志行：触发事件占自己的行，两个触发之间的所有行合成 `×N 无触发` bar，因此 main lane 的 bar 连续覆盖 0–100，同一 lane 内不重叠；`messageOffset` 只留给结构树的 message gap，两种 N 不混用。子 lane 的 start 取父触发点，宽度按子 agent 日志行数等比缩放，最长封顶 42%。
 - 所有 lane 都渲染，不再有 `>8` 折叠或汇总行；浏览改用固定小窗口视口（`clamp(360px, 48vh, 520px)`）的滚轮缩放、拖拽平移、适应与 1:1 复位。`lane/viewport.ts` 把缩放/平移/fit 做成纯函数，组件只持有 transform。
 - 选中 bad case 只加粗定位线并高亮对应 bar，不过滤任何 lane 或分支；BC marker 以 `anchor.agentId + anchor.eventIndex` 解析触发行，落在无触发区间时仍标在该行并说明最近触发点。
+- 视图选择用 `localStorage` 的 `he:flow-mode` 记住上次选择；默认仍是 DAG，测试可预置 `tree` 以保持旧结构树回归，不改变生产默认值。
 - 结构树整体搬到 `agent-tree/tree/`，继续复用 `layout.ts` 的 `chainOf/buildGraph`；`types.ts` 保留两套视图共享的树类型，并新增 lane 模型类型。因此 Vue Flow 退居切换视图，不再承担默认执行流。
 
 ## Alternatives considered
