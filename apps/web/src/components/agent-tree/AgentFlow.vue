@@ -53,6 +53,7 @@ const treeRef = ref<{
   locateAgent: (agentId: string) => void;
 } | null>(null);
 const laneError = ref<string | null>(null);
+const failedView = ref<FlowMode | null>(null);
 
 const laneModel = computed(() =>
   buildLaneModel(props.tree, props.activeBadCaseId ?? null),
@@ -60,7 +61,10 @@ const laneModel = computed(() =>
 
 onErrorCaptured((error) => {
   laneError.value = error instanceof Error ? error.message : String(error);
-  mode.value = "tree";
+  failedView.value = mode.value;
+  if (mode.value === "dag") {
+    mode.value = "tree";
+  }
   return false;
 });
 
@@ -125,6 +129,7 @@ defineExpose({
   setMode,
   mode,
   laneError,
+  failedView,
   fit: () => laneDagRef.value?.fit(),
   reset: () => laneDagRef.value?.reset(),
 });
@@ -137,8 +142,11 @@ defineExpose({
   >
     <div class="flow-mode-bar">
       <span class="flow-mode-hint">
-        <template v-if="laneError">
+        <template v-if="laneError && failedView === 'dag'">
           小窗口 lane DAG 渲染失败，已回退到结构树。
+        </template>
+        <template v-else-if="laneError">
+          执行流渲染失败；请切换视图或刷新重试。
         </template>
         <template v-else-if="mode === 'dag'">
           全部 lane 展开；滚轮缩放 / 拖拽平移，不按数量折叠。

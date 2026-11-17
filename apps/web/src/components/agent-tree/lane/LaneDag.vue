@@ -1127,7 +1127,6 @@ defineExpose({ fit, reset, zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(0.83
   display: flex;
   align-items: center;
   height: 20px;
-  min-width: 2px;
   padding: 0 6px;
   overflow: hidden;
   border-radius: 6px;
