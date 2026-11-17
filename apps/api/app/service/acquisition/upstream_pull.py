@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Mapping
 from datetime import date
 from typing import Annotated, Any
@@ -12,12 +14,15 @@ from app.db.base import Database
 from app.db.crud.local_sessions import write_local_payloads
 from app.db.crud.sync_errors import append_sync_error_records
 from app.db.models.jobs import JobRunRecord
+from app.errors import AppError
 from app.service.acquisition.replay import replay_pending_payloads
 from app.service.acquisition.upstream import package_to_payloads
 from app.service.jobs import JobRunner
 from app.third_party_api.trajectory.models import UpstreamItemIssue
 from app.third_party_api.trajectory.source import TrajectorySource
 from app.utils.time import now_shanghai
+
+logger = logging.getLogger(__name__)
 
 
 class PullWindow(BaseModel):
@@ -96,6 +101,7 @@ class UpstreamPullService:
         source = self._source
         if source is None:
             raise RuntimeError("upstream source is unavailable")
+        started = time.monotonic()
         payload = PullJobPayload.model_validate(job.payload)
         await self._jobs.update_progress(
             job.id,
@@ -103,20 +109,33 @@ class UpstreamPullService:
             unit="sessions",
             stage_label="fetching",
         )
-        if payload.session_ids is not None:
-            session_ids = list(payload.session_ids)
-        else:
-            window = payload.window
-            if window is None:
-                raise ValueError("pull window is missing")
-            enumerated = await source.list_window(
-                from_date=window.from_date,
-                to_date=window.to_date,
-                problem_only=window.problem_only,
-                cursor=window.cursor,
+        try:
+            if payload.session_ids is not None:
+                session_ids = list(payload.session_ids)
+            else:
+                window = payload.window
+                if window is None:
+                    raise ValueError("pull window is missing")
+                enumerated = await source.list_window(
+                    from_date=window.from_date,
+                    to_date=window.to_date,
+                    problem_only=window.problem_only,
+                    cursor=window.cursor,
+                )
+                session_ids = [item.session_id for item in enumerated]
+            fetched = await source.fetch_many(session_ids)
+        except Exception as exc:
+            logger.warning(
+                "upstream pull failed",
+                extra={
+                    "event": "upstream.health",
+                    "status": "failed",
+                    "sessions_requested": len(payload.session_ids or ()),
+                    "duration_ms": _elapsed_ms(started),
+                    "error_code": _error_code(exc),
+                },
             )
-            session_ids = [item.session_id for item in enumerated]
-        fetched = await source.fetch_many(session_ids)
+            raise
         await self._jobs.update_progress(
             job.id,
             0.45,
@@ -165,6 +184,22 @@ class UpstreamPullService:
                 for issue in issues
             ],
         )
+        logger.info(
+            "upstream pull health",
+            extra={
+                "event": "upstream.health",
+                "status": "degraded" if issues else "ok",
+                "sessions_requested": len(session_ids),
+                "sessions_fetched": len(fetched.packages),
+                "sessions_isolated": len(issues),
+                "payloads_inserted": written.inserted_payloads,
+                "payloads_updated": written.updated_payloads,
+                "payloads_unchanged": written.unchanged_payloads,
+                "replayed": replay.imported,
+                "failed": replay.failed,
+                "duration_ms": _elapsed_ms(started),
+            },
+        )
         return {
             "sessionsRequested": len(session_ids),
             "sessionsFetched": len(fetched.packages),
@@ -177,3 +212,15 @@ class UpstreamPullService:
             "skipped": replay.skipped,
             "failed": replay.failed,
         }
+
+
+def _elapsed_ms(started: float) -> int:
+    """Return a non-negative whole-millisecond duration for one pull."""
+    return max(0, int((time.monotonic() - started) * 1_000))
+
+
+def _error_code(exc: BaseException) -> str:
+    """Return a bounded error code without upstream text or credentials."""
+    if isinstance(exc, AppError):
+        return exc.code.value
+    return type(exc).__name__

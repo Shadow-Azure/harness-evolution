@@ -45,3 +45,7 @@ Only the private key lives in GitHub; its public half sits in the `deploy` user'
 - Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → `systemctl restart harness-api` → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe the symlink returns to the previous release and the service restarts; the server keeps the latest 5 releases.
 - Migrations are idempotent: repeated releases have zero side effects on applied migrations.
+
+## Upstream health and drift logs
+
+With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit structured `upstream.health`, `upstream.version_drift`, and `upstream.contract_drift` logs containing only enums, counts, and major numbers, never bodies, session ids, or credentials. Per-session failures stay in `sync_runs.errors` and are retried by the scheduler or a manual replay.

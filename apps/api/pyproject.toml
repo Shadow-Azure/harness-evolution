@@ -60,6 +60,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "mysql: integration tests requiring a MySQL service",
+  "live_upstream: opt-in tests requiring HE_UPSTREAM_BASE_URL and HE_UPSTREAM_TOKEN",
 ]
 
 [tool.ruff]

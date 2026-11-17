@@ -45,3 +45,7 @@
 - 行为：[deploy/release.sh](../deploy/release.sh) 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
 - 回滚：探活失败时软链退回上一 release 并重启；本地保留最近 5 个 release。
 - 迁移幂等：连续发布对已应用的迁移零副作用。
+
+## 上游健康与漂移日志
+
+配置 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 后，pull 输出 `upstream.health`、`upstream.version_drift`、`upstream.contract_drift` 等结构化日志，只含枚举、计数与主版本号，不含正文、会话 id 或凭据；逐会话失败留在 `sync_runs.errors`，由调度或手动重放重试。
