@@ -29,6 +29,7 @@ from app.db.crud.sessions import (
     _event_record,
     _session_record,
 )
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -75,6 +76,7 @@ class ProblemRepository:
             self._bad_cases_ready = await bad_cases_table_present(self._database)
         return self._bad_cases_ready
 
+    @read_only_guard("bad_cases", strict=False)
     async def session_snapshot(
         self,
         session_id: str,
@@ -98,6 +100,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
+    @read_only_guard("bad_cases", strict=False)
     async def case_snapshot(
         self,
         case_id: str,
@@ -123,6 +126,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
+    @read_only_guard("bad_cases", strict=False)
     async def case_visible(self, case_id: str, scope: WorkspaceReadScope) -> bool:
         """Return whether one case exists inside the caller's workspace scope."""
         if not await self._scoped_reads_available():
@@ -130,6 +134,7 @@ class ProblemRepository:
         async with self._database.session() as session:
             return await self._case(session, case_id, scope) is not None
 
+    @read_only_guard("bad_cases", strict=False)
     async def case_row(self, case_id: str, scope: WorkspaceReadScope) -> BadCaseRow | None:
         """Read one reported case without requiring its Session projection."""
         if not await self._scoped_reads_available():
@@ -153,6 +158,7 @@ class ProblemRepository:
             )
         return _to_row(row) if row is not None else None
 
+    @read_only_guard("probe_reports,bad_case_analysis", strict=False)
     async def session_probes(
         self,
         session_id: str,
@@ -213,6 +219,7 @@ class ProblemRepository:
             )
             return ProbeListSnapshot(session=family, probes=probes, sources=sources)
 
+    @read_only_guard("probe_reports,bad_case_analysis", strict=False)
     async def probe_visible(
         self,
         probe_id: str,

@@ -77,6 +77,25 @@ def _warning(
     )
 
 
+def _log_drift_summary(
+    warnings: tuple[ExternalReadWarning, ...],
+    *,
+    scope: str,
+) -> None:
+    """Emit one sanitized aggregate so drift is queryable without per-id noise."""
+    if not warnings:
+        return
+    logger.warning(
+        "external problem rows degraded the read",
+        extra={
+            "event": "external.row_drift",
+            "scope": scope,
+            "warning_count": len(warnings),
+            "codes": sorted({warning.code for warning in warnings}),
+        },
+    )
+
+
 def _empty_analysis() -> BadCaseAnalysisReadModel:
     """Return the canonical unattributed view."""
     return BadCaseAnalysisReadModel(
@@ -180,7 +199,9 @@ class BadCaseService:
         snapshot = await self._repository.get_probe_snapshot(probe_id)
         if snapshot.probe is None:
             return ProbeReportLookup(model=None, warnings=())
-        return self._probe_model(snapshot.probe, snapshot.sources)
+        result = self._probe_model(snapshot.probe, snapshot.sources)
+        _log_drift_summary(result.warnings, scope="probe_detail")
+        return result
 
     def merge_snapshot(
         self,
@@ -205,7 +226,9 @@ class BadCaseService:
             cases.append((row, session_id, ()))
 
         if not cases:
-            return BadCaseListReadModel(items=(), warnings=tuple(warnings))
+            result = BadCaseListReadModel(items=(), warnings=tuple(warnings))
+            _log_drift_summary(result.warnings, scope="bad_case_list")
+            return result
 
         analyses = {row.bad_case_id: row for row in analysis_rows}
         probes = {row.probe_id: row for row in probe_rows if _safe_text(row.probe_id) is not None}
@@ -233,8 +256,12 @@ class BadCaseService:
                     tuple(model_warnings),
                 ),
             )
-            warnings.extend(model_warnings)
-        return BadCaseListReadModel(items=tuple(items), warnings=tuple(warnings))
+        merged_warnings = tuple(warnings) + tuple(
+            warning for item in items for warning in item.warnings
+        )
+        result = BadCaseListReadModel(items=tuple(items), warnings=merged_warnings)
+        _log_drift_summary(result.warnings, scope="bad_case_list")
+        return result
 
     def merge_probe_rows(
         self,
@@ -247,13 +274,16 @@ class BadCaseService:
             if source.probe_id is not None:
                 by_probe.setdefault(source.probe_id, []).append(source)
         models: list[ProbeReportReadModel] = []
+        warnings: list[ExternalReadWarning] = []
         for row in probe_rows:
             lookup = self._probe_model(
                 row,
                 tuple(by_probe.get(row.probe_id, ())),
             )
+            warnings.extend(lookup.warnings)
             if lookup.model is not None:
                 models.append(lookup.model)
+        _log_drift_summary(tuple(warnings), scope="probe_list")
         return tuple(models)
 
     def _case_model(

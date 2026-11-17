@@ -19,6 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
 from app.db.crud.bad_case_sync import BadCaseRootSyncRow, _to_row
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     bad_case_analysis,
     bad_case_root_sync,
@@ -143,6 +144,7 @@ class OverviewRepository:
         """Return whether the external bad-case table can be queried."""
         return await self._table_present(bad_cases.name)
 
+    @read_only_guard("bad_cases", strict=False)
     async def counts(
         self,
         *,
@@ -194,6 +196,7 @@ class OverviewRepository:
             sources=int(row["sources"]),
         )
 
+    @read_only_guard("bad_cases", strict=False)
     async def workspace_usage(self, workspace_id: str) -> tuple[int, int]:
         """Return the workspace quota and its unwindowed bad-case usage."""
         cases_available = await self._cases_available()
@@ -218,6 +221,7 @@ class OverviewRepository:
                 )
         return int(quota), used
 
+    @read_only_guard("bad_cases", strict=False)
     async def object_options(
         self,
         *,
@@ -246,6 +250,7 @@ class OverviewRepository:
             names: Sequence[object] = (await session.execute(statement)).scalars().all()
         return [str(name) for name in names]
 
+    @read_only_guard("bad_cases", strict=False)
     async def trend_points(
         self,
         *,
@@ -282,6 +287,7 @@ class OverviewRepository:
             )
         return points
 
+    @read_only_guard("bad_cases", strict=False)
     async def sources(
         self,
         *,
@@ -331,6 +337,7 @@ class OverviewRepository:
             for row in rows
         ]
 
+    @read_only_guard("bad_cases", strict=False)
     async def count_cases(
         self,
         *,
@@ -359,6 +366,7 @@ class OverviewRepository:
         async with self._database.session() as session:
             return int((await session.execute(statement)).scalar_one())
 
+    @read_only_guard("bad_cases", strict=False)
     async def page_cases(
         self,
         *,

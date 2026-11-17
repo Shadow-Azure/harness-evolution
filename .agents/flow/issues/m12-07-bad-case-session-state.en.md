@@ -8,7 +8,7 @@ id: m12-07
 milestone: m12
 depends: []
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/web/**

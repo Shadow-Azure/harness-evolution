@@ -53,3 +53,7 @@ With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit `upstre
 ## Troubleshooting
 
 - A bad-case detail response of 409 `BAD_CASE_SESSION_PENDING` or 503 `BAD_CASE_SESSION_UNAVAILABLE` means the case was reported but its trace is not ready; it is not data loss. Check the trace-query configuration, or ask the reporter to supply `sessionSource`.
+
+## External-table read privileges and contract logs
+
+The read path needs SELECT only on `bad_cases`, `bad_case_analysis`, and `probe_reports`; reporting, catalog sync, and attribution writes also need INSERT/UPDATE (never external-row deletes). After startup the API checks column and type contracts every five minutes by default (`HE_EXTERNAL_CONTRACT_CHECK_INTERVAL_SECONDS` tunes it) and emits `external.contract_check`, `external.contract_drift`, and `external.row_drift`. Failed reads return a stable 503 (`EXTERNAL_SCHEMA_DRIFT` / `EXTERNAL_READ_FORBIDDEN` / `EXTERNAL_READ_FAILED`); `external.read_failed` carries only table names, dialect, error classes, driver codes, and the stable code, never SQL or parameters.

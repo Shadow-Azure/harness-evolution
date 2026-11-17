@@ -47,6 +47,7 @@ from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.workspaces import WorkspaceRepository
+from app.db.external_contract import ExternalContractMonitor
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.jobs import JobRunRecord
@@ -142,6 +143,10 @@ def create_app(
     resolved_settings = settings or Settings()
     resolve_attribution_engine(resolved_settings.attribution_engine)
     resolved_database = database or create_database(resolved_settings)
+    external_contract = ExternalContractMonitor(
+        resolved_database,
+        interval_seconds=resolved_settings.external_contract_check_interval_seconds,
+    )
     identity = IdentityService(resolved_settings, resolved_database)
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
     run_event_store = SqlRunEventStore(resolved_database)
@@ -441,6 +446,8 @@ def create_app(
             await bad_case_sync.start()
             phase = "bad-case-catalog-sync-scheduler"
             await catalog_sync.start()
+            phase = "external-contract-monitor"
+            await external_contract.start()
             phase = "job-dispatch"
             await jobs.start_queued()
             phase = "eval-poller"
@@ -460,6 +467,7 @@ def create_app(
         try:
             yield
         finally:
+            await external_contract.stop()
             try:
                 await evolution_blocked_sweeper.stop()
             finally:
@@ -516,6 +524,7 @@ def create_app(
     app.state.sync = sync
     app.state.bad_case_sync = bad_case_sync
     app.state.bad_case_catalog_sync = catalog_sync
+    app.state.external_contract = external_contract
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events

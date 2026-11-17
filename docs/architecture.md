@@ -38,6 +38,7 @@ Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情�
 - 空间：`workspaces`、`workspace_members`、`workspace_ingest_credentials`；bad case、对象配置与运行带 `workspace_id`。轨迹全局共享，空间 Session 由 bad case 投影。
 - 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。
 - 归因：`bad_case_analysis` 以 `(bad_case_id, probe_id)` 关联多行；`probe_reports` 存结论、缓存键与复用计数；缓存键含空间、case、对象身份、版本、策略与引擎。
+- 外部问题表按 06 §4 契约巡检：缺失表/列或类型漂移写 `external.contract_drift`，行级漂移汇总 `external.row_drift`；读失败映射为 `EXTERNAL_SCHEMA_DRIFT`/`EXTERNAL_READ_FORBIDDEN`/`EXTERNAL_READ_FAILED`，读路径只发 SELECT。
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析状态；对象 revision 取 `path + body hash` 或 tag，未知 revision 不按名称猜测。
 - 知识触发：`kind=knowledge` 只认空间知识根或知识 Provider/Collection 返回的文档，存 `document_id`、revision、来源路径、检索方式与 tool_use，不存全文。
 - 任务：`job_runs` 是任务真值，串行 worker 写 run 事件，总线有界通知；`sync_lock` 单飞，job 与锁同事务，异常 `sync_runs` 先终结再释放；原始 payload 按 `(runtime_key, root_session_id, agent_id)` 唯一保存，fixtures 幂等同构表，重放按 root 原子组装后事务重写。
