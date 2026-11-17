@@ -104,6 +104,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/sessions/{sessionId}/tree",
         "/api/workspaces/{wid}/sessions/{sessionId}/bad-cases",
         "/api/workspaces/{wid}/bad-cases/{badCaseId}",
+        "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions",
+        "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}",
         "/api/workspaces/{wid}/overview/summary",
         "/api/workspaces/{wid}/overview/trend",
         "/api/workspaces/{wid}/overview/sources",
@@ -202,6 +204,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "SourceRow",
         "OverviewBadCaseListResponse",
         "BadCaseListItem",
+        "AttributionItem",
+        "AttributionPage",
+        "AttributionDetail",
+        "AttributionTriggerCompare",
     } <= set(components)
     assert set(components["SessionPreviewItem"]["properties"]) == {
         "sessionId",
@@ -295,6 +301,8 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/workspaces/{wid}/overview/trend", "get"),
         ("/api/workspaces/{wid}/overview/sources", "get"),
         ("/api/workspaces/{wid}/bad-cases", "get"),
+        ("/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions", "get"),
+        ("/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}", "get"),
     ]
     for path, method in protected_operations:
         assert paths[path][method]["security"] == [{"BearerAuth": []}]

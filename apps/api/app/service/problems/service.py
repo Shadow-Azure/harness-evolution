@@ -240,6 +240,8 @@ class ProblemService:
                     title=item.title,
                     reason=item.reason,
                     meta_data=dict(item.meta_data) if item.meta_data is not None else None,
+                    attribution_count=item.attribution_count,
+                    has_attribution=item.has_attribution,
                     analysis=build_bad_case_analysis(
                         status=analysis_status,
                         probe_id=analysis_probe_id,

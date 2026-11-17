@@ -120,6 +120,29 @@ def _validated_analysis_result(
     return result, True
 
 
+def _attribution_counts(
+    analysis_rows: tuple[BadCaseAnalysisRow, ...],
+    probes: Mapping[str, ProbeReportRow],
+) -> dict[str, int]:
+    """Count distinct object/revision identities reached through case links.
+
+    The canonical rule is 06 §4.2.1: a case's ``attributionCount`` is the
+    distinct ``(probe_type, probe_object, object_version)`` triple, not the
+    number of link rows. Legacy rows without a probe and dangling probe ids
+    contribute nothing because the join cannot reach them.
+    """
+    triples: dict[str, set[tuple[str, str, str | None]]] = {}
+    for row in analysis_rows:
+        probe_id = _safe_text(row.probe_id)
+        probe = probes.get(probe_id) if probe_id is not None else None
+        if probe is None:
+            continue
+        triples.setdefault(row.bad_case_id, set()).add(
+            (probe.probe_type, probe.probe_object, probe.object_version),
+        )
+    return {case_id: len(seen) for case_id, seen in triples.items()}
+
+
 class BadCaseService:
     """Expose validated read models; all writes remain external to this service."""
 
@@ -186,6 +209,7 @@ class BadCaseService:
 
         analyses = {row.bad_case_id: row for row in analysis_rows}
         probes = {row.probe_id: row for row in probe_rows if _safe_text(row.probe_id) is not None}
+        attribution_counts = _attribution_counts(analysis_rows, probes)
 
         items: list[BadCaseReadModel] = []
         for row, session_id, row_warnings in cases:
@@ -205,6 +229,7 @@ class BadCaseService:
                     row,
                     session_id,
                     analysis,
+                    attribution_counts.get(case_id, 0),
                     tuple(model_warnings),
                 ),
             )
@@ -236,6 +261,7 @@ class BadCaseService:
         row: BadCaseRow,
         session_id: str,
         analysis: BadCaseAnalysisReadModel,
+        attribution_count: int,
         warnings: tuple[ExternalReadWarning, ...],
     ) -> BadCaseReadModel:
         """Convert one identity-valid row and its merged attribution."""
@@ -307,6 +333,7 @@ class BadCaseService:
             created_at=row.created_at,
             updated_at=row.updated_at,
             analysis=analysis,
+            attribution_count=attribution_count,
             warnings=tuple(mutable_warnings),
         )
 

@@ -933,6 +933,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workspace Case Attributions
+         * @description Return one problem's attributions newest first, two per page by default.
+         */
+        get: operations["list_workspace_case_attributions_api_workspaces__wid__bad_cases__badCaseId__attributions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workspace Case Attribution
+         * @description Return one attribution only while it is linked to the requested problem.
+         */
+        get: operations["get_workspace_case_attribution_api_workspaces__wid__bad_cases__badCaseId__attributions__attributionId__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/catalogs/models": {
         parameters: {
             query?: never;
@@ -1563,6 +1603,123 @@ export interface components {
             prompt: number;
         };
         /**
+         * AttributionDetail
+         * @description One attribution with its reasoning, evidence warnings, and trigger compare.
+         */
+        AttributionDetail: {
+            /** Attributionengine */
+            attributionEngine: string;
+            /** Attributionid */
+            attributionId: string;
+            /** Badcaseid */
+            badCaseId: string;
+            /** Category */
+            category: ("model" | "prompt" | "error") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Iscached */
+            isCached: boolean;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Objectversion */
+            objectVersion?: string | null;
+            /** Policyversion */
+            policyVersion: string;
+            /** Reason */
+            reason: string;
+            /** Reasoning */
+            reasoning: string;
+            /** Reusedcount */
+            reusedCount: number;
+            /** Runid */
+            runId?: string | null;
+            triggerCompare: components["schemas"]["AttributionTriggerCompare"];
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+            /** Warnings */
+            warnings: components["schemas"]["AttributionWarning"][];
+        };
+        /**
+         * AttributionItem
+         * @description One object/revision-scoped attribution shown in the error-detail list.
+         *
+         *     ``attributionId`` is the stable deep-link id and maps ``probe_reports.probe_id``;
+         *     ``runId`` prefers the last run that reused the conclusion so a deep link
+         *     opens the run that produced the currently displayed row.
+         */
+        AttributionItem: {
+            /** Attributionid */
+            attributionId: string;
+            /** Badcaseid */
+            badCaseId: string;
+            /** Category */
+            category: ("model" | "prompt" | "error") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target";
+            /** Confidence */
+            confidence: number;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Iscached */
+            isCached: boolean;
+            /** Objectname */
+            objectName: string;
+            /**
+             * Objecttype
+             * @enum {string}
+             */
+            objectType: "skill" | "agent" | "knowledge";
+            /** Objectversion */
+            objectVersion?: string | null;
+            /** Reusedcount */
+            reusedCount: number;
+            /** Runid */
+            runId?: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /**
+         * AttributionPage
+         * @description One deterministic newest-first page of a case's attributions.
+         */
+        AttributionPage: {
+            /** Items */
+            items: components["schemas"]["AttributionItem"][];
+            /** Page */
+            page: number;
+            /** Pagesize */
+            pageSize: number;
+            /** Total */
+            total: number;
+        };
+        /**
          * AttributionPreviewRequest
          * @description Attribution stage condition; preview never executes an engine.
          */
@@ -1609,6 +1766,41 @@ export interface components {
             reused: number;
         };
         /**
+         * AttributionTriggerCompare
+         * @description Trigger-point comparison for one attribution detail.
+         *
+         *     ``order`` compares the case trigger against the object entry point; a
+         *     missing or incomparable anchor stays ``unknown``. ``versionState`` is
+         *     ``unknown`` when the attribution has no pinned object version, so clients
+         *     must not present it as an exact revision hit.
+         */
+        AttributionTriggerCompare: {
+            /** Casetriggerat */
+            caseTriggerAt: string | null;
+            /** Objecttriggerat */
+            objectTriggerAt: string | null;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "before" | "after" | "same" | "unknown";
+            /**
+             * Versionstate
+             * @enum {string}
+             */
+            versionState: "exact" | "unknown";
+        };
+        /**
+         * AttributionWarning
+         * @description One fixed, non-sensitive evidence gap on an attribution detail.
+         */
+        AttributionWarning: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+        };
+        /**
          * BadCase
          * @description Complete public problem card used by list and detail routes.
          *
@@ -1618,6 +1810,11 @@ export interface components {
         BadCase: {
             analysis: components["schemas"]["BadCaseAnalysis"];
             anchor: components["schemas"]["BadCaseAnchor"];
+            /**
+             * Attributioncount
+             * @description Distinct (probeType, probeObject, objectVersion) attributions reached through bad_case_analysis; the canonical definition is 06 §4.2.1.
+             */
+            attributionCount: number;
             badCaseAgent: components["schemas"]["BadCaseAgent"];
             /** Badcaseid */
             badCaseId: string;
@@ -1633,6 +1830,8 @@ export interface components {
             degraded: boolean;
             /** Diagnosticcode */
             diagnosticCode?: string | null;
+            /** Hasattribution */
+            hasAttribution: boolean;
             /** Metadata */
             metaData: {
                 [key: string]: unknown;
@@ -1970,7 +2169,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -7198,6 +7397,128 @@ export interface operations {
                 };
             };
             /** @description Workspace or problem does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_workspace_case_attributions_api_workspaces__wid__bad_cases__badCaseId__attributions_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                wid: string;
+                badCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionPage"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace or problem does not exist */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request validation failed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_workspace_case_attribution_api_workspaces__wid__bad_cases__badCaseId__attributions__attributionId__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                badCaseId: string;
+                attributionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionDetail"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace, problem, or attribution does not exist */
             404: {
                 headers: {
                     [name: string]: unknown;

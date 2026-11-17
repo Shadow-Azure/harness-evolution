@@ -69,6 +69,7 @@ from app.service.acquisition.bad_case_sync_coordinator import (
 )
 from app.service.acquisition.sync import SyncCoordinator
 from app.service.acquisition.upstream_pull import UpstreamPullService
+from app.service.bad_cases.attribution import AttributionReadService
 from app.service.bad_cases.service import BadCaseService
 from app.service.catalogs import CatalogService
 from app.service.events import EventBus
@@ -254,6 +255,10 @@ def create_app(
     problems = ProblemService(
         ProblemRepository(resolved_database),
         BadCaseService(BadCaseRepository(resolved_database)),
+    )
+    attribution_read = AttributionReadService(
+        AttributionRepository(resolved_database),
+        ProblemRepository(resolved_database),
     )
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
@@ -505,6 +510,7 @@ def create_app(
     app.state.workspaces = workspaces
     app.state.bad_case_ingest = bad_case_ingest
     app.state.problems = problems
+    app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
     app.state.potential_preview = potential_preview

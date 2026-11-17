@@ -9,13 +9,17 @@ milestone: m11
 depends:
   - m10-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/problems.py
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
   - apps/api/app/service/bad_cases/**
+  - apps/api/app/service/problems/**
   - apps/api/app/db/crud/**
+  - apps/api/tests/**
   - packages/contracts/**
-  - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -50,6 +54,7 @@ Error detail needs paged revision-scoped attributions and stable item deep links
 1. Write read tests.
 2. Implement DTOs.
 3. Update contracts.
+4. Wire the service/problems projection and API error code; keep the review in plans/.
 
 ## Dependencies and boundary
 
@@ -59,7 +64,7 @@ Error detail needs paged revision-scoped attributions and stable item deep links
 ## Verification
 
 ```sh
-pnpm test:api -- tests/problems tests/attribution; pnpm contract:check
+pnpm test:api -- tests/m11-01-attribution-read tests/m4-02-problem-api tests/attribution; pnpm contract:check
 ```
 
 - Paging is stable.

@@ -9,13 +9,17 @@ milestone: m11
 depends:
   - m10-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/api/problems.py
+  - apps/api/app/main.py
+  - apps/api/app/errors.py
   - apps/api/app/service/bad_cases/**
+  - apps/api/app/service/problems/**
   - apps/api/app/db/crud/**
+  - apps/api/tests/**
   - packages/contracts/**
-  - tests/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -50,6 +54,7 @@ github:
 1. 先写分页、跨 case 与兼容测试。
 2. 实现 repository 和 DTO。
 3. 更新 OpenAPI 与深链示例。
+4. 补 service/problems 组装、错误码与 API 测试；检视文档落 plans/。
 
 ## 依赖与交付边界
 
@@ -59,7 +64,7 @@ github:
 ## 独立验证
 
 ```sh
-pnpm test:api -- tests/problems tests/attribution; pnpm contract:check
+pnpm test:api -- tests/m11-01-attribution-read tests/m4-02-problem-api tests/attribution; pnpm contract:check
 ```
 
 - 同 case 多条归因稳定分页。
