@@ -41,7 +41,7 @@
 
 ## 评测配置注入
 
-评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入服务器 `.env`；`apiKeyRef` 只存环境变量名，未配置时注入步骤跳过。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
+评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入服务器 `.env`；`apiKeyRef` 只存环境变量名，未配置时注入步骤跳过。值经 base64 传输解码原子写入；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
 ## 发布与回滚
 

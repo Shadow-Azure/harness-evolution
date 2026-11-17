@@ -71,21 +71,21 @@ jobs:
         run: |
           set -u
           SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
-          REMOTE_ENV="/opt/harness/shared/.env"
-          VALUES=()
-          [ -n "$HE_EVAL_MODE" ] && VALUES+=("HE_EVAL_MODE=$HE_EVAL_MODE")
-          [ -n "$HE_EVAL_BASE_URL" ] && VALUES+=("HE_EVAL_BASE_URL=$HE_EVAL_BASE_URL")
-          [ -n "$HE_EVAL_API_KEY" ] && VALUES+=("HE_EVAL_API_KEY=$HE_EVAL_API_KEY")
-          if [ "${#VALUES[@]}" -eq 0 ]; then
+          ENTRIES=()
+          [ -n "${HE_EVAL_MODE:-}" ] && ENTRIES+=("HE_EVAL_MODE $(printf '%s' "${HE_EVAL_MODE:-}" | base64 | tr -d '\n')")
+          [ -n "${HE_EVAL_BASE_URL:-}" ] && ENTRIES+=("HE_EVAL_BASE_URL $(printf '%s' "${HE_EVAL_BASE_URL:-}" | base64 | tr -d '\n')")
+          [ -n "${HE_EVAL_API_KEY:-}" ] && ENTRIES+=("HE_EVAL_API_KEY $(printf '%s' "${HE_EVAL_API_KEY:-}" | base64 | tr -d '\n')")
+          if [ "${#ENTRIES[@]}" -eq 0 ]; then
             echo "未配置 HE_EVAL_* secrets，跳过评测配置注入（保持服务器现状）"
             exit 0
           fi
-          for line in "${VALUES[@]}"; do
-            key="${line%%=*}"
-            # 原子更新远端 .env：存在同名键就地替换，不存在则追加；密钥不回显不落日志。
-            $SSH_CMD "$SSH_USER@$SSH_HOST" "f=$REMOTE_ENV; touch \"\$f\"; chmod 600 \"\$f\"; if grep -q \"^${key}=\" \"\$f\"; then sed -i \"s|^${key}=.*|${line}|\" \"\$f\"; else printf '%s\n' '${line}' >> \"\$f\"; fi"
-          done
-          echo "评测配置已注入 ${#VALUES[@]} 个 HE_EVAL_* 变量"
+          # 值以 base64 传输、服务器侧 inject-eval-config.py 解码：
+          # `&`/`$`/反引号/`|`/引号等特殊字符全部安全；现有 .env 命中键就地替换、
+          # 缺失键追加（重跑幂等），临时文件+mv 原子重写无半写入；
+          # 单键解码失败只告警跳过，不阻塞发布；密钥不回显不落日志。
+          # （脚本由上一步 rsync deploy/ 落到 /opt/harness/shared/config/。）
+          printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" "python3 /opt/harness/shared/config/inject-eval-config.py"
+          echo "评测配置已注入 ${#ENTRIES[@]} 个 HE_EVAL_* 变量"
 
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:
