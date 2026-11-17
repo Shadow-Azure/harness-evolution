@@ -30,7 +30,7 @@ m11-01 made a bad case's attributions readable per object/revision, but error de
 ## Consequences
 
 - Selecting a case costs one extra 50-row attribution read; it is bounded by `total`, only loops beyond 50 rows, and only while error detail is open.
-- Sidebar page and detail `at` stay independent: stepping through detail can land on an item on another sidebar page, and the sidebar keeps its own page number. Refresh and copying a link follow `at`.
+- The sidebar page follows the selected `at` and switches to the page that contains it. The page number is driven only by the selection and is not written to the URL; refresh and copied links still follow `at`.
 - Conclusions are still written only by evolution; error detail is read-only and never performs manual attribution or mutates the bad case.
 - Execution-flow layout and keeping all concurrent branches when a case is selected remain m11-07's work; this page still filters the flow to the selected case.
 - V1 `/analysis`, `/probes/{id}`, and `BadCase.analysis` remain for lists and compatibility pages; m11-06 retirement must also remove the old error-detail reads.
