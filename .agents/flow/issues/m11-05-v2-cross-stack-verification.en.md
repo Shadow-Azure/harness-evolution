@@ -13,13 +13,16 @@ depends:
   - m11-04
   - m11-07
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - tests/**
   - fixtures/**
   - reports/**
+  - plans/**
   - apps/api/**
   - apps/web/**
+  - scripts/run-api.mjs
+  - .github/workflows/ci.yml
   - .agents/flow/**
   - .agents/notes/**
 adr: []
@@ -78,6 +81,7 @@ pnpm test:all; pnpm verify:docs; pnpm verify:bundle; pnpm verify:web-style
 ## Gates and CI
 
 - All repository gates.
+- The MySQL lane runs the V2 migration acceptance case through `test:db:mysql`.
 
 ## Non-goals
 
