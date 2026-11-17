@@ -1266,7 +1266,7 @@
       },
       "EvolutionRunAttributeStats": {
         "additionalProperties": false,
-        "description": "Probe counts by externally supplied attribution type.",
+        "description": "Case counts by the closed attribution category.",
         "properties": {
           "error": {
             "default": 0,
@@ -1276,11 +1276,6 @@
           "model": {
             "default": 0,
             "title": "Model",
-            "type": "integer"
-          },
-          "nonIssue": {
-            "default": 0,
-            "title": "Nonissue",
             "type": "integer"
           },
           "prompt": {
@@ -1400,7 +1395,7 @@
       },
       "EvolutionRunDetail": {
         "additionalProperties": false,
-        "description": "Complete shell consumed by the six-step run-detail page.",
+        "description": "Complete shell consumed by the seven-step run-detail page.",
         "properties": {
           "blockedStage": {
             "anyOf": [
@@ -1629,6 +1624,10 @@
             "enum": [
               "run_created",
               "prepare_started",
+              "sessions_linked",
+              "potential_computed",
+              "attribution_created",
+              "attribution_reused",
               "workspace_prepared",
               "clusters_created",
               "step_advanced",
@@ -1944,9 +1943,19 @@
       },
       "EvolutionRunStats": {
         "additionalProperties": false,
-        "description": "Backend-normalized run statistics.",
+        "description": "Backend-normalized V2 run statistics.",
         "properties": {
-          "byAttributeType": {
+          "attributed": {
+            "default": 0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "badCases": {
+            "default": 0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "byCategory": {
             "$ref": "#/components/schemas/EvolutionRunAttributeStats"
           },
           "clusters": {
@@ -1954,9 +1963,14 @@
             "title": "Clusters",
             "type": "integer"
           },
-          "probes": {
+          "potential": {
             "default": 0,
-            "title": "Probes",
+            "title": "Potential",
+            "type": "integer"
+          },
+          "reused": {
+            "default": 0,
+            "title": "Reused",
             "type": "integer"
           },
           "sessions": {
@@ -1964,14 +1978,14 @@
             "title": "Sessions",
             "type": "integer"
           },
-          "usedProbes": {
+          "versionUnresolvedSessions": {
             "default": 0,
-            "title": "Usedprobes",
+            "title": "Versionunresolvedsessions",
             "type": "integer"
           }
         },
         "required": [
-          "byAttributeType"
+          "byCategory"
         ],
         "title": "EvolutionRunStats",
         "type": "object"
@@ -2001,10 +2015,11 @@
           },
           "key": {
             "enum": [
-              "input",
-              "clusters",
+              "range",
+              "sessions",
+              "potential",
               "attribution",
-              "severity",
+              "clusters",
               "iteration",
               "final"
             ],
@@ -2046,7 +2061,8 @@
           "type": {
             "enum": [
               "skill",
-              "agent"
+              "agent",
+              "knowledge"
             ],
             "title": "Type",
             "type": "string"
@@ -2220,7 +2236,7 @@
       },
       "EvolutionStepAttribution": {
         "additionalProperties": false,
-        "description": "Step 2 response: key-discriminated attribution projection.",
+        "description": "Step 3 response: per-case attribution conclusions.",
         "properties": {
           "clickable": {
             "title": "Clickable",
@@ -2276,7 +2292,7 @@
       },
       "EvolutionStepClusters": {
         "additionalProperties": false,
-        "description": "Step 1 response: key-discriminated cluster projection.",
+        "description": "Step 4 response: ranked clusters with source cases.",
         "properties": {
           "clickable": {
             "title": "Clickable",
@@ -2332,7 +2348,7 @@
       },
       "EvolutionStepFinal": {
         "additionalProperties": false,
-        "description": "Step 5 response: key-discriminated final projection.",
+        "description": "Step 6 response: terminal evaluation.",
         "properties": {
           "clickable": {
             "title": "Clickable",
@@ -2386,65 +2402,9 @@
         "title": "EvolutionStepFinal",
         "type": "object"
       },
-      "EvolutionStepInput": {
-        "additionalProperties": false,
-        "description": "Step 0 response: key-discriminated input projection.",
-        "properties": {
-          "clickable": {
-            "title": "Clickable",
-            "type": "boolean"
-          },
-          "detail": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Detail"
-          },
-          "index": {
-            "title": "Index",
-            "type": "integer"
-          },
-          "key": {
-            "const": "input",
-            "default": "input",
-            "title": "Key",
-            "type": "string"
-          },
-          "payload": {
-            "$ref": "#/components/schemas/StepInputPayload"
-          },
-          "status": {
-            "enum": [
-              "done",
-              "active",
-              "pending"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "index",
-          "title",
-          "status",
-          "clickable",
-          "payload"
-        ],
-        "title": "EvolutionStepInput",
-        "type": "object"
-      },
       "EvolutionStepIteration": {
         "additionalProperties": false,
-        "description": "Step 4 response: key-discriminated iteration projection.",
+        "description": "Step 5 response: iteration rounds.",
         "properties": {
           "clickable": {
             "title": "Clickable",
@@ -2498,9 +2458,9 @@
         "title": "EvolutionStepIteration",
         "type": "object"
       },
-      "EvolutionStepSeverity": {
+      "EvolutionStepPotential": {
         "additionalProperties": false,
-        "description": "Step 3 response: key-discriminated severity projection.",
+        "description": "Step 2 response: paged potential bad cases.",
         "properties": {
           "clickable": {
             "title": "Clickable",
@@ -2522,13 +2482,13 @@
             "type": "integer"
           },
           "key": {
-            "const": "severity",
-            "default": "severity",
+            "const": "potential",
+            "default": "potential",
             "title": "Key",
             "type": "string"
           },
           "payload": {
-            "$ref": "#/components/schemas/StepSeverityPayload"
+            "$ref": "#/components/schemas/StepPotentialPayload"
           },
           "status": {
             "enum": [
@@ -2551,7 +2511,119 @@
           "clickable",
           "payload"
         ],
-        "title": "EvolutionStepSeverity",
+        "title": "EvolutionStepPotential",
+        "type": "object"
+      },
+      "EvolutionStepRange": {
+        "additionalProperties": false,
+        "description": "Step 0 response: selection snapshot and headline counts.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "range",
+            "default": "range",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepRangePayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepRange",
+        "type": "object"
+      },
+      "EvolutionStepSessions": {
+        "additionalProperties": false,
+        "description": "Step 1 response: paged Session association.",
+        "properties": {
+          "clickable": {
+            "title": "Clickable",
+            "type": "boolean"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "key": {
+            "const": "sessions",
+            "default": "sessions",
+            "title": "Key",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/StepSessionsPayload"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "active",
+              "pending"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "title",
+          "status",
+          "clickable",
+          "payload"
+        ],
+        "title": "EvolutionStepSessions",
         "type": "object"
       },
       "EvolutionTarget": {
@@ -3687,6 +3759,11 @@
         "additionalProperties": false,
         "description": "Wizard filter condition shared by preview and launch endpoints.",
         "properties": {
+          "cacheEnabled": {
+            "default": true,
+            "title": "Cacheenabled",
+            "type": "boolean"
+          },
           "engineKey": {
             "anyOf": [
               {
@@ -3752,6 +3829,16 @@
             "title": "Pagesize",
             "type": "integer"
           },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PotentialPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "targetName": {
             "maxLength": 128,
             "minLength": 1,
@@ -3761,7 +3848,8 @@
           "targetType": {
             "enum": [
               "skill",
-              "agent"
+              "agent",
+              "knowledge"
             ],
             "title": "Targettype",
             "type": "string"
@@ -5137,26 +5225,55 @@
         "title": "SourceRow",
         "type": "object"
       },
-      "StepAttributionItem": {
+      "StepAttributionPayload": {
         "additionalProperties": false,
-        "description": "One probe attribution entry with its cluster-level confidence.",
+        "description": "Attribution summary plus one row per included case.",
         "properties": {
-          "analysis": {
-            "title": "Analysis",
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StepAttributionRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StepAttributionSummary"
+          }
+        },
+        "required": [
+          "summary",
+          "rows"
+        ],
+        "title": "StepAttributionPayload",
+        "type": "object"
+      },
+      "StepAttributionRow": {
+        "additionalProperties": false,
+        "description": "One case attribution conclusion of step 4.",
+        "properties": {
+          "attributionId": {
+            "title": "Attributionid",
             "type": "string"
           },
-          "attributeType": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Attributetype",
-            "type": "string"
-          },
-          "clusterId": {
-            "title": "Clusterid",
-            "type": "string"
+            "title": "Category"
           },
           "confidence": {
             "anyOf": [
@@ -5173,55 +5290,52 @@
             "title": "Description",
             "type": "string"
           },
-          "objectVersion": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "source": {
+            "enum": [
+              "cached",
+              "fresh"
             ],
-            "title": "Objectversion"
-          },
-          "probeId": {
-            "title": "Probeid",
-            "type": "string"
-          },
-          "probeObject": {
-            "title": "Probeobject",
+            "title": "Source",
             "type": "string"
           }
         },
         "required": [
-          "clusterId",
-          "probeId",
-          "probeObject",
-          "objectVersion",
-          "attributeType",
+          "badCaseId",
+          "attributionId",
+          "category",
           "description",
-          "analysis",
+          "source",
           "confidence"
         ],
-        "title": "StepAttributionItem",
+        "title": "StepAttributionRow",
         "type": "object"
       },
-      "StepAttributionPayload": {
+      "StepAttributionSummary": {
         "additionalProperties": false,
-        "description": "Per-probe attribution entries of step 2.",
+        "description": "Four counts of the attribution step.",
         "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/StepAttributionItem"
-            },
-            "title": "Items",
-            "type": "array"
+          "fresh": {
+            "default": 0,
+            "title": "Fresh",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "default": 0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "potential": {
+            "default": 0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "reused": {
+            "default": 0,
+            "title": "Reused",
+            "type": "integer"
           }
         },
-        "required": [
-          "items"
-        ],
-        "title": "StepAttributionPayload",
+        "title": "StepAttributionSummary",
         "type": "object"
       },
       "StepCandidate": {
@@ -5251,8 +5365,32 @@
       },
       "StepCluster": {
         "additionalProperties": false,
-        "description": "One persisted cluster with its probe rows and stored scores.",
+        "description": "One ranked cluster with its source cases and stored scores.",
         "properties": {
+          "caseCount": {
+            "title": "Casecount",
+            "type": "integer"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/StepClusterCase"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "category": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "clusterId": {
+            "title": "Clusterid",
+            "type": "string"
+          },
           "confidence": {
             "anyOf": [
               {
@@ -5268,20 +5406,16 @@
             "title": "Description",
             "type": "string"
           },
-          "probeClusterId": {
-            "title": "Probeclusterid",
-            "type": "string"
-          },
-          "probeCount": {
-            "title": "Probecount",
-            "type": "integer"
-          },
-          "probes": {
-            "items": {
-              "$ref": "#/components/schemas/ProbePreviewItem"
-            },
-            "title": "Probes",
-            "type": "array"
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
           },
           "severity": {
             "anyOf": [
@@ -5297,33 +5431,81 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "type": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
-            ],
-            "title": "Type",
-            "type": "string"
           }
         },
         "required": [
-          "probeClusterId",
+          "clusterId",
           "title",
           "description",
-          "type",
-          "probeCount",
+          "category",
+          "caseCount",
           "confidence",
           "severity",
-          "probes"
+          "rank",
+          "cases"
         ],
         "title": "StepCluster",
         "type": "object"
       },
+      "StepClusterCase": {
+        "additionalProperties": false,
+        "description": "One source bad case inside a cluster.",
+        "properties": {
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "createdAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Createdat"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "triggerAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggerat"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "title",
+          "objectName",
+          "badCaseType",
+          "triggerAt",
+          "createdAt"
+        ],
+        "title": "StepClusterCase",
+        "type": "object"
+      },
       "StepClustersPayload": {
         "additionalProperties": false,
-        "description": "Cluster list of step 1 in creation order.",
+        "description": "Clusters ordered by severity descending.",
         "properties": {
           "clusters": {
             "items": {
@@ -5339,71 +5521,19 @@
         "title": "StepClustersPayload",
         "type": "object"
       },
-      "StepCondition": {
-        "additionalProperties": false,
-        "description": "Filter condition snapshotted when the run was admitted.",
-        "properties": {
-          "from": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "From"
-          },
-          "models": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Models",
-            "type": "array"
-          },
-          "targetName": {
-            "title": "Targetname",
-            "type": "string"
-          },
-          "targetType": {
-            "enum": [
-              "skill",
-              "agent"
-            ],
-            "title": "Targettype",
-            "type": "string"
-          },
-          "targetVersion": {
-            "title": "Targetversion",
-            "type": "string"
-          },
-          "to": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "To"
-          }
-        },
-        "required": [
-          "targetType",
-          "targetName",
-          "targetVersion",
-          "models"
-        ],
-        "title": "StepCondition",
-        "type": "object"
-      },
       "StepFinalChange": {
         "additionalProperties": false,
         "description": "One accepted round inside the terminal modification list.",
         "properties": {
+          "category": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
           "clusterId": {
             "title": "Clusterid",
             "type": "string"
@@ -5419,22 +5549,13 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "type": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
-            ],
-            "title": "Type",
-            "type": "string"
           }
         },
         "required": [
           "commit",
           "clusterId",
           "title",
-          "type",
+          "category",
           "reportCount"
         ],
         "title": "StepFinalChange",
@@ -5535,135 +5656,9 @@
         "title": "StepFinalPayload",
         "type": "object"
       },
-      "StepInputPayload": {
-        "additionalProperties": false,
-        "description": "Filter condition, hit statistics, and probe rows of step 0.",
-        "properties": {
-          "condition": {
-            "$ref": "#/components/schemas/StepCondition"
-          },
-          "hits": {
-            "$ref": "#/components/schemas/ProbeHitSummary"
-          },
-          "rows": {
-            "items": {
-              "$ref": "#/components/schemas/StepInputRow"
-            },
-            "title": "Rows",
-            "type": "array"
-          }
-        },
-        "required": [
-          "condition",
-          "hits",
-          "rows"
-        ],
-        "title": "StepInputPayload",
-        "type": "object"
-      },
-      "StepInputRow": {
-        "additionalProperties": false,
-        "description": "Shared ProbeRow plus the owning cluster for the input table.",
-        "properties": {
-          "attributeType": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
-            ],
-            "title": "Attributetype",
-            "type": "string"
-          },
-          "clusterId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Clusterid"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "objectVersion": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Objectversion"
-          },
-          "probeId": {
-            "title": "Probeid",
-            "type": "string"
-          },
-          "probeObject": {
-            "title": "Probeobject",
-            "type": "string"
-          },
-          "probeType": {
-            "title": "Probetype",
-            "type": "string"
-          },
-          "sessionId": {
-            "title": "Sessionid",
-            "type": "string"
-          },
-          "sessionTitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessiontitle"
-          },
-          "sourceBadCaseIds": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Sourcebadcaseids",
-            "type": "array"
-          }
-        },
-        "required": [
-          "probeId",
-          "sessionId",
-          "sessionTitle",
-          "model",
-          "probeType",
-          "probeObject",
-          "objectVersion",
-          "attributeType",
-          "description",
-          "sourceBadCaseIds"
-        ],
-        "title": "StepInputRow",
-        "type": "object"
-      },
       "StepIterationPayload": {
         "additionalProperties": false,
-        "description": "Rounds of step 4 in sequence order.",
+        "description": "Rounds of step 6 in sequence order.",
         "properties": {
           "rounds": {
             "items": {
@@ -5677,6 +5672,242 @@
           "rounds"
         ],
         "title": "StepIterationPayload",
+        "type": "object"
+      },
+      "StepPotentialPayload": {
+        "additionalProperties": false,
+        "description": "Paged potential rows; excluded rows stay in the summary only.",
+        "properties": {
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 5,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StepPotentialRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StepPotentialSummary"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "rows"
+        ],
+        "title": "StepPotentialPayload",
+        "type": "object"
+      },
+      "StepPotentialRow": {
+        "additionalProperties": false,
+        "description": "One included bad case row of step 3.",
+        "properties": {
+          "badCaseId": {
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "hitReason": {
+            "enum": [
+              "self_report",
+              "after_object",
+              "both",
+              "policy_excluded",
+              "order_unknown"
+            ],
+            "title": "Hitreason",
+            "type": "string"
+          },
+          "objectName": {
+            "title": "Objectname",
+            "type": "string"
+          },
+          "orderState": {
+            "enum": [
+              "comparable",
+              "unknown"
+            ],
+            "title": "Orderstate",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "triggerAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggerat"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "objectName",
+          "badCaseType",
+          "triggerAt",
+          "sessionId",
+          "hitReason",
+          "orderState"
+        ],
+        "title": "StepPotentialRow",
+        "type": "object"
+      },
+      "StepPotentialSummary": {
+        "additionalProperties": false,
+        "description": "Evaluated and included cases with the closed reason distribution.",
+        "properties": {
+          "badCases": {
+            "default": 0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "byReason": {
+            "$ref": "#/components/schemas/PotentialReasonCounts"
+          },
+          "potential": {
+            "default": 0,
+            "title": "Potential",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "byReason"
+        ],
+        "title": "StepPotentialSummary",
+        "type": "object"
+      },
+      "StepRangeCondition": {
+        "additionalProperties": false,
+        "description": "Immutable selection snapshot shown on step 1.",
+        "properties": {
+          "cacheEnabled": {
+            "title": "Cacheenabled",
+            "type": "boolean"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "policy": {
+            "additionalProperties": true,
+            "title": "Policy",
+            "type": "object"
+          },
+          "targetName": {
+            "title": "Targetname",
+            "type": "string"
+          },
+          "targetType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Targettype",
+            "type": "string"
+          },
+          "targetVersion": {
+            "title": "Targetversion",
+            "type": "string"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          },
+          "workspaceId": {
+            "title": "Workspaceid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetName",
+          "targetVersion",
+          "policy",
+          "cacheEnabled",
+          "workspaceId"
+        ],
+        "title": "StepRangeCondition",
+        "type": "object"
+      },
+      "StepRangePayload": {
+        "additionalProperties": false,
+        "description": "Selection condition plus its headline statistics.",
+        "properties": {
+          "condition": {
+            "$ref": "#/components/schemas/StepRangeCondition"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/StepRangeStats"
+          }
+        },
+        "required": [
+          "condition",
+          "stats"
+        ],
+        "title": "StepRangePayload",
+        "type": "object"
+      },
+      "StepRangeStats": {
+        "additionalProperties": false,
+        "description": "Headline counts of the selection step.",
+        "properties": {
+          "badCases": {
+            "default": 0,
+            "title": "Badcases",
+            "type": "integer"
+          },
+          "potential": {
+            "default": 0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "sessions": {
+            "default": 0,
+            "title": "Sessions",
+            "type": "integer"
+          }
+        },
+        "title": "StepRangeStats",
         "type": "object"
       },
       "StepRound": {
@@ -5696,6 +5927,26 @@
                 "type": "null"
               }
             ]
+          },
+          "caseCount": {
+            "title": "Casecount",
+            "type": "integer"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/StepClusterCase"
+            },
+            "title": "Cases",
+            "type": "array"
+          },
+          "category": {
+            "enum": [
+              "model",
+              "prompt",
+              "error"
+            ],
+            "title": "Category",
+            "type": "string"
           },
           "clusterId": {
             "title": "Clusterid",
@@ -5735,17 +5986,6 @@
               }
             ]
           },
-          "probeCount": {
-            "title": "Probecount",
-            "type": "integer"
-          },
-          "probes": {
-            "items": {
-              "$ref": "#/components/schemas/ProbePreviewItem"
-            },
-            "title": "Probes",
-            "type": "array"
-          },
           "push": {
             "$ref": "#/components/schemas/StepRoundPush"
           },
@@ -5782,26 +6022,17 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "type": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
-            ],
-            "title": "Type",
-            "type": "string"
           }
         },
         "required": [
           "roundId",
           "clusterId",
           "title",
-          "type",
-          "probeCount",
+          "category",
+          "caseCount",
           "confidence",
           "severity",
-          "probes",
+          "cases",
           "status",
           "candidate",
           "patch",
@@ -5932,110 +6163,124 @@
         "title": "StepRoundPush",
         "type": "object"
       },
-      "StepSeverityPayload": {
+      "StepSessionRow": {
         "additionalProperties": false,
-        "description": "Severity rows of step 3 ordered by stored severity.",
+        "description": "One associated Session row of step 2.",
         "properties": {
+          "badCaseCount": {
+            "default": 0,
+            "title": "Badcasecount",
+            "type": "integer"
+          },
+          "objectTriggerAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objecttriggerat"
+          },
+          "potentialCount": {
+            "default": 0,
+            "title": "Potentialcount",
+            "type": "integer"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "sessionId",
+          "title",
+          "objectTriggerAt"
+        ],
+        "title": "StepSessionRow",
+        "type": "object"
+      },
+      "StepSessionsPayload": {
+        "additionalProperties": false,
+        "description": "Paged associated Session projection.",
+        "properties": {
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "default": 4,
+            "title": "Pagesize",
+            "type": "integer"
+          },
           "rows": {
             "items": {
-              "$ref": "#/components/schemas/StepSeverityRow"
+              "$ref": "#/components/schemas/StepSessionRow"
             },
             "title": "Rows",
             "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/StepSessionsSummary"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
+          "summary",
           "rows"
         ],
-        "title": "StepSeverityPayload",
+        "title": "StepSessionsPayload",
         "type": "object"
       },
-      "StepSeverityRow": {
+      "StepSessionsSummary": {
         "additionalProperties": false,
-        "description": "One ranked cluster row backed by persisted severity columns.",
+        "description": "Non-overlapping Session partition of step 2.",
         "properties": {
-          "clusterId": {
-            "title": "Clusterid",
-            "type": "string"
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "impact": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Impact"
-          },
-          "probeCount": {
-            "title": "Probecount",
+          "associated": {
+            "default": 0,
+            "title": "Associated",
             "type": "integer"
           },
-          "rank": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rank"
-          },
-          "reportCount": {
-            "title": "Reportcount",
+          "pending": {
+            "default": 0,
+            "title": "Pending",
             "type": "integer"
           },
-          "severity": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Severity"
+          "reported": {
+            "default": 0,
+            "title": "Reported",
+            "type": "integer"
           },
-          "title": {
-            "title": "Title",
-            "type": "string"
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
           },
-          "type": {
-            "enum": [
-              "model",
-              "prompt",
-              "error"
-            ],
-            "title": "Type",
-            "type": "string"
+          "versionUnresolved": {
+            "default": 0,
+            "title": "Versionunresolved",
+            "type": "integer"
           }
         },
-        "required": [
-          "rank",
-          "clusterId",
-          "title",
-          "type",
-          "probeCount",
-          "reportCount",
-          "confidence",
-          "impact",
-          "severity"
-        ],
-        "title": "StepSeverityRow",
+        "title": "StepSessionsSummary",
         "type": "object"
       },
       "SyncStatusError": {
@@ -8554,7 +8799,7 @@
     },
     "/api/evolution/runs/{run_id}/steps/clusters": {
       "get": {
-        "description": "Return the backend-owned problem-cluster projection of one run.",
+        "description": "Return the backend-owned cluster projection of one run.",
         "operationId": "read_clusters_step_api_evolution_runs__run_id__steps_clusters_get",
         "parameters": [
           {
@@ -8708,84 +8953,6 @@
         ]
       }
     },
-    "/api/evolution/runs/{run_id}/steps/input": {
-      "get": {
-        "description": "Return the backend-owned filter-input projection of one run.",
-        "operationId": "read_input_step_api_evolution_runs__run_id__steps_input_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "run_id",
-            "required": true,
-            "schema": {
-              "title": "Run Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EvolutionStepInput"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Authentication is required"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Password change is required"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Run is unknown or the step has not been reached"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "summary": "Read Input Step",
-        "tags": [
-          "evolution-runs"
-        ]
-      }
-    },
     "/api/evolution/runs/{run_id}/steps/iteration": {
       "get": {
         "description": "Return the backend-owned iteration projection of one run.",
@@ -8864,10 +9031,10 @@
         ]
       }
     },
-    "/api/evolution/runs/{run_id}/steps/severity": {
+    "/api/evolution/runs/{run_id}/steps/potential": {
       "get": {
-        "description": "Return the backend-owned severity ranking projection of one run.",
-        "operationId": "read_severity_step_api_evolution_runs__run_id__steps_severity_get",
+        "description": "Return one page of potential bad cases for one run.",
+        "operationId": "read_potential_step_api_evolution_runs__run_id__steps_potential_get",
         "parameters": [
           {
             "in": "path",
@@ -8877,6 +9044,29 @@
               "title": "Run Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -8884,7 +9074,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EvolutionStepSeverity"
+                  "$ref": "#/components/schemas/EvolutionStepPotential"
                 }
               }
             },
@@ -8936,7 +9126,186 @@
             "BearerAuth": []
           }
         ],
-        "summary": "Read Severity Step",
+        "summary": "Read Potential Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/range": {
+      "get": {
+        "description": "Return the backend-owned selection snapshot of one run.",
+        "operationId": "read_range_step_api_evolution_runs__run_id__steps_range_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepRange"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Range Step",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/steps/sessions": {
+      "get": {
+        "description": "Return one page of associated Sessions for one run.",
+        "operationId": "read_sessions_step_api_evolution_runs__run_id__steps_sessions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolutionStepSessions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Read Sessions Step",
         "tags": [
           "evolution-runs"
         ]
@@ -12048,15 +12417,39 @@
             "required": true,
             "schema": {
               "enum": [
-                "input",
-                "clusters",
+                "range",
+                "sessions",
+                "potential",
                 "attribution",
-                "severity",
+                "clusters",
                 "iteration",
                 "final"
               ],
               "title": "Key",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
             }
           }
         ],
@@ -12067,16 +12460,19 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/EvolutionStepInput"
+                      "$ref": "#/components/schemas/EvolutionStepRange"
                     },
                     {
-                      "$ref": "#/components/schemas/EvolutionStepClusters"
+                      "$ref": "#/components/schemas/EvolutionStepSessions"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EvolutionStepPotential"
                     },
                     {
                       "$ref": "#/components/schemas/EvolutionStepAttribution"
                     },
                     {
-                      "$ref": "#/components/schemas/EvolutionStepSeverity"
+                      "$ref": "#/components/schemas/EvolutionStepClusters"
                     },
                     {
                       "$ref": "#/components/schemas/EvolutionStepIteration"

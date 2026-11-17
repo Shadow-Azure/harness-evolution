@@ -285,7 +285,7 @@ async def test_runs_steps_events_and_retry_cannot_cross_workspaces(
         headers=_bearer(scope.viewer_token),
     )
     foreign_step = await scope.client.get(
-        f"/api/workspaces/{scope.workspace_a}/evolution/runs/run-b/steps/input",
+        f"/api/workspaces/{scope.workspace_a}/evolution/runs/run-b/steps/range",
         headers=_bearer(scope.viewer_token),
     )
     viewer_retry = await scope.client.post(

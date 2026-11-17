@@ -48,7 +48,7 @@ describe("evolution run API", () => {
           path = new URL(request.url).pathname;
           return HttpResponse.json({
             key: "iteration",
-            index: 4,
+            index: 5,
             title: "迭代优化",
             status: "active",
             clickable: true,
@@ -68,6 +68,43 @@ describe("evolution run API", () => {
     expect(path).toBe(
       `/api/workspaces/${workspaceId}/evolution/runs/run%20with%20spaces/steps/iteration`,
     );
+  });
+
+  it("sends the Session default page and explicit potential pagination", async () => {
+    const queries: string[] = [];
+    server.use(
+      http.get(
+        "/api/workspaces/:wid/evolution/runs/:runId/steps/:step",
+        ({ request }) => {
+          queries.push(new URL(request.url).search);
+          return HttpResponse.json({
+            key: "sessions",
+            index: 1,
+            title: "Session 关联",
+            status: "done",
+            clickable: true,
+            payload: {
+              summary: {
+                reported: 0,
+                associated: 0,
+                skipped: 0,
+                versionUnresolved: 0,
+                pending: 0,
+              },
+              rows: [],
+              total: 0,
+              page: 1,
+              pageSize: 4,
+            },
+          });
+        },
+      ),
+    );
+
+    await getEvolutionRunStep(workspaceId, "run-1", "sessions");
+    await getEvolutionRunStep(workspaceId, "run-1", "potential", 2, 5);
+
+    expect(queries).toEqual(["?page=1&pageSize=4", "?page=2&pageSize=5"]);
   });
 
   it("reads execution events with the documented cursor and level filter", async () => {

@@ -413,6 +413,43 @@ class AttributionRepository:
             rows = (await session.execute(statement)).all()
         return {str(row[0]): str(row[1]) for row in rows}
 
+    async def list_clusterable_probes(
+        self,
+        run_id: str,
+    ) -> tuple[tuple[str, str, str], ...]:
+        """Return ``(probe_id, attribute_type, bad_case_id)`` for attributed rows.
+
+        Clustering only consumes included candidates whose probe conclusion is
+        ``attributed``; ``non_target`` rows stay visible in attribution but never
+        reach a cluster.
+        """
+        statement = (
+            select(
+                evolution_run_candidates.c.probe_id,
+                probe_reports.c.attribute_type,
+                evolution_run_candidates.c.bad_case_id,
+            )
+            .select_from(
+                evolution_run_candidates.join(
+                    probe_reports,
+                    probe_reports.c.probe_id == evolution_run_candidates.c.probe_id,
+                ),
+            )
+            .where(
+                evolution_run_candidates.c.run_id == run_id,
+                evolution_run_candidates.c.included.is_(True),
+                probe_reports.c.conclusion == "attributed",
+            )
+            .order_by(evolution_run_candidates.c.bad_case_id)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).all()
+        return tuple(
+            (str(row[0]), str(row[1]), str(row[2]))
+            for row in rows
+            if row[0] is not None and row[1] is not None
+        )
+
     async def list_clusterable_probe_ids(self, run_id: str) -> tuple[str, ...]:
         """Return included, attributed probes in stable bad-case order.
 
@@ -703,6 +740,24 @@ class AttributionRepository:
             result = await session.execute(self._reuse_statement(probe_id, run_id, now))
         return int(getattr(result, "rowcount", 0) or 0)
 
+    async def list_run_attributions(
+        self,
+        run_id: str,
+    ) -> tuple[AttributionRecord, ...]:
+        """Return every attribution linked to one run's candidate snapshot."""
+        statement = (
+            self._attribution_statement()
+            .join(
+                evolution_run_candidates,
+                evolution_run_candidates.c.probe_id == probe_reports.c.probe_id,
+            )
+            .where(evolution_run_candidates.c.run_id == run_id)
+            .order_by(probe_reports.c.updated_at.desc(), probe_reports.c.probe_id)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return tuple(_row_attribution(row) for row in rows)
+
     async def list_attributions(
         self,
         case_id: str,
@@ -782,6 +837,28 @@ class EvolutionRunCandidateRepository:
 
     async def upsert(self, write: CandidateWrite) -> None:
         """Insert a candidate or refresh the same ``(run, case)`` row."""
+        statement = self._upsert_statement(write)
+        async with self._database.transaction() as session:
+            await session.execute(statement)
+
+    async def upsert_many(self, writes: Sequence[CandidateWrite]) -> None:
+        """Upsert one complete candidate snapshot in a single transaction.
+
+        The ``(run_id, bad_case_id)`` conflict target makes a repeated prepare
+        idempotent; one transaction keeps the snapshot all-or-nothing.
+
+        Args:
+            writes: Full candidate set for one run, included and excluded.
+        """
+        if not writes:
+            return
+        statements = [self._upsert_statement(write) for write in writes]
+        async with self._database.transaction() as session:
+            for statement in statements:
+                await session.execute(statement)
+
+    def _upsert_statement(self, write: CandidateWrite) -> Any:
+        """Build the dialect-specific upsert statement for one candidate."""
         values: dict[str, object] = {
             "id": write.id,
             "run_id": write.run_id,
@@ -805,9 +882,8 @@ class EvolutionRunCandidateRepository:
             key: value for key, value in values.items() if key not in {"id", "run_id", "created_at"}
         }
         dialect = self._database.dialect
-        statement: Any
         if dialect == "sqlite":
-            statement = (
+            return (
                 sqlite_insert(evolution_run_candidates)
                 .values(**values)
                 .on_conflict_do_update(
@@ -818,18 +894,13 @@ class EvolutionRunCandidateRepository:
                     set_=updates,
                 )
             )
-        elif dialect == "mysql":
-            statement = (
+        if dialect == "mysql":
+            return (
                 mysql_insert(evolution_run_candidates)
-                .values(
-                    **values,
-                )
+                .values(**values)
                 .on_duplicate_key_update(**updates)
             )
-        else:
-            raise ValueError(f"unsupported database dialect for candidate upsert: {dialect}")
-        async with self._database.transaction() as session:
-            await session.execute(statement)
+        raise ValueError(f"unsupported database dialect for candidate upsert: {dialect}")
 
     async def list(self, run_id: str) -> tuple[EvolutionRunCandidateRecord, ...]:
         """Return every candidate of one run in stable bad-case order."""

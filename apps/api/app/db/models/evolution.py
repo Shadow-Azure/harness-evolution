@@ -474,6 +474,9 @@ class ClusterWrite:
     description: str
     probes: tuple[str, ...]
     impact: float
+    confidence: float | None = None
+    severity: float | None = None
+    rank: int | None = None
 
 
 def _optional_text(value: object) -> str | None:

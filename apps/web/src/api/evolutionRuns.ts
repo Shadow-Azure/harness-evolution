@@ -76,22 +76,42 @@ export function listEvolutionRunEvents(
   );
 }
 
+/** Default row counts of the two server-paged steps. */
+const STEP_PAGE_SIZES: Partial<Record<EvolutionStepKey, number>> = {
+  sessions: 4,
+  potential: 5,
+};
+
 /**
  * Read one reached step projection for an evolution run.
  * @param workspaceId Route workspace identifier.
  * @param runId Evolution run identifier.
  * @param key Stable step key selected in the detail route.
+ * @param page One-based row offset for the paged steps, defaulting to the first page.
+ * @param pageSize Rows per page, defaulting to 4 for sessions and 5 for potential.
  * @returns The key-discriminated step payload.
  */
 export function getEvolutionRunStep(
   workspaceId: string,
   runId: string,
   key: EvolutionStepKey,
+  page?: number,
+  pageSize?: number,
 ): Promise<EvolutionStep> {
+  const defaultSize = STEP_PAGE_SIZES[key];
+  const parameters = new URLSearchParams();
+  if (page !== undefined || pageSize !== undefined) {
+    parameters.set("page", String(page ?? 1));
+    parameters.set("pageSize", String(pageSize ?? defaultSize ?? 1));
+  } else if (defaultSize !== undefined) {
+    parameters.set("page", "1");
+    parameters.set("pageSize", String(defaultSize));
+  }
+  const query = parameters.toString();
   return request<EvolutionStep>(
     workspaceEvolutionPath(
       workspaceId,
-      `/runs/${encodeURIComponent(runId)}/steps/${key}`,
+      `/runs/${encodeURIComponent(runId)}/steps/${key}${query ? `?${query}` : ""}`,
     ),
   );
 }

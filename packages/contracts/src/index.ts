@@ -180,17 +180,20 @@ export type ProbeQueryResult = components["schemas"]["ProbeQueryResult"];
 /** Asynchronous launch acceptance returned by run and preview endpoints. */
 export type RunAccepted = components["schemas"]["RunAccepted"];
 
-/** Backend-owned filter-input projection of one evolution run. */
-export type EvolutionStepInput = components["schemas"]["EvolutionStepInput"];
+/** Backend-owned selection snapshot of one evolution run. */
+export type EvolutionStepRange = components["schemas"]["EvolutionStepRange"];
 
-/** Backend-owned problem-cluster projection of one evolution run. */
-export type EvolutionStepClusters = components["schemas"]["EvolutionStepClusters"];
+/** Backend-owned Session association projection of one evolution run. */
+export type EvolutionStepSessions = components["schemas"]["EvolutionStepSessions"];
+
+/** Backend-owned potential bad-case projection of one evolution run. */
+export type EvolutionStepPotential = components["schemas"]["EvolutionStepPotential"];
 
 /** Backend-owned attribution projection of one evolution run. */
 export type EvolutionStepAttribution = components["schemas"]["EvolutionStepAttribution"];
 
-/** Backend-owned severity ranking projection of one evolution run. */
-export type EvolutionStepSeverity = components["schemas"]["EvolutionStepSeverity"];
+/** Backend-owned cluster projection of one evolution run. */
+export type EvolutionStepClusters = components["schemas"]["EvolutionStepClusters"];
 
 /** Backend-owned iteration projection of one evolution run. */
 export type EvolutionStepIteration = components["schemas"]["EvolutionStepIteration"];
@@ -198,12 +201,13 @@ export type EvolutionStepIteration = components["schemas"]["EvolutionStepIterati
 /** Backend-owned terminal evaluation projection of one evolution run. */
 export type EvolutionStepFinal = components["schemas"]["EvolutionStepFinal"];
 
-/** One key-discriminated response from the six evolution-step endpoints. */
+/** One key-discriminated response from the seven evolution-step endpoints. */
 export type EvolutionStep =
-  | EvolutionStepInput
-  | EvolutionStepClusters
+  | EvolutionStepRange
+  | EvolutionStepSessions
+  | EvolutionStepPotential
   | EvolutionStepAttribution
-  | EvolutionStepSeverity
+  | EvolutionStepClusters
   | EvolutionStepIteration
   | EvolutionStepFinal;
 
@@ -213,20 +217,40 @@ export type EvolutionStepKey = EvolutionStep["key"];
 /** Backend-owned status for one step in the evolution stepper. */
 export type EvolutionStepStatus = EvolutionStep["status"];
 
-/** Filter condition snapshotted when an evolution run was admitted. */
-export type StepCondition = components["schemas"]["StepCondition"];
+/** Selection snapshot and headline counts of the range step. */
+export type StepRangeCondition = components["schemas"]["StepRangeCondition"];
+/** Headline Session, bad-case, and potential counts of the range step. */
+export type StepRangeStats = components["schemas"]["StepRangeStats"];
+/** Selection snapshot and headline counts rendered by the range step. */
+export type StepRangePayload = components["schemas"]["StepRangePayload"];
 
-/** Shared ProbeRow plus the owning cluster for the input table. */
-export type StepInputRow = components["schemas"]["StepInputRow"];
+/** Session partition and one associated Session row. */
+export type StepSessionsSummary = components["schemas"]["StepSessionsSummary"];
+/** One associated Session row with its trigger time and case counts. */
+export type StepSessionRow = components["schemas"]["StepSessionRow"];
+/** Paged Session association payload rendered by the sessions step. */
+export type StepSessionsPayload = components["schemas"]["StepSessionsPayload"];
 
-/** One persisted cluster with its probe rows and stored scores. */
+/** Potential summary and one included bad-case row. */
+export type StepPotentialSummary = components["schemas"]["StepPotentialSummary"];
+/** One included potential bad-case row with its hit reason and order state. */
+export type StepPotentialRow = components["schemas"]["StepPotentialRow"];
+/** Paged potential bad-case payload rendered by the potential step. */
+export type StepPotentialPayload = components["schemas"]["StepPotentialPayload"];
+
+/** Attribution summary and one case conclusion. */
+export type StepAttributionSummary = components["schemas"]["StepAttributionSummary"];
+/** One case attribution conclusion with its cached/fresh source. */
+export type StepAttributionRow = components["schemas"]["StepAttributionRow"];
+/** Attribution summary and per-case rows rendered by the attribution step. */
+export type StepAttributionPayload = components["schemas"]["StepAttributionPayload"];
+
+/** One ranked cluster with its source cases. */
 export type StepCluster = components["schemas"]["StepCluster"];
-
-/** One probe attribution entry with its cluster-level confidence. */
-export type StepAttributionItem = components["schemas"]["StepAttributionItem"];
-
-/** One ranked cluster row backed by persisted severity columns. */
-export type StepSeverityRow = components["schemas"]["StepSeverityRow"];
+/** One source bad case inside a cluster or iteration round. */
+export type StepClusterCase = components["schemas"]["StepClusterCase"];
+/** Severity-ordered clusters rendered by the clusters step. */
+export type StepClustersPayload = components["schemas"]["StepClustersPayload"];
 
 /** One execution round rendered by the iteration step. */
 export type StepRound = components["schemas"]["StepRound"];

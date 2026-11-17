@@ -21,6 +21,10 @@ from app.utils.redaction import (
 EvolutionRunEventType = Literal[
     "run_created",
     "prepare_started",
+    "sessions_linked",
+    "potential_computed",
+    "attribution_created",
+    "attribution_reused",
     "workspace_prepared",
     "clusters_created",
     "step_advanced",
@@ -58,6 +62,10 @@ EvolutionRunEventStage = Literal[
 EVOLUTION_RUN_EVENT_TYPES: tuple[EvolutionRunEventType, ...] = (
     "run_created",
     "prepare_started",
+    "sessions_linked",
+    "potential_computed",
+    "attribution_created",
+    "attribution_reused",
     "workspace_prepared",
     "clusters_created",
     "step_advanced",

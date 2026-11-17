@@ -11,6 +11,7 @@ from pydantic import Field, field_validator
 
 from app.db.crud.probe_query import ProbeHitQuery, ProbeHitRow, ProbeQueryRepository
 from app.errors import AppError, ErrorCode
+from app.service.evolution.potential import PotentialPolicy
 from app.service.identity.schemas import IdentityModel
 
 _ATTRIBUTE_TYPES: tuple[Literal["model", "prompt", "error"], ...] = (
@@ -32,7 +33,7 @@ class AttributeStats(IdentityModel):
 class ProbeQueryRequest(IdentityModel):
     """Wizard filter condition shared by preview and launch endpoints."""
 
-    target_type: Literal["skill", "agent"]
+    target_type: Literal["skill", "agent", "knowledge"]
     target_name: str = Field(min_length=1, max_length=128)
     target_version: str | None = Field(default=None, max_length=64)
     window_from: date | None = Field(default=None, alias="from")
@@ -43,6 +44,8 @@ class ProbeQueryRequest(IdentityModel):
     mode: Literal["full", "cluster_only"] = "full"
     engine_key: str | None = Field(default=None, max_length=64)
     eval: dict[str, Any] | None = None
+    policy: PotentialPolicy | None = None
+    cache_enabled: bool = True
 
     @field_validator("models")
     @classmethod

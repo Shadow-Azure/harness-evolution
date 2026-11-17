@@ -219,6 +219,7 @@ function condition(): ProbeQueryRequest {
     page: page.value,
     pageSize: WIZARD_PAGE_SIZE,
     mode: "full",
+    cacheEnabled: true,
   };
 }
 

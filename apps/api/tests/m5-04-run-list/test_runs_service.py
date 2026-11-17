@@ -149,14 +149,14 @@ async def test_run_list_groups_by_status_without_reordering_repository_rows() ->
 @pytest.mark.parametrize(
     ("unit", "label", "done_rounds", "percent"),
     [
-        (0, "第 1/6 步 · 筛选输入中…", 0, 0),
-        (1, "第 2/6 步 · 问题聚类中…", 0, 14),
-        (2, "第 3/6 步 · LLM 归因置信度中…", 0, 29),
-        (3, "第 4/6 步 · 严重程度排序中…", 0, 43),
-        (4, "第 5/6 步 · 迭代优化 · 第 1/2 轮", 0, 57),
-        (5, "第 5/6 步 · 迭代优化 · 第 2/2 轮", 1, 71),
-        (6, "第 6/6 步 · 测试集终评中…", 2, 86),
-        (7, "第 6/6 步 · 测试集终评中…", 2, 100),
+        (0, "第 1/7 步 · 选择范围中…", 0, 0),
+        (1, "第 2/7 步 · Session 关联中…", 0, 13),
+        (2, "第 6/7 步 · 迭代优化 · 第 1/2 轮", 0, 63),
+        (3, "第 6/7 步 · 迭代优化 · 第 1/2 轮", 0, 63),
+        (4, "第 6/7 步 · 迭代优化 · 第 1/2 轮", 0, 63),
+        (5, "第 6/7 步 · 迭代优化 · 第 2/2 轮", 1, 75),
+        (6, "第 7/7 步 · 测试集终评中…", 2, 88),
+        (7, "第 7/7 步 · 测试集终评中…", 2, 100),
     ],
 )
 async def test_progress_copy_and_percent_are_backend_owned(
@@ -171,8 +171,7 @@ async def test_progress_copy_and_percent_are_backend_owned(
 
     card = (await service.list()).running[0]
 
-    assert card.progress.unit == unit
-    assert card.progress.total == 7
+    assert card.progress.total == 8
     assert card.progress.percent == percent
     assert card.progress.stage_label == label
     assert card.progress.done_rounds == done_rounds
@@ -186,8 +185,8 @@ async def test_progress_percent_rounds_half_up() -> None:
 
     card = (await service.list()).running[0]
 
-    assert card.progress.total == 8
-    assert card.progress.percent == 13
+    assert card.progress.total == 9
+    assert card.progress.percent == 11
 
 
 async def test_final_error_stats_and_creator_are_projected_for_the_card() -> None:
@@ -221,10 +220,10 @@ async def test_final_error_stats_and_creator_are_projected_for_the_card() -> Non
 
     assert card.created_by == "Ada"
     assert card.stats.sessions == 4
-    assert card.stats.probes == 3
-    assert card.stats.used_probes == 2
+    assert card.stats.bad_cases == 3
+    assert card.stats.potential == 0
     assert card.stats.clusters == 2
-    assert card.stats.by_attribute_type.model == 1
+    assert card.stats.by_category.model == 1
     assert card.final is not None
     assert card.final.best_version == "v2.0.1-best"
     assert card.final.branch_name == "evo/run-final"

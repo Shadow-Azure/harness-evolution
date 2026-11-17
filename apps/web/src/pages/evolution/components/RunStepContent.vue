@@ -2,28 +2,28 @@
 import type {
   EvolutionRunDetail,
   EvolutionStep,
-  StepCondition,
 } from "@harness/contracts";
 
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import StepAttribution from "./StepAttribution.vue";
 import StepClusters from "./StepClusters.vue";
 import StepFinal from "./StepFinal.vue";
-import StepInput from "./StepInput.vue";
 import StepIterations from "./StepIterations.vue";
-import StepSeverity from "./StepSeverity.vue";
+import StepPotential from "./StepPotential.vue";
+import StepRange from "./StepRange.vue";
+import StepSessions from "./StepSessions.vue";
 
 defineProps<{
   wid: string;
   run: EvolutionRunDetail;
   step: EvolutionStep | undefined;
-  condition: StepCondition;
   isPending: boolean;
   isUnreached: boolean;
   focusCluster?: string;
 }>();
 defineEmits<{
   "missing-cluster-focus": [];
+  "page-change": [page: number];
 }>();
 </script>
 
@@ -41,11 +41,25 @@ defineEmits<{
       运行在第 1 步完成前已终止。
     </template>
   </p>
-  <StepInput
-    v-else-if="step?.key === 'input'"
+  <StepRange
+    v-else-if="step?.key === 'range'"
+    :step="step"
+  />
+  <StepSessions
+    v-else-if="step?.key === 'sessions'"
+    :step="step"
+    @page-change="$emit('page-change', $event)"
+  />
+  <StepPotential
+    v-else-if="step?.key === 'potential'"
     :wid="wid"
     :step="step"
-    :condition="condition"
+    @page-change="$emit('page-change', $event)"
+  />
+  <StepAttribution
+    v-else-if="step?.key === 'attribution'"
+    :step="step"
+    :run="run"
   />
   <StepClusters
     v-else-if="step?.key === 'clusters'"
@@ -53,15 +67,6 @@ defineEmits<{
     :step="step"
     :focus-cluster="focusCluster"
     @missing-focus="$emit('missing-cluster-focus')"
-  />
-  <StepAttribution
-    v-else-if="step?.key === 'attribution'"
-    :step="step"
-    :run="run"
-  />
-  <StepSeverity
-    v-else-if="step?.key === 'severity'"
-    :step="step"
   />
   <StepIterations
     v-else-if="step?.key === 'iteration'"

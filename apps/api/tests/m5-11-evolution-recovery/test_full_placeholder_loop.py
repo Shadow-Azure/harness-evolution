@@ -370,6 +370,7 @@ async def _prepare_full_run(
             for index, cluster in enumerate(clusters)
         },
     )
+    await repository.advance_unit(run.id, expected=4, target=5, cluster_count=2)
     await repository.insert_rounds(
         (
             {
@@ -391,7 +392,7 @@ async def _prepare_full_run(
     marked = await repository.mark_prepared(
         run.id,
         status="running",
-        progress_unit=4,
+        progress_unit=5,
         repo_path=str(prepared.repo_path),
         base_ref=prepared.ref,
         base_commit=prepared.base_commit,
@@ -428,7 +429,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
         base_commit=base_commit,
     )
     assert run.status == "running"
-    assert run.progress_unit == 4
+    assert run.progress_unit == 5
     assert run.workspace_path is not None
     assert run.branch_name == BRANCH
     # A round inserted without an evaluation result must be SQL NULL, not JSON null.
@@ -558,7 +559,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     assert accepted_round is not None and run_after_accept is not None
     assert accepted_round.accepted is True
     assert accepted_round.commit_hash is not None
-    assert run_after_accept.progress_unit == 5
+    assert run_after_accept.progress_unit == 6
     assert _remote_tag(bare, published.candidate_ref) == ""
 
     # Replaying apply on the already-decided round must not accept or push twice.
@@ -576,7 +577,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     replayed_run = await repository.get_run(RUN_ID)
     assert replayed_round is not None and replayed_run is not None
     assert replayed_round.commit_hash == accepted_round.commit_hash
-    assert replayed_run.progress_unit == 5
+    assert replayed_run.progress_unit == 6
     assert _remote_tag(bare, published.candidate_ref) == ""
 
     # Round 2: publish, evaluate, reject through real git.
@@ -614,7 +615,7 @@ async def test_full_placeholder_loop_accepts_rejects_and_finalizes(
     run_after_reject = await repository.get_run(RUN_ID)
     assert rejected_round is not None and run_after_reject is not None
     assert rejected_round.accepted is False
-    assert run_after_reject.progress_unit == 6
+    assert run_after_reject.progress_unit == 7
     assert _remote_tag(bare, published_reject.candidate_ref) == ""
 
     # Finalize: durable final row, completed run, and a published run branch.
