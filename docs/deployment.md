@@ -2,7 +2,7 @@
 
 [English](deployment.en.md) | 中文
 
-生产环境是阿里云单实例 SaaS：nginx 托管前端静态产物并把 `/api` 反代到本机 uvicorn（127.0.0.1:8787，systemd 常驻），MySQL 8 与服务同机。发布由 GitHub Actions 完成：push 到 main 且 CI（`ci-ok`）全绿后，`Deploy` workflow 构建前端、rsync 推送 release 到 ECS、执行迁移、原子切换软链并重启服务，探活失败自动回滚。设计依据见 [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md)。
+生产是阿里云单实例 SaaS：nginx 托管前端并反代 `/api` 到本机 uvicorn（127.0.0.1:8787），MySQL 8 同机。发布由 GitHub Actions 完成：main 的 CI（`ci-ok`）全绿后，`Deploy` 构建前端、推送 release、迁移、切软链、重启，探活失败回滚。设计依据见 [plans/fullstack-design/01-architecture.md §6](../plans/fullstack-design/01-architecture.md)。
 
 ## 云资源
 
@@ -10,8 +10,8 @@
 |---|---|
 | ECS | 单实例，Ubuntu 22.04/24.04，2核4G（2核2G 需 swap），带宽 ≥3Mbps |
 | MySQL 8 | 与服务同机（apt 安装），库 `harness_evolution`，账号 `harness@127.0.0.1` |
-| 安全组 | 放行 22/80/443；8787 不对公网开放 |
-| 域名 | 可选；未绑域名前用 IP + HTTP 访问，绑域名后补 HTTPS 与 ICP 备案 |
+| 安全组 | 放行 22/80/443；8787 不公网开放 |
+| 域名 | 可选；先用 IP + HTTP，绑域名后补 HTTPS 与 ICP 备案 |
 
 ## 服务器目录
 
@@ -25,7 +25,7 @@
 
 ## 首次初始化
 
-初始化由 [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh) 完成（基础包、Python 3.12、用户、MySQL 建库建号、nginx 与 systemd），逐步操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
+初始化由 [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh) 完成（基础包、Python 3.12、用户、MySQL、nginx、systemd），逐步操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
 
 ## GitHub 配置
 
@@ -37,7 +37,7 @@
 | `ALIYUN_SSH_PORT` | Variable | SSH 端口（默认 22） |
 | `production` | Environment | 发布 job 的保护环境，可配人工审批 |
 
-私钥只存 GitHub，公钥在服务器 `deploy` 用户 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`。
+私钥只存 GitHub，公钥在服务器 `deploy` 的 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`。
 
 ## 发布与回滚
 
@@ -49,3 +49,7 @@
 ## 上游健康与漂移日志
 
 配置 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 后，pull 输出结构化 `upstream.health` / `version_drift` / `contract_drift` 日志，只含枚举、计数与主版本号，不含正文、会话 id 或凭据。逐会话失败留在 `sync_runs.errors`；调度器只重放 payload，上游抓取失败需用 `POST /api/acquisition/pull` 带 `sessionIds` 重拉。
+
+## 故障排查
+
+- bad case 详情 409/503 表示轨迹未就绪，不是数据丢失；检查轨迹查询配置或补 `sessionSource`。

@@ -251,7 +251,10 @@ def create_app(
     )
     jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
-    overview = OverviewService(OverviewRepository(resolved_database))
+    overview = OverviewService(
+        OverviewRepository(resolved_database),
+        bad_case_sync.source_available,
+    )
     workspaces = WorkspaceService(WorkspaceRepository(resolved_database))
     bad_case_ingest = BadCaseIngestService(
         BadCaseIngestRepository(resolved_database),
@@ -260,6 +263,7 @@ def create_app(
     problems = ProblemService(
         ProblemRepository(resolved_database),
         BadCaseService(BadCaseRepository(resolved_database)),
+        source_available=bad_case_sync.source_available,
     )
     attribution_read = AttributionReadService(
         AttributionRepository(resolved_database),

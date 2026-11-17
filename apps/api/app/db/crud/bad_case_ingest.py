@@ -176,7 +176,12 @@ class BadCaseIngestRepository:
                 created = False
                 await self._update(session, row.bad_case_id, values, now=now)
             workspace_used = await self._used(session, workspace_id)
-            await insert_pending_root(session, row.session_id, now=now)
+            await insert_pending_root(
+                session,
+                row.session_id,
+                now=now,
+                rearm_from_source=row.session_source is not None,
+            )
         logger.info(
             "workspace bad case ingested",
             extra={

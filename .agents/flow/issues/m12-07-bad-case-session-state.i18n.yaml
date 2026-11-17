@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m12-07-bad-case-session-state.md
+m12-07-bad-case-session-state.md: ab3b231f5aa274946b6aec2fc07c19221a818684
+m12-07-bad-case-session-state.en.md: 4248ceda695cd6399f79ebe90bb53f952db73a28

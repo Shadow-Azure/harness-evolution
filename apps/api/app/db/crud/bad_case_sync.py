@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, column, func, insert, or_, select, update
+from sqlalchemy import and_, column, exists, func, insert, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ from sqlalchemy.sql.selectable import Subquery
 
 from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
-from app.db.models.domain import bad_case_root_sync, bad_cases
+from app.db.models.domain import bad_case_root_sync, bad_cases, session_families
 from app.utils.time import as_shanghai, now_shanghai
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,21 @@ _SYNCED = "synced"
 _SYNCING = "syncing"
 _FAILED = "failed"
 _PENDING = "pending"
+
+_NON_RETRYABLE_ERRORS: frozenset[str] = frozenset(
+    {
+        "SESSION_QUERY_UNAVAILABLE",
+        "SESSION_QUERY_UNAUTHORIZED",
+        "SESSION_QUERY_VERSION_INCOMPATIBLE",
+        "SESSION_SOURCE_UNAUTHORIZED",
+        "SESSION_SOURCE_VERSION_INCOMPATIBLE",
+        "SESSION_SOURCE_SESSION_MISMATCH",
+        "TRAJECTORY_EMPTY",
+        "TRAVERSAL_LIMIT_EXCEEDED",
+        "UNSUPPORTED_RUNTIME",
+    },
+)
+"""Stable failures that automatic retries cannot fix without a configuration change."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +60,11 @@ class BadCaseRootSyncRow:
     lease_owner: str | None
     lease_expires_at: datetime | None
     updated_at: datetime
+
+    @property
+    def deterministic_failure(self) -> bool:
+        """Return whether retrying cannot help until the source configuration changes."""
+        return self.status == _FAILED and self.last_error in _NON_RETRYABLE_ERRORS
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +135,14 @@ def _to_row(values: RowMapping) -> BadCaseRootSyncRow:
     )
 
 
+def _retryable_failure_condition() -> ColumnElement[bool]:
+    """Exclude failed rows whose stable error cannot change by retrying."""
+    return or_(
+        bad_case_root_sync.c.last_error.is_(None),
+        bad_case_root_sync.c.last_error.not_in(tuple(_NON_RETRYABLE_ERRORS)),
+    )
+
+
 def _candidate_condition(now: datetime) -> ColumnElement[bool]:
     """Return the SQL predicate shared by list/count candidate queries."""
     return or_(
@@ -126,6 +154,7 @@ def _candidate_condition(now: datetime) -> ColumnElement[bool]:
                 bad_case_root_sync.c.next_retry_at.is_(None),
                 bad_case_root_sync.c.next_retry_at <= now,
             ),
+            _retryable_failure_condition(),
         ),
         and_(
             bad_case_root_sync.c.status == _SYNCING,
@@ -161,45 +190,74 @@ def _missing_bad_cases(exc: OperationalError | ProgrammingError) -> bool:
     return "bad_cases" in str(exc).lower()
 
 
+def _pending_values(now: datetime) -> dict[str, object]:
+    """Return the clean pending row shared by insert and source re-arm."""
+    return {
+        "status": _PENDING,
+        "source_kind": "global",
+        "source_snapshot": None,
+        "attempts": 0,
+        "last_error": None,
+        "started_at": None,
+        "next_retry_at": None,
+        "lease_owner": None,
+        "lease_expires_at": None,
+        "updated_at": as_shanghai(now),
+    }
+
+
 async def insert_pending_root(
     session: AsyncSession,
     root_session_id: str,
     *,
     now: datetime,
+    rearm_from_source: bool = False,
 ) -> bool:
-    """Insert a `pending` root-sync row unless any state row already exists.
+    """Insert a `pending` root-sync row, or re-arm a parked deterministic failure.
 
     This runs inside the caller's transaction so a committed bad case can never
     lack its discoverable root. The insert is insert-if-absent, not an upsert:
     `synced` is absorbing and a `failed` row keeps its retry backoff, so neither
-    may be reset by a later report. A concurrent claim or ingest that wins the
-    insert makes the loser keep the existing state.
+    may be reset by a later report. The exception is a re-report that now carries
+    a `sessionSource`: a root that was parked on a deterministic source failure
+    gets one fresh claim, because the report may have replaced the broken source.
+    A concurrent claim or ingest that wins the insert makes the loser keep the
+    existing state.
     """
     existing = (
-        await session.execute(
-            select(bad_case_root_sync.c.root_session_id).where(
-                bad_case_root_sync.c.root_session_id == root_session_id,
-            ),
+        (
+            await session.execute(
+                select(
+                    bad_case_root_sync.c.status,
+                    bad_case_root_sync.c.last_error,
+                ).where(
+                    bad_case_root_sync.c.root_session_id == root_session_id,
+                ),
+            )
         )
-    ).scalar_one_or_none()
+        .mappings()
+        .one_or_none()
+    )
     if existing is not None:
-        return False
+        parked = (
+            rearm_from_source
+            and existing["status"] == _FAILED
+            and existing["last_error"] in _NON_RETRYABLE_ERRORS
+        )
+        if parked:
+            await session.execute(
+                update(bad_case_root_sync)
+                .where(bad_case_root_sync.c.root_session_id == root_session_id)
+                .values(**_pending_values(now)),
+            )
+        return parked
     try:
         await session.execute(
             insert(bad_case_root_sync).values(
                 root_session_id=root_session_id,
-                status=_PENDING,
-                source_kind="global",
-                source_snapshot=None,
-                attempts=0,
-                last_error=None,
                 agent_count=0,
-                started_at=None,
                 synced_at=None,
-                next_retry_at=None,
-                lease_owner=None,
-                lease_expires_at=None,
-                updated_at=as_shanghai(now),
+                **_pending_values(now),
             ),
         )
     except IntegrityError as exc:
@@ -231,6 +289,71 @@ class BadCaseRootSyncRepository:
                 .one_or_none()
             )
         return _to_row(row) if row is not None else None
+
+    async def reset_deterministic_failures(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Re-arm roots whose stable failure may now be fixable.
+
+        The scheduler skips these rows instead of burning its retry ladder.
+        A process start (or a source configuration change) calls this once so a
+        newly configured global query or a newly reported session source gets a
+        fresh chance; the frozen first-claim snapshot is cleared for re-selection.
+        """
+        now_value = as_shanghai(now or now_shanghai())
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(bad_case_root_sync)
+                .where(
+                    bad_case_root_sync.c.status == _FAILED,
+                    bad_case_root_sync.c.last_error.in_(tuple(_NON_RETRYABLE_ERRORS)),
+                )
+                .values(
+                    status=_PENDING,
+                    source_kind="global",
+                    source_snapshot=None,
+                    attempts=0,
+                    last_error=None,
+                    started_at=None,
+                    next_retry_at=None,
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    updated_at=now_value,
+                ),
+            )
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    async def rearm_missing_sessions(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> int:
+        """Re-arm synced roots whose normalized Session no longer exists.
+
+        A completed sync whose Session projection is gone cannot be read; the
+        startup hook gives it one fresh fetch instead of leaving a permanent
+        ``unavailable`` dead end. Normal synced roots are untouched.
+        """
+        now_value = as_shanghai(now or now_shanghai())
+        missing_session = ~exists(
+            select(1)
+            .select_from(session_families)
+            .where(
+                session_families.c.id == bad_case_root_sync.c.root_session_id,
+            ),
+        )
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(bad_case_root_sync)
+                .where(
+                    bad_case_root_sync.c.status == _SYNCED,
+                    missing_session,
+                )
+                .values(**_pending_values(now_value)),
+            )
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def ensure_pending(
         self,
