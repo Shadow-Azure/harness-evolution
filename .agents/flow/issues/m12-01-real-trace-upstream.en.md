@@ -10,7 +10,7 @@ depends:
   - m9-02
   - m9-03
   - m9-04
-priority: P1
+priority: P0
 status: backlog
 scope:
   - apps/api/**

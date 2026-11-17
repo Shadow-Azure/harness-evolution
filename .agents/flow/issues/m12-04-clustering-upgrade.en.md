@@ -8,6 +8,7 @@ id: m12-04
 milestone: m12
 depends:
   - m10-04
+  - m12-07
 priority: P2
 status: backlog
 scope:
@@ -77,7 +78,7 @@ m12-04 是可独立合并的垂直切片；实现取舍必须以链接的 fullst
 
 
 
-- 依赖：m5-11
+- Depends on: m10-04 and m12-07.
 - 交付边界：只交付本 issue 的能力；未列入验收的相邻能力留给依赖或后续 issue。
 
 ## Verification

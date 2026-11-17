@@ -14,16 +14,16 @@ github:
 
 ## Goals
 
-Realize live upstream data, real evaluation, clustering upgrades, and retained platform-quality debt after the V2 product loop.
+Deliver live upstream data, pluggable target attribution, real evaluation, clustering upgrades, and retained platform-quality debt after the V2 product loop.
 
 ## Scope
 
-Live trace upstream, external contracts, real patch/evaluation, clustering, Windows gates, and target-validation diagnostics.
+Live trace upstream, external contracts, attribution report V2, target-specific Attribution Skills, Session context, agent executors, quality gates, scheduling observability, real patch/evaluation, clustering, Windows gates, and target-validation diagnostics.
 
 ## Acceptance
 
-Real data and external execution replace placeholders; quality debt has automated evidence; former M6 issues link to their new owners.
+A selected target and revision can use a default or target-bound skill to produce reproducible per-bad-case reports from real Sessions; the agent executor has a contract stub while the intranet is unavailable, and real integration must pass a shadow quality gate; real data and external execution replace the remaining placeholders; quality debt has automated evidence; former M6 issues link to their new owners.
 
 ## Non-goals
 
-No change to M7-M11 product boundaries and no restoration of the retired timeline page.
+Do not change the multi-attribution, PotentialMatcher, or seven-step-run boundaries defined by M7–M11, let the attribution agent replace the user-selected target, or restore the retired timeline page.
