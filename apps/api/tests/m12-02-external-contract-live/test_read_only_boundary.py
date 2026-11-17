@@ -29,6 +29,8 @@ async def test_problem_reads_issue_only_selects(seeded_environment: Any) -> None
         f"/api/sessions/{SESSION_1}/probes",
         f"/api/probes/{PROBE_1}",
         f"/api/bad-cases/{CASE_1}/analysis",
+        f"/api/workspaces/{environment.workspace_id}/sessions/{SESSION_1}/bad-cases",
+        f"/api/workspaces/{environment.workspace_id}/bad-cases/{CASE_1}",
         f"/api/workspaces/{environment.workspace_id}/bad-cases/{CASE_1}/attributions",
         f"/api/workspaces/{environment.workspace_id}/bad-cases/{CASE_1}/attributions/{PROBE_1}",
         "/api/acquisition/status",

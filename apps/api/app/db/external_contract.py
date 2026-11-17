@@ -14,7 +14,7 @@ import contextlib
 import functools
 import logging
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, ParamSpec, TypeVar, cast
@@ -177,8 +177,39 @@ class ExternalContractReport:
         return len(self.drifts)
 
 
+_TEXT_TYPE_NAMES = frozenset({"TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT"})
+_INTEGER_TYPE_NAMES = frozenset(
+    {"TINYINT", "SMALLINT", "MEDIUMINT", "INTEGER", "BIGINT"},
+)
+_FLOAT_TYPE_NAMES = frozenset({"FLOAT", "DOUBLE", "REAL", "DECIMAL", "NUMERIC"})
+_CHAR_TYPE_NAMES = frozenset({"CHAR", "NCHAR"})
+_VARCHAR_TYPE_NAMES = frozenset({"VARCHAR", "NVARCHAR", "STRING"})
+_JSON_TYPE_NAMES = frozenset({"JSON"})
+_DATETIME_TYPE_NAMES = frozenset({"DATETIME", "TIMESTAMP", "DATE"})
+
+
 def _family(value: object) -> str:
-    """Map a SQLAlchemy type instance to the contract's logical family."""
+    """Map a SQLAlchemy type instance to the contract's logical family.
+
+    MySQL reflects ``MEDIUMTEXT`` / ``LONGTEXT`` as ``String`` subclasses rather
+    than ``Text``; classify by the concrete type name first so a widened text
+    column is not reported as varchar drift.
+    """
+    name = type(value).__name__.upper()
+    if name in _TEXT_TYPE_NAMES:
+        return "text"
+    if name in _INTEGER_TYPE_NAMES:
+        return "integer"
+    if name in _FLOAT_TYPE_NAMES:
+        return "float"
+    if name in _CHAR_TYPE_NAMES:
+        return "char"
+    if name in _VARCHAR_TYPE_NAMES:
+        return "varchar"
+    if name in _JSON_TYPE_NAMES:
+        return "json"
+    if name in _DATETIME_TYPE_NAMES:
+        return "datetime"
     if isinstance(value, JSON):
         return "json"
     if isinstance(value, CHAR):
@@ -195,7 +226,7 @@ def _family(value: object) -> str:
         return "float"
     if isinstance(value, Integer):
         return "integer"
-    return type(value).__name__.lower()
+    return name.lower()
 
 
 def _observed_type(type_: object) -> str:
@@ -234,12 +265,17 @@ def _inspect_schema(sync_connection: Any) -> list[ExternalContractDrift]:
             )
             continue
         observed = {
-            cast(str, column["name"]): column for column in inspector.get_columns(table.name)
+            cast(str, column["name"]).lower(): column
+            for column in inspector.get_columns(table.name)
+        }
+        observed_names = {
+            cast(str, column["name"]).lower(): cast(str, column["name"])
+            for column in inspector.get_columns(table.name)
         }
         expected_names: set[str] = set()
         for column in table.columns:
-            expected_names.add(column.name)
-            current = observed.get(column.name)
+            expected_names.add(column.name.lower())
+            current = observed.get(column.name.lower())
             if current is None:
                 drifts.append(
                     ExternalContractDrift(
@@ -277,7 +313,7 @@ def _inspect_schema(sync_connection: Any) -> list[ExternalContractDrift]:
                 ExternalContractDrift(
                     table=table.name,
                     kind="extra_column",
-                    field=name,
+                    field=observed_names.get(name, name),
                 ),
             )
     return drifts
@@ -338,6 +374,11 @@ _FAILURE_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.EXTERNAL_SCHEMA_DRIFT: "external problem table schema is missing or drifted",
     ErrorCode.EXTERNAL_READ_FAILED: "external problem tables could not be read",
 }
+
+
+def classify_external_failure(exc: BaseException) -> ErrorCode:
+    """Return the stable code for one external-table database failure."""
+    return _classify_failure(exc)
 
 
 def classify_external_read_error(
@@ -404,8 +445,14 @@ async def inspect_external_contract(
             drifts=(),
             error_code=code.value,
         )
-    except SQLAlchemyError:
-        logger.exception("external contract inspection failed")
+    except SQLAlchemyError as exc:
+        tables = ",".join(table.name for table in EXTERNAL_TABLES)
+        _log_read_failure(
+            exc,
+            table=tables,
+            dialect=database.dialect,
+            code=ErrorCode.EXTERNAL_READ_FAILED,
+        )
         return ExternalContractReport(
             status="unavailable",
             checked_at=clock(),
@@ -457,6 +504,9 @@ def _log_report(
     if report.status == "forbidden":
         logger.error("external problem tables are unreadable", extra=extra)
         return
+    if report.status == "unavailable" and not report.drifts:
+        logger.warning("external problem table contract check failed", extra=extra)
+        return
     if only_missing_tables:
         logger.info(
             "external problem tables are not provisioned yet",
@@ -488,21 +538,18 @@ class ExternalContractMonitor:
         interval_seconds: float = 300.0,
         clock: Callable[[], datetime] = now_shanghai,
         monotonic: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
-        """Bind one database and one bounded check interval."""
+        """Bind one database, one bounded interval, and one sleep seam."""
         self._database = database
         self._interval = max(30.0, interval_seconds)
         self._clock = clock
         self._monotonic = monotonic
+        self._sleep = sleep or asyncio.sleep
         self._lock = asyncio.Lock()
         self._report: ExternalContractReport | None = None
         self._checked_at: float | None = None
         self._task: asyncio.Task[None] | None = None
-
-    @property
-    def interval_seconds(self) -> float:
-        """Expose the configured check interval."""
-        return self._interval
 
     async def report(self) -> ExternalContractReport:
         """Return a fresh report, refreshing the cached one after the interval."""
@@ -557,8 +604,8 @@ class ExternalContractMonitor:
     async def _loop(self) -> None:
         while True:
             try:
-                await asyncio.sleep(self._interval)
-                await self.refresh()
+                await self._sleep(self._interval)
+                await self.report()
             except asyncio.CancelledError:
                 raise
             except Exception:

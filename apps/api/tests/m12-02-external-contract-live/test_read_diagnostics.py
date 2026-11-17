@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from sqlalchemy.exc import OperationalError
@@ -103,7 +103,28 @@ async def test_analysis_progress_degrades_to_zero_when_tables_are_missing(
         progress = await repository.analysis_progress()
     assert progress.total == 0
     assert progress.pending == 0
-    assert any("not provisioned" in record.getMessage() for record in caplog.records)
+    failures = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "external.read_failed"
+    ]
+    assert failures and cast(Any, failures[-1]).code == "EXTERNAL_SCHEMA_DRIFT"
+
+
+async def test_analysis_progress_degrades_on_permission_denied(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A SELECT-denied account degrades the popover with the permission code."""
+    repository = BadCaseRepository(as_database(FailingDatabase(permission_error())))
+    with caplog.at_level(logging.WARNING, logger="app.db.crud.bad_cases"):
+        progress = await repository.analysis_progress()
+    assert progress.total == 0
+    failures = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "external.read_failed"
+    ]
+    assert failures and cast(Any, failures[-1]).code == "EXTERNAL_READ_FORBIDDEN"
 
 
 async def test_app_error_is_not_rewrapped() -> None:

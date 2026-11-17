@@ -17,6 +17,7 @@ scope:
   - plans/**
   - scripts/doc-budgets.manifest.json
   - packages/contracts/**
+  - scripts/run-api.mjs
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

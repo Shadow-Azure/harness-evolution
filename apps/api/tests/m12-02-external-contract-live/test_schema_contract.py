@@ -4,27 +4,30 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import pytest_asyncio
 from pydantic import SecretStr
-from sqlalchemy import text
+from sqlalchemy import String, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import DatabaseDialect, Settings
 from app.db import external_contract as contract
 from app.db.base import Database
 from app.db.external_contract import (
+    ColumnContract,
     ExternalContractMonitor,
     ExternalContractReport,
     ExternalContractStatus,
     inspect_external_contract,
 )
 from app.db.factory import create_database
+from app.db.migrate import upgrade_database
 from app.db.models.domain import DOMAIN_METADATA
 from app.logging import KeyValueFormatter
 from tests.m12_02_support import FailingDatabase, as_database, permission_error
@@ -243,9 +246,12 @@ async def test_inspection_survives_unexpected_sqlalchemy_errors(
         report = await monitor.refresh()
     assert report.status == "unavailable"
     assert report.error_code == "EXTERNAL_READ_FAILED"
-    assert any(
-        "external contract inspection failed" in record.getMessage() for record in caplog.records
-    )
+    failures = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "external.read_failed"
+    ]
+    assert failures and cast(Any, failures[-1]).code == "EXTERNAL_READ_FAILED"
 
 
 async def test_start_and_stop_are_idempotent(
@@ -289,17 +295,78 @@ async def test_loop_recovers_after_one_failed_iteration(
         return _report()
 
     monkeypatch.setattr(contract, "inspect_external_contract", flaky_inspect)
+    now = [0.0]
+
+    def jumping_monotonic() -> float:
+        now[0] += 31.0
+        return now[0]
+
+    async def fast_sleep(_delay: float) -> None:
+        await asyncio.sleep(0)
+
     monitor = ExternalContractMonitor(
         as_database(FailingDatabase(permission_error())),
         interval_seconds=30,
+        monotonic=jumping_monotonic,
+        sleep=fast_sleep,
     )
-    monitor._interval = 0.01
     with caplog.at_level(logging.ERROR, logger=LOG_NAME):
         await monitor.start()
-        await asyncio.sleep(0.05)
+        for _ in range(8):
+            await asyncio.sleep(0)
         await monitor.stop()
     assert calls >= 3
     assert any(
         "external contract monitor iteration failed" in record.getMessage()
         for record in caplog.records
     )
+
+
+def test_type_drift_rejects_a_narrowed_column() -> None:
+    """A shorter text column cannot carry every value the read path accepts."""
+    expected = ColumnContract("bad_case_id", "varchar", False, 64)
+    assert contract._type_drift(expected, String(64)) is None
+    assert contract._type_drift(expected, String(8)) == "varchar(8)"
+
+
+def test_type_family_accepts_mysql_text_and_case_insensitive_names() -> None:
+    """MySQL reflection and case-insensitive DDL must not create false drift."""
+    from sqlalchemy.dialects.mysql import LONGTEXT, MEDIUMTEXT
+
+    assert contract._family(LONGTEXT()) == "text"
+    assert contract._family(MEDIUMTEXT()) == "text"
+    assert contract._family(String(64)) == "varchar"
+
+
+async def test_case_insensitive_column_names_do_not_drift(
+    external_database: Database,
+) -> None:
+    """SQLite/MySQL resolve identifiers case-insensitively; the checker follows."""
+    await _execute(
+        external_database,
+        "ALTER TABLE bad_cases RENAME COLUMN source TO SOURCE",
+    )
+    report = await inspect_external_contract(external_database)
+    assert report.status == "ok"
+    assert report.drifts == ()
+
+
+@pytest.mark.mysql
+async def test_mysql_reflected_schema_matches_the_contract() -> None:
+    """The real MySQL reflection types match 06 §4, including TEXT and CHAR."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(
+        db_dialect=DatabaseDialect.MYSQL,
+        db_url=url,
+        jwt_secret=SecretStr("m12-02-mysql-contract-secret"),
+    )
+    database = create_database(settings)
+    await database.start()
+    try:
+        await upgrade_database(database)
+        report = await inspect_external_contract(database)
+        assert report.status == "ok", report.drifts
+    finally:
+        await database.dispose()

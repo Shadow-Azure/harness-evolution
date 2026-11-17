@@ -9,11 +9,11 @@ from typing import Protocol
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.engine import RowMapping
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
-from app.db.external_contract import read_only_guard
+from app.db.external_contract import classify_external_failure, read_only_guard
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.utils.time import as_shanghai
 
@@ -294,19 +294,25 @@ class BadCaseRepository:
                         .group_by(bad_case_analysis.c.analysis_status),
                     )
                 ).all()
-        except (OperationalError, ProgrammingError) as exc:
-            if "bad_cases" in str(exc).lower():
-                logger.warning(
-                    "bad_cases is not provisioned; reporting zero analysis progress",
-                )
-                return AnalysisProgress(
-                    total=0,
-                    analyzed=0,
-                    pending=0,
-                    issue=0,
-                    non_issue=0,
-                )
-            raise
+        except (OperationalError, ProgrammingError, DBAPIError) as exc:
+            code = classify_external_failure(exc)
+            logger.warning(
+                "external problem table analysis progress degraded",
+                extra={
+                    "event": "external.read_failed",
+                    "table": "bad_cases",
+                    "dialect": getattr(self._database, "dialect", "unknown"),
+                    "error_class": type(exc).__name__,
+                    "code": code.value,
+                },
+            )
+            return AnalysisProgress(
+                total=0,
+                analyzed=0,
+                pending=0,
+                issue=0,
+                non_issue=0,
+            )
         counts: dict[str, int] = {}
         for status, count in rows:
             if isinstance(count, int):

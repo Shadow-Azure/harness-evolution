@@ -760,6 +760,7 @@ class AttributionRepository:
             result = await session.execute(self._reuse_statement(probe_id, run_id, now))
         return int(getattr(result, "rowcount", 0) or 0)
 
+    @read_only_guard("bad_case_analysis")
     async def list_run_attributions(
         self,
         run_id: str,
@@ -871,6 +872,7 @@ class AttributionRepository:
             case_trigger_event_index=row["case_trigger_event_index"],
         )
 
+    @read_only_guard("bad_case_analysis")
     async def attribution_count(self, case_id: str) -> int:
         """Count distinct ``(probe_type, probe_object, object_version)`` rows."""
         distinct = (

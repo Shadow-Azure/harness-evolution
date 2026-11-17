@@ -56,4 +56,4 @@
 
 ## 外部表只读权限与契约日志
 
-服务账号只需 `bad_cases`、`bad_case_analysis`、`probe_reports` 的 SELECT；启动后每 5 分钟巡检列与类型契约，输出 `external.contract_check`、`external.contract_drift`、`external.row_drift`。读失败返回稳定 503（`EXTERNAL_SCHEMA_DRIFT` / `EXTERNAL_READ_FORBIDDEN` / `EXTERNAL_READ_FAILED`）；`external.read_failed` 只含表名、错误类与驱动码，不含 SQL 与参数。
+服务账号只需 `bad_cases`、`bad_case_analysis`、`probe_reports` 的 SELECT；启动后默认每 5 分钟巡检列与类型契约（`HE_EXTERNAL_CONTRACT_CHECK_INTERVAL_SECONDS` 可调），输出 `external.contract_check`、`external.contract_drift`、`external.row_drift`。读失败返回稳定 503（`EXTERNAL_SCHEMA_DRIFT` / `EXTERNAL_READ_FORBIDDEN` / `EXTERNAL_READ_FAILED`）；`external.read_failed` 只含表名、方言、错误类、驱动码与稳定码，不含 SQL 与参数。

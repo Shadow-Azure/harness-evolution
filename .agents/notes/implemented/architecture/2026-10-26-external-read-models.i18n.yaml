@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-10-26-external-read-models.md
-2026-10-26-external-read-models.md: 80fb795bcc214987def646d61c2a49148a6a28d3
-2026-10-26-external-read-models.en.md: 8ee3f3a4cd6909bcda20f9bc871f728760321df7
+2026-10-26-external-read-models.md: afedf7be8d6f4174c9e84bbb8b95b77bef9c9f33
+2026-10-26-external-read-models.en.md: 93b36622981204f5ed2803c06b4662a8a020f7e3

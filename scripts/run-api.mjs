@@ -21,6 +21,7 @@ const COMMANDS = {
     "pytest",
     "tests/test_database.py",
     "tests/m11-05-v2-cross-stack",
+    "tests/m12-02-external-contract-live",
     "-m",
     "mysql",
     "--maxfail=1",
