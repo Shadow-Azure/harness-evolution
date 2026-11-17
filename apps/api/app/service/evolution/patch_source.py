@@ -91,7 +91,12 @@ class PlaceholderPatchSource:
 
 
 # Keyword table mapping bad-case evidence text to one minimal config change.
-# Ordered; the first match wins. Extend by appending rules or subclassing.
+# Ordered; the first match wins — the table order IS the priority. The keys and
+# values are harness-side conventions, NOT the target repository's config
+# schema: whether a real target accepts them is decided by the evaluation
+# platform's measured verdict, not here. Externalizing this table into
+# configuration is deferred until a real platform integration needs runtime
+# tuning. Extend by appending rules or subclassing.
 _CONFIG_RULES: tuple[tuple[tuple[str, ...], str, object], ...] = (
     (("timeout", "超时"), "requestTimeoutSeconds", 30),
     (("retry", "重试"), "maxRetries", 3),
