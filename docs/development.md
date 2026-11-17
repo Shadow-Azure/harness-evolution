@@ -56,6 +56,16 @@ pnpm contract:check
 
 不确定时跑 `pnpm route:gates`。
 
+## 上游联调
+
+真实上游是显式 opt-in：只有 `HE_UPSTREAM_LIVE=1` 且 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 都存在时，live 用例才访问真实上游；缺任一条件时跳过，默认 loopback 用例覆盖分页、隔离与手动重放。运行：
+
+```sh
+HE_UPSTREAM_LIVE=1 HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api -- tests/m12-01-real-trace-upstream -m live_upstream
+```
+
+日志与重放入口见 [deployment.md](deployment.md)。
+
 ## 文档与配对
 
 常驻文档中英成对。改任一侧后，在同一 PR 内最小修补另一侧，再运行 `pnpm record:i18n -- <pair>` 重录；契约见 [i18n/README.md](i18n/README.md)。标记为 `ts` 的围栏会被真实编译，标记为 `ts type-equiv` 的围栏与源码逐字对账。

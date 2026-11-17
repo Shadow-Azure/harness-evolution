@@ -56,6 +56,16 @@ Choose gates by change surface before committing:
 
 When unsure, run `pnpm route:gates`.
 
+## Upstream integration
+
+The real upstream is explicitly opt-in: the live case in `tests/m12-01-real-trace-upstream` reaches it only with `HE_UPSTREAM_LIVE=1` and both credentials; otherwise it skips, while the default loopback case covers pagination, isolation, and manual replay. Run:
+
+```sh
+HE_UPSTREAM_LIVE=1 HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api -- tests/m12-01-real-trace-upstream -m live_upstream
+```
+
+Logs and replay entry points are documented in [deployment.en.md](deployment.en.md).
+
 ## Docs and pairing
 
 Resident docs are paired across Chinese and English. After changing either side, minimally patch the other side in the same PR and run `pnpm record:i18n -- <pair>`; the contract is in [i18n/README.en.md](i18n/README.en.md). Fences marked `ts` are compiled for real, while fences marked `ts type-equiv` are compared verbatim with source.

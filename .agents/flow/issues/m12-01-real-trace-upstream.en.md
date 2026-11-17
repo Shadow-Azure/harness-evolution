@@ -11,13 +11,14 @@ depends:
   - m9-03
   - m9-04
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - plans/**
   - docs/**
   - .agents/flow/**
   - .agents/notes/**
+  - scripts/doc-budgets.manifest.json
 adr: []
 github:
   number: 242

@@ -51,6 +51,7 @@ from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.jobs import JobRunRecord
 from app.errors import register_exception_handlers
+from app.logging import configure_logging
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
@@ -123,7 +124,9 @@ logger = logging.getLogger(__name__)
 
 def create_default_app() -> FastAPI:
     """Build the environment-configured application for uvicorn's factory mode."""
-    return create_app(Settings())
+    settings = Settings()
+    configure_logging(settings)
+    return create_app(settings)
 
 
 def create_app(

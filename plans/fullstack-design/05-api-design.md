@@ -1458,8 +1458,8 @@ V2 新增映射（2026-11-11）：
 ### 10.4 约定
 
 - 鉴权：`Authorization: Bearer {HE_UPSTREAM_TOKEN}`（env 注入）。
-- 错误：`404` session 不存在；`429` 限流（我们指数退避）；`5xx` 重试 3 次后按条隔离（记 `sync_runs.errors`，不毁整批）。
-- 版本：上游在响应头 `X-Trajectory-Api-Version` 声明；主版本不兼容时 `HttpApiSource` 拒绝启动并在日志给出明确错误。
+- 错误：`404` session 不存在；`429` 限流（我们指数退避）；`5xx` 重试 3 次：单会话包请求按条隔离（记 `sync_runs.errors`，不毁整批），窗口列举失败则整批失败。
+- 版本：上游在响应头 `X-Trajectory-Api-Version` 声明；配置装载只接受主版本 `1`；响应头逐次校验，不兼容时该批 pull 失败并记 `upstream.version_drift`，服务不拒绝启动。
 
 ### 10.5 上报绑定的会话信息 envelope（M9-07）
 

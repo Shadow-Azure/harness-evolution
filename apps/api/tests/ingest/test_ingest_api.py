@@ -1,5 +1,7 @@
 """Bad-case ingest success, upsert, and request-contract behaviour."""
 
+import logging
+
 import httpx
 import pytest
 from fastapi import FastAPI
@@ -18,16 +20,22 @@ from tests.ingest.helpers import (
 
 async def test_first_report_creates_the_row_and_reports_usage(
     ingest_client: tuple[FastAPI, httpx.AsyncClient],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A brand-new badCaseId answers 201 with the live workspace usage."""
+    """A brand-new badCaseId answers 201 and logs structured fields at INFO."""
     app, client = ingest_client
     workspace = await create_ingest_workspace(app, client, name="Ingest New")
 
-    response = await report(client, workspace, ingest_body())
+    with caplog.at_level(logging.INFO, logger="app.db.crud.bad_case_ingest"):
+        response = await report(client, workspace, ingest_body())
 
     assert response.status_code == 201
     assert response.json() == {"badCaseId": "BC-HC-021", "workspaceUsed": 1}
     assert response.headers["x-he-workspace-used"] == "1"
+    ingested = [record for record in caplog.records if record.name == "app.db.crud.bad_case_ingest"]
+    assert len(ingested) == 1
+    assert ingested[0].__dict__["inserted"] is True
+    assert ingested[0].__dict__["bad_case_id"] == "BC-HC-021"
 
     row = await fetch_case(app.state.database, "BC-HC-021")
     assert row is not None
