@@ -423,11 +423,11 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
 
     await clientNavigate(
       page,
-      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=probe-m11-02-0002`,
+      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=attr&at=probe-m11-02-0001`,
     );
     await waitForDocument(
       page.session,
-      `location.search.includes("at=probe-m11-02-0002") &&
+      `location.search.includes("at=probe-m11-02-0001") &&
         Boolean(document.querySelector("[data-testid='attribution-report']"))`,
       "deep link before reload",
     );
@@ -438,17 +438,28 @@ test("m11-02 multi-attribution error detail folds groups, pages by two and resto
       page.session,
       `(() => {
         if (!location.search.includes("case=${caseId}")) return null;
-        if (!location.search.includes("at=probe-m11-02-0002")) return null;
+        if (!location.search.includes("at=probe-m11-02-0001")) return null;
         const report = document.querySelector("[data-testid='attribution-report']");
-        return report ? {
+        const group = document.querySelector(
+          ${JSON.stringify(`[data-bad-case-id='${caseId}']`)},
+        );
+        if (!report || !group) return null;
+        if (!group.querySelector("[data-testid='attribution-page-prev']")) return null;
+        return {
           position: report.querySelector("[data-testid='attribution-position']")?.textContent,
           text: report.textContent,
-        } : null;
+          pager: group.querySelector(".attr-pager")?.textContent?.replace(/\s+/g, " ").trim(),
+          active: group.querySelector(
+            ${JSON.stringify(`[data-attribution-id='probe-m11-02-0001']`)},
+          )?.classList.contains("active"),
+        };
       })()`,
       "reloaded attribution deep link",
     );
-    assert.equal(reloaded.position, "2 / 4");
-    assert.match(reloaded.text, /非该对象问题/);
+    assert.equal(reloaded.position, "3 / 4");
+    assert.match(reloaded.text, /checklist-skill/);
+    assert.match(reloaded.pager, /2 \/ 2/);
+    assert.equal(reloaded.active, true);
 
     assert.deepEqual(violations, [], violations.join("\n"));
   } finally {

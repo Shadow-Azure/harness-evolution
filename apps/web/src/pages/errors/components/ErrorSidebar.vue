@@ -17,6 +17,7 @@ const props = defineProps<{
   sessionId: string;
   activeBadCaseId: string | null;
   selectedAttributionId: string | null;
+  selectedAttributionPage: number | null;
   loading: boolean;
   error: Error | null;
   canStart: boolean;
@@ -58,15 +59,20 @@ const allErrorsLink = computed(() =>
 );
 
 watch(
-  () => props.activeBadCaseId,
-  (badCaseId) => {
+  [() => props.activeBadCaseId, () => props.selectedAttributionPage],
+  ([badCaseId, selectedPage]) => {
     if (!badCaseId) return;
     if (!expanded.value.has(badCaseId)) {
       const next = new Set(expanded.value);
       next.add(badCaseId);
       expanded.value = next;
     }
-    if (pages.value[badCaseId] === undefined) {
+    if (
+      selectedPage !== null &&
+      pages.value[badCaseId] !== selectedPage
+    ) {
+      pages.value = { ...pages.value, [badCaseId]: selectedPage };
+    } else if (pages.value[badCaseId] === undefined) {
       pages.value = { ...pages.value, [badCaseId]: 1 };
     }
   },

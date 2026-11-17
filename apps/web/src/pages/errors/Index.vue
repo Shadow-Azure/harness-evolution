@@ -153,6 +153,11 @@ const selectedAttribution = computed<AttributionItem | null>(
 const effectiveAttributionId = computed(
   () => selectedAttribution.value?.attributionId ?? null,
 );
+const selectedAttributionPage = computed(() =>
+  resolvedIndex.value >= 0
+    ? Math.floor(resolvedIndex.value / 2) + 1
+    : null,
+);
 const attributionDetailQuery = useAttribution(
   workspaceId,
   computed(() => selectedBadCaseId.value),
@@ -438,6 +443,7 @@ function toggleExpanded(agentId: string) {
         :loading="problemsQuery.isPending.value"
         :problems="problems"
         :selected-attribution-id="effectiveAttributionId"
+        :selected-attribution-page="selectedAttributionPage"
         :session="session"
         :session-id="sessionId"
         @retry="retryProblems"
