@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-17-target-overview-ui.md
+2026-11-17-target-overview-ui.md: c3cf68bd4da6807c0a95d8a5c73f50c16b78b888
+2026-11-17-target-overview-ui.en.md: 9b84e1288ddbc9127c2fd3d137c8abe4e81af384

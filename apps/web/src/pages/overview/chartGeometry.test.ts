@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { barLayout, niceTicks, percent, stackY } from "./chartGeometry";
+import { barLayout, niceTicks, percent, stackSegments, stackY } from "./chartGeometry";
 
 describe("overview chart geometry", () => {
   it("gives an empty or all-zero series a usable 0..1 axis", () => {
@@ -83,5 +83,22 @@ describe("overview chart geometry", () => {
     expect(percent(0, 0)).toEqual({ self: 0, discovery: 0 });
     const share = percent(2, 5);
     expect(share.self + share.discovery).toBeCloseTo(100);
+  });
+
+  it("stacks an arbitrary number of segments from the baseline", () => {
+    const geometry = stackSegments([1, 2, 1], 0, 200, 4);
+    expect(geometry.y).toBe(0);
+    expect(geometry.totalHeight).toBe(200);
+    expect(geometry.heights).toEqual([50, 100, 50]);
+    expect(geometry.heights.reduce((sum, value) => sum + value, 0)).toBeCloseTo(
+      geometry.totalHeight,
+    );
+
+    const clamped = stackSegments([10, 0, 10], 10, 100, 5);
+    expect(clamped.totalHeight).toBe(100);
+    expect(clamped.heights[1]).toBe(0);
+
+    const zero = stackSegments([0, 0, 0], 10, 100, 5);
+    expect(zero).toEqual({ y: 110, totalHeight: 0, heights: [0, 0, 0] });
   });
 });
