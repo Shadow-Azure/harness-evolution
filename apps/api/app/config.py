@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     bad_case_catalog_sync_time_budget_seconds: float = Field(default=300.0, gt=0, le=3_600)
     bad_case_catalog_sync_max_pages: int = Field(default=100, ge=1, le=1_000)
     git_push: bool = True
+    attribution_engine: str = Field(default="rule-v1", min_length=1, max_length=64)
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
     eval_timeout_seconds: int = Field(default=7_200, gt=0)

@@ -1172,8 +1172,9 @@ class AttributionRunner:
             await self.candidates.link_probe(run.id, item.bad_case_id, row.probe_id, cached)
 ```
 
-- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。V2 归因以解析后的 `targetRevision` 作为该分量；`probe_reports.object_version` 列仍为 64，`digest:<sha256>` 的 71 字符写入边界（扩列或映射）归 m10-03，预览只读既有键。
+- 缓存键 = `probe_reports.cache_key`：服务计算 `sha256(workspace_id + bad_case_id + probe_type + probe_object + object_version + policy_version + attribution_engine)`，按唯一键原子 upsert。V2 归因以解析后的 `targetRevision` 作为该分量；`probe_reports.object_version` 扩到 `VARCHAR(96)`，可保存 `tag:` / `digest:` / `provider:` 形式，预览只读既有键。
 - 命中且 `cache_enabled` → 复用：`reused_count+1`、`last_reused_run_id=当前 run`、候选 `is_cached=true`，不再计算。
+- run 创建时固化 `attribution_engine / cache_enabled / potential_policy`；runner 只读 run 快照，不读全局配置或请求方当前值。历史 run 的 `attribution_engine` 默认 `legacy-probe-import`，不会被 V2 runner 误用。
 - `cache_enabled=false` → 跳过读，重算并覆盖同键行（`created_run_id` 更新）。
 - 并发同键 upsert 走方言原子语句（`ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE`），不先查后写。
 - V2 首版引擎 `rule-v1`（规则占位）：自身上报 → `attributed`，`category` 按证据判 `error|prompt`，confidence 0.8；`after_object` 且 discovery → `attributed`/`error`，0.6；证据不足或顺序不可比 → `non_target`，0.7。`reason`/`reasoning` 为模板化占位文案；换真实归因只新增 Engine 子类并注册新 `key`，缓存键自动隔离。

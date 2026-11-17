@@ -36,6 +36,8 @@ from app.config import DatabaseDialect, Settings
 from app.db.base import Database
 from app.db.crud.attributions import (
     AttributionRepository,
+    CandidateWrite,
+    EvolutionRunCandidateRepository,
     ProbeWrite,
     attribution_cache_key,
 )
@@ -84,6 +86,7 @@ from app.db.models.evolution import (
     ClusterWrite,
     evolution_finals,
     evolution_rounds,
+    evolution_run_candidates,
     evolution_runs,
     probe_cluster_probes,
     probe_clusters,
@@ -531,7 +534,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0020"
+        assert result.scalar_one() == "0021"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -827,7 +830,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0020"
+            assert revision == "0021"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1081,7 +1084,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0020"
+        assert revision == "0021"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1252,7 +1255,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0020"
+        assert result.scalar_one() == "0021"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -3247,5 +3250,139 @@ async def test_mysql_attribution_repository_upsert_is_atomic() -> None:
             "is_cached",
             "created_at",
         } == {column["name"] for column in candidate_columns}
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.mysql
+async def test_mysql_attribution_runner_writes_cache_and_run_candidates() -> None:
+    """The composite cache/link writer and widened revision work on MySQL."""
+    url = os.environ.get("HE_DB_URL", "")
+    if not url.startswith("mysql+asyncmy://"):
+        if os.environ.get("HE_REQUIRE_MYSQL") == "1":
+            pytest.fail("HE_DB_URL must point to MySQL when HE_REQUIRE_MYSQL=1")
+        pytest.skip("MySQL integration requires HE_DB_URL")
+    settings = Settings(db_dialect=DatabaseDialect.MYSQL, db_url=url)
+    database = MySqlDatabase(settings)
+    run_a = "run-mysql-m10-03-a"
+    run_b = "run-mysql-m10-03-b"
+    case_id = "bc-mysql-m10-03"
+    session_id = "99000000-0000-4000-8000-000000000001"
+    revision = "digest:" + "c" * 64
+    now = now_shanghai()
+    await database.start()
+    try:
+        await upgrade_database(database)
+        async with database.transaction() as session:
+            for run_id in (run_a, run_b):
+                await session.execute(
+                    delete(evolution_run_candidates).where(
+                        evolution_run_candidates.c.run_id == run_id,
+                    ),
+                )
+                await session.execute(
+                    delete(evolution_runs).where(evolution_runs.c.id == run_id),
+                )
+            await session.execute(
+                delete(bad_case_analysis).where(
+                    bad_case_analysis.c.bad_case_id == case_id,
+                ),
+            )
+            await session.execute(
+                delete(probe_reports).where(probe_reports.c.session_id == session_id),
+            )
+            await session.execute(
+                delete(bad_cases).where(bad_cases.c.bad_case_id == case_id),
+            )
+            await session.execute(
+                insert(bad_cases).values(
+                    bad_case_id=case_id,
+                    bad_case_session_id=session_id,
+                    bad_case_type="self",
+                    object_name="deep-research",
+                    object_type="skill",
+                    object_version="v2.0.0",
+                    bad_case_agent_id=None,
+                    title="MySQL attribution case",
+                    bad_case_description="reason",
+                    meta_data={"error": "ENOENT"},
+                    source="fixtures",
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
+            for run_id in (run_a, run_b):
+                await session.execute(
+                    insert(evolution_runs).values(
+                        id=run_id,
+                        title=run_id,
+                        mode="full",
+                        engine_key="full",
+                        eval_config={},
+                        potential_policy={"preset": "default"},
+                        cache_enabled=True,
+                        attribution_engine="rule-v1",
+                        target_type="skill",
+                        target_name="deep-research",
+                        target_version="v2.0.0",
+                        repo_url="https://example.invalid/skills.git",
+                        sub_dir="skills/deep-research",
+                        status="preparing",
+                        progress_unit=2,
+                        created_at=now,
+                    ),
+                )
+
+        candidates = EvolutionRunCandidateRepository(database)
+        for run_id in (run_a, run_b):
+            await candidates.upsert(
+                CandidateWrite(
+                    id=f"candidate-{run_id}",
+                    run_id=run_id,
+                    workspace_id="ws-default",
+                    session_id=session_id,
+                    bad_case_id=case_id,
+                    order_state="comparable",
+                    included=True,
+                    included_reason="self_report",
+                    created_at=now,
+                ),
+            )
+
+        repository = AttributionRepository(database)
+        probe = ProbeWrite(
+            probe_id="probe-mysql-m10-03",
+            workspace_id="ws-default",
+            session_id=session_id,
+            bad_case_id=case_id,
+            probe_type="skill",
+            probe_object="deep-research",
+            object_version=revision,
+            attribute_type="error",
+            conclusion="attributed",
+            confidence=0.8,
+            probe_description="MySQL attribution",
+            probe_analysis="analysis",
+            policy_version="v1",
+            attribution_engine="rule-v1",
+            created_run_id=run_a,
+            created_at=now,
+            updated_at=now,
+        )
+        probe_id = await repository.write_probe_and_link(probe, run_a, now)
+        assert probe_id == probe.probe_id
+        assert await repository.reuse_probe_and_link(probe_id, run_b, case_id, now) is True
+        assert await repository.reuse_probe_and_link(probe_id, run_b, case_id, now) is False
+
+        cached = await repository.get_probe_by_cache_key(probe.cache_key)
+        assert cached is not None
+        assert cached.object_version == revision
+        assert cached.reused_count == 1
+        assert cached.last_reused_run_id == run_b
+        assert await repository.linked_probe_ids(run_a) == {case_id: probe_id}
+        assert await repository.linked_probe_ids(run_b) == {case_id: probe_id}
+        assert await repository.list_clusterable_probe_ids(run_a) == (probe_id,)
+        records = await candidates.list(run_b)
+        assert records[0].is_cached is True
     finally:
         await database.dispose()

@@ -45,6 +45,14 @@ evolution_runs = Table(
     Column("mode", String(16), nullable=False),
     Column("engine_key", String(64), nullable=False),
     Column("eval_config", JSON, nullable=False),
+    Column("potential_policy", JSON, nullable=True),
+    Column("cache_enabled", Boolean, nullable=False, server_default=false()),
+    Column(
+        "attribution_engine",
+        String(64),
+        nullable=False,
+        server_default="legacy-probe-import",
+    ),
     Column(
         "target_config_id",
         String(36),
@@ -346,6 +354,9 @@ class EvolutionRunRecord:
     validation_project_id: str = ""
     test_project_id: str = ""
     workspace_id: str = DEFAULT_WORKSPACE_ID
+    potential_policy: dict[str, Any] | None = None
+    cache_enabled: bool = False
+    attribution_engine: str = "legacy-probe-import"
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,6 +571,9 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         created_at=_timestamp(row["created_at"]),
         finished_at=_optional_timestamp(row["finished_at"]),
         workspace_id=(_optional_text(row.get("workspace_id")) or DEFAULT_WORKSPACE_ID),
+        potential_policy=_optional_json_dict(row.get("potential_policy")),
+        cache_enabled=bool(row.get("cache_enabled", False)),
+        attribution_engine=(_optional_text(row.get("attribution_engine")) or "legacy-probe-import"),
     )
 
 

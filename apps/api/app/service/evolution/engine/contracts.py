@@ -23,7 +23,7 @@ class ConfigError(RuntimeError):
     """Raised when an engine selection or stage capability is invalid."""
 
 
-EvolutionBlockedStage = Literal["patch", "push", "eval"]
+EvolutionBlockedStage = Literal["patch", "push", "eval", "attribution"]
 
 
 class RunBlocked(RuntimeError):

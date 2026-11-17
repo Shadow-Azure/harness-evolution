@@ -39,6 +39,7 @@ EvolutionRunBlockedStage = Literal[
     "patch",
     "push",
     "eval",
+    "attribution",
 ]
 _RUNNING_STATUSES = frozenset({"preparing", "running", "blocked"})
 _RUN_STAGE_LABELS = (

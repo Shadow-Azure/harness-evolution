@@ -76,6 +76,7 @@ from app.service.evolution.apply_final import (
     EvolutionApplyService,
     EvolutionFinalizeService,
 )
+from app.service.evolution.attribution import resolve_attribution_engine
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
@@ -136,6 +137,7 @@ def create_app(
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
+    resolve_attribution_engine(resolved_settings.attribution_engine)
     resolved_database = database or create_database(resolved_settings)
     identity = IdentityService(resolved_settings, resolved_database)
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
