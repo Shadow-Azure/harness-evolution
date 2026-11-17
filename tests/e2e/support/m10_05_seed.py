@@ -25,7 +25,7 @@ OBJECT_REVISION = "tag:synthetic-1"
 SKILL_TRIGGERED_AT = datetime(2026, 10, 22, 11, 0, tzinfo=SHANGHAI)
 
 
-async def _seed(data_dir: Path) -> None:
+async def _seed(data_dir: Path, repo_url: str | None) -> None:
     settings = Settings(
         data_dir=data_dir,
         db_dialect=DatabaseDialect.SQLITE,
@@ -40,7 +40,10 @@ async def _seed(data_dir: Path) -> None:
             await session.execute(
                 update(evolution_targets)
                 .where(evolution_targets.c.id == TARGET_ID)
-                .values(default_ref=OBJECT_VERSION),
+                .values(
+                    default_ref=OBJECT_VERSION,
+                    **({"repo_url": repo_url} if repo_url else {}),
+                ),
             )
             await session.execute(
                 update(agent_events)
@@ -61,8 +64,9 @@ async def _seed(data_dir: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, required=True)
+    parser.add_argument("--repo-url", default=None)
     args = parser.parse_args()
-    asyncio.run(_seed(args.data_dir))
+    asyncio.run(_seed(args.data_dir, args.repo_url))
     print(f"prepared m10-05 preview data in {args.data_dir}", flush=True)
 
 

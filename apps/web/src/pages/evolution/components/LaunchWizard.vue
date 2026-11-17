@@ -961,7 +961,7 @@ const reasonEntries = computed(() => {
                   >
                   默认策略
                 </label>
-                <p>进化对象自身 self 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
+                <p>进化对象自身 <b>self</b> 上报的 bad case，或触发点在对象触发点之后的 bad case。</p>
               </div>
               <div
                 class="policy"
@@ -1316,7 +1316,10 @@ const reasonEntries = computed(() => {
             <div class="wz-condstrip">
               <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
               <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
-              <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+              <span
+                class="v2-badge"
+                :class="{ ok: policyPreset === 'default' }"
+              >{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
               <span
                 class="v2-badge"
                 :class="{ warn: !cacheEnabled }"
@@ -1342,15 +1345,16 @@ const reasonEntries = computed(() => {
                   如果该对象版本已经对某个潜在 bad case 做过归因，直接复用最近一次成功结果。
                 </div>
               </div>
-              <label class="switch-row">
+              <label class="switch">
                 <input
                   v-model="cacheEnabled"
                   type="checkbox"
                   data-testid="wizard-cache"
+                  aria-label="复用缓存归因"
                   :disabled="isBusy"
                   @change="refreshAttribution"
                 >
-                <span>{{ cacheEnabled ? "已开启" : "已关闭" }}</span>
+                <span class="slider" />
               </label>
             </div>
 
@@ -1503,7 +1507,7 @@ const reasonEntries = computed(() => {
 }
 
 .modal {
-  width: 760px;
+  width: 720px;
   max-width: 100%;
   background: var(--bg-card);
   border-radius: 14px;
@@ -1586,8 +1590,8 @@ const reasonEntries = computed(() => {
 }
 
 .btn.sm {
-  padding: 3px 10px;
-  font-size: 11.5px;
+  padding: 3px 8px;
+  font-size: 11px;
 }
 
 .wz-loading {
@@ -1632,21 +1636,22 @@ const reasonEntries = computed(() => {
 .wz-condstrip {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   border: 1px solid var(--border);
   background: var(--bg-panel);
   border-radius: 8px;
-  padding: 7px 12px;
+  padding: 6px 10px;
   margin-bottom: 12px;
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .wz-condstrip .chip {
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 2px 10px;
+  padding: 1px 8px;
   font-family: var(--mono);
+  font-size: 11px;
   color: var(--text-dim);
 }
 
@@ -1807,17 +1812,8 @@ input.inp:focus {
 }
 
 .policy {
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 9px 12px;
-  margin-top: 8px;
-  background: var(--bg-card);
+  margin-top: 6px;
   cursor: pointer;
-}
-
-.policy.selected {
-  border-color: color-mix(in srgb, var(--blue) 48%, transparent);
-  background: color-mix(in srgb, var(--blue) 6%, var(--bg-card));
 }
 
 .policy label {
@@ -1830,7 +1826,7 @@ input.inp:focus {
 }
 
 .policy p {
-  margin: 4px 0 0;
+  margin: 3px 0 0 22px;
   color: var(--text-faint);
   font-size: 11.5px;
   line-height: 1.6;
@@ -1840,7 +1836,7 @@ input.inp:focus {
   display: flex;
   gap: 6px 16px;
   flex-wrap: wrap;
-  margin: 8px 0 0 22px;
+  margin: 6px 0 0 24px;
 }
 
 .switch-row {
@@ -1969,12 +1965,13 @@ table.rep th {
 .cache-option {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   justify-content: space-between;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--blue) 28%, transparent);
+  border-radius: 8px;
+  padding: 11px 13px;
   margin-bottom: 12px;
+  background: color-mix(in srgb, var(--blue) 5%, var(--bg-card));
   font-size: 12.5px;
 }
 
@@ -1995,26 +1992,66 @@ table.rep th {
 .preview-stat strong {
   display: block;
   font-family: var(--mono);
-  font-size: 20px;
+  font-size: 17px;
   color: var(--text);
 }
 
 .preview-stat span {
   display: block;
-  margin-top: 3px;
+  margin-top: 1px;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .notice {
-  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
-  background: color-mix(in srgb, var(--blue) 5%, transparent);
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
+  margin: 4px 0 8px;
   color: var(--text-dim);
   font-size: 11.5px;
   line-height: 1.6;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 40px;
+  height: 20px;
+  flex: none;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(30, 40, 60, 0.18);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .slider {
+  background: var(--blue);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(20px);
 }
 
 .wizard-error {

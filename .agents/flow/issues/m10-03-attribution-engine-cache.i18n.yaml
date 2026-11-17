@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m10-03-attribution-engine-cache.md
-m10-03-attribution-engine-cache.md: 04c9d4f04bfcadf4e0f1b975bd3215b3fbf23882
-m10-03-attribution-engine-cache.en.md: 075051ab39f0442d0a7fe8b08e1d7cbe1c4a1e56
+m10-03-attribution-engine-cache.md: aadd624570de246db8333897f13610003f5e9b1a
+m10-03-attribution-engine-cache.en.md: 045d65cfcab19b13701cf432d07ce2ba81dffad9

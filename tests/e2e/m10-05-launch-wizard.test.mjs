@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -230,9 +230,46 @@ before(async () => {
   const setupExit = await new Promise((resolve) => setup.once("exit", resolve));
   assert.equal(setupExit, 0, setupOutput);
 
+  const originDir = path.join(dataDir, "skill-origin.git");
+  const workDir = path.join(dataDir, "skill-work");
+  const git = (args, cwd) => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  };
+  git(["init", "--bare", "-b", "main", originDir], root);
+  git(["clone", originDir, workDir], root);
+  await mkdir(path.join(workDir, "skills/synthetic-review"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(workDir, "skills/synthetic-review/SKILL.md"),
+    "# synthetic-review\n",
+  );
+  git(["add", "."], workDir);
+  git(
+    [
+      "-c",
+      "user.name=Smoke",
+      "-c",
+      "user.email=smoke@example.invalid",
+      "commit",
+      "-m",
+      "seed synthetic-review",
+    ],
+    workDir,
+  );
+  git(["tag", "synthetic-1"], workDir);
+  git(["push", "origin", "main", "--tags"], workDir);
+
   const seed = spawn(
     python,
-    [path.join(root, "tests/e2e/support/m10_05_seed.py"), "--data-dir", dataDir],
+    [
+      path.join(root, "tests/e2e/support/m10_05_seed.py"),
+      "--data-dir",
+      dataDir,
+      "--repo-url",
+      originDir,
+    ],
     {
       cwd: root,
       env,
