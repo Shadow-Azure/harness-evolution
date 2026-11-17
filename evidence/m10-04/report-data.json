@@ -1,0 +1,54 @@
+{
+  "title": "M10-04 七步 prepare 与七步运行详情冒烟",
+  "eyebrow": "Harness Evolution · 集成冒烟",
+  "summary": "在真实浏览器中通过 Web → Vite proxy → FastAPI 跑通历史 run 的七步详情、阻塞重试、终评与移动端布局；所有场景通过。",
+  "meta": "2026-11-17 · 1408x960 与 390x844 · Chrome CDP",
+  "metrics": [
+    { "value": "6", "label": "冒烟场景" },
+    { "value": "0", "label": "失败" },
+    { "value": "7", "label": "步骤数" }
+  ],
+  "facts": [
+    { "label": "工单", "value": "#213 m10-04 七步 prepare、聚类输入与历史 run 适配" },
+    { "label": "分支", "value": "agent/develop-m10-04-1ead5e84a95c" },
+    { "label": "数据", "value": "合成的 E2E fixture（无生产数据）" },
+    { "label": "命令", "value": "HE_KEEP_E2E_ARTIFACTS=1 pnpm test:e2e -- --pattern \"run detail\"" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "细节", "证据"],
+    "rows": [
+      { "id": "01", "name": "七步 stepper", "status": { "kind": "pass", "label": "PASS" }, "detail": "旧六步 run 经服务端投影后渲染 7 个步骤，当前步为迭代。", "evidence": ["02-after-seven-step.png"] },
+      { "id": "02", "name": "历史 run 适配", "status": { "kind": "pass", "label": "PASS" }, "detail": "V1 cursor 只读映射到 prepared 的 unit 5；候选/簇/轮次读取与七步键一致。", "evidence": ["02-after-seven-step.png"] },
+      { "id": "03", "name": "聚类步 case 表", "status": { "kind": "pass", "label": "PASS" }, "detail": "簇按 severity 降序，展开后展示来源 bad case，deep-link 高亮仍可用。", "evidence": ["02-after-seven-step.png"] },
+      { "id": "04", "name": "阻塞 banner 与重试", "status": { "kind": "pass", "label": "PASS" }, "detail": "blocked(eval) 展示阶段、错误、自动重试计数与重试按钮。", "evidence": ["03-after-blocked.png"] },
+      { "id": "05", "name": "终评步", "status": { "kind": "pass", "label": "PASS" }, "detail": "completed run 的终评 verdict 与 metrics 正常渲染。", "evidence": ["04-after-final.png"] },
+      { "id": "06", "name": "移动端布局", "status": { "kind": "pass", "label": "PASS" }, "detail": "390x844 下无横向溢出，卡片与 banner 可读。", "evidence": ["05-after-mobile.png"] }
+    ]
+  },
+  "issues": [],
+  "screenshots": [
+    { "src": "screenshots/01-before-six-step.png", "alt": "变更前六步运行详情", "label": "Before · 六步详情", "caption": "main@b698cc1 的真实旧应用：六步详情、probe 口径统计。", "variant": "wide" },
+    { "src": "screenshots/02-after-seven-step.png", "alt": "变更后七步运行详情", "label": "After · 七步详情", "caption": "同一 fixture 与视口：七步 stepper、候选/归因/簇口径统计与 case 表。", "variant": "wide" },
+    { "src": "screenshots/03-after-blocked.png", "alt": "阻塞运行详情", "label": "After · 阻塞", "caption": "blocked(eval) 的横幅、阶段与重试入口。", "variant": "wide" },
+    { "src": "screenshots/04-after-final.png", "alt": "已完成运行终评", "label": "After · 终评", "caption": "completed run 的终评 verdict 与 changes。", "variant": "wide" },
+    { "src": "screenshots/05-after-mobile.png", "alt": "移动端阻塞页面", "label": "After · 移动端", "caption": "390x844 视口下的信息面板。", "variant": "issue" }
+  ],
+  "coverage": {
+    "columns": ["范围", "覆盖", "结论", "建议"],
+    "rows": [
+      { "area": "prepare 状态机/重入", "coverage": "API UT", "conclusion": "七步游标、候选幂等、blocked(attribution) 恢复由 tests/evolution 覆盖。", "recommendation": "保持新测试目录。" },
+      { "area": "七步 DTO/路由", "coverage": "API UT", "conclusion": "七个端点、只读投影、V1 映射与 STEP_NOT_READY 有测试。", "recommendation": "后续 m10-06 补分页/SSE 交互测试。" },
+      { "area": "运行详情 UI", "coverage": "Web UT + E2E", "conclusion": "pnpm test:web 与真实浏览器 run-detail E2E 通过。", "recommendation": "保留 E2E 截图作为视觉回归基线。" }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "冒烟通过",
+    "summary": "七步详情、历史 run 适配、聚类 case 表、阻塞与终评场景在真实浏览器中通过。",
+    "points": [
+      "Step 2 的潜在数来自 prepare 落库的候选快照，不在读取时重算。",
+      "历史 run 的 orderState 可能为 unknown，这是兼容投影而非新的精确匹配证据。"
+    ]
+  },
+  "footer": "本报告由 computer-use-smoke-reporting 生成；截图不含生产数据或凭据。"
+}
