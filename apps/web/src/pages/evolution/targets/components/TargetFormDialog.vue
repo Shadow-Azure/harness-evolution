@@ -10,6 +10,8 @@ import type {
   TargetServerError,
 } from "../targetErrors";
 
+const EMPTY_SERVER_ERROR: TargetServerError = { summary: "" };
+
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -25,7 +27,7 @@ const props = withDefaults(
     versionsLoading: false,
     versionsError: false,
     submitting: false,
-    serverError: () => null as TargetServerError | null,
+    serverError: () => EMPTY_SERVER_ERROR,
   },
 );
 
@@ -66,9 +68,12 @@ const errors = reactive<FormErrors>({});
 const versionAutocomplete = ref<{ focus: () => void } | null>(null);
 const formElement = ref<HTMLFormElement | null>(null);
 const serverErrorDismissed = ref(false);
-const visibleServerError = computed<TargetServerError | null>(() =>
-  serverErrorDismissed.value ? null : (props.serverError ?? null),
-);
+const visibleServerError = computed<TargetServerError | null>(() => {
+  const value = serverErrorDismissed.value
+    ? null
+    : (props.serverError ?? null);
+  return value?.summary ? value : null;
+});
 
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
