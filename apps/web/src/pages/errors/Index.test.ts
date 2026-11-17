@@ -1,17 +1,25 @@
 // @vitest-environment jsdom
 
+/* eslint-disable vue/one-component-per-file -- Mocks are declared inline for this page. */
+
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { createPinia, setActivePinia } from "pinia";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import type {
+  AttributionDetail,
+  BadCase,
+  WorkspaceRole,
+} from "@harness/contracts";
+
 import ErrorsPage from "./Index.vue";
 import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
-import { signInWithWorkspace } from "../../test/auth";
+import { signInWithWorkspace, testWorkspace } from "../../test/auth";
 
 const workspaceId = "ws-test";
 const ws = `/workspaces/${workspaceId}`;
@@ -55,50 +63,157 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
   };
 });
 
-const issueAnalysis = {
-  status: "analyzed_issue" as const,
-  probeId: "probe-error",
-  attributeType: "error" as const,
-  displayState: "analyzed_issue_error" as const,
-  result: { summary: "The index file was missing." },
-};
-
-const nonIssueTitle = "响应可追溯";
-const nonIssueReason = "traceable response: 每条结论都能回指到来源。";
-const issueTitle = "索引读取失败";
-const issueReason =
-  "index read failed: 读取检索索引时抛出 ENOENT，该轮结论没有来源。";
-
-const nonIssue = badCaseFixture({
-  badCaseId: "case-nonissue",
-  title: nonIssueTitle,
-  reason: nonIssueReason,
-  analysis: {
-    status: "analyzed_nonissue",
-    probeId: "probe-nonissue",
-    attributeType: null,
-    displayState: "analyzed_nonissue",
-    result: {
-      reason: "Every claim has a source.",
-      reasoning: ["A source is present.", "No contradiction found."],
+vi.mock("../evolution/components/LaunchWizard.vue", async () => {
+  const { defineComponent, h } = await import("vue");
+  const LaunchWizard = defineComponent({
+    name: "LaunchWizard",
+    props: {
+      wid: { type: String, required: true },
+      focusCaseId: { type: String, default: null },
     },
-  },
+    emits: ["close", "launched"],
+    setup(props, { emit }) {
+      return () =>
+        h(
+          "div",
+          {
+            "data-testid": "launch-wizard-stub",
+            "data-focus-case-id": props.focusCaseId ?? "",
+          },
+          [
+            h(
+              "button",
+              { type: "button", onClick: () => emit("close") },
+              "close wizard",
+            ),
+          ],
+        );
+    },
+  });
+  return {
+    __esModule: true,
+    __isKeepAlive: false,
+    __isTeleport: false,
+    default: LaunchWizard,
+  };
 });
 
 const issue = badCaseFixture({
   badCaseId: "case-error",
-  title: issueTitle,
-  reason: issueReason,
+  title: "索引读取失败",
+  reason:
+    "index read failed: 读取检索索引时抛出 ENOENT，该轮结论没有来源。",
   objectType: "agent",
   objectName: "Explore",
+  attributionCount: 4,
+  hasAttribution: true,
   metaData: { file: "src/index.ts", line: 42, error: "ENOENT" },
-  analysis: issueAnalysis,
 });
 
-const problems = [nonIssue, issue];
+const noAttribution = badCaseFixture({
+  badCaseId: "case-unanalyzed",
+  title: "尚未归因",
+  reason: "这一条问题还没有完成归因分析，描述正文仍然完整保留。",
+  attributionCount: 0,
+  hasAttribution: false,
+});
+const problems = [noAttribution, issue];
+
+function attribution(
+  overrides: Partial<AttributionDetail> = {},
+): AttributionDetail {
+  const base: AttributionDetail = {
+    attributionId: "AT-0001",
+    badCaseId: "case-error",
+    objectType: "skill",
+    objectName: "checklist-skill",
+    objectVersion: "2026.11.1",
+    conclusion: "attributed",
+    category: "error",
+    confidence: 0.86,
+    runId: null,
+    isCached: false,
+    reusedCount: 0,
+    createdAt: "2026-10-20T09:05:00+08:00",
+    updatedAt: "2026-10-20T09:05:00+08:00",
+    reason: "检查清单技能把未完成项误判为通过。",
+    reasoning:
+      "1. 定位 checklist-skill。\n\n```ts\nconst done = true\n```\n\n[证据](https://example.com)",
+    policyVersion: "v2",
+    attributionEngine: "m11-02-smoke",
+    triggerCompare: {
+      objectTriggerAt: "2026-10-20T09:02:00+08:00",
+      caseTriggerAt: "2026-10-20T09:03:00+08:00",
+      order: "after",
+      versionState: "exact",
+    },
+    warnings: [],
+  };
+  return { ...base, ...overrides };
+}
+
+const attributions: AttributionDetail[] = [
+  attribution({
+    attributionId: "AT-0001",
+    objectName: "project-knowledge",
+    objectType: "knowledge",
+    objectVersion: null,
+    category: "prompt",
+    createdAt: "2026-10-20T09:07:00+08:00",
+    triggerCompare: {
+      objectTriggerAt: null,
+      caseTriggerAt: null,
+      order: "unknown",
+      versionState: "unknown",
+    },
+    warnings: [
+      {
+        code: "ATTRIBUTION_VERSION_UNKNOWN",
+        message: "The attribution has no pinned object version.",
+      },
+    ],
+  }),
+  attribution({
+    attributionId: "AT-0002",
+    objectName: "review-agent",
+    objectType: "agent",
+    conclusion: "non_target",
+    category: null,
+    confidence: 0.74,
+    createdAt: "2026-10-20T09:06:00+08:00",
+    reason: "review-agent 的触发点在 bad case 之后。",
+    triggerCompare: {
+      objectTriggerAt: null,
+      caseTriggerAt: null,
+      order: "unknown",
+      versionState: "exact",
+    },
+  }),
+  attribution({
+    attributionId: "AT-0003",
+    objectName: "checklist-skill",
+    createdAt: "2026-10-20T09:05:00+08:00",
+  }),
+  attribution({
+    attributionId: "AT-0004",
+    objectName: "legacy-probe",
+    objectVersion: "synthetic-1",
+    createdAt: "2026-10-20T09:03:30+08:00",
+    isCached: true,
+    reusedCount: 2,
+    runId: "run-1",
+    triggerCompare: {
+      objectTriggerAt: "2026-10-20T09:04:00+08:00",
+      caseTriggerAt: "2026-10-20T09:03:00+08:00",
+      order: "before",
+      versionState: "exact",
+    },
+  }),
+];
+
 const wrappers: VueWrapper[] = [];
 
-function mockApi(items = problems) {
+function mockApi(items: BadCase[] = problems) {
   const tree = { ...demoCoreTree, sessionId: "root-1" };
   server.use(
     http.get(`${sessionsBase}/:id`, () =>
@@ -139,40 +254,58 @@ function mockApi(items = problems) {
       }
       return HttpResponse.json(item);
     }),
-    http.get("/api/bad-cases/:caseId/analysis", ({ params }) => {
-      const item = items.find((candidate) => candidate.badCaseId === params.caseId);
-      if (!item) {
-        return HttpResponse.json(
-          { error: { code: "BAD_CASE_NOT_FOUND", message: "missing" } },
-          { status: 404 },
-        );
-      }
-      return HttpResponse.json(item.analysis);
+    http.get(`${badCasesBase}/:caseId/attributions`, ({ params, request }) => {
+      const url = new URL(request.url);
+      const page = Number(url.searchParams.get("page") ?? 1);
+      const pageSize = Number(url.searchParams.get("pageSize") ?? 2);
+      const rows =
+        params.caseId === "case-error" ? attributions : [];
+      const start = (page - 1) * pageSize;
+      return HttpResponse.json({
+        items: rows.slice(start, start + pageSize),
+        total: rows.length,
+        page,
+        pageSize,
+      });
     }),
-    http.get("/api/probes/:probeId", ({ params }) =>
-      HttpResponse.json({
-        probeId: params.probeId,
-        sessionId: "root-1",
-        probeType: "agent",
-        probeObject: "Explore",
-        objectVersion: "v1.0.0",
-        attributeType: "error",
-        probeDescription: "The index file was not checked.",
-        probeAnalysis:
-          "1. Locate the read step.\n\n```ts\nconst value = read(id)\n```\n\n[source](https://example.com)",
-        createdAt: "2026-10-20T08:46:00+08:00",
-        updatedAt: "2026-10-20T08:47:00+08:00",
-        fromBadCases: ["case-error"],
-        fromBadCasesCount: 1,
-      }),
+    http.get(
+      `${badCasesBase}/:caseId/attributions/:attributionId`,
+      ({ params }) => {
+        const item = attributions.find(
+          (candidate) =>
+            candidate.attributionId === params.attributionId &&
+            candidate.badCaseId === params.caseId,
+        );
+        if (!item) {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "ATTRIBUTION_NOT_FOUND",
+                message: "not found",
+              },
+            },
+            { status: 404 },
+          );
+        }
+        return HttpResponse.json(item);
+      },
     ),
   );
 }
 
-async function mountPage(path = `${ws}/sessions/root-1/errors`) {
+async function settle(): Promise<void> {
+  for (let index = 0; index < 6; index += 1) {
+    await flushPromises();
+  }
+}
+
+async function mountPage(
+  path = `${ws}/sessions/root-1/errors`,
+  role: WorkspaceRole = "global_admin",
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  signInWithWorkspace();
+  signInWithWorkspace(undefined, [testWorkspace({ role })]);
   const router = createAppRouter();
   await router.push(path);
   await router.isReady();
@@ -190,7 +323,7 @@ async function mountPage(path = `${ws}/sessions/root-1/errors`) {
     },
   });
   wrappers.push(wrapper);
-  await flushPromises();
+  await settle();
   return { router, wrapper };
 }
 
@@ -202,158 +335,242 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("error detail page", () => {
-  it("shows the prototype shell and writes case/tab when selecting", async () => {
+  it("renders folded bad-case groups, filters and explicit deep links", async () => {
     mockApi();
     const { router, wrapper } = await mountPage();
 
     expect(wrapper.get(".error-heading h1").text()).toBe("错误详情");
     expect(wrapper.get(".error-sidebar").text()).toContain("原型错误详情");
+    expect(wrapper.get(".error-sidebar").text()).toContain("bad case");
     expect(
       wrapper.get("[data-testid='error-root-session-id']").text(),
     ).toBe("根会话 ID · root-1");
     expect(
       wrapper.get("[data-testid='error-meta-root-session-id']").text(),
     ).toContain("根会话 ID · root-1");
-    expect(wrapper.get(".error-sidebar").text()).toContain("返回 Session");
-    expect(wrapper.find(".problem-list-head").exists()).toBe(false);
-    expect(wrapper.get(".all-errors").text()).toContain("全部错误");
-    expect(wrapper.get(".all-errors").text()).toContain("2");
-    expect(wrapper.findAll("[data-bad-case-id]")).toHaveLength(2);
-    expect(wrapper.get(".detail-panel").text()).toContain("问题描述");
-    expect(wrapper.get(".detail-panel").text()).toContain("归因分析");
+    expect(wrapper.get(".error-meta").text()).toContain("2 个 bad case");
+    expect(wrapper.get(".error-meta").text()).toContain("1 个已归因");
+    expect(wrapper.findAll("[data-testid='case-group']")).toHaveLength(2);
+    expect(wrapper.get(".sidebar-filter").text()).toContain("有归因 1");
+    expect(wrapper.get(".sidebar-filter").text()).toContain("待归因 1");
+    expect(wrapper.get("[data-testid='all-bad-cases']").text()).toContain(
+      "全部 bad case",
+    );
     expect(wrapper.get(".detail-panel").text()).toContain(
-      "从左侧选择一个错误，查看问题描述与归因分析。",
+      "从左侧选择一个 bad case，查看问题描述与归因分析。",
     );
 
-    await wrapper.get("[data-bad-case-id='case-error']").trigger("click");
-    await flushPromises();
+    const titleLink = wrapper.get(
+      "[data-bad-case-id='case-error'] [data-testid='case-title-link']",
+    );
+    expect(titleLink.attributes("href")).toBe(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+    const idLink = wrapper.get(
+      "[data-bad-case-id='case-error'] [data-testid='case-id']",
+    );
+    expect(idLink.text()).toBe("case-err");
+    expect(idLink.attributes("title")).toBe("case-error");
+    expect(idLink.attributes("target")).toBe("_blank");
+    expect(idLink.attributes("rel")).toBe("noopener noreferrer");
+
+    await titleLink.trigger("click");
+    await settle();
 
     expect(router.currentRoute.value.fullPath).toBe(
       `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
     );
-    expect(wrapper.text()).toContain(issueTitle);
-    expect(wrapper.get(".description .problem-title").text()).toBe(issueTitle);
-    expect(wrapper.get(".description .problem-detail").text()).toBe(
-      issueReason,
-    );
+    const group = wrapper.get("[data-bad-case-id='case-error']");
+    expect(group.text()).toContain("归因分析 · 按进化对象");
     expect(
-      wrapper.get(".description").text().match(/index read failed/g),
-    ).toHaveLength(1);
+      group.findAll("[data-testid='attribution-item']"),
+    ).toHaveLength(2);
+    expect(group.get("[data-testid='attribution-item']").text()).toContain(
+      "project-knowledge",
+    );
+    expect(group.get("[data-testid='attribution-item']").text()).toContain(
+      "可归因",
+    );
+    expect(group.text()).toContain("1 / 2");
+    expect(wrapper.get("#attr-tab").text()).toBe("归因分析 (4)");
     expect(wrapper.get(".flow-head span").text()).toBe(
-      `仅显示 #2 · ${issueTitle}`,
+      "仅显示 #2 · 索引读取失败",
     );
-    const detailId = wrapper.get(".description .problem-id");
-    expect(detailId.text()).toBe("case-err");
-    expect(detailId.attributes("title")).toBe("case-error");
-    expect(detailId.attributes("href")).toBe(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
-    );
-    expect(detailId.attributes("target")).toBe("_blank");
-    expect(detailId.attributes("rel")).toBe("noopener noreferrer");
-    expect(detailId.attributes("aria-label")).toBe(
-      "问题 case-err，在新窗口打开问题描述",
-    );
-    expect(wrapper.find(".description .field-label").exists()).toBe(false);
-    const reportLink = wrapper.get(".description .report-id");
-    expect(reportLink.text()).toBe("probe-er");
-    expect(reportLink.attributes("title")).toBe("probe-error");
-    expect(reportLink.attributes("href")).toBe(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
-    );
-    expect(reportLink.attributes("target")).toBe("_blank");
-    expect(reportLink.attributes("rel")).toBe("noopener noreferrer");
-    expect(reportLink.attributes("aria-label")).toBe(
-      "归因报告 probe-er，在新窗口打开归因分析",
-    );
-    const firstFact = wrapper.get(".fact-chip");
-    expect(firstFact.get(".fact-key").text()).toBe("file");
-    expect(firstFact.get(".fact-value").text()).toBe("src/index.ts");
   });
 
-  it("restores case and attribution tab from a refresh URL", async () => {
+  it("restores case, tab and at from a refresh URL and navigates between attributions", async () => {
+    mockApi();
+    const { router, wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr&at=AT-0002`,
+    );
+
+    expect(wrapper.get("[data-testid='attribution-position']").text()).toBe(
+      "2 / 4",
+    );
+    const report = wrapper.get("[data-testid='attribution-report']");
+    expect(report.get(".conclusion strong").text()).toBe("非该对象问题");
+    expect(report.get(".conclusion").text()).not.toContain("未分类");
+    expect(report.text()).toContain("review-agent");
+    expect(report.text()).toContain("触发点无法比较");
+    expect(report.text()).toContain("74%");
+    expect(report.text()).toContain("v2 · m11-02-smoke");
+    expect(report.text()).toContain("结论边界");
+    expect(wrapper.get("[data-bad-case-id='case-error'] .attr-item.active").text())
+      .toContain("review-agent");
+
+    await wrapper.get("[data-testid='attribution-next']").trigger("click");
+    await settle();
+
+    expect(router.currentRoute.value.query.at).toBe("AT-0003");
+    expect(wrapper.get("[data-testid='attribution-position']").text()).toBe(
+      "3 / 4",
+    );
+    expect(
+      wrapper.get("[data-testid='attribution-report']").text(),
+    ).toContain("可归因到本对象");
+
+    await wrapper.get("[data-testid='attribution-prev']").trigger("click");
+    await settle();
+    expect(router.currentRoute.value.query.at).toBe("AT-0002");
+  });
+
+  it("keeps the unknown-version evidence gap visible", async () => {
     mockApi();
     const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr&at=AT-0001`,
+    );
+
+    const report = wrapper.get("[data-testid='attribution-report']");
+    expect(report.text()).toContain("project-knowledge");
+    expect(report.text()).toContain("版本未固定");
+    expect(report.text()).toContain(
+      "该归因没有固定的对象版本，不能视为精确版本命中；轨迹时间戳待重放。",
+    );
+    expect(report.text()).toContain("ATTRIBUTION_VERSION_UNKNOWN");
+  });
+
+  it("paginates each expanded group by two attributions", async () => {
+    mockApi();
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    const group = wrapper.get("[data-bad-case-id='case-error']");
+    expect(group.findAll("[data-testid='attribution-item']")).toHaveLength(2);
+    await group.get("[data-testid='attribution-page-next']").trigger("click");
+    await settle();
+
+    const next = wrapper.get("[data-bad-case-id='case-error']");
+    expect(
+      next.findAll("[data-testid='attribution-item']"),
+    ).toHaveLength(2);
+    expect(next.text()).toContain("checklist-skill");
+    expect(next.text()).toContain("legacy-probe");
+    expect(next.text()).toContain("缓存");
+    expect(next.text()).toContain("2 / 2");
+  });
+
+  it("filters the left list without changing the selected detail", async () => {
+    mockApi();
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    const chips = wrapper.findAll(".sidebar-filter .chip");
+    await chips[2]!.trigger("click");
+    await settle();
+    expect(wrapper.findAll("[data-testid='case-group']")).toHaveLength(1);
+    expect(wrapper.get("[data-bad-case-id='case-unanalyzed']")).toBeTruthy();
+    expect(wrapper.text()).toContain("索引读取失败");
+
+    await chips[1]!.trigger("click");
+    await settle();
+    expect(wrapper.findAll("[data-testid='case-group']")).toHaveLength(1);
+    expect(wrapper.get("[data-bad-case-id='case-error']")).toBeTruthy();
+  });
+
+  it("shows the unanalyzed empty state and opens the wizard for an admin", async () => {
+    mockApi();
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-unanalyzed&tab=attr`,
+    );
+
+    expect(wrapper.get("[data-testid='attribution-empty']").text()).toContain(
+      "尚未归因",
+    );
+    expect(wrapper.text()).toContain(
+      "该 bad case 还没有被任何自进化运行归因",
+    );
+    expect(wrapper.text()).not.toContain("非该对象问题");
+    expect(
+      wrapper.find("[data-testid='launch-wizard-stub']").exists(),
+    ).toBe(false);
+
+    await wrapper.get("[data-testid='start-evolution-from-case']").trigger(
+      "click",
+    );
+    await settle();
+    expect(
+      wrapper.get("[data-testid='launch-wizard-stub']").attributes(
+        "data-focus-case-id",
+      ),
+    ).toBe("case-unanalyzed");
+  });
+
+  it("hides the start entries from ordinary members", async () => {
+    mockApi();
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-unanalyzed&tab=attr`,
+      "member",
+    );
+
+    expect(wrapper.get("[data-testid='attribution-empty']").text()).toContain(
+      "尚未归因",
+    );
+    expect(
+      wrapper.find("[data-testid='start-evolution-from-case']").exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find("[data-testid='case-start-evolution']").exists(),
+    ).toBe(false);
+  });
+
+  it("opens the attribution tab from the problem description summary", async () => {
+    mockApi();
+    const { router, wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    await wrapper.get("[data-testid='problem-attribution-summary']").trigger(
+      "click",
+    );
+    await settle();
+
+    expect(router.currentRoute.value.query.tab).toBe("attr");
+    expect(router.currentRoute.value.query.at).toBe("AT-0001");
+    expect(
+      wrapper.get("[data-testid='attribution-report']").text(),
+    ).toContain("project-knowledge");
+  });
+
+  it("clears the case and restores the complete graph via all bad cases", async () => {
+    mockApi();
+    const { router, wrapper } = await mountPage(
       `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
     );
 
-    expect(wrapper.text()).toContain("是问题-错误");
-    expect(wrapper.text()).toContain("The index file was not checked.");
-    expect(wrapper.get(".conclusion strong").text()).toBe("问题");
-    expect(wrapper.get(".conclusion .state-chip").text()).toBe(
-      "是问题-错误",
+    await wrapper.get("[data-testid='all-bad-cases']").trigger("click");
+    await settle();
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      `${ws}/sessions/root-1/errors`,
     );
-    expect(wrapper.get(".classification").text()).toContain(
-      "Explore @ v1.0.0",
+    expect(wrapper.get(".detail-panel").text()).toContain(
+      "从左侧选择一个 bad case，查看问题描述与归因分析。",
     );
     expect(
-      wrapper.get(".attribution").text().match(/Explore @ v1\.0\.0/g),
-    ).toHaveLength(1);
-    const sourceLink = wrapper.get(".source-links a");
-    expect(sourceLink.text()).toBe("case-err");
-    expect(sourceLink.attributes("title")).toBe("case-error");
-    expect(sourceLink.attributes("href")).toBe(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
-    );
-    expect(sourceLink.attributes("target")).toBe("_blank");
-    expect(sourceLink.attributes("rel")).toBe("noopener noreferrer");
-    expect(sourceLink.attributes("aria-label")).toBe(
-      "来源问题 case-err，在新窗口打开问题描述",
-    );
-    expect(wrapper.find(".markdown pre").exists()).toBe(true);
-    expect(wrapper.get(".markdown a").attributes("target")).toBe("_blank");
-    expect(wrapper.get(".markdown a").attributes("rel")).toBe(
-      "noopener noreferrer",
-    );
-  });
-
-  it("uses the prototype's exact prompt category and status copy", async () => {
-    const promptIssue = badCaseFixture({
-      badCaseId: "case-prompt",
-      title: "prompt 缺少校验",
-      reason: "prompt missed validation: prompt 没有要求校验输出结构。",
-      analysis: {
-        status: "analyzed_issue",
-        probeId: "probe-prompt",
-        attributeType: "prompt",
-        displayState: "analyzed_issue_prompt",
-        result: { summary: "The prompt omitted validation." },
-      },
-    });
-    mockApi([promptIssue]);
-    server.use(
-      http.get("/api/probes/:probeId", ({ params }) =>
-        HttpResponse.json({
-          probeId: params.probeId,
-          sessionId: "root-1",
-          probeType: "agent",
-          probeObject: "Explore",
-          objectVersion: "v1.0.0",
-          attributeType: "prompt",
-          probeDescription: "The prompt omitted validation.",
-          probeAnalysis: "The prompt did not request validation.",
-          createdAt: "2026-10-20T08:46:00+08:00",
-          updatedAt: "2026-10-20T08:47:00+08:00",
-          fromBadCases: ["case-prompt"],
-          fromBadCasesCount: 1,
-        }),
-      ),
-    );
-    const { wrapper } = await mountPage(
-      `${ws}/sessions/root-1/errors?case=case-prompt&tab=attr`,
-    );
-
-    expect(wrapper.get(".conclusion .state-chip").text()).toBe(
-      "是问题-prompt缺失某些提示词",
-    );
-    expect(wrapper.get(".classification .state-chip").text()).toBe(
-      "prompt缺失某些提示词",
-    );
-    expect(wrapper.get(".description .problem-title").text()).toBe(
-      "prompt 缺少校验",
-    );
-    expect(wrapper.get(".description .problem-detail").text()).toBe(
-      "prompt missed validation: prompt 没有要求校验输出结构。",
-    );
+      wrapper.get("[data-testid='errors-agent-tree']").text(),
+    ).toContain("badcases:2");
   });
 
   it("uses accessible tabs with roving focus and control relationships", async () => {
@@ -374,47 +591,13 @@ describe("error detail page", () => {
     );
 
     await desc.trigger("keydown", { key: "ArrowRight" });
-    await flushPromises();
+    await settle();
 
     expect(router.currentRoute.value.query.tab).toBe("attr");
     expect(wrapper.get("#attr-tab").attributes("tabindex")).toBe("0");
     expect(wrapper.get("#attr-panel").attributes("aria-labelledby")).toBe(
       "attr-tab",
     );
-  });
-
-  it("orders non-issue reason before reasoning and keeps tabs URL-driven", async () => {
-    mockApi();
-    const { router, wrapper } = await mountPage(
-      `${ws}/sessions/root-1/errors?case=case-nonissue&tab=attr`,
-    );
-
-    const content = wrapper.get(".attribution").text();
-    expect(wrapper.get(".conclusion strong").text()).toBe("非问题");
-    expect(wrapper.get(".conclusion .state-chip").text()).toBe("非问题");
-    expect(wrapper.get(".description .problem-title").text()).toBe(
-      nonIssueTitle,
-    );
-    expect(wrapper.get(".description .problem-detail").text()).toBe(
-      nonIssueReason,
-    );
-    expect(wrapper.get(".conclusion").text()).not.toContain(
-      "Every claim has a source.",
-    );
-    expect(
-      content.match(/Every claim has a source\./g),
-    ).toHaveLength(1);
-    expect(content.indexOf("非问题的分析原因")).toBeLessThan(
-      content.indexOf("分析推导过程"),
-    );
-    expect(content).toContain("A source is present.");
-
-    await wrapper.get("#desc-tab").trigger("click");
-    await flushPromises();
-    expect(router.currentRoute.value.query).toEqual({
-      case: "case-nonissue",
-      tab: "desc",
-    });
   });
 
   it("renders a page-level mismatch for a cross-session problem", async () => {
@@ -467,7 +650,6 @@ describe("error detail page", () => {
   it("retries a transient detail failure and restores the workspace", async () => {
     mockApi();
     let detailAttempts = 0;
-    let analysisAttempts = 0;
     server.use(
       http.get(`${badCasesBase}/:caseId`, () => {
         detailAttempts += 1;
@@ -483,20 +665,6 @@ describe("error detail page", () => {
             )
           : HttpResponse.json(issue);
       }),
-      http.get("/api/bad-cases/:caseId/analysis", () => {
-        analysisAttempts += 1;
-        return analysisAttempts === 1
-          ? HttpResponse.json(
-              {
-                error: {
-                  code: "BAD_CASE_ANALYSIS_UNAVAILABLE",
-                  message: "temporarily unavailable",
-                },
-              },
-              { status: 503 },
-            )
-          : HttpResponse.json(issue.analysis);
-      }),
     );
     const { wrapper } = await mountPage(
       `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
@@ -504,15 +672,16 @@ describe("error detail page", () => {
 
     expect(wrapper.text()).toContain("问题详情读取失败，请重试");
     await wrapper.get(".page-error button").trigger("click");
-    await flushPromises();
+    await settle();
 
     expect(wrapper.find(".page-error").exists()).toBe(false);
-    expect(wrapper.get(".description .problem-title").text()).toBe(issueTitle);
+    expect(wrapper.get(".description .problem-title").text()).toBe(
+      issue.title,
+    );
     expect(wrapper.get(".description .problem-detail").text()).toBe(
-      issueReason,
+      issue.reason,
     );
     expect(detailAttempts).toBe(2);
-    expect(analysisAttempts).toBe(2);
   });
 
   it("keeps machine diagnostic codes out of degraded problem details", async () => {
@@ -520,6 +689,8 @@ describe("error detail page", () => {
       badCaseId: "case-degraded",
       degraded: true,
       diagnosticCode: "BAD_CASE_DISPLAY_STATE_UNKNOWN",
+      attributionCount: 0,
+      hasAttribution: false,
     });
     mockApi([degraded]);
     const { wrapper } = await mountPage(
@@ -538,81 +709,15 @@ describe("error detail page", () => {
     expect(wrapper.get(".description .degraded-chip").text()).toBe("数据降级");
   });
 
-  it("shows the unanalyzed placeholder without requesting a probe", async () => {
-    const unanalyzed = badCaseFixture({
-      badCaseId: "case-unanalyzed",
-      title: "尚未归因",
-      reason:
-        "这一条问题还没有完成归因分析，描述正文仍然完整保留。",
-    });
-    mockApi([unanalyzed]);
+  it("keeps the non-target conclusion text apart from the unanalyzed placeholder", async () => {
+    mockApi();
     const { wrapper } = await mountPage(
-      `${ws}/sessions/root-1/errors?case=case-unanalyzed&tab=attr`,
+      `${ws}/sessions/root-1/errors?case=case-error&tab=attr&at=AT-0002`,
     );
 
-    expect(wrapper.get(".description .problem-title").text()).toBe(
-      "尚未归因",
-    );
-    expect(wrapper.get(".description .problem-detail").text()).toBe(
-      "这一条问题还没有完成归因分析，描述正文仍然完整保留。",
-    );
-    expect(wrapper.text()).toContain("尚未分析");
-    expect(wrapper.get(".conclusion").text()).toBe("结论尚未分析未分析");
-    expect(wrapper.get(".unanalyzed-note").text()).toBe(
-      "该错误还没有归因分析，尚不能判断是否为问题。",
-    );
-    expect(wrapper.get(".conclusion").text()).not.toContain(
-      "该错误还没有归因分析",
-    );
-  });
-
-  it("does not request a probe until the attribution tab is active", async () => {
-    mockApi();
-    const probeRequests: string[] = [];
-    server.use(
-      http.get("/api/probes/:probeId", ({ params }) => {
-        probeRequests.push(String(params.probeId));
-        return HttpResponse.json({
-          probeId: params.probeId,
-          sessionId: "root-1",
-          probeType: "agent",
-          probeObject: "Explore",
-          objectVersion: "v1.0.0",
-          attributeType: "error",
-          probeDescription: "The index file was not checked.",
-          probeAnalysis: "Checked the index.",
-          createdAt: "2026-10-20T08:46:00+08:00",
-          updatedAt: "2026-10-20T08:47:00+08:00",
-          fromBadCases: ["case-error"],
-          fromBadCasesCount: 1,
-        });
-      }),
-    );
-    const { router } = await mountPage(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
-    );
-
-    expect(probeRequests).toEqual([]);
-    await router.push(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
-    );
-    await flushPromises();
-
-    expect(probeRequests).toEqual(["probe-error"]);
-  });
-
-  it("clears the case and restores the complete graph via all errors", async () => {
-    mockApi();
-    const { router, wrapper } = await mountPage(
-      `${ws}/sessions/root-1/errors?case=case-error&tab=attr`,
-    );
-
-    await wrapper.get(".all-errors").trigger("click");
-    await flushPromises();
-
-    expect(router.currentRoute.value.fullPath).toBe(`${ws}/sessions/root-1/errors`);
-    expect(
-      wrapper.get("[data-testid='errors-agent-tree']").text(),
-    ).toContain("badcases:2");
+    const report = wrapper.get("[data-testid='attribution-report']");
+    expect(report.text()).toContain("非该对象问题");
+    expect(report.text()).not.toContain("尚未归因");
+    expect(report.text()).not.toContain("非问题");
   });
 });

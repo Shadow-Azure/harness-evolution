@@ -41,6 +41,32 @@ describe("workspace query keys", () => {
       "detail",
       "unscoped",
     ]);
+    expect(queryKeys.attributionPage(workspaceId, "case-1", 2, 2)).toEqual([
+      "ws",
+      workspaceId,
+      "case",
+      "case-1",
+      "attributions",
+      { page: 2, pageSize: 2 },
+    ]);
+    expect(
+      queryKeys.attribution(workspaceId, "case-1", "AT-0001"),
+    ).toEqual([
+      "ws",
+      workspaceId,
+      "case",
+      "case-1",
+      "attribution",
+      "AT-0001",
+    ]);
+    expect(queryKeys.attributions(workspaceId, "case-1")).toEqual([
+      "ws",
+      workspaceId,
+      "case",
+      "case-1",
+      "attributions",
+      "all",
+    ]);
     expect(queryKeys.evolutionRuns(workspaceId)).toEqual([
       "ws",
       workspaceId,

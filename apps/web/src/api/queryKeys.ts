@@ -35,6 +35,17 @@ export const queryKeys = {
     ["ws", workspaceId, "case", badCaseId, "detail", sessionId ?? "unscoped"] as const,
   badCaseAnalysis: (workspaceId: string, badCaseId: string, sessionId?: string) =>
     ["ws", workspaceId, "case", badCaseId, "analysis", sessionId ?? "unscoped"] as const,
+  attributionPage: (
+    workspaceId: string,
+    badCaseId: string,
+    page: number,
+    pageSize: number,
+  ) =>
+    ["ws", workspaceId, "case", badCaseId, "attributions", { page, pageSize }] as const,
+  attribution: (workspaceId: string, badCaseId: string, attributionId: string) =>
+    ["ws", workspaceId, "case", badCaseId, "attribution", attributionId] as const,
+  attributions: (workspaceId: string, badCaseId: string) =>
+    ["ws", workspaceId, "case", badCaseId, "attributions", "all"] as const,
   probe: (workspaceId: string, probeId: string) =>
     ["ws", workspaceId, "probe", probeId] as const,
   acquisitionStatus: ["acquisition", "status"] as const,

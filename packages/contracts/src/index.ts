@@ -94,6 +94,12 @@ export type BadCaseListResponse = components["schemas"]["BadCaseListResponse"];
 export type BadCaseAnalysis = components["schemas"]["BadCaseAnalysis"];
 /** Root-cause report with validated reverse source links. */
 export type ProbeReport = components["schemas"]["ProbeReport"];
+/** One object/revision attribution shown in the folded error-detail list. */
+export type AttributionItem = components["schemas"]["AttributionItem"];
+/** One attribution with reasoning, warnings and trigger-point comparison. */
+export type AttributionDetail = components["schemas"]["AttributionDetail"];
+/** One deterministic newest-first page of a case's attributions. */
+export type AttributionPage = components["schemas"]["AttributionPage"];
 /** Session root-cause report list response. */
 export type ProbeListResponse = components["schemas"]["ProbeListResponse"];
 

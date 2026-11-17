@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type {
+  AttributionItem,
   BadCase,
   SessionListItem,
   SessionTree,
 } from "@harness/contracts";
+import { useQueryClient } from "@tanstack/vue-query";
 import {
   computed,
   defineAsyncComponent,
@@ -13,24 +15,28 @@ import {
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
+import { ApiError } from "../../api/http";
+import { queryKeys } from "../../api/queryKeys";
 import {
+  useAttribution,
+  useAttributions,
   useBadCase,
-  useBadCaseAnalysis,
-  useProbe,
 } from "../../composables/useBadCases";
 import {
   useSessionBadCases,
   useSessionSummary,
   useSessionTree,
 } from "../../composables/useSessions";
-import { ApiError } from "../../api/http";
+import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { parseSessionDeepLink } from "../../router/deepLink";
 import { workspacePath } from "../../router/workspace";
-import { useWorkspaceId } from "../../composables/useWorkspaceId";
-import ErrorState from "../../components/ui/ErrorState.vue";
-import EmptyState from "../../components/ui/EmptyState.vue";
-import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
+import { useAuthStore } from "../../stores/auth";
 import { formatStartedAt } from "../../utils/sessionDisplay";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import EmptyState from "../../components/ui/EmptyState.vue";
+import ErrorState from "../../components/ui/ErrorState.vue";
+import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
+import LaunchWizard from "../evolution/components/LaunchWizard.vue";
 import AttributionReport from "./components/AttributionReport.vue";
 import ErrorSidebar from "./components/ErrorSidebar.vue";
 import ProblemDescription from "./components/ProblemDescription.vue";
@@ -43,8 +49,12 @@ const AgentTree = defineAsyncComponent(
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
+const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
 const expandedAgentIds = ref<string[]>([]);
+const wizardOpen = ref(false);
+const wizardCaseId = ref<string | null>(null);
 
 const rawSessionId = computed(() =>
   typeof route.params.sessionId === "string" ? route.params.sessionId : "",
@@ -71,6 +81,12 @@ const selectedBadCaseId = computed(() =>
 const activeTab = computed<"desc" | "attr">(() =>
   deepLink.value?.ok ? deepLink.value.state.tab : "desc",
 );
+const requestedAttributionId = computed(() =>
+  deepLink.value?.ok ? deepLink.value.state.attributionId : null,
+);
+const requestedObjectName = computed(() =>
+  deepLink.value?.ok ? deepLink.value.state.objectName : null,
+);
 
 const problemsQuery = useSessionBadCases(
   workspaceId,
@@ -89,28 +105,17 @@ const detailQuery = useBadCase(
   computed(() => selectedBadCaseId.value),
   sessionId,
 );
-const analysisQuery = useBadCaseAnalysis(
+const attributionsQuery = useAttributions(
   workspaceId,
   computed(() => selectedBadCaseId.value),
-  sessionId,
 );
-const probeId = computed(() =>
-  activeTab.value === "attr" &&
-  analysisQuery.data.value?.status === "analyzed_issue"
-    ? analysisQuery.data.value.probeId
-    : null,
-);
-const probeQuery = useProbe(workspaceId, computed(() => probeId.value));
 
 const problems = computed(() => problemsQuery.data.value?.items ?? []);
 const session = computed<SessionListItem | null>(
   () => summaryQuery.data.value ?? null,
 );
-const analyzedCount = computed(
-  () =>
-    problems.value.filter(
-      (problem) => problem.analysis.status !== "unanalyzed",
-    ).length,
+const attributedCount = computed(
+  () => problems.value.filter((problem) => problem.attributionCount > 0).length,
 );
 const selectedFromList = computed(() =>
   problems.value.find(
@@ -119,6 +124,42 @@ const selectedFromList = computed(() =>
 );
 const selectedProblem = computed<BadCase | null>(
   () => detailQuery.data.value ?? selectedFromList.value,
+);
+const allAttributions = computed<AttributionItem[]>(
+  () => attributionsQuery.data.value ?? [],
+);
+const resolvedIndex = computed(() => {
+  const items = allAttributions.value;
+  if (items.length === 0) return -1;
+  const requestedAt = requestedAttributionId.value;
+  if (requestedAt) {
+    const index = items.findIndex(
+      (attribution) => attribution.attributionId === requestedAt,
+    );
+    if (index >= 0) return index;
+  }
+  const requestedObject = requestedObjectName.value;
+  if (requestedObject) {
+    const index = items.findIndex(
+      (attribution) => attribution.objectName === requestedObject,
+    );
+    if (index >= 0) return index;
+  }
+  return 0;
+});
+const selectedAttribution = computed<AttributionItem | null>(
+  () => allAttributions.value[resolvedIndex.value] ?? null,
+);
+const effectiveAttributionId = computed(
+  () => selectedAttribution.value?.attributionId ?? null,
+);
+const attributionDetailQuery = useAttribution(
+  workspaceId,
+  computed(() => selectedBadCaseId.value),
+  computed(() => effectiveAttributionId.value),
+);
+const canStart = computed(() =>
+  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
 );
 const sessionTree = computed<SessionTree | null>(
   () => treeQuery.data.value ?? null,
@@ -151,13 +192,6 @@ const flowNote = computed(() => {
   const prefix = selectedIndex.value ? `#${selectedIndex.value} · ` : "";
   return `仅显示 ${prefix}${selectedProblem.value.title}`;
 });
-const fallbackObject = computed(() => {
-  const problem = selectedProblem.value;
-  if (!problem) return "";
-  return problem.objectVersion
-    ? `${problem.objectName} @ ${problem.objectVersion}`
-    : problem.objectName;
-});
 
 const routeFatalError = computed(() => {
   if (!rawSessionId.value) return null;
@@ -169,18 +203,14 @@ const routeFatalError = computed(() => {
     };
   }
   const detail = detailQuery.data.value;
-  if (
-    detail &&
-    sessionId.value &&
-    detail.sessionId !== sessionId.value
-  ) {
+  if (detail && sessionId.value && detail.sessionId !== sessionId.value) {
     return {
       code: "BAD_CASE_SESSION_MISMATCH",
       message: "问题不属于当前 Session。",
       retry: false,
     };
   }
-  const error = detailQuery.error.value ?? analysisQuery.error.value;
+  const error = detailQuery.error.value;
   if (error instanceof ApiError && error.status === 409) {
     return {
       code: error.code,
@@ -214,10 +244,34 @@ const detailLoading = computed(
 const flowLoading = computed(
   () => treeQuery.isPending.value && Boolean(sessionId.value),
 );
+const reportLoading = computed(
+  () =>
+    Boolean(selectedBadCaseId.value) &&
+    (attributionsQuery.isPending.value ||
+      (Boolean(effectiveAttributionId.value) &&
+        attributionDetailQuery.isPending.value)),
+);
+const reportError = computed(
+  () =>
+    attributionsQuery.error.value ??
+    attributionDetailQuery.error.value,
+);
+const attributionTabLabel = computed(() => {
+  const count = selectedProblem.value?.attributionCount ?? 0;
+  return count > 0 ? `归因分析 (${count})` : "归因分析";
+});
 
-function routeQuery(caseId: string | null, tab: "desc" | "attr") {
+function routeQuery(
+  caseId: string | null,
+  tab: "desc" | "attr",
+  attributionId: string | null = null,
+) {
   if (!caseId) return {};
-  return { case: caseId, tab };
+  const query: Record<string, string> = { case: caseId, tab };
+  if (tab === "attr" && attributionId) {
+    query.at = attributionId;
+  }
+  return query;
 }
 
 function errorsPath(): string {
@@ -228,7 +282,9 @@ function errorsPath(): string {
 }
 
 function selectBadCase(badCaseId: string) {
-  if (selectedBadCaseId.value === badCaseId) return;
+  if (selectedBadCaseId.value === badCaseId && activeTab.value === "desc") {
+    return;
+  }
   expandedAgentIds.value = [];
   void router.push({
     path: errorsPath(),
@@ -236,16 +292,22 @@ function selectBadCase(badCaseId: string) {
   });
 }
 
-function showAllErrors() {
-  expandedAgentIds.value = [];
-  void router.push({ path: errorsPath() });
+function selectAttribution(badCaseId: string, attributionId: string) {
+  void router.push({
+    path: errorsPath(),
+    query: routeQuery(badCaseId, "attr", attributionId),
+  });
 }
 
 function selectTab(tab: "desc" | "attr") {
   if (!selectedBadCaseId.value) return;
   void router.push({
     path: errorsPath(),
-    query: routeQuery(selectedBadCaseId.value, tab),
+    query: routeQuery(
+      selectedBadCaseId.value,
+      tab,
+      tab === "attr" ? effectiveAttributionId.value : null,
+    ),
   });
 }
 
@@ -266,10 +328,7 @@ function tabEdge(edge: "first" | "last") {
 }
 
 function retryDetail() {
-  void Promise.all([
-    detailQuery.refetch(),
-    analysisQuery.refetch(),
-  ]);
+  void detailQuery.refetch();
 }
 
 function retryProblems() {
@@ -278,6 +337,42 @@ function retryProblems() {
 
 function retryTree() {
   void treeQuery.refetch();
+}
+
+function retryReport() {
+  void Promise.all([
+    attributionsQuery.refetch(),
+    attributionDetailQuery.refetch(),
+  ]);
+}
+
+function openWizardFor(badCaseId: string) {
+  if (!canStart.value) return;
+  wizardCaseId.value = badCaseId;
+  wizardOpen.value = true;
+}
+
+function openSelectedWizard() {
+  const problem = selectedProblem.value;
+  if (problem) openWizardFor(problem.badCaseId);
+}
+
+async function onLaunched(
+  mode: "full" | "cluster_only",
+  runId: string,
+) {
+  wizardOpen.value = false;
+  await queryClient.invalidateQueries({
+    queryKey: queryKeys.workspace(workspaceId.value),
+  });
+  await router.push(
+    workspacePath(
+      workspaceId.value,
+      mode === "full"
+        ? `evolution/runs/${encodeURIComponent(runId)}`
+        : `evolution/cluster/${encodeURIComponent(runId)}`,
+    ),
+  );
 }
 
 function ancestorsOf(agentId: string | null): string[] {
@@ -308,6 +403,12 @@ watch(
   { immediate: true },
 );
 
+watch(workspaceId, () => {
+  wizardOpen.value = false;
+  wizardCaseId.value = null;
+  expandedAgentIds.value = [];
+});
+
 function toggleExpanded(agentId: string) {
   expandedAgentIds.value = expandedAgentIds.value.includes(agentId)
     ? expandedAgentIds.value.filter((id) => id !== agentId)
@@ -332,14 +433,15 @@ function toggleExpanded(agentId: string) {
       <ErrorSidebar
         :wid="workspaceId"
         :active-bad-case-id="selectedBadCaseId"
+        :can-start="canStart"
         :error="problemsQuery.error.value"
         :loading="problemsQuery.isPending.value"
         :problems="problems"
+        :selected-attribution-id="effectiveAttributionId"
         :session="session"
         :session-id="sessionId"
-        @all="showAllErrors"
         @retry="retryProblems"
-        @select="selectBadCase"
+        @start="openWizardFor"
       />
 
       <main
@@ -369,8 +471,8 @@ function toggleExpanded(agentId: string) {
                   v-if="session?.repo"
                   class="repo-chip"
                 >{{ session.repo }}</span>
-                <span>{{ problems.length }} 个错误</span>
-                <span>{{ analyzedCount }} 个已分析</span>
+                <span>{{ problems.length }} 个 bad case</span>
+                <span>{{ attributedCount }} 个已归因</span>
               </div>
             </div>
             <RouterLink
@@ -453,7 +555,7 @@ function toggleExpanded(agentId: string) {
                 @keydown.home.prevent="tabEdge('first')"
                 @keydown.end.prevent="tabEdge('last')"
               >
-                归因分析
+                {{ attributionTabLabel }}
               </button>
             </div>
             <div
@@ -468,12 +570,14 @@ function toggleExpanded(agentId: string) {
                 :wid="workspaceId"
                 :index="selectedIndex"
                 :problem="selectedProblem"
+                :attributions="allAttributions"
+                @open-attribution="selectTab('attr')"
               />
               <div
                 v-else
                 class="err-empty"
               >
-                从左侧选择一个错误，查看问题描述与归因分析。
+                从左侧选择一个 bad case，查看问题描述与归因分析。
               </div>
             </div>
             <div
@@ -485,23 +589,25 @@ function toggleExpanded(agentId: string) {
             >
               <AttributionReport
                 v-if="selectedProblem"
+                :key="`${workspaceId}:${selectedProblem.badCaseId}`"
                 :wid="workspaceId"
-                :analysis="analysisQuery.data.value ?? null"
-                :analysis-error="analysisQuery.error.value"
-                :analysis-loading="analysisQuery.isPending.value"
-                :fallback-object="fallbackObject"
-                :probe="probeQuery.data.value ?? null"
-                :probe-error="probeQuery.error.value"
-                :probe-loading="probeQuery.isPending.value && Boolean(probeId)"
                 :session-id="sessionId"
-                @probe-retry="probeQuery.refetch()"
-                @retry="analysisQuery.refetch()"
+                :problem="selectedProblem"
+                :attribution="attributionDetailQuery.data.value ?? null"
+                :attributions="allAttributions"
+                :selected-index="Math.max(0, resolvedIndex)"
+                :loading="reportLoading"
+                :error="reportError"
+                :can-start="canStart"
+                @select="selectAttribution(selectedProblem.badCaseId, $event)"
+                @start="openSelectedWizard"
+                @retry="retryReport"
               />
               <div
                 v-else
                 class="err-empty"
               >
-                从左侧选择一个错误，查看问题描述与归因分析。
+                从左侧选择一个 bad case，查看问题描述与归因分析。
               </div>
             </div>
           </section>
@@ -509,6 +615,14 @@ function toggleExpanded(agentId: string) {
       </main>
     </template>
   </section>
+
+  <LaunchWizard
+    v-if="wizardOpen"
+    :wid="workspaceId"
+    :focus-case-id="wizardCaseId"
+    @close="wizardOpen = false"
+    @launched="onLaunched"
+  />
 </template>
 
 <style scoped>

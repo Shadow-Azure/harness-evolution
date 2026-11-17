@@ -181,7 +181,8 @@ before(async () => {
 
 after(cleanup);
 
-test("m4 error detail restores five states, tabs, filtered flow and ownership", async () => {
+
+test("m4 error detail restores five states, folded attributions, tabs, filtered flow and ownership", async () => {
   const auth = await loginSession();
   const sessions = await apiGet("/api/sessions", auth.accessToken);
   assert.equal(sessions.items.length, 4);
@@ -219,10 +220,13 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     (item) => item.analysis.status === "analyzed_issue",
   );
   assert.ok(selected);
-  const selectedProbe = await apiGet(
-    `/api/probes/${encodeURIComponent(selected.analysis.probeId)}`,
+  const selectedAttributions = await apiGet(
+    `/api/workspaces/ws-default/bad-cases/${encodeURIComponent(selected.badCaseId)}/attributions?page=1&pageSize=2`,
     auth.accessToken,
   );
+  assert.ok(selectedAttributions.total > 0);
+  const selectedAttribution = selectedAttributions.items[0];
+  assert.ok(selectedAttribution);
   const otherSession = sessions.items.find((item) => item.id !== sessionId);
   assert.ok(otherSession);
 
@@ -231,9 +235,8 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     const violations = browserViolations(page.session, {
       isExpectedLogEntry: (entry) =>
         entry.source === "network" &&
-        entry.url?.includes(`/api/bad-cases/${selected.badCaseId}`) &&
-        entry.url?.includes(`sessionId=${otherSession.id}`) &&
-        /status of 409/.test(entry.text),
+        entry.url?.includes(`/bad-cases/${selected.badCaseId}`) &&
+        /status of (404|409)/.test(entry.text),
     });
     await installCookie(page, auth.cookie);
     await page.session.send("Emulation.setDeviceMetricsOverride", {
@@ -248,10 +251,6 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       `Boolean(document.querySelector(".shell"))`,
       "authenticated shell",
     );
-    // SessionsPage auto-selects the first session with a delayed
-    // router.replace; if that fires after the pushState below it would cancel
-    // the in-flight errors navigation and land back on /sessions/:sid. Wait
-    // for the auto-selection to settle before crossing routes.
     await waitForDocument(
       page.session,
       `/^\\/workspaces\\/ws-default\\/sessions\\/[0-9a-f-]{36}$/.test(location.pathname)`,
@@ -263,30 +262,23 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       page.session,
       `(() => {
         const workspace = document.querySelector("[data-testid='errors-workspace']");
-        const rows = [...document.querySelectorAll(
-          "[data-testid='problem-list'] [data-bad-case-id]",
-        )];
-        const idLinks = [...document.querySelectorAll(
-          "[data-testid='problem-list'] .problem-id",
-        )];
-        const reportLinks = [...document.querySelectorAll(
-          "[data-testid='problem-list'] .report-id",
-        )];
+        const groups = [...document.querySelectorAll("[data-testid='case-group']")];
+        const ids = [...document.querySelectorAll("[data-testid='case-id']")];
+        const titles = [...document.querySelectorAll("[data-testid='case-title-link']")];
         const tree = document.querySelector("[data-testid='agent-tree']");
         if (
           !workspace ||
           !tree ||
-          rows.length !== ${sessionCases.length} ||
-          idLinks.length !== ${sessionCases.length}
+          groups.length !== ${sessionCases.length} ||
+          ids.length !== ${sessionCases.length}
         ) return null;
         const heading = document.querySelector(".error-heading h1");
         const main = document.querySelector(".error-main");
         const sidebar = document.querySelector(".error-sidebar");
-        const detail = document.querySelector(".detail-panel");
         const empty = document.querySelector(".err-empty");
         return {
-          rows: rows.length,
-          idLinks: idLinks.map((link) => ({
+          groups: groups.length,
+          ids: ids.map((link) => ({
             text: link.textContent,
             href: link.getAttribute("href"),
             title: link.getAttribute("title"),
@@ -294,20 +286,16 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
             rel: link.getAttribute("rel"),
             insideButton: Boolean(link.closest("button")),
           })),
-          reportLinks: reportLinks.map((link) => ({
-            text: link.textContent,
+          titles: titles.map((link) => ({
             href: link.getAttribute("href"),
             title: link.getAttribute("title"),
-            target: link.getAttribute("target"),
-            rel: link.getAttribute("rel"),
-            insideButton: Boolean(link.closest("button")),
           })),
           findingCards: tree.querySelectorAll(".rf-finding").length,
           diagnosticsText:
             tree.querySelector(".diagnostics")?.textContent?.trim() ?? "",
           detailEmpty: document
             .querySelector(".detail-panel")
-            ?.textContent.includes("从左侧选择一个错误，查看问题描述与归因分析。"),
+            ?.textContent.includes("从左侧选择一个 bad case，查看问题描述与归因分析。"),
           title: document.querySelector(".error-heading h1")?.textContent,
           sidebarRootId: sidebar
             ?.querySelector("[data-testid='error-root-session-id']")
@@ -315,14 +303,12 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
           metaRootId: document
             .querySelector("[data-testid='error-meta-root-session-id']")
             ?.textContent.trim(),
+          meta: document.querySelector(".error-meta")?.textContent,
           tabs: document.querySelectorAll(".detail-tabs [role='tab']").length,
-          innerProblemHeader: Boolean(document.querySelector(".problem-list-head")),
           body: getComputedStyle(document.body).backgroundColor,
           sidebarWidth: sidebar?.getBoundingClientRect().width,
           headingFontSize: heading ? getComputedStyle(heading).fontSize : null,
-          headingMarginTop: heading ? getComputedStyle(heading).marginTop : null,
           mainPadding: main ? getComputedStyle(main).padding : null,
-          detailMarginTop: detail ? getComputedStyle(detail).marginTop : null,
           emptyMinHeight: empty ? getComputedStyle(empty).minHeight : null,
         };
       })()`,
@@ -332,7 +318,7 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         expression: `({
           href: location.href,
           text: document.body.textContent.slice(0, 2000),
-          rows: document.querySelectorAll("[data-bad-case-id]").length,
+          groups: document.querySelectorAll("[data-testid='case-group']").length,
           workspaces: document.querySelectorAll("[data-testid='errors-workspace']").length,
           trees: document.querySelectorAll("[data-testid='agent-tree']").length
         })`,
@@ -342,17 +328,17 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         `${error.message}: ${JSON.stringify(evaluated.result.value)}\n\nAPI:\n${apiLogs}\n\nVite:\n${webLogs}`,
       );
     });
-    assert.equal(all.rows, sessionCases.length);
+    assert.equal(all.groups, sessionCases.length);
     assert.deepEqual(
-      all.idLinks.map((link) => link.text),
+      all.ids.map((link) => link.text),
       sessionCases.map((item) => item.badCaseId.slice(0, 8)),
     );
     assert.deepEqual(
-      all.idLinks.map((link) => link.title),
+      all.ids.map((link) => link.title),
       sessionCases.map((item) => item.badCaseId),
     );
     assert.equal(
-      all.idLinks.every(
+      all.ids.every(
         (link) =>
           link.href ===
             `${ws}/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
@@ -362,25 +348,12 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       ),
       true,
     );
-    const issueCases = sessionCases.filter(
-      (item) => item.analysis.status === "analyzed_issue",
-    );
-    assert.deepEqual(
-      all.reportLinks.map((link) => link.text),
-      issueCases.map((item) => item.analysis.probeId.slice(0, 8)),
-    );
-    assert.deepEqual(
-      all.reportLinks.map((link) => link.title),
-      issueCases.map((item) => item.analysis.probeId),
-    );
     assert.equal(
-      all.reportLinks.every(
+      all.titles.every(
         (link, index) =>
           link.href ===
-            `${ws}/sessions/${sessionId}/errors?case=${issueCases[index].badCaseId}&tab=attr` &&
-          link.target === "_blank" &&
-          link.rel === "noopener noreferrer" &&
-          !link.insideButton,
+            `${ws}/sessions/${sessionId}/errors?case=${sessionCases[index].badCaseId}&tab=desc` &&
+          link.title === sessionCases[index].badCaseId,
       ),
       true,
     );
@@ -390,19 +363,17 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     assert.equal(all.title, "错误详情");
     assert.equal(all.sidebarRootId, `根会话 ID · ${sessionId}`);
     assert.equal(all.metaRootId, `根会话 ID · ${sessionId}`);
+    assert.match(all.meta, new RegExp(`${sessionCases.length} 个 bad case`));
     assert.equal(all.tabs, 2);
-    assert.equal(all.innerProblemHeader, false);
     assert.equal(all.body, "rgb(244, 245, 247)");
     assert.equal(all.sidebarWidth, 340);
     assert.equal(all.headingFontSize, "17px");
-    assert.equal(all.headingMarginTop, "0px");
     assert.equal(all.mainPadding, "16px 20px 24px");
-    assert.equal(all.detailMarginTop, "14px");
     assert.equal(all.emptyMinHeight, "260px");
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector(${JSON.stringify(
-        `[data-bad-case-id='${selected.badCaseId}']`,
+        `[data-bad-case-id='${selected.badCaseId}'] [data-testid='case-title-link']`,
       )}).click()`,
     });
     const selectedView = await waitForDocument(
@@ -412,71 +383,36 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
         if (!tree || location.search !== ${JSON.stringify(
           `?case=${selected.badCaseId}&tab=desc`,
         )}) return null;
+        const group = document.querySelector(
+          ${JSON.stringify(`[data-bad-case-id='${selected.badCaseId}']`)},
+        );
+        const items = group?.querySelectorAll("[data-testid='attribution-item']").length ?? 0;
+        if (items !== ${selected.attributionCount}) return null;
         return {
           findingCards: tree.querySelectorAll(".rf-finding").length,
           text: document.body.textContent,
-          detailId: (() => {
-            const link = document.querySelector(".description .problem-id");
-            const style = link ? getComputedStyle(link) : null;
-            return link ? {
-              text: link.textContent,
-              href: link.getAttribute("href"),
-              title: link.getAttribute("title"),
-              target: link.getAttribute("target"),
-              rel: link.getAttribute("rel"),
-              textDecoration: style?.textDecorationLine,
-              borderStyle: style?.borderBottomStyle,
-              borderWidth: style?.borderBottomWidth,
-            } : null;
-          })(),
-          reportLink: (() => {
-            const link = document.querySelector(".description .report-id");
-            const style = link ? getComputedStyle(link) : null;
-            return link ? {
-              text: link.textContent,
-              href: link.getAttribute("href"),
-              title: link.getAttribute("title"),
-              target: link.getAttribute("target"),
-              rel: link.getAttribute("rel"),
-              textDecoration: style?.textDecorationLine,
-              borderStyle: style?.borderBottomStyle,
-              borderWidth: style?.borderBottomWidth,
-            } : null;
-          })(),
-          descriptionLabelCount: document.querySelectorAll(
-            ".description .field-label",
-          ).length,
-          selected: document.querySelector(
-            ${JSON.stringify(`[data-bad-case-id='${selected.badCaseId}']`)},
-          )?.getAttribute("aria-pressed"),
+          title: document.querySelector(".description .problem-title")?.textContent,
+          detail: document.querySelector(".description [data-testid='problem-detail']")?.textContent,
+          summary: document.querySelector("[data-testid='problem-attribution-summary']")?.textContent,
+          expanded: group?.querySelector("[data-testid='case-toggle']")?.getAttribute("aria-expanded"),
+          items,
+          selected: group?.classList.contains("active"),
         };
       })()`,
       "selected problem",
     );
     assert.equal(selectedView.findingCards, 1);
-    assert.equal(selectedView.selected, "true");
+    assert.equal(selectedView.selected, true);
+    assert.equal(selectedView.expanded, "true");
+    assert.equal(selectedView.items, selected.attributionCount);
+    assert.equal(selectedView.title, selected.title);
+    assert.equal(selectedView.detail, selected.reason);
+    assert.match(selectedView.summary ?? "", /已生成 \d+ 条归因/);
     assert.doesNotMatch(selectedView.text, /问题 ID/);
-    assert.equal(selectedView.descriptionLabelCount, 0);
-    assert.deepEqual(selectedView.detailId, {
-      text: selected.badCaseId.slice(0, 8),
-      href: `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=desc`,
-      title: selected.badCaseId,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      textDecoration: "none",
-      borderStyle: "dashed",
-      borderWidth: "1px",
-    });
-    assert.deepEqual(selectedView.reportLink, {
-      text: selected.analysis.probeId.slice(0, 8),
-      href: `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
-      title: selected.analysis.probeId,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      textDecoration: "none",
-      borderStyle: "dashed",
-      borderWidth: "1px",
-    });
+    assert.equal(
+      selectedView.text.includes("从左侧选择一个 bad case"),
+      false,
+    );
 
     await page.session.send("Runtime.evaluate", {
       expression: `document.querySelector("#attr-tab").click()`,
@@ -484,88 +420,50 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     const attribution = await waitForDocument(
       page.session,
       `(() => {
-        const attribution = document.querySelector(".attribution");
-        if (!attribution || !location.search.includes("tab=attr")) return null;
+        const report = document.querySelector("[data-testid='attribution-report']");
+        if (!report || !location.search.includes("tab=attr")) return null;
+        const conclusion = report.querySelector(".conclusion");
         return {
-          text: attribution.textContent,
-          conclusion: attribution.querySelector(".conclusion")?.textContent,
-          conclusionStrong: (() => {
-            const strong = attribution.querySelector(".conclusion > strong");
-            return strong ? {
-              text: strong.textContent,
-              fontSize: getComputedStyle(strong).fontSize,
+          text: report.textContent,
+          conclusionStrong: conclusion?.querySelector("strong")?.textContent,
+          conclusionChips: [...conclusion.querySelectorAll(".state-chip")]
+            .map((chip) => chip.textContent),
+          html: report.querySelector(".markdown")?.innerHTML,
+          deepLink: (() => {
+            const link = report.querySelector("[data-testid='attribution-deep-link']");
+            return link ? {
+              text: link.textContent,
+              href: link.getAttribute("href"),
+              title: link.getAttribute("title"),
+              target: link.getAttribute("target"),
+              rel: link.getAttribute("rel"),
             } : null;
           })(),
-          conclusionChips: [...attribution.querySelectorAll(
-            ".conclusion .state-chip",
-          )].map((chip) => chip.textContent),
-          classification: attribution.querySelector(".classification")?.textContent,
-          html: attribution.querySelector(".markdown")?.innerHTML,
-          sourceLinks: [...attribution.querySelectorAll(".source-links a")].map(
-            (link) => {
-              const style = getComputedStyle(link);
-              return {
-                text: link.textContent,
-                href: link.getAttribute("href"),
-                title: link.getAttribute("title"),
-                ariaLabel: link.getAttribute("aria-label"),
-                target: link.getAttribute("target"),
-                rel: link.getAttribute("rel"),
-                textDecoration: style.textDecorationLine,
-                borderStyle: style.borderBottomStyle,
-                borderWidth: style.borderBottomWidth,
-              };
-            },
-          ),
+          position: report.querySelector("[data-testid='attribution-position']")?.textContent,
         };
       })()`,
       "attribution tab",
     );
-    assert.match(attribution.text, /分析出的问题描述/);
-    assert.match(attribution.text, /分析推导过程/);
+    assert.equal(attribution.conclusionStrong, "可归因到本对象");
+    assert.deepEqual(attribution.conclusionChips, [
+      {
+        error: "错误",
+        model: "模型问题",
+        prompt: "prompt缺失某些提示词",
+      }[selectedAttribution.category],
+    ]);
+    assert.match(attribution.text, /归因结论说明/);
+    assert.match(attribution.text, /推导过程/);
+    assert.match(attribution.text, /结论边界/);
     assert.match(attribution.html ?? "", /<p>/);
-    assert.equal(
-      attribution.conclusion?.includes(selectedProbe.probeObject),
-      false,
-    );
-    assert.equal(
-      attribution.conclusion?.includes(selectedProbe.probeDescription),
-      false,
-    );
-    const issueStatusLabel = {
-      error: "是问题-错误",
-      model: "是问题-模型问题",
-      prompt: "是问题-prompt缺失某些提示词",
-    }[selected.analysis.attributeType];
-    assert.deepEqual(attribution.conclusionStrong, {
-      text: "问题",
-      fontSize: "14px",
+    assert.equal(attribution.position, undefined);
+    assert.deepEqual(attribution.deepLink, {
+      text: selectedAttribution.attributionId.slice(0, 8),
+      href: `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr&at=${selectedAttribution.attributionId}`,
+      title: selectedAttribution.attributionId,
+      target: "_blank",
+      rel: "noopener noreferrer",
     });
-    assert.deepEqual(attribution.conclusionChips, [issueStatusLabel]);
-    assert.equal(
-      attribution.classification?.includes(selectedProbe.probeObject),
-      true,
-    );
-    assert.equal(
-      attribution.sourceLinks.length,
-      selectedProbe.fromBadCases.length,
-    );
-    assert.equal(
-      attribution.sourceLinks.every(
-        (link) =>
-          link.text === link.title.slice(0, 8) &&
-          link.href ===
-            `${ws}/sessions/${sessionId}/errors?case=${link.title}&tab=desc` &&
-          link.ariaLabel ===
-            `来源问题 ${link.title.slice(0, 8)}，在新窗口打开问题描述` &&
-          link.target === "_blank" &&
-          link.rel === "noopener noreferrer" &&
-          link.textDecoration === "none" &&
-          link.borderStyle === "dashed" &&
-          link.borderWidth === "1px",
-      ),
-      true,
-    );
 
     const unanalyzedSession = [...casesBySession.entries()].find(([, items]) =>
       items.some((item) => item.analysis.status === "unanalyzed"));
@@ -582,61 +480,57 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
     const unanalyzedView = await waitForDocument(
       page.session,
       `(() => {
-        const note = document.querySelector(".unanalyzed-note");
-        if (!note) return null;
-        const style = getComputedStyle(note);
+        const empty = document.querySelector("[data-testid='attribution-empty']");
+        if (!empty) return null;
         return {
-          text: note.textContent.trim(),
-          borderTopStyle: style.borderTopStyle,
-          borderTopWidth: style.borderTopWidth,
-          backgroundColor: style.backgroundColor,
-          padding: style.padding,
-          textAlign: style.textAlign,
-          fontSize: style.fontSize,
+          text: empty.textContent,
+          start: Boolean(document.querySelector("[data-testid='start-evolution-from-case']")),
+          groupStart: Boolean(document.querySelector("[data-testid='case-start-evolution']")),
         };
       })()`,
       "unanalyzed presentation",
     );
-    assert.deepEqual(unanalyzedView, {
-      text: "该错误还没有归因分析，尚不能判断是否为问题。",
-      borderTopStyle: "none",
-      borderTopWidth: "0px",
-      backgroundColor: "rgba(0, 0, 0, 0)",
-      padding: "28px 4px",
-      textAlign: "center",
-      fontSize: "12px",
-    });
+    assert.match(unanalyzedView.text, /尚未归因/);
+    assert.match(unanalyzedView.text, /该 bad case 还没有被任何自进化运行归因/);
+    assert.doesNotMatch(unanalyzedView.text, /非该对象问题/);
+    assert.equal(unanalyzedView.start, true);
+    assert.equal(unanalyzedView.groupStart, true);
 
     await clientNavigate(
       page,
-      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr&at=${selectedAttribution.attributionId}`,
     );
     await waitForDocument(
       page.session,
       `location.search.includes("tab=attr") &&
-        Boolean(document.querySelector(".description .report-id"))`,
+        Boolean(document.querySelector("[data-testid='attribution-report']"))`,
       "selected attribution before reload",
     );
 
     const reloadAuth = await loginSession();
     await installCookie(page, reloadAuth.cookie);
     await page.session.send("Page.reload");
-    await waitForDocument(
+    const reloaded = await waitForDocument(
       page.session,
-      `location.pathname === "${ws}/sessions/${sessionId}/errors" &&
-        location.search.includes("case=${selected.badCaseId}") &&
-        location.search.includes("tab=attr") &&
-        document.querySelector("#attr-tab")?.getAttribute("aria-selected") === "true"`,
+      `(() => {
+        if (location.pathname !== "${ws}/sessions/${sessionId}/errors") return null;
+        if (!location.search.includes("case=${selected.badCaseId}")) return null;
+        if (!location.search.includes("at=${selectedAttribution.attributionId}")) return null;
+        if (document.querySelector("#attr-tab")?.getAttribute("aria-selected") !== "true") return null;
+        const report = document.querySelector("[data-testid='attribution-report']");
+        return report ? report.textContent : null;
+      })()`,
       "reloaded error detail",
     );
+    assert.match(reloaded, /可归因到本对象/);
 
     await waitForDocument(
       page.session,
-      `Boolean(document.querySelector(".all-errors"))`,
-      "all-errors control",
+      `Boolean(document.querySelector("[data-testid='all-bad-cases']"))`,
+      "all bad cases control",
     );
     await page.session.send("Runtime.evaluate", {
-      expression: `document.querySelector(".all-errors").click()`,
+      expression: `document.querySelector("[data-testid='all-bad-cases']").click()`,
     });
     await waitForDocument(
       page.session,
@@ -648,16 +542,9 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
       const evaluated = await page.session.send("Runtime.evaluate", {
         expression: `({
           href: location.href,
-          rows: document.querySelectorAll("[data-testid='problem-list'] [data-bad-case-id]").length,
+          groups: document.querySelectorAll("[data-testid='case-group']").length,
           cards: document.querySelectorAll("[data-testid='agent-tree'] .rf-finding").length,
           text: document.body.textContent.slice(0, 1200),
-          button: (() => {
-            const button = document.querySelector(".all-errors");
-            return button ? {
-              outerHTML: button.outerHTML,
-              disabled: button.disabled,
-            } : null;
-          })()
         })`,
         returnByValue: true,
       });
@@ -684,11 +571,11 @@ test("m4 error detail restores five states, tabs, filtered flow and ownership", 
 
     await clientNavigate(
       page,
-      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr`,
+      `${ws}/sessions/${sessionId}/errors?case=${selected.badCaseId}&tab=attr&at=${selectedAttribution.attributionId}`,
     );
     await waitForDocument(
       page.session,
-      `location.search.includes("tab=attr") && document.querySelector(".attribution")`,
+      `location.search.includes("tab=attr") && document.querySelector("[data-testid='attribution-report']")`,
       "narrow error detail",
     );
     await page.session.send("Emulation.setDeviceMetricsOverride", {

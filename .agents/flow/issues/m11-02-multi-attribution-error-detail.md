@@ -11,11 +11,17 @@ depends:
   - m10-05
   - m11-01
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/errors/**
   - apps/web/src/components/**
   - apps/web/src/api/**
+  - apps/web/src/composables/**
+  - apps/web/src/router/**
+  - apps/web/src/utils/**
+  - apps/web/src/test/**
+  - packages/contracts/**
+  - plans/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
@@ -56,6 +62,7 @@ github:
 
 - 依赖：m7-08、m10-05、m11-01
 - 交付边界：执行流 DAG/结构树布局由 m11-07 承接，本 issue 不改执行流布局。
+- 本 issue 消费 m11-01 的归因契约与 `at` 深链，故 scope 覆盖 `apps/web/src/{router,utils,composables,test}/**`、`packages/contracts/**` 与检视记录所在的 `plans/**`。
 
 ## 独立验证
 
