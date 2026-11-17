@@ -1051,3 +1051,39 @@ def test_selected_versions_applies_limit_and_explicit_scope() -> None:
         "v3.0.0",
         "v5.0.0",
     )
+
+
+async def test_foreign_workspace_attribution_is_ignored(
+    target_overview_api: TargetOverviewApi,
+) -> None:
+    """A newer probe from another space cannot change this space's three states."""
+    await seed_attribution(
+        target_overview_api.database,
+        probe_id="probe-cross-workspace",
+        case_id="m11-03-case-nontarget",
+        session_id=SESSION_A,
+        workspace_id=WORKSPACE_B,
+        object_version="tag:v2.0.0",
+        conclusion="attributed",
+        category="error",
+        updated_at=_at(13, 0),
+    )
+    url = f"/api/workspaces/{target_overview_api.workspace_a}/overview/targets/cases"
+    attributed = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params={**WINDOW, "targets": TARGET_SKILL, "states": "attributed"},
+    )
+    assert attributed.status_code == 200
+    assert {item["badCaseId"] for item in attributed.json()["items"]} == {
+        "m11-03-case-attributed",
+    }
+    non_target = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params={**WINDOW, "targets": TARGET_SKILL, "states": "nonTarget"},
+    )
+    assert non_target.status_code == 200
+    assert {item["badCaseId"] for item in non_target.json()["items"]} == {
+        "m11-03-case-nontarget",
+    }

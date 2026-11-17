@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any, cast
 
 import pytest
 
@@ -13,9 +14,11 @@ from app.service.overview.target_schemas import TARGET_STATES, TargetState
 from app.service.overview.targets import (
     TargetAnalysis,
     TargetCaseEntry,
+    TargetOverviewQuery,
+    TargetOverviewService,
     _category,
     _display_version,
-    _event_version,
+    _event_versions,
     _newest_link_by_case,
     _ordered_versions,
     _state,
@@ -24,6 +27,7 @@ from app.service.overview.targets import (
     parse_version_filter,
     parse_version_limit,
 )
+from app.service.overview.window import Window
 from app.utils.time import SHANGHAI
 
 TARGET = EvolutionTargetRecord(
@@ -116,30 +120,27 @@ def test_version_normalization_dedupes_tag_and_revision_forms() -> None:
     assert _display_version("tag:") is None
     assert _display_version("tag:v2.0.0") == "v2.0.0"
     assert _display_version("digest:abc") == "digest:abc"
+    assert _event_versions(
+        ObjectVersionRecord(object_version="v2.0.0", object_revision="tag:v2.0.0"),
+    ) == ("v2.0.0",)
+    assert _event_versions(
+        ObjectVersionRecord(object_version=None, object_revision="tag:v1.9.0"),
+    ) == ("v1.9.0",)
+    assert _event_versions(
+        ObjectVersionRecord(object_version="unknown", object_revision="digest:abc"),
+    ) == ("digest:abc",)
     assert (
-        _event_version(
-            ObjectVersionRecord(object_version="v2.0.0", object_revision="tag:v2.0.0"),
-        )
-        == "v2.0.0"
-    )
-    assert (
-        _event_version(
-            ObjectVersionRecord(object_version=None, object_revision="tag:v1.9.0"),
-        )
-        == "v1.9.0"
-    )
-    assert (
-        _event_version(
-            ObjectVersionRecord(object_version="unknown", object_revision="digest:abc"),
-        )
-        == "digest:abc"
-    )
-    assert (
-        _event_version(
+        _event_versions(
             ObjectVersionRecord(object_version="unknown", object_revision=None),
         )
-        is None
+        == ()
     )
+    assert _event_versions(
+        ObjectVersionRecord(object_version="v2.0.0", object_revision="tag:v2.1.0"),
+    ) == ("v2.0.0", "v2.1.0")
+    assert _event_versions(
+        ObjectVersionRecord(object_version="provider:alpha", object_revision=None),
+    ) == ("provider:alpha",)
     versions = _ordered_versions(
         "v2.0.0",
         (
@@ -217,3 +218,59 @@ def test_target_analysis_properties_count_every_state() -> None:
     assert analysis.unanalyzed == 1
     assert analysis.evolvable == 2
     assert analysis.potential == analysis.attributed + analysis.non_target + analysis.unanalyzed
+
+
+async def test_trend_skips_attribution_created_outside_the_window() -> None:
+    """Analyzed rows bucket by attribution createdAt; out-of-window rows are excluded."""
+    service = TargetOverviewService(
+        cast(Any, None),
+        cast(Any, None),
+        cast(Any, None),
+    )
+    attributed = _entry("case-late-attribution", "attributed")
+    attributed = TargetCaseEntry(
+        bad_case_id=attributed.bad_case_id,
+        target=attributed.target,
+        version=attributed.version,
+        session_id=attributed.session_id,
+        source=attributed.source,
+        bad_case_type=attributed.bad_case_type,
+        title=attributed.title,
+        created_at=attributed.created_at,
+        state=attributed.state,
+        attribution_id="probe-late",
+        category="error",
+        attributed_at=datetime(2026, 12, 5, 12, 0, tzinfo=SHANGHAI),
+    )
+    unanalyzed = _entry("case-unanalyzed", "unanalyzed")
+    analysis = TargetAnalysis(
+        target=TARGET,
+        versions=("v2.0.0",),
+        session_ids=frozenset({attributed.session_id, unanalyzed.session_id}),
+        entries=(attributed, unanalyzed),
+        version_sessions={
+            "v2.0.0": frozenset({attributed.session_id, unanalyzed.session_id}),
+        },
+    )
+
+    async def fake_analyses(
+        workspace_id: str,
+        window: Window,
+        target_ids: tuple[str, ...],
+    ) -> tuple[TargetAnalysis, ...]:
+        del workspace_id, window, target_ids
+        return (analysis,)
+
+    service._analyses = fake_analyses  # type: ignore[method-assign]
+    response = await service.trend(
+        "ws-unit",
+        TargetOverviewQuery(
+            window=Window(start=date(2026, 11, 1), end=date(2026, 11, 30), grain="day"),
+        ),
+    )
+    assert sum(bucket.attributed for bucket in response.buckets) == 0
+    assert sum(bucket.unanalyzed for bucket in response.buckets) == 1
+    assert response.meta.bucket_policy == (
+        "attributed and nonTarget rows bucket by attribution createdAt; "
+        "unanalyzed rows bucket by badCase createdAt"
+    )

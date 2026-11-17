@@ -114,8 +114,8 @@ class TargetTrendMeta(IdentityModel):
 
     bucket_policy: str = Field(
         description=(
-            "attributed and nonTarget rows use probe updatedAt; unanalyzed rows use "
-            "the bad case createdAt."
+            "attributed and nonTarget rows use the attribution createdAt; unanalyzed "
+            "rows use the bad case createdAt."
         ),
     )
 

@@ -260,13 +260,20 @@ def _display_version(value: str | None) -> str | None:
     return display or None
 
 
-def _event_version(record: ObjectVersionRecord) -> str | None:
-    """Pick the display version of one object trigger, ignoring unresolved values."""
+def _event_versions(record: ObjectVersionRecord) -> tuple[str, ...]:
+    """Return every display identity one trigger exposes.
+
+    The matcher accepts ``object_version`` *or* ``object_revision``; both fields
+    are therefore discovery inputs. One inconsistent row can legitimately match
+    two revisions, so the service must evaluate both rather than silently
+    preferring the first field.
+    """
+    values: list[str] = []
     for raw in (record.object_version, record.object_revision):
         value = _display_version(raw)
-        if value is not None and value.lower() != "unknown":
-            return value
-    return None
+        if value is not None and value.lower() != "unknown" and value not in values:
+            values.append(value)
+    return tuple(values)
 
 
 def _version_sort_key(value: str) -> tuple[tuple[int, int, str], ...]:
@@ -286,9 +293,7 @@ def _ordered_versions(
     default = _display_version(default_ref)
     versions: set[str] = {default} if default is not None else set()
     for record in observed:
-        value = _event_version(record)
-        if value is not None:
-            versions.add(value)
+        versions.update(_event_versions(record))
     return tuple(sorted(versions, key=_version_sort_key, reverse=True))
 
 
