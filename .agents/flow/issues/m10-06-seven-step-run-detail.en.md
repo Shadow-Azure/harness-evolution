@@ -16,6 +16,7 @@ scope:
   - apps/web/src/composables/**
   - apps/web/src/api/**
   - tests/e2e/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []
