@@ -16,11 +16,13 @@ scope:
   - apps/api/app/db/**
   - apps/api/app/api/**
   - apps/api/app/main.py
+  - apps/api/app/fixture_corpus.py
   - apps/api/pyproject.toml
   - apps/api/tests/**
   - packages/contracts/**
   - apps/web/**
   - tests/**
+  - fixtures/**
   - plans/**
   - .agents/flow/**
   - .agents/notes/**

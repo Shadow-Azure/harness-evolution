@@ -206,7 +206,9 @@
               "kind": "skill",
               "name": "synthetic-review",
               "description": "运行合成技能",
-              "toolUseId": "tool-skill-1"
+              "toolUseId": "tool-skill-1",
+              "objectVersion": "synthetic-1",
+              "objectRevision": "tag:synthetic-1"
             }
           ],
           "userTurns": [
