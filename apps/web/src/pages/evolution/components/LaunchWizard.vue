@@ -884,7 +884,7 @@ const reasonEntries = computed(() => {
                 只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
                   class="cfg-link"
                   type="button"
-                  data-testid="wizard-config-link"
+                  data-testid="wizard-target-config-link"
                   @click="goTargetConfig"
                 >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->调整。
               </p>
