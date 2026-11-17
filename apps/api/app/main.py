@@ -82,6 +82,7 @@ from app.service.evolution.apply_final import (
     EvolutionFinalizeService,
 )
 from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
+from app.service.evolution.attribution_context import AttributionContextProvider
 from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
@@ -271,21 +272,25 @@ def create_app(
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
     )
+    potential_repository = PotentialRepository(resolved_database)
     potential_preview = PotentialPreviewService(
         evolution_targets,
-        PotentialMatcher(PotentialRepository(resolved_database)),
+        PotentialMatcher(potential_repository),
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
     attribution_repository = AttributionRepository(resolved_database)
     run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
-    potential_matcher = PotentialMatcher(PotentialRepository(resolved_database))
+    potential_matcher = PotentialMatcher(potential_repository)
     target_overview = TargetOverviewService(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
     )
-    attribution_runner = AttributionRunner(attribution_repository)
+    attribution_runner = AttributionRunner(
+        attribution_repository,
+        context_provider=AttributionContextProvider(potential_repository),
+    )
     evolution_stages = EvolutionStageService(
         evolution_repository,
         probe_query_repository,

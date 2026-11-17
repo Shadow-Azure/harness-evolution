@@ -838,6 +838,27 @@ class AttributionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
 
+    async def load_historical_probe_ids(
+        self,
+        session_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        """Batch-load stable historical report references for context bundles."""
+        if not session_ids:
+            return {}
+        statement = (
+            select(probe_reports.c.session_id, probe_reports.c.probe_id)
+            .where(probe_reports.c.session_id.in_(tuple(dict.fromkeys(session_ids))))
+            .order_by(
+                probe_reports.c.session_id, probe_reports.c.created_at, probe_reports.c.probe_id
+            )
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        grouped: dict[str, list[str]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["session_id"]), []).append(str(row["probe_id"]))
+        return {session_id: tuple(probe_ids) for session_id, probe_ids in grouped.items()}
+
     async def count_links(self, case_id: str) -> int:
         """Count linked attributions, the pagination total rather than objects.
 

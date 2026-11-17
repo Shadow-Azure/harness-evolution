@@ -159,6 +159,7 @@ def default_execution_manifest(
     skill_key: str | None = None,
     skill_revision: str | None = None,
     skill_content_hash: str | None = None,
+    prepared_context_snapshot_hash: str | None = None,
 ) -> AttributionExecutionManifest:
     """Build a manifest from candidate coordinates and a frozen Skill snapshot."""
     skill = (
@@ -182,13 +183,16 @@ def default_execution_manifest(
         engine=engine,
         skill=skill,
         model_config_fingerprint=NO_MODEL_FINGERPRINT,
-        context_snapshot_hash=context_snapshot_hash(
-            session_id=session_id,
-            bad_case_id=bad_case_id,
-            hit_reason=hit_reason,
-            order_state=order_state,
-            object_trigger_at=object_trigger_at,
-            case_trigger_at=case_trigger_at,
+        context_snapshot_hash=(
+            prepared_context_snapshot_hash
+            or context_snapshot_hash(
+                session_id=session_id,
+                bad_case_id=bad_case_id,
+                hit_reason=hit_reason,
+                order_state=order_state,
+                object_trigger_at=object_trigger_at,
+                case_trigger_at=case_trigger_at,
+            )
         ),
     )
 

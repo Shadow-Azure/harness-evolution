@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-读取 API 可同时返回旧文本与可选 V2 payload/manifest，旧报告不受影响；Skill、模型、上下文或 schema 变化会自然产生缓存 miss。当前上下文哈希只冻结候选 Session、Badcase、命中原因、顺序和两端时间坐标，不保存原始 Trace；完整证据坐标和快照内容由会话归因上下文迭代扩展。数据库多出四个 nullable 列与一个普通索引，MySQL 与 SQLite 共用同一 JSON 契约。
+读取 API 可同时返回旧文本与可选 V2 payload/manifest，旧报告不受影响；Skill、模型、上下文或 schema 变化会自然产生缓存 miss。上下文哈希冻结脱敏后的 Session Agent 树、对象 occurrences、Badcase 上报坐标、证据路径、知识证据与历史报告引用，不保存原始 Trace 内容。数据库多出四个 nullable 列与一个普通索引，MySQL 与 SQLite 共用同一 JSON 契约。

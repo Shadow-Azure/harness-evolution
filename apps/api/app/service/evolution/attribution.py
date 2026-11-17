@@ -20,6 +20,10 @@ from app.db.crud.attributions import (
     ProbeWrite,
 )
 from app.db.models.evolution import EvolutionRunRecord
+from app.service.evolution.attribution_context import (
+    AttributionCaseContext,
+    AttributionContextProvider,
+)
 from app.service.evolution.attribution_contracts import (
     REPORT_SCHEMA_VERSION,
     AttributionAnalysis,
@@ -93,6 +97,7 @@ class AttributionInput:
     object_trigger_at: datetime | None = None
     case_trigger_at: datetime | None = None
     knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
+    context: AttributionCaseContext | None = None
 
     @property
     def cache_key(self) -> str:
@@ -118,6 +123,9 @@ class AttributionInput:
             skill_key=self.attribution_skill_key,
             skill_revision=self.attribution_skill_revision,
             skill_content_hash=self.attribution_skill_content_hash,
+            prepared_context_snapshot_hash=(
+                self.context.snapshot_hash if self.context is not None else None
+            ),
         )
 
 
@@ -383,6 +391,12 @@ class AttributionStore(Protocol):
     ) -> dict[str, tuple[KnowledgeEvidenceRecord, ...]]:
         """Batch-load knowledge document triggers per root session."""
 
+    async def load_historical_probe_ids(
+        self,
+        session_ids: Sequence[str],
+    ) -> dict[str, tuple[str, ...]]:
+        """Batch-load historical report references per root session."""
+
     async def get_probe_by_cache_key(self, cache_key: str) -> ProbeCacheRecord | None:
         """Return the cached probe for one seven-part identity."""
 
@@ -413,11 +427,13 @@ class AttributionRunner:
         *,
         engine_factory: EngineFactory = resolve_attribution_engine,
         now: Callable[[], datetime] = now_shanghai,
+        context_provider: AttributionContextProvider | None = None,
     ) -> None:
         """Bind persistence, engine resolution, and the injectable clock."""
         self._store = store
         self._engine_factory = engine_factory
         self._now = now
+        self._context_provider = context_provider
 
     async def run(
         self,
@@ -472,6 +488,24 @@ class AttributionRunner:
         try:
             bad_cases = await self._store.load_bad_case_evidence(case_ids)
             knowledge = await self._store.load_knowledge_evidence(session_ids)
+            historical_probe_ids = (
+                await self._store.load_historical_probe_ids(session_ids)
+                if self._context_provider is not None
+                else {}
+            )
+            contexts = (
+                await self._context_provider.prepare(
+                    target_type=run.target_type,  # type: ignore[arg-type]
+                    target_name=run.target_name,
+                    target_version=run.target_version,
+                    candidates=pending,
+                    bad_cases=bad_cases,
+                    knowledge=knowledge,
+                    historical_probe_ids=historical_probe_ids,
+                )
+                if self._context_provider is not None
+                else {}
+            )
         except Exception as exc:
             raise self._blocked(run.id, None, exc) from exc
 
@@ -487,6 +521,7 @@ class AttributionRunner:
                     bad_cases,
                     knowledge,
                     object_version,
+                    contexts,
                 )
                 now = self._now()
                 if cache_enabled:
@@ -557,6 +592,7 @@ class AttributionRunner:
         bad_cases: Mapping[str, BadCaseEvidenceRecord],
         knowledge: Mapping[str, tuple[KnowledgeEvidenceRecord, ...]],
         object_version: str,
+        contexts: Mapping[str, AttributionCaseContext],
     ) -> AttributionInput:
         """Join one matcher row with its persisted bad-case and knowledge evidence."""
         evidence = bad_cases.get(candidate.bad_case_id)
@@ -597,6 +633,7 @@ class AttributionRunner:
                 )
                 for item in knowledge.get(candidate.session_id, ())
             ),
+            context=contexts.get(candidate.bad_case_id),
         )
 
     def _blocked(

@@ -35,7 +35,7 @@ Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情�
 - 生产 MySQL 8、本地/测试 SQLite；`HE_DB_DIALECT` 是唯一选择点。`Database` 统管连接、只读 session、写事务与 health；Alembic 维护双方言迁移，业务只依赖 `db/crud/` 与 `Database`。
 - 空间：`workspaces`、`workspace_members`、`workspace_ingest_credentials`；bad case、对象配置与运行带 `workspace_id`。轨迹全局共享，空间 Session 由 bad case 投影。
 - 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。
-- 归因：`probe_reports` 是唯一报告源，兼容旧文本与 V2；新缓存键为清单哈希，旧键可读。Skill revision 不可变，按 target/workspace/platform 解析，Run 固化其身份。
+- 归因：`probe_reports` 是唯一报告源，兼容旧文本/V2，新键为 manifest hash。Skill revision 不可变并三级解析，Run 固化身份；Session 上下文一次组装且仅存 hash。
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析状态；对象 revision 取 `path + body hash` 或 tag，未知 revision 不按名称猜测。
 - 知识触发：`kind=knowledge` 只认空间知识根或知识 Provider/Collection 返回的文档，存 `document_id`、revision、来源路径、检索方式与 tool_use，不存全文。
 - 任务：`job_runs` 是任务真值，串行 worker 写 run 事件，总线有界通知；`sync_lock` 单飞，job 与锁同事务，异常 `sync_runs` 先终结再释放；原始 payload 按 `(runtime_key, root_session_id, agent_id)` 唯一保存，fixtures 幂等同构表，重放按 root 原子组装后事务重写。
