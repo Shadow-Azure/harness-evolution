@@ -321,6 +321,12 @@ function move(direction: -1 | 1): void {
     data-testid="attribution-empty"
     aria-labelledby="attribution-title"
   >
+    <h2
+      id="attribution-title"
+      class="sr-only"
+    >
+      归因分析
+    </h2>
     <div class="conclusion unanalyzed">
       <span class="conclusion-label">结论</span>
       <strong>尚未归因</strong>
