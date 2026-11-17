@@ -8,6 +8,9 @@ import {
   getEvolutionRunStep,
   listEvolutionRunEvents,
   listEvolutionRuns,
+  previewAttribution,
+  previewPotential,
+  previewSessions,
 } from "./evolutionRuns";
 import { server } from "../test/server";
 
@@ -68,6 +71,108 @@ describe("evolution run API", () => {
     expect(path).toBe(
       `/api/workspaces/${workspaceId}/evolution/runs/run%20with%20spaces/steps/iteration`,
     );
+  });
+
+  it("posts each wizard preview to its workspace endpoint", async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    server.use(
+      http.post(
+        "/api/workspaces/:wid/evolution/preview/sessions",
+        async ({ request }) => {
+          calls.push({
+            path: new URL(request.url).pathname,
+            body: await request.json(),
+          });
+          return HttpResponse.json({
+            summary: {
+              reported: 1,
+              associated: 1,
+              skipped: 0,
+              versionUnresolved: 0,
+              pending: 0,
+            },
+            items: [],
+            total: 0,
+            page: 1,
+            pageSize: 4,
+          });
+        },
+      ),
+      http.post(
+        "/api/workspaces/:wid/evolution/preview/potential",
+        async ({ request }) => {
+          calls.push({
+            path: new URL(request.url).pathname,
+            body: await request.json(),
+          });
+          return HttpResponse.json({
+            summary: {
+              badCases: 0,
+              potential: 0,
+              byReason: {
+                selfReport: 0,
+                afterObject: 0,
+                both: 0,
+                orderUnknown: 0,
+                policyExcluded: 0,
+              },
+            },
+            items: [],
+            total: 0,
+            page: 1,
+            pageSize: 5,
+          });
+        },
+      ),
+      http.post(
+        "/api/workspaces/:wid/evolution/preview/attribution",
+        async ({ request }) => {
+          calls.push({
+            path: new URL(request.url).pathname,
+            body: await request.json(),
+          });
+          return HttpResponse.json({
+            summary: { potential: 0, reused: 0, fresh: 0, nonTargetKnown: 0 },
+          });
+        },
+      ),
+    );
+
+    const condition = {
+      targetType: "skill" as const,
+      targetName: "deep-research",
+      targetVersion: "v2.0.0",
+      from: "2026-10-01",
+      to: "2026-10-31",
+    };
+    await previewSessions(workspaceId, {
+      ...condition,
+      page: 1,
+      pageSize: 4,
+    });
+    await previewPotential(workspaceId, {
+      ...condition,
+      policy: { preset: "default" },
+      page: 1,
+      pageSize: 5,
+    });
+    await previewAttribution(workspaceId, {
+      ...condition,
+      policy: { preset: "default" },
+      cacheEnabled: true,
+    });
+
+    expect(calls.map((call) => call.path)).toEqual([
+      `/api/workspaces/${workspaceId}/evolution/preview/sessions`,
+      `/api/workspaces/${workspaceId}/evolution/preview/potential`,
+      `/api/workspaces/${workspaceId}/evolution/preview/attribution`,
+    ]);
+    expect(calls[0]!.body).toMatchObject({ page: 1, pageSize: 4 });
+    expect(calls[1]!.body).toMatchObject({
+      policy: { preset: "default" },
+      pageSize: 5,
+    });
+    expect(calls[2]!.body).toMatchObject({ cacheEnabled: true });
   });
 
   it("reads execution events with the documented cursor and level filter", async () => {

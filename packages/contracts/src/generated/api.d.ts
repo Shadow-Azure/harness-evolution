@@ -2974,6 +2974,11 @@ export interface components {
          * @description Wizard filter condition shared by preview and launch endpoints.
          */
         ProbeQueryRequest: {
+            /**
+             * Cacheenabled
+             * @default true
+             */
+            cacheEnabled: boolean;
             /** Enginekey */
             engineKey?: string | null;
             /** Eval */
@@ -3000,6 +3005,7 @@ export interface components {
              * @default 8
              */
             pageSize: number;
+            policy?: components["schemas"]["PotentialPolicy"] | null;
             /** Targetname */
             targetName: string;
             /**

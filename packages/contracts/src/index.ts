@@ -177,6 +177,55 @@ export type ProbePreviewItem = components["schemas"]["ProbePreviewItem"];
 /** Complete probe preview payload for wizard step 2. */
 export type ProbeQueryResult = components["schemas"]["ProbeQueryResult"];
 
+/** Raw potential policy switches accepted by preview and launch endpoints. */
+export type PotentialPolicy = components["schemas"]["PotentialPolicy"];
+
+/** Step 2 condition plus the page of Sessions associated with the target. */
+export type SessionsPreviewRequest =
+  components["schemas"]["SessionsPreviewRequest"];
+
+/** Non-overlapping Session partition shown in wizard step 2. */
+export type SessionPreviewSummary =
+  components["schemas"]["SessionPreviewSummary"];
+
+/** One associated Session row rendered by wizard step 2. */
+export type SessionPreviewItem = components["schemas"]["SessionPreviewItem"];
+
+/** Paged associated Session projection for wizard step 2. */
+export type SessionPreviewResult =
+  components["schemas"]["SessionPreviewResult"];
+
+/** Step 3 condition plus the policy and potential page. */
+export type PotentialPreviewRequest =
+  components["schemas"]["PotentialPreviewRequest"];
+
+/** Closed hit-reason distribution shown in wizard step 3. */
+export type PotentialReasonCounts =
+  components["schemas"]["PotentialReasonCounts"];
+
+/** Case and policy counts shown in wizard step 3. */
+export type PotentialPreviewSummary =
+  components["schemas"]["PotentialPreviewSummary"];
+
+/** One policy-included bad case row rendered by wizard step 3. */
+export type PotentialPreviewItem = components["schemas"]["PotentialPreviewItem"];
+
+/** Paged potential case projection for wizard step 3. */
+export type PotentialPreviewResult =
+  components["schemas"]["PotentialPreviewResult"];
+
+/** Step 4 condition with the cache switch and no pagination. */
+export type AttributionPreviewRequest =
+  components["schemas"]["AttributionPreviewRequest"];
+
+/** Cache reuse and non-target reference counts for wizard step 4. */
+export type AttributionPreviewSummary =
+  components["schemas"]["AttributionPreviewSummary"];
+
+/** Read-only attribution preview returned by wizard step 4. */
+export type AttributionPreviewResult =
+  components["schemas"]["AttributionPreviewResult"];
+
 /** Asynchronous launch acceptance returned by run and preview endpoints. */
 export type RunAccepted = components["schemas"]["RunAccepted"];
 

@@ -70,7 +70,7 @@ const run = (
     : null,
 });
 
-async function mountPage() {
+async function mountPage(path = `${ws}/evolution`) {
   const pinia = createPinia();
   setActivePinia(pinia);
   signInWithWorkspace({
@@ -82,7 +82,7 @@ async function mountPage() {
   });
   const router = createAppRouter();
   activeRouter = router;
-  await router.push(`${ws}/evolution`);
+  await router.push(path);
   await router.isReady();
   const wrapper = mount(EvolutionPage, {
     global: {
@@ -151,17 +151,74 @@ describe("evolution run list page", () => {
     server.use(
       http.get(runsBase, () =>
         HttpResponse.json({ running: [], history: [] })),
-      http.get("/api/catalogs/targets", () =>
+      http.get(`/api${ws}/catalogs/targets`, () =>
         HttpResponse.json({ skill: [], agent: [] })),
-      http.get("/api/catalogs/models", () => HttpResponse.json({ items: [] })),
     );
     const wrapper = await mountPage();
 
     expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
     await wrapper.get("[data-testid='open-launch-wizard']").trigger("click");
+    await flushPromises();
 
     expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(true);
-    expect(wrapper.get(".wz-steps").text()).toContain("① 设置筛选条件");
+    expect(wrapper.get("[data-testid='wizard-config-empty']").text()).toContain(
+      "当前空间还没有启用的进化对象",
+    );
+  });
+
+  it("opens the wizard with a focus case from the query and clears it on close", async () => {
+    server.use(
+      http.get(runsBase, () =>
+        HttpResponse.json({ running: [], history: [] })),
+      http.get(`/api${ws}/catalogs/targets`, () =>
+        HttpResponse.json({
+          skill: [
+            {
+              id: "tgt-1",
+              name: "deep-research",
+              repoUrl: "https://git.example.com/skills.git",
+              subDir: "skills/deep-research",
+              defaultRef: "v2.0.0",
+              versions: ["v2.0.0"],
+            },
+          ],
+          agent: [],
+        })),
+      http.get(`/api${ws}/evolution/targets/tgt-1/versions`, () =>
+        HttpResponse.json({
+          versions: ["v2.0.0"],
+          defaultRef: "v2.0.0",
+        })),
+      http.get(`/api${ws}/bad-cases/case-focus`, () =>
+        HttpResponse.json({
+          badCaseId: "case-focus",
+          badCaseType: "self",
+          sessionId: "session-1",
+          sessionTitle: "session",
+          objectName: "deep-research",
+          objectType: "skill",
+          objectVersion: "v2.0.0",
+          title: "focus",
+          reason: "focus reason",
+          anchor: { agentId: "agent-1", eventIndex: 0 },
+          badCaseAgent: { agentId: "agent-1", sessionId: "session-1" },
+          analysis: { status: "unanalyzed" },
+          degraded: false,
+          diagnosticCode: null,
+          metaData: null,
+        })),
+    );
+    const wrapper = await mountPage(`${ws}/evolution?case=case-focus`);
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(true);
+    expect(wrapper.get("[data-testid='wizard-focus-case']").text()).toContain(
+      "已锁定为关注对象",
+    );
+
+    await wrapper.get("[aria-label='关闭向导']").trigger("click");
+    await flushPromises();
+    expect(activeRouter.currentRoute.value.query.case).toBeUndefined();
   });
 
   it("preserves backend group grouping and ordering", async () => {

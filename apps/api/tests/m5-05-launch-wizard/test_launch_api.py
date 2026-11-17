@@ -695,6 +695,13 @@ async def test_start_run_accepts_and_snapshots_query(
     assert str(row["window_from"]) == "2026-08-01"
     assert str(row["window_to"]) == "2026-09-30"
     assert row["models"] == []
+    assert row["cache_enabled"] is True
+    assert row["potential_policy"] == {
+        "preset": "default",
+        "includeSelfReport": True,
+        "includeAfterObject": True,
+        "sameObjectOnly": False,
+    }
     assert row["created_by"] == creator_id
 
     run_card = await launch_api.get("/api/evolution/runs")
@@ -704,6 +711,61 @@ async def test_start_run_accepts_and_snapshots_query(
     assert card["status"] == "running"
     assert card["window"] == {"from": "2026-08-01", "to": "2026-09-30"}
     assert card["createdBy"]
+
+
+async def test_start_run_snapshots_custom_policy_and_cache_switch(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """Custom policy switches and a disabled cache are frozen on the run row."""
+    response = await launch_api.post(
+        "/api/evolution/runs",
+        json=_query_body(
+            mode="full",
+            policy={
+                "preset": "custom",
+                "includeSelfReport": False,
+                "includeAfterObject": True,
+                "sameObjectOnly": True,
+            },
+            cacheEnabled=False,
+        ),
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    async with _app_of(launch_api).state.database.session() as session:
+        row = (
+            (
+                await session.execute(
+                    select(evolution_runs).where(evolution_runs.c.id == body["runId"]),
+                )
+            )
+            .mappings()
+            .one()
+        )
+    assert row["cache_enabled"] is False
+    assert row["potential_policy"] == {
+        "preset": "custom",
+        "includeSelfReport": False,
+        "includeAfterObject": True,
+        "sameObjectOnly": True,
+    }
+
+
+async def test_start_run_rejects_invalid_custom_policy(
+    launch_api: httpx.AsyncClient,
+) -> None:
+    """A custom policy without both switches fails before any run write."""
+    response = await launch_api.post(
+        "/api/evolution/runs",
+        json=_query_body(
+            mode="full",
+            policy={"preset": "custom", "includeSelfReport": True},
+        ),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "POLICY_INVALID"
 
 
 async def test_start_run_redacts_eval_secrets_before_snapshot(

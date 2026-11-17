@@ -11,6 +11,7 @@ from pydantic import Field, field_validator
 
 from app.db.crud.probe_query import ProbeHitQuery, ProbeHitRow, ProbeQueryRepository
 from app.errors import AppError, ErrorCode
+from app.service.evolution.potential import PotentialPolicy
 from app.service.identity.schemas import IdentityModel
 
 _ATTRIBUTE_TYPES: tuple[Literal["model", "prompt", "error"], ...] = (
@@ -41,6 +42,8 @@ class ProbeQueryRequest(IdentityModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=8, ge=1, le=50)
     mode: Literal["full", "cluster_only"] = "full"
+    policy: PotentialPolicy | None = None
+    cache_enabled: bool = True
     engine_key: str | None = Field(default=None, max_length=64)
     eval: dict[str, Any] | None = None
 

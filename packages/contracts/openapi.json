@@ -3687,6 +3687,11 @@
         "additionalProperties": false,
         "description": "Wizard filter condition shared by preview and launch endpoints.",
         "properties": {
+          "cacheEnabled": {
+            "default": true,
+            "title": "Cacheenabled",
+            "type": "boolean"
+          },
           "engineKey": {
             "anyOf": [
               {
@@ -3751,6 +3756,16 @@
             "minimum": 1.0,
             "title": "Pagesize",
             "type": "integer"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PotentialPolicy"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "targetName": {
             "maxLength": 128,
