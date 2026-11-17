@@ -113,6 +113,7 @@ class LocalUpstream:
     session_ids: Sequence[str] = (ROOT, ROOT_2)
     token: str = UPSTREAM_TOKEN
     api_version: str | None = "1.0"
+    package_api_version: str | None = None
     page_size: int = 1
     fail_window: bool = False
     fail_sessions: set[str] = field(default_factory=set)
@@ -188,7 +189,12 @@ class LocalUpstream:
         if session_id not in self.session_ids:
             self._write(request, 404, {"error": "missing"}, versioned=False)
             return
-        self._write(request, 200, package_payload(session_id))
+        self._write(
+            request,
+            200,
+            package_payload(session_id),
+            version=self.package_api_version,
+        )
 
     def _window_page(self, query: str) -> dict[str, Any]:
         start = int(parse_qs(query).get("cursor", ["0"])[0])
@@ -206,13 +212,15 @@ class LocalUpstream:
         body: object,
         *,
         versioned: bool = True,
+        version: str | None = None,
     ) -> None:
         encoded = json.dumps(body).encode()
         request.send_response(status)
         request.send_header("Content-Type", "application/json")
         request.send_header("Content-Length", str(len(encoded)))
-        if versioned and self.api_version is not None:
-            request.send_header("X-Trajectory-Api-Version", self.api_version)
+        header = version if version is not None else self.api_version
+        if versioned and header is not None:
+            request.send_header("X-Trajectory-Api-Version", header)
         request.end_headers()
         request.wfile.write(encoded)
 
@@ -230,6 +238,13 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         """Keep test output free of stdlib access logs."""
         return
+
+
+def assert_logs_do_not_contain(caplog: Any, *needles: str) -> None:
+    """Check serialized record fields, not only the formatted message."""
+    rendered = repr([record.__dict__ for record in caplog.records])
+    for needle in needles:
+        assert needle not in rendered
 
 
 def upstream_settings(

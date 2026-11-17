@@ -103,6 +103,7 @@ class UpstreamPullService:
             raise RuntimeError("upstream source is unavailable")
         started = time.monotonic()
         payload = PullJobPayload.model_validate(job.payload)
+        requested = len(payload.session_ids or ())
         await self._jobs.update_progress(
             job.id,
             0.1,
@@ -123,14 +124,16 @@ class UpstreamPullService:
                     cursor=window.cursor,
                 )
                 session_ids = [item.session_id for item in enumerated]
+            requested = len(session_ids)
             fetched = await source.fetch_many(session_ids)
         except Exception as exc:
             logger.warning(
                 "upstream pull failed",
                 extra={
                     "event": "upstream.health",
+                    "component": "pull",
                     "status": "failed",
-                    "sessions_requested": len(payload.session_ids or ()),
+                    "sessions_requested": requested,
                     "duration_ms": _elapsed_ms(started),
                     "error_code": _error_code(exc),
                 },
@@ -188,6 +191,7 @@ class UpstreamPullService:
             "upstream pull health",
             extra={
                 "event": "upstream.health",
+                "component": "pull",
                 "status": "degraded" if issues else "ok",
                 "sessions_requested": len(session_ids),
                 "sessions_fetched": len(fetched.packages),

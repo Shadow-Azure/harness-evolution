@@ -69,6 +69,13 @@ def event_records(caplog: pytest.LogCaptureFixture, event: str) -> list[Any]:
     return [record for record in caplog.records if getattr(record, "event", None) == event]
 
 
+def assert_not_logged(caplog: pytest.LogCaptureFixture, *needles: str) -> None:
+    """Check the serialized record fields, not only the formatted message."""
+    rendered = repr([record.__dict__ for record in caplog.records])
+    for needle in needles:
+        assert needle not in rendered
+
+
 async def test_version_observation_and_drift_are_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -121,7 +128,7 @@ async def test_incompatible_versions_log_a_safe_drift_warning(
     assert drift[0].reason == reason
     assert drift[0].expected_major == 1
     assert drift[0].observed_major == observed_major
-    assert "v1" not in caplog.text
+    assert_not_logged(caplog, "v1")
 
 
 async def test_contract_drift_logs_only_the_model_and_error_count(
@@ -145,7 +152,7 @@ async def test_contract_drift_logs_only_the_model_and_error_count(
     assert drift[0].model == "package"
     assert drift[0].reason == "schema_mismatch"
     assert drift[0].error_count >= 1
-    assert "must-not-leak" not in caplog.text
+    assert_not_logged(caplog, "must-not-leak")
 
 
 async def test_retries_and_exhaustion_are_logged_without_response_text(
@@ -171,7 +178,7 @@ async def test_retries_and_exhaustion_are_logged_without_response_text(
     assert failures[0].reason == "retry_exhausted"
     assert failures[0].status_code == 503
     assert failures[0].attempts == 4
-    assert "must-not-leak" not in caplog.text
+    assert_not_logged(caplog, "must-not-leak")
 
 
 async def test_batch_health_reports_degraded_isolation(
@@ -192,11 +199,12 @@ async def test_batch_health_reports_degraded_isolation(
     assert [package.session_id for package in result.packages] == [ROOT]
     health = event_records(caplog, "upstream.health")
     assert len(health) == 1
+    assert health[0].component == "client"
     assert health[0].status == "degraded"
     assert health[0].sessions_requested == 2
     assert health[0].sessions_fetched == 1
     assert health[0].sessions_isolated == 1
-    assert ROOT not in caplog.text
+    assert_not_logged(caplog, ROOT)
 
 
 async def test_window_request_failure_is_logged_as_a_request_failure(
@@ -224,7 +232,7 @@ async def test_window_request_failure_is_logged_as_a_request_failure(
     assert failures[0].model == "window"
     assert failures[0].reason == "http_status"
     assert failures[0].status_code == 400
-    assert "must-not-leak" not in caplog.text
+    assert_not_logged(caplog, "must-not-leak")
 
 
 async def test_mismatched_session_is_logged_as_contract_drift(
@@ -247,4 +255,48 @@ async def test_mismatched_session_is_logged_as_contract_drift(
     assert len(drift) == 1
     assert drift[0].model == "package"
     assert drift[0].reason == "session_mismatch"
-    assert ROOT not in caplog.text
+    assert_not_logged(caplog, ROOT)
+
+
+async def test_timeout_exhaustion_logs_the_timeout_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Transport timeouts are distinguished from HTTP status failures."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("slow upstream", request=request)
+
+    source, client = await source_for(handler)
+    with (
+        caplog.at_level(logging.INFO, logger=LOG_NAME),
+        pytest.raises(AppError),
+    ):
+        async with client:
+            await source.fetch(ROOT)
+    failures = event_records(caplog, "upstream.request_failed")
+    assert len(failures) == 1
+    assert failures[0].reason == "timeout"
+    assert failures[0].attempts == 4
+    assert failures[0].status_code is None
+
+
+async def test_auth_failure_stays_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """401 is a batch-level credential problem, so it stays a warning."""
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return response(401, {"error": "unauthorized"})
+
+    source, client = await source_for(handler)
+    with (
+        caplog.at_level(logging.INFO, logger=LOG_NAME),
+        pytest.raises(AppError),
+    ):
+        async with client:
+            await source.fetch(ROOT)
+    failures = event_records(caplog, "upstream.request_failed")
+    assert len(failures) == 1
+    assert failures[0].levelno == logging.WARNING
+    assert failures[0].status_code == 401
+    assert failures[0].isolated is False

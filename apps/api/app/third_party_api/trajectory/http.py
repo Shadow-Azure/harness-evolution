@@ -149,6 +149,7 @@ class HttpTrajectorySource:
             "upstream trajectory batch health",
             extra={
                 "event": "upstream.health",
+                "component": "client",
                 "status": "degraded" if issues else "ok",
                 "sessions_requested": len(session_ids),
                 "sessions_fetched": len(packages),
@@ -194,11 +195,14 @@ class HttpTrajectorySource:
                 await self._sleep(self._delay(attempt))
                 continue
             if response.status_code >= 400:
+                isolated = response.status_code in {404, 410}
                 self._log_request_failure(
                     label=label,
                     reason="retry_exhausted" if retryable else "http_status",
                     attempts=attempt + 1,
                     status_code=response.status_code,
+                    level=logging.INFO if isolated else logging.WARNING,
+                    isolated=isolated,
                 )
                 if retryable:
                     raise self._request_failed()
@@ -304,16 +308,22 @@ class HttpTrajectorySource:
         reason: str,
         attempts: int,
         status_code: int | None = None,
+        level: int = logging.WARNING,
+        isolated: bool | None = None,
     ) -> None:
-        logger.warning(
+        fields: dict[str, object] = {
+            "event": "upstream.request_failed",
+            "model": label,
+            "reason": reason,
+            "attempts": attempts,
+            "status_code": status_code,
+        }
+        if isolated is not None:
+            fields["isolated"] = isolated
+        logger.log(
+            level,
             "upstream trajectory request failed",
-            extra={
-                "event": "upstream.request_failed",
-                "model": label,
-                "reason": reason,
-                "attempts": attempts,
-                "status_code": status_code,
-            },
+            extra=fields,
         )
 
     @staticmethod

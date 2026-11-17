@@ -48,4 +48,4 @@ Only the private key lives in GitHub; its public half sits in the `deploy` user'
 
 ## Upstream health and drift logs
 
-With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit structured `upstream.health`, `upstream.version_drift`, and `upstream.contract_drift` logs containing only enums, counts, and major numbers, never bodies, session ids, or credentials. Per-session failures stay in `sync_runs.errors` and are retried by the scheduler or a manual replay.
+With `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` configured, pulls emit `upstream.health` / `version_drift` / `contract_drift` logs with `key='value'` fields containing only enums, counts, and major numbers, never bodies, session ids, or credentials. Per-session failures stay in `sync_runs.errors`; the scheduler only replays stored payloads, so a failed fetch needs `POST /api/acquisition/pull` with `sessionIds`.

@@ -48,4 +48,4 @@
 
 ## 上游健康与漂移日志
 
-配置 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 后，pull 输出 `upstream.health`、`upstream.version_drift`、`upstream.contract_drift` 等结构化日志，只含枚举、计数与主版本号，不含正文、会话 id 或凭据；逐会话失败留在 `sync_runs.errors`，由调度或手动重放重试。
+配置 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 后，pull 输出结构化 `upstream.health` / `version_drift` / `contract_drift` 日志，只含枚举、计数与主版本号，不含正文、会话 id 或凭据。逐会话失败留在 `sync_runs.errors`；调度器只重放 payload，上游抓取失败需用 `POST /api/acquisition/pull` 带 `sessionIds` 重拉。

@@ -1,8 +1,8 @@
 """Opt-in live integration test for a real upstream trajectory service.
 
-CI must never reach a real upstream. This module skips unless both
-``HE_UPSTREAM_BASE_URL`` and ``HE_UPSTREAM_TOKEN`` are present in the
-environment, so the default ``pnpm test:api`` run stays hermetic.
+CI must never reach a real upstream. This module skips unless ``HE_UPSTREAM_LIVE=1`` and both
+``HE_UPSTREAM_BASE_URL`` / ``HE_UPSTREAM_TOKEN`` are present, so exported
+credentials or a full ``pnpm test:api`` run stay hermetic.
 """
 
 from __future__ import annotations
@@ -27,10 +27,13 @@ def _env(name: str) -> str | None:
 
 async def test_live_upstream_contract_round_trip() -> None:
     """Verify credentials, pagination, package mapping, and per-session isolation."""
+    enabled = _env("HE_UPSTREAM_LIVE") == "1"
     base_url = _env("HE_UPSTREAM_BASE_URL")
     token = _env("HE_UPSTREAM_TOKEN")
-    if not base_url or not token:
-        pytest.skip("HE_UPSTREAM_BASE_URL and HE_UPSTREAM_TOKEN are not configured")
+    if not enabled or not base_url or not token:
+        pytest.skip(
+            "set HE_UPSTREAM_LIVE=1 with HE_UPSTREAM_BASE_URL and HE_UPSTREAM_TOKEN",
+        )
     explicit_session = _env("HE_UPSTREAM_LIVE_SESSION_ID")
     client = httpx.AsyncClient(
         base_url=base_url,

@@ -58,10 +58,10 @@ pnpm contract:check
 
 ## 上游联调
 
-真实上游是 opt-in，CI 不访问；缺凭据时 `tests/m12-01-real-trace-upstream` 的 live 用例跳过，默认 loopback 用例覆盖分页、隔离与手动重放。运行：
+真实上游是显式 opt-in：只有 `HE_UPSTREAM_LIVE=1` 且 `HE_UPSTREAM_BASE_URL` / `HE_UPSTREAM_TOKEN` 都存在时，live 用例才访问真实上游；缺任一条件时跳过，默认 loopback 用例覆盖分页、隔离与手动重放。运行：
 
 ```sh
-HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api -- tests/m12-01-real-trace-upstream -m live_upstream
+HE_UPSTREAM_LIVE=1 HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api -- tests/m12-01-real-trace-upstream -m live_upstream
 ```
 
 日志与重放入口见 [deployment.md](deployment.md)。
