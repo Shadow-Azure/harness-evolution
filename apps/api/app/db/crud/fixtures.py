@@ -339,6 +339,8 @@ async def _seed_corpus(database: Database, corpus: FixtureCorpus) -> CorpusSeedR
                             "name": event.name,
                             "description": event.description,
                             "tool_use_id": event.tool_use_id,
+                            "object_version": event.object_version,
+                            "object_revision": event.object_revision,
                         },
                     )
                     inserted += event_writes[0]

@@ -475,7 +475,7 @@ export interface paths {
         };
         /**
          * Read Clusters Step
-         * @description Return the backend-owned problem-cluster projection of one run.
+         * @description Return the backend-owned cluster projection of one run.
          */
         get: operations["read_clusters_step_api_evolution_runs__run_id__steps_clusters_get"];
         put?: never;
@@ -506,26 +506,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/evolution/runs/{run_id}/steps/input": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read Input Step
-         * @description Return the backend-owned filter-input projection of one run.
-         */
-        get: operations["read_input_step_api_evolution_runs__run_id__steps_input_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/evolution/runs/{run_id}/steps/iteration": {
         parameters: {
             query?: never;
@@ -546,7 +526,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/evolution/runs/{run_id}/steps/severity": {
+    "/api/evolution/runs/{run_id}/steps/potential": {
         parameters: {
             query?: never;
             header?: never;
@@ -554,10 +534,50 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read Severity Step
-         * @description Return the backend-owned severity ranking projection of one run.
+         * Read Potential Step
+         * @description Return one page of potential bad cases for one run.
          */
-        get: operations["read_severity_step_api_evolution_runs__run_id__steps_severity_get"];
+        get: operations["read_potential_step_api_evolution_runs__run_id__steps_potential_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Range Step
+         * @description Return the backend-owned selection snapshot of one run.
+         */
+        get: operations["read_range_step_api_evolution_runs__run_id__steps_range_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/steps/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Sessions Step
+         * @description Return one page of associated Sessions for one run.
+         */
+        get: operations["read_sessions_step_api_evolution_runs__run_id__steps_sessions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1982,7 +2002,7 @@ export interface components {
         };
         /**
          * EvolutionRunAttributeStats
-         * @description Probe counts by externally supplied attribution type.
+         * @description Case counts by the closed attribution category.
          */
         EvolutionRunAttributeStats: {
             /**
@@ -1995,11 +2015,6 @@ export interface components {
              * @default 0
              */
             model: number;
-            /**
-             * Nonissue
-             * @default 0
-             */
-            nonIssue: number;
             /**
              * Prompt
              * @default 0
@@ -2043,7 +2058,7 @@ export interface components {
         };
         /**
          * EvolutionRunDetail
-         * @description Complete shell consumed by the six-step run-detail page.
+         * @description Complete shell consumed by the seven-step run-detail page.
          */
         EvolutionRunDetail: {
             /** Blockedstage */
@@ -2124,7 +2139,7 @@ export interface components {
              * Eventtype
              * @enum {string}
              */
-            eventType: "run_created" | "prepare_started" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
+            eventType: "run_created" | "prepare_started" | "sessions_linked" | "potential_computed" | "attribution_created" | "attribution_reused" | "workspace_prepared" | "clusters_created" | "step_advanced" | "run_blocked" | "run_resumed" | "final_completed" | "run_failed" | "run_interrupted" | "candidate_committed" | "candidate_pushed" | "eval_submitted" | "eval_polled" | "eval_completed" | "eval_failed" | "eval_timeout" | "cluster_accepted" | "cluster_rejected" | "push_started" | "push_retry_scheduled" | "push_succeeded" | "push_failed";
             /** Jobid */
             jobId: string | null;
             /**
@@ -2225,30 +2240,45 @@ export interface components {
         };
         /**
          * EvolutionRunStats
-         * @description Backend-normalized run statistics.
+         * @description Backend-normalized V2 run statistics.
          */
         EvolutionRunStats: {
-            byAttributeType: components["schemas"]["EvolutionRunAttributeStats"];
+            /**
+             * Attributed
+             * @default 0
+             */
+            attributed: number;
+            /**
+             * Badcases
+             * @default 0
+             */
+            badCases: number;
+            byCategory: components["schemas"]["EvolutionRunAttributeStats"];
             /**
              * Clusters
              * @default 0
              */
             clusters: number;
             /**
-             * Probes
+             * Potential
              * @default 0
              */
-            probes: number;
+            potential: number;
+            /**
+             * Reused
+             * @default 0
+             */
+            reused: number;
             /**
              * Sessions
              * @default 0
              */
             sessions: number;
             /**
-             * Usedprobes
+             * Versionunresolvedsessions
              * @default 0
              */
-            usedProbes: number;
+            versionUnresolvedSessions: number;
         };
         /**
          * EvolutionRunStep
@@ -2265,7 +2295,7 @@ export interface components {
              * Key
              * @enum {string}
              */
-            key: "input" | "clusters" | "attribution" | "severity" | "iteration" | "final";
+            key: "range" | "sessions" | "potential" | "attribution" | "clusters" | "iteration" | "final";
             /**
              * Status
              * @enum {string}
@@ -2285,7 +2315,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "skill" | "agent";
+            type: "skill" | "agent" | "knowledge";
             /** Version */
             version: string;
         };
@@ -2332,7 +2362,7 @@ export interface components {
         };
         /**
          * EvolutionStepAttribution
-         * @description Step 2 response: key-discriminated attribution projection.
+         * @description Step 3 response: per-case attribution conclusions.
          */
         EvolutionStepAttribution: {
             /** Clickable */
@@ -2358,7 +2388,7 @@ export interface components {
         };
         /**
          * EvolutionStepClusters
-         * @description Step 1 response: key-discriminated cluster projection.
+         * @description Step 4 response: ranked clusters with source cases.
          */
         EvolutionStepClusters: {
             /** Clickable */
@@ -2384,7 +2414,7 @@ export interface components {
         };
         /**
          * EvolutionStepFinal
-         * @description Step 5 response: key-discriminated final projection.
+         * @description Step 6 response: terminal evaluation.
          */
         EvolutionStepFinal: {
             /** Clickable */
@@ -2409,34 +2439,8 @@ export interface components {
             title: string;
         };
         /**
-         * EvolutionStepInput
-         * @description Step 0 response: key-discriminated input projection.
-         */
-        EvolutionStepInput: {
-            /** Clickable */
-            clickable: boolean;
-            /** Detail */
-            detail?: string | null;
-            /** Index */
-            index: number;
-            /**
-             * Key
-             * @default input
-             * @constant
-             */
-            key: "input";
-            payload: components["schemas"]["StepInputPayload"];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "done" | "active" | "pending";
-            /** Title */
-            title: string;
-        };
-        /**
          * EvolutionStepIteration
-         * @description Step 4 response: key-discriminated iteration projection.
+         * @description Step 5 response: iteration rounds.
          */
         EvolutionStepIteration: {
             /** Clickable */
@@ -2461,10 +2465,10 @@ export interface components {
             title: string;
         };
         /**
-         * EvolutionStepSeverity
-         * @description Step 3 response: key-discriminated severity projection.
+         * EvolutionStepPotential
+         * @description Step 2 response: paged potential bad cases.
          */
-        EvolutionStepSeverity: {
+        EvolutionStepPotential: {
             /** Clickable */
             clickable: boolean;
             /** Detail */
@@ -2473,11 +2477,63 @@ export interface components {
             index: number;
             /**
              * Key
-             * @default severity
+             * @default potential
              * @constant
              */
-            key: "severity";
-            payload: components["schemas"]["StepSeverityPayload"];
+            key: "potential";
+            payload: components["schemas"]["StepPotentialPayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepRange
+         * @description Step 0 response: selection snapshot and headline counts.
+         */
+        EvolutionStepRange: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default range
+             * @constant
+             */
+            key: "range";
+            payload: components["schemas"]["StepRangePayload"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "active" | "pending";
+            /** Title */
+            title: string;
+        };
+        /**
+         * EvolutionStepSessions
+         * @description Step 1 response: paged Session association.
+         */
+        EvolutionStepSessions: {
+            /** Clickable */
+            clickable: boolean;
+            /** Detail */
+            detail?: string | null;
+            /** Index */
+            index: number;
+            /**
+             * Key
+             * @default sessions
+             * @constant
+             */
+            key: "sessions";
+            payload: components["schemas"]["StepSessionsPayload"];
             /**
              * Status
              * @enum {string}
@@ -3012,7 +3068,7 @@ export interface components {
              * Targettype
              * @enum {string}
              */
-            targetType: "skill" | "agent";
+            targetType: "skill" | "agent" | "knowledge";
             /** Targetversion */
             targetVersion?: string | null;
             /** To */
@@ -3548,37 +3604,60 @@ export interface components {
             total: number;
         };
         /**
-         * StepAttributionItem
-         * @description One probe attribution entry with its cluster-level confidence.
+         * StepAttributionPayload
+         * @description Attribution summary plus one row per included case.
          */
-        StepAttributionItem: {
-            /** Analysis */
-            analysis: string;
-            /**
-             * Attributetype
-             * @enum {string}
-             */
-            attributeType: "model" | "prompt" | "error";
-            /** Clusterid */
-            clusterId: string;
+        StepAttributionPayload: {
+            /** Rows */
+            rows: components["schemas"]["StepAttributionRow"][];
+            summary: components["schemas"]["StepAttributionSummary"];
+        };
+        /**
+         * StepAttributionRow
+         * @description One case attribution conclusion of step 4.
+         */
+        StepAttributionRow: {
+            /** Attributionid */
+            attributionId: string;
+            /** Badcaseid */
+            badCaseId: string;
+            /** Category */
+            category: ("model" | "prompt" | "error") | null;
             /** Confidence */
             confidence: number | null;
             /** Description */
             description: string;
-            /** Objectversion */
-            objectVersion: string | null;
-            /** Probeid */
-            probeId: string;
-            /** Probeobject */
-            probeObject: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "cached" | "fresh";
         };
         /**
-         * StepAttributionPayload
-         * @description Per-probe attribution entries of step 2.
+         * StepAttributionSummary
+         * @description Four counts of the attribution step.
          */
-        StepAttributionPayload: {
-            /** Items */
-            items: components["schemas"]["StepAttributionItem"][];
+        StepAttributionSummary: {
+            /**
+             * Fresh
+             * @default 0
+             */
+            fresh: number;
+            /**
+             * Nontarget
+             * @default 0
+             */
+            nonTarget: number;
+            /**
+             * Potential
+             * @default 0
+             */
+            potential: number;
+            /**
+             * Reused
+             * @default 0
+             */
+            reused: number;
         };
         /**
          * StepCandidate
@@ -3594,63 +3673,67 @@ export interface components {
         };
         /**
          * StepCluster
-         * @description One persisted cluster with its probe rows and stored scores.
+         * @description One ranked cluster with its source cases and stored scores.
          */
         StepCluster: {
+            /** Casecount */
+            caseCount: number;
+            /** Cases */
+            cases: components["schemas"]["StepClusterCase"][];
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "model" | "prompt" | "error";
+            /** Clusterid */
+            clusterId: string;
             /** Confidence */
             confidence: number | null;
             /** Description */
             description: string;
-            /** Probeclusterid */
-            probeClusterId: string;
-            /** Probecount */
-            probeCount: number;
-            /** Probes */
-            probes: components["schemas"]["ProbePreviewItem"][];
+            /** Rank */
+            rank: number | null;
             /** Severity */
             severity: number | null;
             /** Title */
             title: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "model" | "prompt" | "error";
+        };
+        /**
+         * StepClusterCase
+         * @description One source bad case inside a cluster.
+         */
+        StepClusterCase: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Badcasetype */
+            badCaseType: string;
+            /** Createdat */
+            createdAt: string | null;
+            /** Objectname */
+            objectName: string;
+            /** Title */
+            title: string;
+            /** Triggerat */
+            triggerAt: string | null;
         };
         /**
          * StepClustersPayload
-         * @description Cluster list of step 1 in creation order.
+         * @description Clusters ordered by severity descending.
          */
         StepClustersPayload: {
             /** Clusters */
             clusters: components["schemas"]["StepCluster"][];
         };
         /**
-         * StepCondition
-         * @description Filter condition snapshotted when the run was admitted.
-         */
-        StepCondition: {
-            /** From */
-            from?: string | null;
-            /** Models */
-            models: string[];
-            /** Targetname */
-            targetName: string;
-            /**
-             * Targettype
-             * @enum {string}
-             */
-            targetType: "skill" | "agent";
-            /** Targetversion */
-            targetVersion: string;
-            /** To */
-            to?: string | null;
-        };
-        /**
          * StepFinalChange
          * @description One accepted round inside the terminal modification list.
          */
         StepFinalChange: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "model" | "prompt" | "error";
             /** Clusterid */
             clusterId: string;
             /** Commit */
@@ -3659,11 +3742,6 @@ export interface components {
             reportCount: number;
             /** Title */
             title: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "model" | "prompt" | "error";
         };
         /**
          * StepFinalCommit
@@ -3699,53 +3777,135 @@ export interface components {
             verdict: boolean | null;
         };
         /**
-         * StepInputPayload
-         * @description Filter condition, hit statistics, and probe rows of step 0.
-         */
-        StepInputPayload: {
-            condition: components["schemas"]["StepCondition"];
-            hits: components["schemas"]["ProbeHitSummary"];
-            /** Rows */
-            rows: components["schemas"]["StepInputRow"][];
-        };
-        /**
-         * StepInputRow
-         * @description Shared ProbeRow plus the owning cluster for the input table.
-         */
-        StepInputRow: {
-            /**
-             * Attributetype
-             * @enum {string}
-             */
-            attributeType: "model" | "prompt" | "error";
-            /** Clusterid */
-            clusterId?: string | null;
-            /** Description */
-            description: string;
-            /** Model */
-            model: string | null;
-            /** Objectversion */
-            objectVersion: string | null;
-            /** Probeid */
-            probeId: string;
-            /** Probeobject */
-            probeObject: string;
-            /** Probetype */
-            probeType: string;
-            /** Sessionid */
-            sessionId: string;
-            /** Sessiontitle */
-            sessionTitle: string | null;
-            /** Sourcebadcaseids */
-            sourceBadCaseIds: string[];
-        };
-        /**
          * StepIterationPayload
-         * @description Rounds of step 4 in sequence order.
+         * @description Rounds of step 6 in sequence order.
          */
         StepIterationPayload: {
             /** Rounds */
             rounds: components["schemas"]["StepRound"][];
+        };
+        /**
+         * StepPotentialPayload
+         * @description Paged potential rows; excluded rows stay in the summary only.
+         */
+        StepPotentialPayload: {
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pagesize
+             * @default 5
+             */
+            pageSize: number;
+            /** Rows */
+            rows: components["schemas"]["StepPotentialRow"][];
+            summary: components["schemas"]["StepPotentialSummary"];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * StepPotentialRow
+         * @description One included bad case row of step 3.
+         */
+        StepPotentialRow: {
+            /** Badcaseid */
+            badCaseId: string;
+            /** Badcasetype */
+            badCaseType: string;
+            /**
+             * Hitreason
+             * @enum {string}
+             */
+            hitReason: "self_report" | "after_object" | "both" | "policy_excluded" | "order_unknown";
+            /** Objectname */
+            objectName: string;
+            /**
+             * Orderstate
+             * @enum {string}
+             */
+            orderState: "comparable" | "unknown";
+            /** Sessionid */
+            sessionId: string;
+            /** Triggerat */
+            triggerAt: string | null;
+        };
+        /**
+         * StepPotentialSummary
+         * @description Evaluated and included cases with the closed reason distribution.
+         */
+        StepPotentialSummary: {
+            /**
+             * Badcases
+             * @default 0
+             */
+            badCases: number;
+            byReason: components["schemas"]["PotentialReasonCounts"];
+            /**
+             * Potential
+             * @default 0
+             */
+            potential: number;
+        };
+        /**
+         * StepRangeCondition
+         * @description Immutable selection snapshot shown on step 1.
+         */
+        StepRangeCondition: {
+            /** Cacheenabled */
+            cacheEnabled: boolean;
+            /** From */
+            from?: string | null;
+            /** Policy */
+            policy: {
+                [key: string]: unknown;
+            };
+            /** Targetname */
+            targetName: string;
+            /**
+             * Targettype
+             * @enum {string}
+             */
+            targetType: "skill" | "agent" | "knowledge";
+            /** Targetversion */
+            targetVersion: string;
+            /** To */
+            to?: string | null;
+            /** Workspaceid */
+            workspaceId: string;
+        };
+        /**
+         * StepRangePayload
+         * @description Selection condition plus its headline statistics.
+         */
+        StepRangePayload: {
+            condition: components["schemas"]["StepRangeCondition"];
+            stats: components["schemas"]["StepRangeStats"];
+        };
+        /**
+         * StepRangeStats
+         * @description Headline counts of the selection step.
+         */
+        StepRangeStats: {
+            /**
+             * Badcases
+             * @default 0
+             */
+            badCases: number;
+            /**
+             * Potential
+             * @default 0
+             */
+            potential: number;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
         };
         /**
          * StepRound
@@ -3755,6 +3915,15 @@ export interface components {
             /** Accepted */
             accepted: boolean;
             candidate: components["schemas"]["StepCandidate"] | null;
+            /** Casecount */
+            caseCount: number;
+            /** Cases */
+            cases: components["schemas"]["StepClusterCase"][];
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "model" | "prompt" | "error";
             /** Clusterid */
             clusterId: string;
             /** Confidence */
@@ -3762,10 +3931,6 @@ export interface components {
             eval: components["schemas"]["StepRoundEval"];
             finalCommit?: components["schemas"]["StepFinalCommit"] | null;
             patch: components["schemas"]["StepRoundPatch"] | null;
-            /** Probecount */
-            probeCount: number;
-            /** Probes */
-            probes: components["schemas"]["ProbePreviewItem"][];
             push: components["schemas"]["StepRoundPush"];
             /** Roundid */
             roundId: string;
@@ -3778,11 +3943,6 @@ export interface components {
             status: "pending" | "patching" | "pushing" | "evaluating" | "deciding" | "accepted" | "rejected" | "skipped" | "failed";
             /** Title */
             title: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "model" | "prompt" | "error";
         };
         /**
          * StepRoundEval
@@ -3827,39 +3987,81 @@ export interface components {
             status: "pending" | "pushing" | "succeeded" | "skipped" | "failed";
         };
         /**
-         * StepSeverityPayload
-         * @description Severity rows of step 3 ordered by stored severity.
+         * StepSessionRow
+         * @description One associated Session row of step 2.
          */
-        StepSeverityPayload: {
-            /** Rows */
-            rows: components["schemas"]["StepSeverityRow"][];
+        StepSessionRow: {
+            /**
+             * Badcasecount
+             * @default 0
+             */
+            badCaseCount: number;
+            /** Objecttriggerat */
+            objectTriggerAt: string | null;
+            /**
+             * Potentialcount
+             * @default 0
+             */
+            potentialCount: number;
+            /** Sessionid */
+            sessionId: string;
+            /** Title */
+            title: string | null;
         };
         /**
-         * StepSeverityRow
-         * @description One ranked cluster row backed by persisted severity columns.
+         * StepSessionsPayload
+         * @description Paged associated Session projection.
          */
-        StepSeverityRow: {
-            /** Clusterid */
-            clusterId: string;
-            /** Confidence */
-            confidence: number | null;
-            /** Impact */
-            impact: number | null;
-            /** Probecount */
-            probeCount: number;
-            /** Rank */
-            rank: number | null;
-            /** Reportcount */
-            reportCount: number;
-            /** Severity */
-            severity: number | null;
-            /** Title */
-            title: string;
+        StepSessionsPayload: {
             /**
-             * Type
-             * @enum {string}
+             * Page
+             * @default 1
              */
-            type: "model" | "prompt" | "error";
+            page: number;
+            /**
+             * Pagesize
+             * @default 4
+             */
+            pageSize: number;
+            /** Rows */
+            rows: components["schemas"]["StepSessionRow"][];
+            summary: components["schemas"]["StepSessionsSummary"];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /**
+         * StepSessionsSummary
+         * @description Non-overlapping Session partition of step 2.
+         */
+        StepSessionsSummary: {
+            /**
+             * Associated
+             * @default 0
+             */
+            associated: number;
+            /**
+             * Pending
+             * @default 0
+             */
+            pending: number;
+            /**
+             * Reported
+             * @default 0
+             */
+            reported: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Versionunresolved
+             * @default 0
+             */
+            versionUnresolved: number;
         };
         /**
          * SyncStatusError
@@ -5564,64 +5766,6 @@ export interface operations {
             };
         };
     };
-    read_input_step_api_evolution_runs__run_id__steps_input_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                run_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvolutionStepInput"];
-                };
-            };
-            /** @description Authentication is required */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Password change is required */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Run is unknown or the step has not been reached */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     read_iteration_step_api_evolution_runs__run_id__steps_iteration_get: {
         parameters: {
             query?: never;
@@ -5680,7 +5824,68 @@ export interface operations {
             };
         };
     };
-    read_severity_step_api_evolution_runs__run_id__steps_severity_get: {
+    read_potential_step_api_evolution_runs__run_id__steps_potential_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepPotential"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_range_step_api_evolution_runs__run_id__steps_range_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -5697,7 +5902,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EvolutionStepSeverity"];
+                    "application/json": components["schemas"]["EvolutionStepRange"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_sessions_step_api_evolution_runs__run_id__steps_sessions_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolutionStepSessions"];
                 };
             };
             /** @description Authentication is required */
@@ -7836,12 +8102,15 @@ export interface operations {
     };
     read_step_api_workspaces__wid__evolution_runs__run_id__steps__key__get: {
         parameters: {
-            query?: never;
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
             header?: never;
             path: {
                 wid: string;
                 run_id: string;
-                key: "input" | "clusters" | "attribution" | "severity" | "iteration" | "final";
+                key: "range" | "sessions" | "potential" | "attribution" | "clusters" | "iteration" | "final";
             };
             cookie?: never;
         };
@@ -7853,7 +8122,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EvolutionStepInput"] | components["schemas"]["EvolutionStepClusters"] | components["schemas"]["EvolutionStepAttribution"] | components["schemas"]["EvolutionStepSeverity"] | components["schemas"]["EvolutionStepIteration"] | components["schemas"]["EvolutionStepFinal"];
+                    "application/json": components["schemas"]["EvolutionStepRange"] | components["schemas"]["EvolutionStepSessions"] | components["schemas"]["EvolutionStepPotential"] | components["schemas"]["EvolutionStepAttribution"] | components["schemas"]["EvolutionStepClusters"] | components["schemas"]["EvolutionStepIteration"] | components["schemas"]["EvolutionStepFinal"];
                 };
             };
             /** @description Authentication is required */

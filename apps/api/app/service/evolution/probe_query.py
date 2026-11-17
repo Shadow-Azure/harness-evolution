@@ -33,7 +33,7 @@ class AttributeStats(IdentityModel):
 class ProbeQueryRequest(IdentityModel):
     """Wizard filter condition shared by preview and launch endpoints."""
 
-    target_type: Literal["skill", "agent"]
+    target_type: Literal["skill", "agent", "knowledge"]
     target_name: str = Field(min_length=1, max_length=128)
     target_version: str | None = Field(default=None, max_length=64)
     window_from: date | None = Field(default=None, alias="from")
@@ -42,10 +42,10 @@ class ProbeQueryRequest(IdentityModel):
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=8, ge=1, le=50)
     mode: Literal["full", "cluster_only"] = "full"
-    policy: PotentialPolicy | None = None
-    cache_enabled: bool = True
     engine_key: str | None = Field(default=None, max_length=64)
     eval: dict[str, Any] | None = None
+    policy: PotentialPolicy | None = None
+    cache_enabled: bool = True
 
     @field_validator("models")
     @classmethod

@@ -292,14 +292,14 @@ async def test_rounds_and_final_are_stable_and_idempotent(
             _cluster("error", "error cluster", ("p-error-1",), impact=9.0),
         ),
     )
-    await _advance_to(repository, target=4, cluster_count=2)
+    await _advance_to(repository, target=5, cluster_count=2)
     await repository.insert_rounds(
         (
             _round("round-2", clusters[1].probe_cluster_id, 2),
             _round("round-1", clusters[0].probe_cluster_id, 1),
         ),
     )
-    await _advance_to(repository, target=6, cluster_count=2)
+    await _advance_to(repository, target=7, cluster_count=2)
 
     rounds = await repository.list_rounds(RUN_ID)
     assert [round_.seq for round_ in rounds] == [1, 2]
@@ -346,7 +346,7 @@ async def test_stale_cluster_replacement_does_not_delete_existing_rounds(
         RUN_ID,
         (_cluster("model", "original", ("p-model-1",), impact=5.0),),
     )
-    await _advance_to(repository, target=4, cluster_count=1)
+    await _advance_to(repository, target=5, cluster_count=1)
     await repository.insert_rounds(
         (_round("round-1", clusters[0].probe_cluster_id, 1),),
     )
@@ -360,7 +360,7 @@ async def test_stale_cluster_replacement_does_not_delete_existing_rounds(
         )
 
     assert stale.value.status_code == 409
-    assert stale.value.current == 4
+    assert stale.value.current == 5
     assert stale.value.target == 1
     assert await repository.list_clusters(RUN_ID) == clusters_before
     assert await repository.list_rounds(RUN_ID) == rounds_before
@@ -382,7 +382,7 @@ async def test_rounds_require_clusters_from_the_same_run(
         RUN_ID,
         (_cluster("model", "own cluster", ("p-model-1",), impact=5.0),),
     )
-    await _advance_to(repository, target=4, cluster_count=1)
+    await _advance_to(repository, target=5, cluster_count=1)
 
     await repository.create_run(
         _run_values(
@@ -444,10 +444,10 @@ async def test_rounds_and_final_require_their_exact_cursor(
             (_round("round-early", clusters[0].probe_cluster_id, 1),),
         )
     assert early_round.value.current == 3
-    assert early_round.value.target == 4
+    assert early_round.value.target == 5
     assert await repository.list_rounds(RUN_ID) == ()
 
-    await _advance_to(repository, target=4, cluster_count=1)
+    await _advance_to(repository, target=5, cluster_count=1)
     await repository.insert_rounds(
         (_round("round-1", clusters[0].probe_cluster_id, 1),),
     )
@@ -462,10 +462,10 @@ async def test_rounds_and_final_require_their_exact_cursor(
                 "metrics": [],
             },
         )
-    assert early_final.value.current == 4
-    assert early_final.value.target == 5
+    assert early_final.value.current == 5
+    assert early_final.value.target == 6
 
-    await _advance_to(repository, target=5, cluster_count=1)
+    await _advance_to(repository, target=6, cluster_count=1)
     written = await repository.write_final(
         {
             "run_id": RUN_ID,

@@ -2206,6 +2206,12 @@ async def test_mysql_evolution_repository_round_trip() -> None:
             target=4,
             cluster_count=1,
         )
+        await repository.advance_unit(
+            run_id,
+            expected=4,
+            target=5,
+            cluster_count=1,
+        )
         await repository.insert_rounds(
             (
                 {
@@ -2219,8 +2225,8 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         )
         await repository.advance_unit(
             run_id,
-            expected=4,
-            target=5,
+            expected=5,
+            target=6,
             cluster_count=1,
         )
         final = await repository.write_final(
@@ -2236,7 +2242,7 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         run = await repository.get_run(run_id)
 
         assert run is not None
-        assert run.progress_unit == 5
+        assert run.progress_unit == 6
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"

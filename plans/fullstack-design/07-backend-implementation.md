@@ -1119,6 +1119,8 @@ async def prepare(self, job) -> None:
 - 并发/幂等：候选唯一键 `(run_id, bad_case_id)` upsert；归因按缓存键 upsert；同一 run 的 prepare/advance 由 `RUN_BUSY` 串行。
 - 逐条归因事件按批写（每 20 条一条 `attribution_created/reused`，payload 带 `count` 与首尾 id），避免事件表与 SSE 洪泛。
 - 事件类型新增：`sessions_linked`、`potential_computed`、`attribution_reused`、`attribution_created`（`stage=prepare`）；`blocked_stage` 新增 `attribution`。
+- 历史 V1 游标只读投影：`attribution_engine='legacy-probe-import'` 的 run 不重写 `progress_unit`，读取时把六步游标映射为七步（0、1 保持原值；2–4 视为 prepared 的 5；≥5 加一）。V1 的 probe、cluster、round 数据由同一 `build_step_payload` 的兼容分支映射为七步 DTO；sessions/potential 行由 probe 与 source case 合成，缺少可比触发点时 `orderState=unknown`，不伪造顺序。
+- 七步读取只读已落库事实：range/sessions 读 run 快照与候选 Session，potential/attribution 读候选与 probe 关联，clusters 只读 `included=true` 且 `conclusion='attributed'` 的成员；attribution 的 `summary.reused` 只统计本 run 候选上的 `is_cached`，不回查缓存表。
 
 ### 5.12 潜在匹配（`service/evolution/potential.py`）
 

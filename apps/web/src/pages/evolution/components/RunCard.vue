@@ -177,14 +177,14 @@ function closeError(): void {
     </div>
 
     <div class="run-stats">
-      <span class="stat"><b>{{ run.stats.sessions }}</b>session</span>
-      <span class="stat"><b>{{ run.stats.probes }}</b>问题报告</span>
-      <span class="stat"><b>{{ run.stats.usedProbes }}</b>用于进化</span>
-      <span class="stat"><b>{{ run.stats.clusters }}</b>聚类</span>
+      <span class="stat"><b>{{ run.stats.sessions }}</b>关联 Session</span>
+      <span class="stat"><b>{{ run.stats.badCases }}</b>bad case</span>
+      <span class="stat"><b>{{ run.stats.potential }}</b>潜在 bad case</span>
+      <span class="stat"><b>{{ run.stats.attributed }}</b>可归因</span>
+      <span class="stat"><b>{{ run.stats.reused }}</b>复用归因</span>
       <span class="stat">
         <b>{{ run.progress.doneRounds }}/{{ run.stats.clusters }}</b>已跑轮次
       </span>
-      <span class="stat"><b>{{ run.progress.accepted }}</b>已接纳</span>
     </div>
 
     <div

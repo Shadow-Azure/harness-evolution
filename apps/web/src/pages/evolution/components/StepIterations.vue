@@ -4,7 +4,7 @@ import { computed, ref } from "vue";
 
 import DiffView from "./DiffView.vue";
 import EvalCompare from "./EvalCompare.vue";
-import ProbeSourceTable from "./ProbeSourceTable.vue";
+import StepCaseTable from "./StepCaseTable.vue";
 
 const props = defineProps<{
   wid: string;
@@ -37,7 +37,7 @@ function toggle(roundId: string): void {
   expanded.value = next;
 }
 
-function typeLabel(type: StepRound["type"]): string {
+function typeLabel(type: StepRound["category"]): string {
   return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
 }
 
@@ -141,8 +141,8 @@ function pushLabel(status: string): string {
 <template>
   <article class="card panel">
     <h3 class="sec-title">
-      第 5 步 · 迭代优化
-      <span class="sub">按严重程度降序逐轮执行 · patch → push → 评测 → 接纳 / 拒绝</span>
+      第 6 步 · 迭代优化
+      <span class="sub">基于第 5 步聚类与严重度排序，逐轮执行 patch → 推送 → 评测 → 接纳 / 拒绝</span>
     </h3>
     <section
       v-for="(round, index) in rounds"
@@ -163,9 +163,9 @@ function pushLabel(status: string): string {
         <span class="ctitle">{{ round.title }}</span>
         <span
           class="type-chip"
-          :class="`type-${round.type}`"
-        >{{ typeLabel(round.type) }}</span>
-        <span class="meta">probe ×{{ round.probeCount }}</span>
+          :class="`type-${round.category}`"
+        >{{ typeLabel(round.category) }}</span>
+        <span class="meta">bad case ×{{ round.caseCount }}</span>
         <span
           v-if="round.severity !== null"
           class="meta"
@@ -185,12 +185,9 @@ function pushLabel(status: string): string {
       >
         <section class="cb-sec">
           <p class="cb-label">
-            来源问题报告（{{ round.probes.length }} 份 · 由归因结论聚类而来）
+            来源 bad case（{{ round.cases.length }} 个 · 由归因结论聚类而来）
           </p>
-          <ProbeSourceTable
-            :wid="wid"
-            :rows="round.probes"
-          />
+          <StepCaseTable :cases="round.cases" />
         </section>
 
         <section

@@ -187,7 +187,7 @@ async def state(
             "repo_path": str(tmp_path / "repo"),
             "workspace_path": str(tmp_path / "workspace"),
             "status": "running",
-            "progress_unit": 4,
+            "progress_unit": 5,
             "stats": {},
             "created_by": None,
             "created_at": NOW,
@@ -385,7 +385,7 @@ async def test_apply_accepts_once_and_skipped_rounds_are_terminal(
     assert round_.status == "accepted"
     run = await repository.get_run("run-apply")
     assert run is not None
-    assert run.progress_unit == 5
+    assert run.progress_unit == 6
 
 
 async def test_apply_rejects_with_external_verdict_and_advances_once(
@@ -420,7 +420,7 @@ async def test_apply_rejects_with_external_verdict_and_advances_once(
     run = await repository.get_run("run-apply")
     assert round_ is not None and run is not None
     assert round_.status == "rejected"
-    assert run.progress_unit == 5
+    assert run.progress_unit == 6
 
 
 async def test_finalize_writes_final_publishes_and_completes_run(
@@ -489,7 +489,7 @@ async def test_lifecycle_schedules_next_round_or_final_not_both(
         await session.execute(
             update(evolution_runs)
             .where(evolution_runs.c.id == "run-apply")
-            .values(progress_unit=5),
+            .values(progress_unit=6),
         )
     await lifecycle.on_terminal(job)
     assert [item.kind for item in jobs.items] == ["evolution_finalize"]
@@ -534,7 +534,7 @@ async def test_lifecycle_advances_a_pending_round_before_finalizing(
         await session.execute(
             update(evolution_runs)
             .where(evolution_runs.c.id == "run-apply")
-            .values(progress_unit=5),
+            .values(progress_unit=6),
         )
     jobs = JobCapture()
     lifecycle = EvolutionJobLifecycle(
@@ -562,7 +562,7 @@ async def test_lifecycle_advances_a_pending_round_before_finalizing(
         await session.execute(
             update(evolution_runs)
             .where(evolution_runs.c.id == "run-apply")
-            .values(progress_unit=6),
+            .values(progress_unit=7),
         )
     await lifecycle.on_terminal(terminal_job)
     assert [item.kind for item in jobs.items] == ["evolution_finalize"]
@@ -582,7 +582,7 @@ async def test_terminal_followup_recovers_when_lifecycle_submit_fails(
         await session.execute(
             update(evolution_runs)
             .where(evolution_runs.c.id == "run-apply")
-            .values(progress_unit=5),
+            .values(progress_unit=6),
         )
     jobs = JobCapture(failures_remaining=1)
     poller = EvolutionEvalPoller(

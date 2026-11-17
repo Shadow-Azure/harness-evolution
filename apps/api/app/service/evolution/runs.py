@@ -10,7 +10,14 @@ from typing import Literal, Protocol, cast
 from pydantic import Field
 
 from app.db.models.evolution import EvolutionRunSummaryRecord
-from app.service.evolution.state import step_states, total_units, validate_cursor
+from app.service.evolution.state import (
+    PREPARE_COMPLETE_UNIT,
+    effective_unit,
+    is_legacy_run,
+    step_states,
+    total_units,
+    validate_cursor,
+)
 from app.service.identity.schemas import IdentityModel
 
 EvolutionRunStatus = Literal[
@@ -43,17 +50,18 @@ EvolutionRunBlockedStage = Literal[
 ]
 _RUNNING_STATUSES = frozenset({"preparing", "running", "blocked"})
 _RUN_STAGE_LABELS = (
-    "第 1/6 步 · 筛选输入中…",
-    "第 2/6 步 · 问题聚类中…",
-    "第 3/6 步 · LLM 归因置信度中…",
-    "第 4/6 步 · 严重程度排序中…",
+    "第 1/7 步 · 选择范围中…",
+    "第 2/7 步 · Session 关联中…",
+    "第 3/7 步 · 筛选潜在 bad case 中…",
+    "第 4/7 步 · 对象归因中…",
+    "第 5/7 步 · 聚类与严重度排序中…",
 )
 
 
 class EvolutionRunTarget(IdentityModel):
     """Immutable evolution target snapshot shown on one run card."""
 
-    type: Literal["skill", "agent"]
+    type: Literal["skill", "agent", "knowledge"]
     name: str
     version: str
 
@@ -74,22 +82,24 @@ class EvolutionRunError(IdentityModel):
 
 
 class EvolutionRunAttributeStats(IdentityModel):
-    """Probe counts by externally supplied attribution type."""
+    """Case counts by the closed attribution category."""
 
     model: int = 0
     prompt: int = 0
     error: int = 0
-    non_issue: int = 0
 
 
 class EvolutionRunStats(IdentityModel):
-    """Backend-normalized run statistics."""
+    """Backend-normalized V2 run statistics."""
 
     sessions: int = 0
-    probes: int = 0
-    used_probes: int = 0
+    version_unresolved_sessions: int = 0
+    bad_cases: int = 0
+    potential: int = 0
+    attributed: int = 0
+    reused: int = 0
     clusters: int = 0
-    by_attribute_type: EvolutionRunAttributeStats
+    by_category: EvolutionRunAttributeStats
 
 
 class EvolutionRunProgress(IdentityModel):
@@ -153,10 +163,11 @@ class EvolutionRunStep(IdentityModel):
 
     index: int
     key: Literal[
-        "input",
-        "clusters",
+        "range",
+        "sessions",
+        "potential",
         "attribution",
-        "severity",
+        "clusters",
         "iteration",
         "final",
     ]
@@ -167,7 +178,7 @@ class EvolutionRunStep(IdentityModel):
 
 
 class EvolutionRunDetail(EvolutionRunCard):
-    """Complete shell consumed by the six-step run-detail page."""
+    """Complete shell consumed by the seven-step run-detail page."""
 
     blocked_stage: EvolutionRunBlockedStage | None
     retry_attempts: int
@@ -219,24 +230,38 @@ def _non_negative_int(value: object) -> int:
 
 
 def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
-    """Normalize persisted stats and replace cluster count with the real count."""
+    """Normalize V2 stats and synthesize them from legacy probe counts."""
     raw = summary.run.stats
-    by_type_raw = raw.get("byAttributeType")
-    by_type = by_type_raw if isinstance(by_type_raw, Mapping) else {}
-    attributes = EvolutionRunAttributeStats(
-        model=_non_negative_int(by_type.get("model")),
-        prompt=_non_negative_int(by_type.get("prompt")),
-        error=_non_negative_int(by_type.get("error")),
-        non_issue=_non_negative_int(
-            by_type.get("nonIssue", by_type.get("non_issue")),
-        ),
+    by_category_raw = raw.get("byCategory", raw.get("byAttributeType"))
+    by_category = by_category_raw if isinstance(by_category_raw, Mapping) else {}
+    category = EvolutionRunAttributeStats(
+        model=_non_negative_int(by_category.get("model")),
+        prompt=_non_negative_int(by_category.get("prompt")),
+        error=_non_negative_int(by_category.get("error")),
     )
+    legacy_prepared = is_legacy_run(summary.run.attribution_engine)
+    used_probes = category.model + category.prompt + category.error
+    if legacy_prepared:
+        sessions = _non_negative_int(raw.get("sessions"))
+        bad_cases = _non_negative_int(raw.get("probes"))
+        potential = _non_negative_int(raw.get("usedProbes"))
+        return EvolutionRunStats(
+            sessions=sessions,
+            bad_cases=bad_cases,
+            potential=potential,
+            attributed=potential,
+            clusters=summary.cluster_count,
+            by_category=category,
+        )
     return EvolutionRunStats(
         sessions=_non_negative_int(raw.get("sessions")),
-        probes=_non_negative_int(raw.get("probes")),
-        used_probes=attributes.model + attributes.prompt + attributes.error,
+        version_unresolved_sessions=_non_negative_int(raw.get("versionUnresolvedSessions")),
+        bad_cases=_non_negative_int(raw.get("badCases")),
+        potential=_non_negative_int(raw.get("potential")),
+        attributed=_non_negative_int(raw.get("attributed")) or used_probes,
+        reused=_non_negative_int(raw.get("reused")),
         clusters=summary.cluster_count,
-        by_attribute_type=attributes,
+        by_category=category,
     )
 
 
@@ -246,19 +271,23 @@ def _progress(summary: EvolutionRunSummaryRecord) -> EvolutionRunProgress:
     cluster_count = summary.cluster_count
     total = total_units(cluster_count)
     validate_cursor(run.progress_unit, cluster_count)
-    unit = run.progress_unit
-    if unit < 4:
+    unit = effective_unit(
+        run.progress_unit,
+        cluster_count,
+        attribution_engine=run.attribution_engine,
+    )
+    if unit < PREPARE_COMPLETE_UNIT:
         stage_label = _RUN_STAGE_LABELS[unit]
-    elif unit < 4 + cluster_count:
-        stage_label = f"第 5/6 步 · 迭代优化 · 第 {unit - 3}/{cluster_count} 轮"
+    elif unit < PREPARE_COMPLETE_UNIT + cluster_count:
+        stage_label = f"第 6/7 步 · 迭代优化 · 第 {unit - 4}/{cluster_count} 轮"
     else:
-        stage_label = "第 6/6 步 · 测试集终评中…"
+        stage_label = "第 7/7 步 · 测试集终评中…"
     return EvolutionRunProgress(
         unit=unit,
         total=total,
         percent=math.floor(unit * 100 / total + 0.5),
         stage_label=stage_label,
-        done_rounds=min(max(unit - 4, 0), cluster_count),
+        done_rounds=min(max(unit - PREPARE_COMPLETE_UNIT, 0), cluster_count),
         accepted=summary.accepted_count,
     )
 
@@ -298,7 +327,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
         title=run.title,
         mode=cast(Literal["full", "cluster_only"], run.mode),
         target=EvolutionRunTarget(
-            type=cast(Literal["skill", "agent"], run.target_type),
+            type=cast(Literal["skill", "agent", "knowledge"], run.target_type),
             name=run.target_name,
             version=run.target_version,
         ),
@@ -335,13 +364,19 @@ def _detail_steps(
         run.progress_unit,
         summary.cluster_count,
         run.status,
+        attribution_engine=run.attribution_engine,
+    )
+    unit = effective_unit(
+        run.progress_unit,
+        summary.cluster_count,
+        attribution_engine=run.attribution_engine,
     )
     steps: list[EvolutionRunStep] = []
     for state in states:
         detail = None
         if state.key == "iteration" and state.status == "active" and summary.cluster_count > 0:
             round_number = min(
-                max(run.progress_unit - 3, 1),
+                max(unit - PREPARE_COMPLETE_UNIT + 1, 1),
                 summary.cluster_count,
             )
             detail = f"第 {round_number}/{summary.cluster_count} 轮"
@@ -350,10 +385,11 @@ def _detail_steps(
                 index=state.index,
                 key=cast(
                     Literal[
-                        "input",
-                        "clusters",
+                        "range",
+                        "sessions",
+                        "potential",
                         "attribution",
-                        "severity",
+                        "clusters",
                         "iteration",
                         "final",
                     ],

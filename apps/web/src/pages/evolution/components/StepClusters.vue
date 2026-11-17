@@ -2,7 +2,7 @@
 import type { EvolutionStepClusters, StepCluster } from "@harness/contracts";
 import { computed, nextTick, ref, watch } from "vue";
 
-import ProbeSourceTable from "./ProbeSourceTable.vue";
+import StepCaseTable from "./StepCaseTable.vue";
 
 const props = defineProps<{
   wid: string;
@@ -13,11 +13,36 @@ const emit = defineEmits<{
   "missing-focus": [];
 }>();
 
-const expanded = ref<Set<string>>(new Set());
+const clusters = computed(() => props.step.payload.clusters);
+const expanded = ref<Set<string>>(
+  new Set(clusters.value[0] ? [clusters.value[0].clusterId] : []),
+);
 const highlighted = ref<string | null>(null);
 const missingNotice = ref(false);
 
-const clusters = computed(() => props.step.payload.clusters);
+const totalCases = computed(
+  () =>
+    new Set(
+      clusters.value.flatMap((cluster) =>
+        cluster.cases.map((item) => item.badCaseId),
+      ),
+    ).size,
+);
+
+const averageConfidence = computed(() => {
+  const values = clusters.value
+    .map((cluster) => cluster.confidence)
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return null;
+  return values.reduce((total, value) => total + value, 0) / values.length;
+});
+
+const maxSeverity = computed(() => {
+  const values = clusters.value
+    .map((cluster) => cluster.severity)
+    .filter((value): value is number => value !== null);
+  return values.length === 0 ? null : Math.max(...values);
+});
 
 function toggle(clusterId: string): void {
   const next = new Set(expanded.value);
@@ -26,8 +51,8 @@ function toggle(clusterId: string): void {
   expanded.value = next;
 }
 
-function typeLabel(type: StepCluster["type"]): string {
-  return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
+function categoryLabel(category: StepCluster["category"]): string {
+  return category === "prompt" ? "prompt" : category === "model" ? "模型" : "错误";
 }
 
 watch(
@@ -36,7 +61,7 @@ watch(
     highlighted.value = null;
     if (!clusterId) return;
     const exists = clusters.value.some(
-      (cluster) => cluster.probeClusterId === clusterId,
+      (cluster) => cluster.clusterId === clusterId,
     );
     if (!exists) {
       missingNotice.value = true;
@@ -58,11 +83,18 @@ watch(
 <template>
   <article class="card panel">
     <h3 class="sec-title">
-      第 2 步 · 问题聚类
-      <span class="sub">
-        M={{ clusters.length }} 类 · 不同类型的问题不聚为一簇 · 展开可查看来源问题
-      </span>
+      第 5 步 · 聚类与严重度
+      <span class="sub">按问题类型聚类，按严重程度降序；每簇含标题与聚类问题描述</span>
     </h3>
+    <div class="wz-stats">
+      <span class="st"><b>{{ clusters.length }}</b><span>聚类问题</span></span>
+      <span class="st"><b>{{ totalCases }}</b><span>来源 bad case</span></span>
+      <span class="st">
+        <b>{{ averageConfidence === null ? "—" : `${(averageConfidence * 100).toFixed(0)}%` }}</b>
+        <span>平均置信度</span>
+      </span>
+      <span class="st accent"><b>{{ maxSeverity === null ? "—" : maxSeverity.toFixed(1) }}</b><span>最高严重度</span></span>
+    </div>
     <p
       v-if="missingNotice"
       class="missing-focus"
@@ -71,47 +103,59 @@ watch(
       目标簇已不存在。
     </p>
     <div
-      v-for="cluster in clusters"
-      :id="`cluster-${cluster.probeClusterId}`"
-      :key="cluster.probeClusterId"
+      v-for="(cluster, index) in clusters"
+      :id="`cluster-${cluster.clusterId}`"
+      :key="cluster.clusterId"
       class="cluster"
       :class="{
-        open: expanded.has(cluster.probeClusterId),
-        highlighted: highlighted === cluster.probeClusterId,
+        open: expanded.has(cluster.clusterId),
+        highlighted: highlighted === cluster.clusterId,
       }"
     >
       <button
         class="cluster-head"
         type="button"
-        :aria-expanded="expanded.has(cluster.probeClusterId)"
-        @click="toggle(cluster.probeClusterId)"
+        :aria-expanded="expanded.has(cluster.clusterId)"
+        @click="toggle(cluster.clusterId)"
       >
-        <span class="cid">{{ cluster.probeClusterId }}</span>
+        <span class="rank">#{{ cluster.rank ?? index + 1 }}</span>
+        <span class="cid">{{ cluster.clusterId }}</span>
         <span class="ctitle">{{ cluster.title }}</span>
         <span
           class="type-chip"
-          :class="`type-${cluster.type}`"
-        >{{ typeLabel(cluster.type) }}</span>
-        <span class="meta">probe ×{{ cluster.probeCount }}</span>
+          :class="`type-${cluster.category}`"
+        >{{ categoryLabel(cluster.category) }}</span>
+        <span class="meta">bad case ×{{ cluster.caseCount }}</span>
         <span
           v-if="cluster.confidence !== null"
           class="meta"
         >置信度 {{ (cluster.confidence * 100).toFixed(0) }}%</span>
+        <span
+          v-if="cluster.severity !== null"
+          class="meta"
+        >严重程度 {{ cluster.severity.toFixed(1) }}</span>
         <span class="tail">
           <span class="caret">▶</span>
         </span>
       </button>
       <div
-        v-if="expanded.has(cluster.probeClusterId)"
+        v-if="expanded.has(cluster.clusterId)"
         class="cluster-body"
       >
-        <p class="cb-label">
-          来源问题（{{ cluster.probes.length }} 条 · 来自同一归因类型）
-        </p>
-        <ProbeSourceTable
-          :wid="wid"
-          :rows="cluster.probes"
-        />
+        <section class="cb-sec">
+          <p class="cb-label">
+            聚类问题描述
+          </p>
+          <p class="cluster-desc">
+            {{ cluster.description || "暂无聚类问题描述" }}
+          </p>
+        </section>
+        <section class="cb-sec">
+          <p class="cb-label">
+            来源 bad case（{{ cluster.cases.length }} 个 · 由归因结论聚类而来）
+          </p>
+          <StepCaseTable :cases="cluster.cases" />
+        </section>
       </div>
     </div>
     <p
@@ -151,12 +195,40 @@ watch(
   font-weight: 400;
 }
 
+.wz-stats {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.st {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.st b {
+  margin-right: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.st.accent b {
+  color: var(--blue);
+}
+
 .cluster {
   overflow: hidden;
   margin-bottom: 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-card);
+}
+
+.cluster:last-of-type {
+  margin-bottom: 0;
 }
 
 .cluster.highlighted {
@@ -181,6 +253,16 @@ watch(
 
 .cluster-head:hover {
   background: var(--bg-panel);
+}
+
+.rank {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--orange);
+  color: white;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .cid,
@@ -235,6 +317,14 @@ watch(
   border-top: 1px solid var(--border);
 }
 
+.cb-sec {
+  margin-bottom: 14px;
+}
+
+.cb-sec:last-child {
+  margin-bottom: 0;
+}
+
 .cb-label {
   margin: 0 0 6px;
   color: var(--text-faint);
@@ -242,26 +332,11 @@ watch(
   font-weight: 600;
 }
 
-.report-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.report-chip {
-  padding: 1px 7px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bg-panel);
+.cluster-desc {
+  margin: 0;
   color: var(--text-dim);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  text-decoration: none;
-}
-
-.empty-copy {
-  color: var(--text-faint);
-  font-size: 11.5px;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .waiting {

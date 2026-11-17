@@ -9,12 +9,21 @@ milestone: m10
 depends:
   - m10-03
 priority: P0
-status: backlog
+status: in-progress
 scope:
   - apps/api/app/service/evolution/**
-  - apps/api/app/api/evolution_runs.py
+  - apps/api/app/service/jobs.py
+  - apps/api/app/db/**
+  - apps/api/app/api/**
+  - apps/api/app/main.py
+  - apps/api/app/fixture_corpus.py
+  - apps/api/pyproject.toml
+  - apps/api/tests/**
   - packages/contracts/**
+  - apps/web/**
   - tests/**
+  - fixtures/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

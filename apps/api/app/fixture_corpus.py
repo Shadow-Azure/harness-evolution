@@ -61,6 +61,8 @@ class AgentEventFixture(FixtureModel):
     name: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=2_000)
     tool_use_id: str | None = Field(default=None, max_length=128)
+    object_version: str | None = Field(default=None, max_length=64)
+    object_revision: str | None = Field(default=None, max_length=96)
 
 
 class AgentFixture(FixtureModel):

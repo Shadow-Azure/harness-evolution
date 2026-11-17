@@ -61,16 +61,6 @@ class TestEventSource {
   }
 }
 
-const emptyHits = {
-  sessions: 0,
-  badCases: 0,
-  analyzed: 0,
-  unanalyzed: 0,
-  probes: 0,
-  usedProbes: 0,
-  byAttributeType: { model: 0, prompt: 0, error: 0, nonIssue: 0 },
-};
-
 function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
   return {
     runId: "evo-full-1",
@@ -92,21 +82,23 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
     error: null,
     stats: {
       sessions: 128,
-      probes: 46,
-      usedProbes: 28,
+      versionUnresolvedSessions: 3,
+      badCases: 46,
+      potential: 28,
+      attributed: 16,
+      reused: 9,
       clusters: 2,
-      byAttributeType: {
-        model: 12,
-        prompt: 8,
-        error: 8,
-        nonIssue: 18,
+      byCategory: {
+        model: 6,
+        prompt: 5,
+        error: 5,
       },
     },
     progress: {
       unit: 0,
-      total: 6,
+      total: 7,
       percent: 0,
-      stageLabel: "第 1/6 步 · 筛选输入中…",
+      stageLabel: "第 1/7 步 · 选择范围中…",
       doneRounds: 0,
       accepted: 0,
     },
@@ -115,10 +107,10 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
   };
 }
 
-const inputStep = {
-  key: "input",
+const rangeStep = {
+  key: "range",
   index: 0,
-  title: "筛选输入",
+  title: "选择范围",
   status: "active",
   clickable: true,
   detail: "准备中",
@@ -129,16 +121,45 @@ const inputStep = {
       targetVersion: "v2.0.0",
       from: "2026-08-20",
       to: "2026-09-10",
-      models: ["glm-5.3"],
+      policy: { preset: "default" },
+      cacheEnabled: true,
+      workspaceId: "ws-test",
     },
-    hits: emptyHits,
-    rows: [],
+    stats: { sessions: 128, badCases: 46, potential: 28 },
+  },
+};
+
+const sessionsStep = {
+  key: "sessions",
+  index: 1,
+  title: "Session 关联",
+  status: "done",
+  clickable: true,
+  payload: {
+    summary: {
+      reported: 9,
+      associated: 5,
+      skipped: 3,
+      versionUnresolved: 1,
+      pending: 0,
+    },
+    rows: [
+      {
+        sessionId: "session-1",
+        title: "研究运行",
+        objectTriggerAt: "2026-09-01T09:00:00+08:00",
+        badCaseCount: 2,
+      },
+    ],
+    total: 5,
+    page: 1,
+    pageSize: 4,
   },
 };
 
 const iterationStep = {
   key: "iteration",
-  index: 4,
+  index: 5,
   title: "迭代优化",
   status: "active",
   clickable: true,
@@ -149,22 +170,18 @@ const iterationStep = {
         roundId: "round-1",
         clusterId: "C1",
         title: "检索索引读取失败",
-        type: "error",
-        probeCount: 1,
+        category: "error",
+        caseCount: 1,
         confidence: 0.82,
         severity: 7.4,
-        probes: [
+        cases: [
           {
-            probeId: "pr-1",
-            sessionId: "session-1",
-            sessionTitle: "研究",
-            model: "glm-5.3",
-            probeType: "skill",
-            probeObject: "deep-research",
-            objectVersion: "v2.0.0",
-            attributeType: "error",
-            description: "读取越界",
-            sourceBadCaseIds: ["bc-1"],
+            badCaseId: "bc-1",
+            title: "读取越界",
+            objectName: "deep-research",
+            badCaseType: "self",
+            triggerAt: "2026-09-01T10:00:00+08:00",
+            createdAt: "2026-09-01T10:05:00+08:00",
           },
         ],
         status: "evaluating",
@@ -199,10 +216,11 @@ function detailSteps(
   statuses: Array<"done" | "active" | "pending">,
 ) {
   const steps = [
-    ["input", "筛选输入"],
-    ["clusters", "问题聚类"],
-    ["attribution", "LLM 归因置信度"],
-    ["severity", "严重程度排序"],
+    ["range", "选择范围"],
+    ["sessions", "Session 关联"],
+    ["potential", "潜在 bad case"],
+    ["attribution", "对象归因"],
+    ["clusters", "聚类与严重度"],
     ["iteration", "迭代优化"],
     ["final", "测试集终评"],
   ] as const;
@@ -333,19 +351,19 @@ describe("evolution run detail page", () => {
               },
               progress: {
                 unit: 0,
-                total: 6,
+                total: 7,
                 percent: 0,
                 stageLabel: "准备运行",
                 doneRounds: 0,
                 accepted: 0,
               },
             }),
-            ["pending", "pending", "pending", "pending", "pending", "pending"],
+            ["pending", "pending", "pending", "pending", "pending", "pending", "pending"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         requested.push(String(params.step));
-        return HttpResponse.json(inputStep);
+        return HttpResponse.json(rangeStep);
       }),
     );
     const wrapper = await mountPage();
@@ -365,8 +383,8 @@ describe("evolution run detail page", () => {
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(detail())),
-      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
-        HttpResponse.json(inputStep)),
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
     );
     const wrapper = await mountPage();
 
@@ -379,18 +397,18 @@ describe("evolution run detail page", () => {
     expect(button.text()).toContain("已复制");
   });
 
-  it("renders the preparing input step and keeps later steps disabled", async () => {
+  it("renders the preparing range step and keeps later steps disabled", async () => {
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(detail())),
-      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
-        HttpResponse.json(inputStep)),
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
     );
     const wrapper = await mountPage();
 
     expect(wrapper.get("h1").text()).toBe("deep-research v2.0.0 自进化");
-    expect(wrapper.findAll("[data-step-key]")).toHaveLength(6);
-    expect(wrapper.get("[data-step-key='input']").attributes("aria-current")).toBe(
+    expect(wrapper.findAll("[data-step-key]")).toHaveLength(7);
+    expect(wrapper.get("[data-step-key='range']").attributes("aria-current")).toBe(
       "step",
     );
     expect(wrapper.get("[data-step-key='clusters']").attributes("disabled")).toBeDefined();
@@ -399,7 +417,8 @@ describe("evolution run detail page", () => {
     );
     expect(wrapper.text()).toContain("准备中");
     expect(wrapper.text()).toContain("evo/evo-full-1");
-    expect(wrapper.text()).toContain("当前条件下没有已分析的问题 probe");
+    expect(wrapper.text()).toContain("默认策略");
+    expect(wrapper.text()).toContain("潜在 bad case");
     expect(wrapper.find("[data-testid='evolution-cluster-preview']").exists()).toBe(
       false,
     );
@@ -415,14 +434,14 @@ describe("evolution run detail page", () => {
               status: "running",
               progress: {
                 unit: 4,
-                total: 6,
+                total: 7,
                 percent: 67,
-                stageLabel: "第 5/6 步 · 迭代优化 · 第 1/2 轮",
+                stageLabel: "第 6/7 步 · 迭代优化 · 第 1/2 轮",
                 doneRounds: 0,
                 accepted: 0,
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
@@ -453,14 +472,14 @@ describe("evolution run detail page", () => {
               status: "running",
               progress: {
                 unit: 4,
-                total: 6,
+                total: 7,
                 percent: 67,
-                stageLabel: "第 5/6 步 · 迭代优化 · 第 1/2 轮",
+                stageLabel: "第 6/7 步 · 迭代优化 · 第 1/2 轮",
                 doneRounds: 0,
                 accepted: 0,
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
@@ -469,21 +488,22 @@ describe("evolution run detail page", () => {
         if (key === "iteration") return HttpResponse.json(iterationStep);
         return HttpResponse.json({
           key: "clusters",
-          index: 1,
-          title: "问题聚类",
+          index: 4,
+          title: "聚类与严重度",
           status: "done",
           clickable: true,
           payload: {
             clusters: [
               {
-                probeClusterId: "C1",
+                clusterId: "C1",
                 title: "检索索引读取失败",
                 description: "读取越界",
-                type: "error",
-                probeCount: 1,
+                category: "error",
+                caseCount: 1,
+                cases: [],
                 confidence: 0.82,
                 severity: 7.4,
-                probes: [],
+                rank: 1,
               },
             ],
           },
@@ -502,7 +522,44 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-step-key='clusters']").attributes("aria-current")).toBe(
       "step",
     );
-    expect(wrapper.text()).toContain("M=1 类");
+    expect(wrapper.text()).toContain("聚类与严重度");
+  });
+
+  it("requests the default Session page size and pages through the step", async () => {
+    const requested: { step: string; query: string }[] = [];
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "running" }),
+            ["done", "done", "pending", "pending", "pending", "pending", "pending"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params, request }) => {
+        const url = new URL(request.url);
+        requested.push({
+          step: String(params.step),
+          query: url.search,
+        });
+        const page = Number(url.searchParams.get("page") ?? "1");
+        return HttpResponse.json({
+          ...sessionsStep,
+          payload: { ...sessionsStep.payload, page },
+        });
+      }),
+    );
+    const wrapper = await mountPage("evo-full-1", "?step=sessions");
+
+    expect(requested).toEqual([{ step: "sessions", query: "?page=1&pageSize=4" }]);
+    expect(wrapper.text()).toContain("研究运行");
+
+    await wrapper.findAll(".pager button")[1]?.trigger("click");
+    await flushPromises();
+
+    expect(requested.at(-1)).toEqual({
+      step: "sessions",
+      query: "?page=2&pageSize=4",
+    });
   });
 
   it("removes a missing cluster deep-link while retaining the notice", async () => {
@@ -511,27 +568,28 @@ describe("evolution run detail page", () => {
         HttpResponse.json(
           detail(
             run({ status: "completed" }),
-            ["done", "done", "done", "done", "done", "done"],
+            ["done", "done", "done", "done", "done", "done", "done"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
         HttpResponse.json({
           key: "clusters",
-          index: 1,
-          title: "问题聚类",
+          index: 4,
+          title: "聚类与严重度",
           status: "done",
           clickable: true,
           payload: {
             clusters: [
               {
-                probeClusterId: "C1",
+                clusterId: "C1",
                 title: "检索索引读取失败",
                 description: "读取越界",
-                type: "error",
-                probeCount: 1,
+                category: "error",
+                caseCount: 1,
+                cases: [],
                 confidence: 0.82,
                 severity: 7.4,
-                probes: [],
+                rank: 1,
               },
             ],
           },
@@ -558,9 +616,9 @@ describe("evolution run detail page", () => {
               status: "completed",
               progress: {
                 unit: 6,
-                total: 6,
+                total: 7,
                 percent: 100,
-                stageLabel: "第 6/6 步 · 测试集终评中…",
+                stageLabel: "第 7/7 步 · 测试集终评中…",
                 doneRounds: 2,
                 accepted: 1,
               },
@@ -573,14 +631,14 @@ describe("evolution run detail page", () => {
                 initScore: 84.3,
               },
             }),
-            ["done", "done", "done", "done", "done", "done"],
+            ["done", "done", "done", "done", "done", "done", "done"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, ({ params }) => {
         requested.push(String(params.step));
         return HttpResponse.json({
           key: "final",
-          index: 5,
+          index: 6,
           title: "测试集终评",
           status: "done",
           clickable: true,
@@ -597,7 +655,7 @@ describe("evolution run detail page", () => {
                 commit: "cd34ab",
                 clusterId: "C1",
                 title: "检索索引读取失败",
-                type: "error",
+                category: "error",
                 reportCount: 1,
               },
             ],
@@ -631,26 +689,28 @@ describe("evolution run detail page", () => {
               },
               stats: {
                 sessions: 128,
-                probes: 46,
-                usedProbes: 28,
+                versionUnresolvedSessions: 3,
+                badCases: 46,
+                potential: 28,
+                attributed: 16,
+                reused: 9,
                 clusters: 1,
-                byAttributeType: {
-                  model: 12,
-                  prompt: 8,
-                  error: 8,
-                  nonIssue: 18,
+                byCategory: {
+                  model: 6,
+                  prompt: 5,
+                  error: 5,
                 },
               },
               progress: {
                 unit: 4,
-                total: 5,
+                total: 7,
                 percent: 80,
-                stageLabel: "第 5/6 步 · 迭代优化 · 第 1/1 轮",
+                stageLabel: "第 6/7 步 · 迭代优化 · 第 1/1 轮",
                 doneRounds: 0,
                 accepted: 0,
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             {
               blockedStage: "eval",
               retryAttempts: 1,
@@ -716,7 +776,7 @@ describe("evolution run detail page", () => {
                 at: "2026-10-27T12:00:00+08:00",
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "eval", retryAttempts: 1, nextRetryAt },
           ),
         );
@@ -765,7 +825,7 @@ describe("evolution run detail page", () => {
                 at: "2026-10-27T12:00:00+08:00",
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "eval", retryAttempts: 1, nextRetryAt },
           ),
         )),
@@ -811,7 +871,7 @@ describe("evolution run detail page", () => {
                 at: errorAt,
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "eval", retryAttempts: 1, nextRetryAt: null },
           ),
         )),
@@ -838,7 +898,7 @@ describe("evolution run detail page", () => {
           at: "2026-10-27T12:02:00+08:00",
         },
       }),
-      ["done", "done", "done", "done", "active", "pending"],
+      ["done", "done", "done", "done", "done", "active", "pending"],
       { blockedStage: "eval", retryAttempts: 2, nextRetryAt: null },
     );
     activeQueryClient?.setQueryData(queryKeys.evolutionRun(workspaceId, "evo-full-1"), refreshed);
@@ -861,7 +921,7 @@ describe("evolution run detail page", () => {
                 at: "2026-10-27T12:00:00+08:00",
               },
             }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "push" },
           ),
         )),
@@ -897,7 +957,7 @@ describe("evolution run detail page", () => {
         HttpResponse.json(
           detail(
             run({ status: "blocked" }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "eval" },
           ),
         )),
@@ -930,7 +990,7 @@ describe("evolution run detail page", () => {
         HttpResponse.json(
           detail(
             run({ status: "blocked" }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { blockedStage: "eval" },
           ),
         )),
@@ -983,7 +1043,7 @@ describe("evolution run detail page", () => {
                 at: "2026-10-27T12:00:00+08:00",
               },
             }),
-            ["pending", "pending", "pending", "pending", "pending", "pending"],
+            ["pending", "pending", "pending", "pending", "pending", "pending", "pending"],
           ),
         )),
     );
@@ -1015,7 +1075,7 @@ describe("evolution run detail page", () => {
         HttpResponse.json(
           detail(
             run({ status: "running" }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
           ),
         )),
       http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
@@ -1058,7 +1118,7 @@ describe("evolution run detail page", () => {
         HttpResponse.json(
           detail(
             run({ status: "running" }),
-            ["done", "done", "done", "done", "active", "pending"],
+            ["done", "done", "done", "done", "done", "active", "pending"],
             { lastEventSeq: 105 },
           ),
         )),
@@ -1091,8 +1151,8 @@ describe("evolution run detail page", () => {
             )
           : HttpResponse.json(detail());
       }),
-      http.get(`${evolutionBase}/runs/evo-full-1/steps/input`, () =>
-        HttpResponse.json(inputStep)),
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
     );
     const wrapper = await mountPage();
 
@@ -1104,7 +1164,7 @@ describe("evolution run detail page", () => {
     await wrapper.get(".error-state button").trigger("click");
     await flushPromises();
 
-    expect(wrapper.get("[data-step-key='input']").attributes("aria-current")).toBe(
+    expect(wrapper.get("[data-step-key='range']").attributes("aria-current")).toBe(
       "step",
     );
   });
@@ -1141,7 +1201,7 @@ describe("evolution run detail page", () => {
                 at: "2026-10-27T12:00:00+08:00",
               },
             }),
-            ["pending", "pending", "pending", "pending", "pending", "pending"],
+            ["pending", "pending", "pending", "pending", "pending", "pending", "pending"],
           ),
           lastEventSeq: 2,
         })),

@@ -361,13 +361,17 @@ async def test_poller_completed_saves_result_once_and_submits_apply(
             del probe_ids
             return ()
 
-    run = await repository.get_run("run-eval")
-    clusters = await repository.list_clusters("run-eval")
-    assert run is not None
+    class EmptyCandidates:
+        async def list(self, run_id: str) -> tuple[object, ...]:
+            del run_id
+            return ()
+
     step = await EvolutionStageService(
         repository,
         cast(Any, EmptyProbes()),
-    ).build_step_payload(run, clusters, "iteration")
+        cast(Any, EmptyCandidates()),
+        cast(Any, object()),
+    ).step("run-eval", "iteration")
     assert step.key == "iteration"
     assert step.payload.rounds[0].eval.current == 80.0
     assert step.payload.rounds[0].eval.candidate == 90.0

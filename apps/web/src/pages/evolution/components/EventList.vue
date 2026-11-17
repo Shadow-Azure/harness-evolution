@@ -18,10 +18,11 @@ const emit = defineEmits<{
 }>();
 
 const stepKeys: EvolutionStepKey[] = [
-  "input",
-  "clusters",
+  "range",
+  "sessions",
+  "potential",
   "attribution",
-  "severity",
+  "clusters",
   "iteration",
   "final",
 ];
@@ -48,6 +49,10 @@ function selectStep(
   const key = stepKeys[event.stepIndex];
   const step = steps.find((candidate) => candidate.key === key);
   if (step?.clickable) emit("select-step", step.key);
+}
+
+function clustersClickable(steps: EvolutionRunStep[]): boolean {
+  return steps.some((step) => step.key === "clusters" && step.clickable);
 }
 </script>
 
@@ -81,7 +86,7 @@ function selectStep(
             step {{ event.stepIndex + 1 }}
           </button>
           <button
-            v-if="event.clusterId && steps[1]?.clickable"
+            v-if="event.clusterId && clustersClickable(steps)"
             type="button"
             class="jump cluster"
             :title="event.clusterId"

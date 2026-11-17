@@ -36,16 +36,19 @@ const run = {
   error: null,
   stats: {
     sessions: 2,
-    probes: 2,
-    usedProbes: 1,
+    versionUnresolvedSessions: 0,
+    badCases: 2,
+    potential: 2,
+    attributed: 1,
+    reused: 0,
     clusters: 1,
-    byAttributeType: { model: 0, prompt: 0, error: 1, nonIssue: 1 },
+    byCategory: { model: 0, prompt: 0, error: 1 },
   },
   progress: {
-    unit: 4,
-    total: 5,
+    unit: 5,
+    total: 7,
     percent: 80,
-    stageLabel: "第 5/6 步 · 迭代优化 · 第 1/1 轮",
+    stageLabel: "第 6/7 步 · 迭代优化 · 第 1/1 轮",
     doneRounds: 0,
     accepted: 0,
   },
@@ -65,23 +68,33 @@ const probe = {
   sourceBadCaseIds: ["case-1"],
 };
 
+const caseItem = {
+  badCaseId: "case-1",
+  title: "读取越界",
+  objectName: "deep-research",
+  badCaseType: "error",
+  triggerAt: "2026-09-01T10:00:00+08:00",
+  createdAt: "2026-09-01T10:05:00+08:00",
+};
+
 const clusterStep = {
   key: "clusters",
-  index: 1,
-  title: "问题聚类",
+  index: 4,
+  title: "聚类与严重度",
   status: "done",
   clickable: true,
   payload: {
     clusters: [
       {
-        probeClusterId: "C1",
+        clusterId: "C1",
         title: "检索索引读取失败",
         description: "读取越界",
-        type: "error",
-        probeCount: 1,
+        category: "error",
+        caseCount: 1,
+        cases: [caseItem],
         confidence: 0.82,
         severity: 7.4,
-        probes: [probe],
+        rank: 1,
       },
     ],
   },
@@ -92,11 +105,11 @@ function round(overrides: Partial<StepRound> = {}): StepRound {
     roundId: "round-1",
     clusterId: "C1",
     title: "检索索引读取失败",
-    type: "error",
-    probeCount: 1,
+    category: "error",
+    caseCount: 1,
     confidence: 0.82,
     severity: 7.4,
-    probes: [probe],
+    cases: [caseItem],
     status: "pending",
     candidate: null,
     patch: null,
@@ -111,7 +124,7 @@ function round(overrides: Partial<StepRound> = {}): StepRound {
 function iterationStep(rounds: StepRound[]): EvolutionStepIteration {
   return {
     key: "iteration",
-    index: 4,
+    index: 5,
     title: "迭代优化",
     status: "active",
     clickable: true,
@@ -158,7 +171,7 @@ describe("run detail conformance", () => {
     });
   });
 
-  it("renders the prototype source-problem table with report and issue deep links", async () => {
+  it("renders cluster and iteration source-case tables from the cluster case shape", async () => {
     const clusters = mount(StepClusters, {
       props: { wid: "ws-test", step: clusterStep, focusCluster: "C1" },
       global: { stubs: { RouterLink: RouterLinkStub } },
@@ -166,34 +179,26 @@ describe("run detail conformance", () => {
     await clusters.vm.$nextTick();
 
     for (const heading of [
-      "报告 ID",
-      "来源问题 ID",
-      "问题现象",
-      "来源 session",
-      "模型",
-      "归因类型",
+      "bad case",
+      "标题",
+      "object_name",
+      "类型",
+      "触发点",
+      "上报时间",
     ]) {
       expect(clusters.text()).toContain(heading);
     }
-    expect(clusters.text()).toContain("研究运行");
-    expect(clusters.text()).toContain("glm-5.3");
+    expect(clusters.text()).toContain("读取越界");
+    expect(clusters.text()).toContain("deep-research");
     expect(clusters.text()).toContain("错误");
-
-    const links = clusters.findAll("a");
-    expect(links.some((link) => link.attributes("href")?.includes("attr"))).toBe(
-      true,
-    );
-    expect(links.some((link) => link.attributes("href")?.includes("desc"))).toBe(
-      true,
-    );
 
     const iterations = mount(StepIterations, {
       props: { wid: "ws-test", step: iterationStep([round({ status: "evaluating" })]) },
       global: { stubs: { RouterLink: RouterLinkStub } },
     });
-    expect(iterations.text()).toContain("来源 session");
-    expect(iterations.text()).toContain("probe-1");
+    expect(iterations.text()).toContain("bad case");
     expect(iterations.text()).toContain("case-1");
+    expect(iterations.text()).toContain("读取越界");
   });
 
   it("expands a valid focused cluster and emits a cleanup request for a missing one", async () => {
@@ -467,24 +472,31 @@ describe("run detail conformance", () => {
     expect(lines[3]?.classes()).toContain("ctx");
   });
 
-  it("renders attribution analysis as safe structural Markdown", () => {
+  it("renders attribution summary rows with cached and fresh sources", () => {
     const attribution = {
       key: "attribution",
-      index: 2,
-      title: "LLM 归因置信度",
+      index: 3,
+      title: "对象归因",
       status: "done",
       clickable: true,
       payload: {
-        items: [
+        summary: { potential: 2, reused: 1, fresh: 1, nonTarget: 1 },
+        rows: [
           {
-            clusterId: "C1",
-            probeId: "probe-1",
-            probeObject: "deep-research",
-            objectVersion: "v2.0.0",
-            attributeType: "error",
+            badCaseId: "case-1",
+            attributionId: "attr-1",
+            category: "error",
             description: "读取越界",
-            analysis: "**确认问题**\n\n- 索引未校验\n\n`read()`",
+            source: "cached",
             confidence: 0.82,
+          },
+          {
+            badCaseId: "case-2",
+            attributionId: "attr-2",
+            category: null,
+            description: "与所选对象无关",
+            source: "fresh",
+            confidence: null,
           },
         ],
       },
@@ -493,15 +505,17 @@ describe("run detail conformance", () => {
       props: { step: attribution, run },
     });
 
-    expect(wrapper.find(".markdown strong").text()).toBe("确认问题");
-    expect(wrapper.find(".markdown li").text()).toBe("索引未校验");
-    expect(wrapper.find(".markdown code").text()).toBe("read()");
+    expect(wrapper.text()).toContain("读取越界");
+    expect(wrapper.text()).toContain("非该对象问题");
+    expect(wrapper.text()).toContain("缓存");
+    expect(wrapper.text()).toContain("新增");
+    expect(wrapper.text()).toContain("82%");
   });
 
   it("shows the final push status and timestamp", () => {
     const final = {
       key: "final",
-      index: 5,
+      index: 6,
       title: "测试集终评",
       status: "done",
       clickable: true,

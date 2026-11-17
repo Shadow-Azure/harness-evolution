@@ -1,4 +1,4 @@
-"""Authenticated evolution run list, launch, and six-step step endpoints."""
+"""Authenticated evolution run list, launch, and seven-step step endpoints."""
 
 from typing import Annotated, Any, cast
 
@@ -29,9 +29,10 @@ from app.service.evolution.stages import (
     EvolutionStepAttribution,
     EvolutionStepClusters,
     EvolutionStepFinal,
-    EvolutionStepInput,
     EvolutionStepIteration,
-    EvolutionStepSeverity,
+    EvolutionStepPotential,
+    EvolutionStepRange,
+    EvolutionStepSessions,
 )
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.principals import Principal
@@ -229,31 +230,64 @@ async def retry_run(run_id: str, request: Request) -> EvolutionRetryAccepted:
 
 
 @router.get(
-    "/{run_id}/steps/input",
+    "/{run_id}/steps/range",
     dependencies=[Security(BEARER_AUTH)],
     responses=STEP_RESPONSES,
 )
-async def read_input_step(run_id: str, request: Request) -> EvolutionStepInput:
-    """Return the backend-owned filter-input projection of one run."""
+async def read_range_step(run_id: str, request: Request) -> EvolutionStepRange:
+    """Return the backend-owned selection snapshot of one run."""
     return cast(
-        EvolutionStepInput,
+        EvolutionStepRange,
         await stages_from(request).step(
-            run_id, "input", workspace_ids=await visible_workspace_ids(request)
+            run_id, "range", workspace_ids=await visible_workspace_ids(request)
         ),
     )
 
 
 @router.get(
-    "/{run_id}/steps/clusters",
+    "/{run_id}/steps/sessions",
     dependencies=[Security(BEARER_AUTH)],
     responses=STEP_RESPONSES,
 )
-async def read_clusters_step(run_id: str, request: Request) -> EvolutionStepClusters:
-    """Return the backend-owned problem-cluster projection of one run."""
+async def read_sessions_step(
+    run_id: str,
+    request: Request,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=50)] = 4,
+) -> EvolutionStepSessions:
+    """Return one page of associated Sessions for one run."""
     return cast(
-        EvolutionStepClusters,
+        EvolutionStepSessions,
         await stages_from(request).step(
-            run_id, "clusters", workspace_ids=await visible_workspace_ids(request)
+            run_id,
+            "sessions",
+            workspace_ids=await visible_workspace_ids(request),
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+@router.get(
+    "/{run_id}/steps/potential",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def read_potential_step(
+    run_id: str,
+    request: Request,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=50)] = 5,
+) -> EvolutionStepPotential:
+    """Return one page of potential bad cases for one run."""
+    return cast(
+        EvolutionStepPotential,
+        await stages_from(request).step(
+            run_id,
+            "potential",
+            workspace_ids=await visible_workspace_ids(request),
+            page=page,
+            page_size=page_size,
         ),
     )
 
@@ -274,16 +308,16 @@ async def read_attribution_step(run_id: str, request: Request) -> EvolutionStepA
 
 
 @router.get(
-    "/{run_id}/steps/severity",
+    "/{run_id}/steps/clusters",
     dependencies=[Security(BEARER_AUTH)],
     responses=STEP_RESPONSES,
 )
-async def read_severity_step(run_id: str, request: Request) -> EvolutionStepSeverity:
-    """Return the backend-owned severity ranking projection of one run."""
+async def read_clusters_step(run_id: str, request: Request) -> EvolutionStepClusters:
+    """Return the backend-owned cluster projection of one run."""
     return cast(
-        EvolutionStepSeverity,
+        EvolutionStepClusters,
         await stages_from(request).step(
-            run_id, "severity", workspace_ids=await visible_workspace_ids(request)
+            run_id, "clusters", workspace_ids=await visible_workspace_ids(request)
         ),
     )
 

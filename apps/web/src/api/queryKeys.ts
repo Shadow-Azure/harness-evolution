@@ -42,8 +42,25 @@ export const queryKeys = {
     ["ws", workspaceId, "evolution", "runs"] as const,
   evolutionRun: (workspaceId: string, runId: string) =>
     ["ws", workspaceId, "evolution", "runs", runId] as const,
-  evolutionRunStep: (workspaceId: string, runId: string, stepKey: string) =>
-    ["ws", workspaceId, "evolution", "runs", runId, "steps", stepKey] as const,
+  evolutionRunStep: (
+    workspaceId: string,
+    runId: string,
+    stepKey: string,
+    page?: number,
+    pageSize?: number,
+  ) =>
+    page === undefined && pageSize === undefined
+      ? (["ws", workspaceId, "evolution", "runs", runId, "steps", stepKey] as const)
+      : ([
+          "ws",
+          workspaceId,
+          "evolution",
+          "runs",
+          runId,
+          "steps",
+          stepKey,
+          { page, pageSize },
+        ] as const),
   evolutionRunEvents: (workspaceId: string, runId: string, level: string) =>
     ["ws", workspaceId, "evolution", "runs", runId, "events", level] as const,
   evolutionTargets: (workspaceId: string) =>

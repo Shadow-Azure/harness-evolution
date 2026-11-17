@@ -94,7 +94,7 @@ class FakeRunStore:
 
 
 async def test_detail_returns_workspace_and_backend_owned_step_states() -> None:
-    """The detail shell carries all six states without frontend inference."""
+    """The detail shell carries all seven states without frontend inference."""
     summary = EvolutionRunSummaryRecord(
         run=_run(),
         cluster_count=2,
@@ -110,10 +110,11 @@ async def test_detail_returns_workspace_and_backend_owned_step_states() -> None:
     assert detail.workspace.base_ref == "v2.0.0"
     assert detail.workspace.repo_path == "data/repos/target"
     assert [step.key for step in detail.steps] == [
-        "input",
-        "clusters",
+        "range",
+        "sessions",
+        "potential",
         "attribution",
-        "severity",
+        "clusters",
         "iteration",
         "final",
     ]
@@ -122,11 +123,12 @@ async def test_detail_returns_workspace_and_backend_owned_step_states() -> None:
         "done",
         "done",
         "done",
+        "done",
         "active",
         "pending",
     ]
-    assert detail.steps[4].detail == "第 1/2 轮"
-    assert detail.steps[5].clickable is False
+    assert detail.steps[5].detail == "第 1/2 轮"
+    assert detail.steps[6].clickable is False
     assert detail.last_event_seq == 0
 
 
