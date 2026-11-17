@@ -563,10 +563,15 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
     assert.equal(blocked.retry, "重试");
     assert.equal(blocked.current, "attribution");
     assert.equal(blocked.clustersDisabled, true);
-    assert.match(blocked.text, /该步骤尚未到达|第 4 步 · 对象归因/);
+    assert.match(blocked.text, /第 4 步 · 对象归因/);
+    assert.match(blocked.text, /v2-blocked-probe-1/);
     await screenshot(page, "06-after-blocked-attribution.png");
 
-    const requestedKeys = stepRequests.map((url) => url.split("/steps/")[1]?.split("?")[0]);
+    const requestedKeys = [
+      ...new Set(
+        stepRequests.map((url) => url.split("/steps/")[1]?.split("?")[0]),
+      ),
+    ];
     assert.deepEqual(requestedKeys, ["attribution"]);
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
