@@ -41,7 +41,11 @@ Only the private key lives in GitHub; its public half sits in the `deploy` user'
 
 ## Release and rollback
 
-- Trigger: push to main → CI green → `Deploy`; manual `workflow_dispatch` supported.
-- Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → `systemctl restart harness-api` → probes `/api/health` (up to 60 seconds).
+- Trigger: push to main → CI green → `Deploy`; `workflow_dispatch` also available.
+- Behavior: [deploy/release.sh](../deploy/release.sh) installs dependencies → `alembic upgrade head` → switches the `current` symlink → restarts harness-api → probes `/api/health` (up to 60 seconds).
 - Rollback: on a failed probe the symlink returns to the previous release and the service restarts; the server keeps the latest 5 releases.
-- Migrations are idempotent: repeated releases have zero side effects on applied migrations.
+- Migrations are idempotent: repeated releases have no side effects.
+
+## Troubleshooting
+
+- A bad-case detail response of 409 `BAD_CASE_SESSION_PENDING` or 503 `BAD_CASE_SESSION_UNAVAILABLE` means the case was reported but its trace is not ready; it is not data loss. Check the trace-query configuration, or ask the reporter to supply `sessionSource`.

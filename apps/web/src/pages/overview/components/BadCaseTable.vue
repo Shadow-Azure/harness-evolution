@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import type { BadCaseListItem, OverviewBadCaseType } from "@harness/contracts";
+import type {
+  BadCaseListItem,
+  BadCaseTraceStatus,
+  OverviewBadCaseType,
+} from "@harness/contracts";
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 
 import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
@@ -81,6 +86,22 @@ const typeLabels: Record<OverviewBadCaseType, string> = {
   self: "自身存在问题",
   discovery: "发现前置步骤问题",
 };
+const traceLabels: Record<BadCaseTraceStatus, string> = {
+  ready: "就绪",
+  pending: "未同步",
+  syncing: "同步中",
+  failed: "同步失败",
+  unavailable: "无可用轨迹",
+};
+
+/**
+ * Whether one row's normalized Session can already be opened as error detail.
+ * @param item Overview row carrying the derived trace state.
+ * @returns True only for a ready, readable trace.
+ */
+function traceReady(item: BadCaseListItem): boolean {
+  return item.sessionReady && item.syncStatus === "ready";
+}
 
 /**
  * Build the deep link that opens one problem's description tab.
@@ -108,7 +129,7 @@ function caseHref(item: BadCaseListItem): string {
       <div>
         <h2>bad case 列表</h2>
         <div class="hint">
-          时间段、上报来源、问题类型均可选；点击 ID 在新窗口打开对应 Session 的错误详情。
+          时间段、上报来源、问题类型均可选；点击 ID 在新窗口打开错误详情，无可用轨迹时从「轨迹」列查看状态。
         </div>
       </div>
       <div class="list-meta">
@@ -200,6 +221,7 @@ function caseHref(item: BadCaseListItem): string {
             <th>触发时间</th>
             <th>上报时间</th>
             <th>Session</th>
+            <th>轨迹</th>
             <th>归因</th>
           </tr>
         </thead>
@@ -211,6 +233,7 @@ function caseHref(item: BadCaseListItem): string {
           >
             <td>
               <a
+                v-if="traceReady(item)"
                 class="idlink"
                 :data-testid="`ov-case-link-${item.badCaseId}`"
                 :href="caseHref(item)"
@@ -220,6 +243,21 @@ function caseHref(item: BadCaseListItem): string {
               >
                 {{ item.badCaseId }}
               </a>
+              <template v-else>
+                <span
+                  class="id-plain"
+                  :data-testid="`ov-case-id-${item.badCaseId}`"
+                  :title="`${item.badCaseId} 的轨迹尚未就绪；点击「查看」打开状态说明`"
+                >{{ item.badCaseId }}</span>
+                <RouterLink
+                  class="trace-link"
+                  :data-testid="`ov-case-view-${item.badCaseId}`"
+                  :to="caseHref(item)"
+                  :title="`查看 ${item.badCaseId} 的轨迹状态`"
+                >
+                  查看
+                </RouterLink>
+              </template>
             </td>
             <td class="title-cell">
               {{ item.title }}
@@ -244,6 +282,14 @@ function caseHref(item: BadCaseListItem): string {
               :title="item.sessionId"
             >
               {{ item.sessionId.slice(0, 13) }}…
+            </td>
+            <td>
+              <span
+                class="trace-chip"
+                :class="`trace-${item.syncStatus}`"
+                :data-testid="`ov-trace-${item.badCaseId}`"
+                :title="item.lastError ?? ''"
+              >{{ traceLabels[item.syncStatus] }}</span>
             </td>
             <td class="attr">
               <b>{{ item.attributionCount }}</b> 条
@@ -351,7 +397,7 @@ function caseHref(item: BadCaseListItem): string {
 
 table {
   width: 100%;
-  min-width: 760px;
+  min-width: 860px;
   border-collapse: collapse;
   font-size: 11.5px;
 }
@@ -390,6 +436,60 @@ tbody tr:last-child td {
 
 .idlink:hover {
   text-decoration: underline;
+}
+
+.id-plain {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.trace-link {
+  margin-left: 6px;
+  color: var(--blue);
+  font-size: 10.5px;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.trace-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.trace-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.trace-chip.trace-ready {
+  color: var(--green);
+}
+
+.trace-chip.trace-ready::before {
+  background: var(--green);
+}
+
+.trace-chip.trace-pending,
+.trace-chip.trace-syncing,
+.trace-chip.trace-failed,
+.trace-chip.trace-unavailable {
+  color: var(--orange);
+}
+
+.trace-chip.trace-pending::before,
+.trace-chip.trace-syncing::before,
+.trace-chip.trace-failed::before,
+.trace-chip.trace-unavailable::before {
+  background: var(--orange);
 }
 
 .title-cell {

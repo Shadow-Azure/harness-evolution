@@ -9,6 +9,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.crud.bad_case_sync import BadCaseRootSyncRow, _to_row
 from app.db.crud.bad_cases import (
     BadCaseAnalysisRow,
     BadCaseRow,
@@ -32,6 +33,7 @@ from app.db.models.domain import (
     agent_events,
     agents,
     bad_case_analysis,
+    bad_case_root_sync,
     bad_cases,
     probe_reports,
     session_families,
@@ -127,6 +129,29 @@ class ProblemRepository:
             return False
         async with self._database.session() as session:
             return await self._case(session, case_id, scope) is not None
+
+    async def case_row(self, case_id: str, scope: WorkspaceReadScope) -> BadCaseRow | None:
+        """Read one reported case without requiring its Session projection."""
+        if not await self._scoped_reads_available():
+            return None
+        async with self._database.session() as session:
+            return await self._case(session, case_id, scope)
+
+    async def root_sync_state(self, root_session_id: str) -> BadCaseRootSyncRow | None:
+        """Return the durable trajectory-sync state for one reported root."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(bad_case_root_sync).where(
+                            bad_case_root_sync.c.root_session_id == root_session_id,
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return _to_row(row) if row is not None else None
 
     async def session_probes(
         self,

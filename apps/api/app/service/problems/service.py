@@ -11,6 +11,10 @@ from app.db.crud.sessions import EventRecord
 from app.errors import AppError, ErrorCode
 from app.service.bad_cases.schemas import BadCaseReadModel, ProbeReportReadModel
 from app.service.bad_cases.service import BadCaseService
+from app.service.bad_cases.session_status import (
+    classify_trace_status,
+    raise_trace_not_ready,
+)
 from app.service.problems.anchor import resolve_problem_anchor
 from app.service.problems.schemas import (
     BadCase,
@@ -72,15 +76,27 @@ class ProblemService:
         session_id: str | None,
         scope: WorkspaceReadScope,
     ) -> BadCase:
-        """Return one problem after enforcing optional Session ownership."""
-        snapshot = await self._repository.case_snapshot(case_id, scope)
-        if snapshot is None:
+        """Return one problem after enforcing optional Session ownership.
+
+        The reported case row is authoritative for existence. A missing Session
+        projection is a trace-readiness state, not a missing problem, so only an
+        absent case row produces ``BAD_CASE_NOT_FOUND``.
+        """
+        case = await self._repository.case_row(case_id, scope)
+        if case is None:
             raise AppError(
                 status_code=404,
                 code=ErrorCode.BAD_CASE_NOT_FOUND,
                 message="bad case not found",
             )
-        self._check_owner(snapshot.cases[0].bad_case_session_id, session_id)
+        self._check_owner(case.bad_case_session_id, session_id)
+        snapshot = await self._repository.case_snapshot(case_id, scope)
+        if snapshot is None:
+            sync_state = await self._repository.root_sync_state(case.bad_case_session_id)
+            raise_trace_not_ready(
+                case,
+                classify_trace_status(sync_state, session_ready=False),
+            )
         merged = self._bad_cases.merge_snapshot(
             snapshot.cases,
             snapshot.analyses,
@@ -88,9 +104,9 @@ class ProblemService:
         )
         if not merged.items:
             raise AppError(
-                status_code=404,
-                code=ErrorCode.BAD_CASE_NOT_FOUND,
-                message="bad case not found",
+                status_code=500,
+                code=ErrorCode.INTERNAL,
+                message="bad case projection is malformed",
             )
         return self._public_cases(snapshot, merged.items)[0]
 

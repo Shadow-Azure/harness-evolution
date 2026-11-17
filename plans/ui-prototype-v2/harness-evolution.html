@@ -1387,6 +1387,26 @@
   .evo-app .switch .slider::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(30,40,60,.18); transition: transform .15s ease; }
   .evo-app .switch input:checked + .slider { background: var(--blue); }
   .evo-app .switch input:checked + .slider::before { transform: translateX(20px); }
+  /* ── 轨迹状态：无 Session / 同步失败（m12-07 原型） ── */
+  .ov-trace { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; white-space: nowrap; color: var(--text-dim); }
+  .ov-trace::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .ov-trace.ready { color: var(--green); }
+  .ov-trace.ready::before { background: var(--green); }
+  .ov-trace.warn { color: var(--orange); }
+  .ov-trace.warn::before { background: var(--orange); }
+  .ov-trace-link { margin-left: 6px; border: 0; background: none; padding: 0; color: var(--blue); font-size: 10.5px; cursor: pointer; text-decoration: underline; }
+  .ov-id-disabled { color: var(--text-faint); font-family: var(--mono); font-size: 10.5px; cursor: not-allowed; }
+  .trace-panel { margin: 16px 0 0; padding: 24px 26px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); box-shadow: 0 1px 3px rgba(30,40,60,.05); }
+  .trace-hero { display: flex; gap: 14px; align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+  .trace-icon { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: color-mix(in srgb, var(--orange) 12%, transparent); color: var(--orange); font-weight: 700; font-size: 18px; }
+  .trace-hero h2 { margin: 0 0 4px; font-size: 17px; }
+  .trace-hero p { margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.7; }
+  .trace-meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 16px 0; padding: 11px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); font-size: 11.5px; color: var(--text-dim); }
+  .trace-meta code { font-family: var(--mono); font-size: 10.5px; color: var(--text); }
+  .trace-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .trace-note { margin-top: 16px; padding: 12px 14px; border-left: 3px solid var(--border); color: var(--text-faint); font-size: 11.5px; line-height: 1.8; }
+  .trace-note b { color: var(--text-dim); }
+
   @media (max-width: 720px) { .evo-app .preview-stats { grid-template-columns: 1fr 1fr; } }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/@xyflow/react@12.12.0/dist/style.css">
@@ -1698,6 +1718,21 @@ const AT_RUNS = ["EV-20261109-01", "EV-20261106-02", "EV-20261030-03", "EV-20261
 function v2Hash(s) { let h = 7; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
 function v2Clock(iso) { const d = new Date(iso); const p = n => String(n).padStart(2, "0"); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 
+/* m12-07 原型演示：一条已上报、但 Session 轨迹未就绪的 bad case。 */
+const NO_TRACE_SID = "d609db76-d3d4-46b9-9436-ed1122b3e0a8";
+SESSIONS.push({
+  id: NO_TRACE_SID,
+  short: "SWE-bench astropy-12907",
+  title: "SWE-bench astropy__astropy-12907 · 轨迹未就绪",
+  repo: "OpenSpec-cn_SWE-bench",
+  clock: "11-09 16:37",
+  iso: "2026-11-09T16:37:00+08:00",
+  dur: "—", model: "claude-code", rounds: 0, steps: 0, tools: 0, errors: 1, agents: 0, findings: 1,
+  skills: [], tok: 0, status: "partial", workspace: "ws-harness",
+  trace: { status: "unavailable", lastError: "SESSION_QUERY_UNAVAILABLE", retryable: false, lastAttemptAt: "11-09 16:50" }
+});
+SESSIONS[SESSIONS.length - 1].ts = Date.parse("2026-11-09T16:37:00+08:00");
+
 const BAD_CASES = [];
 let _caseSeq = 0;
 const CASE_WS_ORDER = ["ws-harness", "ws-agent", "ws-research"];
@@ -1725,11 +1760,29 @@ CASE_WS_ORDER.forEach(wsId => {
     });
   });
 });
+/* m12-07 原型演示：无可用轨迹的 bad case；不进入 CASE_SPECS 的自动生成。 */
+BAD_CASES.push({
+  id: "BC-HC-026", no: 1, sessionId: NO_TRACE_SID,
+  sessionTitle: "SWE-bench astropy__astropy-12907 · 轨迹未就绪", workspace: "ws-harness",
+  objectName: "claude-code", type: "discovery",
+  title: "[SWE-bench] astropy__astropy-12907 · not_scored",
+  detail: "评测执行失败（未进入评分）。上报已成功，但上游没有返回可下载的会话轨迹；root-sync 以 SESSION_QUERY_UNAVAILABLE 失败，因此暂时没有执行流可展示。",
+  facts: [
+    { k: "result_status", v: "not_scored" },
+    { k: "lastError", v: "SESSION_QUERY_UNAVAILABLE" },
+    { k: "sessionSource", v: "未提供" },
+  ],
+  createdAt: "2026-11-09T16:37:00+08:00", clock: "11-09 16:37",
+  triggerLine: 0, target: "runtime · claude-code", reporter: "ai-eval-platform",
+  trace: { status: "unavailable", lastError: "SESSION_QUERY_UNAVAILABLE", retryable: false, lastAttemptAt: "11-09 16:50" },
+});
+
 function casesForSession(sid) { return BAD_CASES.filter(c => c.sessionId === sid).sort((a, b) => a.no - b.no); }
 function casesForWorkspace(wsId) { return BAD_CASES.filter(c => c.workspace === wsId); }
 function caseById(id) { return BAD_CASES.find(c => c.id === id); }
 function attributionsFor(c) {
   if (!c) return [];
+  if (c.trace && c.trace.status !== "ready") return [];
   if (v2Hash(c.id + ':pending') % 5 === 0) return [];
   const h = v2Hash(c.id + c.objectName);
   const others = Object.keys(AT_VERSIONS).filter(o => o !== c.objectName);
@@ -4202,6 +4255,47 @@ function LaneDag({ sid, selectedNo, cases }) {
     </div>`;
 }
 
+function TraceStatusPanel({ c, session }) {
+  const t = c.trace || {};
+  const label = t.status === "pending" ? "同步中" : t.status === "failed" ? "同步失败" : "无可用轨迹";
+  const openSync = () => {
+    const details = document.querySelector(".tn-sync");
+    if (details) { details.open = true; details.scrollIntoView({ block: "center" }); }
+    v2Toast("同步状态：" + (t.lastError || "—") + (t.retryable === false ? " · 不会自动重试" : ""));
+  };
+  const back = () => v2SetPage("overview");
+  const copy = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(c.id);
+    v2Toast("已复制 " + c.id);
+  };
+  return html`
+    <div className="trace-panel">
+      <div className="trace-hero">
+        <div className="trace-icon">!</div>
+        <div>
+          <h2>该 bad case 还没有可用的 Session 轨迹</h2>
+          <p>问题本身已上报，<b>没有被删除</b>；${label}，所以暂时无法展示执行流和归因。同步成功后刷新即可恢复，不需要重新创建 case。</p>
+        </div>
+      </div>
+      <div className="trace-meta">
+        <span className="v2-badge warn">${label}</span>
+        <span>lastError <code>${t.lastError || "—"}</code></span>
+        <span>${t.retryable === false ? "不会自动重试" : "可重试"}</span>
+        <span>上次尝试 ${t.lastAttemptAt || "—"}</span>
+      </div>
+      <div className="trace-actions">
+        <button className="cta" onClick=${openSync}>查看同步状态</button>
+        <button className="cta secondary" onClick=${back}>返回总览</button>
+        <button className="cta secondary" onClick=${copy}>复制 bad case ID</button>
+      </div>
+      <div className="trace-note">
+        <b>bad case</b> ${c.id} · ${c.title}<br/>
+        上报来源 ${c.objectName} · 上报时间 ${c.clock} · 关联 Session ${c.sessionId}<br/>
+        处理建议：确认上游 session query 是否配置，或让上报方补充 sessionSource；同步状态入口在顶部「同步」弹层。
+      </div>
+    </div>`;
+}
+
 function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initialObject }) {
   const cases = useMemo(() => (window.casesForSession ? window.casesForSession(sid) : []), [sid]);
   const { nodes, edges, findings } = useMemo(
@@ -4227,6 +4321,7 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
   const [filter, setFilter] = useState("all");
   const [flowMode, setFlowMode] = useState(() => new URLSearchParams(location.search).get("flow") === "tree" ? "tree" : "dag");
   const selectedCase = cases.find(c => c.id === selectedCaseId) || null;
+  const traceUnavailable = Boolean(selectedCase && selectedCase.trace && selectedCase.trace.status !== "ready");
   const attributionMap = useMemo(() => {
     const m = {};
     cases.forEach(c => { m[c.id] = window.attributionsFor(c); });
@@ -4297,6 +4392,7 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
                       <span className="id">${c.id}</span>
                       <span className=${"v2-badge " + (c.type === "self" ? "self" : "discovery")}>${c.type}</span>
                       <span className="id">${c.objectName}</span>
+                      ${c.trace && c.trace.status !== "ready" ? html`<span className="v2-badge warn">无轨迹</span>` : null}
                     </div>
                   </button>
                   <span className="err-case-count" title=${ats.length + " 条归因"}>${ats.length}</span>
@@ -4346,7 +4442,9 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
             <button className="tbtn" onClick=${() => window.switchTab("explorer")}>返回 Session</button>
           </div>
         </div>
-        <div className="err-flow-panel">
+        ${traceUnavailable
+          ? html`<${TraceStatusPanel} c=${selectedCase} session=${session} />`
+          : html`<div className="err-flow-panel">
           <div className="err-flow-head">
             <span>执行流</span>
             <div className="flow-head-right">
@@ -4381,7 +4479,7 @@ function ErrorApp({ sid, budget, initialCaseId, initialTab, initialAtId, initial
                     onOpenRun=${(rid) => window.openEvolutionRun && window.openEvolutionRun(rid)} />`)
               : html`<div className="err-empty">从左侧选择一个 bad case，查看问题描述；展开后可以看到该 bad case 在不同进化对象下的多条归因分析。</div>`}
           </div>
-        </div>
+        </div>`}
       </main>
     </div>`;
 }
@@ -5974,14 +6072,24 @@ function v2RenderOverview() {
   }).join('');
   const listRows = rows.map(c => {
     const n = (window.attributionsFor ? window.attributionsFor(c) : []).length;
+    const trace = c.trace || { status: 'ready' };
+    const traceReady = trace.status === 'ready';
+    const traceLabel = trace.status === 'ready' ? '就绪' : trace.status === 'pending' ? '同步中' : trace.status === 'failed' ? '同步失败' : '无可用轨迹';
+    const idCell = traceReady
+      ? `<a class="idlink" href="${caseDeepLink(c.id, 'desc')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="打开 Session 错误查看 · 错误详情">${c.id}</a>`
+      : `<span class="ov-id-disabled" title="轨迹未就绪；点击右侧「查看」打开状态面板">${c.id}</span>`;
+    const traceCell = traceReady
+      ? `<span class="ov-trace ready">就绪</span>`
+      : `<span class="ov-trace warn">${traceLabel}</span><button class="ov-trace-link" onclick="v2OpenCase('${c.id}')">查看</button>`;
     return `<tr>
-      <td><a class="idlink" href="${caseDeepLink(c.id, 'desc')}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="打开 Session 错误查看 · 错误详情">${c.id}</a></td>
+      <td>${idCell}</td>
       <td><span class="ov-case-title">${v2Esc(c.title)}</span></td>
       <td><span class="chip kind">${v2Esc(c.objectName)}</span></td>
       <td>${c.type === 'self' ? '<span class="v2-badge self">自身存在问题</span>' : '<span class="v2-badge discovery">发现前置步骤问题</span>'}</td>
       <td><span class="ov-mono">L${c.triggerLine}</span></td>
       <td><span class="ov-mono">${c.clock}</span></td>
       <td><span class="ov-mono" title="${c.sessionId}">${c.sessionId.slice(0, 13)}…</span></td>
+      <td>${traceCell}</td>
       <td><span class="ov-attr-count"><b>${n}</b> 条</span></td>
     </tr>`;
   }).join('');
@@ -6087,7 +6195,7 @@ function v2RenderOverview() {
   </div>
   <div class="card ov-list-card">
     <div class="ov-list-head">
-      <div><h2>bad case 列表</h2><div class="hint">时间段、上报来源、问题类型均可选；点击行进入对应 Session 的错误详情。</div></div>
+      <div><h2>bad case 列表</h2><div class="hint">时间段、上报来源、问题类型均可选；点击 ID 进入错误详情，无可用轨迹时从「轨迹」列查看状态。</div></div>
       <div class="ov-list-filters">
         <input class="inp" type="date" value="${o.listFrom}" data-v2-ov-list-from title="开始时间（可选）">
         <span class="ov-filter-label">~</span>
@@ -6097,8 +6205,8 @@ function v2RenderOverview() {
         <button class="btn sm" data-v2-ov-reset>重置</button>
       </div>
     </div>
-    <table class="ov-table"><thead><tr><th>ID</th><th>bad case</th><th>bad case 上报来源</th><th>类型</th><th>触发点</th><th>上报时间</th><th>Session</th><th>归因</th></tr></thead>
-      <tbody>${listRows || `<tr><td colspan="8"><div class="ov-empty"><b>没有符合筛选条件的 bad case</b>清空列表筛选条件或调整时间范围。</div></td></tr>`}</tbody>
+    <table class="ov-table"><thead><tr><th>ID</th><th>bad case</th><th>bad case 上报来源</th><th>类型</th><th>触发点</th><th>上报时间</th><th>Session</th><th>轨迹</th><th>归因</th></tr></thead>
+      <tbody>${listRows || `<tr><td colspan="9"><div class="ov-empty"><b>没有符合筛选条件的 bad case</b>清空列表筛选条件或调整时间范围。</div></td></tr>`}</tbody>
     </table>
     <div class="v2-pager"><span class="info">共 ${list.arr.length} 条 · 第 ${list.page} / ${list.pages} 页</span><button data-v2-ov-page="${list.page - 1}" ${list.page <= 1 ? 'disabled' : ''}>← 上一页</button><button data-v2-ov-page="${list.page + 1}" ${list.page >= list.pages ? 'disabled' : ''}>下一页 →</button></div>
   </div>`;

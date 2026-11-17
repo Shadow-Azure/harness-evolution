@@ -41,7 +41,11 @@
 
 ## 发布与回滚
 
-- 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。
-- 行为：[deploy/release.sh](../deploy/release.sh) 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → `systemctl restart harness-api` → 探活 `/api/health`（最长 60 秒）。
-- 回滚：探活失败时软链退回上一 release 并重启；本地保留最近 5 个 release。
-- 迁移幂等：连续发布对已应用的迁移零副作用。
+- 触发：push main → CI 全绿 → `Deploy`；也可 `workflow_dispatch`。
+- 行为：[deploy/release.sh](../deploy/release.sh) 安装依赖 → `alembic upgrade head` → 切换 `current` 软链 → 重启 harness-api → 探活 `/api/health`（最长 60 秒）。
+- 回滚：探活失败时软链退回上一 release 并重启；保留最近 5 个 release。
+- 迁移幂等：连续发布无副作用。
+
+## 故障排查
+
+- bad case 详情 409/503 表示轨迹未就绪，不是数据丢失；检查轨迹查询配置或补 `sessionSource`。
