@@ -8,14 +8,14 @@
 
 - Node ≥ 22、pnpm ≥ 10、Python ≥ 3.12。
 - 首次 clone 后跑 `pnpm install && pnpm setup:api`；Git hooks 用 `pnpm install:hooks`。
-- 需要 `gh` 已登录才能使用 `flow:sync` 与 `verify:flow-online`。
+- `flow:sync` 与 `verify:flow-online` 需要 `gh` 登录。
 - `pnpm dev` 开启 API 文档；生产默认关闭或设 `HE_DOCS_ENABLED=false`。
 - `pnpm dev` 默认 SQLite；MySQL 设 `HE_DB_DIALECT`/`HE_DB_URL`，凭据仅走环境。
 - 本地 session/生成库 gitignored；CI 只用合成 fixtures。
 
 ## 开发流程
 
-流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。
+流程树初始化后，改动先立 issue：`.agents/flow/` 里 roadmap → milestone → issue 工作文件，契约与优先级推进规则见 [.agents/flow/README.md](../.agents/flow/README.md)。新 issue 用 `pnpm flow:new-issue -- …` 生成三件套；提交与 PR 标题含 `(#N)`；`pnpm flow:sync` 把流程树同步到 GitHub 并回填编号。删除兼容层前按 [compatibility.md](compatibility.md) 的清单执行。
 
 ## 日常循环
 

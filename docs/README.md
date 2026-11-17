@@ -8,15 +8,16 @@
 
 | 文档 | 回答什么 |
 |---|---|
-| [AGENTS.md](AGENTS.md) | 文档分层、写作规则与门禁入口 |
-| [architecture.md](architecture.md) | 服务边界、数据流、数据层策略与当前 API |
+| [AGENTS.md](AGENTS.md) | 文档分层、写作规则与门禁 |
+| [architecture.md](architecture.md) | 服务边界、数据流、数据层与 API |
+| [compatibility.md](compatibility.md) | V1 兼容面、触发版本与机械退役清单 |
 | [roadmap.md](roadmap.md) | 产品阶段路线与各阶段验收 |
-| [development.md](development.md) | 本地环境、日常循环、提交与流程操作 |
-| [deployment.md](deployment.md) | 阿里云部署形态与发布回滚 |
-| [review.md](review.md) | PR 结构化检视、证据要求与分流表 |
-| [charter.md](charter.md) | 实验协议、进化判定与安全边界 |
-| [metrics.md](metrics.md) | 主指标、护栏指标与运行记录要求 |
-| [i18n/README.md](i18n/README.md) | 双语三件套、重录与豁免规则 |
+| [development.md](development.md) | 本地环境、日常循环与提交流程 |
+| [deployment.md](deployment.md) | 阿里云部署与发布回滚 |
+| [review.md](review.md) | PR 检视、证据要求与分流表 |
+| [charter.md](charter.md) | 实验协议、进化判定与边界 |
+| [metrics.md](metrics.md) | 主指标、护栏指标与记录要求 |
+| [i18n/README.md](i18n/README.md) | 双语三件套、重录与豁免 |
 | [i18n/terminology.md](i18n/terminology.md) | 中英术语对齐表与禁用替写 |
 | [i18n/translation-prompt.md](i18n/translation-prompt.md) | 补英文侧的操作模板 |
 | [postmortem/README.md](postmortem/README.md) | 事故复盘的结构与编号规则 |
