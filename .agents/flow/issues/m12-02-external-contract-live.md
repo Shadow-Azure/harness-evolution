@@ -10,7 +10,7 @@ depends:
   - m10-02
   - m12-01
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - apps/api/alembic/**
