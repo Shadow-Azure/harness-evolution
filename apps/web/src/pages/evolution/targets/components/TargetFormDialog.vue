@@ -10,8 +10,6 @@ import type {
   TargetServerError,
 } from "../targetErrors";
 
-const EMPTY_SERVER_ERROR: TargetServerError = { summary: "" };
-
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -27,7 +25,7 @@ const props = withDefaults(
     versionsLoading: false,
     versionsError: false,
     submitting: false,
-    serverError: () => EMPTY_SERVER_ERROR,
+    serverError: () => ({ summary: "" }),
   },
 );
 
