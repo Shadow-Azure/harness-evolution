@@ -12,7 +12,7 @@
   "facts": [
     { "label": "应用", "value": "Harness Evolution Web + API" },
     { "label": "分支", "value": "agent/develop-m10-05-2c8a3d899d90" },
-    { "label": "提交", "value": "a62a8f3" },
+    { "label": "提交", "value": "281981d" },
     { "label": "数据", "value": "fixtures/m2-synthetic + m10_05_seed.py" },
     { "label": "目标", "value": "skill:synthetic-review@synthetic-1" },
     { "label": "窗口", "value": "2026-10-20 ~ 2026-10-25" }
