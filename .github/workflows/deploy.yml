@@ -63,6 +63,30 @@ jobs:
           rsync -az -e "$SSH_CMD" deploy/ "$SSH_USER@$SSH_HOST:/opt/harness/shared/config/"
           $SSH_CMD "$SSH_USER@$SSH_HOST" "chmod +x /opt/harness/shared/config/release.sh"
 
+      - name: 注入评测配置（可选，secrets 未配置时跳过）
+        env:
+          HE_EVAL_MODE: ${{ secrets.HE_EVAL_MODE }}
+          HE_EVAL_BASE_URL: ${{ secrets.HE_EVAL_BASE_URL }}
+          HE_EVAL_API_KEY: ${{ secrets.HE_EVAL_API_KEY }}
+        run: |
+          set -u
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          REMOTE_ENV="/opt/harness/shared/.env"
+          VALUES=()
+          [ -n "$HE_EVAL_MODE" ] && VALUES+=("HE_EVAL_MODE=$HE_EVAL_MODE")
+          [ -n "$HE_EVAL_BASE_URL" ] && VALUES+=("HE_EVAL_BASE_URL=$HE_EVAL_BASE_URL")
+          [ -n "$HE_EVAL_API_KEY" ] && VALUES+=("HE_EVAL_API_KEY=$HE_EVAL_API_KEY")
+          if [ "${#VALUES[@]}" -eq 0 ]; then
+            echo "未配置 HE_EVAL_* secrets，跳过评测配置注入（保持服务器现状）"
+            exit 0
+          fi
+          for line in "${VALUES[@]}"; do
+            key="${line%%=*}"
+            # 原子更新远端 .env：存在同名键就地替换，不存在则追加；密钥不回显不落日志。
+            $SSH_CMD "$SSH_USER@$SSH_HOST" "f=$REMOTE_ENV; touch \"\$f\"; chmod 600 \"\$f\"; if grep -q \"^${key}=\" \"\$f\"; then sed -i \"s|^${key}=.*|${line}|\" \"\$f\"; else printf '%s\n' '${line}' >> \"\$f\"; fi"
+          done
+          echo "评测配置已注入 ${#VALUES[@]} 个 HE_EVAL_* 变量"
+
       - name: 执行发布（迁移 + 切换 + 重启 + 探活）
         env:
           SHA: ${{ github.event.workflow_run.head_sha || github.sha }}

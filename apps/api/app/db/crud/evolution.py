@@ -878,6 +878,19 @@ class EvolutionRepository:
             )
         return record_from_evolution_round(cast(Mapping[str, Any], row)) if row else None
 
+    async def update_run_eval_config(
+        self,
+        run_id: str,
+        eval_config: Mapping[str, Any],
+    ) -> None:
+        """Overwrite the frozen eval snapshot before the first evaluation runs."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(eval_config=deepcopy(dict(eval_config))),
+            )
+
     async def mark_round_patching(
         self,
         round_id: str,
@@ -928,6 +941,53 @@ class EvolutionRepository:
                 ),
             )
         return result.rowcount == 1
+
+    async def mark_round_failed(
+        self,
+        run_id: str,
+        round_id: str,
+        *,
+        stage: str,
+        message: str,
+    ) -> EvolutionRoundRecord:
+        """Fail one unrecoverable round and its run with a safe sub-step stage."""
+        finished_at = now_shanghai()
+        async with self._database.transaction() as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(evolution_rounds)
+                    .where(
+                        evolution_rounds.c.id == round_id,
+                        evolution_rounds.c.run_id == run_id,
+                        evolution_rounds.c.status == "patching",
+                    )
+                    .values(
+                        status="failed",
+                        error_message=message,
+                        finished_at=finished_at,
+                    ),
+                ),
+            )
+            if result.rowcount != 1:
+                raise StageConflict(
+                    status_code=409,
+                    current=0,
+                    target=1,
+                    reason="round cannot fail from the patching state",
+                )
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(
+                    status="failed",
+                    error_stage=stage,
+                    error_message=message,
+                    error_at=finished_at,
+                    finished_at=finished_at,
+                ),
+            )
+        return await self._required_round(round_id)
 
     async def mark_round_candidate(
         self,

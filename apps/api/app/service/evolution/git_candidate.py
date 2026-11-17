@@ -9,6 +9,7 @@ import html
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -18,7 +19,7 @@ from urllib.parse import urlsplit
 from app.db.crud.evolution import EvolutionRepository
 from app.db.models.evolution import EvolutionRoundRecord, EvolutionRunRecord
 from app.service.evolution.backoff import next_retry_at
-from app.service.evolution.engine.contracts import RunBlocked
+from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
     EvolutionRunEventService,
@@ -26,6 +27,11 @@ from app.service.evolution.events import (
     EvolutionRunEventType,
 )
 from app.service.evolution.git_failures import classify_git_failure
+from app.service.evolution.patch_source import (
+    PLACEHOLDER_PATCH_NOTE,
+    PatchSource,
+    default_patch_source_factory,
+)
 from app.service.evolution.state import StageConflict
 from app.third_party_api.git.workspace import (
     CandidateWorkspace,
@@ -67,6 +73,7 @@ class CandidateTrace:
     analysis: str
     sources: tuple[CandidateSource, ...] = ()
     patch_file: str = ".harness-evolution.md"
+    patch_note: str = PLACEHOLDER_PATCH_NOTE
 
 
 def build_candidate_message(
@@ -177,8 +184,9 @@ class EvolutionCandidateService:
         push_attempts: int = 3,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         now: Callable[[], datetime] | None = None,
+        patch_source_factory: Callable[[EvolutionRunRecord], PatchSource] | None = None,
     ) -> None:
-        """Bind durable state, git operations, timing, and trace links."""
+        """Bind durable state, git operations, timing, trace links, and patch seam."""
         self._runs = runs
         self._workspaces = workspaces
         self._events = events
@@ -187,6 +195,12 @@ class EvolutionCandidateService:
         self._push_attempts = push_attempts
         self._sleep = sleep
         self._now = now or (lambda: datetime.now().astimezone())
+        self._patch_source_factory = patch_source_factory or default_patch_source_factory
+
+    @property
+    def patch_source_factory(self) -> Callable[[EvolutionRunRecord], PatchSource]:
+        """Expose the bound patch seam for composition-root diagnostics."""
+        return self._patch_source_factory
 
     async def publish(
         self,
@@ -204,12 +218,17 @@ class EvolutionCandidateService:
             round_.id,
             started_at=self._now(),
         )
-        patch = placeholder_patch(run, current.seq)
+        patch_source = self._patch_source_factory(run)
+        try:
+            patch = await patch_source.build(run, current.seq, trace)
+            change_note = await patch_source.change_note(run, current.seq, trace)
+        except ConfigError as exc:
+            await self._fail_patch_generation(run, current.id, exc, job_id=job_id)
         candidate_ref = f"{prepared.branch}/candidate/r{current.seq}"
         message = build_candidate_message(
             run,
             round_seq=current.seq,
-            trace=_with_patch_file(trace, patch.file),
+            trace=_with_patch_file(trace, patch.file, change_note),
             patch_sha256=patch.sha256,
             created_at=self._now(),
             web_base_url=self._web_base_url,
@@ -234,7 +253,7 @@ class EvolutionCandidateService:
             candidate_ref=candidate.ref,
             candidate_commit=candidate.commit,
             candidate_message=candidate.message,
-            patch={"file": patch.file, "lines": list(patch.lines)},
+            patch={"file": patch.file, "lines": list(patch.lines), "note": change_note},
         )
         await self._record(
             run.id,
@@ -487,7 +506,11 @@ class EvolutionCandidateService:
         message = build_accepted_message(
             run,
             round_seq=deciding.seq,
-            trace=_with_patch_file(trace, _patch_file(deciding)),
+            trace=_with_patch_file(
+                trace,
+                _patch_file(deciding),
+                _patch_note(deciding),
+            ),
             patch_sha256=patch_hash,
             created_at=_candidate_created_at(deciding, self._now()),
             evaluated_commit=evaluated_commit,
@@ -582,6 +605,35 @@ class EvolutionCandidateService:
         )
         return rejected
 
+    async def _fail_patch_generation(
+        self,
+        run: EvolutionRunRecord,
+        round_id: str,
+        error: ConfigError,
+        *,
+        job_id: str | None,
+    ) -> NoReturn:
+        """Fail the round and run terminally for unrecoverable patch generation."""
+        message = sanitize_message(str(error), limit=2_000)
+        with suppress(StageConflict):
+            await self._runs.mark_round_failed(
+                run.id,
+                round_id,
+                stage="patch",
+                message=message,
+            )
+        await self._record(
+            run.id,
+            "run_failed",
+            stage="candidate",
+            message=message,
+            round_id=round_id,
+            job_id=job_id,
+            level="error",
+            error=error,
+        )
+        raise error from None
+
     async def _record(
         self,
         run_id: str,
@@ -673,7 +725,7 @@ def _message_sections(
             f"{case_list}。"
         ),
         f"## 分析\n\n{analysis}",
-        (f"## 改动\n\n- {modified}（V1 占位 patch；真实文件已写入 isolated workspace）"),
+        f"## 改动\n\n- {modified}（{trace.patch_note}）",
         "## 追溯\n\n" + _trace_lines(run, trace, web_base_url=web_base_url),
     ]
 
@@ -809,26 +861,6 @@ def _unique(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def placeholder_patch(run: EvolutionRunRecord, round_seq: int) -> Patch:
-    """Return a deterministic patch that is still written and committed for real."""
-    sub_dir = PurePosixPath(run.sub_dir or ".")
-    relative = (
-        PurePosixPath(".harness-evolution") / f"candidate-r{round_seq}.md"
-        if sub_dir == PurePosixPath(".")
-        else sub_dir / ".harness-evolution" / f"candidate-r{round_seq}.md"
-    )
-    return Patch(
-        file=relative.as_posix(),
-        lines=(
-            f"# Harness Evolution candidate r{round_seq}",
-            "",
-            f"- Run: {run.id}",
-            f"- Target: {run.target_name}@{run.target_version}",
-            "- This V1 patch is a deterministic placeholder applied to an isolated workspace.",
-        ),
-    )
-
-
 def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
     """Reconstruct immutable workspace facts persisted during prepare."""
     if (
@@ -847,8 +879,12 @@ def _prepared_workspace(run: EvolutionRunRecord) -> PreparedWorkspace:
     )
 
 
-def _with_patch_file(trace: CandidateTrace, file: str) -> CandidateTrace:
-    """Return the trace with its actual applied patch destination."""
+def _with_patch_file(
+    trace: CandidateTrace,
+    file: str,
+    note: str | None = None,
+) -> CandidateTrace:
+    """Return the trace with its actual applied patch destination and note."""
     return CandidateTrace(
         cluster_id=trace.cluster_id,
         cluster_title=trace.cluster_title,
@@ -857,6 +893,7 @@ def _with_patch_file(trace: CandidateTrace, file: str) -> CandidateTrace:
         analysis=trace.analysis,
         sources=trace.sources,
         patch_file=file,
+        patch_note=note or trace.patch_note,
     )
 
 
@@ -866,6 +903,14 @@ def _patch_file(round_: EvolutionRoundRecord) -> str:
         return ".harness-evolution.md"
     value = round_.patch.get("file")
     return value if isinstance(value, str) and value else ".harness-evolution.md"
+
+
+def _patch_note(round_: EvolutionRoundRecord) -> str:
+    """Read the stored change description for accepted-message reproduction."""
+    if not isinstance(round_.patch, Mapping):
+        return PLACEHOLDER_PATCH_NOTE
+    value = round_.patch.get("note")
+    return value if isinstance(value, str) and value else PLACEHOLDER_PATCH_NOTE
 
 
 def _patch_hash(round_: EvolutionRoundRecord) -> str:

@@ -35,6 +35,7 @@
    - Secret `ALIYUN_SSH_KEY` = 本机 `~\.ssh\harness-deploy` **私钥**全文（含 BEGIN/END 行；用 `gh secret set ALIYUN_SSH_KEY < ~\.ssh\harness-deploy` 直推，不经聊天与剪贴板）；
    - Variable `ALIYUN_SSH_PORT` = 22。
 2. Settings → Environments → 新建 `production`（可加 required reviewers）。
+3. （可选）接真实评测平台时（#244）：`gh secret set HE_EVAL_MODE`（填 `http`）、`gh secret set HE_EVAL_BASE_URL`、`gh secret set HE_EVAL_API_KEY`；`Deploy` 流水线会把它们注入 `/opt/harness/shared/.env`，未配置时跳过、不影响发布。`HE_EVAL_API_KEY` 走 `gh secret set HE_EVAL_API_KEY --body "<密钥>"` 直推，不在聊天或截图出现。
 
 ## 5. 首次发布与验收
 

@@ -23,6 +23,10 @@ class ConfigError(RuntimeError):
     """Raised when an engine selection or stage capability is invalid."""
 
 
+class EvalGatewayConfigError(ConfigError):
+    """Raised when an evaluation gateway configuration is invalid or incomplete."""
+
+
 EvolutionBlockedStage = Literal["patch", "push", "eval", "attribution"]
 
 

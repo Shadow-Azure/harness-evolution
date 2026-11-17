@@ -93,8 +93,10 @@ from app.service.evolution.events import (
     EvolutionRunEventService,
     EvolutionRunTopicAuthorizer,
 )
+from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.patch_source import default_patch_source_factory
 from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
 from app.service.evolution.prepare import EvolutionPrepareService, WorkspacePreparer
 from app.service.evolution.probe_query import ProbeQueryService
@@ -328,7 +330,12 @@ def create_app(
         candidate_workspace_manager,
         events=evolution_events,
         web_base_url=resolved_settings.web_base_url,
+        patch_source_factory=lambda run: default_patch_source_factory(
+            run,
+            fallback_mode=resolved_settings.patch_source_mode,
+        ),
     )
+    eval_gateway_factory = build_eval_gateway_factory(resolved_settings)
 
     def gateway_for_run(run: Any) -> Any:
         """Resolve a gateway through the run's registered engine and frozen config."""
@@ -338,6 +345,7 @@ def create_app(
                 reads=cast(Any, probe_query_repository),
                 writes=evolution_repository,
                 events=evolution_events,
+                gateway_factory=eval_gateway_factory,
             ),
         )
         return engine.gateway()
@@ -541,6 +549,8 @@ def create_app(
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates
+    app.state.evolution_gateway_factory = eval_gateway_factory
+    app.state.evolution_patch_source_factory = evolution_candidates.patch_source_factory
     app.state.evolution_advance = evolution_advance
     app.state.evolution_apply = evolution_apply
     app.state.evolution_finalize = evolution_finalize
