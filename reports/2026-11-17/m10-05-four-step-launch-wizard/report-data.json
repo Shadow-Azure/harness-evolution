@@ -1,0 +1,197 @@
+{
+  "title": "m10-05 四步启动向导 · 集成冒烟报告",
+  "eyebrow": "Computer Use · 真实 API + SQLite + 无头 Chrome",
+  "summary": "四步启动向导在真实 API、fixture 数据库与无头 Chrome 中走通「选择范围 → Session 关联 → 潜在 bad case → 归因预览」；仅聚类与启动自进化两个出口分别落到 cluster preview 与 run detail。与 prototype HTML 的同场景截图逐屏对比，未发现需要修复的视觉或交互差异。",
+  "meta": "2026-11-17 · 1408×960 · Asia/Shanghai",
+  "metrics": [
+    { "value": "6", "label": "冒烟场景" },
+    { "value": "0", "label": "需修复缺陷" },
+    { "value": "15", "label": "向导单测" },
+    { "value": "1 / 1", "label": "E2E" }
+  ],
+  "facts": [
+    { "label": "应用", "value": "Harness Evolution Web + API" },
+    { "label": "分支", "value": "agent/develop-m10-05-2c8a3d899d90" },
+    { "label": "提交", "value": "97af57d" },
+    { "label": "数据", "value": "fixtures/m2-synthetic + m10_05_seed.py" },
+    { "label": "目标", "value": "skill:synthetic-review@synthetic-1" },
+    { "label": "窗口", "value": "2026-10-20 ~ 2026-10-25" }
+  ],
+  "matrix": {
+    "columns": ["#", "场景", "结果", "观察", "证据"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "第 1 步 · 选择范围与策略",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "空间、对象、版本、时间段、默认策略与自定义策略均可见；与 prototype 的字段顺序和层级一致。",
+        "evidence": ["after-01-wizard-step1.png", "prototype-01-wizard-step1.png", "before-01-wizard-step1.png"]
+      },
+      {
+        "id": "02",
+        "name": "第 2 步 · Session 关联",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "真实 matcher 关联到「示例会话三：技能分叉」；五段统计为 4 上报 / 1 关联 / 3 跳过 / 0 版本未知 / 0 待同步。",
+        "evidence": ["after-02-wizard-step2.png", "prototype-02-wizard-step2.png", "before-02-wizard-step2.png"]
+      },
+      {
+        "id": "03",
+        "name": "第 3 步 · 潜在 bad case",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "策略纳入 badcase-synthetic-0003，命中原因 self 上报；按设计新增命中原因列，行序与触发点时间由服务端给出。",
+        "evidence": ["after-03-wizard-step3.png", "prototype-03-wizard-step3.png"]
+      },
+      {
+        "id": "04",
+        "name": "第 4 步 · 归因预览与缓存开关",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "四个数字为潜在 1 / 复用 0 / 新增 1 / 历史非该对象 0；缓存开关默认开启，切换会重新请求只读归因预览。",
+        "evidence": ["after-04-wizard-step4.png", "prototype-04-wizard-step4.png"]
+      },
+      {
+        "id": "05",
+        "name": "仅聚类出口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "POST cluster-previews 返回 202 后跳到 /evolution/cluster/<runId>，页面显示「仅聚类分析：未执行 patch 生成与评测迭代」与「准备中」。",
+        "evidence": ["after-05-cluster-preview.png"]
+      },
+      {
+        "id": "06",
+        "name": "启动自进化出口",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "POST runs 返回 202 后跳到 /evolution/runs/<runId>；本地 git origin 让异步 prepare 保持「准备中」，证明路由与 202 受理语义正确。",
+        "evidence": ["after-06-run-detail.png"]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P3",
+      "title": "运行详情仍是 V1 六步页",
+      "facts": [
+        { "label": "实际", "value": "run detail 显示六步详情，且沿用旧 prepare 的 probe 命中口径。" },
+        { "label": "预期", "value": "七步详情与潜在/归因/聚类新管线属于并行的 m10-04 交付边界。" },
+        { "label": "结论", "value": "不是 m10-05 向导缺陷；已在本 PR 的限制中说明，m10-04 合入后统一。" }
+      ],
+      "state": { "kind": "warn", "label": "已知边界" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/before-01-wizard-step1.png",
+      "alt": "V1 两步向导的第一步",
+      "label": "Before · V1 app",
+      "caption": "origin/main b698cc1 的真实 V1 向导：两步、模型多选、无潜在策略。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-01-wizard-step1.png",
+      "alt": "四步向导的第一步",
+      "label": "After · 第 1 步",
+      "caption": "四步向导第 1 步：空间、对象/版本、bad case 时间段、默认/自定义策略。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/prototype-01-wizard-step1.png",
+      "alt": "prototype 第 1 步",
+      "label": "Prototype · 第 1 步",
+      "caption": "plans/ui-prototype-v2/harness-evolution.html 的同场景原型。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-02-wizard-step2.png",
+      "alt": "四步向导的第二步",
+      "label": "After · 第 2 步",
+      "caption": "Session 关联：五段统计、4 条/页表格、空态禁用前进。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/prototype-02-wizard-step2.png",
+      "alt": "prototype 第 2 步",
+      "label": "Prototype · 第 2 步",
+      "caption": "原型第 2 步，字段与信息层级一致。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-03-wizard-step3.png",
+      "alt": "四步向导的第三步",
+      "label": "After · 第 3 步",
+      "caption": "潜在 bad case：服务端 summary、命中原因、顺序未知提示。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/prototype-03-wizard-step3.png",
+      "alt": "prototype 第 3 步",
+      "label": "Prototype · 第 3 步",
+      "caption": "原型第 3 步；命中原因列按设计 08 §9.2 增补。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-04-wizard-step4.png",
+      "alt": "四步向导的第四步",
+      "label": "After · 第 4 步",
+      "caption": "归因预览：缓存开关、四个数字、两个出口。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/prototype-04-wizard-step4.png",
+      "alt": "prototype 第 4 步",
+      "label": "Prototype · 第 4 步",
+      "caption": "原型第 4 步；缓存开关与四数布局一致。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-05-cluster-preview.png",
+      "alt": "仅聚类预览页",
+      "label": "After · 仅聚类出口",
+      "caption": "cluster-previews 202 后落到仅聚类预览，显示准备中。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/after-06-run-detail.png",
+      "alt": "启动自进化后的运行详情",
+      "label": "After · 启动自进化出口",
+      "caption": "runs 202 后落到运行详情；异步 prepare 在本地 git origin 上保持准备中。",
+      "variant": "wide"
+    }
+  ],
+  "coverage": {
+    "columns": ["范围", "覆盖", "结论", "建议"],
+    "rows": [
+      {
+        "area": "四步状态机与表单校验",
+        "coverage": "VTU + MSW（15 条）",
+        "conclusion": "字段校验、策略规则、focusCase、空态、分页、缓存切换、两个出口均有断言。",
+        "recommendation": "保持为向导回归主干。"
+      },
+      {
+        "area": "真实浏览器集成",
+        "coverage": "E2E（真实 API + SQLite + 无头 Chrome）",
+        "conclusion": "走通四步并验证两个 202 出口与路由。",
+        "recommendation": "m10-04 合入后补七步 run detail 的断言。"
+      },
+      {
+        "area": "启动条件快照",
+        "coverage": "API 测试",
+        "conclusion": "policy/cacheEnabled 校验并冻结到 evolution_runs。",
+        "recommendation": "由 m10-04 继续验证 prepare 对快照的消费。"
+      },
+      {
+        "area": "视觉一致性",
+        "coverage": "真实 app 截图 + prototype 截图",
+        "conclusion": "逐步对比无阻断差异；数据名与设计增补列已说明。",
+        "recommendation": "后续 UI 改动保持同场景 1408×960 截图。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "通过 · 无向导缺陷",
+    "summary": "四步向导与两个出口在真实环境中通过；唯一遗留是并行 m10-04 的七步详情边界，不影响本 PR 的向导交付。",
+    "points": [
+      "m10-04 合入后重跑一次本冒烟，确认七步 run detail 与潜在/归因管线。",
+      "截图与报告由 report-data.json 生成，不手改 HTML。"
+    ]
+  },
+  "footer": "由 computer-use-smoke-reporting 渲染 · 无凭据或私密数据 · 1408×960"
+}
