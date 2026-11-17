@@ -11,7 +11,7 @@ depends:
   - m10-03
   - m7-08
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/evolution/**
   - apps/web/src/api/**
