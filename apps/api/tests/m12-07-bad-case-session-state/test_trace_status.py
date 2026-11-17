@@ -13,7 +13,11 @@ from sqlalchemy import insert, select, update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
-from app.db.crud.bad_case_sync import BadCaseRootSyncRepository, BadCaseRootSyncRow
+from app.db.crud.bad_case_sync import (
+    BadCaseRootSyncRepository,
+    BadCaseRootSyncRow,
+    insert_pending_root,
+)
 from app.db.crud.fixtures import run_corpus_seed
 from app.db.models.domain import bad_case_root_sync, bad_cases
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
@@ -380,3 +384,38 @@ def test_no_source_marks_every_unready_state_non_retryable() -> None:
 
     with_source = classify_trace_status(row, session_ready=False, source_available=True)
     assert with_source.retryable is True
+
+
+async def test_reports_with_a_source_rearm_a_parked_root(
+    trace_status: StatusEnvironment,
+) -> None:
+    """A fresh sessionSource turns a deterministic source failure back into pending."""
+    repository = BadCaseRootSyncRepository(trace_status.database)
+    async with trace_status.database.transaction() as session:
+        rearmed = await insert_pending_root(
+            session,
+            UNAVAILABLE_ROOT,
+            now=now_shanghai(),
+            rearm_from_source=True,
+        )
+    assert rearmed is True
+    state = await repository.get(UNAVAILABLE_ROOT)
+    assert state is not None
+    assert state.status == "pending"
+    assert state.last_error is None
+    assert state.source_snapshot is None
+
+
+async def test_startup_recovers_a_synced_root_whose_session_disappeared(
+    trace_status: StatusEnvironment,
+) -> None:
+    """A synced root without a normalized Session gets one fresh claim."""
+    repository = BadCaseRootSyncRepository(trace_status.database)
+    rearmed = await repository.rearm_missing_sessions()
+    assert rearmed >= 1
+    state = await repository.get(SYNCED_LOST_ROOT)
+    assert state is not None
+    assert state.status == "pending"
+    ready = await repository.get(READY_SESSION)
+    assert ready is not None
+    assert ready.status == "synced"

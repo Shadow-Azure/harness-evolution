@@ -8831,7 +8831,7 @@
                 }
               }
             },
-            "description": "Problem belongs to another Session"
+            "description": "Problem belongs to another Session or its Session is still syncing"
           },
           "422": {
             "content": {
@@ -8949,7 +8949,7 @@
                 }
               }
             },
-            "description": "Problem belongs to another Session"
+            "description": "Problem belongs to another Session or its Session is still syncing"
           },
           "422": {
             "content": {

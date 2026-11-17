@@ -198,7 +198,7 @@ const flowNote = computed(() => {
   return `保留全部并发分支，高亮 ${prefix}${selectedProblem.value.title}`;
 });
 
-const traceStatus = computed<TraceStatusDetails | null>(() => {
+const traceDetails = computed<TraceStatusDetails | null>(() => {
   const error = detailQuery.error.value;
   if (!(error instanceof ApiError)) return null;
   if (
@@ -208,6 +208,19 @@ const traceStatus = computed<TraceStatusDetails | null>(() => {
     return null;
   }
   return parseTraceStatusDetails(error.details);
+});
+
+const traceStatus = computed<TraceStatusDetails | null>(() => {
+  const details = traceDetails.value;
+  if (!details) return null;
+  if (
+    details.sessionId &&
+    sessionId.value &&
+    details.sessionId !== sessionId.value
+  ) {
+    return null;
+  }
+  return details;
 });
 
 const routeFatalError = computed(() => {
@@ -228,6 +241,17 @@ const routeFatalError = computed(() => {
     };
   }
   if (traceStatus.value) return null;
+  if (
+    traceDetails.value?.sessionId &&
+    sessionId.value &&
+    traceDetails.value.sessionId !== sessionId.value
+  ) {
+    return {
+      code: "BAD_CASE_SESSION_MISMATCH",
+      message: "问题不属于当前 Session。",
+      retry: false,
+    };
+  }
   const error = detailQuery.error.value;
   if (error instanceof ApiError && error.code === "BAD_CASE_SESSION_MISMATCH") {
     return {

@@ -36,6 +36,16 @@ class FakeRepository:
         self.last_run: datetime | None = None
         self.error: str | None = None
         self.report_source = False
+        self.resets = 0
+        self.missing_resets = 0
+
+    async def reset_deterministic_failures(self) -> int:
+        self.resets += 1
+        return 0
+
+    async def rearm_missing_sessions(self) -> int:
+        self.missing_resets += 1
+        return 0
 
     async def has_report_source(self) -> bool:
         return self.report_source
@@ -104,6 +114,47 @@ def _coordinator(
         cast(Any, repository),
         settings,
     )
+
+
+@pytest.mark.asyncio
+async def test_start_rearms_only_with_an_enabled_scheduler_and_a_source() -> None:
+    """Startup recovery is one-shot and requires a usable source."""
+    enabled = FakeRepository()
+    enabled.report_source = True
+    coordinator = _coordinator(
+        FakeJobs(),
+        enabled,
+        _settings(bad_case_sync_interval_seconds=1),
+    )
+    await coordinator.start()
+    await coordinator.stop()
+    assert enabled.resets == 1
+    assert enabled.missing_resets == 1
+
+    no_source = FakeRepository()
+    coordinator = _coordinator(
+        FakeJobs(),
+        no_source,
+        _settings(
+            session_query_base_url=None,
+            bad_case_sync_interval_seconds=1,
+        ),
+    )
+    await coordinator.start()
+    await coordinator.stop()
+    assert no_source.resets == 0
+    assert no_source.missing_resets == 0
+
+    disabled = FakeRepository()
+    disabled.report_source = True
+    coordinator = _coordinator(
+        FakeJobs(),
+        disabled,
+        _settings(bad_case_sync_interval_seconds=0),
+    )
+    await coordinator.start()
+    assert disabled.resets == 0
+    assert disabled.missing_resets == 0
 
 
 @pytest.mark.asyncio

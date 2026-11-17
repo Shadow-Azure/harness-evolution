@@ -731,6 +731,35 @@ describe("error detail page", () => {
     expect(wrapper.text()).not.toContain("问题详情读取失败");
   });
 
+  it("rejects a trace error whose case belongs to another Session", async () => {
+    mockApi();
+    server.use(
+      http.get(`${badCasesBase}/:caseId`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_SESSION_UNAVAILABLE",
+              message: "session is unavailable",
+              details: {
+                badCaseId: "case-error",
+                sessionId: "another-session",
+                syncStatus: "unavailable",
+                retryable: false,
+              },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    expect(wrapper.text()).toContain("问题不属于当前 Session");
+    expect(wrapper.find("[data-testid='trace-status-panel']").exists()).toBe(false);
+  });
+
   it("opens the top-nav sync status from the trace panel", async () => {
     mockApi();
     server.use(

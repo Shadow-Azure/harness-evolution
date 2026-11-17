@@ -96,7 +96,10 @@ async def list_session_probes(
         401: {"model": ErrorResponse, "description": "Authentication is required"},
         403: {"model": ErrorResponse, "description": "Password change is required"},
         404: {"model": ErrorResponse, "description": "Problem does not exist"},
-        409: {"model": ErrorResponse, "description": "Problem belongs to another Session"},
+        409: {
+            "model": ErrorResponse,
+            "description": "Problem belongs to another Session or its Session is still syncing",
+        },
         503: {"model": ErrorResponse, "description": "Problem Session is not available yet"},
         422: {"model": ErrorResponse, "description": "Request validation failed"},
     },
@@ -121,7 +124,10 @@ async def get_bad_case(
         401: {"model": ErrorResponse, "description": "Authentication is required"},
         403: {"model": ErrorResponse, "description": "Password change is required"},
         404: {"model": ErrorResponse, "description": "Problem does not exist"},
-        409: {"model": ErrorResponse, "description": "Problem belongs to another Session"},
+        409: {
+            "model": ErrorResponse,
+            "description": "Problem belongs to another Session or its Session is still syncing",
+        },
         503: {"model": ErrorResponse, "description": "Problem Session is not available yet"},
         422: {"model": ErrorResponse, "description": "Request validation failed"},
     },

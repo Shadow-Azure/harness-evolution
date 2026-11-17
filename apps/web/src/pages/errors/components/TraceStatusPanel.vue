@@ -55,8 +55,13 @@ const copied = ref(false);
 
 async function copyCaseId() {
   const value = props.caseId || props.details.badCaseId;
+  const clipboard = navigator.clipboard;
+  if (!clipboard) {
+    copied.value = false;
+    return;
+  }
   try {
-    await navigator.clipboard?.writeText(value);
+    await clipboard.writeText(value);
     copied.value = true;
     window.setTimeout(() => {
       copied.value = false;

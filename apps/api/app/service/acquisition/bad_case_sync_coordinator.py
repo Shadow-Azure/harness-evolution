@@ -111,14 +111,16 @@ class BadCaseRootSyncCoordinator:
         return await self.trigger("scheduler")
 
     async def start(self) -> None:
-        """Re-arm deterministic failures when a source can now progress, then start."""
-        # Parked rows stay unavailable while no source can run. Once a global
-        # query or a per-report source exists, one fresh claim is worth it: the
-        # configuration change may be exactly what unblocks them.
-        if await self._sources_available():
-            await self._repository.reset_deterministic_failures()
+        """Re-arm recoverable rows when a source exists, then start the loop."""
         if self._scheduler_task is not None or self._settings.bad_case_sync_interval_seconds == 0:
             return
+        # Parked rows stay unavailable while no source can run. Once a global
+        # query or a per-report source exists, one fresh claim is worth it: the
+        # configuration change may be exactly what unblocks them. A synced root
+        # whose Session disappeared gets the same one-shot recovery.
+        if await self._sources_available():
+            await self._repository.reset_deterministic_failures()
+            await self._repository.rearm_missing_sessions()
         self._stop.clear()
         self._scheduler_task = asyncio.create_task(
             self._scheduler_loop(),

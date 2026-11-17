@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { mount, RouterLinkStub } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import TraceStatusPanel from "./TraceStatusPanel.vue";
 import type { TraceStatusDetails } from "../traceStatus";
@@ -80,6 +80,11 @@ describe("trace status panel", () => {
   });
 
   it("offers the sync entry, refresh and copy actions", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     const wrapper = mountPanel();
     await wrapper.get("[data-testid='trace-open-sync']").trigger("click");
     await wrapper.get("[data-testid='trace-refresh']").trigger("click");
@@ -87,6 +92,7 @@ describe("trace status panel", () => {
 
     expect(wrapper.emitted("open-sync")).toHaveLength(1);
     expect(wrapper.emitted("refresh")).toHaveLength(1);
+    expect(writeText).toHaveBeenCalledWith("case-no-trace");
     expect(wrapper.get("[data-testid='trace-copy-id']").text()).toContain(
       "已复制",
     );

@@ -5499,7 +5499,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Problem belongs to another Session */
+            /** @description Problem belongs to another Session or its Session is still syncing */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -5577,7 +5577,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Problem belongs to another Session */
+            /** @description Problem belongs to another Session or its Session is still syncing */
             409: {
                 headers: {
                     [name: string]: unknown;

@@ -297,6 +297,7 @@ test("m12-07 bad case without a Session shows trace state instead of 404", async
     );
     assert.equal(pendingView.chip, "未同步");
     assert.match(pendingView.text, /没有被删除/);
+    assert.match(pendingView.text, /不会自动重试/);
     assert.match(pendingView.text, /m12-07-pending/);
     assert.doesNotMatch(pendingView.body, /问题不存在或已删除/);
     assert.equal(
