@@ -221,14 +221,6 @@ async function selectOption(page, selector, label) {
   );
 }
 
-async function clientNavigate(page, pathname) {
-  await evaluate(
-    page,
-    `history.pushState({}, "", ${JSON.stringify(pathname)});
-     window.dispatchEvent(new PopStateEvent("popstate")); true`,
-  );
-}
-
 async function screenshot(page, name, full = true) {
   if (!screenshotDir) return;
   await mkdir(screenshotDir, { recursive: true });
@@ -572,7 +564,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "02-lab-admin-ingest.png");
 
     // 4. The bad-case overview reflects the three ingested reports.
-    await clientNavigate(page, `${labPath}/overview`);
+    await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/overview` });
     const overview = await waitForDocument(
       page.session,
       `(() => {
@@ -609,7 +601,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "04-lab-overview-targets.png");
 
     // 6. Sessions are scoped to this workspace and Enter search restores them.
-    await clientNavigate(page, `${labPath}/sessions`);
+    await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/sessions` });
     const sessions = await waitForDocument(
       page.session,
       `(() => {
@@ -637,10 +629,9 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "05-lab-sessions.png", false);
 
     // 7. Error detail is still un-attributed before the first run.
-    await clientNavigate(
-      page,
-      `${labPath}/sessions/${sessionId}/errors?case=${ingestCases[0].badCaseId}&tab=attr`,
-    );
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${labPath}/sessions/${sessionId}/errors?case=${ingestCases[0].badCaseId}&tab=attr`,
+    });
     const unattributed = await waitForDocument(
       page.session,
       `(() => {
@@ -654,7 +645,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "06-lab-error-unattributed.png");
 
     // 8. Four-step wizard previews the same two potential cases.
-    await clientNavigate(page, `${labPath}/evolution`);
+    await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/evolution` });
     await click(page, "[data-testid='open-launch-wizard']");
     await waitForDocument(
       page.session,
@@ -727,7 +718,9 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "09-cluster-preview.png");
 
     // 9. Run detail shows seven steps and the cluster step is clickable.
-    await clientNavigate(page, `${labPath}/evolution/runs/${runId}`);
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${labPath}/evolution/runs/${runId}`,
+    });
     const runDetail = await waitForDocument(
       page.session,
       `(() => {
@@ -779,7 +772,9 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     await screenshot(page, "11-lab-error-attributed.png");
 
     // 11. The execution flow defaults to lane DAG and keeps the tree toggle.
-    await clientNavigate(page, `${labPath}/sessions/${sessionId}`);
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${labPath}/sessions/${sessionId}`,
+    });
     const flow = await waitForDocument(
       page.session,
       `(() => {
@@ -808,7 +803,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
     );
 
     // 12. Switching back to the default workspace must not reuse the lab cache.
-    await clientNavigate(page, `${labPath}/overview`);
+    await page.session.send("Page.navigate", { url: `${baseUrl}${labPath}/overview` });
     await waitForDocument(
       page.session,
       `document.querySelector("[data-testid='ov-stat-badcases'] b")?.textContent?.trim() === "3"`,
