@@ -1703,7 +1703,14 @@ class EvolutionRepository:
         return round_
 
     async def write_final(self, values: Mapping[str, Any]) -> EvolutionFinalRecord:
-        """Insert or replace a run's single final-evaluation row."""
+        """Insert or replace a run's single final-evaluation row.
+
+        The design state machine (07 §5.1) ends the run at unit ``5+M+1`` when
+        the terminal evaluation lands, which is also the readability threshold
+        of the ``final`` step, so the cursor advances in the same transaction.
+        Re-entering finalize after that advance (retry path) keeps updating the
+        row without touching the cursor again.
+        """
         run_id = str(values["run_id"])
         payload = {
             "best_version": values["best_version"],
@@ -1724,7 +1731,8 @@ class EvolutionRepository:
                 ).scalar_one(),
             )
             expected = 5 + cluster_count
-            if current != expected or status != "running":
+            advancing = current == expected and status == "running"
+            if not advancing and current != expected + 1:
                 raise StageConflict(
                     status_code=409,
                     current=current,
@@ -1747,6 +1755,15 @@ class EvolutionRepository:
                     update(evolution_finals)
                     .where(evolution_finals.c.run_id == run_id)
                     .values(**payload),
+                )
+            if advancing:
+                await session.execute(
+                    update(evolution_runs)
+                    .where(
+                        evolution_runs.c.id == run_id,
+                        evolution_runs.c.status == "running",
+                    )
+                    .values(progress_unit=expected + 1),
                 )
         async with self._database.session() as session:
             row = (
