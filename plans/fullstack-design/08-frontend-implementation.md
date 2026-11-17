@@ -683,6 +683,10 @@ Index.vue
 
 - 写操作可见性（V2）：空间管理员及以上可写本空间配置；成员/只读只读（后端按空间角色校验）。全局管理员可写任意空间。
 - 保存前前端做必填校验；仓库/ref/subDir 合法性由后端返回 `422 REPO_INVALID`，两个工程 ID 的空白/控制字符由本地校验，后端兜底返回 `422 PROJECT_ID_INVALID`；表单展示错误。
+- `REPO_INVALID` 的 `details.field` 决定错误落点：`objectName` / `repoUrl` / `subDir` / `defaultRef` 各自对应字段下显示红字原因与修改建议，并设置 `aria-invalid` / `aria-describedby`；提交失败后聚焦第一个错误字段，修改该字段后清除服务端错误。未知 reason 或无 `details` 时回退到“仓库或 ref 无效”汇总与四项检查清单。
+- 远端失败时汇总显示“无法访问仓库”“访问仓库超时”等原因，字段下方提供可展开、可滚动的等宽 `git` 输出块，展示命令名、退出码与已脱敏输出；`ref_not_found` 落到 `defaultRef` 并显示“仓库可达，但找不到该 ref”，不与仓库不可达混用文案。
+- `project_id_*` 的 `PROJECT_ID_INVALID` 同样按 `details.field` 落到对应工程 ID 字段。
+- 子目录帮助文案固定说明“格式在保存时校验，目录是否存在在启动运行时校验”，不承诺保存时检查目录。
 - 唯一键按空间：同一 `(objectType, objectName)` 可在不同空间各配一份，本空间内重复 → `409 TARGET_EXISTS`。
 - 表格“测试工程”列合并展示两行，历史空值显示“未填写”。
 - `defaultRef` 的输入文本就是表单值；失焦或直接提交不得清空。已保存对象可通过输入框内的展开按钮查看仓库 tag 建议，键盘与指针选择 tag 都只是可选快捷路径。

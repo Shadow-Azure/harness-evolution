@@ -12,12 +12,12 @@ import {
   useEvolutionTargetVersions,
 } from "../../../composables/useEvolutionTargets";
 import { ApiError } from "../../../api/http";
-import { formatApiError } from "../../../app/apiError";
 import { useWorkspaceId } from "../../../composables/useWorkspaceId";
 import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
+import { targetServerError, type TargetServerError } from "./targetErrors";
 
 defineOptions({ name: "TargetConfigPage" });
 
@@ -37,7 +37,7 @@ const targets = computed(() => data.value?.items ?? []);
 const canWrite = computed(() => auth.user?.role === "admin");
 const dialogOpen = ref(false);
 const editingTarget = ref<EvolutionTarget | null>(null);
-const formError = ref("");
+const formError = ref<TargetServerError | null>(null);
 const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
@@ -54,7 +54,7 @@ function openCreate(): void {
   if (!canWrite.value) return;
   operationError.value = "";
   editingTarget.value = null;
-  formError.value = "";
+  formError.value = null;
   dialogOpen.value = true;
 }
 
@@ -62,7 +62,7 @@ function openEdit(target: EvolutionTarget): void {
   if (!canWrite.value) return;
   operationError.value = "";
   editingTarget.value = target;
-  formError.value = "";
+  formError.value = null;
   dialogOpen.value = true;
 }
 
@@ -116,24 +116,8 @@ async function toggleTarget(target: EvolutionTarget): Promise<void> {
   }
 }
 
-function targetErrorMessage(errorValue: unknown): string {
-  if (errorValue instanceof ApiError) {
-    if (errorValue.code === "REPO_INVALID") {
-      return "仓库或 ref 无效，请检查地址、子目录与基线";
-    }
-    if (errorValue.code === "TARGET_EXISTS") {
-      return "同类型的对象名称已经配置";
-    }
-    if (errorValue.code === "PROJECT_ID_INVALID") {
-      return "测试工程 ID 无效，请检查是否为空、超长或包含空格";
-    }
-    return formatApiError(errorValue, "保存配置失败").message;
-  }
-  return formatApiError(errorValue, "保存配置失败").message;
-}
-
 async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
-  formError.value = "";
+  formError.value = null;
   submitting.value = true;
   try {
     if (editingTarget.value) {
@@ -144,7 +128,7 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     dialogOpen.value = false;
     editingTarget.value = null;
   } catch (errorValue) {
-    formError.value = targetErrorMessage(errorValue);
+    formError.value = targetServerError(errorValue);
   } finally {
     submitting.value = false;
   }

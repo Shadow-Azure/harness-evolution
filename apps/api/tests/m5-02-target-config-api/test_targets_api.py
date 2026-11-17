@@ -38,6 +38,7 @@ from app.third_party_api.git.remote import (
     RepoInvalid,
     SubprocessGitRemote,
 )
+from app.utils.redaction import redact_command_output
 from tests.workspaces.helpers import insert_member
 
 TARGET_ADMIN_TEMP_PASSWORD = "admin-target-temp-password"
@@ -216,12 +217,19 @@ def _project_payload(**overrides: Any) -> dict[str, Any]:
 
 
 class FakeGitRemote:
-    """Record remote calls and return configured tags."""
+    """Record remote calls and return configured tags or one failure."""
 
-    def __init__(self, *, fail: bool = False, tags: tuple[str, ...] = ("v2.0.0", "v1.9.0")) -> None:
+    def __init__(
+        self,
+        *,
+        fail: bool = False,
+        tags: tuple[str, ...] = ("v2.0.0", "v1.9.0"),
+        failure: RepoInvalid | None = None,
+    ) -> None:
         """Configure behavior for one service test."""
         self.fail = fail
         self.tags = tags
+        self.failure = failure or RepoInvalid("token=should-not-leak")
         self.validated: list[tuple[str, str]] = []
         self.listed: list[str] = []
 
@@ -229,13 +237,13 @@ class FakeGitRemote:
         """Record validation or raise a sanitized remote failure."""
         self.validated.append((repo_url, ref))
         if self.fail:
-            raise RepoInvalid("token=should-not-leak")
+            raise self.failure
 
     async def list_tags(self, repo_url: str) -> tuple[str, ...]:
         """Record tag listing or raise a sanitized remote failure."""
         self.listed.append(repo_url)
         if self.fail:
-            raise RepoInvalid("token=should-not-leak")
+            raise self.failure
         return self.tags
 
 
@@ -553,6 +561,10 @@ async def test_target_routes_preserve_admin_and_error_envelopes(
     )
     assert invalid.status_code == 422
     assert invalid.json()["error"]["code"] == "REPO_INVALID"
+    assert invalid.json()["error"]["details"] == {
+        "field": "repoUrl",
+        "reason": "repo_url_format",
+    }
 
     created = await target_http.admin.post(
         "/api/evolution/targets",
@@ -603,6 +615,66 @@ async def test_target_routes_preserve_admin_and_error_envelopes(
     missing = await target_http.admin.delete("/api/evolution/targets/missing")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "TARGET_NOT_FOUND"
+
+
+async def test_overlong_target_fields_return_field_details(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Overlong editable fields reach the service and report REPO_INVALID details."""
+    response = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_project_payload(objectName="x" * 129),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "REPO_INVALID"
+    assert response.json()["error"]["details"] == {
+        "field": "objectName",
+        "reason": "object_name_invalid",
+    }
+
+
+async def test_remote_diagnostics_reach_admin_writes_only(
+    target_http: TargetHttpEnvironment,
+) -> None:
+    """Admin writes receive redacted output; member versions stay details-free."""
+    created = await target_http.admin.post(
+        "/api/evolution/targets",
+        json=_project_payload(),
+    )
+    assert created.status_code == 201
+    target_id = created.json()["id"]
+
+    target_http.remote.fail = True
+    target_http.remote.failure = RepoInvalid(
+        reason="repo_unreachable",
+        exit_code=128,
+        stderr=(
+            "fatal: unable to access "
+            "'https://bob:hunter2@git.example.com/repo.git/': "
+            "Could not resolve host\n"
+            "error: could not read /Users/alice/.ssh/id_rsa"
+        ),
+    )
+    update = await target_http.admin.put(
+        f"/api/evolution/targets/{target_id}",
+        json=_project_payload(subDir="skills/renamed"),
+    )
+    assert update.status_code == 422
+    details = update.json()["error"]["details"]
+    assert details["field"] == "repoUrl"
+    assert details["reason"] == "repo_unreachable"
+    assert details["command"] == {"name": "git ls-remote", "exitCode": 128}
+    assert "Could not resolve host" in details["output"]
+    assert "hunter2" not in details["output"]
+    assert "/Users/alice" not in details["output"]
+
+    versions = await target_http.member.get(
+        f"/api/evolution/targets/{target_id}/versions",
+    )
+    assert versions.status_code == 422
+    assert versions.json()["error"]["code"] == "REPO_INVALID"
+    assert versions.json()["error"]["details"] == {}
 
 
 async def test_target_delete_allows_history_and_clears_only_the_fk(
@@ -682,26 +754,77 @@ async def test_valid_repo_forms_are_normalized_and_validated(repo_url: str) -> N
 
 
 @pytest.mark.parametrize(
-    "body",
+    ("body", "field", "reason"),
     [
-        _write(repo_url="http://git.example.com/agent-skills.git"),
-        _write(repo_url="https://user:password@git.example.com/agent-skills.git"),
-        _write(repo_url="ssh://user:password@git.example.com/agent-skills.git"),
-        _write(repo_url="https://git.example.com/agent-skills.git?token=secret"),
-        _write(repo_url="https://git.example.com/agent-skills.git#branch"),
-        _write(repo_url="https://[invalid/agent-skills.git"),
-        _write(repo_url="ssh://git.example.com:not-a-port/agent-skills.git"),
-        _write(repo_url="https:///missing-host.git"),
-        _write(sub_dir=""),
-        _write(sub_dir="/absolute"),
-        _write(sub_dir="skills/../secret"),
-        _write(sub_dir=r"skills\\secret"),
-        _write(default_ref="-main"),
-        _write(object_name="   "),
+        (
+            _write(repo_url="http://git.example.com/agent-skills.git"),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (
+            _write(repo_url="https://user:password@git.example.com/agent-skills.git"),
+            "repoUrl",
+            "repo_url_credentials",
+        ),
+        (
+            _write(repo_url="ssh://user:password@git.example.com/agent-skills.git"),
+            "repoUrl",
+            "repo_url_credentials",
+        ),
+        (
+            _write(repo_url="https://user@git.example.com/agent-skills.git"),
+            "repoUrl",
+            "repo_url_credentials",
+        ),
+        (
+            _write(repo_url="https://git.example.com/agent-skills.git?token=secret"),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (
+            _write(repo_url="https://git.example.com/agent-skills.git#branch"),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (
+            _write(repo_url="https://[invalid/agent-skills.git"),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (
+            _write(repo_url="ssh://git.example.com:not-a-port/agent-skills.git"),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (_write(repo_url="https:///missing-host.git"), "repoUrl", "repo_url_format"),
+        (_write(sub_dir=""), "subDir", "sub_dir_format"),
+        (_write(sub_dir="/absolute"), "subDir", "sub_dir_format"),
+        (_write(sub_dir="skills/../secret"), "subDir", "sub_dir_format"),
+        (_write(sub_dir=r"skills\\secret"), "subDir", "sub_dir_format"),
+        (_write(default_ref="-main"), "defaultRef", "ref_format"),
+        (_write(default_ref="feature..main"), "defaultRef", "ref_format"),
+        (_write(default_ref="main."), "defaultRef", "ref_format"),
+        (_write(default_ref="main/"), "defaultRef", "ref_format"),
+        (_write(object_name="   "), "objectName", "object_name_invalid"),
+        (_write(object_name="x" * 129), "objectName", "object_name_invalid"),
+        (
+            _write(object_name="bad\x01name"),
+            "objectName",
+            "object_name_invalid",
+        ),
+        (
+            _write(repo_url="https://git.example.com/" + "a" * 1_024),
+            "repoUrl",
+            "repo_url_format",
+        ),
+        (_write(sub_dir="a" * 513), "subDir", "sub_dir_format"),
+        (_write(default_ref="a" * 129), "defaultRef", "ref_format"),
     ],
 )
-async def test_invalid_local_target_input_returns_sanitized_repo_invalid(
+async def test_invalid_local_target_input_returns_field_and_reason(
     body: EvolutionTargetWrite,
+    field: str,
+    reason: str,
 ) -> None:
     """Invalid URL, path, name, or ref fails before the remote or repository."""
     repository = FakeRepository()
@@ -715,6 +838,7 @@ async def test_invalid_local_target_input_returns_sanitized_repo_invalid(
     assert raised.value.status_code == 422
     assert "password" not in raised.value.message
     assert "secret" not in raised.value.message
+    assert raised.value.details == {"field": field, "reason": reason}
     assert remote.validated == []
     assert repository.rows == {}
 
@@ -795,6 +919,105 @@ async def test_remote_failure_and_in_use_delete_are_sanitized() -> None:
     assert created.id in repository.rows
 
 
+@pytest.mark.parametrize(
+    ("failure", "field", "reason", "exit_code"),
+    [
+        (
+            RepoInvalid(
+                reason="ref_not_found",
+                exit_code=2,
+                stderr="fatal: couldn't find remote ref feature/missing",
+            ),
+            "defaultRef",
+            "ref_not_found",
+            2,
+        ),
+        (
+            RepoInvalid(
+                reason="repo_unreachable",
+                exit_code=128,
+                stderr=(
+                    "fatal: unable to access "
+                    "'https://bob:hunter2@git.example.com/org/repo.git/': "
+                    "Could not resolve host\n"
+                    "error: could not read /Users/alice/.ssh/id_rsa"
+                ),
+            ),
+            "repoUrl",
+            "repo_unreachable",
+            128,
+        ),
+        (RepoInvalid(reason="git_timeout"), "repoUrl", "git_timeout", None),
+        (RepoInvalid(reason="git_unavailable"), "repoUrl", "git_unavailable", None),
+    ],
+)
+async def test_remote_failure_details_are_field_anchored_and_redacted(
+    failure: RepoInvalid,
+    field: str,
+    reason: str,
+    exit_code: int | None,
+) -> None:
+    """Administrator writes receive a field anchor and bounded git diagnostics."""
+    repository = FakeRepository()
+    remote = FakeGitRemote(fail=True, failure=failure)
+    service = EvolutionTargetService(repository, remote)
+
+    with pytest.raises(AppError) as raised:
+        await service.create(_write(), created_by=None)
+
+    details = raised.value.details
+    assert details["field"] == field
+    assert details["reason"] == reason
+    command = details["command"]
+    assert isinstance(command, Mapping)
+    assert command["name"] == "git ls-remote"
+    assert command.get("exitCode") == exit_code
+    output = details.get("output", "")
+    assert isinstance(output, str)
+    assert "hunter2" not in output
+    assert "should-not-leak" not in output
+    assert "/Users/alice" not in output
+    if failure.stderr:
+        assert output
+        assert len(output.encode()) <= 4_096
+    else:
+        assert output == ""
+    assert raised.value.message == "repository or ref is invalid"
+
+
+async def test_command_output_redaction_preserves_remote_paths() -> None:
+    """Local absolute paths are removed while URL and ref paths stay readable."""
+    output = redact_command_output(
+        "\x1b[31mfatal\x1b[0m: unable to access "
+        "'https://bob:hunter2@git.example.com/org/repo.git/': Could not resolve host\n"
+        "error: could not read /Users/alice/.ssh/id_rsa\n"
+        "error: bad config C:\\Users\\alice\\repo\\.git\\config\n"
+        "token=abc123",
+    )
+
+    assert "hunter2" not in output
+    assert "abc123" not in output
+    assert "/Users/alice" not in output
+    assert "C:\\Users\\alice" not in output
+    assert "\x1b" not in output
+    assert "git.example.com/org/repo.git" in output
+    assert "Could not resolve host" in output
+    assert output.count("<path>") >= 2
+
+
+async def test_command_output_is_bounded_to_the_last_lines_and_bytes() -> None:
+    """Diagnostics keep the tail and never exceed the line or byte budget."""
+    lines = redact_command_output("\n".join(f"line {index}" for index in range(100)))
+    kept = lines.splitlines()
+    assert len(kept) == 40
+    assert kept[0] == "line 60"
+    assert kept[-1] == "line 99"
+
+    huge = redact_command_output("start\n" + ("x" * 5_000))
+    assert len(huge.encode()) <= 4_096
+    assert huge.endswith("x")
+
+
 async def test_delete_missing_and_versions_contract() -> None:
     """Missing targets use 404 and versions are sorted unique with the default ref."""
     repository = FakeRepository()
@@ -833,6 +1056,7 @@ async def test_versions_remote_failure_is_sanitized() -> None:
     assert raised.value.code == ErrorCode.REPO_INVALID
     assert raised.value.status_code == 422
     assert raised.value.message == "repository or ref is invalid"
+    assert raised.value.details == {}
     assert "should-not-leak" not in raised.value.message
 
 
@@ -876,19 +1100,32 @@ async def test_git_adapter_uses_argument_arrays_and_parses_tags() -> None:
 
 
 @pytest.mark.parametrize(
-    "result",
+    ("result", "reason", "exit_code"),
     [
-        GitProcessResult(returncode=2, stdout="", stderr="secret stderr"),
-        GitProcessResult(returncode=128, stdout="", stderr="token=secret"),
-        TimeoutError("token=secret"),
+        (
+            GitProcessResult(returncode=2, stdout="", stderr="secret stderr"),
+            "ref_not_found",
+            2,
+        ),
+        (
+            GitProcessResult(returncode=128, stdout="", stderr="token=secret"),
+            "repo_unreachable",
+            128,
+        ),
+        (TimeoutError("token=secret"), "git_timeout", None),
+        (OSError("token=secret"), "git_unavailable", None),
     ],
 )
-async def test_git_adapter_failures_are_sanitized(
+async def test_git_adapter_failures_are_classified_without_leaking(
     result: GitProcessResult | BaseException,
+    reason: str,
+    exit_code: int | None,
 ) -> None:
-    """Nonzero exits and timeouts collapse into one generic RepoInvalid."""
+    """Nonzero exits, timeouts, and OSError carry a reason and captured stderr."""
+    argv_calls: list[tuple[str, ...]] = []
 
-    async def runner(_argv: tuple[str, ...]) -> GitProcessResult:
+    async def runner(argv: tuple[str, ...]) -> GitProcessResult:
+        argv_calls.append(argv)
         if isinstance(result, BaseException):
             raise result
         return result
@@ -899,6 +1136,24 @@ async def test_git_adapter_failures_are_sanitized(
 
     assert str(raised.value) == "repository or ref is invalid"
     assert "secret" not in str(raised.value)
+    assert raised.value.reason == reason
+    assert raised.value.exit_code == exit_code
+    assert "--exit-code" in argv_calls[0]
+
+
+async def test_git_tag_listing_never_reports_a_missing_ref() -> None:
+    """Exit code 2 while listing tags is an unreachable remote, not a bad ref."""
+
+    async def runner(_argv: tuple[str, ...]) -> GitProcessResult:
+        return GitProcessResult(returncode=2, stdout="", stderr="fatal: no access")
+
+    remote = SubprocessGitRemote(runner=runner, timeout_seconds=3)
+    with pytest.raises(RepoInvalid) as raised:
+        await remote.list_tags("https://git.example.com/repo.git")
+
+    assert raised.value.reason == "repo_unreachable"
+    assert raised.value.exit_code == 2
+    assert raised.value.stderr == "fatal: no access"
 
 
 async def test_git_timeout_kills_and_reaps_the_child_process(

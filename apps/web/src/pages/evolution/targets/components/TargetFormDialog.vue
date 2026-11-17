@@ -3,7 +3,12 @@ import type {
   EvolutionTarget,
   EvolutionTargetWrite,
 } from "@harness/contracts";
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
+
+import type {
+  TargetFormField,
+  TargetServerError,
+} from "../targetErrors";
 
 const props = withDefaults(
   defineProps<{
@@ -13,14 +18,14 @@ const props = withDefaults(
     versionsLoading?: boolean;
     versionsError?: boolean;
     submitting?: boolean;
-    serverError?: string;
+    serverError?: TargetServerError | null;
   }>(),
   {
     versions: () => [],
     versionsLoading: false,
     versionsError: false,
     submitting: false,
-    serverError: "",
+    serverError: () => ({ summary: "" }),
   },
 );
 
@@ -59,6 +64,14 @@ const form = reactive<EvolutionTargetWrite>({
 });
 const errors = reactive<FormErrors>({});
 const versionAutocomplete = ref<{ focus: () => void } | null>(null);
+const formElement = ref<HTMLFormElement | null>(null);
+const serverErrorDismissed = ref(false);
+const visibleServerError = computed<TargetServerError | null>(() => {
+  const value = serverErrorDismissed.value
+    ? null
+    : (props.serverError ?? null);
+  return value?.summary ? value : null;
+});
 
 const title = computed(() => (props.target ? "编辑进化对象" : "新增进化对象"));
 const versionOptions = computed(() => {
@@ -88,6 +101,37 @@ const versionHelp = computed(() => {
   return "可直接输入分支或 tag。";
 });
 
+function serverErrorFor(field: TargetFormField): TargetServerError | null {
+  return visibleServerError.value?.field === field
+    ? visibleServerError.value
+    : null;
+}
+
+function hasFieldError(field: TargetFormField): boolean {
+  return Boolean(errors[field] || serverErrorFor(field));
+}
+
+function fieldMessage(field: TargetFormField): string {
+  return serverErrorFor(field)?.message ?? errors[field] ?? "";
+}
+
+function fieldSuggestion(field: TargetFormField): string {
+  return serverErrorFor(field)?.suggestion ?? "";
+}
+
+function fieldAriaInvalid(field: TargetFormField): "true" | undefined {
+  return hasFieldError(field) ? "true" : undefined;
+}
+
+function fieldDescribedBy(field: TargetFormField): string | undefined {
+  return hasFieldError(field) ? `target-${field}-error` : undefined;
+}
+
+function onFieldInput(field: TargetFormField, value: string): void {
+  if (value.trim()) delete errors[field];
+  if (serverErrorFor(field)) serverErrorDismissed.value = true;
+}
+
 function resetForm(): void {
   form.objectType = props.target?.objectType ?? "skill";
   form.objectName = props.target?.objectName ?? "";
@@ -97,6 +141,7 @@ function resetForm(): void {
   form.validationProjectId = props.target?.validationProjectId ?? "";
   form.testProjectId = props.target?.testProjectId ?? "";
   form.enabled = props.target?.enabled ?? true;
+  serverErrorDismissed.value = false;
   clearErrors();
 }
 
@@ -123,6 +168,7 @@ function updateDefaultRef(value: string | number): void {
   const normalized = String(value);
   form.defaultRef = normalized;
   if (normalized.trim()) delete errors.defaultRef;
+  if (serverErrorFor("defaultRef")) serverErrorDismissed.value = true;
 }
 
 function openVersionSuggestions(): void {
@@ -171,6 +217,18 @@ watch(
   },
   { immediate: true },
 );
+
+watch(
+  () => props.serverError,
+  async (value) => {
+    serverErrorDismissed.value = false;
+    if (!value?.field) return;
+    await nextTick();
+    formElement.value
+      ?.querySelector<HTMLElement>(`[name="${value.field}"]`)
+      ?.focus();
+  },
+);
 </script>
 
 <template>
@@ -188,6 +246,7 @@ watch(
   >
     <form
       id="target-form"
+      ref="formElement"
       class="target-form"
       @submit.prevent="submit"
     >
@@ -206,33 +265,49 @@ watch(
         <ElFormItem label="对象名称">
           <ElInput
             v-model="form.objectName"
+            :aria-describedby="fieldDescribedBy('objectName')"
+            :aria-invalid="fieldAriaInvalid('objectName')"
             maxlength="128"
             name="objectName"
             placeholder="如 deep-research"
+            @input="onFieldInput('objectName', $event)"
           />
           <p
-            v-if="errors.objectName"
+            v-if="hasFieldError('objectName')"
+            id="target-objectName-error"
             class="field-error"
           >
-            {{ errors.objectName }}
+            {{ fieldMessage("objectName") }}
+            <span
+              v-if="fieldSuggestion('objectName')"
+              class="field-suggestion"
+            >{{ fieldSuggestion("objectName") }}</span>
           </p>
         </ElFormItem>
 
         <ElFormItem label="仓库地址">
           <ElInput
             v-model="form.repoUrl"
+            :aria-describedby="fieldDescribedBy('repoUrl')"
+            :aria-invalid="fieldAriaInvalid('repoUrl')"
             maxlength="1024"
             name="repoUrl"
             placeholder="https://git.example.com/agent-skills.git"
+            @input="onFieldInput('repoUrl', $event)"
           />
           <p class="field-help">
             仅填写无凭据的 HTTPS 或 SSH 地址，不要写入 token。
           </p>
           <p
-            v-if="errors.repoUrl"
+            v-if="hasFieldError('repoUrl')"
+            id="target-repoUrl-error"
             class="field-error"
           >
-            {{ errors.repoUrl }}
+            {{ fieldMessage("repoUrl") }}
+            <span
+              v-if="fieldSuggestion('repoUrl')"
+              class="field-suggestion"
+            >{{ fieldSuggestion("repoUrl") }}</span>
           </p>
         </ElFormItem>
 
@@ -240,21 +315,34 @@ watch(
           <ElFormItem label="子目录">
             <ElInput
               v-model="form.subDir"
+              :aria-describedby="fieldDescribedBy('subDir')"
+              :aria-invalid="fieldAriaInvalid('subDir')"
               maxlength="512"
               name="subDir"
               placeholder="skills/deep-research"
+              @input="onFieldInput('subDir', $event)"
             />
+            <p class="field-help">
+              相对仓库根的路径；格式在保存时校验，目录是否存在在启动运行时校验。
+            </p>
             <p
-              v-if="errors.subDir"
+              v-if="hasFieldError('subDir')"
+              id="target-subDir-error"
               class="field-error"
             >
-              {{ errors.subDir }}
+              {{ fieldMessage("subDir") }}
+              <span
+                v-if="fieldSuggestion('subDir')"
+                class="field-suggestion"
+              >{{ fieldSuggestion("subDir") }}</span>
             </p>
           </ElFormItem>
 
           <ElFormItem label="基线分支或标签">
             <ElAutocomplete
               ref="versionAutocomplete"
+              :aria-describedby="fieldDescribedBy('defaultRef')"
+              :aria-invalid="fieldAriaInvalid('defaultRef')"
               autocomplete="off"
               class="target-version-select"
               data-testid="target-version-select"
@@ -286,10 +374,15 @@ watch(
               {{ versionHelp }}
             </p>
             <p
-              v-if="errors.defaultRef"
+              v-if="hasFieldError('defaultRef')"
+              id="target-defaultRef-error"
               class="field-error"
             >
-              {{ errors.defaultRef }}
+              {{ fieldMessage("defaultRef") }}
+              <span
+                v-if="fieldSuggestion('defaultRef')"
+                class="field-suggestion"
+              >{{ fieldSuggestion("defaultRef") }}</span>
             </p>
           </ElFormItem>
         </div>
@@ -301,15 +394,23 @@ watch(
           >
             <ElInput
               v-model="form.validationProjectId"
+              :aria-describedby="fieldDescribedBy('validationProjectId')"
+              :aria-invalid="fieldAriaInvalid('validationProjectId')"
               maxlength="128"
               name="validationProjectId"
               placeholder="如 val-2026-q3"
+              @input="onFieldInput('validationProjectId', $event)"
             />
             <p
-              v-if="errors.validationProjectId"
+              v-if="hasFieldError('validationProjectId')"
+              id="target-validationProjectId-error"
               class="field-error"
             >
-              {{ errors.validationProjectId }}
+              {{ fieldMessage("validationProjectId") }}
+              <span
+                v-if="fieldSuggestion('validationProjectId')"
+                class="field-suggestion"
+              >{{ fieldSuggestion("validationProjectId") }}</span>
             </p>
           </ElFormItem>
 
@@ -319,15 +420,23 @@ watch(
           >
             <ElInput
               v-model="form.testProjectId"
+              :aria-describedby="fieldDescribedBy('testProjectId')"
+              :aria-invalid="fieldAriaInvalid('testProjectId')"
               maxlength="128"
               name="testProjectId"
               placeholder="如 test-2026-q3"
+              @input="onFieldInput('testProjectId', $event)"
             />
             <p
-              v-if="errors.testProjectId"
+              v-if="hasFieldError('testProjectId')"
+              id="target-testProjectId-error"
               class="field-error"
             >
-              {{ errors.testProjectId }}
+              {{ fieldMessage("testProjectId") }}
+              <span
+                v-if="fieldSuggestion('testProjectId')"
+                class="field-suggestion"
+              >{{ fieldSuggestion("testProjectId") }}</span>
             </p>
           </ElFormItem>
         </div>
@@ -344,13 +453,38 @@ watch(
         </ElFormItem>
       </ElForm>
 
-      <p
-        v-if="serverError"
+      <div
+        v-if="visibleServerError"
         class="server-error"
         role="alert"
+        data-testid="target-server-error"
       >
-        {{ serverError }}
-      </p>
+        <p class="server-error-title">
+          {{ visibleServerError.summary }}
+        </p>
+        <p
+          v-if="visibleServerError.suggestion && !visibleServerError.field"
+          class="server-error-suggestion"
+        >
+          {{ visibleServerError.suggestion }}
+        </p>
+        <details
+          v-if="visibleServerError.command || visibleServerError.output"
+          class="git-output"
+          data-testid="target-git-output"
+        >
+          <summary>
+            <span>{{ visibleServerError.command?.name ?? "git" }}</span>
+            <span
+              v-if="visibleServerError.command?.exitCode !== undefined"
+              class="git-exit-code"
+            >
+              退出码 {{ visibleServerError.command.exitCode }}
+            </span>
+          </summary>
+          <pre v-if="visibleServerError.output">{{ visibleServerError.output }}</pre>
+        </details>
+      </div>
     </form>
 
     <template #footer>
@@ -441,6 +575,58 @@ watch(
   border-radius: 8px;
   background: color-mix(in srgb, var(--red) 6%, var(--bg-card));
   font-size: 11.5px;
+}
+
+.server-error p {
+  margin: 0;
+}
+
+.server-error-title {
+  font-weight: 650;
+}
+
+.server-error-suggestion {
+  margin-top: 3px;
+  color: var(--text-dim);
+}
+
+.field-suggestion {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.git-output {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--red) 20%, var(--border));
+}
+
+.git-output summary {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.git-exit-code {
+  margin-left: 6px;
+  font-family: var(--mono);
+}
+
+.git-output pre {
+  max-height: 160px;
+  margin: 6px 0 0;
+  padding: 8px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .switch-row {

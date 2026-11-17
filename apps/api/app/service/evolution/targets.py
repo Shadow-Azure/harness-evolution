@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import PurePosixPath
-from typing import Protocol
+from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
@@ -19,7 +19,20 @@ from app.db.crud.evolution_targets import (
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.errors import AppError, ErrorCode
 from app.service.identity.schemas import IdentityModel
-from app.third_party_api.git.remote import GitRemote, RepoInvalid
+from app.third_party_api.git.remote import GitRemote, RepoFailureReason, RepoInvalid
+from app.utils.redaction import redact_command_output
+
+type TargetField = Literal["objectName", "repoUrl", "subDir", "defaultRef"]
+type TargetReason = (
+    Literal[
+        "object_name_invalid",
+        "repo_url_format",
+        "repo_url_credentials",
+        "sub_dir_format",
+        "ref_format",
+    ]
+    | RepoFailureReason
+)
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+@-]{0,127}$")
@@ -33,10 +46,10 @@ class EvolutionTargetWrite(IdentityModel):
     """Mutable target configuration accepted by create and update."""
 
     object_type: EvolutionObjectType
-    object_name: str = Field(max_length=128)
-    repo_url: str = Field(max_length=1024)
-    sub_dir: str = Field(max_length=512)
-    default_ref: str = Field(max_length=128)
+    object_name: str
+    repo_url: str
+    sub_dir: str
+    default_ref: str
     validation_project_id: str = Field(max_length=128)
     test_project_id: str = Field(max_length=128)
     enabled: bool = True
@@ -135,13 +148,43 @@ class EvolutionTargetStore(Protocol):
         """Return whether a target has a non-terminal run."""
 
 
-def _repo_invalid() -> AppError:
-    """Return the one sanitized invalid-target response."""
+def _repo_invalid(
+    field: TargetField | None = None,
+    reason: TargetReason | None = None,
+    *,
+    command: Mapping[str, object] | None = None,
+    output: str | None = None,
+) -> AppError:
+    """Return the stable invalid-target response with optional diagnostics.
+
+    Field and reason values form a closed set owned by this module. Callers
+    that serve administrator writes pass both so validation failures point at
+    one form field; the member-readable versions endpoint passes neither and
+    keeps the legacy details-free response.
+    """
+    details: dict[str, object] = {}
+    if field is not None and reason is not None:
+        details = {"field": field, "reason": reason}
+        if command is not None:
+            details["command"] = dict(command)
+        if output:
+            details["output"] = output
     return AppError(
         status_code=422,
         code=ErrorCode.REPO_INVALID,
         message="repository or ref is invalid",
+        details=details,
     )
+
+
+def _remote_invalid(error: RepoInvalid) -> AppError:
+    """Map one classified git failure to a field-anchored diagnostic."""
+    field: TargetField = "defaultRef" if error.reason == "ref_not_found" else "repoUrl"
+    command: dict[str, object] = {"name": "git ls-remote"}
+    if error.exit_code is not None:
+        command["exitCode"] = error.exit_code
+    output = redact_command_output(error.stderr) if error.stderr else ""
+    return _repo_invalid(field, error.reason, command=command, output=output)
 
 
 def _project_id_invalid(field: str, reason: str) -> AppError:
@@ -171,41 +214,66 @@ def _validate_project_id(value: str, *, field: str) -> str:
 def _normalize_text(
     value: str,
     *,
-    field: str,
+    field: TargetField,
+    reason: TargetReason,
     maximum: int,
-    revision: bool = False,
 ) -> str:
-    """Trim one input and reject empty, control-bearing, or overlong text.
+    """Trim one input and reject empty, control-bearing, or overlong text."""
+    normalized = value.strip()
+    if not normalized or len(normalized) > maximum or _CONTROL.search(normalized):
+        raise _repo_invalid(field, reason)
+    return normalized
+
+
+def _normalize_object_name(value: str) -> str:
+    """Validate the human-readable skill or agent object name."""
+    return _normalize_text(
+        value,
+        field="objectName",
+        reason="object_name_invalid",
+        maximum=128,
+    )
+
+
+def _normalize_default_ref(value: str, *, revision: bool) -> str:
+    """Validate one git ref or a normalized knowledge revision.
 
     Knowledge targets accept normalized ``tag:`` / ``digest:`` / ``provider:``
     revisions as their ``defaultRef``. That form bypasses the git-ref regex but
     still rejects whitespace, traversal markers, and trailing separators.
     """
-    normalized = value.strip()
-    if not normalized or len(normalized) > maximum or _CONTROL.search(normalized):
-        raise _repo_invalid()
-    if field == "default_ref":
-        if revision:
-            if (
-                any(character.isspace() for character in normalized)
-                or ".." in normalized
-                or "@{" in normalized
-                or normalized.endswith((".", "/"))
-            ):
-                raise _repo_invalid()
-        elif (
-            not _REF.fullmatch(normalized)
+    normalized = _normalize_text(
+        value,
+        field="defaultRef",
+        reason="ref_format",
+        maximum=128,
+    )
+    if revision:
+        if (
+            any(character.isspace() for character in normalized)
             or ".." in normalized
             or "@{" in normalized
             or normalized.endswith((".", "/"))
         ):
-            raise _repo_invalid()
+            raise _repo_invalid("defaultRef", "ref_format")
+    elif (
+        not _REF.fullmatch(normalized)
+        or ".." in normalized
+        or "@{" in normalized
+        or normalized.endswith((".", "/"))
+    ):
+        raise _repo_invalid("defaultRef", "ref_format")
     return normalized
 
 
 def _validate_sub_dir(value: str) -> str:
     """Normalize a non-empty POSIX repository-relative directory."""
-    normalized = _normalize_text(value, field="sub_dir", maximum=512)
+    normalized = _normalize_text(
+        value,
+        field="subDir",
+        reason="sub_dir_format",
+        maximum=512,
+    )
     path = PurePosixPath(normalized)
     if (
         "\\" in normalized
@@ -213,34 +281,42 @@ def _validate_sub_dir(value: str) -> str:
         or str(path) == "."
         or any(part == ".." for part in path.parts)
     ):
-        raise _repo_invalid()
+        raise _repo_invalid("subDir", "sub_dir_format")
     return normalized
 
 
 def _validate_repo_url(value: str) -> str:
     """Accept credential-free HTTPS, SSH, and SCP-style git remotes."""
-    normalized = _normalize_text(value, field="repo_url", maximum=1024)
+    normalized = _normalize_text(
+        value,
+        field="repoUrl",
+        reason="repo_url_format",
+        maximum=1024,
+    )
     if any(character.isspace() for character in normalized):
-        raise _repo_invalid()
+        raise _repo_invalid("repoUrl", "repo_url_format")
     if _SCP_REMOTE.fullmatch(normalized):
         return normalized
     try:
         parsed = urlsplit(normalized)
-        hostname = parsed.hostname
+    except ValueError:
+        raise _repo_invalid("repoUrl", "repo_url_format") from None
+    if parsed.password is not None:
+        raise _repo_invalid("repoUrl", "repo_url_credentials")
+    try:
         _ = parsed.port
     except ValueError:
-        raise _repo_invalid() from None
+        raise _repo_invalid("repoUrl", "repo_url_format") from None
     if (
         parsed.scheme not in {"https", "ssh"}
-        or not hostname
-        or parsed.password is not None
+        or not parsed.hostname
         or parsed.query
         or parsed.fragment
         or not parsed.path.strip("/")
     ):
-        raise _repo_invalid()
+        raise _repo_invalid("repoUrl", "repo_url_format")
     if parsed.scheme == "https" and parsed.username is not None:
-        raise _repo_invalid()
+        raise _repo_invalid("repoUrl", "repo_url_credentials")
     return normalized
 
 
@@ -248,17 +324,11 @@ def _normalize_write(body: EvolutionTargetWrite) -> EvolutionTargetWrite:
     """Validate and normalize every editable target field."""
     return EvolutionTargetWrite(
         object_type=body.object_type,
-        object_name=_normalize_text(
-            body.object_name,
-            field="object_name",
-            maximum=128,
-        ),
+        object_name=_normalize_object_name(body.object_name),
         repo_url=_validate_repo_url(body.repo_url),
         sub_dir=_validate_sub_dir(body.sub_dir),
-        default_ref=_normalize_text(
+        default_ref=_normalize_default_ref(
             body.default_ref,
-            field="default_ref",
-            maximum=128,
             revision=body.object_type == "knowledge",
         ),
         validation_project_id=_validate_project_id(
@@ -488,8 +558,8 @@ class EvolutionTargetService:
             return
         try:
             await self._git_remote.validate(values.repo_url, values.default_ref)
-        except RepoInvalid:
-            raise _repo_invalid() from None
+        except RepoInvalid as error:
+            raise _remote_invalid(error) from None
 
     @staticmethod
     def _not_found() -> AppError:
