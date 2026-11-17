@@ -25,6 +25,24 @@ from app.service.overview.service import (
     OverviewService,
     parse_object_filter,
 )
+from app.service.overview.target_schemas import (
+    TARGET_STATES,
+    TargetCaseListResponse,
+    TargetDetailResponse,
+    TargetOverviewListResponse,
+    TargetTrendResponse,
+)
+from app.service.overview.targets import (
+    DEFAULT_CASE_PAGE_SIZE,
+    DEFAULT_TARGET_PAGE_SIZE,
+    DEFAULT_VERSION_LIMIT,
+    TargetOverviewQuery,
+    TargetOverviewService,
+    parse_state_filter,
+    parse_target_filter,
+    parse_version_filter,
+    parse_version_limit,
+)
 from app.service.overview.window import GRAINS, RANGE_CHOICES, Grain
 from app.service.workspaces.service import WorkspaceAccess
 
@@ -127,6 +145,48 @@ PageSize = Annotated[
     int,
     Query(alias="pageSize", ge=1, le=50, description="Page size; defaults to 8."),
 ]
+TargetId = Annotated[str, Path(alias="targetId", min_length=1, max_length=36)]
+TargetsFilter = Annotated[
+    list[str] | None,
+    Query(
+        alias="targets",
+        description=(
+            "Evolution target ids to include. Repeat the parameter or pass a "
+            "comma-separated value; empty means every enabled target."
+        ),
+    ),
+]
+StatesFilter = Annotated[
+    list[str] | None,
+    Query(
+        alias="states",
+        description=(
+            "Attribution states to include: attributed, nonTarget, or unanalyzed. "
+            "Repeat the parameter or pass a comma-separated value; empty means all."
+        ),
+        json_schema_extra={"enum": list(TARGET_STATES)},
+    ),
+]
+VersionsFilter = Annotated[
+    list[str] | None,
+    Query(
+        alias="versions",
+        description=(
+            "Target versions for one detail card. Repeat the parameter or pass a "
+            "comma-separated value; empty selects the highest versionLimit versions."
+        ),
+    ),
+]
+VersionLimit = Annotated[
+    int,
+    Query(
+        alias="versionLimit",
+        ge=0,
+        le=20,
+        description=("Version count when versions is empty: 5, 10, 20, or 0 for all."),
+        json_schema_extra={"enum": [0, 5, 10, 20]},
+    ),
+]
 
 WORKSPACE_READ_RESPONSES: dict[int | str, dict[str, object]] = {
     401: {"model": ErrorResponse, "description": "Authentication is required"},
@@ -139,6 +199,44 @@ WORKSPACE_READ_RESPONSES: dict[int | str, dict[str, object]] = {
 def overview_from(request: Request) -> OverviewService:
     """Return the application-scoped overview service."""
     return cast(OverviewService, request.app.state.overview)
+
+
+def target_overview_from(request: Request) -> TargetOverviewService:
+    """Return the application-scoped evolution-target overview service."""
+    return cast(TargetOverviewService, request.app.state.target_overview)
+
+
+def _target_query(
+    *,
+    date_from: date | None,
+    date_to: date | None,
+    range_days: int | None,
+    grain: str = "day",
+    targets: list[str] | None = None,
+    objects: list[str] | None = None,
+    states: list[str] | None = None,
+    versions: list[str] | None = None,
+    version_limit: int = DEFAULT_VERSION_LIMIT,
+    page: int = 1,
+    page_size: int = DEFAULT_TARGET_PAGE_SIZE,
+) -> TargetOverviewQuery:
+    """Assemble one validated target-overview query from raw query parameters."""
+    window = OverviewQuery(
+        date_from=date_from,
+        date_to=date_to,
+        range_days=range_days,
+        grain=grain,
+    ).window()
+    return TargetOverviewQuery(
+        window=window,
+        targets=parse_target_filter(targets),
+        objects=parse_object_filter(objects),
+        states=parse_state_filter(states),
+        versions=parse_version_filter(versions),
+        version_limit=parse_version_limit(version_limit),
+        page=page,
+        page_size=page_size,
+    )
 
 
 def _query(
@@ -269,5 +367,136 @@ async def list_workspace_bad_cases(
             bad_case_type=bad_case_type,
             page=page,
             page_size=page_size,
+        ),
+    )
+
+
+@router.get(
+    "/overview/targets",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=WORKSPACE_READ_RESPONSES,
+)
+async def get_overview_targets(
+    wid: WorkspaceId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    date_from: WindowFrom = None,
+    date_to: WindowTo = None,
+    range_days: RangeDays = None,
+    page: PageNumber = 1,
+    page_size: Annotated[
+        int,
+        Query(alias="pageSize", ge=1, le=50, description="Page size; defaults to 5."),
+    ] = DEFAULT_TARGET_PAGE_SIZE,
+) -> TargetOverviewListResponse:
+    """Return target summary totals and one evolvable-sorted page."""
+    return await target_overview_from(request).list_targets(
+        access.workspace_id,
+        _target_query(
+            date_from=date_from,
+            date_to=date_to,
+            range_days=range_days,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+@router.get(
+    "/overview/targets/trend",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=WORKSPACE_READ_RESPONSES,
+)
+async def get_overview_targets_trend(
+    wid: WorkspaceId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    date_from: WindowFrom = None,
+    date_to: WindowTo = None,
+    range_days: RangeDays = None,
+    targets: TargetsFilter = None,
+    states: StatesFilter = None,
+    grain: TrendGrainQuery = "day",
+) -> TargetTrendResponse:
+    """Return the selected targets' three-state trend, zero-filled per bucket."""
+    return await target_overview_from(request).trend(
+        access.workspace_id,
+        _target_query(
+            date_from=date_from,
+            date_to=date_to,
+            range_days=range_days,
+            grain=grain,
+            targets=targets,
+            states=states,
+        ),
+    )
+
+
+@router.get(
+    "/overview/targets/cases",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=WORKSPACE_READ_RESPONSES,
+)
+async def get_overview_target_cases(
+    wid: WorkspaceId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    date_from: WindowFrom = None,
+    date_to: WindowTo = None,
+    range_days: RangeDays = None,
+    targets: TargetsFilter = None,
+    objects: ObjectFilter = None,
+    states: StatesFilter = None,
+    page: PageNumber = 1,
+    page_size: Annotated[
+        int,
+        Query(alias="pageSize", ge=1, le=50, description="Page size; defaults to 8."),
+    ] = DEFAULT_CASE_PAGE_SIZE,
+) -> TargetCaseListResponse:
+    """Return one filtered page of potential cases under their target versions."""
+    return await target_overview_from(request).cases(
+        access.workspace_id,
+        _target_query(
+            date_from=date_from,
+            date_to=date_to,
+            range_days=range_days,
+            targets=targets,
+            objects=objects,
+            states=states,
+            page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+@router.get(
+    "/overview/targets/{targetId}/detail",
+    dependencies=[Security(BEARER_AUTH)],
+    responses={
+        **WORKSPACE_READ_RESPONSES,
+        404: {"model": ErrorResponse, "description": "Workspace or target does not exist"},
+    },
+)
+async def get_overview_target_detail(
+    wid: WorkspaceId,
+    target_id: TargetId,
+    request: Request,
+    access: Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))],
+    date_from: WindowFrom = None,
+    date_to: WindowTo = None,
+    range_days: RangeDays = None,
+    versions: VersionsFilter = None,
+    version_limit: VersionLimit = 5,
+) -> TargetDetailResponse:
+    """Return one target's independent version and source analysis."""
+    return await target_overview_from(request).detail(
+        access.workspace_id,
+        target_id,
+        _target_query(
+            date_from=date_from,
+            date_to=date_to,
+            range_days=range_days,
+            versions=versions,
+            version_limit=version_limit,
         ),
     )

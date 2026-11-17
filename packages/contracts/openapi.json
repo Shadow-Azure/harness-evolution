@@ -6772,6 +6772,652 @@
         "title": "SyncTriggerResponse",
         "type": "object"
       },
+      "TargetCaseItem": {
+        "additionalProperties": false,
+        "description": "One potential case under one target version, with its attribution state.",
+        "properties": {
+          "attributionId": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The probe id of the newest attribution for this target version.",
+            "title": "Attributionid"
+          },
+          "badCaseId": {
+            "maxLength": 64,
+            "title": "Badcaseid",
+            "type": "string"
+          },
+          "badCaseType": {
+            "enum": [
+              "self",
+              "discovery"
+            ],
+            "title": "Badcasetype",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "model",
+                  "prompt",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Attribution category; only present for the attributed state.",
+            "title": "Category"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "objectVersion": {
+            "maxLength": 128,
+            "title": "Objectversion",
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 36,
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "source": {
+            "description": "The object name the bad case was reported against.",
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "attributed",
+              "nonTarget",
+              "unanalyzed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "badCaseId",
+          "objectType",
+          "objectName",
+          "objectVersion",
+          "source",
+          "state",
+          "badCaseType",
+          "title",
+          "createdAt",
+          "sessionId"
+        ],
+        "title": "TargetCaseItem",
+        "type": "object"
+      },
+      "TargetCaseListResponse": {
+        "additionalProperties": false,
+        "description": "One filtered page of potential cases plus its authoritative total.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TargetCaseItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "TargetCaseListResponse",
+        "type": "object"
+      },
+      "TargetDetailResponse": {
+        "additionalProperties": false,
+        "description": "One target's version and source analysis under an independent filter.",
+        "properties": {
+          "bySource": {
+            "items": {
+              "$ref": "#/components/schemas/TargetDetailSource"
+            },
+            "title": "Bysource",
+            "type": "array"
+          },
+          "byVersion": {
+            "items": {
+              "$ref": "#/components/schemas/TargetDetailVersion"
+            },
+            "title": "Byversion",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/TargetDetailStats"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TargetDetailTarget"
+          }
+        },
+        "required": [
+          "target",
+          "stats",
+          "byVersion",
+          "bySource"
+        ],
+        "title": "TargetDetailResponse",
+        "type": "object"
+      },
+      "TargetDetailSource": {
+        "additionalProperties": false,
+        "description": "One reported source and its potential cases inside the selected scope.",
+        "properties": {
+          "distinctCases": {
+            "minimum": 0.0,
+            "title": "Distinctcases",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "total",
+          "distinctCases"
+        ],
+        "title": "TargetDetailSource",
+        "type": "object"
+      },
+      "TargetDetailStats": {
+        "additionalProperties": false,
+        "description": "The detail card's four counters.",
+        "properties": {
+          "distinctCases": {
+            "minimum": 0.0,
+            "title": "Distinctcases",
+            "type": "integer"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "sessions": {
+            "minimum": 0.0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "versions": {
+            "minimum": 0.0,
+            "title": "Versions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sessions",
+          "potential",
+          "distinctCases",
+          "versions"
+        ],
+        "title": "TargetDetailStats",
+        "type": "object"
+      },
+      "TargetDetailTarget": {
+        "additionalProperties": false,
+        "description": "The configured target a detail card is about and every version it has.",
+        "properties": {
+          "defaultRef": {
+            "maxLength": 128,
+            "title": "Defaultref",
+            "type": "string"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "targetId": {
+            "maxLength": 36,
+            "title": "Targetid",
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targetId",
+          "objectType",
+          "objectName",
+          "defaultRef",
+          "versions"
+        ],
+        "title": "TargetDetailTarget",
+        "type": "object"
+      },
+      "TargetDetailVersion": {
+        "additionalProperties": false,
+        "description": "One version's contribution inside the selected detail scope.",
+        "properties": {
+          "attributed": {
+            "minimum": 0.0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "minimum": 0.0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "unanalyzed": {
+            "minimum": 0.0,
+            "title": "Unanalyzed",
+            "type": "integer"
+          },
+          "version": {
+            "maxLength": 128,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "potential",
+          "attributed",
+          "nonTarget",
+          "unanalyzed"
+        ],
+        "title": "TargetDetailVersion",
+        "type": "object"
+      },
+      "TargetOverviewItem": {
+        "additionalProperties": false,
+        "description": "One target's potential cases and their three-state attribution split.\n\n``potential`` counts one row per ``(badCaseId, targetVersion)`` pair, so the\nsame bad case may contribute once for each version it is potential under;\n``attributed + nonTarget + unanalyzed`` therefore always equals ``potential``.",
+        "properties": {
+          "attributed": {
+            "minimum": 0.0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "evolvable": {
+            "description": "Attributed plus unanalyzed potential rows; the list sort key.",
+            "minimum": 0.0,
+            "title": "Evolvable",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "minimum": 0.0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "sessions": {
+            "minimum": 0.0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "targetId": {
+            "maxLength": 36,
+            "title": "Targetid",
+            "type": "string"
+          },
+          "unanalyzed": {
+            "minimum": 0.0,
+            "title": "Unanalyzed",
+            "type": "integer"
+          },
+          "versions": {
+            "description": "Versions this target was observed at inside the window, plus its configured defaultRef, ordered by descending natural version.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targetId",
+          "objectType",
+          "objectName",
+          "versions",
+          "sessions",
+          "potential",
+          "attributed",
+          "nonTarget",
+          "unanalyzed",
+          "evolvable"
+        ],
+        "title": "TargetOverviewItem",
+        "type": "object"
+      },
+      "TargetOverviewListResponse": {
+        "additionalProperties": false,
+        "description": "One target page plus the workspace-wide summary.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TargetOverviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "pageSize": {
+            "minimum": 1.0,
+            "title": "Pagesize",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/TargetOverviewSummary"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "summary",
+          "items",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "title": "TargetOverviewListResponse",
+        "type": "object"
+      },
+      "TargetOverviewSummary": {
+        "additionalProperties": false,
+        "description": "Totals across every enabled target in the workspace and the window.",
+        "properties": {
+          "attributed": {
+            "minimum": 0.0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "minimum": 0.0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "potential": {
+            "minimum": 0.0,
+            "title": "Potential",
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Sum of each target's associated Session count; a Session that contains several targets is counted once per target.",
+            "minimum": 0.0,
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "targets": {
+            "minimum": 0.0,
+            "title": "Targets",
+            "type": "integer"
+          },
+          "unanalyzed": {
+            "minimum": 0.0,
+            "title": "Unanalyzed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "targets",
+          "sessions",
+          "potential",
+          "attributed",
+          "nonTarget",
+          "unanalyzed"
+        ],
+        "title": "TargetOverviewSummary",
+        "type": "object"
+      },
+      "TargetTrendBucket": {
+        "additionalProperties": false,
+        "description": "One continuous, zero-filled target trend bucket.",
+        "properties": {
+          "attributed": {
+            "minimum": 0.0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "bucket": {
+            "format": "date",
+            "title": "Bucket",
+            "type": "string"
+          },
+          "byTarget": {
+            "items": {
+              "$ref": "#/components/schemas/TargetTrendByTarget"
+            },
+            "title": "Bytarget",
+            "type": "array"
+          },
+          "label": {
+            "description": "MM-DD for day/week buckets, YYYY-MM for month buckets.",
+            "title": "Label",
+            "type": "string"
+          },
+          "nonTarget": {
+            "minimum": 0.0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "unanalyzed": {
+            "minimum": 0.0,
+            "title": "Unanalyzed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "label",
+          "attributed",
+          "nonTarget",
+          "unanalyzed",
+          "byTarget"
+        ],
+        "title": "TargetTrendBucket",
+        "type": "object"
+      },
+      "TargetTrendByTarget": {
+        "additionalProperties": false,
+        "description": "One target's contribution to one trend bucket.",
+        "properties": {
+          "attributed": {
+            "minimum": 0.0,
+            "title": "Attributed",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "minimum": 0.0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "objectName": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Objectname",
+            "type": "string"
+          },
+          "objectType": {
+            "enum": [
+              "skill",
+              "agent",
+              "knowledge"
+            ],
+            "title": "Objecttype",
+            "type": "string"
+          },
+          "targetId": {
+            "maxLength": 36,
+            "title": "Targetid",
+            "type": "string"
+          },
+          "unanalyzed": {
+            "minimum": 0.0,
+            "title": "Unanalyzed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "targetId",
+          "objectType",
+          "objectName",
+          "attributed",
+          "nonTarget",
+          "unanalyzed"
+        ],
+        "title": "TargetTrendByTarget",
+        "type": "object"
+      },
+      "TargetTrendMeta": {
+        "additionalProperties": false,
+        "description": "The bucket-time policy the response actually applied.",
+        "properties": {
+          "bucketPolicy": {
+            "description": "attributed and nonTarget rows use the attribution createdAt; unanalyzed rows use the bad case createdAt.",
+            "title": "Bucketpolicy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucketPolicy"
+        ],
+        "title": "TargetTrendMeta",
+        "type": "object"
+      },
+      "TargetTrendResponse": {
+        "additionalProperties": false,
+        "description": "The continuous target trend series and its effective grain.",
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetTrendBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "grain": {
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "title": "Grain",
+            "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/TargetTrendMeta"
+          },
+          "window": {
+            "$ref": "#/components/schemas/OverviewWindow"
+          }
+        },
+        "required": [
+          "window",
+          "grain",
+          "buckets",
+          "meta"
+        ],
+        "title": "TargetTrendResponse",
+        "type": "object"
+      },
       "TicketRequest": {
         "additionalProperties": false,
         "description": "Run topics, optional workspace, and replay cursor bound to an event ticket.",
@@ -14509,6 +15155,808 @@
           }
         ],
         "summary": "Get Overview Summary",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/targets": {
+      "get": {
+        "description": "Return target summary totals and one evolvable-sorted page.",
+        "operationId": "get_overview_targets_api_workspaces__wid__overview_targets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "1-based page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1-based page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size; defaults to 5.",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "description": "Page size; defaults to 5.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetOverviewListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Targets",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/targets/cases": {
+      "get": {
+        "description": "Return one filtered page of potential cases under their target versions.",
+        "operationId": "get_overview_target_cases_api_workspaces__wid__overview_targets_cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target.",
+            "in": "query",
+            "name": "targets",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target.",
+              "title": "Targets"
+            }
+          },
+          {
+            "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+            "in": "query",
+            "name": "objects",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Object names to include. Repeat the parameter or pass a comma-separated value; empty means every object, and at most 50 distinct names are allowed.",
+              "title": "Objects"
+            }
+          },
+          {
+            "description": "Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all.",
+            "in": "query",
+            "name": "states",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all.",
+              "enum": [
+                "attributed",
+                "nonTarget",
+                "unanalyzed"
+              ],
+              "title": "States"
+            }
+          },
+          {
+            "description": "1-based page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1-based page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size; defaults to 8.",
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "default": 8,
+              "description": "Page size; defaults to 8.",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Pagesize",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetCaseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Target Cases",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/targets/trend": {
+      "get": {
+        "description": "Return the selected targets' three-state trend, zero-filled per bucket.",
+        "operationId": "get_overview_targets_trend_api_workspaces__wid__overview_targets_trend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target.",
+            "in": "query",
+            "name": "targets",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Evolution target ids to include. Repeat the parameter or pass a comma-separated value; empty means every enabled target.",
+              "title": "Targets"
+            }
+          },
+          {
+            "description": "Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all.",
+            "in": "query",
+            "name": "states",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Attribution states to include: attributed, nonTarget, or unanalyzed. Repeat the parameter or pass a comma-separated value; empty means all.",
+              "enum": [
+                "attributed",
+                "nonTarget",
+                "unanalyzed"
+              ],
+              "title": "States"
+            }
+          },
+          {
+            "description": "Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain.",
+            "in": "query",
+            "name": "grain",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "description": "Requested trend grain: day, week, or month. A day request longer than 92 inclusive days is served as week and the response states the effective grain.",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "title": "Grain",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetTrendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Targets Trend",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/overview/targets/{targetId}/detail": {
+      "get": {
+        "description": "Return one target's independent version and source analysis.",
+        "operationId": "get_overview_target_detail_api_workspaces__wid__overview_targets__targetId__detail_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "targetId",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Targetid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai start date (YYYY-MM-DD).",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive Asia/Shanghai end date (YYYY-MM-DD).",
+              "title": "To"
+            }
+          },
+          {
+            "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Quick range in days; only 7, 30, and 90 are accepted when it derives a boundary, and it is ignored when both from and to are supplied. Defaults to 90 when neither from nor to is supplied.",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "description": "Target versions for one detail card. Repeat the parameter or pass a comma-separated value; empty selects the highest versionLimit versions.",
+            "in": "query",
+            "name": "versions",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target versions for one detail card. Repeat the parameter or pass a comma-separated value; empty selects the highest versionLimit versions.",
+              "title": "Versions"
+            }
+          },
+          {
+            "description": "Version count when versions is empty: 5, 10, 20, or 0 for all.",
+            "in": "query",
+            "name": "versionLimit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "description": "Version count when versions is empty: 5, 10, 20, or 0 for all.",
+              "enum": [
+                0,
+                5,
+                10,
+                20
+              ],
+              "maximum": 20,
+              "minimum": 0,
+              "title": "Versionlimit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace or target does not exist"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request validation failed"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Overview Target Detail",
         "tags": [
           "overview"
         ]

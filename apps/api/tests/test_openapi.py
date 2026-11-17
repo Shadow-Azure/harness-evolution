@@ -109,6 +109,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "/api/workspaces/{wid}/overview/summary",
         "/api/workspaces/{wid}/overview/trend",
         "/api/workspaces/{wid}/overview/sources",
+        "/api/workspaces/{wid}/overview/targets",
+        "/api/workspaces/{wid}/overview/targets/trend",
+        "/api/workspaces/{wid}/overview/targets/cases",
+        "/api/workspaces/{wid}/overview/targets/{targetId}/detail",
     }
     assert {
         "HealthResponse",
@@ -208,6 +212,20 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "AttributionPage",
         "AttributionDetail",
         "AttributionTriggerCompare",
+        "TargetOverviewSummary",
+        "TargetOverviewItem",
+        "TargetOverviewListResponse",
+        "TargetTrendByTarget",
+        "TargetTrendBucket",
+        "TargetTrendMeta",
+        "TargetTrendResponse",
+        "TargetCaseItem",
+        "TargetCaseListResponse",
+        "TargetDetailTarget",
+        "TargetDetailStats",
+        "TargetDetailVersion",
+        "TargetDetailSource",
+        "TargetDetailResponse",
     } <= set(components)
     assert set(components["SessionPreviewItem"]["properties"]) == {
         "sessionId",
@@ -227,6 +245,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     assert (
         components["SessionsPreviewRequest"]["properties"]["targetVersion"]["anyOf"][0]["maxLength"]
         == 96
+    )
+    assert (
+        "attribution createdAt"
+        in components["TargetTrendMeta"]["properties"]["bucketPolicy"]["description"]
     )
     error_body = components["ErrorBody"]
     assert error_body["properties"]["code"]["$ref"] == "#/components/schemas/ErrorCode"
@@ -300,6 +322,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         ("/api/workspaces/{wid}/overview/summary", "get"),
         ("/api/workspaces/{wid}/overview/trend", "get"),
         ("/api/workspaces/{wid}/overview/sources", "get"),
+        ("/api/workspaces/{wid}/overview/targets", "get"),
+        ("/api/workspaces/{wid}/overview/targets/trend", "get"),
+        ("/api/workspaces/{wid}/overview/targets/cases", "get"),
+        ("/api/workspaces/{wid}/overview/targets/{targetId}/detail", "get"),
         ("/api/workspaces/{wid}/bad-cases", "get"),
         ("/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions", "get"),
         ("/api/workspaces/{wid}/bad-cases/{badCaseId}/attributions/{attributionId}", "get"),
