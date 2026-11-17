@@ -18,6 +18,7 @@ scope:
   - tests/**
   - fixtures/**
   - reports/**
+  - plans/**
   - apps/api/**
   - apps/web/**
   - scripts/run-api.mjs
