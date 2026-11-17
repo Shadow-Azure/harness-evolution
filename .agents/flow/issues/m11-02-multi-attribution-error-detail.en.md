@@ -11,7 +11,7 @@ depends:
   - m10-05
   - m11-01
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/errors/**
   - apps/web/src/components/**
