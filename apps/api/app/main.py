@@ -290,6 +290,7 @@ def create_app(
     attribution_runner = AttributionRunner(
         attribution_repository,
         context_provider=AttributionContextProvider(potential_repository),
+        skill_resolver=attribution_skills,
     )
     evolution_stages = EvolutionStageService(
         evolution_repository,

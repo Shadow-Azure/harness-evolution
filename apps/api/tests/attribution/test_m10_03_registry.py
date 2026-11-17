@@ -7,6 +7,7 @@ import pytest
 from app.config import DatabaseDialect, Settings
 from app.main import create_app
 from app.service.evolution.attribution import (
+    AgentSkillStubEngine,
     RuleBasedEngine,
     registered_engine_keys,
     resolve_attribution_engine,
@@ -24,7 +25,14 @@ def test_rule_v1_is_registered_and_resolved() -> None:
 
 def test_registered_keys_are_a_closed_stable_tuple() -> None:
     """New engines must be registered explicitly, not discovered dynamically."""
-    assert registered_engine_keys() == ("rule-v1",)
+    assert registered_engine_keys() == ("rule-v1", "agent-skill-stub-v1")
+
+
+def test_agent_skill_stub_is_explicitly_registered() -> None:
+    """The offline executor seam resolves without enabling a real model call."""
+    engine = resolve_attribution_engine("agent-skill-stub-v1")
+
+    assert isinstance(engine, AgentSkillStubEngine)
 
 
 @pytest.mark.parametrize("key", ["", "llm-v1", "rule-v2", "legacy-probe-import"])

@@ -16,6 +16,7 @@ from app.db.crud.attribution_skills import (
     AttributionSkillRepository,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution import AttributionSkillSnapshot
 from app.service.identity.schemas import IdentityModel
 
 _SKILL_KEY = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -237,6 +238,31 @@ class AttributionSkillService:
         """Resolve target override, workspace default, then platform default."""
         record, source = await self._repository.resolve(workspace_id, target_id)
         return EffectiveAttributionSkill(**_public(record).model_dump(), source=source)
+
+    async def resolve_snapshot(
+        self,
+        workspace_id: str,
+        skill_key: str,
+        revision: int,
+        content_hash: str,
+    ) -> AttributionSkillSnapshot:
+        """Resolve the exact immutable Skill identity frozen into one run."""
+        record = await self._repository.get_snapshot(
+            workspace_id=workspace_id,
+            skill_key=skill_key,
+            revision=revision,
+            content_hash=content_hash,
+        )
+        if record is None:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.ATTRIBUTION_SKILL_NOT_FOUND,
+                message="frozen attribution Skill revision was not found",
+            )
+        return AttributionSkillSnapshot(
+            executor_type=record.executor_type,
+            content=record.content,
+        )
 
     @staticmethod
     def _not_found() -> AppError:

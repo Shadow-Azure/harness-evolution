@@ -139,6 +139,26 @@ class AttributionSkillRepository:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _record(row) if row is not None else None
 
+    async def get_snapshot(
+        self,
+        *,
+        workspace_id: str,
+        skill_key: str,
+        revision: int,
+        content_hash: str,
+    ) -> AttributionSkillRecord | None:
+        """Return the exact immutable revision frozen into a historical run."""
+        statement = _joined().where(
+            attribution_skills.c.skill_key == skill_key,
+            attribution_skill_revisions.c.revision == revision,
+            attribution_skill_revisions.c.content_hash == content_hash,
+            (attribution_skills.c.workspace_id == workspace_id)
+            | (attribution_skills.c.workspace_id.is_(None)),
+        )
+        async with self._database.session() as session:
+            row = (await session.execute(statement)).mappings().one_or_none()
+        return _record(row) if row is not None else None
+
     async def create(
         self,
         *,

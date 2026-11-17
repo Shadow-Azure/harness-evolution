@@ -11,7 +11,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from app.db.crud.attributions import (
     BadCaseEvidenceRecord,
@@ -34,6 +34,15 @@ from app.service.evolution.attribution_contracts import (
     AttributionReportV2,
     AttributionTargetRef,
     default_execution_manifest,
+)
+from app.service.evolution.attribution_executor import (
+    AGENT_SKILL_STUB_ENGINE,
+    AttributionExecutorBadCase,
+    AttributionExecutorContext,
+    AttributionExecutorRequest,
+    AttributionExecutorSkill,
+    AttributionExecutorTarget,
+    resolve_attribution_executor,
 )
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.potential import (
@@ -93,11 +102,14 @@ class AttributionInput:
     attribution_skill_key: str | None = None
     attribution_skill_revision: str | None = None
     attribution_skill_content_hash: str | None = None
+    attribution_skill_executor_type: str | None = None
+    attribution_skill_content: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
     object_trigger_at: datetime | None = None
     case_trigger_at: datetime | None = None
     knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
     context: AttributionCaseContext | None = None
+    run_id: str = ""
 
     @property
     def cache_key(self) -> str:
@@ -138,6 +150,9 @@ class AttributionResult:
     confidence: float
     reason: str
     reasoning: str
+    evidence_references: tuple[str, ...] = ()
+    suggestion_clues: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject conclusions that cannot satisfy the table's closed sets."""
@@ -259,6 +274,86 @@ class RuleBasedEngine:
         )
 
 
+class AgentSkillStubEngine:
+    """Adapt the versioned executor contract to the existing pure engine boundary."""
+
+    key: AttributionEngineKey = AGENT_SKILL_STUB_ENGINE
+
+    async def attribute(self, item: AttributionInput) -> AttributionResult:
+        """Execute the offline Agent Skill stub and validate its structured output."""
+        if item.attribution_skill_executor_type != "agent_stub":
+            raise ValueError(
+                "agent-skill-stub-v1 requires an agent_stub Skill revision",
+            )
+        if not (
+            item.attribution_skill_key
+            and item.attribution_skill_revision
+            and item.attribution_skill_content_hash
+        ):
+            raise ValueError("agent attribution requires a frozen Skill revision")
+        context = item.context
+        bundle_payload = dict(context.bundle.to_payload()) if context is not None else None
+        evidence_refs = [
+            *(
+                [context.report_ref]
+                if context is not None and context.report_ref is not None
+                else []
+            ),
+            *(context.path_agent_refs if context is not None else ()),
+        ]
+        introduction_ref = None
+        if context is not None and context.bundle.object_occurrences:
+            introduction_ref = context.bundle.object_occurrences[0].ref
+            evidence_refs.insert(0, introduction_ref)
+        output = await resolve_attribution_executor(self.key).execute(
+            AttributionExecutorRequest(
+                workspace_id=item.workspace_id,
+                run_id=item.run_id,
+                target=AttributionExecutorTarget(
+                    object_type=item.probe_type,  # type: ignore[arg-type]
+                    object_name=item.probe_object,
+                    object_version=item.object_version,
+                    introduction_ref=introduction_ref,
+                    introduction_at=_instant_or_none(item.object_trigger_at),
+                ),
+                bad_case=AttributionExecutorBadCase(
+                    bad_case_id=item.bad_case_id,
+                    bad_case_type=item.bad_case_type,
+                    title=item.title,
+                    description=item.description,
+                    report_ref=context.report_ref if context is not None else None,
+                    detection_at=_instant_or_none(item.case_trigger_at),
+                    hit_reason=item.hit_reason,
+                    order_state=item.order_state,
+                    error_signal=_error_evidence(item.metadata),
+                ),
+                skill=AttributionExecutorSkill(
+                    key=item.attribution_skill_key,
+                    revision=item.attribution_skill_revision,
+                    content_hash=item.attribution_skill_content_hash,
+                    content=dict(item.attribution_skill_content),
+                ),
+                context=AttributionExecutorContext(
+                    session_id=item.session_id,
+                    snapshot_hash=item.execution_manifest.context_snapshot_hash,
+                    payload=bundle_payload,
+                    evidence_refs=evidence_refs,
+                    warnings=(list(context.bundle.warnings) if context is not None else []),
+                ),
+            ),
+        )
+        return AttributionResult(
+            conclusion=output.conclusion,
+            category=output.category,
+            confidence=output.confidence,
+            reason=output.summary,
+            reasoning=output.reasoning,
+            evidence_references=tuple(output.evidence_references),
+            suggestion_clues=tuple(output.suggestion_clues),
+            warnings=tuple(output.warnings),
+        )
+
+
 def _headline(item: AttributionInput) -> str:
     """Pick a bounded one-line human summary from the reported evidence."""
     headline = item.title.strip() or item.description.strip()
@@ -268,6 +363,11 @@ def _headline(item: AttributionInput) -> str:
 def _instant(value: datetime | None) -> str:
     """Render one optional trigger instant deterministically."""
     return value.isoformat() if value is not None else "未知"
+
+
+def _instant_or_none(value: datetime | None) -> str | None:
+    """Render one optional coordinate for the executor JSON contract."""
+    return value.isoformat() if value is not None else None
 
 
 def _error_evidence(metadata: Mapping[str, object]) -> str | None:
@@ -318,7 +418,17 @@ def _report_payload(item: AttributionInput, result: AttributionResult) -> Attrib
         )
         for knowledge in item.knowledge_evidence
     )
-    warnings = ["ATTRIBUTION_EVIDENCE_INSUFFICIENT"] if result.conclusion == "inconclusive" else []
+    evidence.extend(
+        AttributionEvidence(
+            kind="trace",
+            summary="Executor-referenced Session trace coordinate",
+            reference=reference,
+        )
+        for reference in result.evidence_references
+    )
+    warnings = list(result.warnings)
+    if result.conclusion == "inconclusive" and "ATTRIBUTION_EVIDENCE_INSUFFICIENT" not in warnings:
+        warnings.append("ATTRIBUTION_EVIDENCE_INSUFFICIENT")
     return AttributionReportV2(
         target=AttributionTargetRef(
             object_type=item.probe_type,  # type: ignore[arg-type]
@@ -337,12 +447,14 @@ def _report_payload(item: AttributionInput, result: AttributionResult) -> Attrib
         ),
         evidence=evidence,
         analysis=AttributionAnalysis(summary=result.reason, reasoning=result.reasoning),
+        suggestion_clues=list(result.suggestion_clues),
         warnings=warnings,
     )
 
 
 _ENGINE_FACTORIES: dict[str, Callable[[], AttributionEngine]] = {
     DEFAULT_ATTRIBUTION_ENGINE: RuleBasedEngine,
+    AGENT_SKILL_STUB_ENGINE: AgentSkillStubEngine,
 }
 
 
@@ -371,6 +483,27 @@ class AttributionRunSummary:
 
 
 EngineFactory = Callable[[AttributionEngineKey], AttributionEngine]
+
+
+@dataclass(frozen=True, slots=True)
+class AttributionSkillSnapshot:
+    """Exact immutable Skill facts consumed by an executor-backed run."""
+
+    executor_type: str
+    content: Mapping[str, Any]
+
+
+class AttributionSkillSnapshotResolver(Protocol):
+    """Load a frozen Skill revision without consulting current bindings."""
+
+    async def resolve_snapshot(
+        self,
+        workspace_id: str,
+        skill_key: str,
+        revision: int,
+        content_hash: str,
+    ) -> AttributionSkillSnapshot:
+        """Return the exact revision selected when the run was launched."""
 
 
 class AttributionStore(Protocol):
@@ -428,12 +561,14 @@ class AttributionRunner:
         engine_factory: EngineFactory = resolve_attribution_engine,
         now: Callable[[], datetime] = now_shanghai,
         context_provider: AttributionContextProvider | None = None,
+        skill_resolver: AttributionSkillSnapshotResolver | None = None,
     ) -> None:
         """Bind persistence, engine resolution, and the injectable clock."""
         self._store = store
         self._engine_factory = engine_factory
         self._now = now
         self._context_provider = context_provider
+        self._skill_resolver = skill_resolver
 
     async def run(
         self,
@@ -510,6 +645,7 @@ class AttributionRunner:
             raise self._blocked(run.id, None, exc) from exc
 
         object_version = resolve_target_revision(run.target_version)[1]
+        skill_snapshot = await self._resolve_skill_snapshot(run, engine)
         created = 0
         reused = 0
         non_target = 0
@@ -522,6 +658,7 @@ class AttributionRunner:
                     knowledge,
                     object_version,
                     contexts,
+                    skill_snapshot,
                 )
                 now = self._now()
                 if cache_enabled:
@@ -593,6 +730,7 @@ class AttributionRunner:
         knowledge: Mapping[str, tuple[KnowledgeEvidenceRecord, ...]],
         object_version: str,
         contexts: Mapping[str, AttributionCaseContext],
+        skill_snapshot: AttributionSkillSnapshot | None,
     ) -> AttributionInput:
         """Join one matcher row with its persisted bad-case and knowledge evidence."""
         evidence = bad_cases.get(candidate.bad_case_id)
@@ -600,6 +738,7 @@ class AttributionRunner:
             raise LookupError(f"bad case evidence not found: {candidate.bad_case_id}")
         return AttributionInput(
             bad_case_id=candidate.bad_case_id,
+            run_id=run.id,
             workspace_id=run.workspace_id,
             session_id=candidate.session_id,
             probe_type=run.target_type,
@@ -614,6 +753,12 @@ class AttributionRunner:
                 else None
             ),
             attribution_skill_content_hash=run.attribution_skill_content_hash,
+            attribution_skill_executor_type=(
+                skill_snapshot.executor_type if skill_snapshot is not None else None
+            ),
+            attribution_skill_content=(
+                skill_snapshot.content if skill_snapshot is not None else {}
+            ),
             bad_case_type=candidate.bad_case_type,
             title=evidence.title,
             description=evidence.description,
@@ -636,6 +781,32 @@ class AttributionRunner:
             context=contexts.get(candidate.bad_case_id),
         )
 
+    async def _resolve_skill_snapshot(
+        self,
+        run: EvolutionRunRecord,
+        engine: AttributionEngine,
+    ) -> AttributionSkillSnapshot | None:
+        """Load executor content by the immutable identity frozen into the run."""
+        if engine.key == DEFAULT_ATTRIBUTION_ENGINE:
+            return None
+        if self._skill_resolver is None:
+            raise ConfigError("attribution Skill snapshot resolver is not configured")
+        if not (
+            run.attribution_skill_key
+            and run.attribution_skill_revision is not None
+            and run.attribution_skill_content_hash
+        ):
+            raise ConfigError("run does not contain a frozen attribution Skill revision")
+        try:
+            return await self._skill_resolver.resolve_snapshot(
+                run.workspace_id,
+                run.attribution_skill_key,
+                run.attribution_skill_revision,
+                run.attribution_skill_content_hash,
+            )
+        except Exception as exc:
+            raise ConfigError("frozen attribution Skill revision cannot be resolved") from exc
+
     def _blocked(
         self,
         run_id: str,
@@ -657,6 +828,7 @@ class AttributionRunner:
 
 __all__ = [
     "DEFAULT_ATTRIBUTION_ENGINE",
+    "AgentSkillStubEngine",
     "AttributionEngine",
     "AttributionInput",
     "AttributionResult",

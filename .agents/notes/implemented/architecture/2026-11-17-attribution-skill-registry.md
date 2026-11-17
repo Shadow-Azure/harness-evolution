@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-不同对象可独立绑定 revision，空间可设统一回退，未配置时仍有确定的平台默认；停用只影响未来解析，历史报告与 Run 保持可读。Skill key 当前全平台唯一以简化跨空间引用保护，若未来需要同名空间 Skill，应把唯一身份升级为 namespace/key 且保持清单 key 稳定。执行器仍是规则引擎，`agent_stub` 与 `agent` 仅作为注册元数据，真实调用由后续执行器迭代交付。
+不同对象可独立绑定 revision，空间可设统一回退，未配置时仍有确定的平台默认；停用只影响未来解析，历史报告与 Run 保持可读。Skill key 当前全平台唯一以简化跨空间引用保护，若未来需要同名空间 Skill，应把唯一身份升级为 namespace/key 且保持清单 key 稳定。`agent_stub` 已接入离线执行器接缝，`agent` 仍只作为注册元数据并在启动前拒绝，真实调用由内网 adapter 交付。

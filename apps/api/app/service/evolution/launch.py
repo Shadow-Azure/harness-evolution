@@ -9,6 +9,7 @@ from app.db.crud.evolution import EvolutionRepository
 from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
+from app.service.evolution.attribution_executor import AGENT_SKILL_STUB_ENGINE
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
 from app.service.evolution.potential import (
@@ -91,6 +92,7 @@ class LaunchAttributionSkill(Protocol):
     skill_key: str
     revision: int
     content_hash: str
+    executor_type: str
 
 
 class LaunchAttributionSkillResolver(Protocol):
@@ -285,7 +287,7 @@ class EvolutionLaunchService:
             "eval_config": _snapshot_eval(body.eval),
             "potential_policy": policy.snapshot(),
             "cache_enabled": body.cache_enabled,
-            "attribution_engine": DEFAULT_ATTRIBUTION_ENGINE,
+            "attribution_engine": _attribution_engine(effective_skill),
             "attribution_skill_key": (
                 effective_skill.skill_key if effective_skill is not None else None
             ),
@@ -325,6 +327,20 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
     if not isinstance(sanitized, dict):
         return {}
     return {str(key): value for key, value in sanitized.items()}
+
+
+def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:
+    """Select the engine matching the resolved Skill executor boundary."""
+    if effective_skill is None or effective_skill.executor_type == "builtin_rule":
+        return DEFAULT_ATTRIBUTION_ENGINE
+    if effective_skill.executor_type == "agent_stub":
+        return AGENT_SKILL_STUB_ENGINE
+    raise AppError(
+        status_code=409,
+        code=ErrorCode.ATTRIBUTION_SKILL_INVALID,
+        message="the selected attribution Skill executor is not available",
+        details={"executorType": effective_skill.executor_type},
+    )
 
 
 def _match_condition(query: Any, workspace_id: str) -> MatchCondition:
