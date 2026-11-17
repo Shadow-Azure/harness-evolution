@@ -359,3 +359,36 @@ async def test_two_runs_racing_on_one_case_keep_one_probe(
     assert await probe_count(attribution_harness.database) == 1
     assert set(await attribution_repository.linked_probe_ids(RUN_ID)) == {CASE_ID}
     assert set(await attribution_repository.linked_probe_ids(OTHER_RUN_ID)) == {CASE_ID}
+
+
+class InvalidResultEngine:
+    """Engine double that violates the result contract."""
+
+    key = "rule-v1"
+
+    async def attribute(self, item: AttributionInput) -> AttributionResult:
+        """Raise a validation error that must fail the job, not block the run."""
+        del item
+        return AttributionResult(
+            conclusion="attributed",
+            category=None,
+            confidence=0.8,
+            reason="invalid",
+            reasoning="invalid",
+        )
+
+
+async def test_invalid_engine_result_fails_instead_of_blocking(
+    attribution_harness: Harness,
+    attribution_repository: AttributionRepository,
+) -> None:
+    """A programming/validation error must not masquerade as a retryable block."""
+    run = await load_run(attribution_harness.database)
+    runner = AttributionRunner(
+        attribution_repository,
+        engine_factory=lambda key: InvalidResultEngine(),
+    )
+
+    with pytest.raises(ValueError, match="category"):
+        await runner.run(run, (potential_case(),), cache_enabled=True)
+    assert await probe_count(attribution_harness.database) == 0

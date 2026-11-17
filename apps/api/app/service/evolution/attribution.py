@@ -449,6 +449,8 @@ class AttributionRunner:
                 )
             except RunBlocked:
                 raise
+            except (ConfigError, ValueError):
+                raise
             except Exception as exc:
                 raise self._blocked(run.id, candidate.bad_case_id, exc) from exc
             created += 1
