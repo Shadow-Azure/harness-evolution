@@ -11,7 +11,7 @@ depends:
   - m9-03
   - m9-04
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/**
   - plans/**
