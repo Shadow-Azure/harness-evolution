@@ -10,7 +10,7 @@ depends:
   - m10-02
   - m10-03
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/overview.py
   - apps/api/app/service/overview/**
