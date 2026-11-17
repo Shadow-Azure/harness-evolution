@@ -16,7 +16,15 @@ const PYTHON =
 const COMMANDS = {
   dev: ["-m", "app", "--reload"],
   db: ["-m", "pytest", "tests/test_database.py", "-m", "not mysql"],
-  "db-mysql": ["-m", "pytest", "tests/test_database.py", "-m", "mysql", "--maxfail=1"],
+  "db-mysql": [
+    "-m",
+    "pytest",
+    "tests/test_database.py",
+    "tests/m11-05-v2-cross-stack",
+    "-m",
+    "mysql",
+    "--maxfail=1",
+  ],
   lint: ["-m", "ruff", "check", ".", "--output-format", "concise"],
   start: ["-m", "app"],
   test: [
