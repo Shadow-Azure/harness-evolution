@@ -167,12 +167,12 @@ describe("evolution run API", () => {
       `/api/workspaces/${workspaceId}/evolution/preview/potential`,
       `/api/workspaces/${workspaceId}/evolution/preview/attribution`,
     ]);
-    expect(calls[0].body).toMatchObject({ page: 1, pageSize: 4 });
-    expect(calls[1].body).toMatchObject({
+    expect(calls[0]!.body).toMatchObject({ page: 1, pageSize: 4 });
+    expect(calls[1]!.body).toMatchObject({
       policy: { preset: "default" },
       pageSize: 5,
     });
-    expect(calls[2].body).toMatchObject({ cacheEnabled: true });
+    expect(calls[2]!.body).toMatchObject({ cacheEnabled: true });
   });
 
   it("reads execution events with the documented cursor and level filter", async () => {

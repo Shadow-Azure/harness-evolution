@@ -272,7 +272,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
       .map((option) => option.text());
     expect(options).toContain("deep-research");
     expect(options).not.toContain("Explore");
-    await wrapper.findAll(".seg button")[1].trigger("click");
+    await wrapper.findAll(".seg button")[1]!.trigger("click");
     await flushPromises();
     expect(
       wrapper
@@ -688,7 +688,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.find("[data-testid='wizard-session-table']").exists()).toBe(
       false,
     );
-    expect(wrapper.get("[data-testid='wizard-next']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='wizard-next']").exists()).toBe(true);
   });
 
   it("closes from the dialog, the close button, and Escape", async () => {
