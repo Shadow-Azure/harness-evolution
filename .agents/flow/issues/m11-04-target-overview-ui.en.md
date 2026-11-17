@@ -10,11 +10,15 @@ depends:
   - m8-04
   - m11-03
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/overview/**
   - apps/web/src/components/**
+  - apps/web/src/api/**
+  - apps/web/src/composables/**
+  - packages/contracts/**
   - tests/e2e/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

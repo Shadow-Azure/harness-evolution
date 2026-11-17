@@ -44,3 +44,57 @@ export type BadCaseListItem = components["schemas"]["BadCaseListItem"];
 /** One filtered page of this workspace's reported cases. */
 export type OverviewBadCaseListResponse =
   components["schemas"]["OverviewBadCaseListResponse"];
+
+/** Attribution state of one potential case under one target version. */
+export type TargetState = "attributed" | "nonTarget" | "unanalyzed";
+
+/** Object type configured for one evolution target. */
+export type TargetObjectType = "skill" | "agent" | "knowledge";
+
+/** Window-wide target totals shown by the target stat strip. */
+export type TargetOverviewSummary =
+  components["schemas"]["TargetOverviewSummary"];
+
+/** One target's potential cases and their three-state split. */
+export type TargetOverviewItem = components["schemas"]["TargetOverviewItem"];
+
+/** One evolvable-sorted page of targets plus the workspace-wide summary. */
+export type TargetOverviewListResponse =
+  components["schemas"]["TargetOverviewListResponse"];
+
+/** One target's contribution to a trend bucket. */
+export type TargetTrendByTarget =
+  components["schemas"]["TargetTrendByTarget"];
+
+/** One continuous, zero-filled three-state target trend bucket. */
+export type TargetTrendBucket = components["schemas"]["TargetTrendBucket"];
+
+/** The bucket-time policy the target trend actually applied. */
+export type TargetTrendMeta = components["schemas"]["TargetTrendMeta"];
+
+/** The target trend series plus its effective grain. */
+export type TargetTrendResponse = components["schemas"]["TargetTrendResponse"];
+
+/** One potential case under one target version with its attribution state. */
+export type TargetCaseItem = components["schemas"]["TargetCaseItem"];
+
+/** One filtered page of potential cases plus its authoritative total. */
+export type TargetCaseListResponse =
+  components["schemas"]["TargetCaseListResponse"];
+
+/** The configured target a detail card is about and every version it has. */
+export type TargetDetailTarget = components["schemas"]["TargetDetailTarget"];
+
+/** The detail card's four counters. */
+export type TargetDetailStats = components["schemas"]["TargetDetailStats"];
+
+/** One version's contribution inside the selected detail scope. */
+export type TargetDetailVersion =
+  components["schemas"]["TargetDetailVersion"];
+
+/** One reported source inside the selected detail scope. */
+export type TargetDetailSource = components["schemas"]["TargetDetailSource"];
+
+/** One target's independent version and source analysis. */
+export type TargetDetailResponse =
+  components["schemas"]["TargetDetailResponse"];

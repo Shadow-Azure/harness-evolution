@@ -13,11 +13,13 @@ import {
 } from "../../composables/useOverview";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import BadCaseTable from "./components/BadCaseTable.vue";
 import FilterBar from "./components/FilterBar.vue";
 import SourceBars from "./components/SourceBars.vue";
 import StackedBucketChart from "./components/StackedBucketChart.vue";
 import StatStrip from "./components/StatStrip.vue";
+import TargetsOverview from "./components/TargetsOverview.vue";
 import {
   bucketWindow,
   DEFAULT_OVERVIEW_STATE,
@@ -26,6 +28,7 @@ import {
   parseOverviewQuery,
   sameOverviewQuery,
   type OverviewRangeChoice,
+  type OverviewTab,
   type OverviewUrlState,
 } from "./overviewUrl";
 
@@ -37,9 +40,8 @@ const workspaceId = useWorkspaceId();
 const auth = useAuthStore();
 
 const filterBar = ref<InstanceType<typeof FilterBar> | null>(null);
+const targetsOverview = ref<InstanceType<typeof TargetsOverview> | null>(null);
 const listAnchor = ref<HTMLElement | null>(null);
-const targetsNotice = ref(false);
-let lastWorkspaceId: string | null = null;
 
 const parsed = computed(() =>
   parseOverviewQuery(route.query as Record<string, unknown>),
@@ -58,13 +60,21 @@ const caseFilters = computed(() => ({
   pageSize: OVERVIEW_PAGE_SIZE,
 }));
 
+const casesTabActive = computed(() => state.value.tab === "cases");
 const summaryQuery = useOverviewSummary(workspaceId, summaryFilters);
-const trendQuery = useOverviewTrend(workspaceId, trendFilters);
-const sourcesQuery = useOverviewSources(workspaceId, summaryFilters);
-const casesQuery = useOverviewCases(workspaceId, caseFilters);
+const trendQuery = useOverviewTrend(workspaceId, trendFilters, casesTabActive);
+const sourcesQuery = useOverviewSources(
+  workspaceId,
+  summaryFilters,
+  casesTabActive,
+);
+const casesQuery = useOverviewCases(workspaceId, caseFilters, casesTabActive);
 
 const workspaceName = computed(
   () => auth.workspaceById(workspaceId.value)?.name ?? "",
+);
+const canManage = computed(() =>
+  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
 );
 const summary = computed(() => summaryQuery.data.value ?? null);
 const objects = computed(() => summary.value?.objects ?? []);
@@ -149,6 +159,15 @@ async function replaceState(patch: Partial<OverviewUrlState>): Promise<void> {
   await router.replace({ path: route.path, query: overviewQuery(next) });
 }
 
+function setTab(value: OverviewTab): void {
+  if (state.value.tab === value) return;
+  void replaceState({ tab: value, page: 1 });
+}
+
+function applyTargetsPatch(patch: Partial<OverviewUrlState>): void {
+  void replaceState(patch);
+}
+
 function setRange(value: OverviewRangeChoice): void {
   if (value === "custom") {
     if (state.value.range === "custom") return;
@@ -212,14 +231,6 @@ function focusSources(): void {
   filterBar.value?.focusSources();
 }
 
-watch(
-  () => parsed.value.targetsRequested,
-  (requested) => {
-    if (requested) targetsNotice.value = true;
-  },
-  { immediate: true },
-);
-
 /**
  * Keep the URL canonical without touching the workspace's own filters.
  *
@@ -230,12 +241,8 @@ watch(
  */
 watch(
   [workspaceId, parsed],
-  ([wid]) => {
+  () => {
     if (route.name !== "workspace-overview") return;
-    if (lastWorkspaceId !== null && wid !== lastWorkspaceId) {
-      targetsNotice.value = false;
-    }
-    lastWorkspaceId = wid;
     if (sameOverviewQuery(route.query, overviewQuery(parsed.value.state))) return;
     void router.replace({
       path: route.path,
@@ -256,6 +263,7 @@ watch(
   () => casesQuery.data.value,
   (data) => {
     if (!data || route.name !== "workspace-overview") return;
+    if (state.value.tab !== "cases") return;
     if (state.value.page <= casePages.value) return;
     void router.replace({
       path: route.path,
@@ -299,11 +307,24 @@ watch(
       <div>
         <h1>工作空间总览</h1>
         <p class="sub">
-          {{ workspaceName }} · 从 bad case 上报来源与时间维度观察自身存在问题 /
-          发现前置步骤问题的分布，并下钻到 Session 错误详情。
+          {{ workspaceName }} ·
+          {{ state.tab === "cases"
+            ? "从 bad case 上报来源与时间维度观察自身存在问题 / 发现前置步骤问题的分布，并下钻到 Session 错误详情。"
+            : "从进化对象与时间维度观察潜在 bad case、归因状态和上报来源，并下钻到对应 Session。" }}
         </p>
       </div>
-      <span class="readonly">只读视图 · 筛选条件保存在地址栏</span>
+      <div class="head-actions">
+        <button
+          v-if="state.tab === 'targets' && canManage"
+          class="head-btn"
+          data-testid="ov-target-create"
+          type="button"
+          @click="targetsOverview?.openCreate()"
+        >
+          + 新增进化对象
+        </button>
+        <span class="readonly">只读视图 · 筛选条件保存在地址栏</span>
+      </div>
     </header>
 
     <div class="view-switch">
@@ -313,123 +334,131 @@ watch(
         aria-label="总览视图"
       >
         <button
-          class="active"
+          :class="{ active: state.tab === 'cases' }"
           data-testid="ov-tab-cases"
           role="tab"
           type="button"
-          aria-selected="true"
+          :aria-selected="state.tab === 'cases'"
+          @click="setTab('cases')"
         >
           bad case 总览
         </button>
         <button
+          :class="{ active: state.tab === 'targets' }"
           data-testid="ov-tab-targets"
-          disabled
           role="tab"
           type="button"
-          aria-selected="false"
-          title="进化对象总览将在 M11 提供"
+          :aria-selected="state.tab === 'targets'"
+          @click="setTab('targets')"
         >
           进化对象总览
         </button>
       </div>
-      <p
-        v-if="targetsNotice"
-        class="targets-notice"
-        data-testid="ov-targets-notice"
-        role="status"
-      >
-        进化对象总览将在 M11 提供，已切回 bad case 总览。
-      </p>
     </div>
 
-    <StatStrip
-      :code="summaryCode"
-      :error="summaryQuery.error.value"
-      :loading="summaryQuery.isPending.value"
-      :totals="summary?.totals ?? null"
-      @focus-sources="focusSources"
-      @retry="summaryQuery.refetch()"
-      @select-type="selectType"
-    />
+    <template v-if="state.tab === 'cases'">
+      <StatStrip
+        :code="summaryCode"
+        :error="summaryQuery.error.value"
+        :loading="summaryQuery.isPending.value"
+        :totals="summary?.totals ?? null"
+        @focus-sources="focusSources"
+        @retry="summaryQuery.refetch()"
+        @select-type="selectType"
+      />
 
-    <FilterBar
-      ref="filterBar"
-      :grain-effective="grainEffective"
-      :objects-loading="
-        summaryQuery.isPending.value && state.objects.length === 0
-      "
-      :options="objects"
-      :state="state"
-      :window="filterWindow"
-      @clear="clearFilters"
-      @update:grain="setGrain"
-      @update:objects="setObjects"
-      @update:range="setRange"
-      @update:window="setWindow"
-    />
+      <FilterBar
+        ref="filterBar"
+        :grain-effective="grainEffective"
+        :objects-loading="
+          summaryQuery.isPending.value && state.objects.length === 0
+        "
+        :options="objects"
+        :state="state"
+        :window="filterWindow"
+        @clear="clearFilters"
+        @update:grain="setGrain"
+        @update:objects="setObjects"
+        @update:range="setRange"
+        @update:window="setWindow"
+      />
 
-    <section
-      class="chart-card"
-      data-testid="ov-chart-card"
-    >
-      <div class="card-head">
-        <div>
-          <h2>bad case 趋势</h2>
-          <div class="hint">
-            按{{ grainLabels[activeGrain] }}聚合 · 悬停查看自身存在问题 /
-            发现前置步骤问题明细 · 点击时间桶按该桶过滤列表
+      <section
+        class="chart-card"
+        data-testid="ov-chart-card"
+      >
+        <div class="card-head">
+          <div>
+            <h2>bad case 趋势</h2>
+            <div class="hint">
+              按{{ grainLabels[activeGrain] }}聚合 · 悬停查看自身存在问题 /
+              发现前置步骤问题明细 · 点击时间桶按该桶过滤列表
+            </div>
+          </div>
+          <span class="spacer" />
+          <div class="legend">
+            <span><i class="self" />自身存在问题</span>
+            <span><i class="discovery" />发现前置步骤问题</span>
           </div>
         </div>
-        <span class="spacer" />
-        <div class="legend">
-          <span><i class="self" />自身存在问题</span>
-          <span><i class="discovery" />发现前置步骤问题</span>
-        </div>
-      </div>
-      <StackedBucketChart
-        :buckets="buckets"
-        :code="trendCode"
-        :error="trendQuery.error.value"
-        :grain="activeGrain"
-        :loading="trendQuery.isPending.value"
-        @clear-filters="clearFilters"
-        @retry="trendQuery.refetch()"
-        @select-bucket="selectBucket"
-      />
-      <SourceBars
-        :code="sourcesCode"
-        :error="sourcesQuery.error.value"
-        :loading="sourcesQuery.isPending.value"
-        :sources="sources"
-        @retry="sourcesQuery.refetch()"
-      />
-    </section>
+        <StackedBucketChart
+          :buckets="buckets"
+          :code="trendCode"
+          :error="trendQuery.error.value"
+          :grain="activeGrain"
+          :loading="trendQuery.isPending.value"
+          @clear-filters="clearFilters"
+          @retry="trendQuery.refetch()"
+          @select-bucket="selectBucket"
+        />
+        <SourceBars
+          :code="sourcesCode"
+          :error="sourcesQuery.error.value"
+          :loading="sourcesQuery.isPending.value"
+          :sources="sources"
+          @retry="sourcesQuery.refetch()"
+        />
+      </section>
 
-    <div ref="listAnchor">
-      <BadCaseTable
-        :code="casesCode"
-        :error="casesQuery.error.value"
-        :filtered="isFiltered"
-        :items="caseItems"
-        :loading="casesQuery.isPending.value"
-        :page="state.page"
-        :page-size="OVERVIEW_PAGE_SIZE"
-        :total="caseTotal"
-        :type="state.type"
-        :wid="workspaceId"
-        @clear-filters="clearFilters"
-        @retry="casesQuery.refetch()"
-        @update:page="setPage"
-      />
-    </div>
+      <div ref="listAnchor">
+        <BadCaseTable
+          :code="casesCode"
+          :error="casesQuery.error.value"
+          :filtered="isFiltered"
+          :items="caseItems"
+          :loading="casesQuery.isPending.value"
+          :page="state.page"
+          :page-size="OVERVIEW_PAGE_SIZE"
+          :total="caseTotal"
+          :type="state.type"
+          :wid="workspaceId"
+          @clear-filters="clearFilters"
+          @retry="casesQuery.refetch()"
+          @update:page="setPage"
+        />
+      </div>
+    </template>
+    <TargetsOverview
+      v-else
+      ref="targetsOverview"
+      :can-manage="canManage"
+      :shared-window="summary?.window ?? null"
+      :source-options="objects"
+      :state="state"
+      :workspace-id="workspaceId"
+      :workspace-name="workspaceName"
+      @patch="applyTargetsPatch"
+    />
   </section>
 </template>
 
 <style scoped>
 .overview-page {
   width: min(1180px, 100%);
+  height: 100%;
   margin: 0 auto;
   padding: 18px 20px 64px;
+  overflow-y: auto;
 }
 
 .page-head {
@@ -455,8 +484,31 @@ watch(
   line-height: 1.6;
 }
 
-.readonly {
+.head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   margin-left: auto;
+}
+
+.head-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.head-btn:hover {
+  border-color: var(--blue);
+  color: var(--text);
+}
+
+.readonly {
   padding: 2px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -504,16 +556,6 @@ watch(
 .seg button:disabled {
   color: var(--text-faint);
   cursor: not-allowed;
-}
-
-.targets-notice {
-  margin: 0;
-  padding: 4px 9px;
-  border: 1px solid color-mix(in srgb, var(--orange) 32%, var(--border));
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--orange) 7%, var(--bg-card));
-  color: var(--text-dim);
-  font-size: 11px;
 }
 
 .chart-card {
@@ -581,6 +623,7 @@ watch(
 
 @media (max-width: 640px) {
   .overview-page {
+    height: auto;
     padding: 14px 12px 48px;
   }
 

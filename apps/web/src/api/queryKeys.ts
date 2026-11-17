@@ -1,4 +1,10 @@
-import type { OverviewCaseFilters, OverviewFilters } from "./overview";
+import type {
+  OverviewCaseFilters,
+  OverviewFilters,
+  TargetCaseFilters,
+  TargetDetailFilters,
+  TargetOverviewFilters,
+} from "./overview";
 import type { SessionFilters } from "./sessions";
 
 /**
@@ -90,6 +96,27 @@ export const queryKeys = {
     ["ws", workspaceId, "overview", "sources", filters] as const,
   overviewCases: (workspaceId: string, filters: OverviewCaseFilters) =>
     ["ws", workspaceId, "overview", "cases", filters] as const,
+  overviewTargets: (workspaceId: string, filters: TargetOverviewFilters) =>
+    ["ws", workspaceId, "overview", "targets", filters] as const,
+  overviewTargetTrend: (
+    workspaceId: string,
+    filters: TargetOverviewFilters,
+  ) => ["ws", workspaceId, "overview", "targetsTrend", filters] as const,
+  overviewTargetCases: (workspaceId: string, filters: TargetCaseFilters) =>
+    ["ws", workspaceId, "overview", "targetCases", filters] as const,
+  overviewTargetDetail: (
+    workspaceId: string,
+    targetId: string,
+    filters: TargetDetailFilters,
+  ) =>
+    [
+      "ws",
+      workspaceId,
+      "overview",
+      "targetDetail",
+      targetId,
+      filters,
+    ] as const,
   targetCatalog: (workspaceId: string) =>
     ["ws", workspaceId, "catalogs", "targets"] as const,
   modelCatalog: (workspaceId: string) =>
