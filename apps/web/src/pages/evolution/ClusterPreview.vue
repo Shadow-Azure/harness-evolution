@@ -4,7 +4,10 @@ import { useRoute, useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
-import { useEvolutionRuns } from "../../composables/useEvolutionRuns";
+import {
+  runDetailRefetchInterval,
+  useEvolutionRunDetail,
+} from "../../composables/useEvolutionRunDetail";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
 
@@ -14,19 +17,13 @@ const route = useRoute();
 const router = useRouter();
 const workspaceId = useWorkspaceId();
 const runId = computed(() => String(route.params.runId ?? ""));
-const { data, error, isPending, refetch } = useEvolutionRuns(workspaceId);
+const { data, error, isPending, refetch } = useEvolutionRunDetail(
+  workspaceId,
+  runId,
+  { refetchInterval: runDetailRefetchInterval },
+);
 
-const run = computed(() => {
-  const list = data.value;
-  if (!list) {
-    return null;
-  }
-  return (
-    list.running.find((card) => card.runId === runId.value) ??
-    list.history.find((card) => card.runId === runId.value) ??
-    null
-  );
-});
+const run = computed(() => data.value ?? null);
 
 function retry(): void {
   void refetch();
