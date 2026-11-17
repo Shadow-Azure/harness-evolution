@@ -53,3 +53,7 @@
 ## 故障排查
 
 - bad case 详情 409/503 表示轨迹未就绪，不是数据丢失；检查轨迹查询配置或补 `sessionSource`。
+
+## 外部表只读权限与契约日志
+
+服务账号只需 `bad_cases`、`bad_case_analysis`、`probe_reports` 的 SELECT；启动后每 5 分钟巡检列与类型契约，输出 `external.contract_check`、`external.contract_drift`、`external.row_drift`。读失败返回稳定 503（`EXTERNAL_SCHEMA_DRIFT` / `EXTERNAL_READ_FORBIDDEN` / `EXTERNAL_READ_FAILED`）；`external.read_failed` 只含表名、错误类与驱动码，不含 SQL 与参数。

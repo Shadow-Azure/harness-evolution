@@ -15,6 +15,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import aliased
 
 from app.db.base import Database
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -777,6 +778,7 @@ class AttributionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
 
+    @read_only_guard("bad_case_analysis")
     async def list_attributions(
         self,
         case_id: str,
@@ -795,6 +797,7 @@ class AttributionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
 
+    @read_only_guard("bad_case_analysis")
     async def count_links(self, case_id: str) -> int:
         """Count linked attributions, the pagination total rather than objects.
 
@@ -885,6 +888,7 @@ class AttributionRepository:
             count = (await session.execute(select(func.count()).select_from(distinct))).scalar_one()
         return int(count)
 
+    @read_only_guard("probe_reports")
     async def get_attribution(
         self,
         case_id: str,

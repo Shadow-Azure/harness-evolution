@@ -49,10 +49,9 @@ skip_covered = true
 python_version = "3.12"
 strict = true
 files = ["app", "tests"]
-# The m10-02 directory name is hyphenated, so mypy maps its conftest to the
-# same top-level module as the existing m2-06 conftest. The file only re-exports
-# pytest fixtures; keep the surrounding suite type checked.
-exclude = '(^|/)tests/m10-02-potential-matcher/conftest\.py$'
+# Hyphenated test directories map every conftest to the same top-level module.
+# These files only declare pytest fixtures; keep the surrounding suite checked.
+exclude = '(^|/)tests/(m10-02-potential-matcher|m12-02-external-contract-live)/conftest\.py$'
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
@@ -61,6 +60,7 @@ testpaths = ["tests"]
 markers = [
   "mysql: integration tests requiring a MySQL service",
   "live_upstream: opt-in tests requiring HE_UPSTREAM_BASE_URL and HE_UPSTREAM_TOKEN",
+  "live_external: opt-in tests requiring HE_EXTERNAL_CONTRACT_LIVE=1 and a read-only external DB target",
 ]
 
 [tool.ruff]

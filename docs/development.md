@@ -66,6 +66,16 @@ HE_UPSTREAM_LIVE=1 HE_UPSTREAM_BASE_URL=... HE_UPSTREAM_TOKEN=... pnpm test:api 
 
 日志与重放入口见 [deployment.md](deployment.md)。
 
+## 外部表契约联调
+
+真实 bad_case/probe 表是显式 opt-in：只有 `HE_EXTERNAL_CONTRACT_LIVE=1` 且存在只读目标（`HE_EXTERNAL_DB_DIALECT` + `HE_EXTERNAL_DB_URL`，或退回 `HE_DB_*`）时才访问真实库；用例只做元数据巡检与 SELECT 断言。运行：
+
+```sh
+HE_EXTERNAL_CONTRACT_LIVE=1 HE_EXTERNAL_DB_DIALECT=mysql HE_EXTERNAL_DB_URL=... pnpm test:api -- tests/m12-02-external-contract-live -m live_external
+```
+
+漂移与权限日志见 [deployment.md](deployment.md)。
+
 ## 文档与配对
 
 常驻文档中英成对。改任一侧后，在同一 PR 内最小修补另一侧，再运行 `pnpm record:i18n -- <pair>` 重录；契约见 [i18n/README.md](i18n/README.md)。标记为 `ts` 的围栏会被真实编译，标记为 `ts type-equiv` 的围栏与源码逐字对账。

@@ -13,6 +13,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import bad_case_analysis, bad_cases, probe_reports
 from app.utils.time import as_shanghai
 
@@ -231,6 +232,7 @@ class BadCaseRepository:
         """Bind this read-only repository to one application database."""
         self._database = database
 
+    @read_only_guard("bad_cases")
     async def list_by_session(self, session_id: str) -> tuple[BadCaseRow, ...]:
         """Return a session's cases in deterministic creation order."""
         statement = (
@@ -242,6 +244,7 @@ class BadCaseRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_bad_case(row) for row in rows)
 
+    @read_only_guard("bad_cases")
     async def list_snapshot(self, session_id: str) -> BadCaseSnapshot:
         """Read a session's cases and related rows in one database session."""
         case_statement = (
@@ -260,6 +263,7 @@ class BadCaseRepository:
             )
         return BadCaseSnapshot(cases=cases, analyses=analyses, probes=probes)
 
+    @read_only_guard("bad_cases")
     async def get_case(self, case_id: str) -> BadCaseRow | None:
         """Return one external issue by its stable id."""
         statement = select(bad_cases).where(bad_cases.c.bad_case_id == case_id)
@@ -318,6 +322,7 @@ class BadCaseRepository:
             non_issue=non_issue,
         )
 
+    @read_only_guard("bad_cases")
     async def get_case_snapshot(self, case_id: str) -> BadCaseSnapshot:
         """Read one case and related rows in one database session."""
         statement = select(bad_cases).where(bad_cases.c.bad_case_id == case_id)
@@ -329,6 +334,7 @@ class BadCaseRepository:
             analyses, probes = await self._related_rows(session, (case_id,))
         return BadCaseSnapshot(cases=cases, analyses=analyses, probes=probes)
 
+    @read_only_guard("bad_case_analysis")
     async def analyses_by_case_ids(
         self,
         case_ids: tuple[str, ...],
@@ -349,6 +355,7 @@ class BadCaseRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_analysis(row) for row in rows)
 
+    @read_only_guard("bad_case_analysis")
     async def get_analysis(self, case_id: str) -> BadCaseAnalysisRow | None:
         """Return one case's newest attribution row for legacy readers.
 
@@ -369,6 +376,7 @@ class BadCaseRepository:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_analysis(row) if row is not None else None
 
+    @read_only_guard("probe_reports")
     async def probes_by_ids(
         self,
         probe_ids: tuple[str, ...],
@@ -385,6 +393,7 @@ class BadCaseRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_probe(row) for row in rows)
 
+    @read_only_guard("probe_reports")
     async def get_probe(self, probe_id: str) -> ProbeReportRow | None:
         """Return one root-cause report by stable id."""
         statement = select(probe_reports).where(probe_reports.c.probe_id == probe_id)
@@ -392,6 +401,7 @@ class BadCaseRepository:
             row = (await session.execute(statement)).mappings().one_or_none()
         return _row_probe(row) if row is not None else None
 
+    @read_only_guard("bad_case_analysis")
     async def probe_source_candidates(
         self,
         probe_id: str,
@@ -411,6 +421,7 @@ class BadCaseRepository:
             if _text(row["bad_case_id"]) is not None
         )
 
+    @read_only_guard("probe_reports")
     async def get_probe_snapshot(self, probe_id: str) -> ProbeSnapshot:
         """Read one probe and reverse links in one database session."""
         probe_statement = select(probe_reports).where(
