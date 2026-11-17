@@ -10,7 +10,7 @@ depends:
   - m8-05
   - m9-04
 priority: P1
-status: ready
+status: done
 scope:
   - apps/web/src/components/agent-tree/**
   - apps/web/src/components.d.ts
