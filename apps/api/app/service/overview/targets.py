@@ -468,7 +468,7 @@ class TargetOverviewService:
         query: TargetOverviewQuery,
     ) -> TargetDetailResponse:
         """Return one target's selected-version analysis; unknown targets are 404."""
-        analyses = await self._analyses(workspace_id, query.window, ())
+        analyses = await self._analyses(workspace_id, query.window, (target_id,))
         analysis = next(
             (item for item in analyses if item.target.id == target_id),
             None,

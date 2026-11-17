@@ -125,7 +125,7 @@ class TargetOverviewRepository:
         object_type: str,
         object_name: str,
     ) -> tuple[ObjectVersionRecord, ...]:
-        """Return every object trigger of one kind/name in the given roots.
+        """Return the distinct object trigger identities of one kind/name.
 
         Version filtering is deliberately left to the shared matcher: this query
         returns the raw identity pair so the service can discover the versions a
@@ -147,6 +147,7 @@ class TargetOverviewRepository:
                     agent_events.c.kind == object_type,
                     agent_events.c.name == object_name,
                 )
+                .distinct()
             )
             async with self._database.session() as session:
                 rows = (await session.execute(statement)).mappings().all()
