@@ -624,7 +624,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 2 Session 关联**
 
 - 条件摘要 chip + 「修改条件」；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
-- 表格 4 条/页：Session 标题 / 对象触发点时间 / 该 Session 的 bad case 数 / 潜在数；只列**对象出现过**的 Session；未出现的只进「跳过」统计，不入表。
+- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 

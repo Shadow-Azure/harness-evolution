@@ -1,4 +1,6 @@
 import type {
+  AttributionPreviewRequest,
+  AttributionPreviewResult,
   EvolutionRetryAccepted,
   EvolutionStep,
   EvolutionStepKey,
@@ -6,9 +8,13 @@ import type {
   EvolutionRunEventLevel,
   EvolutionRunEventPage,
   EvolutionRunList,
+  PotentialPreviewRequest,
+  PotentialPreviewResult,
   ProbeQueryRequest,
   ProbeQueryResult,
   RunAccepted,
+  SessionPreviewResult,
+  SessionsPreviewRequest,
 } from "@harness/contracts";
 
 import { request } from "./http";
@@ -113,6 +119,54 @@ export function queryProbeHits(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Preview one page of Sessions whose trace contains the selected target.
+ * @param workspaceId Route workspace identifier.
+ * @param body Step 2 condition with page and page size.
+ * @returns Associated Sessions plus the non-overlapping partition.
+ */
+export function previewSessions(
+  workspaceId: string,
+  body: SessionsPreviewRequest,
+): Promise<SessionPreviewResult> {
+  return request<SessionPreviewResult>(
+    workspaceEvolutionPath(workspaceId, "/preview/sessions"),
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/**
+ * Preview one page of policy-included potential bad cases.
+ * @param workspaceId Route workspace identifier.
+ * @param body Step 3 condition with policy and pagination.
+ * @returns Included cases plus the closed reason distribution.
+ */
+export function previewPotential(
+  workspaceId: string,
+  body: PotentialPreviewRequest,
+): Promise<PotentialPreviewResult> {
+  return request<PotentialPreviewResult>(
+    workspaceEvolutionPath(workspaceId, "/preview/potential"),
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+/**
+ * Preview attribution cache reuse without executing the attribution engine.
+ * @param workspaceId Route workspace identifier.
+ * @param body Step 4 condition with the cache switch and no pagination.
+ * @returns Cache reuse and historical non-target reference counts.
+ */
+export function previewAttribution(
+  workspaceId: string,
+  body: AttributionPreviewRequest,
+): Promise<AttributionPreviewResult> {
+  return request<AttributionPreviewResult>(
+    workspaceEvolutionPath(workspaceId, "/preview/attribution"),
+    { method: "POST", body: JSON.stringify(body) },
+  );
 }
 
 /**

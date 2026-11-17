@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQueryClient } from "@tanstack/vue-query";
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import ErrorState from "../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../components/ui/LoadingSkeleton.vue";
@@ -16,12 +16,37 @@ import TargetConfigEntry from "./targets/components/TargetConfigEntry.vue";
 defineOptions({ name: "EvolutionPage" });
 
 const router = useRouter();
+const route = useRoute();
 const queryClient = useQueryClient();
 const workspaceId = useWorkspaceId();
 const { data, error, isPending, refetch } = useEvolutionRuns(workspaceId);
-const wizardOpen = ref(false);
+const focusCaseId = computed(() => {
+  const value = route.query.case;
+  return typeof value === "string" && value ? value : null;
+});
+const wizardOpen = ref(Boolean(focusCaseId.value));
 const running = computed(() => data.value?.running ?? []);
 const history = computed(() => data.value?.history ?? []);
+
+watch(focusCaseId, (caseId) => {
+  if (caseId) {
+    wizardOpen.value = true;
+  }
+});
+
+/**
+ * Close the wizard and drop the one-shot focus-case query.
+ * @returns A navigation promise when a query cleanup is needed.
+ */
+async function closeWizard(): Promise<void> {
+  wizardOpen.value = false;
+  if (!focusCaseId.value) {
+    return;
+  }
+  const query = { ...route.query };
+  delete query.case;
+  await router.replace({ query });
+}
 
 function retry(): void {
   void refetch();
@@ -119,7 +144,8 @@ async function openRun(path: string): Promise<void> {
   <LaunchWizard
     v-if="wizardOpen"
     :wid="workspaceId"
-    @close="wizardOpen = false"
+    :focus-case-id="focusCaseId"
+    @close="closeWizard"
     @launched="onLaunched"
   />
 </template>

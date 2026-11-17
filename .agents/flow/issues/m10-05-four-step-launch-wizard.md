@@ -11,14 +11,18 @@ depends:
   - m10-03
   - m7-08
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/evolution/**
   - apps/web/src/api/**
   - apps/web/src/composables/**
+  - apps/api/app/service/evolution/**
+  - apps/api/tests/**
+  - packages/contracts/**
   - tests/e2e/**
   - .agents/flow/**
   - .agents/notes/**
+  - plans/**
 adr: []
 github:
   number: 214

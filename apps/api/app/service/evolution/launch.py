@@ -10,6 +10,7 @@ from app.db.crud.probe_query import ProbeHitQuery, ProbeQueryRepository
 from app.errors import AppError, ErrorCode
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
+from app.service.evolution.potential import ResolvedPolicy, resolve_policy
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
     RunAccepted,
@@ -124,6 +125,7 @@ class EvolutionLaunchService:
                 message="launch mode does not match the endpoint",
             )
         engine_key = body.engine_key or body.mode
+        policy = resolve_policy(body.policy)
         if not EngineFactory.is_registered(engine_key):
             raise AppError(
                 status_code=422,
@@ -143,7 +145,13 @@ class EvolutionLaunchService:
         )
         await self._require_hits(query)
         run = await self._runs.create_run(
-            self._run_values(body, query, config, created_by=created_by),
+            self._run_values(
+                body,
+                query,
+                config,
+                policy=policy,
+                created_by=created_by,
+            ),
         )
         if self._events is not None:
             await self._events.record(
@@ -190,6 +198,7 @@ class EvolutionLaunchService:
         query: ProbeHitQuery,
         config: LaunchTargetRecord,
         *,
+        policy: ResolvedPolicy,
         created_by: str | None,
     ) -> Mapping[str, Any]:
         """Build the immutable run snapshot inserted before enqueueing.
@@ -198,6 +207,7 @@ class EvolutionLaunchService:
             body: Original wizard condition including engine selection.
             query: Normalized condition with the resolved version.
             config: Enabled target configuration backing the launch.
+            policy: Validated potential policy resolved from the request.
             created_by: Authenticated principal that started the run.
 
         Returns:
@@ -221,6 +231,8 @@ class EvolutionLaunchService:
             "window_from": query.window_from,
             "window_to": query.window_to,
             "models": list(query.models),
+            "potential_policy": policy.snapshot(),
+            "cache_enabled": body.cache_enabled,
             "status": "preparing",
             "created_by": created_by,
         }
