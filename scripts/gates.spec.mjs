@@ -16,7 +16,7 @@ import {
 } from "./flow-lib.mjs";
 import { parseSignature, structureDiff } from "./translation-pairing-lib.mjs";
 import { recommend, worktreePaths } from "./route-gates.mjs";
-import { applyGithubRef, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
+import { applyGithubRef, parseGithubState, planRetirements, renderIssueBody, runSync } from "./flow-sync.mjs";
 import { verifyFlowDiff } from "./verify-flow.mjs";
 import { checkContracts, compareContractFiles } from "./contract.mjs";
 import { browserViolations } from "../tests/support/runtime.mjs";
@@ -721,6 +721,14 @@ test("github issue body is detailed and design links resolve to the repository",
   assert.match(body, /## 设计依据/);
   assert.match(body, /https:\/\/github.com\/o\/r\/blob\/main\/plans\/fullstack-design\/05-api-design.md#41-基础端点/);
   assert.doesNotMatch(body, /yaml flow|English/);
+});
+
+test("flow sync parses GitHub state JSON at the CLI adapter boundary", () => {
+  assert.equal(parseGithubState('{"state":"closed"}'), "closed");
+  assert.equal(parseGithubState('{"state":"OPEN"}'), "OPEN");
+  assert.throws(() => parseGithubState("not-json"), SyntaxError);
+  assert.throws(() => parseGithubState('{"state":null}'), /缺少非空 state/);
+  assert.throws(() => parseGithubState("{}"), /缺少非空 state/);
 });
 
 test("retire-missing closes only open remote objects absent from the local tree", () => {

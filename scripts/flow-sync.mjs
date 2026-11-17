@@ -84,6 +84,18 @@ function gh(args) {
   return execFileSync("gh", args, { encoding: "utf8" }).trim();
 }
 
+/**
+ * Parse the state field returned by a GitHub CLI JSON command.
+ * @param {string} output Raw JSON emitted by `gh`.
+ * @returns {string} Non-empty remote state value.
+ */
+export function parseGithubState(output) {
+  const value = JSON.parse(output);
+  if (typeof value?.state !== "string" || value.state.length === 0)
+    throw new Error("GitHub 状态响应缺少非空 state 字符串");
+  return value.state;
+}
+
 /** issue 的中文标题 = base 侧 H1。 */
 function titleOf(content) {
   const m = /^# (.+)$/m.exec(content);
@@ -178,7 +190,7 @@ async function main() {
     },
     backfill,
     readMilestoneState(milestone) {
-      return gh(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]).state;
+      return parseGithubState(gh(["api", `repos/${repo}/milestones/${milestone.data.github.number}`]));
     },
     updateMilestoneState(milestone, state) {
       return gh([
@@ -187,7 +199,7 @@ async function main() {
       ]);
     },
     readIssueState(issue) {
-      return gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "state"]).state;
+      return parseGithubState(gh(["issue", "view", String(issue.data.github.number), "--repo", repo, "--json", "state"]));
     },
     updateIssueState(issue, state) {
       return gh([
