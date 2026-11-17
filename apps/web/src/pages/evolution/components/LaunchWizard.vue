@@ -2041,8 +2041,8 @@ table.rep th {
   left: 2px;
   top: 2px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(30, 40, 60, 0.18);
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--text) 18%, transparent);
   transition: transform 0.15s ease;
 }
 
