@@ -778,9 +778,7 @@ def _v2_session_rows(facts: _RunFacts) -> list[StepSessionRow]:
                     session_id=str(item["sessionId"]),
                     title=item.get("title") if isinstance(item.get("title"), str) else None,
                     object_trigger_at=(
-                        datetime.fromisoformat(trigger)
-                        if isinstance(trigger, str)
-                        else None
+                        datetime.fromisoformat(trigger) if isinstance(trigger, str) else None
                     ),
                     bad_case_count=_int_stat(item, "badCaseCount"),
                     potential_count=_int_stat(item, "potentialCount"),
