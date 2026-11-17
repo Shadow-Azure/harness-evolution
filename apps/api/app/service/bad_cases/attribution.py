@@ -21,6 +21,7 @@ from app.service.bad_cases.attribution_schemas import (
     AttributionPage,
     AttributionTriggerCompare,
     AttributionWarning,
+    VersionState,
 )
 
 TriggerOrder = Literal["before", "after", "same", "unknown"]
@@ -118,7 +119,7 @@ class AttributionReadService:
         """Project one joined row into the detail contract with trigger evidence."""
         item = self._item(record)
         order = _trigger_order(candidate)
-        version_state = "exact" if record.object_version is not None else "unknown"
+        version_state: VersionState = "exact" if record.object_version is not None else "unknown"
         return AttributionDetail(
             **item.model_dump(),
             reason=record.probe_description,
