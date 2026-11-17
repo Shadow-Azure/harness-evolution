@@ -2242,7 +2242,9 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         run = await repository.get_run(run_id)
 
         assert run is not None
-        assert run.progress_unit == 6
+        # 07 §5.1: write_final advances the cursor to unit 5+M+1 (final step
+        # readability threshold) in the same transaction.
+        assert run.progress_unit == 7
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"

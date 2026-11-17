@@ -20,6 +20,7 @@ scope:
   - .github/workflows/**
   - .agents/flow/**
   - .agents/notes/**
+  - packages/contracts/**
 adr: []
 github:
   number: 244
@@ -49,6 +50,7 @@ m12-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullst
 - 替换占位 patch/评测：生成最小配置变更、真实提交、candidate push、真实评测结果与终评
 - 前端零改动
 - `deploy/**` 与 `.github/workflows/**` 在 scope 内：用户要求生产评测配置（`HE_EVAL_*`）经 GitHub Secrets 注入服务器 `.env`，需改部署模板、发布流水线与部署文档；密钥不落仓库，只在服务器 `/opt/harness/shared/.env` 落值。
+- `packages/contracts/**` 在 scope 内：迭代步补可选 `patch note` 字段需按契约流程再生 `openapi.json` 与 TS 类型（`pnpm contract:generate` 产物随本 issue 交付），前端零改动仅生成类型扩展。
 
 ## 实施步骤
 

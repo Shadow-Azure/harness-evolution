@@ -20,6 +20,7 @@ scope:
   - .github/workflows/**
   - .agents/flow/**
   - .agents/notes/**
+  - packages/contracts/**
 adr: []
 github:
   number: 244
@@ -65,6 +66,7 @@ m12-03 是可独立合并的垂直切片；实现取舍必须以链接的 fullst
 - 替换占位 patch/评测：生成最小配置变更、真实提交、candidate push、真实评测结果与终评
 - 前端零改动
 - `deploy/**` and `.github/workflows/**` are in scope: the user requires the production eval config (`HE_EVAL_*`) to be injected into the server `.env` via GitHub Secrets, covering the deploy template, the release workflow, and the deployment docs; secrets never enter the repository, only `/opt/harness/shared/.env` on the server.
+- `packages/contracts/**` is in scope: adding the optional iteration-step `patch note` field requires regenerating `openapi.json` and TS types via `pnpm contract:generate`; the generated artifacts ship with this issue while the frontend stays unchanged.
 
 ## Implementation steps
 
