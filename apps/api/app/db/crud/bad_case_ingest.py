@@ -182,7 +182,7 @@ class BadCaseIngestRepository:
             extra={
                 "workspace_id": workspace_id,
                 "bad_case_id": row.bad_case_id,
-                "created": created,
+                "inserted": created,
             },
         )
         return BadCaseIngestWrite(
