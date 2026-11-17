@@ -437,6 +437,19 @@ test("m11-04 target overview renders, filters, paginates, and analyses one objec
       `document.querySelectorAll("[data-testid='ov-target-case-row']").length === 3`,
       "reset case filters",
     );
+    await setControl(page, "[data-testid='ov-target-case-from']", "2026-10-24");
+    await setControl(page, "[data-testid='ov-target-case-to']", "2026-10-31");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-testid='ov-target-case-row']").length === 2`,
+      "two rows inside the list-only date window",
+    );
+    await click(page, "[data-testid='ov-target-case-reset']");
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll("[data-testid='ov-target-case-row']").length === 3`,
+      "reset list-only date window",
+    );
 
     await setControl(page, "[data-testid='ov-target-detail-from']", "2026-10-20");
     await waitForUrlParam(page, "dfrom", "2026-10-20");

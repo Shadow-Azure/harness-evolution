@@ -87,9 +87,6 @@ describe("PotentialCaseTable", () => {
     await wrapper
       .get("[data-testid='ov-target-case-from']")
       .setValue("2026-10-01");
-    await wrapper.setProps({
-      filters: { ...filters, caseFrom: "2026-10-01" },
-    });
     await wrapper.get("[data-testid='ov-target-case-to']").setValue("2026-10-31");
     expect(wrapper.emitted("update:filters")?.at(-1)).toEqual([
       { caseFrom: "2026-10-01", caseTo: "2026-10-31" },

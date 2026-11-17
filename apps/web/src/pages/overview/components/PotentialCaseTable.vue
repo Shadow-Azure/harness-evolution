@@ -4,7 +4,7 @@ import type {
   TargetOverviewItem,
   TargetState,
 } from "@harness/contracts";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 
 import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
@@ -79,6 +79,22 @@ const emit = defineEmits<{
   "update:filters": [value: Partial<CaseFilters>];
 }>();
 
+const draftFrom = ref(props.filters.caseFrom);
+const draftTo = ref(props.filters.caseTo);
+
+watch(
+  () => props.filters.caseFrom,
+  (value) => {
+    if (value !== draftFrom.value) draftFrom.value = value;
+  },
+);
+watch(
+  () => props.filters.caseTo,
+  (value) => {
+    if (value !== draftTo.value) draftTo.value = value;
+  },
+);
+
 const pages = computed(() =>
   Math.max(1, Math.ceil(props.total / Math.max(1, props.pageSize))),
 );
@@ -142,19 +158,19 @@ function stateChanged(event: Event): void {
 
 function dateChanged(field: "caseFrom" | "caseTo", event: Event): void {
   const value = (event.target as HTMLInputElement).value;
-  const next = {
-    ...props.filters,
-    [field]: value,
-  };
-  if (next.caseFrom && next.caseTo && next.caseFrom <= next.caseTo) {
+  if (field === "caseFrom") draftFrom.value = value;
+  else draftTo.value = value;
+  if (draftFrom.value && draftTo.value && draftFrom.value <= draftTo.value) {
     emit("update:filters", {
-      caseFrom: next.caseFrom,
-      caseTo: next.caseTo,
+      caseFrom: draftFrom.value,
+      caseTo: draftTo.value,
     });
   }
 }
 
 function reset(): void {
+  draftFrom.value = "";
+  draftTo.value = "";
   emit("update:filters", {
     caseTarget: "",
     caseSource: "",
@@ -243,7 +259,7 @@ function reset(): void {
         class="inp"
         data-testid="ov-target-case-from"
         type="date"
-        :value="filters.caseFrom"
+        :value="draftFrom"
         aria-label="列表开始日期"
         @change="dateChanged('caseFrom', $event)"
       >
@@ -252,7 +268,7 @@ function reset(): void {
         class="inp"
         data-testid="ov-target-case-to"
         type="date"
-        :value="filters.caseTo"
+        :value="draftTo"
         aria-label="列表结束日期"
         @change="dateChanged('caseTo', $event)"
       >

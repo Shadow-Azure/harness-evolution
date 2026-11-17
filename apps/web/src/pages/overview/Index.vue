@@ -446,7 +446,6 @@ watch(
       :source-options="objects"
       :state="state"
       :workspace-id="workspaceId"
-      :workspace-name="workspaceName"
       @patch="applyTargetsPatch"
     />
   </section>

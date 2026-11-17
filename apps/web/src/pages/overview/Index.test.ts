@@ -476,6 +476,26 @@ describe("workspace overview page", () => {
     expect(targetsUrl.searchParams.get("pageSize")).toBe("50");
   });
 
+  it("shows a retryable target load error instead of a false empty state", async () => {
+    mockOverviewApi();
+    server.use(
+      http.get("/api/workspaces/:wid/overview/targets", () =>
+        apiError(500, "INTERNAL", "target aggregation failed"),
+      ),
+    );
+    const { wrapper } = await mountPage(`${ws}/overview?tab=targets`);
+
+    expect(wrapper.find("[data-testid='ov-target-load-error']").exists()).toBe(
+      true,
+    );
+    expect(wrapper.get("[data-testid='ov-target-load-error']").text()).toContain(
+      "INTERNAL",
+    );
+    expect(wrapper.find("[data-testid='ov-target-side-error']").exists()).toBe(
+      true,
+    );
+  });
+
   it("keeps the shared window and grain when switching overview tabs", async () => {
     mockOverviewApi();
     const { router, wrapper } = await mountPage(

@@ -62,10 +62,6 @@ const props = defineProps({
     type: Object as () => OverviewWindow | null,
     default: null,
   },
-  workspaceName: {
-    type: String,
-    default: "",
-  },
   canManage: {
     type: Boolean,
     default: false,
@@ -428,6 +424,21 @@ watch(
     class="targets-view"
     data-testid="ov-targets"
   >
+    <p
+      v-if="targetsQuery.error.value"
+      class="load-error"
+      data-testid="ov-target-load-error"
+      role="alert"
+    >
+      对象统计与列表加载失败（{{ targetsCode }}）
+      <button
+        type="button"
+        @click="targetsQuery.refetch()"
+      >
+        重试
+      </button>
+    </p>
+
     <div
       class="statstrip"
       data-testid="ov-target-stats"
@@ -644,6 +655,30 @@ watch(
   color: var(--text-faint);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--red) 30%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--red) 6%, var(--bg-card));
+  color: var(--red);
+  font-size: 11px;
+}
+
+.load-error button {
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 35%, var(--border));
+  border-radius: 5px;
+  background: var(--bg-card);
+  color: var(--red);
+  font-size: 10.5px;
+  cursor: pointer;
 }
 
 .operation-error {
