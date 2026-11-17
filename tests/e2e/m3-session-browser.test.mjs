@@ -109,6 +109,13 @@ async function sessionCookie() {
   return cookie;
 }
 
+
+async function defaultToTree(page) {
+  await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("he:flow-mode", "tree"); } catch {}`,
+  });
+}
+
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m3-e2e-"));
   const baseEnv = {
@@ -210,6 +217,7 @@ after(cleanup);
 
 test("m3-session-browser matches the prototype and restores URL state", async () => {
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session);
     const cookie = await loginCookie();
@@ -287,25 +295,12 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
         return {
           height: tree.getBoundingClientRect().height,
           nodes,
-          legend: (() => {
-            const node = document.querySelector(".tree-legend");
-            if (!node) return null;
-            const box = node.getBoundingClientRect();
-            const treeBox = tree.getBoundingClientRect();
-            return {
-              bottomGap: treeBox.bottom - box.bottom,
-              leftGap: box.left - treeBox.left,
-            };
-          })(),
         };
       })()`,
       "production Agent tree",
     );
     assert.ok(Math.abs(initialTree.height - 720) < 1, JSON.stringify(initialTree));
     assert.ok(initialTree.nodes > 0, JSON.stringify(initialTree));
-    assert.ok(initialTree.legend, JSON.stringify(initialTree));
-    assert.ok(initialTree.legend.leftGap >= 0 && initialTree.legend.leftGap <= 24, JSON.stringify(initialTree));
-    assert.ok(initialTree.legend.bottomGap >= 0 && initialTree.legend.bottomGap <= 24, JSON.stringify(initialTree));
 
     const pressKey = async (key, code, windowsVirtualKeyCode) => {
       await page.session.send("Input.dispatchKeyEvent", {
@@ -549,6 +544,7 @@ test("m3-session-browser matches the prototype and restores URL state", async ()
 test("m3 Session and Agent deep links survive refresh and new-window navigation", async () => {
   let cookie = await loginCookie();
   const first = await createBrowserPage();
+    await defaultToTree(first);
   let second;
   try {
     await installCookie(first, cookie);
@@ -770,6 +766,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
 
     cookie = await sessionCookie();
     second = await createBrowserPage();
+    await defaultToTree(second);
     await installCookie(second, cookie);
     await second.session.send("Page.navigate", {
       url: copiedUrl.result.value ?? deepLink,
@@ -792,6 +789,7 @@ test("m3 Session and Agent deep links survive refresh and new-window navigation"
 
 test("m3 folded Agent deep links expand ancestors before locating", async () => {
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session);
     const cookie = await loginCookie();
@@ -945,6 +943,7 @@ test("m3 folded Agent deep links expand ancestors before locating", async () => 
 
 test("m3-session-browser stays within performance budgets", async () => {
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session);
     const cookie = await loginCookie();

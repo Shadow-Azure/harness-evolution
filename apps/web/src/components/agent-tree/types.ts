@@ -183,3 +183,175 @@ export interface BadCaseAnchorOptions {
 
 /** Narrow tree subset consumed by the pure layout. */
 export type LayoutTree = Pick<SessionTree, "sessionId" | "agents" | "badCases">;
+
+/** One trigger event inside an Agent chain, re-exported for lane consumers. */
+export type TreeEvent = SessionEvent;
+
+/** Kind of a lane bar: main trigger, nested trigger, skill, or no-trigger gap. */
+export type LaneBarKind =
+  | "main"
+  | "sub"
+  | "sub2"
+  | "skill"
+  | "gap"
+  | "summary"
+  | "unknown";
+
+/** One horizontal interval on a lane; `start`/`end` are percentages of the log axis. */
+export interface LaneBar {
+  id: string;
+  laneId: string;
+  label: string;
+  kind: LaneBarKind;
+  start: number;
+  end: number;
+  lo: number | null;
+  hi: number | null;
+  span: number;
+  rail: boolean;
+  title: string;
+  unknown?: boolean;
+  cont?: boolean;
+  contReason?: string;
+  extended?: boolean;
+}
+
+/** Trigger label placed above the main lane without affecting interval width. */
+export interface LaneRailLabel {
+  id: string;
+  text: string;
+  kind: "is-main" | "is-skill";
+  x: number;
+  left: number;
+  row: number;
+  title: string;
+}
+
+/** One bad-case marker pinned above the main lane. */
+export interface BadCaseMarker {
+  badCaseId: string;
+  index: number;
+  title: string;
+  line: number;
+  x: number;
+  row: number;
+  selected: boolean;
+  barId: string | null;
+  inGap: boolean;
+  gapNote: string | null;
+  leadTop: number;
+  leadH: number;
+}
+
+/** One lane = one agent invocation, identified by its `A1/A1.1` path. */
+export interface Lane {
+  id: string;
+  path: string;
+  depth: number;
+  label: string;
+  full: string;
+  top: number;
+  start: number;
+  end: number;
+  lines: number;
+  trigger: number;
+  parentId: string | null;
+  parentBarId: string | null;
+  kind: SessionAgent["kind"];
+  state: "" | "concurrent" | "unknown";
+  bars: LaneBar[];
+  events: TreeEvent[];
+  cases: BadCaseMarker[];
+  railLabels: LaneRailLabel[];
+  barTop: number;
+  trackH: number;
+  rowH: number;
+}
+
+/** Horizontal band covering every concurrent sub lane's true interval. */
+export interface ConcurrencyBand {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** One spawn trunk shared by siblings triggered from the same parent bar. */
+export interface LaneSpawnGroup {
+  key: string;
+  parentId: string;
+  parentTop: number;
+  parentBarTop: number;
+  mergeX: number;
+  trunk: number;
+  adjacentOnly: boolean;
+  lastY2: number;
+  members: Array<{
+    laneId: string;
+    trigger: number;
+    start: number;
+    top: number;
+    barTop: number;
+  }>;
+}
+
+/** Stable lane-model diagnostic suitable for logs and tests. */
+export interface LaneDiagnostic {
+  code:
+    | "MISSING_MAIN"
+    | "DUPLICATE_MAIN"
+    | "DUPLICATE_AGENT"
+    | "ORPHAN_PARENT"
+    | "PARENT_CYCLE";
+  agentId: string | null;
+  message: string;
+}
+
+/** Complete deterministic output of the pure lane DAG model. */
+export interface LaneModel {
+  lanes: Lane[];
+  width: number;
+  height: number;
+  mainLines: number;
+  caseMarkers: BadCaseMarker[];
+  concurrencyBands: ConcurrencyBand[];
+  spawnGroups: LaneSpawnGroup[];
+  diagnostics: LaneDiagnostic[];
+}
+
+/** Normalized canvas transform used by the lane viewport. */
+export interface LaneViewport {
+  x: number;
+  y: number;
+  k: number;
+}
+
+/** Height of the 0–100 log-axis ruler above the lanes, in CSS pixels. */
+export const LANE_AXIS_H = 18;
+
+/** Height of the bad-case marker row between the ruler and the first lane. */
+export const LANE_CASE_ROW = 28;
+
+/** Top offset of the first lane; ruler plus marker row. */
+export const LANE_TOP = LANE_AXIS_H + LANE_CASE_ROW;
+
+/** Row height of the main lane, which carries the trigger-label rail. */
+export const LANE_MAIN_ROW_H = 70;
+
+/** Row height of every non-main lane. */
+export const LANE_ROW_H = 44;
+
+/** Bar top offset inside a non-main lane track. */
+export const LANE_BAR_TOP = 4;
+
+/** Bar top offset inside the main lane track, below the trigger-label rail. */
+export const LANE_MAIN_BAR_TOP = 34;
+
+/** Bar height used by bars and spawn-join geometry. */
+export const LANE_BAR_H = 20;
+
+/** Track height of a non-main lane. */
+export const LANE_TRACK_H = 30;
+
+/** Track height of the main lane, including its trigger-label rail. */
+export const LANE_MAIN_TRACK_H = 56;

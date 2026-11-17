@@ -8,7 +8,7 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import SessionsPage from "./Index.vue";
-import { demoCoreTree } from "../../components/agent-tree/fixtures/demo-nested";
+import { demoCoreTree } from "../../components/agent-tree/tree/fixtures/demo-nested";
 import { createAppRouter } from "../../router";
 import { badCaseFixture } from "../../test/badCases";
 import { server } from "../../test/server";
@@ -18,10 +18,10 @@ const workspaceId = "ws-test";
 const ws = `/workspaces/${workspaceId}`;
 const sessionsBase = `/api/workspaces/${workspaceId}/sessions`;
 
-vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
+vi.mock("../../components/agent-tree/AgentFlow.vue", async () => {
   const { defineComponent, h } = await import("vue");
-  const AgentTree = defineComponent({
-    name: "AgentTree",
+  const AgentFlow = defineComponent({
+    name: "AgentFlow",
     props: {
       tree: { type: Object, required: true },
       expanded: { type: Array, default: () => [] },
@@ -29,8 +29,11 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
       activeEventIndex: { type: Number, default: null },
       activeBadCaseId: { type: String, default: null },
       problems: { type: Array, default: () => [] },
+      dagHeight: { type: String, default: "" },
+      treeHeight: { type: String, default: "" },
+      defaultMode: { type: String, default: "dag" },
     },
-    emits: ["badcase-select", "node-select", "toggle-expanded"],
+    emits: ["badcase-select", "node-select", "toggle-expanded", "collapse-all"],
     setup(props, { emit, expose }) {
       expose({ locateBadCase: vi.fn().mockResolvedValue(undefined) });
       return () => {
@@ -73,7 +76,7 @@ vi.mock("../../components/agent-tree/AgentTree.vue", async () => {
     __esModule: true,
     __isKeepAlive: false,
     __isTeleport: false,
-    default: AgentTree,
+    default: AgentFlow,
   };
 });
 

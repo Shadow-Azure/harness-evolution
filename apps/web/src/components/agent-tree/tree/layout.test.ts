@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SessionAgent, SessionTree } from "@harness/contracts";
 
-import { badCaseFixture } from "../../test/badCases";
+import { badCaseFixture } from "../../../test/badCases";
 import { demoCoreTree, demoNestedTree } from "./fixtures/demo-nested";
 import {
   AGENT_BOX_H,

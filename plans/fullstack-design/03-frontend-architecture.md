@@ -274,7 +274,7 @@ styles/element-overrides.css  Element Plus 变量映射到本项目令牌
 - **令牌是唯一颜色源**：`--blue/--green/--orange/--red/--purple/--cyan` 及 `--bg-*/--text-*/--border` 原样移植，组件里禁止写死色值。
 - **状态色映射表**（前端常量，唯一允许的"静态数据"）：归因三态 `unanalyzed` 灰 / `attributed` 绿 / `non_target` 橙；`attributed` 再按 `category` 映射 model 紫、prompt 橙、error 红。历史 V1 状态只在兼容数据中由服务端归一。
 - **Element Plus 覆盖**：只覆盖 `--el-color-primary`、圆角、字体，不做全量皮肤；EP 样式运行时注入，覆盖文件需提高特异性（参考报告 §8 的坑）。
-- 响应式：顶栏在 <1100px 隐藏副标题（原型同规则）；Agent 执行流图画布固定高度 720px，详情页 413px（原型值）。
+- 响应式：顶栏在 <1100px 隐藏副标题（原型同规则）；lane DAG 使用小窗口高度 `clamp(360px, 48vh, 520px)`，结构树沿用 Session 页 720px / 错误详情 413px（原型值）。
 
 ## 10. 构建、性能与质量门禁
 

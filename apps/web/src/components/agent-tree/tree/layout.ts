@@ -1,6 +1,6 @@
 import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
-import { shortBadCaseId } from "../../utils/badCaseId";
+import { shortBadCaseId } from "../../../utils/badCaseId";
 
 import { MISSING_REPORT_WARNING, RELATION_LABELS } from "./labels";
 import type {
@@ -20,7 +20,7 @@ import type {
   MeasureText,
   RelationConfidence,
   TriggerConnection,
-} from "./types";
+} from "../types";
 
 /** Gap between adjacent pill nodes. */
 export const LINK_W = 10;

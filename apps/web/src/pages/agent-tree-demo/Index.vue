@@ -2,12 +2,12 @@
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
-import AgentTree from "../../components/agent-tree/AgentTree.vue";
+import AgentFlow from "../../components/agent-tree/AgentFlow.vue";
 import {
   demoCoreTree,
   demoNestedTree,
-} from "../../components/agent-tree/fixtures/demo-nested";
-import { demoStressTree } from "../../components/agent-tree/fixtures/demo-stress";
+} from "../../components/agent-tree/tree/fixtures/demo-nested";
+import { demoStressTree } from "../../components/agent-tree/tree/fixtures/demo-stress";
 
 defineOptions({ name: "AgentTreeDemoPage" });
 
@@ -40,6 +40,10 @@ function toggleExpanded(agentId: string) {
     expanded.value = [...expanded.value, agentId];
   }
 }
+
+function collapseAll() {
+  expanded.value = [];
+}
 </script>
 
 <template>
@@ -62,9 +66,11 @@ function toggleExpanded(agentId: string) {
         }}
       </span>
     </header>
-    <AgentTree
+    <AgentFlow
+      :default-mode="isStress ? 'dag' : 'tree'"
       :expanded="expanded"
       :tree="tree"
+      @collapse-all="collapseAll"
       @toggle-expanded="toggleExpanded"
     />
   </section>

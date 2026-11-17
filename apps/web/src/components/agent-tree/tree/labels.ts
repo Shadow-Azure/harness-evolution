@@ -1,4 +1,4 @@
-import type { RelationConfidence } from "./types";
+import type { RelationConfidence } from "../types";
 
 /** Short Chinese labels for the four parent relation evidence levels. */
 export const RELATION_LABELS: Record<RelationConfidence, string> = {

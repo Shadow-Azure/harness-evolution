@@ -43,8 +43,8 @@ import ProblemDescription from "./components/ProblemDescription.vue";
 
 defineOptions({ name: "ErrorsPage" });
 
-const AgentTree = defineAsyncComponent(
-  () => import("../../components/agent-tree/AgentTree.vue"),
+const AgentFlow = defineAsyncComponent(
+  () => import("../../components/agent-tree/AgentFlow.vue"),
 );
 
 const route = useRoute();
@@ -179,11 +179,6 @@ const flowTree = computed<SessionTree | null>(() => {
     ),
   };
 });
-const flowProblems = computed(() =>
-  selectedBadCaseId.value && selectedProblem.value
-    ? [selectedProblem.value]
-    : problems.value,
-);
 const selectedIndex = computed(() => {
   const index = problems.value.findIndex(
     (problem) => problem.badCaseId === selectedBadCaseId.value,
@@ -195,7 +190,7 @@ const flowNote = computed(() => {
     return `全部错误 · ${problems.value.length} 个`;
   }
   const prefix = selectedIndex.value ? `#${selectedIndex.value} · ` : "";
-  return `仅显示 ${prefix}${selectedProblem.value.title}`;
+  return `保留全部并发分支，高亮 ${prefix}${selectedProblem.value.title}`;
 });
 
 const routeFatalError = computed(() => {
@@ -419,6 +414,10 @@ function toggleExpanded(agentId: string) {
     ? expandedAgentIds.value.filter((id) => id !== agentId)
     : [...expandedAgentIds.value, agentId];
 }
+
+function collapseAll() {
+  expandedAgentIds.value = [];
+}
 </script>
 
 <template>
@@ -508,14 +507,15 @@ function toggleExpanded(agentId: string) {
               message="Agent 执行流读取失败，请重试。"
               @retry="retryTree"
             />
-            <AgentTree
+            <AgentFlow
               v-else-if="flowTree"
               :active-bad-case-id="selectedBadCaseId"
               :expanded="expandedAgentIds"
-              height="413px"
-              :problems="flowProblems"
+              :problems="problems"
               :tree="flowTree"
+              :tree-height="'413px'"
               @badcase-select="selectBadCase"
+              @collapse-all="collapseAll"
               @toggle-expanded="toggleExpanded"
             />
             <EmptyState
@@ -798,6 +798,11 @@ function toggleExpanded(agentId: string) {
   font-size: 10.5px;
 }
 
+.flow-panel :deep(.agent-flow) {
+  min-width: 0;
+}
+
+.flow-panel :deep(.ld-view),
 .flow-panel :deep(.agent-tree) {
   border: 0;
   border-radius: 0;

@@ -11,14 +11,15 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AgentNode: typeof import('./components/agent-tree/nodes/AgentNode.vue')['default']
-    AgentTree: typeof import('./components/agent-tree/AgentTree.vue')['default']
-    BadCaseEdge: typeof import('./components/agent-tree/edges/BadCaseEdge.vue')['default']
+    AgentFlow: typeof import('./components/agent-tree/AgentFlow.vue')['default']
+    AgentNode: typeof import('./components/agent-tree/tree/nodes/AgentNode.vue')['default']
+    AgentTree: typeof import('./components/agent-tree/tree/AgentTree.vue')['default']
+    BadCaseEdge: typeof import('./components/agent-tree/tree/edges/BadCaseEdge.vue')['default']
     BadCaseList: typeof import('./components/bad-cases/BadCaseList.vue')['default']
-    BadCaseNode: typeof import('./components/agent-tree/nodes/BadCaseNode.vue')['default']
-    CollapseNode: typeof import('./components/agent-tree/nodes/CollapseNode.vue')['default']
+    BadCaseNode: typeof import('./components/agent-tree/tree/nodes/BadCaseNode.vue')['default']
+    CollapseNode: typeof import('./components/agent-tree/tree/nodes/CollapseNode.vue')['default']
     DensityBar: typeof import('./components/ui/DensityBar.vue')['default']
-    DiscoveryEdge: typeof import('./components/agent-tree/edges/DiscoveryEdge.vue')['default']
+    DiscoveryEdge: typeof import('./components/agent-tree/tree/edges/DiscoveryEdge.vue')['default']
     ElAutocomplete: typeof import('element-plus/es/components/autocomplete/index')['ElAutocomplete']
     ElButton: typeof import('element-plus/es/components/button/index')['ElButton']
     ElDialog: typeof import('element-plus/es/components/dialog/index')['ElDialog']
@@ -32,13 +33,14 @@ declare module 'vue' {
     ElSwitch: typeof import('element-plus/es/components/switch/index')['ElSwitch']
     EmptyState: typeof import('./components/ui/EmptyState.vue')['default']
     ErrorState: typeof import('./components/ui/ErrorState.vue')['default']
+    LaneDag: typeof import('./components/agent-tree/lane/LaneDag.vue')['default']
     LoadingSkeleton: typeof import('./components/ui/LoadingSkeleton.vue')['default']
-    OrthEdge: typeof import('./components/agent-tree/edges/OrthEdge.vue')['default']
+    OrthEdge: typeof import('./components/agent-tree/tree/edges/OrthEdge.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     StatStrip: typeof import('./components/ui/StatStrip.vue')['default']
     TopNav: typeof import('./components/layout/TopNav.vue')['default']
-    TriggerEdge: typeof import('./components/agent-tree/edges/TriggerEdge.vue')['default']
+    TriggerEdge: typeof import('./components/agent-tree/tree/edges/TriggerEdge.vue')['default']
     WorkspacePicker: typeof import('./components/layout/WorkspacePicker.vue')['default']
   }
 }

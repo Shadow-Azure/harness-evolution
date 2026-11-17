@@ -16,7 +16,7 @@
 | 范围 | 结论 |
 |---|---|
 | 应用壳 | 亮色设计令牌、顶栏双入口、数据同步浮层、Session 与自进化的信息密度一致 |
-| Session 页 | 左侧列表、筛选、排序、状态点、统计条、双密度条、右侧概览与 Agent 执行流均保留 |
+| Session 页 | 左侧列表、筛选、排序、状态点、统计条、双密度条、右侧概览与 Agent 执行流均保留；执行流默认 lane DAG（全 lane 展开、缩放/平移、BC 高亮），结构树保留为切换视图 |
 | 错误详情 | 左右分栏、执行流问题定位、问题描述与归因分析双 Tab、深链恢复选中态均保留 |
 | 自进化 | 运行分组、目标/版本/时间段筛选、命中确认、仅聚类入口、六步详情、对象配置和执行日志均有实现骨架 |
 | 权限 | 登录、首登改密、access/refresh token、路由守卫与管理员操作边界已实现 |
@@ -38,7 +38,6 @@
 | 归因粒度 | 一个 bad case 仍只有一条 `bad_case_analysis → probe_reports` 结果 | `bad_case_analysis` 改为多行关联，错误详情承载多条对象版本归因 |
 | Session 首屏 | 默认请求 `limit=100`，搜索为防抖查询 | 默认最新 10，只有回车才重新查询 |
 | 密度文案 | 当前 UI 显示“/百消息”，V1 原型显示“/百步” | V2 统一用户文案为“步骤”，后端字段可继续使用现有 message 分母；若产品决定改口径，必须同时改设计、API 字段和迁移，不能只改标签 |
-| 执行流视图 | 当前是 Vue Flow 节点树，`>8` 子 agent 折叠，选中 case 过滤分支 | V2 默认 lane DAG：日志行区间、`A1/A1.1` 深度、跨 lane 并发、全部 lane 展开、小窗口缩放/平移；结构树保留为切换；选中只高亮不裁剪 |
 | 多 runtime parser | 只有 Claude normalizer，`source_type` 与全局 parser_version | `TraceParserFactory` + `BaseTraceParser` 子类；`runtime_key` + per-runtime parser_version；新 runtime 只注册子类 |
 | 用户与权限界面 | 当前只有用户 API 与顶部用户菜单 | V2 增加空间成员和角色管理；全局用户目录仍不开放注册 |
 | 占位执行能力 | patch 内容、评测和终评为占位；Git candidate 链路为真实骨架 | V2 不改变占位边界，但 run 输入、候选、归因和聚类改为真实持久化 |

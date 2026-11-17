@@ -90,6 +90,13 @@ async function installCookie(page, cookie) {
   });
 }
 
+
+async function defaultToTree(page) {
+  await page.session.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("he:flow-mode", "tree"); } catch {}`,
+  });
+}
+
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m4-problems-e2e-"));
   const env = {
@@ -167,6 +174,7 @@ after(cleanup);
 
 test("m4 problem cards match the prototype and link list and canvas", async () => {
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session);
     await installCookie(page, await loginCookie());
@@ -437,6 +445,7 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
 
 test("m4 problem cards reveal a selected problem inside a folded branch", async () => {
   const page = await createBrowserPage();
+    await defaultToTree(page);
   try {
     const violations = browserViolations(page.session);
     await installCookie(page, await loginCookie());
