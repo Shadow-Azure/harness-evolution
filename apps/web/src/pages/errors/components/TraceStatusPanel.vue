@@ -146,7 +146,7 @@ async function copyCaseId() {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-card);
-  box-shadow: 0 1px 3px rgb(30 40 60 / 5%);
+  box-shadow: var(--shadow-card);
 }
 
 .trace-hero {
@@ -245,11 +245,11 @@ async function copyCaseId() {
 .trace-action.primary {
   border-color: var(--blue);
   background: var(--blue);
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .trace-action.primary:hover {
-  color: #fff;
+  color: var(--text-on-accent);
 }
 
 .trace-note {

@@ -13,12 +13,13 @@ from sqlalchemy import insert, select, update
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
-from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
+from app.db.crud.bad_case_sync import BadCaseRootSyncRepository, BadCaseRootSyncRow
 from app.db.crud.fixtures import run_corpus_seed
 from app.db.models.domain import bad_case_root_sync, bad_cases
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
+from app.service.bad_cases.session_status import classify_trace_status
 from app.utils.time import now_shanghai
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -170,6 +171,8 @@ async def trace_status(tmp_path: Path) -> AsyncIterator[StatusEnvironment]:
         jwt_secret=SecretStr("m12-07-trace-status-signing-secret-length"),
         admin_username="admin",
         admin_password=SecretStr("initial-password"),
+        session_query_base_url="http://127.0.0.1:9/session-query",
+        session_query_token=SecretStr("m12-07-query-token"),
         sync_interval_seconds=0,
     )
     corpus = load_fixture_corpus(ROOT / "fixtures" / "m2-synthetic" / "corpus.json")
@@ -347,3 +350,33 @@ async def test_deterministic_failures_stop_retrying_and_can_be_rearmed(
             )
         ).scalar_one()
     assert row == "failed"
+
+
+def test_no_source_marks_every_unready_state_non_retryable() -> None:
+    """Without a global or report source nothing can progress automatically."""
+    now = now_shanghai()
+    row = BadCaseRootSyncRow(
+        root_session_id="root-m12-07",
+        status="failed",
+        source_kind="global",
+        source_snapshot={"kind": "global"},
+        attempts=1,
+        last_error="SESSION_QUERY_TIMEOUT",
+        agent_count=0,
+        started_at=now,
+        synced_at=None,
+        next_retry_at=None,
+        lease_owner=None,
+        lease_expires_at=None,
+        updated_at=now,
+    )
+    failed = classify_trace_status(row, session_ready=False, source_available=False)
+    assert failed.status == "failed"
+    assert failed.retryable is False
+
+    pending = classify_trace_status(None, session_ready=False, source_available=False)
+    assert pending.status == "pending"
+    assert pending.retryable is False
+
+    with_source = classify_trace_status(row, session_ready=False, source_available=True)
+    assert with_source.retryable is True

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from app.db.crud.bad_cases import AnalysisProgress
 from app.db.crud.problems import ProbeListSnapshot, ProblemRepository, ProblemSnapshot
@@ -39,10 +40,16 @@ def _events_by_agent(events: tuple[EventRecord, ...]) -> dict[str, list[EventRec
 class ProblemService:
     """Read one coherent Session/problem snapshot and expose public DTOs."""
 
-    def __init__(self, repository: ProblemRepository, bad_cases: BadCaseService) -> None:
+    def __init__(
+        self,
+        repository: ProblemRepository,
+        bad_cases: BadCaseService,
+        source_available: Callable[[], Awaitable[bool]] | None = None,
+    ) -> None:
         """Bind the public service to its snapshot and external read boundaries."""
         self._repository = repository
         self._bad_cases = bad_cases
+        self._source_available = source_available
 
     async def analysis_progress(self) -> AnalysisProgress:
         """Return overall attribution progress for the sync popover."""
@@ -93,9 +100,16 @@ class ProblemService:
         snapshot = await self._repository.case_snapshot(case_id, scope)
         if snapshot is None:
             sync_state = await self._repository.root_sync_state(case.bad_case_session_id)
+            source_available = (
+                await self._source_available() if self._source_available is not None else True
+            )
             raise_trace_not_ready(
                 case,
-                classify_trace_status(sync_state, session_ready=False),
+                classify_trace_status(
+                    sync_state,
+                    session_ready=False,
+                    source_available=source_available,
+                ),
             )
         merged = self._bad_cases.merge_snapshot(
             snapshot.cases,

@@ -16,7 +16,7 @@ Status: implemented
 
 详情仅在 case 行缺失时返回 `404 BAD_CASE_NOT_FOUND`；存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt` 与 case 身份，前端据此渲染状态面板。列表项同步暴露同一组字段，未就绪行不再作为错误详情深链。
 
-确定性失败（`SESSION_QUERY_UNAVAILABLE`、鉴权/版本不兼容、不支持的 runtime、空轨迹等）标记 `retryable=false` 并退出调度候选，避免无意义退避；启动时若存在可用 source，把这些行复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义与既有 happy path 不变。
+确定性失败（`SESSION_QUERY_UNAVAILABLE`、鉴权/版本不兼容、不支持的 runtime、空轨迹等）标记 `retryable=false` 并退出调度候选，避免无意义退避；没有任何可用 source 时所有未就绪状态都报 `retryable=false`。启动时若存在可用 source，把这些行复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义与既有 happy path 不变。
 
 ## Alternatives considered
 

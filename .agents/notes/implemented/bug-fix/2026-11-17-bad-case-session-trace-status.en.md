@@ -16,7 +16,7 @@ Existence is authoritative on the `bad_cases` row; trace readiness is a separate
 
 Detail returns `404 BAD_CASE_NOT_FOUND` only when the case row is absent. When it exists but the Session is not ready, detail returns `409 BAD_CASE_SESSION_PENDING` (pending/syncing) or `503 BAD_CASE_SESSION_UNAVAILABLE` (failed/unavailable) with `syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt` and case identity in `details`; the frontend renders a status panel from it. List items expose the same fields and a non-ready row no longer serves as an error-detail deep link.
 
-Deterministic failures (`SESSION_QUERY_UNAVAILABLE`, auth/version incompatibility, unsupported runtime, empty trace, and similar) report `retryable=false` and leave the scheduler's candidate set to avoid meaningless backoff. On startup, when a usable source exists, those rows are reset to pending as the re-trigger entry after a configuration change. The real 404 semantics and the existing happy path are unchanged.
+Deterministic failures (`SESSION_QUERY_UNAVAILABLE`, auth/version incompatibility, unsupported runtime, empty trace, and similar) report `retryable=false` and leave the scheduler's candidate set to avoid meaningless backoff; with no usable source at all, every unready state reports `retryable=false`. On startup, when a usable source exists, those rows are reset to pending as the re-trigger entry after a configuration change. The real 404 semantics and the existing happy path are unchanged.
 
 ## Alternatives considered
 

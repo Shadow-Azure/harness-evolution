@@ -76,6 +76,10 @@ class BadCaseRootSyncCoordinator:
             return True
         return await self._repository.has_report_source()
 
+    async def source_available(self) -> bool:
+        """Expose whether progress is possible without a configuration change."""
+        return await self._sources_available()
+
     async def trigger(self, source: str) -> BadCaseSyncTriggerResult:
         """Submit one job unless unavailable, already active, or idle."""
         if not await self._sources_available():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import cast
@@ -109,7 +109,11 @@ def _label(bad_case_type: str) -> str:
     return TYPE_LABELS.get(bad_case_type, bad_case_type)
 
 
-def _item(row: BadCasePageRow) -> BadCaseListItem:
+def _item(
+    row: BadCasePageRow,
+    *,
+    source_available: bool = True,
+) -> BadCaseListItem:
     """Map one aggregated row to the overview list contract.
 
     ``triggerAt`` mirrors ``createdAt`` until m9-04 stores the object trigger
@@ -117,7 +121,11 @@ def _item(row: BadCasePageRow) -> BadCaseListItem:
     without inventing a schema column.
     """
     created_at = as_shanghai(row.created_at)
-    trace = classify_trace_status(row.sync_state, session_ready=row.session_present)
+    trace = classify_trace_status(
+        row.sync_state,
+        session_ready=row.session_present,
+        source_available=source_available,
+    )
     return BadCaseListItem(
         bad_case_id=row.bad_case_id,
         session_id=row.bad_case_session_id,
@@ -139,9 +147,14 @@ def _item(row: BadCasePageRow) -> BadCaseListItem:
 class OverviewService:
     """Aggregate one workspace's reported cases into the overview contracts."""
 
-    def __init__(self, repository: OverviewRepository) -> None:
-        """Bind the service to its read-only repository."""
+    def __init__(
+        self,
+        repository: OverviewRepository,
+        source_available: Callable[[], Awaitable[bool]] | None = None,
+    ) -> None:
+        """Bind the service to its read-only repository and source probe."""
         self._repository = repository
+        self._source_available = source_available
 
     async def summary(self, workspace_id: str, query: OverviewQuery) -> OverviewSummary:
         """Return the summary totals, object options, and workspace quota usage."""
@@ -255,8 +268,11 @@ class OverviewService:
             page=query.page,
             page_size=query.page_size,
         )
+        source_available = (
+            await self._source_available() if self._source_available is not None else True
+        )
         return OverviewBadCaseListResponse(
-            items=[_item(row) for row in rows],
+            items=[_item(row, source_available=source_available) for row in rows],
             total=total,
             page=query.page,
             page_size=query.page_size,

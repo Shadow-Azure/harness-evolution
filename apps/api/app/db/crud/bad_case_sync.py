@@ -64,11 +64,6 @@ class BadCaseRootSyncRow:
         """Return whether retrying cannot help until the source configuration changes."""
         return self.status == _FAILED and self.last_error in _NON_RETRYABLE_ERRORS
 
-    @property
-    def retryable(self) -> bool:
-        """Return whether the scheduler can still make progress on its own."""
-        return self.status != _SYNCED and not self.deterministic_failure
-
 
 @dataclass(frozen=True, slots=True)
 class BadCaseReportSource:
@@ -263,32 +258,6 @@ class BadCaseRootSyncRepository:
                 .one_or_none()
             )
         return _to_row(row) if row is not None else None
-
-    async def states_for_roots(
-        self,
-        root_session_ids: tuple[str, ...],
-    ) -> dict[str, BadCaseRootSyncRow]:
-        """Batch-read durable sync state for one page of reported roots.
-
-        A root without a state row is absent from the result and is classified
-        as ``pending`` by the read model, so callers never issue a query per row.
-        """
-        roots = tuple(dict.fromkeys(root_id for root_id in root_session_ids if root_id))
-        if not roots:
-            return {}
-        async with self._database.session() as session:
-            rows = (
-                (
-                    await session.execute(
-                        select(bad_case_root_sync).where(
-                            bad_case_root_sync.c.root_session_id.in_(roots),
-                        ),
-                    )
-                )
-                .mappings()
-                .all()
-            )
-        return {str(row["root_session_id"]): _to_row(row) for row in rows}
 
     async def reset_deterministic_failures(
         self,

@@ -515,7 +515,7 @@ erDiagram
 
 bad case 行与 Session 投影是两种存在：前者由上报写入，后者由 root-sync 补齐。总览列表项增加 `syncStatus ∈ ready|pending|syncing|failed|unavailable`、`sessionReady`、`lastError`、`retryable`、`nextRetryAt`，由 `bad_case_root_sync` 与 Session 是否可读批量派生，列表不为每行额外查询。
 
-详情只在 `bad_cases` 行不存在时返回 `404 BAD_CASE_NOT_FOUND`；行存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `badCaseId/sessionId/title/objectName/createdAt/sessionReady/syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt`。确定性失败（如没有 `sessionSource` 且全局轨迹查询未配置）`retryable=false`，自动重试停止；进程启动且可用 source 存在时复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义不变。
+详情只在 `bad_cases` 行不存在时返回 `404 BAD_CASE_NOT_FOUND`；行存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `badCaseId/sessionId/title/objectName/createdAt/sessionReady/syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt`。确定性失败（如没有 `sessionSource` 且全局轨迹查询未配置）`retryable=false`，自动重试停止；没有任何可用 source 时所有未就绪状态都报 `retryable=false`。进程启动且可用 source 存在时把确定性失败复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义不变。
 
 ### 3.9 归因
 

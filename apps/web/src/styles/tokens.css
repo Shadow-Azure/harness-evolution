@@ -8,6 +8,7 @@
   --text: #212832;
   --text-dim: #5a6372;
   --text-faint: #9aa2ae;
+  --text-on-accent: #ffffff;
   --blue: #2f6fe0;
   --blue-deep: color-mix(in srgb, var(--blue) 72%, #000);
   --green: #1f9d6b;

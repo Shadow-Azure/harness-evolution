@@ -294,10 +294,9 @@ async function seedOverviewData() {
         },
         body: JSON.stringify({
           badCaseId: `M8-04-CASE-${suffix}`,
-          sessionId:
-            item.object === "m8-04-alpha"
-              ? "m8-04-session-alpha"
-              : "m8-04-session-beta",
+          // Point at a normalized corpus Session so the overview rows stay
+          // ready; the trace-state journey lives in m12-07.
+          sessionId: "10000000-0000-4000-8000-000000000001",
           badCaseType: item.type,
           objectName: item.object,
           objectType: "agent",
@@ -587,7 +586,7 @@ test("m8-04 overview bucket click and case deep link target the right rows", asy
     );
     assert.equal(
       deepLink.href,
-      `/workspaces/${dataWorkspaceId}/sessions/m8-04-session-beta/errors?case=M8-04-CASE-09&tab=desc`,
+      `/workspaces/${dataWorkspaceId}/sessions/10000000-0000-4000-8000-000000000001/errors?case=M8-04-CASE-09&tab=desc`,
     );
     assert.equal(deepLink.target, "_blank");
     assert.equal(deepLink.rel, "noopener");

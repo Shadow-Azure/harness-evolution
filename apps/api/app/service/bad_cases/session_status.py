@@ -9,7 +9,7 @@ presence to the public five-state union.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, NoReturn
@@ -45,14 +45,28 @@ def classify_trace_status(
     sync_state: BadCaseRootSyncRow | None,
     *,
     session_ready: bool,
+    source_available: bool = True,
 ) -> TraceStatus:
-    """Map durable sync state and Session presence to the public union.
+    """Map durable sync state, Session presence, and source availability.
 
     Session presence wins: once the normalized root exists the case is readable
     even if an older sync row still says ``failed``. A missing Session with a
     deterministic failure is ``unavailable``, not ``failed``, because retrying
-    cannot change the outcome until the source configuration changes.
+    cannot change the outcome until the source configuration changes. With no
+    configured source at all, no state is automatically retryable.
     """
+    trace = _derive_trace_status(sync_state, session_ready=session_ready)
+    if source_available or trace.status is BadCaseTraceStatus.READY:
+        return trace
+    return replace(trace, retryable=False)
+
+
+def _derive_trace_status(
+    sync_state: BadCaseRootSyncRow | None,
+    *,
+    session_ready: bool,
+) -> TraceStatus:
+    """Derive the public union before applying source availability."""
     if session_ready:
         return TraceStatus(
             status=BadCaseTraceStatus.READY,
