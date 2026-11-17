@@ -228,6 +228,8 @@ const blockedStageLabel = computed(() => {
       return "推送（push）阶段";
     case "eval":
       return "评测（eval）阶段";
+    case "attribution":
+      return "归因（attribution）阶段";
     default:
       return "未知阶段";
   }

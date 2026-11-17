@@ -9,7 +9,7 @@ milestone: m10
 depends:
   - m10-03
 priority: P0
-status: in-progress
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/service/jobs.py

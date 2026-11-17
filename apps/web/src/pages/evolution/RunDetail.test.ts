@@ -239,7 +239,7 @@ function detailSteps(
 
 /** Blocked-state facts that live directly on the detail shell. */
 interface DetailOverrides {
-  blockedStage?: "patch" | "push" | "eval" | null;
+  blockedStage?: "patch" | "push" | "eval" | "attribution" | null;
   retryAttempts?: number;
   nextRetryAt?: string | null;
   evalStatus?: "pending" | "evaluating" | "completed" | "failed" | "timeout";
@@ -397,12 +397,15 @@ describe("evolution run detail page", () => {
     expect(button.text()).toContain("已复制");
   });
 
-  it("renders the preparing range step and keeps later steps disabled", async () => {
+  it("renders the preparing range step and requests no unreached step", async () => {
+    const requested: string[] = [];
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
         HttpResponse.json(detail())),
-      http.get(`${evolutionBase}/runs/evo-full-1/steps/range`, () =>
-        HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/:step`, ({ params }) => {
+        requested.push(String(params.step));
+        return HttpResponse.json(rangeStep);
+      }),
     );
     const wrapper = await mountPage();
 
@@ -411,6 +414,7 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-step-key='range']").attributes("aria-current")).toBe(
       "step",
     );
+    expect(requested).toEqual(["range"]);
     expect(wrapper.get("[data-step-key='clusters']").attributes("disabled")).toBeDefined();
     expect(wrapper.get("[data-step-key='clusters']").attributes("title")).toBe(
       "该步骤尚未到达",
@@ -753,6 +757,72 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-testid='run-retry']").text()).toBe("重试");
     expect(wrapper.text()).toContain("评测失败");
     expect(wrapper.text()).toContain("查看执行日志");
+  });
+
+  it("labels blocked attribution and exposes both automatic and manual retry", async () => {
+    const nextRetryAt = new Date(2026, 9, 27, 12, 5, 0).toISOString();
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "blocked",
+              error: {
+                stage: "attribution",
+                message: "归因引擎暂时不可用",
+                at: "2026-10-27T12:00:00+08:00",
+              },
+              progress: {
+                unit: 3,
+                total: 8,
+                percent: 38,
+                stageLabel: "第 4/7 步 · 对象归因",
+                doneRounds: 0,
+                accepted: 0,
+              },
+            }),
+            ["done", "done", "done", "active", "pending", "pending", "pending"],
+            {
+              blockedStage: "attribution",
+              retryAttempts: 2,
+              nextRetryAt,
+            },
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json({
+          key: "attribution",
+          index: 3,
+          title: "对象归因",
+          status: "active",
+          clickable: true,
+          detail: "0 条",
+          payload: {
+            summary: {
+              potential: 0,
+              reused: 0,
+              fresh: 0,
+              nonTarget: 0,
+            },
+            rows: [],
+          },
+        })),
+    );
+    const wrapper = await mountPage();
+    const banner = wrapper.get("[data-testid='blocked-banner']");
+
+    expect(wrapper.get("[data-step-key='attribution']").attributes("aria-current")).toBe(
+      "step",
+    );
+    expect(banner.text()).toContain("运行在归因（attribution）阶段阻塞");
+    expect(banner.text()).toContain("归因引擎暂时不可用");
+    expect(banner.text()).toContain("自动重试 2 次");
+    expect(wrapper.get("[data-testid='next-retry-at']").text()).toContain(
+      "等待自动重试",
+    );
+    expect(wrapper.get("[data-testid='run-retry']").text()).toBe("重试");
+    expect(wrapper.get("[data-step-key='clusters']").attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("没有需要归因的潜在 bad case");
   });
 
   it("submits a manual retry, disables the button, and refetches the run", async () => {

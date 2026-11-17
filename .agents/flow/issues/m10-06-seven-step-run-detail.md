@@ -10,7 +10,7 @@ depends:
   - m10-04
   - m10-05
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/web/src/pages/evolution/**
   - apps/web/src/composables/**
