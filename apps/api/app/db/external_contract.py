@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import logging
 import time
 from collections.abc import Callable, Coroutine
@@ -362,6 +363,7 @@ def read_only_guard(
     def decorate(
         operation: Callable[_P, Coroutine[Any, Any, _R]],
     ) -> Callable[_P, Coroutine[Any, Any, _R]]:
+        @functools.wraps(operation)
         async def guarded(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             try:
                 return await operation(*args, **kwargs)
@@ -394,8 +396,6 @@ async def inspect_external_contract(
             drifts = await connection.run_sync(_inspect_schema)
     except (OperationalError, ProgrammingError, DBAPIError) as exc:
         code = _classify_failure(exc)
-        if code is ErrorCode.EXTERNAL_SCHEMA_DRIFT:
-            code = ErrorCode.EXTERNAL_READ_FAILED
         tables = ",".join(table.name for table in EXTERNAL_TABLES)
         _log_read_failure(exc, table=tables, dialect=database.dialect, code=code)
         return ExternalContractReport(
@@ -453,6 +453,9 @@ def _log_report(
     }
     if report.status == "ok":
         logger.info("external problem table contract check passed", extra=extra)
+        return
+    if report.status == "forbidden":
+        logger.error("external problem tables are unreadable", extra=extra)
         return
     if only_missing_tables:
         logger.info(
