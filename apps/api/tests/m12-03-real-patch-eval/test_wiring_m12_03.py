@@ -107,7 +107,12 @@ def test_create_app_respects_configured_modes(tmp_path: Path) -> None:
     assert type(gateway).__name__ == "HttpEvalGateway"
     patch_source = app.state.evolution_patch_source_factory(_run({}))
     assert isinstance(patch_source, MinimalConfigPatchSource)
-    assert not isinstance(patch_source, FakeEvalGateway)
+    # Distinguishing assertion: under http settings a run snapshot can still
+    # explicitly select fake — the snapshot wins over the env default.
+    snapshot_gateway = app.state.evolution_gateway_factory(
+        EvalGatewayConfig.from_mapping({"mode": "fake"}),
+    )
+    assert isinstance(snapshot_gateway, FakeEvalGateway)
 
 
 def test_run_snapshot_mode_selects_http_gateway(tmp_path: Path) -> None:

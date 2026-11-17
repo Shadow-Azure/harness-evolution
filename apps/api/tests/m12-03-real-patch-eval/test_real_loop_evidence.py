@@ -34,7 +34,7 @@ from app.service.evolution.engine.contracts import EvalGatewayConfig
 from app.service.evolution.eval_poller import EvolutionEvalPoller, EvolutionEvalSubmitter
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
-from app.service.evolution.patch_source import MinimalConfigPatchSource
+from app.service.evolution.patch_source import default_patch_source_factory
 from app.third_party_api.git.workspace import GitWorkspaceManager
 
 SH = ZoneInfo("Asia/Shanghai")
@@ -98,31 +98,6 @@ async def loop_state(
     bare, seed, base_commit = _seed_remote(tmp_path)
     repository = EvolutionRepository(database)
     probes = ProbeQueryRepository(database)
-    await repository.create_run(
-        {
-            "id": RUN_ID,
-            "title": "deep-research 真实闭环",
-            "mode": "full",
-            "engine_key": "full",
-            "eval_config": {},
-            "target_config_id": None,
-            "target_type": "skill",
-            "target_name": "deep-research",
-            "target_version": "v2.0.0",
-            "repo_url": str(bare),
-            "sub_dir": "skills/deep-research",
-            "base_ref": "v2.0.0",
-            "base_commit": None,
-            "branch_name": None,
-            "repo_path": None,
-            "workspace_path": None,
-            "status": "preparing",
-            "progress_unit": 0,
-            "stats": {},
-            "created_by": None,
-            "created_at": NOW,
-        },
-    )
     async with database.transaction() as session:
         await session.execute(
             insert(bad_cases).values(
@@ -164,6 +139,50 @@ async def loop_state(
                 updated_at=NOW,
             ),
         )
+    try:
+        yield database, repository, probes, bare, seed, base_commit
+    finally:
+        await database.dispose()
+
+
+async def _seed_run_and_round(
+    database: Any,
+    repository: EvolutionRepository,
+    eval_config: dict[str, Any],
+    repo_url: str,
+) -> None:
+    """Create the run with its creation-time eval snapshot, then its first round.
+
+    Mirrors production: the POST /runs eval config is sanitized and frozen into
+    the snapshot at creation time (no post-hoc update detour), and ``patchMode``
+    rides in the snapshot so the factory dispatch stays real inside the loop.
+    """
+    await repository.create_run(
+        {
+            "id": RUN_ID,
+            "title": "deep-research 真实闭环",
+            "mode": "full",
+            "engine_key": "full",
+            "eval_config": eval_config,
+            "target_config_id": None,
+            "target_type": "skill",
+            "target_name": "deep-research",
+            "target_version": "v2.0.0",
+            "repo_url": repo_url,
+            "sub_dir": "skills/deep-research",
+            "base_ref": "v2.0.0",
+            "base_commit": None,
+            "branch_name": None,
+            "repo_path": None,
+            "workspace_path": None,
+            "status": "preparing",
+            "progress_unit": 0,
+            "stats": {},
+            "created_by": None,
+            "created_at": NOW,
+        },
+    )
+    async with database.transaction() as session:
         await session.execute(
             insert(probe_clusters).values(
                 probe_cluster_id=CLUSTER_ID,
@@ -193,10 +212,6 @@ async def loop_state(
                 status="pending",
             ),
         )
-    try:
-        yield database, repository, probes, bare, seed, base_commit
-    finally:
-        await database.dispose()
 
 
 def _job(kind: str, payload: dict[str, Any], run_id: str = RUN_ID) -> JobRunRecord:
@@ -286,6 +301,7 @@ async def _drive_accept_loop(
         "mode": "http",
         "baseUrl": stub_url,
         "apiKeyRef": API_KEY_REF,
+        "patchMode": "minimal-config",
     }
     try:
         workspaces = GitWorkspaceManager(
@@ -293,12 +309,12 @@ async def _drive_accept_loop(
             workspaces_root=tmp_path / "workspaces",
             push_enabled=True,
         )
+        await _seed_run_and_round(_database, repository, eval_config, str(bare))
         run = await _prepare_workspace(repository, workspaces, base_commit)
-        await repository.update_run_eval_config(RUN_ID, eval_config)
         candidates = EvolutionCandidateService(
             repository,
             workspaces,
-            patch_source_factory=lambda _run: MinimalConfigPatchSource(),
+            patch_source_factory=default_patch_source_factory,
         )
         gateway_for_run = _gateway_for_run(tmp_path, stub_url, env)
         submitter = EvolutionEvalSubmitter(
@@ -335,6 +351,11 @@ async def _drive_accept_loop(
         assert f"Harness-Cluster-Id: {CLUSTER_ID}" in trailers
         assert f"Harness-Bad-Cases: {BAD_CASE_ID}" in trailers
         assert f"Harness-Probes: {PROBE_ID}" in trailers
+        # patchMode rides the create_run snapshot into the loop: the default
+        # factory really dispatches minimal-config from it.
+        assert isinstance(round_.patch, dict)
+        assert round_.patch.get("note", "").startswith("最小配置变更")
+        assert round_.patch.get("file") == "skills/deep-research/config/deep-research.json"
 
         jobs: list[tuple[str, Mapping[str, Any]]] = []
 
@@ -399,6 +420,7 @@ async def _drive_accept_loop(
             "probeId": PROBE_ID,
             "badCaseId": BAD_CASE_ID,
             "sessionId": SESSION_ID,
+            "patchMode": eval_config["patchMode"],
             "candidateRef": candidate_ref,
             "candidateCommit": candidate_commit,
             "patchFile": round_.patch.get("file") if isinstance(round_.patch, dict) else None,
@@ -460,21 +482,24 @@ async def test_real_loop_reject_path_keeps_run_branch_untouched(
     )
     server, stub_url = platform.build()
     env = {API_KEY_REF: "stub-secret-value"}
-    eval_config = {"mode": "http", "baseUrl": stub_url, "apiKeyRef": API_KEY_REF}
+    eval_config = {
+        "mode": "http",
+        "baseUrl": stub_url,
+        "apiKeyRef": API_KEY_REF,
+        "patchMode": "minimal-config",
+    }
     try:
         workspaces = GitWorkspaceManager(
             repos_root=tmp_path / "repos",
             workspaces_root=tmp_path / "workspaces",
             push_enabled=True,
         )
+        await _seed_run_and_round(_database, repository, eval_config, str(bare))
         run = await _prepare_workspace(repository, workspaces, base_commit)
-        await repository.update_run_eval_config(RUN_ID, eval_config)
-        from app.service.evolution.patch_source import MinimalConfigPatchSource
-
         candidates = EvolutionCandidateService(
             repository,
             workspaces,
-            patch_source_factory=lambda _run: MinimalConfigPatchSource(),
+            patch_source_factory=default_patch_source_factory,
         )
         gateway_for_run = _gateway_for_run(tmp_path, stub_url, env)
         submitter = EvolutionEvalSubmitter(
@@ -493,6 +518,10 @@ async def test_real_loop_reject_path_keeps_run_branch_untouched(
         assert candidate_ref
         assert git(bare, "rev-parse", f"refs/tags/{candidate_ref}") == round_.candidate_commit
         assert "Harness-Run-Id: " + RUN_ID in round_.candidate_message
+        # The snapshot patchMode drives the real factory dispatch on the
+        # reject path too.
+        assert isinstance(round_.patch, dict)
+        assert round_.patch.get("note", "").startswith("最小配置变更")
 
         poller = EvolutionEvalPoller(
             repository,

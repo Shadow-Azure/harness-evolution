@@ -888,19 +888,6 @@ class EvolutionRepository:
             )
         return record_from_evolution_round(cast(Mapping[str, Any], row)) if row else None
 
-    async def update_run_eval_config(
-        self,
-        run_id: str,
-        eval_config: Mapping[str, Any],
-    ) -> None:
-        """Overwrite the frozen eval snapshot before the first evaluation runs."""
-        async with self._database.transaction() as session:
-            await session.execute(
-                update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
-                .values(eval_config=deepcopy(dict(eval_config))),
-            )
-
     async def mark_round_patching(
         self,
         round_id: str,
