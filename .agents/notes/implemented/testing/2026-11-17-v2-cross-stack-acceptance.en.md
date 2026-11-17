@@ -24,7 +24,7 @@ Every V2 module has its own green tests, but the user's seven requirements cross
 
 ## Consequences
 
-- The E2E adds about 25 seconds and the API suite about 100 cases; the MySQL case keeps the existing `mysql` marker, skips when no service exists, and runs through `test:db:mysql` in CI.
+- The E2E adds about 25 seconds and the API suite about 100 cases; the MySQL case keeps the existing `mysql` marker, skips when no service exists, and runs through `test:db:mysql` in CI; the single unit-tests job budget is raised from 15 to 20 minutes.
 - The cluster preview reads one detail every 15 seconds while a run is active and stops at a terminal state; this fills a page-cache gap without changing the run state machine.
 - Acceptance reports and screenshots stay out of the repository, so long-term evidence depends on release assets in the PR; if those assets are deleted, only the PR description and review document remain.
 - Fixtures stay synthetic; real session shapes are covered through replay cases without introducing raw prompts or document bodies.

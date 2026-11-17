@@ -24,7 +24,7 @@ V2 的每个模块都有自己的绿测，但用户七点需求跨越身份、�
 
 ## Consequences
 
-- E2E 增加约 25 秒、API 套件增加约 100 个用例；MySQL 用例沿用现有 `mysql` marker，在无服务时跳过，CI 由 `test:db:mysql` 执行。
+- E2E 增加约 25 秒、API 套件增加约 100 个用例；MySQL 用例沿用现有 `mysql` marker，在无服务时跳过，CI 由 `test:db:mysql` 执行；unit-tests 单 job 的 15 分钟预算因此上调到 20 分钟。
 - cluster 预览在活动 run 期间每 15 秒读一次详情，终态后停止轮询；这是对页面缓存的补齐，不改变 run 状态机。
 - 验收报告和截图不进仓库，长期证据依赖 PR 上的 release 资产；release 资产被清理时只能从 PR 描述与检视文档回溯结论。
 - fixture 仍以合成内容为主，真实会话形状通过重放用例覆盖，不引入原始 prompt 或文档正文。
