@@ -125,12 +125,22 @@ class EvolutionRepository:
         stage: str,
         message: str,
     ) -> None:
-        """Persist one terminal failure while retaining its user-safe reason."""
+        """Persist one terminal failure while retaining its user-safe reason.
+
+        Already-terminal runs (and runs still blocked with an open retry entry)
+        keep their existing facts: a late generic job failure must not rewrite
+        the first writer's ``error_stage`` or destroy recoverable state.
+        """
         now = now_shanghai()
         async with self._database.transaction() as session:
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status.notin_(
+                        ("failed", "completed", "interrupted", "blocked"),
+                    ),
+                )
                 .values(
                     status="failed",
                     error_stage=stage,
@@ -976,9 +986,18 @@ class EvolutionRepository:
                     target=1,
                     reason="round cannot fail from the patching state",
                 )
+            # Symmetric with the round-side guard: a run already terminal
+            # (failed/completed/interrupted) or still blocked (keep the /retry
+            # entry) is never overwritten by a late patch failure, so terminal
+            # facts belong to the first writer and error_stage cannot drift.
             await session.execute(
                 update(evolution_runs)
-                .where(evolution_runs.c.id == run_id)
+                .where(
+                    evolution_runs.c.id == run_id,
+                    evolution_runs.c.status.notin_(
+                        ("failed", "completed", "interrupted", "blocked"),
+                    ),
+                )
                 .values(
                     status="failed",
                     error_stage=stage,

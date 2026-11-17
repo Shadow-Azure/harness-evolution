@@ -39,6 +39,7 @@ class StubEvalPlatform:
         },
     )
     result_status_code: int = 200
+    status_status_code: int = 200
 
     def build(self) -> tuple[ThreadingHTTPServer, str]:
         """Serve on an ephemeral local port and return the base URL."""
@@ -69,7 +70,7 @@ class StubEvalPlatform:
                     if platform.status_message:
                         payload["message"] = platform.status_message
                     response = json.dumps(payload).encode()
-                    code = 200
+                    code = platform.status_status_code
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(response)))

@@ -78,8 +78,13 @@ class EvolutionEvalSubmitter:
             or round_.candidate_commit is None
         ):
             return round_
-        gateway = self._gateway_for_run(run)
         try:
+            # Gateway construction resolves the frozen snapshot config (a missing
+            # baseUrl or a dangling apiKeyRef raises EvalGatewayConfigError), so it
+            # must share the try with gateway.submit: config errors take the same
+            # blocked(stage=eval) semantics as the polling side, keeping /retry
+            # reachable instead of escaping into a failed(error_stage="step") run.
+            gateway = self._gateway_for_run(run)
             submission = await gateway.submit(
                 EvalRequest(
                     run_id=run.id,
@@ -344,6 +349,8 @@ class EvolutionEvalPoller:
             if status.status not in {"queued", "running", "completed", "failed", "timeout"}:
                 raise ValueError(f"unknown evaluation status: {status.status}")
         except Exception as exc:
+            if await self._defer_retryable(run, round_, exc, current):
+                return True
             await self._fail(
                 run,
                 round_,
@@ -387,6 +394,8 @@ class EvolutionEvalPoller:
                     finished_at=current,
                 )
             except Exception as exc:
+                if await self._defer_retryable(run, round_, exc, current):
+                    return True
                 await self._fail(
                     run,
                     round_,
@@ -416,6 +425,41 @@ class EvolutionEvalPoller:
             status=status.status,
             message=status.message or f"evaluation {status.status}",
             current=current,
+        )
+        return True
+
+    async def _defer_retryable(
+        self,
+        run: EvolutionRunRecord,
+        round_: EvolutionRoundRecord,
+        exc: BaseException,
+        current: datetime,
+    ) -> bool:
+        """Absorb one retryable polling failure by deferring the next poll.
+
+        The platform saying "failed" and our poll request failing are different
+        facts: the gateway layer flags transport transience (network timeouts,
+        connection failures, 5xx/429) with ``retryable`` and this loop only
+        consumes the boolean — push ``next_poll_at`` forward and keep waiting,
+        still capped by the existing 2h ``eval_timeout`` fallback. Non-retryable
+        errors fall through to the caller's existing blocked(stage=eval) path.
+        """
+        if not bool(getattr(exc, "retryable", False)):
+            return False
+        next_poll = current + self._poll_interval
+        await self._runs.mark_eval_waiting(round_.id, next_poll_at=next_poll)
+        await self._record(
+            run.id,
+            "eval_polled",
+            level="warn",
+            message=f"评测平台暂时不可用，已推迟下一次轮询：{exc}",
+            round_id=round_.id,
+            payload={
+                "externalId": round_.eval_external_id,
+                "transient": True,
+                "nextPollAt": next_poll.isoformat(),
+            },
+            error=exc,
         )
         return True
 

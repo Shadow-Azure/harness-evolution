@@ -14,11 +14,19 @@ from app.service.evolution.engine.contracts import (
 
 
 class HttpEvalError(RuntimeError):
-    """A sanitized evaluation-platform failure raised to the polling loop."""
+    """A sanitized evaluation-platform failure raised to the polling loop.
 
-    def __init__(self, message: str) -> None:
-        """Store the safe message without retaining raw response bodies."""
+    ``retryable`` marks observation-side transience (network timeouts,
+    connection failures, HTTP 429/5xx) so the polling loop can defer the next
+    poll instead of judging the evaluation itself failed; payload and 4xx
+    contract errors stay final. The classification lives in the gateway layer
+    per 07 §5.7 — business services only consume the boolean.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        """Store the safe message and retryability without retaining bodies."""
         super().__init__(message)
+        self.retryable = retryable
 
 
 class EvalMapper:

@@ -9,7 +9,6 @@ import html
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -615,13 +614,24 @@ class EvolutionCandidateService:
     ) -> NoReturn:
         """Fail the round and run terminally for unrecoverable patch generation."""
         message = sanitize_message(str(error), limit=2_000)
-        with suppress(StageConflict):
+        try:
             await self._runs.mark_round_failed(
                 run.id,
                 round_id,
                 stage="patch",
                 message=message,
             )
+        except StageConflict:
+            # The round already left patching: the first writer owns the terminal
+            # state, so do not record a duplicate run_failed event (which would
+            # let the JobRunner's generic failure drift error_stage from "patch"
+            # to "step") — only the root-cause error propagates, aligned with the
+            # round side's explicit conflict semantics.
+            logger.warning(
+                "patch generation failure arrived after the round left patching",
+                extra={"run_id": run.id, "round_id": round_id},
+            )
+            raise error from None
         await self._record(
             run.id,
             "run_failed",

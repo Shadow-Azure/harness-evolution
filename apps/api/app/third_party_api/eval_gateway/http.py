@@ -99,13 +99,19 @@ class HttpEvalGateway:
                 headers=headers,
             )
         except httpx.HTTPError:
+            # Transport failures (timeouts, dropped connections) are observation-
+            # side transience, never the evaluation's verdict.
             raise HttpEvalError(
                 f"evaluation platform {context} request failed",
+                retryable=True,
             ) from None
         if response.status_code >= 400:
+            # 429/5xx are platform-side transience (retryable); other 4xx are
+            # semantic rejections and stay final.
             raise HttpEvalError(
                 f"evaluation platform rejected the {context} request "
                 f"with HTTP {response.status_code}",
+                retryable=response.status_code >= 500 or response.status_code == 429,
             )
         try:
             payload = response.json()

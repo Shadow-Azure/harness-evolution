@@ -169,14 +169,73 @@ async def test_http_gateway_wraps_transport_and_http_failures() -> None:
         await dead.submit(_request())
 
 
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [(500, True), (502, True), (429, True), (404, False), (400, False)],
+)
+async def test_http_gateway_classifies_http_status_retryability(
+    status_code: int,
+    retryable: bool,
+) -> None:
+    """Only 429/5xx are transient; other 4xx rejections are final answers."""
+    platform = StubEvalPlatform(status_status_code=status_code)
+    server, base_url = platform.build()
+    try:
+        async with httpx.AsyncClient(base_url=base_url) as client:
+            gateway = HttpEvalGateway(
+                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
+                client=client,
+            )
+            submission = await gateway.submit(_request())
+            with pytest.raises(HttpEvalError) as excinfo:
+                await gateway.get_status(submission.eval_id)
+    finally:
+        server.shutdown()
+
+    assert excinfo.value.retryable is retryable
+
+
+async def test_http_gateway_marks_transport_failures_retryable() -> None:
+    """Connection failures and timeouts are transient observation problems."""
+    dead = HttpEvalGateway(
+        EvalGatewayConfig.from_mapping(
+            {"mode": "http", "baseUrl": "http://127.0.0.1:1"},
+        ),
+    )
+    with pytest.raises(HttpEvalError) as excinfo:
+        await dead.submit(_request())
+
+    assert excinfo.value.retryable is True
+
+
+async def test_http_gateway_marks_payload_failures_non_retryable() -> None:
+    """Non-JSON and malformed payloads are contract errors, never transient."""
+    platform = StubEvalPlatform(status_sequence=["mysterious"])
+    server, base_url = platform.build()
+    try:
+        async with httpx.AsyncClient(base_url=base_url) as client:
+            gateway = HttpEvalGateway(
+                EvalGatewayConfig.from_mapping({"mode": "http", "baseUrl": base_url}),
+                client=client,
+            )
+            submission = await gateway.submit(_request())
+            with pytest.raises(HttpEvalError) as excinfo:
+                await gateway.get_status(submission.eval_id)
+    finally:
+        server.shutdown()
+
+    assert excinfo.value.retryable is False
+
+
 @pytest.mark.parametrize("body", [b"not-json", b"[1,2,3]"])
 async def test_http_gateway_rejects_non_json_and_non_object_bodies(body: bytes) -> None:
     """Non-JSON and non-object responses become one sanitized gateway error."""
-    calls = {"n": 0}
+    received: list[str] = []
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            received.append(self.path)
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -202,4 +261,6 @@ async def test_http_gateway_rejects_non_json_and_non_object_bodies(body: bytes) 
                 await gateway.submit(_request())
     finally:
         server.shutdown()
-    assert calls["n"] == 0
+    # Distinguishing assertion: the request really round-tripped once and the
+    # bad body was folded by the gateway, not silently passed through.
+    assert received == ["/evals"]
