@@ -12,11 +12,13 @@ from sqlalchemy import insert
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.attributions import CandidateTriggerRecord
 from app.db.crud.fixtures import run_corpus_seed
 from app.db.models.domain import agents, bad_case_analysis, bad_cases, probe_reports
 from app.db.models.evolution import evolution_run_candidates, evolution_runs
 from app.fixture_corpus import load_fixture_corpus
 from app.main import create_app
+from app.service.bad_cases.attribution import _trigger_order
 from app.utils.time import SHANGHAI
 from tests.workspaces.helpers import (
     access_token,
@@ -408,8 +410,15 @@ async def test_attribution_pages_are_newest_first_and_totals_count_links(
         headers=attribution_api.admin,
         params={"page": 2, "pageSize": 2},
     )
+    beyond = await attribution_api.client.get(
+        base,
+        headers=attribution_api.admin,
+        params={"page": 3, "pageSize": 2},
+    )
     assert first.status_code == 200
     assert second.status_code == 200
+    assert beyond.status_code == 200
+    assert beyond.json() == {"items": [], "total": 4, "page": 3, "pageSize": 2}
     assert first.json()["total"] == 4
     assert first.json()["page"] == 1
     assert first.json()["pageSize"] == 2
@@ -619,3 +628,56 @@ async def test_legacy_analysis_and_probe_reads_keep_working(
     assert analysis.json()["status"] == "analyzed_issue"
     assert probe.status_code == 200
     assert probe.json()["probeId"] == PROBE_OLD
+
+
+def _candidate(
+    *,
+    order_state: str = "comparable",
+    object_at: datetime | None = None,
+    case_at: datetime | None = None,
+    object_tree: int | None = None,
+    object_event: int | None = None,
+    case_tree: int | None = None,
+    case_event: int | None = None,
+) -> CandidateTriggerRecord:
+    """Build one candidate trigger snapshot for comparison unit cases."""
+    return CandidateTriggerRecord(
+        order_state=order_state,
+        object_trigger_at=object_at,
+        case_trigger_at=case_at,
+        object_trigger_tree_index=object_tree,
+        object_trigger_event_index=object_event,
+        case_trigger_tree_index=case_tree,
+        case_trigger_event_index=case_event,
+    )
+
+
+def test_trigger_order_covers_equal_before_and_uncomparable_evidence() -> None:
+    """Timestamp equality and coordinate ordering both drive the closed set."""
+    assert _trigger_order(None) == "unknown"
+    assert _trigger_order(_candidate(order_state="unknown")) == "unknown"
+    assert _trigger_order(_candidate(object_at=NOW, case_at=NOW)) == "same"
+    assert _trigger_order(_candidate(object_at=NEW_AT, case_at=NOW)) == "before"
+    assert (
+        _trigger_order(
+            _candidate(
+                object_tree=1,
+                object_event=2,
+                case_tree=0,
+                case_event=9,
+            ),
+        )
+        == "before"
+    )
+    assert (
+        _trigger_order(
+            _candidate(
+                object_tree=0,
+                object_event=1,
+                case_tree=0,
+                case_event=1,
+            ),
+        )
+        == "same"
+    )
+    assert _trigger_order(_candidate(object_tree=0, case_tree=0)) == "unknown"
