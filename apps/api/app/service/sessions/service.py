@@ -202,6 +202,44 @@ def _agent(agent: AgentRecord, events: list[EventRecord]) -> SessionAgent:
     )
 
 
+_SESSION_BAD_CASE_TYPES = frozenset({"self", "discovery"})
+_SESSION_OBJECT_TYPES = frozenset({"skill", "agent"})
+
+
+def _session_bad_case_fields(
+    case: BadCaseRecord,
+) -> tuple[Literal["self", "discovery"], Literal["skill", "agent"]]:
+    """Validate the externally owned enum fields and degrade to safe defaults.
+
+    The execution-tree read model is a Literal DTO; an invalid external value
+    must stay visible rather than raise a validation error for the whole tree.
+    """
+    drifted: list[str] = []
+    bad_case_type: Literal["self", "discovery"] = "self"
+    if case.bad_case_type in _SESSION_BAD_CASE_TYPES:
+        bad_case_type = cast(Literal["self", "discovery"], case.bad_case_type)
+    else:
+        drifted.append("bad_case_type")
+    object_type: Literal["skill", "agent"] = "agent"
+    if case.object_type in _SESSION_OBJECT_TYPES:
+        object_type = cast(Literal["skill", "agent"], case.object_type)
+    else:
+        drifted.append("object_type")
+    if drifted:
+        logger.warning(
+            "external session-tree problem fields drifted",
+            extra={
+                "event": "external.row_drift",
+                "scope": "session_tree",
+                "bad_case_id": case.bad_case_id,
+                "codes": ["EXTERNAL_FIELD_INVALID"],
+                "fields": drifted,
+                "warning_count": len(drifted),
+            },
+        )
+    return bad_case_type, object_type
+
+
 def _bad_case(
     case: BadCaseRecord,
     *,
@@ -211,10 +249,11 @@ def _bad_case(
 ) -> SessionBadCase:
     """Resolve one externally-owned problem to its prototype anchor semantics."""
     title, _ = derive_title(case.title, case.reason)
+    bad_case_type, object_type = _session_bad_case_fields(case)
     anchor = resolve_problem_anchor(
-        bad_case_type=case.bad_case_type,
+        bad_case_type=bad_case_type,
         object_name=case.object_name,
-        object_type=case.object_type,
+        object_type=object_type,
         bad_case_agent_id=case.bad_case_agent_id,
         agents_by_id=agents_by_id,
         events_by_agent=events_by_agent,
@@ -236,9 +275,9 @@ def _bad_case(
 
     return SessionBadCase(
         bad_case_id=case.bad_case_id,
-        bad_case_type=cast(Literal["self", "discovery"], case.bad_case_type),
+        bad_case_type=bad_case_type,
         object_name=case.object_name,
-        object_type=cast(Literal["skill", "agent"], case.object_type),
+        object_type=object_type,
         object_version=case.object_version,
         anchor=BadCaseAnchor(
             agent_id=anchor.agent_id,

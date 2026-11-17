@@ -100,3 +100,34 @@ async def test_status_popover_degrades_when_external_tables_are_missing(
     )
     assert response.status_code == 200
     assert response.json()["badCaseAnalysis"]["total"] == 0
+
+
+async def test_session_tree_degrades_invalid_external_enums(
+    seeded_environment: Any,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The execution-tree DTO falls back instead of rejecting a drifted row."""
+    environment = seeded_environment
+    async with environment.database.transaction() as session:
+        await session.execute(
+            update(bad_cases)
+            .where(bad_cases.c.bad_case_id == CASE_1)
+            .values(bad_case_type="drifted", object_type="widget"),
+        )
+    with caplog.at_level(logging.WARNING, logger=PROBLEM_LOG_NAME):
+        response = await environment.client.get(
+            f"/api/workspaces/{environment.workspace_id}/sessions/{SESSION_1}/tree",
+            headers=environment.authorization,
+        )
+    assert response.status_code == 200
+    cards = {card["badCaseId"]: card for card in response.json()["badCases"]}
+    assert cards[CASE_1]["badCaseType"] == "self"
+    assert cards[CASE_1]["objectType"] == "agent"
+    summary = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "external.row_drift"
+        and getattr(record, "scope", None) == "session_tree"
+    ]
+    assert summary
+    assert set(cast(Any, summary[-1]).fields) == {"bad_case_type", "object_type"}
