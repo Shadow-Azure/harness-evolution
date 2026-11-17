@@ -10,9 +10,11 @@ depends:
   - m8-05
   - m9-04
 priority: P1
-status: backlog
+status: ready
 scope:
   - apps/web/src/components/agent-tree/**
+  - apps/web/src/components.d.ts
+  - apps/web/src/pages/agent-tree-demo/**
   - apps/web/src/pages/sessions/**
   - apps/web/src/pages/errors/**
   - tests/e2e/**

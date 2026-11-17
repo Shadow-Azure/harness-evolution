@@ -1,3 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
-m11-07-execution-flow-lane-dag.md: 0ceb596491809871a399e03a2464707cc1508634
-m11-07-execution-flow-lane-dag.en.md: 057c171deda2b52c91835b9247562fa347b6aebb
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m11-07-execution-flow-lane-dag.md
+m11-07-execution-flow-lane-dag.md: e1b3f99604722b9c01faa02d69c1cffe55537845
+m11-07-execution-flow-lane-dag.en.md: 293b76883dabcccf50aa912ef8c37eb65814db1c
