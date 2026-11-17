@@ -14,6 +14,7 @@ from sqlalchemy import insert, select
 from app.config import DatabaseDialect, Settings
 from app.db.crud.fixtures import ensure_fixture_external_tables
 from app.db.models.domain import (
+    agent_events,
     agents,
     bad_case_analysis,
     bad_cases,
@@ -29,6 +30,7 @@ from app.third_party_api.git.workspace import PreparedWorkspace
 ADMIN_TEMP_PASSWORD = "launch-wizard-admin-temp-password"
 ADMIN_PASSWORD = "launch-wizard-admin-password"
 NOW = datetime(2026, 10, 26, 8, 0, tzinfo=UTC)
+CASE_AT = datetime(2026, 9, 6, 8, 0, tzinfo=UTC)
 SESSION_S1 = "10000000-0000-4000-8000-0000000000a1"
 SESSION_S2 = "10000000-0000-4000-8000-0000000000a2"
 SESSION_S3 = "10000000-0000-4000-8000-0000000000a3"
@@ -114,8 +116,8 @@ def _case_values(
         "bad_case_description": f"reason {case_id}",
         "meta_data": {},
         "source": "fixtures",
-        "created_at": NOW,
-        "updated_at": NOW,
+        "created_at": CASE_AT,
+        "updated_at": CASE_AT,
     }
 
 
@@ -198,6 +200,7 @@ async def _seed_hits(app: Any) -> None:
             [
                 _agent_values(f"agent-{SESSION_S1}", SESSION_S1, "glm-5.3"),
                 _agent_values(f"agent-{SESSION_S2}", SESSION_S2, "glm-5.3-flash"),
+                _agent_values(f"agent-{SESSION_S3}", SESSION_S3, "glm-5.3"),
                 _agent_values(
                     "agent-case", SESSION_S2, "glm-5.3-case", kind="agent", spawn_depth=1
                 ),
@@ -238,6 +241,44 @@ async def _seed_hits(app: Any) -> None:
                 _analysis_values("case-window", "analyzed_issue", "probe-window"),
                 _analysis_values("case-unanalyzed", "unanalyzed", None),
                 _analysis_values("case-nonissue", "analyzed_nonissue", None),
+            ],
+        )
+        await session.execute(
+            insert(agent_events),
+            [
+                {
+                    "agent_id": f"agent-{SESSION_S1}",
+                    "event_index": 0,
+                    "line_no": 1,
+                    "message_offset": 0,
+                    "kind": "skill",
+                    "name": "deep-research",
+                    "object_version": "v2.0.0",
+                    "object_revision": "tag:v2.0.0",
+                    "triggered_at": datetime(2026, 8, 25, 8, 0, tzinfo=UTC),
+                },
+                {
+                    "agent_id": f"agent-{SESSION_S2}",
+                    "event_index": 0,
+                    "line_no": 1,
+                    "message_offset": 0,
+                    "kind": "skill",
+                    "name": "deep-research",
+                    "object_version": "v2.0.0",
+                    "object_revision": "tag:v2.0.0",
+                    "triggered_at": datetime(2026, 9, 5, 8, 0, tzinfo=UTC),
+                },
+                {
+                    "agent_id": f"agent-{SESSION_S3}",
+                    "event_index": 0,
+                    "line_no": 1,
+                    "message_offset": 0,
+                    "kind": "skill",
+                    "name": "reported-object",
+                    "object_version": "v2.0.0",
+                    "object_revision": "tag:v2.0.0",
+                    "triggered_at": datetime(2026, 9, 20, 8, 0, tzinfo=UTC),
+                },
             ],
         )
         await session.execute(
@@ -425,10 +466,11 @@ async def test_launch_records_creation_and_prepare_start_events(
     assert [item["eventType"] for item in events.json()["items"]] == [
         "run_created",
         "prepare_started",
-        "workspace_prepared",
+        "sessions_linked",
+        "potential_computed",
+        "attribution_created",
         "clusters_created",
-        "step_advanced",
-        "step_advanced",
+        "workspace_prepared",
     ]
     assert events.json()["hasMore"] is False
 
@@ -638,11 +680,13 @@ async def test_start_run_rejects_window_and_empty_hits(
     assert inverted.status_code == 422
     assert inverted.json()["error"]["code"] == "VALIDATION_INVALID"
     assert empty.status_code == 409
-    assert empty.json()["error"]["code"] == "NO_PROBES_MATCHED"
-    assert reported_only.status_code == 409
-    assert reported_only.json()["error"]["code"] == "NO_PROBES_MATCHED"
+    assert empty.json()["error"]["code"] == "NO_ASSOCIATED_SESSIONS"
+    assert reported_only.status_code == 202
+    reported_run = reported_only.json()["runId"]
     runs = await launch_api.get("/api/evolution/runs")
-    assert runs.json()["running"] == []
+    assert reported_run in {
+        card["runId"] for card in runs.json()["running"] + runs.json()["history"]
+    }
 
 
 async def test_start_run_accepts_and_snapshots_query(
@@ -667,7 +711,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert job.error is None
     assert job.result["runId"] == body["runId"]
     assert job.result["status"] == "running"
-    assert job.result["progressUnit"] == 4
+    assert job.result["progressUnit"] == 5
 
     async with _app_of(launch_api).state.database.session() as session:
         row = (
@@ -684,7 +728,7 @@ async def test_start_run_accepts_and_snapshots_query(
     assert row["status"] == "running"
     assert row["branch_name"].startswith("evo/")
     assert row["base_commit"] == "a" * 40
-    assert row["progress_unit"] == 4
+    assert row["progress_unit"] == 5
     assert row["target_config_id"] == "target-enabled"
     assert row["target_name"] == "deep-research"
     assert row["target_version"] == "v2.0.0"
@@ -829,7 +873,7 @@ async def test_cluster_preview_creates_cluster_only_run(
         json=_query_body(mode="cluster_only", targetVersion="v9.9.9"),
     )
     assert empty.status_code == 409
-    assert empty.json()["error"]["code"] == "NO_PROBES_MATCHED"
+    assert empty.json()["error"]["code"] == "NO_ASSOCIATED_SESSIONS"
 
     response = await launch_api.post(
         "/api/evolution/cluster-previews",

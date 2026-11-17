@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from app.db.crud.evolution import EvolutionRepository
-from app.db.crud.probe_query import ProbeHitQuery, ProbeQueryRepository
+from app.db.crud.potential import ObjectType, window_day_boundaries
 from app.errors import AppError, ErrorCode
+from app.service.evolution.attribution import DEFAULT_ATTRIBUTION_ENGINE
 from app.service.evolution.engine.factory import EngineFactory
 from app.service.evolution.events import EvolutionRunEventService
-from app.service.evolution.potential import ResolvedPolicy, resolve_policy
+from app.service.evolution.potential import (
+    MatchCondition,
+    PotentialMatcher,
+    ResolvedPolicy,
+    resolve_policy,
+    resolve_target_revision,
+    resolve_window,
+)
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
     RunAccepted,
@@ -83,14 +91,14 @@ class EvolutionLaunchService:
     def __init__(
         self,
         targets: LaunchTargetStore,
-        probe_repository: ProbeQueryRepository,
+        matcher: PotentialMatcher,
         runs: EvolutionRepository,
         jobs: JobRunner,
         events: EvolutionRunEventService | None = None,
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
-        self._probe_repository = probe_repository
+        self._matcher = matcher
         self._runs = runs
         self._jobs = jobs
         self._events = events
@@ -143,7 +151,9 @@ class EvolutionLaunchService:
             default_version=config.default_ref,
             workspace_ids=(config.workspace_id,),
         )
-        await self._require_hits(query)
+        policy = resolve_policy(body.policy)
+        condition = _match_condition(query, config.workspace_id)
+        await self._require_potential(condition, policy)
         run = await self._runs.create_run(
             self._run_values(
                 body,
@@ -169,33 +179,61 @@ class EvolutionLaunchService:
             )
         job = await self._jobs.submit(
             kind="evolution_prepare",
-            payload={"runId": run.id, "query": _query_payload(body, query.target_version)},
+            payload={"runId": run.id},
             ref_id=run.id,
             created_by=created_by,
         )
         return RunAccepted(run_id=run.id, job_id=job.id, status="preparing")
 
-    async def _require_hits(self, query: ProbeHitQuery) -> None:
-        """Fail the launch before any write when no analyzed probe matches.
+    async def _require_potential(
+        self,
+        condition: MatchCondition,
+        policy: Any,
+    ) -> None:
+        """Fail the launch before any write when nothing can be attributed.
 
         Args:
-            query: Normalized wizard condition with resolved version.
+            condition: Normalized matcher condition with resolved revision.
+            policy: Validated policy switches.
 
         Raises:
-            AppError: With `NO_PROBES_MATCHED` when the hit count is zero.
+            AppError: With `NO_ASSOCIATED_SESSIONS` or `NO_POTENTIAL_MATCHED`
+                when the shared matcher finds no work.
         """
-        rows = await self._probe_repository.list_hit_rows(query)
-        if not rows:
+        association = await self._matcher.associated_sessions(condition)
+        if not association.sessions:
             raise AppError(
                 status_code=409,
-                code=ErrorCode.NO_PROBES_MATCHED,
-                message="no analyzed probe matches the wizard condition",
+                code=ErrorCode.NO_ASSOCIATED_SESSIONS,
+                message="no Session contains the requested object version",
+                details={
+                    "summary": {
+                        "reported": association.reported,
+                        "associated": association.associated,
+                        "skipped": association.skipped,
+                        "versionUnresolved": association.version_unresolved,
+                        "pending": association.pending,
+                    },
+                },
+            )
+        match = await self._matcher.potential_cases(condition, association, policy)
+        if not match.included:
+            raise AppError(
+                status_code=409,
+                code=ErrorCode.NO_POTENTIAL_MATCHED,
+                message="no potential bad case matches the run policy",
+                details={
+                    "summary": {
+                        "badCases": len(match.cases),
+                        "potential": match.potential,
+                    },
+                },
             )
 
     def _run_values(
         self,
         body: ProbeQueryRequest,
-        query: ProbeHitQuery,
+        query: Any,
         config: LaunchTargetRecord,
         *,
         policy: ResolvedPolicy,
@@ -219,6 +257,9 @@ class EvolutionLaunchService:
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
             "eval_config": _snapshot_eval(body.eval),
+            "potential_policy": policy.snapshot(),
+            "cache_enabled": body.cache_enabled,
+            "attribution_engine": DEFAULT_ATTRIBUTION_ENGINE,
             "target_config_id": config.id,
             "target_type": query.target_type,
             "target_name": query.target_name,
@@ -231,8 +272,6 @@ class EvolutionLaunchService:
             "window_from": query.window_from,
             "window_to": query.window_to,
             "models": list(query.models),
-            "potential_policy": policy.snapshot(),
-            "cache_enabled": body.cache_enabled,
             "status": "preparing",
             "created_by": created_by,
         }
@@ -253,24 +292,17 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
     return {str(key): value for key, value in sanitized.items()}
 
 
-def _query_payload(body: ProbeQueryRequest, resolved_version: str) -> dict[str, Any]:
-    """Serialize the traceable launch condition stored with the job.
-
-    Args:
-        body: Original wizard condition.
-        resolved_version: Version resolved from the request or configuration.
-
-    Returns:
-        JSON-safe condition payload without any credential fields.
-    """
-    return {
-        "targetType": body.target_type,
-        "targetName": body.target_name,
-        "targetVersion": resolved_version,
-        "from": body.window_from.isoformat() if body.window_from else None,
-        "to": body.window_to.isoformat() if body.window_to else None,
-        "models": list(body.models),
-        "mode": body.mode,
-        "engineKey": body.engine_key,
-        "eval": body.eval,
-    }
+def _match_condition(query: Any, workspace_id: str) -> MatchCondition:
+    """Build the shared matcher condition from the validated launch request."""
+    target_version, target_revision = resolve_target_revision(query.target_version)
+    start, end = resolve_window(query.window_from, query.window_to)
+    window_start, window_end = window_day_boundaries(start, end)
+    return MatchCondition(
+        workspace_id=workspace_id,
+        target_type=cast(ObjectType, query.target_type),
+        target_name=query.target_name,
+        target_version=target_version,
+        target_revision=target_revision,
+        window_start=window_start,
+        window_end=window_end,
+    )

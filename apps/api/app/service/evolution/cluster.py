@@ -30,6 +30,31 @@ class ClusterDraft:
 TYPE_IMPACT: Mapping[str, int] = MappingProxyType(
     {"error": 9, "prompt": 7, "model": 5},
 )
+TYPE_CONFIDENCE: Mapping[str, float] = MappingProxyType(
+    {"error": 0.82, "prompt": 0.74, "model": 0.66},
+)
+"""Cluster-level placeholder confidence by category."""
+
+
+def cluster_severity(
+    cluster_type: ClusterType,
+    report_count: int,
+) -> float:
+    """Return the documented bounded severity for one cluster.
+
+    Args:
+        cluster_type: Closed attribution category of the cluster.
+        report_count: Distinct source bad cases behind the cluster.
+
+    Returns:
+        ``round(min(10, confidence x impact x reportWeight), 1)`` where
+        ``reportWeight = 1 + 0.1 x min(reportCount - 1, 5)``.
+    """
+    weight = 1 + 0.1 * min(max(report_count, 1) - 1, 5)
+    return round(
+        min(10.0, TYPE_CONFIDENCE[cluster_type] * TYPE_IMPACT[cluster_type] * weight),
+        1,
+    )
 
 
 def simple_cluster(probes: Sequence[ProbeForCluster]) -> tuple[ClusterDraft, ...]:

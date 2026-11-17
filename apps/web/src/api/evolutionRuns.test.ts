@@ -175,6 +175,24 @@ describe("evolution run API", () => {
     expect(calls[2]!.body).toMatchObject({ cacheEnabled: true });
   });
 
+  it("sends the Session default page and explicit potential pagination", async () => {
+    const queries: string[] = [];
+    server.use(
+      http.get(
+        "/api/workspaces/:wid/evolution/runs/:runId/steps/:step",
+        ({ request }) => {
+          queries.push(new URL(request.url).search);
+          return HttpResponse.json({ key: "sessions" });
+        },
+      ),
+    );
+
+    await getEvolutionRunStep(workspaceId, "run-1", "sessions");
+    await getEvolutionRunStep(workspaceId, "run-1", "potential", 2, 5);
+
+    expect(queries).toEqual(["?page=1&pageSize=4", "?page=2&pageSize=5"]);
+  });
+
   it("reads execution events with the documented cursor and level filter", async () => {
     let query = "";
     server.use(

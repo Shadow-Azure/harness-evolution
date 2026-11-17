@@ -225,7 +225,7 @@ before(async () => {
 
 after(cleanup);
 
-test("m5 run detail exposes six steps, candidate state, blocked state and final verdict", async () => {
+test("m5 run detail exposes seven steps, candidate state, blocked state and final verdict", async () => {
   const page = await createBrowserPage();
   const violations = browserViolations(page.session);
   try {
@@ -265,13 +265,13 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
       })()`,
       "running run detail with candidate",
     );
-    assert.equal(running.steps, 6);
+    assert.equal(running.steps, 7);
     assert.equal(running.current, "iteration");
     assert.equal(running.finalDisabled, true);
     assert.match(running.text, /candidate 已 push/);
     assert.match(running.text, /评测中/);
     assert.match(running.text, /cluster 1/);
-    assert.match(running.text, /最终用于进化的问题数\s*2/);
+    assert.match(running.text, /可归因\s*2/);
     assert.equal(running.overflow, 0);
 
     await evaluate(
@@ -281,7 +281,7 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     await waitForDocument(
       page.session,
       `location.search === "?step=clusters" &&
-        document.body.textContent.includes("M=2 类")`,
+        document.body.textContent.includes("来源 bad case")`,
       "reached cluster step through query string",
     );
     await screenshot(page, "01-running-iteration-to-clusters.png");
@@ -312,94 +312,11 @@ test("m5 run detail exposes six steps, candidate state, blocked state and final 
     );
     assert.match(clusterDeepLink.href, /step=clusters/);
     assert.match(clusterDeepLink.highlighted, /highlighted/);
-    assert.match(clusterDeepLink.text, /报告 ID/);
-    assert.match(clusterDeepLink.text, /来源问题 ID/);
-    assert.match(clusterDeepLink.text, /来源运行 1/);
-    assert.match(clusterDeepLink.text, /glm-5\.3/);
+    assert.match(clusterDeepLink.text, /bad case/);
+    assert.match(clusterDeepLink.text, /标题/);
+    assert.match(clusterDeepLink.text, /deep-research/);
     assert.equal(clusterDeepLink.sourceRows, 1);
-    assert.equal(clusterDeepLink.sourceLinks.length, 2);
-    assert.deepEqual(
-      clusterDeepLink.sourceLinks.map(({ target, rel }) => ({ target, rel })),
-      [
-        { target: "_blank", rel: "noopener noreferrer" },
-        { target: "_blank", rel: "noopener noreferrer" },
-      ],
-    );
-
-    await installCookie(page, await currentLoginCookie());
-    await page.session.send("Page.navigate", {
-      url: clusterDeepLink.sourceLinks[0].href,
-    });
-    let sourceAttr;
-    try {
-      sourceAttr = await waitForDocument(
-        page.session,
-        `(() => {
-          if (
-            location.pathname !== "${ws}/sessions/session-run-running-1/errors" ||
-            !location.search.includes("case=case-run-running-1") ||
-            !location.search.includes("tab=attr")
-          ) return null;
-          const text = document.body.textContent;
-          if (!text.includes("第 1 条来源缺少快照校验")) return null;
-          return {
-            unavailable: text.includes("BAD_CASE_UNAVAILABLE"),
-            attrSelected:
-              document.querySelector("#attr-tab")?.getAttribute("aria-selected"),
-            text,
-          };
-        })()`,
-        "source report deep link",
-      );
-    } catch (error) {
-      const debug = await evaluate(
-        page,
-        `({
-          url: location.href,
-          body: document.body.textContent,
-          html: document.body.innerHTML.slice(0, 3000),
-        })`,
-      );
-      throw new Error(`${error.message}\n${JSON.stringify(debug)}\nAPI:\n${apiLogs}`);
-    }
-    assert.equal(sourceAttr.unavailable, false);
-    assert.equal(sourceAttr.attrSelected, "true");
-    assert.match(sourceAttr.text, /确认问题/);
-    assert.match(sourceAttr.text, /第 1 条来源缺少快照校验/);
-
-    await installCookie(page, await currentLoginCookie());
-    await page.session.send("Page.navigate", {
-      url: clusterDeepLink.sourceLinks[1].href,
-    });
-    let sourceDesc;
-    try {
-      sourceDesc = await waitForDocument(
-        page.session,
-        `(() => {
-          if (!location.search.includes("tab=desc")) return null;
-          const text = document.body.textContent;
-          if (!text.includes("检索索引读取失败（来源 1）")) return null;
-          return {
-            unavailable: text.includes("BAD_CASE_UNAVAILABLE"),
-            descSelected:
-              document.querySelector("#desc-tab")?.getAttribute("aria-selected"),
-          };
-        })()`,
-        "source problem deep link",
-      );
-    } catch (error) {
-      const debug = await evaluate(
-        page,
-        `({
-          url: location.href,
-          body: document.body.textContent,
-          html: document.body.innerHTML.slice(0, 3000),
-        })`,
-      );
-      throw new Error(`${error.message}\n${JSON.stringify(debug)}\nAPI:\n${apiLogs}`);
-    }
-    assert.equal(sourceDesc.unavailable, false);
-    assert.equal(sourceDesc.descSelected, "true");
+    assert.equal(clusterDeepLink.sourceLinks.length, 0);
 
     await installCookie(page, await currentLoginCookie());
     await page.session.send("Page.navigate", {

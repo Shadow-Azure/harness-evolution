@@ -3,7 +3,6 @@ import type {
   EvolutionRunDetail,
   EvolutionRunEvent,
   EvolutionStepKey,
-  StepCondition,
 } from "@harness/contracts";
 import { useQueryClient } from "@tanstack/vue-query";
 import { computed, onUnmounted, ref, watch } from "vue";
@@ -150,17 +149,30 @@ watch(
   },
 );
 
+const stepPage = ref(1);
 const steps = computed(() => run.value?.steps ?? []);
 const selectedKey = computed(() => resolveRunStepKey(route.query.step, steps.value));
 const selectedStep = computed(
   () => steps.value.find((step) => step.key === selectedKey.value) ?? null,
 );
+watch(selectedKey, () => {
+  stepPage.value = 1;
+});
 const focusCluster = computed(() =>
   typeof route.query.cluster === "string" ? route.query.cluster : undefined,
 );
 const branchCopied = ref(false);
 const activeTab = computed<"steps" | "logs">(() =>
   route.query.tab === "logs" ? "logs" : "steps",
+);
+
+const stepPageSize = computed(() => {
+  if (selectedKey.value === "sessions") return 4;
+  if (selectedKey.value === "potential") return 5;
+  return undefined;
+});
+const stepPageParam = computed(() =>
+  stepPageSize.value === undefined ? undefined : stepPage.value,
 );
 
 const {
@@ -173,6 +185,8 @@ const {
   runId,
   selectedKey,
   computed(() => selectedStep.value?.clickable === true),
+  stepPageParam,
+  stepPageSize,
 );
 
 const statusLabel = computed(() => {
@@ -235,32 +249,18 @@ const createdMeta = computed(() => {
 });
 
 const distribution = computed(() => {
-  const stats = run.value?.stats.byAttributeType;
+  const stats = run.value?.stats.byCategory;
   if (!stats) return [];
   return [
     { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
     { key: "prompt", label: "prompt", value: stats.prompt, color: "var(--orange)" },
     { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
-    { key: "nonIssue", label: "非问题", value: stats.nonIssue, color: "var(--text-faint)" },
   ];
 });
 
 const analyzedCount = computed(() =>
   distribution.value.reduce((sum, item) => sum + item.value, 0),
 );
-
-const unanalyzedCount = computed(() =>
-  Math.max((run.value?.stats.probes ?? 0) - analyzedCount.value, 0),
-);
-
-const condition = computed<StepCondition>(() => ({
-  targetType: run.value?.target.type ?? "skill",
-  targetName: run.value?.target.name ?? "",
-  targetVersion: run.value?.target.version ?? "",
-  from: run.value?.window.from ?? null,
-  to: run.value?.window.to ?? null,
-  models: run.value?.models ?? [],
-}));
 
 const stepErrorCode = computed(() => {
   const error = stepError.value;
@@ -281,6 +281,7 @@ const runErrorCode = computed(() => {
 function selectStep(key: typeof selectedKey.value): void {
   const step = steps.value.find((candidate) => candidate.key === key);
   if (!step?.clickable) return;
+  if (key !== selectedKey.value) stepPage.value = 1;
   const query: LocationQueryRaw = { ...route.query, step: key };
   delete query.tab;
   if (key !== "clusters") delete query.cluster;
@@ -510,7 +511,7 @@ function clearMissingClusterFocus(): void {
           :class="{ active: activeTab === 'steps' }"
           @click="openTab('steps')"
         >
-          六步详情
+          七步详情
         </button>
         <button
           type="button"
@@ -532,7 +533,7 @@ function clearMissingClusterFocus(): void {
         <article class="card panel info-panel">
           <h2 class="sec-title">
             目标与输入
-            <span class="sub">筛选条件命中的问题报告即本次进化的输入</span>
+            <span class="sub">时间段内当前空间上报的 bad case 是本次进化的候选集</span>
           </h2>
           <div class="kv-grid">
             <div class="kv">
@@ -553,7 +554,7 @@ function clearMissingClusterFocus(): void {
             </div>
             <div class="kv">
               <div class="k">
-                时间段（session 启动）
+                时间段（bad case 上报）
               </div>
               <div class="v mono">
                 {{ windowLabel }}
@@ -577,40 +578,48 @@ function clearMissingClusterFocus(): void {
             </div>
             <div class="kv">
               <div class="k">
-                时间段内 session 数
+                关联 Session
               </div>
               <div class="v big">
                 {{ run.stats.sessions }}
+                <span class="muted">/ 版本未知 {{ run.stats.versionUnresolvedSessions }}</span>
               </div>
             </div>
             <div class="kv">
               <div class="k">
-                问题报告数
+                时间段内 bad case
               </div>
               <div class="v big">
-                {{ run.stats.probes }}
+                {{ run.stats.badCases }}
               </div>
             </div>
             <div class="kv">
               <div class="k">
-                已分析 / 未分析
-              </div>
-              <div class="v big">
-                {{ analyzedCount }}
-                <span class="muted">/ {{ unanalyzedCount }}</span>
-              </div>
-            </div>
-            <div class="kv">
-              <div class="k">
-                最终用于进化的问题数
+                潜在 bad case
               </div>
               <div class="v big accent">
-                {{ run.stats.usedProbes }}
+                {{ run.stats.potential }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                可归因
+              </div>
+              <div class="v big">
+                {{ run.stats.attributed }}
+              </div>
+            </div>
+            <div class="kv">
+              <div class="k">
+                复用缓存归因
+              </div>
+              <div class="v big">
+                {{ run.stats.reused }}
               </div>
             </div>
           </div>
           <p class="cb-label">
-            已分析问题的归因类型分布（{{ analyzedCount }} 份）
+            已归因结论的归因类型分布（{{ analyzedCount }} 条）
           </p>
           <div
             class="typebar"
@@ -636,7 +645,7 @@ function clearMissingClusterFocus(): void {
               />
               {{ item.label }} <b>{{ item.value }}</b>
             </span>
-            <span class="muted">＝ 用于进化的 {{ run.stats.usedProbes }}（非问题剔除）</span>
+            <span class="muted">＝ 可归因 {{ run.stats.attributed }} · 复用缓存 {{ run.stats.reused }}</span>
           </div>
         </article>
 
@@ -741,7 +750,7 @@ function clearMissingClusterFocus(): void {
             流程进度
             <span class="sub">
               当前查看：第 {{ (selectedStep?.index ?? 0) + 1 }} 步 ·
-              {{ selectedStep?.title ?? "筛选输入" }}
+              {{ selectedStep?.title ?? "选择范围" }}
             </span>
           </h2>
           <RunStepper
@@ -776,10 +785,10 @@ function clearMissingClusterFocus(): void {
           :wid="workspaceId"
           :run="run"
           :step="stepData"
-          :condition="condition"
           :is-pending="selectedStep?.clickable === true && stepPending"
           :is-unreached="selectedStep?.clickable !== true"
           :focus-cluster="focusCluster"
+          @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />
       </template>

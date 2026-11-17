@@ -133,7 +133,7 @@ async def detail_client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
         await client.aclose()
 
 
-async def test_run_detail_returns_workspace_and_six_backend_states(
+async def test_run_detail_returns_workspace_and_seven_backend_states(
     detail_client: httpx.AsyncClient,
 ) -> None:
     """The shell carries every field needed by the stepper without inference."""
@@ -159,10 +159,11 @@ async def test_run_detail_returns_workspace_and_six_backend_states(
     assert body["retryAttempts"] == 0
     assert body["lastEventSeq"] == 0
     assert [step["key"] for step in body["steps"]] == [
-        "input",
-        "clusters",
+        "range",
+        "sessions",
+        "potential",
         "attribution",
-        "severity",
+        "clusters",
         "iteration",
         "final",
     ]
@@ -171,11 +172,12 @@ async def test_run_detail_returns_workspace_and_six_backend_states(
         "done",
         "done",
         "done",
+        "done",
         "active",
         "pending",
     ]
-    assert body["steps"][4]["detail"] == "第 1/2 轮"
-    assert body["steps"][5]["clickable"] is False
+    assert body["steps"][5]["detail"] == "第 1/2 轮"
+    assert body["steps"][6]["clickable"] is False
 
 
 async def test_run_detail_requires_authentication(

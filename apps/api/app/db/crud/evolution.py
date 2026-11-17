@@ -282,6 +282,15 @@ class EvolutionRepository:
             )
         return tuple(record_from_evolution_run(cast(Mapping[str, Any], row)) for row in rows)
 
+    async def write_stats(self, run_id: str, stats: Mapping[str, Any]) -> None:
+        """Persist partial prepare stats so a retried stage keeps its counts."""
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(evolution_runs)
+                .where(evolution_runs.c.id == run_id)
+                .values(stats=deepcopy(dict(stats))),
+            )
+
     async def mark_prepared(
         self,
         run_id: str,
@@ -298,8 +307,8 @@ class EvolutionRepository:
         """Persist the immutable workspace snapshot and prepared run status."""
         if status not in {"running", "completed"}:
             raise ValueError("prepared runs must be running or completed")
-        if progress_unit != 4:
-            raise ValueError("prepared runs must finish the severity step")
+        if progress_unit != 5:
+            raise ValueError("prepared runs must finish the cluster step")
         now = now_shanghai()
         async with self._database.transaction() as session:
             result = cast(
@@ -633,6 +642,80 @@ class EvolutionRepository:
                 await session.execute(insert(probe_cluster_probes), link_rows)
         return await self.list_clusters(run_id)
 
+    async def replace_prepared_clusters(
+        self,
+        run_id: str,
+        clusters: Sequence[ClusterWrite],
+    ) -> tuple[ProbeClusterRecord, ...]:
+        """Write the scored V2 cluster snapshot and advance to the prepared unit.
+
+        Clusters are only built after attribution, so the expected cursor is the
+        attribution unit. Confidence, impact, severity, and rank are persisted
+        in the same transaction as the cursor so a crash cannot expose a partial
+        cluster step.
+        """
+        now = now_shanghai()
+        cluster_rows: list[dict[str, Any]] = []
+        link_rows: list[dict[str, str]] = []
+        for seq, cluster in enumerate(clusters, start=1):
+            cluster_id = new_id()
+            cluster_rows.append(
+                {
+                    "probe_cluster_id": cluster_id,
+                    "run_id": run_id,
+                    "seq": seq,
+                    "probe_cluster_description": cluster.description,
+                    "probe_cluster_type": cluster.type,
+                    "confidence": cluster.confidence,
+                    "impact": cluster.impact,
+                    "severity": cluster.severity,
+                    "rank": cluster.rank,
+                    "created_at": now,
+                },
+            )
+            link_rows.extend(
+                {
+                    "probe_cluster_id": cluster_id,
+                    "probe_id": probe_id,
+                }
+                for probe_id in cluster.probes
+            )
+        async with self._database.transaction() as session:
+            await _require_run_stage(
+                session,
+                run_id,
+                expected=4,
+                statuses=("preparing", "running", "blocked"),
+                reason="cluster writes require the attribution stage",
+            )
+            validate_transition(4, 5, len(clusters))
+            existing_ids: list[str] = list(
+                (
+                    await session.execute(
+                        select(probe_clusters.c.probe_cluster_id).where(
+                            probe_clusters.c.run_id == run_id,
+                        ),
+                    )
+                ).scalars(),
+            )
+            if existing_ids:
+                await session.execute(
+                    delete(probe_cluster_probes).where(
+                        probe_cluster_probes.c.probe_cluster_id.in_(existing_ids),
+                    ),
+                )
+            await session.execute(
+                delete(probe_clusters).where(probe_clusters.c.run_id == run_id),
+            )
+            if cluster_rows:
+                await session.execute(insert(probe_clusters), cluster_rows)
+            if link_rows:
+                await session.execute(insert(probe_cluster_probes), link_rows)
+            await session.execute(
+                update(evolution_runs).where(evolution_runs.c.id == run_id).values(progress_unit=5),
+            )
+        return await self.list_clusters(run_id)
+
     async def list_clusters(self, run_id: str) -> tuple[ProbeClusterRecord, ...]:
         """Return one run's clusters in creation order."""
         async with self._database.session() as session:
@@ -737,9 +820,9 @@ class EvolutionRepository:
             await _require_run_stage(
                 session,
                 run_id,
-                expected=4,
+                expected=5,
                 statuses=("preparing", "running"),
-                reason="round loading requires completed severity ranking",
+                reason="round loading requires completed clustering",
             )
             owners = {
                 str(row["probe_cluster_id"]): str(row["run_id"])
@@ -1574,7 +1657,7 @@ class EvolutionRepository:
                     )
                 ).scalar_one(),
             )
-            expected = 4 + cluster_count
+            expected = 5 + cluster_count
             if current != expected or status != "running":
                 raise StageConflict(
                     status_code=409,

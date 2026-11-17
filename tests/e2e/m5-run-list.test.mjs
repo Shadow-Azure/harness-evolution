@@ -348,8 +348,8 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     assert.equal(desktop.kindColor, "rgb(138, 85, 201)");
     assert.equal(desktop.modelColor, "rgb(21, 138, 138)");
     assert.notEqual(desktop.runningBadgeBackground, "rgba(0, 0, 0, 0)");
-    assert.equal(desktop.progressNow, "57");
-    assert.equal(desktop.progressWidth, "57%");
+    assert.equal(desktop.progressNow, "63");
+    assert.equal(desktop.progressWidth, "63%");
     assert.match(desktop.firstMeta, /^Administrator · /);
     assert.equal(desktop.failedErrorTitle, "评测执行失败：sandbox timeout");
     assert.equal(desktop.interruptedErrorTitle, "推送连接中断");

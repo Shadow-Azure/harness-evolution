@@ -178,14 +178,15 @@ async def test_admin_and_member_read_the_same_grouped_camel_case_payload(
         "version": "v2.0.0",
     }
     assert card["progress"] == {
-        "unit": 4,
-        "total": 7,
-        "percent": 57,
-        "stageLabel": "第 5/6 步 · 迭代优化 · 第 1/2 轮",
+        "unit": 5,
+        "total": 8,
+        "percent": 63,
+        "stageLabel": "第 6/7 步 · 迭代优化 · 第 1/2 轮",
         "doneRounds": 0,
         "accepted": 0,
     }
-    assert card["stats"]["usedProbes"] == 2
+    assert card["stats"]["badCases"] == 3
+    assert card["stats"]["potential"] == 2
     assert card["stats"]["clusters"] == 2
     assert card["createdBy"] is None
 

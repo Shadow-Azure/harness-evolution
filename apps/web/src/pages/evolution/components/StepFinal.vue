@@ -78,7 +78,7 @@ const pushedAtLabel = computed(() =>
 <template>
   <article class="card panel">
     <h3 class="sec-title">
-      第 6 步 · 测试集终评
+      第 7 步 · 测试集终评
       <span class="sub">全部迭代完成后的最终结果</span>
     </h3>
     <template v-if="step.payload.verdict !== null">
@@ -115,8 +115,8 @@ const pushedAtLabel = computed(() =>
             <span>[{{ change.clusterId }}] {{ change.title }}</span>
             <span
               class="type-chip"
-              :class="`type-${change.type}`"
-            >{{ typeLabel(change.type) }}</span>
+              :class="`type-${change.category}`"
+            >{{ typeLabel(change.category) }}</span>
             <span class="muted">来源 {{ change.reportCount }} 份报告</span>
           </div>
         </div>

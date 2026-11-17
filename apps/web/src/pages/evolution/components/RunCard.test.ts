@@ -26,21 +26,23 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
   error: null,
   stats: {
     sessions: 128,
-    probes: 46,
-    usedProbes: 28,
+    versionUnresolvedSessions: 3,
+    badCases: 46,
+    potential: 28,
+    attributed: 16,
+    reused: 9,
     clusters: 2,
-    byAttributeType: {
-      model: 1,
-      prompt: 1,
-      error: 0,
-      nonIssue: 18,
+    byCategory: {
+      model: 6,
+      prompt: 5,
+      error: 5,
     },
   },
   progress: {
     unit: 4,
     total: 7,
     percent: 57,
-    stageLabel: "第 5/6 步 · 迭代优化 · 第 1/2 轮",
+    stageLabel: "第 6/7 步 · 迭代优化 · 第 1/2 轮",
     doneRounds: 0,
     accepted: 1,
   },
@@ -59,7 +61,7 @@ describe("RunCard", () => {
             unit: 0,
             total: 7,
             percent: 0,
-            stageLabel: "第 1/6 步 · 筛选输入中…",
+            stageLabel: "第 1/7 步 · 选择范围中…",
             doneRounds: 0,
             accepted: 0,
           },
@@ -87,20 +89,21 @@ describe("RunCard", () => {
       "glm-5.3",
       "gpt-5",
     ]);
-    expect(wrapper.text()).toContain("128session");
-    expect(wrapper.text()).toContain("46问题报告");
-    expect(wrapper.text()).toContain("28用于进化");
-    expect(wrapper.text()).toContain("2聚类");
+    expect(wrapper.text()).toContain("128关联 Session");
+    expect(wrapper.text()).toContain("46bad case");
+    expect(wrapper.text()).toContain("28潜在 bad case");
+    expect(wrapper.text()).toContain("16可归因");
+    expect(wrapper.text()).toContain("9复用归因");
     expect(wrapper.text()).toContain("0/2已跑轮次");
-    expect(wrapper.text()).toContain("1已接纳");
+    expect(wrapper.text()).not.toContain("已接纳");
     expect(wrapper.text()).toContain(
-      "第 5/6 步 · 迭代优化 · 第 1/2 轮 · 57%",
+      "第 6/7 步 · 迭代优化 · 第 1/2 轮 · 57%",
     );
     expect(wrapper.get(".run-progress .fill").attributes("style")).toContain(
       "width: 57%",
     );
     expect(wrapper.get("[role='progressbar']").attributes()).toMatchObject({
-      "aria-label": "第 5/6 步 · 迭代优化 · 第 1/2 轮",
+      "aria-label": "第 6/7 步 · 迭代优化 · 第 1/2 轮",
       "aria-valuemax": "100",
       "aria-valuemin": "0",
       "aria-valuenow": "57",
@@ -119,7 +122,7 @@ describe("RunCard", () => {
             unit: 7,
             total: 7,
             percent: 100,
-            stageLabel: "第 6/6 步 · 测试集终评中…",
+            stageLabel: "第 7/7 步 · 测试集终评中…",
             doneRounds: 2,
             accepted: 1,
           },

@@ -31,6 +31,7 @@ from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
 from app.db.crud.bad_case_ingest import BadCaseIngestRepository
 from app.db.crud.bad_case_sync import BadCaseRootSyncRepository
@@ -76,7 +77,7 @@ from app.service.evolution.apply_final import (
     EvolutionApplyService,
     EvolutionFinalizeService,
 )
-from app.service.evolution.attribution import resolve_attribution_engine
+from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
 from app.service.evolution.engine.factory import EngineFactory
@@ -91,11 +92,7 @@ from app.service.evolution.events import (
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
 from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
-from app.service.evolution.prepare import (
-    EvolutionPrepareService,
-    RepositoryProbeReader,
-    WorkspacePreparer,
-)
+from app.service.evolution.prepare import EvolutionPrepareService, WorkspacePreparer
 from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.retry import EvolutionRetryService
 from app.service.evolution.runs import EvolutionRunService
@@ -267,10 +264,19 @@ def create_app(
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
-    evolution_stages = EvolutionStageService(evolution_repository, probe_query_repository)
+    attribution_repository = AttributionRepository(resolved_database)
+    run_candidate_repository = EvolutionRunCandidateRepository(resolved_database)
+    potential_matcher = PotentialMatcher(PotentialRepository(resolved_database))
+    attribution_runner = AttributionRunner(attribution_repository)
+    evolution_stages = EvolutionStageService(
+        evolution_repository,
+        probe_query_repository,
+        run_candidate_repository,
+        attribution_repository,
+    )
     evolution_launch = EvolutionLaunchService(
         evolution_targets,
-        probe_query_repository,
+        potential_matcher,
         evolution_repository,
         jobs,
         evolution_events,
@@ -286,7 +292,10 @@ def create_app(
     lifecycle_workspace_manager = cast(Any, workspace_manager)
     prepare_service = EvolutionPrepareService(
         evolution_repository,
-        RepositoryProbeReader(probe_query_repository),
+        run_candidate_repository,
+        attribution_repository,
+        potential_matcher,
+        attribution_runner,
         workspace_manager,
         evolution_events,
     )
@@ -302,7 +311,7 @@ def create_app(
         engine = EngineFactory.for_run(
             run,
             EngineDeps(
-                reads=cast(Any, RepositoryProbeReader(probe_query_repository)),
+                reads=cast(Any, probe_query_repository),
                 writes=evolution_repository,
                 events=evolution_events,
             ),

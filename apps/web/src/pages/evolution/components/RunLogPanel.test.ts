@@ -18,10 +18,11 @@ const eventsBase = `/api/workspaces/${workspaceId}/evolution/runs`;
 const wrappers: VueWrapper[] = [];
 
 const steps = [
-  ["input", "筛选输入"],
-  ["clusters", "问题聚类"],
-  ["attribution", "LLM 归因置信度"],
-  ["severity", "严重程度排序"],
+  ["range", "选择范围"],
+  ["sessions", "Session 关联"],
+  ["potential", "潜在 bad case"],
+  ["attribution", "对象归因"],
+  ["clusters", "聚类与严重度"],
   ["iteration", "迭代优化"],
   ["final", "测试集终评"],
 ] as const;
@@ -31,12 +32,12 @@ const availableSteps = steps.map(([key, title], index) => ({
   key,
   title,
   status:
-    index === 4
+    index === 5
       ? ("active" as const)
-      : index < 4
+      : index < 5
         ? ("done" as const)
         : ("pending" as const),
-  clickable: index < 5,
+  clickable: index < 6,
   detail: null,
 }));
 
@@ -49,7 +50,7 @@ function event(
     eventType: "candidate_committed",
     level: "info",
     stage: "candidate",
-    stepIndex: 4,
+    stepIndex: 5,
     clusterId: "cluster-abc123456",
     roundId: "round-1",
     jobId: "job-1",
@@ -294,7 +295,7 @@ describe("RunLogPanel", () => {
         HttpResponse.json(
           page([
             event(1, {
-              stepIndex: 5,
+              stepIndex: 6,
               clusterId: null,
             }),
             event(2, {

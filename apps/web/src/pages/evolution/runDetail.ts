@@ -5,20 +5,20 @@ export type RunStep = EvolutionRunStep;
 
 /**
  * Select the first active step, otherwise the last completed step.
- * @param steps Six backend-owned run steps.
+ * @param steps Seven backend-owned run steps.
  * @returns The stable key to open when no valid query selection exists.
  */
 export function defaultRunStepKey(steps: readonly RunStep[]): EvolutionStepKey {
   const active = steps.find((step) => step.status === "active");
   if (active) return active.key;
   const done = [...steps].reverse().find((step) => step.status === "done");
-  return done?.key ?? "input";
+  return done?.key ?? "range";
 }
 
 /**
  * Resolve a route query key against backend-derived clickable state.
  * @param value Query-string value.
- * @param steps Six backend-owned run steps.
+ * @param steps Seven backend-owned run steps.
  * @returns A valid reached key or the default key.
  */
 export function resolveRunStepKey(

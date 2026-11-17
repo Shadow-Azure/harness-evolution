@@ -2,79 +2,111 @@
 import type {
   EvolutionRunCard,
   EvolutionStepAttribution,
-  StepAttributionItem,
+  StepAttributionRow,
 } from "@harness/contracts";
 import { computed } from "vue";
-
-import { renderMarkdown } from "../../../utils/markdown";
 
 const props = defineProps<{
   step: EvolutionStepAttribution;
   run: EvolutionRunCard;
 }>();
 
-const analysisHtml = computed(() =>
-  Object.fromEntries(
-    props.step.payload.items.map((item) => [
-      item.probeId,
-      renderMarkdown(item.analysis),
-    ]),
-  ),
+const summary = computed(() => props.step.payload.summary);
+const targetLabel = computed(
+  () => `${props.run.target.name}@${props.run.target.version}`,
 );
 
-function typeLabel(type: StepAttributionItem["attributeType"]): string {
-  return type === "prompt" ? "prompt" : type === "model" ? "模型" : "错误";
+function categoryLabel(category: StepAttributionRow["category"]): string {
+  if (category === "prompt") return "prompt";
+  if (category === "model") return "模型";
+  if (category === "error") return "错误";
+  return "非该对象问题";
+}
+
+function categoryClass(category: StepAttributionRow["category"]): string {
+  return category ? `type-${category}` : "type-non-target";
+}
+
+function sourceLabel(source: StepAttributionRow["source"]): string {
+  return source === "cached" ? "缓存" : "新增";
+}
+
+function confidenceLabel(value: number | null): string {
+  return value === null ? "—" : `${(value * 100).toFixed(0)}%`;
 }
 </script>
 
 <template>
   <article class="card panel">
     <h3 class="sec-title">
-      第 3 步 · LLM 归因置信度
-      <span class="sub">
-        拉取 {{ run.target.name }}@{{ run.target.version }}，逐条判定问题在对象中是否真实存在
-      </span>
+      第 4 步 · 对象归因
+      <span class="sub">每条结论只作用于 {{ targetLabel }}</span>
     </h3>
+    <div class="wz-stats">
+      <span class="st"><b>{{ summary.potential }}</b><span>潜在 bad case</span></span>
+      <span class="st"><b>{{ summary.reused }}</b><span>复用缓存</span></span>
+      <span class="st accent"><b>{{ summary.fresh }}</b><span>本次新增</span></span>
+      <span class="st"><b>{{ summary.nonTarget }}</b><span>非该对象问题</span></span>
+    </div>
     <div
-      v-for="item in step.payload.items"
-      :key="item.probeId"
-      class="attr-card"
+      v-if="step.payload.rows.length"
+      class="table-scroll"
     >
-      <div class="r1">
-        <span class="cid">{{ item.clusterId }}</span>
-        <b>{{ item.probeObject }}@{{ item.objectVersion ?? "—" }}</b>
-        <span
-          class="type-chip"
-          :class="`type-${item.attributeType}`"
-        >{{ typeLabel(item.attributeType) }}</span>
-        <span class="badge">✓ 问题真实存在</span>
-        <span class="confidence">
-          <span class="bar">
-            <span
-              class="fill"
-              :style="{ width: `${(item.confidence ?? 0) * 100}%` }"
-            />
-          </span>
-          <span class="meta">
-            置信度 {{ item.confidence === null ? "—" : `${(item.confidence * 100).toFixed(0)}%` }}
-          </span>
-        </span>
-      </div>
-      <p class="attr-line">
-        <b>{{ item.description }}</b>
-      </p>
-      <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
-      <div
-        class="analysis markdown"
-        v-html="analysisHtml[item.probeId]"
-      />
-      <!-- eslint-enable vue/no-v-html -->
+      <table class="rep">
+        <thead>
+          <tr>
+            <th>来源 bad case</th>
+            <th>归因报告 ID</th>
+            <th>分类</th>
+            <th>问题现象 / 描述</th>
+            <th>结果来源</th>
+            <th>置信度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in step.payload.rows"
+            :key="row.attributionId"
+          >
+            <td
+              class="id mono"
+              :title="row.badCaseId"
+            >
+              {{ row.badCaseId }}
+            </td>
+            <td
+              class="mono"
+              :title="row.attributionId"
+            >
+              {{ row.attributionId }}
+            </td>
+            <td>
+              <span
+                class="type-chip"
+                :class="categoryClass(row.category)"
+              >{{ categoryLabel(row.category) }}</span>
+            </td>
+            <td class="desc">
+              {{ row.description }}
+            </td>
+            <td>
+              <span
+                class="source-chip"
+                :class="row.source"
+              >{{ sourceLabel(row.source) }}</span>
+            </td>
+            <td class="mono">
+              {{ confidenceLabel(row.confidence) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     <p
-      v-if="step.payload.items.length === 0"
+      v-else
       class="waiting"
     >
-      当前运行还没有归因结果。
+      没有需要归因的潜在 bad case
     </p>
   </article>
 </template>
@@ -107,35 +139,79 @@ function typeLabel(type: StepAttributionItem["attributeType"]): string {
   font-weight: 400;
 }
 
-.attr-card {
-  margin-bottom: 10px;
-  padding: 11px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.r1 {
+.wz-stats {
   display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 6px;
+  gap: 18px;
   flex-wrap: wrap;
-  color: var(--text);
-  font-size: 13px;
+  margin-bottom: 12px;
 }
 
-.cid {
+.st {
   color: var(--text-faint);
-  font-family: var(--mono);
   font-size: 11px;
 }
 
+.st b {
+  margin-right: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.st.accent b {
+  color: var(--blue);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table.rep {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+table.rep th,
+table.rep td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+table.rep th {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+table.rep tr:last-child td {
+  border-bottom: 0;
+}
+
+.id {
+  color: var(--blue);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desc {
+  max-width: 320px;
+}
+
 .type-chip,
-.badge {
+.source-chip {
+  display: inline-block;
   padding: 1px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .type-error {
@@ -150,73 +226,23 @@ function typeLabel(type: StepAttributionItem["attributeType"]): string {
   color: var(--purple);
 }
 
-.badge {
+.type-non-target {
+  color: var(--orange);
+}
+
+.source-chip.cached {
+  border-color: color-mix(in srgb, var(--text-faint) 28%, transparent);
+  color: var(--text-dim);
+}
+
+.source-chip.fresh {
   border-color: color-mix(in srgb, var(--green) 32%, transparent);
-  background: color-mix(in srgb, var(--green) 8%, transparent);
+  background: color-mix(in srgb, var(--green) 7%, transparent);
   color: var(--green);
 }
 
-.confidence {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.bar {
-  width: 56px;
-  height: 5px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: var(--density-track);
-}
-
-.fill {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--blue);
-}
-
-.meta {
-  color: var(--text-dim);
+.mono {
   font-family: var(--mono);
-  font-size: 11.5px;
-}
-
-.attr-line,
-.analysis {
-  margin: 5px 0 0;
-  color: var(--text-dim);
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.attr-line b {
-  color: var(--text);
-}
-
-.analysis {
-  max-height: 180px;
-  overflow-y: auto;
-  padding: 8px 10px;
-  border-radius: 7px;
-  background: var(--bg-panel);
-  font-size: 12px;
-}
-
-.analysis :deep(pre) {
-  overflow-x: auto;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--bg-inset);
-  color: var(--text);
-}
-
-.analysis :deep(a) {
-  color: var(--blue);
 }
 
 .waiting {

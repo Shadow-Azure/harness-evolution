@@ -393,10 +393,18 @@ async def read_step(
     run_id: RunId,
     key: StepKey,
     access: ViewerAccess,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(alias="pageSize", ge=1, le=50)] = 5,
 ) -> EvolutionStep:
     """Return one backend-owned step of a run owned by this workspace."""
     del access
-    return await stages_from(request).step(run_id, key, workspace_ids=(wid,))
+    return await stages_from(request).step(
+        run_id,
+        key,
+        workspace_ids=(wid,),
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post(
