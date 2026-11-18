@@ -497,11 +497,11 @@ Index.vue
 |---|---|
 | 切换 Tab | 不重置时间窗与粒度；切换空间重置到 `tab=cases` |
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染「上报接入」「启动自进化」；前者复用当前空间的 `admin?tab=ingest`，后者打开既有 `LaunchWizard`；无权限时只显示「只读访问」提示 |
-| 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由当前空间 ID 推导为 `POST /api/workspaces/:wid/bad-cases`，只复制地址，不复制凭据 |
+| 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读） |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表筛选并滚到列表；「来源数」→ 聚焦来源下拉 |
 | 趋势悬浮 | tooltip 显示桶标签、self/discovery 数值与占比；点击桶 → 列表按该桶时间过滤 |
-| 来源 × 时间 | 展开时按当前有效粒度把每个时间桶映射为闭区间，逐个调用既有 sources 聚合并按来源合并；桶数 >31 时提示切换为周/月粒度，不拼列表页数据 |
+| 来源 × 时间 | 展开时按当前有效粒度把每个时间桶映射为闭区间，再与 summary 的当前窗口取交集，逐个调用既有 sources 聚合并按来源合并；桶数 >31 时提示切换为周/月粒度，不拼列表页数据 |
 | 下钻 | 行内 **bad case ID 链接**（新窗口）→ `/workspaces/:wid/sessions/:sid/errors?case=&tab=desc`；整行不可点（原型第十七轮决策） |
 | 粒度降级 | 日粒度窗口 >92 天时服务端降级周并回传实际粒度，前端在副标题提示「已按周展示」 |
 | 对象列表操作 | 空间管理员可「+ 新增 / 编辑 / 移除」，复用 targets 表单弹窗；移除后失效总览缓存 |

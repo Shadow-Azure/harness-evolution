@@ -478,6 +478,7 @@ watch(
             :grain="activeGrain"
             :loading="sourcesQuery.isPending.value"
             :sources="sources"
+            :window="filterWindow"
             :workspace-id="workspaceId"
             @retry="sourcesQuery.refetch()"
           />

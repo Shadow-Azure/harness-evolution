@@ -422,7 +422,12 @@ test("m12-08 overview exposes admin actions and operational context", async () =
     assert.equal(clean(state.quota), "7 / 40");
     assert.equal(clean(state.percent), "18% 已使用");
     assert.equal(clean(state.remaining), "剩余 33");
-    assert.match(clean(state.endpoint), /POST\/api\/workspaces\/[^ ]+\/bad-cases/);
+    assert.ok(
+      clean(state.endpoint).includes(
+        `${baseUrl}/api/workspaces/${dataWorkspaceId}/bad-cases`,
+      ),
+      state.endpoint,
+    );
     assert.equal(state.endpointFits, true);
     assert.equal(clean(state.adminCount), "1 人");
     assert.equal(clean(state.memberCount), `${workspaceMemberCount} 人`);
@@ -592,7 +597,7 @@ test("m12-08 read-only member sees no write actions but keeps the overview", asy
   }
 });
 
-test("m12-08 source × time matrix shows the active window's exact counts", async () => {
+test("m12-08 source × time matrix shows counts inside the active window", async () => {
   const page = await createBrowserPage();
   try {
     const violations = browserViolations(page.session, {

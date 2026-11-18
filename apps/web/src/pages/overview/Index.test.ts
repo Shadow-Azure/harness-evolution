@@ -15,6 +15,7 @@ import {
   vi,
 } from "vitest";
 
+import LaunchWizard from "../evolution/components/LaunchWizard.vue";
 import OverviewPage from "./Index.vue";
 import { createAppRouter } from "../../router";
 import { server } from "../../test/server";
@@ -383,7 +384,7 @@ describe("workspace overview page", () => {
     ).toBe("剩余 57");
     expect(
       wrapper.get("[data-testid='ov-context-endpoint']").text(),
-    ).toContain(`/api/workspaces/${workspaceId}/bad-cases`);
+    ).toContain(`${window.location.origin}/api/workspaces/${workspaceId}/bad-cases`);
     expect(
       wrapper.get("[data-testid='ov-context-admin-count']").text(),
     ).toBe("1 人");
@@ -410,7 +411,9 @@ describe("workspace overview page", () => {
     await wrapper.get("[data-testid='ov-context-copy']").trigger("click");
     await flushPromises();
 
-    expect(writes).toEqual([`/api/workspaces/${workspaceId}/bad-cases`]);
+    expect(writes).toEqual([
+      `${window.location.origin}/api/workspaces/${workspaceId}/bad-cases`,
+    ]);
     expect(wrapper.get("[data-testid='ov-context-copy']").text()).toBe("已复制");
   });
 
@@ -479,6 +482,37 @@ describe("workspace overview page", () => {
     await wrapper.get("[aria-label='关闭向导']").trigger("click");
     await flushPromises();
     expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
+  });
+
+  it("pushes the accepted run detail after the wizard launches", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage();
+    const push = vi
+      .spyOn(router, "push")
+      .mockImplementation(async () => undefined);
+
+    await wrapper.get("[data-testid='ov-action-launch']").trigger("click");
+    await vi.waitFor(() => {
+      expect(wrapper.findComponent(LaunchWizard).exists()).toBe(true);
+    });
+    wrapper.findComponent(LaunchWizard).vm.$emit("launched", "full", "run-1");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
+    expect(push).toHaveBeenCalledWith(
+      `/workspaces/${workspaceId}/evolution/runs/run-1`,
+    );
+
+    await wrapper.get("[data-testid='ov-action-launch']").trigger("click");
+    await vi.waitFor(() => {
+      expect(wrapper.findComponent(LaunchWizard).exists()).toBe(true);
+    });
+    wrapper
+      .findComponent(LaunchWizard)
+      .vm.$emit("launched", "cluster_only", "run-2");
+    await flushPromises();
+    expect(push).toHaveBeenCalledWith(
+      `/workspaces/${workspaceId}/evolution/cluster/run-2`,
+    );
   });
 
   it("writes range, grain, and source filters into the URL and resets the page", async () => {
@@ -955,6 +989,9 @@ describe("workspace overview page", () => {
     expect(
       wrapper.get("[data-testid='ov-context-quota-used']").text(),
     ).toBe("— / —");
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-percent']").text(),
+    ).toBe("—");
     expect(wrapper.get("[data-testid='ov-context-role']").text()).toBe(
       "全局管理员",
     );

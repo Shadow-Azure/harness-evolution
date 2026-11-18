@@ -40,6 +40,7 @@ function mountMatrix(overrides: Record<string, unknown> = {}) {
       buckets,
       grain: "week",
       filters: { range: 90, objects: [] },
+      window: { from: "2026-11-01", to: "2026-11-30" },
       ...overrides,
     },
     global: {
@@ -123,6 +124,43 @@ describe("overview source × time matrix", () => {
 
     await wrapper.get("[data-testid='ov-matrix-toggle']").trigger("click");
     expect(wrapper.find("[data-testid='ov-matrix-body']").exists()).toBe(false);
+  });
+
+  it("clips the first and last bucket to the active overview window", async () => {
+    server.use(
+      http.get("/api/workspaces/:wid/overview/sources", ({ request }) => {
+        requests.push(request.url);
+        return json([
+          { object: "alpha", total: 1, self: 1, discovery: 0, sessions: 1 },
+        ]);
+      }),
+    );
+    const wrapper = mountMatrix({
+      window: { from: "2026-11-05", to: "2026-11-12" },
+    });
+
+    await wrapper.get("[data-testid='ov-matrix-toggle']").trigger("click");
+    await vi.waitFor(() => {
+      expect(requests).toHaveLength(2);
+    });
+    const windows = requests.map((url) => new URL(url));
+    expect(windows.map((url) => [url.searchParams.get("from"), url.searchParams.get("to")]))
+      .toEqual([
+        ["2026-11-05", "2026-11-08"],
+        ["2026-11-09", "2026-11-12"],
+      ]);
+  });
+
+  it("waits for the authoritative window instead of reading unclipped buckets", async () => {
+    const wrapper = mountMatrix({ window: null });
+
+    await wrapper.get("[data-testid='ov-matrix-toggle']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='ov-matrix-window-unavailable']").exists(),
+    ).toBe(true);
+    expect(requests).toHaveLength(0);
   });
 
   it("asks for a coarser grain instead of issuing a dense read storm", async () => {

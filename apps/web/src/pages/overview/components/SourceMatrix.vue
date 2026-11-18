@@ -22,6 +22,7 @@ const props = defineProps<{
   buckets: OverviewTrendBucket[];
   grain: OverviewGrain;
   filters: OverviewFilters;
+  window?: { from: string; to: string } | null;
 }>();
 
 type MatrixCell = {
@@ -47,7 +48,12 @@ const manageable = computed(
   () => props.sources.length > 0 && props.buckets.length > 0,
 );
 const dense = computed(() => props.buckets.length > MAX_MATRIX_BUCKETS);
-const enabled = computed(() => open.value && manageable.value && !dense.value);
+const hasWindow = computed(
+  () => Boolean(props.window?.from && props.window?.to),
+);
+const enabled = computed(
+  () => open.value && manageable.value && !dense.value && hasWindow.value,
+);
 
 /**
  * Run one bounded number of bucket reads in parallel.
@@ -76,26 +82,54 @@ async function mapConcurrent<T>(
 }
 
 /**
+ * Clip one bucket to the active overview window.
+ *
+ * Trend buckets start at the containing week/month boundary, so the first and
+ * last bucket may extend past the window the server actually counted. Reading
+ * the raw bucket would then over-count the edge columns.
+ * @param bucket Bucket start returned by the trend.
+ * @param grain Effective trend grain.
+ * @param range Active overview window.
+ * @returns Inclusive window clipped to the range, or null when disjoint.
+ */
+function clipBucket(
+  bucket: string,
+  grain: OverviewGrain,
+  range: { from: string; to: string },
+): { from: string; to: string } | null {
+  const window = bucketWindow(bucket, grain);
+  if (!window) return null;
+  const from = window.from > range.from ? window.from : range.from;
+  const to = window.to < range.to ? window.to : range.to;
+  return from <= to ? { from, to } : null;
+}
+
+/**
  * Read every bucket's source distribution and merge it into one matrix.
  *
  * The overview sources endpoint reports aggregate counts for a date window,
  * not an object × bucket field, so the matrix issues one bounded aggregate
- * query per bucket instead of stitching the eight-row page. The buckets are
- * disjoint, so the joined result is exact for the active filters.
+ * query per clipped bucket instead of stitching the eight-row page. The
+ * buckets are disjoint and clipped to the active window, so the joined result
+ * is exact for the active filters.
  * @param workspaceId Route workspace identifier.
+ * @param sources Source rows of the active window, in display order.
  * @param buckets Continuous buckets from the trend response.
  * @param grain Effective trend grain.
  * @param filters Active window and object selection.
+ * @param range Active overview window that bounds every bucket.
  * @returns Bucket labels plus zero-completed rows.
  */
 async function loadMatrix(
   workspaceId: string,
+  sources: OverviewSourceRow[],
   buckets: OverviewTrendBucket[],
   grain: OverviewGrain,
   filters: OverviewFilters,
+  range: { from: string; to: string },
 ): Promise<MatrixData> {
   const rows = new Map<string, MatrixRow>();
-  for (const source of props.sources) {
+  for (const source of sources) {
     rows.set(source.object, {
       object: source.object,
       total: 0,
@@ -107,12 +141,12 @@ async function loadMatrix(
   const bucketResults = await mapConcurrent(
     buckets.map((bucket) => bucket.bucket),
     async (bucket) => {
-      const window = bucketWindow(bucket, grain);
-      if (!window) return [];
+      const clipped = clipBucket(bucket, grain, range);
+      if (!clipped) return [];
       const response = await getOverviewSources(workspaceId, {
         ...filters,
-        from: window.from,
-        to: window.to,
+        from: clipped.from,
+        to: clipped.to,
       });
       return response.items;
     },
@@ -138,9 +172,7 @@ async function loadMatrix(
       row.discovery += item.discovery;
     }
   }
-  const order = new Map(
-    props.sources.map((source, index) => [source.object, index]),
-  );
+  const order = new Map(sources.map((source, index) => [source.object, index]));
   const ordered = [...rows.values()].sort(
     (left, right) =>
       (order.get(left.object) ?? Number.MAX_SAFE_INTEGER) -
@@ -149,7 +181,7 @@ async function loadMatrix(
       left.object.localeCompare(right.object),
   );
   return {
-    buckets: props.buckets.map((bucket) => ({
+    buckets: buckets.map((bucket) => ({
       bucket: bucket.bucket,
       label: bucket.label,
     })),
@@ -157,6 +189,8 @@ async function loadMatrix(
   };
 }
 
+// The key keeps the central `["ws", workspaceId, "overview", ...]` prefix so
+// switching workspaces still invalidates it with the rest of the overview tree.
 const matrix = useQuery({
   queryKey: computed(
     () =>
@@ -166,17 +200,24 @@ const matrix = useQuery({
         "overview",
         "sourceMatrix",
         { ...props.filters, grain: props.grain },
+        props.window,
         props.buckets.map((bucket) => bucket.bucket),
         props.sources.map((source) => `${source.object}:${source.total}`),
       ] as const,
   ),
-  queryFn: () =>
-    loadMatrix(
+  queryFn: () => {
+    if (!props.window) {
+      throw new Error("overview window is unavailable");
+    }
+    return loadMatrix(
       props.workspaceId,
+      props.sources,
       props.buckets,
       props.grain,
       props.filters,
-    ),
+      props.window,
+    );
+  },
   enabled,
 });
 
@@ -217,7 +258,14 @@ const errorCode = computed(() =>
       data-testid="ov-matrix-body"
     >
       <p
-        v-if="dense"
+        v-if="!hasWindow"
+        class="matrix-hint"
+        data-testid="ov-matrix-window-unavailable"
+      >
+        当前时间窗尚不可用，请等待总览统计加载完成后再查看明细。
+      </p>
+      <p
+        v-else-if="dense"
         class="matrix-hint"
         data-testid="ov-matrix-dense"
       >
