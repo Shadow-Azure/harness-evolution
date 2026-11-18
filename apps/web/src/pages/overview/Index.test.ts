@@ -643,6 +643,76 @@ describe("workspace overview page", () => {
     expect(targetsUrl.searchParams.get("pageSize")).toBe("50");
   });
 
+  it("opens the existing launch wizard from the target overview header", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage(
+      `${ws}/overview?tab=targets&range=30&grain=day`,
+    );
+
+    expect(wrapper.find("[data-testid='ov-target-create']").exists()).toBe(true);
+    const launch = wrapper.get("[data-testid='ov-target-launch']");
+    expect(launch.text()).toBe("启动自进化");
+    expect(launch.classes()).toContain("primary");
+
+    await launch.trigger("click");
+    await vi.waitFor(() => {
+      expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(true);
+      expect(
+        wrapper.find("[data-testid='wizard-config-empty']").exists(),
+      ).toBe(true);
+    });
+
+    await wrapper.get("[aria-label='关闭向导']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
+    expect(router.currentRoute.value.query).toMatchObject({
+      tab: "targets",
+      range: "30",
+      grain: "day",
+    });
+
+    await wrapper.get("[data-testid='ov-target-launch']").trigger("click");
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find("[data-testid='wizard-target-config-link']").exists(),
+      ).toBe(true);
+    });
+    await wrapper.get("[data-testid='wizard-target-config-link']").trigger("click");
+    await vi.waitFor(() => {
+      expect(router.currentRoute.value.path).toBe(`${ws}/evolution/targets`);
+    });
+  });
+
+  it("gates the target header actions with the same management role", async () => {
+    mockOverviewApi();
+    const spaceAdmin = await mountPage(`${ws}/overview?tab=targets`, [
+      testWorkspace({ role: "space_admin" }),
+    ]);
+    expect(
+      spaceAdmin.wrapper.find("[data-testid='ov-target-create']").exists(),
+    ).toBe(true);
+    expect(
+      spaceAdmin.wrapper.find("[data-testid='ov-target-launch']").exists(),
+    ).toBe(true);
+
+    for (const role of ["member", "viewer"] as const) {
+      mockOverviewApi();
+      const readOnly = await mountPage(`${ws}/overview?tab=targets`, [
+        testWorkspace({ role }),
+      ]);
+      expect(
+        readOnly.wrapper.find("[data-testid='ov-target-create']").exists(),
+      ).toBe(false);
+      expect(
+        readOnly.wrapper.find("[data-testid='ov-target-launch']").exists(),
+      ).toBe(false);
+      expect(readOnly.wrapper.get(".head-actions").text()).toContain("只读访问");
+      expect(
+        readOnly.wrapper.get("[data-testid='ov-target-stat-targets']").text(),
+      ).toBe("2");
+    }
+  });
+
   it("shows a retryable target load error instead of a false empty state", async () => {
     mockOverviewApi();
     server.use(
