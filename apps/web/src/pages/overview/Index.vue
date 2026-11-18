@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { OverviewGrain, OverviewRange } from "@harness/contracts";
+import type {
+  OverviewBadCaseType,
+  OverviewGrain,
+  OverviewRange,
+} from "@harness/contracts";
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -26,6 +30,7 @@ import TargetsOverview from "./components/TargetsOverview.vue";
 import {
   bucketWindow,
   DEFAULT_OVERVIEW_STATE,
+  overviewListWindow,
   overviewQuery,
   overviewWindowFilters,
   parseOverviewQuery,
@@ -56,12 +61,18 @@ const trendFilters = computed(() => ({
   ...overviewWindowFilters(state.value),
   grain: state.value.grain,
 }));
-const caseFilters = computed(() => ({
-  ...overviewWindowFilters(state.value),
-  badCaseType: state.value.type,
-  page: state.value.page,
-  pageSize: OVERVIEW_PAGE_SIZE,
-}));
+// The list is its own query: no global range/objects leak in, and an empty date
+// pair means "all time" rather than the chart's 90-day default.
+const caseFilters = computed(() => {
+  const window = overviewListWindow(state.value);
+  return {
+    ...(window ?? { allTime: true }),
+    objects: state.value.listObject ? [state.value.listObject] : [],
+    badCaseType: state.value.type,
+    page: state.value.page,
+    pageSize: OVERVIEW_PAGE_SIZE,
+  };
+});
 
 const casesTabActive = computed(() => state.value.tab === "cases");
 const summaryQuery = useOverviewSummary(workspaceId, summaryFilters);
@@ -101,11 +112,11 @@ const filterWindow = computed(() => {
   }
   return summary.value?.window ?? trendQuery.data.value?.window ?? null;
 });
-const isFiltered = computed(
+const listFiltered = computed(
   () =>
-    state.value.objects.length > 0 ||
-    state.value.type !== "all" ||
-    state.value.range !== DEFAULT_OVERVIEW_STATE.range,
+    Boolean(state.value.listFrom && state.value.listTo) ||
+    Boolean(state.value.listObject) ||
+    state.value.type !== "all",
 );
 const grainLabels: Record<OverviewGrain, string> = {
   day: "日",
@@ -178,11 +189,11 @@ function setRange(value: OverviewRangeChoice): void {
     // switching from 7/30/90 days keeps the same boundaries instead of
     // jumping to the 90-day fallback.
     const { from, to } = summary.value?.window ?? defaultCustomWindow();
-    void replaceState({ range: "custom", from, to, page: 1 });
+    void replaceState({ range: "custom", from, to });
     return;
   }
   const range = value as OverviewRange;
-  void replaceState({ range, from: "", to: "", page: 1 });
+  void replaceState({ range, from: "", to: "" });
 }
 
 function setWindow(value: { from: string; to: string }): void {
@@ -190,20 +201,53 @@ function setWindow(value: { from: string; to: string }): void {
     range: "custom",
     from: value.from,
     to: value.to,
-    page: 1,
   });
 }
 
 function setGrain(value: OverviewGrain): void {
-  void replaceState({ grain: value, page: 1 });
+  void replaceState({ grain: value });
 }
 
 function setObjects(value: string[]): void {
-  void replaceState({ objects: value, page: 1 });
+  void replaceState({ objects: value });
 }
 
 function clearFilters(): void {
-  void replaceState({ ...DEFAULT_OVERVIEW_STATE });
+  // The chart/stat filters and the list filters are independent, so this only
+  // resets the global window, grain and source selection.
+  void replaceState({
+    range: DEFAULT_OVERVIEW_STATE.range,
+    from: "",
+    to: "",
+    grain: DEFAULT_OVERVIEW_STATE.grain,
+    objects: [],
+  });
+}
+
+function clearListFilters(): void {
+  void replaceState({
+    listFrom: "",
+    listTo: "",
+    listObject: "",
+    type: "all",
+    page: 1,
+  });
+}
+
+function applyListFilters(patch: {
+  from?: string;
+  to?: string;
+  object?: string;
+  type?: OverviewBadCaseType;
+}): void {
+  const next: Partial<OverviewUrlState> = { page: 1 };
+  if (patch.from !== undefined || patch.to !== undefined) {
+    next.listFrom = patch.from ?? "";
+    next.listTo = patch.to ?? "";
+  }
+  if (patch.object !== undefined) next.listObject = patch.object;
+  if (patch.type !== undefined) next.type = patch.type;
+  void replaceState(next);
 }
 
 function setPage(page: number): void {
@@ -215,12 +259,12 @@ function setPage(page: number): void {
 
 function selectBucket(value: { bucket: string; from: string; to: string }): void {
   // Resolve the window against the grain the server actually used: a day
-  // request downgraded to weeks must still filter Monday..Sunday.
+  // request downgraded to weeks must still filter Monday..Sunday. The bucket
+  // only narrows the list; it must not rewrite the chart's own window.
   const window = bucketWindow(value.bucket, activeGrain.value) ?? value;
   void replaceState({
-    range: "custom",
-    from: window.from,
-    to: window.to,
+    listFrom: window.from,
+    listTo: window.to,
     page: 1,
   });
 }
@@ -501,16 +545,21 @@ watch(
           <BadCaseTable
             :code="casesCode"
             :error="casesQuery.error.value"
-            :filtered="isFiltered"
+            :filtered="listFiltered"
+            :from="state.listFrom"
             :items="caseItems"
             :loading="casesQuery.isPending.value"
+            :object="state.listObject"
+            :object-options="objects"
             :page="state.page"
             :page-size="OVERVIEW_PAGE_SIZE"
+            :to="state.listTo"
             :total="caseTotal"
             :type="state.type"
             :wid="workspaceId"
-            @clear-filters="clearFilters"
+            @clear-filters="clearListFilters"
             @retry="casesQuery.refetch()"
+            @update:filters="applyListFilters"
             @update:page="setPage"
           />
         </div>

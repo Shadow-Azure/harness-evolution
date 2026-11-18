@@ -11966,6 +11966,18 @@
               "title": "Pagesize",
               "type": "integer"
             }
+          },
+          {
+            "description": "Return every reported case regardless of date; the list's empty date filter sends this, and any from/to/range is then ignored.",
+            "in": "query",
+            "name": "allTime",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Return every reported case regardless of date; the list's empty date filter sends this, and any from/to/range is then ignored.",
+              "title": "Alltime",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {

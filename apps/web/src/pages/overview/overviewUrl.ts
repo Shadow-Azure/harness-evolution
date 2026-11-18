@@ -24,6 +24,12 @@ export type OverviewUrlState = {
   objects: string[];
   page: number;
   type: OverviewBadCaseType;
+  /** Bad-case list's independent start date; paired with `listTo`. */
+  listFrom: string;
+  /** Bad-case list's independent end date; paired with `listFrom`. */
+  listTo: string;
+  /** Bad-case list's independent reported-source filter; empty means every source. */
+  listObject: string;
   /** Selected evolution target ids driving the target trend and distributions. */
   targets: string[];
   /** Selected target states driving the trend; empty means all three. */
@@ -69,6 +75,9 @@ export const DEFAULT_OVERVIEW_STATE: OverviewUrlState = {
   objects: [],
   page: 1,
   type: "all",
+  listFrom: "",
+  listTo: "",
+  listObject: "",
   targets: [],
   states: [],
   targetPage: 1,
@@ -218,6 +227,13 @@ export function parseOverviewQuery(
     validDate(firstValue(query.dfrom)),
     validDate(firstValue(query.dto)),
   );
+  // The list owns its dates: an incomplete or inverted pair is dropped rather
+  // than silently narrowed to the chart's window, so an old URL cannot make the
+  // list look filtered when it is not.
+  const listWindow = validWindow(
+    validDate(firstValue(query.lfrom)),
+    validDate(firstValue(query.lto)),
+  );
 
   const state: OverviewUrlState = {
     tab,
@@ -228,6 +244,9 @@ export function parseOverviewQuery(
     objects: parseList(firstValue(query.objects)),
     page: parsePage(firstValue(query.page)),
     type,
+    listFrom: listWindow?.from ?? "",
+    listTo: listWindow?.to ?? "",
+    listObject: firstValue(query.lobject)?.trim() ?? "",
     targets: parseList(firstValue(query.targets)),
     states: parseStates(firstValue(query.states)),
     targetPage: parsePage(firstValue(query.tpage)),
@@ -270,6 +289,13 @@ export function overviewQuery(state: OverviewUrlState): Record<string, string> {
     }
     if (state.type !== "all") {
       query.type = state.type;
+    }
+    if (state.listFrom && state.listTo) {
+      query.lfrom = state.listFrom;
+      query.lto = state.listTo;
+    }
+    if (state.listObject) {
+      query.lobject = state.listObject;
     }
     if (state.page > 1) {
       query.page = String(state.page);
@@ -437,6 +463,20 @@ export function overviewCaseWindow(state: OverviewUrlState): {
     return { from: state.caseFrom, to: state.caseTo };
   }
   return overviewSharedWindow(state);
+}
+
+/**
+ * Resolve the bad-case list's own window without inheriting the chart's one.
+ * @param state Current URL-owned filter state.
+ * @returns Both list boundaries when set, otherwise null meaning "all time".
+ */
+export function overviewListWindow(state: OverviewUrlState): {
+  from: string;
+  to: string;
+} | null {
+  return state.listFrom && state.listTo
+    ? { from: state.listFrom, to: state.listTo }
+    : null;
 }
 
 /**
