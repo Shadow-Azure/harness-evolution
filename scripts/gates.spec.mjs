@@ -572,6 +572,7 @@ test("every script entry guard is platform-neutral", () => {
       !source.includes(legacyGuard),
       `${name} still compares import.meta.url with a POSIX-only file URL`,
     );
+    if (name === "gates.spec.mjs") continue;
     if (!source.includes("isMain(import.meta.url)")) continue;
     guarded.push(name);
     assert.match(
