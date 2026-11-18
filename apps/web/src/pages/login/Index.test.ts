@@ -65,6 +65,43 @@ async function mountPage(path = "/login?redirect=/sessions") {
 }
 
 describe("login page", () => {
+  it("renders the V2 two-column shell with product capability copy", async () => {
+    const { wrapper } = await mountPage();
+
+    const card = wrapper.get("[data-testid='login-card']");
+    expect(card.classes()).toContain("auth-card");
+    const brand = wrapper.get("[data-testid='login-brand']");
+    const formRegion = wrapper.get("[data-testid='login-form-region']");
+    expect(brand.attributes("aria-labelledby")).toBe("login-brand-title");
+    expect(formRegion.attributes("aria-labelledby")).toBe("login-form-title");
+    expect(wrapper.findAll("h1")).toHaveLength(1);
+    expect(wrapper.get("h1").attributes("id")).toBe("login-brand-title");
+
+    const text = wrapper.text();
+    expect(text).toContain("工作空间隔离");
+    expect(text).toContain("归因进入进化流程");
+    expect(text).toContain("默认 10 个 Session");
+    expect(text).toContain("首次登录需要设置自己的密码");
+  });
+
+  it("does not enumerate or offer accounts", async () => {
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find("[data-testid='login-account']").exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+    expect(wrapper.text()).not.toContain("演示账号");
+    expect(wrapper.findAll("[data-testid^='login-account']")).toHaveLength(0);
+  });
+
+  it("keeps the form focus order after the capability region", async () => {
+    const { wrapper } = await mountPage();
+
+    const order = wrapper
+      .findAll("input, button")
+      .map((element) => element.attributes("name") ?? element.attributes("data-testid") ?? element.text());
+    expect(order).toEqual(["username", "password", "login-submit"]);
+  });
+
   it("shows an accessible inline message for invalid credentials", async () => {
     server.use(
       http.post("/api/auth/login", () =>

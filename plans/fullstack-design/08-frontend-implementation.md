@@ -340,19 +340,29 @@ export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): Lane
 ### 4.1 登录页与强制改密
 
 ```text
-Index.vue（居中卡片，无顶栏）
-├── LoginForm.vue
-│   ├── username / password 输入（el-input，回车提交）
-│   ├── 错误提示条（AUTH_INVALID → "用户名或密码错误"）
-│   └── 登录按钮（loading 态）
-└── 页脚说明：组织内部系统，账号由管理员分配
+Index.vue（无顶栏；桌面双栏卡片，≤760px 单列）
+├── 左栏（静态产品事实，不读取用户目录）
+│   ├── 品牌标记与「轨迹诊断与自进化」
+│   ├── 工作空间隔离 / 归因进入进化流程 / 默认 10 个 Session 三条说明
+│   └── 页脚：内部部署、不开放公开注册
+└── 右栏（aria-labelledby="login-form-title"）
+    ├── 标题「登录」与账号分配说明
+    ├── LoginForm.vue
+    │   ├── username / password 输入（el-input，回车提交）
+    │   ├── 错误提示条（AUTH_INVALID → "用户名或密码错误"）
+    │   └── 登录按钮（loading 态）
+    └── 页脚：首次登录需要设置自己的密码
 ```
 
+- 布局：桌面卡片 `min(920px, 100%)` 左右两栏；≤760px 单列并隐藏长能力说明与左栏页脚，390px 下无横向溢出。
+- 左栏只写产品事实，不渲染账号、邮箱或可点选账号；原型里的账号按钮是打桩演示，生产不复制。
+- 键盘：左栏无焦点元素，Tab 顺序为用户名、密码、登录按钮；错误提示保持内联 `role=alert` 与 `aria-live=polite`。
+- 视觉：卡片背景、圆角、边框、间距与断点取自 `styles/tokens.css`，大卡片阴影为 `--shadow-auth-card`。
 - 提交：`useLogin().mutate({username, password})`；成功后恢复 `auth/session` 并写 `stores/auth` → 跳 `route.query.redirect ?? 最近空间总览`；无可用空间则进 `/workspaces` 选择页。
 - 已登录访问 `/login` 直接跳最近空间总览（路由守卫处理）。
 - **首次登录强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此登录响应带 `user.mustChangePassword=true`；此时业务端点回 `403 PASSWORD_CHANGE_REQUIRED`，前端只放行 `/change-password`。
 
-`pages/login/ChangePassword.vue`（同款居中卡片，需登录，未登录跳 `/login`）：
+`pages/login/ChangePassword.vue`（居中单卡片，需登录，未登录跳 `/login`）：
 
 ```text
 ChangePasswordCard.vue
