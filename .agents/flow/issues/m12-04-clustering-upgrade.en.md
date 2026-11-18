@@ -8,8 +8,8 @@ id: m12-04
 milestone: m12
 depends:
   - m10-04
-priority: P2
-status: in-progress
+priority: P1
+status: done
 scope:
   - apps/api/**
   - fixtures/**

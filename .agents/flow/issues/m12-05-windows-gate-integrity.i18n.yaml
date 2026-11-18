@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-05-windows-gate-integrity.md
-m12-05-windows-gate-integrity.md: 5ef22550f65c3c22431a50227bc382c95d99af95
-m12-05-windows-gate-integrity.en.md: d3bd24fe3830ac8e0bf2c186ac2a4cf55f0db4f9
+m12-05-windows-gate-integrity.md: 83bdf2b7e94ad508040cfa3c52e3cc79b01dc1a0
+m12-05-windows-gate-integrity.en.md: 724f5bba11d2b7cb7f03f40bf3a8cc5f3d3d7963
