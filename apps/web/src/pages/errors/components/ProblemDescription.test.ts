@@ -255,4 +255,23 @@ describe("ProblemDescription", () => {
     expect(detail.text()).toContain("<img");
     expect(detail.text()).toContain("<script>");
   });
+
+  it("does not load Markdown images from the description", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-image",
+          title: "图片描述",
+          reason: "![tracking pixel](https://example.com/pixel.png)",
+        }),
+        index: null,
+      },
+    });
+
+    const detail = wrapper.get("[data-testid='problem-detail']");
+    expect(detail.find("img").exists()).toBe(false);
+    expect(detail.element.innerHTML).not.toContain("pixel.png");
+    expect(detail.text()).toContain("tracking pixel");
+  });
 });

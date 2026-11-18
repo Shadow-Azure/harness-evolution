@@ -7,7 +7,7 @@ kind: issue
 id: m12-17
 milestone: m12
 depends: []
-priority: P1
+priority: P2
 status: in-progress
 scope:
   - apps/web/**
@@ -69,7 +69,7 @@ Note: the before capture uses the current single-line plain text (the same shape
 ## Implementation
 
 - **Frontend rendering**: `ProblemDescription.vue` adds `reasonHtml = computed(() => renderMarkdown(problem.reason))`; the body becomes `<div class="problem-detail markdown" data-testid="problem-detail" v-html="reasonHtml" />`, with the same eslint comment as `AttributionReport`.
-- **Security boundary**: reuse `renderMarkdown`; add no Markdown dependency; `html:false` escapes raw HTML; `link_open` hardens external links; no syntax highlighting.
+- **Security boundary**: reuse `renderMarkdown`; add no Markdown dependency; `html:false` escapes raw HTML; `link_open` hardens external links; the description disables Markdown images (alt text only, no external loads); no syntax highlighting.
 - **Typography**: align `.markdown` with the current description size/line height (12.5px / 1.7); add spacing for `p`, `ul/ol`, `li`, `code`, `pre`; inline code uses a `--mono` + `--bg-inset` chip; long test names use `overflow-wrap:anywhere`; code blocks scroll horizontally; emphasis and links use existing tokens.
 - **Empty/plain text**: empty descriptions render nothing; plain text without Markdown syntax keeps equivalent text content, and single line breaks become `<br>`.
 - **Prototype**: `FindingDescription` in `plans/ui-prototype-v2/harness-evolution.html` follows the same contract and keeps the SWE-bench demo case; production matches the prototype.

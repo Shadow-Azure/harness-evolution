@@ -8,7 +8,7 @@ Status: implemented
 
 `BadCase.reason`（`bad_cases.bad_case_description`）是错误详情「问题描述」tab 的正文。它来自外部上报或轨迹分析，内容经常是「状态 + 失败分组 + 用例清单」：F2P 失败、P2P 回退、逐个测试名。当前 `ProblemDescription.vue` 直接插值 `{{ problem.reason }}`，浏览器把换行折叠成空格，列表、行内代码和强调都不生效；一条 SWE-bench unresolved case 会变成三段连续文字，失败用例只能逐字扫描。
 
-同页的归因「推导过程」已经有一条安全 Markdown 链路：`utils/markdown.ts` 用 markdown-it 渲染，`html:false`、`breaks:true`、`linkify:true`，`link_open` 统一补 `target="_blank"` 与 `rel="noopener noreferrer"`；`AttributionReport.vue` 用 `v-html` 消费并配了 `.markdown` 排版。问题描述没有复用这条链路，尽管两者都是外部自由文本、都需要同样的安全边界。
+同页的归因「推导过程」已经有一条安全 Markdown 链路：`utils/markdown.ts` 用 markdown-it 渲染，`html:false`、`breaks:true`、`linkify:true`，`link_open` 统一补 `target="_blank"` 与 `rel="noopener noreferrer"`；`AttributionReport.vue` 用 `v-html` 消费并配了 `.markdown` 排版。问题描述没有复用这条链路，两者都需要同样的 Markdown 排版与安全边界（归因推导过程由服务端模板生成，问题描述来自外部上报）。
 
 只加 CSS `white-space: pre-wrap` 可以救回换行，但救不回列表、行内代码和强调；而让前端识别「这是不是一个失败清单」再自动排版，会把展示层变成猜测器，且无法覆盖代码块、链接等常见描述内容。
 
@@ -31,7 +31,7 @@ Status: implemented
 ## Consequences
 
 - 已有纯文本描述不会变差：没有 Markdown 语法时仍渲染为普通段落，单换行按 `<br>` 显示；但一条没有换行的长平文仍然是一条长平文，分组可读性需要上游按 Markdown 输出。
-- 安全边界复用现有配置：原始 HTML 被转义，外链加固；不接语法高亮，代码块只做等宽滚动。
+- 安全边界复用现有配置：原始 HTML 被转义，外链加固；问题描述关闭 Markdown 图片（降级为 alt 文本，避免外部加载）；不接语法高亮，代码块只做等宽滚动。
 - 组件测试需要覆盖「列表/行内代码/硬换行/原始 HTML/外链」；`markdown.test.ts` 锁定 `breaks:true` 与转义行为，防止未来改配置时静默回归。
 - V2 原型多了一条 SWE-bench 演示 session/case（`BC-HC-027`），会话数与 bad case 计数会比之前多 1；它只用于设计评审，不进入生产数据。
 - 数据侧格式约定是并行的：在外部上报/分析侧按 Markdown 输出之前，UI 只能保证「已经带 Markdown 或换行的描述」正确显示，不能凭空生成失败分组。

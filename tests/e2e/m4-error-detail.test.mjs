@@ -219,12 +219,16 @@ test("m4 error detail restores five states, folded attributions, tabs, unfiltere
     ],
   );
 
+  // 0001 is the plain-text regression fixture; 0002 carries Markdown and has
+  // its own rendering test below, so this assertion stays meaningful.
   const selectedSession = [...casesBySession.entries()].find(([, items]) =>
-    items.some((item) => item.analysis.status === "analyzed_issue"));
+    items.some((item) => item.badCaseId === "badcase-synthetic-0001"));
   assert.ok(selectedSession);
   const [sessionId, sessionCases] = selectedSession;
   const selected = sessionCases.find(
-    (item) => item.analysis.status === "analyzed_issue",
+    (item) =>
+      item.badCaseId === "badcase-synthetic-0001" &&
+      item.analysis.status === "analyzed_issue",
   );
   assert.ok(selected);
   const selectedAttributions = await apiGet(
@@ -660,7 +664,9 @@ test("m4 error detail renders a Markdown bad case description", async () => {
 
     assert.match(view.html, /<ul>/);
     assert.equal(view.listItems, 10);
+    assert.equal(view.codes.length, 11);
     assert.equal(view.codes.includes("test_cirs_its_topo"), true);
+    assert.equal(view.strongs.length, 3);
     assert.equal(view.strongs.includes("result_status"), true);
     assert.equal(view.unsafe, 0);
   } finally {

@@ -159,7 +159,7 @@ pnpm test:gates
 - [ ] **Step 2: Error-detail E2E**
 
 ```sh
-pnpm test:e2e -- --pattern m4-error-detail
+pnpm test:e2e -- --pattern "m4 error detail"
 ```
 Expected: PASS; plain-text fixture reasons still compare equal.
 

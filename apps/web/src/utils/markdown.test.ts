@@ -44,4 +44,14 @@ describe("attribution Markdown", () => {
     expect(html).toBe("<p>index read failed: 读取检索索引时抛出 ENOENT。</p>\n");
     expect(renderMarkdown("")).toBe("");
   });
+
+  it("can drop Markdown images while keeping the alt text", () => {
+    const source = "![tracking pixel](https://example.com/pixel.png)";
+    const html = renderMarkdown(source, { images: false });
+
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("pixel.png");
+    expect(html).toContain("tracking pixel");
+    expect(renderMarkdown(source)).toContain("<img");
+  });
 });

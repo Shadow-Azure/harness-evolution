@@ -8,7 +8,7 @@ English | [中文](2026-11-18-problem-description-markdown.md)
 
 `BadCase.reason` (`bad_cases.bad_case_description`) is the body of the error detail's "问题描述" tab. It comes from external reports or trace analysis and is often "status + failure group + case list": F2P failures, P2P regressions, and individual test names. `ProblemDescription.vue` currently interpolates `{{ problem.reason }}` directly; the browser collapses line breaks into spaces, so lists, inline code, and emphasis do not render. A SWE-bench unresolved case becomes three continuous lines of text, and failed test names must be scanned character by character.
 
-The attribution "reasoning" on the same page already has a safe Markdown path: `utils/markdown.ts` renders with markdown-it (`html:false`, `breaks:true`, `linkify:true`) and `link_open` adds `target="_blank"` and `rel="noopener noreferrer"`; `AttributionReport.vue` consumes it with `v-html` and `.markdown` typography. The problem description did not reuse that path, even though both are external free text with the same security boundary.
+The attribution "reasoning" on the same page already has a safe Markdown path: `utils/markdown.ts` renders with markdown-it (`html:false`, `breaks:true`, `linkify:true`) and `link_open` adds `target="_blank"` and `rel="noopener noreferrer"`; `AttributionReport.vue` consumes it with `v-html` and `.markdown` typography. The problem description did not reuse that path, both need the same Markdown typography and security boundary (reasoning comes from server templates; the description comes from external reports).
 
 CSS `white-space: pre-wrap` alone could restore line breaks, but not lists, inline code, or emphasis. Having the frontend detect "is this a failure list" and auto-format would turn the display layer into a guesser, and would still miss code blocks and links.
 
@@ -31,7 +31,7 @@ CSS `white-space: pre-wrap` alone could restore line breaks, but not lists, inli
 ## Consequences
 
 - Existing plain-text descriptions do not get worse: without Markdown syntax they render as normal paragraphs, and single line breaks become `<br>`. But a single-line plain-text blob stays a single-line blob; grouped readability depends on the upstream side emitting Markdown.
-- The security boundary reuses the existing configuration: raw HTML is escaped, external links are hardened, and there is no syntax highlighting; code blocks are monospace with horizontal scrolling.
+- The security boundary reuses the existing configuration: raw HTML is escaped, external links are hardened, and the description disables Markdown images (alt text only, no external loads); there is no syntax highlighting, and code blocks are monospace with horizontal scrolling.
 - Component tests must cover lists, inline code, hard breaks, raw HTML, and external links; `markdown.test.ts` locks `breaks:true` and escaping so future config changes cannot regress silently.
 - The V2 prototype adds one SWE-bench demo session/case (`BC-HC-027`), so session and bad-case counts grow by one; it is design-review data only and never enters production.
 - The data-side format convention is parallel: until external reporting/analysis emits Markdown, the UI can only guarantee that descriptions already containing Markdown or line breaks display correctly; it cannot invent failure groups.

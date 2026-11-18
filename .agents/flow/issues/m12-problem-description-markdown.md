@@ -7,7 +7,7 @@ kind: issue
 id: m12-17
 milestone: m12
 depends: []
-priority: P1
+priority: P2
 status: in-progress
 scope:
   - apps/web/**
@@ -69,7 +69,7 @@ github:
 ## 实现内容
 
 - **前端渲染**：`ProblemDescription.vue` 新增 `reasonHtml = computed(() => renderMarkdown(problem.reason))`，正文改为 `<div class="problem-detail markdown" data-testid="problem-detail" v-html="reasonHtml" />`，并补与 `AttributionReport` 相同的 eslint 注释说明。
-- **安全边界**：复用现有 `renderMarkdown`，不新增 Markdown 依赖；`html:false` 已转义原始 HTML，`link_open` 已加固外链；不接语法高亮。
+- **安全边界**：复用现有 `renderMarkdown`，不新增 Markdown 依赖；`html:false` 已转义原始 HTML，`link_open` 已加固外链；问题描述关闭 Markdown 图片（降级为 alt 文本，避免外部加载）；不接语法高亮。
 - **排版**：`.markdown` 基础样式与问题描述的字号/行高对齐（12.5px / 1.7），补 `p`、`ul/ol`、`li`、`code`、`pre` 的间距；行内代码用 `--mono` + `--bg-inset` chip，长用例名 `overflow-wrap:anywhere`，不撑破卡片；代码块等宽横向滚动；强调与链接使用现有 token。
 - **空值/纯文本**：空描述返回空字符串，不渲染空段落；纯文本（无 Markdown 语法）输出与现在等价的文本内容，单换行按 `<br>` 保留。
 - **原型**：`plans/ui-prototype-v2/harness-evolution.html` 的 `FindingDescription` 按同一约定渲染，并保留 SWE-bench 演示 case；生产实现与原型同构。

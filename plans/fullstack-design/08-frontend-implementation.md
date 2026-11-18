@@ -554,7 +554,7 @@ Index.vue（grid: 340px 1fr）
         └── components/AttributionReport.vue（重写：归因集合 + 多条导航 + 触发点对照）
 ```
 
-问题描述正文：`ProblemDescription.vue` 复用 `utils/markdown.ts` 的 `renderMarkdown` 渲染 `.problem-detail.markdown`；字号/行高保持 12.5px / 1.7，`p`、`ul/ol`、`li`、`code`、`pre` 有明确间距，行内代码用 `--mono` + `--bg-inset` chip，长测试名 `overflow-wrap:anywhere`，代码块等宽横向滚动。原始 HTML 不渲染，外链加固；无 Markdown 语法的纯文本仍是普通段落，单换行保留。历史纯文本不迁移，前端不猜测、不自动改写成列表。
+问题描述正文：`ProblemDescription.vue` 复用 `utils/markdown.ts` 的 `renderMarkdown` 渲染 `.problem-detail.markdown`；字号/行高保持 12.5px / 1.7，`p`、`ul/ol`、`li`、`code`、`pre` 有明确间距，行内代码用 `--mono` + `--bg-inset` chip，长测试名 `overflow-wrap:anywhere`，代码块等宽横向滚动。原始 HTML 不渲染，外链加固；Markdown 图片降级为 alt 文本、不发起外部加载；无 Markdown 语法的纯文本仍是普通段落，单换行保留。历史纯文本不迁移，前端不猜测、不自动改写成列表。
 
 数据：`useSessionBadCases(wid, sid)` 拿全部 bad_case（含 `attributionCount` / `hasAttribution`）；选中 case 后 `useAttributions(wid, badCaseId)`（分页 2/页）取子项，选中子项后 `useAttribution(wid, badCaseId, atId)` 取详情。每个展开组各自维护页码（`Record<badCaseId, number>`）。
 
@@ -584,7 +584,7 @@ Index.vue（grid: 340px 1fr）
 6. 推导过程（`reasoning`，Markdown 渲染；`reason` 按纯文本渲染）。
 7. 结论边界：只作用于该对象版本，不修改 bad case，不影响其它对象的潜在关系。
 
-> `reasoning` 按 Markdown 渲染；归因结论 `AttributionReport.reason` 保持纯文本；`BadCase.reason`（问题描述正文）也按 Markdown 渲染。三者都经过同一个 `utils/markdown.ts`（`html:false`、`breaks:true`、`linkify:true`；代码块等宽横向滚动，不接语法高亮）；外链 `target="_blank" rel="noopener noreferrer"`，禁止裸 HTML。
+> `reasoning` 与 `BadCase.reason` 走 `utils/markdown.ts`（`html:false`、`breaks:true`、`linkify:true`；代码块等宽横向滚动，不接语法高亮）；归因结论 `AttributionReport.reason` 保持纯文本插值，不经过该渲染器。两处 Markdown 外链都 `target="_blank" rel="noopener noreferrer"`；问题描述不渲染原始 HTML，Markdown 图片降级为 alt 文本。
 
 > 注意：问题描述 tab 的"关联对象"是 **bad_case 的 object（上报者）**；归因 tab 的"对象"是 **归因对象·版本**，`discovery` 场景下两者不同，不要混用。
 

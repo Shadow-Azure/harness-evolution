@@ -47,7 +47,9 @@ const descriptionLink = computed(() =>
     "desc",
   ),
 );
-const reasonHtml = computed(() => renderMarkdown(props.problem.reason));
+const reasonHtml = computed(() =>
+  renderMarkdown(props.problem.reason, { images: false }),
+);
 </script>
 
 <template>
@@ -253,6 +255,43 @@ const reasonHtml = computed(() => renderMarkdown(props.problem.reason));
 .problem-detail.markdown :deep(h5:first-child),
 .problem-detail.markdown :deep(h6:first-child) {
   margin-top: 0;
+}
+
+.problem-detail.markdown :deep(em) {
+  font-style: italic;
+}
+
+.problem-detail.markdown :deep(blockquote) {
+  margin: 6px 0 9px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-faint);
+}
+
+.problem-detail.markdown :deep(hr) {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.problem-detail.markdown :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 6px 0 9px;
+  border-collapse: collapse;
+}
+
+.problem-detail.markdown :deep(th),
+.problem-detail.markdown :deep(td) {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.problem-detail.markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 
 .problem-number,
