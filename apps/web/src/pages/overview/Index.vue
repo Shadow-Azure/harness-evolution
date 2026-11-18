@@ -368,15 +368,24 @@ watch(
           >只读访问 · 上报与启动由空间管理员执行</span>
         </template>
         <template v-else>
-          <button
-            v-if="canManage"
-            class="head-btn"
-            data-testid="ov-target-create"
-            type="button"
-            @click="targetsOverview?.openCreate()"
-          >
-            + 新增进化对象
-          </button>
+          <template v-if="canManage">
+            <button
+              class="head-btn"
+              data-testid="ov-target-create"
+              type="button"
+              @click="targetsOverview?.openCreate()"
+            >
+              + 新增进化对象
+            </button>
+            <button
+              class="head-btn primary"
+              data-testid="ov-target-launch"
+              type="button"
+              @click="openLaunchWizard"
+            >
+              启动自进化
+            </button>
+          </template>
           <span
             v-else
             class="readonly"

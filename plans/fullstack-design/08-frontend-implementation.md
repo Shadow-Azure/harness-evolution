@@ -506,7 +506,7 @@ Index.vue
 | 交互 | 行为 |
 |---|---|
 | 切换 Tab | 不重置时间窗与粒度；切换空间重置到 `tab=cases` |
-| 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染「上报接入」「启动自进化」；前者复用当前空间的 `admin?tab=ingest`，后者打开既有 `LaunchWizard`；无权限时只显示「只读访问」提示 |
+| 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读） |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表筛选并滚到列表；「来源数」→ 聚焦来源下拉 |

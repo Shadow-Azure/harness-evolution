@@ -11,7 +11,7 @@ depends:
   - m12-06
   - m12-08
 priority: P2
-status: backlog
+status: ready
 scope:
   - apps/web/src/pages/overview/**
   - tests/e2e/m11-04-target-overview.test.mjs
