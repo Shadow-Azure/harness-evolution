@@ -28,6 +28,7 @@ _UPDATE_COLUMNS = (
     "object_type",
     "object_version",
     "bad_case_agent_id",
+    "trigger_line",
     "title",
     "bad_case_description",
     "meta_data",
@@ -54,6 +55,7 @@ class CatalogCaseRow:
     source: str | None
     created_at: datetime
     updated_at: datetime
+    trigger_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,7 @@ def _values(row: CatalogCaseRow) -> dict[str, Any]:
         "object_type": row.object_type,
         "object_version": row.object_version,
         "bad_case_agent_id": row.bad_case_agent_id,
+        "trigger_line": row.trigger_line,
         "title": row.title,
         "bad_case_description": row.description,
         "meta_data": row.meta_data,

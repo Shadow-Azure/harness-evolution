@@ -46,6 +46,8 @@ async def test_first_report_creates_the_row_and_reports_usage(
     assert row["object_type"] == "skill"
     assert row["object_version"] == "v2.4.0"
     assert row["bad_case_agent_id"] is None
+    # A generic metaData.line is report payload, never the canonical trigger line.
+    assert row["trigger_line"] is None
     assert row["title"] == "输出缺少来源校验"
     assert row["bad_case_description"] == "12 条结论中有 5 条没有附带来源。"
     assert row["meta_data"] == {"file": "skills/deep-research/SKILL.md", "line": 91}
@@ -89,6 +91,25 @@ async def test_repeat_report_updates_fields_without_consuming_quota(
     assert row["meta_data"] == {"file": "apps/server/src/search/index.ts", "line": 142}
     assert row["workspace_id"] == workspace.workspace_id
     assert stored_created_at(row).isoformat() == "2026-11-10T09:00:00+08:00"
+
+
+async def test_trigger_line_is_stored_only_when_reported(
+    ingest_client: tuple[FastAPI, httpx.AsyncClient],
+) -> None:
+    """An explicit triggerLine reaches the column; its absence stays NULL."""
+    app, client = ingest_client
+    workspace = await create_ingest_workspace(app, client, name="Ingest Trigger")
+
+    reported = await report(
+        client,
+        workspace,
+        ingest_body(badCaseId="BC-HC-TRIGGER", triggerLine=58),
+    )
+
+    assert reported.status_code == 201
+    row = await fetch_case(app.state.database, "BC-HC-TRIGGER")
+    assert row is not None
+    assert row["trigger_line"] == 58
 
 
 async def test_usage_counts_only_the_reported_workspace(
@@ -137,6 +158,7 @@ async def test_usage_counts_only_the_reported_workspace(
         pytest.param(ingest_body(createdAt="not-a-timestamp"), id="bad-timestamp"),
         pytest.param(ingest_body(createdAt="2026-11-09T07:58:00"), id="naive-timestamp"),
         pytest.param(ingest_body(metaData="not-an-object"), id="bad-metadata"),
+        pytest.param(ingest_body(triggerLine=-1), id="negative-trigger-line"),
     ],
 )
 async def test_body_contract_rejects_missing_or_foreign_fields(

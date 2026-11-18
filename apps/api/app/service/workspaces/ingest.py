@@ -72,6 +72,14 @@ class BadCaseIngest(BaseModel):
     object_type: Literal["skill", "agent"]
     object_version: str | None = Field(default=None, max_length=64)
     bad_case_agent_id: str | None = Field(default=None, max_length=64)
+    trigger_line: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Optional 0-based log line where the report sits in the root Session; "
+            "absent means the trigger point is unknown."
+        ),
+    )
     title: str = Field(min_length=1, max_length=255)
     reason: str = Field(min_length=1)
     meta_data: dict[str, Any] | None = None
@@ -178,6 +186,7 @@ class BadCaseIngestService:
             object_type=body.object_type,
             object_version=body.object_version,
             bad_case_agent_id=body.bad_case_agent_id,
+            trigger_line=body.trigger_line,
             title=body.title,
             reason=body.reason,
             meta_data=body.meta_data,

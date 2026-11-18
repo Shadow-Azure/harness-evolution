@@ -307,6 +307,7 @@ bad_cases = Table(
     Column("object_type", String(16), nullable=False),
     Column("object_version", String(64), nullable=True),
     Column("bad_case_agent_id", String(64), nullable=True),
+    Column("trigger_line", Integer, nullable=True),
     Column("title", String(255), nullable=False),
     Column("bad_case_description", Text, nullable=False),
     Column("meta_data", JSON, nullable=True),

@@ -105,6 +105,7 @@ EXTERNAL_TABLES: tuple[TableContract, ...] = (
             ColumnContract("object_type", "varchar", False, 16),
             ColumnContract("object_version", "varchar", True, 64),
             ColumnContract("bad_case_agent_id", "varchar", True, 64),
+            ColumnContract("trigger_line", "integer", True),
             ColumnContract("title", "varchar", False, 255),
             ColumnContract("bad_case_description", "text", False),
             ColumnContract("meta_data", "json", True),

@@ -74,6 +74,7 @@ class BadCasePageRow:
     bad_case_session_id: str
     object_name: str
     bad_case_type: str
+    trigger_line: int | None
     title: str
     created_at: datetime
     attribution_count: int
@@ -387,6 +388,7 @@ class OverviewRepository:
                 bad_cases.c.bad_case_session_id,
                 bad_cases.c.object_name,
                 bad_cases.c.bad_case_type,
+                bad_cases.c.trigger_line,
                 bad_cases.c.title,
                 bad_cases.c.created_at,
             )
@@ -443,6 +445,9 @@ class OverviewRepository:
                 bad_case_session_id=str(row["bad_case_session_id"]),
                 object_name=str(row["object_name"]),
                 bad_case_type=str(row["bad_case_type"]),
+                trigger_line=(
+                    int(row["trigger_line"]) if row["trigger_line"] is not None else None
+                ),
                 title=str(row["title"]),
                 created_at=row["created_at"],
                 attribution_count=counts.get(str(row["bad_case_id"]), 0),

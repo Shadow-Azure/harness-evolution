@@ -11,7 +11,7 @@ depends:
   - m12-02
   - m12-07
 priority: P1
-status: backlog
+status: in-progress
 scope:
   - apps/api/**
   - apps/web/**

@@ -128,6 +128,15 @@ class BadCaseListItem(IdentityModel):
             "temporarily equals createdAt."
         ),
     )
+    trigger_line: int | None = Field(
+        ge=0,
+        description=(
+            "0-based log line of the report's trigger point in the root Session, or "
+            "null when the report did not carry one. It is never derived from "
+            "createdAt or an event index; the overview and error-detail flow share "
+            "this trigger coordinate."
+        ),
+    )
     created_at: datetime
     sync_status: BadCaseTraceStatus = Field(
         description=(

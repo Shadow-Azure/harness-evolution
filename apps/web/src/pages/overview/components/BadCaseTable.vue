@@ -104,6 +104,28 @@ function traceReady(item: BadCaseListItem): boolean {
 }
 
 /**
+ * Format the stored trigger line exactly as the execution flow labels it.
+ * @param item Overview row carrying the optional trigger line.
+ * @returns `L<n>` for a known line, otherwise an honest dash.
+ */
+function triggerLineLabel(item: BadCaseListItem): string {
+  return item.triggerLine === null || item.triggerLine === undefined
+    ? "—"
+    : `L${item.triggerLine}`;
+}
+
+/**
+ * Describe the trigger point for hover and assistive technology.
+ * @param item Overview row carrying the optional trigger line.
+ * @returns Full value explanation, including the missing-line case.
+ */
+function triggerLineDescription(item: BadCaseListItem): string {
+  return item.triggerLine === null || item.triggerLine === undefined
+    ? "该 bad case 没有可用的触发行号"
+    : `触发点：日志行 L${item.triggerLine}`;
+}
+
+/**
  * Build the deep link that opens one problem's description tab.
  * @param item Row carrying the workspace-scoped bad-case identity.
  * @returns Workspace error-detail URL with `case` and `tab=desc`.
@@ -218,7 +240,7 @@ function caseHref(item: BadCaseListItem): string {
             <th>bad case</th>
             <th>bad case 上报来源</th>
             <th>类型</th>
-            <th>触发时间</th>
+            <th>触发点</th>
             <th>上报时间</th>
             <th>Session</th>
             <th>轨迹</th>
@@ -272,7 +294,11 @@ function caseHref(item: BadCaseListItem): string {
               >{{ item.badCaseTypeLabel }}</span>
             </td>
             <td class="mono">
-              {{ formatStartedAt(item.triggerAt) }}
+              <span
+                :aria-label="triggerLineDescription(item)"
+                :data-testid="`ov-trigger-line-${item.badCaseId}`"
+                :title="triggerLineDescription(item)"
+              >{{ triggerLineLabel(item) }}</span>
             </td>
             <td class="mono">
               {{ formatStartedAt(item.createdAt) }}

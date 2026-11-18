@@ -445,6 +445,7 @@ erDiagram
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
 | `bad_case_agent_id` | `VARCHAR(64)` | NULL | 上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`；它是锚点计算的起点，不一定是卡片宿主（`discovery + agent` 锚到父节点，见 §7.4） |
+| `trigger_line` | `INTEGER` | NULL | 上报写入的 0-based 日志行，总览「触发点」列的来源；历史行保持 NULL 并显示「—」，不从 `created_at`、事件下标或 `meta_data.line` 推断 |
 | `title` | `VARCHAR(255)` | NOT NULL | 短标题（外部上报必填；问题列表卡、执行流图问题卡与详情页标题行的主文本） |
 | `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示）；对外 DTO 字段名是 `reason` |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
