@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m12-07
 priority: P1
-status: ready
+status: done
 scope:
   - apps/web/src/pages/errors/**
   - tests/e2e/m12-07-trace-state.test.mjs
