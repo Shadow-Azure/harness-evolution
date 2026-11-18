@@ -43,6 +43,14 @@ github:
 - 无启用对象时允许入口打开既有配置提示，不在前端重复判断目标是否可用。
 - 补组件/E2E 覆盖从对象总览启动、关闭和配置跳转。
 
+## 证据截图
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产进化对象总览](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-02-overview-targets.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-02-overview-targets.jpeg) | [![V2 原型进化对象总览](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-02-overview-targets.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-02-overview-targets.jpeg) |
+
+两图均为 `2816×1576` 的真实浏览器窗口截图。生产页头只有「+ 新增进化对象」；原型页头同时显示「+ 新增进化对象」和「启动自进化」。生产空态来自当前空间没有启用对象，不作为动作缺失的依据。
+
 ## 设计依据
 
 - [08 §6 工作空间总览](../../../plans/fullstack-design/08-frontend-implementation.md#6-工作空间总览页pagesoverviewindexvuev2)：对象总览与列表入口。

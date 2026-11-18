@@ -45,6 +45,22 @@ github:
 - 增加文案快照/组件测试，防止设计稿、页面与 OpenAPI 再次漂移。
 - 不改变接口请求、权限判定或凭据生成逻辑。
 
+## 证据截图
+
+**空间与额度**
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产空间管理](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06-admin-spaces.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06-admin-spaces.jpeg) | [![V2 原型空间管理](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06-admin-spaces.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06-admin-spaces.jpeg) |
+
+**鉴权接入**
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产鉴权接入](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06d-admin-auth.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06d-admin-auth.jpeg) | [![V2 原型鉴权接入](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06d-admin-auth.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06d-admin-auth.jpeg) |
+
+四图均为 `2816×1576` 的真实浏览器窗口截图。空间页文案差异见「包括自己」；鉴权页的结构一致，但登录字段和响应示例仍不同。
+
 ## 设计依据
 
 - [08 §4.2 顶栏用户区、空间切换器与空间管理页](../../../plans/fullstack-design/08-frontend-implementation.md#42-顶栏用户区空间切换器与空间管理页v2)：空间管理页面结构与角色文案。

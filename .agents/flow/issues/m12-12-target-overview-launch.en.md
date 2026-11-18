@@ -43,6 +43,14 @@ The gap exists independently of whether a workspace currently has targets: the e
 - With no enabled targets, open the existing configuration guard rather than duplicating target checks.
 - Add component and E2E coverage for launch, close, return, and configuration navigation.
 
+## Evidence screenshots
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production target overview](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-02-overview-targets.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-02-overview-targets.jpeg) | [![V2 prototype target overview](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-02-overview-targets.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-02-overview-targets.jpeg) |
+
+Both images are real browser-window captures at `2816×1576`. Production offers only "+ 新增进化对象"; the prototype offers both create and launch. Production emptiness reflects a workspace without enabled targets and is not evidence against the action gap.
+
 ## Design authority
 
 - [08 §6 Workspace overview](../../../plans/fullstack-design/08-frontend-implementation.md#6-工作空间总览页pagesoverviewindexvuev2): target overview and list entries.

@@ -43,6 +43,14 @@ This gap is independent of production data volume: production had 9 rows during 
 - Persist list filters in the URL so refresh, back navigation, and sharing preserve them.
 - Reuse the existing overview bad-case endpoint and add only the minimum contract fields if necessary.
 
+## Evidence screenshots
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production bad-case list](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg) | [![V2 prototype bad-case list](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg) |
+
+Both images are real browser-window captures at `2816×1576`. The prototype exposes date, source, and type controls in the list header; production shows only the title, total, and pagination.
+
 ## Design authority
 
 - [08 §6.1 Overview structure](../../../plans/fullstack-design/08-frontend-implementation.md#61-结构): boundaries between stats, chart, and list.

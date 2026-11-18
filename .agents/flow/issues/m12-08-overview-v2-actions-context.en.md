@@ -43,6 +43,14 @@ The captured production workspace contains 9 bad cases, 1 source, and 9 related 
 - Return the source-by-time detail entry to the overview analytics area while preserving explainable URL filter state.
 - Add component and E2E coverage for actions, empty data, permissions, and responsive layout.
 
+## Evidence screenshots
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production overview](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01-overview-cases.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01-overview-cases.jpeg) | [![V2 prototype overview](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01-overview-cases.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01-overview-cases.jpeg) |
+
+Both images are real browser-window captures at `2816×1576`. Production shows only the read-only notice with a full-width trend; the prototype shows two workflow actions and operational context beside the trend.
+
 ## Design authority
 
 - [08 §6 Workspace overview](../../../plans/fullstack-design/08-frontend-implementation.md#6-工作空间总览页pagesoverviewindexvuev2): overview data, chart, filters, and three-state behavior.

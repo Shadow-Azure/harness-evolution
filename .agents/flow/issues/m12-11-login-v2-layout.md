@@ -42,6 +42,14 @@ V2 原型使用约 920px 的双栏卡片：左侧解释工作空间隔离、归�
 - 统一品牌标记、圆角、边框、间距和响应式断点，与主应用共享现有 token。
 - 补齐键盘顺序、焦点可见、错误播报和 390px 窄屏回归。
 
+## 证据截图
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产登录页](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-07-login.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-07-login.jpeg) | [![V2 原型登录页](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-07-login.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-07-login.jpeg) |
+
+两图均为 `2816×1576` 的真实浏览器窗口截图。生产为单列小卡；原型为左侧能力说明和右侧表单的双栏卡片。原型账号列表只是演示，不作为生产需求。
+
 ## 设计依据
 
 - [08 §4.1 登录页与强制改密](../../../plans/fullstack-design/08-frontend-implementation.md#41-登录页与强制改密)：用户名/密码、错误、强制改密与回跳语义。

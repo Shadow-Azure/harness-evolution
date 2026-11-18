@@ -43,6 +43,14 @@ github:
 - 将「来源 × 时间」明细入口归还到总览分析区，并保持现有 URL 筛选状态可解释。
 - 为入口、空数据、无权限和响应式布局增加组件与 E2E 回归。
 
+## 证据截图
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产总览](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01-overview-cases.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01-overview-cases.jpeg) | [![V2 原型总览](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01-overview-cases.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01-overview-cases.jpeg) |
+
+两图均为 `2816×1576` 的真实浏览器窗口截图。生产页头只有只读标签且趋势占满宽度；原型页头有两个工作流动作，趋势右侧有运营上下文。
+
 ## 设计依据
 
 - [08 §6 工作空间总览](../../../plans/fullstack-design/08-frontend-implementation.md#6-工作空间总览页pagesoverviewindexvuev2)：总览页的数据、图表、筛选与三态结构。

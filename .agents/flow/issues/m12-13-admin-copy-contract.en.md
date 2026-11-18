@@ -45,6 +45,22 @@ These differences require copy and fixture alignment, not auth, workspace, or in
 - Add copy snapshots/component assertions to prevent design, page, and OpenAPI drift.
 - Do not change request logic, permission decisions, or credential generation.
 
+## Evidence screenshots
+
+**Workspace and quota**
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production workspace admin](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06-admin-spaces.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06-admin-spaces.jpeg) | [![V2 prototype workspace admin](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06-admin-spaces.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06-admin-spaces.jpeg) |
+
+**Authentication**
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production auth contract](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06d-admin-auth.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-06d-admin-auth.jpeg) | [![V2 prototype auth contract](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06d-admin-auth.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-06d-admin-auth.jpeg) |
+
+All four are real browser-window captures at `2816×1576`. The workspace copy differs on "including yourself"; the auth structure is aligned while login fields and response examples still differ.
+
 ## Design authority
 
 - [08 §4.2 Top-bar user area, workspace switcher, and admin page](../../../plans/fullstack-design/08-frontend-implementation.md#42-顶栏用户区空间切换器与空间管理页v2): admin structure and role copy.

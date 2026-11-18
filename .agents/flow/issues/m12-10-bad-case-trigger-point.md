@@ -44,6 +44,14 @@ github:
 - 通过契约生成、API、前端与 E2E 证明总览定位点和详情触发点一致。
 - 若历史数据无 `trigger_line`，不回填猜测值；允许显示「—」并保留从详情或原始事实推导后续定位的路径。
 
+## 证据截图
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产列表触发时间](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg) | [![V2 原型列表触发点](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg) |
+
+两图均为 `2816×1576` 的真实浏览器窗口截图。生产列名为「触发时间」并显示日期；原型列名为「触发点」并显示 `L0`、`L91` 等日志行位置。
+
 ## 设计依据
 
 - [05 §3.4 问题与归因状态](../../../plans/fullstack-design/05-api-design.md#34-问题bad_case归因状态与-probe)：bad case 的锚点、元数据与展示字段。

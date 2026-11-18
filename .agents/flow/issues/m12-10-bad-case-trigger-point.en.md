@@ -44,6 +44,14 @@ The prototype shows `L0`, `L58`, `L91`, and similar log lines, allowing users to
 - Prove contract, API, frontend, and E2E agreement between the overview row and detail highlight.
 - Do not invent values for historical rows without `trigger_line`.
 
+## Evidence screenshots
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production list trigger time](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg) | [![V2 prototype list trigger point](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg) |
+
+Both images are real browser-window captures at `2816×1576`. Production labels the column "trigger time" and shows dates; the prototype labels it "trigger point" and shows `L0`, `L91`, and similar log lines.
+
 ## Design authority
 
 - [05 §3.4 Problems and attribution state](../../../plans/fullstack-design/05-api-design.md#34-问题bad_case归因状态与-probe): anchors, metadata, and display fields.

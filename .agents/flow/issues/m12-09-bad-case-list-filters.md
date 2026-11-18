@@ -43,6 +43,14 @@ github:
 - 把列表筛选写入 URL，刷新、返回和分享后保持。
 - 复用现有 overview bad-case 查询端点；只有现有契约不足时才做最小字段扩展。
 
+## 证据截图
+
+| 生产环境 | V2 原型 |
+| --- | --- |
+| [![生产 bad case 列表](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-01b-overview-list.jpeg) | [![V2 原型 bad case 列表](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-01b-overview-list.jpeg) |
+
+两图均为 `2816×1576` 的真实浏览器窗口截图。原型在列表头提供日期、来源和类型筛选；生产仅显示标题、总数和分页。
+
 ## 设计依据
 
 - [08 §6.1 总览结构](../../../plans/fullstack-design/08-frontend-implementation.md#61-结构)：总览统计、图表和列表的模块边界。

@@ -42,6 +42,14 @@ The existing security model still has one global administrator, administrator-cr
 - Reuse existing brand, radius, border, spacing, and responsive tokens.
 - Cover keyboard order, visible focus, announced errors, and 390px layout.
 
+## Evidence screenshots
+
+| Production | V2 prototype |
+| --- | --- |
+| [![Production login](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-07-login.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/prod-07-login.jpeg) | [![V2 prototype login](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-07-login.jpeg)](https://github.com/Shadow-Azure/harness-evolution/releases/download/m12-08-evidence-d18c8d5/proto-07-login.jpeg) |
+
+Both images are real browser-window captures at `2816×1576`. Production is a small single-column card; the prototype uses capability copy on the left and the form on the right. Prototype demo accounts are not a production requirement.
+
 ## Design authority
 
 - [08 §4.1 Login and forced password change](../../../plans/fullstack-design/08-frontend-implementation.md#41-登录页与强制改密): username/password, errors, forced change, and return routing.
