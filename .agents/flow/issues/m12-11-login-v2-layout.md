@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m7-03
 priority: P2
-status: ready
+status: done
 scope:
   - apps/web/src/pages/login/**
   - apps/web/src/styles/**
