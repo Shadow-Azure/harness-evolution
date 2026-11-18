@@ -462,6 +462,18 @@
   .ed-no { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #c03434; background: #fff5f5; border: 1px solid #e05555; border-radius: 999px; padding: 1px 8px; }
   .ed-title { font-size: 15px; font-weight: 650; }
   .ed-detail { margin-top: 9px; font-size: 12.5px; line-height: 1.7; color: var(--text-dim); }
+  .ed-detail.markdown p { margin: 0 0 7px; }
+  .ed-detail.markdown p:last-child { margin-bottom: 0; }
+  .ed-detail.markdown ul, .ed-detail.markdown ol { margin: 3px 0 9px; padding-left: 18px; }
+  .ed-detail.markdown li { margin: 1px 0; }
+  .ed-detail.markdown li:last-child { margin-bottom: 0; }
+  .ed-detail.markdown code { padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-inset); color: var(--text); font-family: var(--mono); font-size: 10.5px; overflow-wrap: anywhere; }
+  .ed-detail.markdown pre { margin: 6px 0 9px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-inset); overflow-x: auto; }
+  .ed-detail.markdown pre code { padding: 0; border: 0; background: transparent; font-size: 10.5px; line-height: 1.55; white-space: pre; }
+  .ed-detail.markdown strong { color: var(--text); font-weight: 650; }
+  .ed-detail.markdown a { color: var(--blue); }
+  .ed-detail.markdown h4.md-h { margin: 8px 0 4px; color: var(--text); font-size: 12px; font-weight: 700; }
+  .ed-detail.markdown h4.md-h:first-child { margin-top: 0; }
   .ed-meta { margin-top: 8px; font-size: 11px; color: var(--text-faint); }
   .attr-conclusion { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; border: 1px solid; margin-bottom: 12px; }
   .attr-conclusion .lab { font-size: 10.5px; font-weight: 700; text-transform: uppercase; opacity: .7; letter-spacing: .3px; }
@@ -1733,6 +1745,20 @@ SESSIONS.push({
 });
 SESSIONS[SESSIONS.length - 1].ts = Date.parse("2026-11-09T16:37:00+08:00");
 
+/* 问题描述 Markdown 演示：SWE-bench 失败清单按 Markdown 分组展示。 */
+const MARKDOWN_SID = "5b7c9e21-4d68-4f3a-9c0e-2a6d8b1f7c53";
+SESSIONS.push({
+  id: MARKDOWN_SID,
+  short: "SWE-bench astropy-13398",
+  title: "SWE-bench astropy__astropy-13398 · unresolved",
+  repo: "OpenSpec-cn_SWE-bench",
+  clock: "11-18 14:52",
+  iso: "2026-11-18T14:52:00+08:00",
+  dur: "2h 18m", model: "claude-code", rounds: 14, steps: 212, tools: 96, errors: 2, agents: 5, findings: 1,
+  skills: [], tok: 12842310, status: "partial", workspace: "ws-harness"
+});
+SESSIONS[SESSIONS.length - 1].ts = Date.parse("2026-11-18T14:52:00+08:00");
+
 const BAD_CASES = [];
 let _caseSeq = 0;
 const CASE_WS_ORDER = ["ws-harness", "ws-agent", "ws-research"];
@@ -1775,6 +1801,37 @@ BAD_CASES.push({
   createdAt: "2026-11-09T16:37:00+08:00", clock: "11-09 16:37",
   triggerLine: 0, target: "runtime · claude-code", reporter: "ai-eval-platform",
   trace: { status: "unavailable", lastError: "SESSION_QUERY_UNAVAILABLE", retryable: false, lastAttemptAt: "11-09 16:50" },
+});
+/* 问题描述 Markdown 演示：同一用例的失败清单按 Markdown 分组；不进入 CASE_SPECS 的自动生成。 */
+BAD_CASES.push({
+  id: "BC-HC-027", no: 1, sessionId: MARKDOWN_SID,
+  sessionTitle: "SWE-bench astropy__astropy-13398 · unresolved", workspace: "ws-harness",
+  objectName: "claude-code", type: "discovery",
+  title: "[SWE-bench] astropy__astropy-13398 · unresolved",
+  detail: [
+    "**result_status** = `unresolved`",
+    "",
+    "**F2P 失败**（4 项）",
+    "- `test_cirs_its_topo`",
+    "- `test_its_straight_overhead`",
+    "- `test_its_topo_to_altaz_with_refraction`",
+    "- `test_its_topo_to_hadec_with_refraction`",
+    "",
+    "**P2P 回退**（6 项）",
+    "- `test_cirs_to_altaz`",
+    "- `test_gcrs_altaz_bothroutes[testframe0]`",
+    "- `test_gcrs_altaz_bothroutes[testframe1]`",
+    "- `test_gcrs_altaz_bothroutes[testframe2]`",
+    "- `test_gcrs_altaz_bothroutes[testframe3]`",
+    "- `test_gcrs_altaz_bothroutes[testframe4]`",
+  ].join("\n"),
+  facts: [
+    { k: "resolved", v: "false" },
+    { k: "attemptId", v: "f6d8c370-d63a-4ff0-987d-a5969b7b5e78" },
+    { k: "evalRunId", v: "0d895dfa-2e48-43cc-8703-bdaa6da72b9d" },
+  ],
+  createdAt: "2026-11-18T14:52:00+08:00", clock: "11-18 14:52",
+  triggerLine: 0, target: "runtime · claude-code", reporter: "ai-eval-platform",
 });
 
 function casesForSession(sid) { return BAD_CASES.filter(c => c.sessionId === sid).sort((a, b) => a.no - b.no); }
@@ -3335,6 +3392,71 @@ function CaseStatusChip({ c, n }) {
   return html`<span className=${"v2-badge " + (c.type === "self" ? "self" : "discovery")}>${c.type}</span>`;
 }
 
+/* 问题描述 Markdown：原型内联渲染。生产实现复用
+   apps/web/src/utils/markdown.ts（markdown-it：html 关闭、breaks 开启、外链加固），
+   此处按同一约定覆盖描述正文会用到的段落、列表、行内代码、强调、链接和代码围栏。 */
+function mdEsc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdInline(s) {
+  return mdEsc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+function renderMarkdown(source) {
+  if (!source) return "";
+  const lines = String(source).replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let para = [];
+  let list = null;
+  let fence = null;
+  const flushPara = () => {
+    if (!para.length) return;
+    out.push(`<p>${para.map(mdInline).join("<br>")}</p>`);
+    para = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    out.push(`<${list.tag}>${list.items.map(i => `<li>${mdInline(i)}</li>`).join("")}</${list.tag}>`);
+    list = null;
+  };
+  const flushFence = () => {
+    if (!fence) return;
+    out.push(`<pre><code>${mdEsc(fence.join("\n"))}</code></pre>`);
+    fence = null;
+  };
+  for (const raw of lines) {
+    if (raw.trim().startsWith("```")) {
+      flushPara(); flushList();
+      if (fence) flushFence(); else fence = [];
+      continue;
+    }
+    if (fence) { fence.push(raw); continue; }
+    const line = raw.trim();
+    if (!line) { flushPara(); flushList(); continue; }
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    if (heading) {
+      flushPara(); flushList();
+      out.push(`<h4 class="md-h">${mdInline(heading[2])}</h4>`);
+      continue;
+    }
+    const ul = line.match(/^[-*]\s+(.*)$/);
+    const ol = line.match(/^\d+\.\s+(.*)$/);
+    if (ul || ol) {
+      const tag = ul ? "ul" : "ol";
+      flushPara();
+      if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+      list.items.push((ul || ol)[1]);
+      continue;
+    }
+    flushList();
+    para.push(line);
+  }
+  flushPara(); flushList(); flushFence();
+  return out.join("");
+}
+
 function FindingDescription({ c, session, attributions, onOpenAttr }) {
   const ats = attributions || [];
   const attributed = ats.filter(a => a.conclusion === "attributed").length;
@@ -3356,7 +3478,7 @@ function FindingDescription({ c, session, attributions, onOpenAttr }) {
           ? html`<button className="v2-badge ok" style=${{ cursor: "pointer" }} onClick=${() => onOpenAttr && onOpenAttr()}>已生成 ${ats.length} 条归因 · ${attributed} 可归因${notObject ? ` / ${notObject} 非该对象` : ""} →</button>`
           : html`<span className="v2-badge warn">尚未归因</span>`}
       </div>
-      <div className="ed-detail">${c.detail}</div>
+      <div className="ed-detail markdown" dangerouslySetInnerHTML=${{ __html: renderMarkdown(c.detail) }} />
       ${(c.facts && c.facts.length) ? html`
         <div className="fi-facts">
           ${c.facts.map(x => html`
