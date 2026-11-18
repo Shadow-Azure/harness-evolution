@@ -44,6 +44,8 @@ export type OverviewFilters = {
 /** One overview list page including its type filter and paging. */
 export type OverviewCaseFilters = OverviewFilters & {
   badCaseType?: OverviewBadCaseType;
+  /** Ignore every date boundary and return all reported cases. */
+  allTime?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -189,7 +191,11 @@ export function listOverviewBadCases(
   filters: OverviewCaseFilters = {},
 ): Promise<OverviewBadCaseListResponse> {
   const query = new URLSearchParams();
-  appendWindow(query, filters);
+  if (filters.allTime) {
+    query.set("allTime", "true");
+  } else {
+    appendWindow(query, filters);
+  }
   appendObjects(query, filters.objects);
   if (filters.badCaseType && filters.badCaseType !== "all") {
     query.set("badCaseType", filters.badCaseType);

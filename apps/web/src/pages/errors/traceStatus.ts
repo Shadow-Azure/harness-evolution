@@ -23,6 +23,24 @@ const TRACE_STATUSES: ReadonlySet<string> = new Set([
   "unavailable",
 ]);
 
+/** User-facing labels shared by the trace panel and the case sidebar. */
+export const TRACE_STATUS_LABELS: Record<BadCaseTraceStatus, string> = {
+  ready: "就绪",
+  pending: "未同步",
+  syncing: "同步中",
+  failed: "同步失败",
+  unavailable: "无可用轨迹",
+};
+
+/**
+ * Translate a trace status into the label shown in the status chip.
+ * @param status Derived trace state.
+ * @returns Chinese status label.
+ */
+export function traceStatusLabel(status: BadCaseTraceStatus): string {
+  return TRACE_STATUS_LABELS[status];
+}
+
 function optionalText(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }

@@ -10,7 +10,7 @@ m8-04 交付总览时只保留了只读的统计、趋势、来源分布与列�
 
 ## Decision
 
-- bad case 总览页头按 `canManageWorkspace(currentRole)` 渲染「上报接入」「启动自进化」；前者指向当前空间 `admin?tab=ingest`，后者打开既有 `LaunchWizard`。无管理权限时渲染「只读访问」提示而不是可绕过的空链接；启动成功后用 `router.push` 打开既有运行详情，浏览器后退仍回到原总览 URL。
+- 总览页头按 `canManageWorkspace(currentRole)` 渲染写入口，且随 tab 切换用途：bad case 总览为「上报接入」「启动自进化」，后者打开既有 `LaunchWizard`；进化对象总览为「+ 新增进化对象」「启动自进化」，与前者共用同一个 `openLaunchWizard` 和 `wizardOpen` 状态，不复制四步表单或向导状态。无管理权限时渲染「只读访问」提示而不是可绕过的空链接；启动成功后用 `router.push` 打开既有运行详情，浏览器后退仍回到原总览 URL。
 - 运营上下文复用两个已有数据源：summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`。上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），复制按钮只复制该地址；不读取、不复制凭据，也不额外请求成员或凭据接口。summary 未就绪时额度显示「—」，不以 0% 冒充未知。
 - 运营上下文与趋势卡组成桌面双栏，bad case 列表横跨下一行；≤1024px 时单列并固定为「趋势 → 列表 → 运营上下文」，避免辅助信息挡在主内容前。
 - 来源 × 时间矩阵保持既有 sources 端点不变：展开时按服务端实际生效的粒度把每个桶映射成闭区间，再与 summary 的当前窗口取交集；逐个读取交集窗口的来源聚合，再按来源合并。趋势首/末桶可能从周/月边界开始，不裁剪会把窗口外几天算进首列；裁剪后桶区间互不重叠且都落在当前窗口内，因此合并结果对当前窗口与来源筛选是精确的，不依赖列表当前页，也不伪造缺失桶。

@@ -35,6 +35,10 @@ function mountTable(overrides: Record<string, unknown> = {}) {
       page: 1,
       pageSize: 8,
       type: "all",
+      from: "",
+      to: "",
+      object: "",
+      objectOptions: ["deep-research", "workflow"],
       filtered: false,
       loading: false,
       error: null,
@@ -135,10 +139,73 @@ describe("overview bad-case table", () => {
     await wrapper.get("[data-testid='ov-page-next']").trigger("click");
     await wrapper.get("[data-testid='ov-page-prev']").trigger("click");
     expect(wrapper.emitted("update:page")).toEqual([[3], [1]]);
-    expect(wrapper.get("[data-testid='ov-type-chip']").text()).toContain(
-      "自身存在问题",
+    expect(
+      (wrapper.get("[data-testid='ov-list-type']").element as HTMLSelectElement)
+        .value,
+    ).toBe("self");
+  });
+
+  it("renders the list-level date, source and type controls", async () => {
+    const wrapper = mountTable();
+
+    expect(wrapper.find("[data-testid='ov-case-filters']").exists()).toBe(true);
+    const sources = wrapper
+      .get("[data-testid='ov-list-object']")
+      .findAll("option")
+      .map((option) => option.text());
+    expect(sources).toEqual(["全部上报来源", "deep-research", "workflow"]);
+    const types = wrapper
+      .get("[data-testid='ov-list-type']")
+      .findAll("option")
+      .map((option) => option.text());
+    expect(types).toEqual(["全部类型", "自身存在问题", "发现前置步骤问题"]);
+
+    await wrapper.get("[data-testid='ov-list-object']").setValue("workflow");
+    await wrapper.get("[data-testid='ov-list-type']").setValue("self");
+    expect(wrapper.emitted("update:filters")).toEqual([
+      [{ object: "workflow" }],
+      [{ type: "self" }],
+    ]);
+  });
+
+  it("emits only a complete, ordered date pair", async () => {
+    const wrapper = mountTable();
+
+    await wrapper.get("[data-testid='ov-list-from']").setValue("2026-10-01");
+    expect(wrapper.emitted("update:filters")).toBeUndefined();
+    expect(wrapper.get("[data-testid='ov-list-date-error']").text()).toContain(
+      "请同时选择",
     );
-    await wrapper.get("[data-testid='ov-type-clear']").trigger("click");
+
+    await wrapper.get("[data-testid='ov-list-to']").setValue("2026-10-31");
+    expect(wrapper.emitted("update:filters")).toEqual([
+      [{ from: "2026-10-01", to: "2026-10-31" }],
+    ]);
+    expect(wrapper.find("[data-testid='ov-list-date-error']").exists()).toBe(
+      false,
+    );
+  });
+
+  it("keeps an inverted date pair local and explains how to fix it", async () => {
+    const wrapper = mountTable({ from: "2026-10-01", to: "2026-10-31" });
+
+    await wrapper.get("[data-testid='ov-list-from']").setValue("2026-11-30");
+    expect(wrapper.emitted("update:filters")).toBeUndefined();
+    expect(wrapper.get("[data-testid='ov-list-date-error']").text()).toContain(
+      "开始日期不能晚于结束日期",
+    );
+  });
+
+  it("clears the whole list filter set without touching the chart", async () => {
+    const wrapper = mountTable({
+      from: "2026-10-01",
+      to: "2026-10-31",
+      object: "workflow",
+      type: "self",
+      filtered: true,
+    });
+
+    await wrapper.get("[data-testid='ov-list-reset']").trigger("click");
     expect(wrapper.emitted("clear-filters")).toHaveLength(1);
   });
 
@@ -182,7 +249,7 @@ describe("overview bad-case table", () => {
     });
     expect(failed.find("[data-testid='ov-case-error']").exists()).toBe(true);
     expect(failed.text()).toContain("INTERNAL");
-    await failed.get("button").trigger("click");
+    await failed.get("[data-testid='ov-case-error'] button").trigger("click");
     expect(failed.emitted("retry")).toHaveLength(1);
   });
 });

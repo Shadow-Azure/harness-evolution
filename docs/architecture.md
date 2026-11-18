@@ -24,9 +24,9 @@
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-仅健康、登录、刷新、IdP 回调、票据 SSE 与凭据上报公开；其余走 Bearer JWT，建空间、用户管理、sync 与上游 pull 限全局管理员。access 30 分钟，refresh cookie 14 天且 httpOnly、SameSite=Strict；鉴权与错误共用边界。
+健康、登录、刷新、IdP 回调、票据 SSE 与凭据上报公开；其余走 Bearer JWT，建空间、用户管理、sync、上游 pull 限全局管理员。access 30 分钟；refresh cookie 14 天，httpOnly、SameSite=Strict，Secure 随协议或 `HE_COOKIE_SECURE`；鉴权错误共用边界。
 
-Web 先恢复 `auth/session` 再挂路由；token 与用户只留内存，401 单飞刷新，退出清 query cache。页面挂在 `/workspaces/:wid` 下，按 `wid` 与成员角色收口；`/`、`/sessions/**`、`/errors`、`/evolution/**` 重定向到记住的可见空间、唯一空间或选择页。
+Web 先恢复 `auth/session` 再挂路由；token、用户留内存，401 单飞刷新，退出清 query cache。页面挂在 `/workspaces/:wid` 下，按 `wid` 与成员角色收口；`/`、`/sessions/**`、`/errors`、`/evolution/**` 重定向到记住的可见空间、唯一空间或选择页。
 
 Session 默认最新 10 条并回车搜索；错误按 case 分组并支持 `case/tab/at` 深链；对象与向导按空间，默认 Skill 须 Golden 晋级、对象可试验绑定，七步 Run 展示固化 revision；lifespan 恢复任务与 `sync_lock` 后调度。
 

@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: m12-20
+id: m12-22
 milestone: m12
 depends:
-  - m12-17
-  - m12-18
+  - m12-19
+  - m12-20
 priority: P1
 status: done
 scope:
@@ -59,7 +59,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m12-17、m12-18。
+- 依赖：m12-19、m12-20。
 - 交付边界：生产化调度与观测已验证的归因引擎；不改变归因算法和质量晋级结论。
 
 ## 独立验证

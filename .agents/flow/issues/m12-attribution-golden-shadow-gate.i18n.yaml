@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-attribution-golden-shadow-gate.md
-m12-attribution-golden-shadow-gate.md: d570a3f535d4036fd1aa268ddcc24c0b860dfed0
-m12-attribution-golden-shadow-gate.en.md: 79d2756d91462434b90fe02c9ea9b5e735ac692b
+m12-attribution-golden-shadow-gate.md: aed7ddc96a95004c7535f4c4cd6b1c1cb1962b4c
+m12-attribution-golden-shadow-gate.en.md: 9671b01e241f5b915e91cfc0ebec6fd853789c62

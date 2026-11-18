@@ -4,11 +4,11 @@ English | [中文](m12-attribution-skill-registry-binding.md)
 
 ```yaml flow
 kind: issue
-id: m12-15
+id: m12-17
 milestone: m12
 depends:
   - m7-07
-  - m12-14
+  - m12-16
 priority: P0
 status: done
 scope:
@@ -59,8 +59,8 @@ The platform must select different attribution methods for different evolution t
 
 ## Dependencies and boundary
 
-- Depends on: m7-07 and m12-14.
-- Boundary: deliver backend registration, revisioning, resolution, and binding; m12-19 delivers the complete configuration UI.
+- Depends on: m7-07 and m12-16.
+- Boundary: deliver backend registration, revisioning, resolution, and binding; m12-21 delivers the complete configuration UI.
 
 ## Verification
 

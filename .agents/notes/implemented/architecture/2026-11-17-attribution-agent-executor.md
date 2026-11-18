@@ -14,7 +14,7 @@ Status: implemented
 
 ## Alternatives considered
 
-让 stub 直接复用 `rule-v1` 会掩盖 executor 输入输出和 Skill 正文没有真正贯通的问题，因此使用独立 engine key 和缓存身份。把完整原始 Trace 交给执行器会扩大隐私、载荷与缓存面，因此只传 m12-16 的裁剪上下文。把 Skill 正文复制进 Run 会增加敏感配置和迁移成本，不可变 revision 已提供可验证的历史寻址，因此只固化身份并按身份反查。
+让 stub 直接复用 `rule-v1` 会掩盖 executor 输入输出和 Skill 正文没有真正贯通的问题，因此使用独立 engine key 和缓存身份。把完整原始 Trace 交给执行器会扩大隐私、载荷与缓存面，因此只传 m12-18 的裁剪上下文。把 Skill 正文复制进 Run 会增加敏感配置和迁移成本，不可变 revision 已提供可验证的历史寻址，因此只固化身份并按身份反查。
 
 ## Consequences
 

@@ -428,8 +428,8 @@ async def test_expired_refresh_token_is_rejected(tmp_path: Path) -> None:
     assert response.json()["error"]["code"] == ErrorCode.AUTH_EXPIRED
 
 
-async def test_production_refresh_cookie_is_secure(tmp_path: Path) -> None:
-    """Production cookies require HTTPS transport in addition to HTTP-only scoping."""
+async def test_https_refresh_cookie_is_secure(tmp_path: Path) -> None:
+    """An HTTPS request marks the refresh cookie Secure in addition to HTTP-only scoping."""
     settings = identity_settings(
         tmp_path,
         production=True,
@@ -441,6 +441,61 @@ async def test_production_refresh_cookie_is_secure(tmp_path: Path) -> None:
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(transport=transport, base_url="https://testserver") as client,
+    ):
+        response = await login(client)
+
+    assert response.status_code == 200
+    assert "Secure" in response.headers["set-cookie"]
+
+
+def test_empty_cookie_secure_environment_value_is_auto(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The deployment template's empty switch keeps transport-aware behaviour."""
+    monkeypatch.setenv("HE_COOKIE_SECURE", "")
+
+    assert identity_settings(tmp_path).cookie_secure is None
+
+
+async def test_production_http_refresh_cookie_omits_secure(tmp_path: Path) -> None:
+    """A production HTTP deployment keeps the refresh cookie and can rotate it."""
+    settings = identity_settings(
+        tmp_path,
+        production=True,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await login(client)
+        refreshed = await client.post("/api/auth/refresh")
+
+    assert response.status_code == 200
+    assert "Secure" not in response.headers["set-cookie"]
+    assert response.cookies.get("refresh_token")
+    assert refreshed.status_code == 200
+    assert set(refreshed.json()) == {"accessToken", "expiresIn"}
+
+
+async def test_cookie_secure_override_forwards_proxy_https(tmp_path: Path) -> None:
+    """An explicit switch covers TLS terminated before the application sees it."""
+    settings = identity_settings(
+        tmp_path,
+        production=True,
+        cookie_secure=True,
+        admin_username="admin",
+        admin_password="initial-password",
+    )
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
     ):
         response = await login(client)
 

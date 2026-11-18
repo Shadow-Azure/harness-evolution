@@ -340,19 +340,29 @@ export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): Lane
 ### 4.1 登录页与强制改密
 
 ```text
-Index.vue（居中卡片，无顶栏）
-├── LoginForm.vue
-│   ├── username / password 输入（el-input，回车提交）
-│   ├── 错误提示条（AUTH_INVALID → "用户名或密码错误"）
-│   └── 登录按钮（loading 态）
-└── 页脚说明：组织内部系统，账号由管理员分配
+Index.vue（无顶栏；桌面双栏卡片，≤760px 单列）
+├── 左栏（静态产品事实，不读取用户目录）
+│   ├── 品牌标记与「轨迹诊断与自进化」
+│   ├── 工作空间隔离 / 归因进入进化流程 / 默认 10 个 Session 三条说明
+│   └── 页脚：内部部署、不开放公开注册
+└── 右栏（aria-labelledby="login-form-title"）
+    ├── 标题「登录」与账号分配说明
+    ├── LoginForm.vue
+    │   ├── username / password 输入（el-input，回车提交）
+    │   ├── 错误提示条（AUTH_INVALID → "用户名或密码错误"）
+    │   └── 登录按钮（loading 态）
+    └── 页脚：首次登录需要设置自己的密码
 ```
 
+- 布局：桌面卡片 `min(920px, 100%)` 左右两栏；≤760px 单列并隐藏长能力说明与左栏页脚，390px 下无横向溢出。
+- 左栏只写产品事实，不渲染账号、邮箱或可点选账号；原型里的账号按钮是打桩演示，生产不复制。
+- 键盘：左栏无焦点元素，Tab 顺序为用户名、密码、登录按钮；错误提示保持内联 `role=alert` 与 `aria-live=polite`。
+- 视觉：卡片背景、圆角、边框、间距与断点取自 `styles/tokens.css`，大卡片阴影为 `--shadow-auth-card`。
 - 提交：`useLogin().mutate({username, password})`；成功后恢复 `auth/session` 并写 `stores/auth` → 跳 `route.query.redirect ?? 最近空间总览`；无可用空间则进 `/workspaces` 选择页。
 - 已登录访问 `/login` 直接跳最近空间总览（路由守卫处理）。
 - **首次登录强制改密**：账号只能由 admin 创建或由 env 播种，初始密码一律由他人设定，因此登录响应带 `user.mustChangePassword=true`；此时业务端点回 `403 PASSWORD_CHANGE_REQUIRED`，前端只放行 `/change-password`。
 
-`pages/login/ChangePassword.vue`（同款居中卡片，需登录，未登录跳 `/login`）：
+`pages/login/ChangePassword.vue`（居中单卡片，需登录，未登录跳 `/login`）：
 
 ```text
 ChangePasswordCard.vue
@@ -481,7 +491,7 @@ Index.vue
 │   ├── SourceBars.vue（来源分布 top6 + 其余折叠）
 │   ├── SourceMatrix.vue（来源 × 时间桶矩阵，可折叠；按需读取每个时间桶的现有 sources 聚合）
 │   ├── OverviewOpsContext.vue（空间额度 / 上报地址 / 当前空间摘要）
-│   ├── BadCaseTable.vue（8 条/页 + 空态）
+│   ├── BadCaseTable.vue（8 条/页 + 列表级日期/来源/类型筛选 + 空态）
 │   ├── TargetsOverview.vue（对象统计条 + 趋势三态 chip + 两块分布）
 │   ├── TargetSideList.vue（5 条/页，可进化降序，增编删入口）
 │   ├── TargetDetailCard.vue（单对象分析卡：对象+版本多选+独立时间窗）
@@ -496,11 +506,13 @@ Index.vue
 | 交互 | 行为 |
 |---|---|
 | 切换 Tab | 不重置时间窗与粒度；切换空间重置到 `tab=cases` |
-| 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染「上报接入」「启动自进化」；前者复用当前空间的 `admin?tab=ingest`，后者打开既有 `LaunchWizard`；无权限时只显示「只读访问」提示 |
+| 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
-| 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读） |
-| 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表筛选并滚到列表；「来源数」→ 聚焦来源下拉 |
-| 趋势悬浮 | tooltip 显示桶标签、self/discovery 数值与占比；点击桶 → 列表按该桶时间过滤 |
+| 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
+| 列表筛选 | 列表头独立提供开始/结束日期、上报来源、问题类型，写 `?lfrom=&lto=&lobject=&type=`；日期为空时列表请求带 `allTime=true`（真正不限时间），空来源/`all=类型` 不限制；任一变化重置 `page=1` 并把上一有效结果保留到新查询返回 |
+| 列表分页 | `page` 只改列表页码，保留全部列表筛选；全局时间/来源/粒度变化不重置它 |
+| 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表类型筛选（`?type=`）并滚到列表；「来源数」→ 聚焦图表来源下拉 |
+| 趋势悬浮 | tooltip 显示桶标签、self/discovery 数值与占比；点击桶 → 只把列表日期筛到该桶（写 `lfrom/lto`），图表自身窗口不变 |
 | 来源 × 时间 | 展开时按当前有效粒度把每个时间桶映射为闭区间，再与 summary 的当前窗口取交集，逐个调用既有 sources 聚合并按来源合并；桶数 >31 时提示切换为周/月粒度，不拼列表页数据 |
 | 下钻 | 行内 **bad case ID 链接**（新窗口）→ `/workspaces/:wid/sessions/:sid/errors?case=&tab=desc`；整行不可点（原型第十七轮决策） |
 | 粒度降级 | 日粒度窗口 >92 天时服务端降级周并回传实际粒度，前端在副标题提示「已按周展示」 |

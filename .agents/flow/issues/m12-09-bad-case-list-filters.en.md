@@ -10,11 +10,18 @@ depends:
   - m8-04
   - m12-07
 priority: P1
-status: backlog
+status: done
 scope:
   - apps/web/src/pages/overview/**
   - apps/web/src/api/**
+  - apps/api/app/api/overview.py
+  - apps/api/app/service/overview/**
+  - apps/api/app/db/crud/overview.py
+  - apps/api/tests/m8-03-workspace-overview/**
+  - apps/api/tests/test_openapi.py
+  - packages/contracts/**
   - tests/e2e/m8-04-overview.test.mjs
+  - tests/e2e/m12-08-overview-actions-context.test.mjs
   - tests/e2e/m12-09-bad-case-list-filters.test.mjs
   - plans/**
   - docs/**
@@ -64,6 +71,7 @@ Both images are real browser-window captures at `2816×1576`. The prototype expo
 - Add date range, source, and type controls to `BadCaseTable`; reuse overview source options rather than creating another enum.
 - Add list-specific URL state such as `listFrom`, `listTo`, `listObject`, `listType`, and `listPage`; final names must preserve existing URL compatibility.
 - Use an independent `queryKey` and query for the list; trend changes must not silently reset list state, while global filters continue to govern stats and the chart.
+- An empty list date must mean truly unrestricted time. The existing list endpoint defaults to 90 days, so add the optional `allTime=true` (server skips the date predicates); this is the issue's only minimal contract extension and adds no endpoint or table.
 - Do not request an invalid date range; retain the previous valid result and show an actionable local error. Clearing restores the unrestricted query.
 - Distinguish filtered no-match from an empty workspace and provide a clear-filter action only for the former.
 - Reset `listPage=1` on filter changes; pagination changes only `listPage`. Back/forward must restore the full list state.
@@ -89,7 +97,7 @@ Both images are real browser-window captures at `2816×1576`. The prototype expo
 
 ```sh
 pnpm test:web -- apps/web/src/pages/overview
-pnpm test:api -- tests/m8-04-overview
+pnpm test:api -- tests/m8-03-workspace-overview
 pnpm test:e2e -- --pattern m12-09
 pnpm typecheck:web
 pnpm verify:flow

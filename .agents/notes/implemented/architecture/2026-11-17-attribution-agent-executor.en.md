@@ -14,7 +14,7 @@ Introduce versioned `AttributionExecutorRequest` and `AttributionExecutorRespons
 
 ## Alternatives considered
 
-Making the stub directly reuse `rule-v1` was rejected because it would hide that executor input/output and Skill content were not actually connected, so the stub has an independent engine key and cache identity. Sending the complete raw Trace to the executor was rejected because it expands privacy, payload, and cache surfaces; only the bounded m12-16 context is passed. Copying Skill content into every Run would add sensitive configuration and migration cost; immutable revisions already provide verifiable historical addressing, so runs freeze identity and resolve by that identity.
+Making the stub directly reuse `rule-v1` was rejected because it would hide that executor input/output and Skill content were not actually connected, so the stub has an independent engine key and cache identity. Sending the complete raw Trace to the executor was rejected because it expands privacy, payload, and cache surfaces; only the bounded m12-18 context is passed. Copying Skill content into every Run would add sensitive configuration and migration cost; immutable revisions already provide verifiable historical addressing, so runs freeze identity and resolve by that identity.
 
 ## Consequences
 

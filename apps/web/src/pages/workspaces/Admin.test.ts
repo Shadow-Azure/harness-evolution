@@ -377,4 +377,59 @@ describe("workspace admin page", () => {
     await flushPromises();
     expect(wrapper.find("[data-testid='members-tab']").exists()).toBe(true);
   });
+
+  it("states that a global administrator can grant themself a space-admin role", async () => {
+    installWorkspaceAdminHandlers();
+    const wrapper = await mountPage("global_admin");
+
+    expect(wrapper.get("[data-testid='spaces-tab']").text()).toContain(
+      "管理员可以把任意用户（包括自己）加入空间并任命为空间管理员",
+    );
+  });
+
+  it("renders the username and session contract without demo accounts", async () => {
+    installWorkspaceAdminHandlers();
+    const wrapper = await mountPage("space_admin", memberUser, "auth");
+
+    const text = wrapper.get("[data-testid='auth-tab']").text();
+    const contract = wrapper.get("[data-testid='auth-contract']").text();
+    for (const field of [
+      "username",
+      "displayName",
+      "mustChangePassword",
+      "accessToken",
+      "expiresIn",
+      "refresh_token",
+      "SameSite=Strict",
+      "truncated",
+    ]) {
+      expect(contract).toContain(field);
+    }
+    expect(contract).not.toContain("globalRole");
+    expect(text).not.toContain("演示账号");
+  });
+
+  it("renders the camelCase ingest body example with the workspace 422 boundary", async () => {
+    installWorkspaceAdminHandlers();
+    const wrapper = await mountPage("space_admin", memberUser, "ingest");
+
+    const example = wrapper.get("[data-testid='ingest-body-example']").text();
+    for (const field of [
+      "badCaseId",
+      "sessionId",
+      "badCaseType",
+      "objectName",
+      "objectType",
+      "title",
+      "reason",
+      "metaData",
+      "createdAt",
+    ]) {
+      expect(example).toContain(`"${field}"`);
+    }
+    expect(example).not.toContain("session_id");
+    expect(wrapper.get("[data-testid='ingest-tab']").text()).toContain(
+      "body 不接受 workspace 字段，多带会返回",
+    );
+  });
 });

@@ -4,10 +4,10 @@ English | [中文](m12-attribution-golden-shadow-gate.md)
 
 ```yaml flow
 kind: issue
-id: m12-18
+id: m12-20
 milestone: m12
 depends:
-  - m12-17
+  - m12-19
 priority: P0
 status: done
 scope:
@@ -59,7 +59,7 @@ Agent-skill attribution feeds clustering, proposals, and real patch execution, s
 
 ## Dependencies and boundary
 
-- Depends on: m12-17.
+- Depends on: m12-19.
 - Boundary: evaluate attribution-engine and skill quality and control promotion; do not train a model or automatically edit skills.
 
 ## Verification

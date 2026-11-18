@@ -7,14 +7,14 @@ const authItems = [
     badge: "已预留",
     tone: "ok",
     description:
-      "登录成功后写入 HttpOnly 会话 Cookie（SameSite=Lax）；前端启动时调用 GET /api/auth/session 恢复用户与可用空间，不把身份放进 localStorage。",
+      "登录成功后下发 HttpOnly refresh_token Cookie（SameSite=Strict，14 天）；前端启动时调用 GET /api/auth/session 恢复用户与可用空间，不把身份放进 localStorage。",
   },
   {
     title: "登录 / 登出",
     badge: "已预留",
     tone: "ok",
     description:
-      "POST /api/auth/login 校验凭据并下发 Cookie；POST /api/auth/logout 清理会话。不提供公开注册端点，账号由管理员创建或邀请。",
+      "POST /api/auth/login 校验凭据并返回 accessToken、写入 refresh Cookie；POST /api/auth/logout 撤销会话。不提供公开注册端点，账号由管理员创建或邀请。",
   },
   {
     title: "用户信息映射",
@@ -41,15 +41,22 @@ const authItems = [
 
 const contract = `GET /api/auth/session
 200 {
-  "user": { "id": "u_1024", "email": "li.wei@example.com", "name": "李伟",
-             "avatar": "李", "globalRole": "user" },
+  "user": { "id": "u_1024", "username": "li.wei", "displayName": "李伟",
+             "role": "member", "mustChangePassword": false },
   "workspaces": [
-    { "id": "ws_harness", "name": "Harness 核心研发", "role": "space_admin", "quota": 60, "used": 25 }
-  ]
+    { "id": "ws_harness", "name": "Harness 核心研发", "mark": "HC",
+      "role": "space_admin", "quota": 60, "used": 25,
+      "memberCount": 6, "spaceAdminCount": 1 }
+  ],
+  "truncated": false
 }
 
 POST /api/auth/login   { "username": "...", "password": "..." }
 200 { "accessToken": "...", "expiresIn": 1800, "user": { ... } }
+    Set-Cookie: refresh_token=<opaque>; HttpOnly; SameSite=Strict; Max-Age=1209600
+
+POST /api/auth/refresh
+200 { "accessToken": "...", "expiresIn": 1800 }
 
 POST /api/auth/logout
 204`;
@@ -103,7 +110,7 @@ const checks = [
         data-testid="auth-contract"
       >{{ contract }}</pre>
       <p class="field-help">
-        前端只需要把演示账号替换成 GET /api/auth/session 的返回值；角色判断继续复用 workspace_members，不需要改业务页面。
+        页面只依赖 GET /api/auth/session 返回的 user 与 workspaces；登录页不渲染账号列表，账号由管理员创建或通过 SSO 映射。
       </p>
     </div>
 

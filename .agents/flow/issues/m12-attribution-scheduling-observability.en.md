@@ -4,11 +4,11 @@ English | [中文](m12-attribution-scheduling-observability.md)
 
 ```yaml flow
 kind: issue
-id: m12-20
+id: m12-22
 milestone: m12
 depends:
-  - m12-17
-  - m12-18
+  - m12-19
+  - m12-20
 priority: P1
 status: done
 scope:
@@ -59,7 +59,7 @@ The existing intranet attribution process handles reported bad cases in schedule
 
 ## Dependencies and boundary
 
-- Depends on: m12-17 and m12-18.
+- Depends on: m12-19 and m12-20.
 - Boundary: productionize scheduling and observability for quality-gated attribution engines; do not alter attribution algorithms or promotion decisions.
 
 ## Verification

@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: m12-17
+id: m12-19
 milestone: m12
 depends:
-  - m12-15
-  - m12-16
+  - m12-17
+  - m12-18
 priority: P0
 status: done
 scope:
@@ -34,7 +34,7 @@ M10 已建立纯函数 `AttributionEngine`、对象 revision 缓存和候选写�
 
 ## 目标
 
-- 消费 m12-14 的版本化报告契约和 m12-16 的上下文输入，不另建并行模型。
+- 消费 m12-16 的版本化报告契约和 m12-18 的上下文输入，不另建并行模型。
 - 建立归因执行器协议，使内网 adapter 后续可独立接入。
 - 提供确定性 `agent-skill-stub-v1` 引擎，贯通现有 Runner、缓存、Probe Report 与候选关联。
 - 保持 `rule-v1` 默认值和既有公开 API 行为不变。
@@ -47,11 +47,11 @@ M10 已建立纯函数 `AttributionEngine`、对象 revision 缓存和候选写�
 
 ## 实现内容
 
-- 消费 m12-15 的 `AttributionSkillResolver`，新增 `AttributionExecutor` 协议；stub executor 不访问网络、文件或模型。
+- 消费 m12-17 的 `AttributionSkillResolver`，新增 `AttributionExecutor` 协议；stub executor 不访问网络、文件或模型。
 - 输入契约承载选定对象、Badcase、对象/上报触发坐标、最小证据清单、Skill 引用和上下文快照；缺失完整 Trace 时显式带 warning，不伪造证据。
 - 输出契约承载 schema 版本、结论、分类、置信度、说明、推导、证据引用与 warning；执行器输出先校验再投影到现有 `AttributionResult`。
 - 注册 `agent-skill-stub-v1` 引擎 key；stub 只按固定输入生成稳定输出，便于缓存、失败和后续 adapter 合同测试。
-- 按 m12-14 的执行清单计算缓存身份，确保引擎、Skill revision、模型配置和上下文快照隔离。
+- 按 m12-16 的执行清单计算缓存身份，确保引擎、Skill revision、模型配置和上下文快照隔离。
 
 ## 实施步骤
 
@@ -62,7 +62,7 @@ M10 已建立纯函数 `AttributionEngine`、对象 revision 缓存和候选写�
 
 ## 依赖与交付边界
 
-- 依赖：m12-15、m12-16
+- 依赖：m12-17、m12-18
 - 交付边界：只交付可替换接缝、版本化契约和确定性桩；不访问内网模型，不改变真实对象选择与 PotentialMatcher 语义。
 
 ## 独立验证

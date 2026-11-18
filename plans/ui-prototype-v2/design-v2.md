@@ -29,7 +29,7 @@ V2 不是重做一套设计系统。原型的目标是验证信息架构和交�
 
 ### 2.2 V2 新增但仍使用 V1 语言
 
-- 登录页是独立的轻量卡片，左侧说明、右侧账号列表；品牌色和圆角与主应用一致，没有换成深色营销页。
+- 登录页是独立的轻量卡片，左侧说明、右侧账号列表；品牌色和圆角与主应用一致，没有换成深色营销页。账号列表只用于原型演示，生产登录页保留同样的双栏信息层级但只渲染用户名/密码表单，不枚举账号。
 - 工作空间总览沿用 V1 的 `statstrip` 数字条、`card panel`、`chip`、`table.rep`、`pager` 语言；图表只用 V1 的蓝/紫两色。
 - 空间管理沿用 V1 的 `targets` 表格、`evov/modal` 弹窗、`btn` 与 `badge`；没有另造一套后台框架。
 - 新增的权限提示、只读态、空态使用 V1 的 `.waiting` / `.empty` 语气。
@@ -72,13 +72,15 @@ V2 不是重做一套设计系统。原型的目标是验证信息架构和交�
 登录页和「空间管理 → 鉴权接入」展示了最小接入契约：
 
 ```text
-GET  /api/auth/session   -> { user, workspaces[] }
-POST /api/auth/login     -> 204 + Set-Cookie: he_session=<opaque>; HttpOnly; SameSite=Lax
-POST /api/auth/logout    -> 204 + 清除 Cookie
+GET  /api/auth/session   -> 200 { user, workspaces[], truncated }
+POST /api/auth/login     -> body {username, password}；200 {accessToken, expiresIn, user}，
+                            并写 refresh_token Cookie（HttpOnly; SameSite=Strict; 14 天）
+POST /api/auth/refresh   -> 读取 refresh Cookie，200 {accessToken, expiresIn}
+POST /api/auth/logout    -> 204 + 清除 refresh Cookie
 GET  /api/auth/callback  -> SSO/OIDC 回调，按 sub/email 匹配用户
 ```
 
-前端只依赖 `GET /api/auth/session` 的 `user + workspaces` 结构；把 `v2Boot` 里的演示账号替换成该返回值即可。用户信息存储、Cookie 刷新、401 重放属于接入层，不进入页面组件。`POST /api/auth/register` 不提供。
+前端只依赖 `GET /api/auth/session` 的 `user + workspaces` 结构；登录页只渲染用户名/密码表单，不读取用户目录，也不提供演示账号选择。演示账号只存在于原型。用户信息存储、Cookie 刷新、401 重放属于接入层，不进入页面组件。`POST /api/auth/register` 不提供。
 
 ## 4. 工作空间
 
@@ -101,7 +103,7 @@ Authorization: Bearer <workspace credential>
 Content-Type: application/json
 ```
 
-请求体沿用 `bad_cases` 类型：`session_id / object_name / bad_case_type / title / detail / trigger_line / facts / created_at`。空间身份只从 URL 与服务端凭据解析，不信任 body 里的 `workspace_id`。原型在「上报接入」页展示地址、凭据、额度与请求示例，并支持复制。
+请求体使用 camelCase `BadCaseIngest` 契约：`badCaseId / sessionId / badCaseType / objectName / objectType / title / reason / createdAt` 必填，`objectVersion / badCaseAgentId / triggerLine / metaData / source / sessionSource` 可选。空间身份只从 URL 与服务端凭据解析；body 不接受 `workspaceId` / `workspace_id`，多带会返回 `422`。原型在「上报接入」页展示地址、凭据、额度与请求示例，并支持复制。
 
 ### 4.3 空间管理交互
 

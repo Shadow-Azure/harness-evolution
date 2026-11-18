@@ -100,21 +100,31 @@ def _flag(column: ColumnElement[str], value: str) -> ColumnElement[int]:
 def _case_conditions(
     *,
     workspace_id: str,
-    start: date,
-    end: date,
+    start: date | None,
+    end: date | None,
     objects: tuple[str, ...],
     bad_case_type: BadCaseTypeFilter,
 ) -> list[ColumnElement[bool]]:
-    """Build the predicate set shared by listing, counting, and aggregation."""
+    """Build the predicate set shared by listing, counting, and aggregation.
+
+    A missing ``start``/``end`` means the caller asked for every reported case
+    (the list's empty date filter), so no date predicate is added. Aggregation
+    reads always pass both boundaries.
+    """
     conditions: list[ColumnElement[bool]] = [
         bad_cases.c.workspace_id == workspace_id,
-        bad_cases.c.created_at >= day_start(start),
-        bad_cases.c.created_at < day_start(end + timedelta(days=1)),
         # Legacy catalog sync only enforces the column length, so a row can carry
         # a type outside the report contract. Excluding it here keeps
         # badCases == self + discovery and the trend total on every read path.
         bad_cases.c.bad_case_type.in_(KNOWN_BAD_CASE_TYPES),
     ]
+    if start is not None and end is not None:
+        conditions.extend(
+            [
+                bad_cases.c.created_at >= day_start(start),
+                bad_cases.c.created_at < day_start(end + timedelta(days=1)),
+            ]
+        )
     if objects:
         conditions.append(bad_cases.c.object_name.in_(objects))
     if bad_case_type != "all":
@@ -343,8 +353,8 @@ class OverviewRepository:
         self,
         *,
         workspace_id: str,
-        start: date,
-        end: date,
+        start: date | None,
+        end: date | None,
         objects: tuple[str, ...],
         bad_case_type: BadCaseTypeFilter,
     ) -> int:
@@ -372,8 +382,8 @@ class OverviewRepository:
         self,
         *,
         workspace_id: str,
-        start: date,
-        end: date,
+        start: date | None,
+        end: date | None,
         objects: tuple[str, ...],
         bad_case_type: BadCaseTypeFilter,
         page: int,

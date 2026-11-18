@@ -10,11 +10,18 @@ depends:
   - m8-04
   - m12-07
 priority: P1
-status: backlog
+status: done
 scope:
   - apps/web/src/pages/overview/**
   - apps/web/src/api/**
+  - apps/api/app/api/overview.py
+  - apps/api/app/service/overview/**
+  - apps/api/app/db/crud/overview.py
+  - apps/api/tests/m8-03-workspace-overview/**
+  - apps/api/tests/test_openapi.py
+  - packages/contracts/**
   - tests/e2e/m8-04-overview.test.mjs
+  - tests/e2e/m12-08-overview-actions-context.test.mjs
   - tests/e2e/m12-09-bad-case-list-filters.test.mjs
   - plans/**
   - docs/**
@@ -64,6 +71,7 @@ github:
 - 在 `BadCaseTable` 列表头增加日期区间、来源和类型控件；来源选项复用 overview 的 object/source 列表，不新增第二套枚举。
 - 在 `overviewUrl.ts` 增加列表专用查询状态，例如 `listFrom`、`listTo`、`listObject`、`listType`、`listPage`；命名以最终实现和既有 URL 兼容规则为准。
 - 列表查询使用独立的 `queryKey` 和数据请求，不因趋势筛选变化而隐式重置；全局筛选仍决定图表和统计。
+- 列表日期为空时必须真正不限时间：现有列表端点默认只取 90 天，因此增加可选 `allTime=true`（服务端跳过日期条件），这是本 issue 唯一的最小契约扩展；不新增端点或表。
 - 日期区间非法时不发请求，保留上一个有效结果并在控件附近显示可操作错误；清空后恢复无限制。
 - 空结果表明当前筛选无命中，并提供清除筛选；未筛选且总数为 0 时仍使用空间级空态。
 - 筛选变化重置 `listPage=1`；分页只修改 `listPage`。浏览器后退/前进恢复全部列表筛选。
@@ -89,7 +97,7 @@ github:
 
 ```sh
 pnpm test:web -- apps/web/src/pages/overview
-pnpm test:api -- tests/m8-04-overview
+pnpm test:api -- tests/m8-03-workspace-overview
 pnpm test:e2e -- --pattern m12-09
 pnpm typecheck:web
 pnpm verify:flow
