@@ -99,7 +99,7 @@ const filterWindow = computed(() => {
   if (state.value.range === "custom") {
     return { from: state.value.from, to: state.value.to };
   }
-  return summary.value?.window ?? null;
+  return summary.value?.window ?? trendQuery.data.value?.window ?? null;
 });
 const isFiltered = computed(
   () =>
