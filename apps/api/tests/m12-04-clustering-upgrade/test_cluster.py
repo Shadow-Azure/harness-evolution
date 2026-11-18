@@ -45,12 +45,12 @@ def test_similar_titles_share_a_cluster_and_unrelated_titles_stay_apart() -> Non
     assert clusters == (
         ClusterDraft(
             type="prompt",
-            description="prompt 类问题 · 检索索引读取失败",  # noqa: RUF001
+            description="prompt 类问题 · 检索索引读取失败",
             probes=("p-1", "p-2"),
         ),
         ClusterDraft(
             type="prompt",
-            description="prompt 类问题 · 工具调用超时",  # noqa: RUF001
+            description="prompt 类问题 · 工具调用超时",
             probes=("p-3",),
         ),
     )
@@ -66,7 +66,7 @@ def test_short_near_identical_titles_merge_at_the_documented_threshold() -> None
     ) == (
         ClusterDraft(
             type="error",
-            description="error 类问题 · 超时",  # noqa: RUF001
+            description="error 类问题 · 超时",
             probes=("p-1", "p-2"),
         ),
     )
@@ -115,7 +115,7 @@ def test_single_probe_yields_one_cluster() -> None:
     assert cluster_probes((_probe("p-only", "检索索引读取失败"),)) == (
         ClusterDraft(
             type="prompt",
-            description="prompt 类问题 · 检索索引读取失败",  # noqa: RUF001
+            description="prompt 类问题 · 检索索引读取失败",
             probes=("p-only",),
         ),
     )
@@ -132,12 +132,14 @@ def test_blank_titles_never_merge() -> None:
 
 def test_duplicate_probe_identity_is_collapsed() -> None:
     """Repeated input rows for one probe identity cannot duplicate cluster membership."""
-    clusters = cluster_probes((_probe("p-1", "检索索引读取失败"), _probe("p-1", "检索索引读取失败")))
+    clusters = cluster_probes(
+        (_probe("p-1", "检索索引读取失败"), _probe("p-1", "检索索引读取失败"))
+    )
 
     assert clusters == (
         ClusterDraft(
             type="prompt",
-            description="prompt 类问题 · 检索索引读取失败",  # noqa: RUF001
+            description="prompt 类问题 · 检索索引读取失败",
             probes=("p-1",),
         ),
     )
@@ -149,9 +151,9 @@ def test_long_titles_are_bounded_in_the_cluster_description() -> None:
 
     description = cluster_probes((_probe("p-1", title),))[0].description
 
-    assert description.startswith("prompt 类问题 · 检索索引读取失败")  # noqa: RUF001
+    assert description.startswith("prompt 类问题 · 检索索引读取失败")
     assert description.endswith("…")
-    assert len(description) <= len("prompt 类问题 · ") + 120  # noqa: RUF001
+    assert len(description) <= len("prompt 类问题 · ") + 120
 
 
 def test_upgrade_replaces_the_arbitrary_halving_split() -> None:
@@ -207,7 +209,7 @@ def test_large_input_clusters_by_topic_and_stays_deterministic() -> None:
                     f"{topic}{item_index:04d}",
                 ),
             )
-    random = Random(20261118)
+    random = Random(20261118)  # noqa: S311 - deterministic fixture order
     shuffled = list(probes)
     random.shuffle(shuffled)
 
@@ -231,7 +233,8 @@ def test_large_input_with_a_shared_token_does_not_chain() -> None:
     clusters = cluster_probes(probes)
 
     assert len(clusters) == len(probes)
-    assert all(cluster.probes == (probe.probe_id,) for cluster, probe in zip(clusters, probes))
+    memberships = zip(clusters, probes, strict=True)
+    assert all(cluster.probes == (probe.probe_id,) for cluster, probe in memberships)
 
 
 def test_cluster_hash_changes_when_cluster_semantics_change() -> None:

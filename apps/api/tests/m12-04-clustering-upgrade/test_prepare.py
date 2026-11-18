@@ -209,8 +209,8 @@ async def test_cluster_only_prepare_writes_title_clusters_and_audit_payload(
     clusters = await runs.list_clusters(RUN_ID)
     assert [cluster.probe_cluster_type for cluster in clusters] == ["prompt", "prompt"]
     assert [cluster.probe_cluster_description for cluster in clusters] == [
-        "prompt 类问题 · 检索索引读取失败",  # noqa: RUF001
-        "prompt 类问题 · 工具调用超时",  # noqa: RUF001
+        "prompt 类问题 · 检索索引读取失败",
+        "prompt 类问题 · 工具调用超时",
     ]
     assert [cluster.rank for cluster in clusters] == [1, 2]
     assert all(cluster.confidence == pytest.approx(0.74) for cluster in clusters)

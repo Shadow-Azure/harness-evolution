@@ -24,11 +24,14 @@ from app.db.models.jobs import JobRunRecord
 from app.errors import AppError, ErrorCode
 from app.service.evolution.attribution import AttributionRunner, AttributionRunSummary
 from app.service.evolution.cluster import (
+    CLUSTER_ALGORITHM,
+    SIMILARITY_THRESHOLD,
     TYPE_CONFIDENCE,
     TYPE_IMPACT,
     ProbeForCluster,
+    cluster_hash,
+    cluster_probes,
     cluster_severity,
-    simple_cluster,
 )
 from app.service.evolution.engine.contracts import ConfigError, RunBlocked
 from app.service.evolution.events import (
@@ -269,7 +272,7 @@ class EvolutionPrepareService:
             )
 
         if run.progress_unit < 5:
-            clusters = await self._build_clusters(run)
+            clusters, fingerprint = await self._build_clusters(run)
             stats = dict(run.stats)
             stats.update(
                 {
@@ -285,7 +288,12 @@ class EvolutionPrepareService:
                 step_index=4,
                 message=f"聚类完成：{len(clusters)} 个簇",  # noqa: RUF001
                 job_id=job.id,
-                payload={"clusters": len(clusters)},
+                payload={
+                    "clusters": len(clusters),
+                    "algorithm": CLUSTER_ALGORITHM,
+                    "similarityThreshold": SIMILARITY_THRESHOLD,
+                    "clusterHash": fingerprint,
+                },
             )
 
         workspace = None
@@ -325,19 +333,28 @@ class EvolutionPrepareService:
     async def _build_clusters(
         self,
         run: EvolutionRunRecord,
-    ) -> tuple[ProbeClusterRecord, ...]:
-        """Cluster only attributed candidates and persist scores with the cursor."""
+    ) -> tuple[tuple[ProbeClusterRecord, ...], str]:
+        """Cluster attributed candidates, persist scores, and return the audit hash."""
         rows = await self._attributions.list_clusterable_probes(run.id)
         cases_by_probe: dict[str, set[str]] = {}
         type_by_probe: dict[str, str] = {}
         for probe_id, attribute_type, bad_case_id in rows:
             type_by_probe[probe_id] = attribute_type
             cases_by_probe.setdefault(probe_id, set()).add(bad_case_id)
-        drafts = simple_cluster(
+        evidence_case_ids = tuple(dict.fromkeys(bad_case_id for _, _, bad_case_id in rows))
+        evidence = await self._attributions.load_bad_case_evidence(evidence_case_ids)
+        title_by_probe = {
+            probe_id: (
+                evidence[case_id].title if (case_id := min(probe_case_ids)) in evidence else ""
+            )
+            for probe_id, probe_case_ids in cases_by_probe.items()
+        }
+        drafts = cluster_probes(
             tuple(
                 ProbeForCluster(
                     probe_id=probe_id,
                     attribute_type=cast(Any, type_by_probe[probe_id]),
+                    text=title_by_probe.get(probe_id, ""),
                 )
                 for probe_id in dict.fromkeys(probe_id for probe_id, _, _ in rows)
                 if type_by_probe.get(probe_id) in TYPE_CONFIDENCE
@@ -379,7 +396,8 @@ class EvolutionPrepareService:
             )
             for rank, item in enumerate(ordered, start=1)
         )
-        return await self._runs.replace_prepared_clusters(run.id, writes)
+        persisted = await self._runs.replace_prepared_clusters(run.id, writes)
+        return persisted, cluster_hash(drafts)
 
     async def _prepare_workspace(
         self,
