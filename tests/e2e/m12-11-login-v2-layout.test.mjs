@@ -308,10 +308,32 @@ test("m12-11 keeps keyboard order, inline errors, and the forced-change hint", a
 
     await pressTab(page);
     assert.equal((await focused()).name, "username");
+    const inputFocus = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const wrapper = document.activeElement.closest?.(".el-input__wrapper");
+        if (!wrapper) return null;
+        return {
+          focused: wrapper.classList.contains("is-focus"),
+          shadow: getComputedStyle(wrapper).boxShadow,
+        };
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(inputFocus.result.value.focused, true);
+    assert.notEqual(inputFocus.result.value.shadow, "none");
     await pressTab(page);
     assert.equal((await focused()).name, "password");
     await pressTab(page);
     assert.equal((await focused()).testid, "login-submit");
+    const buttonFocus = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const style = getComputedStyle(document.activeElement);
+        return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+      })()`,
+      returnByValue: true,
+    });
+    assert.notEqual(buttonFocus.result.value.outlineStyle, "none");
+    assert.ok(Number.parseFloat(buttonFocus.result.value.outlineWidth) >= 1);
 
     await page.session.send("Runtime.evaluate", {
       expression: "document.querySelector('form').requestSubmit()",
