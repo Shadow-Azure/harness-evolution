@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m7-03
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/api/app/api/auth.py
   - apps/api/app/config.py
