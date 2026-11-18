@@ -60,5 +60,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## 状态与边界
 
 - 已具备：双库 API、鉴权与空间角色、凭据上报与额度、空间 Session 与总览、多归因错误详情、四步向导、七步运行与 lane DAG、证据门禁与知识触发、任务/SSE、对象配置、fixtures、跨栈 API/E2E 与文档/流程/契约门禁。
-- 未具备：真实评测与 patch、真实聚类算法、用户停用界面。
+- 未具备：真实评测与 patch、用户停用界面。
 - 明确不做：读生产密钥、无证据自动改代码、兼容窗口内删除 V1 面。
