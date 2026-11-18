@@ -642,7 +642,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 1 选择范围**
 
 - 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。
-- 版本：tag 列表；默认选中 `defaultRef`；缺省时提交由后端回退 `defaultRef`。
+- 版本：tag 列表；默认选中 `defaultRef`；缺省时提交由后端回退 `defaultRef`。tag 只是内容来源：后端读取该 tag 下 `SKILL.md` 并算出 body hash，作为 `targetRevision`；Step 1 可在条件摘要里展示 `tag → digest` 只读结果。内容读取/归一化失败显示 `TARGET_CONTENT_UNRESOLVED` 并禁用“下一步”，不得回退到 tag 猜测。
 - 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
@@ -650,15 +650,15 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 
 **Step 2 Session 关联**
 
-- 条件摘要 chip + 「修改条件」；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
-- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。
+- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` tag 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
+- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill 目标的“出现”按 body hash 匹配，tag 只用于解析内容 hash。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
 **Step 3 潜在 bad case**
 
 - 统计：时间段内 bad case 总数 / 潜在数 / 按命中原因分布（`self_report` / `after_object` / `both`）。
-- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
+- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
 - 空态：「当前策略没有命中潜在 bad case；可返回调整时间段或策略」+ 前进禁用（`409 NO_POTENTIAL_MATCHED`）。
 - 「上一步」回到 Step 2；修改策略需回 Step 1（策略影响潜在集合，前端不就地重算）。
 
