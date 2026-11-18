@@ -170,6 +170,16 @@
   .fi-sev { font-size: 10px; line-height: 1.6; border-radius: 999px; padding: 0 7px; border: 1px solid; }
   .fi-sev.error { color: #c03434; background: #fff0f0; border-color: #e05555; }
   .fi-detail { display: block; margin-top: 3px; font-size: 12px; line-height: 1.6; color: var(--text-dim); word-break: break-word; }
+  .fi-detail.markdown p { margin: 0 0 5px; }
+  .fi-detail.markdown p:last-child { margin-bottom: 0; }
+  .fi-detail.markdown ul, .fi-detail.markdown ol { margin: 2px 0 6px; padding-left: 17px; }
+  .fi-detail.markdown li { margin: 1px 0; }
+  .fi-detail.markdown li:last-child { margin-bottom: 0; }
+  .fi-detail.markdown code { padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-inset); color: var(--text); font-family: var(--mono); font-size: 10.5px; overflow-wrap: anywhere; }
+  .fi-detail.markdown pre { margin: 5px 0 7px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-inset); overflow-x: auto; }
+  .fi-detail.markdown pre code { padding: 0; border: 0; background: transparent; font-size: 10.5px; line-height: 1.55; white-space: pre; }
+  .fi-detail.markdown strong { color: var(--text); font-weight: 650; }
+  .fi-detail.markdown a { color: var(--blue); }
   .fi-facts { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
   .fi-fact { display: inline-flex; align-items: flex-start; gap: 5px; max-width: 100%; font-size: 10.5px; line-height: 1.5; background: var(--bg-inset); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
   .fi-fact-k { color: var(--text-faint); flex-shrink: 0; }
@@ -3093,7 +3103,9 @@ function FindingList({ findings, activeId, onLocate, sid }) {
               <span className="fi-id" title=${"bad case · 点击在新窗口打开（问题描述 tab）"}
                 onClick=${e => { e.stopPropagation(); window.open(caseDeepLink(f.caseId, "desc"), "_blank"); }}>${f.caseId || ""}</span>
             </span>
-            <span className="fi-detail">${f.detail}</span>
+            <span className="fi-detail markdown"
+              onClick=${e => { if (e.target.closest("a")) e.stopPropagation(); }}
+              dangerouslySetInnerHTML=${{ __html: renderMarkdown(f.detail) }} />
             ${(f.facts && f.facts.length) ? html`
               <span className="fi-facts">
                 ${f.facts.map(x => html`
