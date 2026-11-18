@@ -140,6 +140,16 @@ BadCaseTypeQuery = Annotated[
     BadCaseTypeFilter,
     Query(alias="badCaseType", description="Restrict the list to one bad-case type."),
 ]
+AllTimeQuery = Annotated[
+    bool,
+    Query(
+        alias="allTime",
+        description=(
+            "Return every reported case regardless of date; the list's empty date "
+            "filter sends this, and any from/to/range is then ignored."
+        ),
+    ),
+]
 PageNumber = Annotated[int, Query(alias="page", ge=1, description="1-based page number.")]
 PageSize = Annotated[
     int,
@@ -353,6 +363,7 @@ async def list_workspace_bad_cases(
     bad_case_type: BadCaseTypeQuery = "all",
     page: PageNumber = 1,
     page_size: PageSize = 8,
+    all_time: AllTimeQuery = False,
 ) -> OverviewBadCaseListResponse:
     """Return one filtered page of this workspace's reported cases."""
     return await overview_from(request).list_cases(
@@ -367,6 +378,7 @@ async def list_workspace_bad_cases(
             bad_case_type=bad_case_type,
             page=page,
             page_size=page_size,
+            all_time=all_time,
         ),
     )
 

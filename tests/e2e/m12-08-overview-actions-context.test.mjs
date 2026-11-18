@@ -467,7 +467,7 @@ test("m12-08 overview entry points reuse the admin page and wizard and keep filt
     const adminCookie = await login("admin", adminPassword);
     await installBrowser(page, adminCookie.cookie);
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=7&grain=day&objects=m12-08-alpha`,
+      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=7&grain=day&objects=m12-08-alpha&lobject=m12-08-alpha`,
     });
     await waitForOverviewRows(page, 4);
     const before = await waitForDocument(
@@ -502,6 +502,7 @@ test("m12-08 overview entry points reuse the admin page and wizard and keep filt
         if (search.get("range") !== "7") return null;
         if (search.get("grain") !== "day") return null;
         if (search.get("objects") !== "m12-08-alpha") return null;
+        if (search.get("lobject") !== "m12-08-alpha") return null;
         const rows = document.querySelectorAll("[data-testid='ov-case-row']");
         if (rows.length !== 4) return null;
         return { search: location.search, rows: rows.length };

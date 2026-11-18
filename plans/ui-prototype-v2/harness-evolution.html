@@ -1433,7 +1433,7 @@
       <input class="inp" id="loginPassword" type="password" value="prototype-only" aria-label="密码" style="width:100%">
       <div class="field-note">唯一全局管理员为 <b>林澈</b>（admin@harness.dev）；其余账号用于演示空间管理员、普通成员与只读成员视图。</div>
       <button class="btn primary" id="loginBtn">登录到工作空间</button>
-      <div class="login-foot">鉴权接入已预留：Cookie 会话 <code>he_session</code> · 用户信息映射 · SSO/OIDC 回调<br>接入说明见「空间管理 → 鉴权接入」</div>
+      <div class="login-foot">鉴权接入已预留：用户名登录 + refresh Cookie · 用户信息映射 · SSO/OIDC 回调<br>接入说明见「空间管理 → 鉴权接入」</div>
     </section>
   </div>
 </div>
@@ -6182,7 +6182,7 @@ function v2RenderOverview() {
         <h3>上报接入</h3>
         <div class="ov-endpoint"><span class="method">POST</span><span>/api/workspaces/${ws.id}/bad-cases</span></div>
         <div class="v2-toolbar" style="margin-top:7px"><button class="btn sm" data-v2-copy-endpoint="${ws.id}">复制地址</button>${v2CanManage(V2.wsId) ? `<button class="btn sm" data-v2-overview-ingest>查看请求示例 →</button>` : ''}</div>
-        <div class="v2-note" style="margin-top:6px">请求体沿用 <b>bad_cases</b> 表类型；空间身份由 URL 与服务端凭据确定。</div>
+        <div class="v2-note" style="margin-top:6px">请求体使用 camelCase bad case 契约；空间身份由 URL 与服务端凭据确定。</div>
       </div>
       <div class="ov-side-sec">
         <h3>当前空间</h3>
@@ -6468,20 +6468,23 @@ function v2AdminMembers() {
 }
 function v2AdminIngest() {
   const ws = v2Ws(V2.wsId);
-  const sample = casesForWorkspace(V2.wsId)[0];
-  const body = sample ? JSON.stringify({
-    session_id: sample.sessionId,
-    object_name: sample.objectName,
-    bad_case_type: sample.type,
-    title: sample.title,
-    detail: sample.detail,
-    trigger_line: sample.triggerLine,
-    facts: sample.facts,
-    created_at: sample.createdAt,
-  }, null, 2) : '{}';
+  const body = JSON.stringify({
+    badCaseId: "BC-HC-021",
+    sessionId: "cb819c5b-286f-4eab-a681-4ba5414b844d",
+    badCaseType: "self",
+    objectName: "deep-research",
+    objectType: "skill",
+    objectVersion: "v2.4.0",
+    title: "输出缺少来源校验",
+    reason: "12 条结论中有 5 条没有附带来源。",
+    triggerLine: 91,
+    metaData: { file: "skills/deep-research/SKILL.md", line: 91 },
+    source: "agent-runtime",
+    createdAt: "2026-11-09T15:58:00+08:00",
+  }, null, 2);
   const endpoint = `/api/workspaces/${ws.id}/bad-cases`;
   const token = ws.ingestToken;
-  return `<div class="admin-head"><div><h2>bad case 上报接入</h2><div class="sub">每个空间有独立的上报地址与凭据；请求体沿用 bad_cases 表类型，空间身份不信任 body。</div></div><div class="actions"><button class="btn" data-v2-rotate-token="${ws.id}">重新生成凭据</button></div></div>
+  return `<div class="admin-head"><div><h2>bad case 上报接入</h2><div class="sub">每个空间有独立的上报地址与凭据；请求体使用 camelCase bad case 契约，空间身份只从 URL 与服务端凭据解析。</div></div><div class="actions"><button class="btn" data-v2-rotate-token="${ws.id}">重新生成凭据</button></div></div>
     <div class="ingest-card">
       <h3>上报地址 <span class="v2-badge ok">已启用</span></h3>
       <div class="ingest-endpoint"><span class="method">POST</span><span class="url">${endpoint}</span><button class="btn sm" data-v2-copy="${endpoint}">复制</button></div>
@@ -6501,7 +6504,7 @@ function v2AdminIngest() {
       </div>
     </div>
     <div class="ingest-card">
-      <h3>请求体示例（bad_cases 类型）</h3>
+      <h3>请求体示例（bad case 契约）</h3>
       <pre class="codebox">${v2Esc(body)}</pre>
     </div>
     <div class="ingest-card">
@@ -6510,10 +6513,10 @@ function v2AdminIngest() {
     </div>`;
 }
 function v2AdminAuth() {
-  return `<div class="admin-head"><div><h2>鉴权接入（预留）</h2><div class="sub">当前原型使用内置演示账号；生产接入只需替换身份提供方，业务权限仍由本服务的成员关系判定。</div></div><div class="actions">${v2Badge('注册未开放', 'warn')}</div></div>
+  return `<div class="admin-head"><div><h2>鉴权接入（预留）</h2><div class="sub">原型使用内置演示账号；生产登录使用用户名与密码，账号由管理员创建，不提供注册入口。</div></div><div class="actions">${v2Badge('注册未开放', 'warn')}</div></div>
     <div class="auth-list">
-      <div class="auth-item"><span class="ai-ico">1</span><div class="ai-main"><b>Cookie 会话</b><div class="ai-desc">登录成功后写入 HttpOnly <code>he_session</code>（SameSite=Lax）；前端启动时调用 <code>GET /api/auth/session</code> 恢复用户与可用空间，不把身份放进 localStorage。</div></div><span class="v2-badge ok">已预留</span></div>
-      <div class="auth-item"><span class="ai-ico">2</span><div class="ai-main"><b>登录 / 登出</b><div class="ai-desc"><code>POST /api/auth/login</code> 校验凭据并下发 Cookie；<code>POST /api/auth/logout</code> 清理会话。不提供公开注册端点，账号由管理员创建或邀请。</div></div><span class="v2-badge ok">已预留</span></div>
+      <div class="auth-item"><span class="ai-ico">1</span><div class="ai-main"><b>Cookie 会话</b><div class="ai-desc">登录成功后返回 accessToken 并写入 HttpOnly <code>refresh_token</code> Cookie（SameSite=Strict，14 天）；前端启动时调用 <code>GET /api/auth/session</code> 恢复用户与可用空间，不把身份放进 localStorage。</div></div><span class="v2-badge ok">已预留</span></div>
+      <div class="auth-item"><span class="ai-ico">2</span><div class="ai-main"><b>登录 / 登出</b><div class="ai-desc"><code>POST /api/auth/login</code> 校验用户名与密码并返回 accessToken、写入 refresh Cookie；<code>POST /api/auth/logout</code> 撤销 refresh 会话。不提供公开注册端点，账号由管理员创建或邀请。</div></div><span class="v2-badge ok">已预留</span></div>
       <div class="auth-item"><span class="ai-ico">3</span><div class="ai-main"><b>用户信息映射</b><div class="ai-desc">外部身份只需映射 <code>id / email / name / avatar</code>，再关联 <code>workspace_members</code>；全局管理员唯一，普通用户的角色由成员关系决定。</div></div><span class="v2-badge ok">已预留</span></div>
       <div class="auth-item"><span class="ai-ico">4</span><div class="ai-main"><b>SSO / OIDC 回调</b><div class="ai-desc"><code>GET /api/auth/callback</code> 接收 IdP 回调，按 <code>sub</code> 或 <code>email</code> 匹配用户；未匹配时拒绝登录，不自动创建账号（不放开注册）。</div></div><span class="v2-badge">待接入</span></div>
       <div class="auth-item"><span class="ai-ico">5</span><div class="ai-main"><b>空间授权</b><div class="ai-desc">所有读写在服务端按 <code>workspace_id + user_id</code> 校验角色；前端隐藏入口只是体验优化，不能替代服务端校验。</div></div><span class="v2-badge ok">已预留</span></div>
@@ -6522,21 +6525,28 @@ function v2AdminAuth() {
       <h3>接入契约（替换身份提供方即可）</h3>
       <pre class="codebox">GET /api/auth/session
 200 {
-  "user": { "id": "u_1024", "email": "li.wei@example.com", "name": "李伟",
-             "avatar": "李", "global_role": "user" },
+  "user": { "id": "u_1024", "username": "li.wei", "displayName": "李伟",
+             "role": "member", "mustChangePassword": false },
   "workspaces": [
-    { "id": "ws_harness", "name": "Harness 核心研发", "role": "space_admin", "quota": 60, "used": 25 }
-  ]
+    { "id": "ws_harness", "name": "Harness 核心研发", "mark": "HC",
+      "role": "space_admin", "quota": 60, "used": 25,
+      "memberCount": 6, "spaceAdminCount": 1 }
+  ],
+  "truncated": false
 }
 
-POST /api/auth/login   { "email": "...", "password": "..." }
-204  Set-Cookie: he_session=&lt;opaque&gt;; HttpOnly; SameSite=Lax; Path=/
+POST /api/auth/login   { "username": "...", "password": "..." }
+200 { "accessToken": "...", "expiresIn": 1800, "user": { ... } }
+    Set-Cookie: refresh_token=&lt;opaque&gt;; HttpOnly; SameSite=Strict; Max-Age=1209600
+
+POST /api/auth/refresh
+200 { "accessToken": "...", "expiresIn": 1800 }
 
 POST /api/auth/logout
-204  Set-Cookie: he_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/</pre>
-      <div class="v2-note">前端只需要把 <code>v2Boot</code> 里的演示账号替换成 <code>GET /api/auth/session</code> 的返回值；角色判断继续复用 <code>workspace_members</code>，不需要改业务页面。</div>
+204</pre>
+      <div class="v2-note">页面只依赖 <code>GET /api/auth/session</code> 的 <code>user</code> 与 <code>workspaces</code>；演示账号只存在于原型，生产登录页不渲染账号列表。</div>
     </div>
-    <div class="v2-note" style="margin-top:12px">接入检查：Cookie 会话 ✓ · 用户映射 ✓ · 注册关闭 ✓ · SSO/OIDC 回调待接入。接入后本页的演示账号切换将下线。</div>`;
+    <div class="v2-note" style="margin-top:12px">接入检查：Cookie 会话 ✓ · 用户映射 ✓ · 注册关闭 ✓ · SSO/OIDC 回调待接入。演示账号切换不进入生产。</div>`;
 }
 
 /* ── 弹窗 ── */

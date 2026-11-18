@@ -7644,6 +7644,8 @@ export interface operations {
                 page?: number;
                 /** @description Page size; defaults to 8. */
                 pageSize?: number;
+                /** @description Return every reported case regardless of date; the list's empty date filter sends this, and any from/to/range is then ignored. */
+                allTime?: boolean;
             };
             header?: never;
             path: {

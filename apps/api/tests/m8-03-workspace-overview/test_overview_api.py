@@ -861,6 +861,58 @@ async def test_list_returns_the_full_window_with_labels_and_triggers(
     assert discovery["badCaseTypeLabel"] == DISCOVERY_LABEL
 
 
+async def test_list_all_time_returns_every_reported_case(
+    overview: OverviewEnvironment,
+) -> None:
+    """The empty-date list filter requests all rows and still honours type/object filters."""
+    environment = overview
+
+    response = await _get(
+        environment,
+        environment.workspace_a,
+        "bad-cases",
+        environment.alice,
+        params=[("allTime", "true")],
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 7
+    assert [item["badCaseId"] for item in payload["items"]][-1] == ("a-deep-self-outside-7")
+
+    filtered = await _get(
+        environment,
+        environment.workspace_a,
+        "bad-cases",
+        environment.alice,
+        params=[
+            ("allTime", "true"),
+            ("badCaseType", "self"),
+            ("objects", "deep-research"),
+        ],
+    )
+
+    assert filtered.status_code == 200
+    filtered_payload = filtered.json()
+    assert filtered_payload["total"] == 3
+    assert {item["badCaseId"] for item in filtered_payload["items"]} == {
+        "a-deep-self-1",
+        "a-deep-self-5",
+        "a-deep-self-outside-7",
+    }
+
+    # allTime is authoritative even when a stale window accompanies it.
+    windowed = await _get(
+        environment,
+        environment.workspace_a,
+        "bad-cases",
+        environment.alice,
+        params=[*_in_window(environment), ("allTime", "true")],
+    )
+    assert windowed.status_code == 200
+    assert windowed.json()["total"] == 7
+
+
 async def test_list_projects_trigger_line_without_faking_missing_rows(
     overview: OverviewEnvironment,
 ) -> None:

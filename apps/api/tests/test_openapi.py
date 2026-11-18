@@ -580,12 +580,15 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "from",
         "to",
         "range",
+        "allTime",
         "objects",
         "badCaseType",
         "page",
         "pageSize",
     }
     assert list_parameters["page"]["schema"]["default"] == 1
+    assert list_parameters["allTime"]["schema"]["default"] is False
+    assert list_parameters["allTime"]["schema"]["type"] == "boolean"
     assert list_parameters["range"]["schema"]["enum"] == [7, 30, 90]
     assert list_parameters["pageSize"]["schema"]["default"] == 8
     assert list_parameters["pageSize"]["schema"]["maximum"] == 50

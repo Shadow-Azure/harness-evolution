@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   bucketWindow,
   DEFAULT_OVERVIEW_STATE,
+  overviewListWindow,
   overviewQuery,
   overviewWindowFilters,
   parseOverviewQuery,
@@ -38,6 +39,79 @@ describe("overview URL model", () => {
     expect(parsed.state.page).toBe(3);
     expect(parsed.state.type).toBe("discovery");
     expect(parsed.sanitized).toBe(false);
+  });
+
+  it("round-trips the independent list date, source and type filters", () => {
+    const parsed = parseOverviewQuery({
+      tab: "cases",
+      range: "7",
+      grain: "day",
+      objects: "deep-research",
+      type: "discovery",
+      lfrom: "2026-10-01",
+      lto: "2026-10-31",
+      lobject: " workflow ",
+      page: "4",
+    });
+
+    expect(parsed.state.listFrom).toBe("2026-10-01");
+    expect(parsed.state.listTo).toBe("2026-10-31");
+    expect(parsed.state.listObject).toBe("workflow");
+    expect(parsed.state.type).toBe("discovery");
+    expect(parsed.state.page).toBe(4);
+    expect(overviewQuery(parsed.state)).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "day",
+      objects: "deep-research",
+      type: "discovery",
+      lfrom: "2026-10-01",
+      lto: "2026-10-31",
+      lobject: "workflow",
+      page: "4",
+    });
+    expect(parsed.sanitized).toBe(true);
+    expect(overviewListWindow(parsed.state)).toEqual({
+      from: "2026-10-01",
+      to: "2026-10-31",
+    });
+  });
+
+  it("drops an incomplete or inverted list window and keeps the list unlimited", () => {
+    const incomplete = parseOverviewQuery({
+      lfrom: "2026-10-01",
+      lto: "",
+    });
+    expect(incomplete.state.listFrom).toBe("");
+    expect(overviewListWindow(incomplete.state)).toBeNull();
+    expect(overviewQuery(incomplete.state)).toEqual({
+      tab: "cases",
+      range: "90",
+      grain: "week",
+    });
+
+    const inverted = parseOverviewQuery({
+      lfrom: "2026-10-31",
+      lto: "2026-10-01",
+    });
+    expect(inverted.state.listFrom).toBe("");
+    expect(inverted.state.listTo).toBe("");
+    expect(overviewListWindow(inverted.state)).toBeNull();
+  });
+
+  it("keeps legacy page/type keys as the list's page and type", () => {
+    const parsed = parseOverviewQuery({ page: "2", type: "self" });
+
+    expect(parsed.state.page).toBe(2);
+    expect(parsed.state.type).toBe("self");
+    expect(parsed.state.listObject).toBe("");
+    expect(overviewQuery(parsed.state)).toEqual({
+      tab: "cases",
+      range: "90",
+      grain: "week",
+      type: "self",
+      page: "2",
+    });
   });
 
   it("canonicalizes object whitespace and duplicates", () => {
