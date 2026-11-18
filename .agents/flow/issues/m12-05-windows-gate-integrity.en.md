@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m6-05
 priority: P1
-status: in-progress
+status: done
 scope:
   - scripts/**
   - plans/**
