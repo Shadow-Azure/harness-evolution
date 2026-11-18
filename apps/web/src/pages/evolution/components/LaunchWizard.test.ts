@@ -157,6 +157,25 @@ function useHandlers(options: HandlerOptions = {}): void {
         defaultRef: "v2.0.0",
       }),
     ),
+    http.get(`${apiBase}/targets/tgt-1/attribution-skill`, () =>
+      HttpResponse.json({
+        id: "revision-platform-1",
+        skillId: "skill-platform",
+        workspaceId: null,
+        skillKey: "platform-default",
+        displayName: "平台默认归因",
+        description: "固定规则归因",
+        builtIn: true,
+        enabled: true,
+        revision: 1,
+        content: { engine: "rule-v1" },
+        contentHash: "a".repeat(64),
+        executorType: "builtin_rule",
+        outputSchemaVersion: "probe-report/v2",
+        status: "published",
+        source: "platform",
+      }),
+    ),
     http.get(`/api${ws}/bad-cases/case-focus`, () =>
       HttpResponse.json(focusBadCase),
     ),
@@ -419,6 +438,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(stats).toContain("2");
     expect(stats).toContain("复用缓存");
     expect(stats).toContain("3");
+    expect(wrapper.get("[data-testid='wizard-effective-skill']").text()).toContain(
+      "platform-default@r1",
+    );
   });
 
   it("re-requests the attribution preview when the cache switch changes", async () => {

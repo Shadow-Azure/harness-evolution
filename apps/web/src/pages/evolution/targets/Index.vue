@@ -18,6 +18,7 @@ import { workspacePath } from "../../../router/workspace";
 import { useAuthStore } from "../../../stores/auth";
 import TargetTable from "./components/TargetTable.vue";
 import TargetFormDialog from "./components/TargetFormDialog.vue";
+import AttributionSkillPanel from "./components/AttributionSkillPanel.vue";
 
 defineOptions({ name: "TargetConfigPage" });
 
@@ -190,6 +191,12 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
       @edit="openEdit"
       @retry="refetch"
       @toggle="toggleTarget"
+    />
+
+    <AttributionSkillPanel
+      :can-write="canWrite"
+      :targets="targets"
+      :workspace-id="workspaceId"
     />
 
     <TargetFormDialog

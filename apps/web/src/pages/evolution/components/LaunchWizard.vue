@@ -13,6 +13,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router";
 
 import { getBadCase } from "../../../api/badCases";
+import { getTargetAttributionSkill } from "../../../api/attributionSkills";
 import { getTargetCatalog } from "../../../api/catalogs";
 import {
   previewAttribution,
@@ -131,6 +132,14 @@ const versions = useEvolutionTargetVersions(
   computed(() => props.wid),
   computed(() => (step.value === 1 ? targetId.value : null)),
 );
+const effectiveSkill = useQuery({
+  queryKey: computed(() =>
+    queryKeys.targetAttributionSkill(props.wid, targetId.value ?? "empty"),
+  ),
+  queryFn: () => getTargetAttributionSkill(props.wid, targetId.value as string),
+  enabled: computed(() => Boolean(targetId.value)),
+  retry: false,
+});
 const focusCase = useQuery({
   queryKey: computed(() =>
     queryKeys.badCase(props.wid, props.focusCaseId ?? "none"),
@@ -1359,6 +1368,20 @@ const reasonEntries = computed(() => {
             </div>
 
             <div
+              v-if="effectiveSkill.data.value"
+              class="cache-option"
+              data-testid="wizard-effective-skill"
+            >
+              <div>
+                <b>归因 Skill · {{ effectiveSkill.data.value.displayName }}</b>
+                <div class="f-note">
+                  {{ effectiveSkill.data.value.source === "target" ? "对象覆盖" : effectiveSkill.data.value.source === "workspace" ? "空间默认" : "平台默认" }} · {{ effectiveSkill.data.value.skillKey }}@r{{ effectiveSkill.data.value.revision }} · {{ effectiveSkill.data.value.executorType }}
+                </div>
+              </div>
+              <span class="v2-badge ok">Run 将固化此 revision</span>
+            </div>
+
+            <div
               class="preview-stats"
               data-testid="wizard-attribution-stats"
             >
@@ -1384,7 +1407,7 @@ const reasonEntries = computed(() => {
               启动后先生成 {{ attributionSummary?.potential ?? 0 }} 条对象级归因，再进入迭代优化。可归因 {{ attributionSummary?.potential ?? 0 }} 个 · 非该对象 {{ attributionSummary?.nonTargetKnown ?? 0 }} 个 · 缓存命中 {{ attributionSummary?.reused ?? 0 }} 个。
             </div>
             <p class="f-note">
-              缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。
+              缓存键包含工作空间、bad case、对象身份/版本、策略版本、归因 Skill revision 与引擎；修改绑定后只复用新清单完全相同的结果。「非该对象问题」不会修改 bad case 本身。
             </p>
 
             <p

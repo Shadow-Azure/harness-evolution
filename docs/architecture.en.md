@@ -28,7 +28,7 @@ Only health, login, refresh, the IdP callback, ticket SSE, and credential ingest
 
 Web restores `auth/session` before mounting routes; tokens and users stay in memory, concurrent 401s share one refresh, and logout clears the query cache. Pages live under `/workspaces/:wid` and scope every resource by `wid` and member role; `/`, `/sessions/**`, `/errors`, and `/evolution/**` redirect to the remembered visible workspace, the only visible workspace, or the chooser.
 
-The session page uses a 360px list plus overview, defaults to the latest 10 and searches on Enter; error details group by case with `case/tab/at` deep links; target configuration and the four-step wizard are workspace-scoped, run details use seven steps, and lifespan recovers jobs and `sync_lock` before scheduling.
+The session page uses a 360px list plus overview, defaults to 10 and searches on Enter; error details group by case with `case/tab/at` deep links; target configuration binds Skills, the wizard confirms the revision, and run details show the frozen snapshot; lifespan recovers jobs and `sync_lock` before scheduling.
 
 ## Data-layer strategy
 

@@ -278,6 +278,12 @@ function detail(
       pushedAt: "2026-10-27T12:00:00+08:00",
       pushError: null,
     },
+    attributionSkill: {
+      key: "root-cause-agent",
+      revision: 2,
+      contentHash: "b".repeat(64),
+      engine: "agent-skill-stub-v1",
+    },
     lastEventSeq: 0,
     steps: detailSteps(statuses),
     ...overrides,
@@ -424,6 +430,9 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).toContain("evo/evo-full-1");
     expect(wrapper.text()).toContain("默认策略");
     expect(wrapper.text()).toContain("潜在 bad case");
+    expect(wrapper.get("[data-testid='run-attribution-skill']").text()).toContain(
+      "root-cause-agent@r2",
+    );
     expect(wrapper.find("[data-testid='evolution-cluster-preview']").exists()).toBe(
       false,
     );

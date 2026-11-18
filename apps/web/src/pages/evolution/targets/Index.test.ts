@@ -11,6 +11,7 @@ import type { Component } from "vue";
 import {
   afterAll,
   afterEach,
+  beforeEach,
   beforeAll,
   describe,
   expect,
@@ -44,6 +45,38 @@ const target: EvolutionTarget = {
   validationProjectId: "val-deep-research",
   testProjectId: "test-deep-research",
   enabled: true,
+};
+
+const platformSkill = {
+  id: "revision-platform-1",
+  skillId: "skill-platform",
+  workspaceId: null,
+  skillKey: "platform-default",
+  displayName: "平台默认归因",
+  description: "固定规则归因",
+  builtIn: true,
+  enabled: true,
+  revision: 1,
+  content: { engine: "rule-v1" },
+  contentHash: "a".repeat(64),
+  executorType: "builtin_rule",
+  outputSchemaVersion: "probe-report/v2",
+  status: "published",
+};
+
+const workspaceSkill = {
+  ...platformSkill,
+  id: "revision-workspace-2",
+  skillId: "skill-workspace",
+  workspaceId,
+  skillKey: "root-cause-agent",
+  displayName: "根因 Agent",
+  description: "使用完整 Session 上下文归因",
+  builtIn: false,
+  revision: 2,
+  content: { instructions: "analyze evidence" },
+  contentHash: "b".repeat(64),
+  executorType: "agent_stub",
 };
 
 async function mountPage(
@@ -86,6 +119,16 @@ async function mountPage(
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeEach(() => {
+  server.use(
+    http.get(`/api/workspaces/${workspaceId}/evolution/attribution-skills`, () =>
+      HttpResponse.json({ items: [platformSkill, workspaceSkill] }),
+    ),
+    http.get(`${base}/:targetId/attribution-skill`, () =>
+      HttpResponse.json({ ...platformSkill, source: "platform" }),
+    ),
+  );
+});
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   server.resetHandlers();
@@ -168,6 +211,50 @@ describe("target configuration page", () => {
     expect(wrapper.text()).toContain("deep-research");
     expect(wrapper.find(".target-create").exists()).toBe(false);
     expect(wrapper.find(".row-actions").exists()).toBe(false);
+    expect(wrapper.text()).toContain("平台默认归因");
+    expect(wrapper.text()).toContain("仅空间管理员可修改绑定");
+  });
+
+  it("binds an older published revision and exposes its target source", async () => {
+    let selectedRevision = "";
+    server.use(
+      http.get(base, () => HttpResponse.json({ items: [target] })),
+      http.put(`${base}/:targetId/attribution-skill`, async ({ request }) => {
+        selectedRevision = String(
+          (await request.json() as { skillRevisionId: string }).skillRevisionId,
+        );
+        return HttpResponse.json({ ...workspaceSkill, source: "target" });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get("[data-testid='skill-revision-select']").setValue(workspaceSkill.id);
+    await wrapper.get(".bind-skill").trigger("click");
+    await flushPromises();
+
+    expect(selectedRevision).toBe(workspaceSkill.id);
+    expect(wrapper.get(".source-chip").text()).toBe("对象覆盖");
+    expect(wrapper.text()).toContain("root-cause-agent@r2");
+  });
+
+  it("unbinds a target override and falls back to the workspace default", async () => {
+    let removed = false;
+    server.use(
+      http.get(base, () => HttpResponse.json({ items: [target] })),
+      http.get(`${base}/:targetId/attribution-skill`, () =>
+        HttpResponse.json({ ...workspaceSkill, source: "target" }),
+      ),
+      http.delete(`${base}/:targetId/attribution-skill`, () => {
+        removed = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".restore-default").trigger("click");
+    await flushPromises();
+
+    expect(removed).toBe(true);
   });
 
   it("retries a failed target query without replacing the page", async () => {

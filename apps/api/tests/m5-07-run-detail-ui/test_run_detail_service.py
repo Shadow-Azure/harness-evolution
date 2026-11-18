@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from app.db.models.evolution import EvolutionRunRecord, EvolutionRunSummaryRecord
@@ -130,6 +130,33 @@ async def test_detail_returns_workspace_and_backend_owned_step_states() -> None:
     assert detail.steps[5].detail == "第 1/2 轮"
     assert detail.steps[6].clickable is False
     assert detail.last_event_seq == 0
+
+
+async def test_detail_returns_the_immutable_attribution_skill_snapshot() -> None:
+    """Historical run detail does not resolve the target's current binding."""
+    run = replace(
+        _run(progress_unit=0),
+        attribution_engine="agent-skill-stub-v1",
+        attribution_skill_key="root-cause-agent",
+        attribution_skill_revision=2,
+        attribution_skill_content_hash="b" * 64,
+    )
+    summary = EvolutionRunSummaryRecord(
+        run=run,
+        cluster_count=0,
+        accepted_count=0,
+        final=None,
+        created_by_name="Ada",
+    )
+
+    detail = await EvolutionRunService(FakeRunStore(summary)).detail("run-detail")
+
+    assert detail is not None
+    assert detail.attribution_skill is not None
+    assert detail.attribution_skill.key == "root-cause-agent"
+    assert detail.attribution_skill.revision == 2
+    assert detail.attribution_skill.content_hash == "b" * 64
+    assert detail.attribution_skill.engine == "agent-skill-stub-v1"
 
 
 async def test_detail_reports_blocked_retry_and_evaluation_context() -> None:

@@ -2258,6 +2258,36 @@
         "title": "EvolutionRunAttributeStats",
         "type": "object"
       },
+      "EvolutionRunAttributionSkill": {
+        "additionalProperties": false,
+        "description": "Immutable attribution Skill identity frozen when the run was launched.",
+        "properties": {
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "revision",
+          "contentHash",
+          "engine"
+        ],
+        "title": "EvolutionRunAttributionSkill",
+        "type": "object"
+      },
       "EvolutionRunCard": {
         "additionalProperties": false,
         "description": "One complete run-list card contract.",
@@ -2368,6 +2398,16 @@
         "additionalProperties": false,
         "description": "Complete shell consumed by the seven-step run-detail page.",
         "properties": {
+          "attributionSkill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvolutionRunAttributionSkill"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "blockedStage": {
             "anyOf": [
               {
@@ -2530,7 +2570,8 @@
           "evalStatus",
           "workspace",
           "lastEventSeq",
-          "steps"
+          "steps",
+          "attributionSkill"
         ],
         "title": "EvolutionRunDetail",
         "type": "object"

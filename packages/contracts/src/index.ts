@@ -159,6 +159,21 @@ export type EvolutionTargetList = components["schemas"]["EvolutionTargetList"];
 export type EvolutionTargetVersions =
   components["schemas"]["EvolutionTargetVersions"];
 
+/** One immutable Attribution Skill revision visible to a workspace. */
+export type AttributionSkillRevision =
+  components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+
+/** Platform and workspace Attribution Skill revisions visible to a workspace. */
+export type AttributionSkillList = components["schemas"]["AttributionSkillList"];
+
+/** Effective target Skill plus target/workspace/platform precedence source. */
+export type EffectiveAttributionSkill =
+  components["schemas"]["EffectiveAttributionSkill"];
+
+/** Request selecting one immutable Attribution Skill revision. */
+export type AttributionSkillBindingWrite =
+  components["schemas"]["AttributionSkillBindingWrite"];
+
 /** One enabled target exposed to the wizard catalog. */
 export type CatalogTarget = components["schemas"]["CatalogTarget"];
 

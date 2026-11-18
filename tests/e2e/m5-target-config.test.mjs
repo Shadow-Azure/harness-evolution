@@ -316,7 +316,7 @@ before(async () => {
 
 after(cleanup);
 
-test("m5 target configuration supports admin CRUD, member read-only, validation and target entry", async () => {
+test("m5 target configuration and attribution-skill binding support admin CRUD and member read-only", async () => {
   const admin = await authenticate("admin", initialPassword, replacementPassword);
   const member = await apiJson("/api/users", admin.accessToken, {
     expectedStatus: 201,
@@ -618,6 +618,73 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       /验证集.*val-m5-e2e.*测试集.*test-m5-e2e/s,
     );
 
+    const skillRevisions = await apiJson(
+      `/api/workspaces/${defaultWorkspace.id}/evolution/attribution-skills`,
+      admin.accessToken,
+    );
+    const bindableRevision = skillRevisions.items.find(
+      (item) =>
+        item.enabled &&
+        item.status === "published" &&
+        item.outputSchemaVersion === "probe-report/v2" &&
+        item.executorType !== "agent",
+    );
+    assert.ok(bindableRevision);
+    await evaluate(
+      page,
+      `(() => {
+        const select = document.querySelector("[data-testid='skill-target-select']");
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLSelectElement.prototype,
+          "value",
+        ).set;
+        setter.call(select, ${JSON.stringify(created.id)});
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='skill-target-select']")?.value === ${JSON.stringify(created.id)} &&
+        Boolean(document.querySelector("[data-testid='skill-revision-select']"))`,
+      "created target attribution skill",
+    );
+    await evaluate(
+      page,
+      `(() => {
+        const select = document.querySelector("[data-testid='skill-revision-select']");
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLSelectElement.prototype,
+          "value",
+        ).set;
+        setter.call(select, ${JSON.stringify(bindableRevision.id)});
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      })()`,
+    );
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='skill-revision-select']")?.value === ${JSON.stringify(bindableRevision.id)} &&
+        !document.querySelector(".bind-skill")?.disabled`,
+      "bindable attribution skill selected",
+    );
+    await evaluate(page, `document.querySelector(".bind-skill").click()`);
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".source-chip")?.textContent.trim() === "对象覆盖"`,
+      "target attribution skill bound",
+    );
+    const boundSkill = await apiJson(
+      `/api/workspaces/${defaultWorkspace.id}/evolution/targets/${created.id}/attribution-skill`,
+      admin.accessToken,
+    );
+    assert.equal(boundSkill.id, bindableRevision.id);
+    assert.equal(boundSkill.source, "target");
+    await evaluate(page, `document.querySelector(".restore-default").click()`);
+    await waitForDocument(
+      page.session,
+      `document.querySelector(".source-chip")?.textContent.trim() !== "对象覆盖"`,
+      "target attribution skill default restored",
+    );
+
     await evaluate(
       page,
       `(() => {
@@ -802,12 +869,15 @@ test("m5 target configuration supports admin CRUD, member read-only, validation 
       page.session,
       `document.querySelector("h1")?.textContent === "进化对象配置" &&
         !document.querySelector(".target-create") &&
-        Boolean(document.querySelector(".target-table tbody tr"))`,
+        Boolean(document.querySelector(".target-table tbody tr")) &&
+        Boolean(document.querySelector(".read-only-note"))`,
       "member target page",
     );
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-create"))`), false);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".target-table tbody tr"))`), true);
     assert.equal(await evaluate(page, `Boolean(document.querySelector(".edit-target, .delete-target, .toggle-target"))`), false);
+    assert.equal(await evaluate(page, `Boolean(document.querySelector(".read-only-note"))`), true);
+    assert.equal(await evaluate(page, `Boolean(document.querySelector(".binding-controls"))`), false);
 
     await page.session.send("Emulation.setDeviceMetricsOverride", {
       width: 390,

@@ -2650,6 +2650,20 @@ export interface components {
             prompt: number;
         };
         /**
+         * EvolutionRunAttributionSkill
+         * @description Immutable attribution Skill identity frozen when the run was launched.
+         */
+        EvolutionRunAttributionSkill: {
+            /** Contenthash */
+            contentHash: string;
+            /** Engine */
+            engine: string;
+            /** Key */
+            key: string;
+            /** Revision */
+            revision: number;
+        };
+        /**
          * EvolutionRunCard
          * @description One complete run-list card contract.
          */
@@ -2689,6 +2703,7 @@ export interface components {
          * @description Complete shell consumed by the seven-step run-detail page.
          */
         EvolutionRunDetail: {
+            attributionSkill: components["schemas"]["EvolutionRunAttributionSkill"] | null;
             /** Blockedstage */
             blockedStage: ("patch" | "push" | "eval" | "attribution") | null;
             /**

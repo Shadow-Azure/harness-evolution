@@ -84,6 +84,10 @@ export const queryKeys = {
     ["ws", workspaceId, "evolution", "targets"] as const,
   evolutionTargetVersions: (workspaceId: string, targetId: string) =>
     ["ws", workspaceId, "evolution", "targets", targetId, "versions"] as const,
+  attributionSkills: (workspaceId: string) =>
+    ["ws", workspaceId, "evolution", "attribution-skills"] as const,
+  targetAttributionSkill: (workspaceId: string, targetId: string) =>
+    ["ws", workspaceId, "evolution", "targets", targetId, "attribution-skill"] as const,
   catalogs: (workspaceId: string) =>
     ["ws", workspaceId, "catalogs"] as const,
   overview: (workspaceId: string) =>

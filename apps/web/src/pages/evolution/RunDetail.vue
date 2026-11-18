@@ -619,6 +619,23 @@ function clearMissingClusterFocus(): void {
                 {{ run.stats.reused }}
               </div>
             </div>
+            <div
+              v-if="run.attributionSkill"
+              class="kv"
+              data-testid="run-attribution-skill"
+            >
+              <div class="k">
+                归因 Skill 快照
+              </div>
+              <div class="v">
+                <span class="mono">{{ run.attributionSkill.key }}@r{{ run.attributionSkill.revision }}</span>
+                <span class="muted"> · {{ run.attributionSkill.engine }}</span>
+                <span
+                  class="mono muted"
+                  :title="run.attributionSkill.contentHash"
+                > · sha256:{{ run.attributionSkill.contentHash.slice(0, 12) }}</span>
+              </div>
+            </div>
           </div>
           <p class="cb-label">
             已归因结论的归因类型分布（{{ analyzedCount }} 条）

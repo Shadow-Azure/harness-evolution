@@ -28,7 +28,7 @@ Web ──► middleware ──► public endpoints | bearer APIs | ticket-authe
 
 Web 先恢复 `auth/session` 再挂路由；token 与用户只留内存，401 单飞刷新，退出清 query cache。页面挂在 `/workspaces/:wid` 下，按 `wid` 与成员角色收口；`/`、`/sessions/**`、`/errors`、`/evolution/**` 重定向到记住的可见空间、唯一空间或选择页。
 
-Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情按 case 分组，深链为 `case/tab/at`；对象配置与四步向导按空间，运行详情统一七步；lifespan 先恢复任务与 sync_lock 再调度。
+Session 页 360px 列表+概览，默认 10 条、回车查询；错误详情按 case 分组，深链为 `case/tab/at`；对象配置含 Skill 绑定，向导确认 revision，Run 详情展示固化快照；lifespan 恢复任务、sync_lock 再调度。
 
 ## 数据层策略
 

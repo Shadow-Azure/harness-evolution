@@ -158,6 +158,15 @@ class EvolutionRunWorkspace(IdentityModel):
     push_error: str | None
 
 
+class EvolutionRunAttributionSkill(IdentityModel):
+    """Immutable attribution Skill identity frozen when the run was launched."""
+
+    key: str
+    revision: int
+    content_hash: str
+    engine: str
+
+
 class EvolutionRunStep(IdentityModel):
     """One backend-owned stepper node with lazy-load eligibility."""
 
@@ -187,6 +196,7 @@ class EvolutionRunDetail(EvolutionRunCard):
     workspace: EvolutionRunWorkspace
     last_event_seq: int
     steps: list[EvolutionRunStep]
+    attribution_skill: EvolutionRunAttributionSkill | None
 
 
 class EvolutionRunList(IdentityModel):
@@ -475,4 +485,16 @@ class EvolutionRunService:
             ),
             last_event_seq=last_event_seq,
             steps=_detail_steps(summary),
+            attribution_skill=(
+                EvolutionRunAttributionSkill(
+                    key=run.attribution_skill_key,
+                    revision=run.attribution_skill_revision,
+                    content_hash=run.attribution_skill_content_hash,
+                    engine=run.attribution_engine,
+                )
+                if run.attribution_skill_key is not None
+                and run.attribution_skill_revision is not None
+                and run.attribution_skill_content_hash is not None
+                else None
+            ),
         )
