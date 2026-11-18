@@ -754,3 +754,257 @@ test("m4 problem cards reveal a selected problem inside a folded branch", async 
     await page.close();
   }
 });
+
+test("m4 problem cards keep a long case id and object name inside the card", async () => {
+  const page = await createBrowserPage();
+  await defaultToTree(page);
+  try {
+    const violations = browserViolations(page.session);
+    await installCookie(page, await loginCookie());
+    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const longId = `case-${"x".repeat(59)}`;
+    const longObjectName = `runtime-object-${"y".repeat(40)}`;
+    const problem = {
+      badCaseId: longId,
+      sessionId,
+      sessionTitle: "示例会话一",
+      badCaseType: "discovery",
+      objectType: "agent",
+      objectName: longObjectName,
+      objectVersion: null,
+      title: "长标识问题",
+      reason: "长 case ID 与长对象名仍需留在卡片内，不撑破 390px 视口。",
+      metaData: { source: "e2e" },
+      degraded: false,
+      diagnosticCode: null,
+      anchor: { agentId: "agent-s1-review-0001", eventIndex: -1 },
+      badCaseAgent: { sessionId, agentId: "agent-s1-review-0001" },
+      analysis: {
+        probeId: null,
+        attributeType: null,
+        displayState: "unanalyzed",
+        result: null,
+        status: "unanalyzed",
+      },
+    };
+
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: `*://*/api/workspaces/*/sessions/${sessionId}/bad-cases`,
+          requestStage: "Request",
+        },
+      ],
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      void page.session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: 200,
+        responseHeaders: [
+          { name: "content-type", value: "application/json" },
+        ],
+        body: Buffer.from(JSON.stringify({ items: [problem] })).toString(
+          "base64",
+        ),
+      });
+    });
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 1,
+      mobile: true,
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${ws}/sessions/${sessionId}`,
+    });
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll(
+        "[data-testid='problem-list'] [data-bad-case-id]",
+      ).length === 1`,
+      "long identifier problem card",
+    );
+    const measured = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const card = document.querySelector(
+          "[data-testid='problem-list'] [data-bad-case-id]",
+        )?.closest(".problem-row-card");
+        const idLink = card?.querySelector(".problem-id");
+        const objectBadge = card?.querySelector(".object-badge");
+        if (!card || !idLink || !objectBadge) return null;
+        const cardBox = card.getBoundingClientRect();
+        const idBox = idLink.getBoundingClientRect();
+        const objectBox = objectBadge.getBoundingClientRect();
+        return {
+          idText: idLink.textContent.trim(),
+          objectText: objectBadge.textContent.trim(),
+          cardLeft: cardBox.left,
+          cardRight: cardBox.right,
+          idLeft: idBox.left,
+          idRight: idBox.right,
+          objectLeft: objectBox.left,
+          objectRight: objectBox.right,
+          viewportWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+        };
+      })()`,
+      returnByValue: true,
+    });
+    const box = measured.result.value;
+    assert.ok(box, "long identifier card rendered");
+    assert.equal(box.idText, longId);
+    assert.equal(box.objectText, longObjectName);
+    assert.ok(
+      box.scrollWidth <= box.viewportWidth,
+      `no horizontal overflow: ${JSON.stringify(box)}`,
+    );
+    assert.ok(box.cardLeft >= -1, JSON.stringify(box));
+    assert.ok(box.cardRight <= box.viewportWidth + 1, JSON.stringify(box));
+    assert.ok(box.idLeft >= box.cardLeft - 1, JSON.stringify(box));
+    assert.ok(box.idRight <= box.cardRight + 1, JSON.stringify(box));
+    assert.ok(box.objectLeft >= box.cardLeft - 1, JSON.stringify(box));
+    assert.ok(box.objectRight <= box.cardRight + 1, JSON.stringify(box));
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+    await page.session.send("Fetch.disable");
+  } finally {
+    await page.close();
+  }
+});
+
+test("m4 problem cards keep description links clickable above the select button", async () => {
+  const page = await createBrowserPage();
+  await defaultToTree(page);
+  try {
+    const violations = browserViolations(page.session);
+    await installCookie(page, await loginCookie());
+    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const problem = {
+      badCaseId: "case-link-host",
+      sessionId,
+      sessionTitle: "示例会话一",
+      badCaseType: "self",
+      objectType: "agent",
+      objectName: "Explore",
+      objectVersion: null,
+      title: "描述内链接问题",
+      reason: "失败清单见 [完整报告](#problem-description)。",
+      metaData: { source: "e2e" },
+      degraded: false,
+      diagnosticCode: null,
+      anchor: { agentId: "agent-s1-review-0001", eventIndex: -1 },
+      badCaseAgent: { sessionId, agentId: "agent-s1-review-0001" },
+      analysis: {
+        probeId: null,
+        attributeType: null,
+        displayState: "unanalyzed",
+        result: null,
+        status: "unanalyzed",
+      },
+    };
+
+    await page.session.send("Fetch.enable", {
+      patterns: [
+        {
+          urlPattern: `*://*/api/workspaces/*/sessions/${sessionId}/bad-cases`,
+          requestStage: "Request",
+        },
+      ],
+    });
+    page.session.on("Fetch.requestPaused", (event) => {
+      void page.session.send("Fetch.fulfillRequest", {
+        requestId: event.requestId,
+        responseCode: 200,
+        responseHeaders: [
+          { name: "content-type", value: "application/json" },
+        ],
+        body: Buffer.from(JSON.stringify({ items: [problem] })).toString(
+          "base64",
+        ),
+      });
+    });
+
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 1600,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${ws}/sessions/${sessionId}`,
+    });
+    await waitForDocument(
+      page.session,
+      `document.querySelectorAll(
+        "[data-testid='problem-list'] [data-bad-case-id]",
+      ).length === 1`,
+      "description link problem card",
+    );
+    await page.session.send("Runtime.evaluate", {
+      expression: `document.addEventListener("click", (event) => {
+        if (event.target.closest(".problem-detail a")) event.preventDefault();
+      }, true)`,
+    });
+    const linkBox = await page.session.send("Runtime.evaluate", {
+      expression: `(() => {
+        const link = document.querySelector(
+          "[data-testid='problem-list'] .problem-detail a",
+        );
+        if (!link) return null;
+        const rect = link.getBoundingClientRect();
+        return {
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          hit: document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          )?.tagName,
+          href: link.getAttribute("href"),
+        };
+      })()`,
+      returnByValue: true,
+    });
+    const link = linkBox.result.value;
+    assert.ok(link, "description link rendered");
+    assert.equal(link.hit, "A", JSON.stringify(link));
+    assert.equal(link.href, "#problem-description");
+
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: link.x,
+      y: link.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await page.session.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: link.x,
+      y: link.y,
+      button: "left",
+      clickCount: 1,
+    });
+    const afterClick = await waitForDocument(
+      page.session,
+      `(() => {
+        const row = document.querySelector(
+          "[data-testid='problem-list'] [data-bad-case-id='case-link-host']",
+        );
+        if (!row) return null;
+        return {
+          pressed: row.getAttribute("aria-pressed"),
+          activeCards: document.querySelectorAll(
+            "[data-testid='problem-list'] .problem-row-card.active",
+          ).length,
+        };
+      })()`,
+      "description link click state",
+    );
+    assert.equal(afterClick.pressed, "false", JSON.stringify(afterClick));
+    assert.equal(afterClick.activeCards, 0, JSON.stringify(afterClick));
+
+    assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
+    await page.session.send("Fetch.disable");
+  } finally {
+    await page.close();
+  }
+});

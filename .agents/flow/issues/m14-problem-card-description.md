@@ -52,7 +52,7 @@ github:
 
 - `apps/web/src/components/bad-cases/BadCaseList.vue` 非 compact 模板重排为「BC 编号 + 卡片正文 + 定位」：头部依次渲染标题、`type-badge`、`object-badge`、完整 `problem-id` 深链、状态胶囊与 `degraded` 标记；正文用 `renderMarkdown(problem.reason, { images: false })` 渲染，带 `.problem-detail.markdown` 紧凑排版；facts 改为与原型和错误详情页一致的 key/value 双列 chip，随后是 `关联：objectType · objectName`；行尾 `定位 ↗`。
 - 整卡交互沿用 compact 模板的覆盖按钮模式：正文 `pointer-events: none`、链接提升到按钮之上，既有单卡选中语义与 `aria-pressed` 不变，描述里的 Markdown 链接不会触发选中。
-- `badCaseDisplay.ts` 删除已无消费方的 `badCaseSummary`；`badCaseFacts` / `badCaseFactEntries` / `badCaseState` 不变。
+- `badCaseDisplay.ts` 删除已无消费方的 `badCaseSummary` 与 `badCaseFacts` 拼接层（卡片改用 `badCaseFactEntries` 渲染 key/value）；`badCaseFactEntries` / `badCaseState` 不变。
 - 类型徽章沿用错误详情页的 token 映射（`self` 紫、`discovery` 蓝），以页面间一致优先；原型样式表里两者相反，属于原型自身不一致，本次不扩面统一。
 - V2 原型 `FindingList` 的 `fi-detail` 改用既有 `renderMarkdown` 渲染并补 `.fi-detail.markdown` 段落/列表/行内代码/代码块样式，与生产同一约定。
 - 单测覆盖 BC 编号、类型/对象徽章、完整 ID 与 aria、描述正文、Markdown 列表与行内代码、外链属性、原始 HTML 转义、图片降级、facts 与关联行；E2E 断言四个 fixture 会话的卡片正文、徽章、完整 ID、关联行与 F2P/P2P 列表。

@@ -12,9 +12,9 @@ Session 错误查看页右下的「问题」列表卡曾把归因摘要当作第
 
 ## Decision
 
-列表卡信息层级以 V2 原型为准：第二行显示 `problem.reason`（描述正文），按 `renderMarkdown(..., { images: false })` 安全渲染；头部依次是 `title`、`badCaseType`（`self` / `discovery`）徽章、`objectName` 徽章、完整 `badCaseId` 深链与轻量归因状态胶囊；正文下方是 key/value 双列 facts（与原型和错误详情页同构）与「关联：`objectType` · `objectName`」，行尾「定位 ↗」。`badCaseSummary` 随之删除，归因摘要不再进入列表卡。`BadCaseList` 非 compact 模板改用 compact 模板已有的覆盖按钮模式：正文 `pointer-events: none`、链接提升到按钮之上，整卡仍是定位按钮，描述里的 Markdown 链接不会被选中动作吞掉。V2 原型的 `FindingList` 同步改为 `renderMarkdown(f.detail)`，让原型与实现共用同一 Markdown 约定。
+列表卡信息层级以 V2 原型为准：第二行显示 `problem.reason`（描述正文），按 `renderMarkdown(..., { images: false })` 安全渲染；头部依次是 `title`、`badCaseType`（`self` / `discovery`）徽章、`objectName` 徽章、完整 `badCaseId` 深链与轻量归因状态胶囊；正文下方是 key/value 双列 facts（与原型和错误详情页同构）与「关联：`objectType` · `objectName`」，行尾「定位 ↗」。`badCaseSummary` 与只服务于旧 `k=v` 文本的 `badCaseFacts` 随之删除（卡片改用 `badCaseFactEntries` 渲染 key/value），归因摘要不再进入列表卡。`BadCaseList` 非 compact 模板改用 compact 模板已有的覆盖按钮模式：正文 `pointer-events: none`、链接提升到按钮之上，整卡仍是定位按钮，描述里的 Markdown 链接不会被选中动作吞掉。V2 原型的 `FindingList` 同步改为 `renderMarkdown(f.detail)`，让原型与实现共用同一 Markdown 约定。
 
-类型徽章沿用错误详情页的 token 映射（`self` 紫、`discovery` 蓝），不跟随原型样式表里相反的映射，因为同一 case 在两页显示不同颜色更难理解；原型自身的不一致留待单独收敛。
+类型徽章沿用错误详情页的 token 映射（`self` 紫、`discovery` 蓝），不跟随原型样式表里相反的映射（原型 `self` 蓝、`discovery` 紫），因为同一 case 在两页显示不同颜色更难理解；徽章填充（原型带 9% 底色、生产描边）、标题字号（13.5px vs 13px）与圆角（9px vs 8px）也沿用生产既有 token。这些跨页一致优先的差异登记在 M14 范围，留待单独收敛。
 
 ## Alternatives considered
 
@@ -22,4 +22,4 @@ Session 错误查看页右下的「问题」列表卡曾把归因摘要当作第
 
 ## Consequences
 
-长描述会让卡片变高，会话页问题列表不再等高；这是显示完整问题的直接代价，原型同样如此。描述正文与卡片一起被按钮覆盖，文本不可框选，与 compact 卡片和原型一致；需要复制的长清单仍可进入错误详情页。`badCaseSummary` 删除后没有归因摘要在列表中的入口，归因结论只在错误详情页与错误详情的问题卡出现。V2 原型 `FindingList` 改渲染 Markdown 后，原型与生产共用同一套描述排版，后续原型截图可直接作为验收基线。类型徽章配色在列表与错误详情页一致，但仍与原型样式表相反，属于已知未收敛差异。
+长描述会让卡片变高，会话页问题列表不再等高；这是显示完整问题的直接代价，原型同样如此。描述正文与卡片一起被按钮覆盖，文本不可框选，与 compact 卡片和原型一致；需要复制的长清单仍可进入错误详情页。`badCaseSummary` 删除后没有归因摘要在列表中的入口，归因结论只在错误详情页与错误详情的问题卡出现。V2 原型 `FindingList` 改渲染 Markdown 后，原型与生产共用同一套描述排版；原型只作视觉基线，卡片交互以生产的覆盖按钮为准（原型卡片本身是 `<button>`，描述链接通过阻止冒泡避免同时触发定位）。类型徽章配色在列表与错误详情页一致，但仍与原型样式表相反，属于已知未收敛差异。列表与错误详情页各自维护一份 Markdown 排版 CSS，当前两份规则略有差异（错误页多 `hr`/图片规则与更大间距），收敛为共享样式留待后续。

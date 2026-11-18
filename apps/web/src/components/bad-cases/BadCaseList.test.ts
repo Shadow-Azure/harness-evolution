@@ -226,6 +226,35 @@ describe("BadCaseList", () => {
     expect(link.attributes("rel")).toBe("noopener noreferrer");
     expect(detail.html()).not.toContain("<img");
     expect(detail.html()).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(detail.text()).toContain("截图");
+  });
+
+  it("keeps description links clickable without selecting the card", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-link",
+            reason:
+              "[完整报告](https://example.com/report) 与 [失败清单](https://example.com/list)",
+          }),
+        ],
+      },
+    });
+
+    const detail = wrapper.get("#problem-row-case-link .problem-detail");
+    const links = detail.findAll("a");
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link.element.closest("button")).toBeNull();
+    }
+
+    await links[0]?.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
+
+    await wrapper.get("[data-bad-case-id='case-link']").trigger("click");
+    expect(wrapper.emitted("select")).toEqual([["case-link"]]);
   });
 
   it("keeps the full case ID deep link and every card actionable", () => {

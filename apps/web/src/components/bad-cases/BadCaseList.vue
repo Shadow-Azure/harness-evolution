@@ -389,7 +389,7 @@ defineExpose({ scrollToProblem });
   flex: 1;
 }
 
-.problem-card-content a {
+.problem-card-content :deep(a) {
   position: relative;
   z-index: 2;
   pointer-events: auto;
@@ -439,12 +439,12 @@ defineExpose({ scrollToProblem });
 .problem-no,
 .problem-id,
 .report-id {
-  flex-shrink: 0;
   font-family: var(--mono);
   font-weight: 650;
 }
 
 .problem-no {
+  flex-shrink: 0;
   color: var(--red);
   font-size: 10px;
 }
@@ -460,6 +460,8 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-id {
+  flex-shrink: 1;
+  min-width: 0;
   color: var(--blue);
   border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
   font-size: 10px;
@@ -472,6 +474,7 @@ defineExpose({ scrollToProblem });
 }
 
 .report-id {
+  flex-shrink: 0;
   color: var(--purple);
   border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent);
   font-size: 10px;
@@ -499,12 +502,15 @@ defineExpose({ scrollToProblem });
 }
 
 .object-badge {
+  max-width: 100%;
+  overflow: hidden;
   padding: 1px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-card);
   color: var(--text-dim);
   font-size: 10.5px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

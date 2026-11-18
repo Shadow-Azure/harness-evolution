@@ -3103,7 +3103,9 @@ function FindingList({ findings, activeId, onLocate, sid }) {
               <span className="fi-id" title=${"bad case · 点击在新窗口打开（问题描述 tab）"}
                 onClick=${e => { e.stopPropagation(); window.open(caseDeepLink(f.caseId, "desc"), "_blank"); }}>${f.caseId || ""}</span>
             </span>
-            <span className="fi-detail markdown" dangerouslySetInnerHTML=${{ __html: renderMarkdown(f.detail) }} />
+            <span className="fi-detail markdown"
+              onClick=${e => { if (e.target.closest("a")) e.stopPropagation(); }}
+              dangerouslySetInnerHTML=${{ __html: renderMarkdown(f.detail) }} />
             ${(f.facts && f.facts.length) ? html`
               <span className="fi-facts">
                 ${f.facts.map(x => html`

@@ -18,7 +18,7 @@ Close the display drift that V2 prototype acceptance exposed: the Session page p
 
 ## Scope
 
-The non-compact template and styles of the Session page problem list card, its unit and E2E tests, the matching V2 prototype rendering, the design document, and evidence screenshots. Later display drift of the same kind follows this milestone.
+The non-compact template and styles of the Session page problem list card, its unit and E2E tests, the matching V2 prototype rendering, the design document, and evidence screenshots. Later display drift of the same kind follows this milestone. Known open item: type badge color and fill follow the error detail page and stay opposite to the prototype stylesheet.
 
 ## Acceptance
 
