@@ -63,12 +63,18 @@ class OverviewQuery:
 
 @dataclass(frozen=True, slots=True)
 class BadCaseListQuery:
-    """Window, object, and type filters plus the page bounds."""
+    """Window, object, and type filters plus the page bounds.
+
+    ``all_time`` is the list's explicit "no date restriction": it bypasses window
+    resolution entirely, which is what an empty list-level date filter means. The
+    other overview reads never use it.
+    """
 
     window: OverviewQuery = field(default_factory=OverviewQuery)
     bad_case_type: BadCaseTypeFilter = "all"
     page: int = 1
     page_size: int = 8
+    all_time: bool = False
 
 
 def parse_object_filter(values: Sequence[str] | None) -> tuple[str, ...]:
@@ -254,18 +260,22 @@ class OverviewService:
         query: BadCaseListQuery,
     ) -> OverviewBadCaseListResponse:
         """Return one filtered page ordered by ``createdAt`` descending."""
-        window = query.window.window()
+        start = None
+        end = None
+        if not query.all_time:
+            window = query.window.window()
+            start, end = window.start, window.end
         total = await self._repository.count_cases(
             workspace_id=workspace_id,
-            start=window.start,
-            end=window.end,
+            start=start,
+            end=end,
             objects=query.window.objects,
             bad_case_type=query.bad_case_type,
         )
         rows = await self._repository.page_cases(
             workspace_id=workspace_id,
-            start=window.start,
-            end=window.end,
+            start=start,
+            end=end,
             objects=query.window.objects,
             bad_case_type=query.bad_case_type,
             page=query.page,

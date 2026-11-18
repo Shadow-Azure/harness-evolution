@@ -1211,7 +1211,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `GET /api/workspaces/{wid}/overview/summary` | `from/to` 或 `range=7\|30\|90`（默认 90）、`objects[]` | `OverviewSummary` |
 | `GET /api/workspaces/{wid}/overview/trend` | 同上 + `grain=day\|week\|month`（默认 `day`） | `{window, grain, buckets:[TrendBucket]}`；`grain` 是本次实际生效的粒度（>92 天日粒度降级为 `week` 并如实返回），空桶补零 |
 | `GET /api/workspaces/{wid}/overview/sources` | 同上 | `{items:[{object,total,self,discovery,sessions}]}`；`sessions` 含 pending 根 |
-| `GET /api/workspaces/{wid}/bad-cases` | `from/to`、`range=7\|30\|90`（默认 90）、`objects[]`、`badCaseType`、`page`、`pageSize=8` | `{items:[BadCaseListItem], total, page, pageSize}`；`attributionCount` 按 §3.10 的三元组定义；「触发点」读 `triggerLine`，`triggerAt` 仅保留兼容 |
+| `GET /api/workspaces/{wid}/bad-cases` | `from/to`、`range=7\|30\|90`（默认 90）、`allTime`、`objects[]`、`badCaseType`、`page`、`pageSize=8` | `{items:[BadCaseListItem], total, page, pageSize}`；`attributionCount` 按 §3.10 的三元组定义；「触发点」读 `triggerLine`，`triggerAt` 仅保留兼容 |
 | `GET /api/workspaces/{wid}/overview/targets` | `from/to`、`page`、`pageSize=5` | `{summary:{targets,sessions,potential,attributed,nonTarget,unanalyzed}, items:[TargetOverviewItem], total, page, pageSize}`（按 `evolvable` 降序） |
 | `GET /api/workspaces/{wid}/overview/targets/trend` | `from/to`、`grain`、`targets[]`、`states[]` | `{window, buckets:[{bucket,label,attributed,nonTarget,unanalyzed,byTarget[]}], meta:{bucketPolicy}}` |
 | `GET /api/workspaces/{wid}/overview/targets/cases` | `targets[]`、`objects[]`、`states[]`、`from/to`、`page`、`pageSize=8` | `{items:[{badCaseId,objectType,objectName,objectVersion,source,state,badCaseType,title,createdAt,sessionId,attributionId,category}], total, page, pageSize}` |
@@ -1220,6 +1220,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 
 - 筛选参数可全空（不限制）；`objects` 同时接受重复参数（`?objects=a&objects=b`）与逗号分隔值（`?objects=a,b`），两侧去空白后按首次出现去重，空 = 全部，去重后 >50 项 → `422 OBJECT_FILTER_TOO_LARGE`；窗口 >366 天、`from > to`、只给一个边界且没有 `range`、需要用 `range` 推导窗口而它不在 7/30/90 内、边界落在 1970-01-01..2999-12-31 之外（含日期运算溢出）→ `422 WINDOW_INVALID`；`grain` 非法 → `422 GRAIN_INVALID`。
 - 四个总览读端点都接受 `range`（含列表）。同时给 `from` 与 `to` 时两者直接定义窗口，`range` 被忽略且**不校验**（`from/to/range=0` 合法）；默认窗口是 `[今天-89, 今天]`（90 天）。只有不带边界或只带单一边界时，`range` 才参与推导并要求是 7/30/90。
+- `allTime=true` 是 bad-case 列表专用的“无日期限制”：跳过窗口解析与日期谓词，返回空间内全部上报记录，分页/来源/类型仍生效；同时带 `from/to/range` 时忽略它们。其余总览读端点不接受该参数，列表为空日期时由前端发送它（08 §6.2）。
 - `pageSize` 默认 8、允许 1..50；`badCaseType` 默认 `all`。
 - 桶的 `label` 格式：日桶与周桶 `MM-DD`，月桶 `YYYY-MM`；`bucket` 始终是完整 ISO 日期，跨年周仍可从 `bucket` 读出年份。
 - `totals.sessions` 是窗口内 `COUNT(DISTINCT bad_case_session_id)`，**包含 pending 根**（已上报但还没有归一化轨迹）；它不是 06 §7.5 的空间 Session 集合，也不是 Session 页的 `total`，且不能与 `pendingSessions` 相加。

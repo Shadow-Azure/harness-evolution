@@ -515,14 +515,16 @@ describe("workspace overview page", () => {
     );
   });
 
-  it("writes range, grain, and source filters into the URL and resets the page", async () => {
-    mockOverviewApi();
+  it("writes global range, grain, and source filters without touching the list page", async () => {
+    mockOverviewApi({
+      cases: { items: [caseRow(1)], total: 17, page: 2, pageSize: 8 },
+    });
     const { router, wrapper } = await mountPage(`${ws}/overview?page=2`);
 
     await wrapper.get("[data-testid='ov-range-30']").trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.query.range).toBe("30");
-    expect(router.currentRoute.value.query.page).toBeUndefined();
+    expect(router.currentRoute.value.query.page).toBe("2");
 
     await wrapper.get("[data-testid='ov-grain-day']").trigger("click");
     await flushPromises();
@@ -531,14 +533,19 @@ describe("workspace overview page", () => {
     await wrapper.get("[data-testid='ov-source-option-workflow']").setValue(true);
     await flushPromises();
     expect(router.currentRoute.value.query.objects).toBe("workflow");
+    expect(router.currentRoute.value.query.page).toBe("2");
     expect(wrapper.find("[data-testid='ov-chip-workflow']").exists()).toBe(true);
 
     await wrapper.get("[data-testid='ov-stat-self']").trigger("click");
     await flushPromises();
     expect(router.currentRoute.value.query.type).toBe("self");
-    expect(wrapper.find("[data-testid='ov-type-chip']").exists()).toBe(true);
+    expect(router.currentRoute.value.query.page).toBeUndefined();
+    expect(
+      (wrapper.get("[data-testid='ov-list-type']").element as HTMLSelectElement)
+        .value,
+    ).toBe("self");
 
-    await wrapper.get("[data-testid='ov-type-clear']").trigger("click");
+    await wrapper.get("[data-testid='ov-list-type']").setValue("all");
     await flushPromises();
     expect(router.currentRoute.value.query.type).toBeUndefined();
   });
@@ -566,11 +573,16 @@ describe("workspace overview page", () => {
     expect(casesUrl.searchParams.get("page")).toBe("2");
     expect(casesUrl.searchParams.get("pageSize")).toBe("8");
     expect(casesUrl.searchParams.get("badCaseType")).toBe("self");
+    // The list's empty date/source filters stay independent of the chart's
+    // range=30 and objects=deep-research,workflow.
+    expect(casesUrl.searchParams.get("allTime")).toBe("true");
+    expect(casesUrl.searchParams.has("from")).toBe(false);
+    expect(casesUrl.searchParams.has("objects")).toBe(false);
 
     expect(wrapper.find("[data-testid='ov-chip-deep-research']").exists()).toBe(true);
   });
 
-  it("removes one chip and clears every filter back to the defaults", async () => {
+  it("removes one chip, clears only global filters, then resets the list", async () => {
     mockOverviewApi();
     const { router, wrapper } = await mountPage(
       `${ws}/overview?range=custom&from=2026-10-01&to=2026-10-31&objects=deep-research,workflow&type=discovery`,
@@ -588,28 +600,142 @@ describe("workspace overview page", () => {
       tab: "cases",
       range: "90",
       grain: "week",
+      type: "discovery",
     });
-    expect(requests.cases.at(-1)).toContain("range=90");
+    expect(requests.cases.at(-1)).toContain("allTime=true");
+    expect(requests.cases.at(-1)).toContain("badCaseType=discovery");
+
+    await wrapper.get("[data-testid='ov-list-reset']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "90",
+      grain: "week",
+    });
   });
 
-  it("turns a clicked bucket into the list's custom window", async () => {
+  it("turns a clicked bucket into the list's own window", async () => {
     mockOverviewApi();
     const { router, wrapper } = await mountPage();
 
     await wrapper.get("[data-bucket='2026-11-02']").trigger("click");
     await flushPromises();
 
+    // The chart keeps its 90-day window; only the list narrows to the bucket.
     expect(router.currentRoute.value.query).toEqual({
       tab: "cases",
-      range: "custom",
+      range: "90",
       grain: "week",
-      from: "2026-11-02",
-      to: "2026-11-08",
+      lfrom: "2026-11-02",
+      lto: "2026-11-08",
     });
     const casesUrl = new URL(requests.cases.at(-1) as string);
+    expect(casesUrl.searchParams.get("lfrom")).toBeNull();
     expect(casesUrl.searchParams.get("from")).toBe("2026-11-02");
     expect(casesUrl.searchParams.get("to")).toBe("2026-11-08");
+    expect(casesUrl.searchParams.has("allTime")).toBe(false);
     expect(casesUrl.searchParams.has("range")).toBe(false);
+  });
+
+  it("applies the list's own source and type filters without touching the chart", async () => {
+    mockOverviewApi({
+      cases: { items: [caseRow(1)], total: 17, page: 1, pageSize: 8 },
+    });
+    const { router, wrapper } = await mountPage(
+      `${ws}/overview?range=7&objects=deep-research`,
+    );
+
+    await wrapper.get("[data-testid='ov-list-object']").setValue("workflow");
+    await flushPromises();
+    expect(router.currentRoute.value.query.lobject).toBe("workflow");
+    expect(router.currentRoute.value.query.range).toBe("7");
+    expect(router.currentRoute.value.query.objects).toBe("deep-research");
+    let url = new URL(requests.cases.at(-1) as string);
+    expect(url.searchParams.get("objects")).toBe("workflow");
+    expect(url.searchParams.get("allTime")).toBe("true");
+    expect(url.searchParams.has("from")).toBe(false);
+
+    await wrapper.get("[data-testid='ov-list-type']").setValue("self");
+    await flushPromises();
+    expect(router.currentRoute.value.query.type).toBe("self");
+    url = new URL(requests.cases.at(-1) as string);
+    expect(url.searchParams.get("badCaseType")).toBe("self");
+
+    await wrapper.get("[data-testid='ov-list-reset']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "week",
+      objects: "deep-research",
+    });
+  });
+
+  it("keeps an incomplete list date pair out of the query and restores all time", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage();
+    const before = requests.cases.length;
+
+    await wrapper.get("[data-testid='ov-list-from']").setValue("2026-10-01");
+    await flushPromises();
+    expect(requests.cases.length).toBe(before);
+    expect(router.currentRoute.value.query.lfrom).toBeUndefined();
+    expect(wrapper.get("[data-testid='ov-list-date-error']").text()).toContain(
+      "请同时选择",
+    );
+
+    await wrapper.get("[data-testid='ov-list-to']").setValue("2026-10-31");
+    await flushPromises();
+    expect(router.currentRoute.value.query.lfrom).toBe("2026-10-01");
+    expect(router.currentRoute.value.query.lto).toBe("2026-10-31");
+    let url = new URL(requests.cases.at(-1) as string);
+    expect(url.searchParams.get("from")).toBe("2026-10-01");
+    expect(url.searchParams.get("to")).toBe("2026-10-31");
+    expect(url.searchParams.has("allTime")).toBe(false);
+
+    await wrapper.get("[data-testid='ov-list-from']").setValue("");
+    await flushPromises();
+    expect(wrapper.get("[data-testid='ov-list-date-error']").text()).toContain(
+      "请同时选择",
+    );
+    await wrapper.get("[data-testid='ov-list-to']").setValue("");
+    await flushPromises();
+    expect(router.currentRoute.value.query.lfrom).toBeUndefined();
+    expect(router.currentRoute.value.query.lto).toBeUndefined();
+    url = new URL(requests.cases.at(-1) as string);
+    expect(url.searchParams.get("allTime")).toBe("true");
+    expect(url.searchParams.has("from")).toBe(false);
+  });
+
+  it("restores list filters and paging from a deep link", async () => {
+    mockOverviewApi({
+      cases: { items: [caseRow(1)], total: 17, page: 2, pageSize: 8 },
+    });
+    const { wrapper } = await mountPage(
+      `${ws}/overview?lfrom=2026-10-01&lto=2026-10-31&lobject=deep-research&type=self&page=2`,
+    );
+
+    const from = wrapper.get("[data-testid='ov-list-from']")
+      .element as HTMLInputElement;
+    const to = wrapper.get("[data-testid='ov-list-to']")
+      .element as HTMLInputElement;
+    expect(from.value).toBe("2026-10-01");
+    expect(to.value).toBe("2026-10-31");
+    expect(
+      (wrapper.get("[data-testid='ov-list-object']").element as HTMLSelectElement)
+        .value,
+    ).toBe("deep-research");
+    expect(
+      (wrapper.get("[data-testid='ov-list-type']").element as HTMLSelectElement)
+        .value,
+    ).toBe("self");
+
+    const url = new URL(requests.cases.at(-1) as string);
+    expect(url.searchParams.get("from")).toBe("2026-10-01");
+    expect(url.searchParams.get("to")).toBe("2026-10-31");
+    expect(url.searchParams.get("objects")).toBe("deep-research");
+    expect(url.searchParams.get("badCaseType")).toBe("self");
+    expect(url.searchParams.get("page")).toBe("2");
   });
 
   it("opens the evolution-target view from a deep link", async () => {
@@ -829,15 +955,22 @@ describe("workspace overview page", () => {
       );
     });
 
-    const foreign = [
+    const summaryForeign = [
       ...requestPaths(requests.summary, "ws-other"),
       ...requestPaths(requests.trend, "ws-other"),
       ...requestPaths(requests.sources, "ws-other"),
-      ...requestPaths(requests.cases, "ws-other"),
     ];
-    expect(foreign.length).toBeGreaterThan(0);
-    for (const url of foreign) {
+    expect(summaryForeign.length).toBeGreaterThan(0);
+    for (const url of summaryForeign) {
       expect(url.searchParams.get("range")).toBe("90");
+      expect(url.searchParams.has("objects")).toBe(false);
+      expect(url.searchParams.has("badCaseType")).toBe(false);
+    }
+    const caseForeign = requestPaths(requests.cases, "ws-other");
+    expect(caseForeign.length).toBeGreaterThan(0);
+    for (const url of caseForeign) {
+      expect(url.searchParams.get("allTime")).toBe("true");
+      expect(url.searchParams.has("range")).toBe(false);
       expect(url.searchParams.has("objects")).toBe(false);
       expect(url.searchParams.has("badCaseType")).toBe(false);
     }
@@ -867,13 +1000,17 @@ describe("workspace overview page", () => {
       });
     });
     await vi.waitFor(() => {
-      const urls = requestPaths(requests.cases, workspaceId);
+      const summaryUrls = requestPaths(requests.summary, workspaceId);
       expect(
-        urls.some(
+        summaryUrls.some(
           (url) =>
             url.searchParams.get("range") === "7" &&
             url.searchParams.get("objects") === "deep-research",
         ),
+      ).toBe(true);
+      const caseUrls = requestPaths(requests.cases, workspaceId);
+      expect(
+        caseUrls.some((url) => url.searchParams.get("allTime") === "true"),
       ).toBe(true);
     });
   });
@@ -912,12 +1049,15 @@ describe("workspace overview page", () => {
       tab: "cases",
       range: "custom",
       grain: "day",
-      from: "2026-08-17",
-      to: "2026-08-23",
+      from: "2026-08-01",
+      to: "2026-11-16",
+      lfrom: "2026-08-17",
+      lto: "2026-08-23",
     });
     const casesUrl = new URL(requests.cases.at(-1) as string);
     expect(casesUrl.searchParams.get("from")).toBe("2026-08-17");
     expect(casesUrl.searchParams.get("to")).toBe("2026-08-23");
+    expect(casesUrl.searchParams.has("allTime")).toBe(false);
   });
 
   it("clamps an out-of-range page to the last valid page", async () => {

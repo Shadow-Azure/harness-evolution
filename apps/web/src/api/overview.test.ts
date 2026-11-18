@@ -195,8 +195,27 @@ describe("overview api", () => {
     expect(url.searchParams.get("page")).toBe("2");
     expect(url.searchParams.get("objects")).toBe("deep-research");
   });
-});
+  it("sends allTime instead of a window for an unrestricted list", async () => {
+    server.use(
+      http.get(casesBase, ({ request }) => {
+        capture(request.url);
+        return HttpResponse.json({
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 8,
+        });
+      }),
+    );
 
+    await listOverviewBadCases(workspaceId, { allTime: true });
+
+    const url = new URL(requestedUrl);
+    expect(url.searchParams.get("allTime")).toBe("true");
+    expect(url.searchParams.has("from")).toBe(false);
+    expect(url.searchParams.has("range")).toBe(false);
+  });
+});
 
 describe("evolution-target overview api", () => {
   it("sends the target selection, states, and grain to the target trend", async () => {
