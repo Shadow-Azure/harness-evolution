@@ -24,6 +24,7 @@ m8-03 提供了 summary、trend、sources 与分页 bad-case 列表四个只读�
 - SourceMatrix 本 issue 不做：m8-03 没有 per-object × bucket 字段，用当前页 8 行拼矩阵会得出错误总数。来源分布用 top 6 + 「其余 N 个来源」聚合行，可展开查看全部。m12-08 在没有新增 API 的前提下改用逐桶 sources 聚合补齐矩阵，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
 - 契约类型从 m8-03 生成的 `components["schemas"]` 经 `packages/contracts/src/overview.ts` 再导出；本 issue 不新增或修改 HTTP 接口。
 - 本 issue 交付时页面没有任何写操作：筛选、图表、列表都是只读，viewer 与管理员看到同一套视图。m12-08 随后加入角色门控的上报/启动入口与运营上下文，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
+- 总览页的滚动容器是 `.overview-page`：它铺满工作区主体宽度并承担 `overflow-y: auto`，再用对称的 inline padding（`max(20px, calc((100% - 1180px) / 2 + 20px))`）把 1180px 内容列（含 20px 内边距）居中。滚动条因此画在窗口右缘，与 V2 原型的文档滚动一致；工作区主体保持 `height: calc(100vh - 56px)` 与 `overflow: hidden`，其它页面的内滚动不变。1024/640 断点由内容列自身的换行承担。
 
 ## Alternatives considered
 
@@ -47,3 +48,4 @@ m8-03 提供了 summary、trend、sources 与分页 bad-case 列表四个只读�
 - E2E 用独立空间 + 凭证写入 11 条「今天/昨天」的 bad case，断言不依赖 fixture 的固定历史日期；默认落地用例只在 ws-default 上验证结构，不断言具体计数。
 - 本 issue 的页面没有任何写入口，viewer 角色不需要额外按钮级降级；后续若加入上报或启动入口，需要同时补只读态。m12-08 已补：无管理权限时只渲染只读提示，不渲染可绕过的空链接。
 - 真实浏览器套件在 M8 后增至 36 个用例，`run-e2e` 默认预算提升到 600s、CI 步骤 12 分钟；同时新增 `HE_LOGIN_RATE_LIMIT` 设置（默认 10），E2E 环境设为 100，避免多个用例各自登录触发 429。
+- 总览页滚动条贴窗口右缘（1500×837 常显滚动条下不再内缩到内容列右缘）；内容列仍 1180px 居中，`.overview-page` 的 `data-testid` 仍是滚动容器，既有 E2E 的 `scrollTop`/`scrollHeight` 断言继续有效。
