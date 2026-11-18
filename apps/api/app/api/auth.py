@@ -40,6 +40,14 @@ def public_user(record: UserRecord) -> PublicUser:
     return PublicUser.model_validate(record.public_fields)
 
 
+def cookie_secure_for(request: Request) -> bool:
+    """Whether cookies issued on this request must carry the Secure attribute."""
+    settings: Settings = request.app.state.settings
+    if settings.cookie_secure is not None:
+        return settings.cookie_secure
+    return request.url.scheme == "https"
+
+
 def set_refresh_cookie(response: Response, request: Request, token: str) -> None:
     """Apply the restricted refresh cookie contract."""
     settings: Settings = request.app.state.settings
@@ -47,7 +55,7 @@ def set_refresh_cookie(response: Response, request: Request, token: str) -> None
         REFRESH_COOKIE,
         token,
         max_age=settings.refresh_ttl_seconds,
-        secure=settings.is_production,
+        secure=cookie_secure_for(request),
         httponly=True,
         samesite="strict",
         path="/api/auth",
@@ -129,7 +137,7 @@ async def callback(
         path=CALLBACK_STATE_PATH,
         httponly=True,
         samesite="lax",
-        secure=request.app.state.settings.is_production,
+        secure=cookie_secure_for(request),
     )
     return response
 
@@ -149,7 +157,7 @@ async def logout(request: Request, response: Response) -> Response:
         path="/api/auth",
         httponly=True,
         samesite="strict",
-        secure=request.app.state.settings.is_production,
+        secure=cookie_secure_for(request),
     )
     return response
 

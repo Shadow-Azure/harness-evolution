@@ -22,6 +22,13 @@ def _parse_upstream_api_major(value: object) -> object:
     return value
 
 
+def _parse_optional_bool(value: object) -> object:
+    """Treat an empty environment value as an unset cookie-security switch."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
 def _validate_http_url(value: str | None, name: str) -> str | None:
     """Allow only explicit HTTP(S) endpoints without embedded credentials."""
     if value is None or not value.strip():
@@ -40,6 +47,7 @@ def _validate_http_url(value: str | None, name: str) -> str | None:
 
 
 UpstreamApiMajor = Annotated[Literal[1], BeforeValidator(_parse_upstream_api_major)]
+CookieSecure = Annotated[bool | None, BeforeValidator(_parse_optional_bool)]
 
 
 class ServicePhase(StrEnum):
@@ -136,6 +144,7 @@ class Settings(BaseSettings):
     auth_provider: AuthProviderName = AuthProviderName.PASSWORD
     session_cookie_name: str = Field(default="he_session", min_length=1, max_length=64)
     session_ttl_hours: int = Field(default=12, gt=0, le=24 * 30)
+    cookie_secure: CookieSecure = None
     oidc_issuer: str | None = None
     oidc_client_id: str | None = None
     oidc_client_secret_env: str | None = None

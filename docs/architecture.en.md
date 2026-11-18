@@ -24,7 +24,7 @@ Routes are registered only in `apps/api/app/main.py`; dependency direction is `a
 Web ──► middleware ──► public endpoints | bearer APIs | ticket-authenticated SSE → api routers
 ```
 
-Only health, login, refresh, the IdP callback, ticket SSE, and credential ingest are public; everything else uses a bearer JWT, and workspace creation, user management, sync, and upstream pull are global-admin only. Access lasts 30 minutes; the refresh cookie lasts 14 days with httpOnly, SameSite=Strict; authentication and failures share one boundary.
+Only health, login, refresh, the IdP callback, ticket SSE, and credential ingest are public; everything else uses a bearer JWT, and workspace creation, user management, sync, and upstream pull are global-admin only. Access lasts 30 minutes; the refresh cookie lasts 14 days with httpOnly, SameSite=Strict, and a Secure flag decided by the request protocol (HTTPS only, overridable with `HE_COOKIE_SECURE`); authentication and failures share one boundary.
 
 Web restores `auth/session` before mounting routes; tokens and users stay in memory, concurrent 401s share one refresh, and logout clears the query cache. Pages live under `/workspaces/:wid` and scope every resource by `wid` and member role; `/`, `/sessions/**`, `/errors`, and `/evolution/**` redirect to the remembered visible workspace, the only visible workspace, or the chooser.
 

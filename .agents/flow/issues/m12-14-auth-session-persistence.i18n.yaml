@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/flow/issues/m12-14-auth-session-persistence.md
+m12-14-auth-session-persistence.md: c0f0957168257012187dee5e6b258f69c89fc31a
+m12-14-auth-session-persistence.en.md: e65bc05c4c793b682ff6c33d7f2ee5fa7f09fa99
