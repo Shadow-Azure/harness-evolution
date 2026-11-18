@@ -11,7 +11,7 @@ depends:
   - m7-09
   - m12-02
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/workspaces/**
   - tests/e2e/m7-09-workspace-admin.test.mjs
