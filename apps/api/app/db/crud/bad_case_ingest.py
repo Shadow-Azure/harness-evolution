@@ -28,6 +28,7 @@ _UPSTREAM_COLUMNS = (
     "object_type",
     "object_version",
     "bad_case_agent_id",
+    "trigger_line",
     "title",
     "bad_case_description",
     "meta_data",
@@ -54,6 +55,7 @@ class BadCaseIngestRow:
     source: str | None
     session_source: Mapping[str, Any] | None
     created_at: datetime
+    trigger_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,7 @@ def _values(row: BadCaseIngestRow) -> dict[str, Any]:
         "object_type": row.object_type,
         "object_version": row.object_version,
         "bad_case_agent_id": row.bad_case_agent_id,
+        "trigger_line": row.trigger_line,
         "title": row.title,
         "bad_case_description": row.reason,
         "meta_data": dict(row.meta_data) if row.meta_data is not None else None,

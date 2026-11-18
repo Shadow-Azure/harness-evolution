@@ -14,6 +14,7 @@ function row(index: number, overrides: Record<string, unknown> = {}) {
     badCaseTypeLabel: index % 2 === 0 ? "自身存在问题" : "发现前置步骤问题",
     title: `Case title ${index}`,
     triggerAt: `2026-11-0${index}T08:00:00+08:00`,
+    triggerLine: index,
     createdAt: `2026-11-0${index}T09:00:00+08:00`,
     attributionCount: index,
     syncStatus: "ready" as const,
@@ -61,6 +62,32 @@ describe("overview bad-case table", () => {
     expect(rows[0]?.text()).toContain("发现前置步骤问题");
     expect(rows[0]?.text()).toContain("deep-research");
     expect(wrapper.get("[data-testid='ov-trace-BC-HC-001']").text()).toBe("就绪");
+  });
+
+  it("shows the prototype trigger-point column as L<n> or an honest dash", () => {
+    const wrapper = mountTable({
+      items: [
+        row(1, { triggerLine: 0 }),
+        row(2, { triggerLine: 58 }),
+        row(3, { triggerLine: null }),
+        row(4, { triggerLine: undefined }),
+      ],
+      total: 3,
+    });
+
+    const headers = wrapper.findAll("thead th").map((header) => header.text());
+    expect(headers).toContain("触发点");
+    expect(headers).not.toContain("触发时间");
+    expect(wrapper.get("[data-testid='ov-trigger-line-BC-HC-001']").text()).toBe("L0");
+    expect(wrapper.get("[data-testid='ov-trigger-line-BC-HC-002']").text()).toBe("L58");
+    const missing = wrapper.get("[data-testid='ov-trigger-line-BC-HC-003']");
+    expect(missing.text()).toBe("—");
+    expect(missing.attributes("title")).toContain("没有可用的触发行号");
+    expect(missing.attributes("aria-label")).toContain("没有可用的触发行号");
+    // An older API response that omits the new field still renders an honest dash.
+    expect(wrapper.get("[data-testid='ov-trigger-line-BC-HC-004']").text()).toBe("—");
+    expect(wrapper.get("[data-testid='ov-trigger-line-BC-HC-002']").attributes("title"))
+      .toContain("L58");
   });
 
   it("keeps a non-ready case out of the deep link and shows its trace state", () => {

@@ -2041,6 +2041,11 @@ export interface components {
             source?: string | null;
             /** Title */
             title: string;
+            /**
+             * Triggerline
+             * @description Optional 1-based log line where the report sits in the root Session, using the same coordinate as the Session tree event line; absent means the trigger point is unknown.
+             */
+            triggerLine?: number | null;
         };
         /**
          * BadCaseIngestResponse
@@ -2110,6 +2115,11 @@ export interface components {
              * @description Trigger timestamp. Until object trigger coordinates land in m9-04 this temporarily equals createdAt.
              */
             triggerAt: string;
+            /**
+             * Triggerline
+             * @description 1-based log line of the report's trigger point in the root Session (the same coordinate as the Session tree event line), or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.
+             */
+            triggerLine: number | null;
         };
         /**
          * BadCaseListResponse

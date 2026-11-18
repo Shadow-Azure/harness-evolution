@@ -25,7 +25,7 @@
 | 归因（演进） | `bad_case_analysis`、`probe_reports` | `bad_case_analysis` 去掉一 case 唯一约束并扩为一 case 多归因；`probe_reports` 增加空间、结论、缓存与复用字段（§4.2） |
 | 簇与成员（演进） | `probe_clusters`、`probe_cluster_probes` | 保留表名；成员继续指向 `probe_reports.probe_id`，V2 的归因结论由同名 probe 承载（§5.3–§5.4） |
 | 自进化侧（新） | `evolution_run_candidates` | run 候选快照（触发点 / 策略命中 / 缓存标记）；全新粒度 `(run, bad_case)`，无既有表可继承（§5.9） |
-| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at / object_version`；M9：`agent_events.object_revision / definition_hash / file_read_hash / read_complete / relation_confidence`、`agent_events.document_id / document_revision / source_path / retrieval_kind / retrieval_scope`、`workspaces.knowledge_roots`；`probe_reports.workspace_id / conclusion / confidence / policy_version / attribution_engine / cache_key / created_run_id / last_reused_run_id / reused_count` | 定义见 §3.3、§3.4、§3.8、§4.1–§4.2、§5.2；迁移见 §9 |
+| 加列 | `bad_cases.workspace_id`；`evolution_targets.workspace_id`（唯一键改含空间）；`evolution_runs.workspace_id / potential_policy / cache_enabled`；`evolution_run_events.workspace_id`；`agents.tree_index`；`agent_events.triggered_at / object_version`；M9：`agent_events.object_revision / definition_hash / file_read_hash / read_complete / relation_confidence`、`agent_events.document_id / document_revision / source_path / retrieval_kind / retrieval_scope`、`workspaces.knowledge_roots`；`probe_reports.workspace_id / conclusion / confidence / policy_version / attribution_engine / cache_key / created_run_id / last_reused_run_id / reused_count`；M12：`bad_cases.trigger_line` | 定义见 §3.3、§3.4、§3.8、§4.1–§4.2、§5.2；迁移见 §9 |
 
 V2 的**写入方变化**：`bad_cases` 的主通道改为空间上报接口（凭据鉴权，§4.1），目录同步默认停用；`bad_case_analysis` / `probe_reports` / `evolution_run_candidates` / `probe_clusters` / `probe_cluster_probes` 由自进化 run 写；空间三表由空间管理端点写。`session_families` / `agents` / `agent_events` / `user_turns` / `trajectory_payloads` / `source_records` **不加空间列**——轨迹归一化是全局管线，一个空间的 Session 集合是「该空间 bad case 涉及的根会话」投影（§7.5）。
 
@@ -445,6 +445,7 @@ erDiagram
 | `object_type` | `VARCHAR(16)` | NOT NULL | `skill` / `agent` |
 | `object_version` | `VARCHAR(64)` | NULL | 上报者版本 |
 | `bad_case_agent_id` | `VARCHAR(64)` | NULL | 上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`；它是锚点计算的起点，不一定是卡片宿主（`discovery + agent` 锚到父节点，见 §7.4） |
+| `trigger_line` | `INTEGER` | NULL | 上报写入的日志行，坐标与执行流 `SessionEvent.line` 一致（1-based），总览「触发点」列的来源；历史行保持 NULL 并显示「—」，不从 `created_at`、事件下标或 `meta_data.line` 推断 |
 | `title` | `VARCHAR(255)` | NOT NULL | 短标题（外部上报必填；问题列表卡、执行流图问题卡与详情页标题行的主文本） |
 | `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示）；对外 DTO 字段名是 `reason` |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |

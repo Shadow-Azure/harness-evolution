@@ -367,6 +367,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "metaData",
         "source",
         "sessionSource",
+        "triggerLine",
         "createdAt",
     }
     assert "workspaceId" not in ingest_properties
@@ -653,6 +654,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "badCaseTypeLabel",
         "title",
         "triggerAt",
+        "triggerLine",
         "createdAt",
         "attributionCount",
         "syncStatus",
@@ -672,6 +674,10 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
         "temporarily equals createdAt"
         in components["BadCaseListItem"]["properties"]["triggerAt"]["description"]
     )
+    trigger_line = components["BadCaseListItem"]["properties"]["triggerLine"]
+    assert trigger_line["anyOf"] == [{"minimum": 0, "type": "integer"}, {"type": "null"}]
+    assert "log line" in trigger_line["description"]
+    assert "createdAt" in trigger_line["description"]
     error_codes = components["ErrorCode"]["enum"]
     assert {
         "BAD_CASE_NOT_FOUND",

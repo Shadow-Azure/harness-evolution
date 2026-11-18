@@ -1049,6 +1049,19 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "triggerLine": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional 1-based log line where the report sits in the root Session, using the same coordinate as the Session tree event line; absent means the trigger point is unknown.",
+            "title": "Triggerline"
           }
         },
         "required": [
@@ -1171,6 +1184,19 @@
             "format": "date-time",
             "title": "Triggerat",
             "type": "string"
+          },
+          "triggerLine": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-based log line of the report's trigger point in the root Session (the same coordinate as the Session tree event line), or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.",
+            "title": "Triggerline"
           }
         },
         "required": [
@@ -1181,6 +1207,7 @@
           "badCaseTypeLabel",
           "title",
           "triggerAt",
+          "triggerLine",
           "createdAt",
           "syncStatus",
           "sessionReady",

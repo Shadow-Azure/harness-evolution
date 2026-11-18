@@ -118,7 +118,9 @@ def _item(
 
     ``triggerAt`` mirrors ``createdAt`` until m9-04 stores the object trigger
     coordinates; exposing the report time keeps the field present for the client
-    without inventing a schema column.
+    without inventing a schema column. ``triggerLine`` is the explicit report
+    coordinate and stays null when the row has no stored line, so the overview
+    never presents the report time as a trigger point.
     """
     created_at = as_shanghai(row.created_at)
     trace = classify_trace_status(
@@ -134,6 +136,7 @@ def _item(
         bad_case_type_label=_label(row.bad_case_type),
         title=row.title,
         trigger_at=created_at,
+        trigger_line=row.trigger_line,
         created_at=created_at,
         sync_status=trace.status,
         session_ready=trace.session_ready,
