@@ -25,9 +25,10 @@ markdown.renderer.rules.link_open = (
 };
 
 /**
- * Render trusted-format external attribution Markdown without raw HTML.
- * @param source External attribution reasoning text.
- * @returns Safe HTML accepted by the report panel.
+ * Render trusted-format Markdown without raw HTML.
+ * Used by attribution reasoning and the bad-case description body.
+ * @param source Markdown text from a trusted external report.
+ * @returns Safe HTML accepted by the report and description panels.
  */
 export function renderMarkdown(source: string): string {
   return markdown.render(source);
