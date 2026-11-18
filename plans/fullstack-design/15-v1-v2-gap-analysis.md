@@ -153,9 +153,10 @@ V2 遵循“既有表优先原位演进，新表只承载全新粒度”：
 ### 9.2 对象 revision 与模型身份
 
 - 真实 Skill 列表可能只提供名称、内容摘要和 16 位不透明 digest；Skill body 以 `isMeta + sourceToolUseID` 注入。skill 对象身份使用 `sha256(normalize_definition_body(body))` 的 `digest:<sha256>`，不包含 source path；source path 只作诊断证据。显式 tag / `skillVersion` / `agentVersion` 元数据仍优先写 `object_revision=tag:<tag>`；没有 tag 时才使用 body hash，两者都缺失才是 `unknown`。
+- skill / agent / 知识库的**文件匹配键**统一为 `sha256(normalize_definition_body(body))`：skill body 取 `SKILL.md`；agent body 取 `AGENT.md`；知识库 body 取文档内容（文件读）。目标版本解析和 Session 关联都使用该 body hash；source path 只作证据。agent 的 `object_revision` 保留 `agentType + isBuiltIn + body hash` 作为诊断身份，但 target 匹配用 `definition_hash`；知识库文件读的 `document_revision`/`object_revision` 也使用归一化 body hash，Provider 原始 revision 仍是 `provider:`。
 - Agent 定义从 subagent 的 `prompt_snapshot.systemPrompt[0]` / `api-request-shape.system` 提取 body；`agentType + isBuiltIn + body hash` 构成 agent revision。通用权限提示、Notes、token budget 必须从 hash 中排除。
-- API 的 `targetVersion` 保留为选择入口：skill 目标带裸 git tag 时，服务端读取该 tag 下 `repoUrl/subDir/SKILL.md`，用与 parser 相同的 `normalize_definition_body` 计算 body hash，得到 `targetRevision=digest:<sha256>` 后再做 Session 关联与缓存键；已带 `digest:` 的值原样使用，`tag:` / `provider:` 仍按原语义。tag 保留为版本/显示与代码基线；内容读取或归一化失败返回稳定错误，不回退到 `tag:` 猜测。匹配接受 body hash 与 M9 legacy `object_revision`（过渡窗口），不能只比较名称。
-- target 内容必须来自与轨迹同一制品/版本，并经同一 body 提取/归一化；tag→body hash 与已知轨迹 `definitionHash` 的一致性进入验收测试。不同来源/版本不得按名称或默认分支猜测。
+- API 的 `targetVersion` 保留为选择入口：skill/agent 目标带裸 git tag 时，服务端读取该 tag 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，用与 parser 相同的 `normalize_definition_body` 计算 body hash，得到 `targetRevision=digest:<sha256>` 后再做 Session 关联与缓存键；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 的值原样使用，`tag:` / `provider:` 仍按原语义。tag 保留为版本/显示与代码基线；内容读取或归一化失败返回稳定错误，不回退到 `tag:` 猜测。匹配接受 body hash 与 M9 legacy `object_revision`（过渡窗口），不能只比较名称。knowledge 目标的 matcher/resolver 与 API 启动在本切片内；向导 UI 选择器仍为 skill/agent，知识库 UI 选择器另开切片。
+- target 内容必须来自与轨迹同一制品/版本，并经同一 body 提取/归一化；skill/agent/knowledge 的 body hash 与已知轨迹 `definitionHash`/`documentRevision` 的一致性进入验收测试。不同来源/版本不得按名称或默认分支猜测。
 - `probe_reports.object_version` 为 `VARCHAR(96)`；`digest:<sha256>` 是 71 字符，预览阶段只读既有缓存键、不写 probe。
 - `runtime_key`、`parser_version`、`runtime_version`、`requested_model`、`reported_model` 分列保存；`parser_version` 按 runtime 解释，模型口径冲突作为 evidence warning 返回，不用任一字段覆盖另一字段。
 

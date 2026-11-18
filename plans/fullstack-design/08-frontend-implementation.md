@@ -641,8 +641,8 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 
 **Step 1 选择范围**
 
-- 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。
-- 版本：tag 列表；默认选中 `defaultRef`；缺省时提交由后端回退 `defaultRef`。tag 只是内容来源：后端读取该 tag 下 `SKILL.md` 并算出 body hash，作为 `targetRevision`；Step 1 可在条件摘要里展示 `tag → digest` 只读结果。内容读取/归一化失败显示 `TARGET_CONTENT_UNRESOLVED` 并禁用“下一步”，不得回退到 tag 猜测。
+- 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。knowledge 目标只通过 API 配置，向导对象选择器仍是 skill/agent；knowledge 的文件匹配由 resolver/matcher 支持，知识库 UI 选择器另开切片。
+- 版本：tag 列表；默认选中 `defaultRef`；缺省时提交由后端回退 `defaultRef`。tag 只是内容来源：后端读取该 tag 下 `SKILL.md`（skill）或 `AGENT.md`（agent）并算出 body hash，作为 `targetRevision`；knowledge 目标由文档 revision/内容算 body hash，但向导暂不提供 knowledge 选择器。Step 1 可在条件摘要里展示 `tag → digest` 只读结果。内容读取/归一化失败显示 `TARGET_CONTENT_UNRESOLVED` 并禁用“下一步”，不得回退到 tag 猜测。
 - 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
@@ -651,7 +651,7 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 **Step 2 Session 关联**
 
 - 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` tag 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
-- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill 目标的“出现”按 body hash 匹配，tag 只用于解析内容 hash。
+- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 

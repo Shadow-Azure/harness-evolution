@@ -39,12 +39,12 @@ In the 2026-11-18 production test the `skill / systematic-debugging` target at `
 
 Meanwhile, `eventIndex=-1` currently means "missing/abnormal anchor" and degrades to the reporting Agent's birth point (the Session start for a main Agent). The 22 production cases are discovery + agent + main reporter; under the current rule they always fall before the target object and potential is zero. "Post-process report" has no dedicated semantics and cannot be explained or matched as "after the object".
 
-The design docs and implementation currently use the path+body identity (`docs/architecture.md:42`, `15 §9.2`, `06 §7.5`, `07 §5.12`), which conflicts with "drop source; associate by normalized body hash only". This issue must put the new semantics, compatibility, and migration into the design docs before implementation.
+The design docs and implementation currently use the path+body identity (`docs/architecture.md:42`, `15 §9.2`, `06 §7.5`, `07 §5.12`), while skill/agent/knowledge file matching should all use `sha256(normalize_definition_body(body))`: skill `SKILL.md`, agent `AGENT.md`, knowledge document file reads. The current target content resolver covers only the skill tag file; knowledge matching still uses `provider:`/original revisions. This issue must put the shared key, tag/document-revision resolution, compatibility, and migration into the design docs before implementation.
 
 ## Goals
 
-- Change the skill object identity to `digest:sha256(normalize_definition_body(body))`; the source path is evidence only and does not participate in revision, cache keys, or matching.
-- Treat the tag selected in the evolution wizard as the content source: the server reads `SKILL.md` at that tag and computes the body hash with the same normalizer as `targetRevision`; the tag remains the version/display and code baseline.
+- Unify the **file-matching key** for skill/agent/knowledge to `sha256(normalize_definition_body(body))`: skill `SKILL.md`, agent `AGENT.md`, knowledge document file reads. The source path is evidence only and does not participate in revision, cache keys, or matching. Skill identity uses this body hash; an agent `object_revision` keeps type/builtin evidence identity but matching uses `definition_hash`; knowledge `document_revision`/`object_revision` also use the normalized body hash.
+- Treat the tag selected in the evolution wizard as the content source: for skill/agent the server reads `SKILL.md`/`AGENT.md` at that tag, and for knowledge it reads the document at its revision; all use the same normalizer to compute the body hash as `targetRevision`. The tag/document revision remains the version/display and code baseline. Knowledge targets remain API-configured/API-launched; the wizard has no knowledge selector yet.
 - Change post-processed cases whose reported object cannot be found to an explicit post-process anchor: `eventIndex=INT_MAX`, `anchorKind=post_process`, `triggeredAt=created_at`; they participate in potential matching as "after the object". `-1` remains only for an unresolvable reporting Agent.
 - Define the parser version, replay, legacy path+body revisions and cache keys, contract/UI display, and test plan; implementation follows design review.
 
@@ -60,22 +60,22 @@ The design docs and implementation currently use the path+body identity (`docs/a
 
 ## Implementation
 
-- Design docs: update the sections above in 15/06/05/07/08 and `docs/architecture.md` (both languages) with body-only identity, tag-to-body-hash resolution, post-process anchors, compatibility, and migration; add a proposed Agent Note recording the decision and rejected alternatives.
-- Follow-up code (tracked, not in the design-doc PR): parser skill revision becomes body-only with a parser version bump; the target content resolver reads `SKILL.md` at the tag, normalizes, computes the hash, and adds caching and stable errors; the matcher accepts body hash and legacy path+body (transition) and implements the post-process anchor; candidate/attribution snapshots record `anchorSource`; contracts, API DTOs, frontend display, and tests follow.
-- Migration: replay stored claude-code Sessions by parser version; legacy path+body revisions remain historical and new runs write body-only; old cache keys are not reused; the 96-character `probe_reports.object_version` is sufficient.
+- Design docs: update the sections above in 15/06/05/07/08 and `docs/architecture.md` (both languages) with the shared skill/agent/knowledge body-hash file matching, tag/document-revision resolution, post-process anchors, compatibility, and migration; add a proposed Agent Note recording the decision and rejected alternatives.
+- Follow-up code (tracked, not in the design-doc PR): parser skill identity, agent `definition_hash`, and knowledge file-read revision become the normalized body hash with a parser version bump; the target content resolver reads `SKILL.md`/`AGENT.md` at the tag or the knowledge document at its revision, normalizes, computes the hash, and adds caching and stable errors; the matcher accepts body hash and legacy path+body (transition) and implements the post-process anchor; candidate/attribution snapshots record `anchorSource`; contracts, API DTOs, frontend display, and tests follow.
+- Migration: replay stored claude-code Sessions by parser version for skill/agent/knowledge; legacy path+body revisions remain historical and new runs write the normalized body hash; old cache keys are not reused; the 96-character `probe_reports.object_version` is sufficient.
 
 ## Implementation steps
 
 1. Create the M13 issue and proposed Note; update 15/06/05/07/08, `docs/architecture.md` and the English side, i18n pairs; open a docs-only PR for review.
 2. After review, implement the parser body-only revision, version bump, and replay; add unit/fixture tests.
-3. Implement the target tag-to-content resolver (read, normalize, cache, timeout, stable errors); add a golden hash test proving agreement with a known trace `definitionHash`.
+3. Implement the target content resolver: skill/agent tag to `SKILL.md`/`AGENT.md`, knowledge document revision to content; normalize, cache, timeout, stable errors; add golden hash tests proving agreement with a known trace `definitionHash`/`documentRevision`.
 4. Implement the matcher body-hash match and post-process anchor; update candidate/attribution snapshots, contracts, and frontend display.
 5. Run migration, replay, and cross-stack tests; update docs status and commands.
 
 ## Dependencies and boundary
 
 - Dependencies: M12 is complete; M13 design review precedes code.
-- Non-goals: no change to knowledge-target revision semantics; no private-repository credentials; no rewrite of rule-v1 categories; no code in the design-doc PR.
+- Non-goals: no knowledge UI selector (knowledge remains API-configured/API-launched; resolver/matcher are in scope); no private-repository credentials; no rewrite of rule-v1 categories; no code in the design-doc PR.
 
 ## Verification
 
@@ -88,13 +88,13 @@ pnpm test:gates
 
 - `verify:flow` passes and the issue trio agrees with the M13 milestone.
 - `lint:docs` / `verify:docs` pass; `docs/architecture.md`, its English side, and the i18n record agree.
-- Code phase adds: a golden test that the tag content's normalized sha256 equals a known trace `definitionHash`; API/integration tests for `anchorKind=post_process`, `eventIndex=INT_MAX`, `triggeredAt=created_at`, and `after_object`.
+- Code phase adds: golden tests that skill/agent tag content and knowledge document content's normalized sha256 equal a known trace `definitionHash`/`documentRevision`; API/integration tests for `anchorKind=post_process`, `eventIndex=INT_MAX`, `triggeredAt=created_at`, and `after_object`.
 
 ## Acceptance
 
-- The design docs state that the skill identity no longer includes the source path; the tag is the content source and the body hash is `targetRevision`; post-process cases with no object use an explicit, auditable anchor.
+- The design docs state that skill/agent/knowledge file matching all use the normalized body hash, with the source path no longer participating; skill/agent tags and the knowledge document revision are content sources; post-process cases with no object use an explicit, auditable anchor.
 - The design docs define the compatibility boundary for legacy path+body revisions, parser version, replay, cache keys, and contracts/UI.
-- A golden hash test proves the target content and trace body share a source; a mismatch returns a stable error and never falls back to tag guessing.
+- Golden hash tests prove all three target content sources match the trace body; a mismatch returns a stable error and never falls back to tag guessing.
 - Code starts only after design review; the issue stays open until implementation completes.
 
 ## Gates and CI
@@ -104,6 +104,6 @@ pnpm test:gates
 
 ## Non-goals
 
-- No change to knowledge-target revision and matching.
+- No knowledge UI selector; knowledge remains API-configured/API-launched.
 - No private-repository credentials or new deployment secrets.
 - No parser, matcher, contract, or frontend code before design review.
