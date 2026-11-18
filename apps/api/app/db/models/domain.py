@@ -536,10 +536,42 @@ attribution_skill_revisions = Table(
     Column("executor_type", String(32), nullable=False),
     Column("output_schema_version", String(32), nullable=False),
     Column("status", String(16), nullable=False),
+    Column(
+        "quality_status",
+        String(24),
+        nullable=False,
+        server_default=text("'candidate'"),
+    ),
     Column("created_at", DateTime(timezone=True), nullable=False),
     UniqueConstraint("skill_id", "revision", name="uq_attribution_skill_revision"),
     UniqueConstraint("skill_id", "content_hash", name="uq_attribution_skill_content"),
     Index("ix_attribution_skill_revisions_status", "skill_id", "status"),
+)
+
+
+attribution_skill_quality_events = Table(
+    "attribution_skill_quality_events",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column(
+        "skill_revision_id",
+        String(36),
+        ForeignKey("attribution_skill_revisions.id", ondelete="RESTRICT"),
+        nullable=False,
+    ),
+    Column("event_type", String(24), nullable=False),
+    Column("evaluation_hash", CHAR(64), nullable=True),
+    Column("payload", JSON, nullable=False),
+    Column("actor_id", String(36), nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Index(
+        "ix_attribution_skill_quality_revision",
+        "skill_revision_id",
+        "created_at",
+    ),
+    Index("ix_attribution_skill_quality_workspace", "workspace_id", "created_at"),
 )
 
 

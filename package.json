@@ -19,6 +19,7 @@
     "test:integration": "node --test tests/integration/web-api-proxy.test.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "performance:report": "node scripts/performance-report.mjs",
+    "attribution:evaluate": "node scripts/attribution-eval.mjs",
     "fixtures:seed": "node scripts/fixtures-seed.mjs",
     "fixtures:check": "node scripts/fixtures-check.mjs",
     "data:import:sessions": "node scripts/local-sessions.mjs import",

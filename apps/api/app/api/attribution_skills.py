@@ -8,6 +8,10 @@ from app.api.deps import require_workspace_role
 from app.api.security import BEARER_AUTH
 from app.errors import ErrorResponse
 from app.service.evolution.attribution_skills import (
+    AttributionQualityDecisionWrite,
+    AttributionQualityEvaluation,
+    AttributionQualityHistory,
+    AttributionRollbackWrite,
     AttributionSkillBindingWrite,
     AttributionSkillCreate,
     AttributionSkillList,
@@ -26,6 +30,7 @@ router = APIRouter(
 
 WorkspaceId = Annotated[str, Path(min_length=1, max_length=36)]
 SkillId = Annotated[str, Path(min_length=1, max_length=36)]
+RevisionId = Annotated[str, Path(min_length=1, max_length=36)]
 TargetId = Annotated[str, Path(min_length=1, max_length=36)]
 ViewerAccess = Annotated[WorkspaceAccess, Depends(require_workspace_role("viewer"))]
 AdminAccess = Annotated[WorkspaceAccess, Depends(require_workspace_role("space_admin"))]
@@ -113,6 +118,65 @@ async def set_attribution_skill_state(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/attribution-skills/revisions/{revisionId}/shadow-evaluations",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses=RESPONSES,
+)
+async def evaluate_attribution_skill_revision(
+    request: Request,
+    wid: WorkspaceId,
+    revisionId: RevisionId,
+    access: AdminAccess,
+) -> AttributionQualityEvaluation:
+    """Evaluate a revision against sanitized Golden Cases without production writes."""
+    del access
+    return await skills_from(request).evaluate_revision(
+        wid,
+        revisionId,
+        request.state.principal.user_id,
+    )
+
+
+@router.post(
+    "/attribution-skills/revisions/{revisionId}/quality-decisions",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=RESPONSES,
+)
+async def decide_attribution_skill_quality(
+    request: Request,
+    wid: WorkspaceId,
+    revisionId: RevisionId,
+    body: AttributionQualityDecisionWrite,
+    access: AdminAccess,
+) -> AttributionSkillRevision:
+    """Accept or reject one revision using an exact persisted evaluation."""
+    del access
+    return await skills_from(request).decide_quality(
+        wid,
+        revisionId,
+        request.state.principal.user_id,
+        body,
+    )
+
+
+@router.get(
+    "/attribution-skills/revisions/{revisionId}/quality-events",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=RESPONSES,
+)
+async def list_attribution_skill_quality_events(
+    request: Request,
+    wid: WorkspaceId,
+    revisionId: RevisionId,
+    access: ViewerAccess,
+) -> AttributionQualityHistory:
+    """Return the immutable evaluation and human-decision audit trail."""
+    del access
+    return await skills_from(request).quality_history(wid, revisionId)
+
+
 @router.put(
     "/attribution-skill-bindings/default",
     dependencies=[Security(BEARER_AUTH)],
@@ -144,6 +208,26 @@ async def unbind_workspace_default_skill(
     del access
     await skills_from(request).unbind(wid, target_id=None)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/attribution-skill-bindings/default/rollback",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=RESPONSES,
+)
+async def rollback_workspace_default_skill(
+    request: Request,
+    wid: WorkspaceId,
+    body: AttributionRollbackWrite,
+    access: AdminAccess,
+) -> EffectiveAttributionSkill:
+    """Restore the prior eligible revision or the protected platform rule."""
+    del access
+    return await skills_from(request).rollback_default(
+        wid,
+        request.state.principal.user_id,
+        body,
+    )
 
 
 @router.get(

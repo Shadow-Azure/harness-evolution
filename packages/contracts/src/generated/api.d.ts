@@ -1081,6 +1081,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/attribution-skill-bindings/default/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Workspace Default Skill
+         * @description Restore the prior eligible revision or the protected platform rule.
+         */
+        post: operations["rollback_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/attribution-skills": {
         parameters: {
             query?: never;
@@ -1099,6 +1119,66 @@ export interface paths {
          * @description Create a workspace Skill and publish revision one.
          */
         post: operations["create_attribution_skill_api_workspaces__wid__evolution_attribution_skills_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Attribution Skill Quality
+         * @description Accept or reject one revision using an exact persisted evaluation.
+         */
+        post: operations["decide_attribution_skill_quality_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/quality-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Skill Quality Events
+         * @description Return the immutable evaluation and human-decision audit trail.
+         */
+        get: operations["list_attribution_skill_quality_events_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/attribution-skills/revisions/{revisionId}/shadow-evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Attribution Skill Revision
+         * @description Evaluate a revision against sanitized Golden Cases without production writes.
+         */
+        post: operations["evaluate_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__shadow_evaluations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2035,6 +2115,74 @@ export interface components {
             reused: number;
         };
         /**
+         * AttributionQualityDecisionWrite
+         * @description Human acceptance or rejection of one exact shadow evaluation.
+         */
+        AttributionQualityDecisionWrite: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accept" | "reject";
+            /** Evaluationeventid */
+            evaluationEventId: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * AttributionQualityEvaluation
+         * @description One persisted isolated shadow report and its audit identity.
+         */
+        AttributionQualityEvaluation: {
+            /** Actorid */
+            actorId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Id */
+            id: string;
+            report: components["schemas"]["ShadowEvaluationReport"];
+            /** Skillrevisionid */
+            skillRevisionId: string;
+        };
+        /**
+         * AttributionQualityEvent
+         * @description Append-only evaluation, promotion, rejection, or rollback evidence.
+         */
+        AttributionQualityEvent: {
+            /** Actorid */
+            actorId: string;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Evaluationhash */
+            evaluationHash: string | null;
+            /** Eventtype */
+            eventType: string;
+            /** Id */
+            id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Skillrevisionid */
+            skillRevisionId: string;
+        };
+        /**
+         * AttributionQualityHistory
+         * @description Ordered quality audit trail for one revision.
+         */
+        AttributionQualityHistory: {
+            /** Items */
+            items: components["schemas"]["AttributionQualityEvent"][];
+        };
+        /**
          * AttributionReportV2
          * @description Structured V2 payload stored beside legacy report text columns.
          */
@@ -2062,6 +2210,14 @@ export interface components {
             target: components["schemas"]["AttributionTargetRef"];
             /** Warnings */
             warnings?: string[];
+        };
+        /**
+         * AttributionRollbackWrite
+         * @description Human reason attached to a workspace-default rollback.
+         */
+        AttributionRollbackWrite: {
+            /** Reason */
+            reason: string;
         };
         /**
          * AttributionSkillBindingWrite
@@ -2564,6 +2720,8 @@ export interface components {
             id: string;
             /** Outputschemaversion */
             outputSchemaVersion: string;
+            /** Qualitystatus */
+            qualityStatus: string;
             /** Revision */
             revision: number;
             /** Skillid */
@@ -2598,7 +2756,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -3260,6 +3418,55 @@ export interface components {
             testProjectId: string;
             /** Validationprojectid */
             validationProjectId: string;
+        };
+        /**
+         * GoldenExpected
+         * @description Expected semantic outcome and verifiable evidence constraints.
+         */
+        GoldenExpected: {
+            /** Category */
+            category?: ("model" | "prompt" | "error") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            /**
+             * Detectionpointrequired
+             * @default false
+             */
+            detectionPointRequired: boolean;
+            /**
+             * Introductionpointrequired
+             * @default false
+             */
+            introductionPointRequired: boolean;
+            /** Requiredevidencerefs */
+            requiredEvidenceRefs?: string[];
+        };
+        /**
+         * GoldenThresholds
+         * @description Closed promotion thresholds carried by one versioned Golden Set.
+         */
+        GoldenThresholds: {
+            /** Categoryaccuracy */
+            categoryAccuracy: number;
+            /** Conclusionaccuracy */
+            conclusionAccuracy: number;
+            /** Evidencevalidityrate */
+            evidenceValidityRate: number;
+            /** Maximumaveragetokens */
+            maximumAverageTokens: number;
+            /** Maximumfailurerate */
+            maximumFailureRate: number;
+            /** Maximump95Latencyms */
+            maximumP95LatencyMs: number;
+            /** Pointhitrate */
+            pointHitRate: number;
+            /** Safetyrate */
+            safetyRate: number;
+            /** Schemacompliancerate */
+            schemaComplianceRate: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -4221,6 +4428,143 @@ export interface components {
             targetVersion?: string | null;
             /** To */
             to?: string | null;
+        };
+        /**
+         * ShadowActual
+         * @description Normalized engine output stored separately from Probe Reports.
+         */
+        ShadowActual: {
+            /** Category */
+            category: ("model" | "prompt" | "error") | null;
+            /**
+             * Conclusion
+             * @enum {string}
+             */
+            conclusion: "attributed" | "non_target" | "inconclusive";
+            /** Confidence */
+            confidence: number;
+            /** Evidencereferences */
+            evidenceReferences: string[];
+            /** Summary */
+            summary: string;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * ShadowCandidate
+         * @description Exact engine and Skill snapshot evaluated without production writes.
+         */
+        ShadowCandidate: {
+            /** Engine */
+            engine: string;
+            /**
+             * Modelconfigfingerprint
+             * @default none
+             */
+            modelConfigFingerprint: string;
+            /** Skillcontent */
+            skillContent: {
+                [key: string]: unknown;
+            };
+            /** Skillcontenthash */
+            skillContentHash: string;
+            /** Skillexecutortype */
+            skillExecutorType: string;
+            /** Skillkey */
+            skillKey: string;
+            /** Skillrevision */
+            skillRevision: number;
+        };
+        /**
+         * ShadowCaseResult
+         * @description One isolated case comparison; it is never a production attribution.
+         */
+        ShadowCaseResult: {
+            actual: components["schemas"]["ShadowActual"] | null;
+            /** Caseid */
+            caseId: string;
+            /** Categorymatch */
+            categoryMatch: boolean;
+            /** Conclusionmatch */
+            conclusionMatch: boolean;
+            /** Detectionpointhit */
+            detectionPointHit: boolean;
+            /** Error */
+            error?: string | null;
+            /** Evidencevalid */
+            evidenceValid: boolean;
+            expected: components["schemas"]["GoldenExpected"];
+            /** Introductionpointhit */
+            introductionPointHit: boolean;
+            /** Latencyms */
+            latencyMs: number;
+            /** Safetypassed */
+            safetyPassed: boolean;
+            /** Scenario */
+            scenario: string;
+            /** Schemacompliant */
+            schemaCompliant: boolean;
+            /** Tokencount */
+            tokenCount: number;
+        };
+        /**
+         * ShadowEvaluationReport
+         * @description Immutable quality artifact produced without touching production state.
+         */
+        ShadowEvaluationReport: {
+            candidate: components["schemas"]["ShadowCandidate"];
+            /** Evaluationhash */
+            evaluationHash: string;
+            /** Failedgates */
+            failedGates: string[];
+            /** Goldensethash */
+            goldenSetHash: string;
+            /** Goldensetid */
+            goldenSetId: string;
+            metrics: components["schemas"]["ShadowMetrics"];
+            /** Passed */
+            passed: boolean;
+            /** Results */
+            results: components["schemas"]["ShadowCaseResult"][];
+            /**
+             * Schemaversion
+             * @default attribution-shadow-report/v1
+             * @constant
+             */
+            schemaVersion: "attribution-shadow-report/v1";
+            thresholds: components["schemas"]["GoldenThresholds"];
+        };
+        /**
+         * ShadowMetrics
+         * @description Aggregate quality, safety, cost, and runtime measurements.
+         */
+        ShadowMetrics: {
+            /** Averagelatencyms */
+            averageLatencyMs: number;
+            /** Averagetokens */
+            averageTokens: number;
+            /** Categoryaccuracy */
+            categoryAccuracy: number;
+            /** Conclusionaccuracy */
+            conclusionAccuracy: number;
+            /** Detectionpointhitrate */
+            detectionPointHitRate: number;
+            /** Evidencevalidityrate */
+            evidenceValidityRate: number;
+            /** Failurerate */
+            failureRate: number;
+            /** Introductionpointhitrate */
+            introductionPointHitRate: number;
+            /** P95Latencyms */
+            p95LatencyMs: number;
+            /** Pointhitrate */
+            pointHitRate: number;
+            /** Safetyrate */
+            safetyRate: number;
+            /** Schemacompliancerate */
+            schemaComplianceRate: number;
+            /** Totalcases */
+            totalCases: number;
         };
         /**
          * SourceListResponse
@@ -5353,6 +5697,8 @@ export interface components {
             id: string;
             /** Outputschemaversion */
             outputSchemaVersion: string;
+            /** Qualitystatus */
+            qualityStatus: string;
             /** Revision */
             revision: number;
             /** Skillid */
@@ -8748,6 +9094,77 @@ export interface operations {
             };
         };
     };
+    rollback_workspace_default_skill_api_workspaces__wid__evolution_attribution_skill_bindings_default_rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionRollbackWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveAttributionSkill"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get: {
         parameters: {
             query?: never;
@@ -8837,6 +9254,214 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    decide_attribution_skill_quality_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttributionQualityDecisionWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app__service__evolution__attribution_skills__AttributionSkillRevision"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_attribution_skill_quality_events_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__quality_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionQualityHistory"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Workspace role is insufficient */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill, target, or workspace is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill identity or revision conflicts */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Skill contract is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    evaluate_attribution_skill_revision_api_workspaces__wid__evolution_attribution_skills_revisions__revisionId__shadow_evaluations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                revisionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionQualityEvaluation"];
                 };
             };
             /** @description Authentication is required */

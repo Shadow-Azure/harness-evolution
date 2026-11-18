@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/testing/2026-11-18-attribution-golden-promotion-gate.md
+2026-11-18-attribution-golden-promotion-gate.md: 577d9086853fabcccec0dd90ae86979fcb754448
+2026-11-18-attribution-golden-promotion-gate.en.md: b5eb469559007fe4d60e9a6581a58bbe4b104f59

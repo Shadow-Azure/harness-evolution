@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal
 
 from sqlalchemy import delete, func, insert, select, update
@@ -14,6 +15,7 @@ from app.db.base import Database
 from app.db.crud.integrity import is_unique_violation
 from app.db.models.domain import (
     attribution_skill_bindings,
+    attribution_skill_quality_events,
     attribution_skill_revisions,
     attribution_skills,
     evolution_targets,
@@ -45,6 +47,22 @@ class AttributionSkillRecord:
     executor_type: str
     output_schema_version: str
     status: str
+    quality_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class AttributionQualityEventRecord:
+    """One append-only shadow evaluation or human quality decision."""
+
+    id: str
+    workspace_id: str
+    skill_revision_id: str
+    event_type: str
+    evaluation_hash: str | None
+    payload: Mapping[str, Any]
+    actor_id: str
+    reason: str
+    created_at: datetime
 
 
 class AttributionSkillConflict(Exception):
@@ -73,6 +91,25 @@ def _record(row: RowMapping) -> AttributionSkillRecord:
         executor_type=str(row["executor_type"]),
         output_schema_version=str(row["output_schema_version"]),
         status=str(row["status"]),
+        quality_status=str(row["quality_status"]),
+    )
+
+
+def _quality_event(row: RowMapping) -> AttributionQualityEventRecord:
+    """Translate one append-only quality event row."""
+    payload = row["payload"]
+    return AttributionQualityEventRecord(
+        id=str(row["id"]),
+        workspace_id=str(row["workspace_id"]),
+        skill_revision_id=str(row["skill_revision_id"]),
+        event_type=str(row["event_type"]),
+        evaluation_hash=(
+            str(row["evaluation_hash"]) if row["evaluation_hash"] is not None else None
+        ),
+        payload=dict(payload) if isinstance(payload, Mapping) else {},
+        actor_id=str(row["actor_id"]),
+        reason=str(row["reason"]),
+        created_at=row["created_at"],
     )
 
 
@@ -93,6 +130,7 @@ def _joined() -> Any:
         attribution_skill_revisions.c.executor_type,
         attribution_skill_revisions.c.output_schema_version,
         attribution_skill_revisions.c.status,
+        attribution_skill_revisions.c.quality_status,
     ).join(
         attribution_skill_revisions,
         attribution_skill_revisions.c.skill_id == attribution_skills.c.id,
@@ -200,6 +238,7 @@ class AttributionSkillRepository:
                         executor_type=executor_type,
                         output_schema_version=output_schema_version,
                         status="published",
+                        quality_status="candidate",
                         created_at=now,
                     ),
                 )
@@ -260,6 +299,7 @@ class AttributionSkillRepository:
                         executor_type=executor_type,
                         output_schema_version=output_schema_version,
                         status="published",
+                        quality_status="candidate",
                         created_at=now_shanghai(),
                     ),
                 )
@@ -283,6 +323,224 @@ class AttributionSkillRepository:
         async with self._database.transaction() as session:
             result = await session.execute(statement)
         return bool(getattr(result, "rowcount", 0))
+
+    async def record_quality_evaluation(
+        self,
+        *,
+        workspace_id: str,
+        revision_id: str,
+        actor_id: str,
+        evaluation_hash: str,
+        payload: Mapping[str, Any],
+    ) -> AttributionQualityEventRecord | None:
+        """Persist an isolated shadow report without changing revision eligibility."""
+        event_id = new_id()
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            visible = (
+                await session.execute(
+                    select(attribution_skill_revisions.c.id)
+                    .join(attribution_skills)
+                    .where(
+                        attribution_skill_revisions.c.id == revision_id,
+                        (attribution_skills.c.workspace_id == workspace_id)
+                        | (attribution_skills.c.workspace_id.is_(None)),
+                    ),
+                )
+            ).scalar_one_or_none()
+            if visible is None:
+                return None
+            await session.execute(
+                insert(attribution_skill_quality_events).values(
+                    id=event_id,
+                    workspace_id=workspace_id,
+                    skill_revision_id=revision_id,
+                    event_type="evaluated",
+                    evaluation_hash=evaluation_hash,
+                    payload=dict(payload),
+                    actor_id=actor_id,
+                    reason="isolated Golden Set shadow evaluation",
+                    created_at=now,
+                ),
+            )
+        return await self.get_quality_event(event_id, workspace_id)
+
+    async def get_quality_event(
+        self,
+        event_id: str,
+        workspace_id: str,
+    ) -> AttributionQualityEventRecord | None:
+        """Return one quality event scoped to the requesting workspace."""
+        statement = select(attribution_skill_quality_events).where(
+            attribution_skill_quality_events.c.id == event_id,
+            attribution_skill_quality_events.c.workspace_id == workspace_id,
+        )
+        async with self._database.session() as session:
+            row = (await session.execute(statement)).mappings().one_or_none()
+        return _quality_event(row) if row is not None else None
+
+    async def list_quality_events(
+        self,
+        *,
+        workspace_id: str,
+        revision_id: str,
+    ) -> tuple[AttributionQualityEventRecord, ...]:
+        """Return the append-only audit trail for one visible revision."""
+        statement = (
+            select(attribution_skill_quality_events)
+            .where(
+                attribution_skill_quality_events.c.workspace_id == workspace_id,
+                attribution_skill_quality_events.c.skill_revision_id == revision_id,
+            )
+            .order_by(
+                attribution_skill_quality_events.c.created_at,
+                attribution_skill_quality_events.c.id,
+            )
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return tuple(_quality_event(row) for row in rows)
+
+    async def decide_quality(
+        self,
+        *,
+        workspace_id: str,
+        revision_id: str,
+        evaluation_event_id: str,
+        decision: Literal["accept", "reject"],
+        actor_id: str,
+        reason: str,
+    ) -> AttributionSkillRecord | None:
+        """Record a human decision and update current eligibility atomically."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            owned = (
+                await session.execute(
+                    select(attribution_skill_revisions.c.id)
+                    .join(attribution_skills)
+                    .where(
+                        attribution_skill_revisions.c.id == revision_id,
+                        attribution_skills.c.workspace_id == workspace_id,
+                        attribution_skills.c.built_in.is_(False),
+                    ),
+                )
+            ).scalar_one_or_none()
+            evaluation = (
+                (
+                    await session.execute(
+                        select(attribution_skill_quality_events).where(
+                            attribution_skill_quality_events.c.id == evaluation_event_id,
+                            attribution_skill_quality_events.c.workspace_id == workspace_id,
+                            attribution_skill_quality_events.c.skill_revision_id == revision_id,
+                            attribution_skill_quality_events.c.event_type == "evaluated",
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if owned is None or evaluation is None:
+                return None
+            payload = evaluation["payload"]
+            passed = isinstance(payload, Mapping) and payload.get("passed") is True
+            if decision == "accept" and not passed:
+                raise ValueError("failed shadow evaluation cannot be accepted")
+            quality_status = "eligible" if decision == "accept" else "rejected"
+            await session.execute(
+                insert(attribution_skill_quality_events).values(
+                    id=new_id(),
+                    workspace_id=workspace_id,
+                    skill_revision_id=revision_id,
+                    event_type="accepted" if decision == "accept" else "rejected",
+                    evaluation_hash=evaluation["evaluation_hash"],
+                    payload={
+                        "evaluationEventId": evaluation_event_id,
+                        "evaluationHash": evaluation["evaluation_hash"],
+                        "passed": passed,
+                    },
+                    actor_id=actor_id,
+                    reason=reason,
+                    created_at=now,
+                ),
+            )
+            await session.execute(
+                update(attribution_skill_revisions)
+                .where(attribution_skill_revisions.c.id == revision_id)
+                .values(quality_status=quality_status),
+            )
+        return await self.get_revision(revision_id, workspace_id)
+
+    async def rollback_workspace_default(
+        self,
+        *,
+        workspace_id: str,
+        actor_id: str,
+        reason: str,
+    ) -> AttributionSkillRecord | None:
+        """Move the workspace default to the prior eligible revision or platform rule."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            current = (
+                (
+                    await session.execute(
+                        select(
+                            attribution_skill_bindings.c.id.label("binding_id"),
+                            attribution_skill_revisions.c.id.label("revision_id"),
+                            attribution_skill_revisions.c.skill_id,
+                            attribution_skill_revisions.c.revision,
+                        )
+                        .join(
+                            attribution_skill_revisions,
+                            attribution_skill_revisions.c.id
+                            == attribution_skill_bindings.c.skill_revision_id,
+                        )
+                        .where(
+                            attribution_skill_bindings.c.workspace_id == workspace_id,
+                            attribution_skill_bindings.c.binding_key == WORKSPACE_DEFAULT_BINDING,
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if current is None:
+                return None
+            previous = (
+                await session.execute(
+                    select(attribution_skill_revisions.c.id)
+                    .where(
+                        attribution_skill_revisions.c.skill_id == current["skill_id"],
+                        attribution_skill_revisions.c.revision < current["revision"],
+                        attribution_skill_revisions.c.quality_status == "eligible",
+                        attribution_skill_revisions.c.status == "published",
+                    )
+                    .order_by(attribution_skill_revisions.c.revision.desc())
+                    .limit(1),
+                )
+            ).scalar_one_or_none()
+            fallback_id = str(previous or PLATFORM_REVISION_ID)
+            await session.execute(
+                update(attribution_skill_bindings)
+                .where(attribution_skill_bindings.c.id == current["binding_id"])
+                .values(skill_revision_id=fallback_id, updated_at=now),
+            )
+            await session.execute(
+                insert(attribution_skill_quality_events).values(
+                    id=new_id(),
+                    workspace_id=workspace_id,
+                    skill_revision_id=current["revision_id"],
+                    event_type="rolled_back",
+                    evaluation_hash=None,
+                    payload={
+                        "fromRevisionId": current["revision_id"],
+                        "toRevisionId": fallback_id,
+                    },
+                    actor_id=actor_id,
+                    reason=reason,
+                    created_at=now,
+                ),
+            )
+        return await self.get_revision(fallback_id, workspace_id)
 
     async def bind(
         self,
@@ -390,6 +648,10 @@ class AttributionSkillRepository:
                     attribution_skill_revisions.c.status == "published",
                 )
             )
+            if source == "workspace":
+                statement = statement.where(
+                    attribution_skill_revisions.c.quality_status == "eligible",
+                )
             async with self._database.session() as session:
                 row = (await session.execute(statement)).mappings().one_or_none()
             if row is not None:

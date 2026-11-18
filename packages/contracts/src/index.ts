@@ -174,6 +174,22 @@ export type EffectiveAttributionSkill =
 export type AttributionSkillBindingWrite =
   components["schemas"]["AttributionSkillBindingWrite"];
 
+/** Persisted isolated Golden Set result for one immutable Skill revision. */
+export type AttributionQualityEvaluation =
+  components["schemas"]["AttributionQualityEvaluation"];
+
+/** Human acceptance or rejection backed by one exact shadow evaluation. */
+export type AttributionQualityDecisionWrite =
+  components["schemas"]["AttributionQualityDecisionWrite"];
+
+/** Append-only evaluation and promotion audit trail. */
+export type AttributionQualityHistory =
+  components["schemas"]["AttributionQualityHistory"];
+
+/** Human reason attached to a workspace-default rollback. */
+export type AttributionRollbackWrite =
+  components["schemas"]["AttributionRollbackWrite"];
+
 /** One enabled target exposed to the wizard catalog. */
 export type CatalogTarget = components["schemas"]["CatalogTarget"];
 

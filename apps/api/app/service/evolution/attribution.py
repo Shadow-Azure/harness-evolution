@@ -401,7 +401,10 @@ def _knowledge_lines(evidence: Sequence[KnowledgeEvidence]) -> list[str]:
     return lines
 
 
-def _report_payload(item: AttributionInput, result: AttributionResult) -> AttributionReportV2:
+def build_attribution_report(
+    item: AttributionInput,
+    result: AttributionResult,
+) -> AttributionReportV2:
     """Project one engine result into the stable V2 report payload."""
     evidence = [
         AttributionEvidence(
@@ -676,7 +679,7 @@ class AttributionRunner:
                         continue
                 result = await engine.attribute(item)
                 manifest = item.execution_manifest
-                report = _report_payload(item, result)
+                report = build_attribution_report(item, result)
                 await self._store.write_probe_and_link(
                     ProbeWrite(
                         probe_id=new_id(),
@@ -836,6 +839,7 @@ __all__ = [
     "AttributionRunner",
     "KnowledgeEvidence",
     "RuleBasedEngine",
+    "build_attribution_report",
     "registered_engine_keys",
     "resolve_attribution_engine",
 ]
