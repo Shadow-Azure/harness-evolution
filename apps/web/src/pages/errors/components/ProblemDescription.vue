@@ -7,6 +7,7 @@ import {
   badCaseDeepLink,
   shortBadCaseId,
 } from "../../../utils/badCaseId";
+import { renderMarkdown } from "../../../utils/markdown";
 
 const props = withDefaults(
   defineProps<{
@@ -45,6 +46,9 @@ const descriptionLink = computed(() =>
     props.problem.badCaseId,
     "desc",
   ),
+);
+const reasonHtml = computed(() =>
+  renderMarkdown(props.problem.reason, { images: false }),
 );
 </script>
 
@@ -114,12 +118,13 @@ const descriptionLink = computed(() =>
       >尚未归因</span>
     </div>
 
+    <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
     <div
-      class="problem-detail"
+      class="problem-detail markdown"
       data-testid="problem-detail"
-    >
-      {{ problem.reason }}
-    </div>
+      v-html="reasonHtml"
+    />
+    <!-- eslint-enable vue/no-v-html -->
     <div
       v-if="facts.length"
       class="facts-block"
@@ -168,6 +173,125 @@ const descriptionLink = computed(() =>
   color: var(--text-dim);
   font-size: 12.5px;
   line-height: 1.7;
+}
+
+.problem-detail.markdown :deep(p) {
+  margin: 0 0 7px;
+}
+
+.problem-detail.markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.problem-detail.markdown :deep(ul),
+.problem-detail.markdown :deep(ol) {
+  margin: 3px 0 9px;
+  padding-left: 18px;
+}
+
+.problem-detail.markdown :deep(li) {
+  margin: 1px 0;
+}
+
+.problem-detail.markdown :deep(li:last-child) {
+  margin-bottom: 0;
+}
+
+.problem-detail.markdown :deep(code) {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.problem-detail.markdown :deep(pre) {
+  overflow-x: auto;
+  margin: 6px 0 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+}
+
+.problem-detail.markdown :deep(pre code) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.problem-detail.markdown :deep(strong) {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.problem-detail.markdown :deep(a) {
+  color: var(--blue);
+}
+
+.problem-detail.markdown :deep(h1),
+.problem-detail.markdown :deep(h2),
+.problem-detail.markdown :deep(h3),
+.problem-detail.markdown :deep(h4),
+.problem-detail.markdown :deep(h5),
+.problem-detail.markdown :deep(h6) {
+  margin: 9px 0 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.problem-detail.markdown :deep(h1:first-child),
+.problem-detail.markdown :deep(h2:first-child),
+.problem-detail.markdown :deep(h3:first-child),
+.problem-detail.markdown :deep(h4:first-child),
+.problem-detail.markdown :deep(h5:first-child),
+.problem-detail.markdown :deep(h6:first-child) {
+  margin-top: 0;
+}
+
+.problem-detail.markdown :deep(em) {
+  font-style: italic;
+}
+
+.problem-detail.markdown :deep(blockquote) {
+  margin: 6px 0 9px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-faint);
+}
+
+.problem-detail.markdown :deep(hr) {
+  margin: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.problem-detail.markdown :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 6px 0 9px;
+  border-collapse: collapse;
+}
+
+.problem-detail.markdown :deep(th),
+.problem-detail.markdown :deep(td) {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.problem-detail.markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 
 .problem-number,

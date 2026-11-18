@@ -447,7 +447,7 @@ erDiagram
 | `bad_case_agent_id` | `VARCHAR(64)` | NULL | 上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`；它是锚点计算的起点，不一定是卡片宿主（`discovery + agent` 锚到父节点，见 §7.4） |
 | `trigger_line` | `INTEGER` | NULL | 上报写入的日志行，坐标与执行流 `SessionEvent.line` 一致（1-based），总览「触发点」列的来源；历史行保持 NULL 并显示「—」，不从 `created_at`、事件下标或 `meta_data.line` 推断 |
 | `title` | `VARCHAR(255)` | NOT NULL | 短标题（外部上报必填；问题列表卡、执行流图问题卡与详情页标题行的主文本） |
-| `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，直接展示）；对外 DTO 字段名是 `reason` |
+| `bad_case_description` | `TEXT` | NOT NULL | 描述正文（问题详情页正文块的完整描述，按 Markdown 渲染；允许加粗状态、失败分组小标题、行内代码用例名与围栏代码块）；对外 DTO 字段名是 `reason` |
 | `meta_data` | `JSON` | NULL | 上报打点数据，结构不统一 |
 | `source` | `VARCHAR(64)` | NULL | 来源系统/任务标识 |
 | `session_source` | `JSON` | NULL | 上报绑定的下载契约 `{runtime?, sessionUrlTemplate}`；root-sync 首次 claim 时据此固化来源 |
@@ -462,6 +462,8 @@ erDiagram
 > **`quota` 的语义**：`quota` 只约束凭据上报路径——额度在插入前按 `COUNT(bad_cases WHERE workspace_id)` 判定，超限 `409 QUOTA_EXCEEDED`。legacy 目录同步不查 `quota`、也不参与空间行锁，只写默认空间，因此它可以把默认空间推过 `quota`：此时默认空间的 `workspaceUsed`（以及新建上报的判定）会如实反映超限状态，新 ID 上报继续 `409` 直至既有行被清理。这是有意的边界——`quota` 是“凭据上报的准入上限”，不是“空间容量的硬上限”；默认空间上并发的上报仍可能读到目录任务提交前的计数。
 
 > 列名统一带 `bad_case_` 前缀：描述正文列是 `bad_case_description`（原 `reason` 列改名），语义仍是描述正文；改名理由是同表其余列都带前缀，且 `probe_reports` 的正文列同样带前缀（`probe_description` / `probe_analysis`）。对外 DTO 字段名不变——API 的 `BadCase.reason` / `SessionBadCase.reason` 由本列映射（见 [05 §3.4](05-api-design.md)）。存量行一次性回填：`bad_case_description` 取原 `reason` 全文、`title` 取原 `reason` 前 255 字符；上游重灌（§1.2）仍是权威路径。读时仍缺 `title` 的行降级为派生标题（描述首句）：`BadCase` DTO 带 `degraded` 标记与 `EXTERNAL_FIELD_MISSING` 诊断，`SessionBadCase`（执行流图问题卡）只派生标题、不重复承载降级标记。
+
+> `bad_case_description` 是自由文本，允许 Markdown：上报/分析侧可用加粗状态、失败分组小标题、行内代码用例名和围栏代码块，便于长失败清单扫读。HE 不校验、不改写、不对历史纯文本做迁移；展示层按 Markdown 渲染并禁用原始 HTML、加固外链；Markdown 图片降级为 alt 文本、不发起外部加载（见 [05 §3.4](05-api-design.md)、[08 §7](08-frontend-implementation.md)）。单换行保留，无 Markdown 语法的纯文本仍是普通段落。
 
 > `object_*` 只表示**谁上报/发现了问题**，不是根因；根因通过 `bad_case_analysis` 关联到 `probe_reports`，按对象·版本形成一条或多条结论。
 > `bad_case_session_id` 是根会话 id；`bad_case_agent_id` 是上报/发现问题的 agent：主 agent 为 NULL，子 agent 为真实 `agentId`。它记录的是“谁上报/发现”，不是“根因在谁”，也**不等于卡片宿主**：`self + agent` 挂 A 本身；`discovery + agent` 挂 A 的父节点 P 中调用 A 的 Agent 触发点；`skill` 型挂 A 中该 skill 的最后一次触发（`self` 卡片在药丸下方，`discovery` 在上方）。
