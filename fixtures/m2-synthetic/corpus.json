@@ -318,7 +318,7 @@
       "objectVersion": "synthetic-1",
       "badCaseAgentId": "agent-s2-worker-0001",
       "title": "工作流未汇总检查项",
-      "reason": "合成示例：工作流未汇总检查项。",
+      "reason": "**result_status** = `unresolved`\n\n**F2P 失败**（4 项）\n- `test_cirs_its_topo`\n- `test_its_straight_overhead`\n- `test_its_topo_to_altaz_with_refraction`\n- `test_its_topo_to_hadec_with_refraction`\n\n**P2P 回退**（6 项）\n- `test_cirs_to_altaz`\n- `test_gcrs_altaz_bothroutes[testframe0]`\n- `test_gcrs_altaz_bothroutes[testframe1]`\n- `test_gcrs_altaz_bothroutes[testframe2]`\n- `test_gcrs_altaz_bothroutes[testframe3]`\n- `test_gcrs_altaz_bothroutes[testframe4]`",
       "metaData": {
         "fixture": true
       },
