@@ -296,6 +296,53 @@ function mockApi(items: BadCase[] = problems) {
   );
 }
 
+function missing(code: string) {
+  return HttpResponse.json(
+    { error: { code, message: "missing" } },
+    { status: 404 },
+  );
+}
+
+function mockUnreadyApi(
+  details: Record<string, unknown>,
+  status: 409 | 503,
+  attributionRows: AttributionDetail[] = [],
+) {
+  mockApi();
+  server.use(
+    http.get(`${sessionsBase}/:id`, () => missing("SESSION_NOT_FOUND")),
+    http.get(`${sessionsBase}/:id/bad-cases`, () => missing("SESSION_NOT_FOUND")),
+    http.get(`${sessionsBase}/:id/tree`, () => missing("SESSION_NOT_FOUND")),
+    http.get(`${badCasesBase}/:caseId`, () =>
+      HttpResponse.json(
+        {
+          error: {
+            code:
+              status === 409
+                ? "BAD_CASE_SESSION_PENDING"
+                : "BAD_CASE_SESSION_UNAVAILABLE",
+            message: "trace not ready",
+            details,
+          },
+        },
+        { status },
+      ),
+    ),
+    http.get(`${badCasesBase}/:caseId/attributions`, ({ request }) => {
+      const url = new URL(request.url);
+      const page = Number(url.searchParams.get("page") ?? 1);
+      const pageSize = Number(url.searchParams.get("pageSize") ?? 2);
+      const start = (page - 1) * pageSize;
+      return HttpResponse.json({
+        items: attributionRows.slice(start, start + pageSize),
+        total: attributionRows.length,
+        page,
+        pageSize,
+      });
+    }),
+  );
+}
+
 async function settle(): Promise<void> {
   for (let index = 0; index < 6; index += 1) {
     await flushPromises();
@@ -343,6 +390,9 @@ describe("error detail page", () => {
     const { router, wrapper } = await mountPage();
 
     expect(wrapper.get(".error-heading h1").text()).toBe("错误详情");
+    expect(
+      wrapper.get("[data-testid='errors-workspace']").classes(),
+    ).not.toContain("trace-mode");
     expect(wrapper.get(".error-sidebar").text()).toContain("原型错误详情");
     expect(wrapper.get(".error-sidebar").text()).toContain("bad case");
     expect(
@@ -651,32 +701,21 @@ describe("error detail page", () => {
   });
 
   it("renders a trace status panel for a pending Session instead of a 404", async () => {
-    mockApi();
-    server.use(
-      http.get(`${badCasesBase}/:caseId`, () =>
-        HttpResponse.json(
-          {
-            error: {
-              code: "BAD_CASE_SESSION_PENDING",
-              message: "session is not ready",
-              details: {
-                badCaseId: "case-error",
-                sessionId: "root-1",
-                title: "索引读取失败",
-                objectName: "Explore",
-                createdAt: "2026-11-17T09:00:00+08:00",
-                sessionReady: false,
-                syncStatus: "pending",
-                lastError: null,
-                retryable: true,
-                nextRetryAt: null,
-                lastAttemptAt: null,
-              },
-            },
-          },
-          { status: 409 },
-        ),
-      ),
+    mockUnreadyApi(
+      {
+        badCaseId: "case-error",
+        sessionId: "root-1",
+        title: "索引读取失败",
+        objectName: "Explore",
+        createdAt: "2026-11-17T09:00:00+08:00",
+        sessionReady: false,
+        syncStatus: "pending",
+        lastError: null,
+        retryable: true,
+        nextRetryAt: null,
+        lastAttemptAt: null,
+      },
+      409,
     );
     const { wrapper } = await mountPage(
       `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
@@ -687,37 +726,57 @@ describe("error detail page", () => {
     expect(panel.text()).toContain("可自动重试");
     expect(panel.text()).toContain("索引读取失败");
     expect(wrapper.text()).not.toContain("问题不存在或已删除");
-    expect(wrapper.find(".error-sidebar").exists()).toBe(false);
+
+    const workspace = wrapper.get("[data-testid='errors-workspace']");
+    expect(workspace.classes()).toContain("trace-mode");
+    const sidebar = wrapper.get(".error-sidebar");
+    expect(sidebar.text()).toContain("索引读取失败");
+    expect(sidebar.text()).toContain("根会话 ID · root-1");
+    expect(
+      sidebar.get("[data-testid='sidebar-trace-status']").text(),
+    ).toBe("未同步");
+    expect(
+      sidebar.get("[data-testid='trace-case-attributions-empty']").text(),
+    ).toBe("暂无归因。尚未进入自进化。");
+    expect(
+      sidebar.get("[data-testid='sidebar-back-unavailable']").attributes(
+        "aria-disabled",
+      ),
+    ).toBe("true");
+
+    const head = wrapper.get(".error-head");
+    expect(head.text()).toContain("1 个 bad case");
+    expect(head.text()).toContain("Explore");
+    expect(head.text()).toContain("上报");
+    expect(head.text()).toContain("0 个归因");
+    expect(
+      wrapper.get("[data-testid='error-meta-root-session-id']").text(),
+    ).toContain("根会话 ID · root-1");
+    expect(
+      wrapper.get("[data-testid='error-back-session-unavailable']").text(),
+    ).toBe("返回 Session");
+
+    expect(wrapper.findAll("[role='tab']")).toHaveLength(0);
+    expect(wrapper.find(".sidebar-filter").exists()).toBe(false);
     expect(wrapper.find("[data-testid='errors-agent-tree']").exists()).toBe(false);
   });
 
   it("renders an unavailable trace panel with the deterministic failure", async () => {
-    mockApi();
-    server.use(
-      http.get(`${badCasesBase}/:caseId`, () =>
-        HttpResponse.json(
-          {
-            error: {
-              code: "BAD_CASE_SESSION_UNAVAILABLE",
-              message: "session is unavailable",
-              details: {
-                badCaseId: "case-error",
-                sessionId: "root-1",
-                title: "索引读取失败",
-                objectName: "Explore",
-                createdAt: "2026-11-17T09:00:00+08:00",
-                sessionReady: false,
-                syncStatus: "unavailable",
-                lastError: "SESSION_QUERY_UNAVAILABLE",
-                retryable: false,
-                nextRetryAt: null,
-                lastAttemptAt: "2026-11-17T09:05:00+08:00",
-              },
-            },
-          },
-          { status: 503 },
-        ),
-      ),
+    mockUnreadyApi(
+      {
+        badCaseId: "case-error",
+        sessionId: "root-1",
+        title: "索引读取失败",
+        objectName: "Explore",
+        createdAt: "2026-11-17T09:00:00+08:00",
+        sessionReady: false,
+        syncStatus: "unavailable",
+        lastError: "SESSION_QUERY_UNAVAILABLE",
+        retryable: false,
+        nextRetryAt: null,
+        lastAttemptAt: "2026-11-17T09:05:00+08:00",
+      },
+      503,
     );
     const { wrapper } = await mountPage(
       `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
@@ -729,6 +788,41 @@ describe("error detail page", () => {
     expect(panel.text()).toContain("SESSION_QUERY_UNAVAILABLE");
     expect(panel.text()).toContain("轨迹查询服务未配置");
     expect(wrapper.text()).not.toContain("问题详情读取失败");
+    expect(wrapper.get(".error-sidebar").text()).toContain("索引读取失败");
+    expect(
+      wrapper.get(".error-sidebar").text(),
+    ).toContain("无可用轨迹");
+    expect(wrapper.get(".error-head").text()).toContain("1 个 bad case");
+  });
+
+  it("shows the case attribution count in the trace shell", async () => {
+    mockUnreadyApi(
+      {
+        badCaseId: "case-error",
+        sessionId: "root-1",
+        title: "索引读取失败",
+        objectName: "Explore",
+        createdAt: "2026-11-17T09:00:00+08:00",
+        sessionReady: false,
+        syncStatus: "unavailable",
+        lastError: "SESSION_QUERY_UNAVAILABLE",
+        retryable: false,
+        nextRetryAt: null,
+        lastAttemptAt: null,
+      },
+      503,
+      attributions,
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    expect(wrapper.get(".error-meta").text()).toContain("4 个归因");
+    expect(
+      wrapper
+        .get("[data-testid='trace-case-attributions-count']")
+        .text(),
+    ).toBe("4 条归因");
   });
 
   it("rejects a trace error whose case belongs to another Session", async () => {
