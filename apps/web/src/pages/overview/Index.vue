@@ -595,10 +595,12 @@ watch(
 
 <style scoped>
 .overview-page {
-  width: min(1180px, 100%);
+  /* Full-width scroll container: the classic scrollbar is painted at the
+     window's right edge, and the symmetric inline padding keeps the 1180px
+     content column (20px padding included) centered in the scrollport. */
+  width: 100%;
   height: 100%;
-  margin: 0 auto;
-  padding: 18px 20px 64px;
+  padding: 18px max(20px, calc((100% - 1180px) / 2 + 20px)) 64px;
   overflow-y: auto;
 }
 
