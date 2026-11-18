@@ -5,6 +5,7 @@
 // pnpm install:hooks（install-git-hooks.mjs）会顺带调用；单独重装可直接运行本文件。
 
 import { execFileSync } from "node:child_process";
+import { isMain } from "./is-main.mjs";
 
 const NAME = "harness-evolution-i18n";
 const DRIVER = "node scripts/i18n-merge-driver.mjs %O %A %B";
@@ -16,4 +17,4 @@ export function registerMergeDriver() {
   console.log(`install-merge-driver: 已注册 merge=${NAME} → ${DRIVER}（.git/config，仅本 clone）`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) registerMergeDriver();
+if (isMain(import.meta.url)) registerMergeDriver();

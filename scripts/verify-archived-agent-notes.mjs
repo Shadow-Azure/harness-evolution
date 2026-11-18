@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { CLASSES } from "./verify-agent-notes.mjs";
+import { isMain } from "./is-main.mjs";
 
 const ROOT = path.resolve("");
 const ARCHIVED = path.join(ROOT, ".agents", "notes", "archived");
@@ -172,7 +173,7 @@ export default async function verifyArchivedAgentNotes() {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyArchivedAgentNotes();
   if (!result.ok) {
     console.error(`verify-archived-agent-notes: FAIL\n  ${result.errors.join("\n  ")}`);

@@ -18,6 +18,7 @@ import {
   uncoveredFiles,
   validateTree,
 } from "./flow-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 /** 从 origin remote 推导 "owner/repo"；不可得（无 remote/无 git）返回 undefined。 */
 function deriveRepo() {
@@ -126,7 +127,7 @@ export async function verifyFlowDiff(base) {
   return { ok: errors.length === 0, errors, skipped: undefined };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const args = process.argv.slice(2);
   const diffIdx = args.indexOf("--diff");
   if (diffIdx >= 0) {

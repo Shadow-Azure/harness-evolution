@@ -9,6 +9,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { isMain } from "./is-main.mjs";
 
 const ROOT = path.resolve("");
 const MANIFEST = "scripts/type-equiv.manifest.json";
@@ -208,7 +209,7 @@ export default async function verifyTypeEquiv() {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyTypeEquiv();
   if (!result.ok) {
     console.error(`verify-type-equiv: FAIL\n  ${result.errors.join("\n  ")}`);

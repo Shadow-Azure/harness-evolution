@@ -7,6 +7,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { documentAnchors, parseLinkTarget } from "./translation-pairing-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const NOTES_ROOT = path.resolve(".agents/notes");
 // 与 README.md「分类（封闭集合）」互为镜像，改一处必改另一处（spec 互检）。
@@ -161,7 +162,7 @@ export default async function verifyAgentNotes() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyAgentNotes();
   if (!result.ok) {
     console.error(`verify-agent-notes: FAIL\n  ${result.errors.join("\n  ")}`);

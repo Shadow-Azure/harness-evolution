@@ -7,6 +7,7 @@
 
 import { execFileSync } from "node:child_process";
 import { loadFlowTree } from "./flow-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 /** issue 的本地 status ↔ GitHub state 映射校验。 */
 export function checkIssueRemote(file, localStatus, remote) {
@@ -114,4 +115,4 @@ async function main() {
   console.log("verify-flow-online: ok");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+if (isMain(import.meta.url)) await main();

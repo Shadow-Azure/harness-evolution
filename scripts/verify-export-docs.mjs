@@ -8,6 +8,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { isMain } from "./is-main.mjs";
 
 const SRC_ROOTS = [path.resolve("apps"), path.resolve("packages")];
 
@@ -75,7 +76,7 @@ export default async function verifyExportDocs() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyExportDocs();
   if (!result.ok) {
     console.error(`verify-export-docs: FAIL\n  ${result.errors.join("\n  ")}`);
