@@ -277,6 +277,9 @@ function mockOverviewApi(overrides: Record<string, unknown> = {}) {
       requests.evolutionTargets.push(request.url);
       return HttpResponse.json(overrides.evolutionTargets ?? evolutionTargets);
     }),
+    http.get("/api/workspaces/:wid/catalogs/targets", () =>
+      HttpResponse.json(overrides.catalogs ?? { skill: [], agent: [] }),
+    ),
   );
 }
 
@@ -351,6 +354,131 @@ describe("workspace overview page", () => {
     expect(wrapper.get("[data-testid='ov-stat-quota']").text()).toContain("3 / 60");
     expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(3);
     expect(wrapper.findAll("[data-bucket='2026-11-09']")).toHaveLength(1);
+  });
+
+  it("shows both workflow actions and the operational context to an administrator", async () => {
+    mockOverviewApi();
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find("[data-testid='ov-readonly-actions']").exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper.get("[data-testid='ov-action-ingest']").attributes("href"),
+    ).toBe(`${ws}/admin?tab=ingest`);
+    expect(wrapper.find("[data-testid='ov-action-launch']").exists()).toBe(true);
+
+    const context = wrapper.get("[data-testid='ov-context']");
+    expect(context.text()).toContain("空间额度");
+    expect(context.text()).toContain("上报接入");
+    expect(context.text()).toContain("当前空间");
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-used']").text(),
+    ).toBe("3 / 60");
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-percent']").text(),
+    ).toBe("5% 已使用");
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-remaining']").text(),
+    ).toBe("剩余 57");
+    expect(
+      wrapper.get("[data-testid='ov-context-endpoint']").text(),
+    ).toContain(`/api/workspaces/${workspaceId}/bad-cases`);
+    expect(
+      wrapper.get("[data-testid='ov-context-admin-count']").text(),
+    ).toBe("1 人");
+    expect(
+      wrapper.get("[data-testid='ov-context-member-count']").text(),
+    ).toBe("3 人");
+    expect(wrapper.get("[data-testid='ov-context-role']").text()).toBe(
+      "全局管理员",
+    );
+    expect(wrapper.get("[data-testid='ov-context-sources']").text()).toBe(
+      "2 个",
+    );
+  });
+
+  it("copies the derived ingest endpoint without exposing a credential", async () => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value: string) => writes.push(value) },
+    });
+    mockOverviewApi();
+    const { wrapper } = await mountPage();
+
+    await wrapper.get("[data-testid='ov-context-copy']").trigger("click");
+    await flushPromises();
+
+    expect(writes).toEqual([`/api/workspaces/${workspaceId}/bad-cases`]);
+    expect(wrapper.get("[data-testid='ov-context-copy']").text()).toBe("已复制");
+  });
+
+  it("hides write actions from a read-only member while keeping the context", async () => {
+    mockOverviewApi();
+    const { wrapper } = await mountPage(`${ws}/overview`, [
+      testWorkspace({ role: "viewer" }),
+    ]);
+
+    expect(wrapper.find("[data-testid='ov-action-ingest']").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='ov-action-launch']").exists()).toBe(false);
+    expect(wrapper.get("[data-testid='ov-readonly-actions']").text()).toContain(
+      "只读访问",
+    );
+    expect(wrapper.find("[data-testid='ov-context']").exists()).toBe(true);
+    expect(wrapper.get("[data-testid='ov-context-role']").text()).toBe(
+      "只读成员",
+    );
+    expect(
+      wrapper.find("[data-testid='ov-context-ingest-link']").exists(),
+    ).toBe(false);
+    expect(wrapper.findAll("[data-testid='ov-case-row']")).toHaveLength(3);
+  });
+
+  it("keeps write actions for a space administrator but not for a plain member", async () => {
+    mockOverviewApi();
+    const spaceAdmin = await mountPage(`${ws}/overview`, [
+      testWorkspace({ role: "space_admin" }),
+    ]);
+    expect(
+      spaceAdmin.wrapper.find("[data-testid='ov-action-ingest']").exists(),
+    ).toBe(true);
+    expect(
+      spaceAdmin.wrapper.find("[data-testid='ov-action-launch']").exists(),
+    ).toBe(true);
+    expect(
+      spaceAdmin.wrapper.get("[data-testid='ov-context-role']").text(),
+    ).toBe("空间管理员");
+
+    const member = await mountPage(`${ws}/overview`, [
+      testWorkspace({ role: "member" }),
+    ]);
+    expect(member.wrapper.find("[data-testid='ov-action-ingest']").exists()).toBe(
+      false,
+    );
+    expect(member.wrapper.find("[data-testid='ov-action-launch']").exists()).toBe(
+      false,
+    );
+    expect(
+      member.wrapper.get("[data-testid='ov-readonly-actions']").text(),
+    ).toContain("只读访问");
+    expect(member.wrapper.get("[data-testid='ov-context-role']").text()).toBe(
+      "成员",
+    );
+  });
+
+  it("opens the existing launch wizard from the overview", async () => {
+    mockOverviewApi();
+    const { wrapper } = await mountPage();
+
+    await wrapper.get("[data-testid='ov-action-launch']").trigger("click");
+    await vi.waitFor(() => {
+      expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(true);
+    });
+
+    await wrapper.get("[aria-label='关闭向导']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='launch-wizard']").exists()).toBe(false);
   });
 
   it("writes range, grain, and source filters into the URL and resets the page", async () => {
@@ -633,6 +761,15 @@ describe("workspace overview page", () => {
     expect(wrapper.get("[data-testid='ov-case-empty']").text()).toContain(
       "这个空间还没有 bad case",
     );
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-used']").text(),
+    ).toBe("0 / 60");
+    expect(wrapper.get("[data-testid='ov-context-sources']").text()).toBe(
+      "0 个",
+    );
+    expect(wrapper.find("[data-testid='ov-source-matrix']").exists()).toBe(
+      false,
+    );
   });
 
   it("requests the new workspace with default filters before anything else", async () => {
@@ -815,6 +952,12 @@ describe("workspace overview page", () => {
 
     expect(wrapper.text()).toContain("OBJECT_FILTER_TOO_LARGE");
     expect(wrapper.text()).not.toContain("OVERVIEW_SUMMARY_UNAVAILABLE");
+    expect(
+      wrapper.get("[data-testid='ov-context-quota-used']").text(),
+    ).toBe("— / —");
+    expect(wrapper.get("[data-testid='ov-context-role']").text()).toBe(
+      "全局管理员",
+    );
   });
 
 

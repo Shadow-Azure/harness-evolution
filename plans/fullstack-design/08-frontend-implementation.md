@@ -471,13 +471,16 @@ Index.vue
 ```text
 Index.vue
 ├── tabs：bad case 总览 | 进化对象总览（URL ?tab=cases|targets；共享时间窗）
+├── 页头动作：上报接入（→ 当前空间 admin?tab=ingest）/ 启动自进化（复用 LaunchWizard）/ 只读提示
 ├── StatStrip.vue（6 格：bad case 总数 / 自身存在问题 / 发现前置步骤问题 / 关联 Session / 来源数 / 额度）
 ├── FilterBar.vue（时间 7/30/90/自定义 + 粒度日/周/月 + 来源多选）
+├── 主体 grid：趋势卡（左）+ OverviewOpsContext.vue（右）；bad case 列表横跨整行
 ├── components/
 │   ├── SourceMultiSelect.vue（搜索 + 多选 + chip 移除 + 全选当前页）
 │   ├── StackedBucketChart.vue（自研 SVG 堆叠柱：self 蓝 / discovery 紫）
 │   ├── SourceBars.vue（来源分布 top6 + 其余折叠）
-│   ├── SourceMatrix.vue（来源 × 时间桶矩阵，可折叠）
+│   ├── SourceMatrix.vue（来源 × 时间桶矩阵，可折叠；按需读取每个时间桶的现有 sources 聚合）
+│   ├── OverviewOpsContext.vue（空间额度 / 上报地址 / 当前空间摘要）
 │   ├── BadCaseTable.vue（8 条/页 + 空态）
 │   ├── TargetsOverview.vue（对象统计条 + 趋势三态 chip + 两块分布）
 │   ├── TargetSideList.vue（5 条/页，可进化降序，增编删入口）
@@ -486,17 +489,23 @@ Index.vue
 └── 空态：图表空态 + 列表空态 + 无对象时「去配置进化对象」
 ```
 
+窄屏（≤1024px）下 grid 变单列，纵向顺序固定为趋势卡 → bad case 列表 → 运营上下文，保证主内容先于辅助信息；运营上下文与来源 × 时间矩阵均不得引入页面级横向溢出。
+
 ### 6.2 交互与 URL
 
 | 交互 | 行为 |
 |---|---|
 | 切换 Tab | 不重置时间窗与粒度；切换空间重置到 `tab=cases` |
+| 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染「上报接入」「启动自进化」；前者复用当前空间的 `admin?tab=ingest`，后者打开既有 `LaunchWizard`；无权限时只显示「只读访问」提示 |
+| 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由当前空间 ID 推导为 `POST /api/workspaces/:wid/bad-cases`，只复制地址，不复制凭据 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读） |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表筛选并滚到列表；「来源数」→ 聚焦来源下拉 |
 | 趋势悬浮 | tooltip 显示桶标签、self/discovery 数值与占比；点击桶 → 列表按该桶时间过滤 |
+| 来源 × 时间 | 展开时按当前有效粒度把每个时间桶映射为闭区间，逐个调用既有 sources 聚合并按来源合并；桶数 >31 时提示切换为周/月粒度，不拼列表页数据 |
 | 下钻 | 行内 **bad case ID 链接**（新窗口）→ `/workspaces/:wid/sessions/:sid/errors?case=&tab=desc`；整行不可点（原型第十七轮决策） |
 | 粒度降级 | 日粒度窗口 >92 天时服务端降级周并回传实际粒度，前端在副标题提示「已按周展示」 |
 | 对象列表操作 | 空间管理员可「+ 新增 / 编辑 / 移除」，复用 targets 表单弹窗；移除后失效总览缓存 |
+| 返回保持 | 页头入口走应用内路由，浏览器后退/前进恢复总览原 URL；启动成功后的运行详情同样 push 进历史，不覆盖筛选 |
 | 刷新恢复 | 从 URL 解析全部筛选并与 `wid` 校验，不匹配重定向（§1.4 的守卫规则同源） |
 
 ### 6.3 图表实现要点
@@ -509,9 +518,9 @@ Index.vue
 
 | 状态 | 表现 |
 |---|---|
-| 加载 | 图表灰块骨架 + 列表 4 行骨架；不整页 spinner |
-| 空 | 图表空态文案 + 「清除筛选」；列表空态；对象视角无对象给配置入口 |
-| 错误 | 区块级 `ErrorState`（错误码 + 重试）；`404 WORKSPACE_NOT_FOUND` 整页跳空间选择 |
+| 加载 | 图表灰块骨架 + 列表 4 行骨架；不整页 spinner；运营上下文随 summary 显示占位数字 |
+| 空 | 图表空态文案 + 「清除筛选」；列表空态；对象视角无对象给配置入口；来源 × 时间在无来源或全部桶为空时给诚实空态 |
+| 错误 | 区块级 `ErrorState`（错误码 + 重试）；`404 WORKSPACE_NOT_FOUND` 整页跳空间选择；运营上下文在 summary 失败时显示「—」，不伪造额度数字 |
 
 ## 7. 错误详情页（`pages/errors/Index.vue`）
 
