@@ -1,6 +1,6 @@
 # Problem Description Markdown Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Render `BadCase.reason` as safe Markdown in the error-detail problem description, matching the V2 prototype and preserving the existing plain-text behavior.
 
@@ -46,7 +46,7 @@
 **Files:**
 - Modify: `apps/web/src/pages/errors/components/ProblemDescription.test.ts`
 
-- [ ] **Step 1: Add a Markdown reason to a mounted component**
+- [x] **Step 1: Add a Markdown reason to a mounted component**
 
 Use `badCaseFixture` with:
 ```ts
@@ -65,11 +65,11 @@ reason: [
 
 Assert the `.problem-detail` subtree contains `<ul>`, `<li>`, `<code>test_cirs_its_topo</code>`, `<strong>result_status</strong>`, `<br>` between the two plain lines, and an `<a>` with `href="https://example.com"`, `target="_blank"`, `rel="noopener noreferrer"`.
 
-- [ ] **Step 2: Add a raw-HTML case**
+- [x] **Step 2: Add a raw-HTML case**
 
 Assert `reason: '<img src=x onerror="alert(1)"><script>alert(2)</script>'` produces no `<img>` and no `<script>` nodes, while the escaped text is still present.
 
-- [ ] **Step 3: Run the focused test and verify it fails**
+- [x] **Step 3: Run the focused test and verify it fails**
 
 Run:
 ```sh
@@ -82,14 +82,14 @@ Expected: FAIL because the current component interpolates plain text and has no 
 **Files:**
 - Modify: `apps/web/src/pages/errors/components/ProblemDescription.vue`
 
-- [ ] **Step 1: Add the computed HTML**
+- [x] **Step 1: Add the computed HTML**
 
 Import `renderMarkdown` from `../../../utils/markdown`; add:
 ```ts
 const reasonHtml = computed(() => renderMarkdown(props.problem.reason));
 ```
 
-- [ ] **Step 2: Replace the text interpolation**
+- [x] **Step 2: Replace the text interpolation**
 
 ```vue
 <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
@@ -101,11 +101,11 @@ const reasonHtml = computed(() => renderMarkdown(props.problem.reason));
 <!-- eslint-enable vue/no-v-html -->
 ```
 
-- [ ] **Step 3: Add scoped typography**
+- [x] **Step 3: Add scoped typography**
 
 In the existing `<style scoped>`, keep `.problem-detail` and add `:deep()` rules for `p`, `p:last-child`, `ul/ol`, `li`, `code`, `pre`, `pre code`, `strong`, and `a`. Use `--mono`, `--bg-inset`, `--border`, `--text`, `--blue`; inline code gets a compact chip, long names get `overflow-wrap:anywhere`, and code blocks scroll horizontally.
 
-- [ ] **Step 4: Run the focused test and verify it passes**
+- [x] **Step 4: Run the focused test and verify it passes**
 
 Run:
 ```sh
@@ -118,11 +118,11 @@ Expected: PASS, including the existing plain-text/order assertions.
 **Files:**
 - Modify: `apps/web/src/utils/markdown.test.ts`
 
-- [ ] **Step 1: Add hard-break and plain-text cases**
+- [x] **Step 1: Add hard-break and plain-text cases**
 
 Assert `renderMarkdown("line one\nline two")` contains `<br>`; assert a plain Chinese sentence without Markdown syntax has no `<p>`-breaking surprises and escapes `<`/`>`.
 
-- [ ] **Step 2: Run the utility tests**
+- [x] **Step 2: Run the utility tests**
 
 ```sh
 pnpm --filter @harness/web test -- src/utils/markdown.test.ts
@@ -136,17 +136,17 @@ Expected: PASS.
 - Modify: `plans/ui-prototype-v2/design-v2.md` if the prototype section needs the new detail
 - Evidence: release `issue-markdown-prototype-evidence-20261118` (compare/before/after PNGs + prototype HTML)
 
-- [ ] **Step 1: Update the display contract**
+- [x] **Step 1: Update the display contract**
 
 In `05 §3.4`, state that `BadCase.reason` is Markdown-rendered (`html:false`, hardened links). In `06 §4.1`, change “直接展示” to “按 Markdown 渲染，原始 HTML 不渲染”. In `08 §7`, add a note under the problem-description tab and keep the attribution `reason` plain-text / `reasoning` Markdown split explicit.
 
-- [ ] **Step 2: Keep evidence out of the repo**
+- [x] **Step 2: Keep evidence out of the repo**
 
 Use the existing release URLs and PR description; do not commit screenshots or smoke JSON. The modified prototype HTML is committed at `plans/ui-prototype-v2/harness-evolution.html`.
 
 ### Task 6: Full verification
 
-- [ ] **Step 1: Focused checks**
+- [x] **Step 1: Focused checks**
 
 ```sh
 pnpm --filter @harness/web test -- src/pages/errors/components/ProblemDescription.test.ts src/utils/markdown.test.ts
@@ -156,7 +156,7 @@ pnpm verify:flow
 pnpm test:gates
 ```
 
-- [ ] **Step 2: Error-detail E2E**
+- [x] **Step 2: Error-detail E2E**
 
 ```sh
 pnpm test:e2e -- --pattern "m4 error detail"
@@ -168,27 +168,27 @@ Expected: PASS; plain-text fixture reasons still compare equal.
 **Files:**
 - Evidence only: `.ticket-assets/smoke/*` (do not commit)
 
-- [ ] **Step 1: Start an isolated app**
+- [x] **Step 1: Start an isolated app**
 
 Seed fixtures into a temporary data directory, update one case's `bad_case_description` to the Markdown sample, start the API and Vite (see the smoke script), and log in as admin through the API.
 
-- [ ] **Step 2: Capture**
+- [x] **Step 2: Capture**
 
 Use CDP to set the refresh cookie, navigate to `/workspaces/ws-default/sessions/<sid>/errors?case=<id>&tab=desc`, wait for `[data-testid='problem-detail']`, and capture the `.detail-panel` at 1440×1400 CSS / 2× DPR.
 
-- [ ] **Step 3: Compare**
+- [x] **Step 3: Compare**
 
 Compose the real-app capture with the V2 prototype’s `.err-detail` capture at the same viewport; check list indentation, code chip, line height, and card width. Fix any material difference before the PR.
 
-- [ ] **Step 4: Report**
+- [x] **Step 4: Report**
 
 Render the smoke JSON with `.agents/skills/computer-use-smoke-reporting/scripts/render-smoke-report.mjs`; link the report and comparison images from the PR description (not committed).
 
 ### Task 8: PR, CI, review, and handoff
 
-- [ ] **Step 1: Commit and push** with `(#363)` in every commit title.
-- [ ] **Step 2: Open the PR** with milestone M12, the before/after and smoke evidence, design/UI comparison, verification commands, and the material data-format limitation.
-- [ ] **Step 3: Poll CI with a script** until every check is terminal; fix failures and repeat.
-- [ ] **Step 4: Run the `pr-review` skill**, write `plans/2026-11-18-pr<N>-review.md`, assess findings, and use `pr-review-fix` for accepted findings.
-- [ ] **Step 5: Re-run smoke and CI** after fixes.
+- [x] **Step 1: Commit and push** with `(#363)` in every commit title.
+- [x] **Step 2: Open the PR** with milestone M12, the before/after and smoke evidence, design/UI comparison, verification commands, and the material data-format limitation.
+- [x] **Step 3: Poll CI with a script** until every check is terminal; fix failures and repeat.
+- [x] **Step 4: Run the `pr-review` skill**, write `plans/2026-11-18-pr<N>-review.md`, assess findings, and use `pr-review-fix` for accepted findings.
+- [x] **Step 5: Re-run smoke and CI** after fixes.
 - [ ] **Step 6: Report ready** with the PR URL; a person merges the PR per the deployment policy, then the flow close PR can mark m12-17 done and close #363.

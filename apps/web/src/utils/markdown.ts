@@ -37,7 +37,7 @@ const markdownWithoutImages = createMarkdown({ images: false });
 /**
  * Render trusted-format Markdown without raw HTML.
  * Used by attribution reasoning and the bad-case description body.
- * @param source Markdown text from a trusted report or server template.
+ * @param source Markdown text from an external report or server template; raw HTML is never trusted.
  * @param options Rendering options; `images: false` drops Markdown image nodes.
  * @returns Safe HTML accepted by the report and description panels.
  */
