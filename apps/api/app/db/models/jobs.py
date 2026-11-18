@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    false,
 )
 
 from app.utils.time import as_shanghai
@@ -33,6 +35,10 @@ job_runs = Table(
     Column("executor", String(16), nullable=False),
     Column("external_job_id", String(128), nullable=True),
     Column("attempt", Integer, nullable=False),
+    Column("lease_owner", String(64), nullable=True),
+    Column("lease_expires_at", DateTime(timezone=True), nullable=True),
+    Column("max_attempts", Integer, nullable=False, server_default="3"),
+    Column("cancel_requested", Boolean, nullable=False, server_default=false()),
     Column("payload", JSON, nullable=False),
     Column("result", JSON, nullable=True),
     Column("error", Text, nullable=True),
@@ -48,6 +54,7 @@ job_runs = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Index("ix_job_runs_status", "status"),
     Index("ix_job_runs_ref_id", "ref_id"),
+    Index("ix_job_runs_lease_expiry", "status", "lease_expires_at"),
 )
 Index(
     "ix_job_runs_kind_created_at",
@@ -92,6 +99,10 @@ class JobRunRecord:
     started_at: datetime | None
     finished_at: datetime | None
     updated_at: datetime
+    lease_owner: str | None = None
+    lease_expires_at: datetime | None = None
+    max_attempts: int = 3
+    cancel_requested: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +129,12 @@ def record_from_row(row: Any) -> JobRunRecord:
         executor=row["executor"],
         external_job_id=row["external_job_id"],
         attempt=int(row["attempt"]),
+        lease_owner=row["lease_owner"],
+        lease_expires_at=(
+            as_shanghai(row["lease_expires_at"]) if row["lease_expires_at"] is not None else None
+        ),
+        max_attempts=int(row["max_attempts"]),
+        cancel_requested=bool(row["cancel_requested"]),
         payload=dict(row["payload"]),
         result=dict(row["result"]) if row["result"] is not None else None,
         error=row["error"],

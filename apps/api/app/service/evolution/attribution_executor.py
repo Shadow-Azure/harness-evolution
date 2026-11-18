@@ -82,6 +82,7 @@ class AttributionExecutorResponse(IdentityModel):
     evidence_references: list[str] = Field(default_factory=list)
     suggestion_clues: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    token_count: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_category(self) -> AttributionExecutorResponse:

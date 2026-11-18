@@ -21,8 +21,16 @@ JobKind = Literal[
     "evolution_apply",
     "evolution_finalize",
     "evolution_retry",
+    "attribution_batch",
 ]
-JobStatus = Literal["queued", "running", "completed", "failed", "interrupted"]
+JobStatus = Literal[
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "interrupted",
+    "cancelled",
+]
 
 
 class JobResponse(IdentityModel):
@@ -34,6 +42,10 @@ class JobResponse(IdentityModel):
     status: JobStatus
     progress: float = Field(ge=0, le=1)
     attempt: int = Field(ge=0)
+    max_attempts: int = Field(ge=1)
+    lease_expires_at: datetime | None
+    cancel_requested: bool
+    result: dict[str, object] | None
     created_by: str | None
     created_at: datetime
     started_at: datetime | None
@@ -49,6 +61,10 @@ def _job_response(job: JobRunRecord) -> JobResponse:
         status=cast(JobStatus, job.status),
         progress=job.progress,
         attempt=job.attempt,
+        max_attempts=job.max_attempts,
+        lease_expires_at=job.lease_expires_at,
+        cancel_requested=job.cancel_requested,
+        result=dict(job.result) if job.result is not None else None,
         created_by=job.created_by,
         created_at=job.created_at,
         started_at=job.started_at,

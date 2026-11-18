@@ -89,6 +89,13 @@ class WorkspacePreparer(Protocol):
         """Prepare one isolated repository workspace."""
 
 
+class AttributionBatchDispatcher(Protocol):
+    """Durable attribution lane shared with manual and scheduled entrypoints."""
+
+    async def run_for_prepare(self, run: EvolutionRunRecord) -> AttributionRunSummary:
+        """Submit or join the run's idempotent attribution batch."""
+
+
 @dataclass(slots=True)
 class _PrepareContext:
     """Mutable facts shared across the seven prepare stages."""
@@ -109,6 +116,8 @@ class EvolutionPrepareService:
         attribution: AttributionRunner,
         workspaces: WorkspacePreparer,
         events: PrepareEventRecorder | EvolutionRunEventService | None = None,
+        *,
+        attribution_jobs: AttributionBatchDispatcher | None = None,
     ) -> None:
         """Bind persistence, the shared matcher, the runner, and git workspaces."""
         self._runs = runs
@@ -118,6 +127,7 @@ class EvolutionPrepareService:
         self._attribution = attribution
         self._workspaces = workspaces
         self._events = events
+        self._attribution_jobs = attribution_jobs
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
         """Prepare one run idempotently and return its durable summary."""
@@ -234,10 +244,14 @@ class EvolutionPrepareService:
         if run.progress_unit < 4:
             candidates = await self._candidates_from_rows(run)
             try:
-                summary = await self._attribution.run(
-                    run,
-                    candidates,
-                    run.cache_enabled,
+                summary = (
+                    await self._attribution_jobs.run_for_prepare(run)
+                    if self._attribution_jobs is not None
+                    else await self._attribution.run(
+                        run,
+                        candidates,
+                        run.cache_enabled,
+                    )
                 )
             except RunBlocked:
                 raise

@@ -1,9 +1,10 @@
 """Dialect-neutral persistence for durable job audit rows."""
 
 from collections.abc import Mapping
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, or_, select, update
 
 from app.db.base import Database
 from app.db.models.jobs import JobRunRecord, job_runs, record_from_row
@@ -39,6 +40,10 @@ def queued_job_values(
         "executor": "local",
         "external_job_id": None,
         "attempt": 0,
+        "lease_owner": None,
+        "lease_expires_at": None,
+        "max_attempts": 3,
+        "cancel_requested": False,
         "payload": dict(payload),
         "result": None,
         "error": None,
@@ -173,91 +178,181 @@ class JobRepository:
             )
         return [record_from_row(row) for row in rows]
 
-    async def claim(self, job_id: str) -> JobRunRecord:
-        """Move one queued job to running and increment its attempt count."""
+    async def claim(
+        self,
+        job_id: str,
+        *,
+        owner: str = "local-worker",
+        lease_seconds: int = 60,
+    ) -> JobRunRecord:
+        """Claim queued or lease-expired work and increment its attempt count."""
         now = now_shanghai()
         async with self._database.transaction() as session:
-            await session.execute(
+            result = await session.execute(
                 update(job_runs)
-                .where(job_runs.c.id == job_id, job_runs.c.status == "queued")
+                .where(
+                    job_runs.c.id == job_id,
+                    job_runs.c.cancel_requested.is_(False),
+                    job_runs.c.attempt < job_runs.c.max_attempts,
+                    or_(
+                        job_runs.c.status == "queued",
+                        ((job_runs.c.status == "running") & (job_runs.c.lease_expires_at < now)),
+                    ),
+                )
                 .values(
                     status="running",
                     started_at=now,
                     attempt=job_runs.c.attempt + 1,
+                    lease_owner=owner,
+                    lease_expires_at=now + timedelta(seconds=lease_seconds),
                     updated_at=now,
                 ),
             )
+            if int(getattr(result, "rowcount", 0) or 0) != 1:
+                raise RuntimeError("job is not claimable")
         claimed = await self.get(job_id)
         if claimed is None:
             raise RuntimeError("claimed job disappeared before execution")
         return claimed
 
-    async def update_progress(self, job_id: str, progress: float) -> None:
-        """Persist normalized progress without changing terminal state."""
+    async def update_progress(
+        self,
+        job_id: str,
+        progress: float,
+        result: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Persist normalized progress and optional sanitized observations."""
+        values: dict[str, Any] = {"progress": progress, "updated_at": now_shanghai()}
+        if result is not None:
+            values["result"] = dict(result)
         async with self._database.transaction() as session:
             await session.execute(
-                update(job_runs)
-                .where(job_runs.c.id == job_id)
-                .values(progress=progress, updated_at=now_shanghai()),
+                update(job_runs).where(job_runs.c.id == job_id).values(**values),
             )
 
-    async def complete(self, job_id: str, result: Mapping[str, Any] | None) -> None:
-        """Record successful completion, final progress, and optional result."""
+    async def renew_lease(
+        self,
+        job_id: str,
+        owner: str,
+        *,
+        lease_seconds: int = 60,
+    ) -> bool:
+        """Extend one live claim only while its owner and status still match."""
         now = now_shanghai()
         async with self._database.transaction() as session:
-            await session.execute(
+            result = await session.execute(
                 update(job_runs)
-                .where(job_runs.c.id == job_id)
+                .where(
+                    job_runs.c.id == job_id,
+                    job_runs.c.status == "running",
+                    job_runs.c.lease_owner == owner,
+                    job_runs.c.cancel_requested.is_(False),
+                )
                 .values(
+                    lease_expires_at=now + timedelta(seconds=lease_seconds),
+                    updated_at=now,
+                ),
+            )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
+
+    async def complete(
+        self,
+        job_id: str,
+        result: Mapping[str, Any] | None,
+        *,
+        owner: str | None = None,
+    ) -> bool:
+        """Record completion only if the caller still owns the live claim."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            statement = update(job_runs).where(job_runs.c.id == job_id)
+            if owner is not None:
+                statement = statement.where(
+                    job_runs.c.status == "running",
+                    job_runs.c.lease_owner == owner,
+                )
+            executed = await session.execute(
+                statement.values(
                     status="completed",
                     progress=1.0,
                     result=dict(result) if result is not None else None,
                     error=None,
+                    lease_owner=None,
+                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
                 ),
             )
+        return int(getattr(executed, "rowcount", 0) or 0) == 1
 
-    async def fail(self, job_id: str, error: str) -> None:
-        """Record a sanitized terminal failure."""
+    async def fail(
+        self,
+        job_id: str,
+        error: str,
+        *,
+        owner: str | None = None,
+    ) -> bool:
+        """Record failure only if the caller still owns the live claim."""
         now = now_shanghai()
         async with self._database.transaction() as session:
-            await session.execute(
-                update(job_runs)
-                .where(job_runs.c.id == job_id)
-                .values(
+            statement = update(job_runs).where(job_runs.c.id == job_id)
+            if owner is not None:
+                statement = statement.where(
+                    job_runs.c.status == "running",
+                    job_runs.c.lease_owner == owner,
+                )
+            executed = await session.execute(
+                statement.values(
                     status="failed",
                     error=error,
+                    lease_owner=None,
+                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
                 ),
             )
+        return int(getattr(executed, "rowcount", 0) or 0) == 1
 
-    async def interrupt(self, job_id: str, reason: str) -> None:
-        """Record process interruption for one active job."""
+    async def interrupt(
+        self,
+        job_id: str,
+        reason: str,
+        *,
+        owner: str | None = None,
+    ) -> bool:
+        """Record interruption only while the optional owner holds the claim."""
         now = now_shanghai()
         async with self._database.transaction() as session:
-            await session.execute(
-                update(job_runs)
-                .where(job_runs.c.id == job_id, job_runs.c.status == "running")
-                .values(
+            statement = update(job_runs).where(
+                job_runs.c.id == job_id,
+                job_runs.c.status == "running",
+            )
+            if owner is not None:
+                statement = statement.where(job_runs.c.lease_owner == owner)
+            executed = await session.execute(
+                statement.values(
                     status="interrupted",
                     error=reason,
+                    lease_owner=None,
+                    lease_expires_at=None,
                     finished_at=now,
                     updated_at=now,
                 ),
             )
+        return int(getattr(executed, "rowcount", 0) or 0) == 1
 
-    async def mark_running_interrupted(self, reason: str) -> list[JobRunRecord]:
+    async def mark_running_interrupted(
+        self,
+        reason: str,
+        *,
+        exclude_kinds: tuple[str, ...] = (),
+    ) -> list[JobRunRecord]:
         """Atomically turn every residual running row into an interrupted audit row."""
         async with self._database.session() as session:
-            ids: list[str] = list(
-                (
-                    await session.execute(
-                        select(job_runs.c.id).where(job_runs.c.status == "running"),
-                    )
-                ).scalars()
-            )
+            statement = select(job_runs.c.id).where(job_runs.c.status == "running")
+            if exclude_kinds:
+                statement = statement.where(job_runs.c.kind.not_in(exclude_kinds))
+            ids: list[str] = list((await session.execute(statement)).scalars())
         for job_id in ids:
             await self.interrupt(job_id, reason)
         recovered: list[JobRunRecord] = []
@@ -266,3 +361,96 @@ class JobRepository:
             if record is not None:
                 recovered.append(record)
         return recovered
+
+    async def requeue_running_kind(self, kind: str) -> int:
+        """Release interrupted claims for a restart-safe handler kind."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            result = await session.execute(
+                update(job_runs)
+                .where(
+                    job_runs.c.kind == kind,
+                    job_runs.c.status == "running",
+                    job_runs.c.cancel_requested.is_(False),
+                    job_runs.c.attempt < job_runs.c.max_attempts,
+                )
+                .values(
+                    status="queued",
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    error="worker restarted; claim released",
+                    updated_at=now,
+                ),
+            )
+        return int(getattr(result, "rowcount", 0) or 0)
+
+    async def request_cancel(self, job_id: str) -> JobRunRecord | None:
+        """Persist cancellation for queued or running work."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            await session.execute(
+                update(job_runs)
+                .where(job_runs.c.id == job_id, job_runs.c.status.in_(("queued", "running")))
+                .values(
+                    status="cancelled",
+                    cancel_requested=True,
+                    error="cancelled by user",
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    finished_at=now,
+                    updated_at=now,
+                ),
+            )
+        return await self.get(job_id)
+
+    async def retry(
+        self,
+        job_id: str,
+        *,
+        payload: Mapping[str, Any] | None = None,
+    ) -> JobRunRecord | None:
+        """Requeue one terminal job while retaining its stable audit identity."""
+        now = now_shanghai()
+        async with self._database.transaction() as session:
+            values: dict[str, Any] = {
+                "status": "queued",
+                "cancel_requested": False,
+                "error": None,
+                "started_at": None,
+                "finished_at": None,
+                "lease_owner": None,
+                "lease_expires_at": None,
+                "updated_at": now,
+            }
+            if payload is not None:
+                values["payload"] = dict(payload)
+            result = await session.execute(
+                update(job_runs)
+                .where(
+                    job_runs.c.id == job_id,
+                    job_runs.c.status.in_(("failed", "interrupted", "cancelled")),
+                    job_runs.c.attempt < job_runs.c.max_attempts,
+                )
+                .values(**values),
+            )
+        if int(getattr(result, "rowcount", 0) or 0) != 1:
+            return None
+        return await self.get(job_id)
+
+    async def list_for_ref(
+        self,
+        kind: str,
+        ref_id: str,
+        *,
+        limit: int = 20,
+    ) -> list[JobRunRecord]:
+        """Return newest jobs for one resource and handler kind."""
+        statement = (
+            select(job_runs)
+            .where(job_runs.c.kind == kind, job_runs.c.ref_id == ref_id)
+            .order_by(job_runs.c.created_at.desc())
+            .limit(limit)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return [record_from_row(row) for row in rows]

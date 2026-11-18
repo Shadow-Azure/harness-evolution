@@ -190,6 +190,16 @@ export type AttributionQualityHistory =
 export type AttributionRollbackWrite =
   components["schemas"]["AttributionRollbackWrite"];
 
+/** Sanitized metrics for one durable attribution batch. */
+export type AttributionJobObservation =
+  components["schemas"]["AttributionJobObservation"];
+
+/** One durable attribution execution and its retry/cancellation state. */
+export type AttributionJobView = components["schemas"]["AttributionJobView"];
+
+/** Newest-first attribution executions for one evolution run. */
+export type AttributionJobList = components["schemas"]["AttributionJobList"];
+
 /** One enabled target exposed to the wizard catalog. */
 export type CatalogTarget = components["schemas"]["CatalogTarget"];
 

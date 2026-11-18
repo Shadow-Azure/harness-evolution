@@ -406,6 +406,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/evolution/runs/{run_id}/attribution-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Jobs
+         * @description Return sanitized attribution throughput and failure observations.
+         */
+        get: operations["list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get"];
+        put?: never;
+        /**
+         * Create Attribution Job
+         * @description Start or join the run's manual attribution batch.
+         */
+        post: operations["create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Attribution Job
+         * @description Cancel queued or running attribution work without deleting its audit row.
+         */
+        post: operations["cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Attribution Job
+         * @description Retry only cases that still lack a durable report link.
+         */
+        post: operations["retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/evolution/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -1349,6 +1413,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Attribution Jobs
+         * @description Return sanitized attribution observations for one workspace run.
+         */
+        get: operations["list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get"];
+        put?: never;
+        /**
+         * Create Attribution Job
+         * @description Start or join one manual attribution batch.
+         */
+        post: operations["create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Attribution Job
+         * @description Cancel queued or running attribution work and retain its audit row.
+         */
+        post: operations["cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Attribution Job
+         * @description Retry only unfinished cases of one failed attribution batch.
+         */
+        post: operations["retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{wid}/evolution/runs/{run_id}/events": {
         parameters: {
             query?: never;
@@ -2043,6 +2171,121 @@ export interface components {
              * Format: date-time
              */
             updatedAt: string;
+        };
+        /**
+         * AttributionJobList
+         * @description Newest-first attribution executions for one run.
+         */
+        AttributionJobList: {
+            /** Items */
+            items: components["schemas"]["AttributionJobView"][];
+        };
+        /**
+         * AttributionJobObservation
+         * @description Sanitized throughput, quality, cost, and runtime observations.
+         */
+        AttributionJobObservation: {
+            /**
+             * Averagelatencyms
+             * @default 0
+             */
+            averageLatencyMs: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /** Contexthash */
+            contextHash?: string | null;
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Evidencecoveragerate
+             * @default 0
+             */
+            evidenceCoverageRate: number;
+            /** Executor */
+            executor: string;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Nontarget
+             * @default 0
+             */
+            nonTarget: number;
+            /**
+             * P95Latencyms
+             * @default 0
+             */
+            p95LatencyMs: number;
+            /**
+             * Reused
+             * @default 0
+             */
+            reused: number;
+            /** Skillrevision */
+            skillRevision: string | null;
+            /**
+             * Tokencount
+             * @default 0
+             */
+            tokenCount: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Warningcount
+             * @default 0
+             */
+            warningCount: number;
+        };
+        /**
+         * AttributionJobView
+         * @description One durable attribution execution without raw trace or Skill content.
+         */
+        AttributionJobView: {
+            /** Attempt */
+            attempt: number;
+            /** Cancelrequested */
+            cancelRequested: boolean;
+            /**
+             * Createdat
+             * Format: date-time
+             */
+            createdAt: string;
+            /** Error */
+            error: string | null;
+            /** Finishedat */
+            finishedAt: string | null;
+            /** Jobid */
+            jobId: string;
+            /** Maxattempts */
+            maxAttempts: number;
+            observation: components["schemas"]["AttributionJobObservation"];
+            /** Progress */
+            progress: number;
+            /** Runid */
+            runId: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "prepare" | "manual" | "schedule" | "retry";
+            /** Startedat */
+            startedAt: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
         };
         /**
          * AttributionPage
@@ -3526,6 +3769,8 @@ export interface components {
         JobResponse: {
             /** Attempt */
             attempt: number;
+            /** Cancelrequested */
+            cancelRequested: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -3543,18 +3788,26 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "sync" | "pull" | "bad_case_root_sync" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry";
+            kind: "sync" | "pull" | "bad_case_root_sync" | "evolution_prepare" | "evolution_advance" | "evolution_apply" | "evolution_finalize" | "evolution_retry" | "attribution_batch";
+            /** Leaseexpiresat */
+            leaseExpiresAt: string | null;
+            /** Maxattempts */
+            maxAttempts: number;
             /** Progress */
             progress: number;
             /** Refid */
             refId: string | null;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
             /** Startedat */
             startedAt: string | null;
             /**
              * Status
              * @enum {string}
              */
-            status: "queued" | "running" | "completed" | "failed" | "interrupted";
+            status: "queued" | "running" | "completed" | "failed" | "interrupted" | "cancelled";
         };
         /**
          * LoginRequest
@@ -6765,6 +7018,240 @@ export interface operations {
                 };
             };
             /** @description Run is unknown */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown or the step has not been reached */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -10088,6 +10575,244 @@ export interface operations {
                 };
             };
             /** @description Run is unknown or out of workspace */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobList"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wid: string;
+                run_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttributionJobView"];
+                };
+            };
+            /** @description Authentication is required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Password change is required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Run is unknown, out of workspace, or step not reached */
             404: {
                 headers: {
                     [name: string]: unknown;

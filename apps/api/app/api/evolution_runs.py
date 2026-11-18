@@ -8,6 +8,11 @@ from app.api.deps import authorize_workspace, visible_workspace_ids
 from app.api.evolution_launch import LAUNCH_RESPONSES
 from app.api.security import BEARER_AUTH
 from app.errors import AppError, ErrorCode, ErrorResponse
+from app.service.evolution.attribution_jobs import (
+    AttributionJobList,
+    AttributionJobService,
+    AttributionJobView,
+)
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
     EvolutionRunEventPage,
@@ -58,6 +63,11 @@ def stages_from(request: Request) -> EvolutionStageService:
 def events_from(request: Request) -> EvolutionRunEventService:
     """Return the application-scoped evolution event service."""
     return cast(EvolutionRunEventService, request.app.state.evolution_events)
+
+
+def attribution_jobs_from(request: Request) -> AttributionJobService:
+    """Return the application-scoped isolated attribution job service."""
+    return cast(AttributionJobService, request.app.state.attribution_jobs)
 
 
 def retry_from(request: Request) -> EvolutionRetryService:
@@ -227,6 +237,69 @@ async def retry_run(run_id: str, request: Request) -> EvolutionRetryAccepted:
         created_by=_principal_id(request),
         workspace_ids=scope,
     )
+
+
+@router.get(
+    "/{run_id}/attribution-jobs",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def list_attribution_jobs(run_id: str, request: Request) -> AttributionJobList:
+    """Return sanitized attribution throughput and failure observations."""
+    workspace_id = await _run_workspace(request, run_id)
+    await authorize_workspace(request, workspace_id, "viewer")
+    return await attribution_jobs_from(request).history(run_id)
+
+
+@router.post(
+    "/{run_id}/attribution-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def create_attribution_job(run_id: str, request: Request) -> AttributionJobView:
+    """Start or join the run's manual attribution batch."""
+    workspace_id = await _run_workspace(request, run_id)
+    await authorize_workspace(request, workspace_id, "space_admin")
+    submission = await attribution_jobs_from(request).submit(
+        run_id,
+        created_by=_principal_id(request),
+        source="manual",
+    )
+    return attribution_jobs_from(request).public(submission.job)
+
+
+@router.post(
+    "/{run_id}/attribution-jobs/{job_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def retry_attribution_job(
+    run_id: str,
+    job_id: str,
+    request: Request,
+) -> AttributionJobView:
+    """Retry only cases that still lack a durable report link."""
+    workspace_id = await _run_workspace(request, run_id)
+    await authorize_workspace(request, workspace_id, "space_admin")
+    return await attribution_jobs_from(request).retry(run_id, job_id)
+
+
+@router.post(
+    "/{run_id}/attribution-jobs/{job_id}/cancel",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def cancel_attribution_job(
+    run_id: str,
+    job_id: str,
+    request: Request,
+) -> AttributionJobView:
+    """Cancel queued or running attribution work without deleting its audit row."""
+    workspace_id = await _run_workspace(request, run_id)
+    await authorize_workspace(request, workspace_id, "space_admin")
+    return await attribution_jobs_from(request).cancel(run_id, job_id)
 
 
 @router.get(

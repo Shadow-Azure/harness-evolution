@@ -65,6 +65,7 @@ class CountingEngine:
             confidence=0.8,
             reason=f"第 {len(self.calls)} 次归因",
             reasoning="reasoning",
+            token_count=7,
         )
 
 
@@ -134,6 +135,8 @@ async def test_runner_writes_revision_scoped_probe_and_candidate(
     assert summary.reused == 0
     assert summary.non_target == 1
     assert summary.skipped == 0
+    assert summary.token_count == 7
+    assert summary.context_hash is not None
     first = await attribution_repository.get_probe_by_cache_key(
         runner_cache_key(),
     )

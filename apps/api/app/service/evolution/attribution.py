@@ -7,10 +7,13 @@ cache reads, dialect upserts, reuse accounting, and run-candidate pointers.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable, Mapping, Sequence
+import math
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from time import perf_counter
 from typing import Any, Literal, Protocol
 
 from app.db.crud.attributions import (
@@ -33,6 +36,7 @@ from app.service.evolution.attribution_contracts import (
     AttributionPoint,
     AttributionReportV2,
     AttributionTargetRef,
+    canonical_json_hash,
     default_execution_manifest,
 )
 from app.service.evolution.attribution_executor import (
@@ -153,6 +157,7 @@ class AttributionResult:
     evidence_references: tuple[str, ...] = ()
     suggestion_clues: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    token_count: int = 0
 
     def __post_init__(self) -> None:
         """Reject conclusions that cannot satisfy the table's closed sets."""
@@ -160,6 +165,8 @@ class AttributionResult:
             raise ValueError(f"unknown attribution conclusion: {self.conclusion}")
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be within [0, 1]: {self.confidence}")
+        if self.token_count < 0:
+            raise ValueError("token_count must be non-negative")
         if self.conclusion in {"non_target", "inconclusive"}:
             if self.category is not None:
                 raise ValueError(f"{self.conclusion} attributions must not carry a category")
@@ -351,6 +358,7 @@ class AgentSkillStubEngine:
             evidence_references=tuple(output.evidence_references),
             suggestion_clues=tuple(output.suggestion_clues),
             warnings=tuple(output.warnings),
+            token_count=output.token_count,
         )
 
 
@@ -483,6 +491,34 @@ class AttributionRunSummary:
     reused: int
     non_target: int
     skipped: int
+    failed: int = 0
+    average_latency_ms: float = 0.0
+    p95_latency_ms: float = 0.0
+    token_count: int = 0
+    warning_count: int = 0
+    evidence_coverage_rate: float = 0.0
+    context_hash: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AttributionRunProgress:
+    """Sanitized live observations emitted as individual cases finish."""
+
+    total: int
+    completed: int
+    created: int
+    reused: int
+    failed: int
+    non_target: int
+    average_latency_ms: float
+    p95_latency_ms: float
+    token_count: int
+    warning_count: int
+    evidence_coverage_rate: float
+    context_hash: str
+
+
+AttributionProgressCallback = Callable[[AttributionRunProgress], Awaitable[None]]
 
 
 EngineFactory = Callable[[AttributionEngineKey], AttributionEngine]
@@ -565,6 +601,7 @@ class AttributionRunner:
         now: Callable[[], datetime] = now_shanghai,
         context_provider: AttributionContextProvider | None = None,
         skill_resolver: AttributionSkillSnapshotResolver | None = None,
+        max_concurrency: int = 1,
     ) -> None:
         """Bind persistence, engine resolution, and the injectable clock."""
         self._store = store
@@ -572,12 +609,15 @@ class AttributionRunner:
         self._now = now
         self._context_provider = context_provider
         self._skill_resolver = skill_resolver
+        self._max_concurrency = max(1, max_concurrency)
 
     async def run(
         self,
         run: EvolutionRunRecord,
         candidates: Sequence[PotentialCase],
         cache_enabled: bool,
+        *,
+        on_progress: AttributionProgressCallback | None = None,
     ) -> AttributionRunSummary:
         """Attribute included candidates and return exact reuse/creation counts.
 
@@ -649,12 +689,12 @@ class AttributionRunner:
 
         object_version = resolve_target_revision(run.target_version)[1]
         skill_snapshot = await self._resolve_skill_snapshot(run, engine)
-        created = 0
-        reused = 0
-        non_target = 0
-        for candidate in pending:
-            try:
-                item = self._build_input(
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        prepared = tuple(
+            (
+                candidate,
+                self._build_input(
                     run,
                     candidate,
                     bad_cases,
@@ -662,7 +702,26 @@ class AttributionRunner:
                     object_version,
                     contexts,
                     skill_snapshot,
-                )
+                ),
+            )
+            for candidate in pending
+        )
+        batch_context_hash = canonical_json_hash(
+            [
+                {
+                    "badCaseId": candidate.bad_case_id,
+                    "contextSnapshotHash": item.execution_manifest.context_snapshot_hash,
+                }
+                for candidate, item in prepared
+            ],
+        )
+
+        async def attribute_one(
+            candidate: PotentialCase,
+            item: AttributionInput,
+        ) -> tuple[str, bool, float, int, bool, int]:
+            async with semaphore:
+                started = perf_counter()
                 now = self._now()
                 if cache_enabled:
                     cached = await self._store.get_probe_by_cache_key(item.cache_key)
@@ -673,10 +732,14 @@ class AttributionRunner:
                             candidate.bad_case_id,
                             now,
                         )
-                        reused += 1
-                        if cached.conclusion == "non_target":
-                            non_target += 1
-                        continue
+                        return (
+                            "reused",
+                            cached.conclusion == "non_target",
+                            (perf_counter() - started) * 1000,
+                            0,
+                            True,
+                            0,
+                        )
                 result = await engine.attribute(item)
                 manifest = item.execution_manifest
                 report = build_attribution_report(item, result)
@@ -707,15 +770,79 @@ class AttributionRunner:
                     run.id,
                     now,
                 )
-            except RunBlocked:
-                raise
-            except (ConfigError, ValueError):
-                raise
-            except Exception as exc:
-                raise self._blocked(run.id, candidate.bad_case_id, exc) from exc
-            created += 1
-            if result.conclusion == "non_target":
-                non_target += 1
+                return (
+                    "created",
+                    result.conclusion == "non_target",
+                    (perf_counter() - started) * 1000,
+                    len(result.warnings),
+                    bool(result.evidence_references),
+                    result.token_count,
+                )
+
+        tasks = [
+            asyncio.create_task(attribute_one(candidate, item)) for candidate, item in prepared
+        ]
+        created = 0
+        reused = 0
+        failed = 0
+        non_target = 0
+        warning_count = 0
+        evidence_covered = 0
+        token_count = 0
+        latencies: list[float] = []
+        errors: list[Exception] = []
+        try:
+            for future in asyncio.as_completed(tasks):
+                try:
+                    source, is_non_target, latency_ms, warnings, covered, tokens = await future
+                    created += int(source == "created")
+                    reused += int(source == "reused")
+                    non_target += int(is_non_target)
+                    warning_count += warnings
+                    evidence_covered += int(covered)
+                    token_count += tokens
+                    latencies.append(latency_ms)
+                except Exception as exc:  # keep sibling cases durable before surfacing failure
+                    failed += 1
+                    errors.append(exc)
+                if on_progress is not None:
+                    await on_progress(
+                        _progress(
+                            total=len(pending),
+                            created=created,
+                            reused=reused,
+                            failed=failed,
+                            non_target=non_target,
+                            latencies=latencies,
+                            token_count=token_count,
+                            warning_count=warning_count,
+                            evidence_covered=evidence_covered,
+                            context_hash=batch_context_hash,
+                        ),
+                    )
+        except BaseException:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+        if errors:
+            first = errors[0]
+            if isinstance(first, (ConfigError, ValueError, RunBlocked)):
+                raise first
+            raise self._blocked(run.id, None, first) from first
+
+        progress = _progress(
+            total=len(pending),
+            created=created,
+            reused=reused,
+            failed=failed,
+            non_target=non_target,
+            latencies=latencies,
+            token_count=token_count,
+            warning_count=warning_count,
+            evidence_covered=evidence_covered,
+            context_hash=batch_context_hash,
+        )
 
         return AttributionRunSummary(
             processed=len(pending),
@@ -723,6 +850,13 @@ class AttributionRunner:
             reused=reused,
             non_target=non_target,
             skipped=skipped,
+            failed=failed,
+            average_latency_ms=progress.average_latency_ms,
+            p95_latency_ms=progress.p95_latency_ms,
+            token_count=progress.token_count,
+            warning_count=warning_count,
+            evidence_coverage_rate=progress.evidence_coverage_rate,
+            context_hash=batch_context_hash,
         )
 
     def _build_input(
@@ -829,12 +963,46 @@ class AttributionRunner:
         )
 
 
+def _progress(
+    *,
+    total: int,
+    created: int,
+    reused: int,
+    failed: int,
+    non_target: int,
+    latencies: Sequence[float],
+    token_count: int,
+    warning_count: int,
+    evidence_covered: int,
+    context_hash: str,
+) -> AttributionRunProgress:
+    """Build one bounded observation without trace or Skill content."""
+    ordered = sorted(latencies)
+    p95_index = max(0, math.ceil(len(ordered) * 0.95) - 1)
+    completed = created + reused + failed
+    return AttributionRunProgress(
+        total=total,
+        completed=completed,
+        created=created,
+        reused=reused,
+        failed=failed,
+        non_target=non_target,
+        average_latency_ms=(sum(ordered) / len(ordered) if ordered else 0.0),
+        p95_latency_ms=(ordered[p95_index] if ordered else 0.0),
+        token_count=token_count,
+        warning_count=warning_count,
+        evidence_coverage_rate=(evidence_covered / completed if completed else 0.0),
+        context_hash=context_hash,
+    )
+
+
 __all__ = [
     "DEFAULT_ATTRIBUTION_ENGINE",
     "AgentSkillStubEngine",
     "AttributionEngine",
     "AttributionInput",
     "AttributionResult",
+    "AttributionRunProgress",
     "AttributionRunSummary",
     "AttributionRunner",
     "KnowledgeEvidence",

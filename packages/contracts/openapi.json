@@ -585,6 +585,229 @@
         "title": "AttributionItem",
         "type": "object"
       },
+      "AttributionJobList": {
+        "additionalProperties": false,
+        "description": "Newest-first attribution executions for one run.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionJobView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttributionJobList",
+        "type": "object"
+      },
+      "AttributionJobObservation": {
+        "additionalProperties": false,
+        "description": "Sanitized throughput, quality, cost, and runtime observations.",
+        "properties": {
+          "averageLatencyMs": {
+            "default": 0.0,
+            "title": "Averagelatencyms",
+            "type": "number"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "contextHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexthash"
+          },
+          "created": {
+            "default": 0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "evidenceCoverageRate": {
+            "default": 0.0,
+            "title": "Evidencecoveragerate",
+            "type": "number"
+          },
+          "executor": {
+            "title": "Executor",
+            "type": "string"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "nonTarget": {
+            "default": 0,
+            "title": "Nontarget",
+            "type": "integer"
+          },
+          "p95LatencyMs": {
+            "default": 0.0,
+            "title": "P95Latencyms",
+            "type": "number"
+          },
+          "reused": {
+            "default": 0,
+            "title": "Reused",
+            "type": "integer"
+          },
+          "skillRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skillrevision"
+          },
+          "tokenCount": {
+            "default": 0,
+            "title": "Tokencount",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "warningCount": {
+            "default": 0,
+            "title": "Warningcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "executor",
+          "skillRevision"
+        ],
+        "title": "AttributionJobObservation",
+        "type": "object"
+      },
+      "AttributionJobView": {
+        "additionalProperties": false,
+        "description": "One durable attribution execution without raw trace or Skill content.",
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "cancelRequested": {
+            "title": "Cancelrequested",
+            "type": "boolean"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "jobId": {
+            "title": "Jobid",
+            "type": "string"
+          },
+          "maxAttempts": {
+            "title": "Maxattempts",
+            "type": "integer"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/AttributionJobObservation"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "prepare",
+              "manual",
+              "schedule",
+              "retry"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "interrupted",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId",
+          "runId",
+          "source",
+          "status",
+          "progress",
+          "attempt",
+          "maxAttempts",
+          "cancelRequested",
+          "observation",
+          "error",
+          "createdAt",
+          "startedAt",
+          "finishedAt"
+        ],
+        "title": "AttributionJobView",
+        "type": "object"
+      },
       "AttributionPage": {
         "additionalProperties": false,
         "description": "One deterministic newest-first page of a case's attributions.",
@@ -4229,6 +4452,10 @@
             "title": "Attempt",
             "type": "integer"
           },
+          "cancelRequested": {
+            "title": "Cancelrequested",
+            "type": "boolean"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -4281,10 +4508,28 @@
               "evolution_advance",
               "evolution_apply",
               "evolution_finalize",
-              "evolution_retry"
+              "evolution_retry",
+              "attribution_batch"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "leaseExpiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leaseexpiresat"
+          },
+          "maxAttempts": {
+            "minimum": 1.0,
+            "title": "Maxattempts",
+            "type": "integer"
           },
           "progress": {
             "maximum": 1.0,
@@ -4302,6 +4547,18 @@
               }
             ],
             "title": "Refid"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
           },
           "startedAt": {
             "anyOf": [
@@ -4321,7 +4578,8 @@
               "running",
               "completed",
               "failed",
-              "interrupted"
+              "interrupted",
+              "cancelled"
             ],
             "title": "Status",
             "type": "string"
@@ -4334,6 +4592,10 @@
           "status",
           "progress",
           "attempt",
+          "maxAttempts",
+          "leaseExpiresAt",
+          "cancelRequested",
+          "result",
           "createdBy",
           "createdAt",
           "startedAt",
@@ -10925,6 +11187,334 @@
         ]
       }
     },
+    "/api/evolution/runs/{run_id}/attribution-jobs": {
+      "get": {
+        "description": "Return sanitized attribution throughput and failure observations.",
+        "operationId": "list_attribution_jobs_api_evolution_runs__run_id__attribution_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Jobs",
+        "tags": [
+          "evolution-runs"
+        ]
+      },
+      "post": {
+        "description": "Start or join the run's manual attribution batch.",
+        "operationId": "create_attribution_job_api_evolution_runs__run_id__attribution_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Attribution Job",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel queued or running attribution work without deleting its audit row.",
+        "operationId": "cancel_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Attribution Job",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
+    "/api/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+      "post": {
+        "description": "Retry only cases that still lack a durable report link.",
+        "operationId": "retry_attribution_job_api_evolution_runs__run_id__attribution_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown or the step has not been reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Attribution Job",
+        "tags": [
+          "evolution-runs"
+        ]
+      }
+    },
     "/api/evolution/runs/{run_id}/events": {
       "get": {
         "description": "Return one stable, authenticated page of durable run events.",
@@ -15772,6 +16362,386 @@
           }
         ],
         "summary": "Read Run",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs": {
+      "get": {
+        "description": "Return sanitized attribution observations for one workspace run.",
+        "operationId": "list_attribution_jobs_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Jobs",
+        "tags": [
+          "workspace-evolution"
+        ]
+      },
+      "post": {
+        "description": "Start or join one manual attribution batch.",
+        "operationId": "create_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Attribution Job",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel queued or running attribution work and retain its audit row.",
+        "operationId": "cancel_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Attribution Job",
+        "tags": [
+          "workspace-evolution"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/evolution/runs/{run_id}/attribution-jobs/{job_id}/retry": {
+      "post": {
+        "description": "Retry only unfinished cases of one failed attribution batch.",
+        "operationId": "retry_attribution_job_api_workspaces__wid__evolution_runs__run_id__attribution_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionJobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Password change is required"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Run is unknown, out of workspace, or step not reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Attribution Job",
         "tags": [
           "workspace-evolution"
         ]

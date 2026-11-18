@@ -9,6 +9,11 @@ from app.api.evolution_launch import LAUNCH_RESPONSES
 from app.api.security import BEARER_AUTH
 from app.errors import AppError, ErrorCode, ErrorResponse
 from app.service.catalogs import CatalogModels, CatalogService, CatalogTargets
+from app.service.evolution.attribution_jobs import (
+    AttributionJobList,
+    AttributionJobService,
+    AttributionJobView,
+)
 from app.service.evolution.events import (
     EvolutionRunEventLevel,
     EvolutionRunEventPage,
@@ -119,6 +124,11 @@ def stages_from(request: Request) -> EvolutionStageService:
 def events_from(request: Request) -> EvolutionRunEventService:
     """Return the application-scoped evolution event service."""
     return cast(EvolutionRunEventService, request.app.state.evolution_events)
+
+
+def attribution_jobs_from(request: Request) -> AttributionJobService:
+    """Return the application-scoped isolated attribution job service."""
+    return cast(AttributionJobService, request.app.state.attribution_jobs)
 
 
 def retry_from(request: Request) -> EvolutionRetryService:
@@ -488,6 +498,87 @@ async def retry_run(
         created_by=_principal_id(request),
         workspace_ids=(wid,),
     )
+
+
+@router.get(
+    "/runs/{run_id}/attribution-jobs",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def list_attribution_jobs(
+    request: Request,
+    wid: WorkspaceId,
+    run_id: RunId,
+    access: ViewerAccess,
+) -> AttributionJobList:
+    """Return sanitized attribution observations for one workspace run."""
+    del access
+    if await runs_from(request).detail(run_id, workspace_ids=(wid,)) is None:
+        raise _run_not_found()
+    return await attribution_jobs_from(request).history(run_id)
+
+
+@router.post(
+    "/runs/{run_id}/attribution-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def create_attribution_job(
+    request: Request,
+    wid: WorkspaceId,
+    run_id: RunId,
+    access: AdminAccess,
+) -> AttributionJobView:
+    """Start or join one manual attribution batch."""
+    del access
+    if await runs_from(request).detail(run_id, workspace_ids=(wid,)) is None:
+        raise _run_not_found()
+    submission = await attribution_jobs_from(request).submit(
+        run_id,
+        created_by=_principal_id(request),
+        source="manual",
+    )
+    return attribution_jobs_from(request).public(submission.job)
+
+
+@router.post(
+    "/runs/{run_id}/attribution-jobs/{job_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def retry_attribution_job(
+    request: Request,
+    wid: WorkspaceId,
+    run_id: RunId,
+    job_id: str,
+    access: AdminAccess,
+) -> AttributionJobView:
+    """Retry only unfinished cases of one failed attribution batch."""
+    del access
+    if await runs_from(request).detail(run_id, workspace_ids=(wid,)) is None:
+        raise _run_not_found()
+    return await attribution_jobs_from(request).retry(run_id, job_id)
+
+
+@router.post(
+    "/runs/{run_id}/attribution-jobs/{job_id}/cancel",
+    dependencies=[Security(BEARER_AUTH)],
+    responses=STEP_RESPONSES,
+)
+async def cancel_attribution_job(
+    request: Request,
+    wid: WorkspaceId,
+    run_id: RunId,
+    job_id: str,
+    access: AdminAccess,
+) -> AttributionJobView:
+    """Cancel queued or running attribution work and retain its audit row."""
+    del access
+    if await runs_from(request).detail(run_id, workspace_ids=(wid,)) is None:
+        raise _run_not_found()
+    return await attribution_jobs_from(request).cancel(run_id, job_id)
 
 
 @catalog_router.get(

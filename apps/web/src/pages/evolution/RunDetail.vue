@@ -22,6 +22,8 @@ import { useEvolutionRunStep } from "../../composables/useEvolutionRunStep";
 import { useRunEvents } from "../../composables/useRunEvents";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
 import { workspacePath } from "../../router/workspace";
+import { useAuthStore } from "../../stores/auth";
+import { canManageWorkspace } from "../../utils/workspaceDisplay";
 import RunStepContent from "./components/RunStepContent.vue";
 import RunStepper from "./components/RunStepper.vue";
 import RunLogPanel from "./components/RunLogPanel.vue";
@@ -36,7 +38,11 @@ defineOptions({ name: "EvolutionRunDetailPage" });
 const route = useRoute();
 const router = useRouter();
 const queryClient = useQueryClient();
+const auth = useAuthStore();
 const workspaceId = useWorkspaceId();
+const canWriteAttribution = computed(() =>
+  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
+);
 
 const runId = computed(() => String(route.params.runId ?? ""));
 const {
@@ -807,6 +813,7 @@ function clearMissingClusterFocus(): void {
           :is-pending="selectedStep?.clickable === true && stepPending"
           :is-unreached="selectedStep?.clickable !== true"
           :focus-cluster="focusCluster"
+          :can-write="canWriteAttribution"
           @page-change="stepPage = $event"
           @missing-cluster-focus="clearMissingClusterFocus"
         />

@@ -83,6 +83,10 @@ from app.service.evolution.apply_final import (
 )
 from app.service.evolution.attribution import AttributionRunner, resolve_attribution_engine
 from app.service.evolution.attribution_context import AttributionContextProvider
+from app.service.evolution.attribution_jobs import (
+    ATTRIBUTION_JOB_KIND,
+    AttributionJobService,
+)
 from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
@@ -291,6 +295,14 @@ def create_app(
         attribution_repository,
         context_provider=AttributionContextProvider(potential_repository),
         skill_resolver=attribution_skills,
+        max_concurrency=resolved_settings.attribution_case_concurrency,
+    )
+    attribution_jobs = AttributionJobService(
+        jobs,
+        evolution_repository,
+        run_candidate_repository,
+        attribution_repository,
+        attribution_runner,
     )
     evolution_stages = EvolutionStageService(
         evolution_repository,
@@ -323,6 +335,7 @@ def create_app(
         attribution_runner,
         workspace_manager,
         evolution_events,
+        attribution_jobs=attribution_jobs,
     )
     evolution_candidates = EvolutionCandidateService(
         evolution_repository,
@@ -419,7 +432,12 @@ def create_app(
         """Persist and publish the placeholder terminal evaluation."""
         return await evolution_finalize.handle(job)
 
-    jobs.register_handler("evolution_prepare", prepare_handler)
+    jobs.register_handler(
+        ATTRIBUTION_JOB_KIND,
+        attribution_jobs.handle,
+        concurrency_limit=resolved_settings.attribution_batch_concurrency,
+    )
+    jobs.register_handler("evolution_prepare", prepare_handler, concurrency_limit=2)
     jobs.register_handler("evolution_advance", advance_handler)
     jobs.register_handler("evolution_apply", apply_handler)
     jobs.register_handler("evolution_finalize", finalize_handler)
@@ -535,6 +553,7 @@ def create_app(
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
     app.state.attribution_skills = attribution_skills
+    app.state.attribution_jobs = attribution_jobs
     app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages

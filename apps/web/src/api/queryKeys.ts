@@ -80,6 +80,8 @@ export const queryKeys = {
         ] as const),
   evolutionRunEvents: (workspaceId: string, runId: string, level: string) =>
     ["ws", workspaceId, "evolution", "runs", runId, "events", level] as const,
+  attributionJobs: (workspaceId: string, runId: string) =>
+    ["ws", workspaceId, "evolution", "runs", runId, "attribution-jobs"] as const,
   evolutionTargets: (workspaceId: string) =>
     ["ws", workspaceId, "evolution", "targets"] as const,
   evolutionTargetVersions: (workspaceId: string, targetId: string) =>
