@@ -4,14 +4,14 @@ English | [中文](m12-session-attribution-context.md)
 
 ```yaml flow
 kind: issue
-id: m12-09
+id: m12-16
 milestone: m12
 depends:
   - m10-02
   - m12-01
-  - m12-07
+  - m12-14
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/**
   - packages/contracts/**
@@ -59,7 +59,7 @@ github:
 
 ## Dependencies and boundary
 
-- Depends on: m10-02, m12-01, and m12-07.
+- Depends on: m10-02, m12-01, and m12-14.
 - Boundary: produce agent-consumable context input; do not execute a model, change potential policy, or automatically select another attribution target.
 
 ## Verification

@@ -8,10 +8,11 @@ id: m12-05
 milestone: m12
 depends:
   - m6-05
-priority: P2
-status: backlog
+priority: P1
+status: done
 scope:
   - scripts/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
   - docs/**
@@ -41,7 +42,7 @@ The CLI entry guard in 22 gate/utility scripts under `scripts/` reads ``if (impo
 
 ## Implementation
 
-- Unify the 22 guards into ``import.meta.url === pathToFileURL(process.argv[1]).href`` (following `scripts/contract.mjs:259`, optionally with a `process.argv[1] &&` prefix); if repetition costs too much, extract a shared `isMain()` helper and swap it in per script.
+- Unify the 22 guards into ``import.meta.url === pathToFileURL(process.argv[1]).href`` (following `scripts/contract.mjs:259`, optionally with a `process.argv[1] &&` prefix); if repetition costs too much, extract a shared `isMain()` helper and swap it in per script. This delivery uses a shared `scripts/is-main.mjs` and folds the two existing safe guards in `contract.mjs` and `performance-report.mjs` into it, so all 24 entries share one check.
 - One-line fix at `scripts/verify-web-style.mjs:27-28`: build the read path and URL with `pathToFileURL(path.join(entry.parentPath, entry.name))`.
 - Add a Windows smoke assertion for verify-web-style to the `pnpm test:gates` self-tests: inject a sample carrying a literal color and assert the gate goes red, guarding against the "entry reachable but gate body never ran" regression.
 - Dispose of `.tmp/run-gate.mjs`: once the guards are fixed it loses its reason to exist; promote it to a proper `scripts/` tool or delete it as needed.
@@ -57,6 +58,7 @@ The CLI entry guard in 22 gate/utility scripts under `scripts/` reads ``if (impo
 
 - Depends on: m6-05 (the Windows dev entry already works; this issue honors its "separate issue" promise).
 - Boundary: only the entry guards and Windows path compatibility under `scripts/`, the matching self-tests, and flow-doc sync; no gate's verdict semantics and no CI workflow change.
+- `plans/**` is in scope because this issue follows the repository review flow and ships its structured review record under `plans/`; that directory never participates in runtime or build artifacts.
 
 ## Verification
 

@@ -103,7 +103,7 @@ apps/api/
       events.py              # 进程内 SSE 事件总线
     schemas/                 # service 数据结构
     third_party_api/
-      trajectory/            # 上游轨迹查询：client.py + http_client.py
+      trajectory/            # 上游轨迹查询：http.py（HttpTrajectorySource）
       llm/                   # 预留：client.py + openai_client.py
     utils/                   # 纯工具（JSONL 行辅助、哈希、时间、JWT）
   tests/
@@ -231,7 +231,7 @@ class PayloadSource(Protocol):
 | 实现 | 读取/写入 | 启用条件 |
 |---|---|---|
 | `MySqlPayloadSource` | 读 `trajectory_payloads`（`root_session_id`、`agent_id`、`payload`、`agent_meta`、`content_hash`、`line_count`） | V1 默认；**不扫描 `he_src_*`** |
-| `HttpApiSource` | 调上游接口，把返回 payload upsert 到 `trajectory_payloads` | 上游就绪后配置启用；`third_party_api/trajectory/http_client.py` |
+| `HttpTrajectorySource` | 调上游接口，把返回 payload upsert 到 `trajectory_payloads` | 上游就绪后配置启用；`third_party_api/trajectory/http.py` |
 
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 只是处理索引，不存 payload。
 - 待处理判定：`source_records` 无记录，或 `processed_hash != payload.content_hash`，或 `parser_version < 当前版本`。

@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import assert from "node:assert/strict";
 import Ajv2020 from "@redocly/ajv/dist/2020.js";
+import { isMain } from "./is-main.mjs";
 import {
   collectRefs,
   globToRegExp,
@@ -537,6 +539,72 @@ test("smoke report renderer emits valid table fragments and coverage values", ()
     for (const value of ["识别", "UT", "已验证", "保持回归"]) {
       assert.match(report, new RegExp(value));
     }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("isMain matches the process entry for POSIX, relative, and spaced paths", () => {
+  const entry = path.resolve("scripts/is-main.mjs");
+  const entryUrl = pathToFileURL(entry).href;
+  const directory = mkdtempSync(path.join(realpathSync(tmpdir()), "harness is-main-"));
+  try {
+    const spaced = path.join(directory, "with space.mjs");
+    writeFileSync(spaced, "");
+    assert.equal(isMain(pathToFileURL(spaced).href, spaced), true);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+
+  assert.equal(isMain(entryUrl, entry), true);
+  assert.equal(isMain(entryUrl, path.join("scripts", "is-main.mjs")), true);
+  assert.equal(isMain(entryUrl, path.resolve("scripts/gates.spec.mjs")), false);
+  assert.equal(isMain(entryUrl, null), false);
+});
+
+test("every script entry guard is platform-neutral", () => {
+  const legacyGuard = "file://" + "${process.argv[1]}";
+  const scripts = readdirSync("scripts").filter((name) => name.endsWith(".mjs"));
+  const guarded = [];
+  for (const name of scripts) {
+    const source = readFileSync(path.join("scripts", name), "utf8");
+    assert.ok(
+      !source.includes(legacyGuard),
+      `${name} still compares import.meta.url with a POSIX-only file URL`,
+    );
+    if (name === "gates.spec.mjs") continue;
+    if (!source.includes("isMain(import.meta.url)")) continue;
+    guarded.push(name);
+    assert.match(
+      source,
+      /import \{ isMain \} from "\.\/is-main\.mjs";/,
+      `${name} must import isMain from ./is-main.mjs`,
+    );
+  }
+  assert.ok(guarded.length >= 22, `expected at least 22 guarded scripts, found ${guarded.length}`);
+});
+
+test("verify-web-style CLI executes its body from an arbitrary checkout path", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "harness-web-style-cli-"));
+  try {
+    const scripts = path.join(directory, "scripts");
+    const components = path.join(directory, "apps/web/src/pages");
+    mkdirSync(scripts, { recursive: true });
+    mkdirSync(components, { recursive: true });
+    for (const name of ["is-main.mjs", "verify-web-style.mjs"]) {
+      writeFileSync(path.join(scripts, name), readFileSync(path.join("scripts", name)));
+    }
+    const entry = path.join(scripts, "verify-web-style.mjs");
+    writeFileSync(path.join(components, "Ok.vue"), "<style scoped>.a { color: var(--text); }</style>\n");
+
+    const pass = spawnSync(process.execPath, [entry], { encoding: "utf8" });
+    assert.equal(pass.status, 0, pass.stderr);
+    assert.match(pass.stdout, /verify-web-style: Vue components use token colors only/);
+
+    writeFileSync(path.join(components, "Bad.vue"), "<style scoped>.a { color: #fff; }</style>\n");
+    const fail = spawnSync(process.execPath, [entry], { encoding: "utf8" });
+    assert.equal(fail.status, 1);
+    assert.match(fail.stderr, /Bad\.vue contains a literal color; use tokens\.css/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

@@ -29,7 +29,7 @@ async function mountDialog(overrides: Record<string, unknown> = {}) {
       versions: [],
       versionsLoading: false,
       submitting: false,
-      serverError: "",
+      serverError: null,
       ...overrides,
     },
     global: {
@@ -158,7 +158,9 @@ describe("TargetFormDialog", () => {
 
   it("keeps entered values when a server error is rendered", async () => {
     const wrapper = await mountDialog({
-      serverError: "仓库或 ref 无效，请检查地址、子目录与基线",
+      serverError: {
+        summary: "仓库或 ref 无效，请检查地址、子目录与基线",
+      },
     });
     await fillRequired(wrapper, {
       repoUrl: "https://example.com/entered.git",
@@ -170,6 +172,81 @@ describe("TargetFormDialog", () => {
     expect(
       (wrapper.get('input[name="repoUrl"]').element as HTMLInputElement).value,
     ).toBe("https://example.com/entered.git");
+  });
+
+  it("renders a structured field error, suggestion, and focuses the field", async () => {
+    const wrapper = await mountDialog();
+    await wrapper.setProps({
+      serverError: {
+        summary: "仓库地址不能包含用户名或密码",
+        field: "repoUrl",
+        reason: "repo_url_credentials",
+        message: "仓库地址不能包含用户名或密码",
+        suggestion: "移除 URL 中的凭据，改用 SSH agent 或凭据助手。",
+      },
+    });
+    await flushPromises();
+
+    const input = wrapper.get('input[name="repoUrl"]');
+    expect(input.attributes("aria-invalid")).toBe("true");
+    expect(input.attributes("aria-describedby")).toBe("target-repoUrl-error");
+    expect(wrapper.get("#target-repoUrl-error").text()).toContain(
+      "仓库地址不能包含用户名或密码",
+    );
+    expect(wrapper.get("#target-repoUrl-error").text()).toContain(
+      "移除 URL 中的凭据",
+    );
+    expect(document.activeElement).toBe(input.element);
+  });
+
+  it("clears a server field error once the offending field changes", async () => {
+    const wrapper = await mountDialog({
+      serverError: {
+        summary: "仓库地址格式不正确",
+        field: "repoUrl",
+        message: "仓库地址格式不正确",
+        suggestion: "使用无凭据的 HTTPS 或 SSH 地址。",
+      },
+    });
+    expect(wrapper.find("[role='alert']").exists()).toBe(true);
+
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/next.git");
+    await flushPromises();
+
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+    expect(
+      wrapper.get('input[name="repoUrl"]').attributes("aria-invalid"),
+    ).toBeUndefined();
+  });
+
+  it("renders bounded git command output in a collapsible block", async () => {
+    const wrapper = await mountDialog({
+      serverError: {
+        summary: "无法访问仓库",
+        field: "repoUrl",
+        message: "无法访问仓库",
+        suggestion: "确认地址、网络与读取权限；下方是脱敏后的 git 输出。",
+        command: { name: "git ls-remote", exitCode: 128 },
+        output:
+          "fatal: unable to access 'https://git.example.com/repo.git/': Could not resolve host",
+      },
+    });
+
+    const block = wrapper.get("[data-testid='target-git-output']");
+    expect(block.element.tagName).toBe("DETAILS");
+    expect(block.text()).toContain("git ls-remote");
+    expect(block.text()).toContain("退出码 128");
+    expect(block.get("pre").text()).toContain("Could not resolve host");
+  });
+
+  it("explains when subdirectory existence is validated", async () => {
+    const wrapper = await mountDialog();
+
+    expect(wrapper.text()).toContain(
+      "目录是否存在在启动运行时校验",
+    );
   });
 
   it("prefills edits, exposes remote suggestions and submits disabled state", async () => {
@@ -313,11 +390,11 @@ describe("TargetFormDialog", () => {
   it("resets stale values and errors when reopened for create", async () => {
     const wrapper = await mountDialog({
       target,
-      serverError: "对象配置已存在",
+      serverError: { summary: "对象配置已存在" },
     });
     await wrapper.setProps({
       target: null,
-      serverError: "",
+      serverError: null,
     });
     await flushPromises();
 

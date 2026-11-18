@@ -15,6 +15,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.orm import aliased
 
 from app.db.base import Database
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     agent_events,
     agents,
@@ -802,6 +803,7 @@ class AttributionRepository:
             result = await session.execute(self._reuse_statement(probe_id, run_id, now))
         return int(getattr(result, "rowcount", 0) or 0)
 
+    @read_only_guard("bad_case_analysis,probe_reports")
     async def list_run_attributions(
         self,
         run_id: str,
@@ -820,6 +822,7 @@ class AttributionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
 
+    @read_only_guard("bad_case_analysis,probe_reports")
     async def list_attributions(
         self,
         case_id: str,
@@ -838,6 +841,7 @@ class AttributionRepository:
             rows = (await session.execute(statement)).mappings().all()
         return tuple(_row_attribution(row) for row in rows)
 
+    @read_only_guard("probe_reports")
     async def load_historical_probe_ids(
         self,
         session_ids: Sequence[str],
@@ -859,6 +863,7 @@ class AttributionRepository:
             grouped.setdefault(str(row["session_id"]), []).append(str(row["probe_id"]))
         return {session_id: tuple(probe_ids) for session_id, probe_ids in grouped.items()}
 
+    @read_only_guard("bad_case_analysis,probe_reports")
     async def count_links(self, case_id: str) -> int:
         """Count linked attributions, the pagination total rather than objects.
 
@@ -932,6 +937,7 @@ class AttributionRepository:
             case_trigger_event_index=row["case_trigger_event_index"],
         )
 
+    @read_only_guard("bad_case_analysis,probe_reports")
     async def attribution_count(self, case_id: str) -> int:
         """Count distinct ``(probe_type, probe_object, object_version)`` rows."""
         distinct = (
@@ -949,6 +955,7 @@ class AttributionRepository:
             count = (await session.execute(select(func.count()).select_from(distinct))).scalar_one()
         return int(count)
 
+    @read_only_guard("bad_case_analysis,probe_reports")
     async def get_attribution(
         self,
         case_id: str,

@@ -4,14 +4,14 @@
 
 ```yaml flow
 kind: issue
-id: m12-09
+id: m12-16
 milestone: m12
 depends:
   - m10-02
   - m12-01
-  - m12-07
+  - m12-14
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/**
   - packages/contracts/**
@@ -59,7 +59,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m10-02、m12-01、m12-07。
+- 依赖：m10-02、m12-01、m12-14。
 - 交付边界：形成 Agent 可消费的上下文输入；不执行模型、不修改潜在策略、不自动选择其他归因对象。
 
 ## 独立验证

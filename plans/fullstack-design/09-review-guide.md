@@ -138,7 +138,7 @@
 | R8 | SQLite / MySQL 行为差异 | 本地绿、切库红 | 双库 CI（`-m mysql`）+ SQL 纪律（不用方言语法、索引列 VARCHAR、JSON 不查 SQL），见 [06 §1.1](06-database-design.md) |
 | R9 | 上游查询接口不存在 / 契约漂移 | pull 来源一直空着或解析失败 | 契约先行（[05 §10](05-api-design.md)）；脚本 payload 先跑通；上游响应头声明版本，不兼容拒绝启动 |
 | R10 | `trajectory_payloads` 结构与预期不一致 | 归一化整批失败 | 单条隔离 + 表名可配 + 结构校验前置；parser 工厂按 runtime 选择（[07 §2.7](07-backend-implementation.md)） |
-| R11 | 占位聚类/占位 patch 被误当真实结论 | 演示后被当成产品能力 | UI 明确标注"占位"；占位逻辑集中在 `service/evolution`，有单测锁定行为 |
+| R11 | 占位 patch/评测被误当真实结论 | 演示后被当成产品能力 | 占位逻辑集中在 `service/evolution`，有单测锁定行为；聚类是确定性词法算法，算法版本/阈值随 run 事件落库，不承诺语义等价 |
 | R12 | git 操作失败/仓库配置错误 | run 卡住或提交丢失 | 保存配置与启动 run 双重校验；candidate 先 commit、接纳 amend + fast-forward、拒绝删 candidate（run 分支不 reset）；失败标 `failed` 并保留工作区；push 前校验分支命名与 base |
 | R13 | push 失败（凭据/远端冲突/网络） | 评测平台拿不到 candidate，流程阻塞 | candidate 推临时 ref；3 次立即 + 1/5/15min 退避；仍失败 run blocked，保留 candidate，`/retry` 恢复；run 分支不回滚 |
 | R14 | 执行异常只存在日志/内存，刷新即丢 | 无法定位失败原因 | 所有过程与异常写 `evolution_run_events`；job 边界统一捕获；启动扫描残留 `running` 记 `interrupted` |

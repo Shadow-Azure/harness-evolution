@@ -21,6 +21,10 @@ import { ApiError } from "../../../api/http";
 import { queryKeys } from "../../../api/queryKeys";
 import TargetFormDialog from "../../evolution/targets/components/TargetFormDialog.vue";
 import {
+  targetServerError,
+  type TargetServerError,
+} from "../../evolution/targets/targetErrors";
+import {
   useEvolutionTargets,
   useEvolutionTargetVersions,
 } from "../../../composables/useEvolutionTargets";
@@ -276,7 +280,7 @@ const {
 } = useEvolutionTargets(workspaceId);
 const dialogOpen = ref(false);
 const editingTarget = ref<EvolutionTarget | null>(null);
-const formError = ref("");
+const formError = ref<TargetServerError | null>(null);
 const operationError = ref("");
 const submitting = ref(false);
 const editingTargetId = computed(() => editingTarget.value?.id ?? null);
@@ -301,7 +305,7 @@ function openCreate(): void {
   if (!props.canManage) return;
   operationError.value = "";
   editingTarget.value = null;
-  formError.value = "";
+  formError.value = null;
   dialogOpen.value = true;
 }
 
@@ -317,12 +321,12 @@ function openEdit(item: TargetOverviewItem): void {
   }
   operationError.value = "";
   editingTarget.value = target;
-  formError.value = "";
+  formError.value = null;
   dialogOpen.value = true;
 }
 
 async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
-  formError.value = "";
+  formError.value = null;
   submitting.value = true;
   try {
     if (editingTarget.value) {
@@ -334,9 +338,8 @@ async function submitTarget(body: EvolutionTargetWrite): Promise<void> {
     }
     dialogOpen.value = false;
     await invalidateOverview();
-  } catch (error) {
-    formError.value =
-      error instanceof Error ? error.message : "保存进化对象失败";
+  } catch (errorValue) {
+    formError.value = targetServerError(errorValue);
   } finally {
     submitting.value = false;
   }

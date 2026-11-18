@@ -25,4 +25,4 @@ On Windows with Node ≥18.20/20.12/22, `scripts/dev.mjs` spawns `pnpm.cmd` with
 
 - `pnpm dev` behavior is aligned across Windows and POSIX, but on Windows Ctrl+C is relayed through a shell, so in extreme cases child-tree termination depends on cmd's default behavior; if zombie processes ever appear, suspect this layer first.
 - With `tzdata` as a cross-platform dependency, zoneinfo data upgrades track the PyPI release instead of OS tzdata updates; verification of timezone rule changes should watch that package's version.
-- Scripts such as `flow-new-issue.mjs` remain unusable on Windows; maintainers must temporarily reach for module calls to operate the flow tree on that platform until a sibling issue lands.
+- Entry defects in scripts such as `flow-new-issue.mjs` on Windows were unified behind the cross-platform `isMain()` check by [2026-11-18-windows-gate-entry-guards.en.md](2026-11-18-windows-gate-entry-guards.en.md).

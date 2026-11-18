@@ -8,13 +8,13 @@ id: m12-04
 milestone: m12
 depends:
   - m10-04
-  - m12-07
-priority: P2
-status: backlog
+priority: P1
+status: done
 scope:
   - apps/api/**
   - fixtures/**
   - docs/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
 adr: []

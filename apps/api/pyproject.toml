@@ -49,10 +49,9 @@ skip_covered = true
 python_version = "3.12"
 strict = true
 files = ["app", "tests"]
-# The m10-02 directory name is hyphenated, so mypy maps its conftest to the
-# same top-level module as the existing m2-06 conftest. The file only re-exports
-# pytest fixtures; keep the surrounding suite type checked.
-exclude = '(^|/)tests/m10-02-potential-matcher/conftest\.py$'
+# Hyphenated test directories map every conftest to the same top-level module.
+# These files only declare pytest fixtures; keep the surrounding suite checked.
+exclude = '(^|/)tests/(m10-02-potential-matcher|m12-02-external-contract-live|m12-04-clustering-upgrade)/conftest\.py$'
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
@@ -60,6 +59,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "mysql: integration tests requiring a MySQL service",
+  "live_upstream: opt-in tests requiring HE_UPSTREAM_BASE_URL and HE_UPSTREAM_TOKEN",
+  "live_external: opt-in tests requiring HE_EXTERNAL_CONTRACT_LIVE=1 and a read-only external DB target",
 ]
 
 [tool.ruff]
@@ -82,6 +83,7 @@ ignore = ["S104"]
 "tests/m5-08-run-events/**" = ["S105"]
 "tests/m5-09-git-candidate/**" = ["ASYNC221", "ASYNC240", "RUF001", "S603", "S607"]
 "tests/m5-11-evolution-recovery/**" = ["ASYNC221", "ASYNC240", "RUF001", "S105", "S603", "S607"]
+"tests/m12-03-real-patch-eval/**" = ["ASYNC221", "ASYNC240", "B017", "RUF001", "S105", "S106", "S603", "S607"]
 "tests/evolution/**" = ["S105", "S108"]
 "tests/test_cli_seed.py" = ["S106"]
 "scripts/export_openapi.py" = ["S106"]

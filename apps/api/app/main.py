@@ -49,10 +49,12 @@ from app.db.crud.problems import ProblemRepository
 from app.db.crud.run_events import SqlRunEventStore
 from app.db.crud.sessions import SessionRepository
 from app.db.crud.workspaces import WorkspaceRepository
+from app.db.external_contract import ExternalContractMonitor
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
 from app.db.models.jobs import JobRunRecord
 from app.errors import register_exception_handlers
+from app.logging import configure_logging
 from app.middleware.auth import AuthMiddleware
 from app.middleware.rate_limit import LoginRateLimiter, LoginRateLimitMiddleware
 from app.middleware.request_context import RequestContextMiddleware
@@ -99,8 +101,10 @@ from app.service.evolution.events import (
     EvolutionRunEventService,
     EvolutionRunTopicAuthorizer,
 )
+from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.patch_source import default_patch_source_factory
 from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
 from app.service.evolution.prepare import EvolutionPrepareService, WorkspacePreparer
 from app.service.evolution.probe_query import ProbeQueryService
@@ -131,7 +135,9 @@ logger = logging.getLogger(__name__)
 
 def create_default_app() -> FastAPI:
     """Build the environment-configured application for uvicorn's factory mode."""
-    return create_app(Settings())
+    settings = Settings()
+    configure_logging(settings)
+    return create_app(settings)
 
 
 def create_app(
@@ -147,6 +153,10 @@ def create_app(
     resolved_settings = settings or Settings()
     resolve_attribution_engine(resolved_settings.attribution_engine)
     resolved_database = database or create_database(resolved_settings)
+    external_contract = ExternalContractMonitor(
+        resolved_database,
+        interval_seconds=resolved_settings.external_contract_check_interval_seconds,
+    )
     identity = IdentityService(resolved_settings, resolved_database)
     event_bus = EventBus(queue_capacity=resolved_settings.sse_queue_capacity)
     run_event_store = SqlRunEventStore(resolved_database)
@@ -256,7 +266,10 @@ def create_app(
     )
     jobs.set_terminal_hook(sync.release_terminal_job)
     sessions = SessionService(SessionRepository(resolved_database))
-    overview = OverviewService(OverviewRepository(resolved_database))
+    overview = OverviewService(
+        OverviewRepository(resolved_database),
+        bad_case_sync.source_available,
+    )
     workspaces = WorkspaceService(WorkspaceRepository(resolved_database))
     bad_case_ingest = BadCaseIngestService(
         BadCaseIngestRepository(resolved_database),
@@ -265,6 +278,7 @@ def create_app(
     problems = ProblemService(
         ProblemRepository(resolved_database),
         BadCaseService(BadCaseRepository(resolved_database)),
+        source_available=bad_case_sync.source_available,
     )
     attribution_read = AttributionReadService(
         AttributionRepository(resolved_database),
@@ -342,7 +356,12 @@ def create_app(
         candidate_workspace_manager,
         events=evolution_events,
         web_base_url=resolved_settings.web_base_url,
+        patch_source_factory=lambda run: default_patch_source_factory(
+            run,
+            fallback_mode=resolved_settings.patch_source_mode,
+        ),
     )
+    eval_gateway_factory = build_eval_gateway_factory(resolved_settings)
 
     def gateway_for_run(run: Any) -> Any:
         """Resolve a gateway through the run's registered engine and frozen config."""
@@ -352,6 +371,7 @@ def create_app(
                 reads=cast(Any, probe_query_repository),
                 writes=evolution_repository,
                 events=evolution_events,
+                gateway_factory=eval_gateway_factory,
             ),
         )
         return engine.gateway()
@@ -465,6 +485,8 @@ def create_app(
             await bad_case_sync.start()
             phase = "bad-case-catalog-sync-scheduler"
             await catalog_sync.start()
+            phase = "external-contract-monitor"
+            await external_contract.start()
             phase = "job-dispatch"
             await jobs.start_queued()
             phase = "eval-poller"
@@ -484,6 +506,7 @@ def create_app(
         try:
             yield
         finally:
+            await external_contract.stop()
             try:
                 await evolution_blocked_sweeper.stop()
             finally:
@@ -540,6 +563,7 @@ def create_app(
     app.state.sync = sync
     app.state.bad_case_sync = bad_case_sync
     app.state.bad_case_catalog_sync = catalog_sync
+    app.state.external_contract = external_contract
     app.state.upstream_pull = pull_service
     app.state.run_events = run_event_store
     app.state.evolution_events = evolution_events
@@ -558,6 +582,8 @@ def create_app(
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages
     app.state.evolution_candidates = evolution_candidates
+    app.state.evolution_gateway_factory = eval_gateway_factory
+    app.state.evolution_patch_source_factory = evolution_candidates.patch_source_factory
     app.state.evolution_advance = evolution_advance
     app.state.evolution_apply = evolution_apply
     app.state.evolution_finalize = evolution_finalize

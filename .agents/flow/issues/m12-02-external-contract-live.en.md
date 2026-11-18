@@ -10,10 +10,14 @@ depends:
   - m10-02
   - m12-01
 priority: P1
-status: backlog
+status: done
 scope:
   - apps/api/**
   - apps/api/alembic/**
+  - plans/**
+  - scripts/doc-budgets.manifest.json
+  - packages/contracts/**
+  - scripts/run-api.mjs
   - docs/**
   - .agents/flow/**
   - .agents/notes/**

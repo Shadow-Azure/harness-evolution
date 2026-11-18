@@ -6,7 +6,7 @@ English | [中文](m11-milestone.md)
 kind: milestone
 id: m11
 title: M11 多归因体验与 V2 切换
-status: planned
+status: done
 github:
   number: 16
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/16

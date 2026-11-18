@@ -20,6 +20,7 @@ class BadCaseItem(BaseModel):
     object_type: str | None = Field(default=None, max_length=16)
     object_version: str | None = Field(default=None, max_length=64)
     bad_case_agent_id: str | None = Field(default=None, max_length=64)
+    trigger_line: int | None = Field(default=None, ge=0)
     title: str = Field(alias="bad_case_title", min_length=1, max_length=255)
     description: str = Field(alias="bad_case_description")
     meta_data: Any | None = None

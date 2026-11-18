@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { blobHash, pairPaths, renderPairRecord } from "./translation-pairing-lib.mjs";
 import { loadFlowTree } from "./flow-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 /**
  * 同步计划：哪些 milestone / issue 需要建远端对象。
@@ -235,4 +236,4 @@ async function main() {
   );
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await main();
+if (isMain(import.meta.url)) await main();

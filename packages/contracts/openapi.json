@@ -1905,6 +1905,19 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "triggerLine": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional 1-based log line where the report sits in the root Session, using the same coordinate as the Session tree event line; absent means the trigger point is unknown.",
+            "title": "Triggerline"
           }
         },
         "required": [
@@ -1971,13 +1984,52 @@
             "title": "Createdat",
             "type": "string"
           },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Stable root-sync failure code while the trace is not ready.",
+            "title": "Lasterror"
+          },
+          "nextRetryAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Next scheduled automatic retry, when one is planned.",
+            "title": "Nextretryat"
+          },
           "objectName": {
             "title": "Objectname",
             "type": "string"
           },
+          "retryable": {
+            "description": "Whether automatic sync can still make progress. Deterministic failures report false until their source configuration changes.",
+            "title": "Retryable",
+            "type": "boolean"
+          },
           "sessionId": {
             "title": "Sessionid",
             "type": "string"
+          },
+          "sessionReady": {
+            "description": "Whether the normalized Session projection can already be read.",
+            "title": "Sessionready",
+            "type": "boolean"
+          },
+          "syncStatus": {
+            "$ref": "#/components/schemas/BadCaseTraceStatus",
+            "description": "Derived trace readiness: ready, pending, syncing, failed, or unavailable. The case itself exists whenever it appears in this list."
           },
           "title": {
             "title": "Title",
@@ -1988,6 +2040,19 @@
             "format": "date-time",
             "title": "Triggerat",
             "type": "string"
+          },
+          "triggerLine": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-based log line of the report's trigger point in the root Session (the same coordinate as the Session tree event line), or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.",
+            "title": "Triggerline"
           }
         },
         "required": [
@@ -1998,7 +2063,13 @@
           "badCaseTypeLabel",
           "title",
           "triggerAt",
+          "triggerLine",
           "createdAt",
+          "syncStatus",
+          "sessionReady",
+          "lastError",
+          "retryable",
+          "nextRetryAt",
           "attributionCount"
         ],
         "title": "BadCaseListItem",
@@ -2122,6 +2193,18 @@
         ],
         "title": "BadCaseSyncSummary",
         "type": "object"
+      },
+      "BadCaseTraceStatus": {
+        "description": "Public trace state shared by the overview list and detail error body.",
+        "enum": [
+          "ready",
+          "pending",
+          "syncing",
+          "failed",
+          "unavailable"
+        ],
+        "title": "BadCaseTraceStatus",
+        "type": "string"
       },
       "CatalogModel": {
         "additionalProperties": false,
@@ -2488,6 +2571,8 @@
           "USERNAME_CONFLICT",
           "SESSION_NOT_FOUND",
           "BAD_CASE_NOT_FOUND",
+          "BAD_CASE_SESSION_PENDING",
+          "BAD_CASE_SESSION_UNAVAILABLE",
           "BAD_CASE_SESSION_MISMATCH",
           "ATTRIBUTION_NOT_FOUND",
           "ATTRIBUTION_SKILL_NOT_FOUND",
@@ -2513,6 +2598,9 @@
           "NO_ASSOCIATED_SESSIONS",
           "NO_POTENTIAL_MATCHED",
           "INTERNAL",
+          "EXTERNAL_SCHEMA_DRIFT",
+          "EXTERNAL_READ_FORBIDDEN",
+          "EXTERNAL_READ_FAILED",
           "METHOD_NOT_ALLOWED",
           "NOT_FOUND",
           "VALIDATION_INVALID",
@@ -4035,7 +4123,6 @@
         "description": "Persisted target returned to clients.",
         "properties": {
           "defaultRef": {
-            "maxLength": 128,
             "title": "Defaultref",
             "type": "string"
           },
@@ -4049,7 +4136,6 @@
             "type": "string"
           },
           "objectName": {
-            "maxLength": 128,
             "title": "Objectname",
             "type": "string"
           },
@@ -4063,12 +4149,10 @@
             "type": "string"
           },
           "repoUrl": {
-            "maxLength": 1024,
             "title": "Repourl",
             "type": "string"
           },
           "subDir": {
-            "maxLength": 512,
             "title": "Subdir",
             "type": "string"
           },
@@ -4142,7 +4226,6 @@
         "description": "Mutable target configuration accepted by create and update.",
         "properties": {
           "defaultRef": {
-            "maxLength": 128,
             "title": "Defaultref",
             "type": "string"
           },
@@ -4152,7 +4235,6 @@
             "type": "boolean"
           },
           "objectName": {
-            "maxLength": 128,
             "title": "Objectname",
             "type": "string"
           },
@@ -4166,12 +4248,10 @@
             "type": "string"
           },
           "repoUrl": {
-            "maxLength": 1024,
             "title": "Repourl",
             "type": "string"
           },
           "subDir": {
-            "maxLength": 512,
             "title": "Subdir",
             "type": "string"
           },
@@ -8011,7 +8091,7 @@
       },
       "StepRoundPatch": {
         "additionalProperties": false,
-        "description": "Placeholder patch preview stored with the round.",
+        "description": "Patch preview stored with the round.\n\n``note`` carries the patch source's one-line change description (for the\nminimal-config source it starts with \"最小配置变更\"). Rounds published\nbefore the patch-source seam persist only ``file``/``lines``, so the field\nstays optional and older snapshots keep rendering unchanged.",
         "properties": {
           "file": {
             "title": "File",
@@ -8023,6 +8103,17 @@
             },
             "title": "Lines",
             "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
           }
         },
         "required": [
@@ -10414,7 +10505,7 @@
                 }
               }
             },
-            "description": "Problem belongs to another Session"
+            "description": "Problem belongs to another Session or its Session is still syncing"
           },
           "422": {
             "content": {
@@ -10425,6 +10516,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [
@@ -10522,7 +10623,7 @@
                 }
               }
             },
-            "description": "Problem belongs to another Session"
+            "description": "Problem belongs to another Session or its Session is still syncing"
           },
           "422": {
             "content": {
@@ -10533,6 +10634,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [
@@ -14071,6 +14182,16 @@
             },
             "description": "Workspace or problem does not exist"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is still syncing"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -14080,6 +14201,16 @@
               }
             },
             "description": "Request validation failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Problem Session is not available yet"
           }
         },
         "security": [

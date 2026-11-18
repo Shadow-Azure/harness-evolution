@@ -78,6 +78,7 @@ def _case(
     object_name: str,
     created_at: datetime,
     object_version: str | None = "v1",
+    trigger_line: int | None = None,
 ) -> dict[str, Any]:
     """Build one externally reported bad case with a deterministic timestamp."""
     return {
@@ -89,6 +90,7 @@ def _case(
         "object_type": "skill",
         "object_version": object_version,
         "bad_case_agent_id": None,
+        "trigger_line": trigger_line,
         "title": f"Case {case_id}",
         "bad_case_description": "Hand-counted workspace overview fixture.",
         "meta_data": None,
@@ -853,9 +855,57 @@ async def test_list_returns_the_full_window_with_labels_and_triggers(
     assert first["attributionCount"] == 0
     assert first["createdAt"] == _at(environment.day0, 15, 58).isoformat()
     assert first["triggerAt"] == first["createdAt"]
+    assert first["triggerLine"] is None
     discovery = payload["items"][2]
     assert discovery["badCaseType"] == "discovery"
     assert discovery["badCaseTypeLabel"] == DISCOVERY_LABEL
+
+
+async def test_list_projects_trigger_line_without_faking_missing_rows(
+    overview: OverviewEnvironment,
+) -> None:
+    """An explicit trigger line is projected; a NULL row stays honest as null."""
+    environment = overview
+    async with environment.database.transaction() as session:
+        await session.execute(
+            insert(bad_cases),
+            [
+                _case(
+                    case_id="a-trigger-line",
+                    workspace_id=environment.workspace_a,
+                    session_id=SESSION_1,
+                    bad_case_type="self",
+                    object_name="deep-research",
+                    created_at=_at(environment.day0, 16, 30),
+                    trigger_line=58,
+                ),
+                _case(
+                    case_id="a-trigger-null",
+                    workspace_id=environment.workspace_a,
+                    session_id=SESSION_2,
+                    bad_case_type="discovery",
+                    object_name="Explore",
+                    created_at=_at(environment.day0, 16, 31),
+                    trigger_line=None,
+                ),
+            ],
+        )
+
+    response = await _get(
+        environment,
+        environment.workspace_a,
+        "bad-cases",
+        environment.alice,
+        params=_in_window(environment),
+    )
+
+    assert response.status_code == 200
+    rows = {item["badCaseId"]: item for item in response.json()["items"]}
+    assert rows["a-trigger-line"]["triggerLine"] == 58
+    assert rows["a-trigger-line"]["triggerAt"] == rows["a-trigger-line"]["createdAt"]
+    assert rows["a-trigger-null"]["triggerLine"] is None
+    # The compatibility field never turns into a fabricated trigger line.
+    assert rows["a-trigger-null"]["triggerAt"] == rows["a-trigger-null"]["createdAt"]
 
 
 async def test_list_default_page_size_is_eight_and_pages_do_not_overlap(

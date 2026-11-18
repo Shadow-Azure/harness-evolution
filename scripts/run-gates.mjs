@@ -16,6 +16,7 @@ import verifyExportDocs from "./verify-export-docs.mjs";
 import verifyDocRefs from "./verify-doc-refs.mjs";
 import verifyArchivedAgentNotes from "./verify-archived-agent-notes.mjs";
 import docTypecheck from "./doc-typecheck.mjs";
+import { isMain } from "./is-main.mjs";
 
 export const LEAVES = {
   "verify-agent-notes": verifyAgentNotes,
@@ -63,7 +64,7 @@ export const MODES = {
   "doc-sync": [...QUICK, "doc-typecheck", "verify-md-links", "gate-self-tests"],
 };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const args = process.argv.slice(2);
   const modeIdx = args.indexOf("--mode");
   const mode = modeIdx >= 0 ? args[modeIdx + 1] : "doc-quick";

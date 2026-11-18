@@ -12,10 +12,13 @@ import {
   useOverviewTrend,
 } from "../../composables/useOverview";
 import { useWorkspaceId } from "../../composables/useWorkspaceId";
+import { workspacePath } from "../../router/workspace";
 import { useAuthStore } from "../../stores/auth";
 import { canManageWorkspace } from "../../utils/workspaceDisplay";
+import LaunchWizard from "../evolution/components/LaunchWizard.vue";
 import BadCaseTable from "./components/BadCaseTable.vue";
 import FilterBar from "./components/FilterBar.vue";
+import OverviewOpsContext from "./components/OverviewOpsContext.vue";
 import SourceBars from "./components/SourceBars.vue";
 import StackedBucketChart from "./components/StackedBucketChart.vue";
 import StatStrip from "./components/StatStrip.vue";
@@ -73,9 +76,9 @@ const casesQuery = useOverviewCases(workspaceId, caseFilters, casesTabActive);
 const workspaceName = computed(
   () => auth.workspaceById(workspaceId.value)?.name ?? "",
 );
-const canManage = computed(() =>
-  canManageWorkspace(auth.workspaceById(workspaceId.value)?.role),
-);
+const workspace = computed(() => auth.workspaceById(workspaceId.value));
+const canManage = computed(() => canManageWorkspace(workspace.value?.role));
+const wizardOpen = ref(false);
 const summary = computed(() => summaryQuery.data.value ?? null);
 const objects = computed(() => summary.value?.objects ?? []);
 const buckets = computed(() => trendQuery.data.value?.buckets ?? []);
@@ -96,7 +99,7 @@ const filterWindow = computed(() => {
   if (state.value.range === "custom") {
     return { from: state.value.from, to: state.value.to };
   }
-  return summary.value?.window ?? null;
+  return summary.value?.window ?? trendQuery.data.value?.window ?? null;
 });
 const isFiltered = computed(
   () =>
@@ -231,6 +234,32 @@ function focusSources(): void {
   filterBar.value?.focusSources();
 }
 
+function openLaunchWizard(): void {
+  if (!canManage.value) return;
+  wizardOpen.value = true;
+}
+
+/**
+ * Follow the accepted run while keeping the overview URL in browser history.
+ * @param mode Launched run mode.
+ * @param runId Accepted run identifier.
+ * @returns A navigation promise after the wizard closes.
+ */
+async function onLaunched(
+  mode: "full" | "cluster_only",
+  runId: string,
+): Promise<void> {
+  wizardOpen.value = false;
+  await router.push(
+    workspacePath(
+      workspaceId.value,
+      mode === "full"
+        ? `evolution/runs/${encodeURIComponent(runId)}`
+        : `evolution/cluster/${encodeURIComponent(runId)}`,
+    ),
+  );
+}
+
 /**
  * Keep the URL canonical without touching the workspace's own filters.
  *
@@ -314,16 +343,45 @@ watch(
         </p>
       </div>
       <div class="head-actions">
-        <button
-          v-if="state.tab === 'targets' && canManage"
-          class="head-btn"
-          data-testid="ov-target-create"
-          type="button"
-          @click="targetsOverview?.openCreate()"
-        >
-          + 新增进化对象
-        </button>
-        <span class="readonly">只读视图 · 筛选条件保存在地址栏</span>
+        <template v-if="state.tab === 'cases'">
+          <template v-if="canManage">
+            <RouterLink
+              class="head-btn"
+              data-testid="ov-action-ingest"
+              :to="{ path: workspacePath(workspaceId, 'admin'), query: { tab: 'ingest' } }"
+            >
+              上报接入
+            </RouterLink>
+            <button
+              class="head-btn primary"
+              data-testid="ov-action-launch"
+              type="button"
+              @click="openLaunchWizard"
+            >
+              启动自进化
+            </button>
+          </template>
+          <span
+            v-else
+            class="readonly"
+            data-testid="ov-readonly-actions"
+          >只读访问 · 上报与启动由空间管理员执行</span>
+        </template>
+        <template v-else>
+          <button
+            v-if="canManage"
+            class="head-btn"
+            data-testid="ov-target-create"
+            type="button"
+            @click="targetsOverview?.openCreate()"
+          >
+            + 新增进化对象
+          </button>
+          <span
+            v-else
+            class="readonly"
+          >只读访问</span>
+        </template>
       </div>
     </header>
 
@@ -383,59 +441,79 @@ watch(
         @update:window="setWindow"
       />
 
-      <section
-        class="chart-card"
-        data-testid="ov-chart-card"
-      >
-        <div class="card-head">
-          <div>
-            <h2>bad case 趋势</h2>
-            <div class="hint">
-              按{{ grainLabels[activeGrain] }}聚合 · 悬停查看自身存在问题 /
-              发现前置步骤问题明细 · 点击时间桶按该桶过滤列表
+      <div class="ov-grid">
+        <section
+          class="chart-card"
+          data-testid="ov-chart-card"
+        >
+          <div class="card-head">
+            <div>
+              <h2>bad case 趋势</h2>
+              <div class="hint">
+                按{{ grainLabels[activeGrain] }}聚合 · 悬停查看自身存在问题 /
+                发现前置步骤问题明细 · 点击时间桶按该桶过滤列表
+              </div>
+            </div>
+            <span class="spacer" />
+            <div class="legend">
+              <span><i class="self" />自身存在问题</span>
+              <span><i class="discovery" />发现前置步骤问题</span>
             </div>
           </div>
-          <span class="spacer" />
-          <div class="legend">
-            <span><i class="self" />自身存在问题</span>
-            <span><i class="discovery" />发现前置步骤问题</span>
-          </div>
-        </div>
-        <StackedBucketChart
-          :buckets="buckets"
-          :code="trendCode"
-          :error="trendQuery.error.value"
-          :grain="activeGrain"
-          :loading="trendQuery.isPending.value"
-          @clear-filters="clearFilters"
-          @retry="trendQuery.refetch()"
-          @select-bucket="selectBucket"
-        />
-        <SourceBars
-          :code="sourcesCode"
-          :error="sourcesQuery.error.value"
-          :loading="sourcesQuery.isPending.value"
-          :sources="sources"
-          @retry="sourcesQuery.refetch()"
-        />
-      </section>
+          <StackedBucketChart
+            :buckets="buckets"
+            :code="trendCode"
+            :error="trendQuery.error.value"
+            :grain="activeGrain"
+            :loading="trendQuery.isPending.value"
+            @clear-filters="clearFilters"
+            @retry="trendQuery.refetch()"
+            @select-bucket="selectBucket"
+          />
+          <SourceBars
+            :buckets="buckets"
+            :code="sourcesCode"
+            :error="sourcesQuery.error.value"
+            :filters="summaryFilters"
+            :grain="activeGrain"
+            :loading="sourcesQuery.isPending.value"
+            :sources="sources"
+            :window="filterWindow"
+            :workspace-id="workspaceId"
+            @retry="sourcesQuery.refetch()"
+          />
+        </section>
 
-      <div ref="listAnchor">
-        <BadCaseTable
-          :code="casesCode"
-          :error="casesQuery.error.value"
-          :filtered="isFiltered"
-          :items="caseItems"
-          :loading="casesQuery.isPending.value"
-          :page="state.page"
-          :page-size="OVERVIEW_PAGE_SIZE"
-          :total="caseTotal"
-          :type="state.type"
-          :wid="workspaceId"
-          @clear-filters="clearFilters"
-          @retry="casesQuery.refetch()"
-          @update:page="setPage"
-        />
+        <div class="ov-side-slot">
+          <OverviewOpsContext
+            :can-manage="canManage"
+            :totals="summary?.totals ?? null"
+            :workspace="workspace"
+            :workspace-id="workspaceId"
+          />
+        </div>
+
+        <div
+          ref="listAnchor"
+          class="ov-list"
+          data-testid="ov-case-list-region"
+        >
+          <BadCaseTable
+            :code="casesCode"
+            :error="casesQuery.error.value"
+            :filtered="isFiltered"
+            :items="caseItems"
+            :loading="casesQuery.isPending.value"
+            :page="state.page"
+            :page-size="OVERVIEW_PAGE_SIZE"
+            :total="caseTotal"
+            :type="state.type"
+            :wid="workspaceId"
+            @clear-filters="clearFilters"
+            @retry="casesQuery.refetch()"
+            @update:page="setPage"
+          />
+        </div>
       </div>
     </template>
     <TargetsOverview
@@ -447,6 +525,12 @@ watch(
       :state="state"
       :workspace-id="workspaceId"
       @patch="applyTargetsPatch"
+    />
+    <LaunchWizard
+      v-if="wizardOpen"
+      :wid="workspaceId"
+      @close="wizardOpen = false"
+      @launched="onLaunched"
     />
   </section>
 </template>
@@ -491,13 +575,18 @@ watch(
 }
 
 .head-btn {
+  display: inline-flex;
+  align-items: center;
   height: 26px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-card);
   color: var(--text-dim);
+  font-family: inherit;
   font-size: 11px;
+  line-height: 1;
+  text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -505,6 +594,23 @@ watch(
 .head-btn:hover {
   border-color: var(--blue);
   color: var(--text);
+}
+
+.head-btn.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: var(--text-on-accent);
+}
+
+.head-btn.primary:hover {
+  border-color: var(--blue-deep);
+  background: var(--blue-deep);
+  color: var(--text-on-accent);
+}
+
+.head-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--blue) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .readonly {
@@ -557,8 +663,26 @@ watch(
   cursor: not-allowed;
 }
 
-.chart-card {
+.ov-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 282px;
+  gap: 14px;
+  align-items: start;
   margin-bottom: 14px;
+}
+
+.ov-side-slot {
+  min-width: 0;
+}
+
+.ov-list {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.chart-card {
+  min-width: 0;
+  margin-bottom: 0;
   padding: 14px 16px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -618,6 +742,25 @@ watch(
 .legend i.discovery {
   background: var(--purple);
   opacity: 0.82;
+}
+
+@media (max-width: 1024px) {
+  .ov-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chart-card {
+    order: 1;
+  }
+
+  .ov-list {
+    order: 2;
+    grid-column: auto;
+  }
+
+  .ov-side-slot {
+    order: 3;
+  }
 }
 
 @media (max-width: 640px) {

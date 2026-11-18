@@ -28,14 +28,17 @@ Web ──► middleware ──► public endpoints | bearer APIs | ticket-authe
 
 Web 先恢复 `auth/session` 再挂路由；token 与用户只留内存，401 单飞刷新，退出清 query cache。页面挂在 `/workspaces/:wid` 下，按 `wid` 与成员角色收口；`/`、`/sessions/**`、`/errors`、`/evolution/**` 重定向到记住的可见空间、唯一空间或选择页。
 
-Session 默认 10 条、回车查询；错误按 case 分组，深链 `case/tab/at`；空间默认 Skill 须 Golden 晋级，对象可试验绑定；向导确认 revision，Run 展示固化快照；lifespan 恢复任务、sync_lock 再调度。
+Session 默认最新 10 条并回车搜索；错误按 case 分组并支持 `case/tab/at` 深链；对象与向导按空间，默认 Skill 须 Golden 晋级、对象可试验绑定，七步 Run 展示固化 revision；lifespan 恢复任务与 `sync_lock` 后调度。
+
+轨迹未就绪不是 404。
 
 ## 数据层策略
 
 - 生产 MySQL 8、本地/测试 SQLite；`HE_DB_DIALECT` 是唯一选择点。`Database` 统管连接、只读 session、写事务与 health；Alembic 维护双方言迁移，业务只依赖 `db/crud/` 与 `Database`。
 - 空间：`workspaces`、`workspace_members`、`workspace_ingest_credentials`；bad case、对象配置与运行带 `workspace_id`。轨迹全局共享，空间 Session 由 bad case 投影。
 - 上报：凭据只写 URL 空间，额度在写入事务内判定；同 ID 幂等 upsert，不重复计数。
-- 归因：`probe_reports` 保留文本/V2，以 manifest hash 缓存。Run 固化三级解析的 Skill revision；Session 上下文一次组装，仅存 hash。支持 `rule-v1`、离线 `agent-skill-stub-v1` 及批次并发、取消、重试、脱敏观测；内网 adapter 未接入。
+- 归因：`bad_case_analysis` 按 `(bad_case_id, probe_id)` 关联；`probe_reports` 存文本/V2、结论与复用计数，按 manifest hash 缓存。Run 固化三级 Skill revision，Session 上下文仅存 hash。支持 `rule-v1`、离线 `agent-skill-stub-v1`、并发/取消/重试与脱敏观测；内网 adapter 未接入。
+- 外部问题表按 06 §4 巡检；schema/行漂移写结构化日志，读失败映射为稳定错误码，读路径只发 SELECT。
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析状态；对象 revision 取 `path + body hash` 或 tag，未知 revision 不按名称猜测。
 - 知识触发：`kind=knowledge` 只认空间知识根或知识 Provider/Collection 返回的文档，存 `document_id`、revision、来源路径、检索方式与 tool_use，不存全文。
 - 任务：`job_runs` 是真值；默认串行，归因走 claim/lease 有界 lane，四入口共享幂等服务。`sync_lock` 与 job 同事务单飞，异常 `sync_runs` 先终结再释放；payload 三元组唯一，重放按 root 原子重写。
@@ -57,5 +60,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## 状态与边界
 
 - 已具备：双库 API、鉴权与空间角色、凭据上报与额度、空间 Session 与总览、多归因错误详情、四步向导、七步运行与 lane DAG、证据门禁与知识触发、任务/SSE、对象配置、fixtures、跨栈 API/E2E 与文档/流程/契约门禁。
-- 未具备：真实评测与 patch、真实聚类算法、用户停用界面。
+- 未具备：真实评测与 patch、用户停用界面。
 - 明确不做：读生产密钥、无证据自动改代码、兼容窗口内删除 V1 面。

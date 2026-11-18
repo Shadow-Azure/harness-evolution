@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./is-main.mjs";
 
 /**
  * Return the source selected by CLI flags.
@@ -68,10 +68,7 @@ export async function createPerformanceReport(options = {}) {
   }
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (isMain(import.meta.url)) {
   try {
     const report = await createPerformanceReport();
     console.log(JSON.stringify(report, null, 2));

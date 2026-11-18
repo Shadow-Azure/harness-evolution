@@ -40,6 +40,11 @@ import LaunchWizard from "../evolution/components/LaunchWizard.vue";
 import AttributionReport from "./components/AttributionReport.vue";
 import ErrorSidebar from "./components/ErrorSidebar.vue";
 import ProblemDescription from "./components/ProblemDescription.vue";
+import TraceStatusPanel from "./components/TraceStatusPanel.vue";
+import {
+  parseTraceStatusDetails,
+  type TraceStatusDetails,
+} from "./traceStatus";
 
 defineOptions({ name: "ErrorsPage" });
 
@@ -193,6 +198,31 @@ const flowNote = computed(() => {
   return `保留全部并发分支，高亮 ${prefix}${selectedProblem.value.title}`;
 });
 
+const traceDetails = computed<TraceStatusDetails | null>(() => {
+  const error = detailQuery.error.value;
+  if (!(error instanceof ApiError)) return null;
+  if (
+    error.code !== "BAD_CASE_SESSION_PENDING" &&
+    error.code !== "BAD_CASE_SESSION_UNAVAILABLE"
+  ) {
+    return null;
+  }
+  return parseTraceStatusDetails(error.details);
+});
+
+const traceStatus = computed<TraceStatusDetails | null>(() => {
+  const details = traceDetails.value;
+  if (!details) return null;
+  if (
+    details.sessionId &&
+    sessionId.value &&
+    details.sessionId !== sessionId.value
+  ) {
+    return null;
+  }
+  return details;
+});
+
 const routeFatalError = computed(() => {
   if (!rawSessionId.value) return null;
   if (deepLink.value && !deepLink.value.ok) {
@@ -210,15 +240,27 @@ const routeFatalError = computed(() => {
       retry: false,
     };
   }
+  if (traceStatus.value) return null;
+  if (
+    traceDetails.value?.sessionId &&
+    sessionId.value &&
+    traceDetails.value.sessionId !== sessionId.value
+  ) {
+    return {
+      code: "BAD_CASE_SESSION_MISMATCH",
+      message: "问题不属于当前 Session。",
+      retry: false,
+    };
+  }
   const error = detailQuery.error.value;
-  if (error instanceof ApiError && error.status === 409) {
+  if (error instanceof ApiError && error.code === "BAD_CASE_SESSION_MISMATCH") {
     return {
       code: error.code,
       message: "问题不属于当前 Session。",
       retry: false,
     };
   }
-  if (error instanceof ApiError && error.status === 404) {
+  if (error instanceof ApiError && error.code === "BAD_CASE_NOT_FOUND") {
     return {
       code: error.code,
       message: "问题不存在或已删除。",
@@ -346,6 +388,19 @@ function retryReport() {
   ]);
 }
 
+function refreshTraceStatus() {
+  void Promise.all([
+    detailQuery.refetch(),
+    problemsQuery.refetch(),
+    summaryQuery.refetch(),
+    treeQuery.refetch(),
+  ]);
+}
+
+function openSyncStatus() {
+  window.dispatchEvent(new CustomEvent("hev:open-sync-status"));
+}
+
 function openWizardFor(badCaseId: string) {
   if (!canStart.value) return;
   wizardCaseId.value = badCaseId;
@@ -423,10 +478,24 @@ function collapseAll() {
 <template>
   <section
     class="errors-workspace"
+    :class="{ 'trace-mode': Boolean(traceStatus) }"
     data-testid="errors-workspace"
   >
+    <main
+      v-if="traceStatus"
+      class="error-main trace-main"
+    >
+      <TraceStatusPanel
+        :case-id="selectedBadCaseId ?? ''"
+        :details="traceStatus"
+        :session-id="sessionId"
+        :wid="workspaceId"
+        @open-sync="openSyncStatus"
+        @refresh="refreshTraceStatus"
+      />
+    </main>
     <ErrorState
-      v-if="routeFatalError"
+      v-else-if="routeFatalError"
       class="page-error"
       :code="routeFatalError.code"
       :message="routeFatalError.message"
@@ -643,6 +712,16 @@ function collapseAll() {
 .page-error {
   grid-column: 1 / -1;
   margin: 24px;
+}
+
+.errors-workspace.trace-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trace-main {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding-top: 24px;
 }
 
 .error-main {

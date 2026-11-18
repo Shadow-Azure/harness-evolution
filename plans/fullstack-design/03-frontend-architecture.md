@@ -234,7 +234,7 @@ App.vue
 | `pages/evolution/components/RunLogPanel.vue` | —（新增） | 执行日志/异常时间线 |
 | `components/layout/WorkspacePicker.vue` | 原型 `wsPicker` | 顶栏空间切换器（V2）：名称 + used/quota + 角色 |
 | `pages/workspaces/Admin.vue` + `SpacesTab/MembersTab/IngestTab/AuthTab` | 原型空间管理四 Tab | 空间/成员/凭据/鉴权接入（V2） |
-| `pages/overview/*`（`StackedBucketChart`/`SourceBars`/`SourceMatrix`/`TargetsOverview`/`TargetDetailCard`） | 原型总览页 | 双视角总览，自研 SVG（V2） |
+| `pages/overview/*`（`StackedBucketChart`/`SourceBars`/`SourceMatrix`/`OverviewOpsContext`/`TargetsOverview`/`TargetDetailCard`） | 原型总览页 | 双视角总览、V2 工作流入口与运营上下文，自研 SVG（V2） |
 | `pages/errors/components/CaseGroup.vue` + `AttributionItem.vue` | 原型错误详情左栏 | 可折叠 bad case 组 + 归因子项分页（V2） |
 ### 8.2 图标门面（`ui/IconRenderer.vue`）
 

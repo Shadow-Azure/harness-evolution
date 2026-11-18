@@ -117,6 +117,11 @@ class Settings(BaseSettings):
     bad_case_catalog_sync_page_size: int = Field(default=200, ge=1, le=200)
     bad_case_catalog_sync_time_budget_seconds: float = Field(default=300.0, gt=0, le=3_600)
     bad_case_catalog_sync_max_pages: int = Field(default=100, ge=1, le=1_000)
+    external_contract_check_interval_seconds: float = Field(
+        default=300.0,
+        ge=30,
+        le=86_400,
+    )
     git_push: bool = True
     attribution_engine: str = Field(default="rule-v1", min_length=1, max_length=64)
     attribution_case_concurrency: int = Field(default=4, ge=1, le=32)
@@ -124,6 +129,10 @@ class Settings(BaseSettings):
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
     eval_timeout_seconds: int = Field(default=7_200, gt=0)
+    eval_mode: str = "fake"
+    eval_base_url: str | None = None
+    eval_api_key: SecretStr | None = None
+    patch_source_mode: str = "placeholder"
     blocked_sweep_seconds: float = Field(default=30.0, ge=1)
     web_base_url: str | None = None
     auth_provider: AuthProviderName = AuthProviderName.PASSWORD
@@ -201,6 +210,28 @@ class Settings(BaseSettings):
     def validate_oidc_issuer(cls, value: str | None) -> str | None:
         """Allow only an explicit HTTP(S) issuer without embedded credentials."""
         return _validate_http_url(value, "HE_OIDC_ISSUER")
+
+    @field_validator("eval_mode")
+    @classmethod
+    def validate_eval_mode(cls, value: str) -> str:
+        """Accept only registered evaluation gateway modes."""
+        if value not in {"fake", "http"}:
+            raise ValueError("HE_EVAL_MODE must be fake or http")
+        return value
+
+    @field_validator("eval_base_url")
+    @classmethod
+    def validate_eval_base_url(cls, value: str | None) -> str | None:
+        """Allow only explicit HTTP(S) evaluation endpoints without credentials."""
+        return _validate_http_url(value, "HE_EVAL_BASE_URL")
+
+    @field_validator("patch_source_mode")
+    @classmethod
+    def validate_patch_source_mode(cls, value: str) -> str:
+        """Accept only registered patch source modes."""
+        if value not in {"placeholder", "minimal-config"}:
+            raise ValueError("HE_PATCH_SOURCE_MODE must be placeholder or minimal-config")
+        return value
 
     @field_validator("oidc_client_secret_env")
     @classmethod

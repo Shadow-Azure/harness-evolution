@@ -4,12 +4,12 @@
 
 ```yaml flow
 kind: issue
-id: m12-11
+id: m12-18
 milestone: m12
 depends:
-  - m12-10
+  - m12-17
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/**
   - fixtures/**
@@ -59,7 +59,7 @@ Agent-Skill 归因的输出会进入聚类、Proposal 和真实 Patch 链路，�
 
 ## 依赖与交付边界
 
-- 依赖：m12-10。
+- 依赖：m12-17。
 - 交付边界：评价归因引擎和 Skill 质量并控制晋级；不训练模型、不自动修改 Skill。
 
 ## 独立验证

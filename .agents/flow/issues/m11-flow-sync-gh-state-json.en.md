@@ -9,7 +9,7 @@ milestone: m11
 depends:
   - m7-01
 priority: P1
-status: backlog
+status: done
 scope:
   - scripts/**
   - tests/**

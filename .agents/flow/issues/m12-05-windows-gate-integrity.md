@@ -8,10 +8,11 @@ id: m12-05
 milestone: m12
 depends:
   - m6-05
-priority: P2
-status: backlog
+priority: P1
+status: done
 scope:
   - scripts/**
+  - plans/**
   - .agents/flow/**
   - .agents/notes/**
   - docs/**
@@ -41,7 +42,7 @@ github:
 
 ## 实现内容
 
-- 统一 22 处守卫为 ``import.meta.url === pathToFileURL(process.argv[1]).href``（参照 `scripts/contract.mjs:259`，可加 `process.argv[1] &&` 前置）；若重复成本过高，抽公共 `isMain()` 工具逐脚本替换。
+- 统一 22 处守卫为跨平台写法 ``import.meta.url === pathToFileURL(process.argv[1]).href``（参照 `scripts/contract.mjs:259`，可加 `process.argv[1] &&` 前置）；若重复成本过高，抽公共 `isMain()` 工具逐脚本替换。本次采用公共 `scripts/is-main.mjs`，并把 `contract.mjs` 与 `performance-report.mjs` 两处既有安全守卫一并收口，全部 24 个入口共用同一判断。
 - `scripts/verify-web-style.mjs:27-28` 一行修复：改用 `pathToFileURL(path.join(entry.parentPath, entry.name))` 构造读取路径与 URL。
 - `pnpm test:gates` 自测试纳入 verify-web-style 的 Windows 冒烟断言：注入含字面色的样本、断言门禁报红，防"入口可达但门禁主体没跑"的回归。
 - 处置 `.tmp/run-gate.mjs`：守卫修复后它失去存在意义，按需转正为 `scripts/` 正式工具或直接删除。
@@ -57,6 +58,7 @@ github:
 
 - 依赖：m6-05
 - 交付边界：仅 `scripts/` 的入口守卫与 Windows 路径兼容、相应自测试与流程文档同步；不改变任何门禁的判定语义与 CI 工作流。
+- `plans/**` 在 scope 内：本 issue 按仓库检视流程产出 `plans/` 结构化检视记录，随 PR 交付；该目录不参与运行时或构建产物。
 
 ## 独立验证
 

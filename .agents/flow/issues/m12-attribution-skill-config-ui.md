@@ -4,14 +4,14 @@
 
 ```yaml flow
 kind: issue
-id: m12-12
+id: m12-19
 milestone: m12
 depends:
   - m12-06
-  - m12-08
-  - m12-10
+  - m12-15
+  - m12-17
 priority: P1
-status: backlog
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -60,7 +60,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m12-06、m12-08、m12-10。
+- 依赖：m12-06、m12-15、m12-17。
 - 交付边界：选择和展示已发布 Skill revision；不在浏览器中编辑或发布 Skill 正文。
 
 ## 独立验证

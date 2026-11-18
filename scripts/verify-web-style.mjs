@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 // Style gate: design tokens remain the only source of literal colors in Vue components.
 
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { isMain } from "./is-main.mjs";
+
 const COLOR_PATTERN = /#[0-9a-f]{3,8}\b|rgba?\(/i;
 
 /**
@@ -17,16 +21,16 @@ export function assertTokensAreOnlyColorSource(files) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { readdir, readFile } = await import("node:fs/promises");
   const sourceRoot = new URL("../apps/web/src", import.meta.url);
   const entries = await readdir(sourceRoot, { recursive: true, withFileTypes: true });
   const vueFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".vue"));
   const files = await Promise.all(
     vueFiles.map(async (entry) => {
-      const path = `${entry.parentPath}/${entry.name}`;
-      const source = await readFile(new URL(path, sourceRoot), "utf8");
-      return { path, source };
+      const filePath = path.join(entry.parentPath, entry.name);
+      const source = await readFile(pathToFileURL(filePath), "utf8");
+      return { path: filePath, source };
     })
   );
   assertTokensAreOnlyColorSource(files);

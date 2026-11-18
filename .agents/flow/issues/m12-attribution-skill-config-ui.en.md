@@ -4,14 +4,14 @@ English | [中文](m12-attribution-skill-config-ui.md)
 
 ```yaml flow
 kind: issue
-id: m12-12
+id: m12-19
 milestone: m12
 depends:
   - m12-06
-  - m12-08
-  - m12-10
+  - m12-15
+  - m12-17
 priority: P1
-status: backlog
+status: done
 scope:
   - apps/api/**
   - apps/web/**
@@ -60,7 +60,7 @@ Target-specific attribution skills become a complete product capability only whe
 
 ## Dependencies and boundary
 
-- Depends on: m12-06, m12-08, and m12-10.
+- Depends on: m12-06, m12-15, and m12-17.
 - Boundary: select and display published skill revisions; do not edit or publish skill bodies in the browser.
 
 ## Verification

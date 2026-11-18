@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-attribution-scheduling-observability.md
-m12-attribution-scheduling-observability.md: 8ce86e9ff8acd7a64925dd50b3b196819542efdf
-m12-attribution-scheduling-observability.en.md: c6167c20662333e10e7f32266873032b45199d65
+m12-attribution-scheduling-observability.md: ea8e88accfe1dab4ddc0de6cd9d5808a964df39c
+m12-attribution-scheduling-observability.en.md: 650b4ff397f407d7a70118cc38a51a40e7388be3

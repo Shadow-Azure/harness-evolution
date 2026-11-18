@@ -28,6 +28,7 @@ _UPSTREAM_COLUMNS = (
     "object_type",
     "object_version",
     "bad_case_agent_id",
+    "trigger_line",
     "title",
     "bad_case_description",
     "meta_data",
@@ -54,6 +55,7 @@ class BadCaseIngestRow:
     source: str | None
     session_source: Mapping[str, Any] | None
     created_at: datetime
+    trigger_line: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +104,7 @@ def _values(row: BadCaseIngestRow) -> dict[str, Any]:
         "object_type": row.object_type,
         "object_version": row.object_version,
         "bad_case_agent_id": row.bad_case_agent_id,
+        "trigger_line": row.trigger_line,
         "title": row.title,
         "bad_case_description": row.reason,
         "meta_data": dict(row.meta_data) if row.meta_data is not None else None,
@@ -176,13 +179,18 @@ class BadCaseIngestRepository:
                 created = False
                 await self._update(session, row.bad_case_id, values, now=now)
             workspace_used = await self._used(session, workspace_id)
-            await insert_pending_root(session, row.session_id, now=now)
+            await insert_pending_root(
+                session,
+                row.session_id,
+                now=now,
+                rearm_from_source=row.session_source is not None,
+            )
         logger.info(
             "workspace bad case ingested",
             extra={
                 "workspace_id": workspace_id,
                 "bad_case_id": row.bad_case_id,
-                "created": created,
+                "inserted": created,
             },
         )
         return BadCaseIngestWrite(

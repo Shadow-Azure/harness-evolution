@@ -21,9 +21,9 @@ m8-03 提供了 summary、trend、sources 与分页 bad-case 列表四个只读�
 - bad case ID 是唯一行内链接，`target="_blank" rel="noopener"` 指向 `/workspaces/:wid/sessions/:sid/errors?case=<id>&tab=desc`；整行不可点。
 - 只发布 bad case Tab：`tab=targets` 规范化回 `tab=cases` 并给出 M11 提示；「进化对象总览」按钮保持可见但 `disabled`，不用隐藏控件冒充未实现能力。
 - 默认落地改为总览：`DEFAULT_WORKSPACE_PATH` 改为 `overview`，`/workspaces/:wid` 重定向 `overview`，登录与空间选择共用 `defaultLandingPath`；`legacyWorkspaceTarget` 对 `/sessions`、`/errors` 仍映射 Session 列表，只有 `/` 进入总览；`switchableWorkspaceChild` 切空间时仍保留 `/sessions`。总览路由懒加载，顶栏在 Sessions 之前新增「总览」。
-- SourceMatrix 不做：m8-03 没有 per-object × bucket 字段，用当前页 8 行拼矩阵会得出错误总数。来源分布用 top 6 + 「其余 N 个来源」聚合行，可展开查看全部。
+- SourceMatrix 本 issue 不做：m8-03 没有 per-object × bucket 字段，用当前页 8 行拼矩阵会得出错误总数。来源分布用 top 6 + 「其余 N 个来源」聚合行，可展开查看全部。m12-08 在没有新增 API 的前提下改用逐桶 sources 聚合补齐矩阵，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
 - 契约类型从 m8-03 生成的 `components["schemas"]` 经 `packages/contracts/src/overview.ts` 再导出；本 issue 不新增或修改 HTTP 接口。
-- 页面没有任何写操作：筛选、图表、列表都是只读，viewer 与管理员看到同一套视图。
+- 本 issue 交付时页面没有任何写操作：筛选、图表、列表都是只读，viewer 与管理员看到同一套视图。m12-08 随后加入角色门控的上报/启动入口与运营上下文，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
 
 ## Alternatives considered
 
@@ -33,17 +33,17 @@ m8-03 提供了 summary、trend、sources 与分页 bad-case 列表四个只读�
 - **`type` 过滤只放组件内、不写 URL**：拒绝。刷新或分享后列表与图表口径会悄悄不一致；URL 单源是这一页最重要的可验证契约。
 - **在页面 watcher 里按 `wid` 重置筛选**：拒绝。页面 watcher 分不清「选择器切换」与「浏览器后退」，两者都会重写 URL：后退时上一空间的筛选被默认值覆盖，历史条目也被就地改写。把重置放到空间选择器的导航上，页面 watcher 只规范化 URL，才能同时满足「新空间首请求无旧筛选」与「后退恢复原查询」。
 - **`tab=targets` 静默回到 cases 或直接隐藏 Tab**：拒绝。静默会让用户以为链接失效；隐藏又无法表达 M11 的边界。保留禁用入口 + 一次性提示更诚实。
-- **保留原型右侧「空间额度 / 上报接入 / 当前空间」侧栏**：拒绝。额度已在统计条第 6 格，上报与成员信息属于空间管理页；本 issue 不复制管理能力，也不引入第二处配额数字。
+- **保留原型右侧「空间额度 / 上报接入 / 当前空间」侧栏**：本 issue 拒绝。额度已在统计条第 6 格，上报与成员信息属于空间管理页；本 issue 不复制管理能力，也不引入第二处配额数字。m12-08 按新的生产/原型对照恢复该侧栏，复用 summary 与会话计数，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
 - **整页 spinner 或串行加载四个请求**：拒绝。矩阵与列表数据量差异大，任一失败都会拖垮整页；按区块独立请求才能满足「图表与列表互不阻塞」的验收。
 
 ## Consequences
 
 - URL 比 issue 列出的键多一个 `type`；它只由统计条写入，缺省不出现。`objects` 中的未知来源名会原样传给 API（服务端自然过滤为空），切换空间时选择器以默认查询导航，因此不会跨空间泄漏；浏览器后退/前进恢复各空间自己的筛选。
 - 旧 `/errors` 与 `/sessions` 链接仍落到 Session 列表；只有应用根 `/` 改到总览。若有外部书签指向 `/workspaces/:wid`（无子路径），行为从 Session 列表变为总览，这是本 issue 的预期变更。
-- SourceMatrix 与「对象 × 时间桶」明细是明确欠账：需要 m8-03 增加按对象分桶的计数（或一个对象筛选下的 trend 复用），不能由前端拼装。
+- SourceMatrix 与「对象 × 时间桶」明细在本 issue 仍是欠账：需要 m8-03 增加按对象分桶的计数（或一个对象筛选下的 trend 复用），不能由前端拼页面数据。m12-08 已用逐时间桶读取既有 sources 聚合的方式补齐，仍不新增对象 × 桶 API 字段，见 [2026-11-18 总览动作与上下文](2026-11-18-overview-actions-context.md)。
 - 递延的 targets Tab 内容仍缺 F25；在 m11 落地前，任何 `tab=targets` 链接都只会看到 cases 与提示。
 - 趋势密集模式在 >60 桶时压缩标签；60 桶以内保持完整标签。所有桶无论是否有数据都保留可点击区域，390px 仍靠页面级无横向溢出断言守卫，窄屏顶栏在自身容器内滚动。
 - 越界 `page` 先显示「第 N 页没有数据」与分页条，随后被夹到最后一个有效页；404 `WORKSPACE_NOT_FOUND` 不再渲染成四个永远重试失败的区块，而是整页回到空间选择器。
 - E2E 用独立空间 + 凭证写入 11 条「今天/昨天」的 bad case，断言不依赖 fixture 的固定历史日期；默认落地用例只在 ws-default 上验证结构，不断言具体计数。
-- 页面没有任何写入口，viewer 角色不需要额外按钮级降级；后续若加入上报或启动入口，需要同时补只读态。
+- 本 issue 的页面没有任何写入口，viewer 角色不需要额外按钮级降级；后续若加入上报或启动入口，需要同时补只读态。m12-08 已补：无管理权限时只渲染只读提示，不渲染可绕过的空链接。
 - 真实浏览器套件在 M8 后增至 36 个用例，`run-e2e` 默认预算提升到 600s、CI 步骤 12 分钟；同时新增 `HE_LOGIN_RATE_LIMIT` 设置（默认 10），E2E 环境设为 100，避免多个用例各自登录触发 429。

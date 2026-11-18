@@ -68,7 +68,7 @@
 |---|---|---|---|---|---|---|
 | F10 | 运行列表：进行中（脉冲+进度条+阶段文案）/ 历史两组；卡片含对象 chip、时间窗、策略/缓存 chip、关联 Session/版本未解析 Session/潜在/可归因/复用统计、best vs 初始、已接纳数 | [自进化页](../14-15-ui-prototype/harness-evolution.html) | 真实（编排）+ 占位 patch/评测 | `GET …/evolution/runs` | `evolution_runs`、`evolution_run_candidates`、`probe_reports` | `pages/evolution/RunList.vue` |
 | F11 | 启动向导：四步 Modal（范围+策略 → Session 关联 → 潜在 bad case → 归因预览与缓存开关）；对象/版本由本空间 targets 加载；出口「仅聚类」「启动自进化」均返回 `202` 后跳转显示 preparing | 同上 | 真实（bad case + Session + 潜在匹配）+ 占位归因/聚类 | `GET …/catalogs/targets`、`GET …/evolution/targets/{id}/versions`、`POST …/evolution/preview/{sessions\|potential\|attribution}`、`POST …/evolution/cluster-previews`、`POST …/evolution/runs` | `evolution_targets`、`agents`、`agent_events`、`bad_cases`、`evolution_run_candidates` | `pages/evolution/LaunchWizard.vue` |
-| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（关联 Session/潜在/聚类数）、聚类列表（簇内来源 bad case）、一键转完整自进化 | 同上 | 真实（占位聚类算法） | `POST …/evolution/cluster-previews`、`GET …/evolution/runs/{rid}/steps/clusters` | `probe_clusters`、`probe_cluster_probes`、`probe_reports` | `pages/evolution/ClusterPreview.vue` |
+| F12 | 仅聚类结果页：`preparing` 准备态、输入概况（关联 Session/潜在/聚类数）、聚类列表（簇内来源 bad case）、一键转完整自进化 | 同上 | 真实（确定性词法聚类） | `POST …/evolution/cluster-previews`、`GET …/evolution/runs/{rid}/steps/clusters` | `probe_clusters`、`probe_cluster_probes`、`probe_reports` | `pages/evolution/ClusterPreview.vue` |
 | F13 | 运行详情：`preparing/running/blocked` 状态、目标与输入 panel（策略/缓存、关联 Session/潜在/可归因、分支/base commit、eval/push 状态）、7 步 stepper、迭代步自动逐轮 candidate → push → 评测 → 接纳/拒绝 → 下一轮、终评；blocked 时按阶段重试（含 `attribution`） | 同上 | 编排/归因/聚类/patch/commit/push 真实；评测走外部 gateway（V1 可 fake）；终评占位 | `GET …/evolution/runs/{rid}`、`GET …/steps/{range/sessions/potential/attribution/clusters/iteration/final}`、`POST …/retry` | `evolution_targets/runs/evolution_rounds/finals`、`evolution_run_candidates`、`probe_clusters/probe_cluster_probes` | `pages/evolution/RunDetail.vue` + `pages/evolution/components/*` |
 | F19 | 进化对象配置页：列表/新增/编辑/删除；字段 objectType/objectName/repoUrl/subDir/defaultRef/validationProjectId/testProjectId/enabled；列表合并展示验证集/测试集工程；入口在向导 Step1 提示文案内的「配置页」链接 | 新增（2026-10-23） | 真实 | `GET/POST/PUT/DELETE …/evolution/targets`、`GET …/{id}/versions` | `evolution_targets`、`evolution_runs`（创建期快照） | `pages/evolution/targets/*` |
 | F20 | 执行日志与异常：准备/候选/push/eval/接纳/拒绝/下一轮/阻塞/重试事件，失败与中断记录、错误详情、增量拉取 | 新增（2026-10-23） | 真实 | `GET /api/evolution/runs/{rid}/events`、SSE `run.event/run.blocked/run.failed/run.interrupted` | `evolution_run_events`、`evolution_runs.error_*` | `pages/evolution/components/RunLogPanel.vue` |
@@ -166,7 +166,7 @@
 - **F6**：bad_case 按 `createdAt` 升序；`badCaseId` 截短显示、tooltip 全量；点击新窗口打开对应 session 的对应问题；定位会滚动并高亮问题卡。
 - **F7（裁撤）**：不做时间线页面，完整时间线由外部平台承担。本服务只保留 `user_turns` 用户输入锚点，消息/内容块不落库；不提供任何时间线读接口，Agent 执行流图上"打开时间线"入口一并移除。
 - **F8**：3 种归因状态；选中单个错误时执行流保留全部并发分支并高亮对应 BC，不过滤整棵树；归因 tab 顺序固定（结论 → 对象·版本与来源 run → 置信度与策略 → 触发点对照 → 说明 → 推导 bad_case）。
-- **F10–F13**：真实 bad case / 归因 + 占位聚类；stepper 未到达节点不可点；进度百分比与阶段文案由后端给出；run 有独立 workspace 与 `evo/{YYYYMMDD}-{run_id}` 分支；每个 candidate 先 push 临时 ref 再评测，接纳后 fast-forward run 分支、拒绝删除 candidate。
+- **F10–F13**：真实 bad case / 归因 + 确定性词法聚类；stepper 未到达节点不可点；进度百分比与阶段文案由后端给出；run 有独立 workspace 与 `evo/{YYYYMMDD}-{run_id}` 分支；每个 candidate 先 push 临时 ref 再评测，接纳后 fast-forward run 分支、拒绝删除 candidate。
 - **F19**：只有配置且启用的对象出现在向导；配置校验 repoUrl/defaultRef/subDir，非法值返回 422；删除被 run 引用的配置返回 409。
 - **F20**：每个 run 的阶段、candidate、评测、推送都有 `evolution_run_events` 行；`failed/interrupted` 有错误摘要与脱敏详情；刷新后日志仍可查。
 - **F14**：断线 3 秒内自动重连；重连后进度不倒退。

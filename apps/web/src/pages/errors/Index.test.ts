@@ -650,6 +650,148 @@ describe("error detail page", () => {
     expect(wrapper.find(".page-error button").exists()).toBe(false);
   });
 
+  it("renders a trace status panel for a pending Session instead of a 404", async () => {
+    mockApi();
+    server.use(
+      http.get(`${badCasesBase}/:caseId`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_SESSION_PENDING",
+              message: "session is not ready",
+              details: {
+                badCaseId: "case-error",
+                sessionId: "root-1",
+                title: "索引读取失败",
+                objectName: "Explore",
+                createdAt: "2026-11-17T09:00:00+08:00",
+                sessionReady: false,
+                syncStatus: "pending",
+                lastError: null,
+                retryable: true,
+                nextRetryAt: null,
+                lastAttemptAt: null,
+              },
+            },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    const panel = wrapper.get("[data-testid='trace-status-panel']");
+    expect(panel.text()).toContain("尚未同步");
+    expect(panel.text()).toContain("可自动重试");
+    expect(panel.text()).toContain("索引读取失败");
+    expect(wrapper.text()).not.toContain("问题不存在或已删除");
+    expect(wrapper.find(".error-sidebar").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='errors-agent-tree']").exists()).toBe(false);
+  });
+
+  it("renders an unavailable trace panel with the deterministic failure", async () => {
+    mockApi();
+    server.use(
+      http.get(`${badCasesBase}/:caseId`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_SESSION_UNAVAILABLE",
+              message: "session is unavailable",
+              details: {
+                badCaseId: "case-error",
+                sessionId: "root-1",
+                title: "索引读取失败",
+                objectName: "Explore",
+                createdAt: "2026-11-17T09:00:00+08:00",
+                sessionReady: false,
+                syncStatus: "unavailable",
+                lastError: "SESSION_QUERY_UNAVAILABLE",
+                retryable: false,
+                nextRetryAt: null,
+                lastAttemptAt: "2026-11-17T09:05:00+08:00",
+              },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    const panel = wrapper.get("[data-testid='trace-status-panel']");
+    expect(panel.text()).toContain("无可用轨迹");
+    expect(panel.text()).toContain("不会自动重试");
+    expect(panel.text()).toContain("SESSION_QUERY_UNAVAILABLE");
+    expect(panel.text()).toContain("轨迹查询服务未配置");
+    expect(wrapper.text()).not.toContain("问题详情读取失败");
+  });
+
+  it("rejects a trace error whose case belongs to another Session", async () => {
+    mockApi();
+    server.use(
+      http.get(`${badCasesBase}/:caseId`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_SESSION_UNAVAILABLE",
+              message: "session is unavailable",
+              details: {
+                badCaseId: "case-error",
+                sessionId: "another-session",
+                syncStatus: "unavailable",
+                retryable: false,
+              },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+
+    expect(wrapper.text()).toContain("问题不属于当前 Session");
+    expect(wrapper.find("[data-testid='trace-status-panel']").exists()).toBe(false);
+  });
+
+  it("opens the top-nav sync status from the trace panel", async () => {
+    mockApi();
+    server.use(
+      http.get(`${badCasesBase}/:caseId`, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "BAD_CASE_SESSION_UNAVAILABLE",
+              message: "session is unavailable",
+              details: {
+                badCaseId: "case-error",
+                sessionId: "root-1",
+                syncStatus: "unavailable",
+                retryable: false,
+              },
+            },
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const { wrapper } = await mountPage(
+      `${ws}/sessions/root-1/errors?case=case-error&tab=desc`,
+    );
+    const received: string[] = [];
+    const listener = () => received.push("open");
+    window.addEventListener("hev:open-sync-status", listener);
+    await wrapper.get("[data-testid='trace-open-sync']").trigger("click");
+    window.removeEventListener("hev:open-sync-status", listener);
+    expect(received).toEqual(["open"]);
+  });
+
   it("retries a transient detail failure and restores the workspace", async () => {
     mockApi();
     let detailAttempts = 0;

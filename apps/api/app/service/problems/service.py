@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 from app.db.crud.bad_cases import AnalysisProgress
 from app.db.crud.problems import ProbeListSnapshot, ProblemRepository, ProblemSnapshot
@@ -11,6 +12,10 @@ from app.db.crud.sessions import EventRecord
 from app.errors import AppError, ErrorCode
 from app.service.bad_cases.schemas import BadCaseReadModel, ProbeReportReadModel
 from app.service.bad_cases.service import BadCaseService
+from app.service.bad_cases.session_status import (
+    classify_trace_status,
+    raise_trace_not_ready,
+)
 from app.service.problems.anchor import resolve_problem_anchor
 from app.service.problems.schemas import (
     BadCase,
@@ -35,10 +40,16 @@ def _events_by_agent(events: tuple[EventRecord, ...]) -> dict[str, list[EventRec
 class ProblemService:
     """Read one coherent Session/problem snapshot and expose public DTOs."""
 
-    def __init__(self, repository: ProblemRepository, bad_cases: BadCaseService) -> None:
+    def __init__(
+        self,
+        repository: ProblemRepository,
+        bad_cases: BadCaseService,
+        source_available: Callable[[], Awaitable[bool]] | None = None,
+    ) -> None:
         """Bind the public service to its snapshot and external read boundaries."""
         self._repository = repository
         self._bad_cases = bad_cases
+        self._source_available = source_available
 
     async def analysis_progress(self) -> AnalysisProgress:
         """Return overall attribution progress for the sync popover."""
@@ -72,15 +83,34 @@ class ProblemService:
         session_id: str | None,
         scope: WorkspaceReadScope,
     ) -> BadCase:
-        """Return one problem after enforcing optional Session ownership."""
-        snapshot = await self._repository.case_snapshot(case_id, scope)
-        if snapshot is None:
+        """Return one problem after enforcing optional Session ownership.
+
+        The reported case row is authoritative for existence. A missing Session
+        projection is a trace-readiness state, not a missing problem, so only an
+        absent case row produces ``BAD_CASE_NOT_FOUND``.
+        """
+        case = await self._repository.case_row(case_id, scope)
+        if case is None:
             raise AppError(
                 status_code=404,
                 code=ErrorCode.BAD_CASE_NOT_FOUND,
                 message="bad case not found",
             )
-        self._check_owner(snapshot.cases[0].bad_case_session_id, session_id)
+        self._check_owner(case.bad_case_session_id, session_id)
+        snapshot = await self._repository.case_snapshot(case_id, scope)
+        if snapshot is None:
+            sync_state = await self._repository.root_sync_state(case.bad_case_session_id)
+            source_available = (
+                await self._source_available() if self._source_available is not None else True
+            )
+            raise_trace_not_ready(
+                case,
+                classify_trace_status(
+                    sync_state,
+                    session_ready=False,
+                    source_available=source_available,
+                ),
+            )
         merged = self._bad_cases.merge_snapshot(
             snapshot.cases,
             snapshot.analyses,
@@ -88,9 +118,9 @@ class ProblemService:
         )
         if not merged.items:
             raise AppError(
-                status_code=404,
-                code=ErrorCode.BAD_CASE_NOT_FOUND,
-                message="bad case not found",
+                status_code=500,
+                code=ErrorCode.INTERNAL,
+                message="bad case projection is malformed",
             )
         return self._public_cases(snapshot, merged.items)[0]
 

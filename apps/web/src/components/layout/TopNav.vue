@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuery, useQueryClient } from "@tanstack/vue-query";
 import { RouterLink, useRoute } from "vue-router";
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import {
   getAcquisitionStatus,
@@ -44,7 +44,23 @@ const queryClient = useQueryClient();
 const route = useRoute();
 const isProcessing = ref(false);
 const actionError = ref("");
+const syncStatus = ref<HTMLElement | null>(null);
+const syncPinned = ref(false);
 let disposed = false;
+let syncPinTimer: number | undefined;
+
+function openSyncStatus() {
+  syncPinned.value = true;
+  syncStatus.value?.focus();
+  window.clearTimeout(syncPinTimer);
+  syncPinTimer = window.setTimeout(() => {
+    syncPinned.value = false;
+  }, 6_000);
+}
+
+onMounted(() => {
+  window.addEventListener("hev:open-sync-status", openSyncStatus);
+});
 
 const workspaceId = computed(() =>
   typeof route.params.wid === "string" ? route.params.wid : "",
@@ -310,6 +326,8 @@ async function processNow() {
 
 onBeforeUnmount(() => {
   disposed = true;
+  window.removeEventListener("hev:open-sync-status", openSyncStatus);
+  window.clearTimeout(syncPinTimer);
 });
 </script>
 
@@ -374,7 +392,9 @@ onBeforeUnmount(() => {
     <div class="actions">
       <div
         v-if="acquisition"
+        ref="syncStatus"
         class="sync-status"
+        :class="{ 'sync-pinned': syncPinned }"
         data-testid="sync-status"
         tabindex="0"
         :aria-label="syncAria"
@@ -733,7 +753,8 @@ onBeforeUnmount(() => {
 }
 
 .sync-status:hover .sync-popover,
-.sync-status:focus-visible .sync-popover {
+.sync-status:focus-visible .sync-popover,
+.sync-status.sync-pinned .sync-popover {
   display: block;
 }
 

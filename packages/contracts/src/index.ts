@@ -409,6 +409,7 @@ export type {
 
 export type {
   BadCaseListItem,
+  BadCaseTraceStatus,
   OverviewBadCaseListResponse,
   OverviewBadCaseType,
   OverviewGrain,

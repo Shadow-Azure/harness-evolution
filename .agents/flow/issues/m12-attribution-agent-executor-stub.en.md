@@ -4,13 +4,13 @@ English | [中文](m12-attribution-agent-executor-stub.md)
 
 ```yaml flow
 kind: issue
-id: m12-10
+id: m12-17
 milestone: m12
 depends:
-  - m12-08
-  - m12-09
+  - m12-15
+  - m12-16
 priority: P0
-status: backlog
+status: done
 scope:
   - apps/api/app/service/evolution/**
   - apps/api/app/config.py
@@ -34,7 +34,7 @@ M10 established the pure `AttributionEngine` boundary, object-revision cache, an
 
 ## Goals
 
-- Consume the m12-07 versioned report contract and m12-09 context input rather than creating parallel models.
+- Consume the m12-14 versioned report contract and m12-16 context input rather than creating parallel models.
 - Add an attribution-executor protocol so an intranet adapter can be connected independently later.
 - Provide a deterministic `agent-skill-stub-v1` engine that traverses the existing runner, cache, Probe Report, and candidate-link path.
 - Keep `rule-v1` as the default and preserve existing public API behavior.
@@ -47,11 +47,11 @@ M10 established the pure `AttributionEngine` boundary, object-revision cache, an
 
 ## Implementation
 
-- Consume the m12-08 `AttributionSkillResolver` and add an `AttributionExecutor` protocol; the stub executor accesses no network, file, or model.
+- Consume the m12-15 `AttributionSkillResolver` and add an `AttributionExecutor` protocol; the stub executor accesses no network, file, or model.
 - Make the input contract carry the selected target, bad case, target/report trigger coordinates, a minimal evidence list, skill reference, and context snapshot. Missing full trace is represented by an explicit warning rather than fabricated evidence.
 - Make the output contract carry a schema version, conclusion, category, confidence, description, reasoning, evidence references, and warnings. Validate executor output before projecting it into the existing `AttributionResult`.
 - Register the `agent-skill-stub-v1` engine key. The stub derives stable output only from its fixed input so cache, failure, and future adapter contract tests remain deterministic.
-- Compute cache identity from the m12-07 execution manifest so engine, skill revision, model configuration, and context snapshot remain isolated.
+- Compute cache identity from the m12-14 execution manifest so engine, skill revision, model configuration, and context snapshot remain isolated.
 
 ## Implementation steps
 
@@ -62,7 +62,7 @@ M10 established the pure `AttributionEngine` boundary, object-revision cache, an
 
 ## Dependencies and boundary
 
-- Depends on: m12-08 and m12-09.
+- Depends on: m12-15 and m12-16.
 - Boundary: deliver only the replaceable seam, versioned contracts, and deterministic stub; do not access intranet models or alter selected-target and PotentialMatcher semantics.
 
 ## Verification

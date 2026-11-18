@@ -322,11 +322,25 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
 
     Returns:
         The snapshot dictionary with the same redaction applied to job payloads.
+
+    The ``apiKeyRef`` value is an environment-variable NAME, not a credential:
+    the blanket credential-key redaction would erase it and leave the http
+    gateway pointing at an unset variable at submit time, so the original name
+    is restored after the pass.
     """
-    sanitized = sanitize_job_payload(dict(eval_config or {}))
+    source = dict(eval_config or {})
+    sanitized = sanitize_job_payload(source)
     if not isinstance(sanitized, dict):
         return {}
-    return {str(key): value for key, value in sanitized.items()}
+    snapshot = {str(key): value for key, value in sanitized.items()}
+    ref = source.get("apiKeyRef")
+    if isinstance(ref, str) and ref.strip():
+        snapshot["apiKeyRef"] = ref.strip()
+    else:
+        # Nothing to reference: drop the redacted placeholder so the gateway
+        # falls back to the env-provided key instead of an unset literal.
+        snapshot.pop("apiKeyRef", None)
+    return snapshot
 
 
 def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:

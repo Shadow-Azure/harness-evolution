@@ -10,6 +10,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { blobHash, pairPaths, renderPairRecord } from "./translation-pairing-lib.mjs";
 import { ISSUE_STATUSES, PRIORITIES, loadFlowTree } from "./flow-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const FENCE = (id, milestone, priority, depends, scopes) => [
   "```yaml flow",
@@ -71,7 +72,7 @@ export async function createIssue({ root = ".", id, milestone, priority, slug, t
   return paths;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const args = process.argv.slice(2).filter((a) => a !== "--");
   const read = (flag) => {
     const i = args.indexOf(flag);

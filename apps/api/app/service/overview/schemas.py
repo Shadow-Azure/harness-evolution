@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from app.service.bad_cases.session_status import BadCaseTraceStatus
 from app.service.identity.schemas import IdentityModel
 
 BadCaseType = Literal["self", "discovery"]
@@ -127,7 +128,38 @@ class BadCaseListItem(IdentityModel):
             "temporarily equals createdAt."
         ),
     )
+    trigger_line: int | None = Field(
+        ge=0,
+        description=(
+            "1-based log line of the report's trigger point in the root Session (the same "
+            "coordinate as the Session tree event line), or "
+            "null when the report did not carry one. It is never derived from "
+            "createdAt or an event index; the overview and error-detail flow share "
+            "this trigger coordinate."
+        ),
+    )
     created_at: datetime
+    sync_status: BadCaseTraceStatus = Field(
+        description=(
+            "Derived trace readiness: ready, pending, syncing, failed, or unavailable. "
+            "The case itself exists whenever it appears in this list."
+        ),
+    )
+    session_ready: bool = Field(
+        description="Whether the normalized Session projection can already be read.",
+    )
+    last_error: str | None = Field(
+        description="Stable root-sync failure code while the trace is not ready.",
+    )
+    retryable: bool = Field(
+        description=(
+            "Whether automatic sync can still make progress. Deterministic failures "
+            "report false until their source configuration changes."
+        ),
+    )
+    next_retry_at: datetime | None = Field(
+        description="Next scheduled automatic retry, when one is planned.",
+    )
     attribution_count: int = Field(
         ge=0,
         description=(

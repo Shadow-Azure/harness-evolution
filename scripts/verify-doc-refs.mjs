@@ -6,6 +6,7 @@
 // 合成路径）、apps/*/src/**/*.ts、packages/*/src/**/*.ts。全库运行，无参。
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { isMain } from "./is-main.mjs";
 
 const DOC_REF_RE = /(?:\bdocs|\.agents\/notes)\/[\p{L}\p{N}._/-]+\.md/gu;
 
@@ -59,7 +60,7 @@ export default function verifyDocRefs() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { ok, errors } = verifyDocRefs();
   if (!ok) {
     console.error(`verify-doc-refs: FAIL\n  ${errors.join("\n  ")}`);

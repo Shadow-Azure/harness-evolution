@@ -534,7 +534,7 @@ async def test_empty_sqlite_database_upgrades_to_head_idempotently(tmp_path: Pat
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
 
-        assert result.scalar_one() == "0025"
+        assert result.scalar_one() == "0026"
         async with database.engine.connect() as connection:
             columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -834,7 +834,7 @@ async def test_v2_workspace_foundation_backfills_default_workspace(
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-            assert revision == "0025"
+            assert revision == "0026"
             workspace_rows = (
                 (await session.execute(text("SELECT * FROM workspaces"))).mappings().all()
             )
@@ -1088,7 +1088,7 @@ async def test_bad_case_title_migration_backfills_legacy_rows(tmp_path: Path) ->
                     await session.execute(text("SELECT version_num FROM alembic_version"))
                 ).scalar_one(),
             )
-        assert revision == "0025"
+        assert revision == "0026"
         assert [dict(row) for row in rows] == [
             {
                 "bad_case_id": "legacy-long",
@@ -1259,7 +1259,7 @@ async def test_empty_mysql_database_upgrades_to_head_idempotently() -> None:
         await upgrade_database(database)
         async with database.session() as session:
             result = await session.execute(text("SELECT version_num FROM alembic_version"))
-        assert result.scalar_one() == "0025"
+        assert result.scalar_one() == "0026"
         async with database.engine.connect() as connection:
             mysql_columns = await connection.run_sync(
                 lambda sync_connection: inspect(sync_connection).get_columns("users")
@@ -2246,7 +2246,9 @@ async def test_mysql_evolution_repository_round_trip() -> None:
         run = await repository.get_run(run_id)
 
         assert run is not None
-        assert run.progress_unit == 6
+        # 07 §5.1: write_final advances the cursor to unit 5+M+1 (final step
+        # readability threshold) in the same transaction.
+        assert run.progress_unit == 7
         assert [cluster.impact for cluster in clusters] == [5.0]
         assert [round_.seq for round_ in await repository.list_rounds(run_id)] == [1]
         assert final.best_version == "v1-best"

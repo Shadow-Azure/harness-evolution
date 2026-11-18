@@ -69,6 +69,7 @@ def _row(item: BadCaseItem, fallback: datetime) -> CatalogCaseRow:
         object_type=item.object_type or "skill",
         object_version=item.object_version,
         bad_case_agent_id=item.bad_case_agent_id,
+        trigger_line=item.trigger_line,
         title=item.title,
         description=item.description,
         meta_data=item.meta_data,

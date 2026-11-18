@@ -2748,6 +2748,11 @@ export interface components {
             source?: string | null;
             /** Title */
             title: string;
+            /**
+             * Triggerline
+             * @description Optional 1-based log line where the report sits in the root Session, using the same coordinate as the Session tree event line; absent means the trigger point is unknown.
+             */
+            triggerLine?: number | null;
         };
         /**
          * BadCaseIngestResponse
@@ -2783,10 +2788,32 @@ export interface components {
              * Format: date-time
              */
             createdAt: string;
+            /**
+             * Lasterror
+             * @description Stable root-sync failure code while the trace is not ready.
+             */
+            lastError: string | null;
+            /**
+             * Nextretryat
+             * @description Next scheduled automatic retry, when one is planned.
+             */
+            nextRetryAt: string | null;
             /** Objectname */
             objectName: string;
+            /**
+             * Retryable
+             * @description Whether automatic sync can still make progress. Deterministic failures report false until their source configuration changes.
+             */
+            retryable: boolean;
             /** Sessionid */
             sessionId: string;
+            /**
+             * Sessionready
+             * @description Whether the normalized Session projection can already be read.
+             */
+            sessionReady: boolean;
+            /** @description Derived trace readiness: ready, pending, syncing, failed, or unavailable. The case itself exists whenever it appears in this list. */
+            syncStatus: components["schemas"]["BadCaseTraceStatus"];
             /** Title */
             title: string;
             /**
@@ -2795,6 +2822,11 @@ export interface components {
              * @description Trigger timestamp. Until object trigger coordinates land in m9-04 this temporarily equals createdAt.
              */
             triggerAt: string;
+            /**
+             * Triggerline
+             * @description 1-based log line of the report's trigger point in the root Session (the same coordinate as the Session tree event line), or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.
+             */
+            triggerLine: number | null;
         };
         /**
          * BadCaseListResponse
@@ -2843,6 +2875,12 @@ export interface components {
             /** Unsynced */
             unsynced: number;
         };
+        /**
+         * BadCaseTraceStatus
+         * @description Public trace state shared by the overview list and detail error body.
+         * @enum {string}
+         */
+        BadCaseTraceStatus: "ready" | "pending" | "syncing" | "failed" | "unavailable";
         /**
          * CatalogModel
          * @description One normalized model and its usage across the trace corpus.
@@ -2999,7 +3037,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "ATTRIBUTION_SKILL_NOT_FOUND" | "ATTRIBUTION_SKILL_EXISTS" | "ATTRIBUTION_SKILL_INVALID" | "ATTRIBUTION_QUALITY_GATE_FAILED" | "ATTRIBUTION_ENGINE_UNAVAILABLE" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -5203,13 +5241,20 @@ export interface components {
         };
         /**
          * StepRoundPatch
-         * @description Placeholder patch preview stored with the round.
+         * @description Patch preview stored with the round.
+         *
+         *     ``note`` carries the patch source's one-line change description (for the
+         *     minimal-config source it starts with "最小配置变更"). Rounds published
+         *     before the patch-source seam persist only ``file``/``lines``, so the field
+         *     stays optional and older snapshots keep rendering unchanged.
          */
         StepRoundPatch: {
             /** File */
             file: string;
             /** Lines */
             lines: string[];
+            /** Note */
+            note?: string | null;
         };
         /**
          * StepRoundPush
@@ -6482,7 +6527,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Problem belongs to another Session */
+            /** @description Problem belongs to another Session or its Session is still syncing */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6493,6 +6538,15 @@ export interface operations {
             };
             /** @description Request validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem Session is not available yet */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6551,7 +6605,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Problem belongs to another Session */
+            /** @description Problem belongs to another Session or its Session is still syncing */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6562,6 +6616,15 @@ export interface operations {
             };
             /** @description Request validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem Session is not available yet */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9014,8 +9077,26 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Problem Session is still syncing */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request validation failed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Problem Session is not available yet */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

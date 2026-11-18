@@ -9,6 +9,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import Database
+from app.db.crud.bad_case_sync import BadCaseRootSyncRow, _to_row
 from app.db.crud.bad_cases import (
     BadCaseAnalysisRow,
     BadCaseRow,
@@ -28,10 +29,12 @@ from app.db.crud.sessions import (
     _event_record,
     _session_record,
 )
+from app.db.external_contract import read_only_guard
 from app.db.models.domain import (
     agent_events,
     agents,
     bad_case_analysis,
+    bad_case_root_sync,
     bad_cases,
     probe_reports,
     session_families,
@@ -73,6 +76,7 @@ class ProblemRepository:
             self._bad_cases_ready = await bad_cases_table_present(self._database)
         return self._bad_cases_ready
 
+    @read_only_guard("bad_cases", strict=False)
     async def session_snapshot(
         self,
         session_id: str,
@@ -96,6 +100,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
+    @read_only_guard("bad_cases", strict=False)
     async def case_snapshot(
         self,
         case_id: str,
@@ -121,6 +126,7 @@ class ProblemRepository:
                 probes=probes,
             )
 
+    @read_only_guard("bad_cases", strict=False)
     async def case_visible(self, case_id: str, scope: WorkspaceReadScope) -> bool:
         """Return whether one case exists inside the caller's workspace scope."""
         if not await self._scoped_reads_available():
@@ -128,6 +134,31 @@ class ProblemRepository:
         async with self._database.session() as session:
             return await self._case(session, case_id, scope) is not None
 
+    @read_only_guard("bad_cases", strict=False)
+    async def case_row(self, case_id: str, scope: WorkspaceReadScope) -> BadCaseRow | None:
+        """Read one reported case without requiring its Session projection."""
+        if not await self._scoped_reads_available():
+            return None
+        async with self._database.session() as session:
+            return await self._case(session, case_id, scope)
+
+    async def root_sync_state(self, root_session_id: str) -> BadCaseRootSyncRow | None:
+        """Return the durable trajectory-sync state for one reported root."""
+        async with self._database.session() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(bad_case_root_sync).where(
+                            bad_case_root_sync.c.root_session_id == root_session_id,
+                        ),
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return _to_row(row) if row is not None else None
+
+    @read_only_guard("probe_reports,bad_case_analysis", strict=False)
     async def session_probes(
         self,
         session_id: str,
@@ -188,6 +219,7 @@ class ProblemRepository:
             )
             return ProbeListSnapshot(session=family, probes=probes, sources=sources)
 
+    @read_only_guard("probe_reports,bad_case_analysis", strict=False)
     async def probe_visible(
         self,
         probe_id: str,

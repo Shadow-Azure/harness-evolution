@@ -28,14 +28,17 @@ Only health, login, refresh, the IdP callback, ticket SSE, and credential ingest
 
 Web restores `auth/session` before mounting routes; tokens and users stay in memory, concurrent 401s share one refresh, and logout clears the query cache. Pages live under `/workspaces/:wid` and scope every resource by `wid` and member role; `/`, `/sessions/**`, `/errors`, and `/evolution/**` redirect to the remembered visible workspace, the only visible workspace, or the chooser.
 
-Sessions default to 10 and search on Enter; errors group by case with `case/tab/at` deep links; workspace-default Skills require Golden promotion while targets may bind experimental revisions; the wizard confirms the revision and runs show the frozen snapshot; lifespan recovers jobs and `sync_lock` before scheduling.
+Sessions default to the latest 10 and search on Enter; errors group by case with `case/tab/at` deep links; targets and the wizard are workspace-scoped, default Skills require Golden promotion while targets may bind experimental revisions, and seven-step runs show the frozen revision; lifespan recovers jobs and `sync_lock` before scheduling.
+
+A trace that is not ready is not a 404.
 
 ## Data-layer strategy
 
 - Production MySQL 8, local/test SQLite; `HE_DB_DIALECT` is the only selection point. `Database` owns connections, read sessions, write transactions, and health; Alembic maintains dual-dialect migrations, and business code depends only on `db/crud/` and `Database`.
 - Workspaces: `workspaces`, `workspace_members`, `workspace_ingest_credentials`; bad cases, target configuration, and runs carry `workspace_id`. Traces are global, and workspace Sessions are projected from bad cases.
 - Ingest: a credential writes only the URL workspace, quota is checked inside the write transaction, and re-reporting an ID upserts idempotently without double counting.
-- Attribution: `probe_reports` preserves text/V2 and caches by manifest hash. Runs freeze the three-level Skill revision resolution; Session context is assembled once and only its hash persists. It supports `rule-v1`, offline `agent-skill-stub-v1`, and batch concurrency, cancellation, retry, and sanitized observations; the intranet adapter is not connected.
+- Attribution: `bad_case_analysis` links by `(bad_case_id, probe_id)`; `probe_reports` stores text/V2, conclusions, and reuse counts and caches by manifest hash. Runs freeze three-level Skill revisions and Session context persists only its hash. It supports `rule-v1`, offline `agent-skill-stub-v1`, concurrency/cancellation/retry, and sanitized observations; the intranet adapter is not connected.
+- External problem tables follow the 06 §4 contract; schema/row drift emits structured logs, read failures map to stable codes, and the path issues SELECT only.
 - Evidence: parent/child relations are `authoritative/derived/synthetic/unresolved`; `execution_outcome` is independent of parse status; object revision comes from `path + body hash` or a tag, and an unknown revision is never guessed by name.
 - Knowledge triggers: `kind=knowledge` accepts only documents under a workspace knowledge root or returned by a knowledge Provider/Collection, storing `document_id`, revision, source path, retrieval kind, and tool_use, never the body.
 - Jobs: `job_runs` is the source of truth. Work is serial by default; attribution uses a bounded claim/lease lane, and its four entrypoints share one idempotent service. `sync_lock` and its job are single-flight in one transaction, so abnormal `sync_runs` finalizes before release; payload coordinate triples are unique, and replay rewrites each root atomically.
@@ -57,5 +60,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## State and boundaries
 
 - Present: dual-dialect API, authentication and workspace roles, credential ingest and quota, workspace Session and overview, multi-attribution error details, four-step wizard, seven-step runs and lane DAG, evidence gates and knowledge triggers, jobs/SSE, target configuration, fixtures, cross-stack API/E2E, and docs/flow/contract gates.
-- Missing: real evaluation and patches, a real clustering algorithm, and user deactivation UI.
+- Missing: real evaluation and patches, and user deactivation UI.
 - Explicitly out: production credential access, automatic code changes without evidence, and deleting V1 surfaces inside the compatibility window.

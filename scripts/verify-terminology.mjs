@@ -10,6 +10,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync, readdirSync } from "node:fs";
 import { FENCE_OPEN_RE, REGION_BEGIN, REGION_END } from "./translation-pairing-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const TERMINOLOGY = "docs/i18n/terminology.md";
 const TERMINOLOGY_EN = "docs/i18n/terminology.en.md";
@@ -139,7 +140,7 @@ export default async function verifyTerminology() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { ok, errors } = await verifyTerminology();
   if (!ok) {
     console.error(`verify-terminology: FAIL\n  ${errors.join("\n  ")}`);

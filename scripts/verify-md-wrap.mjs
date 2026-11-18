@@ -13,6 +13,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { FENCE_OPEN_RE, REGION_BEGIN, REGION_END } from "./translation-pairing-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const ROOT_FILES = ["README.md", "README.en.md", "AGENTS.md"];
 const ROOTS = [path.resolve("docs"), path.resolve(".agents/notes"), path.resolve(".agents/flow")];
@@ -131,7 +132,7 @@ export default async function verifyMdWrap() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyMdWrap();
   if (!result.ok) {
     console.error(`verify-md-wrap: FAIL\n  ${result.errors.join("\n  ")}`);

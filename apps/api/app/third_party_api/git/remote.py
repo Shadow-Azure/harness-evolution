@@ -9,11 +9,37 @@ import sys
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
+
+type RepoFailureReason = Literal[
+    "ref_not_found",
+    "repo_unreachable",
+    "git_timeout",
+    "git_unavailable",
+]
 
 
 class RepoInvalid(Exception):
-    """A remote or reference could not be validated without exposing details."""
+    """A remote or reference could not be validated.
+
+    The message stays generic; machine-readable ``reason`` and bounded process
+    metadata let the service build an administrator-facing diagnostic without
+    exposing raw runner text.
+    """
+
+    def __init__(
+        self,
+        message: str = "repository or ref is invalid",
+        *,
+        reason: RepoFailureReason = "repo_unreachable",
+        exit_code: int | None = None,
+        stderr: str = "",
+    ) -> None:
+        """Record one failure classification and its captured output."""
+        super().__init__(message)
+        self.reason = reason
+        self.exit_code = exit_code
+        self.stderr = stderr
 
 
 class GitRemote(Protocol):
@@ -55,6 +81,7 @@ class SubprocessGitRemote:
         """Require one remote reference to resolve."""
         await self._run(
             ("git", "ls-remote", "--exit-code", "--", repo_url, ref),
+            ref_check=True,
         )
 
     async def list_tags(self, repo_url: str) -> tuple[str, ...]:
@@ -72,17 +99,36 @@ class SubprocessGitRemote:
                 tags.add(tag)
         return tuple(sorted(tags))
 
-    async def _run(self, argv: tuple[str, ...]) -> GitProcessResult:
-        """Run one bounded argv and discard all underlying diagnostic text."""
+    async def _run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        ref_check: bool = False,
+    ) -> GitProcessResult:
+        """Run one bounded argv and classify failures for the caller.
+
+        Exit code 2 from ``git ls-remote --exit-code`` means the repository was
+        reachable but the requested ref was absent. ``list_tags`` never passes
+        ``ref_check``, so its exit code 2 maps to an unreachable remote.
+        """
         try:
             result = await asyncio.wait_for(
                 self._runner(argv),
                 timeout=self._timeout_seconds,
             )
-        except (TimeoutError, OSError, RuntimeError):
-            raise RepoInvalid("repository or ref is invalid") from None
+        except TimeoutError:
+            raise RepoInvalid(reason="git_timeout") from None
+        except (OSError, RuntimeError):
+            raise RepoInvalid(reason="git_unavailable") from None
         if result.returncode != 0:
-            raise RepoInvalid("repository or ref is invalid")
+            reason: RepoFailureReason = (
+                "ref_not_found" if ref_check and result.returncode == 2 else "repo_unreachable"
+            )
+            raise RepoInvalid(
+                reason=reason,
+                exit_code=result.returncode,
+                stderr=result.stderr,
+            )
         return result
 
     @staticmethod
