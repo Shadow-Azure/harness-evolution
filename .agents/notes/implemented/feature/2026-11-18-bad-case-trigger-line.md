@@ -6,12 +6,12 @@ Status: implemented
 
 ## Problem
 
-bad case 总览的「触发点」列长期显示 `triggerAt`，而该字段在 m9-04 坐标落地前临时等于 `createdAt`。用户看到的日期时间既不能定位到执行流的日志行，又容易被误读为对象真实触发时间。项目原型在同一列展示 `L0`、`L58` 这类 0-based 日志行；错误详情执行流则按 `SessionTree.badCases[].anchor` 定位同一行。缺少的是一条从上报数据到总览读模型再到表格列的可空触发行通道，同时必须保持旧客户端读取 `triggerAt` 不崩溃。
+bad case 总览的「触发点」列长期显示 `triggerAt`，而该字段在 m9-04 坐标落地前临时等于 `createdAt`。用户看到的日期时间既不能定位到执行流的日志行，又容易被误读为对象真实触发时间。项目原型在同一列展示 `L0`、`L58` 这类日志行；错误详情执行流则按 `SessionTree.badCases[].anchor` 定位同一行。缺少的是一条从上报数据到总览读模型再到表格列的可空触发行通道，同时必须保持旧客户端读取 `triggerAt` 不崩溃。
 
 ## Decision
 
 - `bad_cases` 新增可空 `trigger_line`（`INTEGER`），迁移 `0022` 只在列缺失时添加；历史行保持 `NULL`，不写猜测值。外部契约同步声明该列，`BadCaseIngest` 接受可选非负 `triggerLine`，目录同步也透传上游同名字段。
-- `BadCaseListItem` 增加必填但可空的 `triggerLine`；总览 repository 在分页查询中直接投影 `bad_cases.trigger_line`，service 原样映射，不额外查询 Session，也不从 `createdAt`、`metaData.line` 或事件下标推导。
+- `BadCaseListItem` 增加必填但可空的 `triggerLine`；总览 repository 在分页查询中直接投影 `bad_cases.trigger_line`，service 原样映射，不额外查询 Session，也不从 `createdAt`、`metaData.line` 或事件下标推导。行号使用执行流 `SessionEvent.line` 的同一坐标（1-based，`agent_events.line_no`）；契约允许 0 只是为原型/历史数据保留，正常写入应与事件行一致。
 - `BadCaseTable` 的列名恢复为「触发点」：有行号显示 `L<n>`，为空显示「—」，并同时设置 `title` 与 `aria-label` 说明完整值或缺失原因。深链结构不变。
 - `triggerAt` 保留在契约中供旧客户端兼容，但不再是总览「触发点」列的值；`triggerLine` 与错误详情 BC marker 指向同一份日志行坐标，写入方负责让同一 case 的两者一致。历史 NULL 在总览显示「—」，详情仍可按 `anchor` 回退定位。
 - 测试覆盖 API 有值/空值、OpenAPI 契约快照、前端 `L<n>`/「—」与可访问说明，以及一条真实归一化 Session 的 E2E：总览行与错误详情选中的 BC marker 都显示同一 `L2`。

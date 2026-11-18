@@ -2043,7 +2043,7 @@ export interface components {
             title: string;
             /**
              * Triggerline
-             * @description Optional 0-based log line where the report sits in the root Session; absent means the trigger point is unknown.
+             * @description Optional 1-based log line where the report sits in the root Session, using the same coordinate as the Session tree event line; absent means the trigger point is unknown.
              */
             triggerLine?: number | null;
         };
@@ -2117,7 +2117,7 @@ export interface components {
             triggerAt: string;
             /**
              * Triggerline
-             * @description 0-based log line of the report's trigger point in the root Session, or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.
+             * @description 1-based log line of the report's trigger point in the root Session (the same coordinate as the Session tree event line), or null when the report did not carry one. It is never derived from createdAt or an event index; the overview and error-detail flow share this trigger coordinate.
              */
             triggerLine: number | null;
         };

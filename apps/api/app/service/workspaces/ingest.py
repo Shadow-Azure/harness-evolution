@@ -76,7 +76,8 @@ class BadCaseIngest(BaseModel):
         default=None,
         ge=0,
         description=(
-            "Optional 0-based log line where the report sits in the root Session; "
+            "Optional 1-based log line where the report sits in the root Session, using "
+            "the same coordinate as the Session tree event line; "
             "absent means the trigger point is unknown."
         ),
     )

@@ -507,7 +507,7 @@ erDiagram
 
 - `badCaseId`、`sessionId`、`badCaseType`、`objectName`、`objectType`、`title`、`reason`、`createdAt` 必填；`objectVersion`、`badCaseAgentId`、`triggerLine`、`metaData`、`source` 可空。
 - `sessionId` 映射 `bad_case_session_id`；`reason` 映射 `bad_case_description`；`badCaseAgentId` 主 agent 可空。
-- `triggerLine` 是可空的 0-based 日志行，映射 `bad_cases.trigger_line`；缺失时保持 `NULL`，不从 `metaData.line`、`createdAt` 或事件下标推断。上报方只有在该行确实是 bad case 的触发坐标时才应提供。
+- `triggerLine` 是可空的日志行，映射 `bad_cases.trigger_line`，坐标与执行流 `SessionEvent.line` 一致（1-based）；缺失时保持 `NULL`，不从 `metaData.line`、`createdAt` 或事件下标推断。上报方只有在该行确实是 bad case 的触发坐标时才应提供。
 - `badCaseType` 仅 `self|discovery`，`objectType` 仅 `skill|agent`；body 不接受 `workspaceId`。
 - `metaData` 必须是 JSON object，可为 `null`；数组、字符串等标量一律 `422 VALIDATION_INVALID`（与读模型 `Record<string, unknown>` 一致）。
 - `createdAt` 必须带时区偏移（如 `2026-11-09T15:58:00+08:00` 或 `...Z`）；无偏移的 naive 时间戳一律 `422 VALIDATION_INVALID`，不会按 `+08:00` 静默解释。
@@ -597,7 +597,7 @@ bad case 行与 Session 投影是两种存在：前者由上报写入，后者�
   "attributionCount": 3 }
 ```
 
-- `triggerLine` 是总览「触发点」列的唯一值：`bad_cases.trigger_line` 的 0-based 日志行，历史行没有该值时返回 `null`，页面显示「—」。不得用 `createdAt`、事件下标或 `metaData.line` 猜测行号。
+- `triggerLine` 是总览「触发点」列的唯一值：`bad_cases.trigger_line` 的日志行（与执行流 `SessionEvent.line` 同一坐标，1-based），历史行没有该值时返回 `null`，页面显示「—」。不得用 `createdAt`、事件下标或 `metaData.line` 猜测行号。
 - `triggerAt` 当前临时等于 `createdAt`：m9-04 对象触发点坐标落地前不存独立触发时间，调用方不得把它当排序键或相等判断依据，也不得按「触发早于上报」做假设；它不再作为「触发点」列的展示值，只保留旧客户端兼容。
 - 总览与错误详情执行流共享同一份日志行坐标：列表读 `trigger_line`，详情按 `anchor` 在对应事件行上高亮 BC marker；写入方必须保证同一 case 的两者指向同一行，历史 NULL 行不做回填。
 - `attributionCount` 的唯一定义是经 `bad_case_analysis JOIN probe_reports` 去重的 `(probe_type, probe_object, object_version)` 三元组数（见 [06 §4.2.1](06-database-design.md)）；§3.4、§4.7 与 [07 §4.1](07-backend-implementation.md) 都引用该定义，不再各自表述。
@@ -1225,7 +1225,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 - `totals.sessions` 是窗口内 `COUNT(DISTINCT bad_case_session_id)`，**包含 pending 根**（已上报但还没有归一化轨迹）；它不是 06 §7.5 的空间 Session 集合，也不是 Session 页的 `total`，且不能与 `pendingSessions` 相加。
 - 所有 overview 聚合只统计 `bad_case_type IN ('self','discovery')`：legacy 目录同步写入的越界类型不计入 `badCases/self/discovery/sessions/sources/objects` 与趋势，但仍计入空间级 `used`。
 - `attributionCount` 的唯一口径见 §3.10：经 `bad_case_analysis JOIN probe_reports` 去重 `(probe_type, probe_object, object_version)`，当前一 case 至多一条归因，m10 放宽后仍按三元组去重。
-- `triggerLine` 是总览「触发点」列的唯一值来源（`bad_cases.trigger_line`，0-based）；缺值返回 `null` 并显示「—」，不从 `triggerAt`、`createdAt`、事件下标或 `metaData.line` 推断。`triggerAt` 当前临时等于 `createdAt`（m9-04 对象触发点坐标落地后才变真实时间），不得作为排序键，也不再作为「触发点」列的值；`badCaseTypeLabel` 由服务端给出。
+- `triggerLine` 是总览「触发点」列的唯一值来源（`bad_cases.trigger_line`，与执行流 `SessionEvent.line` 同一坐标，1-based）；缺值返回 `null` 并显示「—」，不从 `triggerAt`、`createdAt`、事件下标或 `metaData.line` 推断。`triggerAt` 当前临时等于 `createdAt`（m9-04 对象触发点坐标落地后才变真实时间），不得作为排序键，也不再作为「触发点」列的值；`badCaseTypeLabel` 由服务端给出。
 - V2 Session 列表的 `q` 是完整 root session ID（trim 后大小写不敏感精确匹配；子串与标题不命中）；不传或全空白 `q` 返回最新 10 条。去掉 `limit` 的分页只影响 `items`，不影响 `total`。
 - `total` 的口径公式：只数当前 `q`/`status` 下已归一化的根，**不含 pending**。`pendingSessions` 与 `q`/`status`/`sort`/`limit` 无关，只按空间投影计算；两者不是同一集合的划分，`total + pendingSessions` 不等于「空间全部被上报的根」。
 - 共享 root：同一 root 被两个空间上报时，V2 的 `total` 与 `pendingSessions` 在每个空间各算一次（每个空间都需要自己的轨迹与计数）；V1 的可见空间并集对同一根去重，只算一次。
@@ -1411,7 +1411,7 @@ V2 新增映射（2026-11-11）：
 | `WORKSPACES[]`（id/name/mark/quota/used/role） | `Workspace` | `used` 实时聚合；`role` 是当前用户的空间角色 |
 | `USERS[]`（全局管理员 + 普通用户） | `users` + `workspace_members` | 全局角色 `admin/member` 在 users；空间角色在成员表 |
 | `bad_cases` 上报 body | `BadCaseIngest`（§3.8） | 字段即 `bad_cases` 表类型；空间身份来自 URL + 凭据；可选 `triggerLine` 映射 `bad_cases.trigger_line` |
-| 总览列表 `触发点`（原型 `c.triggerLine`） | `BadCaseListItem.triggerLine` | 0-based 日志行；历史 NULL 显示「—」；详情继续由 `SessionTree.badCases[].anchor` 解析同一行，不新增重复字段 |
+| 总览列表 `触发点`（原型 `c.triggerLine`） | `BadCaseListItem.triggerLine` | 日志行（与执行流 `SessionEvent.line` 同一坐标，1-based）；历史 NULL 显示「—」；详情继续由 `SessionTree.badCases[].anchor` 解析同一行，不新增重复字段 |
 | `attributionsFor(case)`（对象·版本多条） | `AttributionItem` / `AttributionDetail`（§3.9） | 结论 `attributed/non_target`；缓存与触发点对照 |
 | 总览指标条 / 趋势 / 来源分布 | `OverviewSummary` / `TrendBucket`（§3.10） | 口径见 [06 §7.5](06-database-design.md) |
 | 进化对象总览（关联 Session / 潜在 / 三态） | `TargetOverviewItem`（§3.10） | 与向导/run 共用同一潜在匹配实现 |

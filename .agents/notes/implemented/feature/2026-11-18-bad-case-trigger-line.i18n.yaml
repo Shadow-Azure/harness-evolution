@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-18-bad-case-trigger-line.md
-2026-11-18-bad-case-trigger-line.md: 1a4a07bce5d8ba4788162cb78beaa5c3caa30407
-2026-11-18-bad-case-trigger-line.en.md: 79f95bb6b60e514351c0dc52cdef0f7f5a387a7d
+2026-11-18-bad-case-trigger-line.md: cb09f68681aa75b98ca7c6cc1f24aa86fe346356
+2026-11-18-bad-case-trigger-line.en.md: 2b6e219d157b181dd16bb1576c9e785228326c14
