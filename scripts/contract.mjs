@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./is-main.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const API_DIR = path.join(ROOT, "apps/api");
@@ -256,6 +256,6 @@ async function main() {
   process.exit(2);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   await main();
 }

@@ -5,6 +5,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { isMain } from "./is-main.mjs";
 
 const DOCS_ROOT = path.resolve("docs");
 const INDEX = path.join(DOCS_ROOT, "README.md");
@@ -54,7 +55,7 @@ export default async function verifyDocIndex() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyDocIndex();
   if (!result.ok) {
     console.error(`verify-doc-index: FAIL\n  ${result.errors.join("\n  ")}`);

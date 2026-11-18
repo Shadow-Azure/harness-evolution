@@ -26,6 +26,7 @@ import {
   isSwitcherLine,
   markdownLinks,
 } from "./translation-pairing-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const MANIFEST = "scripts/translation-pairing.manifest.json";
 
@@ -303,7 +304,7 @@ async function writeRecords(request) {
   console.log(`verify-translation-pairing: 写入 ${written} 条记录；跑检查验证配对一致性。`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   try {
     const request = parsePairingCliArgs(process.argv.slice(2));
     if (request.mode === "write") {

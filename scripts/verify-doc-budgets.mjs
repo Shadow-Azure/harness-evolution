@@ -7,6 +7,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { partitionGeneratedRegions } from "./translation-pairing-lib.mjs";
+import { isMain } from "./is-main.mjs";
 
 const MANIFEST = "scripts/doc-budgets.manifest.json";
 
@@ -76,7 +77,7 @@ export default async function verifyDocBudgets() {
   return { ok: errors.length === 0, errors };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await verifyDocBudgets();
   if (!result.ok) {
     console.error(`verify-doc-budgets: FAIL\n  ${result.errors.join("\n  ")}`);

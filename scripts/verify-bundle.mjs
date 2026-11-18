@@ -2,6 +2,7 @@
 // Build gate: prove the synchronous entry stays free of Vue Flow and exposes it dynamically.
 
 import { gzipSync } from "node:zlib";
+import { isMain } from "./is-main.mjs";
 
 /** Design budget for the synchronous entry chunk before gzip. */
 export const ENTRY_RAW_MAX_BYTES = 250 * 1024;
@@ -143,7 +144,7 @@ export function assertFirstScreenExcludesVueFlow(manifest, entryCode) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { readFile } = await import("node:fs/promises");
   const { readFileSync } = await import("node:fs");
   const manifestPath = new URL("../apps/web/dist/.vite/manifest.json", import.meta.url);

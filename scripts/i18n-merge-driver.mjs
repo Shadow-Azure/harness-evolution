@@ -7,6 +7,7 @@
 //   node scripts/i18n-merge-driver.mjs %O %A %B
 
 import { readFile, writeFile } from "node:fs/promises";
+import { isMain } from "./is-main.mjs";
 
 /**
  * 三方合成决策：两侧相同取任一侧；一侧未动取对侧；两侧各自重录则冲突。
@@ -25,7 +26,7 @@ export function decideMerge(baseText, oursText, theirsText) {
 
 const [, , base, ours, theirs] = process.argv;
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   try {
     if (!base || !ours || !theirs) {
       console.error("i18n-merge-driver: 期望 %O %A %B 三个临时文件路径");

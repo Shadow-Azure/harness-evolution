@@ -5,6 +5,7 @@
 // 穷尽覆盖归 CI。
 
 import { execFileSync } from "node:child_process";
+import { isMain } from "./is-main.mjs";
 
 /**
  * 路由表：glob 前缀/精确名 → { commands, reason }。命中多组时命令并集，
@@ -156,7 +157,7 @@ function changedPaths() {
   return [...new Set([...committed.split("\n").filter(Boolean), ...worktreePaths(untracked)])];
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const paths = changedPaths();
   if (!paths.length) {
     console.log("route-gates: 无改动。");

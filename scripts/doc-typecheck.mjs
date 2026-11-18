@@ -9,6 +9,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
+import { isMain } from "./is-main.mjs";
 
 const ROOT = path.resolve("");
 
@@ -142,7 +143,7 @@ export default async function docTypecheck() {
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const result = await docTypecheck();
   if (!result.ok) {
     console.error(`doc-typecheck: FAIL\n  ${result.errors.join("\n  ")}`);

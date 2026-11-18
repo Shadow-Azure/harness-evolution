@@ -25,4 +25,4 @@ Status: implemented
 
 - Windows 与 POSIX 的 `pnpm dev` 行为对齐，但 Windows 下 Ctrl+C 信号经 shell 中转，极端情况下子进程树的终止依赖 cmd 的默认行为；若未来出现僵尸进程，优先怀疑这一层。
 - `tzdata` 成为跨平台依赖后，升级 zoneinfo 数据随 PyPI 版本走，不再跟随操作系统 tzdata 更新；涉及时区规则变更的验证需关注该包版本。
-- `flow-new-issue.mjs` 等脚本在 Windows 上仍不可用，维护者在该平台操作流程树需暂时借道模块调用，直到同类 issue 修复。
+- `flow-new-issue.mjs` 等脚本在 Windows 上的入口缺陷已由 [2026-11-18-windows-gate-entry-guards.md](2026-11-18-windows-gate-entry-guards.md) 统一为跨平台 `isMain()` 判断。
