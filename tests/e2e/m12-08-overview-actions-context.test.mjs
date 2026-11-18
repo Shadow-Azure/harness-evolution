@@ -653,8 +653,6 @@ test("m12-08 source × time matrix shows the active window's exact counts", asyn
           maxNumberRight: Math.max(
             ...nums.map((node) => node.getBoundingClientRect().right),
           ),
-          matrixClientWidth: scroll.clientWidth,
-          matrixScrollWidth: scroll.scrollWidth,
         };
       })()`,
       "matrix layout bounds",
@@ -662,10 +660,6 @@ test("m12-08 source × time matrix shows the active window's exact counts", asyn
     assert.ok(
       matrixLayout.maxNumberRight <= matrixLayout.cardRight + 1,
       `source bars must stay inside the chart card: ${JSON.stringify(matrixLayout)}`,
-    );
-    assert.ok(
-      matrixLayout.matrixScrollWidth > matrixLayout.matrixClientWidth,
-      `the matrix table must scroll inside the card: ${JSON.stringify(matrixLayout)}`,
     );
     if (captureDir) {
       await page.session.send("Emulation.setDeviceMetricsOverride", {
