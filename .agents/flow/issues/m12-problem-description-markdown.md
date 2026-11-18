@@ -8,7 +8,7 @@ id: m12-17
 milestone: m12
 depends: []
 priority: P2
-status: in-progress
+status: done
 scope:
   - apps/web/**
   - tests/e2e/**
