@@ -6,7 +6,7 @@
 kind: milestone
 id: m12
 title: M12 真实接入与算法兑现
-status: active
+status: done
 github:
   number: 20
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/20
