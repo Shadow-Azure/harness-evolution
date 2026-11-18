@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- docs/postmortem/2026-11-18-login-session-loss.md
-2026-11-18-login-session-loss.md: ecd5fffa51cc6342fbeafd0c648e5c396ea067d4
-2026-11-18-login-session-loss.en.md: 7ed7088ae0f97114fae7fb844bd8a2ba28fba870
+2026-11-18-login-session-loss.md: 412e775927d7712a8428c9cd4f4b300cd48fb0cc
+2026-11-18-login-session-loss.en.md: 1eac34048546649f52a253caba153c0a1ee5e103

@@ -16,7 +16,7 @@ All times are CST on 2026-11-18.
 - 10:45 the smoke ended. Browser cookie storage was empty, `localStorage`/`sessionStorage` were empty, and HTTPS access timed out.
 - 10:59 issue #348 was created for formal tracking (it had first been filed by mistake on Shadow-Azure/ai-eval-platform#280).
 - 12:10 the defect reproduced against the production build over HTTP on a non-loopback address: login succeeded but cookie storage had no `refresh_token`, and reload fell back to the login page.
-- 12:12 the same script passed after the fix: reload, new tab, address bar, and idle expiry kept the session, while explicit logout still returned to the login page.
+- 12:15–12:16 the same script passed after the fix: reload, new tab, address bar, and idle expiry kept the session, while explicit logout still returned to the login page.
 
 ## Root cause
 
