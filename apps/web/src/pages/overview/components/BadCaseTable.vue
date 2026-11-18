@@ -4,13 +4,21 @@ import type {
   BadCaseTraceStatus,
   OverviewBadCaseType,
 } from "@harness/contracts";
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 
 import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import { workspacePath } from "../../../router/workspace";
 import { formatStartedAt } from "../../../utils/sessionDisplay";
+
+/** The list-level filters this table owns; all are optional and empty means all. */
+type BadCaseListFilters = {
+  from: string;
+  to: string;
+  object: string;
+  type: OverviewBadCaseType;
+};
 
 const props = defineProps({
   wid: {
@@ -37,6 +45,22 @@ const props = defineProps({
     type: String as () => OverviewBadCaseType,
     default: "all",
   },
+  from: {
+    type: String,
+    default: "",
+  },
+  to: {
+    type: String,
+    default: "",
+  },
+  object: {
+    type: String,
+    default: "",
+  },
+  objectOptions: {
+    type: Array as () => string[],
+    default: () => [],
+  },
   filtered: {
     type: Boolean,
     default: false,
@@ -58,8 +82,80 @@ const props = defineProps({
 const emit = defineEmits<{
   retry: [];
   "update:page": [value: number];
+  "update:filters": [value: Partial<BadCaseListFilters>];
   "clear-filters": [];
 }>();
+
+const draftFrom = ref(props.from);
+const draftTo = ref(props.to);
+
+watch(
+  () => props.from,
+  (value) => {
+    if (value !== draftFrom.value) draftFrom.value = value;
+  },
+);
+watch(
+  () => props.to,
+  (value) => {
+    if (value !== draftTo.value) draftTo.value = value;
+  },
+);
+
+/** Explain an unusable date pair; a complete, ordered pair is valid. */
+const dateError = computed(() => {
+  if (draftFrom.value && draftTo.value) {
+    return draftFrom.value <= draftTo.value
+      ? ""
+      : "开始日期不能晚于结束日期";
+  }
+  if (draftFrom.value || draftTo.value) {
+    return "请同时选择开始和结束日期，或清空两者查看全部时间";
+  }
+  return "";
+});
+
+/** Keep the active source visible even when summary options are unavailable. */
+const sourceOptions = computed(() => {
+  if (!props.object || props.objectOptions.includes(props.object)) {
+    return props.objectOptions;
+  }
+  return [props.object, ...props.objectOptions];
+});
+
+function dateChanged(field: "from" | "to", event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  if (field === "from") draftFrom.value = value;
+  else draftTo.value = value;
+  if (!draftFrom.value && !draftTo.value) {
+    emit("update:filters", { from: "", to: "" });
+    return;
+  }
+  if (draftFrom.value && draftTo.value && draftFrom.value <= draftTo.value) {
+    emit("update:filters", {
+      from: draftFrom.value,
+      to: draftTo.value,
+    });
+  }
+}
+
+function objectChanged(event: Event): void {
+  emit("update:filters", {
+    object: (event.target as HTMLSelectElement).value,
+  });
+}
+
+function typeChanged(event: Event): void {
+  emit("update:filters", {
+    type: (event.target as HTMLSelectElement).value as OverviewBadCaseType,
+  });
+}
+
+function resetFilters(): void {
+  draftFrom.value = "";
+  draftTo.value = "";
+  emit("clear-filters");
+}
 
 const pages = computed(() =>
   Math.max(1, Math.ceil(props.total / Math.max(1, props.pageSize))),
@@ -78,14 +174,9 @@ const emptyTitle = computed(() =>
 );
 const emptyDescription = computed(() =>
   props.filtered
-    ? "清空来源、类型或调整时间范围后再试。"
+    ? "清空列表的日期、上报来源或问题类型后再试。"
     : "上报 bad case 后，这里会按上报时间倒序列出最近的问题。",
 );
-const typeLabels: Record<OverviewBadCaseType, string> = {
-  all: "全部类型",
-  self: "自身存在问题",
-  discovery: "发现前置步骤问题",
-};
 const traceLabels: Record<BadCaseTraceStatus, string> = {
   ready: "就绪",
   pending: "未同步",
@@ -148,33 +239,91 @@ function caseHref(item: BadCaseListItem): string {
     data-testid="ov-case-list"
   >
     <div class="list-head">
-      <div>
+      <div class="head-copy">
         <h2>bad case 列表</h2>
         <div class="hint">
           时间段、上报来源、问题类型均可选；点击 ID 在新窗口打开错误详情，无可用轨迹时从「轨迹」列查看状态。
         </div>
       </div>
-      <div class="list-meta">
-        <span
-          v-if="type !== 'all'"
-          class="type-chip"
-          data-testid="ov-type-chip"
+      <div
+        class="list-filters"
+        data-testid="ov-case-filters"
+      >
+        <input
+          class="inp"
+          data-testid="ov-list-from"
+          type="date"
+          :value="draftFrom"
+          aria-label="列表开始日期"
+          @change="dateChanged('from', $event)"
         >
-          类型：{{ typeLabels[type] }}
-          <button
-            type="button"
-            aria-label="清除类型筛选"
-            data-testid="ov-type-clear"
-            @click="emit('clear-filters')"
+        <span class="date-sep">~</span>
+        <input
+          class="inp"
+          data-testid="ov-list-to"
+          type="date"
+          :value="draftTo"
+          aria-label="列表结束日期"
+          @change="dateChanged('to', $event)"
+        >
+        <select
+          class="inp"
+          data-testid="ov-list-object"
+          :value="object"
+          aria-label="按上报来源筛选列表"
+          @change="objectChanged"
+        >
+          <option value="">
+            全部上报来源
+          </option>
+          <option
+            v-for="source in sourceOptions"
+            :key="source"
+            :value="source"
           >
-            ×
-          </button>
-        </span>
+            {{ source }}
+          </option>
+        </select>
+        <select
+          class="inp"
+          data-testid="ov-list-type"
+          :value="type"
+          aria-label="按问题类型筛选列表"
+          @change="typeChanged"
+        >
+          <option value="all">
+            全部类型
+          </option>
+          <option value="self">
+            自身存在问题
+          </option>
+          <option value="discovery">
+            发现前置步骤问题
+          </option>
+        </select>
+        <button
+          class="reset"
+          data-testid="ov-list-reset"
+          type="button"
+          @click="resetFilters"
+        >
+          重置
+        </button>
+      </div>
+      <div class="list-meta">
         <span
           class="total"
           data-testid="ov-case-total"
         >共 {{ total }} 条</span>
       </div>
+    </div>
+    <div
+      v-if="dateError"
+      class="date-error"
+      role="alert"
+      data-testid="ov-list-date-error"
+    >
+      {{ dateError }}
     </div>
 
     <div
@@ -369,6 +518,56 @@ function caseHref(item: BadCaseListItem): string {
   border-bottom: 1px solid var(--border);
 }
 
+.head-copy {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.list-filters .inp {
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.date-sep {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.reset {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.reset:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.date-error {
+  padding: 0 16px 8px;
+  color: var(--orange);
+  font-size: 10.5px;
+}
+
 .list-head h2 {
   margin: 0;
   color: var(--text);
@@ -387,33 +586,13 @@ function caseHref(item: BadCaseListItem): string {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .total {
   color: var(--text-faint);
   font-family: var(--mono);
   font-size: 10.5px;
-}
-
-.type-chip {
-  display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  padding: 1px 7px;
-  border: 1px solid color-mix(in srgb, var(--blue) 36%, var(--border));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--blue) 8%, var(--bg-card));
-  color: var(--text-dim);
-  font-size: 10.5px;
-}
-
-.type-chip button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-faint);
-  cursor: pointer;
 }
 
 .table-wrap {

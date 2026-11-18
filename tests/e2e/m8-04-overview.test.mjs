@@ -183,6 +183,21 @@ async function waitForSearchParam(page, key, value) {
   );
 }
 
+async function setControl(page, selector, value) {
+  await waitForDocument(
+    page.session,
+    `(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) return null;
+      element.value = ${JSON.stringify(value)};
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      return element.value === ${JSON.stringify(value)};
+    })()`,
+    `set ${selector}`,
+  );
+}
+
 async function waitForCaseRows(page, count) {
   return await waitForDocument(
     page.session,
@@ -446,7 +461,7 @@ test("m8-04 overview lands on the workspace overview by default", async () => {
   }
 });
 
-test("m8-04 overview filters round-trip through the URL and reload", async () => {
+test("m8-04 overview global filters stay independent from the list filters", async () => {
   const page = await createBrowserPage();
   try {
     const violations = browserViolations(page.session, {
@@ -462,84 +477,77 @@ test("m8-04 overview filters round-trip through the URL and reload", async () =>
     assert.equal(new URLSearchParams(state.search).get("page"), "2");
     assert.equal(state.total, "共 11 条");
 
+    // The chart's range, grain and source keep their own context: none of them
+    // narrows the list or resets its page.
     await click(page, "[data-testid='ov-range-7']");
     await waitForSearchParam(page, "range", "7");
     await click(page, "[data-testid='ov-grain-day']");
     await waitForSearchParam(page, "grain", "day");
     await chooseSource(page, "m8-04-alpha");
-    state = await waitForCaseRows(page, 6);
-    assert.equal(new URLSearchParams(state.search).get("range"), "7");
-    assert.equal(new URLSearchParams(state.search).get("grain"), "day");
-    assert.equal(new URLSearchParams(state.search).get("objects"), "m8-04-alpha");
-    assert.equal(new URLSearchParams(state.search).get("page"), null);
-    assert.ok(
-      (await waitForDocument(
-        page.session,
-        `Boolean(document.querySelector("[data-testid='ov-chip-m8-04-alpha']"))`,
-        "alpha chip",
-      )),
-    );
-
-    await chooseSource(page, "m8-04-beta");
-    state = await waitForCaseRows(page, 8);
-    assert.equal(
-      new URLSearchParams(state.search).get("objects"),
-      "m8-04-alpha,m8-04-beta",
-    );
+    await waitForSearchParam(page, "objects", "m8-04-alpha");
+    state = await waitForCaseRows(page, 3);
+    assert.equal(new URLSearchParams(state.search).get("page"), "2");
     assert.equal(state.total, "共 11 条");
+
+    await click(page, "[data-testid='ov-page-prev']");
+    state = await waitForCaseRows(page, 8);
+    assert.equal(new URLSearchParams(state.search).get("page"), null);
+
+    // The list's own controls narrow it, reset the page and keep the global
+    // objects filter in the URL.
+    await setControl(page, "[data-testid='ov-list-object']", "m8-04-alpha");
+    state = await waitForCaseRows(page, 6);
+    assert.equal(
+      new URLSearchParams(state.search).get("lobject"),
+      "m8-04-alpha",
+    );
+    assert.equal(state.total, "共 6 条");
+    await setControl(page, "[data-testid='ov-list-type']", "self");
+    state = await waitForCaseRows(page, 4);
+    assert.equal(new URLSearchParams(state.search).get("type"), "self");
+    assert.equal(state.total, "共 4 条");
 
     await page.session.send("Page.reload");
     const restored = await waitForDocument(
       page.session,
       `(() => {
         const rows = document.querySelectorAll("[data-testid='ov-case-row']");
-        const chips = document.querySelectorAll("[data-testid^='ov-chip-']");
-        const stats = document.querySelector("[data-testid='ov-stat-badcases'] b")
-          ?.textContent?.trim() ?? "";
-        if (rows.length !== 8 || chips.length !== 2) return null;
         const search = new URLSearchParams(location.search);
+        const object = document.querySelector("[data-testid='ov-list-object']");
+        const type = document.querySelector("[data-testid='ov-list-type']");
+        if (rows.length !== 4 || !object || !type) return null;
         return {
           rows: rows.length,
-          chips: chips.length,
           range: search.get("range"),
           grain: search.get("grain"),
           objects: search.get("objects"),
-          stats,
+          lobject: search.get("lobject"),
+          type: search.get("type"),
         };
       })()`,
-      "filters restored after reload",
+      "list filters restored after reload",
     );
     assert.equal(restored.range, "7");
     assert.equal(restored.grain, "day");
-    assert.equal(restored.objects, "m8-04-alpha,m8-04-beta");
-    assert.equal(restored.stats, "11");
+    assert.equal(restored.objects, "m8-04-alpha");
+    assert.equal(restored.lobject, "m8-04-alpha");
+    assert.equal(restored.type, "self");
 
-    await click(page, "[data-testid='ov-chip-m8-04-alpha'] button");
-    state = await waitForCaseRows(page, 5);
-    assert.equal(new URLSearchParams(state.search).get("objects"), "m8-04-beta");
-    assert.equal(state.total, "共 5 条");
+    // Resetting the list leaves the chart context alone, and clearing the chart
+    // leaves the (already empty) list alone.
+    await click(page, "[data-testid='ov-list-reset']");
+    state = await waitForCaseRows(page, 8);
+    assert.equal(state.total, "共 11 条");
+    assert.equal(new URLSearchParams(state.search).get("lobject"), null);
+    assert.equal(new URLSearchParams(state.search).get("type"), null);
+    assert.equal(new URLSearchParams(state.search).get("objects"), "m8-04-alpha");
 
     await click(page, "[data-testid='ov-clear']");
     await waitForSearchParam(page, "range", "90");
-    const cleared = await waitForDocument(
-      page.session,
-      `(() => {
-        const rows = document.querySelectorAll("[data-testid='ov-case-row']");
-        if (rows.length !== 8) return null;
-        const search = new URLSearchParams(location.search);
-        return {
-          objects: search.get("objects"),
-          range: search.get("range"),
-          grain: search.get("grain"),
-          total: document.querySelector("[data-testid='ov-case-total']")
-            ?.textContent ?? "",
-        };
-      })()`,
-      "cleared overview filters",
-    );
-    assert.equal(cleared.objects, null);
-    assert.equal(cleared.range, "90");
-    assert.equal(cleared.grain, "week");
+    const cleared = await waitForCaseRows(page, 8);
+    assert.equal(new URLSearchParams(cleared.search).get("objects"), null);
+    assert.equal(new URLSearchParams(cleared.search).get("range"), "90");
+    assert.equal(new URLSearchParams(cleared.search).get("grain"), "week");
     assert.equal(cleared.total, "共 11 条");
     assert.deepEqual(violations, []);
   } finally {
@@ -565,8 +573,10 @@ test("m8-04 overview bucket click and case deep link target the right rows", asy
     const filtered = await waitForCaseRows(page, 5);
     const search = new URLSearchParams(filtered.search);
     assert.equal(search.get("range"), "custom");
-    assert.equal(search.get("from"), day1);
-    assert.equal(search.get("to"), day1);
+    assert.equal(search.get("from"), day2);
+    assert.equal(search.get("to"), day0);
+    assert.equal(search.get("lfrom"), day1);
+    assert.equal(search.get("lto"), day1);
     assert.equal(filtered.total, "共 5 条");
 
     const deepLink = await waitForDocument(
@@ -601,7 +611,7 @@ test("m8-04 overview deep link opens the seeded case description tab", async () 
   try {
     await installBrowser(page);
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/workspaces/ws-default/overview?range=custom&from=2026-10-01&to=2026-10-31`,
+      url: `${baseUrl}/workspaces/ws-default/overview?lfrom=2026-10-01&lto=2026-10-31`,
     });
     const link = await waitForDocument(
       page.session,
@@ -765,8 +775,8 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
       page.session,
       `(() => {
         const search = new URLSearchParams(location.search);
-        if (search.get("from") !== ${JSON.stringify(monday)}) return null;
-        if (search.get("to") !== ${JSON.stringify(sunday)}) return null;
+        if (search.get("lfrom") !== ${JSON.stringify(monday)}) return null;
+        if (search.get("lto") !== ${JSON.stringify(sunday)}) return null;
         const rows = document.querySelectorAll("[data-testid='ov-case-row']");
         if (rows.length !== ${visibleRows}) return null;
         return {
@@ -775,6 +785,8 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
           grain: search.get("grain"),
           from: search.get("from"),
           to: search.get("to"),
+          lfrom: search.get("lfrom"),
+          lto: search.get("lto"),
           total: document.querySelector("[data-testid='ov-case-total']")
             ?.textContent ?? "",
         };
@@ -783,6 +795,10 @@ test("m8-04 overview filters a downgraded week bucket to the whole week", async 
     );
     assert.equal(filtered.range, "custom");
     assert.equal(filtered.grain, "day");
+    assert.equal(filtered.from, "2026-01-01");
+    assert.equal(filtered.to, day0);
+    assert.equal(filtered.lfrom, monday);
+    assert.equal(filtered.lto, sunday);
     assert.equal(filtered.rows, visibleRows);
     assert.equal(filtered.total, `共 ${expected} 条`);
     assert.deepEqual(violations, []);
@@ -803,7 +819,7 @@ test("m8-04 overview switches workspace with default filters and restores them o
       if (request.url.includes("/api/workspaces/")) requests.push(request.url);
     });
     await page.session.send("Page.navigate", {
-      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=7&objects=m8-04-alpha&type=self`,
+      url: `${baseUrl}/workspaces/${dataWorkspaceId}/overview?range=7&objects=m8-04-alpha&lobject=m8-04-alpha&type=self`,
     });
     await waitForCaseRows(page, 4);
     requests.length = 0;
@@ -838,13 +854,23 @@ test("m8-04 overview switches workspace with default filters and restores them o
     const foreign = requests.filter((url) =>
       url.includes(`/workspaces/${emptyWorkspaceId}/`),
     );
-    assert.ok(foreign.length > 0, "new workspace must fetch overview data");
-    for (const url of foreign) {
+    const summaryForeign = foreign.filter((url) => !url.includes("/bad-cases"));
+    assert.ok(summaryForeign.length > 0, "new workspace must fetch overview data");
+    for (const url of summaryForeign) {
       const parsed = new URL(url);
       assert.equal(parsed.searchParams.get("range"), "90");
       assert.equal(parsed.searchParams.has("objects"), false);
       assert.equal(parsed.searchParams.has("badCaseType"), false);
       assert.equal(parsed.searchParams.has("type"), false);
+    }
+    const caseForeign = foreign.filter((url) => url.includes("/bad-cases"));
+    assert.ok(caseForeign.length > 0, "new workspace must fetch its list");
+    for (const url of caseForeign) {
+      const parsed = new URL(url);
+      assert.equal(parsed.searchParams.get("allTime"), "true");
+      assert.equal(parsed.searchParams.has("range"), false);
+      assert.equal(parsed.searchParams.has("objects"), false);
+      assert.equal(parsed.searchParams.has("badCaseType"), false);
     }
 
     await page.session.send("Runtime.evaluate", {
@@ -857,6 +883,7 @@ test("m8-04 overview switches workspace with default filters and restores them o
         const search = new URLSearchParams(location.search);
         if (search.get("range") !== "7") return null;
         if (search.get("objects") !== "m8-04-alpha") return null;
+        if (search.get("lobject") !== "m8-04-alpha") return null;
         if (search.get("type") !== "self") return null;
         const rows = document.querySelectorAll("[data-testid='ov-case-row']");
         if (rows.length !== 4) return null;
