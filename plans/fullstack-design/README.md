@@ -108,7 +108,7 @@ Harness Evolution 是一个**面向 coding agent 的轨迹查看与问题诊断 
 - **自进化**：本服务写 `evolution_targets` / `evolution_runs` / `evolution_run_events` / `evolution_run_candidates` / `probe_clusters` / `evolution_rounds` / `evolution_finals`；**真实修改配置仓库副本、candidate commit、push 临时 candidate ref 供评测，接纳后 fast-forward run 分支**（candidate 先 push 再评测；拒绝删 candidate，run 分支不变）。
 - **执行过程**：阶段、候选、评测、推送、异常全部落 `evolution_run_events`；前端通过 `GET /runs/{rid}/events` 读取，SSE 只做实时通知。
 - **演示数据**：`fixtures/` + `python -m app.cli seed`，仅开发/演示灌入真实表；运行时无 stub 分支。
-- **V1 占位**：聚类用"按 attribute_type 分半"的占位算法；patch 内容追加占位小节但**真实落盘/commit**；评测/终评为占位分数。
+- **V1 占位**：patch 内容追加占位小节但**真实落盘/commit**；评测/终评为占位分数；聚类已由确定性词法算法替换，算法版本/阈值随 run 事件落库。
 
 机制细节见 [01 §5](01-architecture.md) 与 [06](06-database-design.md)。
 

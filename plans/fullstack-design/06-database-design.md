@@ -619,7 +619,7 @@ erDiagram
 | `probe_cluster_id` | `VARCHAR(64)` PK | 本服务生成；API 映射为 `clusterId` |
 | `run_id` | `VARCHAR(36)` FK → `evolution_runs.id` | **按 run 归属** |
 | `seq` | `INTEGER` | 创建顺序（1..M）；不随 severity 重排 |
-| `probe_cluster_description` | `TEXT` | 簇描述（占位文案）；API 映射为 `description` |
+| `probe_cluster_description` | `TEXT` | 簇描述（簇内最小 probe 对应的 bad case 标题）；API 映射为 `description` |
 | `probe_cluster_type` | `VARCHAR(16)` | `model` / `prompt` / `error`（由归因 `attribute_type` 驱动）；API 映射为 `category` |
 | `confidence` | `DOUBLE` NULL | 簇级置信度 0–1；聚类步写入 |
 | `impact` | `DOUBLE` NULL | 影响面 0–10；按 `category` 映射并固化（`error=9` / `prompt=7` / `model=5`） |

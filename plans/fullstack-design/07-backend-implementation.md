@@ -599,7 +599,7 @@ class EvolutionEngine(ABC):
 
         # ④ 聚类与严重度（unit 3 → 4）
         async with db.transaction():
-            clusters = simple_cluster([c for c in candidates if c.included and c.attributed])
+            clusters = cluster_probes(attributed_case_titles(candidates))
             await crud.clusters.bulk_insert(cluster_rows)
             await crud.cluster_members.bulk_insert(member_rows)   # (probe_cluster_id, probe_id)
             await crud.runs.set_progress(run.id, progress_unit=4)
@@ -705,35 +705,42 @@ async def evolution_dispatch(job) -> None:
 - 第 4/5 步必须是独立写库点：归因步骤写单条结论，聚类步骤写簇级 `confidence / severity / rank`，**之后才**按 rank 顺序创建 `evolution_rounds`。不能把归因和聚类合并成一次不可恢复的内存步骤。
 - `attribution_step` / `cluster_step` 各自独立事务、各记一条 `step_advanced` 事件；当前在 prepare 模板内顺序调用，后续需要独立重跑时可拆成独立 job，接口与表不变。
 
-### 5.5 V1 占位聚类算法（可替换）
+### 5.5 确定性词法聚类
 
 ```python
-TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}   # V1 固定映射，后续可替换
-```
+TYPE_IMPACT = {"error": 9, "prompt": 7, "model": 5}          # 固定映射
+CLUSTER_ALGORITHM = "lexical-jaccard-v1"
+SIMILARITY_THRESHOLD = 0.3
 
-```python
-def simple_cluster(cases: list[AttributedCandidate]) -> list[Cluster]:
+
+def cluster_probes(probes: list[ProbeForCluster]) -> list[Cluster]:
+    # ProbeForCluster = (probe_id, attribute_type, bad_case_title)
     clusters = []
     for attr in ("model", "prompt", "error"):
-        group = sorted([c for c in cases if c.category == attr], key=lambda c: c.bad_case_id)
+        group = sorted([p for p in probes if p.attribute_type == attr], key=lambda p: p.probe_id)
         if not group:
-            continue                                   # 该类型 0 条 → 不产生簇
-        if len(group) == 1:
-            halves = [group]                           # 1 条 → 1 簇
-        else:
-            mid = (len(group) + 1) // 2
-            halves = [group[:mid], group[mid:]]        # ≥2 条 → 前后各一簇
-        for i, half in enumerate(halves, start=1):
+            continue                                       # 该类型 0 条 → 不产生簇
+        components = connected_components(
+            [tokens(p.title) for p in group],              # ASCII 词元 + CJK 字符二元组
+            similarity=jaccard,
+            threshold=SIMILARITY_THRESHOLD,                # 相似边 ≥ 0.3
+        )
+        for members in components:
+            representative = group[members[0]].title
             clusters.append(Cluster(
                 type=attr,
-                description=f"{attr} 类问题 · 第 {i} 组（占位聚类）",
-                cases=half,
+                description=f"{attr} 类问题 · {headline(representative)}",
+                probes=[group[i].probe_id for i in members],
             ))
     return clusters
 ```
 
-- 这是**占位算法**：只为让七步流程跑通，不追求语义质量；后续替换成真正的聚类服务时，只改 `simple_cluster` 与簇描述生成，表结构不变。
-- 确定性：排序键用 `bad_case_id`，同输入同输出，便于测试与复现。
+- **特征取 bad case 标题**：标题是上报方对问题的摘要，比 `rule-v1` 的模板结论句更能区分案例；标题从外部问题表只读加载，不进入归因缓存键。
+- **每个 `attribute_type` 独立聚类**：文本归一化后，ASCII 词元与 CJK 字符二元组构成集合；Jaccard ≥ 0.3 的探针经单链接连通分量合并。空文本不参与合并、单独成簇；重复 `probe_id` 先按 `(attribute_type, title)` 去重。
+- **确定性**：簇与成员都按 `probe_id` 排序，结果与数据库行序无关；空输入返回空列表，单元素返回单簇，同输入同输出。
+- **描述生成**：取簇内最小 `probe_id` 的标题，空白归一化并截断到 120 字符；无标题时用成员条数兜底。簇描述不再是占位文案。
+- **复现参数**：算法版本、阈值与簇结果 hash 写入 `clusters_created` 事件 payload；`confidence` / `impact` / `severity` / `rank` 仍按 [06 §5.3](06-database-design.md) 计算并固化。
+- 只替换聚类组合与描述生成，继续写 `probe_clusters` / `probe_cluster_probes`，表、关联和 API 字段不变。
 
 ### 5.6 单轮执行：candidate → push → 提交评测（`FullEvolutionEngine.advance_one_round`）
 
@@ -1097,7 +1104,7 @@ unit 5 迭代优化 iteration    done when unit ≥ 5 + M
 unit 6 测试集终评 final      done when unit ≥ 5 + M + 1
 ```
 
-`evolution_prepare` 的七段（原地替换 §5.3 的「probe 命中 → simple_cluster」）：
+`evolution_prepare` 的七段（原地替换 §5.3 的「probe 命中 → cluster_probes」）：
 
 ```python
 async def prepare(self, job) -> None:
@@ -1110,7 +1117,7 @@ async def prepare(self, job) -> None:
     await self.candidates.insert_many(run.id, candidates)          # 全量落库（含 excluded）
     await self._record(run, "potential_computed", bad_cases=…, potential=…)
     await self.attribution.run(run, candidates, cond.cache_enabled)  # 缓存读写 + 引擎调用
-    await self.cluster.build(run, candidates)                       # 只取 attributed，按 category
+    await self.cluster.build(run, candidates)                       # 只取 attributed，按 category 做词法聚类
     await self.build_rounds(run) if run.mode == "full" else None
     await self._finish_prepare(run)                                 # unit=5 或 completed(cluster_only)
 ```

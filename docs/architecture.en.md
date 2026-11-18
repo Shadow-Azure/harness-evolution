@@ -60,5 +60,5 @@ export type HealthResponse = components["schemas"]["HealthResponse"];
 ## State and boundaries
 
 - Present: dual-dialect API, authentication and workspace roles, credential ingest and quota, workspace Session and overview, multi-attribution error details, four-step wizard, seven-step runs and lane DAG, evidence gates and knowledge triggers, jobs/SSE, target configuration, fixtures, cross-stack API/E2E, and docs/flow/contract gates.
-- Missing: real evaluation and patches, a real clustering algorithm, and user deactivation UI.
+- Missing: real evaluation and patches, and user deactivation UI.
 - Explicitly out: production credential access, automatic code changes without evidence, and deleting V1 surfaces inside the compatibility window.
