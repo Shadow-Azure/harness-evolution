@@ -46,6 +46,10 @@ const props = defineProps({
     type: Object as () => OverviewFilters,
     default: () => ({ objects: [] }),
   },
+  window: {
+    type: Object as () => { from: string; to: string } | null,
+    default: null,
+  },
 });
 
 const emit = defineEmits<{ retry: [] }>();
@@ -164,6 +168,7 @@ function width(value: number): string {
         :filters="filters"
         :grain="grain"
         :sources="sources"
+        :window="window"
         :workspace-id="workspaceId"
       />
     </template>

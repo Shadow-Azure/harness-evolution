@@ -15,14 +15,18 @@ const props = defineProps<{
   canManage: boolean;
 }>();
 
-const endpoint = computed(
-  () => `/api/workspaces/${encodeURIComponent(props.workspaceId)}/bad-cases`,
-);
+const endpoint = computed(() => {
+  const origin =
+    typeof globalThis.location === "object" && globalThis.location
+      ? globalThis.location.origin
+      : "";
+  return `${origin}/api/workspaces/${encodeURIComponent(props.workspaceId)}/bad-cases`;
+});
 const used = computed(() => props.totals?.used ?? null);
 const quota = computed(() => props.totals?.quota ?? null);
 const percent = computed(() =>
   used.value === null || quota.value === null
-    ? 0
+    ? null
     : workspaceQuotaPercent(used.value, quota.value),
 );
 const remaining = computed(() =>
@@ -30,7 +34,7 @@ const remaining = computed(() =>
     ? null
     : Math.max(0, quota.value - used.value),
 );
-const hot = computed(() => percent.value > 80);
+const hot = computed(() => (percent.value ?? 0) > 80);
 const roleLabel = computed(() =>
   props.workspace ? workspaceRoleLabel(props.workspace.role) : "—",
 );
@@ -68,7 +72,7 @@ onBeforeUnmount(() => {
 
 <template>
   <aside
-    class="ov-side card"
+    class="ov-side"
     aria-label="运营上下文"
     data-testid="ov-context"
   >
@@ -85,11 +89,11 @@ onBeforeUnmount(() => {
         <div
           class="fill"
           :class="{ hot }"
-          :style="{ width: `${percent}%` }"
+          :style="{ width: `${percent ?? 0}%` }"
         />
       </div>
       <div class="meta">
-        <span data-testid="ov-context-quota-percent">{{ percent }}% 已使用</span>
+        <span data-testid="ov-context-quota-percent">{{ percent === null ? "—" : `${percent}% 已使用` }}</span>
         <span data-testid="ov-context-quota-remaining">剩余 {{ remaining ?? "—" }}</span>
       </div>
       <p class="note">
