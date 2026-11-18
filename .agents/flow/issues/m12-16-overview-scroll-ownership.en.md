@@ -11,7 +11,7 @@ depends:
   - m12-09
   - m12-10
 priority: P1
-status: in-progress
+status: done
 scope:
   - apps/web/src/pages/overview/Index.vue
   - tests/e2e/m8-04-overview.test.mjs
