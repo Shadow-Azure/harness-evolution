@@ -17,6 +17,7 @@ milestones:
   - m10
   - m11
   - m12
+  - m14
 ```
 
 ## Vision
@@ -37,6 +38,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m10 Attribution pipeline and seven-step evolution**: potential matching, cache, candidates, wizard, and run detail.
 - **m11 Multi-attribution experience and V2 cutover**: lane DAG execution flow, multi-attribution detail, target overview, cross-stack verification, and retirement.
 - **m12 Real integrations and algorithm delivery**: live upstream, contracts, patch/evaluation, clustering, and platform-quality debt.
+- **m14 Problem-card display aligned with the prototype**: session cards lead with the description and carry type/object badges, the full case ID, and an association row.
 
 ## Delivery rules
 

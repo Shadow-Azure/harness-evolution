@@ -333,7 +333,10 @@ export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): Lane
 ### 3.4 问题列表联动
 
 - 列表按 `createdAt` 升序；卡片点击 → `locate(badCaseId)`：滚动画布到视野中心 + 高亮。
-- ID 徽章显示 `badCaseId` 前 8 位（`title` 给全量）；点击 → `window.open(badCaseDeepLink(...), "_blank")`。
+- 卡片头部：`BC<序号>`、标题、`badCaseType` 徽章（`self` / `discovery`）、`objectName` 徽章、完整 `badCaseId`、轻量归因状态胶囊；`badCaseId` 点击 → `window.open(badCaseDeepLink(...), "_blank")`。
+- 卡片正文显示 `reason`（问题描述），复用 `utils/markdown.ts` 的 `renderMarkdown`：禁用原始 HTML、外链加固、Markdown 图片降级为 alt 文本；描述为空时不渲染正文。
+- 正文下方显示 key/value 双列 facts 与「关联：`objectType` · `objectName`」，行尾「定位 ↗」；归因摘要不进列表卡，未分析 case 也显示问题描述。
+- 卡片整体是定位按钮：正文铺在覆盖按钮之上，描述里的链接仍可点击，与原型 `FindingList` 的整卡点击一致。
 
 ## 4. 登录页、强制改密与顶栏用户区（`pages/login/*`）
 

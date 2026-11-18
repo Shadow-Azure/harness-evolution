@@ -207,6 +207,7 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
       [sessions.unanalyzed]: ["未分析"],
     };
 
+    const observedBySession = {};
     for (const [sessionId, expectedStates] of Object.entries(statesBySession)) {
       await page.session.send("Runtime.evaluate", {
         expression: `document.querySelector(${JSON.stringify(
@@ -229,11 +230,26 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
           return {
             ids: rows.map((row) => row.getAttribute("data-bad-case-id")),
             cardIds: cards.map((card) => card.getAttribute("data-bad-case-id")),
-            text: rows.map((row) => row.textContent),
+            text: rows.map((row) => row.closest(".problem-row-card")?.textContent ?? ""),
+            details: rows.map((row) => {
+              const card = row.closest(".problem-row-card");
+              return {
+                no: card?.querySelector(".problem-no")?.textContent?.trim(),
+                type: card?.querySelector(".type-badge")?.textContent?.trim(),
+                object: card?.querySelector(".object-badge")?.textContent?.trim(),
+                caseId: card?.querySelector(".problem-id")?.textContent?.trim(),
+                description:
+                  card?.querySelector(".problem-detail")?.textContent?.trim(),
+                descriptionItems:
+                  card?.querySelectorAll(".problem-detail ul li").length ?? 0,
+                meta: card?.querySelector(".problem-meta")?.textContent?.trim(),
+              };
+            }),
           };
         })()`,
         `problem cards for ${sessionId}`,
       );
+      observedBySession[sessionId] = observed;
 
       assert.deepEqual(
         observed.cardIds,
@@ -246,6 +262,59 @@ test("m4 problem cards match the prototype and link list and canvas", async () =
           `${sessionId} should show ${state}`,
         );
       }
+    }
+
+    assert.deepEqual(
+      observedBySession[sessions.prompt].details.map((detail) => ({
+        no: detail.no,
+        type: detail.type,
+        object: detail.object,
+        caseId: detail.caseId,
+        description: detail.description,
+        meta: detail.meta,
+      })),
+      [
+        {
+          no: "BC1",
+          type: "self",
+          object: "Explore",
+          caseId: "badcase-synthetic-0001",
+          description: "合成示例：检查结论缺少目标文件。",
+          meta: "关联：agent · Explore",
+        },
+        {
+          no: "BC2",
+          type: "discovery",
+          object: "Explore",
+          caseId: "badcase-synthetic-0005",
+          description: "合成示例：推理步骤越过工具边界。",
+          meta: "关联：agent · Explore",
+        },
+      ],
+    );
+
+    const markdownCard = observedBySession[sessions.nonissue].details[0];
+    assert.equal(markdownCard.no, "BC1");
+    assert.equal(markdownCard.type, "discovery");
+    assert.equal(markdownCard.object, "review-workflow");
+    assert.equal(markdownCard.caseId, "badcase-synthetic-0002");
+    assert.equal(markdownCard.meta, "关联：agent · review-workflow");
+    assert.match(
+      markdownCard.description,
+      /F2P 失败（4 项）[\s\S]*P2P 回退（6 项）/,
+      markdownCard.description,
+    );
+    assert.equal(markdownCard.descriptionItems, 10);
+
+    for (const detail of [
+      ...observedBySession[sessions.error].details,
+      ...observedBySession[sessions.unanalyzed].details,
+    ]) {
+      assert.equal(detail.descriptionItems, 0, JSON.stringify(detail));
+      assert.ok(
+        detail.description?.startsWith("合成示例："),
+        JSON.stringify(detail),
+      );
     }
 
     await page.session.send("Runtime.evaluate", {

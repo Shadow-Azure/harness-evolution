@@ -38,34 +38,6 @@ export function badCaseState(
 }
 
 /**
- * Return the short attribution summary shown under a problem title.
- * @param problem Read-only problem detail.
- * @returns User-facing summary.
- */
-export function badCaseSummary(problem: BadCase): string {
-  if (problem.analysis.status === "analyzed_issue") {
-    return problem.analysis.result.summary;
-  }
-  if (problem.analysis.status === "analyzed_nonissue") {
-    return problem.analysis.result.reason;
-  }
-  return "尚未完成归因分析";
-}
-
-/**
- * Render compact key/value facts from external metadata.
- * @param metadata Untrusted external metadata object.
- * @returns Up to three display-safe facts.
- */
-export function badCaseFacts(
-  metadata: Record<string, unknown> | null,
-): string[] {
-  return badCaseFactEntries(metadata).map(
-    (fact) => `${fact.key}=${fact.value}`,
-  );
-}
-
-/**
  * Render compact key/value facts from external metadata.
  * @param metadata Untrusted external metadata object.
  * @returns Up to three display-safe key/value pairs.
