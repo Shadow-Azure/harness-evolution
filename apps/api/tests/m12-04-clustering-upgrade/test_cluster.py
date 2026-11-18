@@ -237,6 +237,24 @@ def test_large_input_with_a_shared_token_does_not_chain() -> None:
     assert all(cluster.probes == (probe.probe_id,) for cluster, probe in memberships)
 
 
+def test_single_link_merges_a_transitive_chain() -> None:
+    """Two-hop similarity joins one cluster even when the endpoints are dissimilar.
+
+    Single-link connectivity is the documented behavior: the threshold bounds each
+    edge, not the diameter of the resulting cluster.
+    """
+    clusters = cluster_probes(
+        (
+            _probe("p-a", "检索索引读取失败"),
+            _probe("p-b", "索引读取超时"),
+            _probe("p-c", "读取超时错误"),
+        ),
+    )
+
+    assert len(clusters) == 1
+    assert clusters[0].probes == ("p-a", "p-b", "p-c")
+
+
 def test_cluster_hash_changes_when_cluster_semantics_change() -> None:
     """Descriptions and member order participate in the canonical digest."""
     clusters = cluster_probes(
