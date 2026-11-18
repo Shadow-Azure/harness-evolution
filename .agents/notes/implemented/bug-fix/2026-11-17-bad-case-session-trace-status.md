@@ -14,7 +14,9 @@ Status: implemented
 
 存在性以 `bad_cases` 行为准，轨迹就绪是另一个派生维度。`service/bad_cases/session_status.py` 把 `bad_case_root_sync` 与 Session 是否可读映射为五个公开状态：`ready/pending/syncing/failed/unavailable`；总览列表批量读同一页 root 的 sync state 和 Session 存在性，详情先用 case-only 查询判定 404，再判定轨迹。
 
-详情仅在 case 行缺失时返回 `404 BAD_CASE_NOT_FOUND`；存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt` 与 case 身份，前端据此渲染状态面板。列表项同步暴露同一组字段，未就绪行不再作为错误详情深链。
+详情仅在 case 行缺失时返回 `404 BAD_CASE_NOT_FOUND`；存在但 Session 未就绪时返回 `409 BAD_CASE_SESSION_PENDING`（pending/syncing）或 `503 BAD_CASE_SESSION_UNAVAILABLE`（failed/unavailable），`details` 带 `syncStatus/lastError/retryable/nextRetryAt/lastAttemptAt` 与 case 身份，前端据此渲染状态面板。列表项同步暴露同一组字段，未就绪行进入错误详情时由状态面板承接，而不是 404 文案。
+
+错误详情页不替换整个 workspace：`ErrorSidebar` 和 `error-head` 在 trace 分支继续保留，`TraceStatusPanel` 只替换执行流与问题描述/归因 tab。无 Session 时侧栏展示当前 case 的标题、ID、对象名、`syncStatus` 徽标与归因空态/计数；头部用 503 `details` 的 `createdAt/objectName`、路由 `sid` 与归因接口 `total` 渲染，`返回 Session` 在 Session 不可读时禁用。归因计数复用 `GET …/bad-cases/{id}/attributions`，不新增 case 读端点。
 
 确定性失败（`SESSION_QUERY_UNAVAILABLE`、鉴权/版本不兼容、源与 Session 不匹配、遍历上限、不支持的 runtime、空轨迹等）标记 `retryable=false` 并退出调度候选，避免无意义退避；没有任何可用 source 时所有未就绪状态都报 `retryable=false`。重新上报携带 `sessionSource` 时，ingest 给已停放的确定性失败一次新 claim；启动且 source 可用时，把这类行以及 `synced` 但 Session 丢失的 root 复位为 pending，作为配置变化后的重新触发入口。真正的 404 语义与既有 happy path 不变。
 
@@ -24,6 +26,7 @@ Status: implemented
 - 详情继续 404 但附 `reason`：改动最小，却把「未就绪」继续伪装成「不存在」，前端与第三方调用方仍会误判数据丢失。
 - 列表逐行查询 `bad_case_root_sync`：实现直接但形成 N+1；按页批量读 root 状态与 Session 存在性更符合总览的分页读路径。
 - 保留确定性失败的自动重试：能让配置修复后自动恢复，但继续产生无意义任务与噪声日志；改为启动复位 + 手动同步入口。
+- 为状态页新增 case-only 读端点：能为侧栏补对象类型等字段，但标题、对象、上报时间、状态和归因计数已分别在 503 `details` 与归因接口里；新增端点会扩大契约面，留待「无 Session 时展示同根兄弟 case」的真实需求。
 
 ## Consequences
 
@@ -31,3 +34,4 @@ Status: implemented
 - 列表多两次批量查询（sync state、Session 存在性），与分页大小无关；详情多一次 case-only 查询。
 - 确定性失败在两处可见口径不完全一致：`acquisition.status` 的 `failed` 计数仍包含它们，因为持久化状态仍是 `failed`；重启且存在可用 source 时会短暂显示 pending，直到下一次同步结果。
 - 无 Session 的既有数据不需要回填，下一次读取自动获得派生状态。
+- 未就绪详情不再退化成单栏状态页：两栏壳层在 1440px 与原型一致，窄屏仍按现有媒体查询纵向堆叠；侧栏只呈现当前 case，不伪造同根兄弟列表。

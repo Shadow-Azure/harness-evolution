@@ -286,11 +286,21 @@ test("m12-07 bad case without a Session shows trace state instead of 404", async
       page.session,
       `(() => {
         const panel = document.querySelector("[data-testid='trace-status-panel']");
-        if (!panel) return null;
+        const sidebar = document.querySelector(".error-sidebar");
+        const head = document.querySelector(".error-head");
+        const empty = document.querySelector("[data-testid='trace-case-attributions-empty']");
+        if (!panel || !sidebar || !head || !empty) return null;
         return {
           text: panel.textContent,
           chip: document.querySelector("[data-testid='trace-status-chip']")?.textContent.trim(),
           body: document.body.textContent,
+          sidebar: sidebar.textContent,
+          head: head.textContent,
+          tabs: document.querySelectorAll("[role='tab']").length,
+          filters: Boolean(document.querySelector(".sidebar-filter")),
+          sidebarBackDisabled: Boolean(document.querySelector("[data-testid='sidebar-back-unavailable']")),
+          headBackDisabled: Boolean(document.querySelector("[data-testid='error-back-session-unavailable']")),
+          attributionEmpty: document.querySelector("[data-testid='trace-case-attributions-empty']")?.textContent.trim(),
         };
       })()`,
       "pending trace panel",
@@ -299,6 +309,18 @@ test("m12-07 bad case without a Session shows trace state instead of 404", async
     assert.match(pendingView.text, /没有被删除/);
     assert.match(pendingView.text, /不会自动重试/);
     assert.match(pendingView.text, /m12-07-pending/);
+    assert.match(pendingView.sidebar, /\[SWE-bench\] m12-07-pending/);
+    assert.match(pendingView.sidebar, /未同步/);
+    assert.match(pendingView.sidebar, /根会话 ID · 30000000-0000-4000-8000-000000000101/);
+    assert.equal(pendingView.attributionEmpty, "暂无归因。尚未进入自进化。");
+    assert.match(pendingView.head, /1 个 bad case/);
+    assert.match(pendingView.head, /claude-code/);
+    assert.match(pendingView.head, /上报/);
+    assert.match(pendingView.head, /0 个归因/);
+    assert.equal(pendingView.tabs, 0);
+    assert.equal(pendingView.filters, false);
+    assert.equal(pendingView.sidebarBackDisabled, true);
+    assert.equal(pendingView.headBackDisabled, true);
     assert.doesNotMatch(pendingView.body, /问题不存在或已删除/);
     assert.equal(
       await page.session.send("Runtime.evaluate", {
@@ -321,10 +343,17 @@ test("m12-07 bad case without a Session shows trace state instead of 404", async
       page.session,
       `(() => {
         const panel = document.querySelector("[data-testid='trace-status-panel']");
-        if (!panel) return null;
+        const sidebar = document.querySelector(".error-sidebar");
+        const head = document.querySelector(".error-head");
+        if (!panel || !sidebar || !head) return null;
         return {
           chip: document.querySelector("[data-testid='trace-status-chip']")?.textContent.trim(),
           text: panel.textContent,
+          sidebar: sidebar.textContent,
+          head: head.textContent,
+          tabs: document.querySelectorAll("[role='tab']").length,
+          sidebarBackDisabled: Boolean(document.querySelector("[data-testid='sidebar-back-unavailable']")),
+          headBackDisabled: Boolean(document.querySelector("[data-testid='error-back-session-unavailable']")),
         };
       })()`,
       "unavailable trace panel",
@@ -332,6 +361,15 @@ test("m12-07 bad case without a Session shows trace state instead of 404", async
     assert.equal(unavailableView.chip, "无可用轨迹");
     assert.match(unavailableView.text, /SESSION_QUERY_UNAVAILABLE/);
     assert.match(unavailableView.text, /不会自动重试/);
+    assert.match(unavailableView.sidebar, /\[SWE-bench\] m12-07-unavailable/);
+    assert.match(unavailableView.sidebar, /无可用轨迹/);
+    assert.match(unavailableView.sidebar, /根会话 ID · 30000000-0000-4000-8000-000000000104/);
+    assert.match(unavailableView.head, /1 个 bad case/);
+    assert.match(unavailableView.head, /claude-code/);
+    assert.match(unavailableView.head, /0 个归因/);
+    assert.equal(unavailableView.tabs, 0);
+    assert.equal(unavailableView.sidebarBackDisabled, true);
+    assert.equal(unavailableView.headBackDisabled, true);
 
     assert.deepEqual(violations, []);
   } finally {

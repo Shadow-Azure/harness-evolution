@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import type { BadCaseTraceStatus } from "@harness/contracts";
 import { computed, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import { workspacePath } from "../../../router/workspace";
 import { formatStartedAt } from "../../../utils/sessionDisplay";
 import { badCaseSyncErrorLabel } from "../../../utils/syncStatus";
-import type { TraceStatusDetails } from "../traceStatus";
+import { traceStatusLabel, type TraceStatusDetails } from "../traceStatus";
 
 const props = defineProps<{
   wid: string;
@@ -20,14 +19,7 @@ const emit = defineEmits<{
   "open-sync": [];
 }>();
 
-const statusLabels: Record<BadCaseTraceStatus, string> = {
-  ready: "就绪",
-  pending: "未同步",
-  syncing: "同步中",
-  failed: "同步失败",
-  unavailable: "无可用轨迹",
-};
-const statusLabel = computed(() => statusLabels[props.details.syncStatus]);
+const statusLabel = computed(() => traceStatusLabel(props.details.syncStatus));
 const title = computed(() => props.details.title || "该 bad case");
 const lastError = computed(() => props.details.lastError);
 const lastErrorLabel = computed(() =>

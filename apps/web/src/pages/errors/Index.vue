@@ -133,6 +133,7 @@ const selectedProblem = computed<BadCase | null>(
 const allAttributions = computed<AttributionItem[]>(
   () => attributionsQuery.data.value ?? [],
 );
+const traceAttributionCount = computed(() => allAttributions.value.length);
 const resolvedIndex = computed(() => {
   const items = allAttributions.value;
   if (items.length === 0) return -1;
@@ -481,21 +482,8 @@ function collapseAll() {
     :class="{ 'trace-mode': Boolean(traceStatus) }"
     data-testid="errors-workspace"
   >
-    <main
-      v-if="traceStatus"
-      class="error-main trace-main"
-    >
-      <TraceStatusPanel
-        :case-id="selectedBadCaseId ?? ''"
-        :details="traceStatus"
-        :session-id="sessionId"
-        :wid="workspaceId"
-        @open-sync="openSyncStatus"
-        @refresh="refreshTraceStatus"
-      />
-    </main>
     <ErrorState
-      v-else-if="routeFatalError"
+      v-if="routeFatalError"
       class="page-error"
       :code="routeFatalError.code"
       :message="routeFatalError.message"
@@ -514,7 +502,12 @@ function collapseAll() {
         :selected-attribution-page="selectedAttributionPage"
         :session="session"
         :session-id="sessionId"
+        :trace="traceStatus"
+        :trace-attribution-count="traceAttributionCount"
+        :trace-attribution-error="Boolean(attributionsQuery.error.value)"
+        :trace-attribution-loading="attributionsQuery.isPending.value"
         @retry="retryProblems"
+        @retry-attributions="attributionsQuery.refetch()"
         @start="openWizardFor"
       />
 
@@ -532,160 +525,200 @@ function collapseAll() {
             <div class="error-heading">
               <h1>错误详情</h1>
               <div class="error-meta">
-                <time
-                  v-if="session"
-                  :datetime="session.startedAt"
-                >{{ formatStartedAt(session.startedAt) }} 开始</time>
-                <span
-                  class="root-session-id"
-                  data-testid="error-meta-root-session-id"
-                  :title="`根会话 ID: ${sessionId}`"
-                >根会话 ID · <span class="mono">{{ sessionId }}</span></span>
-                <span
-                  v-if="session?.repo"
-                  class="repo-chip"
-                >{{ session.repo }}</span>
-                <span>{{ problems.length }} 个 bad case</span>
-                <span>{{ attributedCount }} 个已归因</span>
+                <template v-if="traceStatus">
+                  <time
+                    v-if="traceStatus.createdAt"
+                    :datetime="traceStatus.createdAt"
+                  >{{ formatStartedAt(traceStatus.createdAt) }} 上报</time>
+                  <span
+                    class="root-session-id"
+                    data-testid="error-meta-root-session-id"
+                    :title="`根会话 ID: ${sessionId}`"
+                  >根会话 ID · <span class="mono">{{ sessionId }}</span></span>
+                  <span
+                    v-if="traceStatus.objectName"
+                    class="repo-chip"
+                  >{{ traceStatus.objectName }}</span>
+                  <span>1 个 bad case</span>
+                  <span>{{ traceAttributionCount }} 个归因</span>
+                </template>
+                <template v-else>
+                  <time
+                    v-if="session"
+                    :datetime="session.startedAt"
+                  >{{ formatStartedAt(session.startedAt) }} 开始</time>
+                  <span
+                    class="root-session-id"
+                    data-testid="error-meta-root-session-id"
+                    :title="`根会话 ID: ${sessionId}`"
+                  >根会话 ID · <span class="mono">{{ sessionId }}</span></span>
+                  <span
+                    v-if="session?.repo"
+                    class="repo-chip"
+                  >{{ session.repo }}</span>
+                  <span>{{ problems.length }} 个 bad case</span>
+                  <span>{{ attributedCount }} 个已归因</span>
+                </template>
               </div>
             </div>
             <RouterLink
+              v-if="!traceStatus || session"
               class="overview-link"
               :to="sessionOverviewPath"
             >
               返回 Session
             </RouterLink>
+            <span
+              v-else
+              class="overview-link is-disabled"
+              aria-disabled="true"
+              data-testid="error-back-session-unavailable"
+              title="Session 尚未落库"
+            >
+              返回 Session
+            </span>
           </header>
 
-          <section
-            class="flow-panel"
-            aria-labelledby="error-flow-title"
-          >
-            <header class="flow-head">
-              <strong id="error-flow-title">执行流</strong>
-              <span>{{ flowNote }}</span>
-            </header>
-            <LoadingSkeleton
-              v-if="flowLoading"
-              label="正在读取 Agent 执行流"
-              :rows="4"
-            />
-            <ErrorState
-              v-else-if="treeQuery.error.value"
-              code="SESSION_TREE_UNAVAILABLE"
-              message="Agent 执行流读取失败，请重试。"
-              @retry="retryTree"
-            />
-            <AgentFlow
-              v-else-if="flowTree"
-              :active-bad-case-id="selectedBadCaseId"
-              :expanded="expandedAgentIds"
-              :problems="problems"
-              :tree="flowTree"
-              :tree-height="'413px'"
-              @badcase-select="selectBadCase"
-              @collapse-all="collapseAll"
-              @toggle-expanded="toggleExpanded"
-            />
-            <EmptyState
-              v-else
-              description="当前 Session 没有可展示的 Agent 执行流。"
-              title="暂无执行流"
-            />
-          </section>
+          <TraceStatusPanel
+            v-if="traceStatus"
+            :case-id="selectedBadCaseId ?? ''"
+            :details="traceStatus"
+            :session-id="sessionId"
+            :wid="workspaceId"
+            @open-sync="openSyncStatus"
+            @refresh="refreshTraceStatus"
+          />
+          <template v-else>
+            <section
+              class="flow-panel"
+              aria-labelledby="error-flow-title"
+            >
+              <header class="flow-head">
+                <strong id="error-flow-title">执行流</strong>
+                <span>{{ flowNote }}</span>
+              </header>
+              <LoadingSkeleton
+                v-if="flowLoading"
+                label="正在读取 Agent 执行流"
+                :rows="4"
+              />
+              <ErrorState
+                v-else-if="treeQuery.error.value"
+                code="SESSION_TREE_UNAVAILABLE"
+                message="Agent 执行流读取失败，请重试。"
+                @retry="retryTree"
+              />
+              <AgentFlow
+                v-else-if="flowTree"
+                :active-bad-case-id="selectedBadCaseId"
+                :expanded="expandedAgentIds"
+                :problems="problems"
+                :tree="flowTree"
+                :tree-height="'413px'"
+                @badcase-select="selectBadCase"
+                @collapse-all="collapseAll"
+                @toggle-expanded="toggleExpanded"
+              />
+              <EmptyState
+                v-else
+                description="当前 Session 没有可展示的 Agent 执行流。"
+                title="暂无执行流"
+              />
+            </section>
 
-          <section class="detail-panel">
-            <div
-              class="detail-tabs"
-              role="tablist"
-              aria-label="问题详情"
-            >
-              <button
-                id="desc-tab"
-                aria-controls="desc-panel"
-                :aria-selected="activeTab === 'desc'"
-                :class="{ active: activeTab === 'desc' }"
-                role="tab"
-                :tabindex="activeTab === 'desc' ? 0 : -1"
-                type="button"
-                @click="selectTab('desc')"
-                @keydown.left.prevent="moveTab(-1)"
-                @keydown.right.prevent="moveTab(1)"
-                @keydown.home.prevent="tabEdge('first')"
-                @keydown.end.prevent="tabEdge('last')"
-              >
-                问题描述
-              </button>
-              <button
-                id="attr-tab"
-                aria-controls="attr-panel"
-                :aria-selected="activeTab === 'attr'"
-                :class="{ active: activeTab === 'attr' }"
-                role="tab"
-                :tabindex="activeTab === 'attr' ? 0 : -1"
-                type="button"
-                @click="selectTab('attr')"
-                @keydown.left.prevent="moveTab(-1)"
-                @keydown.right.prevent="moveTab(1)"
-                @keydown.home.prevent="tabEdge('first')"
-                @keydown.end.prevent="tabEdge('last')"
-              >
-                {{ attributionTabLabel }}
-              </button>
-            </div>
-            <div
-              v-show="activeTab === 'desc'"
-              id="desc-panel"
-              aria-labelledby="desc-tab"
-              role="tabpanel"
-              tabindex="0"
-            >
-              <ProblemDescription
-                v-if="selectedProblem"
-                :wid="workspaceId"
-                :index="selectedIndex"
-                :problem="selectedProblem"
-                :attributions="allAttributions"
-                @open-attribution="selectTab('attr')"
-              />
+            <section class="detail-panel">
               <div
-                v-else
-                class="err-empty"
+                class="detail-tabs"
+                role="tablist"
+                aria-label="问题详情"
               >
-                从左侧选择一个 bad case，查看问题描述与归因分析。
+                <button
+                  id="desc-tab"
+                  aria-controls="desc-panel"
+                  :aria-selected="activeTab === 'desc'"
+                  :class="{ active: activeTab === 'desc' }"
+                  role="tab"
+                  :tabindex="activeTab === 'desc' ? 0 : -1"
+                  type="button"
+                  @click="selectTab('desc')"
+                  @keydown.left.prevent="moveTab(-1)"
+                  @keydown.right.prevent="moveTab(1)"
+                  @keydown.home.prevent="tabEdge('first')"
+                  @keydown.end.prevent="tabEdge('last')"
+                >
+                  问题描述
+                </button>
+                <button
+                  id="attr-tab"
+                  aria-controls="attr-panel"
+                  :aria-selected="activeTab === 'attr'"
+                  :class="{ active: activeTab === 'attr' }"
+                  role="tab"
+                  :tabindex="activeTab === 'attr' ? 0 : -1"
+                  type="button"
+                  @click="selectTab('attr')"
+                  @keydown.left.prevent="moveTab(-1)"
+                  @keydown.right.prevent="moveTab(1)"
+                  @keydown.home.prevent="tabEdge('first')"
+                  @keydown.end.prevent="tabEdge('last')"
+                >
+                  {{ attributionTabLabel }}
+                </button>
               </div>
-            </div>
-            <div
-              v-show="activeTab === 'attr'"
-              id="attr-panel"
-              aria-labelledby="attr-tab"
-              role="tabpanel"
-              tabindex="0"
-            >
-              <AttributionReport
-                v-if="selectedProblem"
-                :key="`${workspaceId}:${selectedProblem.badCaseId}`"
-                :wid="workspaceId"
-                :session-id="sessionId"
-                :problem="selectedProblem"
-                :attribution="attributionDetailQuery.data.value ?? null"
-                :attributions="allAttributions"
-                :selected-index="Math.max(0, resolvedIndex)"
-                :loading="reportLoading"
-                :error="reportError"
-                :can-start="canStart"
-                @select="selectAttribution(selectedProblem.badCaseId, $event)"
-                @start="openSelectedWizard"
-                @retry="retryReport"
-              />
               <div
-                v-else
-                class="err-empty"
+                v-show="activeTab === 'desc'"
+                id="desc-panel"
+                aria-labelledby="desc-tab"
+                role="tabpanel"
+                tabindex="0"
               >
-                从左侧选择一个 bad case，查看问题描述与归因分析。
+                <ProblemDescription
+                  v-if="selectedProblem"
+                  :wid="workspaceId"
+                  :index="selectedIndex"
+                  :problem="selectedProblem"
+                  :attributions="allAttributions"
+                  @open-attribution="selectTab('attr')"
+                />
+                <div
+                  v-else
+                  class="err-empty"
+                >
+                  从左侧选择一个 bad case，查看问题描述与归因分析。
+                </div>
               </div>
-            </div>
-          </section>
+              <div
+                v-show="activeTab === 'attr'"
+                id="attr-panel"
+                aria-labelledby="attr-tab"
+                role="tabpanel"
+                tabindex="0"
+              >
+                <AttributionReport
+                  v-if="selectedProblem"
+                  :key="`${workspaceId}:${selectedProblem.badCaseId}`"
+                  :wid="workspaceId"
+                  :session-id="sessionId"
+                  :problem="selectedProblem"
+                  :attribution="attributionDetailQuery.data.value ?? null"
+                  :attributions="allAttributions"
+                  :selected-index="Math.max(0, resolvedIndex)"
+                  :loading="reportLoading"
+                  :error="reportError"
+                  :can-start="canStart"
+                  @select="selectAttribution(selectedProblem.badCaseId, $event)"
+                  @start="openSelectedWizard"
+                  @retry="retryReport"
+                />
+                <div
+                  v-else
+                  class="err-empty"
+                >
+                  从左侧选择一个 bad case，查看问题描述与归因分析。
+                </div>
+              </div>
+            </section>
+          </template>
         </template>
       </main>
     </template>
@@ -712,16 +745,6 @@ function collapseAll() {
 .page-error {
   grid-column: 1 / -1;
   margin: 24px;
-}
-
-.errors-workspace.trace-mode {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.trace-main {
-  width: min(860px, 100%);
-  margin: 0 auto;
-  padding-top: 24px;
 }
 
 .error-main {
@@ -840,6 +863,16 @@ function collapseAll() {
 .overview-link:hover {
   border-color: var(--blue);
   color: var(--text);
+}
+
+.overview-link.is-disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.overview-link.is-disabled:hover {
+  border-color: var(--border);
+  color: var(--text-faint);
 }
 
 .flow-panel,

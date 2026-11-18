@@ -6,7 +6,9 @@ import EmptyState from "../../../components/ui/EmptyState.vue";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
 import { workspacePath } from "../../../router/workspace";
+import { shortBadCaseId } from "../../../utils/badCaseId";
 import CaseGroup from "./CaseGroup.vue";
+import { traceStatusLabel, type TraceStatusDetails } from "../traceStatus";
 
 type Filter = "all" | "attr" | "none";
 
@@ -21,10 +23,15 @@ const props = defineProps<{
   loading: boolean;
   error: Error | null;
   canStart: boolean;
+  trace: TraceStatusDetails | null;
+  traceAttributionCount: number;
+  traceAttributionLoading: boolean;
+  traceAttributionError: boolean;
 }>();
 
 const emit = defineEmits<{
   retry: [];
+  "retry-attributions": [];
   start: [badCaseId: string];
 }>();
 
@@ -32,6 +39,19 @@ const filter = ref<Filter>("all");
 const expanded = ref<Set<string>>(new Set());
 const pages = ref<Record<string, number>>({});
 
+const traceLabel = computed(() =>
+  props.trace ? traceStatusLabel(props.trace.syncStatus) : "",
+);
+const sidebarTitle = computed(
+  () =>
+    props.trace?.title ||
+    props.session?.title ||
+    props.problems[0]?.sessionTitle ||
+    props.sessionId,
+);
+const sidebarCount = computed(() =>
+  props.trace ? 1 : props.problems.length,
+);
 const attributedCount = computed(
   () => props.problems.filter((problem) => problem.attributionCount > 0).length,
 );
@@ -126,13 +146,13 @@ function setFilter(next: Filter): void {
     <header class="sidebar-heading">
       <div class="sidebar-title">
         <h1>bad case</h1>
-        <span class="count">{{ problems.length }} 个</span>
+        <span class="count">{{ sidebarCount }} 个</span>
       </div>
       <div
         class="session-title"
-        :title="session?.title ?? problems[0]?.sessionTitle ?? sessionId"
+        :title="sidebarTitle"
       >
-        {{ session?.title ?? problems[0]?.sessionTitle ?? sessionId }}
+        {{ sidebarTitle }}
       </div>
       <div
         class="session-id"
@@ -142,14 +162,25 @@ function setFilter(next: Filter): void {
         根会话 ID · {{ sessionId }}
       </div>
       <RouterLink
+        v-if="!trace || session"
         class="sidebar-back"
         :to="workspacePath(wid, `sessions/${encodeURIComponent(sessionId)}`)"
       >
         ← 返回 Session
       </RouterLink>
+      <span
+        v-else
+        class="sidebar-back is-disabled"
+        aria-disabled="true"
+        data-testid="sidebar-back-unavailable"
+        title="Session 尚未落库"
+      >
+        ← 返回 Session
+      </span>
     </header>
 
     <div
+      v-if="!trace"
       class="sidebar-filter"
       role="group"
       aria-label="筛选 bad case"
@@ -184,48 +215,99 @@ function setFilter(next: Filter): void {
     </div>
 
     <div class="sidebar-list">
-      <RouterLink
-        class="all-errors"
-        :class="{ active: activeBadCaseId === null }"
-        :to="allErrorsLink"
-        data-testid="all-bad-cases"
+      <section
+        v-if="trace"
+        class="trace-case"
+        data-testid="trace-case-sidebar"
       >
-        <span>全部 bad case</span>
-        <b>{{ problems.length }}</b>
-      </RouterLink>
-      <LoadingSkeleton
-        v-if="loading"
-        label="正在读取 bad case"
-        :rows="3"
-      />
-      <ErrorState
-        v-else-if="error"
-        code="BAD_CASES_UNAVAILABLE"
-        message="bad case 列表读取失败，请重试。"
-        @retry="emit('retry')"
-      />
-      <EmptyState
-        v-else-if="visibleProblems.length === 0"
-        description="当前筛选条件下没有 bad case。"
-        title="没有匹配的 bad case"
-      />
-      <template v-else>
-        <CaseGroup
-          v-for="(problem, index) in visibleProblems"
-          :key="problem.badCaseId"
-          :wid="wid"
-          :session-id="sessionId"
-          :problem="problem"
-          :index="problemIndex.get(problem.badCaseId) ?? index + 1"
-          :expanded="isExpanded(problem.badCaseId)"
-          :page="pageOf(problem.badCaseId)"
-          :active="problem.badCaseId === activeBadCaseId"
-          :selected-attribution-id="selectedAttributionId"
-          :can-start="canStart"
-          @toggle="toggle(problem.badCaseId)"
-          @page="setPage(problem.badCaseId, $event)"
-          @start="emit('start', problem.badCaseId)"
+        <div class="trace-case-head">
+          <span
+            class="case-id"
+            :title="trace.badCaseId"
+          >{{ shortBadCaseId(trace.badCaseId) }}</span>
+          <span
+            v-if="trace.objectName"
+            class="object-name"
+          >{{ trace.objectName }}</span>
+          <span
+            class="trace-status-chip"
+            :class="`trace-${trace.syncStatus}`"
+            data-testid="sidebar-trace-status"
+          >{{ traceLabel }}</span>
+        </div>
+        <div class="attr-list-title">
+          归因分析 · 按进化对象
+        </div>
+        <LoadingSkeleton
+          v-if="traceAttributionLoading"
+          label="正在读取归因"
+          :rows="2"
         />
+        <ErrorState
+          v-else-if="traceAttributionError"
+          code="ATTRIBUTIONS_UNAVAILABLE"
+          message="归因列表读取失败，请重试。"
+          @retry="emit('retry-attributions')"
+        />
+        <div
+          v-else-if="traceAttributionCount === 0"
+          class="attr-empty"
+          data-testid="trace-case-attributions-empty"
+        >
+          暂无归因。尚未进入自进化。
+        </div>
+        <div
+          v-else
+          class="trace-case-count"
+          data-testid="trace-case-attributions-count"
+        >
+          {{ traceAttributionCount }} 条归因
+        </div>
+      </section>
+      <template v-else>
+        <RouterLink
+          class="all-errors"
+          :class="{ active: activeBadCaseId === null }"
+          :to="allErrorsLink"
+          data-testid="all-bad-cases"
+        >
+          <span>全部 bad case</span>
+          <b>{{ problems.length }}</b>
+        </RouterLink>
+        <LoadingSkeleton
+          v-if="loading"
+          label="正在读取 bad case"
+          :rows="3"
+        />
+        <ErrorState
+          v-else-if="error"
+          code="BAD_CASES_UNAVAILABLE"
+          message="bad case 列表读取失败，请重试。"
+          @retry="emit('retry')"
+        />
+        <EmptyState
+          v-else-if="visibleProblems.length === 0"
+          description="当前筛选条件下没有 bad case。"
+          title="没有匹配的 bad case"
+        />
+        <template v-else>
+          <CaseGroup
+            v-for="(problem, index) in visibleProblems"
+            :key="problem.badCaseId"
+            :wid="wid"
+            :session-id="sessionId"
+            :problem="problem"
+            :index="problemIndex.get(problem.badCaseId) ?? index + 1"
+            :expanded="isExpanded(problem.badCaseId)"
+            :page="pageOf(problem.badCaseId)"
+            :active="problem.badCaseId === activeBadCaseId"
+            :selected-attribution-id="selectedAttributionId"
+            :can-start="canStart"
+            @toggle="toggle(problem.badCaseId)"
+            @page="setPage(problem.badCaseId, $event)"
+            @start="emit('start', problem.badCaseId)"
+          />
+        </template>
       </template>
     </div>
   </aside>
@@ -294,6 +376,15 @@ function setFilter(next: Filter): void {
   text-decoration: underline;
 }
 
+.sidebar-back.is-disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.sidebar-back.is-disabled:hover {
+  text-decoration: none;
+}
+
 .sidebar-filter {
   display: flex;
   gap: 4px;
@@ -356,6 +447,68 @@ function setFilter(next: Filter): void {
 .all-errors b {
   color: var(--text-dim);
   font-family: var(--mono);
+  font-size: 11px;
+}
+
+.trace-status-chip {
+  width: fit-content;
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--orange);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.trace-status-chip.trace-ready {
+  color: var(--green);
+}
+
+.trace-case {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-card);
+}
+
+.trace-case-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.case-id {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.object-name {
+  overflow: hidden;
+  max-width: 130px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attr-list-title {
+  color: var(--text-faint);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.attr-empty {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.trace-case-count {
+  color: var(--text-dim);
   font-size: 11px;
 }
 </style>
