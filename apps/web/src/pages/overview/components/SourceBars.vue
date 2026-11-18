@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import type { OverviewSourceRow } from "@harness/contracts";
+import type {
+  OverviewGrain,
+  OverviewSourceRow,
+  OverviewTrendBucket,
+} from "@harness/contracts";
 import { computed, ref } from "vue";
 
+import type { OverviewFilters } from "../../../api/overview";
 import ErrorState from "../../../components/ui/ErrorState.vue";
 import LoadingSkeleton from "../../../components/ui/LoadingSkeleton.vue";
+import SourceMatrix from "./SourceMatrix.vue";
 
 const TOP_COUNT = 6;
 
@@ -23,6 +29,26 @@ const props = defineProps({
   code: {
     type: String,
     default: "OVERVIEW_SOURCES_UNAVAILABLE",
+  },
+  workspaceId: {
+    type: String,
+    default: "",
+  },
+  buckets: {
+    type: Array as () => OverviewTrendBucket[],
+    default: () => [],
+  },
+  grain: {
+    type: String as () => OverviewGrain,
+    default: "week",
+  },
+  filters: {
+    type: Object as () => OverviewFilters,
+    default: () => ({ objects: [] }),
+  },
+  window: {
+    type: Object as () => { from: string; to: string } | null,
+    default: null,
   },
 });
 
@@ -136,6 +162,15 @@ function width(value: number): string {
       >
         {{ expanded ? "收起为 top 6" : `展开全部 ${sources.length} 个来源` }}
       </button>
+      <SourceMatrix
+        v-if="workspaceId"
+        :buckets="buckets"
+        :filters="filters"
+        :grain="grain"
+        :sources="sources"
+        :window="window"
+        :workspace-id="workspaceId"
+      />
     </template>
   </div>
 </template>
@@ -143,6 +178,7 @@ function width(value: number): string {
 <style scoped>
 .source-bars {
   display: grid;
+  min-width: 0;
   gap: 8px;
   margin-top: 14px;
   padding-top: 12px;
@@ -151,6 +187,7 @@ function width(value: number): string {
 
 .source-row {
   display: grid;
+  min-width: 0;
   grid-template-columns: 118px minmax(0, 1fr) 148px;
   gap: 10px;
   align-items: center;
