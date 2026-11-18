@@ -58,7 +58,7 @@ function percent(used: number, quota: number): number {
         <p class="sub">
           {{
             isGlobalAdmin
-              ? "创建时设置 bad case 数量上限；创建后仍可调整。管理员可以把任意用户加入空间并任命为空间管理员。"
+              ? "创建时设置 bad case 数量上限；创建后仍可调整。管理员可以把任意用户（包括自己）加入空间并任命为空间管理员。"
               : canManage
                 ? "空间管理员可以在本空间内调整额度、成员与上报凭据，但不能创建新空间。"
                 : "只读成员可以查看当前空间的额度与管理员；写入口由服务端权限决定。"
