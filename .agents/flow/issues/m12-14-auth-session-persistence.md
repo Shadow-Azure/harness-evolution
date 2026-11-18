@@ -66,6 +66,7 @@ github:
 - 交付边界：只决定 Cookie 的 Secure 属性；Cookie 名称、路径、有效期、SameSite 与 httpOnly 不变。
 - 不改变 bad case 新窗口打开行为；Cookie 修复后新标签自然保持登录。
 - GitHub #348 保留生产证据原文；本文件是实施契约，`pnpm flow:sync` 前需人工合并正文，避免覆盖截图与时间线。
+- 同一 PR 合并最新 main 并把已关闭的 m12-09 / m12-13 本地状态对齐为 done，解除 `flow-online` 对所有 PR 的阻塞。
 
 ## 独立验证
 

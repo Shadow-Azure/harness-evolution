@@ -66,6 +66,7 @@ The production instance runs with `HE_PRODUCTION=true` over plain HTTP (public I
 - Boundary: only the cookie's Secure attribute changes; cookie name, path, lifetime, SameSite, and httpOnly stay as they are.
 - The bad-case new-window link is unchanged; with the cookie fixed, a new tab keeps the session naturally.
 - GitHub #348 keeps the production evidence verbatim; this file is the implementation contract, so merge the body by hand before `pnpm flow:sync` to avoid overwriting screenshots and the timeline.
+- The same PR merges the latest main and aligns the local status of the already-closed m12-09 / m12-13 to done, unblocking `flow-online` for every PR.
 
 ## Verification
 
