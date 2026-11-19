@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.acquisition import router as acquisition_router
+from app.api.attribution_skill_packages import router as attribution_skill_packages_router
 from app.api.attribution_skills import router as attribution_skills_router
 from app.api.auth import router as auth_router
 from app.api.catalogs import router as catalogs_router
@@ -32,6 +33,7 @@ from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
 from app.db.base import Database
+from app.db.crud.attribution_skill_packages import AttributionSkillPackageRepository
 from app.db.crud.attribution_skills import AttributionSkillRepository
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
@@ -89,6 +91,7 @@ from app.service.evolution.attribution_jobs import (
     ATTRIBUTION_JOB_KIND,
     AttributionJobService,
 )
+from app.service.evolution.attribution_skill_packages import AttributionSkillPackageService
 from app.service.evolution.attribution_skills import AttributionSkillService
 from app.service.evolution.blocked_sweeper import EvolutionBlockedSweeper
 from app.service.evolution.engine.contracts import EngineDeps
@@ -289,6 +292,11 @@ def create_app(
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
+    )
+    attribution_skill_packages = AttributionSkillPackageService(
+        AttributionSkillPackageRepository(resolved_database),
+        resolved_settings.attribution_package_dir,
+        resolved_settings.attribution_default_skill_path,
     )
     potential_repository = PotentialRepository(resolved_database)
     potential_preview = PotentialPreviewService(
@@ -577,6 +585,7 @@ def create_app(
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
     app.state.attribution_skills = attribution_skills
+    app.state.attribution_skill_packages = attribution_skill_packages
     app.state.attribution_jobs = attribution_jobs
     app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
@@ -631,6 +640,7 @@ def create_app(
     app.include_router(preview_router)
     app.include_router(evolution_targets_router)
     app.include_router(attribution_skills_router)
+    app.include_router(attribution_skill_packages_router)
     app.include_router(workspace_evolution_router)
     app.include_router(catalogs_router)
     app.include_router(workspace_catalogs_router)

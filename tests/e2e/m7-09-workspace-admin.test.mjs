@@ -155,7 +155,7 @@ async function openAdmin(page, workspaceId, tab = "spaces") {
       const page = document.querySelector("[data-testid='workspace-admin-page']");
       if (!page) return null;
       const tabs = document.querySelectorAll(".admin-nav button").length;
-      if (tabs !== 4) return null;
+      if (tabs !== 5) return null;
       return {
         path: location.pathname,
         tabs,
@@ -530,6 +530,25 @@ test("m7-09 workspace-admin hides writes from viewers and the API still enforces
     assert.match(ingest.text, /只有空间管理员及以上/);
     await screenshot(page, "06-viewer-readonly.png");
 
+    await clickTestId(page, "admin-tab-attribution-skills");
+    const skills = await waitForDocument(
+      page.session,
+      `(() => {
+        const tab = document.querySelector("[data-testid='attribution-skills-tab']");
+        const prompt = tab?.querySelector("[data-testid='effective-skill-prompt'] pre");
+        if (!prompt) return null;
+        const download = tab.querySelector("[data-testid='download-skill-default-attribute-badcases']");
+        return {
+          prompt: prompt.textContent,
+          canDownload: Boolean(download),
+          canUpload: Boolean(tab.querySelector("[data-testid='upload-attribution-skill']")),
+        };
+      })()`,
+      "viewer attribution Skill package and default prompt",
+    );
+    assert.match(skills.prompt, /name: attribute-badcases/);
+    assert.equal(skills.canDownload, true);
+    assert.equal(skills.canUpload, false);
     assert.deepEqual(violations, []);
   } finally {
     await page.close();

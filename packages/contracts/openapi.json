@@ -1339,6 +1339,98 @@
         "title": "AttributionSkillList",
         "type": "object"
       },
+      "AttributionSkillPackage": {
+        "additionalProperties": false,
+        "description": "Package metadata rendered by workspace administration.",
+        "properties": {
+          "archiveName": {
+            "title": "Archivename",
+            "type": "string"
+          },
+          "builtIn": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "fileCount": {
+            "minimum": 1.0,
+            "title": "Filecount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isActive": {
+            "title": "Isactive",
+            "type": "boolean"
+          },
+          "sizeBytes": {
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "skillName": {
+            "title": "Skillname",
+            "type": "string"
+          },
+          "uploadedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploadedat"
+          },
+          "uploaderName": {
+            "title": "Uploadername",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "skillName",
+          "uploaderName",
+          "archiveName",
+          "fileCount",
+          "sizeBytes",
+          "contentHash",
+          "isActive",
+          "builtIn",
+          "uploadedAt"
+        ],
+        "title": "AttributionSkillPackage",
+        "type": "object"
+      },
+      "AttributionSkillPackageList": {
+        "additionalProperties": false,
+        "description": "All workspace packages and the currently effective prompt.",
+        "properties": {
+          "effective": {
+            "$ref": "#/components/schemas/EffectiveAttributionSkillPackage"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttributionSkillPackage"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "effective"
+        ],
+        "title": "AttributionSkillPackageList",
+        "type": "object"
+      },
       "AttributionSkillRevisionWrite": {
         "additionalProperties": false,
         "description": "Content and compatibility metadata for one immutable revision.",
@@ -2206,6 +2298,21 @@
         "title": "BadCaseTraceStatus",
         "type": "string"
       },
+      "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Attribution Skill folder ZIP",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post",
+        "type": "object"
+      },
       "CatalogModel": {
         "additionalProperties": false,
         "description": "One normalized model and its usage across the trace corpus.",
@@ -2529,6 +2636,81 @@
         "title": "EffectiveAttributionSkill",
         "type": "object"
       },
+      "EffectiveAttributionSkillPackage": {
+        "additionalProperties": false,
+        "description": "The effective package plus its exact SKILL.md prompt.",
+        "properties": {
+          "archiveName": {
+            "title": "Archivename",
+            "type": "string"
+          },
+          "builtIn": {
+            "title": "Builtin",
+            "type": "boolean"
+          },
+          "contentHash": {
+            "title": "Contenthash",
+            "type": "string"
+          },
+          "fileCount": {
+            "minimum": 1.0,
+            "title": "Filecount",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isActive": {
+            "title": "Isactive",
+            "type": "boolean"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "minimum": 0.0,
+            "title": "Sizebytes",
+            "type": "integer"
+          },
+          "skillName": {
+            "title": "Skillname",
+            "type": "string"
+          },
+          "uploadedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploadedat"
+          },
+          "uploaderName": {
+            "title": "Uploadername",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "skillName",
+          "uploaderName",
+          "archiveName",
+          "fileCount",
+          "sizeBytes",
+          "contentHash",
+          "isActive",
+          "builtIn",
+          "uploadedAt",
+          "prompt"
+        ],
+        "title": "EffectiveAttributionSkillPackage",
+        "type": "object"
+      },
       "ErrorBody": {
         "additionalProperties": false,
         "description": "Error payload shared by browser and API clients.",
@@ -2578,6 +2760,10 @@
           "ATTRIBUTION_SKILL_NOT_FOUND",
           "ATTRIBUTION_SKILL_EXISTS",
           "ATTRIBUTION_SKILL_INVALID",
+          "ATTRIBUTION_SKILL_PACKAGE_NOT_FOUND",
+          "ATTRIBUTION_SKILL_PACKAGE_EXISTS",
+          "ATTRIBUTION_SKILL_PACKAGE_INVALID",
+          "ATTRIBUTION_SKILL_PACKAGE_TOO_LARGE",
           "ATTRIBUTION_QUALITY_GATE_FAILED",
           "ATTRIBUTION_ENGINE_UNAVAILABLE",
           "PROBE_NOT_FOUND",
@@ -13783,6 +13969,541 @@
         "summary": "Update Workspace",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages": {
+      "get": {
+        "description": "List the built-in package, custom uploads, and effective prompt.",
+        "operationId": "list_attribution_skill_packages_api_workspaces__wid__attribution_skill_packages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionSkillPackageList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Attribution Skill Packages",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      },
+      "post": {
+        "description": "Validate and store one custom Skill folder ZIP without activating it.",
+        "operationId": "upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttributionSkillPackage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Upload Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}": {
+      "delete": {
+        "description": "Delete one custom package and fall back to default when it was active.",
+        "operationId": "delete_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Delete Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/activate": {
+      "post": {
+        "description": "Make one package effective for this workspace's package configuration.",
+        "operationId": "activate_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAttributionSkillPackage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Activate Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
+        ]
+      }
+    },
+    "/api/workspaces/{wid}/attribution-skill-packages/{packageId}/download": {
+      "get": {
+        "description": "Download a regenerated ZIP without exposing server filesystem paths.",
+        "operationId": "download_attribution_skill_package_api_workspaces__wid__attribution_skill_packages__packageId__download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "maxLength": 36,
+              "minLength": 1,
+              "title": "Wid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Packageid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Attribution Skill folder ZIP"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Authentication is required"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Workspace role is insufficient"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Package or workspace is missing"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Skill name already exists"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP package exceeds a safety limit"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "ZIP or SKILL.md is invalid"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Download Attribution Skill Package",
+        "tags": [
+          "attribution-skill-packages"
         ]
       }
     },

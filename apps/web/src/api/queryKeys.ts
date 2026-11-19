@@ -27,6 +27,8 @@ export const queryKeys = {
     ["ws", workspaceId, "admin", "member-candidates", query] as const,
   adminCredentials: (workspaceId: string) =>
     ["ws", workspaceId, "admin", "credentials"] as const,
+  attributionSkillPackages: (workspaceId: string) =>
+    ["ws", workspaceId, "admin", "attribution-skill-packages"] as const,
   users: () => ["users"] as const,
   sessions: (workspaceId: string) => ["ws", workspaceId, "sessions"] as const,
   sessionList: (workspaceId: string, filters: SessionFilters) =>

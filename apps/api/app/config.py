@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
 _COOKIE_TOKEN_CHARS = set(
     "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
 )
@@ -156,6 +158,8 @@ class Settings(BaseSettings):
     docs_enabled: bool = False
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
     data_dir: Path = Path("data")
+    attribution_package_dir: Path = _REPOSITORY_ROOT / "attribute"
+    attribution_default_skill_path: Path = _REPOSITORY_ROOT / "attribute-badcases.md"
     db_dialect: DatabaseDialect = DatabaseDialect.MYSQL
     db_url: str | None = None
     db_pool_size: int = 10

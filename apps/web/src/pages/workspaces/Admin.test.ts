@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type {
+  AttributionSkillPackageList,
   PublicUser,
   SessionWorkspace,
   Workspace,
@@ -100,6 +101,48 @@ const credentials: WorkspaceCredential[] = [
   },
 ];
 
+const skillPackages: AttributionSkillPackageList = {
+  items: [
+    {
+      id: "default-attribute-badcases",
+      skillName: "attribute-badcases",
+      uploaderName: "default",
+      archiveName: "attribute-badcases.zip",
+      fileCount: 1,
+      sizeBytes: 4096,
+      contentHash: "a".repeat(64),
+      isActive: true,
+      builtIn: true,
+      uploadedAt: null,
+    },
+    {
+      id: "skill-custom",
+      skillName: "incident-attribution",
+      uploaderName: "成员甲",
+      archiveName: "incident-attribution.zip",
+      fileCount: 3,
+      sizeBytes: 8192,
+      contentHash: "b".repeat(64),
+      isActive: false,
+      builtIn: false,
+      uploadedAt: "2026-11-18T12:00:00+08:00",
+    },
+  ],
+  effective: {
+    id: "default-attribute-badcases",
+    skillName: "attribute-badcases",
+    uploaderName: "default",
+    archiveName: "attribute-badcases.zip",
+    fileCount: 1,
+    sizeBytes: 4096,
+    contentHash: "a".repeat(64),
+    isActive: true,
+    builtIn: true,
+    uploadedAt: null,
+    prompt: "---\nname: attribute-badcases\n---\n# 默认归因提示词",
+  },
+};
+
 function sessionWorkspace(
   role: WorkspaceRole,
   overrides: Partial<SessionWorkspace> = {},
@@ -133,6 +176,9 @@ function installWorkspaceAdminHandlers(): void {
     ),
     http.get(`${base}/credentials`, () =>
       HttpResponse.json({ items: credentials }),
+    ),
+    http.get(`${base}/attribution-skill-packages`, () =>
+      HttpResponse.json(skillPackages),
     ),
   );
 }
@@ -189,12 +235,12 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("workspace admin page", () => {
-  it("renders all four tabs and the global workspace table for the global administrator", async () => {
+  it("renders all five tabs and the global workspace table for the global administrator", async () => {
     installWorkspaceAdminHandlers();
     const wrapper = await mountPage("global_admin");
 
     expect(wrapper.get("h1").text()).toBe("工作空间管理");
-    expect(wrapper.findAll(".admin-nav button")).toHaveLength(4);
+    expect(wrapper.findAll(".admin-nav button")).toHaveLength(5);
     expect(wrapper.get("[data-testid='admin-tab-spaces']").classes("active")).toBe(
       true,
     );
@@ -359,6 +405,64 @@ describe("workspace admin page", () => {
     );
     expect(wrapper.find("[data-testid='credential-row-cred-1']").exists()).toBe(
       false,
+    );
+  });
+
+  it("renders attribution Skill packages and the effective SKILL.md prompt", async () => {
+    let activatedPackage = "";
+    installWorkspaceAdminHandlers();
+    server.use(
+      http.post(`${base}/attribution-skill-packages/:packageId/activate`, ({ params }) => {
+        activatedPackage = String(params.packageId);
+        return HttpResponse.json({
+          ...skillPackages.items[1],
+          isActive: true,
+          prompt: "---\nname: incident-attribution\n---\n# 自定义提示词",
+        });
+      }),
+    );
+    const wrapper = await mountPage(
+      "space_admin",
+      memberUser,
+      "attribution-skills",
+    );
+
+    expect(wrapper.get("[data-testid='attribution-skills-tab']").text()).toContain(
+      "上传自定义归因 Skill",
+    );
+    expect(
+      wrapper.get("[data-testid='skill-package-default-attribute-badcases']").text(),
+    ).toContain("当前生效");
+    expect(wrapper.get("[data-testid='skill-package-skill-custom']").text()).toContain(
+      "成员甲",
+    );
+    expect(wrapper.get("[data-testid='activate-skill-skill-custom']").text()).toBe(
+      "设为生效",
+    );
+    expect(wrapper.get("[data-testid='effective-skill-prompt']").text()).toContain(
+      "# 默认归因提示词",
+    );
+
+    await wrapper.get("[data-testid='activate-skill-skill-custom']").trigger("click");
+    await flushPromises();
+    expect(activatedPackage).toBe("skill-custom");
+  });
+
+  it("keeps attribution Skill write actions hidden for a viewer", async () => {
+    installWorkspaceAdminHandlers();
+    const wrapper = await mountPage("viewer", memberUser, "attribution-skills");
+
+    expect(wrapper.find("[data-testid='upload-attribution-skill']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='activate-skill-skill-custom']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='delete-skill-skill-custom']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='download-skill-skill-custom']").exists()).toBe(
+      true,
     );
   });
 

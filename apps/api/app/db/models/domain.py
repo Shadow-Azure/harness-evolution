@@ -599,3 +599,54 @@ attribution_skill_bindings = Table(
     UniqueConstraint("workspace_id", "binding_key", name="uq_attribution_skill_binding"),
     Index("ix_attribution_skill_bindings_target", "target_id"),
 )
+
+
+attribution_skill_packages = Table(
+    "attribution_skill_packages",
+    DOMAIN_METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("workspace_id", String(36), nullable=False),
+    Column("skill_name", String(128), nullable=False),
+    Column(
+        "uploader_id",
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("uploader_name", String(255), nullable=False),
+    Column("archive_name", String(255), nullable=False),
+    Column("file_count", Integer, nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("content_hash", CHAR(64), nullable=False),
+    Column("storage_path", String(512), nullable=False),
+    Column("skill_md_path", String(512), nullable=False),
+    Column("prompt_text", Text().with_variant(LONGTEXT, "mysql"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    UniqueConstraint(
+        "workspace_id",
+        "skill_name",
+        name="uq_attribution_skill_packages_workspace_name",
+    ),
+    Index("ix_attribution_skill_packages_workspace", "workspace_id", "created_at"),
+)
+
+
+attribution_skill_package_bindings = Table(
+    "attribution_skill_package_bindings",
+    DOMAIN_METADATA,
+    Column("workspace_id", String(36), primary_key=True),
+    Column(
+        "package_id",
+        String(36),
+        ForeignKey("attribution_skill_packages.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "updated_by",
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Index("ix_attribution_skill_package_bindings_package", "package_id"),
+)

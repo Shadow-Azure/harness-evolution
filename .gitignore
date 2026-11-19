@@ -13,6 +13,7 @@ htmlcov/
 *.egg-info/
 node_modules/
 data/
+attribute/
 coverage/
 dist/
 .vite/
