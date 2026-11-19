@@ -1044,6 +1044,136 @@ async def test_ref_and_digest_merge_with_run_commit(
     }
 
 
+async def test_digest_only_versions_merge_with_default_ref_via_runs(
+    target_overview_api: TargetOverviewApi,
+) -> None:
+    """A default ref and a digest-only event merge when a run records both."""
+    database = target_overview_api.database
+    target_id = "target-m11-03-digest-only"
+    target_name = "digest-only-skill"
+    main_digest = "digest:" + "8e54" * 16
+    old_digest = "digest:" + "580c" * 16
+    commit = "10e97a33f68559e7f6b5d612e8b6a03b15e83465"
+    await seed_target(
+        database,
+        workspace_id=target_overview_api.workspace_a,
+        target_id=target_id,
+        object_name=target_name,
+        default_ref="main",
+    )
+
+    for index in range(4):
+        session_id = f"m11-03-digest-only-{index + 1}"
+        agent_id = await seed_session(
+            database,
+            session_id=session_id,
+            started_at=_at(8, 0),
+            title=f"digest only {index + 1}",
+        )
+        await seed_event(
+            database,
+            agent_id=agent_id,
+            event_index=0,
+            kind="skill",
+            name=target_name,
+            object_revision=main_digest if index < 2 else old_digest,
+            triggered_at=_at(8, 0),
+        )
+        await seed_event(
+            database,
+            agent_id=agent_id,
+            event_index=1,
+            kind="skill",
+            name="claude-code",
+            triggered_at=_at(8, 5),
+        )
+        await seed_case(
+            database,
+            case_id=f"m11-03-digest-only-case-{index + 1}",
+            session_id=session_id,
+            workspace_id=target_overview_api.workspace_a,
+            object_name="claude-code",
+            created_at=_at(8, 10),
+        )
+
+    async with database.transaction() as session:
+        for run_id, ref, digest in (
+            ("run-m11-03-digest-main", "main", main_digest),
+            ("run-m11-03-digest-old", "v6.4.1", old_digest),
+        ):
+            await session.execute(
+                insert(evolution_runs).values(
+                    id=run_id,
+                    workspace_id=target_overview_api.workspace_a,
+                    title=f"digest only {ref}",
+                    mode="full",
+                    engine_key="legacy-probe-import",
+                    eval_config={},
+                    target_type="skill",
+                    target_name=target_name,
+                    target_version=ref,
+                    target_revision=digest,
+                    repo_url=f"https://example.invalid/{target_name}.git",
+                    sub_dir=f"skills/{target_name}",
+                    base_commit=commit,
+                    created_at=_at(9, 0),
+                ),
+            )
+
+    url = f"/api/workspaces/{target_overview_api.workspace_a}/overview/targets/{target_id}/detail"
+    response = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params=WINDOW,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target"]["versions"] == [old_digest, main_digest]
+    assert body["target"]["versionOptions"] == [
+        {"version": old_digest, "ref": "v6.4.1", "commit": "10e97a3"},
+        {"version": main_digest, "ref": "main", "commit": "10e97a3"},
+    ]
+    assert body["stats"] == {
+        "sessions": 4,
+        "potential": 4,
+        "distinctCases": 4,
+        "versions": 2,
+    }
+    assert body["byVersion"] == [
+        {
+            "version": old_digest,
+            "ref": "v6.4.1",
+            "commit": "10e97a3",
+            "potential": 2,
+            "attributed": 0,
+            "nonTarget": 0,
+            "unanalyzed": 2,
+        },
+        {
+            "version": main_digest,
+            "ref": "main",
+            "commit": "10e97a3",
+            "potential": 2,
+            "attributed": 0,
+            "nonTarget": 0,
+            "unanalyzed": 2,
+        },
+    ]
+    assert body["bySource"] == [
+        {"source": "claude-code", "total": 4, "distinctCases": 4},
+    ]
+
+    selected = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params={**WINDOW, "versions": "main"},
+    )
+    selected_body = selected.json()
+    assert selected_body["stats"]["versions"] == 1
+    assert selected_body["stats"]["potential"] == 2
+    assert [row["version"] for row in selected_body["byVersion"]] == [main_digest]
+
+
 async def test_knowledge_target_uses_revision_coordinates(
     target_overview_api: TargetOverviewApi,
 ) -> None:

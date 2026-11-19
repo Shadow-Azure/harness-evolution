@@ -187,6 +187,41 @@ def test_ref_and_digest_merge_into_one_version_with_run_commit() -> None:
     assert labels["digest:" + "ab" * 32].ref is None
 
 
+def test_digest_only_default_ref_merges_through_run_evidence() -> None:
+    """A digest-only event joins the default ref when a run maps the two."""
+    from app.db.crud.overview_targets import TargetRunVersionRecord
+
+    main_digest = "digest:" + "8e54" * 16
+    old_digest = "digest:" + "580c" * 16
+    versions, labels = _build_version_labels(
+        "main",
+        (
+            ObjectVersionRecord(object_version=None, object_revision=main_digest),
+            ObjectVersionRecord(object_version=None, object_revision=old_digest),
+        ),
+        (
+            TargetRunVersionRecord(
+                target_version="main",
+                target_revision=main_digest,
+                base_commit="10e97a33f68559e7f6b5d612e8b6a03b15e83465",
+                created_at=NOW,
+            ),
+            TargetRunVersionRecord(
+                target_version="v6.4.1",
+                target_revision=old_digest,
+                base_commit="10e97a33f68559e7f6b5d612e8b6a03b15e83465",
+                created_at=NOW,
+            ),
+        ),
+    )
+    assert versions == (old_digest, main_digest)
+    assert "main" not in versions
+    assert labels[main_digest].ref == "main"
+    assert labels[main_digest].commit == "10e97a3"
+    assert "main" in labels[main_digest].aliases
+    assert labels[old_digest].ref == "v6.4.1"
+
+
 def test_newest_link_state_and_category_projection() -> None:
     """The newest matching link owns the state and only attributed rows get a category."""
     links = (

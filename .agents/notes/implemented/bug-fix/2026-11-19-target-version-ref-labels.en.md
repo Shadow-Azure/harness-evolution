@@ -14,7 +14,7 @@ The matching and attribution identity is the content body hash, not the ref, and
 
 Target-card versions aggregate by **trigger record**: a ref and a digest in one record are two identities of one version. The digest remains the canonical key for filtering, matching, coverage counts, and statistics; the ref is only the primary display label. Identical digests across records merge; the ref is taken from the latest run's `target_version`, otherwise the target's `defaultRef`, otherwise a deterministic ref in natural order.
 
-Commits come only from `evolution_runs.base_commit`, associated by `target_revision` first and `target_version` second, shortened to seven characters. Digest-only historical records are not backfilled from git and keep the digest fallback; legacy ref-only records keep the ref version.
+Commits come only from `evolution_runs.base_commit`, associated by `target_revision` first and `target_version` second, shortened to seven characters. When the default ref and a digest are linked only by a run (the events carry only the digest), the run's ref↔digest relation also merges them so no zero-row default ref remains. Digest-only records without run evidence are not backfilled from git and keep the digest fallback; legacy ref-only records keep the ref version.
 
 Beyond `versions`, the API adds `versionOptions: [{version, ref, commit}]`, and detail rows also carry nullable `ref` / `commit`. The frontend renders the ref plus a faint short commit from `versionOptions`; checkbox values, URL state, and filter parameters keep using the canonical key. Old URLs that select a version by ref map back through aliases.
 

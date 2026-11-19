@@ -59,7 +59,7 @@ github:
 
 **run 证据**
 
-- 对象总览仓库新增按 workspace + 对象读取 `evolution_runs` 的只读查询；用 `target_revision`（优先）或 `target_version` 关联 `base_commit`，取短 commit；查询有界，不写库。
+- 对象总览仓库新增按 workspace + 对象读取 `evolution_runs` 的只读查询；用 `target_revision`（优先）或 `target_version` 关联 `base_commit`，取短 commit；默认 ref 与 digest 只有 run 关联时也按 run 的 ref↔digest 证据合并；查询有界，不写库。
 
 **契约与前端**
 

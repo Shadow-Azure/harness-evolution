@@ -14,7 +14,7 @@ Status: implemented
 
 对象卡版本以**触发记录**为聚合单位：同一记录里的 ref 与 digest 是同一版本的两个身份，digest 继续作为筛选、匹配、覆盖版本数与统计的规范键，ref 只作为展示主标签。同一 digest 出现在多条记录时合并；ref 优先取最近一次 run 的 `target_version`，否则取 target 的 `defaultRef`，再否则按自然序取一个确定的 ref。
 
-commit 只来自 `evolution_runs.base_commit`：按 `target_revision` 优先、`target_version` 兜底关联，取前 7 位。只有 digest 证据的历史记录不反查 git ref，保留 digest 兜底；只有 ref 的旧记录保持 ref 版本。
+commit 只来自 `evolution_runs.base_commit`：按 `target_revision` 优先、`target_version` 兜底关联，取前 7 位。默认 ref 与 digest 只有 run 关联（事件只带 digest）时，也按 run 的 ref↔digest 关系合并，避免留下 0 行的默认 ref。只有 digest 证据且没有 run 关联的历史记录不反查 git ref，保留 digest 兜底；只有 ref 的旧记录保持 ref 版本。
 
 API 在 `versions` 之外新增 `versionOptions: [{version, ref, commit}]`，详情行也带可空 `ref` / `commit`；前端用 `versionOptions` 渲染 ref + 浅色短 commit，复选框值、URL 与筛选参数仍用规范键。旧 URL 里用 ref 选版本的请求会按别名映射回规范键。
 

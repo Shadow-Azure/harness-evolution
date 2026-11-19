@@ -59,7 +59,7 @@ The root cause is version discovery in the target overview: `agent_events.object
 
 **Run evidence**
 
-- The overview repository adds a bounded read-only query for `evolution_runs` by workspace and object; it associates `base_commit` through `target_revision` (preferred) or `target_version` and keeps the short commit. It never writes.
+- The overview repository adds a bounded read-only query for `evolution_runs` by workspace and object; it associates `base_commit` through `target_revision` (preferred) or `target_version` and keeps the short commit. When only a run links the default ref and a digest, that run's ref↔digest evidence also merges them. It never writes.
 
 **Contracts and frontend**
 - `TargetOverviewItem` / `TargetDetailTarget` gain `versionOptions: [{version, ref, commit}]`; `TargetDetailVersion` gains nullable `ref` / `commit`; `versions` remains the canonical filter key.

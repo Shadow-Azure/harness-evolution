@@ -156,6 +156,7 @@ class TargetVersionLabel:
     """
 
     version: str
+    digest: str | None
     ref: str | None
     commit: str | None
     aliases: frozenset[str]
@@ -401,6 +402,78 @@ def _version_accumulators(
     return groups
 
 
+def _merge_version_groups(
+    groups: dict[str, _VersionAccumulator],
+    runs: Sequence[TargetRunVersionRecord],
+) -> dict[str, _VersionAccumulator]:
+    """Merge a ref-only group into its digest group using newest run evidence.
+
+    A run stores both the selected ref and the revision it resolved to. When the
+    trigger events only carry the digest, that run is the evidence that the
+    configured ref and the digest are one version; without it the card would
+    keep a separate ``main`` row at zero next to ``main`` from the digest.
+    """
+    latest_by_ref: dict[str, str] = {}
+    for run in runs:
+        ref = _known_version(run.target_version)
+        digest = _known_version(run.target_revision)
+        if (
+            ref is None
+            or ref.startswith(("digest:", "provider:"))
+            or digest is None
+            or not digest.startswith("digest:")
+        ):
+            continue
+        latest_by_ref.setdefault(ref, digest)
+    if not latest_by_ref:
+        return groups
+
+    merged = True
+    while merged:
+        merged = False
+        for ref, digest in latest_by_ref.items():
+            digest_key = next(
+                (key for key, group in groups.items() if group.digest == digest),
+                None,
+            )
+            if digest_key is None:
+                continue
+            ref_keys = [
+                key
+                for key, group in groups.items()
+                if key != digest_key
+                and (key == ref or ref in group.refs)
+                and (group.digest is None or group.digest == digest)
+            ]
+            if not ref_keys:
+                continue
+            base = groups[digest_key]
+            for key in ref_keys:
+                other = groups.pop(key)
+                base.aliases.update(other.aliases)
+                base.aliases.add(key)
+                for other_ref in other.refs:
+                    if other_ref not in base.refs:
+                        base.refs.append(other_ref)
+                if base.digest is None:
+                    base.digest = other.digest
+            merged = True
+
+    result: dict[str, _VersionAccumulator] = {}
+    for key, group in groups.items():
+        final_key = group.digest or key
+        existing = result.get(final_key)
+        if existing is None:
+            result[final_key] = group
+            continue
+        existing.aliases.update(group.aliases)
+        existing.aliases.add(key)
+        for ref in group.refs:
+            if ref not in existing.refs:
+                existing.refs.append(ref)
+    return result
+
+
 def _short_commit(value: str | None) -> str | None:
     """Return the seven-character commit prefix the prototype renders."""
     if value is None:
@@ -446,7 +519,7 @@ def _build_version_labels(
     ``target_version``. No git lookup happens for digest-only history: it keeps
     the digest instead of guessing a moving ref.
     """
-    groups = _version_accumulators(default_ref, observed)
+    groups = _merge_version_groups(_version_accumulators(default_ref, observed), runs)
     by_revision: dict[str, TargetRunVersionRecord] = {}
     by_ref: dict[str, TargetRunVersionRecord] = {}
     for run in runs:
@@ -473,6 +546,7 @@ def _build_version_labels(
             )
         labels[key] = TargetVersionLabel(
             version=key,
+            digest=group.digest,
             ref=ref,
             commit=_short_commit(latest_run.base_commit) if latest_run is not None else None,
             aliases=frozenset(group.aliases),
@@ -816,7 +890,7 @@ class TargetOverviewService:
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
         resolved = await asyncio.gather(
-            *(self._resolve_version(target, version) for version in versions),
+            *(self._resolve_label(target, labels[version]) for version in versions),
         )
         entries: list[TargetCaseEntry] = []
         unresolved_versions: set[str] = set()
@@ -873,6 +947,23 @@ class TargetOverviewService:
             unresolved_versions=frozenset(unresolved_versions),
             version_labels=labels,
         )
+
+    async def _resolve_label(
+        self,
+        target: EvolutionTargetRecord,
+        label: TargetVersionLabel,
+    ) -> ResolvedTargetVersion | None:
+        """Resolve one label, trusting a merged run's ref/revision pair.
+
+        A merged group already has the exact ref and digest the run recorded;
+        re-reading the ref would let a moved branch relabel a historical digest.
+        """
+        if label.digest is not None and label.ref is not None:
+            return ResolvedTargetVersion(
+                target_version=label.ref,
+                target_revision=label.digest,
+            )
+        return await self._resolve_version(target, label.version)
 
     async def _resolve_version(
         self,
