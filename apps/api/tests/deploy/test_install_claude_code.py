@@ -63,6 +63,9 @@ def test_validate_base_url() -> None:
         install_claude_code.validate_base_url("https://user:pass@api.example.com")
     with pytest.raises(ValueError, match="whitespace"):
         install_claude_code.validate_base_url("https://api.example.com/a b")
+    with pytest.raises(ValueError, match="https"):
+        install_claude_code.validate_base_url("http://api.example.com")
+    assert install_claude_code.validate_base_url("http://127.0.0.1:8080") == "http://127.0.0.1:8080"
 
 
 def test_build_settings_official_endpoint_has_no_gateway_env(tmp_path: Path) -> None:
@@ -129,10 +132,13 @@ def test_configure_keeps_key_out_of_settings(tmp_path: Path) -> None:
 
     key_path = home / ".claude" / "api-key"
     helper_path = home / ".claude" / "api-key.sh"
+    onboarding_path = home / ".claude.json"
     assert key_path.read_text(encoding="utf-8") == "sk-secret-value"
     assert stat.S_IMODE(key_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(settings_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(helper_path.stat().st_mode) == 0o700
+    assert stat.S_IMODE(onboarding_path.stat().st_mode) == 0o600
+    assert json.loads(onboarding_path.read_text(encoding="utf-8"))["hasCompletedOnboarding"] is True
     assert str(key_path) in helper_path.read_text(encoding="utf-8")
 
 
@@ -157,6 +163,7 @@ def test_clean_versions_keeps_newest_and_ignores_incoming(tmp_path: Path) -> Non
     assert (prefix / "2.1.3-1").exists()
     assert (prefix / "incoming").exists()
 
+
 def test_clean_versions_keeps_protected_older_version(tmp_path: Path) -> None:
     prefix = tmp_path / "claude-code"
     prefix.mkdir()
@@ -168,3 +175,34 @@ def test_clean_versions_keeps_protected_older_version(tmp_path: Path) -> None:
     assert (prefix / "2.1.1-1").exists()
     assert (prefix / "2.1.3-1").exists()
     assert not (prefix / "2.1.2-1").exists()
+
+
+def test_configure_requires_base_url_for_minimax(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+
+    with pytest.raises(ValueError, match="MiniMax models require"):
+        install_claude_code.configure(
+            {
+                "CLAUDE_CODE_MODEL": "MiniMax-M3.1-Flash[1m]",
+                "CLAUDE_CODE_API_KEY": "sk-test",
+            },
+            home,
+        )
+
+
+def test_configure_preserves_existing_claude_json(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".claude.json").write_text('{"existing": 1}\n', encoding="utf-8")
+
+    install_claude_code.configure(
+        {
+            "CLAUDE_CODE_MODEL": "claude-sonnet-5",
+            "CLAUDE_CODE_API_KEY": "sk-test",
+        },
+        home,
+    )
+
+    data = json.loads((home / ".claude.json").read_text(encoding="utf-8"))
+    assert data == {"existing": 1, "hasCompletedOnboarding": True}

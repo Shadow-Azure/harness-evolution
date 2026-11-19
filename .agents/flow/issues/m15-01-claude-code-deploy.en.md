@@ -48,7 +48,7 @@ Production `Deploy` runs over SSH as the `deploy` user. Its passwordless sudo is
 ## Implementation
 
 - `deploy/fetch-claude-code-deb.sh` (runner side): read the server's `dpkg --print-architecture`, resolve the official apt `Packages` index, download the matching version, verify SHA256, and cache it; `--resolve-only` returns just the version.
-- `deploy/install-claude-code.py` (server side): read base64 variables from stdin; extract the deb to `/opt/harness/shared/claude-code/<version>`, self-check it, then atomically switch `~/.local/bin/claude`; atomically write `~/.claude/settings.json`, `~/.claude/api-key`, and `~/.claude/api-key.sh`; validate JSON, permissions, and `claude --version`.
+- `deploy/install-claude-code.py` (server side): read base64 variables from stdin; extract the deb to `/opt/harness/shared/claude-code/<version>`, self-check it, then atomically switch `~/.local/bin/claude`; atomically write `~/.claude/settings.json`, `~/.claude/api-key`, and `~/.claude/api-key.sh`, and merge `hasCompletedOnboarding: true` into `~/.claude.json`; validate JSON, permissions, and `claude --version`.
 - `.github/workflows/deploy.yml`: add prepare and install steps after "上传 release 与配置" and before release; cache the deb, probe the server version, transfer only when the version changes; skip when all secrets are absent and fail on a partial configuration.
 - `docs/deployment.*` and `plans/deploy-aliyun-playbook.md`: document the secret list and the install, configure, verify, and rollback steps; add an Agent Note for the "runner download + user-level extraction + apiKeyHelper" trade-off.
 - `apps/api/tests/deploy/test_install_claude_code.py`: cover decoding, version normalization, settings construction, permissions, and base URL validation.
@@ -87,7 +87,7 @@ pnpm test:gates
 ## Acceptance
 
 - With the three secrets configured, one normal `Deploy` yields an executable Claude Code and the MiniMax model configuration.
-- `~/.claude/settings.json` and `~/.claude/api-key` are mode 600, and the key is absent from settings, logs, and the repository.
+- `~/.claude/settings.json`, `~/.claude/api-key`, and `~/.claude.json` are mode 600, and the key is absent from settings, logs, and the repository.
 - All secrets absent leaves the deploy unchanged; a partial configuration fails explicitly; an install failure does not switch `current`.
 - The server needs neither root nor Node.js; `harness-api` and the existing release flow are unaffected.
 - Docs and the playbook include the secret list, verification commands, and rollback steps.

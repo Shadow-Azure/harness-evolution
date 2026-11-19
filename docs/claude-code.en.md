@@ -10,13 +10,13 @@ Before switching `current`, the production deploy pipeline installs Claude Code 
 |---|---|---|
 | `CLAUDE_CODE_MODEL` | yes | Model ID, e.g. `MiniMax-M3.1-Flash[1m]` |
 | `CLAUDE_CODE_API_KEY` | yes | Model API key |
-| `CLAUDE_CODE_BASE_URL` | no | Anthropic-compatible endpoint; MiniMax China uses `https://api.minimax.cn/anthropic` |
+| `CLAUDE_CODE_BASE_URL` | no (required for MiniMax) | Anthropic-compatible endpoint, must be `https://` (loopback may use `http://`); MiniMax China uses `https://api.minimax.cn/anthropic` |
 
 `CLAUDE_CODE_VERSION` is a Variable, not a Secret; empty selects the latest stable.
 
 ## Configuration
 
-The package is extracted to `/opt/harness/shared/claude-code/<version>`, and `~/.local/bin/claude` atomically points at the current version; the current and previous versions are kept. `~/.claude/settings.json` (0600) holds `model`, an optional `ANTHROPIC_BASE_URL`, and `apiKeyHelper`; the real key lives in `~/.claude/api-key` (0600), read by the 0700 helper, and never enters settings. MiniMax receives the documented 1M auto-compact window, `effort=max`, and Sonnet/Opus/Haiku aliases pinned to the model.
+The package is extracted to `/opt/harness/shared/claude-code/<version>`, and `~/.local/bin/claude` atomically points at the current version; the current and previous versions are kept. `~/.claude/settings.json` (0600) holds `model`, an optional `ANTHROPIC_BASE_URL`, and `apiKeyHelper`; the real key lives in `~/.claude/api-key` (0600), read by the 0700 helper, and never enters settings. `~/.claude.json` (0600) merges `hasCompletedOnboarding: true` while preserving existing keys. MiniMax receives the documented 512K auto-compact window (`524288`), `effort=max`, and Sonnet/Opus/Haiku aliases pinned to the model.
 
 If all three secrets are absent the step warns and skips; a partial configuration fails; install/configure failures abort before the `current` switch and the old release keeps serving. Rerunning the same version only rewrites configuration; it does not download or extract again.
 

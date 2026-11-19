@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-安装包在 GitHub Actions runner 侧从官方 apt 仓库解析、下载并按 `Packages` 的 SHA256 校验，服务器只用 `deploy` 用户把 deb 解包到 `/opt/harness/shared/claude-code/<version>`，原子切换 `~/.local/bin/claude`。模型配置写到 `~/.claude`：`settings.json`（600）保存 `model`、可选的 `ANTHROPIC_BASE_URL` 和 `apiKeyHelper`；真实 key 放 `api-key`（600），由 `api-key.sh`（700）读取，不进入 settings。MiniMax 国内版端点 `https://api.minimax.cn/anthropic`、模型 `MiniMax-M3.1-Flash[1m]`，同时按官方文档写 1M 自动压缩窗口、`effort=max` 和 Sonnet/Opus/Haiku 别名。三个 Secret 全缺时步骤跳过；只配一部分时失败；安装/配置失败在切换 `current` 前中止。
+安装包在 GitHub Actions runner 侧从官方 apt 仓库解析、下载并按 `Packages` 的 SHA256 校验，服务器只用 `deploy` 用户把 deb 解包到 `/opt/harness/shared/claude-code/<version>`，原子切换 `~/.local/bin/claude`。模型配置写到 `~/.claude`：`settings.json`（600）保存 `model`、可选的 `ANTHROPIC_BASE_URL` 和 `apiKeyHelper`；真实 key 放 `api-key`（600），由 `api-key.sh`（700）读取，不进入 settings。MiniMax 国内版端点 `https://api.minimax.cn/anthropic`、模型 `MiniMax-M3.1-Flash[1m]`，同时按官方文档写 512K 自动压缩窗口（`524288`）、`effort=max` 和 Sonnet/Opus/Haiku 别名；`~/.claude.json` 合并 `hasCompletedOnboarding: true`。三个 Secret 全缺时步骤跳过；只配一部分时失败；安装/配置失败在切换 `current` 前中止。
 
 ## Alternatives considered
 

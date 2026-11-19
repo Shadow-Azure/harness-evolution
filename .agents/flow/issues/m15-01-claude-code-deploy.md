@@ -48,7 +48,7 @@ github:
 ## 实现内容
 
 - `deploy/fetch-claude-code-deb.sh`（runner 侧）：按服务器 `dpkg --print-architecture` 解析官方 apt `Packages`，下载对应版本、校验 SHA256、按版本缓存；支持 `--resolve-only` 只返回版本。
-- `deploy/install-claude-code.py`（服务器侧）：从 stdin 读取 base64 变量；把 deb 解包到 `/opt/harness/shared/claude-code/<version>`，先自检再原子切换 `~/.local/bin/claude`；原子写 `~/.claude/settings.json`、`~/.claude/api-key`、`~/.claude/api-key.sh`；校验 JSON、权限和 `claude --version`。
+- `deploy/install-claude-code.py`（服务器侧）：从 stdin 读取 base64 变量；把 deb 解包到 `/opt/harness/shared/claude-code/<version>`，先自检再原子切换 `~/.local/bin/claude`；原子写 `~/.claude/settings.json`、`~/.claude/api-key`、`~/.claude/api-key.sh`，并把 `hasCompletedOnboarding: true` 合并进 `~/.claude.json`；校验 JSON、权限和 `claude --version`。
 - `.github/workflows/deploy.yml`：在“上传 release 与配置”之后、发布之前新增准备与安装两步；缓存 deb，探测服务器版本，仅版本变化时传输；Secret 全缺跳过、部分缺失失败。
 - `docs/deployment.*` 与 `plans/deploy-aliyun-playbook.md`：补 Secret 清单、安装/配置/验证/回滚步骤；新增 Agent Note 记录“runner 下载 + 用户级解包 + apiKeyHelper”的取舍。
 - `apps/api/tests/deploy/test_install_claude_code.py`：覆盖解码、版本规范化、settings 构造、权限与 base URL 校验等纯函数。
@@ -87,7 +87,7 @@ pnpm test:gates
 ## 验收标准
 
 - 配好三个 Secret 后一次正常 `Deploy` 得到可执行的 Claude Code 和 MiniMax 模型配置。
-- `~/.claude/settings.json` 与 `~/.claude/api-key` 权限为 600，`api-key` 不出现在 settings、日志或仓库。
+- `~/.claude/settings.json`、`~/.claude/api-key` 与 `~/.claude.json` 权限为 600，`api-key` 不出现在 settings、日志或仓库。
 - Secret 全缺时部署与现状一致；部分缺失显式失败；安装失败不切换 `current`。
 - 服务器不需要 root 或 Node.js；`harness-api` 与现有发布流程不受影响。
 - 文档与操作手册包含 Secret 清单、验证命令和回滚步骤。

@@ -22,15 +22,15 @@
 
 - [x] Decode `KEY <base64>` stdin and reject malformed values.
 - [x] Extract the deb into a versioned prefix, self-check the binary, and atomically switch the launcher.
-- [x] Write `settings.json`, `api-key`, and `api-key.sh` with 0600/0700 permissions; keep the key out of settings.
-- [x] Apply MiniMax's documented aliases, 1M window, and effort level.
+- [x] Write `settings.json`, `api-key`, `api-key.sh`, and `~/.claude.json` onboarding with 0600/0700 permissions; keep the key out of settings.
+- [x] Apply MiniMax's documented aliases, 512K auto-compact window, and effort level.
 - [x] Unit-test the pure functions and the permission layout.
 
 ### Task 3: Workflow integration
 
 **Files:** Modify `.github/workflows/deploy.yml`.
 
-- [x] Cache the deb and probe the installed version before transferring.
+- [x] Probe the installed version, then cache/download only the exact target version.
 - [x] Skip when all three secrets are absent; fail on a partial configuration.
 - [x] Run the install/configure step after the release upload and before the release script.
 - [x] Pass values through stdin, never SSH argv or logs.

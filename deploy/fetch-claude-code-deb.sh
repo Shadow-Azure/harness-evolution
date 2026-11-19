@@ -2,8 +2,10 @@
 # Fetch the official Claude Code apt package for the server architecture.
 #
 # Runs on the GitHub Actions runner, not on the production server: the runner
-# resolves the stable channel, downloads the signed-repository package, and
-# verifies the SHA256 from the repository's Packages index before upload.
+# resolves the stable channel, downloads the official apt package over HTTPS,
+# and verifies the SHA256 from the repository's Packages index before upload.
+# GPG Release-signature verification is not performed here; the runner is the
+# trust boundary for the download.
 #
 # Usage: fetch-claude-code-deb.sh <amd64|arm64> [version] [--resolve-only]
 #   CLAUDE_CODE_VERSION may be passed as the second argument; empty selects the

@@ -77,7 +77,8 @@ def validate_base_url(value: str | None) -> str | None:
     """Validate an optional Anthropic-compatible endpoint.
 
     Raises:
-        ValueError: for a non-http(s) URL, embedded credentials, or whitespace.
+        ValueError: for a non-https URL (except loopback), embedded credentials,
+            or whitespace.
     """
     if value is None:
         return None
@@ -88,7 +89,9 @@ def validate_base_url(value: str | None) -> str | None:
         raise ValueError("CLAUDE_CODE_BASE_URL must not contain whitespace or control characters")
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError("CLAUDE_CODE_BASE_URL must be an absolute http(s) URL")
+        raise ValueError("CLAUDE_CODE_BASE_URL must be an absolute https URL")
+    if parsed.scheme == "http" and (parsed.hostname or "") not in ("localhost", "127.0.0.1", "::1"):
+        raise ValueError("CLAUDE_CODE_BASE_URL must use https (http is allowed only for loopback)")
     if parsed.username or parsed.password:
         raise ValueError("CLAUDE_CODE_BASE_URL must not embed credentials")
     return url
@@ -99,8 +102,8 @@ def build_settings(model: str, base_url: str | None, home: Path) -> dict[str, ob
 
     For a custom gateway, the Claude model aliases resolve to the configured
     model so background requests do not fall back to a model the gateway does
-    not serve. MiniMax additionally receives its documented 1M-window and
-    effort defaults.
+    not serve. MiniMax additionally receives its documented 512K
+    auto-compact window and effort defaults.
     """
     settings: dict[str, object] = {
         "model": model,
@@ -230,16 +233,30 @@ def clean_versions(prefix: Path, keep: int, protected: Path | None = None) -> No
 
 
 def configure(entries: dict[str, str], home: Path) -> Path:
-    """Write settings, the API-key file, and the apiKeyHelper script."""
+    """Write settings, the API-key file, the apiKeyHelper, and onboarding state."""
     model = entries.get("CLAUDE_CODE_MODEL", "").strip()
     api_key = entries.get("CLAUDE_CODE_API_KEY", "")
     if not model or not api_key:
         raise ValueError("CLAUDE_CODE_MODEL and CLAUDE_CODE_API_KEY are required")
     base_url = validate_base_url(entries.get("CLAUDE_CODE_BASE_URL"))
+    if model.lower().startswith("minimax-") and not base_url:
+        raise ValueError("MiniMax models require CLAUDE_CODE_BASE_URL")
 
     claude_dir = home / ".claude"
     claude_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(claude_dir, 0o700)
+
+    onboarding_path = home / ".claude.json"
+    onboarding: dict[str, object] = {}
+    if onboarding_path.exists():
+        try:
+            loaded = json.loads(onboarding_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("~/.claude.json is not valid JSON; fix or remove it first") from error
+        if not isinstance(loaded, dict):
+            raise ValueError("~/.claude.json must contain a JSON object")
+        onboarding = loaded
+    onboarding["hasCompletedOnboarding"] = True
 
     settings = build_settings(model, base_url, home)
     write_atomic(claude_dir / "settings.json", json.dumps(settings, indent=2, ensure_ascii=False) + "\n", 0o600)
@@ -251,6 +268,7 @@ def configure(entries: dict[str, str], home: Path) -> Path:
         "#!/bin/sh\n" + f"cat {shlex.quote(str(claude_dir / 'api-key'))}\n",
         0o700,
     )
+    write_atomic(onboarding_path, json.dumps(onboarding, indent=2, ensure_ascii=False) + "\n", 0o600)
     return claude_dir / "settings.json"
 
 
@@ -318,6 +336,17 @@ def main(argv: list[str] | None = None) -> int:
         if check.returncode != 0:
             raise RuntimeError(f"launcher verification failed: {check.stderr.strip()}")
         clean_versions(Path(args.prefix), args.keep, protected=active_binary.parent.parent)
+        after_cleanup = subprocess.run(
+            [str(launcher), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={**os.environ, "HOME": str(home)},
+        )
+        if after_cleanup.returncode != 0:
+            raise RuntimeError(f"launcher verification after cleanup failed: {after_cleanup.stderr.strip()}")
+        if args.deb:
+            Path(args.deb).unlink(missing_ok=True)
         print(f"claude-code: {check.stdout.strip()}")
         print(f"settings: {home / '.claude' / 'settings.json'}")
         return 0
