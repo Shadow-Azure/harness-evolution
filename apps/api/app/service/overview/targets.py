@@ -366,7 +366,7 @@ class TargetOverviewService:
         self._resolve_timeout = resolve_timeout_seconds
         self._failure_ttl = failure_ttl_seconds
         self._resolve_slots = asyncio.Semaphore(OVERVIEW_RESOLVE_CONCURRENCY)
-        self._failed_versions: OrderedDict[tuple[str, str, str], float] = OrderedDict()
+        self._failed_versions: OrderedDict[tuple[str, str, str, str], float] = OrderedDict()
 
     async def list_targets(
         self,
@@ -688,7 +688,7 @@ class TargetOverviewService:
         version: str,
     ) -> ResolvedTargetVersion | None:
         """Resolve one version with a short timeout and a cached failure result."""
-        key = (target.repo_url, target.sub_dir, version)
+        key = (target.object_type, target.repo_url, target.sub_dir, version)
         now = time.monotonic()
         failed_at = self._failed_versions.get(key)
         if failed_at is not None:
@@ -715,7 +715,7 @@ class TargetOverviewService:
             self._remember_failure(key, now)
             return None
 
-    def _remember_failure(self, key: tuple[str, str, str], now: float) -> None:
+    def _remember_failure(self, key: tuple[str, str, str, str], now: float) -> None:
         """Keep one failed resolution for a bounded TTL so retries fail fast."""
         self._failed_versions[key] = now
         self._failed_versions.move_to_end(key)

@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from app.service.acquisition.normalize import normalize_transcript
+from app.service.acquisition.parsers.claude_code import _definition_body
 from app.service.evolution.target_content import TargetContentResolver
 from app.third_party_api.git.content import SubprocessGitContent
 from app.utils.definition import (
@@ -127,6 +128,7 @@ async def test_target_resolver_strips_skill_and_agent_frontmatter(tmp_path: Path
     assert reviewer.target_revision == f"digest:{definition_file_hash(agent)}"
     assert definition_file_hash(agent) != definition_hash(agent)
 
+
 async def test_target_resolver_accepts_lowercase_agent_file(tmp_path: Path) -> None:
     """agent.md is accepted when the repository uses lowercase definition files."""
     agent = "---\nname: reviewer\n---\n\n# Reviewer\n\nCheck evidence.\n"
@@ -163,6 +165,15 @@ def test_parser_skill_injection_reaches_the_same_golden_body_hash() -> None:
 
     assert parsed.events[0].definition_hash == TRACE_BODY_HASH
     assert parsed.events[0].object_revision == f"digest:{TRACE_BODY_HASH}"
+
+
+def test_parser_agent_body_matches_frontmatter_stripped_agent_file() -> None:
+    """The parser's agent prompt body and a frontmatter agent file share one hash."""
+    agent = "---\nname: reviewer\n---\n\n# Reviewer\n\nCheck evidence.\n"
+    body = strip_definition_frontmatter(agent)
+    parsed = _definition_body({"systemPrompt": body}, "prompt_snapshot")
+    assert parsed is not None
+    assert definition_hash(parsed) == definition_file_hash(agent)
 
 
 class _KnowledgeSource:

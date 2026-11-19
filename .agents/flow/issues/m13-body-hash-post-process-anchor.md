@@ -34,7 +34,7 @@ github:
 
 ## 背景
 
-2026-11-18 的生产实测中，目标 `skill / systematic-debugging` 在 `v6.4.1` 下第 2 步关联 0 个 Session：4 个已同步 Session 全部 skipped，18 个待同步。轨迹事件只有 `definitionHash=8e54…` 与 `objectRevision=digest:3643…`；后者包含运行时注入的 skill source path。该 path 是 `.../claude-plugins-official/superpowers/6.4.1/skills/systematic-debugging/SKILL.md` 一类插件 cache 路径，既不是稳定相对路径，也没有落库；target 无法从 `repoUrl/subDir/ref` 复算同一个 revision。owner 已确认 target 应使用 `superpowers` `main`。eval trace 已收到：trace 的 skill body hash 是 `8e54…`；main 的 `SKILL.md` 整文件 hash 是 `a9a7…`，去掉 YAML frontmatter 后 body hash 正好是 `8e54…`；v6.4.1 的整文件 `9080…` 是同一 body 加 frontmatter。根因是 target resolver 对整文件 hash、未剥 frontmatter；修复后 resolver 与 parser 都得到 `digest:8e54…`，source 对齐成立，M13 验收项可关闭。
+2026-11-18 的生产实测中，目标 `skill / systematic-debugging` 在 `v6.4.1` 下第 2 步关联 0 个 Session：4 个已同步 Session 全部 skipped，18 个待同步。轨迹事件只有 `definitionHash=8e54…` 与 `objectRevision=digest:3643…`；后者包含运行时注入的 skill source path。该 path 是 `.../claude-plugins-official/superpowers/6.4.1/skills/systematic-debugging/SKILL.md` 一类插件 cache 路径，既不是稳定相对路径，也没有落库；target 无法从 `repoUrl/subDir/ref` 复算同一个 revision。owner 已确认 target 应使用 `superpowers` `main`。eval trace 已收到：trace 的 skill body hash 是 `8e54…`；main 的 `SKILL.md` 整文件 hash 是 `a9a7…`，去掉 YAML frontmatter 后 body hash 正好是 `8e54…`；v6.4.1 的整文件 `9080…` 去掉 frontmatter 后是 `580c…`，与 trace `8e54…` 不一致；v6.4.1 与 main 的正文有 shell 示例差异，不能靠 frontmatter 补齐。根因是 target resolver 对整文件 hash、未剥 frontmatter；target 版本必须从 v6.4.1 切到 main，修复后 public main 的 resolver 与 parser 都得到 `digest:8e54…`，M13 验收项在 target=main 前提下可关闭。
 
 同时，当前把 `eventIndex=-1` 当作“锚点缺失/异常”，并退化为上报 Agent 的出生点（主 Agent 为 Session 开始）。生产 22 条 case 都是 discovery + agent + main 上报；按现规则永远落在目标对象之前，potential=0。“后处理上报”没有独立语义，无法解释也无法按“对象之后”参与归因。
 
