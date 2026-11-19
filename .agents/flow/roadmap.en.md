@@ -22,6 +22,7 @@ milestones:
   - m15
   - m16
   - m17
+  - m18
 ```
 
 ## Vision
@@ -47,6 +48,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m15 Production Claude Code operations**: the deploy pipeline installs Claude Code and injects model configuration without root or Node.js on the server.
 - **m16 Production data directory and deploy writability**: systemd-owned directory, absolute `HE_DATA_DIR`, deploy write checks.
 - **m17 Target-card version labels**: refs and short commits replace digests; merge aliases.
+- **m18 Production git egress proxy and fallback**: local Xray/VLESS proxy, Secret injection, git-only wiring, and a health circuit breaker.
 
 ## Delivery rules
 

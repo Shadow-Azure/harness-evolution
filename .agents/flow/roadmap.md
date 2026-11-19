@@ -22,6 +22,7 @@ milestones:
   - m15
   - m16
   - m17
+  - m18
 ```
 
 ## 愿景
@@ -47,6 +48,7 @@ Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数�
 - **m15 生产环境 Claude Code 运维**：部署流水线自动安装 Claude Code 并注入模型配置，保持无 root/Node。
 - **m16 生产数据目录与部署可写性**：systemd 目录、绝对 `HE_DATA_DIR`、部署写校验。
 - **m17 对象卡版本显示**：ref 与短 commit 替代 digest，合并别名。
+- **m18 生产 Git 出网代理与失效回退**：Xray/VLESS 本地代理、Secret 注入、git-only 接线与健康熔断。
 
 ## 实施规则
 

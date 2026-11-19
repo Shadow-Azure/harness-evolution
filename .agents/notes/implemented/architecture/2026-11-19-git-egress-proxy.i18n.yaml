@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-19-git-egress-proxy.md
+2026-11-19-git-egress-proxy.md: 81787673ee0f143e2d162b2f01602edc06a8f452
+2026-11-19-git-egress-proxy.en.md: d43adb9bab6750a5a0bf09a409d2f1db3e8abbd5
