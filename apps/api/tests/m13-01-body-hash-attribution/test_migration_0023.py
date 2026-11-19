@@ -71,7 +71,7 @@ async def test_migration_adds_and_removes_both_columns(tmp_path: Path) -> None:
 
         assert "target_revision" not in await _columns(database, "evolution_runs")
         assert "case_anchor_kind" not in await _columns(database, "evolution_run_candidates")
-        assert await _target_version_length(database) == 64
+        assert await _target_version_length(database) == 96
 
         await upgrade_database(database)
 

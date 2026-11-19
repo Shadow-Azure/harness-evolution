@@ -302,6 +302,7 @@ def create_app(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
+        resolver,
     )
     attribution_runner = AttributionRunner(attribution_repository)
     evolution_stages = EvolutionStageService(

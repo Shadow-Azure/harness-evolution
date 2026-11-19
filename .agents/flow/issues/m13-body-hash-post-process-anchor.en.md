@@ -25,7 +25,7 @@ scope:
   - tests/**
   - fixtures/**
 adr:
-  - ../../notes/proposed/architecture/2026-11-18-body-hash-attribution-post-process.md
+  - ../../notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.md
 github:
   number: 368
   url: https://github.com/Shadow-Azure/harness-evolution/issues/368
@@ -54,7 +54,7 @@ The design docs and implementation currently use the path+body identity (`docs/a
 - [07 §2.6 multi-runtime parser factory](../../../plans/fullstack-design/07-backend-implementation.md), [§5.12 potential matching](../../../plans/fullstack-design/07-backend-implementation.md), [§5.13 attribution generation and cache](../../../plans/fullstack-design/07-backend-implementation.md)
 - [08 frontend implementation](../../../plans/fullstack-design/08-frontend-implementation.md)
 - [Architecture: evidence and revision](../../../docs/architecture.en.md)
-- [Agent Note: body-hash identity and post-process anchors](../../notes/proposed/architecture/2026-11-18-body-hash-attribution-post-process.en.md)
+- [Agent Note: body-hash identity and post-process anchors](../../notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.en.md)
 
 ## Implementation
 

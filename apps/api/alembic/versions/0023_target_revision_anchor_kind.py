@@ -95,7 +95,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Remove both additive columns and restore the 64-character version width."""
-    _alter_target_version(64)
+    """Remove both additive columns without shrinking the version column.
+
+    ``target_version`` stays at 96 so a downgrade can never truncate or reject a
+    71-character knowledge digest under MySQL strict mode.
+    """
     _drop_column("evolution_run_candidates", "case_anchor_kind")
     _drop_column("evolution_runs", "target_revision")

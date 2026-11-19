@@ -224,8 +224,8 @@ async def test_skill_anchor_uses_the_last_named_trigger(harness: Harness) -> Non
     match = await harness.matcher.potential_cases(condition, association, default_policy())
 
     assert hits_of(match)["case-skill-last"] == "after_object"
-    # No matching skill event degrades to the reporter birth point (session start).
-    assert hits_of(match)["case-skill-missing"] == "policy_excluded"
+    # No matching skill event is an explicit post-process anchor, so it is after.
+    assert hits_of(match)["case-skill-missing"] == "after_object"
 
 
 async def test_agent_discovery_anchors_on_the_parent_call(harness: Harness) -> None:
@@ -523,7 +523,8 @@ async def test_knowledge_real_shape_associates_by_object_revision(harness: Harne
     assert association.associated == 1
     assert association.version_unresolved == 0
     assert hits_of(match)["case-knowledge-after"] == "after_object"
-    assert hits_of(match)["case-knowledge-self"] == "self_report"
+    # The knowledge self case's reported skill has no trigger: self + post-process.
+    assert hits_of(match)["case-knowledge-self"] == "both"
 
 
 async def test_tag_only_skill_event_associates_by_object_revision(harness: Harness) -> None:

@@ -345,6 +345,8 @@ class AttributionRunner:
         run: EvolutionRunRecord,
         candidates: Sequence[PotentialCase],
         cache_enabled: bool,
+        *,
+        target_revision: str | None = None,
     ) -> AttributionRunSummary:
         """Attribute included candidates and return exact reuse/creation counts.
 
@@ -356,6 +358,7 @@ class AttributionRunner:
             run: Run snapshot providing workspace, target, and engine identity.
             candidates: Matcher output; excluded candidates are ignored.
             cache_enabled: Whether existing cache keys may be reused.
+            target_revision: Revision resolved by prepare for a historical NULL run.
 
         Returns:
             Created, reused, non-target, and skipped counts for this invocation.
@@ -397,9 +400,9 @@ class AttributionRunner:
             raise self._blocked(run.id, None, exc) from exc
 
         object_version = (
-            run.target_revision
-            if run.target_revision
-            else resolve_legacy_target_version(run.target_version).target_revision
+            target_revision
+            or run.target_revision
+            or resolve_legacy_target_version(run.target_version).target_revision
         )
         created = 0
         reused = 0

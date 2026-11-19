@@ -1,6 +1,6 @@
 # Agent Note: 归因身份改为归一化 body hash 与后处理锚点
 
-Status: proposed
+Status: implemented
 
 [English](2026-11-18-body-hash-attribution-post-process.en.md) | 中文
 
@@ -15,9 +15,9 @@ Status: proposed
 - skill/agent/knowledge 的**文件匹配键**统一为 `sha256(normalize_definition_body(body))`：skill 取 `SKILL.md`，agent 取 `AGENT.md`，knowledge 取文件读文档内容。skill 的对象身份使用该 body hash；agent 的 `object_revision` 保留 `agentType + isBuiltIn + body hash` 作为诊断身份，但 target 匹配用 `definition_hash`；knowledge 文件读的 `document_revision`/`object_revision` 也使用归一化 body hash，Provider 原始 revision 仍是 `provider:`。`source_path` 只保留为诊断证据，不参与 revision、缓存键或匹配。显式 tag/版本仍是最高优先级的版本证据；只有没有 tag 时才使用 body hash（knowledge 的 `defaultRef` 是文档 revision）。
 - 进化向导里选择 tag 的动作表示“选择目标版本”：skill/agent 由服务端读取该 tag 下 `repoUrl/subDir/SKILL.md`/`AGENT.md`，knowledge 由文档 revision/内容读取；统一按与 parser 相同的 `normalize_definition_body` 归一化并计算 sha256。解析出的 `targetRevision=digest:<bodyhash>` 用于 Session 关联与缓存键，tag 继续作为版本/显示与代码基线。内容读取失败必须返回稳定错误，不能静默回退到 `tag:` 匹配。knowledge 目标仍通过 API 配置/启动，向导暂不提供 knowledge 选择器。
 - 目标内容必须与轨迹来自同一制品/版本，并经过同一 body 提取与归一化；skill/agent 的 tag→body hash、knowledge 的文档 revision→body hash 与已知轨迹 `definitionHash`/`documentRevision` 的一致性作为验收测试。当前例子中 `obra/superpowers` v6.4.1 的 normalized 文件 hash 是 `9080…`，与 trace 的 `8e54…` 不同，说明 source/版本或 body 提取还需要对齐；这只是设计前置条件，不允许用名称或默认分支猜测。
-- 找不到上报对象时，skill/agent 的锚点改为后处理锚点：`eventIndex=2147483647`（INT_MAX）、`anchorKind=post_process`、`triggeredAt=bad_case.created_at`。比较时它落在所有可解析对象之后；`-1` 只保留给“上报 Agent 本身无法解析”的 unknown。树/API 增加 `anchorKind`；候选行记录 `case_anchor_kind=post_process`，潜在行通过 `anchorSource=post_process` 暴露，使“为什么可归因”可审计。
+- 找不到上报对象时，skill/agent 的锚点改为后处理锚点：`eventIndex=2147483647`（INT_MAX）、`anchorKind=post_process`、`triggeredAt=bad_case.created_at`。比较时 `post_process` 直接视为“对象之后”，不依赖 `created_at` 与对象进入点的时间先后；`created_at` 只作审计/显示，坐标兜底 INT_MAX。`-1` 只保留给“上报 Agent 本身无法解析”的 unknown。树/API 增加 `anchorKind`；候选行记录 `case_anchor_kind=post_process`，潜在行通过 `anchorSource=post_process` 暴露，使“为什么可归因”可审计。
 - 兼容边界：parser version 从 5 递增到 6 并重放存量 claude-code 会话；旧 path+body revision 保留为历史，不再作为新 run 的身份；新 run 只写 body-only revision。旧缓存键不复用；需要时单独清理。知识库 UI 选择器、私有仓库凭据与 rule-v1 分类不在本决策范围。
-- 本 Note 只提出设计；实现（parser、target 内容解析、matcher、契约/UI、迁移与测试）在评审通过后另开代码 PR。
+- 本 Note 记录该决策与实现边界；parser、target 内容解析、matcher、契约/UI、迁移与测试已在同一 M13 交付中落地；后续修正以本 Note 为 owning decision。
 
 ## Alternatives considered
 
@@ -34,6 +34,6 @@ Status: proposed
 - 需要 parser version bump 与存量重放（skill/agent/knowledge）；旧 path+body revision、缓存键与归因行保留历史语义，新 run 使用归一化 body hash。数据库列长度（96）足够容纳 71 字符的 `digest:<sha256>`。
 - target 侧新增内容读取/归一化/缓存与超时边界：skill `SKILL.md`、agent `AGENT.md`、knowledge 文档内容；当前 target 配置是无凭据 HTTPS/SSH，私有仓库内容读取不在本轮范围。读取失败要有稳定错误码，不能回退到 tag 猜测。
 - knowledge 的 `KnowledgeContentSource` 是注入缝；生产未绑定文档 Provider 时，裸 revision（非 `digest:`/`provider:`）只能返回 `TARGET_CONTENT_UNRESOLVED`，`digest:`/`provider:` 可直接启动。
-- 后处理 case 的 `created_at` 被当作触发时间，意味着“后处理上报”被解释为“在目标之后发生”；这是有意的产品语义，但会扩大 after_object 的纳入范围，需要 `anchorSource` 与潜在策略审计，必要时用开关控制。
+- `post_process` 在潜在匹配中直接视为“对象之后”，不再依赖 `created_at` 与目标进入点的时间先后；`created_at` 只作审计/显示时间，树/接口坐标仍用 INT_MAX 兜底。这样避免 created_at 早于对象进入点时后处理 case 仍为 0 潜在；仍需要 `anchorSource` 与潜在策略审计，必要时用开关控制。
 - 树/API 增加 `anchorKind`，前端要把 MAX 显示为“后处理”而不是巨大数字；`BadCaseAnchor.event_index` 的 `ge=-1` 不拒绝 INT_MAX，但契约/测试要覆盖该哨兵。
 - 当前生产例子的 tag 文件 hash 与 trace body hash 不一致，必须先确定真实来源/版本和 body 提取；否则即使改完 body-only，target 仍可能 0 关联。设计文档与验收测试必须把这个前置写死，不能用名称或默认分支猜测。

@@ -48,9 +48,6 @@ HitReason = Literal[
 ]
 AnchorSource = Literal["event", "node", "post_process", "unknown"]
 
-POST_PROCESS_TREE_INDEX = 2_147_483_647
-"""Coordinate fallback for post_process when neither side has a timestamp."""
-
 POLICY_VERSION = "v1"
 """Attribution policy semantics version inside the cache key."""
 
@@ -451,22 +448,30 @@ class AttributionPreviewCounts:
 def compare_triggers(
     case: TriggerPoint | None,
     target: TriggerPoint,
+    *,
+    post_process: bool = False,
 ) -> OrderComparison:
     """Compare a case anchor against the object entry point.
 
-    Wall-clock timestamps win when both sides carry one; otherwise the
-    ``(tree_index, event_index)`` lexicographic order is used. A missing anchor or
-    incomplete coordinates stay ``unknown`` and never satisfy "after".
+    A post-process anchor is defined as "after the object" regardless of its
+    audit ``created_at`` (which can precede the entry in imported data). For
+    every other anchor, wall-clock timestamps win when both sides carry one;
+    otherwise the ``(tree_index, event_index)`` lexicographic order is used. A
+    missing anchor or incomplete coordinates stay ``unknown`` and never satisfy
+    "after".
 
     Args:
         case: Resolved bad-case anchor, or ``None`` when it cannot be resolved.
         target: Object entry point from a version-matched `agent_events` row.
+        post_process: Whether the case anchor is the explicit post-process kind.
 
     Returns:
         The comparable/unknown state and the strict ``after`` verdict.
     """
     if case is None:
         return OrderComparison(state="unknown", after=False)
+    if post_process:
+        return OrderComparison(state="comparable", after=True)
     if case.triggered_at is not None and target.triggered_at is not None:
         return OrderComparison(
             state="comparable",
@@ -723,7 +728,11 @@ class PotentialMatcher:
                 events_by_agent,
                 session.started_at,
             )
-            comparison = compare_triggers(case_trigger, session.object_entry)
+            comparison = compare_triggers(
+                case_trigger,
+                session.object_entry,
+                post_process=anchor_source == "post_process",
+            )
             same_object = case.object_name == condition.target_name
             verdict = evaluate_hit(
                 self_match=same_object and case.bad_case_type == "self",
@@ -1089,7 +1098,8 @@ def _post_process_anchor(
         agent_id=reporter.id,
         event_index=POST_PROCESS_EVENT_INDEX,
         triggered_at=case.created_at,
-        tree_index=POST_PROCESS_TREE_INDEX,
+        # The coordinate fallback shares the same INT_MAX sentinel.
+        tree_index=POST_PROCESS_EVENT_INDEX,
     )
 
 

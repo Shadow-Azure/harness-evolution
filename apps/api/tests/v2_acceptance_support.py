@@ -32,6 +32,7 @@ from app.service.evolution.attribution import (
 )
 from app.service.evolution.potential import PotentialMatcher
 from app.service.evolution.prepare import EvolutionPrepareService
+from app.service.evolution.target_content import TargetVersionResolver
 from app.third_party_api.git.workspace import PreparedWorkspace
 from app.utils.time import SHANGHAI
 from tests.identity.helpers import identity_settings
@@ -194,6 +195,7 @@ def prepare_service(
     database: Database,
     *,
     engine_factory: Callable[[str], AttributionEngine] | None = None,
+    resolver: TargetVersionResolver | None = None,
 ) -> EvolutionPrepareService:
     """Compose the M10-04 prepare service over one migrated test database."""
     matcher = PotentialMatcher(PotentialRepository(database))
@@ -209,6 +211,7 @@ def prepare_service(
         matcher,
         runner,
         FakeWorkspacePreparer(),
+        resolver=resolver,
     )
 
 

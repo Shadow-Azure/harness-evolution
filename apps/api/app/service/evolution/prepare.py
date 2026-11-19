@@ -54,6 +54,7 @@ from app.service.evolution.potential import (
     resolve_window,
 )
 from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
     TargetVersionResolver,
     resolve_legacy_target_version,
 )
@@ -141,6 +142,8 @@ class EvolutionPrepareService:
                 "progressUnit": run.progress_unit,
                 "reused": True,
             }
+        resolved = await self._resolve_target(run)
+        persist_revision = run.target_revision is None and self._resolver is not None
 
         context = _PrepareContext()
         if run.progress_unit == 0:
@@ -159,7 +162,7 @@ class EvolutionPrepareService:
             )
 
         if run.progress_unit < 2:
-            condition = await self._condition(run)
+            condition = self._condition(run, resolved)
             association = await self._matcher.associated_sessions(condition)
             context.association = association
             if not association.sessions:
@@ -209,7 +212,7 @@ class EvolutionPrepareService:
             )
 
         if run.progress_unit < 3:
-            condition = await self._condition(run)
+            condition = self._condition(run, resolved)
             association = context.association or await self._matcher.associated_sessions(condition)
             context.association = association
             policy = _run_policy(run)
@@ -247,6 +250,7 @@ class EvolutionPrepareService:
                     run,
                     candidates,
                     run.cache_enabled,
+                    target_revision=resolved.target_revision,
                 )
             except RunBlocked:
                 raise
@@ -316,6 +320,7 @@ class EvolutionPrepareService:
             base_commit=workspace.base_commit if workspace else run.base_commit,
             branch_name=workspace.branch if workspace else run.branch_name,
             workspace_path=str(workspace.path) if workspace else run.workspace_path,
+            target_revision=(resolved.target_revision if persist_revision else None),
             stats=await self._final_stats(refreshed or run),
         )
         return {
@@ -326,32 +331,33 @@ class EvolutionPrepareService:
             "rounds": (len(await self._runs.list_rounds(prepared.id)) if run.mode == "full" else 0),
         }
 
-    async def _condition(self, run: EvolutionRunRecord) -> MatchCondition:
-        """Build the matcher condition from the run snapshot and resolved revision."""
+    async def _resolve_target(self, run: EvolutionRunRecord) -> ResolvedTargetVersion:
+        """Resolve the run target once so matching and attribution share one identity."""
         if run.target_revision:
-            target_version = run.target_version
-            target_revision = run.target_revision
-        elif self._resolver is not None:
-            resolved = await self._resolver.resolve(
-                object_type=run.target_type,
-                repo_url=run.repo_url,
-                sub_dir=run.sub_dir,
-                version=run.target_version,
-            )
-            target_version = resolved.target_version
-            target_revision = resolved.target_revision
-        else:
-            resolved = resolve_legacy_target_version(run.target_version)
-            target_version = resolved.target_version
-            target_revision = resolved.target_revision
+            return ResolvedTargetVersion(run.target_version, run.target_revision)
+        if self._resolver is None:
+            return resolve_legacy_target_version(run.target_version)
+        return await self._resolver.resolve(
+            object_type=run.target_type,
+            repo_url=run.repo_url,
+            sub_dir=run.sub_dir,
+            version=run.target_version,
+        )
+
+    def _condition(
+        self,
+        run: EvolutionRunRecord,
+        resolved: ResolvedTargetVersion,
+    ) -> MatchCondition:
+        """Build the matcher condition from the run snapshot and resolved revision."""
         start, end = resolve_window(run.window_from, run.window_to)
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
             workspace_id=run.workspace_id,
             target_type=cast(ObjectType, run.target_type),
             target_name=run.target_name,
-            target_version=target_version,
-            target_revision=target_revision,
+            target_version=resolved.target_version,
+            target_revision=resolved.target_revision,
             window_start=window_start,
             window_end=window_end,
         )

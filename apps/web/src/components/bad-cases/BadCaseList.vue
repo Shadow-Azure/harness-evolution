@@ -230,6 +230,14 @@ defineExpose({ scrollToProblem });
                 >
                   数据降级
                 </span>
+                <span
+                  v-if="badCaseAnchorPresentation(problem.anchor)"
+                  class="anchor-chip"
+                  :class="badCaseAnchorPresentation(problem.anchor)?.tone"
+                  :title="badCaseAnchorPresentation(problem.anchor)?.description"
+                >
+                  {{ badCaseAnchorPresentation(problem.anchor)?.label }}
+                </span>
               </span>
               <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
               <div

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -10,6 +11,10 @@ import pytest
 from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.overview_targets import AttributionLinkRecord, ObjectVersionRecord
 from app.errors import AppError
+from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
+    target_content_unresolved,
+)
 from app.service.overview.target_schemas import TARGET_STATES, TargetState
 from app.service.overview.targets import (
     TargetAnalysis,
@@ -226,6 +231,7 @@ async def test_trend_skips_attribution_created_outside_the_window() -> None:
         cast(Any, None),
         cast(Any, None),
         cast(Any, None),
+        cast(Any, None),
     )
     attributed = _entry("case-late-attribution", "attributed")
     attributed = TargetCaseEntry(
@@ -274,3 +280,51 @@ async def test_trend_skips_attribution_created_outside_the_window() -> None:
         "attributed and nonTarget rows bucket by attribution createdAt; "
         "unanalyzed rows bucket by badCase createdAt"
     )
+
+
+class _UnresolvedResolver:
+    """Raise the stable content-unresolved error for every version."""
+
+    async def resolve(
+        self,
+        *,
+        object_type: str,
+        repo_url: str,
+        sub_dir: str,
+        version: str,
+    ) -> ResolvedTargetVersion:
+        """Report a missing target content file."""
+        del repo_url, sub_dir, version
+        raise target_content_unresolved(
+            object_type=object_type,
+            reason="file_not_found",
+        )
+
+
+async def test_overview_skips_content_unresolved_versions_without_tag_fallback() -> None:
+    """An unresolved target version produces no matcher call and no tag guess."""
+    service = TargetOverviewService(
+        cast(Any, None),
+        cast(Any, None),
+        cast(Any, None),
+        _UnresolvedResolver(),
+    )
+    target = cast(
+        Any,
+        SimpleNamespace(
+            object_type="skill",
+            object_name="deep-research",
+            repo_url="https://example.invalid/repo.git",
+            sub_dir="skills/deep-research",
+        ),
+    )
+
+    evaluated = await service._evaluate(
+        target,
+        "v2.0.0",
+        workspace_id="ws-unit",
+        window_start=datetime(2026, 11, 1),
+        window_end=datetime(2026, 12, 1),
+    )
+
+    assert evaluated is None

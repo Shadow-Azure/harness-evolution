@@ -19,6 +19,9 @@ from app.utils.definition import definition_hash
 SKILL_BODY = "# Systematic debugging\n\nReproduce before fixing.\n"
 AGENT_BODY = "# Reviewer\n\nCheck the evidence trail.\n"
 KNOWLEDGE_BODY = "# Runbook\n\nRestart the worker.\n"
+ROOT_BODY = "# Root skill\n\nRoot body.\n"
+DOT_BODY = "# Dot skill\n\nDot body.\n"
+PLAIN_BODY = "# Plain skill\n\nPlain body.\n"
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -51,6 +54,17 @@ def _commit_fixture(repo: Path) -> None:
     )
     (repo / "agents" / "reviewer" / "AGENT.md").write_text(
         AGENT_BODY,
+        encoding="utf-8",
+    )
+    (repo / "SKILL.md").write_text(ROOT_BODY, encoding="utf-8")
+    (repo / ".claude" / "skills" / "dot").mkdir(parents=True)
+    (repo / ".claude" / "skills" / "dot" / "SKILL.md").write_text(
+        DOT_BODY,
+        encoding="utf-8",
+    )
+    (repo / "claude" / "skills" / "dot").mkdir(parents=True)
+    (repo / "claude" / "skills" / "dot" / "SKILL.md").write_text(
+        PLAIN_BODY,
         encoding="utf-8",
     )
     _git(repo, "init", "-q", "-b", "main")
@@ -181,6 +195,57 @@ async def test_resolution_is_cached_per_repo_subdir_and_ref(
 
     assert first == second
     assert len(counting.calls) == 1
+
+
+async def test_dot_directories_and_repo_root_are_preserved(
+    tmp_path: Path,
+    repo: Path,
+) -> None:
+    """A leading dot is part of the path; '.' means the repository root."""
+    resolver, _ = _resolver(tmp_path)
+
+    dot = await resolver.resolve(
+        object_type="skill",
+        repo_url=str(repo),
+        sub_dir=".claude/skills/dot",
+        version="v1.0.0",
+    )
+    root = await resolver.resolve(
+        object_type="skill",
+        repo_url=str(repo),
+        sub_dir=".",
+        version="v1.0.0",
+    )
+    plain = await resolver.resolve(
+        object_type="skill",
+        repo_url=str(repo),
+        sub_dir="claude/skills/dot",
+        version="v1.0.0",
+    )
+
+    assert dot.target_revision == f"digest:{definition_hash(DOT_BODY)}"
+    assert root.target_revision == f"digest:{definition_hash(ROOT_BODY)}"
+    assert plain.target_revision == f"digest:{definition_hash(PLAIN_BODY)}"
+    assert dot.target_revision != plain.target_revision
+
+
+async def test_absolute_and_parent_paths_are_rejected(
+    tmp_path: Path,
+    repo: Path,
+) -> None:
+    """Path traversal and absolute subdirectories never reach git."""
+    resolver, _ = _resolver(tmp_path)
+
+    for sub_dir in ("/absolute", "../escape", "skills/../../escape"):
+        with pytest.raises(AppError) as error:
+            await resolver.resolve(
+                object_type="skill",
+                repo_url=str(repo),
+                sub_dir=sub_dir,
+                version="v1.0.0",
+            )
+        assert error.value.code is ErrorCode.TARGET_CONTENT_UNRESOLVED
+        assert error.value.details["reason"] == "path_invalid"
 
 
 async def test_prefixed_revisions_never_read_content(tmp_path: Path) -> None:
