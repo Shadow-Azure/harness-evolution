@@ -871,6 +871,15 @@
 .evo-app .wz-controls { align-items: flex-start; }
 .evo-app .wz-field { display: flex; flex-direction: column; align-items: flex-start; min-width: 130px; }
 .evo-app .wz-field .inp { width: 100%; }
+.evo-app .wz-version-combo { position: relative; width: 100%; }
+.evo-app .wz-version-combo .inp { width: 100%; padding-right: 30px; }
+.evo-app .wz-version-toggle { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; display: grid; place-items: center; border: none; border-radius: 6px; background: transparent; color: var(--text-faint); font-size: 12px; cursor: pointer; }
+.evo-app .wz-version-toggle:hover { color: var(--text); background: var(--bg-panel); }
+.evo-app .wz-version-menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 190px; overflow-y: auto; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); box-shadow: 0 10px 28px rgba(20,30,50,.14); }
+.evo-app .wz-version-option { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 7px; border: none; border-radius: 5px; background: transparent; color: var(--text); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.evo-app .wz-version-option:hover { background: var(--bg-panel); }
+.evo-app .wz-version-option .wz-version-kind { margin-left: auto; color: var(--text-faint); font-size: 10.5px; }
+.evo-app .wz-version-option.is-current { background: color-mix(in srgb, var(--blue) 10%, transparent); }
 .evo-app .wz-inline-label { padding-top: 8px; color: var(--text-faint); font-size: 12px; }
 .evo-app .wz-demo { display: flex; align-items: center; gap: 9px; margin-top: 14px; padding: 9px 11px; border: 1px dashed color-mix(in srgb, var(--blue) 36%, transparent); border-radius: 8px; color: var(--text-dim); font-size: 11.5px; background: color-mix(in srgb, var(--blue) 4%, transparent); }
 .evo-app .wz-demo b { color: var(--text); font-weight: 600; }
@@ -5344,7 +5353,7 @@ function evRenderTargetDialog() {
           <div class="f-row"><div class="f-label">对象名称</div><input class="inp" data-ev-target-field="objectName" value="${evEsc(f.objectName)}" placeholder="如 deep-research"></div>
           <div class="f-row span-2"><div class="f-label">仓库地址</div><input class="inp" data-ev-target-field="repoUrl" value="${evEsc(f.repoUrl)}" placeholder="https://… 或 git@…"></div>
           <div class="f-row"><div class="f-label">子目录</div><input class="inp" data-ev-target-field="subDir" value="${evEsc(f.subDir)}" placeholder="如 skills/deep-research"></div>
-          <div class="f-row"><div class="f-label">基线分支或标签</div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后可在启动向导中看到版本。</div></div>
+          <div class="f-row"><div class="f-label">基线分支或标签</div><input class="inp" data-ev-target-field="defaultRef" value="${evEsc(f.defaultRef)}" placeholder="main / v2.4.0"><div class="field-note">可填写分支或 tag；保存后作为启动向导的默认版本，向导中也可改填 commit id。</div></div>
           <div class="f-row"><div class="f-label">验证集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="validationProjectId" value="${evEsc(f.validationProjectId)}"></div>
           <div class="f-row"><div class="f-label">测试集测试工程 ID <span class="req">*</span></div><input class="inp" data-ev-target-field="testProjectId" value="${evEsc(f.testProjectId)}"></div>
           <div class="f-row span-2"><div class="f-label">启用</div><div class="switch-row"><label class="proto-switch"><input type="checkbox" data-ev-target-field="enabled" ${f.enabled ? 'checked' : ''}><span class="proto-switch-track"></span></label><span>${f.enabled ? '进入启动向导候选' : '保留配置但不进入向导'}</span></div></div>
@@ -5377,7 +5386,8 @@ function evWizardOpen(caseId) {
   const from = c ? String(c.createdAt).slice(0, 10) : '2026-10-01';
   const to = c ? String(c.createdAt).slice(0, 10) : '2026-11-09';
   EV_STATE.wz = {
-    step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.tags?.[0] || first?.defaultRef || '',
+    step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.defaultRef || first?.tags?.[0] || '',
+    versionOpen: false,
     from, to, policy: 'default', includeSelf: true, includeAfter: true, sameObject: false,
     cache: true, focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {},
   };
@@ -5385,6 +5395,26 @@ function evWizardOpen(caseId) {
 }
 function evWzTargets() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => t.enabled && t.kind === EV_STATE.wz.kind); }
 function evWzTarget() { return evWzTargets().find(t => t.objectName === EV_STATE.wz.name) || evWzTargets()[0]; }
+function evWzVersionOptions() {
+  const t = evWzTarget();
+  if (!t) return [];
+  const options = [];
+  if (t.defaultRef) options.push({ value: t.defaultRef, kind: (t.tags || []).includes(t.defaultRef) ? 'tag' : '基线' });
+  for (const tag of t.tags || []) {
+    if (!options.some(o => o.value === tag)) options.push({ value: tag, kind: 'tag' });
+  }
+  return options;
+}
+function evVersionRefError(value) {
+  const ref = String(value || '').trim();
+  if (!ref) return '请选择 tag，或输入分支 / commit id';
+  if (ref.length > 96) return '版本不能超过 96 个字符';
+  if (ref.startsWith('-') || ref.startsWith('/')) return '版本不能以 - 或 / 开头';
+  if (ref.endsWith('/') || ref.endsWith('.') || ref.endsWith('.lock')) return '版本不能以 /、. 或 .lock 结尾';
+  if (ref.includes('..') || ref.includes('@{') || ref.includes('//')) return '版本不是合法的 git ref';
+  if (/[\s~^:?*\[\\\x00-\x1f]/.test(ref)) return '版本不能包含空格或 git ref 保留字符';
+  return '';
+}
 function evWzRun() {
   const t = evWzTarget();
   if (!t) return { workspace: evCurrentWs(), target: { kind: 'skill', name: '—', version: '—' }, window: [EV_STATE.wz.from, EV_STATE.wz.to], policy: EV_STATE.wz.policy, policyRules: {}, cache: EV_STATE.wz.cache };
@@ -5416,9 +5446,9 @@ function evRenderWizard() {
     </div></div>`;
     return;
   }
-  if (targets.length && !targets.some(t => t.objectName === wz.name)) { wz.name = targets[0].objectName; wz.version = targets[0].tags?.[0] || targets[0].defaultRef; }
+  if (targets.length && !targets.some(t => t.objectName === wz.name)) { wz.name = targets[0].objectName; wz.version = targets[0].defaultRef || targets[0].tags?.[0] || ''; wz.versionOpen = false; }
   const t = evWzTarget();
-  if (t && !(t.tags || []).includes(wz.version)) wz.version = t.tags?.[0] || t.defaultRef;
+  const versionOptions = evWzVersionOptions();
   const { run, m } = evWizardModel();
   const step2 = wz.step >= 2;
   const step3 = wz.step >= 3;
@@ -5444,9 +5474,28 @@ function evRenderWizard() {
           <div class="seg"><button class="${wz.kind === 'skill' ? 'active' : ''}" data-action="ev-wz-kind" data-v="skill">skill</button><button class="${wz.kind === 'agent' ? 'active' : ''}" data-action="ev-wz-kind" data-v="agent">agent</button></div>
           <div class="wz-field"><select class="inp" id="ev-wz-name"><option value="" ${wz.name ? '' : 'selected'}>选择对象</option>${targets.map(x => `<option ${x.objectName === wz.name ? 'selected' : ''}>${evEsc(x.objectName)}</option>`).join('')}</select>${fieldErr('name')}</div>
           <span class="wz-inline-label">版本</span>
-          <div class="wz-field"><select class="inp" id="ev-wz-version">${(t?.tags || []).map(v => `<option ${v === wz.version ? 'selected' : ''}>${evEsc(v)}</option>`).join('')}</select></div>
+          <div class="wz-field">
+            <div class="wz-version-combo">
+              <input
+                class="inp${err.version ? ' input-error' : ''}"
+                id="ev-wz-version"
+                value="${evEsc(wz.version)}"
+                placeholder="tag / 分支名 / commit id"
+                autocomplete="off"
+                spellcheck="false"
+                role="combobox"
+                aria-expanded="${wz.versionOpen ? 'true' : 'false'}"
+                aria-controls="ev-wz-version-menu"
+              >
+              <button type="button" class="wz-version-toggle" data-action="ev-wz-version-toggle" aria-label="展开 tag 建议">▾</button>
+              ${wz.versionOpen ? `<div class="wz-version-menu" id="ev-wz-version-menu" role="listbox">
+                ${versionOptions.map(o => `<button type="button" class="wz-version-option${o.value === wz.version ? ' is-current' : ''}" data-action="ev-wz-version-pick" data-v="${evEsc(o.value)}" role="option" aria-selected="${o.value === wz.version ? 'true' : 'false'}"><span class="mono">${evEsc(o.value)}</span><span class="wz-version-kind">${o.kind}</span></button>`).join('')}
+              </div>` : ''}
+            </div>
+            ${err.version ? `<div class="field-error" id="ev-wz-version-error">${evEsc(err.version)}</div>` : ''}
+          </div>
         </div>
-        <div class="wz-note">只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
+        <div class="wz-note">版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。启动前会校验 ref 格式，服务端再解析仓库内容。只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
       </div>
       <div class="f-row"><div class="f-label">bad case 时间段 <span class="req">*</span></div>
         <div class="f-inline wz-controls"><div class="wz-field"><input class="inp" id="ev-wz-from" type="date" value="${wz.from}">${fieldErr('from')}</div><span class="wz-inline-label">~</span><div class="wz-field"><input class="inp" id="ev-wz-to" type="date" value="${wz.to}">${fieldErr('to')}</div></div>
@@ -5550,7 +5599,8 @@ function evValidateWz() {
   const wz = EV_STATE.wz;
   wz.errors = {};
   if (!wz.name) wz.errors.name = '请选择进化对象';
-  if (!wz.version) wz.errors.version = '请选择版本';
+  const versionError = evVersionRefError(wz.version);
+  if (versionError) wz.errors.version = versionError;
   if (!wz.from) wz.errors.from = '请选择开始时间';
   if (!wz.to) wz.errors.to = '请选择结束时间';
   if (wz.from && wz.to && wz.from > wz.to) { wz.errors.from = '开始时间不能晚于结束时间'; wz.errors.to = '结束时间不能早于开始时间'; }
@@ -5575,19 +5625,22 @@ document.addEventListener('click', e => {
   else if (a === 'ev-wz-targets') { evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
   else if (a === 'ev-wz-close') { evWizardHost().innerHTML = ''; }
   else if (a === 'ev-wz-close-bg') { if (e.target === el) evWizardHost().innerHTML = ''; }
-  else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.tags?.[0] || t?.defaultRef || ''; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-version-toggle') { evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
+  else if (a === 'ev-wz-version-pick') { evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
   else if (a === 'ev-wz-policy') { evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-rule') { evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (a === 'ev-wz-cache') { evSyncWz(); EV_STATE.wz.cache = !!el.checked; evRenderWizard(); }
-  else if (a === 'ev-wz-back') { evSyncWz(); EV_STATE.wz.step = Math.max(1, EV_STATE.wz.step - 1); evRenderWizard(); }
-  else if (a === 'ev-wz-edit') { evSyncWz(); EV_STATE.wz.step = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-back') { evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = Math.max(1, EV_STATE.wz.step - 1); evRenderWizard(); }
+  else if (a === 'ev-wz-edit') { evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); }
   else if (a === 'ev-wz-page') { if (!EV_STATE.wz) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'casePage'; EV_STATE.wz[key] = Math.max(1, (EV_STATE.wz[key] || 1) + Number(el.dataset.delta || 0)); evRenderWizard(); }
   else if (a === 'ev-wz-next') {
-    if (EV_STATE.wz.step === 1 && !evValidateWz()) { evRenderWizard(); return; }
-    evSyncWz(); const fromStep = EV_STATE.wz.step; EV_STATE.wz.step = Math.min(4, EV_STATE.wz.step + 1); if (EV_STATE.wz.step === 2) EV_STATE.wz.assocPage = 1; if (EV_STATE.wz.step === 3) EV_STATE.wz.casePage = 1; evRenderWizard();
+    if (EV_STATE.wz.step === 1 && !evValidateWz()) { EV_STATE.wz.versionOpen = false; evRenderWizard(); return; }
+    evSyncWz(); EV_STATE.wz.versionOpen = false; const fromStep = EV_STATE.wz.step; EV_STATE.wz.step = Math.min(4, EV_STATE.wz.step + 1); if (EV_STATE.wz.step === 2) EV_STATE.wz.assocPage = 1; if (EV_STATE.wz.step === 3) EV_STATE.wz.casePage = 1; evRenderWizard();
   }
   else if (a === 'ev-wz-start') {
     evSyncWz();
+    if (!evValidateWz()) { EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); return; }
     const t = evWzTarget();
     if (!t) return;
     const run = evMakeRun({
@@ -5613,12 +5666,21 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
-  if (e.target.id === 'ev-wz-name') { evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.tags?.[0] || t?.defaultRef || ''; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  if (e.target.id === 'ev-wz-name') { evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
   else if (e.target.id === 'ev-wz-version') { evSyncWz(); }
   else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evSyncWz(); }
 });
 document.addEventListener('input', e => {
   if (EV_STATE.targetDialog && e.target.dataset.evTargetField) evSyncTargetForm();
+  if (e.target.id === 'ev-wz-version' && EV_STATE.wz) {
+    evSyncWz();
+    if (EV_STATE.wz.errors && EV_STATE.wz.errors.version) {
+      delete EV_STATE.wz.errors.version;
+      e.target.classList.remove('input-error');
+      const errorEl = document.getElementById('ev-wz-version-error');
+      if (errorEl) errorEl.remove();
+    }
+  }
 });
 
 window.evRoute = evRoute;
