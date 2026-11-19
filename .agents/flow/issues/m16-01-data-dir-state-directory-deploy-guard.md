@@ -8,7 +8,7 @@ id: m16-01
 milestone: m16
 depends: []
 priority: P1
-status: in-progress
+status: done
 scope:
   - deploy/**
   - .github/workflows/deploy.yml
