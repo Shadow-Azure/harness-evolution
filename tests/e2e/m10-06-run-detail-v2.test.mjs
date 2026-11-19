@@ -290,6 +290,50 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
       `document.querySelectorAll("[data-step-key]").length === 7`,
       "seven-step run detail",
     );
+    const shell = await waitForDocument(
+      page.session,
+      `(() => {
+        const page = document.querySelector("[data-testid='evolution-run-detail']");
+        const info = page?.querySelector("[data-testid='run-info-panel']");
+        const progress = page?.querySelector("[data-testid='run-progress']");
+        const workspace = page?.querySelector("[data-testid='run-workspace']");
+        const head = page?.querySelector(".detail-head");
+        if (!page || !info || !progress || !workspace || !head) return null;
+        return {
+          head: head.textContent,
+          infoText: info.textContent,
+          infoBeforeProgress: Boolean(
+            info.compareDocumentPosition(progress) & Node.DOCUMENT_POSITION_FOLLOWING,
+          ),
+          workspaceInInfo: info.contains(workspace),
+          standaloneWorkspace: Boolean(document.querySelector(".workspace-panel")),
+          policy: page.querySelector("[data-testid='run-policy-cache']")?.textContent ?? "",
+          branchCopy: Boolean(page.querySelector("[data-testid='copy-branch']")),
+          tabs: [...page.querySelectorAll(".detail-tabs [role='tab']")].map((tab) =>
+            tab.textContent.trim(),
+          ),
+        };
+      })()`,
+      "prototype-aligned run detail shell",
+    );
+    assert.match(shell.head, /默认空间/);
+    assert.match(shell.head, /已完成/);
+    assert.doesNotMatch(shell.head, /Administrator · /);
+    assert.equal(shell.infoBeforeProgress, true);
+    assert.equal(shell.workspaceInInfo, true);
+    assert.equal(shell.standaloneWorkspace, false);
+    assert.equal(shell.branchCopy, true);
+    assert.match(shell.policy, /默认策略/);
+    assert.match(shell.policy, /复用缓存归因/);
+    assert.match(shell.infoText, /工作空间/);
+    assert.match(shell.infoText, /可归因 \/ 非该对象/);
+    assert.match(shell.infoText, /5 \/ 1/);
+    assert.match(shell.infoText, /潜在 bad case 的归因结论分布（6 条）/);
+    assert.match(shell.infoText, /非该对象 1/);
+    assert.match(shell.infoText, /＝ 归因 5 · 复用缓存 2 · 本次新增 3/);
+    assert.doesNotMatch(shell.infoText, /模型（多选）/);
+    assert.ok(shell.tabs.some((tab) => tab.includes("七步详情")));
+    assert.ok(shell.tabs.some((tab) => tab.includes("执行日志")));
     await clickStep(page, "sessions");
     const sessions = await waitForDocument(
       page.session,
@@ -437,6 +481,30 @@ test("m10-06 run detail pages sessions and potential, explains attribution sourc
     assert.match(legacy.text, /自进化有效|未产生收益/);
 
     await installCookie(page, await currentLoginCookie());
+    await openRun(page, "run-v2-preparing");
+    const preparing = await waitForDocument(
+      page.session,
+      `(() => {
+        const page = document.querySelector("[data-testid='evolution-run-detail']");
+        if (!page) return null;
+        const text = page.textContent;
+        if (!text.includes("已受理，正在准备筛选与聚类")) return null;
+        return {
+          badge: page.querySelector(".detail-head .badge")?.textContent ?? "",
+          info: page.querySelector("[data-testid='run-info-panel']")?.textContent ?? "",
+          tabs: [...page.querySelectorAll(".detail-tabs [role='tab']")].map((tab) =>
+            tab.textContent.trim(),
+          ),
+        };
+      })()`,
+      "preparing run detail",
+    );
+    assert.match(preparing.badge, /准备中/);
+    assert.match(preparing.info, /潜在 bad case 的归因结论分布（0 条）/);
+    assert.equal(preparing.tabs.length, 2);
+    await screenshot(page, "06-after-preparing.png");
+
+    await installCookie(page, await currentLoginCookie());
     await openRun(page, "run-v2-completed", "?tab=logs");
     const logs = await waitForDocument(
       page.session,
@@ -580,7 +648,7 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
         stepRequests.map((url) => url.split("/steps/")[1]?.split("?")[0]),
       ),
     ];
-    assert.deepEqual(requestedKeys, ["attribution"]);
+    assert.deepEqual(requestedKeys, ["range", "attribution"]);
     assert.deepEqual(violations, [], `${violations.join("\n")}\n\nVite:\n${webLogs}`);
   } finally {
     await page.session.send("Emulation.clearDeviceMetricsOverride").catch(() => {});

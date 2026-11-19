@@ -7,7 +7,8 @@ import { getEvolutionRunStep } from "../api/evolutionRuns";
 import { queryKeys } from "../api/queryKeys";
 
 /**
- * Read only the step selected by the detail route.
+ * Read one run step; the detail page also uses it for info-panel facts on the
+ * range and attribution steps beside the step selected by the route.
  * @param workspaceId Workspace route identifier.
  * @param runId Evolution run identifier.
  * @param stepKey Stable selected step key.

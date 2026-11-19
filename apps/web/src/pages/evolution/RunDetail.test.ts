@@ -14,6 +14,7 @@ const workspaceId = "ws-test";
 const ws = `/workspaces/${workspaceId}`;
 const evolutionBase = `/api/workspaces/${workspaceId}/evolution`;
 import { server } from "../../test/server";
+import { useAuthStore } from "../../stores/auth";
 import RunDetail from "./RunDetail.vue";
 
 const wrappers: VueWrapper[] = [];
@@ -128,6 +129,47 @@ const rangeStep = {
       workspaceId: "ws-test",
     },
     stats: { sessions: 128, badCases: 46, potential: 28 },
+  },
+};
+
+const attributionRows = Array.from({ length: 28 }, (_, index) => {
+  const attributed = index < 16;
+  return {
+    badCaseId: `case-${index + 1}`,
+    attributionId: `probe-${index + 1}`,
+    category: attributed ? "error" : null,
+    description: `结论 ${index + 1}`,
+    source: attributed && index < 9 ? "cached" : "fresh",
+    confidence: 0.8,
+  };
+});
+
+const attributionStep = {
+  key: "attribution",
+  index: 3,
+  title: "对象归因",
+  status: "done",
+  clickable: true,
+  detail: "28 条",
+  payload: {
+    summary: { potential: 28, reused: 9, fresh: 19, nonTarget: 12 },
+    rows: attributionRows,
+  },
+};
+
+const finalStep = {
+  key: "final",
+  index: 6,
+  title: "测试集终评",
+  status: "done",
+  clickable: true,
+  payload: {
+    verdict: true,
+    bestVersion: "v2.0.1-best",
+    bestScore: 88.9,
+    initScore: 84.3,
+    metrics: [],
+    changes: [],
   },
 };
 
@@ -289,6 +331,28 @@ function detail(
 async function mountPage(runId = "evo-full-1", query = "") {
   const pinia = createPinia();
   setActivePinia(pinia);
+  useAuthStore().setWorkspaceSession({
+    user: {
+      id: "user-1",
+      username: "admin",
+      displayName: "Admin",
+      role: "admin",
+      mustChangePassword: false,
+    },
+    workspaces: [
+      {
+        id: workspaceId,
+        name: "测试工作空间",
+        mark: "测",
+        role: "global_admin",
+        used: 0,
+        quota: 1000,
+        memberCount: 1,
+        spaceAdminCount: 1,
+      },
+    ],
+    truncated: false,
+  });
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -424,8 +488,17 @@ describe("evolution run detail page", () => {
     );
     expect(wrapper.text()).toContain("准备中");
     expect(wrapper.text()).toContain("evo/evo-full-1");
+    expect(wrapper.get("[data-testid='run-workspace-badge']").text()).toBe(
+      "测试工作空间",
+    );
     expect(wrapper.text()).toContain("默认策略");
+    expect(wrapper.text()).toContain("复用缓存归因");
     expect(wrapper.text()).toContain("潜在 bad case");
+    expect(wrapper.text()).toContain("可归因 / 非该对象");
+    expect(wrapper.text()).not.toContain("模型（多选）");
+    expect(wrapper.find(".workspace-panel").exists()).toBe(false);
+    expect(wrapper.find("[data-testid='steps-tab']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='logs-tab']").exists()).toBe(true);
     expect(wrapper.get("[data-testid='run-target-revision']").text()).toBe(
       run().target.targetRevision,
     );
@@ -434,6 +507,53 @@ describe("evolution run detail page", () => {
     );
     expect(wrapper.find("[data-testid='evolution-cluster-preview']").exists()).toBe(
       false,
+    );
+  });
+
+  it("shows prototype goal-and-input facts and folds workspace into the same card", async () => {
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "completed" }),
+            ["done", "done", "done", "done", "done", "done", "done"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json(attributionStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json(finalStep)),
+    );
+    const wrapper = await mountPage();
+
+    const info = wrapper.get("[data-testid='run-info-panel']");
+    expect(wrapper.get("[data-testid='run-workspace-badge']").text()).toBe(
+      "测试工作空间",
+    );
+    expect(info.text()).toContain("工作空间");
+    expect(info.text()).toContain("测试工作空间");
+    expect(info.text()).toContain("可归因 / 非该对象");
+    expect(info.text()).toContain("16 / 12");
+    expect(info.text()).toContain("潜在 bad case 的归因结论分布（28 条）");
+    expect(info.text()).toContain("非该对象 12");
+    expect(info.text()).toContain("＝ 归因 16 · 复用缓存 9 · 本次新增 7");
+    expect(info.text()).toContain("默认策略");
+    expect(info.text()).toContain("复用缓存归因");
+    expect(info.text()).not.toContain("模型（多选）");
+    expect(wrapper.find(".workspace-panel").exists()).toBe(false);
+    const workspace = info.get("[data-testid='run-workspace']");
+    expect(workspace.element instanceof HTMLDetailsElement).toBe(true);
+    expect((workspace.element as HTMLDetailsElement).open).toBe(false);
+    expect(info.find("[data-testid='copy-branch']").exists()).toBe(true);
+
+    const html = wrapper.html();
+    expect(html.indexOf('data-testid="run-info-panel"')).toBeLessThan(
+      html.indexOf('data-testid="run-progress"'),
+    );
+    expect(wrapper.get("[data-testid='steps-tab']").attributes("aria-selected")).toBe(
+      "true",
     );
   });
 
@@ -458,7 +578,7 @@ describe("evolution run detail page", () => {
     expect(wrapper.text()).not.toContain("digest:");
   });
 
-  it("loads only the active iteration and shows candidate/eval state", async () => {
+  it("loads the info steps and only the active iteration step", async () => {
     const requested: string[] = [];
     server.use(
       http.get(`${evolutionBase}/runs/:runId`, () =>
@@ -485,7 +605,7 @@ describe("evolution run detail page", () => {
     );
     const wrapper = await mountPage();
 
-    expect(requested).toEqual(["iteration"]);
+    expect(requested).toEqual(["range", "attribution", "iteration"]);
     expect(wrapper.get("[data-step-key='iteration']").attributes("aria-current")).toBe(
       "step",
     );
@@ -552,7 +672,12 @@ describe("evolution run detail page", () => {
     expect(wrapper.vm.$route.fullPath).toBe(
       `${ws}/evolution/runs/evo-full-1?step=clusters`,
     );
-    expect(requested).toEqual(["iteration", "clusters"]);
+    expect(requested).toEqual([
+      "range",
+      "attribution",
+      "iteration",
+      "clusters",
+    ]);
     expect(wrapper.get("[data-step-key='clusters']").attributes("aria-current")).toBe(
       "step",
     );
@@ -584,7 +709,10 @@ describe("evolution run detail page", () => {
     );
     const wrapper = await mountPage("evo-full-1", "?step=sessions");
 
-    expect(requested).toEqual([{ step: "sessions", query: "?page=1&pageSize=4" }]);
+    expect(requested).toEqual([
+      { step: "range", query: "" },
+      { step: "sessions", query: "?page=1&pageSize=4" },
+    ]);
     expect(wrapper.text()).toContain("研究运行");
 
     await wrapper.findAll(".pager button")[1]?.trigger("click");
@@ -699,7 +827,7 @@ describe("evolution run detail page", () => {
     );
     const wrapper = await mountPage();
 
-    expect(requested).toEqual(["final"]);
+    expect(requested).toEqual(["range", "attribution", "final"]);
     expect(wrapper.text()).toContain("✓ 自进化有效");
     expect(wrapper.text()).toContain("任务完成率");
     expect(wrapper.text()).toContain("cd34ab");
@@ -819,6 +947,8 @@ describe("evolution run detail page", () => {
             },
           ),
         )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
       http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
         HttpResponse.json({
           key: "attribution",
@@ -853,6 +983,103 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-testid='run-retry']").text()).toBe("重试");
     expect(wrapper.get("[data-step-key='clusters']").attributes("disabled")).toBeDefined();
     expect(wrapper.text()).toContain("没有需要归因的潜在 bad case");
+    expect(wrapper.text()).toContain("16 / —");
+    expect(wrapper.text()).toContain("未归因 12");
+  });
+
+  it("derives attributed and non-target counts from attribution rows for legacy runs", async () => {
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({
+              status: "completed",
+              stats: {
+                sessions: 5,
+                versionUnresolvedSessions: 0,
+                badCases: 3,
+                potential: 3,
+                attributed: 3,
+                reused: 0,
+                clusters: 0,
+                byCategory: { model: 0, prompt: 0, error: 2 },
+              },
+            }),
+            ["done", "done", "done", "done", "done", "done", "done"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json({
+          key: "attribution",
+          index: 3,
+          title: "对象归因",
+          status: "done",
+          clickable: true,
+          payload: {
+            summary: { potential: 3, reused: 0, fresh: 3, nonTarget: 1 },
+            rows: [
+              {
+                badCaseId: "legacy-case-1",
+                attributionId: "legacy-probe-1",
+                category: "error",
+                description: "归因结论",
+                source: "fresh",
+                confidence: 0.8,
+              },
+              {
+                badCaseId: "legacy-case-2",
+                attributionId: "legacy-probe-2",
+                category: "error",
+                description: "归因结论",
+                source: "fresh",
+                confidence: 0.8,
+              },
+              {
+                badCaseId: "legacy-case-3",
+                attributionId: "legacy-probe-3",
+                category: null,
+                description: "非该对象",
+                source: "fresh",
+                confidence: 0.4,
+              },
+            ],
+          },
+        })),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json(finalStep)),
+    );
+    const wrapper = await mountPage();
+
+    const info = wrapper.get("[data-testid='run-info-panel']");
+    expect(info.text()).toContain("2 / 1");
+    expect(info.text()).toContain("＝ 归因 2 · 复用缓存 0 · 本次新增 2");
+    expect(info.text()).not.toContain("3 / 1");
+  });
+
+  it("shares the range step query with the info panel when step=range is selected", async () => {
+    let rangeRequests = 0;
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(
+          detail(
+            run({ status: "completed" }),
+            ["done", "done", "done", "done", "done", "done", "done"],
+          ),
+        )),
+      http.get(`${evolutionBase}/runs/:runId/steps/range`, () => {
+        rangeRequests += 1;
+        return HttpResponse.json(rangeStep);
+      }),
+      http.get(`${evolutionBase}/runs/:runId/steps/attribution`, () =>
+        HttpResponse.json(attributionStep)),
+      http.get(`${evolutionBase}/runs/:runId/steps/:step`, () =>
+        HttpResponse.json(finalStep)),
+    );
+    await mountPage("evo-full-1", "?step=range");
+
+    expect(rangeRequests).toBe(1);
   });
 
   it("submits a manual retry, disables the button, and refetches the run", async () => {

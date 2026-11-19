@@ -31,7 +31,12 @@ from app.db.models.users import users
 from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 
 BASE = datetime(2026, 10, 20, 9, 0, tzinfo=UTC)
-RUN_IDS = ("run-v2-completed", "run-v2-blocked-attribution", "run-v2-legacy")
+RUN_IDS = (
+    "run-v2-completed",
+    "run-v2-blocked-attribution",
+    "run-v2-legacy",
+    "run-v2-preparing",
+)
 CASE_IDS = tuple(f"v2-case-{index}" for index in range(1, 7)) + (
     "v2-blocked-case-1",
     "v2-legacy-case-1",
@@ -290,6 +295,23 @@ async def main() -> None:
                         progress_unit=6,
                         attribution_engine="legacy-probe-import",
                         stats=legacy_stats,
+                        created_by=admin_id,
+                    ),
+                    _run(
+                        "run-v2-preparing",
+                        status="preparing",
+                        progress_unit=0,
+                        attribution_engine="rule-v1",
+                        stats={
+                            "sessions": 0,
+                            "versionUnresolvedSessions": 0,
+                            "badCases": 0,
+                            "potential": 0,
+                            "attributed": 0,
+                            "reused": 0,
+                            "clusters": 0,
+                            "byCategory": {"model": 0, "prompt": 0, "error": 0},
+                        },
                         created_by=admin_id,
                     ),
                 ],
