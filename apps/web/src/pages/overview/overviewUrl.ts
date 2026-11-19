@@ -211,7 +211,9 @@ export function parseOverviewQuery(
   const grain =
     rawGrain && GRAIN_VALUES.has(rawGrain as OverviewGrain)
       ? (rawGrain as OverviewGrain)
-      : DEFAULT_OVERVIEW_STATE.grain;
+      : range === 7
+        ? "day"
+        : DEFAULT_OVERVIEW_STATE.grain;
 
   const rawType = firstValue(query.type);
   const type =

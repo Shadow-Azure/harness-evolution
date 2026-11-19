@@ -1147,3 +1147,67 @@ test("m8-04 overview scrollbar sits at the window's right edge", async () => {
     await page.close();
   }
 });
+
+test("m8-04 defaults quick ranges to day for 7 days and week for 30/90", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await openOverview(page);
+
+    await click(page, "[data-testid='ov-range-7']");
+    const seven = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "7" || search.get("grain") !== "day") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        const buckets = document.querySelectorAll("[data-bucket]");
+        if (!hint.includes("按日聚合") || buckets.length !== 7) return null;
+        const day0Bucket = document.querySelector("[data-bucket='${day0}']");
+        if (!day0Bucket) return null;
+        const label = day0Bucket.getAttribute("aria-label") ?? "";
+        const counts = label.match(/自身存在问题 (\\d+)，发现前置步骤问题 (\\d+)/);
+        const day0Total = counts ? Number(counts[1]) + Number(counts[2]) : null;
+        if (day0Total !== 6) return null;
+        return { day0Total };
+      })()`,
+      "7-day range defaults to day grain with the current-day count",
+    );
+    assert.equal(seven.day0Total, 6);
+
+    await click(page, "[data-testid='ov-range-30']");
+    const thirty = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "30" || search.get("grain") !== "week") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        return hint.includes("按周聚合") ? { grain: search.get("grain") } : null;
+      })()`,
+      "30-day range keeps week grain",
+    );
+    assert.equal(thirty.grain, "week");
+
+    await click(page, "[data-testid='ov-range-90']");
+    const ninety = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "90" || search.get("grain") !== "week") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        return hint.includes("按周聚合") ? { grain: search.get("grain") } : null;
+      })()`,
+      "90-day range keeps week grain",
+    );
+    assert.equal(ninety.grain, "week");
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});

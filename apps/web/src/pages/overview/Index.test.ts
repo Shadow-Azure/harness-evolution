@@ -550,6 +550,64 @@ describe("workspace overview page", () => {
     expect(router.currentRoute.value.query.type).toBeUndefined();
   });
 
+  it("defaults quick ranges to day for 7 days and week for 30/90", async () => {
+    mockOverviewApi();
+    const { router, wrapper } = await mountPage(`${ws}/overview?range=90&grain=week`);
+
+    await wrapper.get("[data-testid='ov-range-7']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      range: "7",
+      grain: "day",
+    });
+    expect(
+      new URL(requests.trend.at(-1) as string).searchParams.get("grain"),
+    ).toBe("day");
+
+    await wrapper.get("[data-testid='ov-range-30']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      range: "30",
+      grain: "week",
+    });
+
+    await wrapper.get("[data-testid='ov-grain-month']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query.grain).toBe("month");
+
+    await wrapper.get("[data-testid='ov-range-90']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      range: "90",
+      grain: "week",
+    });
+
+    await wrapper.get("[data-testid='ov-range-7']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid='ov-grain-week']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid='ov-range-7']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      range: "7",
+      grain: "week",
+    });
+  });
+
+  it("keeps an explicit weekly grain for a 7-day deep link", async () => {
+    mockOverviewApi();
+    const { router } = await mountPage(`${ws}/overview?range=7&grain=week`);
+
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "week",
+    });
+    expect(
+      new URL(requests.trend.at(-1) as string).searchParams.get("grain"),
+    ).toBe("week");
+  });
+
   it("restores filters from a deep link and sends them to every request", async () => {
     mockOverviewApi({
       cases: { items: [caseRow(1)], total: 17, page: 2, pageSize: 8 },
@@ -666,7 +724,7 @@ describe("workspace overview page", () => {
     expect(router.currentRoute.value.query).toEqual({
       tab: "cases",
       range: "7",
-      grain: "week",
+      grain: "day",
       objects: "deep-research",
     });
   });
@@ -1065,7 +1123,7 @@ describe("workspace overview page", () => {
       expect(router.currentRoute.value.query).toEqual({
         tab: "cases",
         range: "7",
-        grain: "week",
+        grain: "day",
         objects: "deep-research",
       });
     });
@@ -1327,7 +1385,7 @@ describe("workspace overview page", () => {
     expect(router.currentRoute.value.query).toEqual({
       tab: "cases",
       range: "custom",
-      grain: "week",
+      grain: "day",
       from: "2026-11-10",
       to: "2026-11-16",
     });

@@ -6834,7 +6834,18 @@ document.addEventListener('click', e => {
   if (ds.v2AdminEntry !== undefined) { const menu = document.getElementById('userMenu'); if (menu) menu.open = false; v2SetPage(v2CanManage(V2.wsId) ? 'admin' : 'overview'); return; }
   if (ds.v2Logout !== undefined) { v2Logout(); return; }
   if (ds.v2OvTab) { V2.overview.tab = ds.v2OvTab; V2.targetOv.page = 1; v2RenderOverview(); return; }
-  if (ds.v2OvRange) { V2.overview.range = +ds.v2OvRange; V2.overview.page = 1; V2.targetOv.page = 1; v2RenderOverview(); return; }
+  if (ds.v2OvRange) {
+    const range = +ds.v2OvRange;
+    if (V2.overview.range === range) return;
+    V2.overview.range = range;
+    // 近 7 天默认按日看逐日数据；30/90 天保持周粒度，用户仍可手动改回。
+    if (range === 7) V2.overview.grain = 'day';
+    else if (range === 30 || range === 90) V2.overview.grain = 'week';
+    V2.overview.page = 1;
+    V2.targetOv.page = 1;
+    v2RenderOverview();
+    return;
+  }
   if (ds.v2OvGrain) { V2.overview.grain = ds.v2OvGrain; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2TgAdd !== undefined) { v2TargetModal(null); return; }
   if (ds.v2TgEdit) { v2TargetModal(ds.v2TgEdit); return; }
@@ -6954,6 +6965,7 @@ function v2Boot() {
     V2.page = ['overview', 'session', 'evo', 'admin'].includes(page) ? page : 'overview';
     if (q.has('range')) V2.overview.range = Number(q.get('range'));
     if (q.has('grain')) V2.overview.grain = q.get('grain');
+    else if (V2.overview.range === 7) V2.overview.grain = 'day';
     window.V2_READY = true;
     v2LoginAs(userParam, { keepPage: true, silent: true, auto: true });
     v2SetPage(V2.page);

@@ -183,8 +183,10 @@ function applyTargetsPatch(patch: Partial<OverviewUrlState>): void {
 }
 
 function setRange(value: OverviewRangeChoice): void {
+  // Re-clicking the active range is not a range change: keep a manual grain
+  // choice instead of silently resetting it to the range's default.
+  if (state.value.range === value) return;
   if (value === "custom") {
-    if (state.value.range === "custom") return;
     // Prefill from the window currently on screen (server-confirmed), so
     // switching from 7/30/90 days keeps the same boundaries instead of
     // jumping to the 90-day fallback.
@@ -193,7 +195,15 @@ function setRange(value: OverviewRangeChoice): void {
     return;
   }
   const range = value as OverviewRange;
-  void replaceState({ range, from: "", to: "" });
+  // The quick ranges own a sensible default grain: a 7-day window is meant to
+  // show per-day counts, while 30/90 days stay weekly. The grain control below
+  // still lets the person override the choice afterwards.
+  void replaceState({
+    range,
+    from: "",
+    to: "",
+    grain: range === 7 ? "day" : "week",
+  });
 }
 
 function setWindow(value: { from: string; to: string }): void {
