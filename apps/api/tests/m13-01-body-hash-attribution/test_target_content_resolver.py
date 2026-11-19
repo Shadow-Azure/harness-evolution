@@ -283,11 +283,14 @@ async def test_branch_and_commit_refs_resolve_to_the_same_body_hash(
     resolver, _ = _resolver(tmp_path)
     git = shutil.which("git")
     assert git is not None
-    commit = subprocess.run(  # noqa: S603 - argv is fixed and the binary is repository tooling
-        (git, "-C", str(repo), "rev-parse", "HEAD"),
-        check=True,
-        capture_output=True,
-        text=True,
+    commit = (
+        await asyncio.to_thread(
+            subprocess.run,
+            (git, "-C", str(repo), "rev-parse", "HEAD"),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     ).stdout.strip()
 
     branch = await resolver.resolve(
