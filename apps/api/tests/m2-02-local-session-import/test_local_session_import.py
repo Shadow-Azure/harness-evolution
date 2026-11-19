@@ -697,6 +697,7 @@ def test_cli_refuses_production_without_echoing_path(
     monkeypatch.setenv("HE_DB_DIALECT", "sqlite")
     monkeypatch.setenv("HE_DB_URL", f"sqlite+aiosqlite:///{tmp_path / 'production.db'}")
     monkeypatch.setenv("HE_JWT_SECRET", "local-session-import-test-secret")
+    monkeypatch.setenv("HE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("HE_PRODUCTION", "true")
 
     assert cli_main(["import-local", "--sessions-dir", str(source)]) == 2
@@ -704,6 +705,22 @@ def test_cli_refuses_production_without_echoing_path(
     assert "refuses production" in captured.err
     assert str(tmp_path) not in captured.err
     assert not (tmp_path / "production.db").exists()
+
+
+def test_cli_reports_invalid_configuration_without_echoing_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "sessions"
+    make_sample(source)
+    monkeypatch.setenv("HE_PRODUCTION", "true")
+    monkeypatch.delenv("HE_DATA_DIR", raising=False)
+
+    assert cli_main(["import-local", "--sessions-dir", str(source)]) == 2
+    captured = capsys.readouterr()
+    assert "invalid configuration" in captured.err
+    assert str(tmp_path) not in captured.err
 
 
 def test_cli_sanitizes_path_bearing_filesystem_errors(

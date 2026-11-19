@@ -526,7 +526,11 @@ async def test_seed_refuses_live_and_production_before_writes(tmp_path: Path) ->
     corpus = load_fixture_corpus(CORPUS_PATH)
     for settings in (
         sqlite_settings(tmp_path / "live", phase=ServicePhase.LIVE),
-        Settings(db_dialect=DatabaseDialect.SQLITE, production=True),
+        Settings(
+            db_dialect=DatabaseDialect.SQLITE,
+            production=True,
+            data_dir=tmp_path / "prod",
+        ),
     ):
         with pytest.raises(SeedEnvironmentError):
             await run_corpus_seed(settings, corpus)

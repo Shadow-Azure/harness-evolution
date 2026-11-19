@@ -19,6 +19,10 @@ pnpm dev
 - Web: http://localhost:5173
 - API: http://127.0.0.1:8787/api/health
 
+## Production prerequisites
+
+On production, run [deploy/bootstrap-server.sh](deploy/bootstrap-server.sh) once as root (it installs the unit with `StateDirectory=` and prepares `/var/lib/harness-evolution`); rerun the same script to update the unit on an existing host. Then optionally set an absolute `vars.HE_DATA_DIR` in the GitHub Environment `production` (empty keeps the default); routine deploys need no server access. After the first deploy run `curl -sf http://127.0.0.1:8787/api/health` and confirm `"data":{"ok":true}`. Path rules and migration live in the [deployment docs](docs/deployment.en.md).
+
 ## Docs and gates
 
 - Documentation map: [docs/README.en.md](docs/README.en.md)

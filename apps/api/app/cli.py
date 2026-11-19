@@ -255,6 +255,11 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             return 2
+    except ValidationError:
+        # Environment validation errors may echo configuration values; keep the
+        # CLI output stable and path-free.
+        print("invalid configuration", file=sys.stderr)
+        return 2
     except (
         LocalSessionSourceError,
         OSError,

@@ -7,10 +7,19 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import DatabaseDialect, ServicePhase
+from app.data_dir import DataDirectoryHealth
 from app.db.base import Database, DBHealth
 from app.errors import ErrorResponse
 
 router = APIRouter(prefix="/api", tags=["health"])
+
+
+class DataHealthResponse(BaseModel):
+    """Sanitized data-directory health included in the public health response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
 
 
 class DatabaseHealthResponse(BaseModel):
@@ -44,6 +53,7 @@ class HealthResponse(BaseModel):
     phase: ServicePhase
     version: str
     db: DatabaseHealthResponse
+    data: DataHealthResponse
 
 
 @router.get(
@@ -55,10 +65,11 @@ class HealthResponse(BaseModel):
     },
 )
 async def health(request: Request, response: Response) -> HealthResponse:
-    """Report API reachability, delivery phase, and database health."""
+    """Report API reachability, delivery phase, database and data-directory health."""
     phase: ServicePhase = request.app.state.settings.phase
     version: str = request.app.state.settings.version
     database = cast(Database, request.app.state.database)
+    data_directory = cast(DataDirectoryHealth, request.app.state.data_directory)
     database_health = await database.health()
     if request.app.state.database_start_error is not None:
         database_health = DBHealth(
@@ -67,12 +78,14 @@ async def health(request: Request, response: Response) -> HealthResponse:
             latency_ms=database_health.latency_ms,
             error="DatabaseInitializationError: startup or migration failed",
         )
-    if not database_health.ok:
+    ok = database_health.ok and data_directory.ok
+    if not ok:
         response.status_code = HTTPStatus.SERVICE_UNAVAILABLE
     return HealthResponse(
-        ok=database_health.ok,
+        ok=ok,
         service="harness-evolution",
         phase=phase,
         version=version,
         db=DatabaseHealthResponse.from_health(database_health),
+        data=DataHealthResponse(ok=data_directory.ok),
     )

@@ -1550,6 +1550,21 @@
         "title": "CreateUserRequest",
         "type": "object"
       },
+      "DataHealthResponse": {
+        "additionalProperties": false,
+        "description": "Sanitized data-directory health included in the public health response.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "DataHealthResponse",
+        "type": "object"
+      },
       "DatabaseDialect": {
         "description": "Supported SQLAlchemy database dialects.",
         "enum": [
@@ -3327,6 +3342,9 @@
         "additionalProperties": false,
         "description": "Public health-check contract.",
         "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DataHealthResponse"
+          },
           "db": {
             "$ref": "#/components/schemas/DatabaseHealthResponse"
           },
@@ -3352,7 +3370,8 @@
           "service",
           "phase",
           "version",
-          "db"
+          "db",
+          "data"
         ],
         "title": "HealthResponse",
         "type": "object"
@@ -10945,7 +10964,7 @@
     },
     "/api/health": {
       "get": {
-        "description": "Report API reachability, delivery phase, and database health.",
+        "description": "Report API reachability, delivery phase, database and data-directory health.",
         "operationId": "health_api_health_get",
         "responses": {
           "200": {

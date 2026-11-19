@@ -90,13 +90,19 @@ if [ ! -f /etc/nginx/sites-enabled/harness ]; then
   ln -sf /etc/nginx/sites-available/harness /etc/nginx/sites-enabled/harness
   rm -f /etc/nginx/sites-enabled/default
 fi
-if [ ! -f /etc/systemd/system/harness-api.service ] && [ -f "$CONF_DIR/harness-api.service" ]; then
-  cp "$CONF_DIR/harness-api.service" /etc/systemd/system/harness-api.service
+# unit 幂等更新：已存在的旧单元（例如缺少 StateDirectory）也必须被覆盖。
+if [ -f "$CONF_DIR/harness-api.service" ]; then
+  install -m 0644 "$CONF_DIR/harness-api.service" /etc/systemd/system/harness-api.service
   systemctl daemon-reload
   systemctl enable harness-api
-fi
-if [ ! -f /etc/systemd/system/harness-api.service ]; then
+else
   echo "[bootstrap] 警告: $CONF_DIR/harness-api.service 缺失，服务单元未安装（重新执行本脚本可补）" >&2
+fi
+# 显式补建状态目录，保证首次 deploy 前属主正确（systemd 启动时也会创建）。
+install -d -m 0750 -o harness -g harness /var/lib/harness-evolution
+# 重启一次让 StateDirectory 生效；首次发布前没有 release/venv，启动失败属正常。
+if ! systemctl restart harness-api; then
+  echo "[bootstrap] 警告: harness-api 暂未启动（首次发布前无 release 属正常），/var/lib/harness-evolution 已准备" >&2
 fi
 nginx -t
 systemctl reload nginx || systemctl restart nginx
@@ -109,5 +115,6 @@ EOF
 chmod 440 "$SUDOERS"
 visudo -c
 
-echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考 deploy/env.production.example），"
+echo "[bootstrap] 完成。下一步: 填 /opt/harness/shared/.env（参考 deploy/env.production.example，"
+echo "           HE_DATA_DIR 用绝对路径，默认 /var/lib/harness-evolution/data），"
 echo "           然后配置 GitHub Secrets 并触发首次发布。"
