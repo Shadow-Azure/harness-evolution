@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m16-01-data-dir-state-directory-deploy-guard.md
-m16-01-data-dir-state-directory-deploy-guard.md: 874ac7e4d41fa81ff9354c1f62f6936ee908074b
-m16-01-data-dir-state-directory-deploy-guard.en.md: 11d710b7b35533d342add188790cc6d3ce4ef4d0
+m16-01-data-dir-state-directory-deploy-guard.md: ee5b25d8c9d0cdc93831dbf4fde9cc6599365e9e
+m16-01-data-dir-state-directory-deploy-guard.en.md: dbb7557ba71c0f5ba04001a2147b6a079be02895

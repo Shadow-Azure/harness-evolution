@@ -6,7 +6,7 @@
 kind: milestone
 id: m16
 title: M16 生产数据目录与部署可写性
-status: active
+status: done
 github:
   number: 24
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/24
