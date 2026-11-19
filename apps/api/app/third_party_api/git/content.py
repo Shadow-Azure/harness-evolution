@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import os
 import shutil
+import signal
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -58,6 +59,7 @@ class SubprocessGitContent:
         self.cache_root = cache_root
         self._runner = runner or _run_process
         self._timeout_seconds = timeout_seconds
+        self._mirror_locks: dict[str, asyncio.Lock] = {}
 
     async def read_file(
         self,
@@ -69,20 +71,33 @@ class SubprocessGitContent:
     ) -> str:
         """Return the exact file body at ``ref`` or raise a stable failure."""
         repo_path = self.cache_root / hashlib.sha256(repo_url.encode("utf-8")).hexdigest()[:32]
-        await self._ensure_mirror(repo_path, repo_url)
-        commit = await self._resolve_commit(repo_path, ref)
-        if commit is None:
-            # A mirror is append-mostly: a missing tag is usually a cache that
-            # predates the tag, so refresh once before giving up.
-            await self._check(repo_path, ("git", "remote", "update", "--prune"))
+        # Concurrent overview requests may resolve the same repository at once;
+        # serialize the whole read so one clone/refresh cannot remove the cache a
+        # sibling request is about to read.
+        async with self._mirror_lock(repo_path):
+            await self._ensure_mirror(repo_path, repo_url)
             commit = await self._resolve_commit(repo_path, ref)
-        if commit is None:
-            raise GitContentUnavailable("ref_not_found")
-        relative = _relative_path(sub_dir, file_name)
-        result = await self._git(repo_path, ("git", "show", f"{commit}:{relative}"))
+            if commit is None:
+                # A mirror is append-mostly: a missing tag is usually a cache that
+                # predates the tag, so refresh once before giving up.
+                await self._check(repo_path, ("git", "remote", "update", "--prune"))
+                commit = await self._resolve_commit(repo_path, ref)
+            if commit is None:
+                raise GitContentUnavailable("ref_not_found")
+            relative = _relative_path(sub_dir, file_name)
+            result = await self._git(repo_path, ("git", "show", f"{commit}:{relative}"))
         if result.returncode != 0:
             raise GitContentUnavailable("file_not_found")
         return result.stdout
+
+    def _mirror_lock(self, repo_path: Path) -> asyncio.Lock:
+        """Return the one process-local lock guarding a mirror cache path."""
+        key = str(repo_path)
+        lock = self._mirror_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._mirror_locks[key] = lock
+        return lock
 
     async def _ensure_mirror(self, repo_path: Path, repo_url: str) -> None:
         """Create or verify the read-only mirror for one repository."""
@@ -175,7 +190,21 @@ async def _run_process(
         env=environment,
         start_new_session=sys.platform != "win32",
     )
-    stdout, stderr = await process.communicate()
+    try:
+        stdout, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        # The overview timeout cancels this coroutine; kill the whole git process
+        # group so a slow clone cannot outlive the request.
+        if process.returncode is None:
+            try:
+                if sys.platform == "win32":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await process.wait()
+        raise
     return GitProcessResult(
         returncode=process.returncode or 0,
         stdout=stdout.decode(errors="replace"),

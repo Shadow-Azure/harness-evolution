@@ -40,6 +40,31 @@ def definition_hash(text: str) -> str | None:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
+def strip_definition_frontmatter(text: str) -> str:
+    """Remove one leading YAML frontmatter block from a definition file.
+
+    Skill and Agent definition files carry provider metadata before the body.
+    The trace parser receives the already-extracted body, so target-side file
+    reads must drop the same block before normalization or the two hashes can
+    never agree. A file without a complete leading ``---`` block is returned
+    unchanged rather than being truncated.
+    """
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized.startswith("---\n"):
+        return text
+    closing = normalized.find("\n---\n", 4)
+    if closing != -1:
+        return normalized[closing + len("\n---\n") :]
+    if normalized.endswith("\n---"):
+        return normalized[: -len("\n---")]
+    return text
+
+
+def definition_file_hash(text: str) -> str | None:
+    """Hash the body of a definition file after frontmatter extraction."""
+    return definition_hash(strip_definition_frontmatter(text))
+
+
 def digest_revision(text: str) -> str | None:
     """Return the normalized ``digest:`` revision for one definition body."""
     digest = definition_hash(text)

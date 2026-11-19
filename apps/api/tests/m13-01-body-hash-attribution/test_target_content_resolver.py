@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import subprocess
 from pathlib import Path
@@ -246,6 +247,32 @@ async def test_absolute_and_parent_paths_are_rejected(
             )
         assert error.value.code is ErrorCode.TARGET_CONTENT_UNRESOLVED
         assert error.value.details["reason"] == "path_invalid"
+
+
+async def test_concurrent_resolutions_share_one_mirror(
+    tmp_path: Path,
+    repo: Path,
+) -> None:
+    """Concurrent overview reads must not race create/delete the mirror cache."""
+    resolver, _ = _resolver(tmp_path)
+
+    first, second = await asyncio.gather(
+        resolver.resolve(
+            object_type="skill",
+            repo_url=str(repo),
+            sub_dir="skills/systematic-debugging",
+            version="v1.0.0",
+        ),
+        resolver.resolve(
+            object_type="skill",
+            repo_url=str(repo),
+            sub_dir="skills/systematic-debugging",
+            version="v1.0.0",
+        ),
+    )
+
+    assert first == second
+    assert first.target_revision == f"digest:{definition_hash(SKILL_BODY)}"
 
 
 async def test_prefixed_revisions_never_read_content(tmp_path: Path) -> None:

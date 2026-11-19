@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any, cast
@@ -282,6 +283,28 @@ async def test_trend_skips_attribution_created_outside_the_window() -> None:
     )
 
 
+class _SlowResolver:
+    """Never finish before the overview timeout and count invocations."""
+
+    def __init__(self) -> None:
+        """Start with no calls."""
+        self.calls = 0
+
+    async def resolve(
+        self,
+        *,
+        object_type: str,
+        repo_url: str,
+        sub_dir: str,
+        version: str,
+    ) -> ResolvedTargetVersion:
+        """Sleep past the short test timeout."""
+        del object_type, repo_url, sub_dir, version
+        self.calls += 1
+        await asyncio.sleep(10)
+        raise AssertionError("slow resolver should have been cancelled")
+
+
 class _UnresolvedResolver:
     """Raise the stable content-unresolved error for every version."""
 
@@ -328,3 +351,43 @@ async def test_overview_skips_content_unresolved_versions_without_tag_fallback()
     )
 
     assert evaluated is None
+
+
+async def test_overview_times_out_slow_resolution_and_caches_the_failure() -> None:
+    """A slow repository is skipped promptly and the failure is cached."""
+    resolver = _SlowResolver()
+    service = TargetOverviewService(
+        cast(Any, None),
+        cast(Any, None),
+        cast(Any, None),
+        resolver,
+        resolve_timeout_seconds=0.01,
+    )
+    target = cast(
+        Any,
+        SimpleNamespace(
+            object_type="skill",
+            object_name="deep-research",
+            repo_url="https://example.invalid/slow.git",
+            sub_dir="skills/deep-research",
+        ),
+    )
+
+    first = await service._evaluate(
+        target,
+        "v2.0.0",
+        workspace_id="ws-unit",
+        window_start=datetime(2026, 11, 1),
+        window_end=datetime(2026, 12, 1),
+    )
+    second = await service._evaluate(
+        target,
+        "v2.0.0",
+        workspace_id="ws-unit",
+        window_start=datetime(2026, 11, 1),
+        window_end=datetime(2026, 12, 1),
+    )
+
+    assert first is None
+    assert second is None
+    assert resolver.calls == 1

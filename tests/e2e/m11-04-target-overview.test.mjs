@@ -32,6 +32,7 @@ const workspaceId = "ws-default";
 let api;
 let web;
 let dataDir;
+let gitConfigPath;
 let baseUrl;
 let apiLogs = "";
 let webLogs = "";
@@ -198,13 +199,16 @@ async function navigateTargets(page, wid = workspaceId) {
       const stats = document.querySelector("[data-testid='ov-target-stats']");
       const tab = document.querySelector("[data-testid='ov-tab-targets']");
       if (!stats || !tab || !tab.classList.contains("active")) return null;
+      const statTargets = document.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim();
+      const statSessions = document.querySelector("[data-testid='ov-target-stat-sessions']")?.textContent?.trim();
+      if (statTargets !== "6" || statSessions !== "1") return null;
       if (document.querySelectorAll("[data-testid='ov-target-case-row']").length === 0) {
         return null;
       }
       return {
         search: location.search,
-        targets: document.querySelector("[data-testid='ov-target-stat-targets']")?.textContent?.trim(),
-        sessions: document.querySelector("[data-testid='ov-target-stat-sessions']")?.textContent?.trim(),
+        targets: statTargets,
+        sessions: statSessions,
         potential: document.querySelector("[data-testid='ov-target-stat-potential']")?.textContent?.trim(),
         attributed: document.querySelector("[data-testid='ov-target-stat-attributed']")?.textContent?.trim(),
         nonTarget: document.querySelector("[data-testid='ov-target-stat-nontarget']")?.textContent?.trim(),
@@ -265,6 +269,40 @@ async function screenshot(page, name, full = true) {
 
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m11-04-e2e-"));
+  gitConfigPath = path.join(dataDir, "gitconfig");
+  const originDir = path.join(dataDir, "target-origin.git");
+  const workDir = path.join(dataDir, "target-work");
+  const git = (args, cwd) => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  };
+  git(["init", "--bare", "-b", "main", originDir], root);
+  git(["clone", originDir, workDir], root);
+  for (const name of ["synthetic-review", "extra-1", "extra-2", "extra-3", "extra-4", "extra-5"]) {
+    await mkdir(path.join(workDir, "skills", name), { recursive: true });
+    await writeFile(path.join(workDir, "skills", name, "SKILL.md"), `# ${name}\n`);
+  }
+  git(["add", "."], workDir);
+  git(
+    [
+      "-c",
+      "user.name=M11-04",
+      "-c",
+      "user.email=m11-04@example.invalid",
+      "commit",
+      "-m",
+      "seed target content",
+    ],
+    workDir,
+  );
+  git(["tag", "main"], workDir);
+  git(["tag", "synthetic-1"], workDir);
+  git(["push", "origin", "refs/heads/main:refs/heads/main", "--tags"], workDir);
+  await writeFile(
+    gitConfigPath,
+    `[url "file://${originDir}"]\n\tinsteadOf = https://example.invalid/example/skills.git\n` +
+      `[url "file://${originDir}"]\n\tinsteadOf = https://example.invalid/m11-04.git\n`,
+  );
   const env = {
     ...process.env,
     HE_ADMIN_PASSWORD: initialPassword,
@@ -275,6 +313,7 @@ before(async () => {
     HE_LOGIN_RATE_LIMIT: "100",
     HE_PHASE: "demo",
     PYTHONPATH: apiDir,
+    GIT_CONFIG_GLOBAL: gitConfigPath,
   };
   const seed = spawnSync(pnpm, ["fixtures:seed"], {
     cwd: root,

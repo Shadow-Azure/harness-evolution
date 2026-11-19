@@ -34,15 +34,15 @@ github:
 
 ## 背景
 
-2026-11-18 的生产实测中，目标 `skill / systematic-debugging` 在 `v6.4.1` 下第 2 步关联 0 个 Session：4 个已同步 Session 全部 skipped，18 个待同步。轨迹事件只有 `definitionHash=8e54…` 与 `objectRevision=digest:3643…`；后者包含运行时注入的 skill source path。该 path 是 `.../claude-plugins-official/superpowers/6.4.1/skills/systematic-debugging/SKILL.md` 一类插件 cache 路径，既不是稳定相对路径，也没有落库；target 无法从 `repoUrl/subDir/ref` 复算同一个 revision。实测 `obra/superpowers` v6.4.1 的 normalized 文件 hash 是 `9080…`，与 trace 的 `8e54…` 不同，说明 source/版本或 body 提取还需要对齐。
+2026-11-18 的生产实测中，目标 `skill / systematic-debugging` 在 `v6.4.1` 下第 2 步关联 0 个 Session：4 个已同步 Session 全部 skipped，18 个待同步。轨迹事件只有 `definitionHash=8e54…` 与 `objectRevision=digest:3643…`；后者包含运行时注入的 skill source path。该 path 是 `.../claude-plugins-official/superpowers/6.4.1/skills/systematic-debugging/SKILL.md` 一类插件 cache 路径，既不是稳定相对路径，也没有落库；target 无法从 `repoUrl/subDir/ref` 复算同一个 revision。owner 已确认 target 应使用 `superpowers` `main`。eval trace 已收到：trace 的 skill body hash 是 `8e54…`；main 的 `SKILL.md` 整文件 hash 是 `a9a7…`，去掉 YAML frontmatter 后 body hash 正好是 `8e54…`；v6.4.1 的整文件 `9080…` 是同一 body 加 frontmatter。根因是 target resolver 对整文件 hash、未剥 frontmatter；修复后 resolver 与 parser 都得到 `digest:8e54…`，source 对齐成立，M13 验收项可关闭。
 
 同时，当前把 `eventIndex=-1` 当作“锚点缺失/异常”，并退化为上报 Agent 的出生点（主 Agent 为 Session 开始）。生产 22 条 case 都是 discovery + agent + main 上报；按现规则永远落在目标对象之前，potential=0。“后处理上报”没有独立语义，无法解释也无法按“对象之后”参与归因。
 
-设计文档与实现目前是 path+body 身份（`docs/architecture.md:42`、`15 §9.2`、`06 §7.5`、`07 §5.12`），而 skill/agent/知识库的文件匹配都应收敛到 `sha256(normalize_definition_body(body))`：skill `SKILL.md`、agent `AGENT.md`、knowledge 文档文件读。当前 target 内容解析只覆盖 skill 的 tag 文件，knowledge 的文档匹配仍走 `provider:`/original revision；issue 需要把三类对象的统一匹配键、tag/文档 revision 解析、兼容边界和迁移写进设计文档后再实现。代码现状 `parser_version` 已是 5（M9-05 知识库）；新身份需要 5→6。knowledge 裸 revision 需要 `KnowledgeContentSource`：生产未绑定文档 Provider 时只能 `digest:`/`provider:` 直接启动，裸 revision 返回 `TARGET_CONTENT_UNRESOLVED`。
+设计文档与实现目前是 path+body 身份（`docs/architecture.md:42`、`15 §9.2`、`06 §7.5`、`07 §5.12`），而 skill/agent/知识库的文件匹配都应收敛到 `sha256(normalize_definition_body(body))`：skill `SKILL.md`、agent `AGENT.md`/`agent.md`、knowledge 文档文件读。当前 target 内容解析只覆盖 skill 的 tag 文件，knowledge 的文档匹配仍走 `provider:`/original revision；issue 需要把三类对象的统一匹配键、tag/文档 revision 解析、兼容边界和迁移写进设计文档后再实现。代码现状 `parser_version` 已是 5（M9-05 知识库）；新身份需要 5→6。knowledge 裸 revision 需要 `KnowledgeContentSource`：生产未绑定文档 Provider 时只能 `digest:`/`provider:` 直接启动，裸 revision 返回 `TARGET_CONTENT_UNRESOLVED`。
 
 ## 目标
 
-- 将 skill/agent/知识库的**文件匹配键**统一为 `sha256(normalize_definition_body(body))`：skill 取 `SKILL.md`、agent 取 `AGENT.md`、knowledge 取文档文件读内容；source path 只作诊断证据，不参与 revision、缓存键或匹配。skill 的身份用该 body hash；agent 的 `object_revision` 保留类型/builtin 诊断身份但匹配用 `definition_hash`；knowledge 的 `document_revision`/`object_revision` 也用归一化 body hash。
+- 将 skill/agent/知识库的**文件匹配键**统一为 `sha256(normalize_definition_body(body))`：skill 取 `SKILL.md`、agent 取 `AGENT.md`/`agent.md`、knowledge 取文档文件读内容；source path 只作诊断证据，不参与 revision、缓存键或匹配。skill 的身份用该 body hash；agent 的 `object_revision` 保留类型/builtin 诊断身份但匹配用 `definition_hash`；knowledge 的 `document_revision`/`object_revision` 也用归一化 body hash。
 - 将进化向导选择的 tag 解释为内容来源：skill/agent 由服务端读取该 tag 下 `SKILL.md`/`AGENT.md`，knowledge 由文档 revision/内容读取，统一归一化后计算 body hash，作为 `targetRevision`；tag/文档 revision 保留为版本/显示与代码基线。knowledge 目标仍通过 API 配置/启动，向导暂不提供 knowledge 选择器。
 - 将找不到上报对象的后处理 case 改为显式后处理锚点：`eventIndex=INT_MAX`、`anchorKind=post_process`、`triggeredAt=created_at`，按“对象之后”参与潜在匹配；`-1` 只保留给上报 Agent 无法解析的 unknown。
 - 明确 parser 版本、存量重放、旧 path+body revision/缓存键、契约/UI 展示和测试计划；设计文档评审通过后再写代码。

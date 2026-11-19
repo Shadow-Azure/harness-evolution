@@ -508,10 +508,12 @@ before(async () => {
     workDir,
   );
   git(["tag", "synthetic-1"], workDir);
-  git(["push", "origin", "main", "--tags"], workDir);
+  git(["tag", "main"], workDir);
+  git(["push", "origin", "refs/heads/main:refs/heads/main", "--tags"], workDir);
   await writeFile(
     gitConfigPath,
-    `[url "file://${originDir}"]\n\tinsteadOf = https://example.test/skills.git\n`,
+    `[url "file://${originDir}"]\n\tinsteadOf = https://example.test/skills.git\n` +
+      `[url "file://${originDir}"]\n\tinsteadOf = https://example.invalid/example/skills.git\n`,
   );
 
   const target = await requireApi(

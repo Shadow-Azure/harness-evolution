@@ -16,15 +16,16 @@ from typing import Literal, Protocol
 
 from app.errors import AppError, ErrorCode
 from app.third_party_api.git.content import GitContentUnavailable
-from app.utils.definition import definition_hash
+from app.utils.definition import definition_file_hash, definition_hash
 
 TargetObjectType = Literal["skill", "agent", "knowledge"]
 
-TARGET_FILE_NAMES: dict[str, str] = {
-    "skill": "SKILL.md",
-    "agent": "AGENT.md",
+TARGET_FILE_NAMES: dict[str, tuple[str, ...]] = {
+    "skill": ("SKILL.md",),
+    "agent": ("AGENT.md", "agent.md"),
 }
-"""Repository-relative definition files for the file-backed object types."""
+"""Repository-relative definition files; agent.md is accepted for mixed-case repos."""
+
 
 DEFAULT_CACHE_SIZE = 256
 """Bounded in-process cache of resolved digests."""
@@ -203,8 +204,8 @@ class TargetContentResolver:
                 )
             return ResolvedTargetVersion(version, f"digest:{digest}")
 
-        file_name = TARGET_FILE_NAMES.get(object_type)
-        if file_name is None:
+        file_names = TARGET_FILE_NAMES.get(object_type)
+        if not file_names:
             raise target_content_unresolved(
                 object_type=object_type,
                 reason="unsupported_object_type",
@@ -214,21 +215,35 @@ class TargetContentResolver:
                 object_type=object_type,
                 reason="ref_invalid",
             )
-        content = await self._bounded(
-            self._content.read_file(
-                repo_url=repo_url,
-                sub_dir=sub_dir,
-                ref=version,
-                file_name=file_name,
-            ),
-            object_type=object_type,
-        )
+        content: str | None = None
+        for file_name in file_names:
+            try:
+                content = await self._bounded(
+                    self._content.read_file(
+                        repo_url=repo_url,
+                        sub_dir=sub_dir,
+                        ref=version,
+                        file_name=file_name,
+                    ),
+                    object_type=object_type,
+                )
+                break
+            except AppError as error:
+                # Only try the next casing for a genuinely missing file.
+                if (
+                    len(file_names) > 1
+                    and file_name != file_names[-1]
+                    and error.details.get("reason") == "file_not_found"
+                ):
+                    continue
+                raise
         if content is None:
             raise target_content_unresolved(
                 object_type=object_type,
                 reason="content_not_found",
             )
-        digest = definition_hash(content)
+        # Skill/Agent files carry YAML frontmatter that the trace never sees.
+        digest = definition_file_hash(content)
         if digest is None:
             raise target_content_unresolved(
                 object_type=object_type,
