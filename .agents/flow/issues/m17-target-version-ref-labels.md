@@ -21,6 +21,7 @@ scope:
   - .agents/notes/**
   - .agents/flow/**
   - docs/**
+  - scripts/**
 adr:
   - ../../notes/implemented/bug-fix/2026-11-19-target-version-ref-labels.md
 github:
