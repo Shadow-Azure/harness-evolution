@@ -8,7 +8,7 @@ id: m14-02
 milestone: m14
 depends: []
 priority: P1
-status: ready
+status: done
 scope:
   - apps/web/src/pages/overview/**
   - tests/e2e/**
