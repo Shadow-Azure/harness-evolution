@@ -1116,6 +1116,23 @@
   .admin-table td.actions { text-align: right; white-space: nowrap; }
   .admin-table td.actions button { margin-left: 4px; }
   .admin-table td button + button { margin-left: 4px; }
+  .skill-tab { display: grid; gap: 14px; }
+  .skill-tab .admin-head { margin: 0; }
+  .skill-panel { min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .skill-panel-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 12px; }
+  .skill-panel-head h3 { font-size: 13px; }
+  .skill-table-scroll { overflow-x: auto; }
+  .skill-table-scroll th:last-child { text-align: right; }
+  .skill-name { white-space: nowrap; font-family: var(--mono); }
+  .skill-prompt { max-height: 420px; overflow: auto; padding: 12px; background: var(--bg-inset); color: var(--text-dim); font: 12px/1.65 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .skill-help, .skill-error { padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-panel); }
+  .skill-help a, .skill-download, .skill-activate { color: var(--blue); }
+  .skill-error, .skill-remove { color: var(--red); }
+  .skill-action { background: none; border: 0; padding: 4px; font: inherit; cursor: pointer; }
+  .skill-confirm { inset: 0; margin: auto; width: min(420px, calc(100% - 32px)); padding: 18px; color: var(--text); }
+  .skill-confirm::backdrop { background: rgb(0 0 0 / 35%); }
+  .skill-confirm form { display: grid; gap: 12px; }
+  .skill-confirm .actions { display: flex; justify-content: flex-end; gap: 8px; }
   .ws-name-cell b { display: block; font-size: 12px; font-weight: 650; }
   .ws-name-cell span { display: block; margin-top: 1px; font-family: var(--mono); font-size: 9.5px; color: var(--text-faint); }
   .ws-quota-cell { min-width: 150px; }
@@ -1469,7 +1486,7 @@
   <button class="tn-item" id="tn-overview" onclick="switchMainView('overview')" title="当前空间的 bad case 趋势与列表">总览<span class="tn-sub">bad case 趋势</span></button>
   <button class="tn-item" id="tn-session" onclick="switchMainView('session')" title="会话轨迹 · 家族树 · 问题与归因分析">Session 错误查看<span class="tn-sub">会话轨迹与归因</span></button>
   <button class="tn-item" id="tn-evo" onclick="switchMainView('evo')" title="潜在 bad case · 对象归因 · 迭代优化">自进化<span class="tn-sub">潜在 bad case · 归因</span></button>
-  <button class="tn-item" id="tn-admin" onclick="switchMainView('admin')" hidden title="工作空间、成员、上报与鉴权">空间管理<span class="tn-sub">成员 · 上报 · 鉴权</span></button>
+  <button class="tn-item" id="tn-admin" onclick="switchMainView('admin')" hidden title="工作空间、成员、上报、归因 Skill 与鉴权">空间管理<span class="tn-sub">成员 · 上报 · 鉴权</span></button>
   <div class="tn-right">
     <details class="tn-sync">
       <summary aria-label="数据同步：待处理 3；bad case 数量；归因分析">
@@ -5647,7 +5664,7 @@ const V2 = {
     listFrom: '', listTo: '', page: 1, targetPage: 1, multiOpen: false,
   },
   targetDetail: { targetId: '', versions: new Set(), from: '', to: '', limit: 5, menuOpen: false },
-  admin: { tab: 'spaces' },
+  admin: { tab: 'spaces', skills: new Map() },
   loginChoice: 'admin',
 };
 window.V2 = V2;
@@ -5671,6 +5688,9 @@ function v2Role(wsId, user) {
 function v2RoleLabel(wsId, user) { return V2_ROLE_LABEL[v2Role(wsId, user)] || '无权限'; }
 function v2IsAdmin(user) { return (user || V2.user)?.globalRole === 'admin'; }
 function v2CanManage(wsId) { const r = v2Role(wsId); return r === 'admin' || r === 'space_admin'; }
+function v2CanViewAdmin() {
+  return v2CanManage(V2.wsId) || (V2.admin.tab === 'attribution-skills' && !!v2Role(V2.wsId));
+}
 function v2VisibleWorkspaces() {
   if (!V2.user) return [];
   if (v2IsAdmin()) return V2_WS;
@@ -5814,7 +5834,7 @@ function v2SetPage(page) {
   v2CloseMenus();
   const v2ModalHost = document.getElementById('v2Modal');
   if (v2ModalHost) v2ModalHost.innerHTML = '';
-  if (page === 'admin' && !v2CanManage(V2.wsId)) { v2Toast('当前角色没有空间管理权限'); page = 'overview'; }
+  if (page === 'admin' && !v2CanViewAdmin()) { v2Toast('当前角色没有空间管理权限'); page = 'overview'; }
   V2.page = page;
   ['overview', 'session', 'evo', 'admin'].forEach(p => {
     const el = document.getElementById('view-' + p);
@@ -5835,6 +5855,8 @@ function v2SetPage(page) {
     sp.set('page', page);
     sp.set('u', V2.user.id);
     sp.set('ws', V2.wsId);
+    if (page === 'admin' && V2.admin.tab === 'attribution-skills') sp.set('tab', V2.admin.tab);
+    else if (sp.get('tab') === 'attribution-skills') sp.delete('tab');
     if (page !== 'session') {
       sp.delete('view'); sp.delete('sid'); sp.delete('case'); sp.delete('dtab'); sp.delete('at');
     }
@@ -5862,7 +5884,7 @@ function v2SwitchWorkspace(id) {
   const errPage = document.getElementById('page-errors');
   if (errPage && !errPage.hidden) switchTab('explorer');
   v2RenderShell();
-  v2SetPage(V2.page === 'admin' && !v2CanManage(id) ? 'overview' : V2.page);
+  v2SetPage(V2.page);
   v2WriteUrl(sp => {
     sp.set('ws', id);
     if (selectedId) sp.set('sid', selectedId); else sp.delete('sid');
@@ -6526,19 +6548,23 @@ window.__v2OpenCase = v2OpenCase;
 
 /* ── 空间管理 ── */
 function v2AdminNav() {
-  const tabs = [['spaces', '空间与额度'], ['members', '成员与角色'], ['ingest', '上报接入'], ['auth', '鉴权接入']];
-  return `<aside class="admin-nav card">${tabs.map(([k, l]) => `<button class="${V2.admin.tab === k ? 'active' : ''}" data-v2-admin-tab="${k}">${l}</button>`).join('')}<div class="an-sep"></div><div class="an-hint">${v2IsAdmin() ? '全局管理员可创建空间、任命空间管理员。' : '空间管理员只管理当前空间，不能创建空间。'}</div></aside>`;
+  const tabs = [['spaces', '空间与额度'], ['members', '成员与角色'], ['ingest', '上报接入'], ['attribution-skills', '归因 Skill'], ['auth', '鉴权接入']];
+  const visibleTabs = v2CanManage(V2.wsId) ? tabs : tabs.filter(([key]) => key === 'attribution-skills');
+  const hint = v2IsAdmin() ? '全局管理员可创建空间、任命空间管理员。'
+    : v2CanManage(V2.wsId) ? '空间管理员只管理当前空间，不能创建空间。' : '当前空间为只读访问。';
+  return `<aside class="admin-nav card">${visibleTabs.map(([key, label]) => `<button class="${V2.admin.tab === key ? 'active' : ''}" ${V2.admin.tab === key ? 'aria-current="page"' : ''} data-v2-admin-tab="${key}">${label}</button>`).join('')}<div class="an-sep"></div><div class="an-hint">${hint}</div></aside>`;
 }
 function v2RenderAdmin() {
   const host = document.getElementById('adminApp');
   if (!host) return;
-  if (!v2CanManage(V2.wsId)) {
+  if (!v2CanViewAdmin()) {
     host.innerHTML = `<div class="page-head-v2"><div><h1>空间管理</h1><div class="ph-sub">当前角色没有管理权限。</div></div></div><div class="card panel"><div class="admin-empty"><b>没有访问权限</b>请联系空间管理员把你加入空间，或切换到有权限的演示账号。</div></div>`;
     return;
   }
-  const ws = v2Ws(V2.wsId);
+  const summary = v2IsAdmin() ? '管理所有空间、成员、额度与上报凭据；唯一全局管理员账号为林澈。'
+    : v2CanManage(V2.wsId) ? '管理当前空间的成员、额度与上报接入。' : '查看和下载当前空间的归因 Skill。';
   host.innerHTML = `<div class="page-head-v2">
-    <div><h1>${v2IsAdmin() ? '工作空间管理' : '空间管理'}</h1><div class="ph-sub">${v2IsAdmin() ? '管理所有空间、成员、额度与上报凭据；唯一全局管理员账号为林澈。' : '管理当前空间的成员、额度与上报接入。'}</div></div>
+    <div><h1>${v2IsAdmin() ? '工作空间管理' : '空间管理'}</h1><div class="ph-sub">${summary}</div></div>
     <div class="ph-actions">${v2Badge(v2WsName(V2.wsId), '')}${v2Badge(v2RoleLabel(V2.wsId), V2_ROLE_BADGE[v2Role(V2.wsId)] || '')}</div>
   </div>
   <div class="admin-grid">${v2AdminNav()}<section class="admin-content card" id="v2AdminContent">${v2AdminContent()}</section></div>`;
@@ -6547,8 +6573,146 @@ function v2AdminContent() {
   if (V2.admin.tab === 'spaces') return v2AdminSpaces();
   if (V2.admin.tab === 'members') return v2AdminMembers();
   if (V2.admin.tab === 'ingest') return v2AdminIngest();
+  if (V2.admin.tab === 'attribution-skills') return v2AdminSkills();
   return v2AdminAuth();
 }
+const V2_SKILL_FIXTURES = {
+  default: {"name": "attribute-badcases", "uploader": "平台内置", "prompt": "---\nname: attribute-badcases\n---\n\n# 归因检查\n\n从 Session 中识别失败步骤，引用支持结论的证据。\n证据不足时，列出待补充的信息。\n", "bytes": 315, "zip": "UEsDBBQAAAAAAHFyc12m0XSpowAAAKMAAAAbAAAAYXR0cmlidXRlLWJhZGNhc2VzL1NLSUxMLm1kLS0tCm5hbWU6IGF0dHJpYnV0ZS1iYWRjYXNlcwotLS0KCiMg5b2S5Zug5qOA5p+lCgrku44gU2Vzc2lvbiDkuK3or4bliKvlpLHotKXmraXpqqTvvIzlvJXnlKjmlK/mjIHnu5PorrrnmoTor4Hmja7jgIIK6K+B5o2u5LiN6Laz5pe277yM5YiX5Ye65b6F6KGl5YWF55qE5L+h5oGv44CCClBLAQIUAxQAAAAAAHFyc12m0XSpowAAAKMAAAAbAAAAAAAAAAAAAACAAQAAAABhdHRyaWJ1dGUtYmFkY2FzZXMvU0tJTEwubWRQSwUGAAAAAAEAAQBJAAAA3AAAAAAA"},
+  seed: {"name": "harness-trace-review", "uploader": "李伟", "prompt": "---\nname: harness-trace-review\n---\n\n# 归因检查\n\n核对工具调用、失败结果和重试记录。\n为每项归因标注对应的 Session 证据。\n", "bytes": 309, "zip": "UEsDBBQAAAAAAHFyc10Ng+tDmQAAAJkAAAAdAAAAaGFybmVzcy10cmFjZS1yZXZpZXcvU0tJTEwubWQtLS0KbmFtZTogaGFybmVzcy10cmFjZS1yZXZpZXcKLS0tCgojIOW9kuWboOajgOafpQoK5qC45a+55bel5YW36LCD55So44CB5aSx6LSl57uT5p6c5ZKM6YeN6K+V6K6w5b2V44CCCuS4uuavj+mhueW9kuWboOagh+azqOWvueW6lOeahCBTZXNzaW9uIOivgeaNruOAggpQSwECFAMUAAAAAABxcnNdDYPrQ5kAAACZAAAAHQAAAAAAAAAAAAAAgAEAAAAAaGFybmVzcy10cmFjZS1yZXZpZXcvU0tJTEwubWRQSwUGAAAAAAEAAQBLAAAA1AAAAAAA"},
+  upload: {"name": "workspace-evidence-review", "uploader": "", "prompt": "---\nname: workspace-evidence-review\n---\n\n# 归因检查\n\n定位首个失败步骤，记录轮次与证据来源。\n确认现象和归因结论均可追溯。\n", "bytes": 324, "zip": "UEsDBBQAAAAAAHFyc1238tbxngAAAJ4AAAAiAAAAd29ya3NwYWNlLWV2aWRlbmNlLXJldmlldy9TS0lMTC5tZC0tLQpuYW1lOiB3b3Jrc3BhY2UtZXZpZGVuY2UtcmV2aWV3Ci0tLQoKIyDlvZLlm6Dmo4Dmn6UKCuWumuS9jemmluS4quWksei0peatpemqpO+8jOiusOW9lei9ruasoeS4juivgeaNruadpea6kOOAggrnoa7orqTnjrDosaHlkozlvZLlm6Dnu5PorrrlnYflj6/ov73muq/jgIIKUEsBAhQDFAAAAAAAcXJzXbfy1vGeAAAAngAAACIAAAAAAAAAAAAAAIABAAAAAHdvcmtzcGFjZS1ldmlkZW5jZS1yZXZpZXcvU0tJTEwubWRQSwUGAAAAAAEAAQBQAAAA3gAAAAAA"},
+};
+
+function v2SkillState() {
+  if (!V2.admin.skills.has(V2.wsId)) {
+    const { default: builtIn, seed } = V2_SKILL_FIXTURES;
+    V2.admin.skills.set(V2.wsId, {
+      items: V2.wsId === 'ws-harness' ? [builtIn, seed] : [builtIn],
+      active: builtIn.name,
+    });
+  }
+  return V2.admin.skills.get(V2.wsId);
+}
+function v2SkillDownload(item, label, className) {
+  return `<a class="${className}" href="data:application/zip;base64,${item.zip}" download="${item.name}.zip">${label}</a>`;
+}
+function v2AdminSkills() {
+  const state = v2SkillState();
+  const canManage = v2CanManage(V2.wsId);
+  const effective = state.items.find(item => item.name === state.active);
+  const rows = state.items.map(item => {
+    const builtIn = item === V2_SKILL_FIXTURES.default;
+    const active = item === effective;
+    return `<tr>
+      <td><strong class="skill-name">${v2Esc(item.name)}</strong> ${builtIn ? v2Badge('平台默认', '') : ''}</td>
+      <td>${v2Esc(item.uploader)}</td><td>1</td><td>${item.bytes} B</td>
+      <td>${v2Badge(active ? '当前生效' : '未生效', active ? 'ok' : '')}</td>
+      <td class="actions">
+        ${canManage && !active ? `<button type="button" class="skill-action skill-activate" data-v2-skill-activate="${item.name}">设为生效</button>` : ''}
+        ${v2SkillDownload(item, '下载', 'skill-download')}
+        ${canManage && !builtIn ? `<button type="button" class="skill-action skill-remove" data-v2-skill-remove="${item.name}">删除</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div class="skill-tab">
+    <div class="admin-head">
+      <div><h2>自定义归因 Skill</h2><div class="sub">管理 ${v2Esc(v2WsName(V2.wsId))} 的归因提示词包。上传后需手动设为生效，生产 Run 继续使用通过质量门禁的 revision。</div></div>
+      ${canManage ? '<div class="actions"><button class="btn primary" type="button" data-v2-skill-upload>上传自定义归因 Skill</button><input id="v2SkillFile" type="file" accept=".zip,application/zip" hidden></div>' : ''}
+    </div>
+    ${canManage ? `<div class="skill-help v2-note">上传 Skill 文件夹的 ZIP 包。最多 200 个文件，ZIP 不超过 10 MiB，解压后不超过 20 MiB。包内须有一个不超过 512 KiB 的 <code>SKILL.md</code>。<br>演示上传请使用${v2SkillDownload(V2_SKILL_FIXTURES.upload, '示例 ZIP', 'skill-download')}。</div>
+    <p class="skill-error" id="v2SkillError" role="alert" hidden></p>` : ''}
+    <section class="skill-panel">
+      <div class="skill-panel-head"><div><h3>已上传归因 Skill</h3><p class="v2-note">${state.items.length} 个包。平台默认包始终可用。</p></div>${canManage ? '' : v2Badge('只读', 'viewer')}</div>
+      <div class="skill-table-scroll"><table class="admin-table">
+        <thead><tr><th scope="col">Skill 名</th><th scope="col">上传者</th><th scope="col">文件数</th><th scope="col">大小</th><th scope="col">生效状态</th><th scope="col">操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </section>
+    <section class="skill-panel">
+      <div class="skill-panel-head"><div><h3>当前生效的归因 Skill 提示词</h3><p class="v2-note"><strong>${v2Esc(effective.name)}</strong> · SKILL.md 原文</p></div>${v2Badge('当前生效', 'ok')}</div>
+      <pre class="skill-prompt" tabindex="0">${v2Esc(effective.prompt)}</pre>
+    </section>
+    <dialog class="card skill-confirm" id="v2SkillRemove" aria-labelledby="v2SkillRemoveTitle">
+      <form method="dialog">
+        <h3 id="v2SkillRemoveTitle">删除归因 Skill</h3><p id="v2SkillRemoveText"></p>
+        <div class="actions"><button type="submit" class="btn" value="cancel" autofocus>取消</button><button type="submit" class="btn danger" value="remove">删除</button></div>
+      </form>
+    </dialog>
+  </div>`;
+}
+function v2RenderSkillUpdate(message) {
+  v2RenderAdmin();
+  document.querySelector('[data-v2-skill-upload]')?.focus();
+  v2Toast(message);
+}
+async function v2UploadSkill(input) {
+  const file = input.files[0];
+  input.value = '';
+  const workspace = V2.wsId;
+  const user = V2.user;
+  if (!file || !v2CanManage(workspace)) return;
+  const sample = V2_SKILL_FIXTURES.upload;
+  const state = v2SkillState();
+  let error = '';
+  try {
+    if (!file.name.toLowerCase().endsWith('.zip')) error = '请选择 ZIP 格式的 Skill 文件夹压缩包。';
+    else if (file.size > 10 * 1024 ** 2) error = 'ZIP 超过 10 MiB，请缩小压缩包。';
+    else {
+      const expected = atob(sample.zip);
+      if (file.size !== sample.bytes || !new Uint8Array(await file.arrayBuffer()).every((byte, i) => byte === expected.charCodeAt(i))) {
+        error = '请下载并选择页面提供的示例 ZIP。';
+      } else if (state.items.some(item => item.name === sample.name)) {
+        error = '当前空间已存在同名 Skill，请先删除旧包。';
+      }
+    }
+  } catch {
+    error = '无法读取压缩包，请重新选择示例 ZIP。';
+  }
+  if (V2.wsId !== workspace || V2.user !== user || !input.isConnected) return;
+  if (error) {
+    const alert = document.getElementById('v2SkillError');
+    alert.hidden = false;
+    alert.textContent = error;
+    return;
+  }
+  state.items.push({ ...sample, uploader: user.name });
+  v2RenderSkillUpdate('归因 Skill 已上传，可手动设为生效。');
+}
+function v2RemoveSkill(item, state) {
+  const dialog = document.getElementById('v2SkillRemove');
+  const isActive = item.name === state.active;
+  document.getElementById('v2SkillRemoveText').textContent = isActive
+    ? `删除当前生效的 ${item.name} 后将立即回退默认 Skill。`
+    : `删除 ${item.name} 及其文件？`;
+  dialog.returnValue = '';
+  dialog.addEventListener('close', () => {
+    if (dialog.returnValue !== 'remove') return;
+    state.items = state.items.filter(current => current !== item);
+    if (isActive) state.active = V2_SKILL_FIXTURES.default.name;
+    v2RenderSkillUpdate('归因 Skill 已删除。');
+  }, { once: true });
+  dialog.showModal();
+}
+document.addEventListener('change', event => {
+  if (event.target.id === 'v2SkillFile') v2UploadSkill(event.target);
+});
+document.addEventListener('click', event => {
+  const action = event.target.closest('[data-v2-skill-upload], [data-v2-skill-activate], [data-v2-skill-remove]');
+  if (!action || !v2CanManage(V2.wsId)) return;
+  const { v2SkillUpload, v2SkillActivate, v2SkillRemove: removeName } = action.dataset;
+  if (v2SkillUpload !== undefined) {
+    document.getElementById('v2SkillFile').click();
+    return;
+  }
+  const state = v2SkillState();
+  const item = state.items.find(current => current.name === (v2SkillActivate || removeName));
+  if (!item) return;
+  if (v2SkillActivate) {
+    state.active = item.name;
+    v2RenderSkillUpdate(`已启用 ${item.name}`);
+  } else if (item !== V2_SKILL_FIXTURES.default) {
+    v2RemoveSkill(item, state);
+  }
+});
 function v2AdminSpaces() {
   const canCreate = v2IsAdmin();
   if (!canCreate) {
@@ -6865,7 +7029,16 @@ document.addEventListener('click', e => {
   if (ds.v2OverviewIngest !== undefined) { V2.admin.tab = 'ingest'; v2SetPage('admin'); return; }
   if (ds.v2OverviewEvo !== undefined) { if (window.__evOpenWizard) window.__evOpenWizard(null); return; }
   if (ds.v2CopyEndpoint) { v2Copy(`${V2_ORIGIN}/api/workspaces/${ds.v2CopyEndpoint}/bad-cases`, '上报地址已复制'); return; }
-  if (ds.v2AdminTab) { V2.admin.tab = ds.v2AdminTab; v2RenderAdmin(); return; }
+  if (ds.v2AdminTab) {
+    V2.admin.tab = ds.v2AdminTab;
+    v2WriteUrl(sp => {
+      if (V2.admin.tab === 'attribution-skills') sp.set('tab', V2.admin.tab);
+      else if (sp.get('tab') === 'attribution-skills') sp.delete('tab');
+    });
+    v2RenderAdmin();
+    document.querySelector(`[data-v2-admin-tab="${ds.v2AdminTab}"]`)?.focus();
+    return;
+  }
   if (ds.v2OpenWs) { v2SwitchWorkspace(ds.v2OpenWs); V2.admin.tab = 'spaces'; v2SetPage('overview'); return; }
   if (ds.v2MembersWs) { v2SwitchWorkspace(ds.v2MembersWs); V2.admin.tab = 'members'; v2SetPage('admin'); return; }
   if (ds.v2QuotaWs) { v2WorkspaceModal(ds.v2QuotaWs); return; }
@@ -6963,6 +7136,7 @@ function v2Boot() {
     const demoPage = (q.get('demo') === 'workspace' || q.get('demo') === 'member') ? 'admin' : 'evo';
     const page = q.get('page') || (q.get('demo') ? demoPage : 'overview');
     V2.page = ['overview', 'session', 'evo', 'admin'].includes(page) ? page : 'overview';
+    if (V2.page === 'admin' && q.get('tab') === 'attribution-skills') V2.admin.tab = 'attribution-skills';
     if (q.has('range')) V2.overview.range = Number(q.get('range'));
     if (q.has('grain')) V2.overview.grain = q.get('grain');
     else if (V2.overview.range === 7) V2.overview.grain = 'day';

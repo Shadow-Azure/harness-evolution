@@ -60,6 +60,8 @@ V2 不是重做一套设计系统。原型的目标是验证信息架构和交�
 | 创建/删除工作空间、调整初始额度 | ✓ | — | — | — |
 | 查看有权限的空间与数据 | ✓ | ✓ | ✓ | ✓ |
 | 调整当前空间额度、上报凭据 | ✓ | ✓ | — | — |
+| 查看当前空间的归因 Skill 包、下载及查看生效提示词 | ✓ | ✓ | ✓ | ✓ |
+| 上传、切换生效项及删除自定义归因 Skill 包 | ✓ | ✓ | — | — |
 | 添加成员、授予成员/只读 | ✓ | ✓ | — | — |
 | 任命/撤销空间管理员 | ✓ | — | — | — |
 | 配置进化对象、启动自进化 | ✓ | ✓ | — | — |
@@ -112,6 +114,15 @@ Content-Type: application/json
 - 创建空间时选择初始空间管理员（可多选，包括自己）；一个空间允许多个管理员。
 - 成员页可添加成员、改成员/只读；全局管理员可任命空间管理员，空间管理员只能授予管理员以下权限。
 - 当前账号不是空间管理员时，提供「把自己设为空间管理员」按钮（对应“管理员可以给自己加为某个空间的管理员”）。
+
+### 4.4 归因 Skill
+
+- 入口：在空间管理的「上报接入」与「鉴权接入」之间打开「归因 Skill」。页头展示当前空间，管理员可以上传、设为生效、下载及删除；成员和只读成员通过深链查看，只有下载操作。切换工作空间时，列表和提示词都跟随当前空间。
+- 上传：文件选择器接收 ZIP。包上限为 200 个文件、10 MiB 压缩大小、20 MiB 解压大小，须含唯一的 UTF-8 `SKILL.md`，文件上限 512 KiB。其 frontmatter 的 `name` 是空间内唯一包名。上传成功后新增「未生效」行，并提示管理员可手动设为生效。
+- 列表：展示 Skill 名、上传者、文件数、ZIP 大小、生效状态和操作。每个空间有一项「当前生效」。平台默认包 `attribute-badcases` 始终可下载、可在未生效时重新启用。自定义包显示「删除」，确认框在删除当前项前提示会立即回退至平台默认包。
+- 生效提示词：列表下方展示当前生效包名及 `SKILL.md` 原文，以只读纯文本呈现，跟随启用和回退同步更新。生效状态用于空间包配置。生产 Run 使用通过 Golden 质量门禁并在启动时固化的 registry revision。
+- 反馈：读取列表时展示骨架屏，读取失败时提供重试。上传、启用与删除在请求期间禁用写操作。操作失败时在页内提示原因，包括格式错误、超限、重名、包不存在及权限不足。
+- 原型验收：在[归因 Skill 演示页](harness-evolution.html?u=admin&page=admin&tab=attribution-skills)下载并上传示例 ZIP，确认列表增加一行，当前提示词保持不变。设为生效后检查提示词，再取消一次删除并确认一次删除，检查是否回退至默认包。切换到 Agent 平台检查空间隔离，用[只读演示](harness-evolution.html?u=wanghao&ws=ws-harness&page=admin&tab=attribution-skills)确认只有查看和下载。原型只接受页面提供的示例 ZIP，变更保存在当前页面内存中，刷新恢复样例数据。生产交互依据 [#374](https://github.com/Shadow-Azure/harness-evolution/issues/374)。
 
 ## 5. 工作空间总览
 
@@ -246,6 +257,7 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 /workspaces/:workspaceId/evolution
 /workspaces/:workspaceId/evolution/:runId
 /workspaces/:workspaceId/settings/{workspace,members,ingestion,auth}
+/workspaces/:workspaceId/admin?tab=attribution-skills
 ```
 
 迁移期旧 `/sessions/**`、`/evolution/**` 按“用户最近访问且有权限的空间”重定向；解析失败进入空间选择页，不静默选择第一个空间。旧 `issue/report` 深链先解析到 bad case 再重定向；一旦历史数据允许多归属，停止自动猜测。
