@@ -12,8 +12,7 @@ status: ready
 scope:
   - apps/web/src/pages/overview/**
   - tests/e2e/**
-  - plans/ui-prototype-v2/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/notes/**
   - .agents/flow/**
 adr:
@@ -47,7 +46,7 @@ github:
 ## 实现内容
 
 - `apps/web/src/pages/overview/overviewUrl.ts`：`parseOverviewQuery` 在 `range=7` 且没有显式合法 `grain` 时落到 `day`；显式 grain 优先。
-- `apps/web/src/pages/overview/Index.vue`：`setRange` 在快捷范围变化时联动粒度——7 天 → day，30/90 天 → week；自定义区间保持当前粒度。
+- `apps/web/src/pages/overview/Index.vue`：`setRange` 在快捷范围变化时联动粒度——7 天 → day，30/90 天 → week；自定义区间保持当前粒度；重复点击当前范围不触发联动。
 - `apps/web/src/pages/overview/overviewUrl.test.ts`、`Index.test.ts`：覆盖 7 天默认 day、显式 week 保留、30/90 默认 week、手动粒度在范围变化前不被覆盖。
 - `tests/e2e/m8-04-overview.test.mjs`：覆盖点击近 7 天后 URL `grain=day`、7 个日桶、当天桶可见，以及 30/90 回到周粒度。
 - `plans/fullstack-design/08-frontend-implementation.md`：补充时间范围与粒度联动约定。

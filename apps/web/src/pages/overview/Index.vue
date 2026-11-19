@@ -183,8 +183,10 @@ function applyTargetsPatch(patch: Partial<OverviewUrlState>): void {
 }
 
 function setRange(value: OverviewRangeChoice): void {
+  // Re-clicking the active range is not a range change: keep a manual grain
+  // choice instead of silently resetting it to the range's default.
+  if (state.value.range === value) return;
   if (value === "custom") {
-    if (state.value.range === "custom") return;
     // Prefill from the window currently on screen (server-confirmed), so
     // switching from 7/30/90 days keeps the same boundaries instead of
     // jumping to the 90-day fallback.

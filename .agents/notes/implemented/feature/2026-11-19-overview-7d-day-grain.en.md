@@ -12,7 +12,7 @@ In `plans/ui-prototype-v2/harness-evolution.html`, "time" and "grain" are also i
 
 ## Decision
 
-- Quick ranges own a default grain: last 7 days → `day`, last 30/90 days → `week`; custom windows keep the current grain. The coupling happens only when the range changes; a later manual day/week/month choice is not overwritten by data refreshes.
+- Quick ranges own a default grain: last 7 days → `day`, last 30/90 days → `week`; custom windows keep the current grain. The coupling happens only when the range actually changes; re-clicking the active range is a no-op; a later manual day/week/month choice is not overwritten by data refreshes.
 - URL parsing: `?range=7` without an explicit valid `grain` normalizes to `day`; an explicit `?range=7&grain=week` is still honored. `overviewQuery` therefore writes `grain=day` into the canonical URL.
 - No API, database, or statistic-definition change: the backend already supports day/week/month, and a day request over 92 days keeps the existing server-side downgrade to week with the effective grain returned.
 - Prototype sync: the click path and `?range=7` boot path in `plans/ui-prototype-v2/harness-evolution.html` also default to day; `design-v2.md` and `plans/fullstack-design/08` record the convention.
@@ -27,4 +27,5 @@ In `plans/ui-prototype-v2/harness-evolution.html`, "time" and "grain" are also i
 
 - A 7-day URL canonicalizes from `?range=7` to `?range=7&grain=day`, and the chart changes from two weekly buckets to seven daily buckets; explicit `grain=week` links keep their weekly view.
 - The 30/90 quick buttons reset the grain to week; a person who manually picked month and then clicks 30/90 sees that one change, which is the intended range-change coupling.
+- A custom window keeps the grain it was entered with and does not infer a grain from the span: entering a 7-day custom window from 90 days/week still shows weekly buckets, so switch to day manually for the daily view.
 - Tests cover URL parsing, page range/grain coupling, and the seven visible daily buckets in E2E; the prototype and the implementation share the same default.

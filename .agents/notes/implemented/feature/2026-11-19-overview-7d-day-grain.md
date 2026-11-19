@@ -12,7 +12,7 @@ Status: implemented
 
 ## Decision
 
-- 快捷时间范围联动默认粒度：近 7 天 → `day`，近 30/90 天 → `week`；自定义区间保持当前粒度。时间范围变化时才联动，用户之后手动点「日/周/月」不被后续数据刷新覆盖。
+- 快捷时间范围联动默认粒度：近 7 天 → `day`，近 30/90 天 → `week`；自定义区间保持当前粒度。只有时间范围真正变化时才联动，重复点击当前范围不触发；用户之后手动点「日/周/月」不被后续数据刷新覆盖。
 - URL 解析：`?range=7` 且未显式提供合法 `grain` 时规范化为 `day`；显式 `?range=7&grain=week` 仍尊重用户选择。`overviewQuery` 因此把 `grain=day` 写进规范 URL。
 - 不改 API、数据库或统计口径：后端已支持 day/week/month，>92 天的 day 请求仍按既有规则降级为 week 并回传实际粒度。
 - 原型同步：`plans/ui-prototype-v2/harness-evolution.html` 的点击和 `?range=7` 启动路径也默认 day；`design-v2.md` 与 `plans/fullstack-design/08` 补充约定。
@@ -27,4 +27,5 @@ Status: implemented
 
 - 近 7 天 URL 从 `?range=7` 规范化为 `?range=7&grain=day`，图表从 2 个周桶变为 7 个日桶；显式带 `grain=week` 的旧链接保持不变。
 - 近 30/90 天快捷按钮会把粒度重置为周；如果用户先手动选月再点 30/90，会被覆盖一次，这是“时间范围变化时联动”的预期行为。
+- 自定义窗口沿用进入时的粒度，不按窗口跨度推断：从 90 天/周进入一个 7 天自定义窗口仍按周，需要逐日视图时手动切到日。
 - 测试覆盖 URL 解析、页面 range/grain 联动和 E2E 可见的 7 个日桶；原型与实现的默认行为保持一致。

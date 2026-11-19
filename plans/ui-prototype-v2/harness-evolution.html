@@ -6836,6 +6836,7 @@ document.addEventListener('click', e => {
   if (ds.v2OvTab) { V2.overview.tab = ds.v2OvTab; V2.targetOv.page = 1; v2RenderOverview(); return; }
   if (ds.v2OvRange) {
     const range = +ds.v2OvRange;
+    if (V2.overview.range === range) return;
     V2.overview.range = range;
     // 近 7 天默认按日看逐日数据；30/90 天保持周粒度，用户仍可手动改回。
     if (range === 7) V2.overview.grain = 'day';

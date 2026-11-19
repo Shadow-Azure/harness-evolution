@@ -12,8 +12,7 @@ status: ready
 scope:
   - apps/web/src/pages/overview/**
   - tests/e2e/**
-  - plans/ui-prototype-v2/**
-  - plans/fullstack-design/**
+  - plans/**
   - .agents/notes/**
   - .agents/flow/**
 adr:
@@ -47,7 +46,7 @@ The prototype has been updated first to the product expectation: selecting the l
 ## Implementation
 
 - `apps/web/src/pages/overview/overviewUrl.ts`: `parseOverviewQuery` falls back to `day` for `range=7` when no explicit valid `grain` is present; an explicit grain wins.
-- `apps/web/src/pages/overview/Index.vue`: `setRange` couples the quick range to a default grain—7 days → day, 30/90 days → week; a custom window keeps the current grain.
+- `apps/web/src/pages/overview/Index.vue`: `setRange` couples the quick range to a default grain—7 days → day, 30/90 days → week; a custom window keeps the current grain; re-clicking the active range is a no-op.
 - `apps/web/src/pages/overview/overviewUrl.test.ts` and `Index.test.ts`: cover 7-day default day, explicit week preservation, 30/90 default week, and manual grain not being overwritten before a range change.
 - `tests/e2e/m8-04-overview.test.mjs`: covers clicking the 7-day range, the `grain=day` URL, seven daily buckets, the current-day bucket, and 30/90 returning to week grain.
 - `plans/fullstack-design/08-frontend-implementation.md`: records the range/grain coupling.

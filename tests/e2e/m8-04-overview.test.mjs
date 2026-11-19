@@ -1167,14 +1167,17 @@ test("m8-04 defaults quick ranges to day for 7 days and week for 30/90", async (
           ?.textContent ?? "";
         const buckets = document.querySelectorAll("[data-bucket]");
         if (!hint.includes("按日聚合") || buckets.length !== 7) return null;
-        if (!document.querySelector("[data-bucket='${day0}']")) return null;
-        return { grain: search.get("grain"), hint, buckets: buckets.length };
+        const day0Bucket = document.querySelector("[data-bucket='${day0}']");
+        if (!day0Bucket) return null;
+        const label = day0Bucket.getAttribute("aria-label") ?? "";
+        const counts = label.match(/自身存在问题 (\\d+)，发现前置步骤问题 (\\d+)/);
+        const day0Total = counts ? Number(counts[1]) + Number(counts[2]) : null;
+        if (day0Total !== 6) return null;
+        return { day0Total };
       })()`,
-      "7-day range defaults to day grain",
+      "7-day range defaults to day grain with the current-day count",
     );
-    assert.equal(seven.grain, "day");
-    assert.equal(seven.buckets, 7);
-    assert.match(seven.hint, /按日聚合/);
+    assert.equal(seven.day0Total, 6);
 
     await click(page, "[data-testid='ov-range-30']");
     const thirty = await waitForDocument(

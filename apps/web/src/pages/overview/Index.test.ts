@@ -581,6 +581,31 @@ describe("workspace overview page", () => {
       range: "90",
       grain: "week",
     });
+
+    await wrapper.get("[data-testid='ov-range-7']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid='ov-grain-week']").trigger("click");
+    await flushPromises();
+    await wrapper.get("[data-testid='ov-range-7']").trigger("click");
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      range: "7",
+      grain: "week",
+    });
+  });
+
+  it("keeps an explicit weekly grain for a 7-day deep link", async () => {
+    mockOverviewApi();
+    const { router } = await mountPage(`${ws}/overview?range=7&grain=week`);
+
+    expect(router.currentRoute.value.query).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "week",
+    });
+    expect(
+      new URL(requests.trend.at(-1) as string).searchParams.get("grain"),
+    ).toBe("week");
   });
 
   it("restores filters from a deep link and sends them to every request", async () => {
