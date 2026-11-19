@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  badCaseAnchorPresentation,
   badCaseFactEntries,
   badCaseState,
 } from "./badCaseDisplay";
@@ -22,6 +23,37 @@ describe("bad-case display", () => {
       expect(badCaseState(displayState)).toEqual({ label, tone });
     },
   );
+
+  it("labels non-event anchors without exposing the INT_MAX sentinel", () => {
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: 2_147_483_647,
+        kind: "post_process",
+      }),
+    ).toMatchObject({ label: "后处理", tone: "orange" });
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: -1,
+        kind: "unknown",
+      }),
+    ).toMatchObject({ label: "锚点未知", tone: "neutral" });
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: 0,
+        kind: "event",
+      }),
+    ).toBeNull();
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: -1,
+        kind: "node",
+      }),
+    ).toBeNull();
+  });
 
   it("renders at most three compact metadata facts", () => {
     const facts = badCaseFactEntries({

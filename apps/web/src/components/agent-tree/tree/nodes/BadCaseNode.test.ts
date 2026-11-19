@@ -134,6 +134,36 @@ describe("BadCaseNode", () => {
     expect(wrapper.get(".finding-title").text()).toBe("derived title");
   });
 
+  it("renders a post-process anchor badge instead of an event number", () => {
+    const wrapper = mount(BadCaseNode, {
+      props: {
+        data: {
+          badCaseId: "case-post",
+          shortId: "case-pos",
+          title: "后处理上报的问题",
+          width: 240,
+          degraded: false,
+          anchorLabel: "后处理",
+          active: false,
+        },
+      },
+      global: {
+        provide: {
+          [BAD_CASE_SELECT_KEY]: vi.fn(),
+        },
+      },
+    });
+
+    expect(wrapper.get(".finding-anchor").text()).toBe("后处理");
+    expect(wrapper.get(".rf-finding").attributes("data-anchor-label")).toBe(
+      "后处理",
+    );
+    expect(wrapper.get(".rf-finding").attributes("aria-label")).toContain(
+      "锚点 后处理",
+    );
+    expect(wrapper.text()).not.toContain("2147483647");
+  });
+
   it("exposes source handles for vertical error-card stacking", () => {
     const wrapper = mount(BadCaseNode, {
       props: {

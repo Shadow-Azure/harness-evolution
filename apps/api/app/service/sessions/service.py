@@ -282,6 +282,7 @@ def _bad_case(
         anchor=BadCaseAnchor(
             agent_id=anchor.agent_id,
             event_index=anchor.event_index,
+            kind=anchor.kind,
         ),
         bad_case_agent=BadCaseAgent(
             session_id=case.bad_case_session_id,

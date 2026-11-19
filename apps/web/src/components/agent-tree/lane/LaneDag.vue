@@ -213,10 +213,16 @@ function trunkPath(group: LaneSpawnGroup): string {
   return `M ${group.mergeX * 10} ${y1} L ${trunkX} ${y1} L ${trunkX} ${y2}`;
 }
 
+function markerAnchorLabel(marker: BadCaseMarker): string {
+  return marker.anchorLabel ?? `L${marker.line}`;
+}
+
 function markerTitle(marker: BadCaseMarker): string {
   return [
     `BC${marker.index + 1} ${marker.title}`,
-    `触发点 L${marker.line}`,
+    marker.anchorLabel
+      ? `锚点 ${marker.anchorLabel}`
+      : `触发点 L${marker.line}`,
     marker.gapNote ?? "",
     marker.selected ? "当前选中" : "",
   ]
@@ -324,7 +330,7 @@ defineExpose({ fit, reset, zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(0.83
         v-if="selectedMarker"
         class="ld-hit"
         data-testid="lane-selected-case"
-      >高亮 BC · {{ selectedMarker.title }} · L{{ selectedMarker.line }}</span>
+      >高亮 BC · {{ selectedMarker.title }} · {{ markerAnchorLabel(selectedMarker) }}</span>
       <div
         class="ld-legend"
         aria-label="执行流图例"
@@ -400,6 +406,7 @@ defineExpose({ fit, reset, zoomIn: () => zoomBy(1.2), zoomOut: () => zoomBy(0.83
                 :title="markerTitle(marker)"
                 :aria-pressed="marker.badCaseId === selectedCaseId"
                 :data-bad-case-id="marker.badCaseId"
+                :data-anchor-label="marker.anchorLabel ?? undefined"
                 @click="selectMarker(marker)"
               >
                 BC{{ marker.index + 1 }}

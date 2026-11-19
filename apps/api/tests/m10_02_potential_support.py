@@ -42,6 +42,7 @@ from app.service.evolution.potential import (
 )
 from app.utils.time import SHANGHAI, now_shanghai
 from tests.identity.helpers import identity_settings
+from tests.target_content_support import FakeTargetVersionResolver
 from tests.workspaces.helpers import (
     access_token,
     bearer,
@@ -423,7 +424,11 @@ class FakeGitRemote:
 async def preview_api(tmp_path: Path) -> AsyncIterator[PreviewApi]:
     """Provide a migrated app with a viewer, a space admin, and one target."""
     settings = identity_settings(tmp_path)
-    app = create_app(settings, git_remote=FakeGitRemote())
+    app = create_app(
+        settings,
+        git_remote=FakeGitRemote(),
+        target_version_resolver=FakeTargetVersionResolver(),
+    )
     transport = httpx.ASGITransport(app=app)
     async with app.router.lifespan_context(app):
         database = app.state.database

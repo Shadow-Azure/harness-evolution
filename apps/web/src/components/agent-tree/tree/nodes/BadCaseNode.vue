@@ -21,15 +21,22 @@ function onSelect() {
     class="rf-finding"
     :class="{ active: data.active, degraded: data.degraded }"
     :data-bad-case-id="data.badCaseId"
-    :aria-label="`问题 ${data.shortId}: ${data.title}`"
+    :data-anchor-label="data.anchorLabel ?? undefined"
+    :aria-label="`问题 ${data.shortId}: ${data.title}${data.anchorLabel ? ` · 锚点 ${data.anchorLabel}` : ''}`"
     :aria-pressed="Boolean(data.active)"
     :style="{ width: `${data.width}px` }"
-    :title="`${data.badCaseId} · ${data.title}`"
+    :title="`${data.badCaseId} · ${data.title}${data.anchorLabel ? ` · 锚点 ${data.anchorLabel}` : ''}`"
     type="button"
     @click.stop="onSelect"
   >
     <span class="finding-id">{{ data.shortId }}</span>
     <span class="finding-title">{{ data.title }}</span>
+    <span
+      v-if="data.anchorLabel"
+      class="finding-anchor"
+    >
+      {{ data.anchorLabel }}
+    </span>
     <span
       v-if="data.degraded"
       class="finding-degraded"
@@ -117,6 +124,17 @@ function onSelect() {
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.finding-anchor {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--orange) 38%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--orange) 8%, transparent);
+  color: var(--orange);
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .finding-degraded {

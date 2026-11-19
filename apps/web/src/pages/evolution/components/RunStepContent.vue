@@ -44,6 +44,7 @@ defineEmits<{
   <StepRange
     v-else-if="step?.key === 'range'"
     :step="step"
+    :target-revision="run.target.targetRevision"
   />
   <StepSessions
     v-else-if="step?.key === 'sessions'"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,9 +13,19 @@ from pydantic import SecretStr
 
 from app.config import DatabaseDialect, Settings
 from app.db.base import Database
+from app.db.crud.attributions import CandidateWrite, EvolutionRunCandidateRepository
+from app.db.crud.evolution import EvolutionRepository
+from app.db.models.workspace import DEFAULT_WORKSPACE_ID
 from app.main import create_app
 from app.service.evolution.state import STEP_KEYS
-from tests.six_step_seed import load_fixture, seed_external_corpus, seed_fixture
+from tests.six_step_seed import (
+    CASE_ID,
+    NOW,
+    SESSION_ID,
+    load_fixture,
+    seed_external_corpus,
+    seed_fixture,
+)
 
 ADMIN_TEMP_PASSWORD = "seven-step-admin-temp-password"
 ADMIN_PASSWORD = "seven-step-admin-password"
@@ -147,3 +158,86 @@ async def test_unknown_run_returns_not_found(steps_api: httpx.AsyncClient) -> No
     response = await steps_api.get(_step_url("missing-run", "range"))
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "RUN_NOT_FOUND"
+
+
+async def test_step_range_and_potential_expose_revision_and_anchor_source(
+    steps_api: httpx.AsyncClient,
+) -> None:
+    """Step 1 carries targetRevision and step 3 carries the audited anchorSource."""
+    database = await _database(steps_api)
+    await seed_external_corpus(database)
+    runs = EvolutionRepository(database)
+    candidates = EvolutionRunCandidateRepository(database)
+    present_revision = "digest:" + "a" * 64
+    await runs.create_run(
+        {
+            "id": "run-m13-step-present",
+            "title": "deep-research v2.0.0 自进化",
+            "mode": "full",
+            "engine_key": "full",
+            "eval_config": {},
+            "potential_policy": {"preset": "default"},
+            "cache_enabled": False,
+            "attribution_engine": "rule-v1",
+            "target_config_id": None,
+            "target_type": "skill",
+            "target_name": "deep-research",
+            "target_version": "v2.0.0",
+            "target_revision": present_revision,
+            "repo_url": "https://example.invalid/repo.git",
+            "sub_dir": "skills/deep-research",
+            "window_from": date(2026, 11, 1),
+            "window_to": date(2026, 11, 30),
+            "status": "running",
+            "progress_unit": 5,
+            "stats": {},
+        },
+    )
+    await candidates.upsert(
+        CandidateWrite(
+            id="candidate-m13-step-present",
+            run_id="run-m13-step-present",
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            session_id=SESSION_ID,
+            bad_case_id=CASE_ID,
+            order_state="comparable",
+            included=True,
+            included_reason="after_object",
+            created_at=NOW,
+            case_trigger_at=NOW,
+            case_trigger_event_index=2_147_483_647,
+            case_anchor_kind="post_process",
+        ),
+    )
+    await runs.create_run(
+        {
+            "id": "run-m13-step-legacy",
+            "title": "deep-research v1.0.0 自进化",
+            "mode": "full",
+            "engine_key": "full",
+            "eval_config": {},
+            "potential_policy": {"preset": "default"},
+            "cache_enabled": False,
+            "attribution_engine": "legacy-probe-import",
+            "target_config_id": None,
+            "target_type": "skill",
+            "target_name": "deep-research",
+            "target_version": "v1.0.0",
+            "target_revision": None,
+            "repo_url": "https://example.invalid/repo.git",
+            "sub_dir": "skills/deep-research",
+            "window_from": date(2026, 11, 1),
+            "window_to": date(2026, 11, 30),
+            "status": "completed",
+            "progress_unit": 5,
+            "stats": {},
+        },
+    )
+
+    range_body = (await steps_api.get(_step_url("run-m13-step-present", "range"))).json()
+    assert range_body["payload"]["condition"]["targetRevision"] == present_revision
+    legacy_range = (await steps_api.get(_step_url("run-m13-step-legacy", "range"))).json()
+    assert legacy_range["payload"]["condition"]["targetRevision"] is None
+
+    potential_body = (await steps_api.get(_step_url("run-m13-step-present", "potential"))).json()
+    assert potential_body["payload"]["rows"][0]["anchorSource"] == "post_process"

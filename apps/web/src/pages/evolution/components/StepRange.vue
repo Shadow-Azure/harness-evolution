@@ -2,12 +2,19 @@
 import type { EvolutionStepRange } from "@harness/contracts";
 import { computed } from "vue";
 
-const props = defineProps<{
-  step: EvolutionStepRange;
-}>();
+const props = withDefaults(
+  defineProps<{
+    step: EvolutionStepRange;
+    targetRevision?: string | null;
+  }>(),
+  { targetRevision: null },
+);
 
 const condition = computed(() => props.step.payload.condition);
 const stats = computed(() => props.step.payload.stats);
+const effectiveTargetRevision = computed(
+  () => condition.value.targetRevision || props.targetRevision || null,
+);
 
 const targetLabel = computed(
   () =>
@@ -70,6 +77,24 @@ const cacheLabel = computed(() =>
             :title="condition.workspaceId"
           >
             {{ condition.workspaceId }}
+          </td>
+        </tr>
+        <tr>
+          <th>目标 revision</th>
+          <td
+            class="mono revision-cell"
+            colspan="3"
+          >
+            <span
+              v-if="effectiveTargetRevision"
+              data-testid="step-target-revision"
+              :title="effectiveTargetRevision"
+            >{{ effectiveTargetRevision }}</span>
+            <span
+              v-else
+              class="revision-missing"
+              data-testid="step-target-revision-missing"
+            >历史运行未记录 revision</span>
           </td>
         </tr>
         <tr>
@@ -213,5 +238,16 @@ table.rep tr:last-child td {
 
 .mono {
   font-family: var(--mono);
+}
+
+.revision-cell {
+  overflow-wrap: anywhere;
+  font-size: 10.5px;
+}
+
+.revision-missing {
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 11.5px;
 }
 </style>

@@ -527,6 +527,17 @@
         "properties": {
           "summary": {
             "$ref": "#/components/schemas/AttributionPreviewSummary"
+          },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetrevision"
           }
         },
         "required": [
@@ -857,21 +868,34 @@
       },
       "BadCaseAnchor": {
         "additionalProperties": false,
-        "description": "Stable host Agent and event index for one problem card.",
+        "description": "Stable host Agent, event index, and anchor kind for one problem card.",
         "properties": {
           "agentId": {
             "title": "Agentid",
             "type": "string"
           },
           "eventIndex": {
+            "description": "0-based index in anchor.agentId's events[]; INT_MAX (2147483647) is the post_process sentinel; -1 with kind=unknown means the reporting Agent could not be resolved.",
             "minimum": -1.0,
             "title": "Eventindex",
             "type": "integer"
+          },
+          "kind": {
+            "description": "Anchor semantics: event, reporter node, post-process, or unknown.",
+            "enum": [
+              "event",
+              "node",
+              "post_process",
+              "unknown"
+            ],
+            "title": "Kind",
+            "type": "string"
           }
         },
         "required": [
           "agentId",
-          "eventIndex"
+          "eventIndex",
+          "kind"
         ],
         "title": "BadCaseAnchor",
         "type": "object"
@@ -1629,6 +1653,7 @@
           "TARGET_NOT_FOUND",
           "TARGET_IN_USE",
           "TARGET_NOT_CONFIGURED",
+          "TARGET_CONTENT_UNRESOLVED",
           "NO_PROBES_MATCHED",
           "POLICY_INVALID",
           "NO_ASSOCIATED_SESSIONS",
@@ -2544,6 +2569,18 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved file-matching revision (digest:<sha256(body)> for skill/agent/knowledge file targets); null on historical runs.",
+            "title": "Targetrevision"
           },
           "type": {
             "enum": [
@@ -3840,6 +3877,16 @@
         "additionalProperties": false,
         "description": "One included bad case row in wizard step 3.",
         "properties": {
+          "anchorSource": {
+            "enum": [
+              "event",
+              "node",
+              "post_process",
+              "unknown"
+            ],
+            "title": "Anchorsource",
+            "type": "string"
+          },
           "badCaseId": {
             "title": "Badcaseid",
             "type": "string"
@@ -3888,7 +3935,8 @@
           "triggerAt",
           "sessionId",
           "hitReason",
-          "orderState"
+          "orderState",
+          "anchorSource"
         ],
         "title": "PotentialPreviewItem",
         "type": "object"
@@ -4002,6 +4050,17 @@
           },
           "summary": {
             "$ref": "#/components/schemas/PotentialPreviewSummary"
+          },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetrevision"
           },
           "total": {
             "minimum": 0.0,
@@ -4336,7 +4395,7 @@
           "targetVersion": {
             "anyOf": [
               {
-                "maxLength": 64,
+                "maxLength": 96,
                 "type": "string"
               },
               {
@@ -5359,6 +5418,17 @@
           "summary": {
             "$ref": "#/components/schemas/SessionPreviewSummary"
           },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targetrevision"
+          },
           "total": {
             "minimum": 0.0,
             "title": "Total",
@@ -6194,6 +6264,16 @@
         "additionalProperties": false,
         "description": "One included bad case row of step 3.",
         "properties": {
+          "anchorSource": {
+            "enum": [
+              "event",
+              "node",
+              "post_process",
+              "unknown"
+            ],
+            "title": "Anchorsource",
+            "type": "string"
+          },
           "badCaseId": {
             "title": "Badcaseid",
             "type": "string"
@@ -6249,7 +6329,8 @@
           "triggerAt",
           "sessionId",
           "hitReason",
-          "orderState"
+          "orderState",
+          "anchorSource"
         ],
         "title": "StepPotentialRow",
         "type": "object"
@@ -6306,6 +6387,18 @@
           "targetName": {
             "title": "Targetname",
             "type": "string"
+          },
+          "targetRevision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Resolved file-matching revision (digest:<sha256(body)>); null on historical runs that were created before content resolution.",
+            "title": "Targetrevision"
           },
           "targetType": {
             "enum": [

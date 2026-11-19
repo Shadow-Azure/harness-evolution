@@ -61,7 +61,8 @@ evolution_runs = Table(
     ),
     Column("target_type", String(16), nullable=False),
     Column("target_name", String(128), nullable=False),
-    Column("target_version", String(64), nullable=False),
+    Column("target_version", String(96), nullable=False),
+    Column("target_revision", String(96), nullable=True),
     Column("repo_url", String(1024), nullable=False),
     Column("sub_dir", String(512), nullable=False),
     Column(
@@ -156,6 +157,7 @@ evolution_run_candidates = Table(
     Column("object_trigger_at", DateTime(timezone=True), nullable=True),
     Column("case_trigger_agent_id", String(64), nullable=True),
     Column("case_trigger_event_index", Integer, nullable=True),
+    Column("case_anchor_kind", String(16), nullable=True),
     Column("case_trigger_at", DateTime(timezone=True), nullable=True),
     Column("order_state", String(16), nullable=False),
     Column("included", Boolean, nullable=False),
@@ -357,6 +359,7 @@ class EvolutionRunRecord:
     potential_policy: dict[str, Any] | None = None
     cache_enabled: bool = False
     attribution_engine: str = "legacy-probe-import"
+    target_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,6 +401,7 @@ class EvolutionRunCandidateRecord:
     object_trigger_at: datetime | None
     case_trigger_agent_id: str | None
     case_trigger_event_index: int | None
+    case_anchor_kind: str | None
     case_trigger_at: datetime | None
     order_state: str
     included: bool
@@ -544,6 +548,7 @@ def record_from_evolution_run(row: Mapping[str, Any]) -> EvolutionRunRecord:
         target_type=_required_text(row["target_type"]),
         target_name=_required_text(row["target_name"]),
         target_version=_required_text(row["target_version"]),
+        target_revision=_optional_text(row.get("target_revision")),
         repo_url=_required_text(row["repo_url"]),
         sub_dir=_required_text(row["sub_dir"]),
         validation_project_id=_required_text(row["validation_project_id"]),
@@ -633,6 +638,7 @@ def record_from_evolution_run_candidate(
             if row["case_trigger_event_index"] is not None
             else None
         ),
+        case_anchor_kind=_optional_text(row.get("case_anchor_kind")),
         case_trigger_at=_optional_timestamp(row["case_trigger_at"]),
         order_state=_required_text(row["order_state"]),
         included=bool(row["included"]),

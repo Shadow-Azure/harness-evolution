@@ -32,10 +32,12 @@ from app.service.evolution.attribution import (
 )
 from app.service.evolution.potential import PotentialMatcher
 from app.service.evolution.prepare import EvolutionPrepareService
+from app.service.evolution.target_content import TargetVersionResolver
 from app.third_party_api.git.workspace import PreparedWorkspace
 from app.utils.time import SHANGHAI
 from tests.identity.helpers import identity_settings
 from tests.m10_02_potential_support import FakeGitRemote
+from tests.target_content_support import FakeTargetVersionResolver
 from tests.workspaces.helpers import (
     access_token,
     bearer,
@@ -82,7 +84,11 @@ class FakeWorkspacePreparer:
 async def acceptance_api(tmp_path: Path) -> AsyncIterator[AcceptanceApi]:
     """Provide a migrated app with the external fixture tables bootstrapped."""
     settings = identity_settings(tmp_path)
-    app = create_app(settings, git_remote=FakeGitRemote())
+    app = create_app(
+        settings,
+        git_remote=FakeGitRemote(),
+        target_version_resolver=FakeTargetVersionResolver(),
+    )
     transport = httpx.ASGITransport(app=app)
     async with app.router.lifespan_context(app):
         database = app.state.database
@@ -189,6 +195,7 @@ def prepare_service(
     database: Database,
     *,
     engine_factory: Callable[[str], AttributionEngine] | None = None,
+    resolver: TargetVersionResolver | None = None,
 ) -> EvolutionPrepareService:
     """Compose the M10-04 prepare service over one migrated test database."""
     matcher = PotentialMatcher(PotentialRepository(database))
@@ -204,6 +211,7 @@ def prepare_service(
         matcher,
         runner,
         FakeWorkspacePreparer(),
+        resolver=resolver,
     )
 
 

@@ -17,6 +17,7 @@ from app.db.models.domain import evolution_targets
 from app.db.models.evolution import evolution_runs
 from app.db.models.run_events import evolution_run_events
 from app.main import create_app
+from tests.target_content_support import FakeTargetVersionResolver
 from tests.workspaces.helpers import create_user, insert_member, insert_workspace
 
 NOW = datetime(2026, 11, 15, 8, 0, tzinfo=UTC)
@@ -131,6 +132,7 @@ async def scope(tmp_path: Path) -> AsyncIterator[ScopeEnvironment]:
             admin_password=SecretStr("m7-07-admin-temp-password"),
         ),
         git_remote=FakeGitRemote(),
+        target_version_resolver=FakeTargetVersionResolver(),
     )
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
