@@ -13,6 +13,7 @@ scope:
   - .agents/flow/**
   - .agents/notes/**
   - plans/fullstack-design/**
+  - plans/**
   - docs/architecture.md
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml

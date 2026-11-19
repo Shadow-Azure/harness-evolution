@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m13-body-hash-post-process-anchor.md
-m13-body-hash-post-process-anchor.md: 1d86a303c7c38fab4244655fb719b315609c720d
-m13-body-hash-post-process-anchor.en.md: 699c3ede6500127fde347bcf78817582db2985f2
+m13-body-hash-post-process-anchor.md: b628df96583069693c069be195c53437d47f5739
+m13-body-hash-post-process-anchor.en.md: ca302383333dc52145121416849571da7bc9a31e
