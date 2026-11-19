@@ -107,6 +107,7 @@ const targetType = ref<"skill" | "agent">("skill");
 const targetId = ref<string | null>(null);
 const targetVersion = ref("");
 const versionPinned = ref(false);
+const versionOpen = ref(false);
 const windowFrom = ref("");
 const windowTo = ref("");
 const policyPreset = ref<"default" | "custom">("default");
@@ -152,17 +153,35 @@ function handleKeydown(event: KeyboardEvent): void {
     return;
   }
   event.preventDefault();
+  if (versionOpen.value) {
+    versionOpen.value = false;
+    return;
+  }
   emit("close");
+}
+
+/** Close the version suggestions when a click lands outside the combobox. */
+function handleDocumentClick(event: MouseEvent): void {
+  if (!versionOpen.value) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof Element && target.closest(".wz-version-combo")) {
+    return;
+  }
+  versionOpen.value = false;
 }
 
 onMounted(() => {
   triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   window.addEventListener("keydown", handleKeydown);
+  document.addEventListener("click", handleDocumentClick);
   closeButton.value?.focus();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
+  document.removeEventListener("click", handleDocumentClick);
   if (triggerElement?.isConnected) {
     triggerElement.focus();
   }
@@ -228,6 +247,33 @@ function defaultVersion(): string {
     return remoteDefault;
   }
   return versionSuggestions.value[0] ?? "";
+}
+
+/** Identify whether a suggestion is the configured baseline or a tag. */
+function versionKind(version: string): string {
+  const tags = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  return tags.includes(version) ? "tag" : "基线";
+}
+
+/** Toggle the tag suggestion menu without losing a typed value. */
+function toggleVersionMenu(): void {
+  versionOpen.value = !versionOpen.value;
+}
+
+/** Apply one tag suggestion and mark the field as user-pinned. */
+function pickVersion(version: string): void {
+  targetVersion.value = version;
+  versionPinned.value = true;
+  versionOpen.value = false;
+  fieldErrors.version = false;
+  clearContentUnresolved();
+}
+
+/** Mark a typed ref as intentional so async suggestions cannot overwrite it. */
+function onVersionInput(): void {
+  versionPinned.value = true;
 }
 
 watch(
@@ -408,6 +454,7 @@ function selectType(next: "skill" | "agent"): void {
   targetId.value = null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -416,6 +463,7 @@ function selectTargetId(id: string): void {
   targetId.value = id || null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -560,8 +608,10 @@ function retryContentResolution(): void {
 /** Run the Session association preview and advance to step 2. */
 async function goToSessions(): Promise<void> {
   if (!validateStep1()) {
+    versionOpen.value = false;
     return;
   }
+  versionOpen.value = false;
   pending.value = "sessions";
   requestError.value = "";
   try {
@@ -772,6 +822,7 @@ function openPotentialCase(item: PotentialPreviewItem): void {
 function backToStep(next: WizardStep): void {
   requestError.value = "";
   launchError.value = "";
+  versionOpen.value = false;
   step.value = next;
 }
 
@@ -969,30 +1020,59 @@ const reasonEntries = computed(() => {
                 </div>
                 <span class="wz-inline-label">版本</span>
                 <div class="wz-field">
-                  <input
-                    v-model="targetVersion"
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.version }"
-                    data-testid="wizard-version"
-                    list="wizard-version-options"
-                    :placeholder="versions.isPending.value ? '读取版本…' : 'tag / 分支名 / commit id'"
-                    autocomplete="off"
-                    spellcheck="false"
-                    :aria-invalid="fieldErrors.version ? 'true' : undefined"
-                    aria-describedby="wizard-version-error"
-                    @input="versionPinned = true"
-                    @change="versionPinned = true"
-                  >
-                  <datalist
-                    id="wizard-version-options"
-                    data-testid="wizard-version-options"
-                  >
-                    <option
-                      v-for="version in versionSuggestions"
-                      :key="version"
-                      :value="version"
-                    />
-                  </datalist>
+                  <div class="wz-version-combo">
+                    <input
+                      v-model="targetVersion"
+                      class="inp"
+                      :class="{ 'input-error': fieldErrors.version }"
+                      data-testid="wizard-version"
+                      :placeholder="versions.isPending.value ? '读取版本…' : 'tag / 分支名 / commit id'"
+                      autocomplete="off"
+                      spellcheck="false"
+                      role="combobox"
+                      aria-controls="wizard-version-menu"
+                      :aria-expanded="versionOpen ? 'true' : 'false'"
+                      :aria-invalid="fieldErrors.version ? 'true' : undefined"
+                      aria-describedby="wizard-version-error"
+                      @input="onVersionInput"
+                      @focus="versionOpen = true"
+                      @keydown.down.prevent="versionOpen = true"
+                    >
+                    <button
+                      type="button"
+                      class="wz-version-toggle"
+                      data-testid="wizard-version-toggle"
+                      aria-label="展开 tag 建议"
+                      @click="toggleVersionMenu"
+                    >
+                      ▾
+                    </button>
+                    <ul
+                      v-if="versionOpen"
+                      id="wizard-version-menu"
+                      class="wz-version-menu"
+                      data-testid="wizard-version-menu"
+                      role="listbox"
+                    >
+                      <li
+                        v-for="version in versionSuggestions"
+                        :key="version"
+                      >
+                        <button
+                          type="button"
+                          class="wz-version-option"
+                          :class="{ current: version === targetVersion }"
+                          data-testid="wizard-version-option"
+                          role="option"
+                          :aria-selected="version === targetVersion ? 'true' : 'false'"
+                          @click="pickVersion(version)"
+                        >
+                          <span class="mono">{{ version }}</span>
+                          <span class="wz-version-kind">{{ versionKind(version) }}</span>
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                   <p
                     v-if="fieldErrors.version"
                     id="wizard-version-error"
@@ -1952,6 +2032,83 @@ const reasonEntries = computed(() => {
 
 .wz-field .inp {
   width: 100%;
+}
+
+.wz-version-combo {
+  position: relative;
+  width: 100%;
+}
+
+.wz-version-combo .inp {
+  width: 100%;
+  padding-right: 30px;
+}
+
+.wz-version-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.wz-version-toggle:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.wz-version-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 190px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: 0 10px 28px rgb(20 30 50 / 14%);
+}
+
+.wz-version-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 7px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wz-version-option:hover,
+.wz-version-option.current {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.wz-version-kind {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .wz-inline-label {

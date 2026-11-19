@@ -374,10 +374,10 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     const versionInput = wrapper.get("[data-testid='wizard-version']");
     expect((versionInput.element as HTMLInputElement).value).toBe("main");
+    await versionInput.trigger("focus");
     const suggestions = wrapper
-      .get("[data-testid='wizard-version-options']")
-      .findAll("option")
-      .map((option) => option.attributes("value"));
+      .findAll("[data-testid='wizard-version-option']")
+      .map((option) => option.get(".mono").text());
     expect(suggestions).toEqual(["main", "v2.0.0", "v1.9.0"]);
 
     await versionInput.setValue("a3f9c21");

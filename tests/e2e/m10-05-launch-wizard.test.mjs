@@ -169,9 +169,10 @@ async function openAndFillWizard(page) {
     "configured target option",
   );
   await selectOption(page, "wizard-target", "synthetic-review");
+  await click(page, "wizard-version-toggle");
   await waitForDocument(
     page.session,
-    `Boolean(document.querySelector("[data-testid='wizard-version-options'] option[value='synthetic-1']"))`,
+    `Boolean(document.querySelector("[data-testid='wizard-version-menu']"))`,
     "target version suggestions",
   );
   await setValue(page, "wizard-version", "synthetic-1");
