@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/milestones/m19-milestone.md
-m19-milestone.md: 8321af25002e6ecc5a026969a906a4fcc53bd5f0
-m19-milestone.en.md: 125c1c8e521d4237e6c9ec1811a673ed212c6bad
+m19-milestone.md: 55943f6511a1483a9fae1faa2e310f57ee794702
+m19-milestone.en.md: 3c4bdb9881da882dfb30eed846ec1520053cd728
