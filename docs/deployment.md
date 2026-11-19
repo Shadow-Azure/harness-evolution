@@ -43,6 +43,10 @@
 
 评测平台密钥经 GitHub Secrets（`HE_EVAL_MODE`/`HE_EVAL_BASE_URL`/`HE_EVAL_API_KEY`）注入服务器 `.env`；`apiKeyRef` 只存环境变量名，未配置时注入步骤跳过。值经 base64 传输解码原子写入；解码失败告警跳过，写盘失败中止发布。操作见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)，模板见 [deploy/env.production.example](../deploy/env.production.example)。
 
+## Claude Code
+
+发布流水线在切换 `current` 之前为 `deploy` 用户安装 Claude Code，并用 GitHub Secrets 写入模型配置；安装包在 runner 侧获取，服务器只解包，不访问 `claude.ai`，不需要 root 或 Node.js。三个 Secret、MiniMax 配置、验证与回滚见 [Claude Code 运维](claude-code.md)。
+
 ## 发布与回滚
 
 - 触发：push main → CI 全绿 → `Deploy`；支持 `workflow_dispatch` 手动触发。

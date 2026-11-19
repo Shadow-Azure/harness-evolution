@@ -14,6 +14,7 @@
 | [roadmap.md](roadmap.md) | 产品阶段路线与各阶段验收 |
 | [development.md](development.md) | 本地环境、日常循环与提交流程 |
 | [deployment.md](deployment.md) | 阿里云部署与发布回滚 |
+| [claude-code.md](claude-code.md) | 生产 Claude Code 安装、模型配置与验证 |
 | [review.md](review.md) | PR 检视、证据要求与分流表 |
 | [charter.md](charter.md) | 实验协议、进化判定与边界 |
 | [metrics.md](metrics.md) | 主指标、护栏指标与记录要求 |
