@@ -111,9 +111,19 @@
         "additionalProperties": false,
         "description": "Probe counts by attribution type shown in the wizard distribution bar.",
         "properties": {
+          "context": {
+            "default": 0,
+            "title": "Context",
+            "type": "integer"
+          },
           "error": {
             "default": 0,
             "title": "Error",
+            "type": "integer"
+          },
+          "flow": {
+            "default": 0,
+            "title": "Flow",
             "type": "integer"
           },
           "model": {
@@ -180,7 +190,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -485,7 +497,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -981,9 +995,16 @@
         "description": "Cache reuse preview and the historical non-target reference count.",
         "properties": {
           "fresh": {
-            "minimum": 0.0,
-            "title": "Fresh",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fresh"
           },
           "nonTargetKnown": {
             "minimum": 0.0,
@@ -996,9 +1017,16 @@
             "type": "integer"
           },
           "reused": {
-            "minimum": 0.0,
-            "title": "Reused",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reused"
           }
         },
         "required": [
@@ -1168,7 +1196,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -1219,6 +1249,18 @@
             "default": "probe-report/v2",
             "title": "Schemaversion",
             "type": "string"
+          },
+          "sourceReport": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcereport"
           },
           "suggestionClues": {
             "items": {
@@ -2930,9 +2972,19 @@
         "additionalProperties": false,
         "description": "Case counts by the closed attribution category.",
         "properties": {
+          "context": {
+            "default": 0,
+            "title": "Context",
+            "type": "integer"
+          },
           "error": {
             "default": 0,
             "title": "Error",
+            "type": "integer"
+          },
+          "flow": {
+            "default": 0,
+            "title": "Flow",
             "type": "integer"
           },
           "model": {
@@ -4511,7 +4563,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -4697,7 +4751,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -4989,7 +5045,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -5566,7 +5624,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Attributetype",
             "type": "string"
@@ -5825,7 +5885,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -7081,7 +7143,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -7509,7 +7573,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -7626,7 +7692,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -7773,7 +7841,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -8210,7 +8280,9 @@
             "enum": [
               "model",
               "prompt",
-              "error"
+              "error",
+              "flow",
+              "context"
             ],
             "title": "Category",
             "type": "string"
@@ -8687,7 +8759,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },
@@ -9418,7 +9492,9 @@
                 "enum": [
                   "model",
                   "prompt",
-                  "error"
+                  "error",
+                  "flow",
+                  "context"
                 ],
                 "type": "string"
               },

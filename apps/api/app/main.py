@@ -107,6 +107,7 @@ from app.service.evolution.events import (
 from app.service.evolution.gateway_factory import build_eval_gateway_factory
 from app.service.evolution.git_candidate import EvolutionCandidateService
 from app.service.evolution.launch import EvolutionLaunchService
+from app.service.evolution.local_attribution import LocalAttribution
 from app.service.evolution.patch_source import default_patch_source_factory
 from app.service.evolution.potential import PotentialMatcher, PotentialPreviewService
 from app.service.evolution.prepare import EvolutionPrepareService, WorkspacePreparer
@@ -295,9 +296,8 @@ def create_app(
     )
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
-    resolver = target_version_resolver or TargetContentResolver(
-        SubprocessGitContent(cache_root=resolved_settings.data_dir / "target-content"),
-    )
+    git_content = SubprocessGitContent(cache_root=resolved_settings.data_dir / "target-content")
+    resolver = target_version_resolver or TargetContentResolver(git_content)
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
@@ -312,6 +312,7 @@ def create_app(
         evolution_targets,
         PotentialMatcher(potential_repository),
         resolver,
+        local_agent=bool(resolved_settings.attribution_agent),
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
@@ -324,10 +325,19 @@ def create_app(
         potential_matcher,
         resolver,
     )
+    local_attribution = LocalAttribution(
+        resolved_settings,
+        attribution_skill_packages,
+        attribution_skills,
+        resolved_database,
+        git_content,
+    )
     attribution_runner = AttributionRunner(
         attribution_repository,
         context_provider=AttributionContextProvider(potential_repository),
-        skill_resolver=attribution_skills,
+        skill_resolver=local_attribution,
+        engine_factory=local_attribution.engine,
+        prepare_input=local_attribution.prepare_input,
         max_concurrency=resolved_settings.attribution_case_concurrency,
     )
     attribution_jobs = AttributionJobService(
@@ -350,7 +360,9 @@ def create_app(
         jobs,
         evolution_events,
         resolver,
-        attribution_skills=attribution_skills,
+        attribution_skills=local_attribution
+        if resolved_settings.attribution_agent
+        else attribution_skills,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
     default_workspace_manager = GitWorkspaceManager(
@@ -597,6 +609,7 @@ def create_app(
     app.state.attribution_read = attribution_read
     app.state.evolution_repository = evolution_repository
     app.state.evolution_targets = evolution_targets
+    app.state.local_attribution = local_attribution if resolved_settings.attribution_agent else None
     app.state.attribution_skills = attribution_skills
     app.state.attribution_skill_packages = attribution_skill_packages
     app.state.attribution_jobs = attribution_jobs

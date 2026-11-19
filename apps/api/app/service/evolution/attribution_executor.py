@@ -75,7 +75,7 @@ class AttributionExecutorResponse(IdentityModel):
 
     schema_version: Literal["attribution-executor-output/v1"] = EXECUTOR_OUTPUT_VERSION
     conclusion: Literal["attributed", "non_target", "inconclusive"]
-    category: Literal["model", "prompt", "error"] | None = None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     summary: str = Field(min_length=1)
     reasoning: str = Field(min_length=1)

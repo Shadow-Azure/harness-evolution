@@ -33,3 +33,7 @@ ssh deploy@<host> '~/.local/bin/claude -p "只回复 OK"'
 ## 回滚
 
 把 `~/.local/bin/claude` 软链指回上一版本目录，或重新触发一次带所需 `CLAUDE_CODE_VERSION` 的 `Deploy`。`~/.claude/settings.json` 与 `api-key` 是原子写入，失败时保留上一份。操作步骤见 [plans/deploy-aliyun-playbook.md](../plans/deploy-aliyun-playbook.md)。
+
+## 本地归因
+
+本地归因在 API 环境中设 `HE_ATTRIBUTION_AGENT=claude` 和 `HE_ATTRIBUTION_MODEL`，Worker 需 Claude Code、Python 3 及 Seatbelt（macOS）或 bubblewrap（Linux）。`HE_ATTRIBUTION_PACKAGE_DIR` 指向可写持久目录。部署扩展可将 `HE_ATTRIBUTION_AGENT` 或 `HE_ATTRIBUTION_LLM` 设为已安装的 `module:Class`，实现分别继承 `AgentBackend`、`ModelBackend`。 bare Worker 从 API 进程环境或服务账号的 Claude settings.env 获取模型凭据。

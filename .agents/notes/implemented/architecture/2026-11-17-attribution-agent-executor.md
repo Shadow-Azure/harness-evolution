@@ -18,4 +18,4 @@ Status: implemented
 
 ## Consequences
 
-内网 adapter 可实现相同 executor 协议并注册 engine key，而不修改 Runner、repository 或报告写入；stub 报告固定带 `AGENT_EXECUTOR_STUB`，缺失完整上下文时另带 warning，不会被误认为真实归因质量。执行器当前无超时控制和模型配置指纹，接入远程 adapter 时必须在接缝外增加超时、重试、凭据注入及非 `none` 的模型配置指纹。
+本地执行固定完整包的文件快照，停用或删除包后，排队中的运行仍可重放。输入同时携带选定对象、上报对象及原版本、空间可见 Session 树和脱敏轨迹。模型通过随包脚本提交分析，API 使用原始 case 和平台脚本重新生成并核对报告后入库。缺少原始轨迹时输入标明可用证据；脚本分类 `unknown` 映射到 V2 的证据不足。CLI 在逐次建立的文件系统沙箱中运行（macOS Seatbelt 或 Linux bubblewrap）。`HE_ATTRIBUTION_LLM` 选择模型提供方，`HE_ATTRIBUTION_TIMEOUT_SECONDS` 限制单 case 时长。

@@ -89,7 +89,7 @@ BUCKET_POLICY = (
 )
 """The exact bucket-time policy exposed through ``meta.bucketPolicy``."""
 
-CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error"})
+CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error", "flow", "context"})
 """The closed attribution category set; anything else is not projected."""
 
 _VERSION_PART = re.compile(r"(\d+)")
@@ -135,7 +135,7 @@ class TargetCaseEntry:
     created_at: datetime
     state: TargetState
     attribution_id: str | None
-    category: Literal["model", "prompt", "error"] | None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None
     attributed_at: datetime | None
 
 
@@ -328,11 +328,13 @@ def _newest_link_by_case(
     return found
 
 
-def _category(link: AttributionLinkRecord | None) -> Literal["model", "prompt", "error"] | None:
+def _category(
+    link: AttributionLinkRecord | None,
+) -> Literal["model", "prompt", "error", "flow", "context"] | None:
     """Project only the closed attribution category set."""
     if link is None or link.category not in CATEGORIES:
         return None
-    return cast(Literal["model", "prompt", "error"], link.category)
+    return cast(Literal["model", "prompt", "error", "flow", "context"], link.category)
 
 
 def _state(link: AttributionLinkRecord | None) -> TargetState:

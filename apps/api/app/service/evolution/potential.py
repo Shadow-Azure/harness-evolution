@@ -315,8 +315,8 @@ class AttributionPreviewSummary(IdentityModel):
     """Cache reuse preview and the historical non-target reference count."""
 
     potential: int = Field(ge=0)
-    reused: int = Field(ge=0)
-    fresh: int = Field(ge=0)
+    reused: int | None = Field(ge=0)
+    fresh: int | None = Field(ge=0)
     non_target_known: int = Field(ge=0)
 
 
@@ -832,11 +832,14 @@ class PotentialPreviewService:
         targets: EvolutionTargetService,
         matcher: PotentialMatcher,
         resolver: TargetVersionResolver,
+        *,
+        local_agent: bool = False,
     ) -> None:
         """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
         self._resolver = resolver
+        self._local_agent = local_agent
 
     async def sessions(
         self,
@@ -929,16 +932,17 @@ class PotentialPreviewService:
         match = await self._matcher.potential_cases(condition, association, policy)
         if not match.included:
             raise _no_potential_matched()
+        deferred = self._local_agent and body.cache_enabled
         counts = await self._matcher.attribution_preview(
             condition,
             match,
-            cache_enabled=body.cache_enabled,
+            cache_enabled=body.cache_enabled and not deferred,
         )
         return AttributionPreviewResult(
             summary=AttributionPreviewSummary(
                 potential=counts.potential,
-                reused=counts.reused,
-                fresh=counts.fresh,
+                reused=None if deferred else counts.reused,
+                fresh=None if deferred else counts.fresh,
                 non_target_known=counts.non_target_known,
             ),
             target_revision=condition.target_revision,

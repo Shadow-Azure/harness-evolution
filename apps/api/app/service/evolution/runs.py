@@ -94,6 +94,8 @@ class EvolutionRunAttributeStats(IdentityModel):
     model: int = 0
     prompt: int = 0
     error: int = 0
+    flow: int = 0
+    context: int = 0
 
 
 class EvolutionRunStats(IdentityModel):
@@ -255,9 +257,11 @@ def _stats(summary: EvolutionRunSummaryRecord) -> EvolutionRunStats:
         model=_non_negative_int(by_category.get("model")),
         prompt=_non_negative_int(by_category.get("prompt")),
         error=_non_negative_int(by_category.get("error")),
+        flow=_non_negative_int(by_category.get("flow")),
+        context=_non_negative_int(by_category.get("context")),
     )
     legacy_prepared = is_legacy_run(summary.run.attribution_engine)
-    used_probes = category.model + category.prompt + category.error
+    used_probes = sum(category.model_dump().values())
     if legacy_prepared:
         sessions = _non_negative_int(raw.get("sessions"))
         bad_cases = _non_negative_int(raw.get("probes"))

@@ -1,6 +1,8 @@
 """Reconcile developer databases that reached 0023 through the Skill branch."""
-from alembic import op
+
 from alembic.script import ScriptDirectory
+
+from alembic import op
 
 revision = "0028"
 down_revision = "0027"

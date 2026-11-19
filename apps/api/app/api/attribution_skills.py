@@ -21,6 +21,7 @@ from app.service.evolution.attribution_skills import (
     AttributionSkillStateWrite,
     EffectiveAttributionSkill,
 )
+from app.service.evolution.local_attribution import LocalAttribution
 from app.service.workspaces.service import WorkspaceAccess
 
 router = APIRouter(
@@ -61,7 +62,8 @@ async def list_attribution_skills(
 ) -> AttributionSkillList:
     """List platform and workspace Skill revisions visible in this workspace."""
     del access
-    return await skills_from(request).list(wid)
+    runtime: LocalAttribution | None = request.app.state.local_attribution
+    return await runtime.choices(wid) if runtime else await skills_from(request).list(wid)
 
 
 @router.post(
@@ -243,7 +245,12 @@ async def resolve_target_attribution_skill(
 ) -> EffectiveAttributionSkill:
     """Resolve the immutable revision currently effective for one target."""
     del access
-    return await skills_from(request).resolve(wid, targetId)
+    runtime: LocalAttribution | None = request.app.state.local_attribution
+    return (
+        await runtime.effective(wid, targetId)
+        if runtime
+        else await skills_from(request).resolve(wid, targetId)
+    )
 
 
 @router.put(
@@ -260,6 +267,9 @@ async def bind_target_attribution_skill(
 ) -> EffectiveAttributionSkill:
     """Set a target-level Skill override."""
     del access
+    runtime: LocalAttribution | None = request.app.state.local_attribution
+    if runtime:
+        return await runtime.bind(wid, targetId, body.skill_revision_id)
     return await skills_from(request).bind(
         wid,
         body.skill_revision_id,

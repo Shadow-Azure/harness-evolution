@@ -376,7 +376,7 @@ class ProbeClusterRecord:
     run_id: str
     seq: int
     probe_cluster_description: str
-    probe_cluster_type: Literal["model", "prompt", "error"]
+    probe_cluster_type: Literal["model", "prompt", "error", "flow", "context"]
     confidence: float | None
     impact: float | None
     severity: float | None
@@ -480,7 +480,7 @@ class EvolutionRunSummaryRecord:
 class ClusterWrite:
     """Database-neutral cluster payload used by repository writes."""
 
-    type: Literal["model", "prompt", "error"]
+    type: Literal["model", "prompt", "error", "flow", "context"]
     description: str
     probes: tuple[str, ...]
     impact: float
@@ -608,7 +608,7 @@ def record_from_probe_cluster(row: Mapping[str, Any]) -> ProbeClusterRecord:
         seq=int(row["seq"]),
         probe_cluster_description=_required_text(row["probe_cluster_description"]),
         probe_cluster_type=cast(
-            Literal["model", "prompt", "error"],
+            Literal["model", "prompt", "error", "flow", "context"],
             _required_text(row["probe_cluster_type"]),
         ),
         confidence=float(row["confidence"]) if row["confidence"] is not None else None,

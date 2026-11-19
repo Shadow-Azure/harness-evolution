@@ -14,10 +14,12 @@ from app.errors import AppError, ErrorCode
 from app.service.evolution.potential import PotentialPolicy
 from app.service.identity.schemas import IdentityModel
 
-_ATTRIBUTE_TYPES: tuple[Literal["model", "prompt", "error"], ...] = (
+_ATTRIBUTE_TYPES: tuple[Literal["model", "prompt", "error", "flow", "context"], ...] = (
     "model",
     "prompt",
     "error",
+    "flow",
+    "context",
 )
 
 
@@ -27,6 +29,8 @@ class AttributeStats(IdentityModel):
     model: int = 0
     prompt: int = 0
     error: int = 0
+    flow: int = 0
+    context: int = 0
     non_issue: int = 0
 
 
@@ -82,7 +86,7 @@ class ProbePreviewItem(IdentityModel):
     probe_type: str
     probe_object: str
     object_version: str | None
-    attribute_type: Literal["model", "prompt", "error"]
+    attribute_type: Literal["model", "prompt", "error", "flow", "context"]
     description: str
     source_bad_case_ids: list[str]
 
@@ -195,10 +199,12 @@ def normalized_query(
     )
 
 
-def _attribute_of(row: ProbeHitRow) -> Literal["model", "prompt", "error"] | None:
+def _attribute_of(
+    row: ProbeHitRow,
+) -> Literal["model", "prompt", "error", "flow", "context"] | None:
     """Map one probe row to its distribution key, ignoring foreign values."""
     if row.attribute_type in _ATTRIBUTE_TYPES:
-        return cast(Literal["model", "prompt", "error"], row.attribute_type)
+        return cast(Literal["model", "prompt", "error", "flow", "context"], row.attribute_type)
     return None
 
 

@@ -61,7 +61,7 @@ from app.utils.time import now_shanghai
 
 logger = logging.getLogger(__name__)
 
-AttributionCategory = Literal["model", "prompt", "error"]
+AttributionCategory = Literal["model", "prompt", "error", "flow", "context"]
 AttributionEngineKey = str
 
 DEFAULT_ATTRIBUTION_ENGINE = "rule-v1"
@@ -114,6 +114,12 @@ class AttributionInput:
     knowledge_evidence: tuple[KnowledgeEvidence, ...] = ()
     context: AttributionCaseContext | None = None
     run_id: str = ""
+    repo_url: str = ""
+    sub_dir: str = ""
+    selected_version: str = ""
+    report_source: str = ""
+    local_input: Mapping[str, str] = field(default_factory=dict)
+    local_input_hash: str | None = None
 
     @property
     def cache_key(self) -> str:
@@ -139,8 +145,17 @@ class AttributionInput:
             skill_key=self.attribution_skill_key,
             skill_revision=self.attribution_skill_revision,
             skill_content_hash=self.attribution_skill_content_hash,
-            prepared_context_snapshot_hash=(
-                self.context.snapshot_hash if self.context is not None else None
+            prepared_context_snapshot_hash=self.local_input_hash
+            or (self.context.snapshot_hash if self.context is not None else None),
+            model_fingerprint=(
+                canonical_json_hash(
+                    {
+                        k: self.attribution_skill_content.get(k)
+                        for k in ("agent", "llm", "model", "modelIdentity")
+                    }
+                )
+                if self.attribution_skill_executor_type == "local_agent"
+                else "none"
             ),
         )
 
@@ -158,6 +173,7 @@ class AttributionResult:
     suggestion_clues: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
     token_count: int = 0
+    canonical_report: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         """Reject conclusions that cannot satisfy the table's closed sets."""
@@ -171,7 +187,7 @@ class AttributionResult:
             if self.category is not None:
                 raise ValueError(f"{self.conclusion} attributions must not carry a category")
             return
-        if self.category not in {"model", "prompt", "error"}:
+        if self.category not in {"model", "prompt", "error", "flow", "context"}:
             raise ValueError("attributed conclusions require category model, prompt, or error")
 
 
@@ -441,6 +457,7 @@ def build_attribution_report(
     if result.conclusion == "inconclusive" and "ATTRIBUTION_EVIDENCE_INSUFFICIENT" not in warnings:
         warnings.append("ATTRIBUTION_EVIDENCE_INSUFFICIENT")
     return AttributionReportV2(
+        source_report=result.canonical_report,
         target=AttributionTargetRef(
             object_type=item.probe_type,  # type: ignore[arg-type]
             object_name=item.probe_object,
@@ -602,9 +619,11 @@ class AttributionRunner:
         context_provider: AttributionContextProvider | None = None,
         skill_resolver: AttributionSkillSnapshotResolver | None = None,
         max_concurrency: int = 1,
+        prepare_input: Callable[[AttributionInput], Awaitable[AttributionInput]] | None = None,
     ) -> None:
         """Bind persistence, engine resolution, and the injectable clock."""
         self._store = store
+        self._prepare_input = prepare_input
         self._engine_factory = engine_factory
         self._now = now
         self._context_provider = context_provider
@@ -678,6 +697,7 @@ class AttributionRunner:
                     target_type=run.target_type,  # type: ignore[arg-type]
                     target_name=run.target_name,
                     target_version=run.target_version,
+                    target_revision=target_revision or run.target_revision,
                     candidates=pending,
                     bad_cases=bad_cases,
                     knowledge=knowledge,
@@ -729,6 +749,11 @@ class AttributionRunner:
             async with semaphore:
                 started = perf_counter()
                 now = self._now()
+                if (
+                    self._prepare_input is not None
+                    and item.attribution_skill_executor_type == "local_agent"
+                ):
+                    item = await self._prepare_input(item)
                 if cache_enabled:
                     cached = await self._store.get_probe_by_cache_key(item.cache_key)
                     if cached is not None:
@@ -766,7 +791,12 @@ class AttributionRunner:
                         policy_version=POLICY_VERSION,
                         attribution_engine=engine.key,
                         report_schema_version=REPORT_SCHEMA_VERSION,
-                        report_payload=report.model_dump(mode="json", by_alias=True),
+                        report_payload=report.model_dump(
+                            mode="json",
+                            by_alias=True,
+                            exclude_none=False,
+                            exclude={"source_report"} if result.canonical_report is None else set(),
+                        ),
                         execution_manifest=manifest.model_dump(mode="json", by_alias=True),
                         execution_manifest_hash=manifest.content_hash,
                         created_run_id=run.id,
@@ -906,6 +936,10 @@ class AttributionRunner:
             title=evidence.title,
             description=evidence.description,
             metadata=evidence.metadata,
+            repo_url=run.repo_url,
+            sub_dir=run.sub_dir,
+            selected_version=run.target_version,
+            report_source=evidence.source or "",
             hit_reason=candidate.hit_reason,
             order_state=candidate.order_state,
             object_trigger_at=candidate.object_trigger.triggered_at,

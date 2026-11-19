@@ -196,6 +196,7 @@ class AttributionContextProvider:
         target_type: ObjectType,
         target_name: str,
         target_version: str,
+        target_revision: str | None = None,
         candidates: Sequence[PotentialCase],
         bad_cases: Mapping[str, BadCaseEvidenceRecord],
         knowledge: Mapping[str, tuple[KnowledgeEvidenceRecord, ...]],
@@ -215,15 +216,15 @@ class AttributionContextProvider:
         for agent in agents:
             agents_by_session[agent.root_session_id].append(agent)
         events_by_session: dict[str, list[ObjectEventRecord]] = defaultdict(list)
+        target_revision = target_revision or resolve_target_revision(target_version)[1]
         for event in events:
-            if _matches_revision(event, target_version):
+            if _matches_revision(event, target_version, target_revision):
                 events_by_session[event.session_id].append(event)
         cases_by_session: dict[str, list[PotentialCase]] = defaultdict(list)
         for candidate in candidates:
             cases_by_session[candidate.session_id].append(candidate)
 
         projections: dict[str, AttributionCaseContext] = {}
-        target_revision = resolve_target_revision(target_version)[1]
         for session_id in session_ids:
             bundle = _bundle(
                 session_id=session_id,
@@ -249,10 +250,24 @@ class AttributionContextProvider:
         return projections
 
 
-def _matches_revision(event: ObjectEventRecord, target_version: str) -> bool:
+def _matches_revision(event: ObjectEventRecord, target_version: str, revision: str) -> bool:
     """Keep the same exact version/revision identity selected by the matcher."""
-    version, revision = resolve_target_revision(target_version)
-    return event.object_revision == revision or event.object_version in {version, target_version}
+    accepted = {
+        target_version,
+        revision,
+        revision.removeprefix("digest:"),
+        revision.removeprefix("tag:"),
+    }
+    return bool(
+        accepted.intersection(
+            {
+                event.object_revision,
+                event.object_version,
+                event.definition_hash,
+                event.document_revision,
+            }
+        )
+    )
 
 
 def _bundle(

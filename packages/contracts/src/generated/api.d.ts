@@ -2070,10 +2070,20 @@ export interface components {
          */
         AttributeStats: {
             /**
+             * Context
+             * @default 0
+             */
+            context: number;
+            /**
              * Error
              * @default 0
              */
             error: number;
+            /**
+             * Flow
+             * @default 0
+             */
+            flow: number;
             /**
              * Model
              * @default 0
@@ -2112,7 +2122,7 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
@@ -2222,7 +2232,7 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
@@ -2435,13 +2445,13 @@ export interface components {
          */
         AttributionPreviewSummary: {
             /** Fresh */
-            fresh: number;
+            fresh: number | null;
             /** Nontargetknown */
             nonTargetKnown: number;
             /** Potential */
             potential: number;
             /** Reused */
-            reused: number;
+            reused: number | null;
         };
         /**
          * AttributionQualityDecisionWrite
@@ -2518,7 +2528,7 @@ export interface components {
         AttributionReportV2: {
             analysis: components["schemas"]["AttributionAnalysis"];
             /** Category */
-            category?: ("model" | "prompt" | "error") | null;
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
@@ -2534,6 +2544,10 @@ export interface components {
              * @constant
              */
             schemaVersion: "probe-report/v2";
+            /** Sourcereport */
+            sourceReport?: {
+                [key: string]: unknown;
+            } | null;
             /** Suggestionclues */
             suggestionClues?: string[];
             target: components["schemas"]["AttributionTargetRef"];
@@ -3239,10 +3253,20 @@ export interface components {
          */
         EvolutionRunAttributeStats: {
             /**
+             * Context
+             * @default 0
+             */
+            context: number;
+            /**
              * Error
              * @default 0
              */
             error: number;
+            /**
+             * Flow
+             * @default 0
+             */
+            flow: number;
             /**
              * Model
              * @default 0
@@ -3877,7 +3901,7 @@ export interface components {
          */
         GoldenExpected: {
             /** Category */
-            category?: ("model" | "prompt" | "error") | null;
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
@@ -3956,7 +3980,7 @@ export interface components {
          */
         IssueBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @enum {string}
@@ -4055,7 +4079,7 @@ export interface components {
          */
         NonIssueBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @constant
@@ -4324,7 +4348,7 @@ export interface components {
              * Attributetype
              * @enum {string}
              */
-            attributeType: "model" | "prompt" | "error";
+            attributeType: "model" | "prompt" | "error" | "flow" | "context";
             /** Description */
             description: string;
             /** Model */
@@ -4414,7 +4438,7 @@ export interface components {
          */
         ProbeReport: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Createdat
              * Format: date-time
@@ -4906,7 +4930,7 @@ export interface components {
          */
         ShadowActual: {
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Conclusion
              * @enum {string}
@@ -5080,7 +5104,7 @@ export interface components {
             /** Badcaseid */
             badCaseId: string;
             /** Category */
-            category: ("model" | "prompt" | "error") | null;
+            category: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /** Confidence */
             confidence: number | null;
             /** Description */
@@ -5142,7 +5166,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Confidence */
@@ -5191,7 +5215,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Commit */
@@ -5391,7 +5415,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "model" | "prompt" | "error";
+            category: "model" | "prompt" | "error" | "flow" | "context";
             /** Clusterid */
             clusterId: string;
             /** Confidence */
@@ -5590,7 +5614,7 @@ export interface components {
              * Category
              * @description Attribution category; only present for the attributed state.
              */
-            category?: ("model" | "prompt" | "error") | null;
+            category?: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Createdat
              * Format: date-time
@@ -5911,7 +5935,7 @@ export interface components {
          */
         UnanalyzedBadCaseAnalysis: {
             /** Attributetype */
-            attributeType: ("model" | "prompt" | "error") | null;
+            attributeType: ("model" | "prompt" | "error" | "flow" | "context") | null;
             /**
              * Displaystate
              * @constant

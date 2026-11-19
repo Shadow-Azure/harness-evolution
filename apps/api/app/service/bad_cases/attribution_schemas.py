@@ -15,7 +15,7 @@ from app.service.identity.schemas import IdentityModel
 
 AttributionObjectType = Literal["skill", "agent", "knowledge"]
 AttributionConclusion = Literal["attributed", "non_target", "inconclusive"]
-AttributionCategory = Literal["model", "prompt", "error"]
+AttributionCategory = Literal["model", "prompt", "error", "flow", "context"]
 TriggerOrder = Literal["before", "after", "same", "unknown"]
 VersionState = Literal["exact", "unknown"]
 

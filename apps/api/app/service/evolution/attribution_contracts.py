@@ -19,7 +19,7 @@ DEFAULT_SKILL_REVISION = "builtin-v1"
 NO_MODEL_FINGERPRINT = "none"
 
 AttributionConclusion = Literal["attributed", "non_target", "inconclusive"]
-AttributionCategory = Literal["model", "prompt", "error"]
+AttributionCategory = Literal["model", "prompt", "error", "flow", "context"]
 
 
 class AttributionTargetRef(IdentityModel):
@@ -55,6 +55,7 @@ class AttributionAnalysis(IdentityModel):
 class AttributionReportV2(IdentityModel):
     """Structured V2 payload stored beside legacy report text columns."""
 
+    source_report: dict[str, object] | None = None
     schema_version: Literal["probe-report/v2"] = REPORT_SCHEMA_VERSION
     target: AttributionTargetRef
     conclusion: AttributionConclusion
@@ -160,6 +161,7 @@ def default_execution_manifest(
     skill_revision: str | None = None,
     skill_content_hash: str | None = None,
     prepared_context_snapshot_hash: str | None = None,
+    model_fingerprint: str = NO_MODEL_FINGERPRINT,
 ) -> AttributionExecutionManifest:
     """Build a manifest from candidate coordinates and a frozen Skill snapshot."""
     skill = (
@@ -182,7 +184,7 @@ def default_execution_manifest(
         policy_version=policy_version,
         engine=engine,
         skill=skill,
-        model_config_fingerprint=NO_MODEL_FINGERPRINT,
+        model_config_fingerprint=model_fingerprint,
         context_snapshot_hash=(
             prepared_context_snapshot_hash
             or context_snapshot_hash(

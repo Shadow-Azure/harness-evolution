@@ -147,7 +147,7 @@ class TargetCaseItem(IdentityModel):
         max_length=64,
         description="The probe id of the newest attribution for this target version.",
     )
-    category: Literal["model", "prompt", "error"] | None = Field(
+    category: Literal["model", "prompt", "error", "flow", "context"] | None = Field(
         default=None,
         description="Attribution category; only present for the attributed state.",
     )

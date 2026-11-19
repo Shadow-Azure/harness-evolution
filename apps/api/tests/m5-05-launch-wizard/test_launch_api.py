@@ -1,12 +1,14 @@
 """Launch wizard API contract: probe preview, run creation, cluster previews."""
 
 import json
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import pytest
 import pytest_asyncio
 from pydantic import SecretStr
 from sqlalchemy import insert, select
@@ -376,12 +378,16 @@ class _FakeWorkspacePreparer:
 
 
 @pytest_asyncio.fixture
-async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
+async def launch_api(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> AsyncIterator[httpx.AsyncClient]:
     """Provide an authenticated admin client over a migrated, seeded app."""
     app = create_app(
         Settings(
             db_dialect=DatabaseDialect.SQLITE,
             data_dir=tmp_path,
+            attribution_package_dir=tmp_path / "attribute",
+            attribution_agent=getattr(request, "param", None),
             jwt_secret=SecretStr("launch-wizard-api-signing-secret-sufficient"),
             admin_username="admin",
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
@@ -492,7 +498,14 @@ async def test_probe_query_returns_hit_statistics_and_rows(
         "unanalyzed": 0,
         "probes": 3,
         "usedProbes": 3,
-        "byAttributeType": {"model": 1, "prompt": 1, "error": 1, "nonIssue": 0},
+        "byAttributeType": {
+            "model": 1,
+            "prompt": 1,
+            "error": 1,
+            "flow": 0,
+            "context": 0,
+            "nonIssue": 0,
+        },
     }
     assert body["total"] == 3
     assert body["page"] == 1
@@ -925,3 +938,78 @@ async def test_launch_rejects_unregistered_engine_before_writes(
     runs = await launch_api.get("/api/evolution/runs")
     assert runs.json()["running"] == []
     assert runs.json()["history"] == []
+
+
+@pytest.mark.parametrize(
+    "launch_api",
+    ["claude" if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") == "1" else "test-local"],
+    indirect=True,
+)
+async def test_local_attribution_from_wizard_to_cluster(
+    launch_api: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Start through HTTP and wait for the real job, report transaction and clustering."""
+    import io
+    import zipfile
+
+    from app.third_party_api.attribution.backend import AgentFactory
+    from tests.attribution.test_local_runtime import ScriptAgent, Source
+
+    monkeypatch.setitem(AgentFactory.providers, "test-local", ScriptAgent)
+    app = _app_of(launch_api)
+    app.state.local_attribution.source = Source()
+    workspace = "/api/workspaces/ws-default"
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr(
+            "SKILL.md",
+            "---\nname: acceptance-skill\ndescription: Synthetic case acceptance\n---\n"
+            "For this synthetic case classify the reported object as flow. "
+            "Use the supplied writer to produce probe_report.json with the reported version.",
+        )
+
+    uploaded = await launch_api.post(
+        f"{workspace}/attribution-skill-packages",
+        files={"file": ("custom.zip", archive.getvalue(), "application/zip")},
+    )
+    assert uploaded.status_code == 201
+    binding = await launch_api.put(
+        f"{workspace}/evolution/targets/target-enabled/attribution-skill",
+        json={"skillRevisionId": uploaded.json()["id"]},
+    )
+    assert binding.status_code == 200
+    assert binding.json()["source"] == "target"
+    accepted = await launch_api.post("/api/evolution/runs", json=_query_body())
+    assert accepted.status_code == 202
+    job = await app.state.jobs.wait(accepted.json()["jobId"])
+    assert job.status == "completed", job.error
+    async with app.state.database.session() as session:
+        reports = (
+            (
+                await session.execute(
+                    select(probe_reports).where(
+                        probe_reports.c.created_run_id == accepted.json()["runId"]
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert reports
+    for report in reports:
+        assert report["attribution_engine"] == "local-agent-skill-v1"
+        canonical = report["report_payload"]["sourceReport"]
+        assert canonical["attribute_type"] in {
+            "prompt",
+            "model",
+            "flow",
+            "context",
+            "error",
+            "unknown",
+        }
+        if report["conclusion"] == "attributed":
+            assert report["attribute_type"] == canonical["attribute_type"]
+        else:
+            assert report["attribute_type"] is None
+        if os.environ.get("HE_TEST_LIVE_ATTRIBUTION") != "1":
+            assert canonical["attribute_type"] == "flow"

@@ -571,7 +571,7 @@ class EvolutionPrepareService:
     async def _category_counts(self, run: EvolutionRunRecord) -> dict[str, int]:
         """Count attributed probes by their closed category."""
         rows = await self._attributions.list_clusterable_probes(run.id)
-        counts = {"model": 0, "prompt": 0, "error": 0}
+        counts = dict.fromkeys(TYPE_CONFIDENCE, 0)
         for _, attribute_type, _ in rows:
             if attribute_type in counts:
                 counts[attribute_type] += 1

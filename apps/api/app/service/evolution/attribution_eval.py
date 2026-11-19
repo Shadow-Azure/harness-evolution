@@ -114,7 +114,7 @@ class GoldenExpected(IdentityModel):
     """Expected semantic outcome and verifiable evidence constraints."""
 
     conclusion: Literal["attributed", "non_target", "inconclusive"]
-    category: Literal["model", "prompt", "error"] | None = None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None = None
     required_evidence_refs: list[str] = Field(default_factory=list)
     introduction_point_required: bool = False
     detection_point_required: bool = False
@@ -162,7 +162,7 @@ class ShadowActual(IdentityModel):
     """Normalized engine output stored separately from Probe Reports."""
 
     conclusion: Literal["attributed", "non_target", "inconclusive"]
-    category: Literal["model", "prompt", "error"] | None
+    category: Literal["model", "prompt", "error", "flow", "context"] | None
     confidence: float
     summary: str
     evidence_references: list[str]

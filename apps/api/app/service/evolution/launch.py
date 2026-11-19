@@ -371,6 +371,8 @@ def _attribution_engine(effective_skill: LaunchAttributionSkill | None) -> str:
     """Select the engine matching the resolved Skill executor boundary."""
     if effective_skill is None or effective_skill.executor_type == "builtin_rule":
         return DEFAULT_ATTRIBUTION_ENGINE
+    if effective_skill.executor_type == "local_agent":
+        return "local-agent-skill-v1"
     if effective_skill.executor_type == "agent_stub":
         return AGENT_SKILL_STUB_ENGINE
     raise AppError(

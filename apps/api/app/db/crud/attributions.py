@@ -179,6 +179,7 @@ class BadCaseEvidenceRecord:
     title: str
     description: str
     metadata: Mapping[str, object]
+    source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -542,6 +543,7 @@ class AttributionRepository:
                 bad_cases.c.title,
                 bad_cases.c.bad_case_description,
                 bad_cases.c.meta_data,
+                bad_cases.c.source,
             ).where(bad_cases.c.bad_case_id.in_(chunk))
             async with self._database.session() as session:
                 rows = (await session.execute(statement)).mappings().all()
@@ -554,6 +556,7 @@ class AttributionRepository:
                     title=str(row["title"]),
                     description=str(row["bad_case_description"]),
                     metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+                    source=row["source"],
                 )
         return found
 

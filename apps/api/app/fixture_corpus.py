@@ -167,7 +167,7 @@ class ProbeFixture(FixtureModel):
     probe_type: Literal["skill", "agent"]
     probe_object: str = Field(min_length=1, max_length=128)
     object_version: str | None = Field(default=None, max_length=64)
-    attribute_type: Literal["model", "prompt", "error"]
+    attribute_type: Literal["model", "prompt", "error", "flow", "context"]
     probe_description: str = Field(min_length=1, max_length=2_000)
     probe_analysis: str = Field(min_length=1, max_length=8_000)
     created_at: datetime
