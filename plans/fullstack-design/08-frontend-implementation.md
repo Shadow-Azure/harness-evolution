@@ -672,6 +672,18 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
   - 「启动自进化 →」→ `POST …/evolution/runs` → 路由 `/workspaces/:wid/evolution/runs/:rid`，先显示「准备中」
 - 202 只表示“已受理准备”；不要等接口返回簇或 RunDetail。
 
+### 9.3 预览请求的等待反馈
+
+三个 `preview/*` 都是同步请求；第 1 步在冷缓存时先做目标内容读取（必要时 `git clone --mirror`），再关联 Session。生产 `LaunchWizard.vue` 当前只在 `pending` 时禁用按钮，用户看不到阶段与耗时，表现为卡住。设计目标：
+
+- 点击「下一步」后立即把主按钮改成当前阶段文案并带 spinner；表单 `locked`（保留内容、禁止编辑）。
+- 在主按钮上方显示阶段进度卡：第 1 步「读取目标版本 → 关联 Session」，第 2 步「筛选潜在 bad case」，第 3 步「检查归因缓存」；已完成阶段打勾，当前阶段高亮，显示已等待秒数。
+- 文案说明首次读取会从远端仓库克隆、后续有本地 mirror 缓存；不使用假进度条。
+- 超时（`content_timeout` / `repo_unreachable`）显示原因、非 Session 数据为空、重试与返回修改条件；版本字段标红。等待中提供取消等待，结果丢弃。
+- 等待卡 `role=status` + `aria-live=polite`；超时卡 `role=alert`。
+
+原型交互和截图见 `plans/ui-prototype-v2/harness-evolution.html` 与 `design-v2.md §7.5`；生产实现待后续切片。
+
 ### 9.3 占位数据说明
 
 - 命中数字来自真实 `bad_cases` / `agent_events` 查询（潜在匹配与 run 共用实现），不再哈希模拟。

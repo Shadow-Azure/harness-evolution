@@ -865,6 +865,37 @@
 .evo-app .wz-note { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); line-height: 1.55; }
 .evo-app .wz-note .cfg-link { border: none; background: none; padding: 0; font: inherit; color: var(--blue); text-decoration: underline solid; text-underline-offset: 2px; cursor: pointer; }
 .evo-app .wz-note .cfg-link:hover { color: color-mix(in srgb, var(--blue) 72%, #000); text-decoration-thickness: 2px; }
+/* 启动向导：预览请求的等待、阶段进度与超时反馈 */
+.evo-app .wz-form.locked { opacity: .55; pointer-events: none; }
+.evo-app .wz-spinner { display: inline-block; width: 12px; height: 12px; flex: none; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--blue) 25%, transparent); border-top-color: var(--blue); animation: spin .7s linear infinite; }
+.evo-app .wz-progress { margin-bottom: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--blue) 5%, var(--bg-card)); }
+.evo-app .wz-progress.failed { border-color: color-mix(in srgb, var(--red) 35%, var(--border)); background: color-mix(in srgb, var(--red) 5%, var(--bg-card)); }
+.evo-app .wz-progress-head { display: flex; align-items: flex-start; gap: 9px; }
+.evo-app .wz-progress-head .wz-spinner { margin-top: 3px; }
+.evo-app .wz-error-mark { display: grid; width: 18px; height: 18px; flex: none; margin-top: 1px; place-items: center; border: 1px solid color-mix(in srgb, var(--red) 45%, var(--border)); border-radius: 50%; background: color-mix(in srgb, var(--red) 8%, var(--bg-card)); color: var(--red); font-size: 10px; }
+.evo-app .wz-progress-head b { display: block; font-size: 12.5px; color: var(--text); }
+.evo-app .wz-progress.failed .wz-progress-head b { color: var(--red); }
+.evo-app .wz-progress-sub { display: block; margin-top: 2px; color: var(--text-faint); font-size: 11px; line-height: 1.5; }
+.evo-app .wz-progress-elapsed { margin-left: auto; color: var(--text-dim); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.evo-app .wz-progress-lead { margin: 8px 0 0 21px; color: var(--text-dim); font-size: 11.5px; line-height: 1.6; }
+.evo-app .wz-progress-steps { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.evo-app .wz-progress-steps li { display: flex; align-items: flex-start; gap: 8px; color: var(--text-faint); font-size: 11.5px; line-height: 1.5; }
+.evo-app .wz-progress-steps li b { display: block; color: var(--text-dim); font-weight: 600; }
+.evo-app .wz-progress-steps li.current b, .evo-app .wz-progress-steps li.done b { color: var(--text); }
+.evo-app .wz-progress-steps li .state { margin-left: auto; color: var(--text-faint); font-size: 10.5px; white-space: nowrap; }
+.evo-app .wz-progress-steps li.current .state { color: var(--blue); }
+.evo-app .wz-progress-steps li.done .state { color: var(--green); }
+.evo-app .wz-progress-steps li.failed b, .evo-app .wz-progress-steps li.failed .state { color: var(--red); }
+.evo-app .wz-progress-steps .dot { display: grid; width: 16px; height: 16px; flex: none; margin-top: 1px; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--bg-card); color: var(--text-faint); font-size: 9px; }
+.evo-app .wz-progress-steps li.done .dot { border-color: color-mix(in srgb, var(--green) 45%, var(--border)); background: color-mix(in srgb, var(--green) 10%, var(--bg-card)); color: var(--green); }
+.evo-app .wz-progress-steps li.current .dot { border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); background: color-mix(in srgb, var(--blue) 8%, var(--bg-card)); }
+.evo-app .wz-progress-steps li.failed .dot { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); background: color-mix(in srgb, var(--red) 8%, var(--bg-card)); color: var(--red); }
+.evo-app .wz-progress-steps .dot .wz-spinner { width: 10px; height: 10px; border-width: 2px; }
+.evo-app .wz-progress-hint { margin: 9px 0 0 21px; color: var(--text-faint); font-size: 11px; line-height: 1.55; }
+.evo-app .wz-progress-actions { display: flex; gap: 8px; margin: 10px 0 0 21px; }
+.evo-app .wz-progress-actions .btn { font-size: 11.5px; padding: 5px 12px; }
+.evo-app .btn .wz-spinner { margin-right: 6px; vertical-align: -2px; }
+.evo-app .btn.primary .wz-spinner { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
 .evo-app .inp.input-error { border-color: var(--red); }
 .evo-app .inp.input-error:focus { border-color: var(--red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 14%, transparent); }
 .evo-app .field-error { margin-top: 4px; color: var(--red); font-size: 12px; line-height: 1.45; }
@@ -5391,7 +5422,7 @@ function evWizardOpen(caseId) {
     step: 1, kind: first?.kind || 'skill', name: first?.objectName || '', version: first?.defaultRef || first?.tags?.[0] || '',
     versionOpen: false,
     from, to, policy: 'default', includeSelf: true, includeAfter: true, sameObject: false,
-    cache: true, focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {},
+    cache: true, focusCase: caseId || null, assocPage: 1, casePage: 1, errors: {}, busy: null,
   };
   evRenderWizard();
 }
@@ -5446,6 +5477,100 @@ function evWizardHost() {
   return document.getElementById(onEvoPage ? 'modal-root' : 'v2Modal');
 }
 
+function evWzElapsedText(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  if (s < 60) return `${s} 秒`;
+  return `${Math.floor(s / 60)} 分 ${String(s % 60).padStart(2, '0')} 秒`;
+}
+function evWzStages(fromStep) {
+  const wz = EV_STATE.wz;
+  if (!wz) return [];
+  if (fromStep === 1) return [
+    { label: '读取目标版本', detail: '读取 SKILL.md / AGENT.md 并计算 body hash；缓存为空时先从远程仓库克隆。' },
+    { label: '关联 Session', detail: `在 ${wz.from} ~ ${wz.to} 内匹配对象出现过的 Session。` },
+  ];
+  if (fromStep === 2) return [{ label: '筛选潜在 bad case', detail: '按当前策略过滤关联 Session 中的 bad case。' }];
+  return [{ label: '检查归因缓存', detail: '只读检查该对象版本已有的归因结果。' }];
+}
+function evWzCreateBusy(fromStep, opts = {}) {
+  const stages = evWzStages(fromStep);
+  return {
+    fromStep,
+    stages,
+    stage: Math.max(0, Math.min(stages.length - 1, Number(opts.stage) || 0)),
+    elapsed: Math.max(0, Number(opts.elapsed) || 0),
+    failed: !!opts.failed,
+    frozen: !!opts.frozen,
+    timer: null,
+  };
+}
+function evWzStopTimer() {
+  const busy = EV_STATE.wz && EV_STATE.wz.busy;
+  if (busy && busy.timer) { clearInterval(busy.timer); busy.timer = null; }
+}
+function evWzClearBusy() {
+  evWzStopTimer();
+  if (EV_STATE.wz) EV_STATE.wz.busy = null;
+}
+function evWzStartBusy(fromStep, opts = {}) {
+  const wz = EV_STATE.wz; if (!wz) return;
+  evWzStopTimer();
+  const busy = evWzCreateBusy(fromStep, opts);
+  wz.busy = busy;
+  wz.versionOpen = false;
+  evRenderWizard();
+  if (busy.frozen) return;
+  const tick = () => {
+    const current = EV_STATE.wz && EV_STATE.wz.busy;
+    if (!current || current !== busy) return;
+    busy.elapsed += 1;
+    if (busy.elapsed >= 2 && busy.stage < busy.stages.length - 1) busy.stage = busy.stages.length - 1;
+    if (fromStep === 1 && busy.elapsed >= 20) { busy.failed = true; evWzStopTimer(); evRenderWizard(); return; }
+    if (busy.elapsed >= 4) {
+      evWzStopTimer();
+      EV_STATE.wz.busy = null;
+      EV_STATE.wz.step = Math.min(4, fromStep + 1);
+      if (EV_STATE.wz.step === 2) EV_STATE.wz.assocPage = 1;
+      if (EV_STATE.wz.step === 3) EV_STATE.wz.casePage = 1;
+      evRenderWizard();
+      return;
+    }
+    evRenderWizard();
+  };
+  busy.timer = setInterval(tick, 1000);
+}
+function evWzBusyCard(busy) {
+  const current = busy.stages[busy.stage] || busy.stages[0];
+  const stepNo = busy.fromStep + 1;
+  const failed = busy.failed;
+  const heading = failed ? `${current.label}超时` : `正在准备第 ${stepNo} 步 · ${current.label}`;
+  const lead = failed
+    ? `服务端在 ${evWzElapsedText(busy.elapsed)} 内没有完成${current.label}。首次从 GitHub 克隆目标仓库、或服务器访问 GitHub 较慢时会出现；不是 Session 数据为空。`
+    : busy.fromStep === 1
+      ? '先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取该仓库可能需要 20–40 秒。'
+      : '这一步只读预览，不会写入或启动运行。完成后自动进入下一步。';
+  const rows = busy.stages.map((stage, index) => {
+    const state = failed && index === busy.stage ? 'failed' : index < busy.stage ? 'done' : index === busy.stage ? 'current' : 'pending';
+    const stateText = state === 'done' ? '完成' : state === 'current' ? '进行中' : state === 'failed' ? '超时' : '等待';
+    const dot = state === 'done' ? '✓' : state === 'current' ? '<i class="wz-spinner"></i>' : state === 'failed' ? '!' : '';
+    return `<li class="${state}"><span class="dot">${dot}</span><div><b>${evEsc(stage.label)}</b><span>${evEsc(stage.detail)}</span></div><span class="state">${stateText}</span></li>`;
+  }).join('');
+  const actions = failed ? '<div class="wz-progress-actions"><button class="btn primary" data-action="ev-wz-retry">重试解析</button><button class="btn" data-action="ev-wz-cancel-busy">返回修改条件</button></div>' : '';
+  const hint = failed
+    ? '排查：确认版本、仓库地址与子目录；也可以换一个版本。首次成功读取后服务端会缓存 mirror，重试通常更快。'
+    : busy.frozen ? `原型演示：固定在等待第 ${evWzElapsedText(busy.elapsed)}，不会自动前进。` : '可以取消等待并修改条件；启动前不会写入归因。';
+  return `<div class="wz-progress${failed ? ' failed' : ''}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
+    <div class="wz-progress-head">
+      ${failed ? '<span class="wz-error-mark">!</span>' : '<span class="wz-spinner"></span>'}
+      <div><b>${heading}</b><span class="wz-progress-sub">${failed ? '本次预览未完成，表单内容已保留' : '只读预览，不会写入数据'}</span></div>
+      <span class="wz-progress-elapsed">已等待 ${evWzElapsedText(busy.elapsed)}</span>
+    </div>
+    <p class="wz-progress-lead">${lead}</p>
+    <ol class="wz-progress-steps">${rows}</ol>
+    ${actions}
+    <p class="wz-progress-hint">${hint}</p>
+  </div>`;
+}
 function evRenderWizard() {
   const wz = EV_STATE.wz; if (!wz) return;
   const targets = evWzTargets();
@@ -5461,10 +5586,12 @@ function evRenderWizard() {
   const t = evWzTarget();
   const versionOptions = evWzVersionOptions();
   const { run, m } = evWizardModel();
+  const busy = wz.busy;
   const step2 = wz.step >= 2;
   const step3 = wz.step >= 3;
   const step4 = wz.step >= 4;
   const err = wz.errors || {};
+  const contentFailed = Boolean(busy && busy.failed && busy.fromStep === 1);
   const fieldErr = k => err[k] ? `<div class="field-error">${evEsc(err[k])}</div>` : '';
   const cond = `<div class="wz-condstrip">
     <span class="v2-badge">${evEsc((WORKSPACES.find(w => w.id === evCurrentWs()) || {}).name || '')}</span>
@@ -5488,7 +5615,7 @@ function evRenderWizard() {
           <div class="wz-field">
             <div class="wz-version-combo">
               <input
-                class="inp${err.version ? ' input-error' : ''}"
+                class="inp${err.version || contentFailed ? ' input-error' : ''}"
                 id="ev-wz-version"
                 value="${evEsc(wz.version)}"
                 placeholder="tag / 分支名 / commit id"
@@ -5586,15 +5713,25 @@ function evRenderWizard() {
       <div class="wz-note">缓存键包含工作空间、bad case、对象身份/版本、策略版本与归因模型版本；「非该对象问题」不会修改 bad case 本身。</div>`;
   }
 
+  const busyLabel = busy ? (busy.failed ? '等待重试' : `正在${busy.stages[busy.stage].label}…`) : '';
+  let foot = '';
+  if (busy && !busy.failed) {
+    foot = `<button class="btn" data-action="ev-wz-cancel-busy">取消等待</button>
+      <button class="btn primary" disabled><span class="wz-spinner"></span>${busyLabel}</button>`;
+  } else if (wz.step === 1) {
+    foot = '<button class="btn primary" data-action="ev-wz-next">下一步：关联 Session →</button>';
+  } else if (wz.step === 2) {
+    foot = '<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：潜在 bad case →</button>';
+  } else if (wz.step === 3) {
+    foot = '<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：归因预览 →</button>';
+  } else {
+    foot = '<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start">启动自进化 →</button>';
+  }
+
   evWizardHost().innerHTML = `<div class="evov" data-action="ev-wz-close-bg">
     <div class="modal"><div class="modal-head"><h2>启动自进化</h2><button class="x" data-action="ev-wz-close">✕</button></div>
-      <div class="modal-body">${steps}${body}</div>
-      <div class="modal-foot">
-        ${wz.step === 1 ? `<button class="btn primary" data-action="ev-wz-next">下一步：关联 Session →</button>` : ''}
-        ${wz.step === 2 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：潜在 bad case →</button>` : ''}
-        ${wz.step === 3 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-next">下一步：归因预览 →</button>` : ''}
-        ${wz.step === 4 ? `<button class="btn" data-action="ev-wz-back">← 上一步</button><button class="btn primary" data-action="ev-wz-start">启动自进化 →</button>` : ''}
-      </div>
+      <div class="modal-body">${steps}${busy ? evWzBusyCard(busy) : ''}<div class="wz-form${busy && !busy.failed ? ' locked' : ''}">${body}</div></div>
+      <div class="modal-foot">${foot}</div>
     </div></div>`;
 }
 function evSyncWz() {
@@ -5634,23 +5771,27 @@ document.addEventListener('click', e => {
   }
   else if (a === 'ev-launch') evWizardOpen(null);
   else if (a === 'ev-targets') { evRoute(); }
-  else if (a === 'ev-wz-targets') { evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
-  else if (a === 'ev-wz-close') { evWizardHost().innerHTML = ''; }
-  else if (a === 'ev-wz-close-bg') { if (e.target === el) evWizardHost().innerHTML = ''; }
-  else if (a === 'ev-wz-kind') { evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
-  else if (a === 'ev-wz-version-toggle') { evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
-  else if (a === 'ev-wz-version-pick') { evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
-  else if (a === 'ev-wz-policy') { evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
-  else if (a === 'ev-wz-rule') { evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
-  else if (a === 'ev-wz-cache') { evSyncWz(); EV_STATE.wz.cache = !!el.checked; evRenderWizard(); }
-  else if (a === 'ev-wz-back') { evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = Math.max(1, EV_STATE.wz.step - 1); evRenderWizard(); }
-  else if (a === 'ev-wz-edit') { evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-targets') { evWzClearBusy(); evWizardHost().innerHTML = ''; location.hash = '#/targets'; if (window.V2 && window.V2.page !== 'evo') window.V2.setPage('evo'); else evRoute(); }
+  else if (a === 'ev-wz-close') { evWzClearBusy(); evWizardHost().innerHTML = ''; }
+  else if (a === 'ev-wz-close-bg') { if (e.target === el) { evWzClearBusy(); evWizardHost().innerHTML = ''; } }
+  else if (a === 'ev-wz-kind') { evWzClearBusy(); evSyncWz(); const wz = EV_STATE.wz; wz.kind = el.dataset.v; const t = evWzTargets()[0]; wz.name = t?.objectName || ''; wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete wz.errors.version; wz.versionOpen = false; wz.assocPage = 1; wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-version-toggle') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = !EV_STATE.wz.versionOpen; evRenderWizard(); }
+  else if (a === 'ev-wz-version-pick') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.version = el.dataset.v; EV_STATE.wz.versionOpen = false; delete EV_STATE.wz.errors.version; evRenderWizard(); }
+  else if (a === 'ev-wz-policy') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.policy = el.dataset.v; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-rule') { evWzClearBusy(); evSyncWz(); EV_STATE.wz[el.dataset.rule] = !!el.checked; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  else if (a === 'ev-wz-cache') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.cache = !!el.checked; evRenderWizard(); }
+  else if (a === 'ev-wz-back') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = Math.max(1, EV_STATE.wz.step - 1); evRenderWizard(); }
+  else if (a === 'ev-wz-edit') { evWzClearBusy(); evSyncWz(); EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); }
   else if (a === 'ev-wz-page') { if (!EV_STATE.wz) return; const key = el.dataset.target === 'assoc' ? 'assocPage' : 'casePage'; EV_STATE.wz[key] = Math.max(1, (EV_STATE.wz[key] || 1) + Number(el.dataset.delta || 0)); evRenderWizard(); }
   else if (a === 'ev-wz-next') {
+    if (EV_STATE.wz.busy) return;
     if (EV_STATE.wz.step === 1 && !evValidateWz()) { EV_STATE.wz.versionOpen = false; evRenderWizard(); return; }
-    evSyncWz(); EV_STATE.wz.versionOpen = false; const fromStep = EV_STATE.wz.step; EV_STATE.wz.step = Math.min(4, EV_STATE.wz.step + 1); if (EV_STATE.wz.step === 2) EV_STATE.wz.assocPage = 1; if (EV_STATE.wz.step === 3) EV_STATE.wz.casePage = 1; evRenderWizard();
+    evSyncWz(); EV_STATE.wz.versionOpen = false; evWzStartBusy(EV_STATE.wz.step);
   }
+  else if (a === 'ev-wz-cancel-busy') { evWzClearBusy(); evRenderWizard(); }
+  else if (a === 'ev-wz-retry') { evWzStartBusy(EV_STATE.wz.busy ? EV_STATE.wz.busy.fromStep : 1); }
   else if (a === 'ev-wz-start') {
+    evWzClearBusy();
     evSyncWz();
     if (!evValidateWz()) { EV_STATE.wz.versionOpen = false; EV_STATE.wz.step = 1; evRenderWizard(); return; }
     const t = evWzTarget();
@@ -5678,14 +5819,21 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('change', e => {
   if (!EV_STATE.wz) return;
-  if (e.target.id === 'ev-wz-name') { evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
-  else if (e.target.id === 'ev-wz-version') { evSyncWz(); }
-  else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evSyncWz(); }
+  if (e.target.id === 'ev-wz-name') { evWzClearBusy(); evSyncWz(); const t = evWzTarget(); EV_STATE.wz.version = t?.defaultRef || t?.tags?.[0] || ''; delete EV_STATE.wz.errors.version; EV_STATE.wz.versionOpen = false; EV_STATE.wz.assocPage = 1; EV_STATE.wz.casePage = 1; evRenderWizard(); }
+  else if (e.target.id === 'ev-wz-version') { if (EV_STATE.wz.busy) { evWzClearBusy(); evRenderWizard(); } evSyncWz(); }
+  else if (e.target.id === 'ev-wz-from' || e.target.id === 'ev-wz-to') { evWzClearBusy(); evSyncWz(); }
 });
 document.addEventListener('input', e => {
   if (EV_STATE.targetDialog && e.target.dataset.evTargetField) evSyncTargetForm();
   if (e.target.id === 'ev-wz-version' && EV_STATE.wz) {
     evSyncWz();
+    if (EV_STATE.wz.busy) {
+      evWzClearBusy();
+      const card = document.querySelector('.wz-progress');
+      if (card) card.remove();
+      const locked = document.querySelector('.wz-form.locked');
+      if (locked) locked.classList.remove('locked');
+    }
     if (EV_STATE.wz.errors && EV_STATE.wz.errors.version) {
       delete EV_STATE.wz.errors.version;
       e.target.classList.remove('input-error');
@@ -5715,6 +5863,18 @@ window.startEvolutionFromCase = function (caseId) {
 window.__evOpenWizard = evWizardOpen;
 window.EV_RUNS = EV_RUNS;
 window.__evRenderWizard = evRenderWizard;
+window.__evWzSimulate = function (sim, params) {
+  const wz = EV_STATE.wz; if (!wz) return;
+  const fromStep = Math.max(1, Math.min(3, Number(params.get('wzfrom')) || wz.step || 1));
+  wz.step = fromStep;
+  wz.versionOpen = false;
+  wz.busy = evWzCreateBusy(fromStep, {
+    stage: Number(params.get('wzstage')) || 0,
+    elapsed: Number(params.get('wzelapsed')) || (sim === 'timeout' ? 20 : 8),
+    failed: sim === 'timeout',
+    frozen: true,
+  });
+};
 window.__evState = EV_STATE;
 
 </script>
@@ -7250,6 +7410,7 @@ function v2Boot() {
           window.__evState.wz.step = n;
           if (q.has('wzassoc')) window.__evState.wz.assocPage = Number(q.get('wzassoc')) || 1;
           if (q.has('wzcase')) window.__evState.wz.casePage = Number(q.get('wzcase')) || 1;
+          if (q.get('wzsim') && window.__evWzSimulate) window.__evWzSimulate(q.get('wzsim'), q);
         }
         if (window.__evRenderWizard) window.__evRenderWizard();
       }, 300);

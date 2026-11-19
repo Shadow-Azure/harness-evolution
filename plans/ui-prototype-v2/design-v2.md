@@ -229,6 +229,19 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 - **校验时机**：点「下一步：关联 Session」和最终「启动自进化」时执行。先校验 git ref 格式（非空、≤96 字符、无空白/`..`/`@{`/`~^:?*[` 等非法字符，且不以 `-`、`/`、`.` 或 `.lock` 结尾）；失败停在第 1 步并显示字段错误。格式通过后，服务端用 git 判断该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时先按需刷新 mirror；tag、分支和 commit 都必须解析到 commit。不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`）；仓库不可达或超时同样走 `TARGET_CONTENT_UNRESOLVED`（reason `repo_unreachable` / `content_timeout`），都回到第 1 步并显示可操作错误。`REPO_INVALID` 仍是对象配置保存时的校验错误。存在后再读取 `SKILL.md` / `AGENT.md` 并计算 body hash；不得回退到 tag 猜测。
 - **身份不变**：版本身份仍是 body hash；tag 只是建议和显示值，不改变匹配与缓存语义。
 
+### 7.5 预览等待与超时反馈
+
+启动向导的三个 `preview/*` 请求是同步的；第 1 步可能先读目标版本内容（本地 mirror 缓存为空时从远端仓库克隆），再关联 Session。冷缓存或慢网络下这一步可能等待数十秒，入口不能只把「下一步」置灰。
+
+- **立即反馈**：点击「下一步」后，主按钮立即改成当前阶段文案（如「正在读取目标版本…」）并带 spinner；表单保留但整体置灰，避免用户在等待中改动条件。
+- **阶段可见**：表单上方显示只读进度卡，逐项列出本次请求的阶段（第 1 步：读取目标版本 → 关联 Session；第 2 步：筛选潜在 bad case；第 3 步：检查归因缓存），当前阶段高亮，已完成阶段打勾，并显示已等待秒数。
+- **预期管理**：文案写明「通常 2–5 秒；首次读取该仓库可能需要 20–40 秒」，并说明首次读取会从 GitHub 克隆目标仓库、后续命中本地 mirror 会更快。不要用假进度条或倒计时。
+- **超时**：`TARGET_CONTENT_UNRESOLVED`（`content_timeout` / `repo_unreachable`）不再只显示版本字段红字，而是显示在进度卡内：说明服务端在 20 秒内没有读完目标文件、这不是 Session 数据为空，并提供「重试解析」与「返回修改条件」；版本字段保持红色。
+- **可取消**：等待中提供「取消等待」，回到原步骤并保留已填条件；服务端请求可能继续，前端丢弃结果。
+- **可访问性**：等待卡 `role=status` + `aria-live=polite`；超时卡 `role=alert`；主按钮 disabled 时仍显示阶段文案。
+
+原型用 `wzsim=loading` / `wzsim=timeout` 固定等待与超时状态，便于同一场景截图；正常点击会在 4 秒后自动进入下一步。生产 `LaunchWizard.vue` 目前只置灰按钮，尚未实现本节。
+
 ## 8. 错误详情：一个 bad case × 多条归因
 
 - 左栏从 V1 的错误卡改为可折叠的 bad case 组：
