@@ -24,6 +24,7 @@ scope:
   - apps/web/src/**
   - packages/contracts/**
   - tests/**
+  - .github/workflows/ci.yml
   - fixtures/**
 adr:
   - ../../notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.md

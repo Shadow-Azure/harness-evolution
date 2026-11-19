@@ -57,9 +57,9 @@ jobs:
 
   unit-tests:
     # 覆盖率 ≥80% 的判定保持单 job（web+api 同跑），不做跨 job coverage 聚合。
-    # V2 跨栈验收套件加入后单 job 超过 15 分钟，留 20 分钟给宿主慢机与冷启动。
+    # V2 跨栈验收套件加入后单 job 超过 15 分钟；M13 新增 resolver/overview 测试后，20 分钟在慢机/冷启动上会超时。
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
