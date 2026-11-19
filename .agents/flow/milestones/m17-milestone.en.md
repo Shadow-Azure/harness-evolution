@@ -6,7 +6,7 @@ English | [中文](m17-milestone.md)
 kind: milestone
 id: m17
 title: M17 对象卡版本显示与 V2 原型对齐
-status: active
+status: done
 github:
   number: 25
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/25
