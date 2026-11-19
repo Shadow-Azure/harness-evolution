@@ -11,7 +11,7 @@ milestone: m15
 depends:
   - m6-22
 priority: P1
-status: in-progress
+status: done
 scope:
   - .github/workflows/**
   - deploy/**

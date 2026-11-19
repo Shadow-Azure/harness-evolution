@@ -6,7 +6,7 @@
 kind: milestone
 id: m15
 title: M15 生产环境 Claude Code 运维
-status: active
+status: done
 github:
   number: 23
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/23
