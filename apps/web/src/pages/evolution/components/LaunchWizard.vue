@@ -108,6 +108,7 @@ const targetId = ref<string | null>(null);
 const targetVersion = ref("");
 const versionPinned = ref(false);
 const versionOpen = ref(false);
+const versionFormatError = ref("");
 const windowFrom = ref("");
 const windowTo = ref("");
 const policyPreset = ref<"default" | "custom">("default");
@@ -294,6 +295,7 @@ watch(targetId, () => {
 });
 watch(targetVersion, () => {
   fieldErrors.version = false;
+  versionFormatError.value = "";
   clearContentUnresolved();
   if (sessionPreview.value || potentialPreview.value || attributionPreview.value) {
     resetDownstream();
@@ -415,11 +417,10 @@ function applyFocusCase(): void {
   targetId.value = target.id;
   versionPinned.value = true;
   targetVersion.value =
-    caseData.objectVersion &&
-    (target.versions.includes(caseData.objectVersion) ||
-      target.defaultRef === caseData.objectVersion)
-      ? caseData.objectVersion
-      : target.defaultRef || target.versions[0] || "";
+    caseData.objectVersion ||
+    target.defaultRef ||
+    target.versions[0] ||
+    "";
   focusTargetMissing.value = false;
 }
 
@@ -496,6 +497,36 @@ function goTargetConfig(): void {
   void router.push(workspacePath(props.wid, "evolution/targets"));
 }
 
+/** Return a local git-ref format error, matching the server's safe-ref rules. */
+function versionRefFormatError(value: string): string {
+  const ref = value.trim();
+  if (!ref) {
+    return "请选择或输入版本";
+  }
+  if (ref.length > 96) {
+    return "版本不能超过 96 个字符";
+  }
+  if (ref.startsWith("-") || ref.startsWith("/")) {
+    return "版本不能以 - 或 / 开头";
+  }
+  if (ref.endsWith("/") || ref.endsWith(".") || ref.endsWith(".lock")) {
+    return "版本不能以 /、. 或 .lock 结尾";
+  }
+  if (ref.includes("..") || ref.includes("@{") || ref.includes("//")) {
+    return "版本不是合法的 git ref";
+  }
+  const reserved = "~^:?*[\\";
+  if (
+    Array.from(ref).some(
+      (char) =>
+        /\s/.test(char) || reserved.includes(char) || char.charCodeAt(0) < 0x20,
+    )
+  ) {
+    return "版本不能包含空格或 git ref 保留字符";
+  }
+  return "";
+}
+
 /** Build the shared preview/launch condition from the current step-1 form. */
 function condition() {
   return {
@@ -525,8 +556,10 @@ function validateStep1(): boolean {
   const reversed = Boolean(
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
+  versionFormatError.value = versionRefFormatError(targetVersion.value);
   fieldErrors.target = !selectedTarget.value;
-  fieldErrors.version = !targetVersion.value.trim() || contentUnresolved.value;
+  fieldErrors.version =
+    Boolean(versionFormatError.value) || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
   fieldErrors.to = !windowTo.value || reversed;
   fieldErrors.policy = policyRuleError.value;
@@ -1080,7 +1113,7 @@ const reasonEntries = computed(() => {
                     class="field-error"
                     role="alert"
                   >
-                    {{ contentUnresolved ? contentError : "请选择或输入版本" }}
+                    {{ contentUnresolved ? contentError : versionFormatError || "请选择或输入版本" }}
                     <button
                       v-if="contentUnresolved"
                       class="linklike"
