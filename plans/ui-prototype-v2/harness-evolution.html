@@ -4770,6 +4770,8 @@ function evRunModel(run) {
   return { cases, sessions: assoc, potentialRows, attributed, notObject, reused, fresh };
 }
 
+/* 原型打桩：生产由服务端用 git 读取真实仓库；这里用少量示例 ref 模拟存在性校验。 */
+const EV_DEMO_REFS = ['main', 'feature/foo'];
 const EV_TARGETS = {
   'ws-harness': [
     { id: 't-dr', kind: 'skill', objectName: 'deep-research', repoUrl: 'https://github.com/acme/agent-skills.git', subDir: 'skills/deep-research', defaultRef: 'v2.4.0', tags: ['v2.4.0', 'v2.3.1', 'v2.2.0'], versions: [{ ref: 'v2.4.0', commit: 'a3f9c21', date: '2026-11-08' }, { ref: 'v2.3.1', commit: '7b2e084', date: '2026-10-30' }, { ref: 'v2.3.0', commit: 'e62b1c8', date: '2026-10-21' }, { ref: 'v2.2.0', commit: '5c41d7a', date: '2026-10-09' }, { ref: 'v2.1.3', commit: '2f9ab60', date: '2026-09-27' }, { ref: 'v2.1.2', commit: '9d03ee1', date: '2026-09-18' }, { ref: 'v2.1.1', commit: '4b6c2f5', date: '2026-09-11' }, { ref: 'v2.1.0', commit: 'c8d1a72', date: '2026-09-03' }, { ref: 'v2.0.9', commit: '1a7e3b9', date: '2026-08-26' }, { ref: 'v2.0.8', commit: '6e5f0c4', date: '2026-08-19' }, { ref: 'v2.0.7', commit: '0b9d27e', date: '2026-08-11' }, { ref: 'v2.0.6', commit: 'f4a8c13', date: '2026-08-04' }, { ref: 'v2.0.5', commit: '3d2f9b7', date: '2026-07-28' }, { ref: 'v2.0.4', commit: '9a6c1e8', date: '2026-07-20' }, { ref: 'v2.0.3', commit: '5f7b2d1', date: '2026-07-13' }, { ref: 'v2.0.2', commit: 'c3e8f6a', date: '2026-07-05' }, { ref: 'v2.0.1', commit: '8b4d5c2', date: '2026-06-27' }, { ref: 'v2.0.0', commit: 'a71f3e5', date: '2026-06-19' }], validationProjectId: 'val-dr-2026q4', testProjectId: 'test-dr-2026q4', enabled: true },
@@ -5405,6 +5407,15 @@ function evWzVersionOptions() {
   }
   return options;
 }
+function evWzRefExists(value) {
+  const t = evWzTarget();
+  if (!t) return false;
+  const ref = String(value || '').trim();
+  const known = new Set([t.defaultRef, ...(t.tags || []), ...EV_DEMO_REFS, ...(t.versions || []).map(v => v.ref)]);
+  if (known.has(ref)) return true;
+  if (!/^[0-9a-f]{7,40}$/i.test(ref)) return false;
+  return (t.versions || []).some(v => v.commit && (v.commit === ref || (ref.length < 40 && v.commit.startsWith(ref))));
+}
 function evVersionRefError(value) {
   const ref = String(value || '').trim();
   if (!ref) return '请选择 tag，或输入分支 / commit id';
@@ -5495,7 +5506,7 @@ function evRenderWizard() {
             ${err.version ? `<div class="field-error" id="ev-wz-version-error">${evEsc(err.version)}</div>` : ''}
           </div>
         </div>
-        <div class="wz-note">版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。启动前会校验 ref 格式，服务端再解析仓库内容。只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
+        <div class="wz-note">版本可输入 tag、分支名或 commit id；下拉仅为建议。启动前用 git 校验 ref 是否存在（原型用示例 ref 模拟）。只列出当前空间已启用的进化对象；点击 <button class="cfg-link" data-action="ev-wz-targets">配置页</button> 调整。</div>
       </div>
       <div class="f-row"><div class="f-label">bad case 时间段 <span class="req">*</span></div>
         <div class="f-inline wz-controls"><div class="wz-field"><input class="inp" id="ev-wz-from" type="date" value="${wz.from}">${fieldErr('from')}</div><span class="wz-inline-label">~</span><div class="wz-field"><input class="inp" id="ev-wz-to" type="date" value="${wz.to}">${fieldErr('to')}</div></div>
@@ -5601,6 +5612,7 @@ function evValidateWz() {
   if (!wz.name) wz.errors.name = '请选择进化对象';
   const versionError = evVersionRefError(wz.version);
   if (versionError) wz.errors.version = versionError;
+  else if (!evWzRefExists(wz.version)) wz.errors.version = 'git 校验失败：仓库中不存在该 tag、分支或 commit';
   if (!wz.from) wz.errors.from = '请选择开始时间';
   if (!wz.to) wz.errors.to = '请选择结束时间';
   if (wz.from && wz.to && wz.from > wz.to) { wz.errors.from = '开始时间不能晚于结束时间'; wz.errors.to = '结束时间不能早于开始时间'; }

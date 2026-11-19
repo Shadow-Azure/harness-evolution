@@ -1025,6 +1025,8 @@ POST /runs（同步校验）
 | `DELETE /api/evolution/targets/{id}` | 空间管理员或全局管理员删除；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | V2 路径为 `/api/workspaces/{wid}/evolution/targets/{id}/versions`；读取 tag 列表作为版本建议，不枚举分支或 commit；仓库不可用 → `422 REPO_INVALID` |
 
+- `versions` 只是 tag 建议；启动/预览提交的 `targetVersion` 可为 tag、分支名或 commit SHA。服务端必须用 git 校验存在性：在缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新一次；不存在 → `422 TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`），仓库不可达 → `422 REPO_INVALID`。
+
 `GET /evolution/targets` 示例：
 
 ```json
@@ -1255,7 +1257,7 @@ curl -X POST "https://he.example.com/api/workspaces/ws-harness/bad-cases" \
 | `POST …/evolution/cluster-previews` | 仅聚类 | 同上 `mode:"cluster_only"` → `202` |
 | `POST …/evolution/runs/{rid}/retry` | blocked 恢复 | 按 `blockedStage`（含 `attribution`）重入 |
 
-- `targetType ∈ skill|agent|knowledge`；未配置或已停用（必须在 URL 空间内）→ `409 TARGET_NOT_CONFIGURED`。未带 `targetVersion` 时取 target 的 `defaultRef`。`targetVersion` / `defaultRef` 最长 96（digest revision 71 字符）。skill/agent 目标的裸 git ref（tag、分支名或 commit SHA）是内容来源：服务端读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 body hash，`targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 原样使用，`tag:`/`provider:` 保持原语义。选中的 ref 保留为版本/显示与代码基线；内容读取或归一化失败返回 `422 TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:` 猜测。run/步骤条件同时保存 `targetVersion`（ref）与 `targetRevision`（body hash）；关联与缓存键使用后者。历史 path+body revision 保留为历史，不参与新匹配；新 run 只写归一化 body hash。
+- `targetType ∈ skill|agent|knowledge`；未配置或已停用（必须在 URL 空间内）→ `409 TARGET_NOT_CONFIGURED`。未带 `targetVersion` 时取 target 的 `defaultRef`。`targetVersion` / `defaultRef` 最长 96（digest revision 71 字符）。skill/agent 目标的裸 git ref（tag、分支名或 commit SHA）是内容来源：服务端先用 git 校验该 ref 是否存在（缓存 mirror 上 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新；不存在 → `422 TARGET_CONTENT_UNRESOLVED`，reason `ref_not_found`），再读取该 ref 下 `repoUrl/subDir/SKILL.md` 或 `repoUrl/subDir/AGENT.md`，按与 parser 相同的 `normalize_definition_body` 计算 body hash，`targetRevision=digest:<sha256>`；knowledge 目标的 `defaultRef` 是文档 revision，body hash 从文档内容归一化；已带 `digest:` 原样使用，`tag:`/`provider:` 保持原语义。选中的 ref 保留为版本/显示与代码基线；内容读取或归一化失败返回 `422 TARGET_CONTENT_UNRESOLVED`，不回退到 `tag:` 猜测。run/步骤条件同时保存 `targetVersion`（ref）与 `targetRevision`（body hash）；关联与缓存键使用后者。历史 path+body revision 保留为历史，不参与新匹配；新 run 只写归一化 body hash。
 - Session 段五个计数互不重叠：`reported = associated + versionUnresolved + skipped + pending`。`associated` 才进 `items`；`pending` 是没有归一化轨迹的上报根；`versionUnresolved` 是命中名称但事件既无 `object_version`、无可用 `object_revision`，也无 skill `definition_hash`（NULL/`unknown`）；`skipped` 是其余已归一化但没有任何 identity 匹配的 Session，包括有 digest/tag/provider 但不匹配目标 revision。`objectTriggerAt` 取对象进入点时间，进入事件无 `triggered_at` 时回退 Session `startedAt`；混合时间戳时比较与取最早都按“双方都有时间才比时间，否则坐标”口径。
 - 潜在段：`badCases` 是关联 Session 内的候选 case 数（含被策略排除的行），`potential` 是纳入数，`total = potential`；`byReason` 是封闭集合五键的零填充计数。`triggerAt` 取 bad case 锚点时间；`kind=post_process` 用 `createdAt` 仅作展示/审计，潜在匹配时直接按「对象之后」；`kind=unknown` 才退化为 `createdAt` 展示；行序按 `triggerAt` 倒序、`badCaseId` 升序。`PotentialRow` 增加 `anchorSource`（`event|node|post_process|unknown`），后处理行在 UI 显示来源徽标。
 - `self` 与 `sameObjectOnly` 只按 `object_name` 判定，不比较 `bad_cases.object_type` 或 `object_version`：同名 skill/agent 或跨版本 self 会被纳入，这是明确的过渡语义；`object_type` 扩到 knowledge 后如需收紧，另开切片。
