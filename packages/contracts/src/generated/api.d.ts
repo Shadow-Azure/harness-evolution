@@ -1830,6 +1830,8 @@ export interface components {
          */
         AttributionPreviewResult: {
             summary: components["schemas"]["AttributionPreviewSummary"];
+            /** Targetrevision */
+            targetRevision?: string | null;
         };
         /**
          * AttributionPreviewSummary
@@ -1967,13 +1969,22 @@ export interface components {
         };
         /**
          * BadCaseAnchor
-         * @description Stable host Agent and event index for one problem card.
+         * @description Stable host Agent, event index, and anchor kind for one problem card.
          */
         BadCaseAnchor: {
             /** Agentid */
             agentId: string;
-            /** Eventindex */
+            /**
+             * Eventindex
+             * @description 0-based index in anchor.agentId's events[]; INT_MAX (2147483647) is the post_process sentinel; -1 with kind=unknown means the reporting Agent could not be resolved.
+             */
             eventIndex: number;
+            /**
+             * Kind
+             * @description Anchor semantics: event, reporter node, post-process, or unknown.
+             * @enum {string}
+             */
+            kind: "event" | "node" | "post_process" | "unknown";
         };
         /**
          * BadCaseCatalogSyncSummary
@@ -2287,7 +2298,7 @@ export interface components {
          * @description Stable machine-readable error codes.
          * @enum {string}
          */
-        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
+        ErrorCode: "AUTH_REQUIRED" | "AUTH_INVALID" | "AUTH_EXPIRED" | "AUTH_PROVIDER_NOT_CONFIGURED" | "AUTH_STATE_INVALID" | "AUTH_PROVIDER_ERROR" | "AUTH_NO_MAPPING" | "TICKET_INVALID" | "TICKET_EXPIRED" | "FORBIDDEN" | "PASSWORD_CHANGE_REQUIRED" | "USERNAME_CONFLICT" | "SESSION_NOT_FOUND" | "BAD_CASE_NOT_FOUND" | "BAD_CASE_SESSION_PENDING" | "BAD_CASE_SESSION_UNAVAILABLE" | "BAD_CASE_SESSION_MISMATCH" | "ATTRIBUTION_NOT_FOUND" | "PROBE_NOT_FOUND" | "JOB_NOT_FOUND" | "RUN_NOT_FOUND" | "STEP_NOT_READY" | "RUN_BUSY" | "RUN_NOT_RETRYABLE" | "REPO_INVALID" | "PROJECT_ID_INVALID" | "ENGINE_INVALID" | "TARGET_EXISTS" | "TARGET_NOT_FOUND" | "TARGET_IN_USE" | "TARGET_NOT_CONFIGURED" | "TARGET_CONTENT_UNRESOLVED" | "NO_PROBES_MATCHED" | "POLICY_INVALID" | "NO_ASSOCIATED_SESSIONS" | "NO_POTENTIAL_MATCHED" | "INTERNAL" | "EXTERNAL_SCHEMA_DRIFT" | "EXTERNAL_READ_FORBIDDEN" | "EXTERNAL_READ_FAILED" | "METHOD_NOT_ALLOWED" | "NOT_FOUND" | "VALIDATION_INVALID" | "RATE_LIMITED" | "UPSTREAM_NOT_AVAILABLE" | "UPSTREAM_VERSION_INCOMPATIBLE" | "UPSTREAM_INVALID_RESPONSE" | "UPSTREAM_REQUEST_FAILED" | "SESSION_QUERY_UNAVAILABLE" | "SESSION_QUERY_UNAUTHORIZED" | "SESSION_QUERY_VERSION_INCOMPATIBLE" | "SESSION_QUERY_INVALID_RESPONSE" | "SESSION_QUERY_TIMEOUT" | "SESSION_QUERY_REQUEST_FAILED" | "SESSION_SOURCE_UNAUTHORIZED" | "SESSION_SOURCE_INVALID_RESPONSE" | "SESSION_SOURCE_TIMEOUT" | "SESSION_SOURCE_REQUEST_FAILED" | "SESSION_SOURCE_VERSION_INCOMPATIBLE" | "SESSION_SOURCE_SESSION_MISMATCH" | "TRAVERSAL_LIMIT_EXCEEDED" | "TRAJECTORY_EMPTY" | "BAD_CASE_SYNC_FAILED" | "BAD_CASE_SYNC_TIME_BUDGET" | "BAD_CASE_QUERY_UNAVAILABLE" | "BAD_CASE_QUERY_UNAUTHORIZED" | "BAD_CASE_QUERY_INVALID_RESPONSE" | "BAD_CASE_QUERY_TIMEOUT" | "BAD_CASE_QUERY_REQUEST_FAILED" | "BAD_CASE_CATALOG_SYNC_FAILED" | "BAD_CASE_CATALOG_SYNC_INTERRUPTED" | "WORKSPACE_NOT_FOUND" | "WORKSPACE_FORBIDDEN" | "WORKSPACE_EXISTS" | "MEMBER_EXISTS" | "MEMBER_NOT_FOUND" | "ROLE_INVALID" | "ROLE_LOCKED" | "QUOTA_INVALID" | "CREDENTIAL_NOT_FOUND" | "CREDENTIAL_INVALID" | "CREDENTIAL_LIMIT" | "QUOTA_EXCEEDED" | "BAD_CASE_ID_CONFLICT" | "WINDOW_INVALID" | "GRAIN_INVALID" | "OBJECT_FILTER_TOO_LARGE" | "KNOWLEDGE_ROOTS_INVALID";
         /**
          * ErrorResponse
          * @description Top-level failure response.
@@ -2628,6 +2639,11 @@ export interface components {
         EvolutionRunTarget: {
             /** Name */
             name: string;
+            /**
+             * Targetrevision
+             * @description Resolved file-matching revision (digest:<sha256(body)> for skill/agent/knowledge file targets); null on historical runs.
+             */
+            targetRevision?: string | null;
             /**
              * Type
              * @enum {string}
@@ -3175,6 +3191,11 @@ export interface components {
          * @description One included bad case row in wizard step 3.
          */
         PotentialPreviewItem: {
+            /**
+             * Anchorsource
+             * @enum {string}
+             */
+            anchorSource: "event" | "node" | "post_process" | "unknown";
             /** Badcaseid */
             badCaseId: string;
             /** Badcasetype */
@@ -3241,6 +3262,8 @@ export interface components {
             /** Pagesize */
             pageSize: number;
             summary: components["schemas"]["PotentialPreviewSummary"];
+            /** Targetrevision */
+            targetRevision?: string | null;
             /** Total */
             total: number;
         };
@@ -3785,6 +3808,8 @@ export interface components {
             /** Pagesize */
             pageSize: number;
             summary: components["schemas"]["SessionPreviewSummary"];
+            /** Targetrevision */
+            targetRevision?: string | null;
             /** Total */
             total: number;
         };
@@ -4130,6 +4155,11 @@ export interface components {
          * @description One included bad case row of step 3.
          */
         StepPotentialRow: {
+            /**
+             * Anchorsource
+             * @enum {string}
+             */
+            anchorSource: "event" | "node" | "post_process" | "unknown";
             /** Badcaseid */
             badCaseId: string;
             /** Badcasetype */
@@ -4183,6 +4213,11 @@ export interface components {
             };
             /** Targetname */
             targetName: string;
+            /**
+             * Targetrevision
+             * @description Resolved file-matching revision (digest:<sha256(body)>); null on historical runs that were created before content resolution.
+             */
+            targetRevision?: string | null;
             /**
              * Targettype
              * @enum {string}

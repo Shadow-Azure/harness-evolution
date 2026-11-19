@@ -791,6 +791,8 @@ async def replace_normalized_root(
                         object_version=event.object_version,
                         object_revision=event.object_revision,
                         definition_hash=event.definition_hash,
+                        file_read_hash=event.file_read_hash,
+                        read_complete=event.read_complete,
                         description=event.description,
                         tool_use_id=event.tool_use_id,
                         triggered_at=event.triggered_at,

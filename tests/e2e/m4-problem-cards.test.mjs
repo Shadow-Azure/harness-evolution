@@ -580,7 +580,7 @@ test("m4 problem cards reveal a selected problem inside a folded branch", async 
           title: "折叠分支问题",
           reason:
             "folded branch problem: 折叠宿主展开后问题卡仍需可见。",
-          anchor: { agentId: "folded-9", eventIndex: -1 },
+          anchor: { agentId: "folded-9", eventIndex: -1, kind: "node" },
         },
       ],
     };
@@ -597,7 +597,7 @@ test("m4 problem cards reveal a selected problem inside a folded branch", async 
       metaData: { source: "e2e" },
       degraded: false,
       diagnosticCode: null,
-      anchor: { agentId: "folded-9", eventIndex: -1 },
+      anchor: { agentId: "folded-9", eventIndex: -1, kind: "node" },
       badCaseAgent: { sessionId, agentId: "folded-9" },
       analysis: {
         probeId: null,

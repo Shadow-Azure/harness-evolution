@@ -67,6 +67,7 @@ class EvolutionRepository:
             "target_type": values["target_type"],
             "target_name": values["target_name"],
             "target_version": values["target_version"],
+            "target_revision": values.get("target_revision"),
             "repo_url": values["repo_url"],
             "sub_dir": values["sub_dir"],
             "validation_project_id": values.get("validation_project_id", ""),

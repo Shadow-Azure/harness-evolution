@@ -1,5 +1,10 @@
 import type { BadCase, SessionAgent, SessionEvent } from "@harness/contracts";
 
+import {
+  POST_PROCESS_EVENT_INDEX,
+  anchorBadgeLabel,
+  eventAnchorIndex,
+} from "../../../utils/badCaseAnchor";
 import { shortBadCaseId } from "../../../utils/badCaseId";
 
 import { MISSING_REPORT_WARNING, RELATION_LABELS } from "./labels";
@@ -360,6 +365,8 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
     const hostAgent = agentById.get(badCase.anchor.agentId);
     const eventIndex = badCase.anchor.eventIndex;
     if (
+      eventAnchorIndex(badCase.anchor) === null ||
+      eventIndex === POST_PROCESS_EVENT_INDEX ||
       !host ||
       !hostAgent ||
       eventIndex < 0 ||
@@ -390,13 +397,27 @@ export function badCaseAnchors(input: BadCaseAnchorOptions): BadCaseAnchorDescri
           y: ROOT_Y,
         };
       }
-      if (
-        !host ||
-        !hostAgent ||
-        eventIndex < 0 ||
-        !hostAgent.events[eventIndex] ||
-        host.data.chain.offsets[eventIndex] === undefined
-      ) {
+      if (host && hostAgent && badCase.anchor.kind === "post_process") {
+        // Post-process reports have no event coordinate (INT_MAX); pin them to
+        // the host's end instead of indexing a sentinel event.
+        return {
+          badCaseId: badCase.badCaseId,
+          hostAgentId: badCase.anchor.agentId,
+          eventIndex: -1,
+          kind: "post-process",
+          side: "right",
+          x: host.position.x + host.data.visualW,
+          y: host.position.y + 28,
+          anchorLabel: anchorBadgeLabel(badCase.anchor),
+        };
+      }
+      const hasEventAnchor =
+        eventAnchorIndex(badCase.anchor) !== null &&
+        eventIndex !== POST_PROCESS_EVENT_INDEX &&
+        Boolean(hostAgent) &&
+        Boolean(hostAgent?.events[eventIndex]) &&
+        host?.data.chain.offsets[eventIndex] !== undefined;
+      if (!host || !hostAgent || !hasEventAnchor) {
         return {
           badCaseId: badCase.badCaseId,
           hostAgentId: badCase.anchor.agentId,
@@ -470,7 +491,11 @@ function badCaseEdgeType(
 function badCaseHandles(
   anchor: BadCaseAnchorDescriptor,
 ): Pick<BadCaseLayoutEdge, "sourceHandle" | "targetHandle"> {
-  if (anchor.kind === "self-agent" || anchor.kind === "fallback") {
+  if (
+    anchor.kind === "self-agent" ||
+    anchor.kind === "post-process" ||
+    anchor.kind === "fallback"
+  ) {
     return {
       sourceHandle:
         anchor.side === "left" ? "finding-left" : "finding-right",
@@ -494,19 +519,22 @@ function badCaseHandles(
  * @param shortId Display-safe problem identifier.
  * @param title Human-readable problem title.
  * @param measure Injected text measurement function.
+ * @param anchorLabel Optional anchor audit badge included in the measured label.
  * @returns Rounded border-box width.
  */
 export function badCaseCardWidth(
   shortId: string,
   title: string,
   measure: MeasureText = defaultMeasure,
+  anchorLabel: string | null = null,
 ): number {
+  const label = anchorLabel ? `${shortId} ${title} ${anchorLabel}` : `${shortId} ${title}`;
   return Math.round(
     Math.max(
       BADCASE_CARD_MIN_W,
       Math.min(
         BADCASE_CARD_MAX_W,
-        measure(`${shortId} ${title}`, FONT_BADCASE) + 26,
+        measure(label, FONT_BADCASE) + 26,
       ),
     ),
   );
@@ -571,7 +599,12 @@ export function buildBadCaseOverlay(
     if (!item) return null;
     const shortId = shortBadCaseId(anchor.badCaseId);
     const title = detail?.title ?? item.title;
-    const width = badCaseCardWidth(shortId, title, measure);
+    const width = badCaseCardWidth(
+      shortId,
+      title,
+      measure,
+      anchor.anchorLabel ?? null,
+    );
     const node: BadCaseLayoutNode = {
       id: `badcase:${anchor.badCaseId}`,
       type: "badcase",
@@ -582,6 +615,7 @@ export function buildBadCaseOverlay(
         title,
         width,
         degraded: detail?.degraded ?? false,
+        anchorLabel: anchor.anchorLabel ?? null,
       },
     };
     nodesById.set(node.id, node);
@@ -614,6 +648,7 @@ export function buildBadCaseOverlay(
         shortBadCaseId(anchor.badCaseId),
         detail?.title ?? item.title,
         measure,
+        anchor.anchorLabel ?? null,
       );
       const y =
         anchor.y -
@@ -639,6 +674,7 @@ export function buildBadCaseOverlay(
         shortBadCaseId(anchor.badCaseId),
         detail?.title ?? item.title,
         measure,
+        anchor.anchorLabel ?? null,
       );
       const x = Math.max(8, anchor.x - width / 2);
       const baseY =

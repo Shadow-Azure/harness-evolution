@@ -67,6 +67,8 @@ class ObjectEventRecord:
     tree_index: int
     object_version: str | None
     object_revision: str | None
+    definition_hash: str | None
+    document_revision: str | None
     triggered_at: datetime | None
 
 
@@ -199,6 +201,8 @@ class PotentialRepository:
                     agents.c.tree_index,
                     agent_events.c.object_version,
                     agent_events.c.object_revision,
+                    agent_events.c.definition_hash,
+                    agent_events.c.document_revision,
                     agent_events.c.triggered_at,
                 )
                 .select_from(agent_events)
@@ -227,6 +231,14 @@ class PotentialRepository:
                     ),
                     object_revision=(
                         str(row["object_revision"]) if row["object_revision"] is not None else None
+                    ),
+                    definition_hash=(
+                        str(row["definition_hash"]) if row["definition_hash"] is not None else None
+                    ),
+                    document_revision=(
+                        str(row["document_revision"])
+                        if row["document_revision"] is not None
+                        else None
                     ),
                     triggered_at=_time(row["triggered_at"]),
                 )

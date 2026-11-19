@@ -41,6 +41,7 @@ from app.service.evolution.events import (
 )
 from app.service.evolution.git_failures import classify_git_failure
 from app.service.evolution.potential import (
+    AnchorSource,
     HitReason,
     MatchCondition,
     OrderState,
@@ -50,8 +51,11 @@ from app.service.evolution.potential import (
     SessionAssociation,
     TriggerPoint,
     resolve_policy,
-    resolve_target_revision,
     resolve_window,
+)
+from app.service.evolution.target_content import (
+    TargetVersionResolver,
+    resolve_legacy_target_version,
 )
 from app.third_party_api.git.workspace import GitOperationError, PreparedWorkspace
 from app.utils.ids import new_id
@@ -112,6 +116,7 @@ class EvolutionPrepareService:
         attribution: AttributionRunner,
         workspaces: WorkspacePreparer,
         events: PrepareEventRecorder | EvolutionRunEventService | None = None,
+        resolver: TargetVersionResolver | None = None,
     ) -> None:
         """Bind persistence, the shared matcher, the runner, and git workspaces."""
         self._runs = runs
@@ -121,6 +126,7 @@ class EvolutionPrepareService:
         self._attribution = attribution
         self._workspaces = workspaces
         self._events = events
+        self._resolver = resolver
 
     async def handle(self, job: JobRunRecord) -> Mapping[str, Any]:
         """Prepare one run idempotently and return its durable summary."""
@@ -153,7 +159,8 @@ class EvolutionPrepareService:
             )
 
         if run.progress_unit < 2:
-            association = await self._matcher.associated_sessions(_condition(run))
+            condition = await self._condition(run)
+            association = await self._matcher.associated_sessions(condition)
             context.association = association
             if not association.sessions:
                 raise AppError(
@@ -202,12 +209,11 @@ class EvolutionPrepareService:
             )
 
         if run.progress_unit < 3:
-            association = context.association or await self._matcher.associated_sessions(
-                _condition(run),
-            )
+            condition = await self._condition(run)
+            association = context.association or await self._matcher.associated_sessions(condition)
             context.association = association
             policy = _run_policy(run)
-            match = await self._matcher.potential_cases(_condition(run), association, policy)
+            match = await self._matcher.potential_cases(condition, association, policy)
             await self._candidates.upsert_many(_candidate_writes(run, match.cases))
             stats = _potential_stats(run, association, match.cases, match.potential)
             await self._runs.write_stats(run.id, stats)
@@ -319,6 +325,36 @@ class EvolutionPrepareService:
             "clusters": len(await self._runs.list_clusters(prepared.id)),
             "rounds": (len(await self._runs.list_rounds(prepared.id)) if run.mode == "full" else 0),
         }
+
+    async def _condition(self, run: EvolutionRunRecord) -> MatchCondition:
+        """Build the matcher condition from the run snapshot and resolved revision."""
+        if run.target_revision:
+            target_version = run.target_version
+            target_revision = run.target_revision
+        elif self._resolver is not None:
+            resolved = await self._resolver.resolve(
+                object_type=run.target_type,
+                repo_url=run.repo_url,
+                sub_dir=run.sub_dir,
+                version=run.target_version,
+            )
+            target_version = resolved.target_version
+            target_revision = resolved.target_revision
+        else:
+            resolved = resolve_legacy_target_version(run.target_version)
+            target_version = resolved.target_version
+            target_revision = resolved.target_revision
+        start, end = resolve_window(run.window_from, run.window_to)
+        window_start, window_end = window_day_boundaries(start, end)
+        return MatchCondition(
+            workspace_id=run.workspace_id,
+            target_type=cast(ObjectType, run.target_type),
+            target_name=run.target_name,
+            target_version=target_version,
+            target_revision=target_revision,
+            window_start=window_start,
+            window_end=window_end,
+        )
 
     async def _already_prepared(self, run: EvolutionRunRecord) -> bool:
         """Detect a retried prepare that already committed this exact workflow."""
@@ -502,6 +538,7 @@ class EvolutionPrepareService:
                         or row.case_trigger_at is not None
                         else None
                     ),
+                    anchor_source=cast(AnchorSource, row.case_anchor_kind or "unknown"),
                 ),
             )
         return tuple(candidates)
@@ -587,22 +624,6 @@ class EvolutionPrepareService:
             )
 
 
-def _condition(run: EvolutionRunRecord) -> MatchCondition:
-    """Build the matcher condition from the immutable run snapshot."""
-    target_version, target_revision = resolve_target_revision(run.target_version)
-    start, end = resolve_window(run.window_from, run.window_to)
-    window_start, window_end = window_day_boundaries(start, end)
-    return MatchCondition(
-        workspace_id=run.workspace_id,
-        target_type=cast(ObjectType, run.target_type),
-        target_name=run.target_name,
-        target_version=target_version,
-        target_revision=target_revision,
-        window_start=window_start,
-        window_end=window_end,
-    )
-
-
 def _run_policy(run: EvolutionRunRecord) -> ResolvedPolicy:
     """Read the resolved policy snapshot without re-validating a default preset."""
     raw = run.potential_policy
@@ -647,6 +668,7 @@ def _candidate_writes(
             case_trigger_event_index=(
                 case.case_trigger.event_index if case.case_trigger is not None else None
             ),
+            case_anchor_kind=case.anchor_source,
             case_trigger_at=(
                 case.case_trigger.triggered_at if case.case_trigger is not None else None
             ),

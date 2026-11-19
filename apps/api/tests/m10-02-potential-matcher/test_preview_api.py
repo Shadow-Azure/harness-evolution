@@ -196,6 +196,7 @@ async def test_sessions_preview_partitions_and_paginates(preview_api: PreviewApi
         "pending": 1,
     }
     assert payload["total"] == 6
+    assert payload["targetRevision"] == "tag:v2.0.0"
     assert len(payload["items"]) == 4
     assert payload["pageSize"] == 4
     assert set(payload["items"][0]) == {
@@ -265,6 +266,7 @@ async def test_potential_preview_paginates_included_rows_and_reports_reasons(
         },
     }
     assert payload["total"] == 6
+    assert payload["targetRevision"] == "tag:v2.0.0"
     assert payload["pageSize"] == 5
     assert len(payload["items"]) == 5
     assert set(payload["items"][0]) == {
@@ -275,9 +277,11 @@ async def test_potential_preview_paginates_included_rows_and_reports_reasons(
         "sessionId",
         "hitReason",
         "orderState",
+        "anchorSource",
     }
     assert payload["items"][0]["hitReason"] == "self_report"
     assert payload["items"][0]["orderState"] == "comparable"
+    assert payload["items"][0]["anchorSource"] in {"event", "node"}
     assert second.status_code == 200
     assert len(second.json()["items"]) == 1
 
@@ -350,6 +354,7 @@ async def test_attribution_preview_counts_cache_and_non_target(
             "fresh": 1,
             "nonTargetKnown": 1,
         },
+        "targetRevision": "tag:v2.0.0",
     }
     assert disabled.status_code == 200
     assert disabled.json()["summary"]["reused"] == 0

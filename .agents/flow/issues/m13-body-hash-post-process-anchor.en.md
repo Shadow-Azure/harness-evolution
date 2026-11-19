@@ -7,7 +7,7 @@ kind: issue
 id: m13-01
 milestone: m13
 depends: []
-priority: P1
+priority: P2
 status: in-progress
 scope:
   - .agents/flow/**
@@ -17,9 +17,7 @@ scope:
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml
   - scripts/doc-budgets.manifest.json
-  - apps/api/app/service/acquisition/**
-  - apps/api/app/service/evolution/**
-  - apps/api/app/db/**
+  - apps/api/**
   - apps/api/alembic/**
   - apps/api/tests/**
   - apps/web/src/**
@@ -39,7 +37,7 @@ In the 2026-11-18 production test the `skill / systematic-debugging` target at `
 
 Meanwhile, `eventIndex=-1` currently means "missing/abnormal anchor" and degrades to the reporting Agent's birth point (the Session start for a main Agent). The 22 production cases are discovery + agent + main reporter; under the current rule they always fall before the target object and potential is zero. "Post-process report" has no dedicated semantics and cannot be explained or matched as "after the object".
 
-The design docs and implementation currently use the path+body identity (`docs/architecture.md:42`, `15 §9.2`, `06 §7.5`, `07 §5.12`), while skill/agent/knowledge file matching should all use `sha256(normalize_definition_body(body))`: skill `SKILL.md`, agent `AGENT.md`, knowledge document file reads. The current target content resolver covers only the skill tag file; knowledge matching still uses `provider:`/original revisions. This issue must put the shared key, tag/document-revision resolution, compatibility, and migration into the design docs before implementation.
+The design docs and implementation currently use the path+body identity (`docs/architecture.md:42`, `15 §9.2`, `06 §7.5`, `07 §5.12`), while skill/agent/knowledge file matching should all use `sha256(normalize_definition_body(body))`: skill `SKILL.md`, agent `AGENT.md`, knowledge document file reads. The current target content resolver covers only the skill tag file; knowledge matching still uses `provider:`/original revisions. This issue must put the shared key, tag/document-revision resolution, compatibility, and migration into the design docs before implementation. The current code already declares parser_version 5 (M9-05 knowledge); the new identity needs 5→6. A bare knowledge revision needs a `KnowledgeContentSource`: without a document Provider in production only `digest:`/`provider:` can launch directly, and a bare revision returns `TARGET_CONTENT_UNRESOLVED`.
 
 ## Goals
 
@@ -62,7 +60,7 @@ The design docs and implementation currently use the path+body identity (`docs/a
 
 - Design docs: update the sections above in 15/06/05/07/08 and `docs/architecture.md` (both languages) with the shared skill/agent/knowledge body-hash file matching, tag/document-revision resolution, post-process anchors, compatibility, and migration; add a proposed Agent Note recording the decision and rejected alternatives.
 - Follow-up code (tracked, not in the design-doc PR): parser skill identity, agent `definition_hash`, and knowledge file-read revision become the normalized body hash with a parser version bump; the target content resolver reads `SKILL.md`/`AGENT.md` at the tag or the knowledge document at its revision, normalizes, computes the hash, and adds caching and stable errors; the matcher accepts body hash and legacy path+body (transition) and implements the post-process anchor; candidate/attribution snapshots record `anchorSource`; contracts, API DTOs, frontend display, and tests follow.
-- Migration: replay stored claude-code Sessions by parser version for skill/agent/knowledge; legacy path+body revisions remain historical and new runs write the normalized body hash; old cache keys are not reused; the 96-character `probe_reports.object_version` is sufficient.
+- Migration: replay stored claude-code Sessions by parser version for skill/agent/knowledge; parser_version 5→6; legacy path+body revisions remain historical and new runs write the normalized body hash; old cache keys are not reused; the 96-character `probe_reports.object_version` is sufficient. Bare knowledge revisions need a document Provider; production has none, while `digest:`/`provider:` launch directly.
 
 ## Implementation steps
 

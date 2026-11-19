@@ -1,5 +1,6 @@
 import type { SessionAgent, SessionBadCase, SessionEvent } from "@harness/contracts";
 
+import { anchorBadgeLabel, eventAnchorIndex } from "../../../utils/badCaseAnchor";
 import type {
   BadCaseMarker,
   ConcurrencyBand,
@@ -654,12 +655,14 @@ function buildBadCaseMarkers(
   const rowLast = [-99, -99];
   const markers = badCases.map((badCase, index) => {
     const host = byId.get(badCase.anchor.agentId) ?? main;
+    const anchorIndex = eventAnchorIndex(badCase.anchor);
     const anchored =
-      badCase.anchor.eventIndex >= 0
-        ? host.events[badCase.anchor.eventIndex]
-        : undefined;
+      anchorIndex !== null ? host.events[anchorIndex] : undefined;
+    const postProcess = badCase.anchor.kind === "post_process";
     const line = clamp(
-      anchored?.line ?? (host.kind === "main" ? 1 : host.lines || 1),
+      postProcess
+        ? mainLines
+        : anchored?.line ?? (host.kind === "main" ? 1 : host.lines || 1),
       1,
       mainLines,
     );
@@ -681,6 +684,7 @@ function buildBadCaseMarkers(
       x: clamp(xOfLine(mainBars, line, MAX_AXIS - 1.6), 1.6, 98.4),
       row: 0,
       selected: badCase.badCaseId === selectedCaseId,
+      anchorLabel: anchorBadgeLabel(badCase.anchor),
       barId: bar?.id ?? null,
       inGap,
       gapNote,

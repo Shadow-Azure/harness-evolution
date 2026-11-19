@@ -7,7 +7,7 @@ kind: issue
 id: m13-01
 milestone: m13
 depends: []
-priority: P1
+priority: P2
 status: in-progress
 scope:
   - .agents/flow/**
@@ -17,9 +17,7 @@ scope:
   - docs/architecture.en.md
   - docs/architecture.i18n.yaml
   - scripts/doc-budgets.manifest.json
-  - apps/api/app/service/acquisition/**
-  - apps/api/app/service/evolution/**
-  - apps/api/app/db/**
+  - apps/api/**
   - apps/api/alembic/**
   - apps/api/tests/**
   - apps/web/src/**
@@ -39,7 +37,7 @@ github:
 
 同时，当前把 `eventIndex=-1` 当作“锚点缺失/异常”，并退化为上报 Agent 的出生点（主 Agent 为 Session 开始）。生产 22 条 case 都是 discovery + agent + main 上报；按现规则永远落在目标对象之前，potential=0。“后处理上报”没有独立语义，无法解释也无法按“对象之后”参与归因。
 
-设计文档与实现目前是 path+body 身份（`docs/architecture.md:42`、`15 §9.2`、`06 §7.5`、`07 §5.12`），而 skill/agent/知识库的文件匹配都应收敛到 `sha256(normalize_definition_body(body))`：skill `SKILL.md`、agent `AGENT.md`、knowledge 文档文件读。当前 target 内容解析只覆盖 skill 的 tag 文件，knowledge 的文档匹配仍走 `provider:`/original revision；issue 需要把三类对象的统一匹配键、tag/文档 revision 解析、兼容边界和迁移写进设计文档后再实现。
+设计文档与实现目前是 path+body 身份（`docs/architecture.md:42`、`15 §9.2`、`06 §7.5`、`07 §5.12`），而 skill/agent/知识库的文件匹配都应收敛到 `sha256(normalize_definition_body(body))`：skill `SKILL.md`、agent `AGENT.md`、knowledge 文档文件读。当前 target 内容解析只覆盖 skill 的 tag 文件，knowledge 的文档匹配仍走 `provider:`/original revision；issue 需要把三类对象的统一匹配键、tag/文档 revision 解析、兼容边界和迁移写进设计文档后再实现。代码现状 `parser_version` 已是 5（M9-05 知识库）；新身份需要 5→6。knowledge 裸 revision 需要 `KnowledgeContentSource`：生产未绑定文档 Provider 时只能 `digest:`/`provider:` 直接启动，裸 revision 返回 `TARGET_CONTENT_UNRESOLVED`。
 
 ## 目标
 
@@ -62,7 +60,7 @@ github:
 
 - 设计文档：更新上述 15/06/05/07/08 章节与 `docs/architecture.md`（含英文侧），写清 skill/agent/知识库统一的 body hash 文件匹配、tag/文档 revision 解析、后处理锚点、兼容与迁移；新增 proposed Agent Note 记录决策与被否方案。
 - 后续代码（本 issue 追踪，不在设计文档 PR 内）：parser 的 skill 身份、agent `definition_hash`、knowledge 文件读 revision 统一为归一化 body hash，并递增 parser version；target 内容解析器按 tag 读取 `SKILL.md`/`AGENT.md`、按文档 revision 读取 knowledge 内容，归一化、算 hash、缓存与稳定错误；matcher 接受 body hash 与 legacy path+body（过渡）并实现 post-process 锚点；候选/归因快照记录 `anchorSource`；契约、API DTO、前端展示与测试同步。
-- 迁移：存量 claude-code 会话按 parser version 重放 skill/agent/knowledge；旧 path+body revision 保留历史，新 run 只写归一化 body hash；旧缓存键不复用；`probe_reports.object_version` 长度 96 足够。
+- 迁移：存量 claude-code 会话按 parser version 重放 skill/agent/knowledge；parser_version 5→6；旧 path+body revision 保留历史，新 run 只写归一化 body hash；旧缓存键不复用；`probe_reports.object_version` 长度 96 足够。knowledge 裸 revision 需要文档 Provider；当前生产未绑定，`digest:`/`provider:` 可直接启动。
 
 ## 实施步骤
 

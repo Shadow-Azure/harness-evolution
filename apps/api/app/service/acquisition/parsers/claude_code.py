@@ -22,10 +22,9 @@ from app.service.acquisition.parsers.base import (
     _string,
     _text_from_content,
     _timestamp,
-    definition_hash,
-    normalize_definition_body,
 )
 from app.service.acquisition.parsers.factory import TraceParserFactory
+from app.utils.definition import definition_hash, normalize_definition_body
 from app.utils.knowledge_paths import (
     MAX_DOCUMENT_PATH_LENGTH,
     canonical_knowledge_path,
@@ -328,6 +327,7 @@ def _file_evidence(
             tool_use_id=tool_use_id,
             source_path=path,
             content_hash=_sha256(original),
+            definition_hash=definition_hash(original) if original is not None else None,
             name=tool_name,
             complete=original is not None,
         )
@@ -344,6 +344,7 @@ def _file_evidence(
         tool_use_id=tool_use_id,
         source_path=path,
         content_hash=_sha256(content),
+        definition_hash=definition_hash(content) if content is not None else None,
         name=tool_name,
         start_line=start_line,
         end_line=end_line,
@@ -390,7 +391,7 @@ class ClaudeCodeTraceParser(BaseTraceParser):
     """Interpret Claude Code JSONL records and closed subagent metadata."""
 
     runtime_key = "claude-code"
-    parser_version = 5
+    parser_version = 6
 
     def consume_record(
         self,
@@ -552,8 +553,12 @@ class ClaudeCodeTraceParser(BaseTraceParser):
         root = match_knowledge_root(path, ctx.payload.knowledge_roots)
         if root is None:
             return
-        complete = evidence.complete is True and evidence.content_hash is not None
-        revision = f"digest:{evidence.content_hash}" if complete else "unknown"
+        complete = (
+            evidence.complete is True
+            and evidence.content_hash is not None
+            and evidence.definition_hash is not None
+        )
+        revision = f"digest:{evidence.definition_hash}" if complete else "unknown"
         ctx.record_knowledge_event(
             tool_use_id=evidence.tool_use_id,
             document_id=knowledge_document_id(path, root),
@@ -562,6 +567,9 @@ class ClaudeCodeTraceParser(BaseTraceParser):
             name=_document_name(path),
             retrieval_kind="file_read",
             retrieval_scope=root,
+            body_hash=evidence.definition_hash if complete else None,
+            file_read_hash=evidence.content_hash,
+            read_complete=evidence.complete,
         )
 
     def _record_mcp_knowledge(

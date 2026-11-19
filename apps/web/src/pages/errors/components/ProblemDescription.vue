@@ -2,7 +2,10 @@
 import type { AttributionItem, BadCase } from "@harness/contracts";
 import { computed } from "vue";
 
-import { badCaseFactEntries } from "../../../components/bad-cases/badCaseDisplay";
+import {
+  badCaseAnchorPresentation,
+  badCaseFactEntries,
+} from "../../../components/bad-cases/badCaseDisplay";
 import {
   badCaseDeepLink,
   shortBadCaseId,
@@ -24,6 +27,9 @@ const emit = defineEmits<{
 }>();
 
 const facts = computed(() => badCaseFactEntries(props.problem.metaData));
+const anchorPresentation = computed(() =>
+  badCaseAnchorPresentation(props.problem.anchor),
+);
 const reporter = computed(() =>
   props.problem.badCaseAgent.agentId
     ? `${props.problem.badCaseType} · ${props.problem.badCaseAgent.agentId}`
@@ -116,6 +122,15 @@ const reasonHtml = computed(() =>
         class="attribution-summary empty"
         data-testid="problem-attribution-summary"
       >尚未归因</span>
+      <span
+        v-if="anchorPresentation"
+        class="anchor-chip"
+        :class="anchorPresentation.tone"
+        data-testid="problem-anchor"
+        :title="anchorPresentation.description"
+      >
+        {{ anchorPresentation.label }}
+      </span>
     </div>
 
     <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
@@ -379,6 +394,23 @@ const reasonHtml = computed(() =>
   background: color-mix(in srgb, var(--orange) 7%, var(--bg-card));
   color: var(--orange);
   cursor: default;
+}
+
+.anchor-chip {
+  padding: 1px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.anchor-chip.orange {
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
+}
+
+.anchor-chip.neutral {
+  color: var(--text-faint);
 }
 
 .degraded-chip {

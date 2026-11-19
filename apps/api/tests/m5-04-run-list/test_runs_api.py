@@ -176,6 +176,7 @@ async def test_admin_and_member_read_the_same_grouped_camel_case_payload(
         "type": "skill",
         "name": "deep-research",
         "version": "v2.0.0",
+        "targetRevision": None,
     }
     assert card["progress"] == {
         "unit": 5,

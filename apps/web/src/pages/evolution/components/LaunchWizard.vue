@@ -55,6 +55,50 @@ const HIT_REASON_LABELS: Record<string, string> = {
   order_unknown: "顺序未知",
 };
 
+const ANCHOR_SOURCE_LABELS: Record<
+  PotentialPreviewItem["anchorSource"],
+  string
+> = {
+  event: "事件锚点",
+  node: "节点锚点",
+  post_process: "后处理上报",
+  unknown: "锚点未知",
+};
+
+const ANCHOR_SOURCE_HINTS: Record<
+  PotentialPreviewItem["anchorSource"],
+  string
+> = {
+  event: "bad case 命中上报 Agent 的触发事件。",
+  node: "bad case 挂在 Agent 节点上，没有事件下标。",
+  post_process: "上报对象没有可定位的触发事件，按 post-process 锚点参与归因。",
+  unknown: "上报 Agent 无法解析，锚点位置未知。",
+};
+
+const CONTENT_REASON_COPY: Record<string, string> = {
+  content_not_found:
+    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认 tag、仓库地址与子目录。",
+  file_not_found:
+    "该版本下没有目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请检查子目录。",
+  ref_not_found:
+    "该版本在仓库中不存在。请确认 tag/分支名称，或刷新版本列表后重选。",
+  repo_unreachable:
+    "无法访问目标仓库。请检查仓库地址、网络与读取权限。",
+  empty_definition_body:
+    "目标文件内容为空，无法计算 body hash。请换一个包含有效内容的版本。",
+  content_timeout:
+    "读取目标文件超时。请稍后重试，或检查仓库网络与代理。",
+  timeout: "读取目标文件超时。请稍后重试，或检查仓库网络与代理。",
+  git_unavailable: "服务端无法调用 git。请联系管理员检查运行环境。",
+  path_invalid: "目标文件路径无效。请检查配置的子目录。",
+  ref_invalid: "版本名不是合法的 git ref。请重新选择 tag。",
+  content_unavailable:
+    "目标文件暂时不可读取。请确认仓库地址、子目录与读取权限后重试。",
+  knowledge_content_source_unavailable:
+    "服务端尚未配置知识库内容来源，无法解析该版本。",
+  unsupported_object_type: "当前对象类型不支持内容解析。",
+};
+
 const auth = useAuthStore();
 const router = useRouter();
 
@@ -81,6 +125,8 @@ const potentialPage = ref(1);
 const pending = ref<PendingAction>("");
 const requestError = ref("");
 const launchError = ref("");
+const contentUnresolved = ref(false);
+const contentError = ref("");
 const focusApplied = ref(false);
 const focusTargetMissing = ref(false);
 
@@ -187,9 +233,14 @@ watch(
 
 watch(targetId, () => {
   fieldErrors.target = false;
+  clearContentUnresolved();
 });
 watch(targetVersion, () => {
   fieldErrors.version = false;
+  clearContentUnresolved();
+  if (sessionPreview.value || potentialPreview.value || attributionPreview.value) {
+    resetDownstream();
+  }
 });
 watch(windowFrom, () => {
   fieldErrors.from = false;
@@ -265,6 +316,22 @@ const potentialPageCount = computed(() =>
     : 1,
 );
 const attributionSummary = computed(() => attributionPreview.value?.summary ?? null);
+const previewTargetRevision = computed<string | null | undefined>(() => {
+  const revisions = [
+    attributionPreview.value?.targetRevision,
+    potentialPreview.value?.targetRevision,
+    sessionPreview.value?.targetRevision,
+  ];
+  const revision = revisions.find(
+    (value) => typeof value === "string" && value.length > 0,
+  );
+  if (revision) {
+    return revision;
+  }
+  return attributionPreview.value || potentialPreview.value || sessionPreview.value
+    ? null
+    : undefined;
+});
 
 /**
  * Apply the focus case's object and version clues once both catalogs are ready.
@@ -400,7 +467,7 @@ function validateStep1(): boolean {
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
   fieldErrors.target = !selectedTarget.value;
-  fieldErrors.version = !targetVersion.value;
+  fieldErrors.version = !targetVersion.value || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
   fieldErrors.to = !windowTo.value || reversed;
   fieldErrors.policy = policyRuleError.value;
@@ -427,6 +494,58 @@ function hasCode(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code;
 }
 
+/** Clear the target-content failure once the user changes or retries the version. */
+function clearContentUnresolved(): void {
+  contentUnresolved.value = false;
+  contentError.value = "";
+}
+
+/** Build actionable copy from a `TARGET_CONTENT_UNRESOLVED` reason. */
+function contentUnresolvedMessage(error: unknown): string {
+  const details =
+    error instanceof ApiError &&
+    error.details &&
+    typeof error.details === "object" &&
+    !Array.isArray(error.details)
+      ? (error.details as { reason?: unknown })
+      : null;
+  const reason = typeof details?.reason === "string" ? details.reason : "";
+  return (
+    CONTENT_REASON_COPY[reason] ??
+    "服务端无法把所选版本解析为 body hash。请确认 tag、仓库地址与子目录；也可换一个版本后重试。"
+  );
+}
+
+/**
+ * Turn a content-resolver 422 into an actionable version-field failure.
+ * @param error Failure raised by the shared API transport.
+ * @returns Whether the failure is a target-content 422.
+ */
+function handleContentUnresolved(error: unknown): boolean {
+  if (!hasCode(error, "TARGET_CONTENT_UNRESOLVED")) {
+    return false;
+  }
+  step.value = 1;
+  contentUnresolved.value = true;
+  contentError.value = contentUnresolvedMessage(error);
+  fieldErrors.version = true;
+  sessionPreview.value = null;
+  sessionEmptySummary.value = null;
+  potentialPreview.value = null;
+  potentialEmpty.value = false;
+  attributionPreview.value = null;
+  requestError.value = "";
+  launchError.value = "";
+  return true;
+}
+
+/** Retry the preview after a transient content-resolution failure. */
+function retryContentResolution(): void {
+  clearContentUnresolved();
+  fieldErrors.version = false;
+  void goToSessions();
+}
+
 /** Run the Session association preview and advance to step 2. */
 async function goToSessions(): Promise<void> {
   if (!validateStep1()) {
@@ -448,6 +567,7 @@ async function goToSessions(): Promise<void> {
     attributionPreview.value = null;
     step.value = 2;
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_ASSOCIATED_SESSIONS")) {
       sessionPreview.value = null;
       sessionEmptySummary.value = conflictSessionSummary(error);
@@ -477,6 +597,7 @@ async function changeSessionPage(next: number): Promise<void> {
     sessionPreview.value = result;
     sessionPage.value = result.page;
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     requestError.value = formatApiError(error, "加载 Session 关联失败").message;
   } finally {
     pending.value = "";
@@ -503,6 +624,7 @@ async function goToPotential(): Promise<void> {
     attributionPreview.value = null;
     step.value = 3;
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_POTENTIAL_MATCHED")) {
       potentialPreview.value = null;
       potentialEmpty.value = true;
@@ -541,6 +663,7 @@ async function changePotentialPage(next: number): Promise<void> {
     potentialPreview.value = result;
     potentialPage.value = result.page;
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     requestError.value = formatApiError(error, "加载潜在 bad case 失败").message;
   } finally {
     pending.value = "";
@@ -562,6 +685,7 @@ async function goToAttribution(): Promise<void> {
     });
     step.value = 4;
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     if (hasCode(error, "NO_POTENTIAL_MATCHED")) {
       potentialPreview.value = null;
       potentialEmpty.value = true;
@@ -588,6 +712,7 @@ async function refreshAttribution(): Promise<void> {
       cacheEnabled: cacheEnabled.value,
     });
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     requestError.value = formatApiError(error, "加载归因预览失败").message;
   } finally {
     pending.value = "";
@@ -616,6 +741,7 @@ async function launch(mode: "full" | "cluster_only"): Promise<void> {
         : await startClusterPreview(props.wid, body);
     emit("launched", mode, accepted.runId);
   } catch (error) {
+    if (handleContentUnresolved(error)) return;
     launchError.value = formatApiError(error, "启动运行失败").message;
   } finally {
     pending.value = "";
@@ -859,7 +985,16 @@ const reasonEntries = computed(() => {
                     class="field-error"
                     role="alert"
                   >
-                    请选择版本
+                    {{ contentUnresolved ? contentError : "请选择版本" }}
+                    <button
+                      v-if="contentUnresolved"
+                      class="linklike"
+                      type="button"
+                      data-testid="wizard-content-retry"
+                      @click="retryContentResolution"
+                    >
+                      重试解析
+                    </button>
                   </p>
                 </div>
               </div>
@@ -881,12 +1016,37 @@ const reasonEntries = computed(() => {
                 </button>
               </p>
               <p class="f-note">
-                只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                版本是内容来源：服务端会读取该 tag 下的 SKILL.md / AGENT.md，并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
                   class="cfg-link"
                   type="button"
                   data-testid="wizard-target-config-link"
                   @click="goTargetConfig"
                 >配置页</button><!-- eslint-enable vue/multiline-html-element-content-newline -->调整。
+              </p>
+            </div>
+
+            <div
+              v-if="previewTargetRevision !== undefined"
+              class="f-row"
+            >
+              <div class="f-label">
+                目标 revision
+              </div>
+              <div class="f-inline">
+                <span
+                  v-if="previewTargetRevision"
+                  class="revision-chip"
+                  data-testid="wizard-target-revision"
+                  :title="previewTargetRevision"
+                >{{ targetVersion }} → {{ previewTargetRevision }}</span>
+                <span
+                  v-else
+                  class="revision-unresolved"
+                  data-testid="wizard-target-revision-unresolved"
+                >未解析到 revision：服务端未返回 body hash；请确认 tag、仓库地址与子目录，或换一个版本后重试。</span>
+              </div>
+              <p class="f-note">
+                只读结果，来自最近一次预览；不会回退到 tag 猜测。
               </p>
             </div>
 
@@ -1065,6 +1225,13 @@ const reasonEntries = computed(() => {
               <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
               <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
               <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+              <span
+                v-if="previewTargetRevision !== undefined"
+                class="chip revision"
+                :class="{ unresolved: !previewTargetRevision }"
+                data-testid="wizard-condition-revision"
+                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
               <button
                 class="btn sm back"
                 type="button"
@@ -1180,6 +1347,13 @@ const reasonEntries = computed(() => {
               <span class="chip kind">{{ targetType }}:{{ selectedTarget?.name }}@{{ targetVersion || selectedTarget?.defaultRef }}</span>
               <span class="chip mono">{{ windowFrom }} ~ {{ windowTo }}</span>
               <span class="chip">{{ policyPreset === "default" ? "默认潜在策略" : "自定义潜在策略" }}</span>
+              <span
+                v-if="previewTargetRevision !== undefined"
+                class="chip revision"
+                :class="{ unresolved: !previewTargetRevision }"
+                data-testid="wizard-condition-revision"
+                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
               <button
                 class="btn sm back"
                 type="button"
@@ -1220,6 +1394,7 @@ const reasonEntries = computed(() => {
                       <th>触发点时间</th>
                       <th>来源 Session</th>
                       <th>命中原因</th>
+                      <th>锚点来源</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1255,6 +1430,14 @@ const reasonEntries = computed(() => {
                           v-if="item.orderState === 'unknown'"
                           class="order-note"
                         >触发点顺序待轨迹时间戳重放</span>
+                      </td>
+                      <td>
+                        <span
+                          class="anchor-source"
+                          :class="{ post: item.anchorSource === 'post_process' }"
+                          :data-anchor-source="item.anchorSource"
+                          :title="ANCHOR_SOURCE_HINTS[item.anchorSource]"
+                        >{{ ANCHOR_SOURCE_LABELS[item.anchorSource] }}</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1324,6 +1507,13 @@ const reasonEntries = computed(() => {
                 class="v2-badge"
                 :class="{ warn: !cacheEnabled }"
               >{{ cacheEnabled ? "复用缓存" : "不复用缓存" }}</span>
+              <span
+                v-if="previewTargetRevision !== undefined"
+                class="chip revision"
+                :class="{ unresolved: !previewTargetRevision }"
+                data-testid="wizard-condition-revision"
+                :title="previewTargetRevision ?? '服务端未返回 targetRevision，不猜测 tag'"
+              >{{ previewTargetRevision ? `revision ${previewTargetRevision}` : "revision 未解析" }}</span>
               <button
                 class="btn sm back"
                 type="button"
@@ -1412,7 +1602,7 @@ const reasonEntries = computed(() => {
               class="btn primary"
               type="button"
               data-testid="wizard-next"
-              :disabled="isBusy"
+              :disabled="isBusy || contentUnresolved"
               @click="goToSessions"
             >
               下一步：关联 Session →
@@ -1653,6 +1843,38 @@ const reasonEntries = computed(() => {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text-dim);
+}
+
+.wz-condstrip .chip.revision {
+  border-color: color-mix(in srgb, var(--purple) 32%, var(--border));
+  background: color-mix(in srgb, var(--purple) 6%, transparent);
+  color: var(--purple);
+  overflow-wrap: anywhere;
+}
+
+.wz-condstrip .chip.revision.unresolved {
+  border-color: color-mix(in srgb, var(--orange) 38%, var(--border));
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
+}
+
+.revision-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 9px;
+  border: 1px solid color-mix(in srgb, var(--purple) 32%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--purple) 6%, transparent);
+  color: var(--purple);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.revision-unresolved {
+  color: var(--orange);
+  font-size: 11.5px;
+  line-height: 1.55;
 }
 
 .wz-condstrip .back {
@@ -1939,6 +2161,22 @@ table.rep th {
   color: var(--text-faint);
   font-size: 10.5px;
   white-space: normal;
+}
+
+.anchor-source {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.anchor-source.post {
+  border-color: color-mix(in srgb, var(--orange) 38%, var(--border));
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
 }
 
 .pager {

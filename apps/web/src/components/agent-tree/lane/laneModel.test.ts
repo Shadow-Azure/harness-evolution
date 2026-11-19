@@ -255,4 +255,43 @@ describe("buildLaneModel bad-case markers", () => {
     expect(marker.line).toBe(1);
     expect(marker.inGap).toBe(true);
   });
+
+  it("pins a post-process marker at the end without indexing the sentinel event", () => {
+    const main = agent({
+      events: [event({ line: 10, messageOffset: 10 })],
+    });
+    const postProcess = {
+      ...demoNestedTree.badCases[0]!,
+      badCaseId: "case-post-process",
+      anchor: {
+        agentId: "main",
+        eventIndex: 2_147_483_647,
+        kind: "post_process" as const,
+      },
+    };
+    const model = buildLaneModel(tree([main], [postProcess]));
+    const marker = model.caseMarkers[0]!;
+
+    expect(marker.anchorLabel).toBe("后处理");
+    expect(marker.line).toBe(100);
+    expect(marker.x).toBeGreaterThan(90);
+    expect(JSON.stringify(marker)).not.toContain("2147483647");
+  });
+
+  it("keeps node and unknown markers at the host without a huge index", () => {
+    const main = agent();
+    const badCases = (["node", "unknown"] as const).map((kind) => ({
+      ...demoNestedTree.badCases[0]!,
+      badCaseId: `case-${kind}`,
+      anchor: { agentId: "main", eventIndex: -1, kind },
+    }));
+    const model = buildLaneModel(tree([main], badCases));
+
+    expect(model.caseMarkers.map((marker) => marker.line)).toEqual([1, 1]);
+    expect(model.caseMarkers.map((marker) => marker.anchorLabel)).toEqual([
+      null,
+      null,
+    ]);
+    expect(JSON.stringify(model.caseMarkers)).not.toContain("2147483647");
+  });
 });

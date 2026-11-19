@@ -39,6 +39,7 @@ from app.db.models.domain import (
 )
 from app.db.models.workspace import workspaces
 from app.service.acquisition.replay import replay_pending_payloads
+from app.utils.definition import definition_hash
 from app.utils.knowledge_paths import knowledge_document_id
 from tests.m10_02_potential_support import seed_case, seed_workspace
 from tests.v2_acceptance_support import (
@@ -526,9 +527,9 @@ async def test_combined_replay_persists_three_trigger_kinds_and_relations(
     knowledge = next(row for row in events if row["kind"] == "knowledge")
     assert knowledge["agent_id"] == ROOT_ID
     assert knowledge["document_id"] == knowledge_document_id(KNOWLEDGE_PATH, KNOWLEDGE_ROOT)
-    assert knowledge["document_revision"] == (
-        "digest:" + hashlib.sha256(KNOWLEDGE_CONTENT.encode()).hexdigest()
-    )
+    normalized = definition_hash(KNOWLEDGE_CONTENT)
+    assert normalized is not None
+    assert knowledge["document_revision"] == f"digest:{normalized}"
     assert knowledge["source_path"] == KNOWLEDGE_PATH
     assert knowledge["retrieval_kind"] == "file_read"
     assert knowledge["retrieval_scope"] == KNOWLEDGE_ROOT
