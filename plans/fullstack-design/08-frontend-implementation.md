@@ -513,6 +513,7 @@ Index.vue
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
+| 对象卡版本 | 版本多选和版本行显示 `ref` + 浅色 7 位 commit；无 ref 证据时显示 digest；复选框仍以规范版本键写入 `dversions`，旧链接里的 ref 由服务端按别名映射 |
 | 列表筛选 | 列表头独立提供开始/结束日期、上报来源、问题类型，写 `?lfrom=&lto=&lobject=&type=`；日期为空时列表请求带 `allTime=true`（真正不限时间），空来源/`all=类型` 不限制；任一变化重置 `page=1` 并把上一有效结果保留到新查询返回 |
 | 列表分页 | `page` 只改列表页码，保留全部列表筛选；全局时间/来源/粒度变化不重置它 |
 | 点击指标 | 「自身存在问题」/「发现前置步骤问题」→ 写列表类型筛选（`?type=`）并滚到列表；「来源数」→ 聚焦图表来源下拉 |

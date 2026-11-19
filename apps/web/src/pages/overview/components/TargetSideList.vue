@@ -63,7 +63,11 @@ function isSelected(id: string): boolean {
 }
 
 function primaryVersion(item: TargetOverviewItem): string {
-  return item.versions[0] ?? "—";
+  return (
+    item.versionOptions?.[0]?.ref ??
+    item.versions[0] ??
+    "—"
+  );
 }
 
 function evolvable(item: TargetOverviewItem): number {

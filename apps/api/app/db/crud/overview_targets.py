@@ -23,6 +23,7 @@ from app.db.models.domain import (
     bad_cases,
     probe_reports,
 )
+from app.db.models.evolution import evolution_runs
 from app.utils.time import as_shanghai
 
 _QUERY_CHUNK = 500
@@ -52,6 +53,16 @@ class ObjectVersionRecord:
 
     object_version: str | None
     object_revision: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TargetRunVersionRecord:
+    """One run's version evidence: selected ref, resolved revision, and commit."""
+
+    target_version: str | None
+    target_revision: str | None
+    base_commit: str | None
+    created_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +174,51 @@ class TargetOverviewRepository:
                 for row in rows
             )
         return tuple(records)
+
+    async def list_target_runs(
+        self,
+        *,
+        workspace_id: str,
+        object_type: str,
+        object_name: str,
+        limit: int = 200,
+    ) -> tuple[TargetRunVersionRecord, ...]:
+        """Return recent runs' ref/revision/commit evidence for one target.
+
+        Display labels need the ref a run selected and the commit its revision
+        resolved to. The query is intentionally bounded and newest-first: the
+        latest run wins when one revision was used from several refs.
+        """
+        statement = (
+            select(
+                evolution_runs.c.target_version,
+                evolution_runs.c.target_revision,
+                evolution_runs.c.base_commit,
+                evolution_runs.c.created_at,
+            )
+            .where(
+                evolution_runs.c.workspace_id == workspace_id,
+                evolution_runs.c.target_type == object_type,
+                evolution_runs.c.target_name == object_name,
+            )
+            .order_by(evolution_runs.c.created_at.desc(), evolution_runs.c.id.desc())
+            .limit(limit)
+        )
+        async with self._database.session() as session:
+            rows = (await session.execute(statement)).mappings().all()
+        return tuple(
+            TargetRunVersionRecord(
+                target_version=(
+                    str(row["target_version"]) if row["target_version"] is not None else None
+                ),
+                target_revision=(
+                    str(row["target_revision"]) if row["target_revision"] is not None else None
+                ),
+                base_commit=(str(row["base_commit"]) if row["base_commit"] is not None else None),
+                created_at=as_shanghai(row["created_at"]),
+            )
+            for row in rows
+        )
 
     async def list_attributions(
         self,

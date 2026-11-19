@@ -12,6 +12,10 @@ function item(index: number): TargetOverviewItem {
     objectType: "skill",
     objectName: `target-${index}`,
     versions: [`v${index}`, "main"],
+    versionOptions: [
+      { version: `v${index}`, ref: "release", commit: "a3f9c21" },
+      { version: "main", ref: "main", commit: "7b2e084" },
+    ],
     sessions: index,
     potential: index + 1,
     attributed: index,
@@ -33,6 +37,9 @@ describe("TargetSideList", () => {
     });
 
     expect(wrapper.findAll("[data-testid^='ov-target-side-item-']")).toHaveLength(5);
+    expect(wrapper.get("[data-testid='ov-target-side-item-target-1']").text()).toContain(
+      "@release",
+    );
     expect(wrapper.get("[data-testid='ov-target-side-item-target-2']").classes()).toContain(
       "selected",
     );

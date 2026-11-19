@@ -59,6 +59,10 @@ export type TargetObjectType = "skill" | "agent" | "knowledge";
 export type TargetOverviewSummary =
   components["schemas"]["TargetOverviewSummary"];
 
+/** One version's canonical key plus the ref/commit used for display. */
+export type TargetVersionOption =
+  components["schemas"]["TargetVersionOption"];
+
 /** One target's potential cases and their three-state split. */
 export type TargetOverviewItem = components["schemas"]["TargetOverviewItem"];
 
