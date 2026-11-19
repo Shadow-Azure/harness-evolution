@@ -24,6 +24,7 @@ milestones:
   - m17
   - m18
   - m19
+  - m20
 ```
 
 ## 愿景
@@ -51,6 +52,7 @@ Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数�
 - **m17 对象卡版本显示**：ref 与短 commit 替代 digest，合并别名。
 - **m18 生产 Git 出网代理与失效回退**：Xray/VLESS 本地代理、Secret 注入、git-only 接线与健康熔断。
 - **m19 生产目标内容单 ref 读取**：只读一个 ref 的浅拉取缓存，避免全量 mirror。
+- **m20 启动向导 Session 关联展示**：短标签加完整标题提示，四列同屏；关联与统计口径不变。
 
 ## 实施规则
 

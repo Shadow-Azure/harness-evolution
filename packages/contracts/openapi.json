@@ -5399,6 +5399,10 @@
             "title": "Sessionid",
             "type": "string"
           },
+          "short": {
+            "title": "Short",
+            "type": "string"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -5406,6 +5410,7 @@
         },
         "required": [
           "sessionId",
+          "short",
           "title",
           "objectTriggerAt",
           "badCaseCount"

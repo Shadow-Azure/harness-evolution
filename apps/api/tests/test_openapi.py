@@ -229,6 +229,7 @@ def test_openapi_exposes_implemented_identity_and_error_contracts() -> None:
     } <= set(components)
     assert set(components["SessionPreviewItem"]["properties"]) == {
         "sessionId",
+        "short",
         "title",
         "objectTriggerAt",
         "badCaseCount",

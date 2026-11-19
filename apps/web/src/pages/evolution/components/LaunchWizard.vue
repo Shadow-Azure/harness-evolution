@@ -1746,9 +1746,15 @@ const reasonEntries = computed(() => {
               <template v-if="sessionPreview">
                 <div class="rep-scroll">
                   <table
-                    class="rep"
+                    class="rep wz-session-table"
                     data-testid="wizard-session-table"
                   >
+                    <colgroup>
+                      <col class="wz-session-col-title">
+                      <col class="wz-session-col-appear">
+                      <col class="wz-session-col-trigger">
+                      <col class="wz-session-col-cases">
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Session</th>
@@ -1763,7 +1769,11 @@ const reasonEntries = computed(() => {
                         :key="item.sessionId"
                       >
                         <td>
-                          <b>{{ item.title }}</b>
+                          <b
+                            class="wz-session-title"
+                            data-testid="wizard-session-title"
+                            :title="item.title"
+                          >{{ item.short || item.title }}</b>
                           <span class="cell-sub mono">#{{ shortId(item.sessionId) }}</span>
                         </td>
                         <td>
@@ -2947,6 +2957,37 @@ table.rep th {
   font-size: 11px;
   color: var(--text-faint);
   font-weight: 600;
+}
+
+.wz-session-table {
+  table-layout: fixed;
+}
+
+.wz-session-col-title {
+  width: 38%;
+}
+
+.wz-session-col-appear {
+  width: 15%;
+}
+
+.wz-session-col-trigger {
+  width: 22%;
+}
+
+.wz-session-col-cases {
+  width: 25%;
+}
+
+table.rep.wz-session-table th {
+  white-space: normal;
+}
+
+.wz-session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-sub {

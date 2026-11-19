@@ -36,12 +36,14 @@ const sessionPreview: SessionPreviewResult = {
   items: [
     {
       sessionId: "session-0001",
+      short: "研究 session",
       title: "研究 session",
       objectTriggerAt: "2026-10-20T09:00:00+08:00",
       badCaseCount: 2,
     },
     {
       sessionId: "session-0002",
+      short: "评审 session",
       title: "评审 session",
       objectTriggerAt: "2026-10-21T10:00:00+08:00",
       badCaseCount: 1,
@@ -557,6 +559,51 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.get("[data-testid='wizard-condition-revision']").text(),
     ).toBe(`revision ${resolvedRevision}`);
+  });
+
+  it("renders a clamped short Session label with the full prompt in the tooltip", async () => {
+    const longTitle =
+      "You are an autonomous software engineer working in the repository at /testbed. " +
+      "Solve the issue by editing the repository and running the test suite.";
+    useHandlers({
+      sessions: () =>
+        HttpResponse.json({
+          ...sessionPreview,
+          items: [
+            {
+              sessionId: "session-long-prompt",
+              short: "SWE-bench 会话",
+              title: longTitle,
+              objectTriggerAt: "2026-10-20T09:00:00+08:00",
+              badCaseCount: 2,
+            },
+          ],
+          total: 1,
+          summary: {
+            reported: 1,
+            associated: 1,
+            skipped: 0,
+            versionUnresolved: 0,
+            pending: 0,
+          },
+        }),
+    });
+    const { wrapper } = await mountWizard();
+    await reachStep2(wrapper);
+
+    const title = wrapper.get("[data-testid='wizard-session-title']");
+    expect(title.text()).toBe("SWE-bench 会话");
+    expect(title.attributes("title")).toBe(longTitle);
+    expect(title.classes()).toContain("wz-session-title");
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").classes(),
+    ).toContain("wz-session-table");
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").findAll("th"),
+    ).toHaveLength(4);
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").text(),
+    ).toContain("#sess…ompt");
   });
 
   it("shows the resolved version → revision in Step 1 and clears it on version change", async () => {

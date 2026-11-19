@@ -3802,6 +3802,8 @@ export interface components {
             objectTriggerAt: string;
             /** Sessionid */
             sessionId: string;
+            /** Short */
+            short: string;
             /** Title */
             title: string;
         };

@@ -237,6 +237,7 @@ class SessionPreviewItem(IdentityModel):
     """One associated Session row in wizard step 2."""
 
     session_id: str
+    short: str
     title: str
     object_trigger_at: datetime = Field(
         description=(
@@ -384,6 +385,7 @@ class AssociatedSession:
     """One Session whose trace contains the requested object version."""
 
     session_id: str
+    short: str
     title: str
     started_at: datetime
     object_trigger_at: datetime
@@ -631,6 +633,7 @@ class PotentialMatcher:
                 associated.append(
                     AssociatedSession(
                         session_id=session_id,
+                        short=metas[session_id].short_title,
                         title=metas[session_id].title,
                         started_at=metas[session_id].started_at,
                         object_trigger_at=(
@@ -845,6 +848,7 @@ class PotentialPreviewService:
         items = [
             SessionPreviewItem(
                 session_id=session.session_id,
+                short=session.short,
                 title=session.title,
                 object_trigger_at=session.object_trigger_at,
                 bad_case_count=session.bad_case_count,
