@@ -25,7 +25,7 @@ scope:
   - tests/**
   - fixtures/**
 adr:
-  - ../../notes/proposed/architecture/2026-11-18-body-hash-attribution-post-process.md
+  - ../../notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.md
 github:
   number: 368
   url: https://github.com/Shadow-Azure/harness-evolution/issues/368
@@ -54,7 +54,7 @@ github:
 - [07 §2.6 多 runtime parser 工厂](../../../plans/fullstack-design/07-backend-implementation.md)、[§5.12 潜在匹配](../../../plans/fullstack-design/07-backend-implementation.md)、[§5.13 归因生成与缓存](../../../plans/fullstack-design/07-backend-implementation.md)
 - [08 前端实现](../../../plans/fullstack-design/08-frontend-implementation.md)
 - [架构：证据与 revision](../../../docs/architecture.md)
-- [Agent Note：body hash 身份与后处理锚点](../../notes/proposed/architecture/2026-11-18-body-hash-attribution-post-process.md)
+- [Agent Note：body hash 身份与后处理锚点](../../notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.md)
 
 ## 实现内容
 

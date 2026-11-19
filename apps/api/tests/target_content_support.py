@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from typing import Literal
 
 from app.service.evolution.target_content import ResolvedTargetVersion
@@ -16,9 +17,15 @@ class FakeTargetVersionResolver:
     path pass ``revision="digest"``.
     """
 
-    def __init__(self, *, revision: Literal["tag", "digest"] = "tag") -> None:
-        """Choose the identity form returned for a bare version."""
+    def __init__(
+        self,
+        *,
+        revision: Literal["tag", "digest"] = "tag",
+        revisions: Mapping[str, str] | None = None,
+    ) -> None:
+        """Choose the identity form, with per-version overrides for fixtures."""
         self._revision = revision
+        self._revisions = dict(revisions or {})
         self.calls: list[tuple[str, str, str, str]] = []
 
     async def resolve(
@@ -33,6 +40,8 @@ class FakeTargetVersionResolver:
         self.calls.append((object_type, repo_url, sub_dir, version))
         if version.startswith(("tag:", "digest:", "provider:")):
             return ResolvedTargetVersion(version, version)
+        if version in self._revisions:
+            return ResolvedTargetVersion(version, self._revisions[version])
         if self._revision == "tag":
             return ResolvedTargetVersion(version, f"tag:{version}")
         digest = hashlib.sha256(version.encode("utf-8")).hexdigest()

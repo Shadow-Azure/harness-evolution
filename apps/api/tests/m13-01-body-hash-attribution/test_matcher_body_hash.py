@@ -189,6 +189,103 @@ async def test_post_process_anchor_sorts_after_the_object_entry(harness: Harness
     assert case.trigger_at == AFTER_ENTRY
 
 
+@pytest.mark.parametrize(
+    "created_at",
+    [
+        datetime(2026, 11, 17, 8, 0, tzinfo=SHANGHAI),
+        OBJECT_ENTRY,
+        AFTER_ENTRY,
+    ],
+)
+async def test_post_process_is_after_regardless_of_created_at(
+    harness: Harness,
+    created_at: datetime,
+) -> None:
+    """The MAX sentinel means after even when the audit time precedes the entry."""
+    session_id = f"session-post-process-{created_at.hour}"
+    main_id = await seed_session(harness.database, session_id=session_id)
+    await _seed_event_with_identity(
+        harness,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=TARGET_VERSION,
+        definition_hash=BODY_HASH,
+    )
+    await seed_case(
+        harness.database,
+        case_id=f"case-post-process-{created_at.hour}",
+        session_id=session_id,
+        case_type="discovery",
+        object_name="other-skill",
+        created_at=created_at,
+    )
+
+    condition = body_hash_condition("skill")
+    association = await harness.matcher.associated_sessions(condition)
+    match = await harness.matcher.potential_cases(
+        condition,
+        association,
+        resolve_policy(None),
+    )
+
+    case = match.cases[0]
+    assert case.anchor_source == "post_process"
+    assert case.order_state == "comparable"
+    assert case.hit_reason == "after_object"
+    assert case.trigger_at == created_at
+
+
+async def test_normal_event_anchor_keeps_time_comparison(harness: Harness) -> None:
+    """A normal event anchor still compares the event time, not created_at."""
+    session_id = "session-normal-event-order"
+    main_id = await seed_session(harness.database, session_id=session_id)
+    await _seed_event_with_identity(
+        harness,
+        agent_id=main_id,
+        event_index=0,
+        kind="skill",
+        name=TARGET_NAME,
+        object_version=TARGET_VERSION,
+        definition_hash=BODY_HASH,
+    )
+    async with harness.database.transaction() as session:
+        await session.execute(
+            insert(agent_events).values(
+                agent_id=main_id,
+                event_index=1,
+                line_no=2,
+                message_offset=1,
+                kind="skill",
+                name="other-skill",
+                triggered_at=datetime(2026, 11, 17, 9, 0, tzinfo=SHANGHAI),
+            ),
+        )
+    await seed_case(
+        harness.database,
+        case_id="case-normal-event-order",
+        session_id=session_id,
+        case_type="discovery",
+        object_name="other-skill",
+        created_at=AFTER_ENTRY,
+    )
+
+    condition = body_hash_condition("skill")
+    association = await harness.matcher.associated_sessions(condition)
+    match = await harness.matcher.potential_cases(
+        condition,
+        association,
+        resolve_policy(None),
+    )
+
+    case = match.cases[0]
+    assert case.anchor_source == "event"
+    assert case.order_state == "comparable"
+    assert case.hit_reason == "policy_excluded"
+    assert case.trigger_at == datetime(2026, 11, 17, 9, 0, tzinfo=SHANGHAI)
+
+
 async def test_self_agent_anchor_stays_on_the_reporter_node(harness: Harness) -> None:
     """self + agent keeps eventIndex=-1 on the reporter's own node."""
     session_id = "session-self-node"

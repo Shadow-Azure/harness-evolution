@@ -777,7 +777,11 @@ test("m4 problem cards keep a long case id and object name inside the card", asy
       metaData: { source: "e2e" },
       degraded: false,
       diagnosticCode: null,
-      anchor: { agentId: "agent-s1-review-0001", eventIndex: -1 },
+      anchor: {
+        agentId: "agent-s1-review-0001",
+        eventIndex: -1,
+        kind: "unknown",
+      },
       badCaseAgent: { sessionId, agentId: "agent-s1-review-0001" },
       analysis: {
         probeId: null,
@@ -892,7 +896,11 @@ test("m4 problem cards keep description links clickable above the select button"
       metaData: { source: "e2e" },
       degraded: false,
       diagnosticCode: null,
-      anchor: { agentId: "agent-s1-review-0001", eventIndex: -1 },
+      anchor: {
+        agentId: "agent-s1-review-0001",
+        eventIndex: -1,
+        kind: "node",
+      },
       badCaseAgent: { sessionId, agentId: "agent-s1-review-0001" },
       analysis: {
         probeId: null,

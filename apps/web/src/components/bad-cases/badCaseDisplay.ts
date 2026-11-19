@@ -45,7 +45,6 @@ export function badCaseState(
 }
 
 /**
-/**
  * Describe an anchor that has no direct event coordinate.
  *
  * The API uses INT_MAX for a post-process anchor; the UI must never render that

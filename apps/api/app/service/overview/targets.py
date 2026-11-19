@@ -36,8 +36,8 @@ from app.service.evolution.potential import (
     ResolvedPolicy,
     SessionAssociation,
     resolve_policy,
-    resolve_target_revision,
 )
+from app.service.evolution.target_content import TargetVersionResolver
 from app.service.overview.schemas import OverviewWindow
 from app.service.overview.target_schemas import (
     TARGET_STATES,
@@ -131,6 +131,7 @@ class TargetAnalysis:
     session_ids: frozenset[str]
     entries: tuple[TargetCaseEntry, ...]
     version_sessions: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    unresolved_versions: frozenset[str] = frozenset()
 
     @property
     def sessions(self) -> int:
@@ -334,11 +335,13 @@ class TargetOverviewService:
         targets: EvolutionTargetRepository,
         repository: TargetOverviewRepository,
         matcher: PotentialMatcher,
+        resolver: TargetVersionResolver,
     ) -> None:
-        """Bind the service to target configuration, read facts, and the matcher."""
+        """Bind target configuration, read facts, the matcher, and content resolution."""
         self._targets = targets
         self._repository = repository
         self._matcher = matcher
+        self._resolver = resolver
         self._policy: ResolvedPolicy = resolve_policy(None)
 
     async def list_targets(
@@ -599,14 +602,22 @@ class TargetOverviewService:
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
         entries: list[TargetCaseEntry] = []
+        unresolved_versions: set[str] = set()
         for version in versions:
-            association, match = await self._evaluate(
+            evaluated = await self._evaluate(
                 target,
                 version,
                 workspace_id=workspace_id,
                 window_start=window_start,
                 window_end=window_end,
             )
+            if evaluated is None:
+                # Content is the only identity source: keep the observed version
+                # visible but never fall back to tag matching.
+                unresolved_versions.add(version)
+                version_sessions[version] = frozenset()
+                continue
+            association, match = evaluated
             associated_sessions.update(session.session_id for session in association.sessions)
             version_sessions[version] = frozenset(
                 session.session_id for session in association.sessions
@@ -640,6 +651,7 @@ class TargetOverviewService:
             session_ids=frozenset(associated_sessions),
             entries=tuple(entries),
             version_sessions=version_sessions,
+            unresolved_versions=frozenset(unresolved_versions),
         )
 
     async def _evaluate(
@@ -650,15 +662,30 @@ class TargetOverviewService:
         workspace_id: str,
         window_start: datetime,
         window_end: datetime,
-    ) -> tuple[SessionAssociation, PotentialMatch]:
-        """Run the one shared matcher for one target version."""
-        resolved_version, resolved_revision = resolve_target_revision(version)
+    ) -> tuple[SessionAssociation, PotentialMatch] | None:
+        """Run the shared matcher for one resolved version.
+
+        A bare version is resolved to its body-hash revision first. If content
+        cannot be read, the version is left unresolved instead of silently
+        falling back to ``tag:`` matching.
+        """
+        try:
+            resolved = await self._resolver.resolve(
+                object_type=target.object_type,
+                repo_url=target.repo_url,
+                sub_dir=target.sub_dir,
+                version=version,
+            )
+        except AppError as error:
+            if error.code is ErrorCode.TARGET_CONTENT_UNRESOLVED:
+                return None
+            raise
         condition = MatchCondition(
             workspace_id=workspace_id,
             target_type=target.object_type,
             target_name=target.object_name,
-            target_version=resolved_version,
-            target_revision=resolved_revision,
+            target_version=resolved.target_version,
+            target_revision=resolved.target_revision,
             window_start=window_start,
             window_end=window_end,
         )

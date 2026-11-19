@@ -580,7 +580,7 @@ erDiagram
 | `target_type` | `VARCHAR(16)` | `skill` / `agent` / `knowledge`（来自 run 创建时选择的目标，字段名沿用 V1；knowledge 目前仅 API 启动） |
 | `target_name` | `VARCHAR(128)` | 目标名（字段名沿用 V1，不再表示 probe 来源） |
 | `target_version` | `VARCHAR(96)` | 本次使用的 tag/版本；决定 checkout 的基线；96 容纳 skill/agent tag 与 knowledge 的 71 字符 digest revision |
-| `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空 |
+| `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空，首次重试解析成功后回写 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |
 | `validation_project_id` | `VARCHAR(128)` NOT NULL DEFAULT `''` | 创建 run 时从 target 快照的验证集测试工程 ID；历史 run 为空串 |
@@ -879,7 +879,7 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 - agent 调用用 `A.tool_use_id` 在 P 的 `agent_events` 里匹配 `kind=agent` 事件，不按 `object_name`（同类型 subagent 会撞）；A 为 main 或匹配不到 → `eventIndex=INT_MAX`、`anchorKind=post_process`。
 - 上报 Agent 本身无法解析或无法挂载 → `eventIndex=-1`、`anchorKind=unknown`；这是 `-1` 的唯一保留语义。
 - 上报契约：`bad_case_agent_id` 指向的 agent 必须包含 `object_*` 的触发记录；找不到时按后处理锚点处理，而不是 `-1`。
-- 后处理锚点的比较：`triggeredAt` 非空时按 `created_at` 与目标进入点比较；目标进入点也无时间戳时，用 `(tree_index=INT_MAX, event_index=INT_MAX)` 兜底，保证它排在所有可解析对象之后。
+- 后处理锚点的比较：`post_process` 在潜在匹配中直接视为「对象之后」，不依赖 `created_at` 与目标进入点的时间先后；`created_at` 只作触发点显示/审计，树/API 坐标仍用 `(tree_index=INT_MAX, event_index=INT_MAX)` 兜底。
 - 归因状态不再由 `bad_case_analysis` 保存：一个 bad case 没有任何归因行 = 未归因；有行则按 `conclusion` 区分「可归因」与「非该对象问题」。`category` 只对 `attributed` 非空。
 - `attribute_type`（API 映射为 `category`）决定展示子状态（模型/prompt/错误）；归因身份来自 `probe_reports` 的 `probe_type/probe_object/object_version`，不是 bad case 上报者的 `object_*` 字段。
 
@@ -898,8 +898,8 @@ V2 原位演进五张既有表、新增四张表，判断标准是**粒度（gra
 | 对象进入点 | Session 内该对象最早的 `agent_events`：`object_type=skill → kind=skill`，`object_type=agent → kind=agent`，`object_type=knowledge → kind=knowledge`；同时要求 `name == target_name` 且事件 identity 命中目标 revision 候选集。skill/agent/knowledge 的 `targetRevision` 都是归一化 body hash：skill/agent 的裸 tag 由服务端读取该 tag 下的 `SKILL.md`/`AGENT.md` 并用同一归一化函数算出；knowledge 由文档内容归一化或 `defaultRef` digest 给出；已带 `digest:` 原样使用。候选集 = `{targetVersion, targetRevision, legacy object_revision}`；事件侧 `object_version`、`object_revision`、skill/agent/knowledge `definition_hash`/`document_revision` 任一命中即可。无 identity 匹配事件 → 不关联 |
 | Session 关联口径 | 上报根按窗口 `bad_cases` 去重：`reported = associated + versionUnresolved + skipped + pending`。`pending` 是没有 `session_families` 行的根；`versionUnresolved` 是命中名称但事件既无 `object_version`、无可用 `object_revision`，也无 `definition_hash`/`document_revision`（NULL/`unknown`）；`skipped` 是其余已归一化但没有任何 identity 匹配的根（包括 digest/tag/provider 存在但不匹配目标 revision）；只有 `associated` 进列表 |
 | bad case 触发点 | §7.4 锚点事件。`anchorKind=post_process` 时 `eventIndex=INT_MAX`、`triggeredAt=created_at`；`anchorKind=unknown`（上报 agent 本身无法解析）时触发点缺失，不猜测、不降级到主 agent。其他锚点保持事件坐标 |
-| 触发点比较 | 双方 `triggered_at` 非空 → 按时间严格大于；否则按 `(agents.tree_index, agent_events.event_index)` 字典序；`post_process` 使用 `created_at` 且坐标兜底为 INT_MAX，落在所有可解析对象之后；`unknown` 或坐标不全 → `order_state=unknown`（不满足「之后」） |
-| 潜在 bad case（默认策略） | 关联 Session 内 `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；`post_process` 锚点在时间/坐标可解析时按「对象之后」命中 `after_object`，候选行同时记录 `case_anchor_kind=post_process` 供审计。custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。`self` 与 `sameObjectOnly` 只比较名称，不比较 `bad_cases.object_type` 或 `object_version`，因此同名 skill/agent 与跨版本 self 会被纳入；合法组合见 [07 §5.12](07-backend-implementation.md) |
+| 触发点比较 | 非 `post_process`：双方 `triggered_at` 非空 → 按时间严格大于，否则按 `(agents.tree_index, agent_events.event_index)` 字典序；`post_process` 直接判为「对象之后」，不比较 `created_at`（仅审计/显示），坐标兜底 INT_MAX；`unknown` 或坐标不全 → `order_state=unknown`（不满足「之后」） |
+| 潜在 bad case（默认策略） | 关联 Session 内 `(object_name == target.name AND bad_case_type='self') OR (case_trigger > object_enter)`；`post_process` 锚点直接按「对象之后」命中 `after_object`，候选行同时记录 `case_anchor_kind=post_process` 供审计。custom 取启用规则并集，`sameObjectOnly` 再按 `object_name == target.name` 过滤。`self` 与 `sameObjectOnly` 只比较名称，不比较 `bad_cases.object_type` 或 `object_version`，因此同名 skill/agent 与跨版本 self 会被纳入；合法组合见 [07 §5.12](07-backend-implementation.md) |
 | 潜在集合计数 | `summary.badCases` 是关联 Session 内的候选 case 数（含被排除行），`potential` 是纳入数；`byReason` 为 `self_report|after_object|both|policy_excluded|order_unknown` 五键零填充，排除行只进计数不进分页行 |
 | 预览时间窗 | 按 `bad_cases.created_at` 的 Asia/Shanghai 日边界；无 `from/to` 默认最近 90 天，`from > to` 或跨度超过 366 天 → `WINDOW_INVALID` |
 | 预览缓存口径 | 只读查询既有 `probe_reports.cache_key`：键按解析后的 `targetRevision`（skill 为 body hash）、`policy_version=v1`、归因引擎 `rule-v1` 计算；legacy path+body 键不复用；`cacheEnabled=false` 时 `reused=0`；`nonTargetKnown` 是该对象历史 `non_target` 去重 case 数（按 `targetVersion`/`targetRevision` 两个值查，参考值可与 `reused` 重叠） |

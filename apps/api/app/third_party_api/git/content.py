@@ -151,7 +151,7 @@ def _relative_path(sub_dir: str, file_name: str) -> str:
     file_path = PurePosixPath(file_name)
     if file_path.is_absolute() or len(file_path.parts) != 1:
         raise GitContentUnavailable("path_invalid")
-    return (directory / file_name).as_posix().lstrip("./")
+    return (directory / file_name).as_posix()
 
 
 async def _run_process(
