@@ -240,7 +240,7 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 - **可取消**：等待中提供「取消等待」，回到原步骤并保留已填条件；服务端请求可能继续，前端丢弃结果。
 - **可访问性**：等待卡 `role=status` + `aria-live=polite`；超时卡 `role=alert`；主按钮 disabled 时仍显示阶段文案。
 
-原型用 `wzsim=loading` / `wzsim=timeout` 固定等待与超时状态，便于同一场景截图；正常点击会在 4 秒后自动进入下一步。生产 `LaunchWizard.vue` 目前只置灰按钮，尚未实现本节。
+原型用 `wzsim=loading` / `wzsim=timeout` 固定等待与超时状态，便于同一场景截图；正常点击会在 4 秒后自动进入下一步。生产 `LaunchWizard.vue` 已按本节实现：等待卡、阶段按钮、取消等待、超时卡与重试/返回。服务端尚未上报子阶段，所以第 1 步的「读取目标版本」保持进行中、「关联 Session」保持等待，不伪造完成状态；取消只丢弃前端结果，已发出的请求可能继续。
 
 ## 8. 错误详情：一个 bad case × 多条归因
 

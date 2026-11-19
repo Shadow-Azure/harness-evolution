@@ -672,17 +672,18 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
   - 「启动自进化 →」→ `POST …/evolution/runs` → 路由 `/workspaces/:wid/evolution/runs/:rid`，先显示「准备中」
 - 202 只表示“已受理准备”；不要等接口返回簇或 RunDetail。
 
-### 9.3 预览请求的等待反馈
+### 9.2.1 预览请求的等待反馈
 
-三个 `preview/*` 都是同步请求；第 1 步在冷缓存时先做目标内容读取（必要时 `git clone --mirror`），再关联 Session。生产 `LaunchWizard.vue` 当前只在 `pending` 时禁用按钮，用户看不到阶段与耗时，表现为卡住。设计目标：
+三个 `preview/*` 都是同步请求；第 1 步在冷缓存时先做目标内容读取（必要时 `git clone --mirror`），再关联 Session。生产 `LaunchWizard.vue` 已实现：
 
-- 点击「下一步」后立即把主按钮改成当前阶段文案并带 spinner；表单 `locked`（保留内容、禁止编辑）。
-- 在主按钮上方显示阶段进度卡：第 1 步「读取目标版本 → 关联 Session」，第 2 步「筛选潜在 bad case」，第 3 步「检查归因缓存」；已完成阶段打勾，当前阶段高亮，显示已等待秒数。
+- 点击「下一步」后立即把主按钮改成当前阶段文案并带 spinner；表单 `inert` + `locked`（保留内容、禁止编辑）。
+- 在主按钮上方显示阶段进度卡：第 1 步「读取目标版本 → 关联 Session」，第 2 步「筛选潜在 bad case」，第 3 步「检查归因缓存」；当前阶段高亮，显示已等待秒数。服务端尚未上报子阶段，第 1 步只把「读取目标版本」标为进行中、「关联 Session」保持等待，不伪造完成。
 - 文案说明首次读取会从远端仓库克隆、后续有本地 mirror 缓存；不使用假进度条。
-- 超时（`content_timeout` / `repo_unreachable`）显示原因、非 Session 数据为空、重试与返回修改条件；版本字段标红。等待中提供取消等待，结果丢弃。
+- 超时（`TARGET_CONTENT_UNRESOLVED` + reason `content_timeout` / `timeout`）显示失败卡：原因、非 Session 数据为空、重试与返回修改条件；版本字段标红。其他内容错误仍保留字段级红字。
+- 等待中提供取消等待：递增请求代际、丢弃 late result，不修改 `http.ts` 或引入 AbortController；已发出的服务端请求可能继续。
 - 等待卡 `role=status` + `aria-live=polite`；超时卡 `role=alert`。
 
-原型交互和截图见 `plans/ui-prototype-v2/harness-evolution.html` 与 `design-v2.md §7.5`；生产实现待后续切片。
+原型交互和截图见 `plans/ui-prototype-v2/harness-evolution.html` 与 `design-v2.md §7.5`。生产实现只覆盖步骤前进的预览；步骤内分页和第 4 步缓存刷新保留原有 `pending` 禁用，不套用阶段卡。代理与后端 shallow fetch 不在本切片。
 
 ### 9.3 占位数据说明
 

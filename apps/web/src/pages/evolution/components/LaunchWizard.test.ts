@@ -98,6 +98,17 @@ const attributionPreview: AttributionPreviewResult = {
   targetRevision: resolvedRevision,
 };
 
+const contentTimeoutError = {
+  error: {
+    code: "TARGET_CONTENT_UNRESOLVED",
+    message: "target content could not be resolved to a body hash",
+    details: {
+      targetType: "skill",
+      reason: "content_timeout",
+    },
+  },
+};
+
 const targetCatalog = {
   skill: [
     {
@@ -907,6 +918,263 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.get("[data-testid='wizard-session-table']").text(),
     ).toContain("研究 session");
+  });
+
+  it("shows a live progress card and locks the form while the Session preview is pending", async () => {
+    let release!: () => void;
+    useHandlers({
+      sessions: () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(HttpResponse.json(sessionPreview));
+        }),
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const card = wrapper.get("[data-testid='wizard-progress']");
+    expect(card.attributes("role")).toBe("status");
+    expect(card.attributes("aria-live")).toBe("polite");
+    expect(card.text()).toContain("正在准备第 2 步 · 读取目标版本");
+    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
+      "已等待 0 秒",
+    );
+    const stages = wrapper.findAll("[data-testid='wizard-progress-stage']");
+    expect(stages).toHaveLength(2);
+    expect(stages[0]!.text()).toContain("读取目标版本");
+    expect(stages[0]!.text()).toContain("进行中");
+    expect(stages[0]!.text()).toContain("SKILL.md / AGENT.md");
+    expect(stages[1]!.text()).toContain("关联 Session");
+    expect(stages[1]!.text()).toContain("等待");
+    expect(stages[1]!.text()).toContain("2026-10-01 ~ 2026-10-31");
+    const next = wrapper.get("[data-testid='wizard-next']");
+    expect(next.attributes("disabled")).toBeDefined();
+    expect(next.text()).toContain("正在读取目标版本");
+    expect(next.find(".wz-spinner").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='wizard-cancel-wait']").exists()).toBe(
+      true,
+    );
+    const form = wrapper.get("[data-testid='wizard-form']");
+    expect(form.attributes("inert")).toBeDefined();
+    expect(form.classes()).toContain("locked");
+    expect(
+      (wrapper.get("[data-testid='wizard-version']").element as HTMLInputElement)
+        .value,
+    ).toBe("v2.0.0");
+
+    release();
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").text(),
+    ).toContain("研究 session");
+    expect(
+      wrapper.get("[data-testid='wizard-form']").attributes("inert"),
+    ).toBeUndefined();
+    expect(
+      wrapper.find("[data-testid='wizard-step2-next']").exists(),
+    ).toBe(true);
+  });
+
+  it("shows the timeout card and retries into step 2", async () => {
+    let attempts = 0;
+    let releaseRetry!: () => void;
+    useHandlers({
+      sessions: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return HttpResponse.json(contentTimeoutError, { status: 422 });
+        }
+        return new Promise<Response>((resolve) => {
+          releaseRetry = () => resolve(HttpResponse.json(sessionPreview));
+        });
+      },
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const card = wrapper.get("[data-testid='wizard-progress-failed']");
+    expect(card.attributes("role")).toBe("alert");
+    expect(card.text()).toContain("读取目标版本超时");
+    expect(card.text()).toContain("读取目标文件超时");
+    expect(card.text()).toContain("不是 Session 数据为空");
+    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toContain(
+      "已等待",
+    );
+    expect(
+      wrapper.get("[data-testid='wizard-version']").classes(),
+    ).toContain("input-error");
+    expect(wrapper.find("[data-testid='wizard-content-retry']").exists()).toBe(
+      true,
+    );
+    expect(wrapper.find("[data-testid='wizard-content-back']").exists()).toBe(
+      true,
+    );
+    expect(
+      wrapper.get("[data-testid='wizard-form']").attributes("inert"),
+    ).toBeUndefined();
+
+    await wrapper.get("[data-testid='wizard-content-retry']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='wizard-progress-failed']").exists(),
+    ).toBe(false);
+    expect(wrapper.get("[data-testid='wizard-progress']").text()).toContain(
+      "正在准备第 2 步 · 读取目标版本",
+    );
+    expect(wrapper.find("[data-testid='wizard-cancel-wait']").exists()).toBe(
+      true,
+    );
+
+    releaseRetry();
+    await flushPromises();
+
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").text(),
+    ).toContain("研究 session");
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+  });
+
+  it("keeps the timeout card on the step-1 target stage when a later preview times out", async () => {
+    useHandlers({
+      potential: () => HttpResponse.json(contentTimeoutError, { status: 422 }),
+    });
+    const { wrapper } = await mountWizard();
+    await reachStep2(wrapper);
+    await wrapper.get("[data-testid='wizard-step2-next']").trigger("click");
+    await flushPromises();
+
+    const card = wrapper.get("[data-testid='wizard-progress-failed']");
+    expect(card.text()).toContain("读取目标版本超时");
+    expect(card.text()).not.toContain("筛选潜在 bad case超时");
+    expect(wrapper.findAll("[data-testid='wizard-progress-stage']")).toHaveLength(
+      2,
+    );
+    expect(wrapper.find("[data-testid='wizard-session-table']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='wizard-next']").exists()).toBe(true);
+  });
+
+  it("dismisses the timeout card with 返回修改条件 and keeps the form values", async () => {
+    useHandlers({
+      sessions: () => HttpResponse.json(contentTimeoutError, { status: 422 }),
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='wizard-progress-failed']").exists(),
+    ).toBe(true);
+    await wrapper.get("[data-testid='wizard-content-back']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='wizard-progress-failed']").exists(),
+    ).toBe(false);
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+    expect(
+      wrapper.get("[data-testid='wizard-form']").attributes("inert"),
+    ).toBeUndefined();
+    expect(
+      (wrapper.get("[data-testid='wizard-version']").element as HTMLInputElement)
+        .value,
+    ).toBe("v2.0.0");
+    expect(
+      (wrapper.get("[data-testid='wizard-from']").element as HTMLInputElement)
+        .value,
+    ).toBe("2026-10-01");
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeUndefined();
+  });
+
+  it("cancels a pending preview without advancing on the late response", async () => {
+    let release!: () => void;
+    useHandlers({
+      sessions: () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(HttpResponse.json(sessionPreview));
+        }),
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(true);
+    await wrapper.get("[data-testid='wizard-cancel-wait']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+    expect(
+      wrapper.get("[data-testid='wizard-form']").attributes("inert"),
+    ).toBeUndefined();
+    const next = wrapper.get("[data-testid='wizard-next']");
+    expect(next.attributes("disabled")).toBeUndefined();
+    expect(next.text()).toContain("下一步：关联 Session");
+
+    release();
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-session-table']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='wizard-step2-next']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='wizard-next']").exists()).toBe(true);
+    expect(
+      (wrapper.get("[data-testid='wizard-version']").element as HTMLInputElement)
+        .value,
+    ).toBe("v2.0.0");
+  });
+
+  it("shows the stage-aware progress card while the potential preview is pending", async () => {
+    let release!: () => void;
+    useHandlers();
+    server.use(
+      http.post(
+        `${apiBase}/preview/potential`,
+        () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(HttpResponse.json(potentialPreview));
+          }),
+      ),
+    );
+    const { wrapper } = await mountWizard();
+    await reachStep2(wrapper);
+    await wrapper.get("[data-testid='wizard-step2-next']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='wizard-progress']").text()).toContain(
+      "正在准备第 3 步 · 筛选潜在 bad case",
+    );
+    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
+      "已等待 0 秒",
+    );
+    expect(
+      wrapper.findAll("[data-testid='wizard-progress-stage']"),
+    ).toHaveLength(1);
+    expect(
+      wrapper.get("[data-testid='wizard-step2-next']").text(),
+    ).toContain("正在筛选潜在 bad case");
+    expect(wrapper.find("[data-testid='wizard-back']").exists()).toBe(false);
+
+    release();
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='wizard-potential-table']").exists(),
+    ).toBe(true);
   });
 
   it("closes from the dialog, the close button, and Escape", async () => {

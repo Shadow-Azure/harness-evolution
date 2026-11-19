@@ -19,7 +19,8 @@ Clicking “Next: associate Sessions” on step 1 of “Launch self-evolution”
   - While waiting, “Cancel wait” returns to the same step and keeps the entered conditions; the production request may continue and its result is discarded.
 - The timeout state reuses the same card: it says the server did not finish reading the target file within 20 seconds, that this is not an empty Session result, and offers “Retry resolution” and “Back to edit conditions”. The version field also turns red, matching the field-level feedback of production `TARGET_CONTENT_UNRESOLVED`.
 - Accessibility: the waiting card uses `role=status` with `aria-live=polite`; the timeout card uses `role=alert`; the disabled primary button still carries the current stage label.
-- The prototype pins the waiting and timeout states with `wzsim=loading` and `wzsim=timeout` query parameters so the same scenario can be captured; a normal click advances to the next step after four seconds. Production `LaunchWizard.vue` is out of scope and still only disables the button.
+- The prototype pins the waiting and timeout states with `wzsim=loading` and `wzsim=timeout` query parameters so the same scenario can be captured; a normal click advances to the next step after four seconds.
+- Production `LaunchWizard.vue` implements the same interaction: a `previewBusy` state with a one-second ticker and a request generation counter; step-forward previews show the progress card while the form is `inert`/locked; a `content_timeout`/`timeout` failure shows the failed card with retry/back; cancel advances the generation and discards late results without changing `http.ts` or adding AbortController. The server reports no substage progress, so step 1 keeps “read target version” current and “associate Sessions” waiting instead of faking completion.
 
 ## Alternatives considered
 
@@ -33,7 +34,9 @@ Clicking “Next: associate Sessions” on step 1 of “Launch self-evolution”
 ## Consequences
 
 - The prototype clearly shows where a slow preview spends its time, how long it has waited, and what to do after a failure; the user can cancel without losing the form.
-- Production implementation remains a follow-up slice; until then, production users keep seeing only a disabled button. This change does not alter the 20-second timeout, the `preview/*` contract, or remove any real network read.
-- The timeout copy names the first clone as a common cause, but the server may also time out because the repository is unreachable, a missing ref forces a refresh, or another content read fails. The production implementation should map stable `reason` values to copy instead of presenting the network cause as the only explanation.
+- Production is implemented and passed a real-browser smoke: waiting card, stage-aware button, locked form, cancel, 20-second timeout card, and retry/back all work. The wait remains cancellable and the form keeps its values. This change does not alter the 20-second timeout, the `preview/*` contract, or remove any real network read.
+- Because the server reports no substage progress, production step 1 keeps “associate Sessions” waiting for the whole request instead of advancing to it like the prototype demo; this is an intentional honest degradation, not a missing implementation.
+- Cancel only discards the frontend result; it does not abort the request that already left the browser. The request generation prevents a late response from advancing the step. In-step pagination and the step-4 cache refresh keep the previous disabled-state treatment without this card.
+- The timeout card covers `content_timeout`/`timeout` only; `ref_not_found`, `repo_unreachable`, and other content errors keep the inline field error so not every content failure is described as a timeout. The first clone is a common cause, not the only possible one.
 - The backend can still improve separately: read a single file directly, fetch only the target ref shallowly, warm the mirror in the background, or make the request asynchronous. These complement the frontend feedback rather than replace it.
-- The prototype's demo states are pinned by query parameters and are not evidence of real latency or a real timeout; real evidence remains the production screenshot and deploy logs.
+- The prototype's demo states are pinned by query parameters and are not evidence of real latency or a real timeout; production evidence comes from the real-browser smoke (waiting card, 20-second timeout, cancel, retry) and deploy logs.
