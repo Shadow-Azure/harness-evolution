@@ -161,6 +161,13 @@ export function targetServerError(errorValue: unknown): TargetServerError {
     if (errorValue.code === "TARGET_EXISTS") {
       return { summary: "同类型的对象名称已经配置" };
     }
+    if (errorValue.code === "TARGET_CONTENT_UNRESOLVED") {
+      return {
+        summary: "无法读取该基线下的目标文件内容",
+        suggestion:
+          "服务端未能按基线读取 SKILL.md / AGENT.md 并解析 body hash；请确认仓库地址、子目录与默认基线，或换一个可用版本后重试。",
+      };
+    }
     return { summary: formatApiError(errorValue, "保存配置失败").message };
   }
   return { summary: formatApiError(errorValue, "保存配置失败").message };

@@ -579,7 +579,7 @@ erDiagram
 | `target_config_id` | `VARCHAR(36)` | FK → `evolution_targets.id` |
 | `target_type` | `VARCHAR(16)` | `skill` / `agent` / `knowledge`（来自 run 创建时选择的目标，字段名沿用 V1；knowledge 目前仅 API 启动） |
 | `target_name` | `VARCHAR(128)` | 目标名（字段名沿用 V1，不再表示 probe 来源） |
-| `target_version` | `VARCHAR(64)` | 本次使用的 tag/版本；决定 checkout 的基线 |
+| `target_version` | `VARCHAR(96)` | 本次使用的 tag/版本；决定 checkout 的基线；96 容纳 skill/agent tag 与 knowledge 的 71 字符 digest revision |
 | `target_revision` | `VARCHAR(96)` | NULL | V2：解析后的文件匹配身份；skill/agent 为 tag 内容解析出的 `digest:<sha256(body)>`，knowledge 为文档归一化 body hash；历史 run 为空 |
 | `repo_url` | `VARCHAR(1024)` | 被进化对象（skill/agent）所在的远端仓库；创建 run 时从 target 配置快照，不是自进化服务代码仓 |
 | `sub_dir` | `VARCHAR(512)` NOT NULL | 对象目录相对仓库根（如 `skills/deep-research`）；从 target 配置快照，避免配置变更后历史 run 无法定位 |

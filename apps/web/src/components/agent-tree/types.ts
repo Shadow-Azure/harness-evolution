@@ -88,6 +88,8 @@ export interface BadCaseLayoutNodeData {
   title: string;
   width: number;
   degraded: boolean;
+  /** Optional anchor audit label, e.g. `后处理` for a post-process anchor. */
+  anchorLabel?: string | null;
   active?: boolean;
 }
 
@@ -149,10 +151,18 @@ export interface BadCaseAnchorDescriptor {
   badCaseId: string;
   hostAgentId: string;
   eventIndex: number;
-  kind: "self-skill" | "self-agent" | "discovery" | "fallback" | "hidden";
+  kind:
+    | "self-skill"
+    | "self-agent"
+    | "discovery"
+    | "post-process"
+    | "fallback"
+    | "hidden";
   side: "below" | "above" | "left" | "right";
   x: number;
   y: number;
+  /** Audit label shown on the card when the anchor has no event coordinate. */
+  anchorLabel?: string | null;
 }
 
 /** Complete deterministic output of the pure graph layout. */
@@ -236,6 +246,8 @@ export interface BadCaseMarker {
   x: number;
   row: number;
   selected: boolean;
+  /** Audit label such as `后处理` when the anchor has no event coordinate. */
+  anchorLabel: string | null;
   barId: string | null;
   inGap: boolean;
   gapNote: string | null;

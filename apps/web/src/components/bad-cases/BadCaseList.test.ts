@@ -393,6 +393,29 @@ describe("BadCaseList", () => {
     );
   });
 
+  it("shows the post-process anchor chip instead of the sentinel index", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-post-process",
+            title: "后处理问题",
+            anchor: {
+              agentId: "agent-1",
+              eventIndex: 2_147_483_647,
+              kind: "post_process",
+            },
+          }),
+        ],
+        compact: true,
+      },
+    });
+
+    expect(wrapper.get(".anchor-chip").text()).toBe("后处理");
+    expect(wrapper.text()).not.toContain("2147483647");
+  });
+
   it("links analyzed issue cards to their attribution report", async () => {
     const wrapper = mount(BadCaseList, {
       props: { wid: "ws-test", problems: fiveStates, compact: true },

@@ -64,6 +64,7 @@ const ingestCases = [
 let api;
 let web;
 let dataDir;
+let gitConfigPath;
 let baseUrl;
 let apiLogs = "";
 let webLogs = "";
@@ -374,6 +375,7 @@ async function ingestAll() {
 
 before(async () => {
   dataDir = await mkdtemp(path.join(tmpdir(), "harness-m11-05-e2e-"));
+  gitConfigPath = path.join(dataDir, "gitconfig");
   const env = {
     ...process.env,
     HE_ADMIN_PASSWORD: initialPassword,
@@ -384,6 +386,7 @@ before(async () => {
     HE_LOGIN_RATE_LIMIT: "100",
     HE_PHASE: "demo",
     PYTHONPATH: apiDir,
+    GIT_CONFIG_GLOBAL: gitConfigPath,
   };
   const seed = spawnSync(pnpm, ["fixtures:seed"], {
     cwd: root,
@@ -472,6 +475,44 @@ before(async () => {
   });
   credential = created.body.credential;
   assert.match(credential, /^whk_/);
+
+  // The target content resolver reads SKILL.md at the selected tag. Seed a real
+  // local mirror so the smoke test covers tag -> body hash instead of a fake
+  // unreachable repository.
+  const originDir = path.join(dataDir, "skill-origin.git");
+  const workDir = path.join(dataDir, "skill-work");
+  const git = (args, cwd) => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  };
+  git(["init", "--bare", "-b", "main", originDir], root);
+  git(["clone", originDir, workDir], root);
+  await mkdir(path.join(workDir, "skills/synthetic-review"), {
+    recursive: true,
+  });
+  await writeFile(
+    path.join(workDir, "skills/synthetic-review/SKILL.md"),
+    "# synthetic-review\n",
+  );
+  git(["add", "."], workDir);
+  git(
+    [
+      "-c",
+      "user.name=M11-05",
+      "-c",
+      "user.email=m11-05@example.invalid",
+      "commit",
+      "-m",
+      "seed synthetic-review",
+    ],
+    workDir,
+  );
+  git(["tag", "synthetic-1"], workDir);
+  git(["push", "origin", "main", "--tags"], workDir);
+  await writeFile(
+    gitConfigPath,
+    `[url "file://${originDir}"]\n\tinsteadOf = https://example.test/skills.git\n`,
+  );
 
   const target = await requireApi(
     `/api/workspaces/${workspaceId}/evolution/targets`,

@@ -51,7 +51,7 @@ strict = true
 files = ["app", "tests"]
 # Hyphenated test directories map every conftest to the same top-level module.
 # These files only declare pytest fixtures; keep the surrounding suite checked.
-exclude = '(^|/)tests/(m10-02-potential-matcher|m12-02-external-contract-live|m12-04-clustering-upgrade)/conftest\.py$'
+exclude = '(^|/)tests/(m10-02-potential-matcher|m12-02-external-contract-live|m12-04-clustering-upgrade|m13-01-body-hash-attribution)/conftest\.py$'
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"

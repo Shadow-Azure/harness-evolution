@@ -6,6 +6,13 @@ export type BadCaseStatePresentation = {
   tone: "neutral" | "green" | "purple" | "orange" | "red";
 };
 
+/** Visible audit chip for a non-event bad-case anchor. */
+export type BadCaseAnchorPresentation = {
+  label: string;
+  tone: "orange" | "neutral";
+  description: string;
+};
+
 /** One display-safe key/value pair from external problem metadata. */
 export type BadCaseFact = {
   key: string;
@@ -35,6 +42,36 @@ export function badCaseState(
   displayState: BadCase["analysis"]["displayState"],
 ): BadCaseStatePresentation {
   return STATE_PRESENTATION[displayState];
+}
+
+/**
+/**
+ * Describe an anchor that has no direct event coordinate.
+ *
+ * The API uses INT_MAX for a post-process anchor; the UI must never render that
+ * sentinel as an event number, so it gets an explicit audit label instead.
+ * @param anchor Backend-computed problem anchor.
+ * @returns Visible chip copy, or null when the anchor is an ordinary event.
+ */
+export function badCaseAnchorPresentation(
+  anchor: BadCase["anchor"],
+): BadCaseAnchorPresentation | null {
+  if (anchor.kind === "post_process") {
+    return {
+      label: "后处理",
+      tone: "orange",
+      description:
+        "上报对象没有可定位的触发事件，按 post-process 锚点参与归因。",
+    };
+  }
+  if (anchor.kind === "unknown") {
+    return {
+      label: "锚点未知",
+      tone: "neutral",
+      description: "上报 Agent 无法解析，锚点位置未知。",
+    };
+  }
+  return null;
 }
 
 /**

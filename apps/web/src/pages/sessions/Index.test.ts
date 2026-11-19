@@ -577,7 +577,7 @@ describe("session browser", () => {
         {
           ...demoCoreTree.badCases[0]!,
           badCaseId: "case-folded",
-          anchor: { agentId: "child-9", eventIndex: -1 },
+          anchor: { agentId: "child-9", eventIndex: -1, kind: "node" },
         },
       ],
     };
@@ -594,7 +594,7 @@ describe("session browser", () => {
           items: [
             badCaseFixture({
               badCaseId: "case-folded",
-              anchor: { agentId: "child-9", eventIndex: -1 },
+              anchor: { agentId: "child-9", eventIndex: -1, kind: "node" },
             }),
           ],
         }),

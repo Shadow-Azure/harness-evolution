@@ -197,6 +197,32 @@ describe("ProblemDescription", () => {
     expect(wrapper.find(".problem-number").exists()).toBe(false);
   });
 
+  it("shows a post-process anchor chip without the upstream event index", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-post-process",
+          title: "后处理上报的问题",
+          reason: "上报对象没有可定位的触发事件。",
+          anchor: {
+            agentId: "agent-1",
+            eventIndex: 2_147_483_647,
+            kind: "post_process",
+          },
+        }),
+        index: null,
+      },
+    });
+
+    const chip = wrapper.get("[data-testid='problem-anchor']");
+    expect(chip.text()).toBe("后处理");
+    expect(chip.classes()).toContain("orange");
+    expect(chip.attributes("title")).toContain("post-process");
+    expect(wrapper.text()).not.toContain("2147483647");
+    expect(wrapper.text()).toContain("后处理");
+  });
+
   it("renders the description as safe Markdown", () => {
     const wrapper = mount(ProblemDescription, {
       props: {

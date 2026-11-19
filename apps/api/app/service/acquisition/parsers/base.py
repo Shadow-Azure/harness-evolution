@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Mapping
@@ -88,6 +87,8 @@ class ParsedEvent:
     triggered_at: datetime | None = None
     document_id: str | None = None
     document_revision: str | None = None
+    file_read_hash: str | None = None
+    read_complete: bool | None = None
     source_path: str | None = None
     retrieval_kind: str | None = None
     retrieval_scope: str | None = None
@@ -151,6 +152,7 @@ class TraceEvidence:
     tool_use_id: str | None = None
     source_path: str | None = None
     content_hash: str | None = None
+    definition_hash: str | None = None
     name: str | None = None
     start_line: int | None = None
     end_line: int | None = None
@@ -470,12 +472,15 @@ class ParseContext:
         retrieval_kind: str,
         retrieval_scope: str,
         object_revision: str | None = None,
+        body_hash: str | None = None,
+        file_read_hash: str | None = None,
+        read_complete: bool | None = None,
     ) -> bool:
         """Append one document event using its call's trigger coordinates.
 
-        ``document_revision`` keeps the provider's raw revision while
-        ``object_revision`` follows the shared ``tag:``/``digest:``/``provider:``
-        /``unknown`` vocabulary; when omitted they are the same value.
+        ``document_revision``/``object_revision`` carry the normalized body hash
+        for complete file reads; ``file_read_hash`` keeps the raw content hash
+        only as diagnostic evidence. MCP documents keep the Provider revision.
         """
         position = self.tool_call_positions.get(tool_use_id) if tool_use_id is not None else None
         if position is None:
@@ -493,9 +498,12 @@ class ParseContext:
                 triggered_at=position.triggered_at,
                 document_id=document_id,
                 document_revision=document_revision,
+                file_read_hash=file_read_hash,
+                read_complete=read_complete,
                 source_path=source_path,
                 retrieval_kind=retrieval_kind,
                 retrieval_scope=retrieval_scope,
+                definition_hash=body_hash,
             ),
         )
         return True
@@ -655,34 +663,6 @@ def _physical_lines(content: str) -> tuple[str, ...]:
     return tuple(line[:-1] if line.endswith("\r") else line for line in lines)
 
 
-_COMMON_DEFINITION_SUFFIX = re.compile(
-    r"^\s*(?:#{1,6}\s*)?"
-    r"(?:subagent\s+permissions?|permission\s+notes?|agent\s+notes?|notes|token\s+budget)\b",
-    re.IGNORECASE,
-)
-
-
-def normalize_definition_body(text: str) -> str | None:
-    """Strip runtime-added common suffixes before hashing a definition body."""
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip("\n")
-    lines = normalized.split("\n")
-    cut = len(lines)
-    for index, line in enumerate(lines):
-        if _COMMON_DEFINITION_SUFFIX.match(line):
-            cut = index
-            break
-    body = "\n".join(lines[:cut]).rstrip()
-    return body or None
-
-
-def definition_hash(text: str) -> str | None:
-    """Hash a normalized definition body without retaining its source text."""
-    body = normalize_definition_body(text)
-    if body is None:
-        return None
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
 def _tag_revision(version: str | None) -> str | None:
     """Return an explicit tag revision, never inferred from a name."""
     if version is None:
@@ -690,12 +670,11 @@ def _tag_revision(version: str | None) -> str | None:
     return f"tag:{version}"
 
 
-def _skill_revision(source_path: str | None, body_hash: str | None) -> str | None:
-    """Bind a Skill body hash to its source path without retaining either body."""
+def _skill_revision(body_hash: str | None) -> str | None:
+    """Use the normalized Skill body hash as the only Skill file identity."""
     if body_hash is None:
         return None
-    seed = f"{source_path or ''}\0{body_hash}"
-    return "digest:" + hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    return f"digest:{body_hash}"
 
 
 def _agent_revision(ctx: ParseContext) -> str | None:
@@ -744,15 +723,15 @@ def _resolve_event_revisions(
             definitions.setdefault(item.tool_use_id, item)
     resolved: list[ParsedEvent] = []
     for event in events:
-        definition_hash = event.definition_hash
+        body_hash = event.definition_hash
         revision = event.object_revision
         if event.kind == "skill" and event.tool_use_id is not None:
             definition = definitions.get(event.tool_use_id)
             if definition is not None:
-                if definition_hash is None:
-                    definition_hash = definition.content_hash
+                if body_hash is None:
+                    body_hash = definition.content_hash
                 if revision is None:
-                    revision = _skill_revision(definition.source_path, definition.content_hash)
+                    revision = _skill_revision(definition.content_hash)
         if revision is None and event.kind == "skill" and event.name is not None:
             digest = ctx.skill_digests.get(event.name)
             if digest is not None:
@@ -762,7 +741,7 @@ def _resolve_event_revisions(
         resolved.append(
             replace(
                 event,
-                definition_hash=definition_hash,
+                definition_hash=body_hash,
                 object_revision=revision or "unknown",
             ),
         )

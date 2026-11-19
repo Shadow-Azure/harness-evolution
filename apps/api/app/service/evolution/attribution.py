@@ -27,8 +27,8 @@ from app.service.evolution.potential import (
     HitReason,
     OrderState,
     PotentialCase,
-    resolve_target_revision,
 )
+from app.service.evolution.target_content import resolve_legacy_target_version
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -396,7 +396,11 @@ class AttributionRunner:
         except Exception as exc:
             raise self._blocked(run.id, None, exc) from exc
 
-        object_version = resolve_target_revision(run.target_version)[1]
+        object_version = (
+            run.target_revision
+            if run.target_revision
+            else resolve_legacy_target_version(run.target_version).target_revision
+        )
         created = 0
         reused = 0
         non_target = 0

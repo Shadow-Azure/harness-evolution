@@ -358,7 +358,11 @@ describe("AgentTree", () => {
         {
           ...demoNestedTree.badCases[0]!,
           badCaseId: "case-folded-host",
-          anchor: { agentId: "agent-extra-1", eventIndex: -1 },
+          anchor: {
+            agentId: "agent-extra-1",
+            eventIndex: -1,
+            kind: "node" as const,
+          },
         },
       ],
     };

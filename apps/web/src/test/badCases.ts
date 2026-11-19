@@ -16,7 +16,7 @@ export function badCaseFixture(
     objectName: "deep-research",
     objectType: "skill",
     objectVersion: "1.0.0",
-    anchor: { agentId: "agent-a", eventIndex: 0 },
+    anchor: { agentId: "agent-a", eventIndex: 0, kind: "event" },
     badCaseAgent: { sessionId: "root-1", agentId: "agent-a" },
     title: "缺少来源标注",
     reason:
