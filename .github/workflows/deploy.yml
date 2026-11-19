@@ -2,6 +2,8 @@
 # 手动入口：Actions 页 workflow_dispatch，用于首跑与演练。
 # 前置：GitHub Secrets ALIYUN_HOST / ALIYUN_USER / ALIYUN_SSH_KEY；
 #       仓库（或环境）Variable ALIYUN_SSH_PORT（默认 22）；服务器已完成 bootstrap。
+#       可选 Claude Code：Secrets CLAUDE_CODE_MODEL / CLAUDE_CODE_API_KEY / CLAUDE_CODE_BASE_URL；
+#       未配置时跳过安装步骤，配置后发布前自动安装并写入服务器 ~/.claude。
 name: Deploy
 
 on:
@@ -33,6 +35,14 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: 缓存 Claude Code 安装包
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/claude-code
+          key: claude-code-${{ runner.os }}-${{ runner.arch }}-${{ vars.CLAUDE_CODE_VERSION || 'stable' }}
+          restore-keys: |
+            claude-code-${{ runner.os }}-${{ runner.arch }}-
+
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v6
         with:
@@ -62,6 +72,76 @@ jobs:
           rsync -az --delete --exclude .venv --exclude __pycache__ -e "$SSH_CMD" apps/api/ "$SSH_USER@$SSH_HOST:$RELEASE/api/"
           rsync -az -e "$SSH_CMD" deploy/ "$SSH_USER@$SSH_HOST:/opt/harness/shared/config/"
           $SSH_CMD "$SSH_USER@$SSH_HOST" "chmod +x /opt/harness/shared/config/release.sh"
+
+      - name: 准备 Claude Code 安装包（可选，Secret 未配置时跳过）
+        id: claude_code_prepare
+        env:
+          CLAUDE_CODE_MODEL: ${{ secrets.CLAUDE_CODE_MODEL }}
+          CLAUDE_CODE_API_KEY: ${{ secrets.CLAUDE_CODE_API_KEY }}
+          CLAUDE_CODE_BASE_URL: ${{ secrets.CLAUDE_CODE_BASE_URL }}
+          CLAUDE_CODE_VERSION: ${{ vars.CLAUDE_CODE_VERSION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLAUDE_CODE_MODEL:-}" ] && [ -z "${CLAUDE_CODE_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_BASE_URL:-}" ]; then
+            echo "::warning::未配置 CLAUDE_CODE_* secrets，跳过 Claude Code 安装与配置（保持服务器现状）"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "${CLAUDE_CODE_MODEL:-}" ] || [ -z "${CLAUDE_CODE_API_KEY:-}" ]; then
+            echo "::error::CLAUDE_CODE_MODEL 与 CLAUDE_CODE_API_KEY 必须同时配置"
+            exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          ARCH=$($SSH_CMD "$SSH_USER@$SSH_HOST" "dpkg --print-architecture")
+          echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+          TARGET=$(bash deploy/fetch-claude-code-deb.sh "$ARCH" "${CLAUDE_CODE_VERSION:-}" --resolve-only | sed -n 's/^version=//p')
+          if [ -z "$TARGET" ]; then
+            echo "::error::无法从官方 apt 索引解析 Claude Code 版本"
+            exit 1
+          fi
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          INSTALLED=$($SSH_CMD "$SSH_USER@$SSH_HOST" 'if [ -x "$HOME/.local/bin/claude" ]; then "$HOME/.local/bin/claude" --version 2>/dev/null | head -1; fi' || true)
+          CLI_TARGET=${TARGET%-*}
+          if [ -n "$INSTALLED" ] && printf '%s\n' "$INSTALLED" | grep -Fq "$CLI_TARGET "; then
+            echo "need_install=false" >> "$GITHUB_OUTPUT"
+            echo "Claude Code $CLI_TARGET 已安装，仅更新配置"
+            exit 0
+          fi
+          echo "need_install=true" >> "$GITHUB_OUTPUT"
+          DOWNLOAD=$(bash deploy/fetch-claude-code-deb.sh "$ARCH" "$TARGET")
+          DEB=$(printf '%s\n' "$DOWNLOAD" | sed -n 's/^deb=//p')
+          if [ -z "$DEB" ] || [ ! -f "$DEB" ]; then
+            echo "::error::Claude Code 安装包下载失败"
+            exit 1
+          fi
+          echo "deb=$DEB" >> "$GITHUB_OUTPUT"
+          $SSH_CMD "$SSH_USER@$SSH_HOST" "mkdir -p /opt/harness/shared/claude-code/incoming && rm -f /opt/harness/shared/claude-code/incoming/*.deb"
+          rsync -az -e "$SSH_CMD" "$DEB" "$SSH_USER@$SSH_HOST:/opt/harness/shared/claude-code/incoming/"
+          echo "remote_deb=/opt/harness/shared/claude-code/incoming/$(basename "$DEB")" >> "$GITHUB_OUTPUT"
+
+      - name: 安装并配置 Claude Code（可选，Secret 未配置时跳过）
+        if: steps.claude_code_prepare.outputs.enabled == 'true'
+        env:
+          CLAUDE_CODE_MODEL: ${{ secrets.CLAUDE_CODE_MODEL }}
+          CLAUDE_CODE_API_KEY: ${{ secrets.CLAUDE_CODE_API_KEY }}
+          CLAUDE_CODE_BASE_URL: ${{ secrets.CLAUDE_CODE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
+          ENTRIES=()
+          ENTRIES+=("CLAUDE_CODE_MODEL $(printf '%s' "$CLAUDE_CODE_MODEL" | base64 | tr -d '\n')")
+          ENTRIES+=("CLAUDE_CODE_API_KEY $(printf '%s' "$CLAUDE_CODE_API_KEY" | base64 | tr -d '\n')")
+          if [ -n "${CLAUDE_CODE_BASE_URL:-}" ]; then
+            ENTRIES+=("CLAUDE_CODE_BASE_URL $(printf '%s' "$CLAUDE_CODE_BASE_URL" | base64 | tr -d '\n')")
+          fi
+          DEB_ARG=""
+          if [ "${{ steps.claude_code_prepare.outputs.need_install }}" = "true" ]; then
+            DEB_ARG="--deb '${{ steps.claude_code_prepare.outputs.remote_deb }}'"
+          fi
+          # 值经 stdin 传输，不出现在 SSH 命令行；远程脚本写 0600 配置。
+          printf '%s\n' "${ENTRIES[@]}" | $SSH_CMD "$SSH_USER@$SSH_HOST" \
+            "python3 /opt/harness/shared/config/install-claude-code.py --version '${{ steps.claude_code_prepare.outputs.target }}' $DEB_ARG"
 
       - name: 注入评测配置（可选，secrets 未配置时跳过）
         env:

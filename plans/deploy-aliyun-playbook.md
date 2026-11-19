@@ -37,6 +37,8 @@
 2. Settings → Environments → 新建 `production`（可加 required reviewers）。
 3. （可选）接真实评测平台时（#244）：`gh secret set HE_EVAL_MODE`（填 `http`）、`gh secret set HE_EVAL_BASE_URL`、`gh secret set HE_EVAL_API_KEY`；`Deploy` 流水线会把它们注入 `/opt/harness/shared/.env`，未配置时跳过、不影响发布。注入细节：值 base64 传输，服务器侧 `deploy/inject-eval-config.py` 解码后整文件临时文件+替换原子重写（无半写入、重跑幂等），`&`/`$`/反引号/`|`/引号等特殊字符均安全；单键解码失败（含解码结果含换行）告警跳过、不阻塞发布，SSH 或写盘失败则中止发布，重跑部署幂等修复。`HE_EVAL_API_KEY` 走 `gh secret set HE_EVAL_API_KEY --body "<密钥>"` 直推，不在聊天或截图出现。
 
+4. （可选）Claude Code（#376）：`gh secret set CLAUDE_CODE_MODEL`（MiniMax 国内版填 `MiniMax-M3.1-Flash[1m]`）；`gh secret set CLAUDE_CODE_BASE_URL`（国内版 `https://api.minimax.cn/anthropic`）；`gh secret set CLAUDE_CODE_API_KEY`（先填占位，之后换真实 key）。版本可选用 `gh variable set CLAUDE_CODE_VERSION --body 2.1.311-1`。`Deploy` 会在发布前安装并写入服务器 `~/.claude`；三个 Secret 全未配置时该步骤跳过。
+
 ## 5. 首次发布与验收
 
 1. 本分支 PR 合并后（或在 Actions 页手动 `workflow_dispatch` 触发 Deploy）。
@@ -44,6 +46,7 @@
 3. 服务器探活：`ssh deploy@<IP> "curl -sf http://127.0.0.1:8787/api/health"`。
 4. 浏览器打开 `http://<公网IP>`，用 `HE_ADMIN_*` 账号登录，浏览 Session 列表与执行流图。
 5. 回滚演练：Actions 重跑上一 release 的 Deploy（或在服务器手工软链退回 + `sudo systemctl restart harness-api`）。
+6. Claude Code：`ssh deploy@<IP> '~/.local/bin/claude --version'`；`claude doctor` 应无 settings 错误；把占位 API key 换成 MiniMax 真实 key 后，`claude -p "只回复 OK"` 应返回结果。
 
 ## 6. 常见问题
 
@@ -51,6 +54,7 @@
 - **502 Bad Gateway**：harness-api 没起来，`journalctl -u harness-api -n 50`；多半是 `.env` 缺 `HE_JWT_SECRET` 或 `HE_DB_URL` 密码错。
 - **迁移失败**：确认 RDS/自建 MySQL 已启动、账号能连；`alembic.ini.release` 在 release 目录内可查注入结果。
 - **Actions SSH 卡住**：ECS 安全组 22 端口来源是否放行 GitHub Actions runner（runner IP 段动态，先放行 0.0.0.0/0 并禁密码登录）。
+- **Claude Code 未安装或 401**：看 Deploy 的“准备/安装并配置 Claude Code”步骤；`CLAUDE_CODE_MODEL` 与 `CLAUDE_CODE_API_KEY` 必须同时存在；服务器 `~/.claude/settings.json` 的 base URL 要与 key 的区域一致（国内版 `.cn`，国际版 `.io`）。
 - **换绑域名**：A 记录指向 IP → 备案完成 → 免费证书签发 → nginx 加 443 server 块 + `HE_WEB_BASE_URL`/`HE_CORS_ORIGINS` 改域名。
 
 ## 7. 状态记录
