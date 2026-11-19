@@ -1,6 +1,7 @@
 # Harness Evolution API — systemd 常驻单元
-# 安装（root）：cp deploy/harness-api.service /etc/systemd/system/
+# 安装（root）：install -m 0644 deploy/harness-api.service /etc/systemd/system/
 #              systemctl daemon-reload && systemctl enable --now harness-api
+# StateDirectory 由 systemd 在每次启动时创建/授权给 harness，HE_DATA_DIR 应指向其下绝对路径。
 [Unit]
 Description=Harness Evolution API (FastAPI/uvicorn)
 After=network-online.target mysql.service
@@ -12,6 +13,8 @@ User=harness
 Group=harness
 WorkingDirectory=/opt/harness/current/api
 EnvironmentFile=/opt/harness/shared/.env
+StateDirectory=harness-evolution
+StateDirectoryMode=0750
 ExecStart=/opt/harness/shared/venv/bin/python -m app
 Restart=always
 RestartSec=3

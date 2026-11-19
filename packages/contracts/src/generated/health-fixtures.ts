@@ -6,6 +6,9 @@ import type { HealthResponse } from "../index.js";
 /** Canonical FastAPI health responses used to prove cross-stack payload compatibility. */
 export const healthFixtures = {
   "healthy": {
+    "data": {
+      "ok": true
+    },
     "db": {
       "dialect": "sqlite",
       "latencyMs": 0.1,
@@ -17,6 +20,9 @@ export const healthFixtures = {
     "version": "0.1.0"
   },
   "unavailable": {
+    "data": {
+      "ok": true
+    },
     "db": {
       "dialect": "sqlite",
       "error": "OperationalError: database is unavailable",

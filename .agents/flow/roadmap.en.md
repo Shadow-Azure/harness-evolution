@@ -20,6 +20,7 @@ milestones:
   - m13
   - m14
   - m15
+  - m16
 ```
 
 ## Vision
@@ -43,6 +44,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m13 Attribution identity and post-process anchors**: normalized body hash for skill/agent/knowledge file matching, tag/document-revision to body-hash resolution, and an explicit last trigger for post-processed cases with no resolvable object.
 - **m14 Problem-card display aligned with the prototype**: session cards lead with the description and carry type/object badges, the full case ID, and an association row.
 - **m15 Production Claude Code operations**: the deploy pipeline installs Claude Code and injects model configuration without root or Node.js on the server.
+- **m16 Production data directory and deploy writability**: systemd-owned directory, absolute `HE_DATA_DIR`, deploy and startup write checks.
 
 ## Delivery rules
 

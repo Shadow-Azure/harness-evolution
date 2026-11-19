@@ -104,6 +104,7 @@ async def test_health_returns_scaffold_contract(client: httpx.AsyncClient) -> No
             "ok": True,
             "latencyMs": 0.1,
         },
+        "data": {"ok": True},
     }
 
 
@@ -119,7 +120,14 @@ def test_health_openapi_allows_unavailable_state() -> None:
 
     assert ok_schema["type"] == "boolean"
     assert "const" not in ok_schema
-    assert set(health_schema["required"]) == {"ok", "service", "phase", "version", "db"}
+    assert set(health_schema["required"]) == {
+        "ok",
+        "service",
+        "phase",
+        "version",
+        "db",
+        "data",
+    }
 
 
 async def test_health_returns_503_when_database_is_unavailable() -> None:
@@ -147,7 +155,31 @@ async def test_health_returns_503_when_database_is_unavailable() -> None:
             "latencyMs": 0.2,
             "error": "OperationalError: database is unavailable",
         },
+        "data": {"ok": True},
     }
+
+
+async def test_health_returns_503_when_data_directory_is_unusable(
+    tmp_path: Path,
+) -> None:
+    """An unusable data directory fails health without exposing its path."""
+    unusable = tmp_path / "data-file"
+    unusable.write_text("not a directory", encoding="utf-8")
+    app = create_app(
+        Settings(db_dialect=DatabaseDialect.SQLITE, data_dir=unusable),
+        database=as_database(HealthyDatabase()),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as test_client:
+        response = await test_client.get("/api/health")
+
+    assert response.status_code == 503
+    assert response.json()["ok"] is False
+    assert response.json()["data"] == {"ok": False}
+    assert str(unusable) not in response.text
 
 
 async def test_lifespan_starts_database_and_runs_migrations(tmp_path: Path) -> None:

@@ -663,7 +663,7 @@ export interface paths {
         };
         /**
          * Health
-         * @description Report API reachability, delivery phase, and database health.
+         * @description Report API reachability, delivery phase, database and data-directory health.
          */
         get: operations["health_api_health_get"];
         put?: never;
@@ -2262,6 +2262,14 @@ export interface components {
             username: string;
         };
         /**
+         * DataHealthResponse
+         * @description Sanitized data-directory health included in the public health response.
+         */
+        DataHealthResponse: {
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * DatabaseDialect
          * @description Supported SQLAlchemy database dialects.
          * @enum {string}
@@ -2961,6 +2969,7 @@ export interface components {
          * @description Public health-check contract.
          */
         HealthResponse: {
+            data: components["schemas"]["DataHealthResponse"];
             db: components["schemas"]["DatabaseHealthResponse"];
             /** Ok */
             ok: boolean;

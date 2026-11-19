@@ -19,6 +19,10 @@ pnpm dev
 - Web：http://localhost:5173
 - API：http://127.0.0.1:8787/api/health
 
+## 生产部署前置
+
+生产环境先以 root 执行一次 [deploy/bootstrap-server.sh](deploy/bootstrap-server.sh)（安装带 `StateDirectory=` 的 unit 并准备 `/var/lib/harness-evolution`），已有环境重跑同一脚本即可更新 unit。然后在 GitHub Environment `production` 可选配置绝对路径 `vars.HE_DATA_DIR`（留空用默认值）；日常发布不再需要服务器操作。首次发布后运行 `curl -sf http://127.0.0.1:8787/api/health`，确认 `"data":{"ok":true}`。路径约束与数据迁移见 [部署文档](docs/deployment.md)。
+
 ## 文档与门禁
 
 - 文档地图：[docs/README.md](docs/README.md)

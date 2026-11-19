@@ -20,6 +20,7 @@ milestones:
   - m13
   - m14
   - m15
+  - m16
 ```
 
 ## 愿景
@@ -43,6 +44,7 @@ Harness Evolution 用可回链的 Claude Code 轨迹、外部问题与归因数�
 - **m13 归因身份与后处理锚点**：skill/agent/知识库文件匹配统一改为归一化 body hash，tag/文档 revision 解析 body hash，后处理 case 用显式最后触发点。
 - **m14 问题卡展示与原型对齐**：问题卡以描述为主体，补类型/对象徽章与完整 ID、关联行。
 - **m15 生产环境 Claude Code 运维**：部署流水线自动安装 Claude Code 并注入模型配置，保持无 root/Node。
+- **m16 生产数据目录与部署可写性**：systemd 托管目录、绝对 `HE_DATA_DIR`、部署与启动写校验。
 
 ## 实施规则
 

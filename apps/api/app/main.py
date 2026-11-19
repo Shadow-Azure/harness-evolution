@@ -30,6 +30,7 @@ from app.api.sessions import workspace_router as workspace_sessions_router
 from app.api.users import router as users_router
 from app.api.workspaces import router as workspaces_router
 from app.config import Settings
+from app.data_dir import probe_data_directory
 from app.db.base import Database
 from app.db.crud.attributions import AttributionRepository, EvolutionRunCandidateRepository
 from app.db.crud.bad_case_catalog_sync import BadCaseCatalogSyncRepository
@@ -149,6 +150,10 @@ def create_app(
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
+    # Resolve and probe the data directory before any component captures the path.
+    # A failure stays visible in /api/health instead of crashing the whole process.
+    data_directory = probe_data_directory(resolved_settings.data_dir)
+    resolved_settings = resolved_settings.model_copy(update={"data_dir": data_directory.path})
     resolve_attribution_engine(resolved_settings.attribution_engine)
     resolved_database = database or create_database(resolved_settings)
     external_contract = ExternalContractMonitor(
@@ -539,6 +544,7 @@ def create_app(
     )
     app.state.settings = resolved_settings
     app.state.database = resolved_database
+    app.state.data_directory = data_directory
     app.state.identity = identity
     app.state.event_bus = event_bus
     app.state.jobs = jobs

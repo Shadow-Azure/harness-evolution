@@ -176,6 +176,15 @@ class Settings(BaseSettings):
             raise ValueError("HE_JWT_SECRET must not be empty")
         return self
 
+    @model_validator(mode="after")
+    def require_production_data_dir(self) -> "Settings":
+        """Refuse a relative data directory where the process cwd is a release."""
+        if self.production and not self.data_dir.expanduser().is_absolute():
+            raise ValueError(
+                f"HE_DATA_DIR must be an absolute path in production (got {self.data_dir})",
+            )
+        return self
+
     @field_validator("upstream_base_url")
     @classmethod
     def validate_upstream_url(cls, value: str | None) -> str | None:
