@@ -2114,7 +2114,7 @@ const reasonEntries = computed(() => {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-card);
-  box-shadow: 0 10px 28px rgb(20 30 50 / 14%);
+  box-shadow: var(--shadow-popover);
 }
 
 .wz-version-option {
