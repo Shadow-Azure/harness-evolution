@@ -11,6 +11,7 @@ again. The proxy URL is a credential-free local address (for example
 from __future__ import annotations
 
 import asyncio
+import http.client
 import logging
 import os
 import signal
@@ -81,6 +82,12 @@ def _split_proxy_url(proxy_url: str) -> SplitResult | None:
         return None
     if parsed.path not in {"", "/"}:
         return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if port is None or not 1 <= port <= 65_535:
+        return None
     return parsed
 
 
@@ -98,21 +105,70 @@ def strip_proxy_environment(environment: dict[str, str]) -> None:
         environment.pop(key, None)
 
 
-def apply_proxy_environment(environment: dict[str, str], proxy_url: str) -> None:
-    """Point git at the local proxy and rewrite GitHub SSH remotes to HTTPS.
+def _merge_no_proxy(environment: dict[str, str]) -> str:
+    """Keep operator exclusions and always bypass the local proxy for loopback."""
+    ambient = environment.get("NO_PROXY") or environment.get("no_proxy") or ""
+    parts = [part.strip() for part in ambient.split(",") if part.strip()]
+    for loopback in ("127.0.0.1", "localhost", "::1"):
+        if loopback not in parts:
+            parts.append(loopback)
+    return ",".join(parts)
+
+
+def apply_proxy_environment(
+    environment: dict[str, str],
+    proxy_url: str,
+    *,
+    rewrite_ssh: bool = True,
+) -> None:
+    """Point git at the local proxy and optionally rewrite GitHub SSH remotes.
 
     ``GIT_CONFIG_*`` is used instead of touching argv so command construction
     and its assertions stay unchanged. SSH remotes outside GitHub are not
-    rewritten and therefore cannot use an HTTP proxy.
+    rewritten and therefore cannot use an HTTP proxy. Callers skip the rewrite
+    for ``git remote get-url`` (which would resolve ``insteadOf`` and break the
+    stored-URL comparisons) and for ``git push`` (SSH auth must stay intact).
     """
+    strip_proxy_environment(environment)
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
         environment[key] = proxy_url
-    environment["NO_PROXY"] = "127.0.0.1,localhost,::1"
-    environment["no_proxy"] = "127.0.0.1,localhost,::1"
+    no_proxy = _merge_no_proxy(environment)
+    environment["NO_PROXY"] = no_proxy
+    environment["no_proxy"] = no_proxy
+    if not rewrite_ssh:
+        return
     environment["GIT_CONFIG_COUNT"] = str(len(_SSH_REWRITES))
     for index, (instead_of, replacement) in enumerate(_SSH_REWRITES):
         environment[f"GIT_CONFIG_KEY_{index}"] = f"url.{replacement}.insteadOf"
         environment[f"GIT_CONFIG_VALUE_{index}"] = instead_of
+
+
+def allows_ssh_rewrite(argv: tuple[str, ...]) -> bool:
+    """Return whether this git command may safely rewrite SSH remotes to HTTPS.
+
+    ``git remote get-url`` must keep the raw stored URL, and ``git push`` must
+    keep SSH authentication; both skip the rewrite.
+    """
+    if len(argv) < 2:
+        return True
+    if argv[1] == "push":
+        return False
+    return not (len(argv) >= 3 and argv[1] == "remote" and argv[2] == "get-url")
+
+
+def is_network_command(argv: tuple[str, ...]) -> bool:
+    """Return whether a successful command proves the proxy link works.
+
+    Local commands (``rev-parse``, ``cat-file``, ``commit``) succeed even when
+    the proxy is dead, so they must not reset the breaker or close half-open.
+    """
+    if len(argv) < 2:
+        return False
+    if argv[1] in {"clone", "fetch", "pull", "push", "ls-remote"}:
+        return True
+    return bool(
+        argv[1] == "remote" and len(argv) >= 3 and argv[2] in {"update", "prune"},
+    )
 
 
 def is_proxy_failure(stderr: str, proxy_url: str) -> bool:
@@ -134,7 +190,7 @@ def is_proxy_failure(stderr: str, proxy_url: str) -> bool:
         return True
     if "connect tunnel failed" in lowered:
         return True
-    if "407" in lowered:
+    if "error: 407" in lowered or ("407" in lowered and "proxy" in lowered):
         return True
     return bool(
         "failed to connect" in lowered and host and host in lowered and port in lowered,
@@ -182,6 +238,66 @@ async def probe_http_connect(
             writer.close()
             await writer.wait_closed()
     return status.startswith(b"HTTP/") and b" 200 " in status
+
+
+def _probe_https_blocking(
+    proxy_url: str,
+    target_host: str,
+    target_port: int,
+    timeout_seconds: float,
+) -> bool:
+    """Fetch one HTTPS HEAD through the proxy (blocking; run in a thread)."""
+    parsed = _split_proxy_url(proxy_url)
+    if parsed is None or parsed.hostname is None:
+        return False
+    connection = http.client.HTTPSConnection(
+        parsed.hostname,
+        parsed.port or 80,
+        timeout=timeout_seconds,
+    )
+    try:
+        connection.set_tunnel(target_host, target_port)
+        connection.request(
+            "HEAD",
+            "/",
+            headers={"User-Agent": "harness-evolution-probe"},
+        )
+        response = connection.getresponse()
+        response.read(1)
+        return response.status < 500 and response.status != 407
+    except (OSError, http.client.HTTPException, ValueError):
+        return False
+    finally:
+        with suppress(OSError):
+            connection.close()
+
+
+async def probe_https_through_proxy(
+    proxy_url: str,
+    *,
+    target_host: str = _DEFAULT_PROBE_HOST,
+    target_port: int = _DEFAULT_PROBE_PORT,
+    timeout_seconds: float = 5.0,
+) -> bool:
+    """Probe a real HTTPS HEAD through the proxy, not just the CONNECT line.
+
+    This catches a local client that accepts CONNECT but blackholes the VLESS
+    path; a bare CONNECT check would keep the circuit closed while every git
+    operation times out.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _probe_https_blocking,
+                proxy_url,
+                target_host,
+                target_port,
+                max(0.5, timeout_seconds - 0.5),
+            ),
+            timeout=timeout_seconds,
+        )
+    except (TimeoutError, OSError):
+        return False
 
 
 async def _sleep_briefly(seconds: float) -> None:
@@ -386,10 +502,10 @@ class GitProxyController:
         )
 
     async def _default_probe(self) -> bool:
-        """Probe the configured local proxy."""
+        """Probe the configured local proxy with a real HTTPS HEAD."""
         if self._proxy_url is None:
             return False
-        return await probe_http_connect(
+        return await probe_https_through_proxy(
             self._proxy_url,
             timeout_seconds=self._probe_timeout_seconds,
         )
@@ -420,10 +536,15 @@ class ProxyAwareGitRunner:
             if self._controller.enabled:
                 strip_proxy_environment(environment)
             return await self._spawn(argv, cwd, environment)
-        apply_proxy_environment(environment, endpoint)
+        apply_proxy_environment(
+            environment,
+            endpoint,
+            rewrite_ssh=allows_ssh_rewrite(argv),
+        )
         result = await self._spawn(argv, cwd, environment)
         if result.returncode == 0:
-            await self._controller.report_success()
+            if is_network_command(argv):
+                await self._controller.report_success()
             return result
         if not is_proxy_failure(result.stderr, endpoint):
             return result

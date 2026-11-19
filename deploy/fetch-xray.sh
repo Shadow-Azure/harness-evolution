@@ -76,11 +76,9 @@ for file in geoip.dat geosite.dat; do
   fi
 done
 
-if ! "$OUT/xray" version 2>/dev/null | head -1 | grep -Fq "${VERSION#v}"; then
-  echo "downloaded xray does not report $VERSION" >&2
-  exit 1
-fi
-
+# Do not execute the binary here: the asset targets the server architecture and
+# the runner may differ (an arm64 server asset cannot run on an amd64 runner).
+# The pinned SHA256 above is the trust anchor; the server verifies the unit.
 printf 'version=%s\n' "$VERSION"
 printf 'dir=%s\n' "$OUT"
 printf 'sha256=%s\n' "$SHA256"

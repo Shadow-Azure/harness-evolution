@@ -20,7 +20,7 @@ VLESS 是 Xray 的出站协议，不是 HTTP 代理，不能直接写进 `HTTPS_
 |---|---|---|
 | `XRAY_CONFIG` | Environment `production` 的 Secret | 完整 Xray JSON 配置 |
 
-`XRAY_CONFIG` 是唯一新增的 Secret。流水线把它经 base64 + stdin 送到服务器，写成 `/opt/harness/shared/proxy/config.json`（`0600`，归 `deploy`），不进入仓库、API `.env`、日志、issue 或 PR 描述。
+`XRAY_CONFIG` 是唯一新增的 Secret。runner 侧直接校验原始 JSON；写入服务器时再转成 base64 经 stdin 传输，写成 `/opt/harness/shared/proxy/config.json`（`0600`，归 `deploy`），不进入仓库、API `.env`、日志、issue 或 PR 描述。
 
 配置至少满足：
 
@@ -78,18 +78,18 @@ VLESS 是 Xray 的出站协议，不是 HTTP 代理，不能直接写进 `HTTPS_
 1. 用 `deploy/xray-config.py --extract` 在 runner 侧校验 JSON、回环入站和 VLESS 出站，并解析出本地代理地址。
 2. 按服务器架构用 `deploy/fetch-xray.sh` 下载固定版本 Xray（`v26.11.9`，amd64/arm64 各有固定 SHA256），解包 `xray`、`geoip.dat`、`geosite.dat`。
 3. 上传到 `/opt/harness/shared/proxy/bin/`，原子写配置，`sudo systemctl restart harness-proxy`。
-4. 等待单元 active，并用 `curl -x <本地代理> https://api.github.com/zen` 做一次隧道探测。
-5. 探测通过才把 `HE_GIT_PROXY` 写入 `.env`；否则 `inject-config.py --unset HE_GIT_PROXY` 移除旧值，API 直连。
+4. 等待单元 active，并用 `curl -x <本地代理> https://api.github.com/zen` 做一次完整 HTTPS 探测。
+5. 探测通过才把 `HE_GIT_PROXY` 写入 `.env`；否则移除旧值、停止代理、删除服务器配置，API 直连。
 
-Secret 未配置、配置非法、下载/校验失败、单元未安装、代理未启动或探测失败，都会走同一条直连回退路径。服务器未安装单元时，流水线会提示以 root 重跑 `deploy/bootstrap-server.sh`。
+Secret 未配置、配置非法、下载/校验失败、单元未安装、代理未启动或探测失败，都会走同一条直连回退路径，并停止可能残留的旧代理。服务器未安装单元时，流水线会提示以 root 重跑 `deploy/bootstrap-server.sh`。
 
 ## 运行时健康与回退
 
 API 进程内维护一个状态机，只决定 git 子进程是否使用代理：
 
-- `closed`：代理可用，git 子进程设置 `HTTPS_PROXY`/`HTTP_PROXY`；GitHub 的 `git@github.com:` 与 `ssh://git@github.com/` 远端在子进程内重写为 HTTPS，非 GitHub SSH 远端不受影响。
+- `closed`：代理可用，git 子进程设置 `HTTPS_PROXY`/`HTTP_PROXY`；GitHub 的 `git@github.com:` 与 `ssh://git@github.com/` 在 clone/fetch/ls-remote 中重写为 HTTPS，`git push` 保持原 remote 以保留 SSH 认证，非 GitHub SSH 远端不受影响。
 - 代理层失败（连接拒绝、代理握手失败、407、CONNECT 502）：累计三次后进入 `open`，后续请求直连；单次请求遇到代理层失败会立即直连重试一次。
-- `open`：后台探测按冷却时间重试；成功一次进入 `half_open`，连续成功两次回到 `closed`。
+- `open`：后台探测按冷却时间重试；探测是经代理的 HTTPS HEAD，不只看 CONNECT 是否被接受；成功一次进入 `half_open`，连续成功两次回到 `closed`。
 - 代理正常但 GitHub 慢：不切直连，仍按原有内容读取超时处理，避免把链路慢误判成代理故障。
 - 状态只在进程内，部署或重启后从 `closed` 开始；不重启 API、不改 `.env` 完成回退。日志只记录状态、失败次数和失败分类，不记录 UUID 或配置内容。
 
@@ -101,14 +101,15 @@ API 进程内维护一个状态机，只决定 git 子进程是否使用代理�
 2. 首次启用需服务器以 root 重跑 `deploy/bootstrap-server.sh`，安装 `harness-proxy.service` 和对应的 sudo 收敛；这是一次性环境初始化。
 3. 触发 `Deploy`；在日志中确认代理就绪或看到回退告警。
 4. 轮换凭据：更新 `XRAY_CONFIG` Secret 后重新发布；流水线会原子替换配置并重启代理，API 无需改配置。
-5. 回退：删除 Secret 或填入非法配置后重新发布，流水线会移除 `HE_GIT_PROXY` 并停止代理；也可在服务器上 `sudo systemctl stop harness-proxy`，API 的熔断会把 git 切到直连。
+5. 回退：删除 Secret 或填入非法配置后重新发布，流水线会移除 `HE_GIT_PROXY`、停止代理并删除服务器配置；也可在服务器上 `sudo systemctl stop harness-proxy`，API 的熔断会把 git 切到直连。
 
 ## 限制与边界
 
 - 代理是单点：节点失效、限速或 TLS 指纹变化都会失败；健康探测能回退直连，但不会自动换节点。
 - 只覆盖 git 子进程。API 的普通 HTTP 调用、评测平台请求和上游同步不走这个代理。
 - 非 GitHub 的 SSH 远端不会重写，也不会走 HTTP 代理；需要时改用 HTTPS 或单独配置 `ProxyCommand`。
-- GitHub 的 SSH 远端在代理模式下重写为 HTTPS；依赖 SSH 私钥认证的私有仓库需改用 HTTPS 凭据，或关闭代理。
+- GitHub SSH 的 clone/fetch/ls-remote 在代理模式下重写为 HTTPS；push 不重写，保持 SSH 直连。依赖 SSH 私钥认证的 clone 需改用 HTTPS 凭据，或关闭代理。
+- 开启代理后所有 HTTPS git 远端默认走代理；内部 HTTPS 远端请通过 API 的 `NO_PROXY` 排除（流水线保留其值并追加回环）。
 - 代理不改变 `preview/*` 的同步契约与 20 秒内容读取预算；冷克隆仍可能超时。
 - 跨境链路与自建代理的使用需先过组织合规与安全评审；本页只描述运维接线。
 

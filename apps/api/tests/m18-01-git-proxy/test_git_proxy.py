@@ -18,6 +18,7 @@ from app.third_party_api.git.proxy import (
     build_git_environment,
     is_proxy_failure,
     probe_http_connect,
+    probe_https_through_proxy,
     strip_proxy_environment,
 )
 
@@ -324,11 +325,60 @@ def test_git_proxy_config_accepts_local_http(value: str | None, expected: str | 
 
 @pytest.mark.parametrize(
     "value",
-    ["https://127.0.0.1:10808", "http://user:pass@127.0.0.1:10808", "socks5://127.0.0.1:1080"],
+    [
+        "https://127.0.0.1:10808",
+        "http://user:pass@127.0.0.1:10808",
+        "socks5://127.0.0.1:1080",
+        "http://proxy.example:8080",
+        "http://127.0.0.1",
+        "http://127.0.0.1:99999",
+        "http://127.0.0.1:abc",
+        "http://127.0.0.1:10808/path",
+    ],
 )
 def test_git_proxy_config_rejects_unsupported_values(value: str) -> None:
     with pytest.raises(ValidationError):
         Settings(jwt_secret=SecretStr("test-secret"), git_proxy=value)
+
+
+@pytest.mark.asyncio
+async def test_runner_skips_ssh_rewrite_for_get_url_and_push() -> None:
+    captured: list[dict[str, str]] = []
+
+    async def spawn(
+        _argv: tuple[str, ...],
+        _cwd: Path | None,
+        environment: dict[str, str],
+    ) -> GitProcessResult:
+        captured.append(dict(environment))
+        return GitProcessResult(returncode=0, stdout="", stderr="")
+
+    runner = ProxyAwareGitRunner(make_controller(), spawn=spawn)
+    await runner.run(("git", "remote", "get-url", "origin"), None)
+    await runner.run(("git", "push", "origin", "HEAD"), None)
+
+    assert captured[0]["HTTPS_PROXY"] == PROXY
+    assert "GIT_CONFIG_COUNT" not in captured[0]
+    assert "GIT_CONFIG_COUNT" not in captured[1]
+
+
+@pytest.mark.asyncio
+async def test_runner_only_counts_network_success_for_breaker() -> None:
+    async def spawn(
+        _argv: tuple[str, ...],
+        _cwd: Path | None,
+        environment: dict[str, str],
+    ) -> GitProcessResult:
+        return GitProcessResult(returncode=0, stdout="", stderr="")
+
+    controller = make_controller()
+    await controller.report_failure()
+    await controller.report_failure()
+    runner = ProxyAwareGitRunner(controller, spawn=spawn)
+    await runner.run(("git", "rev-parse", "HEAD"), None)
+    assert controller.status.failures == 2
+    await runner.run(("git", "ls-remote", "https://github.com/o/r.git"), None)
+    assert controller.status.failures == 0
 
 
 @pytest.mark.asyncio
@@ -353,6 +403,8 @@ async def test_probe_accepts_connect_200() -> None:
 async def test_probe_rejects_malformed_proxy_without_connecting() -> None:
     assert await probe_http_connect("not-a-url", timeout_seconds=0.1) is False
     assert await probe_http_connect("http://127.0.0.1:1", timeout_seconds=0.1) is False
+    assert await probe_https_through_proxy("not-a-url", timeout_seconds=0.1) is False
+    assert await probe_https_through_proxy("http://127.0.0.1:1", timeout_seconds=0.1) is False
 
 
 async def _healthy_probe() -> bool:

@@ -223,8 +223,19 @@ class Settings(BaseSettings):
         normalized = _validate_http_url(value, "HE_GIT_PROXY")
         if normalized is None:
             return None
-        if urlsplit(normalized).scheme != "http":
+        parsed = urlsplit(normalized)
+        if parsed.scheme != "http":
             raise ValueError("HE_GIT_PROXY must use http")
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("HE_GIT_PROXY must point to loopback")
+        if parsed.path not in {"", "/"}:
+            raise ValueError("HE_GIT_PROXY must not include a path")
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ValueError("HE_GIT_PROXY must include a valid port") from None
+        if port is None:
+            raise ValueError("HE_GIT_PROXY must include a port")
         return normalized
 
     @field_validator("session_cookie_name")

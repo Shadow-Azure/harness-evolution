@@ -39,6 +39,12 @@ def valid_config() -> dict[str, object]:
     }
 
 
+def test_load_config_accepts_raw_json() -> None:
+    _, proxy_url = xray_config.load_config(json.dumps(valid_config()))
+
+    assert proxy_url == "http://127.0.0.1:10808"
+
+
 def test_load_config_extracts_loopback_proxy_url() -> None:
     config, proxy_url = xray_config.load_config(encode(json.dumps(valid_config())))
 

@@ -1,9 +1,10 @@
 """Validate and install the Xray config delivered by the deploy pipeline.
 
-The workflow reads the GitHub Environment Secret ``XRAY_CONFIG`` and pipes its
-base64 form to this script on stdin. ``--extract`` runs on the runner and only
-validates the structure, printing the local HTTP proxy URL used for the
-post-start probe. The default mode runs on the server and atomically writes
+The workflow reads the GitHub Environment Secret ``XRAY_CONFIG`` and pipes it
+to this script on stdin. Raw JSON (the runner's ``--extract`` path) and base64
+(the server write path, which keeps the body out of argv) are both accepted.
+``--extract`` only validates the structure and prints the local HTTP proxy URL
+used for the post-start probe. The default mode atomically writes
 ``/opt/harness/shared/proxy/config.json`` with mode 0600.
 
 Only a loopback mixed/http inbound is accepted: the local proxy must never be
@@ -32,9 +33,14 @@ class ConfigError(ValueError):
 
 
 def decode_stdin(text: str) -> str:
-    """Decode one base64 body from the workflow's stdin."""
+    """Accept raw JSON on the runner and base64 on the server write path."""
+    body = text.strip()
+    if not body:
+        raise ConfigError("config is empty")
+    if body.startswith("{"):
+        return body
     try:
-        return base64.b64decode(text.strip(), validate=True).decode("utf-8")
+        return base64.b64decode(body, validate=True).decode("utf-8")
     except (ValueError, UnicodeDecodeError) as exc:
         raise ConfigError("config is not valid base64/UTF-8") from exc
 
