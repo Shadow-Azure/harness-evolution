@@ -156,3 +156,15 @@ def test_clean_versions_keeps_newest_and_ignores_incoming(tmp_path: Path) -> Non
     assert (prefix / "2.1.2-1").exists()
     assert (prefix / "2.1.3-1").exists()
     assert (prefix / "incoming").exists()
+
+def test_clean_versions_keeps_protected_older_version(tmp_path: Path) -> None:
+    prefix = tmp_path / "claude-code"
+    prefix.mkdir()
+    for name in ("2.1.1-1", "2.1.2-1", "2.1.3-1"):
+        (prefix / name).mkdir()
+
+    install_claude_code.clean_versions(prefix, 2, protected=prefix / "2.1.1-1")
+
+    assert (prefix / "2.1.1-1").exists()
+    assert (prefix / "2.1.3-1").exists()
+    assert not (prefix / "2.1.2-1").exists()

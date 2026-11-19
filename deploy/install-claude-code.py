@@ -205,8 +205,8 @@ def version_sort_key(path: Path) -> tuple[int, ...]:
     return tuple(int(part) for part in re.split(r"[.\-]", path.name) if part.isdigit())
 
 
-def clean_versions(prefix: Path, keep: int) -> None:
-    """Remove old version directories, keeping the newest ``keep`` versions."""
+def clean_versions(prefix: Path, keep: int, protected: Path | None = None) -> None:
+    """Remove old version directories, keeping the newest ``keep`` and ``protected``."""
     if keep < 1 or not prefix.exists():
         return
     versions = [
@@ -215,8 +215,18 @@ def clean_versions(prefix: Path, keep: int) -> None:
         if entry.is_dir() and re.fullmatch(r"\d+\.\d+\.\d+-\d+", entry.name)
     ]
     versions.sort(key=version_sort_key, reverse=True)
-    for old in versions[keep:]:
-        shutil.rmtree(old, ignore_errors=True)
+    kept: list[Path] = []
+    if protected is not None and protected in versions:
+        kept.append(protected)
+    for version in versions:
+        if version in kept:
+            continue
+        if len(kept) >= keep:
+            break
+        kept.append(version)
+    for old in versions:
+        if old not in kept:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 def configure(entries: dict[str, str], home: Path) -> Path:
@@ -295,8 +305,9 @@ def main(argv: list[str] | None = None) -> int:
             if current != target:
                 raise RuntimeError(f"active version {current!r} does not match target {target!r}")
 
+        active_binary = binary if args.deb else (home / ".local" / "bin" / "claude").resolve()
         configure(entries, home)
-        launcher = switch_launcher(binary if args.deb else (home / ".local" / "bin" / "claude").resolve(), home)
+        launcher = switch_launcher(active_binary, home)
         check = subprocess.run(
             [str(launcher), "--version"],
             capture_output=True,
@@ -306,7 +317,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         if check.returncode != 0:
             raise RuntimeError(f"launcher verification failed: {check.stderr.strip()}")
-        clean_versions(Path(args.prefix), args.keep)
+        clean_versions(Path(args.prefix), args.keep, protected=active_binary.parent.parent)
         print(f"claude-code: {check.stdout.strip()}")
         print(f"settings: {home / '.claude' / 'settings.json'}")
         return 0
