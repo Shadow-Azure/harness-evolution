@@ -5559,11 +5559,11 @@ function evWzBusyCard(busy) {
   const hint = failed
     ? '排查：确认版本、仓库地址与子目录；也可以换一个版本。首次成功读取后服务端会缓存 mirror，重试通常更快。'
     : busy.frozen ? `原型演示：固定在等待第 ${evWzElapsedText(busy.elapsed)}，不会自动前进。` : '可以取消等待并修改条件；启动前不会写入归因。';
-  return `<div class="wz-progress${failed ? ' failed' : ''}" role="${failed ? 'alert' : 'status'}" aria-live="polite">
+  return `<div class="wz-progress${failed ? ' failed' : ''}" role="${failed ? 'alert' : 'status'}">
     <div class="wz-progress-head">
       ${failed ? '<span class="wz-error-mark">!</span>' : '<span class="wz-spinner"></span>'}
       <div><b>${heading}</b><span class="wz-progress-sub">${failed ? '本次预览未完成，表单内容已保留' : '只读预览，不会写入数据'}</span></div>
-      <span class="wz-progress-elapsed">已等待 ${evWzElapsedText(busy.elapsed)}</span>
+      <span class="wz-progress-elapsed" aria-hidden="true">已等待 ${evWzElapsedText(busy.elapsed)}</span>
     </div>
     <p class="wz-progress-lead">${lead}</p>
     <ol class="wz-progress-steps">${rows}</ol>

@@ -1144,6 +1144,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
   it("advances the elapsed timer and formats a minute-long wait", async () => {
     vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
     try {
       let release!: () => void;
       useHandlers({
@@ -1176,12 +1177,14 @@ describe("launch wizard", { timeout: 30000 }, () => {
       expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(
         false,
       );
+      expect(clearIntervalSpy).toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1_000);
       await flushPromises();
       expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(
         false,
       );
     } finally {
+      clearIntervalSpy.mockRestore();
       vi.useRealTimers();
     }
   });

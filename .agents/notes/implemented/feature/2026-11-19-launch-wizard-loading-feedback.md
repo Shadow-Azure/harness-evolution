@@ -17,7 +17,7 @@ Status: implemented
   - 显示已等待秒数，并写明「通常 2–5 秒；首次读取需要先克隆仓库，服务端单次读取上限约 20 秒，超时会给出重试」「缓存为空时会从远程仓库克隆」；不使用假进度条或倒计时，也不承诺超过上限的等待会成功。
   - 主按钮立即改成当前阶段文案（如「正在读取目标版本…」）并带 spinner；表单保留但整体置灰，避免等待中改动条件。
   - 等待中提供「取消等待」，回到原步骤并保留已填条件；生产请求可能继续，前端丢弃结果。
-- 超时状态复用同一张卡：说明服务端在 20 秒内没有读完目标文件、这不是 Session 数据为空，并提供「重试解析」与「返回修改条件」；版本字段同时标红，与生产 `TARGET_CONTENT_UNRESOLVED` 的字段级反馈一致。
+- 超时状态复用同一张卡：说明服务端读取达到上限、未能读完目标文件、这不是 Session 数据为空，并提供「重试解析」与「返回修改条件」；版本字段同时标红，与生产 `TARGET_CONTENT_UNRESOLVED` 的字段级反馈一致。`repo_unreachable`、`ref_not_found` 等其他 reason 仍保留字段级红字。
 - 可访问性：等待卡 `role=status`，超时卡 `role=alert`；每秒变化的 elapsed 加 `aria-hidden`，不放进 live region；主按钮 disabled 时仍显示阶段文案；生产在 `prefers-reduced-motion` 下停止 spinner 动画。
 - 原型用 `wzsim=loading` / `wzsim=timeout` 查询参数固定等待与超时状态，便于同一场景截图；正常点击会在 4 秒后自动进入下一步。
 - 生产 `LaunchWizard.vue` 已按同一交互落地：`previewBusy` 状态 + 每秒计时器 + 请求代际；步骤前进的预览显示进度卡，表单 `inert`/locked；超时（`content_timeout` / `timeout`）显示失败卡与重试/返回；取消递增代际并丢弃 late result，不修改 `http.ts`、不引入 AbortController。服务端未上报子阶段，因此第 1 步只把「读取目标版本」标为进行中、「关联 Session」保持等待，不伪造完成。
