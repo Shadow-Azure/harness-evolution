@@ -24,7 +24,7 @@ VLESS 是 Xray 的出站协议，不是 HTTP 代理，不能直接写进 `HTTPS_
 
 配置至少满足：
 
-- 一个 `protocol` 为 `mixed` 或 `http` 的入站，`listen` 必须是 `127.0.0.1`、`localhost` 或 `::1`，端口合法；流水线据此生成 `HE_GIT_PROXY=http://127.0.0.1:<port>`。
+- 一个 `protocol` 为 `mixed` 或 `http` 的入站，`listen` 必须是 `127.0.0.1`、`localhost` 或 `::1`，端口合法；流水线据此生成与入站地址一致的 `HE_GIT_PROXY`（推荐 `127.0.0.1`）。
 - 一个 `protocol` 为 `vless` 的出站，带 `settings.address`、`settings.port`、`settings.id`、`encryption: "none"`、`flow: "xtls-rprx-vision"`，以及 `streamSettings.security: "reality"` 与 `realitySettings` 的 `serverName`、`fingerprint`、`publicKey`、`shortId`。
 - 入站不得监听 `0.0.0.0` 或 `::`，否则配置校验失败并回退直连；本机代理不能成为公网开放代理。
 - `dns`、`routing` 可选；引用 `geosite:` / `geoip:` 时需保留发布包里的 `geosite.dat` / `geoip.dat`，流水线会一起上传。

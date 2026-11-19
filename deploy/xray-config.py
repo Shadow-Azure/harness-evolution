@@ -58,6 +58,14 @@ def parse_config(text: str) -> dict[str, Any]:
         for outbound in outbounds
     ):
         raise ConfigError("config.outbounds must include a vless outbound")
+    for inbound in inbounds:
+        if not isinstance(inbound, dict):
+            raise ConfigError("config.inbounds entries must be objects")
+        listen = str(inbound.get("listen") or "")
+        if listen not in LOOPBACK_LISTEN:
+            raise ConfigError(
+                f"every inbound must listen on loopback, got {listen or '<all interfaces>'}",
+            )
     return config
 
 
@@ -76,7 +84,8 @@ def extract_proxy_url(config: dict[str, Any]) -> str:
             )
         if not isinstance(port, int) or not 1 <= port <= 65_535:
             raise ConfigError("mixed/http inbound has an invalid port")
-        return f"http://127.0.0.1:{port}"
+        host = {"127.0.0.1": "127.0.0.1", "localhost": "localhost", "::1": "[::1]"}[listen]
+        return f"http://{host}:{port}"
     raise ConfigError("config needs a loopback mixed or http inbound")
 
 

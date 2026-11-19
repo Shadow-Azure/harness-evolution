@@ -54,6 +54,25 @@ def test_public_listen_is_rejected() -> None:
         xray_config.load_config(encode(json.dumps(config)))
 
 
+def test_any_public_inbound_is_rejected() -> None:
+    config = valid_config()
+    config["inbounds"].append(  # type: ignore[union-attr]
+        {"tag": "extra", "listen": "0.0.0.0", "port": 1081, "protocol": "socks"},
+    )
+
+    with pytest.raises(xray_config.ConfigError, match="every inbound"):
+        xray_config.load_config(encode(json.dumps(config)))
+
+
+def test_ipv6_loopback_inbound_keeps_its_host() -> None:
+    config = valid_config()
+    config["inbounds"][0]["listen"] = "::1"  # type: ignore[index]
+
+    _, proxy_url = xray_config.load_config(encode(json.dumps(config)))
+
+    assert proxy_url == "http://[::1]:10808"
+
+
 def test_socks_only_inbound_is_rejected() -> None:
     config = valid_config()
     config["inbounds"][0]["protocol"] = "socks"  # type: ignore[index]

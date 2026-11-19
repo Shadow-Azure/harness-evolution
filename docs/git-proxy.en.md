@@ -24,7 +24,7 @@ VLESS is an Xray outbound protocol, not an HTTP proxy, so it cannot go directly 
 
 The config must satisfy at least:
 
-- One inbound whose `protocol` is `mixed` or `http`; `listen` must be `127.0.0.1`, `localhost`, or `::1`, with a valid port. The pipeline derives `HE_GIT_PROXY=http://127.0.0.1:<port>` from it.
+- One inbound whose `protocol` is `mixed` or `http`; `listen` must be `127.0.0.1`, `localhost`, or `::1`, with a valid port. The pipeline derives `HE_GIT_PROXY` from the inbound address (prefer `127.0.0.1`).
 - One outbound whose `protocol` is `vless`, with `settings.address`, `settings.port`, `settings.id`, `encryption: "none"`, `flow: "xtls-rprx-vision"`, plus `streamSettings.security: "reality"` and `realitySettings` entries for `serverName`, `fingerprint`, `publicKey`, and `shortId`.
 - The inbound must not listen on `0.0.0.0` or `::`; otherwise config validation fails and falls back to direct access, because a local proxy must never become a public open proxy.
 - `dns` and `routing` are optional; when they reference `geosite:` / `geoip:`, keep `geosite.dat` / `geoip.dat` from the release bundle, which the pipeline uploads too.

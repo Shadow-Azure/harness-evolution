@@ -332,6 +332,24 @@ def test_git_proxy_config_rejects_unsupported_values(value: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_probe_accepts_connect_200() -> None:
+    async def handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    socket = server.sockets[0]
+    try:
+        port = socket.getsockname()[1]
+        assert await probe_http_connect(f"http://127.0.0.1:{port}", timeout_seconds=1) is True
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
 async def test_probe_rejects_malformed_proxy_without_connecting() -> None:
     assert await probe_http_connect("not-a-url", timeout_seconds=0.1) is False
     assert await probe_http_connect("http://127.0.0.1:1", timeout_seconds=0.1) is False
