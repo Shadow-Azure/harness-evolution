@@ -131,6 +131,9 @@ class Settings(BaseSettings):
         le=86_400,
     )
     git_push: bool = True
+    git_proxy: str | None = None
+    git_proxy_probe_interval_seconds: float = Field(default=60.0, ge=5, le=3_600)
+    git_proxy_probe_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
     attribution_engine: str = Field(default="rule-v1", min_length=1, max_length=64)
     eval_scan_seconds: float = Field(default=30.0, gt=0, le=300)
     eval_poll_seconds: int = Field(default=300, gt=0)
@@ -211,6 +214,28 @@ class Settings(BaseSettings):
             raise ValueError("HE_WEB_BASE_URL must not contain credentials")
         if parsed.query or parsed.fragment:
             raise ValueError("HE_WEB_BASE_URL must not contain query or fragment")
+        return normalized
+
+    @field_validator("git_proxy")
+    @classmethod
+    def validate_git_proxy(cls, value: str | None) -> str | None:
+        """Accept only a credential-free local HTTP proxy address."""
+        normalized = _validate_http_url(value, "HE_GIT_PROXY")
+        if normalized is None:
+            return None
+        parsed = urlsplit(normalized)
+        if parsed.scheme != "http":
+            raise ValueError("HE_GIT_PROXY must use http")
+        if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("HE_GIT_PROXY must point to loopback")
+        if parsed.path not in {"", "/"}:
+            raise ValueError("HE_GIT_PROXY must not include a path")
+        try:
+            port = parsed.port
+        except ValueError:
+            raise ValueError("HE_GIT_PROXY must include a valid port") from None
+        if port is None:
+            raise ValueError("HE_GIT_PROXY must include a port")
         return normalized
 
     @field_validator("session_cookie_name")

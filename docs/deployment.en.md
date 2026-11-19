@@ -37,9 +37,10 @@ Bootstrap is done by [deploy/bootstrap-server.sh](../deploy/bootstrap-server.sh)
 | `ALIYUN_SSH_KEY` | Secret | deploy user's ed25519 private key |
 | `ALIYUN_SSH_PORT` | Variable | SSH port (default 22) |
 | `HE_DATA_DIR` | Variable | Absolute data-directory path; empty uses `/var/lib/harness-evolution/data` |
+| `XRAY_CONFIG` | Environment Secret | Optional: complete Xray JSON (VLESS outbound plus loopback mixed inbound), see [Git egress proxy](git-proxy.en.md) |
 | `production` | Environment | Protective environment for the deploy job; can require approval |
 
-Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`.
+Only the private key lives in GitHub; its public half sits in `deploy`'s `authorized_keys` on the server; runtime secrets live only in `/opt/harness/shared/.env`, and the proxy config lives only in a `0600` server file.
 
 ## Config injection
 
@@ -61,6 +62,10 @@ Before switching `current`, the deploy pipeline installs Claude Code for the `de
 Production `HE_DATA_DIR` must be an absolute path outside the release tree, defaulting to `/var/lib/harness-evolution/data`; `StateDirectory=harness-evolution` in `deploy/harness-api.service` lets systemd create it and chown it to `harness` on every start, and bootstrap also creates it. Before switching `current`, `release.sh` validates that the path is non-empty, absolute, free of whitespace/newlines and `..`, outside `current` and `releases`, and owned by `harness:harness` or covered by the unit's `StateDirectory=`; it exits immediately on failure while the current release keeps serving.
 
 The API resolves the absolute path, creates the directory, and writes a probe at startup; when it is not writable `/api/health` returns 503 (`data.ok=false`), so a failed release probe rolls back. A path change is a data migration: `target-content`, `repos`, and `workspaces` do not follow, so stop the service, move the directories, and change `vars.HE_DATA_DIR`. Enabling `StateDirectory=` on an existing environment needs one root-run bootstrap (or installing the unit followed by `daemon-reload`); that is per-environment initialization, not a routine deploy.
+
+## Git egress proxy
+
+When production access to GitHub is unstable, a local Xray/VLESS proxy that serves git subprocesses only can be enabled; its configuration comes from the Environment Secret `XRAY_CONFIG`, and both deploy and runtime fall back to direct access when the proxy is unavailable. See [Git egress proxy](git-proxy.en.md).
 
 ## Upstream health and drift logs
 
