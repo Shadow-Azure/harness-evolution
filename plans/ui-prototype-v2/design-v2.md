@@ -219,6 +219,16 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 
 如果潜在 bad case 无法归因到当前对象（触发时序、输入来源或证据不支持），该对象版本的结论记为「非该对象问题」。它不是“未分析”，也不是对 bad case 的否定；同一 bad case 仍可以归属于其他对象。
 
+### 7.4 启动版本输入与校验
+
+启动向导第 1 步的「版本」是输入优先的组合框，不是只能选的 tag 下拉：
+
+- **建议列表**：当前 target 的 `defaultRef` 与 tag 列表；`defaultRef` 不在 tag 列表时仍以「基线」建议出现。
+- **默认值**：`defaultRef`，缺省时取第一个 tag。
+- **直接输入**：接受 tag、分支名和 commit SHA；输入值就是提交的 `targetVersion`，不要求命中建议列表。
+- **校验时机**：点「下一步：关联 Session」和最终「启动自进化」时执行。先校验 git ref 格式（非空、≤96 字符、无空白/`..`/`@{`/`~^:?*[` 等非法字符，且不以 `-`、`/`、`.` 或 `.lock` 结尾）；失败停在第 1 步并显示字段错误。格式通过后，服务端用 git 判断该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时先按需刷新 mirror；tag、分支和 commit 都必须解析到 commit。不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`）；仓库不可达或超时同样走 `TARGET_CONTENT_UNRESOLVED`（reason `repo_unreachable` / `content_timeout`），都回到第 1 步并显示可操作错误。`REPO_INVALID` 仍是对象配置保存时的校验错误。存在后再读取 `SKILL.md` / `AGENT.md` 并计算 body hash；不得回退到 tag 猜测。
+- **身份不变**：版本身份仍是 body hash；tag 只是建议和显示值，不改变匹配与缓存语义。
+
 ## 8. 错误详情：一个 bad case × 多条归因
 
 - 左栏从 V1 的错误卡改为可折叠的 bad case 组：
