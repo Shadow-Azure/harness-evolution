@@ -4,7 +4,7 @@ English | [中文](m12-attribution-report-v2-contract.md)
 
 ```yaml flow
 kind: issue
-id: m12-16
+id: m12-24
 milestone: m12
 depends:
   - m10-03

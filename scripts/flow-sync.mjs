@@ -179,14 +179,12 @@ async function main() {
       return { number, url: `https://github.com/${repo}/milestone/${number}` };
     },
     createIssue(issue, milestone) {
-      const url = gh([
-        "issue", "create", "--repo", repo,
-        "--title", titleOf(readFileSync(issue.file, "utf8")),
-        "--milestone", milestone.data.title,
-        "--body", renderIssueBody(readFileSync(issue.file, "utf8"), repo),
-      ]);
-      const number = Number.parseInt(url.match(/\/issues\/(\d+)/)?.[1] ?? "", 10);
-      if (!Number.isInteger(number)) throw new Error(`无法从 gh 输出解析 issue 编号：${url}`);
+      const { number, html_url: url } = JSON.parse(gh([
+        "api", `repos/${repo}/issues`,
+        "-f", `title=${titleOf(readFileSync(issue.file, "utf8"))}`,
+        "-F", `milestone=${milestone.data.github.number}`,
+        "-f", `body=${renderIssueBody(readFileSync(issue.file, "utf8"), repo)}`,
+      ]));
       return { number, url };
     },
     backfill,

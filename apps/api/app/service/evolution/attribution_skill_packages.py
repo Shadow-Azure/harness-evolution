@@ -118,7 +118,9 @@ class AttributionSkillPackageService:
             raise self._too_large("compressed archive exceeds 10 MiB")
         validated = await asyncio.to_thread(self._validate_archive, archive)
         package_id = new_id()
-        relative_storage = str(PurePosixPath(workspace_id, package_id))
+        relative_storage = str(
+            PurePosixPath(workspace_id, "attribute_skill", "uploads", package_id)
+        )
         storage = self._storage_path(relative_storage)
         await asyncio.to_thread(self._extract, storage, validated.files)
         record = AttributionSkillPackageRecord(
@@ -168,8 +170,7 @@ class AttributionSkillPackageService:
     async def download(self, workspace_id: str, package_id: str) -> tuple[str, bytes]:
         """Return a regenerated ZIP for the default or one workspace package."""
         if package_id == DEFAULT_PACKAGE_ID:
-            default = await asyncio.to_thread(self._default)
-            data = await asyncio.to_thread(self._default_zip, default.prompt_text)
+            data = await asyncio.to_thread(self._default_zip)
             return f"{DEFAULT_SKILL_NAME}.zip", data
         record = await self._required(workspace_id, package_id)
         storage = self._storage_path(record.storage_path)
@@ -204,7 +205,7 @@ class AttributionSkillPackageService:
             prompt = self._default_skill_path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
             raise RuntimeError("default attribution Skill is unavailable") from exc
-        payload = prompt.encode()
+        payload = self._default_zip()
         return AttributionSkillPackageRecord(
             id=DEFAULT_PACKAGE_ID,
             workspace_id="",
@@ -212,7 +213,7 @@ class AttributionSkillPackageService:
             uploader_id=None,
             uploader_name="default",
             archive_name=f"{DEFAULT_SKILL_NAME}.zip",
-            file_count=1,
+            file_count=len(self._default_files()),
             size_bytes=len(payload),
             content_hash=hashlib.sha256(payload).hexdigest(),
             storage_path="",
@@ -358,12 +359,46 @@ class AttributionSkillPackageService:
                 archive.write(path, path.relative_to(storage).as_posix())
         return output.getvalue()
 
-    @staticmethod
-    def _default_zip(prompt: str) -> bytes:
+    def _default_files(self) -> dict[str, bytes]:
+        return {
+            "SKILL.md": self._default_skill_path.read_bytes(),
+            "make_probe_report.py": self.writer_path.read_bytes(),
+        }
+
+    @property
+    def writer_path(self) -> Path:
+        """Return the trusted platform writer, independent of uploaded packages."""
+        return Path(__file__).resolve().parents[5] / "attribute-badcases/make_probe_report.py"
+
+    def _default_zip(self) -> bytes:
         output = io.BytesIO()
-        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(f"{DEFAULT_SKILL_NAME}/SKILL.md", prompt)
+        with zipfile.ZipFile(output, "w") as archive:
+            for name, data in self._default_files().items():
+                info = zipfile.ZipInfo(f"{DEFAULT_SKILL_NAME}/{name}")
+                archive.writestr(info, data, compress_type=zipfile.ZIP_DEFLATED)
         return output.getvalue()
+
+    async def runtime_files(
+        self,
+        workspace_id: str,
+        package_id: str,
+    ) -> tuple[str, dict[str, bytes]]:
+        """Read validated assets relative to the Skill entry point."""
+        _, archive = await self.download(workspace_id, package_id)
+        bundle = await asyncio.to_thread(self._validate_archive, archive)
+        parent = PurePosixPath(bundle.skill_md_path).parent
+        files: dict[str, bytes] = {}
+        seen: set[str] = set()
+        for relative, data in bundle.files:
+            path = PurePosixPath(relative)
+            key = str(path.relative_to(parent) if path.is_relative_to(parent) else path)
+            if key.casefold() in seen:
+                raise self._invalid("ambiguous runtime file path")
+            seen.add(key.casefold())
+            if key.casefold() != "make_probe_report.py":
+                files[key] = data
+        files["make_probe_report.py"] = self.writer_path.read_bytes()
+        return bundle.skill_name, files
 
     @staticmethod
     def _safe_archive_name(name: str, skill_name: str) -> str:

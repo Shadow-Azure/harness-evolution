@@ -8,7 +8,7 @@ id: m12-21
 milestone: m12
 depends:
   - m12-06
-  - m12-17
+  - m12-25
   - m12-19
 priority: P1
 status: done
@@ -60,7 +60,7 @@ Target-specific attribution skills become a complete product capability only whe
 
 ## Dependencies and boundary
 
-- Depends on: m12-06, m12-17, and m12-19.
+- Depends on: m12-06, m12-25, and m12-19.
 - Boundary: select and display published skill revisions; do not edit or publish skill bodies in the browser.
 
 ## Verification

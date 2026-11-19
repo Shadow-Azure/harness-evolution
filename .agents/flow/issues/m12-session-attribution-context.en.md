@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m10-02
   - m12-01
-  - m12-16
+  - m12-24
 priority: P0
 status: done
 scope:
@@ -59,7 +59,7 @@ github:
 
 ## Dependencies and boundary
 
-- Depends on: m10-02, m12-01, and m12-16.
+- Depends on: m10-02, m12-01, and m12-24.
 - Boundary: produce agent-consumable context input; do not execute a model, change potential policy, or automatically select another attribution target.
 
 ## Verification

@@ -130,6 +130,13 @@ async def test_default_upload_activate_download_and_delete_fallback(
     assert initial.status_code == 200
     assert initial.json()["effective"]["skillName"] == "attribute-badcases"
     assert initial.json()["items"][0]["uploaderName"] == "default"
+    assert initial.json()["items"][0]["fileCount"] == 2
+    default_zip = await client.get(f"{_base()}/default-attribute-badcases/download")
+    with zipfile.ZipFile(io.BytesIO(default_zip.content)) as bundle:
+        assert set(bundle.namelist()) == {
+            "attribute-badcases/SKILL.md",
+            "attribute-badcases/make_probe_report.py",
+        }
 
     prompt = "---\nname: incident-attribution\n---\n# Custom prompt\n"
     uploaded = await client.post(
@@ -146,7 +153,14 @@ async def test_default_upload_activate_download_and_delete_fallback(
     package_id = uploaded.json()["id"]
     assert uploaded.json()["fileCount"] == 2
     assert uploaded.json()["isActive"] is False
-    assert (package_root / DEFAULT_WORKSPACE_ID / package_id / "refs/check.md").is_file()
+    assert (
+        package_root
+        / DEFAULT_WORKSPACE_ID
+        / "attribute_skill"
+        / "uploads"
+        / package_id
+        / "refs/check.md"
+    ).is_file()
 
     activated = await client.post(f"{_base()}/{package_id}/activate")
     assert activated.status_code == 200
@@ -160,7 +174,9 @@ async def test_default_upload_activate_download_and_delete_fallback(
 
     deleted = await client.delete(f"{_base()}/{package_id}")
     assert deleted.status_code == 204
-    assert not (package_root / DEFAULT_WORKSPACE_ID / package_id).exists()
+    assert not (
+        package_root / DEFAULT_WORKSPACE_ID / "attribute_skill" / "uploads" / package_id
+    ).exists()
     fallback = await client.get(_base())
     assert fallback.json()["effective"]["skillName"] == "attribute-badcases"
     assert fallback.json()["effective"]["isActive"] is True

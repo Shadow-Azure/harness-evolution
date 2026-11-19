@@ -4,11 +4,11 @@
 
 ```yaml flow
 kind: issue
-id: m12-17
+id: m12-25
 milestone: m12
 depends:
   - m7-07
-  - m12-16
+  - m12-24
 priority: P0
 status: done
 scope:
@@ -59,7 +59,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m7-07、m12-16。
+- 依赖：m7-07、m12-24。
 - 交付边界：提供注册、revision、解析和绑定后端；完整配置页面由 m12-21 交付。
 
 ## 独立验证

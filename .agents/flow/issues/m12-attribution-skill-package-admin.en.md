@@ -7,10 +7,10 @@ kind: issue
 id: m12-23
 milestone: m12
 depends:
-  - m12-17
+  - m12-25
   - m12-21
 priority: P2
-status: in-progress
+status: done
 scope:
   - .gitignore
   - apps/api/**
@@ -61,7 +61,7 @@ The attribution Skill backend already supports revisions and bindings, but works
 
 ## Dependencies and boundary
 
-- Dependencies: m12-17 and m12-21.
+- Dependencies: m12-25 and m12-21.
 - Boundary: do not integrate an intranet LLM/Agent, edit archive files online, or bypass the Golden promotion gate to change existing Run executor selection.
 
 ## Verification

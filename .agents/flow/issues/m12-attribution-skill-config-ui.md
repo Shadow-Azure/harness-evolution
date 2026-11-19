@@ -8,7 +8,7 @@ id: m12-21
 milestone: m12
 depends:
   - m12-06
-  - m12-17
+  - m12-25
   - m12-19
 priority: P1
 status: done
@@ -60,7 +60,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m12-06、m12-17、m12-19。
+- 依赖：m12-06、m12-25、m12-19。
 - 交付边界：选择和展示已发布 Skill revision；不在浏览器中编辑或发布 Skill 正文。
 
 ## 独立验证

@@ -7,10 +7,10 @@ kind: issue
 id: m12-23
 milestone: m12
 depends:
-  - m12-17
+  - m12-25
   - m12-21
 priority: P2
-status: in-progress
+status: done
 scope:
   - .gitignore
   - apps/api/**
@@ -61,7 +61,7 @@ github:
 
 ## 依赖与交付边界
 
-- 依赖：m12-17、m12-21
+- 依赖：m12-25、m12-21
 - 非目标：不接入内网 LLM/Agent，不在线编辑 ZIP 内文件，不绕过 Golden 发布门禁改变现有 Run 的执行器选择。
 
 ## 独立验证

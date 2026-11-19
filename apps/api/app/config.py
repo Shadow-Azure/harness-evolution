@@ -159,7 +159,11 @@ class Settings(BaseSettings):
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
     data_dir: Path = Path("data")
     attribution_package_dir: Path = _REPOSITORY_ROOT / "attribute"
-    attribution_default_skill_path: Path = _REPOSITORY_ROOT / "attribute-badcases.md"
+    attribution_default_skill_path: Path = _REPOSITORY_ROOT / "attribute-badcases" / "SKILL.md"
+    attribution_agent: str | None = None
+    attribution_llm: str = "agent-native"
+    attribution_model: str = Field(default="haiku", min_length=1)
+    attribution_timeout_seconds: int = Field(default=600, ge=1, le=3600)
     db_dialect: DatabaseDialect = DatabaseDialect.MYSQL
     db_url: str | None = None
     db_pool_size: int = 10

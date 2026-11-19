@@ -11,7 +11,7 @@ Status: implemented
 ## Decision
 
 - 新增独立的空间 Skill package 资产层：数据库保存包名、上传者、文件数、ZIP 大小、hash、相对路径、`SKILL.md` 与单一生效绑定；文件按 `attribute/{workspace_id}/{package_id}` 隔离存储。
-- `attribute-badcases.md` 是不可删除的默认提示词源，API 把它投影为 `attribute-badcases` 虚拟包并按需生成 ZIP；空间没有自定义绑定或删除生效包时回退该默认包。
+- `attribute-badcases/SKILL.md` 是不可删除的默认提示词源，API 把它投影为 `attribute-badcases` 虚拟包并按需生成 ZIP；空间没有自定义绑定或删除生效包时回退该默认包。
 - 上传包必须低于压缩/展开大小和文件数上限，只能包含一个 UTF-8 `SKILL.md`，其 frontmatter `name` 是空间内唯一身份；拒绝绝对路径、`..`、盘符、符号链接和加密成员。
 - viewer 可查看提示词和下载；只有 space admin 或 global admin 可上传、设为生效和删除。上传后保持未生效，管理员显式确认切换。
 - package 的生效状态只服务于空间资产配置，不自动创建或绑定现有可执行 revision；生产 Run 仍按 registry 的 Golden 晋级与固化 revision 规则运行。
@@ -29,3 +29,5 @@ Status: implemented
 - 文件系统成为包内容真值，数据库成为元数据和选择真值；数据库写入失败会清理解压目录，删除先清记录与绑定再尽力清理目录。
 - 生产执行与资产配置暂时是两条显式链路。后续内网 adapter 接入时，需要在通过评测的 package 与 immutable revision 之间增加受控发布步骤，而不是复用当前“设为生效”动作。
 - ZIP 下载由服务器从已校验目录重新生成，不回传服务器路径；默认包也遵循相同下载形态。
+
+平台默认包随仓库包含 SKILL.md 和固定输出脚本，下载与执行使用同一来源。新上传包归入空间的 `attribute_skill/uploads`，历史记录继续按数据库中的相对路径读取。
