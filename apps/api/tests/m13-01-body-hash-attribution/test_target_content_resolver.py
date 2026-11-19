@@ -275,6 +275,63 @@ async def test_concurrent_resolutions_share_one_mirror(
     assert first.target_revision == f"digest:{definition_hash(SKILL_BODY)}"
 
 
+async def test_branch_and_commit_refs_resolve_to_the_same_body_hash(
+    tmp_path: Path,
+    repo: Path,
+) -> None:
+    """A branch and the commit it points at are both valid content sources."""
+    resolver, _ = _resolver(tmp_path)
+    git = shutil.which("git")
+    assert git is not None
+    commit = (
+        await asyncio.to_thread(
+            subprocess.run,
+            (git, "-C", str(repo), "rev-parse", "HEAD"),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    ).stdout.strip()
+
+    branch = await resolver.resolve(
+        object_type="skill",
+        repo_url=str(repo),
+        sub_dir="skills/systematic-debugging",
+        version="main",
+    )
+    by_commit = await resolver.resolve(
+        object_type="skill",
+        repo_url=str(repo),
+        sub_dir="skills/systematic-debugging",
+        version=commit,
+    )
+
+    assert branch.target_version == "main"
+    assert by_commit.target_version == commit
+    assert branch.target_revision == by_commit.target_revision
+    assert branch.target_revision == f"digest:{definition_hash(SKILL_BODY)}"
+
+
+async def test_missing_ref_returns_ref_not_found(
+    tmp_path: Path,
+    repo: Path,
+) -> None:
+    """A branch or commit absent from the repository never falls back to a tag."""
+    resolver, _ = _resolver(tmp_path)
+
+    with pytest.raises(AppError) as error:
+        await resolver.resolve(
+            object_type="skill",
+            repo_url=str(repo),
+            sub_dir="skills/systematic-debugging",
+            version="feature/does-not-exist",
+        )
+
+    assert error.value.code is ErrorCode.TARGET_CONTENT_UNRESOLVED
+    assert error.value.status_code == 422
+    assert error.value.details["reason"] == "ref_not_found"
+
+
 async def test_prefixed_revisions_never_read_content(tmp_path: Path) -> None:
     """Digest/tag/provider inputs keep their documented identity semantics."""
     resolver, counting = _resolver(tmp_path)

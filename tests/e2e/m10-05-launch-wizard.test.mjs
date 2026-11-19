@@ -57,29 +57,40 @@ async function cleanup() {
 }
 
 async function loginCookie() {
-  const response = await fetch(`${baseUrl}/api/auth/login`, {
+  let password = initialPassword;
+  let response = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ username: "admin", password: initialPassword }),
+    body: JSON.stringify({ username: "admin", password }),
   });
+  if (response.status === 401) {
+    password = finalPassword;
+    response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "admin", password }),
+    });
+  }
   assert.equal(response.status, 200);
   const login = await response.json();
   const initialCookie = response.headers
     .get("set-cookie")
     ?.match(/refresh_token=([^;]+)/)?.[1];
   assert.ok(initialCookie);
-  const changed = await fetch(`${baseUrl}/api/auth/change-password`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${login.accessToken}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      oldPassword: initialPassword,
-      newPassword: finalPassword,
-    }),
-  });
-  assert.equal(changed.status, 204);
+  if (password === initialPassword) {
+    const changed = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${login.accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        oldPassword: initialPassword,
+        newPassword: finalPassword,
+      }),
+    });
+    assert.equal(changed.status, 204);
+  }
   const refreshed = await fetch(`${baseUrl}/api/auth/refresh`, {
     method: "POST",
     headers: { cookie: `refresh_token=${initialCookie}` },
@@ -169,13 +180,13 @@ async function openAndFillWizard(page) {
     "configured target option",
   );
   await selectOption(page, "wizard-target", "synthetic-review");
+  await click(page, "wizard-version-toggle");
   await waitForDocument(
     page.session,
-    `[...document.querySelectorAll("[data-testid='wizard-version'] option")]
-      .some((option) => option.text === "synthetic-1")`,
-    "target versions",
+    `Boolean(document.querySelector("[data-testid='wizard-version-menu']"))`,
+    "target version suggestions",
   );
-  await selectOption(page, "wizard-version", "synthetic-1");
+  await setValue(page, "wizard-version", "synthetic-1");
   await setValue(page, "wizard-from", "2026-10-20");
   await setValue(page, "wizard-to", "2026-10-25");
 }
@@ -449,6 +460,43 @@ test("m10-05 four-step wizard previews and exits into both run routes", async ()
 
     assert.deepEqual(violations, []);
     console.log(`screenshots: ${screenshotDir}`);
+  } finally {
+    page.close();
+  }
+});
+
+test("m10-05 launch wizard rejects a ref git cannot find", async () => {
+  const page = await createBrowserPage();
+  const violations = browserViolations(page.session, {
+    isExpectedLogEntry: (entry) => entry.text.includes("Failed to load resource"),
+  });
+  try {
+    await installCookie(page, await loginCookie());
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.navigate", {
+      url: `${baseUrl}${evolutionPath}`,
+    });
+    await waitForDocument(
+      page.session,
+      `document.body.textContent.includes("当前没有正在执行的自进化") ||
+        Boolean(document.querySelector("[data-testid='open-launch-wizard']"))`,
+      "evolution page",
+    );
+    await openAndFillWizard(page);
+    await setValue(page, "wizard-version", "feature/does-not-exist");
+    await click(page, "wizard-next");
+    await waitForDocument(
+      page.session,
+      `document.querySelector("[data-testid='wizard-version-error']")?.textContent.includes("该版本在仓库中不存在")`,
+      "missing ref error",
+    );
+    await screenshot(page, "07-wizard-missing-ref.png");
+    assert.deepEqual(violations, []);
   } finally {
     page.close();
   }

@@ -348,9 +348,114 @@ describe("launch wizard", { timeout: 30000 }, () => {
         .value,
     ).toBe("tgt-1");
     expect(
-      (wrapper.get("[data-testid='wizard-version']").element as HTMLSelectElement)
+      (wrapper.get("[data-testid='wizard-version']").element as HTMLInputElement)
         .value,
     ).toBe("v1.9.0");
+  });
+
+  it("keeps a focus case's branch clue even when it is not a tag", async () => {
+    useHandlers();
+    server.use(
+      http.get(`/api${ws}/bad-cases/case-focus`, () =>
+        HttpResponse.json({ ...focusBadCase, objectVersion: "feature/foo" }),
+      ),
+    );
+    const { wrapper } = await mountWizard("case-focus");
+
+    expect(
+      (wrapper.get("[data-testid='wizard-version']").element as HTMLInputElement)
+        .value,
+    ).toBe("feature/foo");
+  });
+
+  it("offers defaultRef and tags as suggestions while keeping a typed branch or commit ref", async () => {
+    const sessionBodies: unknown[] = [];
+    useHandlers();
+    server.use(
+      http.get(`${apiBase}/targets/tgt-1/versions`, () =>
+        HttpResponse.json({
+          versions: ["v2.0.0", "v1.9.0"],
+          defaultRef: "main",
+        }),
+      ),
+      http.post(`${apiBase}/preview/sessions`, async ({ request }) => {
+        sessionBodies.push(await request.json());
+        return HttpResponse.json(sessionPreview);
+      }),
+    );
+    const { wrapper } = await mountWizard();
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await flushPromises();
+
+    const versionInput = wrapper.get("[data-testid='wizard-version']");
+    expect((versionInput.element as HTMLInputElement).value).toBe("main");
+    await versionInput.trigger("focus");
+    const suggestions = wrapper
+      .findAll("[data-testid='wizard-version-option']")
+      .map((option) => option.get(".mono").text());
+    expect(suggestions).toEqual(["main", "v2.0.0", "v1.9.0"]);
+
+    await wrapper.findAll("[data-testid='wizard-version-option']")[1]!.trigger("click");
+    expect((versionInput.element as HTMLInputElement).value).toBe("v2.0.0");
+
+    await versionInput.setValue("a3f9c21");
+    expect((versionInput.element as HTMLInputElement).value).toBe("a3f9c21");
+    await versionInput.setValue("feature/foo");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-10-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-10-31");
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(sessionBodies).toHaveLength(1);
+    expect(sessionBodies[0]).toMatchObject({ targetVersion: "feature/foo" });
+  });
+
+  it("rejects a malformed ref before calling the preview", async () => {
+    useHandlers();
+    const { wrapper } = await mountWizard();
+    await wrapper.get("[data-testid='wizard-target']").setValue("tgt-1");
+    await wrapper.get("[data-testid='wizard-version']").setValue("feature bad^ref");
+    await wrapper.get("[data-testid='wizard-from']").setValue("2026-10-01");
+    await wrapper.get("[data-testid='wizard-to']").setValue("2026-10-31");
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+      "版本不能包含空格",
+    );
+    expect(wrapper.find("[data-testid='wizard-session-table']").exists()).toBe(
+      false,
+    );
+  });
+
+  it("surfaces a server ref_not_found as a git existence error", async () => {
+    useHandlers({
+      sessions: () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "TARGET_CONTENT_UNRESOLVED",
+              message: "target content could not be resolved to a body hash",
+              details: {
+                targetType: "skill",
+                reason: "ref_not_found",
+              },
+            },
+          },
+          { status: 422 },
+        ),
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-testid='wizard-version-error']").text()).toContain(
+      "该版本在仓库中不存在",
+    );
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeDefined();
   });
 
   it("walks the four steps with server summaries and lands on attribution preview", async () => {

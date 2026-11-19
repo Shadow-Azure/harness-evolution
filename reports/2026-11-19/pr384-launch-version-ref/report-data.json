@@ -1,0 +1,138 @@
+{
+  "title": "PR #384 · 启动自进化版本 ref 输入 Smoke Report",
+  "eyebrow": "Computer Use · Real Browser E2E Evidence",
+  "summary": "启动向导的版本字段已在生产实现中从 tag-only 下拉改为输入优先组合框：下拉给 tag/defaultRef 建议，输入框可直接填分支或 commit；服务端用 git 校验 ref 是否存在。真实浏览器 E2E 覆盖了修改前后、完整四步流程、缺失 ref 错误，全部通过。",
+  "meta": "2026-11-19 · macOS · Chrome headless · 1408×960",
+  "metrics": [
+    { "value": "5", "label": "Smoke scenarios" },
+    { "value": "2", "label": "Defects fixed" },
+    { "value": "22", "label": "LaunchWizard tests" },
+    { "value": "2", "label": "Real-browser E2E" }
+  ],
+  "facts": [
+    { "label": "Application", "value": "Harness Evolution Web" },
+    { "label": "PR", "value": "#384" },
+    { "label": "Base", "value": "main bebe87c" },
+    { "label": "Head", "value": "PR #384 head (review fixes)" },
+    { "label": "Fixture", "value": "m10-05 synthetic-review / ws-default" }
+  ],
+  "matrix": {
+    "columns": ["#", "Scenario", "Result", "Detail", "Evidence"],
+    "rows": [
+      {
+        "id": "01",
+        "name": "修改前：版本只能选 tag",
+        "status": { "kind": "pass", "label": "BEFORE" },
+        "detail": "baseline 应用在相同 E2E fixture 下显示原生 tag 下拉，无法输入分支或 commit。",
+        "evidence": ["01-before.png"]
+      },
+      {
+        "id": "02",
+        "name": "修改后：输入 + tag 建议",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "版本字段为输入框 + 下拉建议；输入值为 synthetic-1 时菜单仍展示 tag 建议。",
+        "evidence": ["02-after.png"]
+      },
+      {
+        "id": "03",
+        "name": "缺失 ref 的 git 校验",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "输入 feature/does-not-exist，点下一步后服务端返回 ref_not_found；向导停在第 1 步并显示可操作错误。",
+        "evidence": ["03-missing-ref.png"]
+      },
+      {
+        "id": "04",
+        "name": "完整四步流程不回归",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "输入合法 tag 后正常进入 Session 关联、潜在 bad case、归因预览，并可启动 run。",
+        "evidence": ["04-step2.png", "05-step4.png", "06-run-detail.png"]
+      },
+      {
+        "id": "05",
+        "name": "分支 / commit 输入与 API 语义",
+        "status": { "kind": "pass", "label": "PASS" },
+        "detail": "组件测试覆盖分支 defaultRef、手输 commit/分支、提交 body；resolver 真实 git 测试证明 main 与其 commit 同 body hash，缺失 ref 返回 ref_not_found。",
+        "evidence": ["No screenshot required; covered by component and resolver tests."]
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "P2",
+      "title": "生产第一版使用原生 datalist，与原型可见下拉菜单不一致",
+      "facts": [
+        { "label": "Actual", "value": "版本字段看起来是普通输入框，没有原型中的下拉按钮和可见 tag 菜单。" },
+        { "label": "Expected", "value": "输入框 + 可见建议菜单，同时允许自由输入。" },
+        { "label": "Root cause", "value": "原生 datalist 的弹出层不可控，截图与部分浏览器中不可见。" },
+        { "label": "Fix", "value": "改为自定义 input + 建议菜单 + listbox，样式对齐原型。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · custom combobox" }
+    },
+    {
+      "severity": "P2",
+      "title": "focusCase 的分支/commit 版本线索被 tag 白名单丢弃",
+      "facts": [
+        { "label": "Actual", "value": "bad case 的 objectVersion 不在 tag 列表时回退到 defaultRef。" },
+        { "label": "Expected", "value": "非空版本线索优先带入，由服务端判断是否存在。" },
+        { "label": "Fix", "value": "applyFocusCase 改为 objectVersion 优先，并补组件测试。" }
+      ],
+      "state": { "kind": "fixed", "label": "Fixed · focus case preserves ref" }
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/01-before.png",
+      "alt": "修改前：启动向导版本只能选 tag",
+      "label": "01 · Before",
+      "caption": "生产 baseline：版本字段是原生 tag 下拉，无法输入分支或 commit。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/02-after.png",
+      "alt": "修改后：版本输入框与 tag 建议菜单",
+      "label": "02 · After",
+      "caption": "生产实现：输入框 + 下拉建议，菜单显示 tag / 基线标签。",
+      "variant": "wide"
+    },
+    {
+      "src": "screenshots/03-missing-ref.png",
+      "alt": "缺失 ref 的 git 校验错误",
+      "label": "03 · Missing ref",
+      "caption": "服务端 ref_not_found 回到第 1 步，错误文案指出 tag、分支或 commit 不存在。",
+      "variant": "issue"
+    }
+  ],
+  "coverage": {
+    "columns": ["Area", "Coverage", "Conclusion", "Recommendation"],
+    "rows": [
+      {
+        "area": "版本建议与默认值",
+        "coverage": "Component + E2E",
+        "conclusion": "defaultRef（含分支）优先，tag 建议可见，手输值不被异步覆盖。",
+        "recommendation": "后续如调整建议数据源，保持同一组件测试。"
+      },
+      {
+        "area": "git ref 存在性",
+        "coverage": "Resolver + E2E",
+        "conclusion": "真实 git 解析 main/commit；缺失 ref 返回 ref_not_found。",
+        "recommendation": "生产仓库不可达/超时沿用现有 TARGET_CONTENT_UNRESOLVED 路径。"
+      },
+      {
+        "area": "完整四步流程",
+        "coverage": "Real-browser E2E",
+        "conclusion": "启动、Session 关联、潜在 case、归因预览与 run 详情均可用。",
+        "recommendation": "保留 m10-05 作为发布前 smoke。"
+      }
+    ]
+  },
+  "conclusion": {
+    "kind": "pass",
+    "label": "Ready after CI",
+    "summary": "生产版本 ref 输入、建议菜单、服务端 git 校验与完整四步流程均通过真实浏览器 smoke；两个检视缺陷已修复。",
+    "points": [
+      "最终合并门禁仍以 PR #384 CI 与人工审查为准。",
+      "本报告由 E2E 证据生成，未使用真实生产仓库或凭据。"
+    ]
+  },
+  "footer": "Generated from real-browser E2E evidence · Secrets are redacted."
+}

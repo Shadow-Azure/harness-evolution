@@ -77,11 +77,11 @@ const ANCHOR_SOURCE_HINTS: Record<
 
 const CONTENT_REASON_COPY: Record<string, string> = {
   content_not_found:
-    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认 tag、仓库地址与子目录。",
+    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认版本、仓库地址与子目录。",
   file_not_found:
     "该版本下没有目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请检查子目录。",
   ref_not_found:
-    "该版本在仓库中不存在。请确认 tag/分支名称，或刷新版本列表后重选。",
+    "该版本在仓库中不存在。请确认 tag、分支或 commit id，或换一个版本后重试。",
   repo_unreachable:
     "无法访问目标仓库。请检查仓库地址、网络与读取权限。",
   empty_definition_body:
@@ -91,7 +91,7 @@ const CONTENT_REASON_COPY: Record<string, string> = {
   timeout: "读取目标文件超时。请稍后重试，或检查仓库网络与代理。",
   git_unavailable: "服务端无法调用 git。请联系管理员检查运行环境。",
   path_invalid: "目标文件路径无效。请检查配置的子目录。",
-  ref_invalid: "版本名不是合法的 git ref。请重新选择 tag。",
+  ref_invalid: "版本名不是合法的 git ref。请重新输入 tag、分支或 commit id。",
   content_unavailable:
     "目标文件暂时不可读取。请确认仓库地址、子目录与读取权限后重试。",
   knowledge_content_source_unavailable:
@@ -107,6 +107,8 @@ const targetType = ref<"skill" | "agent">("skill");
 const targetId = ref<string | null>(null);
 const targetVersion = ref("");
 const versionPinned = ref(false);
+const versionOpen = ref(false);
+const versionFormatError = ref("");
 const windowFrom = ref("");
 const windowTo = ref("");
 const policyPreset = ref<"default" | "custom">("default");
@@ -152,17 +154,35 @@ function handleKeydown(event: KeyboardEvent): void {
     return;
   }
   event.preventDefault();
+  if (versionOpen.value) {
+    versionOpen.value = false;
+    return;
+  }
   emit("close");
+}
+
+/** Close the version suggestions when a click lands outside the combobox. */
+function handleDocumentClick(event: MouseEvent): void {
+  if (!versionOpen.value) {
+    return;
+  }
+  const target = event.target;
+  if (target instanceof Element && target.closest(".wz-version-combo")) {
+    return;
+  }
+  versionOpen.value = false;
 }
 
 onMounted(() => {
   triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   window.addEventListener("keydown", handleKeydown);
+  document.addEventListener("click", handleDocumentClick);
   closeButton.value?.focus();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
+  document.removeEventListener("click", handleDocumentClick);
   if (triggerElement?.isConnected) {
     triggerElement.focus();
   }
@@ -199,33 +219,71 @@ const hasAnyTarget = computed(() => {
 const selectedTarget = computed(
   () => targetOptions.value.find((target) => target.id === targetId.value) ?? null,
 );
-const versionOptions = computed(() => {
-  if (versions.data.value?.versions.length) {
-    return versions.data.value.versions;
+const versionSuggestions = computed(() => {
+  const values: string[] = [];
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
+    values.push(remoteDefault);
   }
-  return selectedTarget.value?.versions ?? [];
+  const options = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  for (const version of options) {
+    if (!values.includes(version)) {
+      values.push(version);
+    }
+  }
+  return values;
 });
 
 /**
- * Pick the default version for one option list.
- * @param options Versions currently offered by the remote query or catalog fallback.
- * @returns The remote `defaultRef` when present, otherwise the first option.
+ * Pick the default version for the current target.
+ * @returns `defaultRef` when present, otherwise the first suggestion.
  */
-function defaultVersion(options: string[]): string {
-  const remoteDefault = versions.data.value?.defaultRef;
-  if (remoteDefault && options.includes(remoteDefault)) {
+function defaultVersion(): string {
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
     return remoteDefault;
   }
-  return options[0] ?? "";
+  return versionSuggestions.value[0] ?? "";
+}
+
+/** Identify whether a suggestion is the configured baseline or a tag. */
+function versionKind(version: string): string {
+  const tags = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  return tags.includes(version) ? "tag" : "基线";
+}
+
+/** Toggle the tag suggestion menu without losing a typed value. */
+function toggleVersionMenu(): void {
+  versionOpen.value = !versionOpen.value;
+}
+
+/** Apply one tag suggestion and mark the field as user-pinned. */
+function pickVersion(version: string): void {
+  targetVersion.value = version;
+  versionPinned.value = true;
+  versionOpen.value = false;
+  fieldErrors.version = false;
+  clearContentUnresolved();
+}
+
+/** Mark a typed ref as intentional so async suggestions cannot overwrite it. */
+function onVersionInput(): void {
+  versionPinned.value = true;
 }
 
 watch(
-  versionOptions,
-  (options) => {
-    if (versionPinned.value && options.includes(targetVersion.value)) {
+  versionSuggestions,
+  () => {
+    if (versionPinned.value && targetVersion.value) {
       return;
     }
-    targetVersion.value = defaultVersion(options);
+    targetVersion.value = defaultVersion();
     versionPinned.value = false;
   },
   { immediate: true },
@@ -237,6 +295,7 @@ watch(targetId, () => {
 });
 watch(targetVersion, () => {
   fieldErrors.version = false;
+  versionFormatError.value = "";
   clearContentUnresolved();
   if (sessionPreview.value || potentialPreview.value || attributionPreview.value) {
     resetDownstream();
@@ -358,11 +417,10 @@ function applyFocusCase(): void {
   targetId.value = target.id;
   versionPinned.value = true;
   targetVersion.value =
-    caseData.objectVersion &&
-    (target.versions.includes(caseData.objectVersion) ||
-      target.defaultRef === caseData.objectVersion)
-      ? caseData.objectVersion
-      : target.defaultRef || target.versions[0] || "";
+    caseData.objectVersion ||
+    target.defaultRef ||
+    target.versions[0] ||
+    "";
   focusTargetMissing.value = false;
 }
 
@@ -397,6 +455,7 @@ function selectType(next: "skill" | "agent"): void {
   targetId.value = null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -405,6 +464,7 @@ function selectTargetId(id: string): void {
   targetId.value = id || null;
   targetVersion.value = "";
   versionPinned.value = false;
+  versionOpen.value = false;
   resetDownstream();
 }
 
@@ -437,12 +497,42 @@ function goTargetConfig(): void {
   void router.push(workspacePath(props.wid, "evolution/targets"));
 }
 
+/** Return a local git-ref format error, matching the server's safe-ref rules. */
+function versionRefFormatError(value: string): string {
+  const ref = value.trim();
+  if (!ref) {
+    return "请选择或输入版本";
+  }
+  if (ref.length > 96) {
+    return "版本不能超过 96 个字符";
+  }
+  if (ref.startsWith("-") || ref.startsWith("/")) {
+    return "版本不能以 - 或 / 开头";
+  }
+  if (ref.endsWith("/") || ref.endsWith(".") || ref.endsWith(".lock")) {
+    return "版本不能以 /、. 或 .lock 结尾";
+  }
+  if (ref.includes("..") || ref.includes("@{") || ref.includes("//")) {
+    return "版本不是合法的 git ref";
+  }
+  const reserved = "~^:?*[\\";
+  if (
+    Array.from(ref).some(
+      (char) =>
+        /\s/.test(char) || reserved.includes(char) || char.charCodeAt(0) < 0x20,
+    )
+  ) {
+    return "版本不能包含空格或 git ref 保留字符";
+  }
+  return "";
+}
+
 /** Build the shared preview/launch condition from the current step-1 form. */
 function condition() {
   return {
     targetType: targetType.value,
     targetName: selectedTarget.value?.name ?? "",
-    targetVersion: targetVersion.value || undefined,
+    targetVersion: targetVersion.value.trim() || undefined,
     from: windowFrom.value || undefined,
     to: windowTo.value || undefined,
   };
@@ -466,8 +556,10 @@ function validateStep1(): boolean {
   const reversed = Boolean(
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
+  versionFormatError.value = versionRefFormatError(targetVersion.value);
   fieldErrors.target = !selectedTarget.value;
-  fieldErrors.version = !targetVersion.value || contentUnresolved.value;
+  fieldErrors.version =
+    Boolean(versionFormatError.value) || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
   fieldErrors.to = !windowTo.value || reversed;
   fieldErrors.policy = policyRuleError.value;
@@ -549,8 +641,10 @@ function retryContentResolution(): void {
 /** Run the Session association preview and advance to step 2. */
 async function goToSessions(): Promise<void> {
   if (!validateStep1()) {
+    versionOpen.value = false;
     return;
   }
+  versionOpen.value = false;
   pending.value = "sessions";
   requestError.value = "";
   try {
@@ -761,6 +855,7 @@ function openPotentialCase(item: PotentialPreviewItem): void {
 function backToStep(next: WizardStep): void {
   requestError.value = "";
   launchError.value = "";
+  versionOpen.value = false;
   step.value = next;
 }
 
@@ -958,26 +1053,59 @@ const reasonEntries = computed(() => {
                 </div>
                 <span class="wz-inline-label">版本</span>
                 <div class="wz-field">
-                  <select
-                    v-model="targetVersion"
-                    class="inp"
-                    :class="{ 'input-error': fieldErrors.version }"
-                    data-testid="wizard-version"
-                    :aria-invalid="fieldErrors.version ? 'true' : undefined"
-                    aria-describedby="wizard-version-error"
-                    @change="versionPinned = true"
-                  >
-                    <option value="">
-                      {{ versions.isPending.value ? "读取版本…" : "版本" }}
-                    </option>
-                    <option
-                      v-for="version in versionOptions"
-                      :key="version"
-                      :value="version"
+                  <div class="wz-version-combo">
+                    <input
+                      v-model="targetVersion"
+                      class="inp"
+                      :class="{ 'input-error': fieldErrors.version }"
+                      data-testid="wizard-version"
+                      :placeholder="versions.isPending.value ? '读取版本…' : 'tag / 分支名 / commit id'"
+                      autocomplete="off"
+                      spellcheck="false"
+                      role="combobox"
+                      aria-controls="wizard-version-menu"
+                      :aria-expanded="versionOpen ? 'true' : 'false'"
+                      :aria-invalid="fieldErrors.version ? 'true' : undefined"
+                      aria-describedby="wizard-version-error"
+                      @input="onVersionInput"
+                      @focus="versionOpen = true"
+                      @keydown.down.prevent="versionOpen = true"
                     >
-                      {{ version }}
-                    </option>
-                  </select>
+                    <button
+                      type="button"
+                      class="wz-version-toggle"
+                      data-testid="wizard-version-toggle"
+                      aria-label="展开 tag 建议"
+                      @click="toggleVersionMenu"
+                    >
+                      ▾
+                    </button>
+                    <ul
+                      v-if="versionOpen"
+                      id="wizard-version-menu"
+                      class="wz-version-menu"
+                      data-testid="wizard-version-menu"
+                      role="listbox"
+                    >
+                      <li
+                        v-for="version in versionSuggestions"
+                        :key="version"
+                      >
+                        <button
+                          type="button"
+                          class="wz-version-option"
+                          :class="{ current: version === targetVersion }"
+                          data-testid="wizard-version-option"
+                          role="option"
+                          :aria-selected="version === targetVersion ? 'true' : 'false'"
+                          @click="pickVersion(version)"
+                        >
+                          <span class="mono">{{ version }}</span>
+                          <span class="wz-version-kind">{{ versionKind(version) }}</span>
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                   <p
                     v-if="fieldErrors.version"
                     id="wizard-version-error"
@@ -985,7 +1113,7 @@ const reasonEntries = computed(() => {
                     class="field-error"
                     role="alert"
                   >
-                    {{ contentUnresolved ? contentError : "请选择版本" }}
+                    {{ contentUnresolved ? contentError : versionFormatError || "请选择或输入版本" }}
                     <button
                       v-if="contentUnresolved"
                       class="linklike"
@@ -1016,7 +1144,7 @@ const reasonEntries = computed(() => {
                 </button>
               </p>
               <p class="f-note">
-                版本是内容来源：服务端会读取该 tag 下的 SKILL.md / AGENT.md，并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。服务端会先用 git 校验该 ref 是否存在，再读取 SKILL.md / AGENT.md 并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
                   class="cfg-link"
                   type="button"
                   data-testid="wizard-target-config-link"
@@ -1937,6 +2065,83 @@ const reasonEntries = computed(() => {
 
 .wz-field .inp {
   width: 100%;
+}
+
+.wz-version-combo {
+  position: relative;
+  width: 100%;
+}
+
+.wz-version-combo .inp {
+  width: 100%;
+  padding-right: 30px;
+}
+
+.wz-version-toggle {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.wz-version-toggle:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.wz-version-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 190px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-popover);
+}
+
+.wz-version-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 7px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wz-version-option:hover,
+.wz-version-option.current {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.wz-version-kind {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .wz-inline-label {
