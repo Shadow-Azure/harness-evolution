@@ -1025,7 +1025,7 @@ POST /runs（同步校验）
 | `DELETE /api/evolution/targets/{id}` | 空间管理员或全局管理员删除；有进行中 run 时 `409 TARGET_IN_USE` |
 | `GET /api/evolution/targets/{id}/versions` | V2 路径为 `/api/workspaces/{wid}/evolution/targets/{id}/versions`；读取 tag 列表作为版本建议，不枚举分支或 commit；仓库不可用 → `422 REPO_INVALID` |
 
-- `versions` 只是 tag 建议；启动/预览提交的 `targetVersion` 可为 tag、分支名或 commit SHA。服务端必须用 git 校验存在性：在缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新一次；不存在 → `422 TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`），仓库不可达 → `422 REPO_INVALID`。
+- `versions` 只是 tag 建议；启动/预览提交的 `targetVersion` 可为 tag、分支名或 commit SHA。服务端必须用 git 校验存在性：在缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新一次；不存在 → `422 TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`）；仓库不可达/超时同样 → `422 TARGET_CONTENT_UNRESOLVED`（reason `repo_unreachable` / `content_timeout`）。`REPO_INVALID` 仍是对象配置保存时的校验错误。
 
 `GET /evolution/targets` 示例：
 

@@ -12,7 +12,7 @@ Status: implemented
 
 - V2 原型的启动向导版本字段改为输入优先的可编辑组合框：输入框本身就是 `targetVersion`，下拉只提供当前 target 的 tag 与 `defaultRef` 作为建议，不要求用户点选建议项。
 - 默认值取 `defaultRef`，没有 `defaultRef` 时取第一个 tag；`defaultRef` 是分支且不在 tag 列表时，仍作为「基线」建议出现，不再被强制改成 tag。
-- 点「下一步：关联 Session」和最终「启动自进化」时先校验 git ref 格式：非空、≤96 字符、无空白/`..`/`@{`/`~^:?*[` 等非法字符，不以 `-`、`/`、`.` 或 `.lock` 结尾；失败停在第 1 步并显示字段错误。格式通过后，服务端用 git 判定该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新 mirror；tag、分支和 commit 都必须解析到 commit。不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`），仓库不可达返回 `REPO_INVALID`，都回到第 1 步。存在后再解析该 ref 下的 `SKILL.md` / `AGENT.md` 并计算 body hash；不得回退到 tag 猜测。
+- 点「下一步：关联 Session」和最终「启动自进化」时先校验 git ref 格式：非空、≤96 字符、无空白/`..`/`@{`/`~^:?*[` 等非法字符，不以 `-`、`/`、`.` 或 `.lock` 结尾；失败停在第 1 步并显示字段错误。格式通过后，服务端用 git 判定该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时按需刷新 mirror；tag、分支和 commit 都必须解析到 commit。不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`）；仓库不可达/超时也走同一错误（reason `repo_unreachable` / `content_timeout`），都回到第 1 步。存在后再解析该 ref 下的 `SKILL.md` / `AGENT.md` 并计算 body hash；不得回退到 tag 猜测。
 - 版本身份仍是 body hash；tag 只是建议与显示值，不改变匹配和缓存语义。生产 `LaunchWizard.vue` 尚未跟进，本 Note 记录原型与设计决策，生产实现另挂 flow issue / PR。
 - 同步更新 `plans/fullstack-design/08 §9.2`、`05 §4.11`、`15` 与 `design-v2`，明确 `versions` 端点只返回 tag 建议，`targetVersion` 接受 tag、分支名和 commit SHA。
 
