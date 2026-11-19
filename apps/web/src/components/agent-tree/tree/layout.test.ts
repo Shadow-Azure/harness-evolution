@@ -227,7 +227,7 @@ describe("agent-tree graph layout", () => {
           badCaseId: "case-shared-trigger",
           sessionId: "shared-trigger",
           badCaseAgent: { sessionId: "shared-trigger", agentId: "main" },
-          anchor: { agentId: "main", eventIndex: 0 },
+          anchor: { agentId: "main", eventIndex: 0, kind: "event" },
         }),
       ],
     };
@@ -535,6 +535,85 @@ describe("agent-tree graph layout", () => {
     );
   });
 
+  it("pins a post-process anchor to the host end without indexing the sentinel event", () => {
+    const postProcess: SessionTree = {
+      ...demoNestedTree,
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-post-process",
+          badCaseType: "discovery",
+          anchor: {
+            agentId: "agent-a",
+            eventIndex: 2_147_483_647,
+            kind: "post_process",
+          },
+        },
+      ],
+    };
+
+    const result = buildGraph(
+      postProcess,
+      new Set(["main", "agent-a"]),
+      measure,
+    );
+    const host = result.nodes.find((node) => node.id === "agent-a")!;
+    const anchor = result.anchors[0]!;
+
+    expect(anchor).toMatchObject({
+      badCaseId: "case-post-process",
+      hostAgentId: "agent-a",
+      eventIndex: -1,
+      kind: "post-process",
+      side: "right",
+      anchorLabel: "后处理",
+    });
+    expect(anchor.x).toBe(host.position.x + host.data.visualW);
+    expect(result.badCaseNodes[0]!.data).toMatchObject({
+      badCaseId: "case-post-process",
+      anchorLabel: "后处理",
+    });
+    expect(result.badCaseEdges[0]).toMatchObject({
+      source: "agent-a",
+      sourceHandle: "finding-right",
+      targetHandle: "card-left",
+      type: "badcase",
+    });
+    expect(JSON.stringify(result.badCaseNodes)).not.toContain("2147483647");
+  });
+
+  it("keeps node and unknown anchors on the host node with no event index", () => {
+    const anchors: SessionTree = {
+      ...demoNestedTree,
+      badCases: [
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-node-anchor",
+          anchor: { agentId: "agent-a", eventIndex: -1, kind: "node" },
+        },
+        {
+          ...demoNestedTree.badCases[0]!,
+          badCaseId: "case-unknown-anchor",
+          anchor: { agentId: "agent-a", eventIndex: -1, kind: "unknown" },
+        },
+      ],
+    };
+
+    const result = buildGraph(anchors, new Set(["main", "agent-a"]), measure);
+
+    expect(
+      result.anchors.map((anchor) => [anchor.badCaseId, anchor.kind, anchor.eventIndex]),
+    ).toEqual([
+      ["case-node-anchor", "fallback", -1],
+      ["case-unknown-anchor", "fallback", -1],
+    ]);
+    expect(result.badCaseNodes.map((node) => node.data.badCaseId)).toEqual([
+      "case-node-anchor",
+      "case-unknown-anchor",
+    ]);
+    expect(JSON.stringify(result.badCaseNodes)).not.toContain("2147483647");
+  });
+
   it("builds semantic problem-card edges for every supported anchor", () => {
     const details = demoNestedTree.badCases.map((problem, index) =>
       badCaseFixture({
@@ -753,7 +832,7 @@ describe("agent-tree graph layout", () => {
     const cases = ["case-stack-a", "case-stack-b"].map((badCaseId) => ({
       ...demoNestedTree.badCases[1]!,
       badCaseId,
-      anchor: { agentId: "target", eventIndex: 0 },
+      anchor: { agentId: "target", eventIndex: 0, kind: "event" as const },
     }));
 
     const anchors = badCaseAnchors({
@@ -783,7 +862,7 @@ describe("agent-tree graph layout", () => {
         {
           ...demoNestedTree.badCases[0]!,
           badCaseId: "case-missing-host",
-          anchor: { agentId: "missing-agent", eventIndex: 0 },
+          anchor: { agentId: "missing-agent", eventIndex: 0, kind: "event" },
         },
       ],
     };
@@ -803,7 +882,7 @@ describe("agent-tree graph layout", () => {
         {
           ...demoNestedTree.badCases[0]!,
           badCaseId: "case-collapsed-host",
-          anchor: { agentId: "agent-extra-1", eventIndex: -1 },
+          anchor: { agentId: "agent-extra-1", eventIndex: -1, kind: "node" },
         },
       ],
     };
@@ -1074,7 +1153,7 @@ describe("agent-tree graph layout", () => {
         {
           ...demoNestedTree.badCases[0]!,
           badCaseId: "case-out-of-range",
-          anchor: { agentId: "agent-a", eventIndex: 99 },
+          anchor: { agentId: "agent-a", eventIndex: 99, kind: "event" },
         },
       ],
     };

@@ -564,7 +564,15 @@ test("m10-06 blocked attribution shows retry facts and does not request unreache
     assert.equal(blocked.current, "attribution");
     assert.equal(blocked.clustersDisabled, true);
     assert.match(blocked.text, /第 4 步 · 对象归因/);
-    assert.match(blocked.text, /v2-blocked-probe-1/);
+    const blockedContent = await waitForDocument(
+      page.session,
+      `(() => {
+        const text = document.body.textContent ?? "";
+        return text.includes("v2-blocked-probe-1") ? text : null;
+      })()`,
+      "blocked attribution step content",
+    );
+    assert.match(blockedContent, /v2-blocked-probe-1/);
     await screenshot(page, "06-after-blocked-attribution.png");
 
     const requestedKeys = [

@@ -17,7 +17,9 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
+from app.constants import POST_PROCESS_EVENT_INDEX
 from app.db.crud.attributions import attribution_cache_key
+from app.db.crud.evolution_targets import EvolutionTargetRecord
 from app.db.crud.potential import (
     AgentNodeRecord,
     AnchorEventRecord,
@@ -28,6 +30,10 @@ from app.db.crud.potential import (
     window_day_boundaries,
 )
 from app.errors import AppError, ErrorCode
+from app.service.evolution.target_content import (
+    TargetVersionResolver,
+    resolve_legacy_target_version,
+)
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.schemas import IdentityModel
 from app.utils.time import now_shanghai
@@ -40,6 +46,7 @@ HitReason = Literal[
     "policy_excluded",
     "order_unknown",
 ]
+AnchorSource = Literal["event", "node", "post_process", "unknown"]
 
 POLICY_VERSION = "v1"
 """Attribution policy semantics version inside the cache key."""
@@ -81,12 +88,12 @@ REASONS: tuple[HitReason, ...] = (
 
 
 def resolve_target_revision(value: str) -> tuple[str, str]:
-    """Resolve one wizard version input into its persisted revision identity.
+    """Resolve one stored version input into its legacy revision identity.
 
-    A value already carrying a normalized prefix is used as-is; otherwise a git
-    tag is assumed and ``tag:`` is prefixed. The pair is returned as
-    ``(target_version, target_revision)`` so the matcher can accept both the
-    legacy ``object_version`` and the canonical ``object_revision``.
+    This is the pre-content-resolver contract used by historical rows, the
+    overview, and tests. New wizard/launch resolutions must call
+    :class:`~app.service.evolution.target_content.TargetContentResolver` so a
+    bare skill/agent tag becomes ``digest:<sha256(body)>``.
 
     Args:
         value: Trimmed ``targetVersion``, ``defaultRef``, or digest revision.
@@ -94,10 +101,8 @@ def resolve_target_revision(value: str) -> tuple[str, str]:
     Returns:
         The raw version and the normalized revision.
     """
-    normalized = value.strip()
-    if normalized.startswith(REVISION_PREFIXES):
-        return normalized, normalized
-    return normalized, f"tag:{normalized}"
+    resolved = resolve_legacy_target_version(value)
+    return resolved.target_version, resolved.target_revision
 
 
 class PotentialPolicy(IdentityModel):
@@ -261,6 +266,7 @@ class SessionPreviewResult(IdentityModel):
     total: int = Field(ge=0)
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
+    target_revision: str | None = None
 
 
 class PotentialPreviewItem(IdentityModel):
@@ -273,6 +279,7 @@ class PotentialPreviewItem(IdentityModel):
     session_id: str
     hit_reason: HitReason
     order_state: OrderState
+    anchor_source: AnchorSource
 
 
 class PotentialReasonCounts(IdentityModel):
@@ -301,6 +308,7 @@ class PotentialPreviewResult(IdentityModel):
     total: int = Field(ge=0)
     page: int = Field(ge=1)
     page_size: int = Field(ge=1)
+    target_revision: str | None = None
 
 
 class AttributionPreviewSummary(IdentityModel):
@@ -316,6 +324,7 @@ class AttributionPreviewResult(IdentityModel):
     """Read-only attribution preview; it has no paged rows."""
 
     summary: AttributionPreviewSummary
+    target_revision: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +346,10 @@ class MatchCondition:
         for value in (self.target_version, self.target_revision):
             if value.startswith("tag:"):
                 candidates.add(value[4:])
+            elif value.startswith("digest:"):
+                # Events persist the body hash bare in ``definition_hash`` and
+                # with the digest prefix in ``object_revision``/``document_revision``.
+                candidates.add(value[7:])
         return frozenset(candidates)
 
 
@@ -405,6 +418,7 @@ class PotentialCase:
     included: bool
     object_trigger: TriggerPoint
     case_trigger: TriggerPoint | None
+    anchor_source: AnchorSource = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,22 +448,30 @@ class AttributionPreviewCounts:
 def compare_triggers(
     case: TriggerPoint | None,
     target: TriggerPoint,
+    *,
+    post_process: bool = False,
 ) -> OrderComparison:
     """Compare a case anchor against the object entry point.
 
-    Wall-clock timestamps win when both sides carry one; otherwise the
-    ``(tree_index, event_index)`` lexicographic order is used. A missing anchor or
-    incomplete coordinates stay ``unknown`` and never satisfy "after".
+    A post-process anchor is defined as "after the object" regardless of its
+    audit ``created_at`` (which can precede the entry in imported data). For
+    every other anchor, wall-clock timestamps win when both sides carry one;
+    otherwise the ``(tree_index, event_index)`` lexicographic order is used. A
+    missing anchor or incomplete coordinates stay ``unknown`` and never satisfy
+    "after".
 
     Args:
         case: Resolved bad-case anchor, or ``None`` when it cannot be resolved.
         target: Object entry point from a version-matched `agent_events` row.
+        post_process: Whether the case anchor is the explicit post-process kind.
 
     Returns:
         The comparable/unknown state and the strict ``after`` verdict.
     """
     if case is None:
         return OrderComparison(state="unknown", after=False)
+    if post_process:
+        return OrderComparison(state="comparable", after=True)
     if case.triggered_at is not None and target.triggered_at is not None:
         return OrderComparison(
             state="comparable",
@@ -699,14 +721,18 @@ class PotentialMatcher:
             session = entries.get(case.session_id)
             if session is None:
                 continue
-            case_trigger = _resolve_case_trigger(
+            case_trigger, anchor_source = _resolve_case_trigger(
                 case,
                 reporters[case.bad_case_id],
                 agents_by_id,
                 events_by_agent,
                 session.started_at,
             )
-            comparison = compare_triggers(case_trigger, session.object_entry)
+            comparison = compare_triggers(
+                case_trigger,
+                session.object_entry,
+                post_process=anchor_source == "post_process",
+            )
             same_object = case.object_name == condition.target_name
             verdict = evaluate_hit(
                 self_match=same_object and case.bad_case_type == "self",
@@ -731,6 +757,7 @@ class PotentialMatcher:
                     included=verdict.included,
                     object_trigger=session.object_entry,
                     case_trigger=case_trigger,
+                    anchor_source=anchor_source,
                 ),
             )
 
@@ -797,10 +824,12 @@ class PotentialPreviewService:
         self,
         targets: EvolutionTargetService,
         matcher: PotentialMatcher,
+        resolver: TargetVersionResolver,
     ) -> None:
-        """Bind target configuration validation and the shared matcher."""
+        """Bind target configuration validation, the matcher, and content resolution."""
         self._targets = targets
         self._matcher = matcher
+        self._resolver = resolver
 
     async def sessions(
         self,
@@ -835,6 +864,7 @@ class PotentialPreviewService:
             total=len(items),
             page=body.page,
             page_size=body.page_size,
+            target_revision=condition.target_revision,
         )
 
     async def potential(
@@ -874,6 +904,7 @@ class PotentialPreviewService:
             total=len(ordered),
             page=body.page,
             page_size=body.page_size,
+            target_revision=condition.target_revision,
         )
 
     async def attribution(
@@ -903,6 +934,7 @@ class PotentialPreviewService:
                 fresh=counts.fresh,
                 non_target_known=counts.non_target_known,
             ),
+            target_revision=condition.target_revision,
         )
 
     async def _condition(
@@ -934,7 +966,7 @@ class PotentialPreviewService:
                     "maxLength": MAX_TARGET_VERSION_LENGTH,
                 },
             )
-        target_version, target_revision = resolve_target_revision(version)
+        target_version, target_revision = await self._resolve_version(body, config, version)
         start, end = resolve_window(body.window_from, body.window_to)
         window_start, window_end = window_day_boundaries(start, end)
         return MatchCondition(
@@ -947,6 +979,21 @@ class PotentialPreviewService:
             window_end=window_end,
         )
 
+    async def _resolve_version(
+        self,
+        body: PreviewCondition,
+        config: EvolutionTargetRecord,
+        version: str,
+    ) -> tuple[str, str]:
+        """Resolve a selected version to its persisted body-hash revision."""
+        resolved = await self._resolver.resolve(
+            object_type=body.target_type,
+            repo_url=config.repo_url,
+            sub_dir=config.sub_dir,
+            version=version,
+        )
+        return resolved.target_version, resolved.target_revision
+
 
 def _potential_item(item: PotentialCase) -> PotentialPreviewItem:
     """Map one included matcher result to the wizard row DTO."""
@@ -958,6 +1005,7 @@ def _potential_item(item: PotentialCase) -> PotentialPreviewItem:
         session_id=item.session_id,
         hit_reason=item.hit_reason,
         order_state=item.order_state,
+        anchor_source=item.anchor_source,
     )
 
 
@@ -985,11 +1033,15 @@ def _resolve_case_trigger(
     agents_by_id: Mapping[str, AgentNodeRecord],
     events_by_agent: Mapping[str, Sequence[AnchorEventRecord]],
     session_started_at: datetime,
-) -> TriggerPoint | None:
-    """Resolve the 06 §7.4 anchor, degrading a missing anchor to the birth point."""
+) -> tuple[TriggerPoint | None, AnchorSource]:
+    """Resolve the 06 §7.4 anchor and its audited ``anchorSource``.
+
+    A resolved reporter with a missing skill/agent trigger becomes an explicit
+    post-process anchor instead of silently degrading to the reporter's birth
+    point. Only an unresolvable reporter remains ``unknown``/``-1``.
+    """
     if reporter is None:
-        return None
-    birth = _birth_point(reporter, agents_by_id, events_by_agent, session_started_at)
+        return None, "unknown"
     if case.object_type == "skill":
         skill_events = [
             event
@@ -998,13 +1050,16 @@ def _resolve_case_trigger(
         ]
         if skill_events:
             last = max(skill_events, key=lambda event: event.event_index)
-            return TriggerPoint(
-                agent_id=reporter.id,
-                event_index=last.event_index,
-                triggered_at=last.triggered_at,
-                tree_index=reporter.tree_index,
+            return (
+                TriggerPoint(
+                    agent_id=reporter.id,
+                    event_index=last.event_index,
+                    triggered_at=last.triggered_at,
+                    tree_index=reporter.tree_index,
+                ),
+                "event",
             )
-        return birth
+        return _post_process_anchor(case, reporter), "post_process"
     if case.bad_case_type == "discovery" and case.object_type == "agent":
         parent = (
             agents_by_id.get(reporter.parent_agent_id)
@@ -1013,45 +1068,62 @@ def _resolve_case_trigger(
         )
         call = _parent_call_event(parent, reporter, events_by_agent)
         if parent is not None and call is not None:
-            return TriggerPoint(
-                agent_id=parent.id,
-                event_index=call.event_index,
-                triggered_at=call.triggered_at,
-                tree_index=parent.tree_index,
+            return (
+                TriggerPoint(
+                    agent_id=parent.id,
+                    event_index=call.event_index,
+                    triggered_at=call.triggered_at,
+                    tree_index=parent.tree_index,
+                ),
+                "event",
             )
-        return birth
-    return birth
+        return _post_process_anchor(case, reporter), "post_process"
+    return (
+        _node_anchor(
+            reporter,
+            agents_by_id,
+            events_by_agent,
+            session_started_at,
+        ),
+        "node",
+    )
 
 
-def _birth_point(
+def _post_process_anchor(
+    case: WindowCaseRecord,
+    reporter: AgentNodeRecord,
+) -> TriggerPoint:
+    """Build the explicit after-everything anchor for an unmatched report."""
+    return TriggerPoint(
+        agent_id=reporter.id,
+        event_index=POST_PROCESS_EVENT_INDEX,
+        triggered_at=case.created_at,
+        # The coordinate fallback shares the same INT_MAX sentinel.
+        tree_index=POST_PROCESS_EVENT_INDEX,
+    )
+
+
+def _node_anchor(
     reporter: AgentNodeRecord,
     agents_by_id: Mapping[str, AgentNodeRecord],
     events_by_agent: Mapping[str, Sequence[AnchorEventRecord]],
     session_started_at: datetime,
-) -> TriggerPoint | None:
-    """Return the reporter birth instant: session start or the parent Agent call.
-
-    An unresolved parent relation is not evidence that the node is main, so it
-    stays unknown instead of borrowing the Session start.
-    """
+) -> TriggerPoint:
+    """Return the reporter node anchor used by ``self + agent`` reports."""
+    triggered_at: datetime | None
     if reporter.kind == "main":
-        return TriggerPoint(
-            agent_id=reporter.id,
-            event_index=-1,
-            triggered_at=session_started_at,
-            tree_index=reporter.tree_index,
-        )
-    if reporter.parent_agent_id is None:
-        return None
-    parent = agents_by_id.get(reporter.parent_agent_id)
-    call = _parent_call_event(parent, reporter, events_by_agent)
-    if parent is None or call is None:
-        return None
+        triggered_at = session_started_at
+    elif reporter.parent_agent_id is None:
+        triggered_at = None
+    else:
+        parent = agents_by_id.get(reporter.parent_agent_id)
+        call = _parent_call_event(parent, reporter, events_by_agent)
+        triggered_at = call.triggered_at if call is not None else None
     return TriggerPoint(
-        agent_id=parent.id,
-        event_index=call.event_index,
-        triggered_at=call.triggered_at,
-        tree_index=parent.tree_index,
+        agent_id=reporter.id,
+        event_index=-1,
+        triggered_at=triggered_at,
+        tree_index=reporter.tree_index,
     )
 
 
@@ -1085,18 +1157,29 @@ def _compare_entry_order(left: ObjectEventRecord, right: ObjectEventRecord) -> i
 
 
 def _event_matches(event: ObjectEventRecord, candidates: frozenset[str]) -> bool:
-    """Return whether either persisted identity form matches the target."""
-    return (event.object_version is not None and event.object_version in candidates) or (
-        event.object_revision is not None and event.object_revision in candidates
+    """Return whether any persisted identity form matches the target."""
+    return any(
+        value is not None and value in candidates
+        for value in (
+            event.object_version,
+            event.object_revision,
+            event.definition_hash,
+            event.document_revision,
+        )
     )
 
 
 def _event_revision_unresolved(event: ObjectEventRecord) -> bool:
-    """Return whether an event carries no usable version or normalized revision."""
-    return event.object_version is None and (
-        event.object_revision is None
-        or not event.object_revision
-        or event.object_revision == "unknown"
+    """Return whether an event carries no usable version or revision identity."""
+    if event.object_version is not None:
+        return False
+    return not any(
+        value is not None and value != "unknown"
+        for value in (
+            event.object_revision,
+            event.definition_hash,
+            event.document_revision,
+        )
     )
 
 

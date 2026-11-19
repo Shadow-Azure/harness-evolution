@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,7 +14,7 @@ from sqlalchemy import insert
 
 from app.db.base import Database
 from app.db.crud.fixtures import ensure_fixture_external_tables
-from app.db.models.domain import bad_case_analysis, probe_reports
+from app.db.models.domain import agent_events, bad_case_analysis, probe_reports
 from app.main import create_app
 from app.utils.time import SHANGHAI
 from tests.identity.helpers import identity_settings
@@ -25,6 +26,7 @@ from tests.m10_02_potential_support import (
     seed_target,
     seed_workspace,
 )
+from tests.target_content_support import FakeTargetVersionResolver
 from tests.workspaces.helpers import (
     access_token,
     bearer,
@@ -441,7 +443,18 @@ async def seed_attributions(database: Database) -> None:
 async def target_overview_api(tmp_path: Path) -> AsyncIterator[TargetOverviewApi]:
     """Seed three spaces with targets, versions, cases, and attributions."""
     settings = identity_settings(tmp_path)
-    app = create_app(settings, git_remote=FakeGitRemote())
+    app = create_app(
+        settings,
+        git_remote=FakeGitRemote(),
+        target_version_resolver=FakeTargetVersionResolver(
+            revision="digest",
+            revisions={
+                "v1.9.0": "tag:v1.9.0",
+                "v1.8.0": "tag:v1.8.0",
+                "v1.0.0": "tag:v1.0.0",
+            },
+        ),
+    )
     transport = httpx.ASGITransport(app=app)
     async with app.router.lifespan_context(app):
         database = app.state.database
@@ -1087,3 +1100,51 @@ async def test_foreign_workspace_attribution_is_ignored(
     assert {item["badCaseId"] for item in non_target.json()["items"]} == {
         "m11-03-case-nontarget",
     }
+
+
+async def test_body_hash_event_associates_through_a_bare_tag(
+    target_overview_api: TargetOverviewApi,
+) -> None:
+    """A bare tag resolves to a digest that matches definition_hash events."""
+    database = target_overview_api.database
+    digest = hashlib.sha256(b"v2.0.0").hexdigest()
+    main_id = await seed_session(
+        database,
+        session_id="m11-03-session-body-hash",
+        started_at=NOW,
+        title="body hash",
+    )
+    async with database.transaction() as session:
+        await session.execute(
+            insert(agent_events).values(
+                agent_id=main_id,
+                event_index=0,
+                line_no=1,
+                message_offset=0,
+                kind="skill",
+                name="deep-research",
+                definition_hash=digest,
+                triggered_at=OBJECT_ENTRY,
+            ),
+        )
+    await seed_case(
+        database,
+        case_id="m11-03-case-body-hash",
+        session_id="m11-03-session-body-hash",
+        workspace_id=WORKSPACE_A,
+        case_type="self",
+        object_name="deep-research",
+        created_at=OBJECT_ENTRY,
+    )
+
+    response = await target_overview_api.client.get(
+        f"/api/workspaces/{WORKSPACE_A}/overview/targets/{TARGET_SKILL}/detail",
+        headers=target_overview_api.reader_a,
+        params=WINDOW,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["stats"]["sessions"] == 5
+    assert body["byVersion"][0]["version"] == "v2.0.0"
+    assert body["byVersion"][0]["potential"] == 4

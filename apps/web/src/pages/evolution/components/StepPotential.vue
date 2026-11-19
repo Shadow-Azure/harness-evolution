@@ -19,6 +19,12 @@ const emit = defineEmits<{
 
 const payload = computed(() => props.step.payload);
 const summary = computed(() => payload.value.summary);
+const anchorSourceLabels: Record<StepPotentialRow["anchorSource"], string> = {
+  event: "事件锚点",
+  node: "节点锚点",
+  post_process: "后处理上报",
+  unknown: "锚点未知",
+};
 const pageCount = computed(() =>
   Math.max(1, Math.ceil(payload.value.total / payload.value.pageSize)),
 );
@@ -79,6 +85,7 @@ function changePage(delta: number): void {
             <th>触发点</th>
             <th>来源 Session</th>
             <th>命中原因</th>
+            <th>锚点来源</th>
           </tr>
         </thead>
         <tbody>
@@ -118,6 +125,13 @@ function changePage(delta: number): void {
                 v-if="row.orderState === 'unknown'"
                 class="order-note"
               >触发点顺序待轨迹时间戳重放</span>
+            </td>
+            <td>
+              <span
+                class="anchor-source"
+                :class="{ post: row.anchorSource === 'post_process' }"
+                :data-anchor-source="row.anchorSource"
+              >{{ anchorSourceLabels[row.anchorSource] }}</span>
             </td>
           </tr>
         </tbody>
@@ -279,6 +293,22 @@ td.id a:hover {
   margin-top: 3px;
   color: var(--orange);
   font-size: 10.5px;
+}
+
+.anchor-source {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.anchor-source.post {
+  border-color: color-mix(in srgb, var(--orange) 38%, var(--border));
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
 }
 
 .mono {

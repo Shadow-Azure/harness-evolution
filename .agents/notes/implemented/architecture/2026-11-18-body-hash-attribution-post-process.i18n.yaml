@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- .agents/notes/implemented/architecture/2026-11-18-body-hash-attribution-post-process.md
+2026-11-18-body-hash-attribution-post-process.md: 03adaf6da053a3bd6ed037e8f195437df805629b
+2026-11-18-body-hash-attribution-post-process.en.md: 527b8cdcdd44a9ffe8ae0a7b9a066ff8492a0346

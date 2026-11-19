@@ -16,13 +16,16 @@ from app.service.evolution.potential import (
     PotentialMatcher,
     ResolvedPolicy,
     resolve_policy,
-    resolve_target_revision,
     resolve_window,
 )
 from app.service.evolution.probe_query import (
     ProbeQueryRequest,
     RunAccepted,
     normalized_query,
+)
+from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
+    TargetVersionResolver,
 )
 from app.service.jobs import JobRunner, sanitize_job_payload
 
@@ -94,7 +97,8 @@ class EvolutionLaunchService:
         matcher: PotentialMatcher,
         runs: EvolutionRepository,
         jobs: JobRunner,
-        events: EvolutionRunEventService | None = None,
+        events: EvolutionRunEventService | None,
+        resolver: TargetVersionResolver,
     ) -> None:
         """Bind launch collaborators for both run modes."""
         self._targets = targets
@@ -102,6 +106,7 @@ class EvolutionLaunchService:
         self._runs = runs
         self._jobs = jobs
         self._events = events
+        self._resolver = resolver
 
     async def request_run(
         self,
@@ -151,14 +156,16 @@ class EvolutionLaunchService:
             default_version=config.default_ref,
             workspace_ids=(config.workspace_id,),
         )
+        resolved = await self._resolve_version(body, query.target_version, config)
         policy = resolve_policy(body.policy)
-        condition = _match_condition(query, config.workspace_id)
+        condition = _match_condition(query, config.workspace_id, resolved)
         await self._require_potential(condition, policy)
         run = await self._runs.create_run(
             self._run_values(
                 body,
                 query,
                 config,
+                resolved=resolved,
                 policy=policy,
                 created_by=created_by,
             ),
@@ -236,6 +243,7 @@ class EvolutionLaunchService:
         query: Any,
         config: LaunchTargetRecord,
         *,
+        resolved: ResolvedTargetVersion,
         policy: ResolvedPolicy,
         created_by: str | None,
     ) -> Mapping[str, Any]:
@@ -245,6 +253,7 @@ class EvolutionLaunchService:
             body: Original wizard condition including engine selection.
             query: Normalized condition with the resolved version.
             config: Enabled target configuration backing the launch.
+            resolved: User-facing version plus the resolved body-hash revision.
             policy: Validated potential policy resolved from the request.
             created_by: Authenticated principal that started the run.
 
@@ -252,7 +261,7 @@ class EvolutionLaunchService:
             Column values for one `preparing` run row.
         """
         return {
-            "title": f"{query.target_name} {query.target_version} 自进化",
+            "title": f"{query.target_name} {resolved.target_version} 自进化",
             "workspace_id": config.workspace_id,
             "mode": body.mode,
             "engine_key": body.engine_key or body.mode,
@@ -263,18 +272,33 @@ class EvolutionLaunchService:
             "target_config_id": config.id,
             "target_type": query.target_type,
             "target_name": query.target_name,
-            "target_version": query.target_version,
+            "target_version": resolved.target_version,
+            "target_revision": resolved.target_revision,
             "repo_url": config.repo_url,
             "sub_dir": config.sub_dir,
             "validation_project_id": config.validation_project_id,
             "test_project_id": config.test_project_id,
-            "base_ref": config.default_ref,
+            "base_ref": resolved.target_version,
             "window_from": query.window_from,
             "window_to": query.window_to,
             "models": list(query.models),
             "status": "preparing",
             "created_by": created_by,
         }
+
+    async def _resolve_version(
+        self,
+        body: ProbeQueryRequest,
+        version: str,
+        config: LaunchTargetRecord,
+    ) -> ResolvedTargetVersion:
+        """Resolve the launch version, refusing to guess when content is absent."""
+        return await self._resolver.resolve(
+            object_type=body.target_type,
+            repo_url=config.repo_url,
+            sub_dir=config.sub_dir,
+            version=version,
+        )
 
 
 def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -306,17 +330,20 @@ def _snapshot_eval(eval_config: Mapping[str, Any] | None) -> dict[str, Any]:
     return snapshot
 
 
-def _match_condition(query: Any, workspace_id: str) -> MatchCondition:
+def _match_condition(
+    query: Any,
+    workspace_id: str,
+    resolved: ResolvedTargetVersion,
+) -> MatchCondition:
     """Build the shared matcher condition from the validated launch request."""
-    target_version, target_revision = resolve_target_revision(query.target_version)
     start, end = resolve_window(query.window_from, query.window_to)
     window_start, window_end = window_day_boundaries(start, end)
     return MatchCondition(
         workspace_id=workspace_id,
         target_type=cast(ObjectType, query.target_type),
         target_name=query.target_name,
-        target_version=target_version,
-        target_revision=target_revision,
+        target_version=resolved.target_version,
+        target_revision=resolved.target_revision,
         window_start=window_start,
         window_end=window_end,
     )

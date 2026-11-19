@@ -105,6 +105,7 @@ const potentialStep = {
         sessionId: "session-1",
         hitReason: "after_object",
         orderState: "unknown",
+        anchorSource: "event",
       },
     ],
     total: 6,
@@ -226,7 +227,10 @@ const run = {
 describe("evolution step content", () => {
   it("summarizes the selection condition and headline counts", () => {
     const wrapper = mount(StepRange, {
-      props: { step: rangeStep },
+      props: {
+        step: rangeStep,
+        targetRevision: "digest:9080a1b2",
+      },
     });
 
     expect(wrapper.text()).toContain("skill:deep-research@v2.0.0");
@@ -236,6 +240,60 @@ describe("evolution step content", () => {
     expect(wrapper.text()).toContain("ws-test");
     expect(wrapper.text()).toContain("时间段内 bad case");
     expect(wrapper.text()).toContain("潜在 bad case");
+    expect(wrapper.get("[data-testid='step-target-revision']").text()).toBe(
+      "digest:9080a1b2",
+    );
+  });
+
+  it("keeps a missing target revision explicit instead of guessing a tag", () => {
+    const wrapper = mount(StepRange, {
+      props: { step: rangeStep },
+    });
+
+    expect(
+      wrapper.get("[data-testid='step-target-revision-missing']").text(),
+    ).toContain("历史运行未记录 revision");
+    expect(wrapper.text()).not.toContain("digest:");
+  });
+
+  it("prefers the step-condition revision over the run-target snapshot", () => {
+    const step = {
+      ...rangeStep,
+      payload: {
+        ...rangeStep.payload,
+        condition: {
+          ...rangeStep.payload.condition,
+          targetRevision: "digest:condition",
+        },
+      },
+    } satisfies EvolutionStepRange;
+    const wrapper = mount(StepRange, {
+      props: { step, targetRevision: "digest:snapshot" },
+    });
+
+    expect(wrapper.get("[data-testid='step-target-revision']").text()).toBe(
+      "digest:condition",
+    );
+  });
+
+  it("falls back to the run-target snapshot when the condition has no revision", () => {
+    const step = {
+      ...rangeStep,
+      payload: {
+        ...rangeStep.payload,
+        condition: {
+          ...rangeStep.payload.condition,
+          targetRevision: null,
+        },
+      },
+    } satisfies EvolutionStepRange;
+    const wrapper = mount(StepRange, {
+      props: { step, targetRevision: "digest:snapshot" },
+    });
+
+    expect(wrapper.get("[data-testid='step-target-revision']").text()).toBe(
+      "digest:snapshot",
+    );
   });
 
   it("shows a custom potential policy verbatim", () => {
@@ -289,6 +347,8 @@ describe("evolution step content", () => {
     expect(wrapper.text()).toContain("触发点在对象后");
     expect(wrapper.text()).toContain("触发点顺序待轨迹时间戳重放");
     expect(wrapper.text()).toContain("deep-research");
+    expect(wrapper.text()).toContain("锚点来源");
+    expect(wrapper.get("[data-anchor-source='event']").text()).toBe("事件锚点");
 
     const link = wrapper.get("td.id a");
     expect(link.attributes("href")).toBe(
@@ -298,6 +358,29 @@ describe("evolution step content", () => {
     const buttons = wrapper.findAll(".pager button");
     await buttons[1]?.trigger("click");
     expect(wrapper.emitted("page-change")).toEqual([[2]]);
+  });
+
+  it("shows the post-process anchor source badge from the required row field", () => {
+    const withAnchorSource = {
+      ...potentialStep,
+      payload: {
+        ...potentialStep.payload,
+        rows: [
+          {
+            ...potentialStep.payload.rows[0]!,
+            anchorSource: "post_process" as const,
+          },
+        ],
+      },
+    } satisfies EvolutionStepPotential;
+    const wrapper = mount(StepPotential, {
+      props: { wid: "ws-test", step: withAnchorSource },
+    });
+
+    expect(
+      wrapper.get("[data-anchor-source='post_process']").text(),
+    ).toBe("后处理上报");
+    expect(wrapper.text()).not.toContain("2147483647");
   });
 
   it("opens the first cluster and expands its source bad cases", async () => {

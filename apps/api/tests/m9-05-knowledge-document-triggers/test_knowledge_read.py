@@ -9,6 +9,7 @@ from typing import Literal
 import pytest
 
 from app.service.acquisition.normalize import ParsedTranscript, normalize_transcript
+from app.utils.definition import definition_hash
 from app.utils.knowledge_paths import (
     MAX_KNOWLEDGE_ROOT_LENGTH,
     MAX_KNOWLEDGE_ROOTS,
@@ -270,11 +271,17 @@ def test_read_inside_a_knowledge_root_emits_a_document_event() -> None:
         f"{KNOWLEDGE_ROOT}/guides/runbook.md",
         KNOWLEDGE_ROOT,
     )
-    assert event.document_revision == "digest:" + hashlib.sha256(content.encode()).hexdigest()
+    normalized_hash = definition_hash(content)
+    raw_hash = hashlib.sha256(content.encode()).hexdigest()
+    assert event.document_revision == f"digest:{normalized_hash}"
     assert event.object_revision == event.document_revision
+    assert event.definition_hash == normalized_hash
+    assert event.file_read_hash == raw_hash
+    assert event.read_complete is True
     assert event.tool_use_id == "tool-read"
     evidence = next(item for item in parsed.evidence if item.tool_use_id == "tool-read")
-    assert evidence.content_hash == hashlib.sha256(content.encode()).hexdigest()
+    assert evidence.content_hash == raw_hash
+    assert evidence.definition_hash == normalized_hash
     assert evidence.complete is True
 
 

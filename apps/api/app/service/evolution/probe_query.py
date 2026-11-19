@@ -35,7 +35,7 @@ class ProbeQueryRequest(IdentityModel):
 
     target_type: Literal["skill", "agent", "knowledge"]
     target_name: str = Field(min_length=1, max_length=128)
-    target_version: str | None = Field(default=None, max_length=64)
+    target_version: str | None = Field(default=None, max_length=96)
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
     models: list[str] = Field(default_factory=list)

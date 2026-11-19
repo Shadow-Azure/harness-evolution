@@ -243,7 +243,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
             "objectName": "Explore",
             "objectType": "agent",
             "objectVersion": "synthetic-1",
-            "anchor": {"agentId": AGENT_1, "eventIndex": -1},
+            "anchor": {"agentId": AGENT_1, "eventIndex": -1, "kind": "node"},
             "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
             "title": "检查结论缺少目标文件",
             "reason": "合成示例：检查结论缺少目标文件。",  # noqa: RUF001
@@ -254,7 +254,7 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
             "objectName": "Explore",
             "objectType": "agent",
             "objectVersion": "synthetic-1",
-            "anchor": {"agentId": SESSION_1, "eventIndex": 0},
+            "anchor": {"agentId": SESSION_1, "eventIndex": 0, "kind": "event"},
             "badCaseAgent": {"sessionId": SESSION_1, "agentId": AGENT_1},
             "title": "推理步骤越过工具边界",
             "reason": "合成示例：推理步骤越过工具边界。",  # noqa: RUF001
@@ -276,8 +276,9 @@ async def test_tree_returns_flat_agents_events_and_bad_case_anchors(
     assert workflow["parentAgentId"] == SESSION_2
     assert workflow["toolUseId"] == "tool-wf-1"
     assert workflow_payload["badCases"][0]["anchor"] == {
-        "agentId": SESSION_2,
-        "eventIndex": -1,
+        "agentId": WORKFLOW_AGENT,
+        "eventIndex": 2_147_483_647,
+        "kind": "post_process",
     }
     assert workflow_payload["badCases"][0]["badCaseAgent"] == {
         "sessionId": SESSION_2,
@@ -403,7 +404,7 @@ async def test_tree_resolves_skill_and_discovery_agent_anchors(
     )
     assert len(skill_agent["events"]) == 1
     assert skill_agent["events"][0]["kind"] == "skill"
-    assert skill_case["anchor"] == {"agentId": SESSION_3, "eventIndex": 0}
+    assert skill_case["anchor"] == {"agentId": SESSION_3, "eventIndex": 0, "kind": "event"}
     assert skill_case["badCaseAgent"] == {
         "sessionId": SESSION_3,
         "agentId": None,
@@ -432,6 +433,7 @@ async def test_tree_resolves_skill_and_discovery_agent_anchors(
     assert discovery_case["anchor"] == {
         "agentId": SESSION_1,
         "eventIndex": 0,
+        "kind": "event",
     }
 
 
@@ -454,7 +456,7 @@ async def test_tree_warns_when_reporter_agent_is_unknown(
         )
 
     case = response.json()["badCases"][0]
-    assert case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1}
+    assert case["anchor"] == {"agentId": SESSION_1, "eventIndex": -1, "kind": "unknown"}
     assert case["badCaseAgent"]["agentId"] == "missing-reporter"
     assert "bad case reporter Agent was not found" in caplog.text
 
@@ -498,7 +500,7 @@ async def test_tree_unknown_skill_reporter_does_not_borrow_main_trigger(
         )
 
     case = response.json()["badCases"][0]
-    assert case["anchor"] == {"agentId": SESSION_3, "eventIndex": -1}
+    assert case["anchor"] == {"agentId": SESSION_3, "eventIndex": -1, "kind": "unknown"}
     assert case["badCaseAgent"]["agentId"] == "missing-skill-reporter"
     assert "bad case reporter Agent was not found" in caplog.text
 

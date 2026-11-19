@@ -10,6 +10,7 @@ import {
   shortBadCaseId,
 } from "../../utils/badCaseId";
 import {
+  badCaseAnchorPresentation,
   badCaseFactEntries,
   badCaseState,
 } from "./badCaseDisplay";
@@ -150,6 +151,14 @@ defineExpose({ scrollToProblem });
                 >
                   数据降级
                 </span>
+                <span
+                  v-if="badCaseAnchorPresentation(problem.anchor)"
+                  class="anchor-chip"
+                  :class="badCaseAnchorPresentation(problem.anchor)?.tone"
+                  :title="badCaseAnchorPresentation(problem.anchor)?.description"
+                >
+                  {{ badCaseAnchorPresentation(problem.anchor)?.label }}
+                </span>
                 <span class="problem-target">
                   {{ problem.objectType }} · {{ problem.objectName }}
                 </span>
@@ -220,6 +229,14 @@ defineExpose({ scrollToProblem });
                   class="degraded-chip"
                 >
                   数据降级
+                </span>
+                <span
+                  v-if="badCaseAnchorPresentation(problem.anchor)"
+                  class="anchor-chip"
+                  :class="badCaseAnchorPresentation(problem.anchor)?.tone"
+                  :title="badCaseAnchorPresentation(problem.anchor)?.description"
+                >
+                  {{ badCaseAnchorPresentation(problem.anchor)?.label }}
                 </span>
               </span>
               <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
@@ -659,12 +676,22 @@ defineExpose({ scrollToProblem });
 }
 
 .state-chip,
-.degraded-chip {
+.degraded-chip,
+.anchor-chip {
   padding: 1px 7px;
   border: 1px solid currentColor;
   border-radius: 999px;
   font-size: 10px;
   white-space: nowrap;
+}
+
+.anchor-chip.orange {
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
+}
+
+.anchor-chip.neutral {
+  color: var(--text-faint);
 }
 
 .state-chip.neutral {

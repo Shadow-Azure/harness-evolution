@@ -22,6 +22,9 @@ const catalogsBase = `/api/workspaces/${workspaceId}/catalogs`;
 
 const wrappers: VueWrapper[] = [];
 
+const resolvedRevision =
+  "digest:9080a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789ab";
+
 const sessionPreview: SessionPreviewResult = {
   summary: {
     reported: 6,
@@ -47,6 +50,7 @@ const sessionPreview: SessionPreviewResult = {
   total: 2,
   page: 1,
   pageSize: 4,
+  targetRevision: resolvedRevision,
 };
 
 const potentialPreview: PotentialPreviewResult = {
@@ -70,6 +74,7 @@ const potentialPreview: PotentialPreviewResult = {
       sessionId: "session-0001",
       hitReason: "self_report",
       orderState: "comparable",
+      anchorSource: "event",
     },
     {
       badCaseId: "case-0002",
@@ -79,15 +84,18 @@ const potentialPreview: PotentialPreviewResult = {
       sessionId: "session-0002",
       hitReason: "after_object",
       orderState: "unknown",
+      anchorSource: "post_process",
     },
   ],
   total: 2,
   page: 1,
   pageSize: 5,
+  targetRevision: resolvedRevision,
 };
 
 const attributionPreview: AttributionPreviewResult = {
   summary: { potential: 2, reused: 1, fresh: 1, nonTargetKnown: 3 },
+  targetRevision: resolvedRevision,
 };
 
 const targetCatalog = {
@@ -123,7 +131,7 @@ const focusBadCase = {
   objectVersion: "v1.9.0",
   title: "焦点问题",
   reason: "焦点问题描述",
-  anchor: { agentId: "agent-1", eventIndex: 0 },
+  anchor: { agentId: "agent-1", eventIndex: 0, kind: "event" },
   badCaseAgent: { agentId: "agent-1", sessionId: "session-0001" },
   analysis: { status: "unanalyzed" },
   degraded: false,
@@ -382,6 +390,9 @@ describe("launch wizard", { timeout: 30000 }, () => {
       "研究 session",
     );
     expect(wrapper.get(".wz-stats").text()).toContain("关联");
+    expect(
+      wrapper.get("[data-testid='wizard-condition-revision']").text(),
+    ).toBe(`revision ${resolvedRevision}`);
 
     await wrapper.get("[data-testid='wizard-step2-next']").trigger("click");
     await flushPromises();
@@ -401,6 +412,14 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(table).toContain("case…0001");
     expect(table).toContain("self 上报");
     expect(table).toContain("触发点顺序待轨迹时间戳重放");
+    expect(table).toContain("事件锚点");
+    expect(
+      wrapper.get("[data-anchor-source='post_process']").text(),
+    ).toBe("后处理上报");
+    expect(table).not.toContain("2147483647");
+    expect(
+      wrapper.get("[data-testid='wizard-condition-revision']").text(),
+    ).toBe(`revision ${resolvedRevision}`);
 
     await wrapper.get("[data-testid='wizard-step3-next']").trigger("click");
     await flushPromises();
@@ -419,6 +438,55 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(stats).toContain("2");
     expect(stats).toContain("复用缓存");
     expect(stats).toContain("3");
+    expect(
+      wrapper.get("[data-testid='wizard-condition-revision']").text(),
+    ).toBe(`revision ${resolvedRevision}`);
+  });
+
+  it("shows the resolved version → revision in Step 1 and clears it on version change", async () => {
+    useHandlers();
+    const { wrapper } = await mountWizard();
+    await reachStep2(wrapper);
+    await wrapper.get("[data-testid='wizard-back']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.get("[data-testid='wizard-target-revision']").text(),
+    ).toBe(`v2.0.0 → ${resolvedRevision}`);
+    expect(
+      wrapper.get("[data-testid='wizard-target-revision']").attributes("title"),
+    ).toBe(resolvedRevision);
+
+    await wrapper.get("[data-testid='wizard-version']").setValue("v1.9.0");
+    await flushPromises();
+
+    expect(
+      wrapper.find("[data-testid='wizard-target-revision']").exists(),
+    ).toBe(false);
+    expect(wrapper.text()).not.toContain(resolvedRevision);
+  });
+
+  it("shows explicit unresolved revision copy when the preview returns null", async () => {
+    useHandlers({
+      sessions: () =>
+        HttpResponse.json({ ...sessionPreview, targetRevision: null }),
+    });
+    const { wrapper } = await mountWizard();
+    await reachStep2(wrapper);
+
+    expect(
+      wrapper.get("[data-testid='wizard-condition-revision']").text(),
+    ).toBe("revision 未解析");
+    await wrapper.get("[data-testid='wizard-back']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.get("[data-testid='wizard-target-revision-unresolved']").text(),
+    ).toContain("未解析到 revision");
+    expect(wrapper.text()).not.toContain("digest:");
+    expect(
+      wrapper.find("[data-testid='wizard-target-revision']").exists(),
+    ).toBe(false);
   });
 
   it("re-requests the attribution preview when the cache switch changes", async () => {
@@ -689,6 +757,51 @@ describe("launch wizard", { timeout: 30000 }, () => {
       false,
     );
     expect(wrapper.find("[data-testid='wizard-next']").exists()).toBe(true);
+  });
+
+  it("turns TARGET_CONTENT_UNRESOLVED into an actionable version error", async () => {
+    let attempts = 0;
+    useHandlers({
+      sessions: () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json(
+              {
+                error: {
+                  code: "TARGET_CONTENT_UNRESOLVED",
+                  message: "target content could not be resolved to a body hash",
+                  details: {
+                    targetType: "skill",
+                    reason: "content_not_found",
+                  },
+                },
+              },
+              { status: 422 },
+            )
+          : HttpResponse.json(sessionPreview);
+      },
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    const versionError = wrapper.get("[data-testid='wizard-version-error']");
+    expect(versionError.text()).toContain("找不到目标文件");
+    expect(versionError.text()).not.toContain("could not be resolved");
+    expect(
+      wrapper.get("[data-testid='wizard-next']").attributes("disabled"),
+    ).toBeDefined();
+    expect(wrapper.find("[data-testid='wizard-session-empty']").exists()).toBe(
+      false,
+    );
+
+    await wrapper.get("[data-testid='wizard-content-retry']").trigger("click");
+    await flushPromises();
+
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").text(),
+    ).toContain("研究 session");
   });
 
   it("closes from the dialog, the close button, and Escape", async () => {

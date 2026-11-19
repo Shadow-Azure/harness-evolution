@@ -26,6 +26,7 @@ from app.db.models.domain import (
 from app.db.models.evolution import evolution_runs
 from app.main import create_app
 from app.third_party_api.git.workspace import PreparedWorkspace
+from tests.target_content_support import FakeTargetVersionResolver
 
 ADMIN_TEMP_PASSWORD = "launch-wizard-admin-temp-password"
 ADMIN_PASSWORD = "launch-wizard-admin-password"
@@ -386,6 +387,7 @@ async def launch_api(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
             admin_password=SecretStr(ADMIN_TEMP_PASSWORD),
         ),
         git_workspaces=_FakeWorkspacePreparer(tmp_path),
+        target_version_resolver=FakeTargetVersionResolver(),
     )
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
