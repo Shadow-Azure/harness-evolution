@@ -23,6 +23,30 @@ describe("overview URL model", () => {
     });
   });
 
+  it("defaults a 7-day URL to day grain but keeps an explicit grain", () => {
+    const seven = parseOverviewQuery({ range: "7" });
+
+    expect(seven.state.range).toBe(7);
+    expect(seven.state.grain).toBe("day");
+    expect(overviewQuery(seven.state)).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "day",
+    });
+    expect(seven.sanitized).toBe(true);
+
+    const explicitWeek = parseOverviewQuery({ range: "7", grain: "week" });
+    expect(explicitWeek.state.grain).toBe("week");
+    expect(overviewQuery(explicitWeek.state)).toEqual({
+      tab: "cases",
+      range: "7",
+      grain: "week",
+    });
+
+    const thirty = parseOverviewQuery({ range: "30" });
+    expect(thirty.state.grain).toBe("week");
+  });
+
   it("restores a fully populated filter URL", () => {
     const parsed = parseOverviewQuery({
       tab: "cases",

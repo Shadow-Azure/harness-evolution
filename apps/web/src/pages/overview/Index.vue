@@ -193,7 +193,15 @@ function setRange(value: OverviewRangeChoice): void {
     return;
   }
   const range = value as OverviewRange;
-  void replaceState({ range, from: "", to: "" });
+  // The quick ranges own a sensible default grain: a 7-day window is meant to
+  // show per-day counts, while 30/90 days stay weekly. The grain control below
+  // still lets the person override the choice afterwards.
+  void replaceState({
+    range,
+    from: "",
+    to: "",
+    grain: range === 7 ? "day" : "week",
+  });
 }
 
 function setWindow(value: { from: string; to: string }): void {
