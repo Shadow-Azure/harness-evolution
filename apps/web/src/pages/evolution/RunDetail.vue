@@ -262,6 +262,8 @@ const distribution = computed(() => {
   return [
     { key: "error", label: "错误", value: stats.error, color: "var(--red)" },
     { key: "prompt", label: "prompt", value: stats.prompt, color: "var(--orange)" },
+    { key: "flow", label: "流程", value: stats.flow ?? 0, color: "var(--blue)" },
+    { key: "context", label: "上下文", value: stats.context ?? 0, color: "var(--green)" },
     { key: "model", label: "模型", value: stats.model, color: "var(--purple)" },
   ];
 });

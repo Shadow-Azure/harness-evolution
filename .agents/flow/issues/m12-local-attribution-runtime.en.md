@@ -9,7 +9,7 @@ milestone: m12
 depends:
   - m12-23
 priority: P0
-status: in-progress
+status: done
 scope:
   - scripts/flow-sync.mjs
   - apps/api/**

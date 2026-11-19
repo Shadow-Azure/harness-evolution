@@ -40,6 +40,8 @@ const targetLabel = computed(
 );
 
 function categoryLabel(category: StepAttributionRow["category"]): string {
+  if (category === "flow") return "流程";
+  if (category === "context") return "上下文";
   if (category === "prompt") return "prompt";
   if (category === "model") return "模型";
   if (category === "error") return "错误";

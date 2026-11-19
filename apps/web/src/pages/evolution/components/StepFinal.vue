@@ -50,6 +50,8 @@ function score(value: number | null): string {
 }
 
 function typeLabel(type: string): string {
+  if (type === "flow") return "流程";
+  if (type === "context") return "上下文";
   if (type === "prompt") return "prompt";
   if (type === "model") return "模型";
   return "错误";

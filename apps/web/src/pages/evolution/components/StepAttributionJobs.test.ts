@@ -48,7 +48,7 @@ const run = {
     attributed: 1,
     reused: 1,
     clusters: 0,
-    byCategory: { model: 1, prompt: 0, error: 0 },
+    byCategory: { flow: 0, context: 0, model: 1, prompt: 0, error: 0 },
   },
   progress: {
     unit: 3,

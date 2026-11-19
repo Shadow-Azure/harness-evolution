@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m12-local-attribution-runtime.md
-m12-local-attribution-runtime.md: bbc493165724e3424b74918d77ff493717648409
-m12-local-attribution-runtime.en.md: ca03d41382e390a9c8b76530f62a01d9d0fe499d
+m12-local-attribution-runtime.md: 4db92911dd7f08bcc25e1b8e3f33f314a6f48579
+m12-local-attribution-runtime.en.md: ad779e7f4ea3dc9dd66c01ca55e79e5eff850497

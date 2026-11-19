@@ -27,7 +27,15 @@ export function useAttributionSkillPackages(
     enabled: computed(() => toValue(workspaceId).length > 0),
   });
   const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: key.value });
+    const wid = toValue(workspaceId);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: key.value }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.attributionSkills(wid) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.evolutionTargets(wid),
+        predicate: (query) => query.queryKey.at(-1) === "attribution-skill",
+      }),
+    ]);
   };
   const uploadMutation = useMutation({
     mutationFn: (file: File) =>

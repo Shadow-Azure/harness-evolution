@@ -211,7 +211,7 @@ const run = {
     attributed: 1,
     reused: 0,
     clusters: 1,
-    byCategory: { model: 0, prompt: 0, error: 1 },
+    byCategory: { flow: 0, context: 0, model: 0, prompt: 0, error: 1 },
   },
   progress: {
     unit: 5,
