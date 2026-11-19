@@ -9,7 +9,7 @@ import { QueryClient, VueQueryPlugin } from "@tanstack/vue-query";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { http, HttpResponse } from "msw";
 import { createPinia, setActivePinia } from "pinia";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 
 import { server } from "../../../test/server";
@@ -935,11 +935,11 @@ describe("launch wizard", { timeout: 30000 }, () => {
 
     const card = wrapper.get("[data-testid='wizard-progress']");
     expect(card.attributes("role")).toBe("status");
-    expect(card.attributes("aria-live")).toBe("polite");
+    expect(card.attributes("aria-live")).toBeUndefined();
     expect(card.text()).toContain("正在准备第 2 步 · 读取目标版本");
-    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
-      "已等待 0 秒",
-    );
+    const elapsed = wrapper.get("[data-testid='wizard-elapsed']");
+    expect(elapsed.text()).toMatch(/^已等待 \d+ 秒$/);
+    expect(elapsed.attributes("aria-hidden")).toBe("true");
     const stages = wrapper.findAll("[data-testid='wizard-progress-stage']");
     expect(stages).toHaveLength(2);
     expect(stages[0]!.text()).toContain("读取目标版本");
@@ -1008,9 +1008,13 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(
       wrapper.get("[data-testid='wizard-version']").classes(),
     ).toContain("input-error");
-    expect(wrapper.find("[data-testid='wizard-content-retry']").exists()).toBe(
-      true,
-    );
+    expect(
+      wrapper.get("[data-testid='wizard-version']").attributes("aria-describedby"),
+    ).toBe("wizard-content-error");
+    expect(wrapper.find("#wizard-content-error").exists()).toBe(true);
+    expect(
+      wrapper.find("[data-testid='wizard-progress-retry']").exists(),
+    ).toBe(true);
     expect(wrapper.find("[data-testid='wizard-content-back']").exists()).toBe(
       true,
     );
@@ -1018,7 +1022,7 @@ describe("launch wizard", { timeout: 30000 }, () => {
       wrapper.get("[data-testid='wizard-form']").attributes("inert"),
     ).toBeUndefined();
 
-    await wrapper.get("[data-testid='wizard-content-retry']").trigger("click");
+    await wrapper.get("[data-testid='wizard-progress-retry']").trigger("click");
     await flushPromises();
 
     expect(
@@ -1138,6 +1142,91 @@ describe("launch wizard", { timeout: 30000 }, () => {
     ).toBe("v2.0.0");
   });
 
+  it("advances the elapsed timer and formats a minute-long wait", async () => {
+    vi.useFakeTimers();
+    try {
+      let release!: () => void;
+      useHandlers({
+        sessions: () =>
+          new Promise<Response>((resolve) => {
+            release = () => resolve(HttpResponse.json(sessionPreview));
+          }),
+      });
+      const { wrapper } = await mountWizard();
+      await fillStep1(wrapper);
+      await wrapper.get("[data-testid='wizard-next']").trigger("click");
+      await flushPromises();
+
+      expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
+        "已等待 0 秒",
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushPromises();
+      expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
+        "已等待 1 秒",
+      );
+      await vi.advanceTimersByTimeAsync(59_000);
+      await flushPromises();
+      expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
+        "已等待 1 分 00 秒",
+      );
+
+      release();
+      await flushPromises();
+      expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(
+        false,
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushPromises();
+      expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(
+        false,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a new preview running when the cancelled request resolves late", async () => {
+    const releases: Array<() => void> = [];
+    useHandlers({
+      sessions: () =>
+        new Promise<Response>((resolve) => {
+          releases.push(() => resolve(HttpResponse.json(sessionPreview)));
+        }),
+    });
+    const { wrapper } = await mountWizard();
+    await fillStep1(wrapper);
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(true);
+    await wrapper.get("[data-testid='wizard-cancel-wait']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+
+    await wrapper.get("[data-testid='wizard-next']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(true);
+    expect(releases).toHaveLength(2);
+
+    releases[0]!();
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(true);
+    expect(wrapper.find("[data-testid='wizard-session-table']").exists()).toBe(
+      false,
+    );
+    expect(wrapper.find("[data-testid='wizard-step2-next']").exists()).toBe(
+      false,
+    );
+
+    releases[1]!();
+    await flushPromises();
+    expect(wrapper.find("[data-testid='wizard-progress']").exists()).toBe(false);
+    expect(
+      wrapper.get("[data-testid='wizard-session-table']").text(),
+    ).toContain("研究 session");
+  });
+
   it("shows the stage-aware progress card while the potential preview is pending", async () => {
     let release!: () => void;
     useHandlers();
@@ -1158,8 +1247,8 @@ describe("launch wizard", { timeout: 30000 }, () => {
     expect(wrapper.get("[data-testid='wizard-progress']").text()).toContain(
       "正在准备第 3 步 · 筛选潜在 bad case",
     );
-    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toBe(
-      "已等待 0 秒",
+    expect(wrapper.get("[data-testid='wizard-elapsed']").text()).toMatch(
+      /^已等待 \d+ 秒$/,
     );
     expect(
       wrapper.findAll("[data-testid='wizard-progress-stage']"),

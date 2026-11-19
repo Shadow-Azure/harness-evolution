@@ -5545,9 +5545,9 @@ function evWzBusyCard(busy) {
   const failed = busy.failed;
   const heading = failed ? `${current.label}超时` : `正在准备第 ${stepNo} 步 · ${current.label}`;
   const lead = failed
-    ? `服务端在 ${evWzElapsedText(busy.elapsed)} 内没有完成${current.label}。首次从 GitHub 克隆目标仓库、或服务器访问 GitHub 较慢时会出现；不是 Session 数据为空。`
+    ? `服务端读取达到上限，未能完成${current.label}。首次从 GitHub 克隆目标仓库、或服务器访问 GitHub 较慢时会出现；不是 Session 数据为空。`
     : busy.fromStep === 1
-      ? '先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取该仓库可能需要 20–40 秒。'
+      ? '先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取需要先克隆仓库，服务端单次读取上限约 20 秒，超时会给出重试。'
       : '这一步只读预览，不会写入或启动运行。完成后自动进入下一步。';
   const rows = busy.stages.map((stage, index) => {
     const state = failed && index === busy.stage ? 'failed' : index < busy.stage ? 'done' : index === busy.stage ? 'current' : 'pending';

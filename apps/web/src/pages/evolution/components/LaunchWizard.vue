@@ -9,7 +9,7 @@ import type {
   SessionPreviewSummary,
 } from "@harness/contracts";
 import { useQuery } from "@tanstack/vue-query";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import { getBadCase } from "../../../api/badCases";
@@ -140,6 +140,7 @@ const sessionPage = ref(1);
 const potentialPage = ref(1);
 const pending = ref<PendingAction>("");
 const previewBusy = ref<PreviewBusy | null>(null);
+const previewCard = ref<HTMLElement | null>(null);
 const requestError = ref("");
 const launchError = ref("");
 const contentUnresolved = ref(false);
@@ -220,6 +221,17 @@ onBeforeUnmount(() => {
   }
   triggerElement = null;
 });
+
+watch(
+  () => [Boolean(previewBusy.value), previewBusy.value?.failed] as const,
+  async () => {
+    if (!previewBusy.value) {
+      return;
+    }
+    await nextTick();
+    previewCard.value?.scrollIntoView?.({ block: "nearest" });
+  },
+);
 
 const catalogs = useQuery({
   queryKey: computed(() => queryKeys.targetCatalog(props.wid)),
@@ -442,10 +454,10 @@ const previewLead = computed(() => {
     return "";
   }
   if (busy.failed) {
-    return `${busy.timeoutMessage} 服务端在 20 秒内没有读完目标文件；这不是 Session 数据为空。`;
+    return `${busy.timeoutMessage} 服务端读取达到上限，未能读完目标文件；这不是 Session 数据为空。`;
   }
   return busy.fromStep === 1
-    ? "先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取该仓库可能需要 20–40 秒。"
+    ? "先读取目标版本内容并计算 body hash（缓存为空时会从远程仓库克隆），再在所选时间段内关联 Session。通常 2–5 秒；首次读取需要先克隆仓库，服务端单次读取上限约 20 秒，超时会给出重试。"
     : "这一步只读预览，不会写入或启动运行。完成后自动进入下一步。";
 });
 const previewHint = computed(() =>
@@ -1241,11 +1253,11 @@ const reasonEntries = computed(() => {
 
           <div
             v-if="previewBusy"
+            ref="previewCard"
             class="wz-progress"
             :class="{ failed: previewBusy.failed }"
             :data-testid="previewBusy.failed ? 'wizard-progress-failed' : 'wizard-progress'"
             :role="previewBusy.failed ? 'alert' : 'status'"
-            aria-live="polite"
           >
             <div class="wz-progress-head">
               <span
@@ -1265,9 +1277,13 @@ const reasonEntries = computed(() => {
               <span
                 class="wz-progress-elapsed"
                 data-testid="wizard-elapsed"
+                aria-hidden="true"
               >已等待 {{ formatElapsed(previewBusy.elapsed) }}</span>
             </div>
-            <p class="wz-progress-lead">
+            <p
+              :id="previewBusy.failed ? 'wizard-content-error' : undefined"
+              class="wz-progress-lead"
+            >
               {{ previewLead }}
             </p>
             <ol class="wz-progress-steps">
@@ -1302,7 +1318,7 @@ const reasonEntries = computed(() => {
               <button
                 class="btn primary"
                 type="button"
-                data-testid="wizard-content-retry"
+                data-testid="wizard-progress-retry"
                 @click="retryContentResolution"
               >
                 重试解析
@@ -1411,7 +1427,7 @@ const reasonEntries = computed(() => {
                         aria-controls="wizard-version-menu"
                         :aria-expanded="versionOpen ? 'true' : 'false'"
                         :aria-invalid="fieldErrors.version || contentUnresolved ? 'true' : undefined"
-                        aria-describedby="wizard-version-error"
+                        :aria-describedby="fieldErrors.version ? 'wizard-version-error' : contentUnresolved ? 'wizard-content-error' : undefined"
                         @input="onVersionInput"
                         @focus="versionOpen = true"
                         @keydown.down.prevent="versionOpen = true"

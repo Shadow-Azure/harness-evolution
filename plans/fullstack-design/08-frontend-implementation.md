@@ -678,10 +678,11 @@ GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再
 
 - 点击「下一步」后立即把主按钮改成当前阶段文案并带 spinner；表单 `inert` + `locked`（保留内容、禁止编辑）。
 - 在主按钮上方显示阶段进度卡：第 1 步「读取目标版本 → 关联 Session」，第 2 步「筛选潜在 bad case」，第 3 步「检查归因缓存」；当前阶段高亮，显示已等待秒数。服务端尚未上报子阶段，第 1 步只把「读取目标版本」标为进行中、「关联 Session」保持等待，不伪造完成。
-- 文案说明首次读取会从远端仓库克隆、后续有本地 mirror 缓存；不使用假进度条。
+- 文案说明首次读取会从远端仓库克隆、服务端单次读取上限约 20 秒、超时会给出重试，后续有本地 mirror 缓存；不使用假进度条，也不承诺超过上限的等待会成功。
 - 超时（`TARGET_CONTENT_UNRESOLVED` + reason `content_timeout` / `timeout`）显示失败卡：原因、非 Session 数据为空、重试与返回修改条件；版本字段标红。其他内容错误仍保留字段级红字。
 - 等待中提供取消等待：递增请求代际、丢弃 late result，不修改 `http.ts` 或引入 AbortController；已发出的服务端请求可能继续。
-- 等待卡 `role=status` + `aria-live=polite`；超时卡 `role=alert`。
+- 等待卡 `role=status`、超时卡 `role=alert`；每秒变化的 elapsed 加 `aria-hidden`，不放进 live region；卡片出现/失败时 `scrollIntoView` 到可见位置。生产另补 `prefers-reduced-motion` 下停止 spinner 动画。
+- 前端不设独立 watchdog：代理/网络挂起时用取消等待退出；只有服务端返回 `content_timeout` / `timeout` 才显示超时卡。
 
 原型交互和截图见 `plans/ui-prototype-v2/harness-evolution.html` 与 `design-v2.md §7.5`。生产实现只覆盖步骤前进的预览；步骤内分页和第 4 步缓存刷新保留原有 `pending` 禁用，不套用阶段卡。代理与后端 shallow fetch 不在本切片。
 
