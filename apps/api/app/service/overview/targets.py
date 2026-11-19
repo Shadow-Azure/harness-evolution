@@ -26,6 +26,7 @@ from app.db.crud.overview_targets import (
     AttributionLinkRecord,
     ObjectVersionRecord,
     TargetOverviewRepository,
+    TargetRunVersionRecord,
     WindowCaseFact,
 )
 from app.db.crud.potential import window_day_boundaries
@@ -61,6 +62,7 @@ from app.service.overview.target_schemas import (
     TargetTrendByTarget,
     TargetTrendMeta,
     TargetTrendResponse,
+    TargetVersionOption,
 )
 from app.service.overview.window import Window, bucket_label, bucket_start, bucket_starts
 from app.utils.time import as_shanghai
@@ -106,6 +108,9 @@ OVERVIEW_FAILURE_TTL_SECONDS = 30.0
 OVERVIEW_FAILURE_CACHE_SIZE = 512
 """Bound the negative-resolution cache."""
 
+RUN_VERSION_LOOKBACK = 200
+"""Newest runs read per target to recover ref/commit display evidence."""
+
 
 @dataclass(frozen=True, slots=True)
 class TargetOverviewQuery:
@@ -137,6 +142,37 @@ class TargetCaseEntry:
     attribution_id: str | None
     category: Literal["model", "prompt", "error"] | None
     attributed_at: datetime | None
+    display_version: str = ""
+    """The ref shown to readers; falls back to the canonical key when unknown."""
+
+
+@dataclass(frozen=True, slots=True)
+class TargetVersionLabel:
+    """One canonical version key plus the evidence used to display it.
+
+    ``version`` is the digest identity that filtering and statistics use;
+    ``ref`` and ``commit`` are display-only. ``aliases`` lets one version key
+    accept every persisted identity form in filters and attribution links.
+    """
+
+    version: str
+    ref: str | None
+    commit: str | None
+    aliases: frozenset[str]
+
+    @property
+    def display(self) -> str:
+        """Return the primary text a reader sees for this version."""
+        return self.ref or self.version
+
+
+@dataclass(slots=True)
+class _VersionAccumulator:
+    """Mutable grouping state while observed trigger records are merged."""
+
+    digest: str | None
+    aliases: set[str]
+    refs: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +185,7 @@ class TargetAnalysis:
     entries: tuple[TargetCaseEntry, ...]
     version_sessions: Mapping[str, frozenset[str]] = field(default_factory=dict)
     unresolved_versions: frozenset[str] = frozenset()
+    version_labels: Mapping[str, TargetVersionLabel] = field(default_factory=dict)
 
     @property
     def sessions(self) -> int:
@@ -278,20 +315,98 @@ def _display_version(value: str | None) -> str | None:
     return display or None
 
 
-def _event_versions(record: ObjectVersionRecord) -> tuple[str, ...]:
-    """Return every display identity one trigger exposes.
+def _known_version(value: str | None) -> str | None:
+    """Normalize one persisted identity, dropping the documented unknown form."""
+    display = _display_version(value)
+    if display is None or display.lower() == "unknown":
+        return None
+    return display
 
-    The matcher accepts ``object_version`` *or* ``object_revision``; both fields
-    are therefore discovery inputs. One inconsistent row can legitimately match
-    two revisions, so the service must evaluate both rather than silently
-    preferring the first field.
+
+def _record_identity(
+    record: ObjectVersionRecord,
+) -> tuple[str, frozenset[str], str | None, str | None] | None:
+    """Collapse one trigger record's version/revision pair into one identity.
+
+    A record that carries both a git ref and a body digest describes *one*
+    version: the digest is the canonical identity and the ref is its display
+    label. Treating them as two versions is what split the same production
+    row into ``main`` and ``digest:…``.
+
+    Returns:
+        ``(canonical_key, aliases, ref, digest)`` or ``None`` when the record
+        carries no usable identity.
     """
-    values: list[str] = []
-    for raw in (record.object_version, record.object_revision):
-        value = _display_version(raw)
-        if value is not None and value.lower() != "unknown" and value not in values:
-            values.append(value)
-    return tuple(values)
+    version = _known_version(record.object_version)
+    revision = _known_version(record.object_revision)
+    if version is None and revision is None:
+        return None
+    aliases: set[str] = {value for value in (version, revision) if value is not None}
+    digest: str | None = None
+    for value in (version, revision):
+        if value is not None and value.startswith("digest:"):
+            digest = value
+            break
+    ref: str | None = None
+    if version is not None and not version.startswith(("digest:", "provider:")):
+        ref = version
+    elif revision is not None and not revision.startswith(("digest:", "provider:")):
+        ref = revision
+    key = digest or version or revision
+    if key is None:
+        return None
+    if digest is not None:
+        # ``definition_hash`` and legacy probe rows persist the bare hash.
+        aliases.add(digest[7:])
+    return key, frozenset(aliases), ref, digest
+
+
+def _version_accumulators(
+    default_ref: str,
+    observed: Sequence[ObjectVersionRecord],
+) -> dict[str, _VersionAccumulator]:
+    """Merge observed trigger records into canonical versions, newest-first later."""
+    groups: dict[str, _VersionAccumulator] = {}
+    for record in observed:
+        identity = _record_identity(record)
+        if identity is None:
+            continue
+        key, aliases, ref, digest = identity
+        group = groups.get(key)
+        if group is None:
+            group = _VersionAccumulator(
+                digest=digest,
+                aliases=set(),
+                refs=[],
+            )
+            groups[key] = group
+        group.aliases.update(aliases)
+        if digest is not None and group.digest is None:
+            group.digest = digest
+        if ref is not None and ref not in group.refs:
+            group.refs.append(ref)
+    default = _known_version(default_ref)
+    if default is not None and not any(default in group.aliases for group in groups.values()):
+        digest = default if default.startswith("digest:") else None
+        group = _VersionAccumulator(
+            digest=digest,
+            aliases={default},
+            refs=[],
+        )
+        if digest is not None:
+            group.aliases.add(digest[7:])
+        elif not default.startswith("provider:"):
+            group.refs.append(default)
+        groups[default] = group
+    return groups
+
+
+def _short_commit(value: str | None) -> str | None:
+    """Return the seven-character commit prefix the prototype renders."""
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed[:7] if len(trimmed) >= 7 else None
 
 
 def _version_sort_key(value: str) -> tuple[tuple[int, int, str], ...]:
@@ -303,26 +418,84 @@ def _version_sort_key(value: str) -> tuple[tuple[int, int, str], ...]:
     )
 
 
-def _ordered_versions(
+def _preferred_ref(
+    refs: Sequence[str],
+    run_ref: str | None,
+    default_ref: str | None,
+) -> str | None:
+    """Pick one display ref for a digest that observations tie to several refs."""
+    unique = list(dict.fromkeys(refs))
+    if run_ref is not None:
+        return run_ref
+    if default_ref is not None and default_ref in unique:
+        return default_ref
+    if not unique:
+        return None
+    return max(unique, key=_version_sort_key)
+
+
+def _build_version_labels(
     default_ref: str,
     observed: Sequence[ObjectVersionRecord],
-) -> tuple[str, ...]:
-    """Merge the configured default with observed versions, newest first."""
-    default = _display_version(default_ref)
-    versions: set[str] = {default} if default is not None else set()
-    for record in observed:
-        versions.update(_event_versions(record))
-    return tuple(sorted(versions, key=_version_sort_key, reverse=True))
+    runs: Sequence[TargetRunVersionRecord],
+) -> tuple[tuple[str, ...], dict[str, TargetVersionLabel]]:
+    """Build canonical versions and their ref/commit display evidence.
+
+    Runs are newest-first. A run is evidence for a digest when its
+    ``target_revision`` matches; ref-only versions fall back to
+    ``target_version``. No git lookup happens for digest-only history: it keeps
+    the digest instead of guessing a moving ref.
+    """
+    groups = _version_accumulators(default_ref, observed)
+    by_revision: dict[str, TargetRunVersionRecord] = {}
+    by_ref: dict[str, TargetRunVersionRecord] = {}
+    for run in runs:
+        revision = _known_version(run.target_revision)
+        if revision is not None:
+            by_revision.setdefault(revision, run)
+        ref = _known_version(run.target_version)
+        if ref is not None:
+            by_ref.setdefault(ref, run)
+    default = _known_version(default_ref)
+    labels: dict[str, TargetVersionLabel] = {}
+    for key, group in groups.items():
+        latest_run = by_revision.get(key) if group.digest is not None else by_ref.get(key)
+        run_ref = _known_version(latest_run.target_version) if latest_run is not None else None
+        if run_ref is not None and run_ref.startswith(("digest:", "provider:")):
+            run_ref = None
+        ref = _preferred_ref(group.refs, run_ref, default)
+        if ref is None and group.digest is None:
+            candidate = _known_version(key)
+            ref = (
+                candidate
+                if candidate is not None and not candidate.startswith(("digest:", "provider:"))
+                else None
+            )
+        labels[key] = TargetVersionLabel(
+            version=key,
+            ref=ref,
+            commit=_short_commit(latest_run.base_commit) if latest_run is not None else None,
+            aliases=frozenset(group.aliases),
+        )
+    ordered = tuple(
+        sorted(
+            labels,
+            key=lambda key: (_version_sort_key(labels[key].display), key),
+            reverse=True,
+        ),
+    )
+    return ordered, labels
 
 
 def _newest_link_by_case(
     links: Sequence[AttributionLinkRecord],
-    version: str,
+    aliases: frozenset[str],
 ) -> dict[str, AttributionLinkRecord]:
-    """Keep the newest readable link per case for exactly this display version."""
+    """Keep the newest readable link per case for one version's every alias."""
     found: dict[str, AttributionLinkRecord] = {}
     for link in links:
-        if _display_version(link.object_version) != version:
+        version = _display_version(link.object_version)
+        if version is None or version not in aliases:
             continue
         found.setdefault(link.bad_case_id, link)
     return found
@@ -515,7 +688,11 @@ class TargetOverviewService:
         selected_set = frozenset(selected)
         entries = [entry for entry in analysis.entries if entry.version in selected_set]
         by_version = [
-            _version_row(version, [entry for entry in entries if entry.version == version])
+            _version_row(
+                version,
+                [entry for entry in entries if entry.version == version],
+                analysis.version_labels.get(version),
+            )
             for version in selected
         ]
         sources: dict[str, list[TargetCaseEntry]] = defaultdict(list)
@@ -539,6 +716,7 @@ class TargetOverviewService:
                 object_name=analysis.target.object_name,
                 default_ref=analysis.target.default_ref,
                 versions=list(analysis.versions),
+                version_options=_version_options(analysis),
             ),
             stats=TargetDetailStats(
                 sessions=len(
@@ -578,15 +756,20 @@ class TargetOverviewService:
             window_start=window_start,
             window_end=window_end,
         )
-        versions = {target.id: _ordered_versions(target.default_ref, ()) for target in targets}
+        default_labels = {
+            target.id: _build_version_labels(target.default_ref, (), ()) for target in targets
+        }
         if not facts:
             return tuple(
                 TargetAnalysis(
                     target=target,
-                    versions=versions[target.id],
+                    versions=default_labels[target.id][0],
                     session_ids=frozenset(),
                     entries=(),
-                    version_sessions={version: frozenset() for version in versions[target.id]},
+                    version_sessions={
+                        version: frozenset() for version in default_labels[target.id][0]
+                    },
+                    version_labels=default_labels[target.id][1],
                 )
                 for target in targets
             )
@@ -617,13 +800,19 @@ class TargetOverviewService:
         window_start: datetime,
         window_end: datetime,
     ) -> TargetAnalysis:
-        """Call the matcher per observed version and project the included rows."""
+        """Call the matcher per canonical version and project the included rows."""
         observed = await self._repository.list_object_versions(
             session_ids,
             object_type=target.object_type,
             object_name=target.object_name,
         )
-        versions = _ordered_versions(target.default_ref, observed)
+        runs = await self._repository.list_target_runs(
+            workspace_id=workspace_id,
+            object_type=target.object_type,
+            object_name=target.object_name,
+            limit=RUN_VERSION_LOOKBACK,
+        )
+        versions, labels = _build_version_labels(target.default_ref, observed, runs)
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
         resolved = await asyncio.gather(
@@ -638,6 +827,7 @@ class TargetOverviewService:
                 unresolved_versions.add(version)
                 version_sessions[version] = frozenset()
                 continue
+            label = labels[version]
             association, match = await self._evaluate_resolved(
                 target,
                 version,
@@ -658,7 +848,7 @@ class TargetOverviewService:
                 object_name=target.object_name,
                 case_ids=tuple(item.bad_case_id for item in match.included),
             )
-            newest = _newest_link_by_case(links, version)
+            newest = _newest_link_by_case(links, label.aliases)
             for item in match.included:
                 fact = facts_by_id.get(item.bad_case_id)
                 if fact is None:
@@ -669,6 +859,7 @@ class TargetOverviewService:
                         item,
                         target=target,
                         version=version,
+                        display_version=label.display,
                         fact=fact,
                         link=link,
                     ),
@@ -680,6 +871,7 @@ class TargetOverviewService:
             entries=tuple(entries),
             version_sessions=version_sessions,
             unresolved_versions=frozenset(unresolved_versions),
+            version_labels=labels,
         )
 
     async def _resolve_version(
@@ -774,10 +966,23 @@ def _selected_versions(
     requested: tuple[str, ...],
     version_limit: int,
 ) -> tuple[str, ...]:
-    """Resolve the detail card's explicit or newest-N version scope."""
+    """Resolve the detail card's explicit or newest-N version scope.
+
+    A requested value matches the canonical key or any persisted alias, so old
+    URLs that still carry a ref (``main``) keep filtering after the display
+    identity moves to the digest.
+    """
     if requested:
-        known = frozenset(analysis.versions)
-        return tuple(version for version in requested if version in known)
+        matches: list[str] = []
+        for value in requested:
+            for version in analysis.versions:
+                if version in matches:
+                    continue
+                label = analysis.version_labels.get(version)
+                aliases = label.aliases if label is not None else frozenset()
+                if value == version or value in aliases:
+                    matches.append(version)
+        return tuple(matches)
     if version_limit == 0:
         return analysis.versions
     return analysis.versions[:version_limit]
@@ -788,6 +993,7 @@ def _entry(
     *,
     target: EvolutionTargetRecord,
     version: str,
+    display_version: str,
     fact: WindowCaseFact,
     link: AttributionLinkRecord | None,
 ) -> TargetCaseEntry:
@@ -806,7 +1012,23 @@ def _entry(
         attribution_id=link.attribution_id if link is not None else None,
         category=_category(link) if state == "attributed" else None,
         attributed_at=link.created_at if link is not None else None,
+        display_version=display_version,
     )
+
+
+def _version_options(analysis: TargetAnalysis) -> list[TargetVersionOption]:
+    """Project one analysis's version labels into the wire contract."""
+    options: list[TargetVersionOption] = []
+    for version in analysis.versions:
+        label = analysis.version_labels.get(version)
+        options.append(
+            TargetVersionOption(
+                version=version,
+                ref=label.ref if label is not None else None,
+                commit=label.commit if label is not None else None,
+            ),
+        )
+    return options
 
 
 def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
@@ -816,6 +1038,7 @@ def _overview_item(analysis: TargetAnalysis) -> TargetOverviewItem:
         object_type=analysis.target.object_type,
         object_name=analysis.target.object_name,
         versions=list(analysis.versions),
+        version_options=_version_options(analysis),
         sessions=analysis.sessions,
         potential=analysis.potential,
         attributed=analysis.attributed,
@@ -831,7 +1054,7 @@ def _case_item(entry: TargetCaseEntry) -> TargetCaseItem:
         bad_case_id=entry.bad_case_id,
         object_type=entry.target.object_type,
         object_name=entry.target.object_name,
-        object_version=entry.version,
+        object_version=entry.display_version or entry.version,
         source=entry.source,
         state=entry.state,
         bad_case_type=cast(Literal["self", "discovery"], entry.bad_case_type),
@@ -843,10 +1066,16 @@ def _case_item(entry: TargetCaseEntry) -> TargetCaseItem:
     )
 
 
-def _version_row(version: str, entries: Sequence[TargetCaseEntry]) -> TargetDetailVersion:
+def _version_row(
+    version: str,
+    entries: Sequence[TargetCaseEntry],
+    label: TargetVersionLabel | None = None,
+) -> TargetDetailVersion:
     """Aggregate one selected version's potential rows into three counts."""
     return TargetDetailVersion(
         version=version,
+        ref=label.ref if label is not None else None,
+        commit=label.commit if label is not None else None,
         potential=len(entries),
         attributed=sum(1 for entry in entries if entry.state == "attributed"),
         non_target=sum(1 for entry in entries if entry.state == "nonTarget"),

@@ -14,7 +14,12 @@ from sqlalchemy import insert
 
 from app.db.base import Database
 from app.db.crud.fixtures import ensure_fixture_external_tables
-from app.db.models.domain import agent_events, bad_case_analysis, probe_reports
+from app.db.models.domain import (
+    agent_events,
+    bad_case_analysis,
+    probe_reports,
+)
+from app.db.models.evolution import evolution_runs
 from app.main import create_app
 from app.utils.time import SHANGHAI
 from tests.identity.helpers import identity_settings
@@ -808,6 +813,8 @@ async def test_detail_versions_stats_and_sources(
     ]
     assert body["byVersion"][0] == {
         "version": "v2.0.0",
+        "ref": "v2.0.0",
+        "commit": None,
         "potential": 3,
         "attributed": 1,
         "nonTarget": 1,
@@ -870,6 +877,173 @@ async def test_detail_versions_stats_and_sources(
     assert invalid_limit.status_code == 422
 
 
+async def test_ref_and_digest_merge_with_run_commit(
+    target_overview_api: TargetOverviewApi,
+) -> None:
+    """One trigger record's ref and digest make one row, labelled with the run commit."""
+    database = target_overview_api.database
+    target_id = "target-m11-03-ref-label"
+    target_name = "ref-label-skill"
+    main_digest = "digest:" + "8e54" * 16
+    old_digest = "digest:" + "580c" * 16
+    commit = "580c97cf8ca7901d4dc2f8d0ff8a8f7e0f0f0f0f"
+    await seed_target(
+        database,
+        workspace_id=target_overview_api.workspace_a,
+        target_id=target_id,
+        object_name=target_name,
+        default_ref="main",
+    )
+
+    main_agent = await seed_session(
+        database,
+        session_id="m11-03-ref-main",
+        started_at=_at(8, 0),
+        title="ref main",
+    )
+    await seed_event(
+        database,
+        agent_id=main_agent,
+        event_index=0,
+        kind="skill",
+        name=target_name,
+        object_version="main",
+        object_revision=main_digest,
+        triggered_at=_at(8, 0),
+    )
+    await seed_event(
+        database,
+        agent_id=main_agent,
+        event_index=1,
+        kind="skill",
+        name="workflow",
+        triggered_at=_at(8, 3),
+    )
+    await seed_case(
+        database,
+        case_id="m11-03-case-ref-main",
+        session_id="m11-03-ref-main",
+        workspace_id=target_overview_api.workspace_a,
+        object_name="workflow",
+        created_at=_at(8, 5),
+    )
+
+    old_agent = await seed_session(
+        database,
+        session_id="m11-03-ref-old",
+        started_at=_at(8, 10),
+        title="digest only",
+    )
+    await seed_event(
+        database,
+        agent_id=old_agent,
+        event_index=0,
+        kind="skill",
+        name=target_name,
+        object_revision=old_digest,
+        triggered_at=_at(8, 10),
+    )
+    await seed_event(
+        database,
+        agent_id=old_agent,
+        event_index=1,
+        kind="skill",
+        name="workflow",
+        triggered_at=_at(8, 13),
+    )
+    await seed_case(
+        database,
+        case_id="m11-03-case-ref-old",
+        session_id="m11-03-ref-old",
+        workspace_id=target_overview_api.workspace_a,
+        object_name="workflow",
+        created_at=_at(8, 15),
+    )
+
+    async with database.transaction() as session:
+        await session.execute(
+            insert(evolution_runs).values(
+                id="run-m11-03-ref-label",
+                workspace_id=target_overview_api.workspace_a,
+                title="ref label run",
+                mode="full",
+                engine_key="legacy-probe-import",
+                eval_config={},
+                target_type="skill",
+                target_name=target_name,
+                target_version="main",
+                target_revision=main_digest,
+                repo_url=f"https://example.invalid/{target_name}.git",
+                sub_dir=f"skills/{target_name}",
+                base_commit=commit,
+                created_at=_at(9, 0),
+            ),
+        )
+
+    url = f"/api/workspaces/{target_overview_api.workspace_a}/overview/targets/{target_id}/detail"
+    response = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params=WINDOW,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target"]["versions"] == [main_digest, old_digest]
+    assert body["target"]["versionOptions"] == [
+        {"version": main_digest, "ref": "main", "commit": "580c97c"},
+        {"version": old_digest, "ref": None, "commit": None},
+    ]
+    assert body["stats"] == {
+        "sessions": 2,
+        "potential": 2,
+        "distinctCases": 2,
+        "versions": 2,
+    }
+    assert body["byVersion"] == [
+        {
+            "version": main_digest,
+            "ref": "main",
+            "commit": "580c97c",
+            "potential": 1,
+            "attributed": 0,
+            "nonTarget": 0,
+            "unanalyzed": 1,
+        },
+        {
+            "version": old_digest,
+            "ref": None,
+            "commit": None,
+            "potential": 1,
+            "attributed": 0,
+            "nonTarget": 0,
+            "unanalyzed": 1,
+        },
+    ]
+
+    selected = await target_overview_api.client.get(
+        url,
+        headers=target_overview_api.reader_a,
+        params={**WINDOW, "versions": "main"},
+    )
+    selected_body = selected.json()
+    assert selected_body["stats"]["versions"] == 1
+    assert selected_body["stats"]["potential"] == 1
+    assert [row["version"] for row in selected_body["byVersion"]] == [main_digest]
+
+    listed = await target_overview_api.client.get(
+        f"/api/workspaces/{target_overview_api.workspace_a}/overview/targets",
+        headers=target_overview_api.reader_a,
+        params={**WINDOW, "pageSize": 50},
+    )
+    item = next(row for row in listed.json()["items"] if row["targetId"] == target_id)
+    assert item["versions"] == [main_digest, old_digest]
+    assert item["versionOptions"][0] == {
+        "version": main_digest,
+        "ref": "main",
+        "commit": "580c97c",
+    }
+
+
 async def test_knowledge_target_uses_revision_coordinates(
     target_overview_api: TargetOverviewApi,
 ) -> None:
@@ -896,6 +1070,8 @@ async def test_knowledge_target_uses_revision_coordinates(
     assert body["byVersion"] == [
         {
             "version": "digest:aaa",
+            "ref": None,
+            "commit": None,
             "potential": 1,
             "attributed": 1,
             "nonTarget": 0,

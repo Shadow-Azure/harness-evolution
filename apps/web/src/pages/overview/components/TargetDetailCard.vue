@@ -64,7 +64,27 @@ const activeTarget = computed(
 const versionOptions = computed<string[]>(
   () => props.detail?.target.versions ?? activeTarget.value?.versions ?? [],
 );
+const versionMeta = computed(() => {
+  const options =
+    props.detail?.target.versionOptions ??
+    activeTarget.value?.versionOptions ??
+    [];
+  return new Map(
+    options.map((option) => [
+      option.version,
+      { ref: option.ref ?? null, commit: option.commit ?? null },
+    ]),
+  );
+});
 const selectedVersions = computed(() => new Set(props.state.detailVersions));
+
+function versionRef(version: string): string {
+  return versionMeta.value.get(version)?.ref ?? version;
+}
+
+function versionCommit(version: string): string | null {
+  return versionMeta.value.get(version)?.commit ?? null;
+}
 const effectiveFrom = computed(
   () => props.state.detailFrom || props.sharedWindow?.from || "",
 );
@@ -229,7 +249,11 @@ function versionChanged(version: string, event: Event): void {
                   :data-testid="`ov-target-detail-version-${version}`"
                   @change="versionChanged(version, $event)"
                 >
-                <span class="mono">{{ version }}</span>
+                <span class="mono">{{ versionRef(version) }}</span>
+                <span
+                  v-if="versionCommit(version)"
+                  class="mono commit"
+                >{{ versionCommit(version) }}</span>
               </label>
               <p
                 v-if="versionOptions.length === 0"
@@ -345,9 +369,18 @@ function versionChanged(version: string, event: Event): void {
               :key="row.version"
               class="row"
               data-testid="ov-target-detail-version-row"
-              :title="`${row.version} · 潜在 ${row.potential} · 是 ${row.attributed} / 非 ${row.nonTarget} / 未 ${row.unanalyzed}`"
+              :title="`${row.ref ?? row.version}${row.commit ? ' ' + row.commit : ''} · 潜在 ${row.potential} · 是 ${row.attributed} / 非 ${row.nonTarget} / 未 ${row.unanalyzed}`"
             >
-              <span class="name mono">{{ row.version }}</span>
+              <span
+                class="name mono"
+                data-testid="ov-target-detail-version-label"
+              >
+                <span>{{ row.ref ?? row.version }}</span>
+                <span
+                  v-if="row.commit"
+                  class="commit"
+                >{{ row.commit }}</span>
+              </span>
               <span class="bar">
                 <span
                   class="fill"
@@ -609,6 +642,11 @@ select.inp {
 
 .mono {
   font-family: var(--mono);
+}
+
+.commit {
+  margin-left: 4px;
+  color: var(--text-faint);
 }
 
 .no-options {

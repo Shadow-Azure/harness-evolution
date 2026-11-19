@@ -107,6 +107,63 @@ describe("TargetDetailCard", () => {
     ]);
   });
 
+  it("renders the ref and short commit instead of the digest key", () => {
+    const digest = `digest:${"8e54".repeat(16)}`;
+    const merged: TargetDetailResponse = {
+      ...detail,
+      target: {
+        ...detail.target,
+        versions: [digest],
+        versionOptions: [{ version: digest, ref: "main", commit: "580c97c" }],
+      },
+      stats: { ...detail.stats, versions: 1 },
+      byVersion: [
+        {
+          version: digest,
+          ref: "main",
+          commit: "580c97c",
+          potential: 3,
+          attributed: 1,
+          nonTarget: 1,
+          unanalyzed: 1,
+        },
+      ],
+    };
+    const wrapper = mountCard({ detail: merged });
+
+    const checkbox = wrapper.get(`input[data-version='${digest}']`);
+    expect(checkbox.attributes("data-version")).toBe(digest);
+    const option = wrapper.get(".version-option");
+    expect(option.text()).toContain("main");
+    expect(option.text()).toContain("580c97c");
+    expect(wrapper.text()).not.toContain(digest);
+    expect(wrapper.get("[data-testid='ov-target-detail-version-label']").text()).toContain("main");
+    expect(wrapper.get("[data-testid='ov-target-detail-version-label']").text()).toContain("580c97c");
+  });
+
+  it("keeps a digest-only historical version visible", () => {
+    const digest = `digest:${"ab".repeat(32)}`;
+    const wrapper = mountCard({
+      detail: {
+        ...detail,
+        target: { ...detail.target, versions: [digest], versionOptions: [] },
+        stats: { ...detail.stats, versions: 1 },
+        byVersion: [
+          {
+            version: digest,
+            potential: 0,
+            attributed: 0,
+            nonTarget: 0,
+            unanalyzed: 0,
+          },
+        ],
+      },
+    });
+
+    expect(wrapper.get(".version-option").text()).toContain(digest);
+    expect(wrapper.get("[data-testid='ov-target-detail-version-label']").text()).toContain(digest);
+  });
+
   it("shows the follow action only for an overridden window", async () => {
     const wrapper = mountCard({
       state: state({ detailFrom: "2026-10-01", detailTo: "2026-10-31" }),

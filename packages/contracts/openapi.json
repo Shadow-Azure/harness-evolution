@@ -7246,6 +7246,13 @@
             "title": "Targetid",
             "type": "string"
           },
+          "versionOptions": {
+            "items": {
+              "$ref": "#/components/schemas/TargetVersionOption"
+            },
+            "title": "Versionoptions",
+            "type": "array"
+          },
           "versions": {
             "items": {
               "type": "string"
@@ -7273,6 +7280,18 @@
             "title": "Attributed",
             "type": "integer"
           },
+          "commit": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
           "nonTarget": {
             "minimum": 0.0,
             "title": "Nontarget",
@@ -7282,6 +7301,18 @@
             "minimum": 0.0,
             "title": "Potential",
             "type": "integer"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
           },
           "unanalyzed": {
             "minimum": 0.0,
@@ -7359,8 +7390,16 @@
             "title": "Unanalyzed",
             "type": "integer"
           },
+          "versionOptions": {
+            "description": "Display evidence aligned with ``versions``; absent on older captures.",
+            "items": {
+              "$ref": "#/components/schemas/TargetVersionOption"
+            },
+            "title": "Versionoptions",
+            "type": "array"
+          },
           "versions": {
-            "description": "Versions this target was observed at inside the window, plus its configured defaultRef, ordered by descending natural version.",
+            "description": "Canonical version keys this target was observed at inside the window, plus its configured defaultRef, ordered by descending display label.",
             "items": {
               "type": "string"
             },
@@ -7619,6 +7658,46 @@
           "meta"
         ],
         "title": "TargetTrendResponse",
+        "type": "object"
+      },
+      "TargetVersionOption": {
+        "additionalProperties": false,
+        "description": "One selectable version: canonical identity plus its display evidence.\n\n``version`` stays the filter and match key (the body digest when known);\n``ref`` and ``commit`` only feed the V2 prototype's ``ref + short commit``\nrendering. Historical versions without ref evidence keep ``ref`` null.",
+        "properties": {
+          "commit": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "version": {
+            "maxLength": 128,
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "TargetVersionOption",
         "type": "object"
       },
       "TicketRequest": {

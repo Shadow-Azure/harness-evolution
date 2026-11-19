@@ -393,6 +393,7 @@ export type {
   TargetOverviewSummary,
   TargetState,
   TargetTrendBucket,
+  TargetVersionOption,
   TargetTrendByTarget,
   TargetTrendMeta,
   TargetTrendResponse,

@@ -22,11 +22,11 @@ from app.service.overview.targets import (
     TargetCaseEntry,
     TargetOverviewQuery,
     TargetOverviewService,
+    _build_version_labels,
     _category,
     _display_version,
-    _event_versions,
     _newest_link_by_case,
-    _ordered_versions,
+    _record_identity,
     _state,
     parse_state_filter,
     parse_target_filter,
@@ -119,35 +119,32 @@ def test_parse_target_state_and_version_filters() -> None:
     assert too_many_versions.value.code == "VALIDATION_INVALID"
 
 
-def test_version_normalization_dedupes_tag_and_revision_forms() -> None:
-    """Display versions strip tag prefixes and prefer the persisted version field."""
+def test_version_normalization_groups_one_record_into_one_version() -> None:
+    """A ref and a digest from one trigger record are one display version."""
     assert _display_version(None) is None
     assert _display_version("") is None
     assert _display_version("tag:") is None
     assert _display_version("tag:v2.0.0") == "v2.0.0"
     assert _display_version("digest:abc") == "digest:abc"
-    assert _event_versions(
+    assert _record_identity(
         ObjectVersionRecord(object_version="v2.0.0", object_revision="tag:v2.0.0"),
-    ) == ("v2.0.0",)
-    assert _event_versions(
+    ) == ("v2.0.0", frozenset({"v2.0.0"}), "v2.0.0", None)
+    assert _record_identity(
         ObjectVersionRecord(object_version=None, object_revision="tag:v1.9.0"),
-    ) == ("v1.9.0",)
-    assert _event_versions(
+    ) == ("v1.9.0", frozenset({"v1.9.0"}), "v1.9.0", None)
+    assert _record_identity(
         ObjectVersionRecord(object_version="unknown", object_revision="digest:abc"),
-    ) == ("digest:abc",)
+    ) == ("digest:abc", frozenset({"digest:abc", "abc"}), None, "digest:abc")
     assert (
-        _event_versions(
+        _record_identity(
             ObjectVersionRecord(object_version="unknown", object_revision=None),
         )
-        == ()
+        is None
     )
-    assert _event_versions(
-        ObjectVersionRecord(object_version="v2.0.0", object_revision="tag:v2.1.0"),
-    ) == ("v2.0.0", "v2.1.0")
-    assert _event_versions(
+    assert _record_identity(
         ObjectVersionRecord(object_version="provider:alpha", object_revision=None),
-    ) == ("provider:alpha",)
-    versions = _ordered_versions(
+    ) == ("provider:alpha", frozenset({"provider:alpha"}), None, None)
+    versions, labels = _build_version_labels(
         "v2.0.0",
         (
             ObjectVersionRecord(object_version="tag:v2.0.0", object_revision=None),
@@ -155,8 +152,39 @@ def test_version_normalization_dedupes_tag_and_revision_forms() -> None:
             ObjectVersionRecord(object_version="v2.10.0", object_revision=None),
             ObjectVersionRecord(object_version="unknown", object_revision=None),
         ),
+        (),
     )
     assert versions == ("v2.10.0", "v2.0.0", "v1.9.0")
+    assert labels["v2.0.0"].ref == "v2.0.0"
+    assert labels["v2.0.0"].commit is None
+
+
+def test_ref_and_digest_merge_into_one_version_with_run_commit() -> None:
+    """Same-record ref+digest is one canonical version labelled by its ref."""
+    from app.db.crud.overview_targets import TargetRunVersionRecord
+
+    digest = "digest:" + "8e54" * 16
+    versions, labels = _build_version_labels(
+        "main",
+        (
+            ObjectVersionRecord(object_version="main", object_revision=digest),
+            ObjectVersionRecord(object_version=None, object_revision="digest:" + "ab" * 32),
+        ),
+        (
+            TargetRunVersionRecord(
+                target_version="main",
+                target_revision=digest,
+                base_commit="580c97cf8ca7901d4dc2f8d0ff8a8f7e0f0f0f0f",
+                created_at=NOW,
+            ),
+        ),
+    )
+    assert versions == (digest, "digest:" + "ab" * 32)
+    assert labels[digest].ref == "main"
+    assert labels[digest].display == "main"
+    assert labels[digest].commit == "580c97c"
+    assert labels[digest].aliases == frozenset({"main", digest, digest[7:]})
+    assert labels["digest:" + "ab" * 32].ref is None
 
 
 def test_newest_link_state_and_category_projection() -> None:
@@ -184,7 +212,7 @@ def test_newest_link_state_and_category_projection() -> None:
             minute=3,
         ),
     )
-    newest = _newest_link_by_case(links, "v2.0.0")
+    newest = _newest_link_by_case(links, frozenset({"v2.0.0"}))
     assert set(newest) == {"case-a"}
     assert newest["case-a"].conclusion == "attributed"
     assert _state(newest["case-a"]) == "attributed"
