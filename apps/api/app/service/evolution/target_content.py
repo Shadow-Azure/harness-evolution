@@ -215,10 +215,10 @@ class TargetContentResolver:
                 object_type=object_type,
                 reason="ref_invalid",
             )
-        content: str | None = None
+        file_content: str | None = None
         for file_name in file_names:
             try:
-                content = await self._bounded(
+                file_content = await self._bounded(
                     self._content.read_file(
                         repo_url=repo_url,
                         sub_dir=sub_dir,
@@ -237,13 +237,13 @@ class TargetContentResolver:
                 ):
                     continue
                 raise
-        if content is None:
+        if file_content is None:
             raise target_content_unresolved(
                 object_type=object_type,
                 reason="content_not_found",
             )
         # Skill/Agent files carry YAML frontmatter that the trace never sees.
-        digest = definition_file_hash(content)
+        digest = definition_file_hash(file_content)
         if digest is None:
             raise target_content_unresolved(
                 object_type=object_type,
