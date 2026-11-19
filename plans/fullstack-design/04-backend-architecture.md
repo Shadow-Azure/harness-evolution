@@ -373,6 +373,8 @@ evolution_advance ───► EventBus（内存 pub/sub，每 topic 一个 Queu
 | `HE_SYNC_INTERVAL_SECONDS` | `60` | 后台处理待归一化 payload 的间隔（0 = 关闭定时，仅 admin 手动） |
 | `HE_WORKSPACE_DIR` | `data/workspaces` | 每次自进化 run 的独立工作区（git clone 目标） |
 | `HE_GIT_PUSH` | `true` | 每轮 candidate 评测前 push；测试环境可设 false（此时不触发真实评测） |
+| `HE_GIT_PROXY` | 空 | 只给 git 子进程用的本机 HTTP 代理地址（如 `http://127.0.0.1:10808`）；空 = 直连。VLESS 凭据不在这里，见 [Git 出网代理](../../docs/git-proxy.md) |
+| `HE_GIT_PROXY_PROBE_INTERVAL_SECONDS` / `HE_GIT_PROXY_PROBE_TIMEOUT_SECONDS` | `60` / `5` | 代理健康探测间隔与单次上限 |
 | `HE_GIT_REMOTE` | `origin` | 推送远端名 |
 | `HE_GIT_AUTHOR_NAME` / `HE_GIT_AUTHOR_EMAIL` | `harness-evolution` / `noreply@local` | commit author |
 | `HE_EVAL_MODE` | `fake` | `fake` / `http`；V1 可先 fake，但 push 链路真实 |

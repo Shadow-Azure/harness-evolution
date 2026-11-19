@@ -1,0 +1,5 @@
+# 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
+# git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
+#   pnpm run record:i18n -- docs/git-proxy.md
+git-proxy.md: 83ec232dc0275690d929ba71a2b5af5234fe2418
+git-proxy.en.md: d1aafaa40ace131ad681d09c878dbf1e1b7b3aff

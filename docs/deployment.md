@@ -37,9 +37,10 @@
 | `ALIYUN_SSH_KEY` | Secret | deploy 用户 ed25519 私钥 |
 | `ALIYUN_SSH_PORT` | Variable | SSH 端口（默认 22） |
 | `HE_DATA_DIR` | Variable | 数据目录绝对路径；留空用 `/var/lib/harness-evolution/data` |
+| `XRAY_CONFIG` | Environment Secret | 可选：完整 Xray JSON（VLESS 出站 + 回环 mixed 入站），见 [Git 出网代理](git-proxy.md) |
 | `production` | Environment | 发布 job 的保护环境，可配人工审批 |
 
-私钥只存 GitHub，公钥在服务器 `deploy` 的 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`。
+私钥只存 GitHub，公钥在服务器 `deploy` 的 `authorized_keys`；运行密钥只存 `/opt/harness/shared/.env`，代理配置只存服务器 `0600` 文件。
 
 ## 配置注入
 
@@ -61,6 +62,10 @@
 生产 `HE_DATA_DIR` 必须是发布目录外的绝对路径，默认 `/var/lib/harness-evolution/data`；`deploy/harness-api.service` 的 `StateDirectory=harness-evolution` 让 systemd 在每次启动时创建并 chown 给 `harness`，bootstrap 也会补建。`release.sh` 在切换 `current` 前校验路径非空、绝对、无空白/换行/`..`、不在 `current` 或 `releases` 下，且目录属主为 `harness:harness` 或已被 unit 的 `StateDirectory=` 覆盖；失败立即退出，当前 release 继续服务。
 
 API 启动时解析绝对路径、`mkdir` 并写探针；不可写时 `/api/health` 返回 503（`data.ok=false`），发布探活失败后回滚。路径变更等于数据迁移：`target-content`、`repos`、`workspaces` 不跟随，需先停服务、迁移目录再改 `vars.HE_DATA_DIR`。首次给已有环境启用 `StateDirectory=` 需以 root 重跑 bootstrap（或安装 unit 后 `daemon-reload`），属于每环境一次的环境初始化，不进日常发布。
+
+## Git 出网代理
+
+生产机访问 GitHub 不稳定时可启用只服务 git 子进程的本机 Xray/VLESS 代理；配置来自 Environment Secret `XRAY_CONFIG`，代理不可用时部署与运行时会自动回退直连。见 [Git 出网代理](git-proxy.md)。
 
 ## 上游健康与漂移日志
 
