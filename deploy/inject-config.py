@@ -5,7 +5,8 @@ is decoded and merged into ``/opt/harness/shared/.env`` — existing keys are
 replaced in place, missing keys are appended, so reruns are idempotent. The
 whole file is rewritten through a temporary file plus ``os.replace`` (atomic,
 no half-written state). A ``--backup`` path snapshots the pre-injection file
-so ``release.sh`` can restore it when a deploy fails.
+so ``release.sh`` can restore it when a deploy fails; ``--unset`` removes keys
+whose optional feature became unavailable, so a stale value cannot survive.
 
 Decode failures, invalid key names, and values containing newlines warn and
 skip instead of blocking the release; the target file keeps mode 0600.
@@ -60,8 +61,9 @@ def backup_target(path: str | None) -> None:
     print(f"backed up {TARGET} to {path}")
 
 
-def rewrite_env(decoded: dict[str, str]) -> None:
-    """Merge ``decoded`` into the env file and replace it atomically."""
+def rewrite_env(decoded: dict[str, str], removed: set[str] | None = None) -> None:
+    """Merge ``decoded`` into the env file, drop ``removed``, replace atomically."""
+    removed = removed or set()
     os.makedirs(os.path.dirname(TARGET), exist_ok=True)
     lines: list[str] = []
     if os.path.exists(TARGET):
@@ -71,6 +73,8 @@ def rewrite_env(decoded: dict[str, str]) -> None:
     seen: set[str] = set()
     for line in lines:
         name = line.split("=", 1)[0] if line and not line.startswith("#") else None
+        if name in removed:
+            continue
         if name in decoded:
             updated.append(f"{name}={decoded[name]}")
             seen.add(name)
@@ -92,18 +96,29 @@ def main(argv: list[str] | None = None) -> int:
     """Decode stdin entries, back up the env file, and rewrite it atomically."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backup", help="预注入 .env 备份路径")
+    parser.add_argument(
+        "--unset",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="移除一个可选配置键（可重复），例如代理不可用时移除 HE_GIT_PROXY",
+    )
     args = parser.parse_args(argv)
     decoded = decode_entries(sys.stdin.read())
-    if not decoded:
+    removed = {key for key in args.unset if key}
+    if not decoded and not removed:
         print("::warning::无可用配置，.env 保持不变")
         return 0
     try:
         backup_target(args.backup)
-        rewrite_env(decoded)
+        rewrite_env(decoded, removed)
     except OSError as exc:
         print(f"::error::写入 {TARGET} 失败：{exc}", file=sys.stderr)
         return 2
-    print(f"injected {len(decoded)} config entries into {TARGET}")
+    print(
+        f"injected {len(decoded)} config entries and removed {len(removed)} keys "
+        f"from {TARGET}",
+    )
     return 0
 
 
