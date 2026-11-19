@@ -56,9 +56,9 @@ def test_public_listen_is_rejected() -> None:
 
 def test_any_public_inbound_is_rejected() -> None:
     config = valid_config()
-    config["inbounds"].append(  # type: ignore[union-attr]
-        {"tag": "extra", "listen": "0.0.0.0", "port": 1081, "protocol": "socks"},
-    )
+    inbounds = config["inbounds"]
+    assert isinstance(inbounds, list)
+    inbounds.append({"tag": "extra", "listen": "0.0.0.0", "port": 1081, "protocol": "socks"})
 
     with pytest.raises(xray_config.ConfigError, match="every inbound"):
         xray_config.load_config(encode(json.dumps(config)))
