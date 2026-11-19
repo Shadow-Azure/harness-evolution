@@ -43,7 +43,7 @@ Production `Deploy` runs over SSH as the `deploy` user. Its passwordless sudo is
 
 - [plans/fullstack-design/01-architecture.md §6 deployment shape](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/01-architecture.md): single-instance SaaS, nginx + uvicorn, and the boundary between GitHub Secrets and server-local configuration.
 - [docs/deployment.md](https://github.com/Shadow-Azure/harness-evolution/blob/main/docs/deployment.md): the existing release, secrets, health-check, and rollback conventions.
-- [MiniMax Claude Code documentation](https://platform.minimaxi.com/docs/m-plan/claude-code): the China endpoint, the M3.1-Flash model, and the default Sonnet/Opus/Haiku aliases.
+- MiniMax Claude Code documentation: the China endpoint, the M3.1-Flash model, and the default Sonnet/Opus/Haiku aliases.
 
 ## Implementation
 

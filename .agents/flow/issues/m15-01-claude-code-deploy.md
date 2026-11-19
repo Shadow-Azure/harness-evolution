@@ -43,7 +43,7 @@ github:
 
 - [plans/fullstack-design/01-architecture.md §6 部署形态](https://github.com/Shadow-Azure/harness-evolution/blob/main/plans/fullstack-design/01-architecture.md)：单实例 SaaS、nginx + uvicorn、GitHub Secrets 与服务器本地配置的边界。
 - [docs/deployment.md](https://github.com/Shadow-Azure/harness-evolution/blob/main/docs/deployment.md)：现有发布、Secrets、探活与回滚约定。
-- [MiniMax Claude Code 文档](https://platform.minimaxi.com/docs/m-plan/claude-code)：国内版端点、M3.1-Flash 模型与默认 Sonnet/Opus/Haiku 别名。
+- MiniMax Claude Code 文档：国内版端点、M3.1-Flash 模型与默认 Sonnet/Opus/Haiku 别名。
 
 ## 实现内容
 
