@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/m14-overview-7d-day-grain.md
-m14-overview-7d-day-grain.md: 3495203df6a81ceac3c34d0256e60caa80e4aafe
-m14-overview-7d-day-grain.en.md: a504a6b287315ca3fc0a3b00fca201b0519a85f7
+m14-overview-7d-day-grain.md: 3e1dafc18ea1e207e9aaa9914ef28872a2cd9860
+m14-overview-7d-day-grain.en.md: fd45f98ecca0488aefb480a5d3d70ad8d66a6323

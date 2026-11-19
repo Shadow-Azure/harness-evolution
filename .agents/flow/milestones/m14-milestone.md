@@ -6,7 +6,7 @@
 kind: milestone
 id: m14
 title: M14 问题卡展示与原型对齐
-status: active
+status: done
 github:
   number: 22
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/22
