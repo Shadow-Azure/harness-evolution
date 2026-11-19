@@ -39,7 +39,7 @@ github:
 ## 设计依据
 
 - [08 §6.2 交互与 URL](../../../plans/fullstack-design/08-frontend-implementation.md#62-交互与-url)：总览时间/粒度、URL 状态与列表独立性。
-- [05 §4.18 总览读端点](../../../plans/fullstack-design/05-api-design.md#418-总览读端点)：trend 的 `grain` 与窗口语义，服务端已支持 day/week/month。
+- [05 §4.18 总览读端点](../../../plans/fullstack-design/05-api-design.md#418-总览与空间-session-列表v2)：trend 的 `grain` 与窗口语义，服务端已支持 day/week/month。
 - [V2 设计 §5.1 指标与筛选](../../../plans/ui-prototype-v2/design-v2.md#51-指标与筛选)：时间/粒度控件与总览交互。
 - [V2 原型总览](../../../plans/ui-prototype-v2/harness-evolution.html)：本轮已改为近 7 天默认日粒度。
 - Agent Note：[2026-11-19-overview-7d-day-grain](../../notes/implemented/feature/2026-11-19-overview-7d-day-grain.md)。

@@ -39,7 +39,7 @@ The prototype has been updated first to the product expectation: selecting the l
 ## Design authority
 
 - [08 §6.2 interactions and URL](../../../plans/fullstack-design/08-frontend-implementation.md#62-交互与-url): overview time/grain, URL state, and list independence.
-- [05 §4.18 overview read endpoints](../../../plans/fullstack-design/05-api-design.md#418-总览读端点): `grain` and window semantics; the server already supports day/week/month.
+- [05 §4.18 overview read endpoints](../../../plans/fullstack-design/05-api-design.md#418-总览与空间-session-列表v2): `grain` and window semantics; the server already supports day/week/month.
 - [V2 design §5.1 metrics and filters](../../../plans/ui-prototype-v2/design-v2.md#51-指标与筛选): time/grain controls and overview interactions.
 - [V2 prototype overview](../../../plans/ui-prototype-v2/harness-evolution.html): updated in this change to default 7 days to day grain.
 - Agent Note: [2026-11-19-overview-7d-day-grain](../../notes/implemented/feature/2026-11-19-overview-7d-day-grain.en.md).
