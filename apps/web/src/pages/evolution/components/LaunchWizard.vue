@@ -77,11 +77,11 @@ const ANCHOR_SOURCE_HINTS: Record<
 
 const CONTENT_REASON_COPY: Record<string, string> = {
   content_not_found:
-    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认 tag、仓库地址与子目录。",
+    "在该版本下找不到目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请确认版本、仓库地址与子目录。",
   file_not_found:
     "该版本下没有目标文件（skill 需 SKILL.md，agent 需 AGENT.md）。请检查子目录。",
   ref_not_found:
-    "该版本在仓库中不存在。请确认 tag/分支名称，或刷新版本列表后重选。",
+    "该版本在仓库中不存在。请确认 tag、分支或 commit id，或换一个版本后重试。",
   repo_unreachable:
     "无法访问目标仓库。请检查仓库地址、网络与读取权限。",
   empty_definition_body:
@@ -91,7 +91,7 @@ const CONTENT_REASON_COPY: Record<string, string> = {
   timeout: "读取目标文件超时。请稍后重试，或检查仓库网络与代理。",
   git_unavailable: "服务端无法调用 git。请联系管理员检查运行环境。",
   path_invalid: "目标文件路径无效。请检查配置的子目录。",
-  ref_invalid: "版本名不是合法的 git ref。请重新选择 tag。",
+  ref_invalid: "版本名不是合法的 git ref。请重新输入 tag、分支或 commit id。",
   content_unavailable:
     "目标文件暂时不可读取。请确认仓库地址、子目录与读取权限后重试。",
   knowledge_content_source_unavailable:
@@ -199,33 +199,44 @@ const hasAnyTarget = computed(() => {
 const selectedTarget = computed(
   () => targetOptions.value.find((target) => target.id === targetId.value) ?? null,
 );
-const versionOptions = computed(() => {
-  if (versions.data.value?.versions.length) {
-    return versions.data.value.versions;
+const versionSuggestions = computed(() => {
+  const values: string[] = [];
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
+    values.push(remoteDefault);
   }
-  return selectedTarget.value?.versions ?? [];
+  const options = versions.data.value?.versions.length
+    ? versions.data.value.versions
+    : selectedTarget.value?.versions ?? [];
+  for (const version of options) {
+    if (!values.includes(version)) {
+      values.push(version);
+    }
+  }
+  return values;
 });
 
 /**
- * Pick the default version for one option list.
- * @param options Versions currently offered by the remote query or catalog fallback.
- * @returns The remote `defaultRef` when present, otherwise the first option.
+ * Pick the default version for the current target.
+ * @returns `defaultRef` when present, otherwise the first suggestion.
  */
-function defaultVersion(options: string[]): string {
-  const remoteDefault = versions.data.value?.defaultRef;
-  if (remoteDefault && options.includes(remoteDefault)) {
+function defaultVersion(): string {
+  const remoteDefault =
+    versions.data.value?.defaultRef || selectedTarget.value?.defaultRef;
+  if (remoteDefault) {
     return remoteDefault;
   }
-  return options[0] ?? "";
+  return versionSuggestions.value[0] ?? "";
 }
 
 watch(
-  versionOptions,
-  (options) => {
-    if (versionPinned.value && options.includes(targetVersion.value)) {
+  versionSuggestions,
+  () => {
+    if (versionPinned.value && targetVersion.value) {
       return;
     }
-    targetVersion.value = defaultVersion(options);
+    targetVersion.value = defaultVersion();
     versionPinned.value = false;
   },
   { immediate: true },
@@ -442,7 +453,7 @@ function condition() {
   return {
     targetType: targetType.value,
     targetName: selectedTarget.value?.name ?? "",
-    targetVersion: targetVersion.value || undefined,
+    targetVersion: targetVersion.value.trim() || undefined,
     from: windowFrom.value || undefined,
     to: windowTo.value || undefined,
   };
@@ -467,7 +478,7 @@ function validateStep1(): boolean {
     windowFrom.value && windowTo.value && windowFrom.value > windowTo.value,
   );
   fieldErrors.target = !selectedTarget.value;
-  fieldErrors.version = !targetVersion.value || contentUnresolved.value;
+  fieldErrors.version = !targetVersion.value.trim() || contentUnresolved.value;
   fieldErrors.from = !windowFrom.value || reversed;
   fieldErrors.to = !windowTo.value || reversed;
   fieldErrors.policy = policyRuleError.value;
@@ -958,26 +969,30 @@ const reasonEntries = computed(() => {
                 </div>
                 <span class="wz-inline-label">版本</span>
                 <div class="wz-field">
-                  <select
+                  <input
                     v-model="targetVersion"
                     class="inp"
                     :class="{ 'input-error': fieldErrors.version }"
                     data-testid="wizard-version"
+                    list="wizard-version-options"
+                    :placeholder="versions.isPending.value ? '读取版本…' : 'tag / 分支名 / commit id'"
+                    autocomplete="off"
+                    spellcheck="false"
                     :aria-invalid="fieldErrors.version ? 'true' : undefined"
                     aria-describedby="wizard-version-error"
+                    @input="versionPinned = true"
                     @change="versionPinned = true"
                   >
-                    <option value="">
-                      {{ versions.isPending.value ? "读取版本…" : "版本" }}
-                    </option>
+                  <datalist
+                    id="wizard-version-options"
+                    data-testid="wizard-version-options"
+                  >
                     <option
-                      v-for="version in versionOptions"
+                      v-for="version in versionSuggestions"
                       :key="version"
                       :value="version"
-                    >
-                      {{ version }}
-                    </option>
-                  </select>
+                    />
+                  </datalist>
                   <p
                     v-if="fieldErrors.version"
                     id="wizard-version-error"
@@ -985,7 +1000,7 @@ const reasonEntries = computed(() => {
                     class="field-error"
                     role="alert"
                   >
-                    {{ contentUnresolved ? contentError : "请选择版本" }}
+                    {{ contentUnresolved ? contentError : "请选择或输入版本" }}
                     <button
                       v-if="contentUnresolved"
                       class="linklike"
@@ -1016,7 +1031,7 @@ const reasonEntries = computed(() => {
                 </button>
               </p>
               <p class="f-note">
-                版本是内容来源：服务端会读取该 tag 下的 SKILL.md / AGENT.md，并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
+                版本可直接输入 tag、分支名或 commit id；下拉建议来自当前对象的 tag 与基线。服务端会先用 git 校验该 ref 是否存在，再读取 SKILL.md / AGENT.md 并解析 body hash 作为目标 revision；解析结果可在运行详情查看。只列出当前空间已启用的进化对象；点击<!-- eslint-disable vue/multiline-html-element-content-newline -- 中文句内按钮与前后文字紧邻渲染，不留多余空格 --><button
                   class="cfg-link"
                   type="button"
                   data-testid="wizard-target-config-link"

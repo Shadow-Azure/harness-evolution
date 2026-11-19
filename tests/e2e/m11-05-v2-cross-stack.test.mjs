@@ -696,7 +696,7 @@ test("m11-05 v2 cross-stack smoke walks auth, workspace, ingest, overview, sessi
       "wizard modal",
     );
     await selectOption(page, "[data-testid='wizard-target']", "synthetic-review");
-    await selectOption(page, "[data-testid='wizard-version']", "synthetic-1");
+    await setControl(page, "[data-testid='wizard-version']", "synthetic-1");
     await setControl(page, "[data-testid='wizard-from']", "2026-10-01");
     await setControl(page, "[data-testid='wizard-to']", "2026-10-31");
     await screenshot(page, "07-wizard-step1.png", false);

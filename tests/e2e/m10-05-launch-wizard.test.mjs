@@ -171,11 +171,10 @@ async function openAndFillWizard(page) {
   await selectOption(page, "wizard-target", "synthetic-review");
   await waitForDocument(
     page.session,
-    `[...document.querySelectorAll("[data-testid='wizard-version'] option")]
-      .some((option) => option.text === "synthetic-1")`,
-    "target versions",
+    `Boolean(document.querySelector("[data-testid='wizard-version-options'] option[value='synthetic-1']"))`,
+    "target version suggestions",
   );
-  await selectOption(page, "wizard-version", "synthetic-1");
+  await setValue(page, "wizard-version", "synthetic-1");
   await setValue(page, "wizard-from", "2026-10-20");
   await setValue(page, "wizard-to", "2026-10-25");
 }
