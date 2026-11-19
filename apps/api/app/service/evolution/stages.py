@@ -26,6 +26,7 @@ from app.db.models.evolution import (
 )
 from app.errors import AppError, ErrorCode
 from app.service.evolution.potential import (
+    AnchorSource,
     HitReason,
     OrderState,
     PotentialReasonCounts,
@@ -76,6 +77,13 @@ class StepRangeCondition(IdentityModel):
     target_type: Literal["skill", "agent", "knowledge"]
     target_name: str
     target_version: str
+    target_revision: str | None = Field(
+        default=None,
+        description=(
+            "Resolved file-matching revision (digest:<sha256(body)>); null on "
+            "historical runs that were created before content resolution."
+        ),
+    )
     window_from: date | None = Field(default=None, alias="from")
     window_to: date | None = Field(default=None, alias="to")
     policy: dict[str, Any]
@@ -146,6 +154,7 @@ class StepPotentialRow(IdentityModel):
     session_id: str
     hit_reason: HitReason
     order_state: OrderState
+    anchor_source: AnchorSource
 
 
 class StepPotentialPayload(IdentityModel):
@@ -583,6 +592,7 @@ class EvolutionStageService:
                         "targetType": run.target_type,
                         "targetName": run.target_name,
                         "targetVersion": run.target_version,
+                        "targetRevision": run.target_revision,
                         "from": run.window_from,
                         "to": run.window_to,
                         "policy": dict(run.potential_policy or {"preset": "default"}),
@@ -853,6 +863,7 @@ def _v2_potential_rows(facts: _RunFacts) -> list[StepPotentialRow]:
             session_id=candidate.session_id,
             hit_reason=cast(HitReason, candidate.included_reason),
             order_state=cast(OrderState, candidate.order_state),
+            anchor_source=cast(AnchorSource, candidate.case_anchor_kind or "unknown"),
         )
         for candidate in facts.candidates
         if candidate.included
@@ -874,6 +885,7 @@ def _legacy_potential_rows(facts: _RunFacts) -> list[StepPotentialRow]:
                 session_id=first.probe_session_id,
                 hit_reason="self_report" if same_object else "after_object",
                 order_state="unknown",
+                anchor_source="unknown",
             ),
         )
     return rows

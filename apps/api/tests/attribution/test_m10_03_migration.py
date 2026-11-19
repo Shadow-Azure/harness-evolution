@@ -106,7 +106,7 @@ async def test_0021_adds_run_snapshot_columns_and_widens_object_version(
         assert row["potential_policy"] is None
         assert bool(row["cache_enabled"]) is False
         assert row["attribution_engine"] == "legacy-probe-import"
-        assert revision == "0027"
+        assert revision == "0028"
         assert {
             "report_schema_version",
             "report_payload",

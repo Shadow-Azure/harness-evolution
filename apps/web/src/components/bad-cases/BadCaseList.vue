@@ -10,10 +10,11 @@ import {
   shortBadCaseId,
 } from "../../utils/badCaseId";
 import {
-  badCaseFacts,
+  badCaseAnchorPresentation,
+  badCaseFactEntries,
   badCaseState,
-  badCaseSummary,
 } from "./badCaseDisplay";
+import { renderMarkdown } from "../../utils/markdown";
 
 const props = withDefaults(
   defineProps<{
@@ -40,6 +41,15 @@ const emit = defineEmits<{
 }>();
 
 const count = computed(() => props.problems.length);
+
+/**
+ * Render one problem description as safe Markdown for the list card.
+ * @param problem Read-only problem detail.
+ * @returns Escaped HTML with hardened external links and no remote images.
+ */
+function reasonHtml(problem: BadCase): string {
+  return renderMarkdown(problem.reason, { images: false });
+}
 
 function scrollToProblem(badCaseId: string) {
   const element = document.getElementById(`problem-row-${badCaseId}`);
@@ -141,6 +151,14 @@ defineExpose({ scrollToProblem });
                 >
                   数据降级
                 </span>
+                <span
+                  v-if="badCaseAnchorPresentation(problem.anchor)"
+                  class="anchor-chip"
+                  :class="badCaseAnchorPresentation(problem.anchor)?.tone"
+                  :title="badCaseAnchorPresentation(problem.anchor)?.description"
+                >
+                  {{ badCaseAnchorPresentation(problem.anchor)?.label }}
+                </span>
                 <span class="problem-target">
                   {{ problem.objectType }} · {{ problem.objectName }}
                 </span>
@@ -176,32 +194,30 @@ defineExpose({ scrollToProblem });
             />
           </template>
           <template v-else>
-            <span class="problem-no">#{{ index + 1 }}</span>
-            <a
-              class="problem-id"
-              :href="badCaseDeepLink(
-                props.wid,
-                problem.sessionId,
-                problem.badCaseId,
-                'desc',
-              )"
-              :aria-label="`问题 ${shortBadCaseId(problem.badCaseId)}，在新窗口打开问题描述`"
-              rel="noopener noreferrer"
-              target="_blank"
-              :title="problem.badCaseId"
-            >
-              {{ shortBadCaseId(problem.badCaseId) }}
-            </a>
-            <button
-              class="problem-row"
-              :class="{ active: problem.badCaseId === activeBadCaseId }"
-              :data-bad-case-id="problem.badCaseId"
-              :aria-pressed="problem.badCaseId === activeBadCaseId"
-              type="button"
-              @click="emit('select', problem.badCaseId)"
-            >
+            <span class="problem-no">BC{{ index + 1 }}</span>
+            <div class="problem-card-content">
               <span class="problem-row-head">
                 <strong>{{ problem.title }}</strong>
+                <span
+                  class="type-badge"
+                  :class="problem.badCaseType"
+                >{{ problem.badCaseType }}</span>
+                <span class="object-badge">{{ problem.objectName }}</span>
+                <a
+                  class="problem-id"
+                  :href="badCaseDeepLink(
+                    props.wid,
+                    problem.sessionId,
+                    problem.badCaseId,
+                    'desc',
+                  )"
+                  :aria-label="`问题 ${problem.badCaseId}，在新窗口打开问题描述`"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  :title="problem.badCaseId"
+                >
+                  {{ problem.badCaseId }}
+                </a>
                 <span
                   class="state-chip"
                   :class="badCaseState(problem.analysis.displayState).tone"
@@ -214,20 +230,50 @@ defineExpose({ scrollToProblem });
                 >
                   数据降级
                 </span>
-              </span>
-              <span class="problem-summary">{{ badCaseSummary(problem) }}</span>
-              <span class="problem-meta">
-                <span>{{ problem.objectType }} · {{ problem.objectName }}</span>
                 <span
-                  v-for="fact in badCaseFacts(problem.metaData)"
-                  :key="fact"
+                  v-if="badCaseAnchorPresentation(problem.anchor)"
+                  class="anchor-chip"
+                  :class="badCaseAnchorPresentation(problem.anchor)?.tone"
+                  :title="badCaseAnchorPresentation(problem.anchor)?.description"
+                >
+                  {{ badCaseAnchorPresentation(problem.anchor)?.label }}
+                </span>
+              </span>
+              <!-- eslint-disable vue/no-v-html -- MarkdownIt raw HTML is disabled and links are hardened. -->
+              <div
+                v-if="problem.reason.trim()"
+                class="problem-detail markdown"
+                data-testid="problem-card-description"
+                v-html="reasonHtml(problem)"
+              />
+              <!-- eslint-enable vue/no-v-html -->
+              <span
+                v-if="badCaseFactEntries(problem.metaData).length"
+                class="problem-facts"
+              >
+                <span
+                  v-for="fact in badCaseFactEntries(problem.metaData)"
+                  :key="fact.key"
                   class="fact-chip"
                 >
-                  {{ fact }}
+                  <span class="fact-key">{{ fact.key }}</span>
+                  <span class="fact-value">{{ fact.value }}</span>
                 </span>
-                <span class="locate-copy">定位</span>
               </span>
-            </button>
+              <span class="problem-meta">
+                关联：{{ problem.objectType }} · {{ problem.objectName }}
+              </span>
+            </div>
+            <span class="locate-copy">定位 ↗</span>
+            <button
+              class="problem-row"
+              :class="{ active: problem.badCaseId === activeBadCaseId }"
+              :data-bad-case-id="problem.badCaseId"
+              :aria-label="`选择问题 ${problem.badCaseId}：${problem.title}`"
+              :aria-pressed="problem.badCaseId === activeBadCaseId"
+              type="button"
+              @click="emit('select', problem.badCaseId)"
+            />
           </template>
         </div>
       </div>
@@ -265,13 +311,12 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-row-card {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 5px 6px;
-  align-items: start;
   position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-card);
@@ -279,10 +324,11 @@ defineExpose({ scrollToProblem });
 }
 
 .problem-row {
-  display: grid;
-  grid-column: 3;
-  gap: 5px;
-  min-width: 0;
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   padding: 0;
   border: 0;
   background: transparent;
@@ -326,7 +372,9 @@ defineExpose({ scrollToProblem });
 
 .problem-card-content {
   display: grid;
+  flex: 1;
   gap: 5px;
+  min-width: 0;
   pointer-events: none;
 }
 
@@ -358,15 +406,7 @@ defineExpose({ scrollToProblem });
   flex: 1;
 }
 
-.problem-list.compact .problem-row {
-  position: absolute;
-  z-index: 1;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.problem-card-content a {
+.problem-card-content :deep(a) {
   position: relative;
   z-index: 2;
   pointer-events: auto;
@@ -387,13 +427,21 @@ defineExpose({ scrollToProblem });
   outline-offset: 1px;
 }
 
-.problem-row-head,
-.problem-meta {
+.problem-row-head {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+
+.problem-row-head strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .problem-target {
@@ -405,31 +453,36 @@ defineExpose({ scrollToProblem });
   white-space: nowrap;
 }
 
-.problem-row-head strong {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .problem-no,
 .problem-id,
 .report-id {
-  flex-shrink: 0;
   font-family: var(--mono);
-  font-size: 10px;
   font-weight: 650;
 }
 
 .problem-no {
+  flex-shrink: 0;
   color: var(--red);
+  font-size: 10px;
+}
+
+.problem-list:not(.compact) .problem-no {
+  padding: 1px 8px;
+  border: 1px solid var(--red);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-card));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
 }
 
 .problem-id {
+  flex-shrink: 1;
+  min-width: 0;
   color: var(--blue);
   border-bottom: 1px dashed color-mix(in srgb, var(--blue) 45%, transparent);
+  font-size: 10px;
+  overflow-wrap: anywhere;
   text-decoration: none;
 }
 
@@ -438,8 +491,10 @@ defineExpose({ scrollToProblem });
 }
 
 .report-id {
+  flex-shrink: 0;
   color: var(--purple);
   border-bottom: 1px dashed color-mix(in srgb, var(--purple) 45%, transparent);
+  font-size: 10px;
   text-decoration: none;
 }
 
@@ -447,10 +502,146 @@ defineExpose({ scrollToProblem });
   border-bottom-style: solid;
 }
 
-.problem-summary {
+.type-badge {
+  padding: 1px 7px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.type-badge.self {
+  color: var(--purple);
+}
+
+.type-badge.discovery {
+  color: var(--blue);
+}
+
+.object-badge {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
   color: var(--text-dim);
-  font-size: 11.5px;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-detail {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.problem-detail.markdown :deep(p) {
+  margin: 0 0 5px;
+}
+
+.problem-detail.markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.problem-detail.markdown :deep(ul),
+.problem-detail.markdown :deep(ol) {
+  margin: 2px 0 6px;
+  padding-left: 17px;
+}
+
+.problem-detail.markdown :deep(li) {
+  margin: 1px 0;
+}
+
+.problem-detail.markdown :deep(li:last-child) {
+  margin-bottom: 0;
+}
+
+.problem-detail.markdown :deep(code) {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-inset);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.problem-detail.markdown :deep(pre) {
+  overflow-x: auto;
+  margin: 5px 0 7px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-inset);
+}
+
+.problem-detail.markdown :deep(pre code) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.problem-detail.markdown :deep(strong) {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.problem-detail.markdown :deep(em) {
+  font-style: italic;
+}
+
+.problem-detail.markdown :deep(a) {
+  color: var(--blue);
+}
+
+.problem-detail.markdown :deep(blockquote) {
+  margin: 5px 0 7px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-faint);
+}
+
+.problem-detail.markdown :deep(h1),
+.problem-detail.markdown :deep(h2),
+.problem-detail.markdown :deep(h3),
+.problem-detail.markdown :deep(h4),
+.problem-detail.markdown :deep(h5),
+.problem-detail.markdown :deep(h6) {
+  margin: 7px 0 3px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1.5;
+}
+
+.problem-detail.markdown :deep(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 5px 0 7px;
+  border-collapse: collapse;
+}
+
+.problem-detail.markdown :deep(th),
+.problem-detail.markdown :deep(td) {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.problem-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .problem-meta {
@@ -459,19 +650,48 @@ defineExpose({ scrollToProblem });
 }
 
 .fact-chip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 5px;
+  max-width: 100%;
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: var(--bg-inset);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.fact-key {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.fact-value {
+  min-width: 0;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
 }
 
 .state-chip,
-.degraded-chip {
+.degraded-chip,
+.anchor-chip {
   padding: 1px 7px;
   border: 1px solid currentColor;
   border-radius: 999px;
   font-size: 10px;
   white-space: nowrap;
+}
+
+.anchor-chip.orange {
+  background: color-mix(in srgb, var(--orange) 7%, transparent);
+  color: var(--orange);
+}
+
+.anchor-chip.neutral {
+  color: var(--text-faint);
 }
 
 .state-chip.neutral {
@@ -500,7 +720,9 @@ defineExpose({ scrollToProblem });
 }
 
 .locate-copy {
-  margin-left: auto;
+  flex-shrink: 0;
   color: var(--blue);
+  font-size: 10.5px;
+  white-space: nowrap;
 }
 </style>

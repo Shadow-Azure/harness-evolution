@@ -60,6 +60,15 @@ describe("global API error presentation", () => {
     expect(
       formatApiError(new ApiError(500, "INTERNAL", "internal server error")).message,
     ).toBe("服务暂时不可用，请稍后重试；若持续失败请联系管理员。");
+    expect(
+      formatApiError(
+        new ApiError(
+          422,
+          "TARGET_CONTENT_UNRESOLVED",
+          "target content could not be resolved to a body hash",
+        ),
+      ).message,
+    ).toContain("无法读取所选版本的目标文件内容");
   });
 
   it("keeps operation context when validation details are unavailable", () => {

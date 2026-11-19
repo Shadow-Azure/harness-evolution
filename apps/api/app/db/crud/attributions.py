@@ -45,6 +45,9 @@ ORDER_STATES: frozenset[str] = frozenset({"comparable", "unknown"})
 INCLUDED_REASONS: frozenset[str] = frozenset(
     {"self_report", "after_object", "both", "policy_excluded", "order_unknown"},
 )
+ANCHOR_SOURCES: frozenset[str] = frozenset(
+    {"event", "node", "post_process", "unknown"},
+)
 
 
 def attribution_cache_key(
@@ -257,6 +260,7 @@ class CandidateWrite:
     object_trigger_at: datetime | None = None
     case_trigger_agent_id: str | None = None
     case_trigger_event_index: int | None = None
+    case_anchor_kind: str | None = None
     case_trigger_at: datetime | None = None
     probe_id: str | None = None
     is_cached: bool = False
@@ -267,6 +271,8 @@ class CandidateWrite:
             raise ValueError(f"unknown order_state: {self.order_state}")
         if self.included_reason not in INCLUDED_REASONS:
             raise ValueError(f"unknown included_reason: {self.included_reason}")
+        if self.case_anchor_kind not in ANCHOR_SOURCES and self.case_anchor_kind is not None:
+            raise ValueError(f"unknown case_anchor_kind: {self.case_anchor_kind}")
 
 
 def _text(value: object) -> str | None:
@@ -1033,6 +1039,7 @@ class EvolutionRunCandidateRepository:
             "object_trigger_at": write.object_trigger_at,
             "case_trigger_agent_id": write.case_trigger_agent_id,
             "case_trigger_event_index": write.case_trigger_event_index,
+            "case_anchor_kind": write.case_anchor_kind,
             "case_trigger_at": write.case_trigger_at,
             "order_state": write.order_state,
             "included": write.included,

@@ -198,10 +198,20 @@ class SessionAgent(IdentityModel):
 
 
 class BadCaseAnchor(IdentityModel):
-    """Stable host Agent and event index for one problem card."""
+    """Stable host Agent, event index, and anchor kind for one problem card."""
 
     agent_id: str
-    event_index: int = Field(ge=-1)
+    event_index: int = Field(
+        ge=-1,
+        description=(
+            "0-based index in anchor.agentId's events[]; INT_MAX "
+            "(2147483647) is the post_process sentinel; -1 with kind=unknown "
+            "means the reporting Agent could not be resolved."
+        ),
+    )
+    kind: Literal["event", "node", "post_process", "unknown"] = Field(
+        description="Anchor semantics: event, reporter node, post-process, or unknown.",
+    )
 
 
 class BadCaseAgent(IdentityModel):

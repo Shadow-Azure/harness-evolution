@@ -100,7 +100,7 @@ const fiveStates = [
 ] satisfies BadCase[];
 
 describe("BadCaseList", () => {
-  it("renders all five labels, summaries and stable short IDs", () => {
+  it("renders every label, description body and full case ID", () => {
     const wrapper = mount(BadCaseList, {
       props: { wid: "ws-test", problems: fiveStates },
     });
@@ -113,15 +113,15 @@ describe("BadCaseList", () => {
     expect(wrapper.text()).toContain("是问题-模型问题");
     expect(wrapper.text()).toContain("是问题-prompt缺失某些提示词");
     expect(wrapper.text()).toContain("是问题-错误");
-    expect(wrapper.text()).toContain("尚未完成归因分析");
-    expect(wrapper.text()).toContain("Every claim has a source.");
-    expect(wrapper.text()).toContain("The model exceeded its budget.");
-    expect(wrapper.text()).toContain("file=apps/server/src/search/index.ts");
     expect(wrapper.get(".state-chip.purple").text()).toBe("是问题-模型问题");
     expect(wrapper.get(".state-chip.orange").text()).toBe(
       "是问题-prompt缺失某些提示词",
     );
     expect(wrapper.get(".state-chip.red").text()).toBe("是问题-错误");
+
+    expect(wrapper.findAll(".problem-no").map((item) => item.text())).toEqual(
+      ["BC1", "BC2", "BC3", "BC4", "BC5"],
+    );
 
     const unanalyzedTitle = wrapper.get(
       "#problem-row-case-unanalyzed .problem-row-head strong",
@@ -129,19 +129,143 @@ describe("BadCaseList", () => {
     expect(unanalyzedTitle.text()).toBe("待归因");
     expect(unanalyzedTitle.text()).not.toContain("pending attribution");
     expect(
-      wrapper.get("#problem-row-case-unanalyzed .problem-summary").text(),
-    ).toBe("尚未完成归因分析");
+      wrapper.get("#problem-row-case-unanalyzed .problem-detail").text(),
+    ).toContain("pending attribution: 这一条问题还没有完成归因分析。");
     expect(
-      wrapper.get("#problem-row-case-error .problem-row-head strong").text(),
-    ).toBe("索引读取失败");
+      wrapper.get("#problem-row-case-error .problem-detail").text(),
+    ).toContain("ENOENT");
+    expect(wrapper.text()).not.toContain("尚未完成归因分析");
     expect(
-      wrapper.get("#problem-row-case-error .problem-summary").text(),
-    ).toBe("The index file was missing.");
+      wrapper.get("#problem-row-case-error .problem-detail").text(),
+    ).not.toContain("The index file was missing.");
+  });
+
+  it("omits an empty description instead of reserving a blank body", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({ badCaseId: "case-blank", reason: "   " }),
+        ],
+      },
+    });
+
+    expect(
+      wrapper.find("#problem-row-case-blank .problem-detail").exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get("#problem-row-case-blank .problem-meta").text(),
+    ).toBe("关联：skill · deep-research");
+  });
+
+  it("shows the prototype type and object badges next to the title", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({ badCaseId: "case-self" }),
+          badCaseFixture({
+            badCaseId: "case-discovery",
+            badCaseType: "discovery",
+            objectName: "review-workflow",
+            objectType: "agent",
+          }),
+        ],
+      },
+    });
+
+    expect(wrapper.get("#problem-row-case-self .type-badge").text()).toBe(
+      "self",
+    );
+    expect(
+      wrapper.get("#problem-row-case-self .type-badge").classes(),
+    ).toContain("self");
+    expect(
+      wrapper.get("#problem-row-case-discovery .type-badge").text(),
+    ).toBe("discovery");
+    expect(
+      wrapper.get("#problem-row-case-discovery .object-badge").text(),
+    ).toBe("review-workflow");
+    expect(
+      wrapper.get("#problem-row-case-discovery .problem-meta").text(),
+    ).toBe("关联：agent · review-workflow");
+  });
+
+  it("renders the description as hardened Markdown inside the card", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-markdown",
+            reason: [
+              "**F2P 失败**（2 项）",
+              "",
+              "- `test_one`",
+              "- `test_two`",
+              "",
+              "[完整报告](https://example.com/report)",
+              "",
+              "<img src=x onerror=alert(1)> ![截图](https://example.com/plot.png)",
+            ].join("\n"),
+          }),
+        ],
+      },
+    });
+
+    const detail = wrapper.get("#problem-row-case-markdown .problem-detail");
+    expect(detail.findAll("ul li")).toHaveLength(2);
+    expect(detail.findAll("code").map((item) => item.text())).toEqual([
+      "test_one",
+      "test_two",
+    ]);
+    expect(detail.get("strong").text()).toBe("F2P 失败");
+    const link = detail.get("a");
+    expect(link.attributes("href")).toBe("https://example.com/report");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+    expect(detail.html()).not.toContain("<img");
+    expect(detail.html()).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(detail.text()).toContain("截图");
+  });
+
+  it("keeps description links clickable without selecting the card", async () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-link",
+            reason:
+              "[完整报告](https://example.com/report) 与 [失败清单](https://example.com/list)",
+          }),
+        ],
+      },
+    });
+
+    const detail = wrapper.get("#problem-row-case-link .problem-detail");
+    const links = detail.findAll("a");
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link.element.closest("button")).toBeNull();
+    }
+
+    await links[0]?.trigger("click");
+    expect(wrapper.emitted("select")).toBeUndefined();
+
+    await wrapper.get("[data-bad-case-id='case-link']").trigger("click");
+    expect(wrapper.emitted("select")).toEqual([["case-link"]]);
+  });
+
+  it("keeps the full case ID deep link and every card actionable", () => {
+    const wrapper = mount(BadCaseList, {
+      props: { wid: "ws-test", problems: fiveStates },
+    });
 
     const firstId = wrapper.get(
       "#problem-row-case-unanalyzed .problem-id",
     );
-    expect(firstId.text()).toBe("case-una");
+    expect(firstId.text()).toBe("case-unanalyzed");
     expect(firstId.attributes("title")).toBe("case-unanalyzed");
     expect(firstId.attributes("href")).toBe(
       "/workspaces/ws-test/sessions/root-1/errors?case=case-unanalyzed&tab=desc",
@@ -149,8 +273,22 @@ describe("BadCaseList", () => {
     expect(firstId.attributes("target")).toBe("_blank");
     expect(firstId.attributes("rel")).toBe("noopener noreferrer");
     expect(firstId.attributes("aria-label")).toBe(
-      "问题 case-una，在新窗口打开问题描述",
+      "问题 case-unanalyzed，在新窗口打开问题描述",
     );
+
+    const buttons = wrapper.findAll("button.problem-row");
+    expect(buttons).toHaveLength(5);
+    expect(buttons[0]?.attributes("aria-label")).toBe(
+      "选择问题 case-unanalyzed：待归因",
+    );
+    const fact = wrapper.get("#problem-row-case-error .fact-chip");
+    expect(fact.get(".fact-key").text()).toBe("file");
+    expect(fact.get(".fact-value").text()).toBe(
+      "apps/server/src/search/index.ts",
+    );
+    expect(
+      wrapper.find("#problem-row-case-unanalyzed .problem-facts").exists(),
+    ).toBe(false);
   });
 
   it("keeps degraded problems visible with an explicit diagnostic label", () => {
@@ -167,7 +305,7 @@ describe("BadCaseList", () => {
       },
     });
 
-    expect(wrapper.get("[data-bad-case-id='case-degraded']").text()).toContain(
+    expect(wrapper.get("#problem-row-case-degraded").text()).toContain(
       "数据降级",
     );
   });
@@ -220,13 +358,14 @@ describe("BadCaseList", () => {
       "#problem-row-case-error .problem-id",
     );
     expect(idLink.element.tagName).toBe("A");
-    expect(idLink.text()).toBe("case-err");
+    expect(idLink.text()).toBe("case-error");
     expect(idLink.attributes("title")).toBe("case-error");
     expect(idLink.attributes("target")).toBe("_blank");
     expect(idLink.attributes("rel")).toBe("noopener noreferrer");
     expect(idLink.attributes("aria-label")).toBe(
-      "问题 case-err，在新窗口打开问题描述",
+      "问题 case-error，在新窗口打开问题描述",
     );
+    expect(idLink.element.closest("button")).toBeNull();
 
     await idLink.trigger("click");
     expect(wrapper.emitted("select")).toBeUndefined();
@@ -252,6 +391,54 @@ describe("BadCaseList", () => {
     expect(card.get(".problem-row").attributes("aria-label")).toBe(
       "选择问题 case-err：索引读取失败",
     );
+  });
+
+  it("shows the post-process anchor chip instead of the sentinel index", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-post-process",
+            title: "后处理问题",
+            anchor: {
+              agentId: "agent-1",
+              eventIndex: 2_147_483_647,
+              kind: "post_process",
+            },
+          }),
+        ],
+        compact: true,
+      },
+    });
+
+    expect(wrapper.get(".anchor-chip").text()).toBe("后处理");
+    expect(wrapper.text()).not.toContain("2147483647");
+  });
+
+  it("shows the post-process anchor chip on the non-compact M14 card", () => {
+    const wrapper = mount(BadCaseList, {
+      props: {
+        wid: "ws-test",
+        problems: [
+          badCaseFixture({
+            badCaseId: "case-post-process-m14",
+            title: "非紧凑后处理问题",
+            anchor: {
+              agentId: "agent-1",
+              eventIndex: 2_147_483_647,
+              kind: "post_process",
+            },
+          }),
+        ],
+        compact: false,
+      },
+    });
+
+    expect(wrapper.get(".problem-list").classes()).not.toContain("compact");
+    expect(wrapper.get(".anchor-chip").text()).toBe("后处理");
+    expect(wrapper.get(".problem-row-head").text()).toContain("后处理");
+    expect(wrapper.text()).not.toContain("2147483647");
   });
 
   it("links analyzed issue cards to their attribution report", async () => {

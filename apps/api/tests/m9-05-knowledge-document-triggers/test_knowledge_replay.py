@@ -24,6 +24,7 @@ from app.db.models.domain import (
 from app.db.models.workspace import workspaces
 from app.main import create_app
 from app.service.acquisition.replay import replay_pending_payloads
+from app.utils.definition import definition_hash
 from app.utils.knowledge_paths import knowledge_document_id
 from app.utils.time import now_shanghai
 from tests.workspaces.helpers import bearer
@@ -238,13 +239,13 @@ async def test_replay_persists_knowledge_documents_from_every_reported_root(
         assert runbook["document_revision"].startswith("digest:")
         assert runbook["retrieval_kind"] == "file_read"
         assert runbook["retrieval_scope"] == KNOWLEDGE_ROOT_A
-        assert runbook["document_revision"] == (
-            "digest:" + hashlib.sha256(b"Runbook\nbody\n").hexdigest()
-        )
+        normalized = definition_hash("Runbook\nbody\n")
+        assert normalized is not None
+        assert runbook["document_revision"] == f"digest:{normalized}"
         assert oncall["retrieval_scope"] == KNOWLEDGE_ROOT_B
         assert all(row["line_no"] > 0 for row in knowledge)
         assert all(row["triggered_at"] is not None for row in knowledge)
-        assert source_version == 5
+        assert source_version == 6
         assert not any(str(row["source_path"]).startswith(SOURCE_ROOT) for row in rows)
     finally:
         await database.dispose()
@@ -267,7 +268,7 @@ async def test_root_without_any_bad_case_gets_no_knowledge_roots(tmp_path: Path)
         await database.dispose()
 
 
-async def test_parser_version_five_replays_an_already_processed_payload(
+async def test_stale_parser_version_replays_an_already_processed_payload(
     tmp_path: Path,
 ) -> None:
     """A payload cursor pinned at parser 4 is stale and is rebuilt with knowledge rows."""
@@ -318,7 +319,7 @@ async def test_parser_version_five_replays_an_already_processed_payload(
             )
         assert result.imported == 1
         assert "knowledge" in kinds
-        assert source["parser_version"] == 5
+        assert source["parser_version"] == 6
     finally:
         await database.dispose()
 
@@ -394,7 +395,7 @@ async def test_replay_survives_a_missing_bad_cases_table(tmp_path: Path) -> None
         assert result.failed == 0
         assert result.imported == 1
         assert rows == []
-        assert parser_version == 5
+        assert parser_version == 6
     finally:
         await database.dispose()
 

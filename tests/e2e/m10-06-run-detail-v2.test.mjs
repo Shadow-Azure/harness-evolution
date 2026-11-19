@@ -566,14 +566,22 @@ test("m12 attribution-jobs UI shows sanitized metrics and retries unfinished wor
     assert.equal(blocked.current, "attribution");
     assert.equal(blocked.clustersDisabled, true);
     assert.match(blocked.text, /第 4 步 · 对象归因/);
-    assert.match(blocked.text, /v2-blocked-probe-1/);
-    assert.match(blocked.text, /失败 · 第 1\/3 次/);
-    assert.match(blocked.text, /agent-skill-stub-v1/);
-    assert.match(blocked.text, /P95 780ms/);
-    assert.match(blocked.text, /Token 128/);
-    assert.match(blocked.text, /证据覆盖 50%/);
-    assert.match(blocked.text, /上下文 abcdef123456/);
-    assert.doesNotMatch(blocked.text, /Authorization|Skill content|raw trace/i);
+    const blockedContent = await waitForDocument(
+      page.session,
+      `(() => {
+        const text = document.body.textContent ?? "";
+        return text.includes("v2-blocked-probe-1") ? text : null;
+      })()`,
+      "blocked attribution step content",
+    );
+    assert.match(blockedContent, /v2-blocked-probe-1/);
+    assert.match(blockedContent, /失败 · 第 1\/3 次/);
+    assert.match(blockedContent, /agent-skill-stub-v1/);
+    assert.match(blockedContent, /P95 780ms/);
+    assert.match(blockedContent, /Token 128/);
+    assert.match(blockedContent, /证据覆盖 50%/);
+    assert.match(blockedContent, /上下文 abcdef123456/);
+    assert.doesNotMatch(blockedContent, /Authorization|Skill content|raw trace/i);
     await screenshot(page, "06-after-blocked-attribution.png");
 
     await clickButton(page, "重试未完成项");

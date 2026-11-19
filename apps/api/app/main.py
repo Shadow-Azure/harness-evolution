@@ -114,6 +114,10 @@ from app.service.evolution.probe_query import ProbeQueryService
 from app.service.evolution.retry import EvolutionRetryService
 from app.service.evolution.runs import EvolutionRunService
 from app.service.evolution.stages import EvolutionStageService
+from app.service.evolution.target_content import (
+    TargetContentResolver,
+    TargetVersionResolver,
+)
 from app.service.evolution.targets import EvolutionTargetService
 from app.service.identity.service import IdentityService
 from app.service.jobs import JobRunner
@@ -125,6 +129,7 @@ from app.service.workspaces.ingest import BadCaseIngestService
 from app.service.workspaces.service import WorkspaceService
 from app.third_party_api.bad_case_query.http import HttpBadCaseCatalogSource
 from app.third_party_api.bad_case_query.models import BadCaseCatalogSource
+from app.third_party_api.git.content import SubprocessGitContent
 from app.third_party_api.git.remote import GitRemote, SubprocessGitRemote
 from app.third_party_api.git.workspace import GitWorkspaceManager
 from app.third_party_api.session_query.http import HttpSessionQuerySource
@@ -151,6 +156,7 @@ def create_app(
     bad_case_catalog_source: BadCaseCatalogSource | None = None,
     git_remote: GitRemote | None = None,
     git_workspaces: WorkspacePreparer | None = None,
+    target_version_resolver: TargetVersionResolver | None = None,
 ) -> FastAPI:
     """Compose middleware, exception handling, and routes."""
     resolved_settings = settings or Settings()
@@ -289,6 +295,9 @@ def create_app(
     )
     target_repository = EvolutionTargetRepository(resolved_database)
     resolved_git_remote = git_remote or SubprocessGitRemote()
+    resolver = target_version_resolver or TargetContentResolver(
+        SubprocessGitContent(cache_root=resolved_settings.data_dir / "target-content"),
+    )
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
@@ -302,6 +311,7 @@ def create_app(
     potential_preview = PotentialPreviewService(
         evolution_targets,
         PotentialMatcher(potential_repository),
+        resolver,
     )
     probe_query_repository = ProbeQueryRepository(resolved_database)
     evolution_runs = EvolutionRunService(evolution_repository, run_event_store)
@@ -312,6 +322,7 @@ def create_app(
         target_repository,
         TargetOverviewRepository(resolved_database),
         potential_matcher,
+        resolver,
     )
     attribution_runner = AttributionRunner(
         attribution_repository,
@@ -338,6 +349,7 @@ def create_app(
         evolution_repository,
         jobs,
         evolution_events,
+        resolver,
         attribution_skills=attribution_skills,
     )
     probe_query = ProbeQueryService(probe_query_repository, target_repository)
@@ -357,6 +369,7 @@ def create_app(
         attribution_runner,
         workspace_manager,
         evolution_events,
+        resolver,
         attribution_jobs=attribution_jobs,
     )
     evolution_candidates = EvolutionCandidateService(
@@ -587,6 +600,7 @@ def create_app(
     app.state.attribution_skills = attribution_skills
     app.state.attribution_skill_packages = attribution_skill_packages
     app.state.attribution_jobs = attribution_jobs
+    app.state.target_version_resolver = resolver
     app.state.potential_preview = potential_preview
     app.state.evolution_runs = evolution_runs
     app.state.evolution_stages = evolution_stages

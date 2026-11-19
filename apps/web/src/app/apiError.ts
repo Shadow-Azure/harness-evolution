@@ -126,6 +126,8 @@ function stableMessage(error: ApiError, fallback?: string): string {
       return "已有任务正在运行，请等待当前任务结束后重试。";
     case "NO_PROBES_MATCHED":
       return "筛选条件没有匹配轨迹，请放宽对象、版本或时间范围后重试。";
+    case "TARGET_CONTENT_UNRESOLVED":
+      return "无法读取所选版本的目标文件内容，未能解析为 body hash。请确认 tag、仓库地址与子目录，或换一个版本后重试。";
     case "VALIDATION_INVALID":
       return fallback
         ? `${fallback}，请检查输入后重试。`

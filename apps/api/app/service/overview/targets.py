@@ -9,8 +9,10 @@ No endpoint here writes; every read is pinned to the path workspace.
 
 from __future__ import annotations
 
+import asyncio
 import re
-from collections import defaultdict
+import time
+from collections import OrderedDict, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -36,7 +38,10 @@ from app.service.evolution.potential import (
     ResolvedPolicy,
     SessionAssociation,
     resolve_policy,
-    resolve_target_revision,
+)
+from app.service.evolution.target_content import (
+    ResolvedTargetVersion,
+    TargetVersionResolver,
 )
 from app.service.overview.schemas import OverviewWindow
 from app.service.overview.target_schemas import (
@@ -89,6 +94,18 @@ CATEGORIES: frozenset[str] = frozenset({"model", "prompt", "error"})
 
 _VERSION_PART = re.compile(r"(\d+)")
 
+OVERVIEW_RESOLVE_TIMEOUT_SECONDS = 2.0
+"""Keep one slow/unreachable target repository from blocking the overview page."""
+
+OVERVIEW_RESOLVE_CONCURRENCY = 4
+"""Bound concurrent content reads so a wide target page cannot spawn unbounded git."""
+
+OVERVIEW_FAILURE_TTL_SECONDS = 30.0
+"""Cache a failed version briefly so repeated reads fail fast instead of retrying."""
+
+OVERVIEW_FAILURE_CACHE_SIZE = 512
+"""Bound the negative-resolution cache."""
+
 
 @dataclass(frozen=True, slots=True)
 class TargetOverviewQuery:
@@ -131,6 +148,7 @@ class TargetAnalysis:
     session_ids: frozenset[str]
     entries: tuple[TargetCaseEntry, ...]
     version_sessions: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    unresolved_versions: frozenset[str] = frozenset()
 
     @property
     def sessions(self) -> int:
@@ -334,12 +352,21 @@ class TargetOverviewService:
         targets: EvolutionTargetRepository,
         repository: TargetOverviewRepository,
         matcher: PotentialMatcher,
+        resolver: TargetVersionResolver,
+        *,
+        resolve_timeout_seconds: float = OVERVIEW_RESOLVE_TIMEOUT_SECONDS,
+        failure_ttl_seconds: float = OVERVIEW_FAILURE_TTL_SECONDS,
     ) -> None:
-        """Bind the service to target configuration, read facts, and the matcher."""
+        """Bind target configuration, read facts, the matcher, and content resolution."""
         self._targets = targets
         self._repository = repository
         self._matcher = matcher
+        self._resolver = resolver
         self._policy: ResolvedPolicy = resolve_policy(None)
+        self._resolve_timeout = resolve_timeout_seconds
+        self._failure_ttl = failure_ttl_seconds
+        self._resolve_slots = asyncio.Semaphore(OVERVIEW_RESOLVE_CONCURRENCY)
+        self._failed_versions: OrderedDict[tuple[str, str, str, str], float] = OrderedDict()
 
     async def list_targets(
         self,
@@ -565,18 +592,19 @@ class TargetOverviewService:
             )
         facts_by_id = {fact.bad_case_id: fact for fact in facts}
         session_ids = tuple(sorted({fact.session_id for fact in facts}))
-        analyses: list[TargetAnalysis] = []
-        for target in targets:
-            analyses.append(
-                await self._analyse_target(
+        analyses = await asyncio.gather(
+            *(
+                self._analyse_target(
                     target,
                     workspace_id=workspace_id,
                     session_ids=session_ids,
                     facts_by_id=facts_by_id,
                     window_start=window_start,
                     window_end=window_end,
-                ),
-            )
+                )
+                for target in targets
+            ),
+        )
         return tuple(analyses)
 
     async def _analyse_target(
@@ -598,11 +626,22 @@ class TargetOverviewService:
         versions = _ordered_versions(target.default_ref, observed)
         associated_sessions: set[str] = set()
         version_sessions: dict[str, frozenset[str]] = {}
+        resolved = await asyncio.gather(
+            *(self._resolve_version(target, version) for version in versions),
+        )
         entries: list[TargetCaseEntry] = []
-        for version in versions:
-            association, match = await self._evaluate(
+        unresolved_versions: set[str] = set()
+        for version, resolution in zip(versions, resolved, strict=True):
+            if resolution is None:
+                # Content is the only identity source: keep the observed version
+                # visible but never fall back to tag matching.
+                unresolved_versions.add(version)
+                version_sessions[version] = frozenset()
+                continue
+            association, match = await self._evaluate_resolved(
                 target,
                 version,
+                resolution,
                 workspace_id=workspace_id,
                 window_start=window_start,
                 window_end=window_end,
@@ -640,7 +679,48 @@ class TargetOverviewService:
             session_ids=frozenset(associated_sessions),
             entries=tuple(entries),
             version_sessions=version_sessions,
+            unresolved_versions=frozenset(unresolved_versions),
         )
+
+    async def _resolve_version(
+        self,
+        target: EvolutionTargetRecord,
+        version: str,
+    ) -> ResolvedTargetVersion | None:
+        """Resolve one version with a short timeout and a cached failure result."""
+        key = (target.object_type, target.repo_url, target.sub_dir, version)
+        now = time.monotonic()
+        failed_at = self._failed_versions.get(key)
+        if failed_at is not None:
+            if now - failed_at < self._failure_ttl:
+                return None
+            self._failed_versions.pop(key, None)
+        try:
+            async with self._resolve_slots:
+                return await asyncio.wait_for(
+                    self._resolver.resolve(
+                        object_type=target.object_type,
+                        repo_url=target.repo_url,
+                        sub_dir=target.sub_dir,
+                        version=version,
+                    ),
+                    timeout=self._resolve_timeout,
+                )
+        except TimeoutError:
+            self._remember_failure(key, now)
+            return None
+        except AppError as error:
+            if error.code is not ErrorCode.TARGET_CONTENT_UNRESOLVED:
+                raise
+            self._remember_failure(key, now)
+            return None
+
+    def _remember_failure(self, key: tuple[str, str, str, str], now: float) -> None:
+        """Keep one failed resolution for a bounded TTL so retries fail fast."""
+        self._failed_versions[key] = now
+        self._failed_versions.move_to_end(key)
+        while len(self._failed_versions) > OVERVIEW_FAILURE_CACHE_SIZE:
+            self._failed_versions.popitem(last=False)
 
     async def _evaluate(
         self,
@@ -650,15 +730,37 @@ class TargetOverviewService:
         workspace_id: str,
         window_start: datetime,
         window_end: datetime,
+    ) -> tuple[SessionAssociation, PotentialMatch] | None:
+        """Resolve one version then run the shared matcher, or skip it."""
+        resolved = await self._resolve_version(target, version)
+        if resolved is None:
+            return None
+        return await self._evaluate_resolved(
+            target,
+            version,
+            resolved,
+            workspace_id=workspace_id,
+            window_start=window_start,
+            window_end=window_end,
+        )
+
+    async def _evaluate_resolved(
+        self,
+        target: EvolutionTargetRecord,
+        version: str,
+        resolved: ResolvedTargetVersion,
+        *,
+        workspace_id: str,
+        window_start: datetime,
+        window_end: datetime,
     ) -> tuple[SessionAssociation, PotentialMatch]:
-        """Run the one shared matcher for one target version."""
-        resolved_version, resolved_revision = resolve_target_revision(version)
+        """Run the shared matcher for one already-resolved target version."""
         condition = MatchCondition(
             workspace_id=workspace_id,
             target_type=target.object_type,
             target_name=target.object_name,
-            target_version=resolved_version,
-            target_revision=resolved_revision,
+            target_version=resolved.target_version,
+            target_revision=resolved.target_revision,
             window_start=window_start,
             window_end=window_end,
         )

@@ -333,7 +333,10 @@ export function buildLaneModel(tree: SessionTree, selectedCaseId?: string): Lane
 ### 3.4 问题列表联动
 
 - 列表按 `createdAt` 升序；卡片点击 → `locate(badCaseId)`：滚动画布到视野中心 + 高亮。
-- ID 徽章显示 `badCaseId` 前 8 位（`title` 给全量）；点击 → `window.open(badCaseDeepLink(...), "_blank")`。
+- 卡片头部：`BC<序号>`、标题、`badCaseType` 徽章（`self` / `discovery`）、`objectName` 徽章、完整 `badCaseId`、轻量归因状态胶囊；`badCaseId` 点击 → `window.open(badCaseDeepLink(...), "_blank")`。
+- 卡片正文显示 `reason`（问题描述），复用 `utils/markdown.ts` 的 `renderMarkdown`：禁用原始 HTML、外链加固、Markdown 图片降级为 alt 文本；描述为空时不渲染正文。
+- 正文下方显示 key/value 双列 facts 与「关联：`objectType` · `objectName`」，行尾「定位 ↗」；归因摘要不进列表卡，未分析 case 也显示问题描述。
+- 卡片整体是定位按钮：正文铺在覆盖按钮之上，描述里的链接仍可点击，与原型 `FindingList` 的整卡点击一致。
 
 ## 4. 登录页、强制改密与顶栏用户区（`pages/login/*`）
 
@@ -506,6 +509,7 @@ Index.vue
 | 交互 | 行为 |
 |---|---|
 | 切换 Tab | 不重置时间窗与粒度；切换空间重置到 `tab=cases` |
+| 时间与粒度 | 「近 7 天」默认切到日粒度，「近 30/90 天」默认周粒度；时间范围变化时联动，用户仍可手动改粒度；`?range=7` 未显式给 `grain` 时规范化为 day |
 | 页头动作 | 仅 `canManageWorkspace(currentRole)` 渲染写入口，并随 tab 切换：bad case 总览为「上报接入」「启动自进化」，前者复用当前空间的 `admin?tab=ingest`；进化对象总览为「+ 新增进化对象」「启动自进化」。两个 tab 的启动入口共用同一个 `openLaunchWizard` 和既有 `LaunchWizard`，无权限时只显示「只读访问」提示 |
 | 运营上下文 | 复用 summary 的 `used/quota/sources` 与会话里的 `memberCount/spaceAdminCount/role`；上报地址由 `location.origin` + 当前空间 ID 推导为完整 URL（`POST <origin>/api/workspaces/:wid/bad-cases`），只复制地址，不复制凭据；summary 未就绪时额度显示「—」而不是 0 |
 | 来源多选 | 空 = 全部；多选 = 并集；chip 逐项移除；写 `?objects=`（逗号分隔、URL 可读）；只作用于图表与统计 |
@@ -550,9 +554,11 @@ Index.vue（grid: 340px 1fr）
     ├── header.error-head（meta + 返回 Session）
     ├── section.flow-panel（LaneDag + 结构树切换；保留全部并发分支，只高亮选中 BC）
     └── section.detail-panel
-        ├── components/ProblemDescription.vue（问题描述 tab：title 短标题作标题行 + reason 描述正文作正文块 + metaData）
+        ├── components/ProblemDescription.vue（问题描述 tab：title 短标题作标题行 + reason 描述正文作 Markdown 正文块 + metaData）
         └── components/AttributionReport.vue（重写：归因集合 + 多条导航 + 触发点对照）
 ```
+
+问题描述正文：`ProblemDescription.vue` 复用 `utils/markdown.ts` 的 `renderMarkdown` 渲染 `.problem-detail.markdown`；字号/行高保持 12.5px / 1.7，`p`、`ul/ol`、`li`、`code`、`pre` 有明确间距，行内代码用 `--mono` + `--bg-inset` chip，长测试名 `overflow-wrap:anywhere`，代码块等宽横向滚动。原始 HTML 不渲染，外链加固；Markdown 图片降级为 alt 文本、不发起外部加载；无 Markdown 语法的纯文本仍是普通段落，单换行保留。历史纯文本不迁移，前端不猜测、不自动改写成列表。
 
 数据：`useSessionBadCases(wid, sid)` 拿全部 bad_case（含 `attributionCount` / `hasAttribution`）；选中 case 后 `useAttributions(wid, badCaseId)`（分页 2/页）取子项，选中子项后 `useAttribution(wid, badCaseId, atId)` 取详情。每个展开组各自维护页码（`Record<badCaseId, number>`）。
 
@@ -582,7 +588,7 @@ Index.vue（grid: 340px 1fr）
 6. 推导过程（`reasoning`，Markdown 渲染；`reason` 按纯文本渲染）。
 7. 结论边界：只作用于该对象版本，不修改 bad case，不影响其它对象的潜在关系。
 
-> `reasoning` 与 `reason` 由服务端模板生成，前端按 Markdown 渲染（`html:false`、`breaks:true`、`linkify:true`；代码块等宽横向滚动，不接语法高亮）；外链 `target="_blank" rel="noopener noreferrer"`，禁止裸 HTML。
+> `reasoning` 与 `BadCase.reason` 走 `utils/markdown.ts`（`html:false`、`breaks:true`、`linkify:true`；代码块等宽横向滚动，不接语法高亮）；归因结论 `AttributionReport.reason` 保持纯文本插值，不经过该渲染器。两处 Markdown 外链都 `target="_blank" rel="noopener noreferrer"`；问题描述不渲染原始 HTML，Markdown 图片降级为 alt 文本。
 
 > 注意：问题描述 tab 的"关联对象"是 **bad_case 的 object（上报者）**；归因 tab 的"对象"是 **归因对象·版本**，`discovery` 场景下两者不同，不要混用。
 
@@ -630,29 +636,29 @@ stateDiagram-v2
 ```text
 GET /api/workspaces/{wid}/evolution/targets   → 本空间已配置且启用的对象（skill/agent）+ defaultRef
 GET /api/workspaces/{wid}/catalogs/models     → 模型清单（V2 向导不再展示，字段保留可选）
-选择对象后：GET …/evolution/targets/{id}/versions → 版本下拉（默认 defaultRef）
+选择对象后：GET …/evolution/targets/{id}/versions → 版本组合框的 tag 建议（默认 defaultRef）
 ```
 
 **Step 1 选择范围**
 
-- 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。
-- 版本：tag 列表；默认选中 `defaultRef`；缺省时提交由后端回退 `defaultRef`。
+- 对象选择：`useTargetConfigs(wid)` 过滤 `enabled`；未配置的对象不出现；空间无对象时给「去配置进化对象」入口。knowledge 目标只通过 API 配置，向导对象选择器仍是 skill/agent；knowledge 的文件匹配由 resolver/matcher 支持，知识库 UI 选择器另开切片。
+- 版本：输入优先的可编辑组合框；下拉建议为该 target 的 `defaultRef` 与 tag 列表，用户可直接输入 tag、分支名或 commit SHA。默认值取 `defaultRef`，缺省时取第一个 tag；提交时不再要求值必须出现在建议列表中。格式校验通过后，服务端必须用 git 判断该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`（远端 ref 缺失时按需刷新），tag、分支和 commit 都必须解析到 commit；不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`），仓库不可达/超时也走同一错误（reason `repo_unreachable` / `content_timeout`），都回到第 1 步。存在后再读取该 ref 下 `SKILL.md`（skill）或 `AGENT.md`（agent）并算出 body hash，作为 `targetRevision`；knowledge 目标由文档 revision/内容算 body hash，但向导暂不提供 knowledge 选择器。Step 1 可在条件摘要里展示 `ref → digest` 只读结果。内容读取/归一化失败显示 `TARGET_CONTENT_UNRESOLVED` 并回到第 1 步，不得回退到 tag 猜测。
 - 时间段：`from/to` 必填，校验 `from <= to`（后端再判 ≤366 天）。
 - **潜在策略**：默认策略单选 + 「自定义」三开关（`includeSelfReport` / `includeAfterObject` / `sameObjectOnly`）；custom 至少勾一条，否则本地拦截（后端 `422 POLICY_INVALID` 兜底）。
 - 从错误详情进入（`focusCaseId`）：第 1 步显示只读提示「以 bad case <id> 启动」，自动带出它的对象/版本线索；不改变潜在判定口径。
-- 「下一步」：字段级校验（对象/版本/时间段缺失标红 `aria-invalid`）→ `POST …/evolution/preview/sessions` → Step 2；`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象版本出现过的 Session」空态并禁用前进。
+- 「下一步」：字段级校验（对象/版本/时间段缺失、版本 ref 格式非法都标红 `aria-invalid`）→ 服务端 git 存在性校验（tag/分支/commit 必须解析到 commit）→ `POST …/evolution/preview/sessions` → Step 2；ref 不存在或内容解析失败回到第 1 步，`409 NO_ASSOCIATED_SESSIONS` 同样进 Step 2 渲染「没有对象版本出现过的 Session」空态并禁用前进。
 
 **Step 2 Session 关联**
 
-- 条件摘要 chip + 「修改条件」；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
-- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。
+- 条件摘要 chip + 「修改条件」（条件同时展示 `targetVersion` ref 与解析后的 `targetRevision` body hash）；统计：上报过 bad case 的 Session / 关联 / 跳过 / 版本未知 / 待轨迹同步。
+- 表格 4 条/页：Session 标题 / 对象出现标记 / 对象触发点时间 / 该 Session 的 bad case 数；只列**对象出现过**的 Session，本步只做关联、不计算潜在数；未出现的只进「跳过」统计，不入表。skill/agent/knowledge 目标的“出现”都按归一化 body hash 匹配，tag 只用于解析内容 hash。
 - 空态：「没有对象版本出现过的 Session；可回第 1 步调整时间段或对象版本」+ 前进禁用。
 - 分页只重新请求 `preview/sessions` 的 `page`，不重算匹配（服务端已按条件稳定排序）。
 
 **Step 3 潜在 bad case**
 
 - 统计：时间段内 bad case 总数 / 潜在数 / 按命中原因分布（`self_report` / `after_object` / `both`）。
-- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
+- 表格 5 条/页：bad case ID（深链）/ 上报来源 `object_name` / 类型 / 触发点时间 / 来源 Session / **命中原因** / **锚点来源**；`orderState=unknown` 显示“触发点顺序待轨迹时间戳重放”；`anchorSource=post_process` 显示“后处理上报”徽标，`eventIndex=INT_MAX` 不直接显示数字。对象版本未知的 Session 已在第 2 步跳过并计数，不进入本表。
 - 空态：「当前策略没有命中潜在 bad case；可返回调整时间段或策略」+ 前进禁用（`409 NO_POTENTIAL_MATCHED`）。
 - 「上一步」回到 Step 2；修改策略需回 Step 1（策略影响潜在集合，前端不就地重算）。
 
@@ -696,7 +702,7 @@ Index.vue
     ├── objectName
     ├── repoUrl（git 远端地址，https/ssh；不写 token）
     ├── subDir（相对仓库根，如 skills/deep-research）
-    ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议）
+    ├── defaultRef（可编辑组合框；直接输入分支或 tag，已保存对象的 tag 作为建议；启动向导的版本字段复用同一输入优先模式，并额外接受 commit SHA）
     ├── validationProjectId（验证集测试工程 ID，必填，不透明字符串）
     ├── testProjectId（测试集测试工程 ID，必填，不透明字符串）
     └── enabled 开关

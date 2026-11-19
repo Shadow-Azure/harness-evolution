@@ -54,8 +54,8 @@ from app.service.evolution.potential import (
     HitReason,
     OrderState,
     PotentialCase,
-    resolve_target_revision,
 )
+from app.service.evolution.target_content import resolve_legacy_target_version
 from app.utils.ids import new_id
 from app.utils.time import now_shanghai
 
@@ -618,6 +618,7 @@ class AttributionRunner:
         cache_enabled: bool,
         *,
         on_progress: AttributionProgressCallback | None = None,
+        target_revision: str | None = None,
     ) -> AttributionRunSummary:
         """Attribute included candidates and return exact reuse/creation counts.
 
@@ -629,6 +630,7 @@ class AttributionRunner:
             run: Run snapshot providing workspace, target, and engine identity.
             candidates: Matcher output; excluded candidates are ignored.
             cache_enabled: Whether existing cache keys may be reused.
+            target_revision: Revision resolved by prepare for a historical NULL run.
 
         Returns:
             Created, reused, non-target, and skipped counts for this invocation.
@@ -687,7 +689,11 @@ class AttributionRunner:
         except Exception as exc:
             raise self._blocked(run.id, None, exc) from exc
 
-        object_version = resolve_target_revision(run.target_version)[1]
+        object_version = (
+            target_revision
+            or run.target_revision
+            or resolve_legacy_target_version(run.target_version).target_revision
+        )
         skill_snapshot = await self._resolve_skill_snapshot(run, engine)
         semaphore = asyncio.Semaphore(self._max_concurrency)
 

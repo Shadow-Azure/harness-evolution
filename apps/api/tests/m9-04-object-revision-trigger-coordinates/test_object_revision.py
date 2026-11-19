@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from typing import Literal
 
@@ -186,8 +185,8 @@ def test_explicit_agent_version_becomes_tag_revision() -> None:
     assert event.object_revision == "tag:2026.1"
 
 
-def test_skill_body_revision_is_stable_and_path_sensitive() -> None:
-    """The same path and body resolve the same revision across tasks and sessions."""
+def test_skill_body_revision_is_path_insensitive() -> None:
+    """The normalized body alone identifies a Skill; the source path never does."""
     first = parse(
         (
             user("first task"),
@@ -210,12 +209,10 @@ def test_skill_body_revision_is_stable_and_path_sensitive() -> None:
         ),
     )
 
-    expected_hash = hashlib.sha256(
-        f"{SKILL_PATH}\0{first.events[0].definition_hash}".encode(),
-    ).hexdigest()
-    assert first.events[0].object_revision == f"digest:{expected_hash}"
-    assert second.events[0].object_revision == first.events[0].object_revision
-    assert moved.events[0].object_revision != first.events[0].object_revision
+    expected_revision = f"digest:{first.events[0].definition_hash}"
+    assert first.events[0].object_revision == expected_revision
+    assert second.events[0].object_revision == expected_revision
+    assert moved.events[0].object_revision == expected_revision
 
 
 def test_body_hash_wins_over_listing_digest() -> None:

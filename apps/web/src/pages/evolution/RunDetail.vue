@@ -557,7 +557,18 @@ function clearMissingClusterFocus(): void {
                 版本
               </div>
               <div class="v mono">
-                {{ run.target.version }}
+                <span>{{ run.target.version }}</span>
+                <span
+                  v-if="run.target.targetRevision"
+                  class="revision"
+                  data-testid="run-target-revision"
+                  :title="run.target.targetRevision"
+                >{{ run.target.targetRevision }}</span>
+                <span
+                  v-else
+                  class="revision muted"
+                  data-testid="run-target-revision-missing"
+                >历史运行未记录 revision</span>
               </div>
             </div>
             <div class="kv">
@@ -1192,6 +1203,15 @@ function clearMissingClusterFocus(): void {
 
 .muted {
   color: var(--text-faint);
+}
+
+.revision {
+  display: block;
+  max-width: 260px;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: var(--text-faint);
+  font-size: 10.5px;
 }
 
 .preparing-copy,

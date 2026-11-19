@@ -64,6 +64,13 @@ class EvolutionRunTarget(IdentityModel):
     type: Literal["skill", "agent", "knowledge"]
     name: str
     version: str
+    target_revision: str | None = Field(
+        default=None,
+        description=(
+            "Resolved file-matching revision (digest:<sha256(body)> for "
+            "skill/agent/knowledge file targets); null on historical runs."
+        ),
+    )
 
 
 class EvolutionRunWindow(IdentityModel):
@@ -340,6 +347,7 @@ def _card(summary: EvolutionRunSummaryRecord) -> EvolutionRunCard:
             type=cast(Literal["skill", "agent", "knowledge"], run.target_type),
             name=run.target_name,
             version=run.target_version,
+            target_revision=run.target_revision,
         ),
         window=EvolutionRunWindow.model_validate(
             {"from": run.window_from, "to": run.window_to},

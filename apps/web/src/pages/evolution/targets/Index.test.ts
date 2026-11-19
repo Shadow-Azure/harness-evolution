@@ -741,6 +741,48 @@ describe("target configuration page", () => {
     expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
   });
 
+  it("maps TARGET_CONTENT_UNRESOLVED into actionable form guidance", async () => {
+    server.use(
+      http.get(base, () =>
+        HttpResponse.json({ items: [] })),
+      http.post(base, () =>
+        HttpResponse.json(
+          {
+            error: {
+              code: "TARGET_CONTENT_UNRESOLVED",
+              message: "target content could not be resolved to a body hash",
+              details: { targetType: "skill", reason: "content_not_found" },
+            },
+          },
+          { status: 422 },
+        )),
+    );
+    const wrapper = await mountPage("admin");
+
+    await wrapper.get(".target-create").trigger("click");
+    await wrapper.get('input[name="objectName"]').setValue("deep-research");
+    await wrapper
+      .get('input[name="repoUrl"]')
+      .setValue("https://example.com/skills.git");
+    await wrapper
+      .get('input[name="subDir"]')
+      .setValue("skills/deep-research");
+    await wrapper.get('input[name="defaultRef"]').setValue("v9.9.9");
+    await wrapper
+      .get('input[name="validationProjectId"]')
+      .setValue("val-2026-q3");
+    await wrapper.get('input[name="testProjectId"]').setValue("test-2026-q3");
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const error = wrapper.get("[data-testid='target-server-error']");
+    expect(error.text()).toContain("无法读取该基线下的目标文件内容");
+    expect(error.text()).toContain("body hash");
+    expect(error.text()).not.toContain("target content could not");
+    expect(wrapper.getComponent(TargetFormDialog).props("modelValue")).toBe(true);
+  });
+
   it("cancels target deletion without sending a request", async () => {
     let deletes = 0;
     vi.spyOn(ElMessageBox, "confirm").mockRejectedValue("cancel");

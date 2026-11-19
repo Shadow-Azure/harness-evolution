@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { badCaseFixture } from "../../test/badCases";
 import {
-  badCaseFacts,
+  badCaseAnchorPresentation,
+  badCaseFactEntries,
   badCaseState,
-  badCaseSummary,
 } from "./badCaseDisplay";
 
 describe("bad-case display", () => {
@@ -25,45 +24,39 @@ describe("bad-case display", () => {
     },
   );
 
-  it("uses the public issue summary for analyzed issues", () => {
-    const problem = badCaseFixture({
-      analysis: {
-        probeId: "probe-1",
-        attributeType: "model",
-        displayState: "analyzed_issue_model",
-        result: { summary: "The model exceeded its scanning budget." },
-        status: "analyzed_issue",
-      },
-    });
-
-    expect(badCaseSummary(problem)).toBe(
-      "The model exceeded its scanning budget.",
-    );
-  });
-
-  it("uses the non-issue reason and an explicit unanalyzed message", () => {
-    const nonissue = badCaseFixture({
-      title: "响应可追溯",
-      reason: "traceable response body rendered by the description panel",
-      analysis: {
-        probeId: "probe-2",
-        attributeType: null,
-        displayState: "analyzed_nonissue",
-        result: {
-          reason: "The output was traceable.",
-          reasoning: ["Every claim had a source."],
-        },
-        status: "analyzed_nonissue",
-      },
-    });
-
-    expect(badCaseSummary(nonissue)).toBe("The output was traceable.");
-    expect(badCaseSummary(nonissue)).not.toBe(nonissue.title);
-    expect(badCaseSummary(badCaseFixture())).toBe("尚未完成归因分析");
+  it("labels non-event anchors without exposing the INT_MAX sentinel", () => {
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: 2_147_483_647,
+        kind: "post_process",
+      }),
+    ).toMatchObject({ label: "后处理", tone: "orange" });
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: -1,
+        kind: "unknown",
+      }),
+    ).toMatchObject({ label: "锚点未知", tone: "neutral" });
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: 0,
+        kind: "event",
+      }),
+    ).toBeNull();
+    expect(
+      badCaseAnchorPresentation({
+        agentId: "agent-1",
+        eventIndex: -1,
+        kind: "node",
+      }),
+    ).toBeNull();
   });
 
   it("renders at most three compact metadata facts", () => {
-    const facts = badCaseFacts({
+    const facts = badCaseFactEntries({
       file: "apps/server/src/search/index.ts",
       line: 142,
       error: "x".repeat(90),
@@ -71,9 +64,12 @@ describe("bad-case display", () => {
     });
 
     expect(facts).toHaveLength(3);
-    expect(facts[0]).toBe("file=apps/server/src/search/index.ts");
-    expect(facts[1]).toBe("line=142");
-    expect(facts[2]).toBe(`error=${"x".repeat(71)}…`);
-    expect(badCaseFacts(null)).toEqual([]);
+    expect(facts[0]).toEqual({
+      key: "file",
+      value: "apps/server/src/search/index.ts",
+    });
+    expect(facts[1]).toEqual({ key: "line", value: "142" });
+    expect(facts[2]).toEqual({ key: "error", value: `${"x".repeat(71)}…` });
+    expect(badCaseFactEntries(null)).toEqual([]);
   });
 });

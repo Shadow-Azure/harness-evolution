@@ -70,6 +70,8 @@ function run(overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard {
       type: "skill",
       name: "deep-research",
       version: "v2.0.0",
+      targetRevision:
+        "digest:9080a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789ab",
     },
     window: {
       from: "2026-08-20",
@@ -433,9 +435,36 @@ describe("evolution run detail page", () => {
     expect(wrapper.get("[data-testid='run-attribution-skill']").text()).toContain(
       "root-cause-agent@r2",
     );
+    expect(wrapper.get("[data-testid='run-target-revision']").text()).toBe(
+      run().target.targetRevision,
+    );
+    expect(wrapper.get("[data-testid='step-target-revision']").text()).toBe(
+      run().target.targetRevision,
+    );
     expect(wrapper.find("[data-testid='evolution-cluster-preview']").exists()).toBe(
       false,
     );
+  });
+
+  it("does not invent a revision for a historical run without one", async () => {
+    const historical = run({
+      target: { ...run().target, targetRevision: null },
+    });
+    server.use(
+      http.get(`${evolutionBase}/runs/:runId`, () =>
+        HttpResponse.json(detail(historical))),
+      http.get(`${evolutionBase}/runs/evo-full-1/steps/range`, () =>
+        HttpResponse.json(rangeStep)),
+    );
+    const wrapper = await mountPage();
+
+    expect(
+      wrapper.get("[data-testid='run-target-revision-missing']").text(),
+    ).toContain("历史运行未记录 revision");
+    expect(
+      wrapper.get("[data-testid='step-target-revision-missing']").text(),
+    ).toContain("历史运行未记录 revision");
+    expect(wrapper.text()).not.toContain("digest:");
   });
 
   it("loads only the active iteration and shows candidate/eval state", async () => {

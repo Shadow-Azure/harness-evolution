@@ -72,6 +72,7 @@ class EvolutionRepository:
             "target_type": values["target_type"],
             "target_name": values["target_name"],
             "target_version": values["target_version"],
+            "target_revision": values.get("target_revision"),
             "repo_url": values["repo_url"],
             "sub_dir": values["sub_dir"],
             "validation_project_id": values.get("validation_project_id", ""),
@@ -318,6 +319,7 @@ class EvolutionRepository:
         branch_name: str | None,
         workspace_path: str | None,
         stats: Mapping[str, Any],
+        target_revision: str | None = None,
     ) -> EvolutionRunRecord:
         """Persist the immutable workspace snapshot and prepared run status."""
         if status not in {"running", "completed"}:
@@ -325,6 +327,19 @@ class EvolutionRepository:
         if progress_unit != 5:
             raise ValueError("prepared runs must finish the cluster step")
         now = now_shanghai()
+        values: dict[str, object] = {
+            "status": status,
+            "progress_unit": progress_unit,
+            "repo_path": repo_path,
+            "base_ref": base_ref,
+            "base_commit": base_commit,
+            "branch_name": branch_name,
+            "workspace_path": workspace_path,
+            "stats": deepcopy(dict(stats)),
+            "finished_at": now if status == "completed" else None,
+        }
+        if target_revision is not None:
+            values["target_revision"] = target_revision
         async with self._database.transaction() as session:
             result = cast(
                 CursorResult[Any],
@@ -334,17 +349,7 @@ class EvolutionRepository:
                         evolution_runs.c.id == run_id,
                         evolution_runs.c.status.in_(("preparing", "running")),
                     )
-                    .values(
-                        status=status,
-                        progress_unit=progress_unit,
-                        repo_path=repo_path,
-                        base_ref=base_ref,
-                        base_commit=base_commit,
-                        branch_name=branch_name,
-                        workspace_path=workspace_path,
-                        stats=deepcopy(dict(stats)),
-                        finished_at=now if status == "completed" else None,
-                    ),
+                    .values(**values),
                 ),
             )
         if result.rowcount != 1:

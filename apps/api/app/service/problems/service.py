@@ -16,7 +16,7 @@ from app.service.bad_cases.session_status import (
     classify_trace_status,
     raise_trace_not_ready,
 )
-from app.service.problems.anchor import resolve_problem_anchor
+from app.service.problems.anchor import ResolvedAnchor, resolve_problem_anchor
 from app.service.problems.schemas import (
     BadCase,
     BadCaseAnalysis,
@@ -214,14 +214,12 @@ class ProblemService:
             # Only broken identity fields fall back to the main-node placeholder
             # anchor; a derived title must keep the real reporter anchor.
             if identity_degraded:
-                anchor = resolve_problem_anchor(
-                    bad_case_type=None,
-                    object_name=item.object_name,
-                    object_type=None,
-                    bad_case_agent_id=None,
-                    agents_by_id=agents_by_id,
-                    events_by_agent=events,
-                    main=mains[0],
+                # Broken identity fields cannot mount on a real event; keep the
+                # historical main-node placeholder with the explicit unknown kind.
+                anchor = ResolvedAnchor(
+                    agent_id=mains[0].id,
+                    event_index=-1,
+                    kind="unknown",
                 )
             else:
                 anchor = resolve_problem_anchor(
@@ -262,6 +260,7 @@ class ProblemService:
                     anchor=BadCaseAnchor(
                         agent_id=anchor.agent_id,
                         event_index=anchor.event_index,
+                        kind=anchor.kind,
                     ),
                     bad_case_agent=BadCaseAgent(
                         session_id=item.session_id,

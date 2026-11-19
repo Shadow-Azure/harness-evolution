@@ -14,6 +14,7 @@ The sole index for `docs/`. Every resident document must be registered in the ta
 | [roadmap.en.md](roadmap.en.md) | Product phase roadmap and per-phase acceptance |
 | [development.en.md](development.en.md) | Local environment, daily loop, commits and flow operations |
 | [deployment.en.md](deployment.en.md) | Alibaba Cloud deployment shape and release/rollback |
+| [claude-code.en.md](claude-code.en.md) | Production Claude Code install, model setup and verification |
 | [review.en.md](review.en.md) | Structured PR review, evidence requirements and triage |
 | [charter.en.md](charter.en.md) | Experiment protocol, evolution criteria and safety boundaries |
 | [metrics.en.md](metrics.en.md) | Primary metrics, guardrail metrics and run-record requirements |

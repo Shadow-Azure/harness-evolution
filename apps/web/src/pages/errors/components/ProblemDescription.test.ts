@@ -196,4 +196,108 @@ describe("ProblemDescription", () => {
     expect(wrapper.get(".degraded-chip").text()).toBe("数据降级");
     expect(wrapper.find(".problem-number").exists()).toBe(false);
   });
+
+  it("shows a post-process anchor chip without the upstream event index", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-post-process",
+          title: "后处理上报的问题",
+          reason: "上报对象没有可定位的触发事件。",
+          anchor: {
+            agentId: "agent-1",
+            eventIndex: 2_147_483_647,
+            kind: "post_process",
+          },
+        }),
+        index: null,
+      },
+    });
+
+    const chip = wrapper.get("[data-testid='problem-anchor']");
+    expect(chip.text()).toBe("后处理");
+    expect(chip.classes()).toContain("orange");
+    expect(chip.attributes("title")).toContain("post-process");
+    expect(wrapper.text()).not.toContain("2147483647");
+    expect(wrapper.text()).toContain("后处理");
+  });
+
+  it("renders the description as safe Markdown", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-markdown",
+          title: "Markdown 描述",
+          reason: [
+            "**result_status** = `unresolved`",
+            "",
+            "**F2P 失败**",
+            "- `test_cirs_its_topo`",
+            "- `test_its_straight_overhead`",
+            "",
+            "line one",
+            "line two",
+            "[source](https://example.com)",
+          ].join("\n"),
+        }),
+        index: null,
+      },
+    });
+
+    const detail = wrapper.get("[data-testid='problem-detail']");
+    expect(detail.element.innerHTML).toContain("<ul>");
+    expect(detail.element.innerHTML).toContain("<li>");
+    expect(detail.findAll("code").map((node) => node.text())).toEqual(
+      expect.arrayContaining(["unresolved", "test_cirs_its_topo"]),
+    );
+    expect(detail.findAll("strong").map((node) => node.text())).toEqual(
+      expect.arrayContaining(["result_status", "F2P 失败"]),
+    );
+    expect(detail.element.innerHTML).toContain("<br>");
+    const link = detail.get("a");
+    expect(link.attributes("href")).toBe("https://example.com");
+    expect(link.attributes("target")).toBe("_blank");
+    expect(link.attributes("rel")).toBe("noopener noreferrer");
+  });
+
+  it("does not render raw HTML from the description", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-raw-html",
+          title: "原始 HTML",
+          reason: '<img src=x onerror="alert(1)"><script>alert(2)</script>',
+        }),
+        index: null,
+      },
+    });
+
+    const detail = wrapper.get("[data-testid='problem-detail']");
+    expect(detail.find("img").exists()).toBe(false);
+    expect(detail.find("script").exists()).toBe(false);
+    expect(detail.text()).toContain("<img");
+    expect(detail.text()).toContain("<script>");
+  });
+
+  it("does not load Markdown images from the description", () => {
+    const wrapper = mount(ProblemDescription, {
+      props: {
+        wid: "ws-test",
+        problem: badCaseFixture({
+          badCaseId: "case-image",
+          title: "图片描述",
+          reason: "![tracking pixel](https://example.com/pixel.png)",
+        }),
+        index: null,
+      },
+    });
+
+    const detail = wrapper.get("[data-testid='problem-detail']");
+    expect(detail.find("img").exists()).toBe(false);
+    expect(detail.element.innerHTML).not.toContain("pixel.png");
+    expect(detail.text()).toContain("tracking pixel");
+  });
 });

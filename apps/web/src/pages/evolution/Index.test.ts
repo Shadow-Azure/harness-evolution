@@ -203,7 +203,7 @@ describe("evolution run list page", () => {
           objectVersion: "v2.0.0",
           title: "focus",
           reason: "focus reason",
-          anchor: { agentId: "agent-1", eventIndex: 0 },
+          anchor: { agentId: "agent-1", eventIndex: 0, kind: "event" },
           badCaseAgent: { agentId: "agent-1", sessionId: "session-1" },
           analysis: { status: "unanalyzed" },
           degraded: false,

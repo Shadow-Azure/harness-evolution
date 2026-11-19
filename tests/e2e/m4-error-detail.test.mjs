@@ -219,12 +219,16 @@ test("m4 error detail restores five states, folded attributions, tabs, unfiltere
     ],
   );
 
+  // 0001 is the plain-text regression fixture; 0002 carries Markdown and has
+  // its own rendering test below, so this assertion stays meaningful.
   const selectedSession = [...casesBySession.entries()].find(([, items]) =>
-    items.some((item) => item.analysis.status === "analyzed_issue"));
+    items.some((item) => item.badCaseId === "badcase-synthetic-0001"));
   assert.ok(selectedSession);
   const [sessionId, sessionCases] = selectedSession;
   const selected = sessionCases.find(
-    (item) => item.analysis.status === "analyzed_issue",
+    (item) =>
+      item.badCaseId === "badcase-synthetic-0001" &&
+      item.analysis.status === "analyzed_issue",
   );
   assert.ok(selected);
   const selectedAttributions = await apiGet(
@@ -414,7 +418,7 @@ test("m4 error detail restores five states, folded attributions, tabs, unfiltere
     assert.equal(selectedView.expanded, "true");
     assert.equal(selectedView.items, selected.attributionCount);
     assert.equal(selectedView.title, selected.title);
-    assert.equal(selectedView.detail, selected.reason);
+    assert.equal(selectedView.detail.trim(), selected.reason);
     assert.match(selectedView.summary ?? "", /已生成 \d+ 条归因/);
     assert.doesNotMatch(selectedView.text, /问题 ID/);
     assert.equal(
@@ -606,6 +610,65 @@ test("m4 error detail restores five states, folded attributions, tabs, unfiltere
     assert.equal(mobile.hasSidebar, true);
     assert.equal(mobile.hasDetail, true);
     assert.deepEqual(violations, [], violations.join("\n"));
+  } finally {
+    await page.close();
+  }
+});
+
+test("m4 error detail renders a Markdown bad case description", async () => {
+  const auth = await loginSession();
+  const page = await createBrowserPage();
+  try {
+    await installCookie(page, auth.cookie);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1408,
+      height: 960,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    await page.session.send("Page.navigate", { url: `${baseUrl}/sessions` });
+    await waitForDocument(
+      page.session,
+      `Boolean(document.querySelector(".shell"))`,
+      "authenticated shell",
+    );
+    await waitForDocument(
+      page.session,
+      `/^\\/workspaces\\/ws-default\\/sessions\\/[0-9a-f-]{36}$/.test(location.pathname)`,
+      "session auto-selection settled",
+    );
+
+    const sessionId = "10000000-0000-4000-8000-000000000002";
+    const caseId = "badcase-synthetic-0002";
+    await clientNavigate(
+      page,
+      `${ws}/sessions/${sessionId}/errors?case=${caseId}&tab=desc`,
+    );
+    const view = await waitForDocument(
+      page.session,
+      `(() => {
+        const detail = document.querySelector(
+          ".description [data-testid='problem-detail']",
+        );
+        if (!detail) return null;
+        return {
+          html: detail.innerHTML,
+          listItems: detail.querySelectorAll("ul li").length,
+          codes: [...detail.querySelectorAll("code")].map((node) => node.textContent),
+          strongs: [...detail.querySelectorAll("strong")].map((node) => node.textContent),
+          unsafe: detail.querySelectorAll("script,img,iframe").length,
+        };
+      })()`,
+      "markdown problem description",
+    );
+
+    assert.match(view.html, /<ul>/);
+    assert.equal(view.listItems, 10);
+    assert.equal(view.codes.length, 11);
+    assert.equal(view.codes.includes("test_cirs_its_topo"), true);
+    assert.equal(view.strongs.length, 3);
+    assert.equal(view.strongs.includes("result_status"), true);
+    assert.equal(view.unsafe, 0);
   } finally {
     await page.close();
   }

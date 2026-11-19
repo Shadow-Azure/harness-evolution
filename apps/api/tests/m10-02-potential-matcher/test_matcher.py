@@ -229,8 +229,8 @@ async def test_skill_anchor_uses_the_last_named_trigger(harness: Harness) -> Non
     match = await harness.matcher.potential_cases(condition, association, default_policy())
 
     assert hits_of(match)["case-skill-last"] == "after_object"
-    # No matching skill event degrades to the reporter birth point (session start).
-    assert hits_of(match)["case-skill-missing"] == "policy_excluded"
+    # No matching skill event is an explicit post-process anchor, so it is after.
+    assert hits_of(match)["case-skill-missing"] == "after_object"
 
 
 async def test_agent_discovery_anchors_on_the_parent_call(harness: Harness) -> None:
@@ -528,7 +528,8 @@ async def test_knowledge_real_shape_associates_by_object_revision(harness: Harne
     assert association.associated == 1
     assert association.version_unresolved == 0
     assert hits_of(match)["case-knowledge-after"] == "after_object"
-    assert hits_of(match)["case-knowledge-self"] == "self_report"
+    # The knowledge self case's reported skill has no trigger: self + post-process.
+    assert hits_of(match)["case-knowledge-self"] == "both"
 
 
 async def test_tag_only_skill_event_associates_by_object_revision(harness: Harness) -> None:
@@ -795,8 +796,8 @@ async def test_mixed_timestamp_entries_use_coordinates(harness: Harness) -> None
     assert hits_of(match)["case-mixed-entry"] == "after_object"
 
 
-async def test_unresolved_parent_relation_stays_unknown(harness: Harness) -> None:
-    """A subagent without a parent is not treated as a main Agent born at start."""
+async def test_unresolved_discovery_parent_becomes_post_process(harness: Harness) -> None:
+    """A discovery+agent report without a resolvable parent anchors after the object."""
     session_id = "session-unresolved-parent"
     main_id = await seed_object_session(harness, session_id=session_id)
     await seed_agent(
@@ -813,7 +814,7 @@ async def test_unresolved_parent_relation_stays_unknown(harness: Harness) -> Non
         object_name="other-skill",
         object_type="agent",
         agent_id="agent-orphan",
-        created_at=LATER,
+        created_at=datetime(2026, 11, 17, 11, 0, tzinfo=SHANGHAI),
     )
     assert main_id
 
@@ -824,9 +825,11 @@ async def test_unresolved_parent_relation_stays_unknown(harness: Harness) -> Non
         default_policy(),
     )
 
-    assert hits_of(match)["case-orphan"] == "order_unknown"
-    assert match.cases[0].order_state == "unknown"
-    assert match.cases[0].case_trigger is None
+    assert hits_of(match)["case-orphan"] == "after_object"
+    assert match.cases[0].order_state == "comparable"
+    assert match.cases[0].anchor_source == "post_process"
+    assert match.cases[0].case_trigger is not None
+    assert match.cases[0].case_trigger.event_index == 2_147_483_647
 
 
 async def test_blank_reporter_falls_back_to_main_agent(harness: Harness) -> None:

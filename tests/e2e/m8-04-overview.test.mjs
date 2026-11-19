@@ -1034,3 +1034,180 @@ test("m8-04 overview fits 390px without horizontal overflow", async () => {
     await page.close();
   }
 });
+
+test("m8-04 overview scrollbar sits at the window's right edge", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await page.session.send("Emulation.setDeviceMetricsOverride", {
+      width: 1500,
+      height: 837,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await openOverview(page);
+    await waitForCaseRows(page, 8);
+    // The scroll container must span the whole workspace main so the classic
+    // scrollbar is painted at the window edge instead of the 1180px column.
+    const geometry = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='overview-page']");
+        const grid = root?.querySelector(".ov-grid");
+        const main = document.querySelector("main.workspace-main");
+        if (!root || !grid || !main) return null;
+        const rect = root.getBoundingClientRect();
+        const gridRect = grid.getBoundingClientRect();
+        return {
+          innerWidth,
+          rightEdge: rect.right,
+          containerWidth: rect.width,
+          cardWidth: gridRect.width,
+          scrollHeight: root.scrollHeight,
+          clientHeight: root.clientHeight,
+          rootScrollWidth: root.scrollWidth,
+          rootClientWidth: root.clientWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
+          documentClientWidth: document.documentElement.clientWidth,
+          bodyScrollWidth: document.body.scrollWidth,
+          overflowY: getComputedStyle(root).overflowY,
+          mainOverflow: getComputedStyle(main).overflow,
+        };
+      })()`,
+      "overview scroll geometry",
+    );
+
+    assert.equal(geometry.overflowY, "auto", JSON.stringify(geometry));
+    assert.equal(geometry.mainOverflow, "hidden", JSON.stringify(geometry));
+    assert.ok(
+      Math.abs(geometry.rightEdge - geometry.innerWidth) <= 1,
+      `scroll container right edge ${geometry.rightEdge} must equal window width ${geometry.innerWidth}`,
+    );
+    assert.ok(
+      geometry.scrollHeight > geometry.clientHeight,
+      "overview content must overflow so the scrollbar is observable",
+    );
+    assert.ok(
+      geometry.cardWidth > 1000 && geometry.cardWidth <= 1140,
+      `card column must stay inside the 1180px content column: ${geometry.cardWidth}`,
+    );
+    assert.equal(geometry.rootScrollWidth, geometry.rootClientWidth);
+    assert.equal(geometry.documentScrollWidth, geometry.documentClientWidth);
+    assert.equal(geometry.bodyScrollWidth, geometry.documentClientWidth);
+
+    const scrolled = await waitForDocument(
+      page.session,
+      `(() => {
+        const root = document.querySelector("[data-testid='overview-page']");
+        root.scrollTop = root.scrollHeight;
+        const list = document.querySelector("[data-testid='ov-case-list']");
+        return {
+          scrollTop: root.scrollTop,
+          listVisible: Boolean(list) && list.getBoundingClientRect().top < innerHeight,
+        };
+      })()`,
+      "overview scrolled to the list bottom",
+    );
+    assert.ok(scrolled.scrollTop > 0, "overview must scroll to the list bottom");
+    assert.equal(scrolled.listVisible, true, "the list must be reachable by scrolling");
+
+    for (const [width, height] of [
+      [1024, 900],
+      [640, 900],
+    ]) {
+      await page.session.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: 1,
+        mobile: width <= 640,
+      });
+      const responsive = await waitForDocument(
+        page.session,
+        `(() => {
+          const root = document.querySelector("[data-testid='overview-page']");
+          if (!root) return null;
+          const rect = root.getBoundingClientRect();
+          if (Math.abs(rect.right - innerWidth) > 1) return null;
+          return {
+            rightEdge: rect.right,
+            innerWidth,
+            documentScrollWidth: document.documentElement.scrollWidth,
+            documentClientWidth: document.documentElement.clientWidth,
+          };
+        })()`,
+        `${width}px overview right edge`,
+      );
+      assert.equal(responsive.documentScrollWidth, responsive.documentClientWidth);
+    }
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});
+
+test("m8-04 defaults quick ranges to day for 7 days and week for 30/90", async () => {
+  const page = await createBrowserPage();
+  try {
+    const violations = browserViolations(page.session, {
+      isExpectedLogEntry: expectedLogEntry,
+    });
+    await installBrowser(page);
+    await openOverview(page);
+
+    await click(page, "[data-testid='ov-range-7']");
+    const seven = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "7" || search.get("grain") !== "day") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        const buckets = document.querySelectorAll("[data-bucket]");
+        if (!hint.includes("按日聚合") || buckets.length !== 7) return null;
+        const day0Bucket = document.querySelector("[data-bucket='${day0}']");
+        if (!day0Bucket) return null;
+        const label = day0Bucket.getAttribute("aria-label") ?? "";
+        const counts = label.match(/自身存在问题 (\\d+)，发现前置步骤问题 (\\d+)/);
+        const day0Total = counts ? Number(counts[1]) + Number(counts[2]) : null;
+        if (day0Total !== 6) return null;
+        return { day0Total };
+      })()`,
+      "7-day range defaults to day grain with the current-day count",
+    );
+    assert.equal(seven.day0Total, 6);
+
+    await click(page, "[data-testid='ov-range-30']");
+    const thirty = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "30" || search.get("grain") !== "week") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        return hint.includes("按周聚合") ? { grain: search.get("grain") } : null;
+      })()`,
+      "30-day range keeps week grain",
+    );
+    assert.equal(thirty.grain, "week");
+
+    await click(page, "[data-testid='ov-range-90']");
+    const ninety = await waitForDocument(
+      page.session,
+      `(() => {
+        const search = new URLSearchParams(location.search);
+        if (search.get("range") !== "90" || search.get("grain") !== "week") return null;
+        const hint = document.querySelector("[data-testid='ov-chart-card'] .hint")
+          ?.textContent ?? "";
+        return hint.includes("按周聚合") ? { grain: search.get("grain") } : null;
+      })()`,
+      "90-day range keeps week grain",
+    );
+    assert.equal(ninety.grain, "week");
+    assert.deepEqual(violations, []);
+  } finally {
+    await page.close();
+  }
+});

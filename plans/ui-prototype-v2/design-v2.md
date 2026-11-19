@@ -60,6 +60,8 @@ V2 不是重做一套设计系统。原型的目标是验证信息架构和交�
 | 创建/删除工作空间、调整初始额度 | ✓ | — | — | — |
 | 查看有权限的空间与数据 | ✓ | ✓ | ✓ | ✓ |
 | 调整当前空间额度、上报凭据 | ✓ | ✓ | — | — |
+| 查看当前空间的归因 Skill 包、下载及查看生效提示词 | ✓ | ✓ | ✓ | ✓ |
+| 上传、切换生效项及删除自定义归因 Skill 包 | ✓ | ✓ | — | — |
 | 添加成员、授予成员/只读 | ✓ | ✓ | — | — |
 | 任命/撤销空间管理员 | ✓ | — | — | — |
 | 配置进化对象、启动自进化 | ✓ | ✓ | — | — |
@@ -113,12 +115,21 @@ Content-Type: application/json
 - 成员页可添加成员、改成员/只读；全局管理员可任命空间管理员，空间管理员只能授予管理员以下权限。
 - 当前账号不是空间管理员时，提供「把自己设为空间管理员」按钮（对应“管理员可以给自己加为某个空间的管理员”）。
 
+### 4.4 归因 Skill
+
+- 入口：在空间管理的「上报接入」与「鉴权接入」之间打开「归因 Skill」。页头展示当前空间，管理员可以上传、设为生效、下载及删除；成员和只读成员通过深链查看，只有下载操作。切换工作空间时，列表和提示词都跟随当前空间。
+- 上传：文件选择器接收 ZIP。包上限为 200 个文件、10 MiB 压缩大小、20 MiB 解压大小，须含唯一的 UTF-8 `SKILL.md`，文件上限 512 KiB。其 frontmatter 的 `name` 是空间内唯一包名。上传成功后新增「未生效」行，并提示管理员可手动设为生效。
+- 列表：展示 Skill 名、上传者、文件数、ZIP 大小、生效状态和操作。每个空间有一项「当前生效」。平台默认包 `attribute-badcases` 始终可下载、可在未生效时重新启用。自定义包显示「删除」，确认框在删除当前项前提示会立即回退至平台默认包。
+- 生效提示词：列表下方展示当前生效包名及 `SKILL.md` 原文，以只读纯文本呈现，跟随启用和回退同步更新。生效状态用于空间包配置。生产 Run 使用通过 Golden 质量门禁并在启动时固化的 registry revision。
+- 反馈：读取列表时展示骨架屏，读取失败时提供重试。上传、启用与删除在请求期间禁用写操作。操作失败时在页内提示原因，包括格式错误、超限、重名、包不存在及权限不足。
+- 原型验收：在[归因 Skill 演示页](harness-evolution.html?u=admin&page=admin&tab=attribution-skills)下载并上传示例 ZIP，确认列表增加一行，当前提示词保持不变。设为生效后检查提示词，再取消一次删除并确认一次删除，检查是否回退至默认包。切换到 Agent 平台检查空间隔离，用[只读演示](harness-evolution.html?u=wanghao&ws=ws-harness&page=admin&tab=attribution-skills)确认只有查看和下载。原型只接受页面提供的示例 ZIP，变更保存在当前页面内存中，刷新恢复样例数据。生产交互依据 [#374](https://github.com/Shadow-Azure/harness-evolution/issues/374)。
+
 ## 5. 工作空间总览
 
 ### 5.1 指标与筛选
 
 - 顶部 `statstrip`：bad case 总数、自身存在问题、发现前置步骤问题、关联 Session、bad case 上报来源数、额度使用。
-- 时间：近 7 / 30 / 90 天或自定义区间；粒度：日 / 周 / 月。
+- 时间：近 7 / 30 / 90 天或自定义区间；粒度：日 / 周 / 月。选择近 7 天时默认切到日粒度，30/90 天默认周粒度；用户仍可手动改粒度。
 - `bad case 上报来源` 多选；不选表示全部，多选表示并集。来源 chip 可逐项移除。
 - 图表按时间桶堆叠自身存在问题（蓝）/ 发现前置步骤问题（紫）；下方按来源列出总量与两类占比，并可展开 `bad case 上报来源 × 时间` 明细矩阵。
 - 列表筛选独立于图表：时间段、`bad case 上报来源`、`bad_case_type` 都可为空；空值不限制。分页 8 条/页。
@@ -208,12 +219,23 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 
 如果潜在 bad case 无法归因到当前对象（触发时序、输入来源或证据不支持），该对象版本的结论记为「非该对象问题」。它不是“未分析”，也不是对 bad case 的否定；同一 bad case 仍可以归属于其他对象。
 
+### 7.4 启动版本输入与校验
+
+启动向导第 1 步的「版本」是输入优先的组合框，不是只能选的 tag 下拉：
+
+- **建议列表**：当前 target 的 `defaultRef` 与 tag 列表；`defaultRef` 不在 tag 列表时仍以「基线」建议出现。
+- **默认值**：`defaultRef`，缺省时取第一个 tag。
+- **直接输入**：接受 tag、分支名和 commit SHA；输入值就是提交的 `targetVersion`，不要求命中建议列表。
+- **校验时机**：点「下一步：关联 Session」和最终「启动自进化」时执行。先校验 git ref 格式（非空、≤96 字符、无空白/`..`/`@{`/`~^:?*[` 等非法字符，且不以 `-`、`/`、`.` 或 `.lock` 结尾）；失败停在第 1 步并显示字段错误。格式通过后，服务端用 git 判断该 ref 在仓库中是否存在：缓存 mirror 上执行 `git rev-parse --verify <ref>^{commit}`，远端 ref 缺失时先按需刷新 mirror；tag、分支和 commit 都必须解析到 commit。不存在返回 `TARGET_CONTENT_UNRESOLVED`（reason `ref_not_found`）；仓库不可达或超时同样走 `TARGET_CONTENT_UNRESOLVED`（reason `repo_unreachable` / `content_timeout`），都回到第 1 步并显示可操作错误。`REPO_INVALID` 仍是对象配置保存时的校验错误。存在后再读取 `SKILL.md` / `AGENT.md` 并计算 body hash；不得回退到 tag 猜测。
+- **身份不变**：版本身份仍是 body hash；tag 只是建议和显示值，不改变匹配与缓存语义。
+
 ## 8. 错误详情：一个 bad case × 多条归因
 
 - 左栏从 V1 的错误卡改为可折叠的 bad case 组：
   - 父行：`#no`、bad case ID、标题、object_name、self/discovery、归因数。
   - 展开后：按「进化对象 · 版本」列出归因子项（结论、时间、缓存标记），每页 2 条。
 - 点击父行 → 问题描述 Tab；点击归因子项 → 归因分析 Tab，并定位到该条归因。
+- 问题描述正文按 Markdown 渲染：段落、列表、行内代码、强调、链接、代码块有层级，单换行保留；禁用原始 HTML、外链加固，Markdown 图片降级为 alt 文本；无 Markdown 语法的纯文本仍是普通段落。
 - 右栏保留执行流；选中 bad case 时保留全部并发分支，只高亮对应 BC 和定位线，不过滤其它分支和 lane。
 - 归因分析展示：结论（可归因 / 非该对象问题）、分类、对象版本、运行 ID、时间、缓存来源、置信度、策略、对象触发点 vs bad case 触发点、推导过程与结论边界。
 - 运行详情第 4 步的对象归因表不再重复「结论 / 分类」，改为：来源 bad case、归因报告 ID、分类、问题现象/描述、结果来源、置信度；归因对象版本保留在第 4 步标题中，不在表格内重复。
@@ -245,6 +267,7 @@ workspace_id + bad_case_id + object_identity + object_version + policy_version +
 /workspaces/:workspaceId/evolution
 /workspaces/:workspaceId/evolution/:runId
 /workspaces/:workspaceId/settings/{workspace,members,ingestion,auth}
+/workspaces/:workspaceId/admin?tab=attribution-skills
 ```
 
 迁移期旧 `/sessions/**`、`/evolution/**` 按“用户最近访问且有权限的空间”重定向；解析失败进入空间选择页，不静默选择第一个空间。旧 `issue/report` 深链先解析到 bad case 再重定向；一旦历史数据允许多归属，停止自动猜测。

@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/notes/implemented/feature/2026-11-16-workspace-overview-ui.md
-2026-11-16-workspace-overview-ui.md: 80e17d872db05e691512acc02d00716a46985f91
-2026-11-16-workspace-overview-ui.en.md: 7d8111b672427464536c08283a932ea5a92668d9
+2026-11-16-workspace-overview-ui.md: f93d5ac91c4a5dccb7962bd5848756494ae740f2
+2026-11-16-workspace-overview-ui.en.md: ca3d4d42ace4b46bae64ef0b9e36be4c56fb8af7
