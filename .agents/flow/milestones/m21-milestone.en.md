@@ -6,7 +6,7 @@ English | [中文](m21-milestone.md)
 kind: milestone
 id: m21
 title: M21 运行详情与原型对齐
-status: active
+status: done
 github:
   number: 29
   url: https://github.com/Shadow-Azure/harness-evolution/milestone/29
