@@ -1,5 +1,5 @@
 # 双语配对一致性记录（docs/i18n/README.md）：两侧在最后一次确认一致状态下的
 # git blob hash。两种语言同等权威；编辑任一侧后带上另一侧，然后重录：
 #   pnpm run record:i18n -- .agents/flow/issues/bugfix-session-third-scrollbar.md
-bugfix-session-third-scrollbar.md: 397e244375645895fef9e5fc3b3dac3f52ca5592
-bugfix-session-third-scrollbar.en.md: 52a4edcb79dc307aaf70bb205a5c33f7f362635c
+bugfix-session-third-scrollbar.md: 4d6cd0d0b3b4e4c27f375a56fd725eecd0e23993
+bugfix-session-third-scrollbar.en.md: 4afe76c2fc0c96037fb4b3259e626f58bef79ff7
