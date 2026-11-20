@@ -9,7 +9,7 @@ milestone: m22
 depends:
   - m17-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - plans/**
   - apps/api/**
@@ -119,3 +119,7 @@ pnpm lint:docs
 - 不为只有 digest 的历史归因反查 git ref / tag。
 - 不重排归因列表其它字段，不改变分页、筛选、选中和深链交互。
 - 不改对象总览已完成的版本展示。
+
+## 关闭说明
+
+生产实现已由 [#426](https://github.com/Shadow-Azure/harness-evolution/pull/426) 合入并通过 CI；原型 PR #419 与生产 PR #426 的 Before / After、生产验证见本 issue 正文与生产证据评论。本 issue 关闭，M22 完成。

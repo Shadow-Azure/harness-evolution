@@ -9,7 +9,7 @@ milestone: m22
 depends:
   - m17-01
 priority: P2
-status: in-progress
+status: done
 scope:
   - plans/**
   - apps/api/**
@@ -119,3 +119,7 @@ pnpm lint:docs
 - Do not reverse-lookup git refs / tags for historic digest-only attributions.
 - Do not reorder other attribution fields or change pagination, filters, selection, or deep links.
 - Do not change the already-completed object-overview version display.
+
+## Closeout
+
+The production implementation merged via [#426](https://github.com/Shadow-Azure/harness-evolution/pull/426) with green CI; the prototype PR #419 and production PR #426 Before / After and verification live in this issue body and the production evidence comment. This issue is closed and M22 is complete.
