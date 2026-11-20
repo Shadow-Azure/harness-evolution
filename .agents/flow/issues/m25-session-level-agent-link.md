@@ -9,8 +9,8 @@ milestone: m25
 depends:
   - m9-06
   - m9-03
-priority: P1
-status: ready
+priority: P2
+status: done
 scope:
   - apps/api/app/service/acquisition/**
   - apps/api/tests/**

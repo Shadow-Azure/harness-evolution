@@ -9,7 +9,7 @@ milestone: bugfix
 depends:
   - m21-01
 priority: P2
-status: ready
+status: done
 scope:
   - apps/web/**
   - tests/e2e/**
