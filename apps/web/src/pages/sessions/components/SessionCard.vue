@@ -107,6 +107,7 @@ const emit = defineEmits<{
 
 <style scoped>
 .session-card {
+  position: relative;
   display: grid;
   gap: 7px;
   padding: 10px 11px;

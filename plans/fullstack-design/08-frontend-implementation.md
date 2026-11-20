@@ -485,6 +485,8 @@ Index.vue
 
 移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。父级 `.workspace-main` 仍按 `100vh` 约束：桌面 `dvh` 与 `vh` 一致，移动端由窄屏规则接管，本次不改共享壳层。
 
+滚动容器内的绝对定位辅助文本（`.sr-only` 等）必须以该容器内的某个元素为包含块：例如 `.session-card { position: relative; }`。否则绝对定位盒子的包含块会落到初始包含块，`overflow` 裁剪不生效，卡片列表会把文档撑到最后一屏之外，表现为多出一条窗口滚动条；m3 e2e 用 10 条 Session 的列表布局与 `.sr-only` 的 `offsetParent` 断言回归。
+
 ## 6. 工作空间总览页（`pages/overview/Index.vue`，V2）
 
 ### 6.1 结构
