@@ -64,6 +64,7 @@ jobs:
           $SSH_CMD "$SSH_USER@$SSH_HOST" "mkdir -p $RELEASE/api $RELEASE/web /opt/harness/shared/config"
           rsync -az --delete -e "$SSH_CMD" apps/web/dist/ "$SSH_USER@$SSH_HOST:$RELEASE/web/"
           rsync -az --delete --exclude .venv --exclude __pycache__ -e "$SSH_CMD" apps/api/ "$SSH_USER@$SSH_HOST:$RELEASE/api/"
+          rsync -az --files-from=deploy/attribution-assets.list -e "$SSH_CMD" ./ "$SSH_USER@$SSH_HOST:$RELEASE/"
           rsync -az -e "$SSH_CMD" deploy/ "$SSH_USER@$SSH_HOST:/opt/harness/shared/config/"
           $SSH_CMD "$SSH_USER@$SSH_HOST" "chmod +x /opt/harness/shared/config/release.sh"
 
@@ -274,6 +275,9 @@ jobs:
           esac
           SSH_CMD="ssh -i ~/deploy_key -p $SSH_PORT -o ServerAliveInterval=30 -o ServerAliveCountMax=6"
           ENTRIES=("HE_DATA_DIR $(printf '%s' "$DATA_DIR" | base64 | tr -d '\n')")
+          ENTRIES+=("HE_ATTRIBUTION_PACKAGE_DIR $(printf '%s' "$DATA_DIR/attribute" | base64 | tr -d '\n')")
+          ENTRIES+=("HE_ATTRIBUTION_DEFAULT_SKILL_PATH $(printf '%s' '/opt/harness/current/attribute-badcases/SKILL.md' | base64 | tr -d '\n')")
+          ENTRIES+=("HE_ATTRIBUTION_GOLDEN_SET_PATH $(printf '%s' '/opt/harness/current/fixtures/attribution-golden/cases.json' | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_MODE:-}" ] && ENTRIES+=("HE_EVAL_MODE $(printf '%s' "${HE_EVAL_MODE:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_BASE_URL:-}" ] && ENTRIES+=("HE_EVAL_BASE_URL $(printf '%s' "${HE_EVAL_BASE_URL:-}" | base64 | tr -d '\n')")
           [ -n "${HE_EVAL_API_KEY:-}" ] && ENTRIES+=("HE_EVAL_API_KEY $(printf '%s' "${HE_EVAL_API_KEY:-}" | base64 | tr -d '\n')")

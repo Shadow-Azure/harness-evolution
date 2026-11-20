@@ -58,6 +58,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Inspect the candidate release before migrating or replacing the current symlink.
+while IFS= read -r asset; do
+  [ -s "$RELEASE/$asset" ] || fail "归因资源缺失或为空: $asset"
+done < "$SHARED/config/attribution-assets.list"
+
 validate_data_dir_path() {
   local dir="$1"
   if [ -z "$dir" ]; then

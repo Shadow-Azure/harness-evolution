@@ -9,7 +9,10 @@ from urllib.parse import urlsplit
 from pydantic import BeforeValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_API_PARENT = Path(__file__).resolve().parents[2]
+# Sources run under <checkout>/apps/api or <release>/api.
+_ASSET_ROOT = _API_PARENT.parent if _API_PARENT.name == "apps" else _API_PARENT
+DEFAULT_ATTRIBUTION_GOLDEN_SET = _ASSET_ROOT / "fixtures" / "attribution-golden" / "cases.json"
 
 _COOKIE_TOKEN_CHARS = set(
     "!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
@@ -161,8 +164,13 @@ class Settings(BaseSettings):
     docs_enabled: bool = False
     log_level: Literal["critical", "error", "warning", "info", "debug"] = "info"
     data_dir: Path = Path("data")
-    attribution_package_dir: Path = _REPOSITORY_ROOT / "attribute"
-    attribution_default_skill_path: Path = _REPOSITORY_ROOT / "attribute-badcases" / "SKILL.md"
+    attribution_package_dir: Path = Field(
+        default_factory=lambda data: (
+            (data["data_dir"] if data["production"] else _ASSET_ROOT) / "attribute"
+        ),
+    )
+    attribution_default_skill_path: Path = _ASSET_ROOT / "attribute-badcases" / "SKILL.md"
+    attribution_golden_set_path: Path = DEFAULT_ATTRIBUTION_GOLDEN_SET
     attribution_agent: str | None = None
     attribution_llm: str = "agent-native"
     attribution_model: str = Field(default="haiku", min_length=1)

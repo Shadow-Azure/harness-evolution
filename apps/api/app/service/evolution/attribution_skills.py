@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from app.config import DEFAULT_ATTRIBUTION_GOLDEN_SET
 from app.db.crud.attribution_skills import (
     AttributionQualityEventRecord,
     AttributionSkillConflict,
@@ -202,13 +203,11 @@ class AttributionSkillService:
     def __init__(
         self,
         repository: AttributionSkillRepository,
-        golden_set_path: Path | None = None,
+        golden_set_path: Path = DEFAULT_ATTRIBUTION_GOLDEN_SET,
     ) -> None:
         """Bind the service to Skill persistence."""
         self._repository = repository
-        self._golden_set_path = golden_set_path or (
-            Path(__file__).resolve().parents[5] / "fixtures" / "attribution-golden" / "cases.json"
-        )
+        self._golden_set_path = golden_set_path
 
     async def list(self, workspace_id: str) -> AttributionSkillList:
         """List every revision visible to one workspace."""

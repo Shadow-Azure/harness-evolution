@@ -367,7 +367,7 @@ class AttributionSkillPackageService:
     @property
     def writer_path(self) -> Path:
         """Return the trusted platform writer, independent of uploaded packages."""
-        return Path(__file__).resolve().parents[5] / "attribute-badcases/make_probe_report.py"
+        return self._default_skill_path.with_name("make_probe_report.py")
 
     def _default_zip(self) -> bytes:
         output = io.BytesIO()

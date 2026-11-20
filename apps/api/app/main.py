@@ -316,6 +316,7 @@ def create_app(
     evolution_targets = EvolutionTargetService(target_repository, resolved_git_remote)
     attribution_skills = AttributionSkillService(
         AttributionSkillRepository(resolved_database),
+        resolved_settings.attribution_golden_set_path,
     )
     attribution_skill_packages = AttributionSkillPackageService(
         AttributionSkillPackageRepository(resolved_database),

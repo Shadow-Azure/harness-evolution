@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.config import ServicePhase, Settings
+from app.config import DEFAULT_ATTRIBUTION_GOLDEN_SET, ServicePhase, Settings
 from app.db.base import Database
 from app.db.factory import create_database
 from app.db.migrate import upgrade_database
@@ -153,7 +153,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     check.add_argument(
         "--golden",
-        default="../../fixtures/attribution-golden/cases.json",
+        default=os.getenv("HE_ATTRIBUTION_GOLDEN_SET_PATH", DEFAULT_ATTRIBUTION_GOLDEN_SET),
         type=Path,
     )
     attribution_eval = subcommands.add_parser(
@@ -162,7 +162,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     attribution_eval.add_argument(
         "--golden",
-        default="../../fixtures/attribution-golden/cases.json",
+        default=os.getenv("HE_ATTRIBUTION_GOLDEN_SET_PATH", DEFAULT_ATTRIBUTION_GOLDEN_SET),
         type=Path,
     )
     attribution_eval.add_argument(

@@ -63,6 +63,7 @@ async def package_client(
     """Provide a migrated app with isolated package and default-Skill paths."""
     default_path = tmp_path / "attribute-badcases.md"
     default_path.write_text("---\nname: attribute-badcases\n---\n# Default prompt\n")
+    (tmp_path / "make_probe_report.py").write_text("# fixture writer\n")
     package_root = tmp_path / "attribute"
     settings = Settings(
         db_dialect=DatabaseDialect.SQLITE,
