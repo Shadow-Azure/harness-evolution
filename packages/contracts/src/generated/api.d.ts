@@ -1242,7 +1242,7 @@ export interface paths {
         };
         /**
          * List Attribution Skills
-         * @description List platform and workspace Skill revisions visible in this workspace.
+         * @description List bindable package IDs in agent mode or registry revision IDs in rule mode.
          */
         get: operations["list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get"];
         put?: never;
@@ -1673,7 +1673,7 @@ export interface paths {
         post?: never;
         /**
          * Unbind Target Attribution Skill
-         * @description Remove the target override and restore workspace/platform fallback.
+         * @description Remove a legacy rule override; agent-mode targets always have an explicit binding.
          */
         delete: operations["unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete"];
         options?: never;
@@ -2426,9 +2426,11 @@ export interface components {
         };
         /**
          * AttributionPreviewResult
-         * @description Read-only attribution preview; it has no paged rows.
+         * @description Read-only counts and whether this deployment can run workspace Skill packages.
          */
         AttributionPreviewResult: {
+            /** Canrecompute */
+            canRecompute: boolean;
             summary: components["schemas"]["AttributionPreviewSummary"];
             /** Targetrevision */
             targetRevision?: string | null;
@@ -3025,6 +3027,18 @@ export interface components {
          * @enum {string}
          */
         BadCaseTraceStatus: "ready" | "pending" | "syncing" | "failed" | "unavailable";
+        /**
+         * BindingFailure
+         * @description Last failed background analysis of the current binding.
+         */
+        BindingFailure: {
+            /** Attempts */
+            attempts: number;
+            /** Reason */
+            reason: string;
+            /** Willretry */
+            willRetry: boolean;
+        };
         /** Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post */
         Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post: {
             /**
@@ -3822,6 +3836,7 @@ export interface components {
          * @description Persisted target returned to clients.
          */
         EvolutionTarget: {
+            attributionFailure?: components["schemas"]["BindingFailure"] | null;
             /** Attributionpackageid */
             attributionPackageId?: string | null;
             /** Attributionskillname */

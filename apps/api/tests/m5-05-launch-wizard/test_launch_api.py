@@ -983,7 +983,11 @@ async def test_local_attribution_from_wizard_to_cluster(
     deleted = await launch_api.delete(f"{workspace}/evolution/targets/target-enabled")
     assert deleted.status_code == 204
     monkeypatch.setattr(app.state.evolution_targets._git_remote, "validate", AsyncMock())
-    body = {k: v for k, v in target.items() if k not in {"id", "attributionSkillName"}}
+    body = {
+        k: v
+        for k, v in target.items()
+        if k not in {"id", "attributionSkillName", "attributionFailure"}
+    }
     body["attributionPackageId"] = uploaded.json()["id"]
     created = await launch_api.post(f"{workspace}/evolution/targets", json=body)
     assert created.status_code == 201, created.text

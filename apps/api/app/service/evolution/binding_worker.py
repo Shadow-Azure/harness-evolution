@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from app.db.crud.attributions import AttributionRepository
 from app.db.crud.binding_batches import BindingClaim, BindingQueue
+from app.errors import AppError, ErrorCode
 from app.service.acquisition.bad_case_sync_coordinator import BadCaseRootSyncCoordinator
 from app.service.evolution.attribution import (
     AttributionRunner,
@@ -63,13 +64,23 @@ class BindingWorker:
         claim = await self.queue.claim(self.runtime.settings.attribution_timeout_seconds + 180)
         if claim is None:
             return False
-        retry = True
         try:
-            retry = await self.analyze(claim)
-        except Exception:
+            waiting = await self.analyze(claim)
+        except asyncio.CancelledError:
+            await self.queue.update_claim(
+                claim, attribution_owner=None, attribution_due=now_shanghai()
+            )
+            raise
+        except Exception as exc:
             logger.exception("Target attribution batch failed", extra={"target_id": claim.target})
-        finally:
-            await self.queue.release(claim, retry=retry)
+            reason = "analysis_failed"
+            if isinstance(exc, AppError) and exc.code == ErrorCode.TARGET_CONTENT_UNRESOLVED:
+                reason = "target_unavailable"
+            elif isinstance(exc, ValueError):
+                reason = "invalid_input_or_report"
+            await self.queue.fail(claim, reason)
+        else:
+            await self.queue.complete(claim, waiting_for_traces=waiting)
         return True
 
     async def analyze(self, claim: BindingClaim) -> bool:

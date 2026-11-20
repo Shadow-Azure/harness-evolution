@@ -39,6 +39,9 @@ class EvolutionTargetRecord:
     workspace_id: str = DEFAULT_WORKSPACE_ID
     attribution_package_id: str | None = None
     attribution_skill_name: str | None = None
+    attribution_failures: int = 0
+    attribution_error: str | None = None
+    attribution_will_retry: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +83,9 @@ def _record(row: RowMapping) -> EvolutionTargetRecord:
         enabled=bool(row["enabled"]),
         attribution_package_id=row["attribution_package_id"],
         attribution_skill_name=row["attribution_skill_name"],
+        attribution_failures=row["attribution_failures"],
+        attribution_error=row["attribution_error"],
+        attribution_will_retry=row["attribution_due"] is not None,
         workspace_id=(str(workspace_id) if workspace_id is not None else DEFAULT_WORKSPACE_ID),
     )
 
@@ -187,6 +193,8 @@ class EvolutionTargetRepository:
             attribution_skill_name=name,
             attribution_generation=new_id(),
             attribution_owner=None,
+            attribution_failures=0,
+            attribution_error=None,
             attribution_snapshot=None,
             attribution_due=now if enabled else None,
             attribution_cutoff=now,
@@ -313,6 +321,18 @@ class EvolutionTargetRepository:
                         **await self._binding(
                             session, existing["workspace_id"], str(package), bool(values["enabled"])
                         )
+                    )
+                elif (
+                    existing["enabled"]
+                    and existing["attribution_error"]
+                    and existing["attribution_due"] is None
+                ):
+                    # A deliberate save of a failed target resumes the same frozen batch.
+                    # Previously completed cases stay linked to its generation.
+                    statement = statement.values(
+                        attribution_failures=0,
+                        attribution_error=None,
+                        attribution_due=now_shanghai(),
                     )
                 result = cast(CursorResult[object], await session.execute(statement))
             except IntegrityError as exc:

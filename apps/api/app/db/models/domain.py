@@ -479,6 +479,8 @@ evolution_targets = Table(
     Column("attribution_skill_name", String(128), nullable=True),
     Column("attribution_generation", String(36), nullable=True),
     Column("attribution_owner", String(36), nullable=True),
+    Column("attribution_failures", Integer, nullable=False, server_default="0"),
+    Column("attribution_error", String(64), nullable=True),
     Column("attribution_snapshot", JSON, nullable=True),
     Column("attribution_due", DateTime(timezone=True), nullable=True),
     Column("attribution_cutoff", DateTime(timezone=True), nullable=True),

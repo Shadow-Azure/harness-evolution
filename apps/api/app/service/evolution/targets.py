@@ -69,11 +69,20 @@ class EvolutionTargetWrite(IdentityModel):
         return values
 
 
+class BindingFailure(IdentityModel):
+    """Last failed background analysis of the current binding."""
+
+    attempts: int
+    reason: str
+    will_retry: bool
+
+
 class EvolutionTarget(EvolutionTargetWrite):
     """Persisted target returned to clients."""
 
     id: str
     attribution_skill_name: str | None = None
+    attribution_failure: BindingFailure | None = None
 
 
 class EvolutionTargetList(IdentityModel):
@@ -352,6 +361,13 @@ def _public(record: EvolutionTargetRecord) -> EvolutionTarget:
         id=record.id,
         attribution_package_id=record.attribution_package_id,
         attribution_skill_name=record.attribution_skill_name,
+        attribution_failure=BindingFailure(
+            attempts=record.attribution_failures,
+            reason=record.attribution_error,
+            will_retry=record.attribution_will_retry,
+        )
+        if record.attribution_error
+        else None,
         object_type=record.object_type,
         object_name=record.object_name,
         repo_url=record.repo_url,

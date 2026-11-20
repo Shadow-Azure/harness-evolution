@@ -1015,8 +1015,12 @@
       },
       "AttributionPreviewResult": {
         "additionalProperties": false,
-        "description": "Read-only attribution preview; it has no paged rows.",
+        "description": "Read-only counts and whether this deployment can run workspace Skill packages.",
         "properties": {
+          "canRecompute": {
+            "title": "Canrecompute",
+            "type": "boolean"
+          },
           "summary": {
             "$ref": "#/components/schemas/AttributionPreviewSummary"
           },
@@ -1033,6 +1037,7 @@
           }
         },
         "required": [
+          "canRecompute",
           "summary"
         ],
         "title": "AttributionPreviewResult",
@@ -2415,6 +2420,31 @@
         ],
         "title": "BadCaseTraceStatus",
         "type": "string"
+      },
+      "BindingFailure": {
+        "additionalProperties": false,
+        "description": "Last failed background analysis of the current binding.",
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "willRetry": {
+            "title": "Willretry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attempts",
+          "reason",
+          "willRetry"
+        ],
+        "title": "BindingFailure",
+        "type": "object"
       },
       "Body_upload_attribution_skill_package_api_workspaces__wid__attribution_skill_packages_post": {
         "properties": {
@@ -4424,6 +4454,16 @@
         "additionalProperties": false,
         "description": "Persisted target returned to clients.",
         "properties": {
+          "attributionFailure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "attributionPackageId": {
             "anyOf": [
               {
@@ -16240,7 +16280,7 @@
     },
     "/api/workspaces/{wid}/evolution/attribution-skills": {
       "get": {
-        "description": "List platform and workspace Skill revisions visible in this workspace.",
+        "description": "List bindable package IDs in agent mode or registry revision IDs in rule mode.",
         "operationId": "list_attribution_skills_api_workspaces__wid__evolution_attribution_skills_get",
         "parameters": [
           {
@@ -18757,7 +18797,7 @@
     },
     "/api/workspaces/{wid}/evolution/targets/{targetId}/attribution-skill": {
       "delete": {
-        "description": "Remove the target override and restore workspace/platform fallback.",
+        "description": "Remove a legacy rule override; agent-mode targets always have an explicit binding.",
         "operationId": "unbind_target_attribution_skill_api_workspaces__wid__evolution_targets__targetId__attribution_skill_delete",
         "parameters": [
           {

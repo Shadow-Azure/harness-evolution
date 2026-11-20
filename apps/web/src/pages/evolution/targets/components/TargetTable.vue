@@ -33,6 +33,13 @@ const emptyDescription = computed(() => props.canWrite
   : "当前暂无配置，请联系管理员添加或启用对象。",
 );
 
+const failureLabels: Record<string, string> = {
+  target_unavailable: "无法读取对象版本或定义",
+  invalid_input_or_report: "归因输入或报告校验失败",
+  worker_interrupted: "后台归因进程中断",
+  analysis_failed: "后台归因执行失败",
+};
+
 function toggle(target: EvolutionTarget): void {
   emit("toggle", {
     ...target,
@@ -110,7 +117,17 @@ function toggle(target: EvolutionTarget): void {
             <td class="object-name">
               {{ target.objectName }}
             </td>
-            <td>{{ target.attributionSkillName || "attribute-badcases" }}</td>
+            <td>
+              {{ target.attributionSkillName || "attribute-badcases" }}
+              <p
+                v-if="target.attributionFailure"
+                class="binding-failure"
+              >
+                {{ failureLabels[target.attributionFailure.reason] || "后台归因执行失败" }}
+                （连续 {{ target.attributionFailure.attempts }} 次），{{ target.attributionFailure.willRetry ? "等待自动重试" : "已停止自动重试" }}。
+                <span v-if="canWrite && !target.attributionFailure.willRetry">修复后编辑并保存对象，可重试剩余 Badcase。</span>
+              </p>
+            </td>
             <td
               class="repo-url"
               :title="target.repoUrl"
@@ -188,6 +205,13 @@ function toggle(target: EvolutionTarget): void {
 </template>
 
 <style scoped>
+.binding-failure {
+  margin: 4px 0 0;
+  color: var(--red);
+  font-size: 12px;
+  white-space: normal;
+}
+
 .target-table-panel {
   display: grid;
   min-width: 0;
@@ -361,7 +385,14 @@ function toggle(target: EvolutionTarget): void {
 }
 
 @media (max-width: 640px) {
-  .target-table-panel {
+  .binding-failure {
+  margin: 4px 0 0;
+  color: var(--red);
+  font-size: 12px;
+  white-space: normal;
+}
+
+.target-table-panel {
     padding: 12px;
   }
 

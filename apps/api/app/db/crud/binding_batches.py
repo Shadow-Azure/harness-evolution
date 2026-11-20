@@ -11,6 +11,9 @@ from app.db.models.domain import evolution_targets
 from app.utils.ids import new_id
 from app.utils.time import as_shanghai, now_shanghai
 
+MAX_FAILURES = 3
+POLL_SECONDS = 30
+
 
 @dataclass(frozen=True)
 class BindingClaim:
@@ -20,6 +23,7 @@ class BindingClaim:
     cutoff: datetime
     owner: str
     snapshot: dict[str, Any] | None
+    failures: int
 
 
 class BindingQueue:
@@ -40,6 +44,8 @@ class BindingQueue:
                         t.attribution_generation,
                         t.attribution_cutoff,
                         t.attribution_snapshot,
+                        t.attribution_failures,
+                        t.attribution_owner,
                     )
                     .where(t.enabled.is_(True), t.attribution_due <= now)
                     .order_by(t.attribution_due, t.id)
@@ -49,16 +55,24 @@ class BindingQueue:
             ).first()
             if row is None:
                 return None
+            # Expiry means the previous process never released its claim. Charge that
+            # execution to the same retry budget as an explicit failure before rerunning it.
+            values = (
+                self._failure(row.attribution_failures, "worker_interrupted", now)
+                if row.attribution_owner
+                else {"attribution_due": lease, "attribution_owner": owner}
+            )
             result = await session.execute(
                 update(evolution_targets)
                 .where(
                     t.id == row.id,
                     t.attribution_generation == row.attribution_generation,
                     t.attribution_due <= now,
+                    t.attribution_owner == row.attribution_owner,
                 )
-                .values(attribution_due=lease, attribution_owner=owner)
+                .values(**values)
             )
-            if not getattr(result, "rowcount", 0):
+            if not getattr(result, "rowcount", 0) or row.attribution_owner:
                 return None
             return BindingClaim(
                 row.id,
@@ -67,6 +81,7 @@ class BindingQueue:
                 as_shanghai(row.attribution_cutoff),
                 owner,
                 row.attribution_snapshot,
+                row.attribution_failures,
             )
 
     async def update_claim(self, claim: BindingClaim, **values: Any) -> bool:
@@ -82,9 +97,28 @@ class BindingQueue:
             )
             return bool(getattr(result, "rowcount", 0))
 
-    async def release(self, claim: BindingClaim, *, retry: bool) -> None:
+    @staticmethod
+    def _failure(failures: int, reason: str, now: datetime) -> dict[str, Any]:
+        due = None
+        if failures + 1 < MAX_FAILURES:
+            due = now + timedelta(seconds=POLL_SECONDS * 2**failures)
+        return dict(
+            attribution_failures=failures + 1,
+            attribution_error=reason,
+            attribution_owner=None,
+            attribution_due=due,
+        )
+
+    async def fail(self, claim: BindingClaim, reason: str) -> None:
+        await self.update_claim(claim, **self._failure(claim.failures, reason, now_shanghai()))
+
+    async def complete(self, claim: BindingClaim, *, waiting_for_traces: bool) -> None:
         await self.update_claim(
             claim,
             attribution_owner=None,
-            attribution_due=now_shanghai() + timedelta(seconds=30) if retry else None,
+            attribution_failures=0,
+            attribution_error=None,
+            attribution_due=now_shanghai() + timedelta(seconds=POLL_SECONDS)
+            if waiting_for_traces
+            else None,
         )
