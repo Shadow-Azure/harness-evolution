@@ -23,7 +23,7 @@
 
 `workspace_prepared` 事件 payload 记录 `ref`、`cacheHit`、`cloneSeconds`、`proxyState`（disabled / closed / open）和最多 20 条 `gitOperations`；超限时 `gitOperationsTruncated=true`。每条含 operation、viaProxy、代理前后状态、fallbackReason、durationMs、exitCode 与 targetHost。
 
-每个 git 子进程另发一条 `git.proxy.operation` 结构化日志，带 runId、jobId 与 stage；工作区从本地缓存 clone 不产生网络流量，viaProxy=false，真正的远端交互是 fetch / ls-remote / push。代理探测记为 operation=probe、runId=null。代理层失败并回退直连时 viaProxy=false，fallbackReason 为 proxy_connect / 407 / tunnel / timeout 等，其他代理层错误归为 proxy_error。日志与事件只含主机名，不含完整 URL、凭据、stderr 或代理配置。
+每个 git 子进程另发一条 `git.proxy.operation` 结构化日志，带 runId、jobId 与 stage；本地缓存 clone 不产生网络流量，viaProxy=false。代理探测记为 operation=probe、runId=null。代理层失败并回退直连时 viaProxy=false，fallbackReason 为 proxy_connect / 407 / tunnel / timeout 等，其他代理层错误归为 proxy_error。日志与事件只含主机名，不含完整 URL、凭据、stderr 或代理配置。
 
 排查时读取 `GET /api/evolution/runs/<runId>/events` 的 `workspace_prepared` payload，或按 runId 过滤 `git.proxy.operation` 日志；无需 SSH。
 

@@ -23,7 +23,7 @@ During prepare, an evolution run builds a local bare cache for the target ref an
 
 The `workspace_prepared` event payload records `ref`, `cacheHit`, `cloneSeconds`, `proxyState` (disabled / closed / open), and at most 20 `gitOperations` entries; `gitOperationsTruncated=true` marks truncation. Each entry has operation, viaProxy, proxy states before/after, fallbackReason, durationMs, exitCode, and targetHost.
 
-Every git subprocess also emits one structured `git.proxy.operation` log line with runId, jobId, and stage; a workspace clone from the local cache makes no network request and records viaProxy=false, while the real remote interactions are fetch / ls-remote / push. a proxy probe is operation=probe with runId=null. A proxy-layer failure retried directly records viaProxy=false and a fallbackReason such as proxy_connect / 407 / tunnel / timeout, with other proxy-layer errors classified as proxy_error. Logs and events contain only the host name, never full URLs, credentials, stderr, or proxy configuration.
+Every git subprocess also emits one structured `git.proxy.operation` log line with runId, jobId, and stage; a local cache clone makes no network request and records viaProxy=false. a proxy probe is operation=probe with runId=null. A proxy-layer failure retried directly records viaProxy=false and a fallbackReason such as proxy_connect / 407 / tunnel / timeout, with other proxy-layer errors classified as proxy_error. Logs and events contain only the host name, never full URLs, credentials, stderr, or proxy configuration.
 
 Diagnose by reading the `workspace_prepared` payload from `GET /api/evolution/runs/<runId>/events`, or by filtering `git.proxy.operation` logs on runId; no SSH session is required.
 
