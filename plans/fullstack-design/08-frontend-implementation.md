@@ -477,6 +477,14 @@ Index.vue
 
 保留下来的能力：会话统计（用户轮次数、消息数、工具失败数、token）由解析期按 agent 累计、组装时整树求和；这些数字不依赖时间线页面。
 
+### 5.5 壳层高度与右栏填充
+
+会话浏览页根节点 `.session-browser` 固定为窗口高度：`calc(100dvh - var(--shell-header-height))`，以 `100vh` 作为旧浏览器回退，并保持 `min-height: 0; overflow: hidden`。文档本身不滚动，左栏 `.sidebar` 与右栏 `.overview` 各自是唯一的滚动容器。
+
+右栏 `.overview` 是纵向 flex 容器，`.overview-content` 撑满可用高度；最后一个问题列表在内容不足一屏时占满剩余高度，底部与视口保持 24px 以内间距；内容超过一屏时问题列表保持自然高度，由 `.overview` 内部滚动。Agent 执行流在数据加载、请求失败与无数据三种状态下都保留与原型 `rf-canvas` 同量级的全高占位（桌面 720px、窄屏 420px），异步分片加载失败时显示失败提示；执行流数据到达后按自身高度渲染，不因异步分片未到而提前结束内容。
+
+移动端（≤860px）保持单列、自然高度与 `overflow: visible`，与原型窄屏行为一致。
+
 ## 6. 工作空间总览页（`pages/overview/Index.vue`，V2）
 
 ### 6.1 结构

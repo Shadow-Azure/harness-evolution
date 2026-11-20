@@ -18,7 +18,7 @@ Converge the version label in the Session error view's attribution list from the
 
 ## Scope
 
-`plans/ui-prototype-v2/harness-evolution.html`, the error-detail attribution-list API contract and read path, `apps/web/src/pages/errors/**`, contract generation, API / component / E2E tests, the Agent Note, design document 08 §7.1, and the matching flow files. Later display drift in the attribution-list version label follows this milestone.
+`plans/ui-prototype-v2/harness-evolution.html`, the error-detail attribution-list API contract and read path, `apps/web/src/pages/errors/**`, contract generation, API / component / E2E tests, the Agent Note, design document 08 §7.1, and the matching flow files. Later display drift in the attribution-list version label follows this milestone; the low-content fill and flow placeholder of the Session browser shell on the same page are delivered with this milestone as well.
 
 ## Acceptance
 
