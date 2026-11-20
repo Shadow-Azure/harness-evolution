@@ -26,6 +26,7 @@ milestones:
   - m19
   - m20
   - m21
+  - m22
 ```
 
 ## Vision
@@ -55,6 +56,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m19 Production single-ref target-content reads**: shallow per-ref caching instead of a full mirror.
 - **m20 Launch-wizard Session association display**: short labels with full-title tooltips, four columns on one row; association and counting stay unchanged.
 - **m21 Run detail aligned with the prototype**: the run detail page follows the V2 prototype for goal-and-input, workspace collapse, and the execution-log tab.
+- **m22 Run list aligned with the prototype**: history cards gain workspace, potential-policy, and cache labels, and the creator leaves the list meta.
 
 ## Delivery rules
 

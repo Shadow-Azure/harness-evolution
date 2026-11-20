@@ -298,7 +298,9 @@ erDiagram
 ```
 
 - `status` ∈ `preparing|running|blocked|completed|failed|interrupted`；`error` 为 `null` 或 `{stage, message, at}`（列表只给摘要）。
-- `createdBy` 是创建人的可空显示名；删除用户后为 `null`。Issue 要求展示创建人，前端把它与 `createdAt` 放在原型右上 meta 槽，不新增视觉行。
+- `policy` 只暴露展示所需 `preset`（`default | custom`），不携带三条策略开关；`cacheEnabled` 是该 run 启动时的缓存复用开关。历史 run 没有 `potential_policy` 时按 `{ "preset": "default" }` 展示，`cacheEnabled` 缺失为 `false`。
+- `createdBy` 是创建人的可空显示名；删除用户后为 `null`。列表右上按原型只显示 `createdAt`，创建人保留在 DTO 供详情与审计，不在列表 meta 渲染。
+- 工作空间名不进 `RunCard`：列表按当前工作空间过滤，前端从 auth store 的当前路由空间取名字渲染；卡片 DTO 不重复空间信息。
 - `stats` 是 V2 口径：`sessions`（版本精确关联的 Session）、`versionUnresolvedSessions`（对象版本未知而跳过的 Session）、`badCases`（时间窗内 bad case 数）、`potential`（潜在）、`attributed`（可归因）、`reused`（复用缓存数）、`clusters`、`byCategory`（按 `category` 分布）。不再有 `probes/usedProbes/byAttributeType/nonIssue`。
 - `lastEventSeq`：DB 当前最大事件序号，可用于检查/增量拉取；**ticket 的 `lastEventId` 不要直接用它**，应用已加载事件的最后一条 `seq`（events 分页可能还没拉完）。
 

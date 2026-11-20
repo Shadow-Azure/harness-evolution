@@ -306,6 +306,15 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
           progressNow: progress?.getAttribute("aria-valuenow"),
           progressWidth: progress?.querySelector(".fill")?.style.width,
           firstMeta: firstCard?.querySelector(".time")?.textContent.trim(),
+          workspaceChip: firstCard?.querySelector("[data-testid='run-workspace-chip']")?.textContent.trim(),
+          policyChip: firstCard?.querySelector("[data-testid='run-policy-chip']")?.textContent.trim(),
+          cacheChip: firstCard?.querySelector("[data-testid='run-cache-chip']")?.textContent.trim(),
+          completedPolicyChip: history
+            .find((item) => item.getAttribute("data-run-id") === "run-completed-effective")
+            ?.querySelector("[data-testid='run-policy-chip']")?.textContent.trim(),
+          completedCacheChip: history
+            .find((item) => item.getAttribute("data-run-id") === "run-completed-effective")
+            ?.querySelector("[data-testid='run-cache-chip']")?.textContent.trim(),
           failedErrorTitle: history
             .find((item) => item.getAttribute("data-run-id") === "run-failed")
             ?.querySelector(".badge")?.getAttribute("title"),
@@ -350,7 +359,13 @@ test("m5 run list consumes backend groups and matches the prototype", async () =
     assert.notEqual(desktop.runningBadgeBackground, "rgba(0, 0, 0, 0)");
     assert.equal(desktop.progressNow, "63");
     assert.equal(desktop.progressWidth, "63%");
-    assert.match(desktop.firstMeta, /^Administrator · /);
+    assert.match(desktop.firstMeta, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.doesNotMatch(desktop.firstMeta, /Administrator/);
+    assert.equal(desktop.workspaceChip, "默认空间");
+    assert.equal(desktop.policyChip, "默认潜在策略");
+    assert.equal(desktop.cacheChip, "不复用缓存");
+    assert.equal(desktop.completedPolicyChip, "自定义潜在策略");
+    assert.equal(desktop.completedCacheChip, "复用缓存");
     assert.equal(desktop.failedErrorTitle, "评测执行失败：sandbox timeout");
     assert.equal(desktop.interruptedErrorTitle, "推送连接中断");
     assert.equal(desktop.hasVisibleErrorRow, false);

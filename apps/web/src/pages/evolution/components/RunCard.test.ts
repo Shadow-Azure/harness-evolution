@@ -20,6 +20,8 @@ const run = (overrides: Partial<EvolutionRunCard> = {}): EvolutionRunCard => ({
     to: "2026-09-10",
   },
   models: ["glm-5.3", "gpt-5"],
+  policy: { preset: "default" },
+  cacheEnabled: false,
   createdBy: "Ada",
   createdAt: "2026-10-19T18:42:00+08:00",
   status: "running",
@@ -55,6 +57,7 @@ describe("RunCard", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "preparing",
           progress: {
@@ -75,12 +78,24 @@ describe("RunCard", () => {
 
   it("renders prototype metadata and uses backend progress verbatim", () => {
     const wrapper = mount(RunCard, {
-      props: { wid: "ws-test", run: run() },
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run() },
     });
 
     expect(wrapper.get(".run-card").classes()).toContain("run-card");
     expect(wrapper.get(".title").text()).toBe("deep-research v2.0.0 自进化");
-    expect(wrapper.get(".time").text()).toBe("Ada · 2026-10-19 18:42");
+    expect(wrapper.get(".time").text()).toBe("2026-10-19 18:42");
+    expect(wrapper.get("[data-testid='run-workspace-chip']").text()).toBe(
+      "测试空间",
+    );
+    expect(wrapper.get("[data-testid='run-policy-chip']").text()).toBe(
+      "默认潜在策略",
+    );
+    expect(wrapper.get("[data-testid='run-cache-chip']").text()).toBe(
+      "不复用缓存",
+    );
+    expect(
+      wrapper.get("[data-testid='run-cache-chip']").classes(),
+    ).not.toContain("is-on");
     expect(wrapper.get(".chip.kind").text()).toBe(
       "skill:deep-research@v2.0.0",
     );
@@ -112,10 +127,34 @@ describe("RunCard", () => {
     expect(wrapper.get(".badge").text()).toContain("正在执行");
   });
 
+  it("renders a custom policy and cache reuse from the run snapshot", () => {
+    const wrapper = mount(RunCard, {
+      props: {
+        wid: "ws-test",
+        workspaceName: "测试空间",
+        run: run({
+          policy: { preset: "custom" },
+          cacheEnabled: true,
+        }),
+      },
+    });
+
+    expect(wrapper.get("[data-testid='run-policy-chip']").text()).toBe(
+      "自定义潜在策略",
+    );
+    expect(wrapper.get("[data-testid='run-cache-chip']").text()).toBe(
+      "复用缓存",
+    );
+    expect(wrapper.get("[data-testid='run-cache-chip']").classes()).toContain(
+      "is-on",
+    );
+  });
+
   it("renders the effective history summary from backend values", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "completed",
           progress: {
@@ -151,6 +190,7 @@ describe("RunCard", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "completed",
           final: {
@@ -173,6 +213,7 @@ describe("RunCard", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "completed",
           final: null,
@@ -190,6 +231,7 @@ describe("RunCard", () => {
     const failed = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "failed",
           error: {
@@ -203,6 +245,7 @@ describe("RunCard", () => {
     const interrupted = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "interrupted",
           error: {
@@ -247,6 +290,7 @@ describe("RunCard", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "blocked",
           error: {
@@ -271,7 +315,7 @@ describe("RunCard", () => {
 
   it("keeps status badges non-interactive when no error is present", () => {
     const wrapper = mount(RunCard, {
-      props: { wid: "ws-test", run: run() },
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run() },
     });
 
     expect(wrapper.get(".badge").element.tagName).toBe("SPAN");
@@ -280,7 +324,7 @@ describe("RunCard", () => {
 
   it("opens the run detail with pointer and keyboard semantics", async () => {
     const wrapper = mount(RunCard, {
-      props: { wid: "ws-test", run: run() },
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run() },
     });
 
     expect(wrapper.get(".run-card-link").attributes("href")).toBe(
@@ -297,7 +341,7 @@ describe("RunCard", () => {
 
   it("routes cluster-only cards to the dedicated preview page", () => {
     const wrapper = mount(RunCard, {
-      props: { wid: "ws-test", run: run({ mode: "cluster_only" }) },
+      props: { wid: "ws-test", workspaceName: "测试空间", run: run({ mode: "cluster_only" }) },
     });
 
     expect(wrapper.get(".run-card-link").attributes("href")).toBe(
@@ -309,6 +353,7 @@ describe("RunCard", () => {
     const wrapper = mount(RunCard, {
       props: {
         wid: "ws-test",
+        workspaceName: "测试空间",
         run: run({
           status: "blocked",
           error: {

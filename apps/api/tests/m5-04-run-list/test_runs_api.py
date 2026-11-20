@@ -23,7 +23,14 @@ MEMBER_PASSWORD = "run-list-member-password"
 NOW = datetime(2026, 10, 27, 8, 0, tzinfo=UTC)
 
 
-def _run_values(run_id: str, status: str, *, created_at: datetime = NOW) -> dict[str, Any]:
+def _run_values(
+    run_id: str,
+    status: str,
+    *,
+    created_at: datetime = NOW,
+    potential_policy: dict[str, Any] | None = None,
+    cache_enabled: bool = False,
+) -> dict[str, Any]:
     """Build one valid run row with stable snapshots."""
     return {
         "id": run_id,
@@ -52,6 +59,8 @@ def _run_values(run_id: str, status: str, *, created_at: datetime = NOW) -> dict
         },
         "created_by": None,
         "created_at": created_at,
+        "potential_policy": potential_policy,
+        "cache_enabled": cache_enabled,
     }
 
 
@@ -117,7 +126,12 @@ async def run_api(tmp_path: Path) -> AsyncIterator[tuple[httpx.AsyncClient, http
                     insert(evolution_runs),
                     [
                         _run_values("run-running", "running"),
-                        _run_values("run-completed", "completed"),
+                        _run_values(
+                            "run-completed",
+                            "completed",
+                            potential_policy={"preset": "custom"},
+                            cache_enabled=True,
+                        ),
                     ],
                 )
                 await session.execute(
@@ -190,6 +204,11 @@ async def test_admin_and_member_read_the_same_grouped_camel_case_payload(
     assert card["stats"]["potential"] == 2
     assert card["stats"]["clusters"] == 2
     assert card["createdBy"] is None
+    assert card["policy"] == {"preset": "default"}
+    assert card["cacheEnabled"] is False
+    history_card = body["history"][0]
+    assert history_card["policy"] == {"preset": "custom"}
+    assert history_card["cacheEnabled"] is True
 
 
 async def test_run_list_returns_both_empty_groups_for_an_empty_database(

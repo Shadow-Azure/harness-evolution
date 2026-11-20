@@ -2362,6 +2362,8 @@ export interface components {
          * @description One complete run-list card contract.
          */
         EvolutionRunCard: {
+            /** Cacheenabled */
+            cacheEnabled: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -2378,6 +2380,7 @@ export interface components {
             mode: "full" | "cluster_only";
             /** Models */
             models: string[];
+            policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Runid */
             runId: string;
@@ -2399,6 +2402,8 @@ export interface components {
         EvolutionRunDetail: {
             /** Blockedstage */
             blockedStage: ("patch" | "push" | "eval" | "attribution") | null;
+            /** Cacheenabled */
+            cacheEnabled: boolean;
             /**
              * Createdat
              * Format: date-time
@@ -2424,6 +2429,7 @@ export interface components {
             models: string[];
             /** Nextretryat */
             nextRetryAt: string | null;
+            policy: components["schemas"]["EvolutionRunPolicy"];
             progress: components["schemas"]["EvolutionRunProgress"];
             /** Retryattempts */
             retryAttempts: number;
@@ -2555,6 +2561,18 @@ export interface components {
             history: components["schemas"]["EvolutionRunCard"][];
             /** Running */
             running: components["schemas"]["EvolutionRunCard"][];
+        };
+        /**
+         * EvolutionRunPolicy
+         * @description Display-only potential policy preset for one run card.
+         */
+        EvolutionRunPolicy: {
+            /**
+             * Preset
+             * @default default
+             * @enum {string}
+             */
+            preset: "default" | "custom";
         };
         /**
          * EvolutionRunProgress

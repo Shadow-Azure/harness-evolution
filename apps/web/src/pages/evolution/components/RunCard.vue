@@ -6,6 +6,7 @@ import { workspacePath } from "../../../router/workspace";
 
 const props = defineProps<{
   wid: string;
+  workspaceName: string;
   run: EvolutionRunCard;
 }>();
 
@@ -52,12 +53,19 @@ const statusClass = computed(() => {
   return "running";
 });
 
-const createdMeta = computed(() => {
-  const date = props.run.createdAt.replace("T", " ").slice(0, 16);
-  return props.run.createdBy
-    ? `${props.run.createdBy} · ${date}`
-    : date;
-});
+const createdAtLabel = computed(() =>
+  props.run.createdAt.replace("T", " ").slice(0, 16),
+);
+
+const policyLabel = computed(() =>
+  props.run.policy.preset === "default"
+    ? "默认潜在策略"
+    : "自定义潜在策略",
+);
+
+const cacheLabel = computed(() =>
+  props.run.cacheEnabled ? "复用缓存" : "不复用缓存",
+);
 
 const targetLabel = computed(() =>
   `${props.run.target.type}:${props.run.target.name}@${props.run.target.version}`,
@@ -161,12 +169,26 @@ function closeError(): void {
           {{ run.error.message }}
         </span>
       </span>
-      <span class="time">{{ createdMeta }}</span>
+      <span class="time">{{ createdAtLabel }}</span>
     </div>
 
     <div class="run-meta">
       <span class="chip kind">{{ targetLabel }}</span>
       <span class="window mono">{{ windowLabel }}</span>
+      <span
+        v-if="workspaceName"
+        class="chip space"
+        data-testid="run-workspace-chip"
+      >{{ workspaceName }}</span>
+      <span
+        class="chip policy"
+        data-testid="run-policy-chip"
+      >{{ policyLabel }}</span>
+      <span
+        class="chip cache"
+        :class="{ 'is-on': run.cacheEnabled }"
+        data-testid="run-cache-chip"
+      >{{ cacheLabel }}</span>
       <span
         v-for="model in run.models"
         :key="model"
@@ -414,6 +436,17 @@ function closeError(): void {
   background: color-mix(in srgb, var(--cyan) 9%, transparent);
   font-family: var(--mono);
   font-size: 10.5px;
+}
+
+.chip.space,
+.chip.policy {
+  color: var(--text-dim);
+}
+
+.chip.cache.is-on {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 35%, transparent);
+  background: color-mix(in srgb, var(--cyan) 9%, transparent);
 }
 
 .window {

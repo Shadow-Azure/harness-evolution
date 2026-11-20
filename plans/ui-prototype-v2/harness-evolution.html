@@ -644,6 +644,7 @@
 .evo-app .badge.running { color: var(--blue); background: color-mix(in srgb, var(--blue) 13%, transparent); }
 .evo-app .badge.done-ok { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
 .evo-app .badge.done-no { color: var(--text-dim); background: color-mix(in srgb, var(--text-faint) 22%, transparent); }
+.evo-app .badge.failed { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
 .evo-app .badge.accepted { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
 .evo-app .badge.rejected { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); }
 .evo-app .badge.pending { color: var(--text-faint); background: color-mix(in srgb, var(--text-faint) 18%, transparent); }
@@ -4886,6 +4887,7 @@ function evMakeRun(cfg) {
     final: { ...EV_FINAL_TEMPLATE, bestVersion: cfg.target.version + '-best' },
     models: ['glm-5.3', 'glm-5.3-flash'],
     preparing: cfg.preparing === true,
+    failed: cfg.failed === true,
   };
   const cfgTarget = (EV_TARGETS[cfg.workspace] || []).find(t => t.objectName === cfg.target.name && t.kind === cfg.target.kind);
   run.worktree = {
@@ -4941,6 +4943,11 @@ function evMakeRun(cfg) {
 
 const EV_RUNS = [
   evMakeRun({
+    id: 'EV-20261119-06', workspace: 'ws-harness', title: 'systematic-debugging v6.4.1 自进化',
+    target: { kind: 'skill', name: 'systematic-debugging', version: 'v6.4.1' },
+    window: ['2026-11-01', '2026-11-19'], createdAt: '2026-11-19 23:33', progress: 8, cache: false, failed: true,
+  }),
+  evMakeRun({
     id: 'EV-20261119-05', workspace: 'ws-harness', title: 'deep-research v2.4.0 自进化',
     target: { kind: 'skill', name: 'deep-research', version: 'v2.4.0' },
     window: ['2026-11-12', '2026-11-19'], createdAt: '2026-11-19 23:03', progress: 0, cache: true, preparing: true,
@@ -4985,7 +4992,7 @@ Object.assign(evNoGainRun.final, {
 const EV_STATE = { expanded: new Set(), selStep: null, lastDetailId: null, detailTab: 'steps', logLevel: 'all', wz: null, targetDialog: null };
 
 function evTotal(run) { return 5 + run.clusters.length + 1; }
-function evIsDone(run) { return run.progress >= evTotal(run); }
+function evIsDone(run) { return run.failed || run.progress >= evTotal(run); }
 function evDisplayModel(run) {
   if (!run.preparing) return run.model;
   return { cases: [], sessions: [], potentialRows: [], attributed: [], notObject: [], reused: 0, fresh: 0 };
@@ -5037,6 +5044,7 @@ function evTargetsOfWs() { return (EV_TARGETS[evCurrentWs()] || []).filter(t => 
 
 function evStatusBadge(run) {
   if (run.preparing) return `<span class="badge preparing"><span class="pulse"></span>准备中</span>`;
+  if (run.failed) return `<span class="badge failed">失败</span>`;
   if (!evIsDone(run)) return `<span class="badge running"><span class="pulse"></span>正在执行 · 第 ${evStageIndex(run) + 1}/7 步</span>`;
   return run.final.verdict ? `<span class="badge done-ok">✓ 已完成 · 自进化有效</span>` : `<span class="badge done-no">已完成 · 无收益</span>`;
 }
@@ -5056,7 +5064,9 @@ function evRunCard(run) {
   const doneRounds = run.clusters.filter((c, i) => evRoundDone(run, i)).length;
   const m = evDisplayModel(run);
   let tail;
-  if (!evIsDone(run)) {
+  if (run.failed) {
+    tail = '';
+  } else if (!evIsDone(run)) {
     const names = ['选择范围', 'Session 关联', '筛选潜在 bad case', '对象归因', '聚类与严重度', '迭代优化', '测试集终评'];
     const stage = evStageIndex(run);
     tail = `<div class="run-progress"><div class="bar"><div class="fill" style="width:${pct}%"></div></div><span class="txt">第 ${stage + 1}/7 步 · ${names[stage]} · 总进度 ${pct}%</span></div>`;
@@ -5352,6 +5362,7 @@ function evStepIter(run) {
   </div>`;
 }
 function evStepFinal(run) {
+  if (run.failed) return `<div class="card panel"><div class="sec-title">第 7 步 · 测试集终评</div><div class="waiting">该运行已失败，没有终评数据；失败摘要见执行日志。</div></div>`;
   if (!evIsDone(run)) return `<div class="card panel"><div class="sec-title">第 7 步 · 测试集终评</div><div class="waiting">等待 ${run.clusters.length} 轮迭代全部完成后，在测试集上评测 best 与初始版本。</div></div>`;
   const f = run.final;
   const accepted = run.clusters.filter(c => c.accepted);

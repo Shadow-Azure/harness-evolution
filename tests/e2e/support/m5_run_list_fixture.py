@@ -41,6 +41,8 @@ def _run(
     progress_unit: int,
     article_type: str = "skill",
     error: tuple[str, str] | None = None,
+    potential_policy: dict[str, Any] | None = None,
+    cache_enabled: bool = False,
 ) -> dict[str, Any]:
     """Build one complete run row with deterministic snapshots."""
     created_at = CREATED_BASE - timedelta(minutes=minutes_ago)
@@ -84,6 +86,8 @@ def _run(
         "error_message": error[1] if error else None,
         "error_at": created_at if error else None,
         "progress_unit": progress_unit,
+        "potential_policy": potential_policy,
+        "cache_enabled": cache_enabled,
         "stats": {
             "sessions": 128,
             "probes": 46,
@@ -188,6 +192,13 @@ async def main() -> None:
                     created_by=admin_id,
                     clusters=2,
                     progress_unit=7,
+                    potential_policy={
+                        "preset": "custom",
+                        "includeSelfReport": True,
+                        "includeAfterObject": True,
+                        "sameObjectOnly": False,
+                    },
+                    cache_enabled=True,
                 ),
                 _run(
                     "run-failed",
