@@ -29,6 +29,7 @@ milestones:
   - m22
   - m23
   - m24
+  - bugfix
 ```
 
 ## Vision
