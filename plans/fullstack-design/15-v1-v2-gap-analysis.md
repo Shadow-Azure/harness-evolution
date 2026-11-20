@@ -38,7 +38,7 @@
 | 归因粒度 | 一个 bad case 仍只有一条 `bad_case_analysis → probe_reports` 结果 | `bad_case_analysis` 改为多行关联，错误详情承载多条对象版本归因 |
 | Session 首屏 | 默认请求 `limit=100`，搜索为防抖查询 | 默认最新 10，只有回车才重新查询 |
 | 密度文案 | 当前 UI 显示“/百消息”，V1 原型显示“/百步” | V2 统一用户文案为“步骤”，后端字段可继续使用现有 message 分母；若产品决定改口径，必须同时改设计、API 字段和迁移，不能只改标签 |
-| 多 runtime parser | 只有 Claude normalizer，`source_type` 与全局 parser_version | `TraceParserFactory` + `BaseTraceParser` 子类；`runtime_key` + per-runtime parser_version；新 runtime 只注册子类 |
+| 多 runtime parser | 只有 Claude normalizer，`source_type` 与全局 parser_version | `TraceParserFactory.for_trace` + `can_parse` 轨迹选型；`runtime_key` 身份 + per-runtime parser_version；新 runtime 只新增子类并实现 `can_parse`/会话链接 |
 | 用户与权限界面 | 当前只有用户 API 与顶部用户菜单 | V2 增加空间成员和角色管理；全局用户目录仍不开放注册 |
 | 占位执行能力 | patch 内容、评测和终评为占位；Git candidate 链路为真实骨架 | V2 不改变占位边界，但 run 输入、候选、归因和聚类改为真实持久化 |
 

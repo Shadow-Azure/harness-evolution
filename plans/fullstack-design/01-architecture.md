@@ -13,8 +13,8 @@ Harness Evolution 是一个 **SaaS 形态的组织内部服务**，不是装在�
   1. **原始轨迹表 `trajectory_payloads`**：第三方脚本把"有问题的 session 轨迹"（每 agent 一份 JSONL）写入 MySQL，本服务读取并归一化；采集不归本服务。
   2. **轨迹查询接口**：上游提供“AI agent 轨迹 + 元数据”的查询 API（当前不存在，**契约由我们定义**，见 [05 §10](05-api-design.md)），按需 pull 后写入同一张 payload 表；当前只有 Claude Code 实现，后续 runtime 通过 parser 子类接入。
   3. **空间上报接口（V2）**：`POST /api/workspaces/{wid}/bad-cases`，POST body 即 `bad_cases` 表类型，凭据 + 额度管控（[05 §4.17](05-api-design.md)）；bad case 主通道，目录同步默认停用。
-- **runtime 边界**：`runtime_key` 是 AI agent 类型（`claude-code` / `codex` / ...），与 `source_type` 接入通道分开；`TraceParserFactory` 按 `runtime_key` 选择 `BaseTraceParser` 子类，所有 runtime 归一化成同一个 `ParsedTranscript`。新增 runtime 只新增 parser 子类并注册，不修改公共 replay/agent_tree。
-- **处理**：读取 payload → 按 runtime 选 parser → 归一化 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
+- **runtime 边界**：`runtime_key` 是 AI agent 类型（`claude-code` / `codex` / ...），与 `source_type` 接入通道分开，并继续作为 runtime 身份与存储键。parser 由**轨迹内容**选型：`BaseTraceParser.can_parse(payloads)` 由子类实现，`TraceParserFactory.for_trace(payloads)` 在已注册子类中唯一命中后实例化；`runtime_key` 不再是唯一选择依据。parser 以**会话**为生命周期：构造时接收同一 root 的主/子 Agent payload，`normalize_session()` 产出全部 `ParsedTranscript` 与父子链接；所有 runtime 归一化成同一个 `ParsedTranscript`，`agent_tree` 只应用链接。新增 runtime 只需新增子类并实现 `can_parse` / record/meta / 会话链接，公共 replay 与 agent_tree 不出现 runtime 分支。
+- **处理**：读取 payloads → 按 root 取齐 → 按轨迹 `can_parse` 选型 → 会话级归一化与父子关联 → 存储（MySQL）→ 查询展示 → 空间 bad case 上报 → 自进化内关联 Session、筛选潜在 case、生成对象版本归因 → 聚类与迭代（**真实修改 skill/agent 文件并 commit 到 run 分支**）。
 - **输出**：浏览器里的视图（V2：工作空间总览 + Session 错误查看 + 自进化 + 空间管理），以及推到远端的 **`evo/{YYYYMMDD}-{run_id}` 分支**；面向组织内全部登录用户，**按工作空间隔离 bad case 与权限**（[06 §3.10–3.12](06-database-design.md) · [07 §5.15](07-backend-implementation.md)；轨迹归一化仍全局共享）。
 - **不做什么**：**不采集/扫描外部源表**、**不在用户本机 `~/.claude` 目录直接改 skill**（只改配置的 skill 仓库副本）、不访问生产凭据、不做公网注册、不做空间删除与跨空间汇总（V2 非目标）；多租户语义止于工作空间（bad case 归属 + 成员权限），不做计费/配额通知。
 
@@ -149,9 +149,11 @@ apps/web/
                    └───────────┬───────────┘
                                ▼
                    ┌──────────────────────────────┐
-                   │ normalize                    │
-                   │ JSONL -> 整树统计 / user_turns│
-                   │ agent_events                 │
+                   │ session parser               │
+                   │ 按 root 取齐 payloads          │
+                   │ can_parse 选型               │
+                   │ normalize_session            │
+                   │ JSONL -> 整树统计 / 链接       │
                    └──────────────┬───────────────┘
                                ▼
                    ┌─────────────────────────┐
@@ -172,7 +174,7 @@ apps/web/
 
 - **payload 只存一份**：`trajectory_payloads`；`source_records` 不存 payload，只存处理状态，需原文时按 `(runtime_key, root_session_id, agent_id)` 回查。
 - 不再扫描 `he_src_*` 源表、不再维护水位线；待处理状态由 `source_records.processed_hash / parser_version` 表达。
-- 归一化规则不变（[06 §7.1](06-database-design.md)）：用户轮次由"真实人类提问"派生、tool_result 回填、子转录按 `toolUseId` 挂接、Agent 会话树触发点预计算——**输入从 `Path` 变成 `list[str]`，解析器本身一行不改**。
+- 归一化规则（[06 §7.1](06-database-design.md)）：用户轮次由"真实人类提问"派生、tool_result 回填、Agent 会话树触发点预计算；子转录**优先按 `toolUseId`** 挂接，envelope 缺 `toolUseId` 时按父 `toolUseResult.agentId` ↔ 子 JSONL `agentId` 生成 `derived` 链接，无/歧义保留 `synthetic`。输入从 `Path` 变成 `list[str]`；parser 的会话级构造与 `normalize_session` 接口见 [07 §2.6](07-backend-implementation.md)。
 
 ### 4.2 查询链路（按模块拆分，页面并行加载）
 

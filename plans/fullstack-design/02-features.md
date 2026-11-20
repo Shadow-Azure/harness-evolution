@@ -83,7 +83,7 @@
 |---|---|---|---|---|---|---|
 | F1 | 顶部导览：两大视图切换、品牌、ID 串联网提示 | 全局 | 真实 | — | — | `App.vue` / `TopNav.vue` |
 | F2 | ID 体系：URL 直接用 `badCaseId` / `attributionId` / `clusterId` / `runId`（真实 ID），UI 显示截短 ID；深链到 session 错误详情并指定 tab / 归因 | 全局 | 真实 | 随 bad-case / attributions 返回 | `bad_cases`、`probe_reports` | `utils/badCaseId.ts` + 深链 |
-| F9 | 轨迹接入与归一化：第三方脚本只写 `trajectory_payloads`（原始 JSONL）；本服务按 `runtime_key` 选择 parser、归一化、幂等写入业务表；保留上游 pull | design.md §7 + SaaS 前提 | 真实 | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` | `trajectory_payloads`（只读）、`source_records`、`sync_runs` + `session_families/agents/user_turns/agent_events` | 顶栏状态角标（admin 可立即处理） |
+| F9 | 轨迹接入与归一化：第三方脚本只写 `trajectory_payloads`（原始 JSONL）；本服务按轨迹 `can_parse` 选型（`runtime_key` 为身份），会话级 parser 归一化、幂等写入业务表；保留上游 pull | design.md §7 + SaaS 前提 | 真实 | `POST /api/acquisition/sync`、`POST /api/acquisition/pull`、`GET /api/acquisition/status` | `trajectory_payloads`（只读）、`source_records`、`sync_runs` + `session_families/agents/user_turns/agent_events` | 顶栏状态角标（admin 可立即处理） |
 | F14 | 进度推送：**页面级 SSE**，仅 `preparing/running` 的 run 订阅；ticket 绑定 topics 与 cursor、完成/阻塞即关闭；已完成任务和轨迹归一化都走普通 REST | — | 真实（机制） | `POST /api/events/ticket`、`GET /api/events` | `evolution_run_events` | `composables/useRunEvents.ts` |
 | F15 | 对象/模型清单：可进化对象/版本（来自 `evolution_targets` 配置 + 远端仓库 tag）、模型 chips（来自归一化后的 `agents.model`） | 向导 | 真实（只读聚合） | `GET /api/catalogs/targets`、`GET /api/catalogs/models` | `evolution_targets`、`agents`、`session_families` | `composables/useTargets.ts` / `useCatalogs.ts` |
 | F16 | ~~模拟推进：对运行中的 run 推进一步~~ **已取消（2026-10-23）**：改为后台自动逐轮推进，生产 UI 不再提供按钮 | 详情页按钮 | — | — | — | — |
@@ -170,6 +170,6 @@
 - **F19**：只有配置且启用的对象出现在向导；配置校验 repoUrl/defaultRef/subDir，非法值返回 422；删除被 run 引用的配置返回 409。
 - **F20**：每个 run 的阶段、candidate、评测、推送都有 `evolution_run_events` 行；`failed/interrupted` 有错误摘要与脱敏详情；刷新后日志仍可查。
 - **F14**：断线 3 秒内自动重连；重连后进度不倒退。
-- **F9**：同一 `(runtime_key, root_session_id, agent_id)` + 相同 hash/per-runtime parser_version 重复处理零副作用；payload 变化或该 runtime 的 parser 升级仅重放对应 agent；新增 runtime 只注册 parser 子类；单条失败不毁整批（进 `sync_runs.errors`）；定时与手动并发只产生一个 sync job（`sync_lock`）。
+- **F9**：同一 `(runtime_key, root_session_id, agent_id)` + 相同 hash/per-runtime parser_version 重复处理零副作用；payload 变化或该 runtime 的 parser 升级仅重放对应 agent；新增 runtime 只新增 parser 子类并实现 `can_parse`/会话链接，公共 session 编排不变；单条失败不毁整批（进 `sync_runs.errors`）；定时与手动并发只产生一个 sync job（`sync_lock`）。
 - **F18**：未登录访问任意页面跳登录页；access 过期自动 refresh 一次，refresh 失效回登录页；SSE 票据一次性、60 秒有效、绑定 topics。
 - **F2**：所有深链在新窗口打开后能恢复到同样的选中状态（session + case + tab / run + step）。

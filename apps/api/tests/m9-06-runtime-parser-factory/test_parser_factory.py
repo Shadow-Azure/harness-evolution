@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 
 import pytest
 
@@ -14,6 +14,7 @@ from app.service.acquisition.parsers import (
     ParseContext,
     ParsedTranscript,
     TraceParserFactory,
+    TracePayload,
     UnsupportedTraceRuntime,
 )
 from app.service.acquisition.parsers.base import _dict, _string
@@ -26,11 +27,48 @@ def jsonl(*records: object) -> str:
     return "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n"
 
 
+def trace_payload(
+    content: str,
+    *,
+    agent_id: str = ROOT_ID,
+    agent_kind: str = "main",
+    agent_meta: dict[str, object] | None = None,
+    runtime_key: str = "fake-runtime",
+) -> TracePayload:
+    """Build one session payload for factory and parser tests."""
+    return TracePayload(
+        content=content,
+        root_session_id=ROOT_ID,
+        agent_id=agent_id,
+        agent_kind=agent_kind,  # type: ignore[arg-type]
+        runtime_key=runtime_key,
+        agent_meta=agent_meta,
+    )
+
+
 class FakeTraceParser(BaseTraceParser):
     """Minimal second runtime proving only registration is required."""
 
     runtime_key = "fake-runtime"
     parser_version = 1
+
+    @classmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Accept only the tiny fake event schema, never a Claude transcript."""
+        if not payloads:
+            return False
+        for payload in payloads:
+            first_line = next(
+                (line for line in payload.content.splitlines() if line.strip()),
+                "",
+            )
+            try:
+                first = json.loads(first_line)
+            except json.JSONDecodeError:
+                return False
+            if not isinstance(first, dict) or "event" not in first or "type" in first:
+                return False
+        return True
 
     def consume_record(
         self,
@@ -82,6 +120,11 @@ class DuplicateClaudeParser(BaseTraceParser):
     runtime_key = "claude-code"
     parser_version = 99
 
+    @classmethod
+    def can_parse(cls, payloads: Sequence[TracePayload]) -> bool:
+        """Never reach shape selection: registration fails first."""
+        return False
+
     def consume_record(
         self,
         record: dict[str, object],
@@ -110,9 +153,13 @@ def fake_runtime() -> Iterator[type[FakeTraceParser]]:
 def test_claude_parser_is_discovered_at_package_import() -> None:
     """Package discovery registers the only production runtime."""
     assert "claude-code" in TraceParserFactory.registered_keys()
-    parser = TraceParserFactory.create("claude-code")
+    payload = trace_payload(
+        jsonl({"type": "user", "sessionId": ROOT_ID, "message": {"content": "hi"}}),
+        runtime_key="claude-code",
+    )
+    parser = TraceParserFactory.create("claude-code", (payload,))
     assert parser.runtime_key == "claude-code"
-    assert parser.parser_version == 6
+    assert parser.parser_version == 7
 
 
 def test_duplicate_runtime_registration_is_rejected() -> None:
@@ -123,8 +170,11 @@ def test_duplicate_runtime_registration_is_rejected() -> None:
 
 def test_unknown_runtime_never_falls_back_to_claude() -> None:
     """An unregistered runtime raises its own stable error type."""
+    payload = trace_payload(
+        jsonl({"event": "user"}),
+    )
     with pytest.raises(UnsupportedTraceRuntime) as error:
-        TraceParserFactory.create("unknown-runtime")
+        TraceParserFactory.create("unknown-runtime", (payload,))
     assert error.value.runtime_key == "unknown-runtime"
 
 
@@ -170,6 +220,6 @@ def test_parser_versions_are_read_per_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Upgrading one runtime's parser does not change another runtime's version."""
-    assert TraceParserFactory.versions() == {"claude-code": 6, "fake-runtime": 1}
+    assert TraceParserFactory.versions() == {"claude-code": 7, "fake-runtime": 1}
     monkeypatch.setattr(fake_runtime, "parser_version", 2)
-    assert TraceParserFactory.versions() == {"claude-code": 6, "fake-runtime": 2}
+    assert TraceParserFactory.versions() == {"claude-code": 7, "fake-runtime": 2}

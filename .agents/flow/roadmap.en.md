@@ -30,6 +30,7 @@ milestones:
   - m23
   - m24
   - bugfix
+  - m25
 ```
 
 ## Vision
@@ -61,6 +62,7 @@ Harness Evolution connects traceable Claude Code sessions, reported problems, an
 - **m21 Run detail aligned with the prototype**: the run detail page follows the V2 prototype for goal-and-input, workspace collapse, and the execution-log tab.
 - **m23 Run list aligned with the prototype**: history cards gain workspace, potential-policy, and cache labels, and the creator leaves the list meta.
 - **m24 Single-ref clones and iterative pushes for run workspaces**: run workspaces fetch only the target ref, the cache hits and refreshes per target + ref, and push URLs and git observability are added.
+- **m25 Session-scoped parser and trace selection**: can_parse selection and subclass session links.
 
 ## Delivery rules
 

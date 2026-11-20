@@ -29,11 +29,12 @@ from app.service.acquisition.agent_tree import (
     assemble_agent_trees,
 )
 from app.service.acquisition.normalize import (
+    AgentLink,
     NormalizationAggregate,
     ParsedTranscript,
     aggregate_transcripts,
-    normalize_transcript,
 )
+from app.service.acquisition.parsers import TraceParserFactory, TracePayload
 from app.service.acquisition.parsers._claude_meta import sanitize_unknown_metadata
 from app.utils.time import as_shanghai
 
@@ -477,6 +478,37 @@ def normalize_local_sessions(
     return aggregate_transcripts(normalize_local_transcripts(settings, source_root))
 
 
+def _normalize_corpus(
+    corpus: LocalSessionCorpus,
+    knowledge_roots: tuple[str, ...],
+) -> tuple[tuple[ParsedTranscript, ...], dict[str, tuple[AgentLink, ...]]]:
+    """Normalize each local root as one session and keep its derived links."""
+    grouped: dict[str, list[LocalAgentPayload]] = {}
+    for payload in corpus.payloads:
+        grouped.setdefault(payload.root_session_id, []).append(payload)
+
+    transcripts: list[ParsedTranscript] = []
+    links: dict[str, tuple[AgentLink, ...]] = {}
+    for root_session_id in sorted(grouped):
+        session_payloads = tuple(
+            TracePayload(
+                content=payload.content,
+                root_session_id=payload.root_session_id,
+                agent_id=payload.agent_id,
+                agent_kind=payload.agent_kind,
+                runtime_key=payload.runtime_key,
+                agent_meta=payload.agent_meta,
+                knowledge_roots=knowledge_roots,
+            )
+            for payload in grouped[root_session_id]
+        )
+        parser = TraceParserFactory.for_trace(session_payloads)
+        session = parser.normalize_session()
+        transcripts.extend(session.transcripts)
+        links[root_session_id] = session.links
+    return tuple(transcripts), links
+
+
 def normalize_local_transcripts(
     settings: Settings,
     source_root: Path,
@@ -492,18 +524,8 @@ def normalize_local_transcripts(
     """
     _ensure_local_environment(settings)
     corpus = scan_local_sessions(source_root)
-    return tuple(
-        normalize_transcript(
-            payload.content,
-            root_session_id=payload.root_session_id,
-            agent_id=payload.agent_id,
-            agent_kind=payload.agent_kind,
-            agent_meta=payload.agent_meta,
-            runtime_key=payload.runtime_key,
-            knowledge_roots=knowledge_roots,
-        )
-        for payload in corpus.payloads
-    )
+    transcripts, _links = _normalize_corpus(corpus, knowledge_roots)
+    return transcripts
 
 
 def assemble_local_sessions(
@@ -511,6 +533,7 @@ def assemble_local_sessions(
     source_root: Path,
 ) -> AgentTreeAggregate:
     """Assemble local trees and return stable aggregate-only verification."""
-    return assemble_agent_trees(
-        normalize_local_transcripts(settings, source_root),
-    ).aggregate
+    _ensure_local_environment(settings)
+    corpus = scan_local_sessions(source_root)
+    transcripts, links = _normalize_corpus(corpus, ())
+    return assemble_agent_trees(transcripts, links).aggregate

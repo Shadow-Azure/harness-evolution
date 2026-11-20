@@ -94,8 +94,8 @@ apps/api/
       workspaces/            # V2：空间、成员、额度、凭据
       overview/              # V2：总览口径与聚合
       sessions/              # 列表/会话概览/Agent 会话树
-      acquisition/           # 读 payload、按 runtime 选 parser、归一化、Agent 会话树组装、定时调度（scheduler.py）
-        parsers/             # BaseTraceParser + TraceParserFactory + ClaudeCodeTraceParser；新 runtime 只加子类
+      acquisition/           # 读 payloads、按轨迹选 parser、会话级归一化、Agent 会话树组装、定时调度（scheduler.py）
+        parsers/             # BaseTraceParser + TraceParserFactory + ClaudeCodeTraceParser；新 runtime 加子类（can_parse/会话链接）
       bad_cases/             # 问题列表/详情
       evolution/             # run、七步管线、潜在匹配、归因与缓存、candidate push、eval gateway/poller、apply、blocked retry、事件
       catalogs/              # 目标/模型清单
@@ -116,7 +116,7 @@ alembic/                     # 迁移（项目根，与 app 平级）
 
 **路由只在 `main.py` 注册**（沿用仓库现有约定），各域提供 `router = APIRouter(prefix=...)`。
 
-**轨迹 parser 扩展点**：`acquisition/parsers/` 的 `BaseTraceParser` 用模板方法固定 JSONL 帧、坏行、隐私边界、计数和 finalize；`ClaudeCodeTraceParser` 只解释 Claude record/meta。`TraceParserFactory` 以 `runtime_key` 选 parser，子类用 `@TraceParserFactory.register` 自注册，包启动时自动发现。新增 runtime 不改 replay、agent_tree 或公共 normalize；未知 runtime 生成 `UNSUPPORTED_RUNTIME`，不能 fallback 到 Claude。
+**轨迹 parser 扩展点**：`acquisition/parsers/` 的 `BaseTraceParser` 用模板方法固定 JSONL 帧、坏行、隐私边界、计数和 finalize；`can_parse(payloads)` 由子类按轨迹内容判定，`TraceParserFactory.for_trace(payloads)` 唯一命中后实例化；parser 构造时接收同一 root 的主/子 payload，`normalize_session()` 产出 transcripts 与父子链接，`agent_tree` 只应用链接。子类用 `@TraceParserFactory.register` 自注册，包启动时自动发现。新增 runtime 只需新增子类并实现 `can_parse` / record/meta / 会话链接；公共 replay/agent_tree 不出现 runtime 分支。未知/歧义选型产生稳定错误，不能 fallback 到 Claude。
 
 ## 4. 数据库设计：MySQL 主库 / SQLite 测试
 

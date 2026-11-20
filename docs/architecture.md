@@ -42,7 +42,7 @@ Session 页 360px 列表+概览，默认最新 10、回车查询；错误详情�
 - 证据：父子关系分 `authoritative/derived/synthetic/unresolved`；`execution_outcome` 独立于解析；skill/agent/知识库文件匹配用归一化 body hash 或 tag；未知不猜名称。
 - 知识触发：`kind=knowledge` 只认空间知识根或知识 Provider/Collection 返回的文档，存 `document_id`、revision、来源路径、检索方式与 tool_use，不存全文。
 - 任务：`job_runs` 是任务真值，串行 worker 写 run 事件，总线有界通知；`sync_lock` 单飞，job 与锁同事务，异常 `sync_runs` 先终结再释放；原始 payload 按 `(runtime_key, root_session_id, agent_id)` 唯一保存，fixtures 幂等同构表，重放按 root 原子组装后事务重写。
-- 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放；归一化由 `TraceParserFactory` 按 runtime 选子类，消息与内容不落库。
+- 上游用版本化 outbound contract；pull 先写 `http_api` payload 再共享重放；归一化由会话级 parser 按轨迹选型、产出链接，消息与内容不落库。
 - 兼容：无前缀读端点按可见空间并集过滤；V1 run 只读映射七步；`bad_case_analysis.probe_id` 与 `probe_reports.cache_key` 可空。删除条件见 [compatibility.md](compatibility.md)。
 - 密钥只从环境变量注入，不入仓库或数据库。
 
